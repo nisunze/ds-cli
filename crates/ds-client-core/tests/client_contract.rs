@@ -16,9 +16,9 @@ use ds_client_core::{
     Transport, TransportError, TransportResponse, WeakNetwork, CLIENT_PROFILE_SCHEMA,
 };
 use ds_client_core::{
-    CompoundedReportRequest, CompoundedReportStatus, ExportReportOutcome, ProjectReportCall,
-    ReportFileLevel, RetirementAction, RetirementRefusal, RetirementRequest, TransformerLifecycle,
-    TransformerSet,
+    ArchiveGroupingKind, CompoundedReportRequest, CompoundedReportStatus, ExportReportOutcome,
+    ProjectReportCall, ReportFileLevel, RetirementAction, RetirementRefusal, RetirementRequest,
+    TransformerLifecycle, TransformerSet,
 };
 use serde_json::json;
 use sha2::Digest;
@@ -5415,6 +5415,12 @@ fn project_report_operations_are_six_fixed_selected_project_actions() {
         Some("sector")
     );
     assert!(archives[0].archive_layout().unwrap().combine_per_district());
+    assert_eq!(
+        archives[0].groups().kind,
+        ArchiveGroupingKind::LegacyDistrict
+    );
+    assert_eq!(archives[0].group_count(), 1);
+    assert_eq!(archives[0].groups().labels, ["Huye"]);
 
     let inventory = client
         .transformer_inventory("project_a", &TransformerSet::default(), NOW + 1)
@@ -13537,4 +13543,56 @@ fn transformer_analysis_invalid_inputs_and_signed_out_are_refused_before_transpo
         .unwrap()
         .transformer_analysis_bodies
         .is_empty());
+}
+
+/// A real ds-brain registry list: a plan-grouped archive, a flat one, and a
+/// pre-plan archive that only knows districts — all read through one decoder.
+#[test]
+fn compounded_archive_list_reads_brain_generic_groups_and_legacy_districts() {
+    let transport = FixtureTransport::with_sign_in(SIGN_IN);
+    transport.push_project_report(
+        200,
+        include_bytes!("../../../tests/fixtures/compounded-archive-groups.json"),
+    );
+    let mut client = signed_in(transport.clone(), MemoryStore::default());
+    let archives = client.compounded_report_list("project_a", NOW + 1).unwrap();
+    assert_eq!(archives.len(), 3);
+
+    let plan = archives[0].groups();
+    assert_eq!(plan.kind, ArchiveGroupingKind::Plan);
+    assert_eq!(archives[0].group_count(), 2);
+    assert_eq!(plan.labels, ["Huye", "Nyamagabe"]);
+    assert_eq!(plan.key.as_deref(), Some("loc_admin_level_2"));
+    let identity = plan.plan.as_ref().unwrap();
+    assert_eq!(identity.revision, Some(3));
+    assert_eq!(identity.member_count, Some(4));
+
+    assert_eq!(archives[1].groups().kind, ArchiveGroupingKind::Flat);
+    assert!(!archives[1].groups().filed_no_group());
+
+    let legacy = archives[2].groups();
+    assert_eq!(legacy.kind, ArchiveGroupingKind::LegacyDistrict);
+    assert_eq!(archives[2].group_count(), 3);
+    assert_eq!(legacy.noun_key, "pctl_districts");
+}
+
+/// A malformed grouping refuses the whole list rather than guessing a count.
+#[test]
+fn compounded_archive_list_refuses_a_contradictory_grouping() {
+    let transport = FixtureTransport::with_sign_in(SIGN_IN);
+    transport.push_project_report(
+        200,
+        &serde_json::to_vec(&serde_json::json!({
+            "compounded_reports": [{
+                "stem": "s", "group_count": 4, "groups": ["Huye"],
+                "grouping": {"applied": true, "definition_ids": ["loc_admin_level_2"]}
+            }]
+        }))
+        .unwrap(),
+    );
+    let mut client = signed_in(transport.clone(), MemoryStore::default());
+    let error = client
+        .compounded_report_list("project_a", NOW + 1)
+        .unwrap_err();
+    assert_eq!(error.kind(), ErrorKind::UnreadableResponse);
 }

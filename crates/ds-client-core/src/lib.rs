@@ -111,7 +111,8 @@ pub use profile::{LAYERS_ACTIONS, LAYERS_METHOD, LAYERS_PATH};
 pub use project_form_editor::ProjectFormSettingsEditor;
 pub use project_forms::{ProjectFormOrphan, ProjectFormSummary, ProjectFormsSnapshot};
 pub use project_report::{
-    CompoundedArchive, CompoundedArchiveCatalog, CompoundedArchiveLayout, CompoundedReportReceipt,
+    ArchiveGroupingKind, ArchiveGroupingPlan, ArchiveGroups, CompoundedArchive,
+    CompoundedArchiveCatalog, CompoundedArchiveLayout, CompoundedReportReceipt,
     CompoundedReportRequest, CompoundedReportStatus, ExportReportOutcome, ExportReportResult,
     ExportReportsReceipt, MissingIndividualArtifactCause, ReportFileLevel, RetirementAction,
     RetirementBackup, RetirementReceipt, RetirementRecord, RetirementRefusal, RetirementRequest,
