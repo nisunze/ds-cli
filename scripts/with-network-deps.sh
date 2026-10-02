@@ -1,11 +1,9 @@
 #!/usr/bin/env bash
 # Run one command with every native path dependency at Cargo's sibling paths.
 #
-# A linked git worktree lives below the main ds-cli checkout, so Cargo's
-# `../ds-network` path dependencies resolve beside the worktree rather than
-# beside the main checkout. This wrapper obtains the exact sibling checkout
-# from git's common directory, creates that one missing link only for the
-# child command, and removes only the link it created.
+# Cargo resolves path dependencies beside this checkout. Admit each sibling
+# against the committed native pins, including isolated release worktrees.
+# Create a missing link only for the child command and remove only that link.
 set -euo pipefail
 
 if (($# == 0)); then
@@ -17,6 +15,11 @@ repo_root=$(git rev-parse --show-toplevel) || {
     echo "with-network-deps: run from a ds-cli checkout" >&2
     exit 64
 }
+expected_network_sha=$(tr -d '\r\n' <"$repo_root/pins/ds-network.rev")
+if [[ ! "$expected_network_sha" =~ ^[0-9a-f]{40}$ ]]; then
+    echo "with-network-deps: pins/ds-network.rev is not one exact Git SHA" >&2
+    exit 66
+fi
 expected_native_core_sha=$(tr -d '\r\n' <"$repo_root/pins/ds-client-core.rev")
 if [[ ! "$expected_native_core_sha" =~ ^[0-9a-f]{40}$ ]]; then
     echo "with-network-deps: pins/ds-client-core.rev is not one exact Git SHA" >&2
@@ -30,7 +33,6 @@ fi
 common_git_dir=$(git -C "$repo_root" rev-parse --path-format=absolute --git-common-dir)
 main_checkout=$(dirname "$common_git_dir")
 network_checkout=$(dirname "$main_checkout")/ds-network
-main_network_checkout=$network_checkout
 native_core_checkout=$(dirname "$main_checkout")/ds-command-kernel
 command_kernel_checkout=$(dirname "$main_checkout")/ds-command-kernel
 required_network_link=$(dirname "$repo_root")/ds-network
@@ -56,8 +58,8 @@ if [[ "$(git -C "$network_checkout" remote get-url origin)" != *nisunze/ds-netwo
     echo "with-network-deps: $network_checkout is not the nisunze/ds-network checkout" >&2
     exit 66
 fi
-if [[ "$(git -C "$network_checkout" rev-parse HEAD)" != "$(git -C "$main_network_checkout" rev-parse HEAD)" ]]; then
-    echo "with-network-deps: ds-network must match the main checkout's exact source revision" >&2
+if [[ "$(git -C "$network_checkout" rev-parse HEAD)" != "$expected_network_sha" ]]; then
+    echo "with-network-deps: ds-network must be pinned to $expected_network_sha" >&2
     exit 66
 fi
 if [[ -n "$(git -C "$network_checkout" status --porcelain --untracked-files=normal -- Cargo.toml Cargo.lock crates)" ]]; then
@@ -132,7 +134,7 @@ ensure_link() {
     local required=$1 source=$2 label=$3 flag=$4
     if [[ -e "$required" || -L "$required" ]]; then
         if [[ "$(realpath "$required")" != "$(realpath "$source")" ]]; then
-            echo "with-network-deps: $required already exists and is not the main checkout's $label" >&2
+            echo "with-network-deps: $required already exists and is not the admitted $label" >&2
             exit 73
         fi
     else

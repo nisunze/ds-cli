@@ -204,11 +204,11 @@ That is deliberate: a vendored copy would keep passing after the format moved
 on, reporting parity that no longer exists.
 
 When this checkout is a linked git worktree, use
-`scripts/with-network-deps.sh cargo <subcommand>` for verification. It resolves
-the exact `ds-network` sibling of the main checkout and creates a validated,
-temporary link at Cargo's required relative path; it refuses any mismatched
-existing path and removes only the link it created. Do not substitute a copy,
-vendored fixture, or a different Network checkout.
+`scripts/with-network-deps.sh cargo <subcommand>` for verification. It admits
+the committed native pins at Cargo's sibling paths, including isolated release
+worktrees, and creates a validated temporary link only when that path is absent.
+It refuses mismatched or edited native inputs and removes only its own link.
+Do not substitute a copy, vendored fixture, or mutable canonical checkout.
 
 On Windows use `& .\scripts\with-network-deps.ps1 -Executable cargo -Arguments
 @('<subcommand>', ...)`; it enforces the same validated temporary-link

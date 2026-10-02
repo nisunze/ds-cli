@@ -17,6 +17,10 @@ $CommonGitDir = (& git -C $RepoRoot rev-parse --path-format=absolute --git-commo
 if ($LASTEXITCODE -ne 0 -or -not $CommonGitDir) {
     throw 'with-network-deps: could not resolve the common Git directory'
 }
+$ExpectedNetworkSha = (Get-Content -LiteralPath (Join-Path $RepoRoot 'pins\ds-network.rev') -Raw).Trim()
+if ($ExpectedNetworkSha -notmatch '^[0-9a-f]{40}$') {
+    throw 'with-network-deps: pins/ds-network.rev is not one exact Git SHA'
+}
 $ExpectedNativeCoreSha = (Get-Content -LiteralPath (Join-Path $RepoRoot 'pins\ds-client-core.rev') -Raw).Trim()
 if ($ExpectedNativeCoreSha -notmatch '^[0-9a-f]{40}$') {
     throw 'with-network-deps: pins/ds-client-core.rev is not one exact Git SHA'
@@ -27,7 +31,6 @@ if ($ExpectedCommandKernelSha -notmatch '^[0-9a-f]{40}$') {
 }
 $MainCheckout = Split-Path -Parent $CommonGitDir
 $NetworkCheckout = Join-Path (Split-Path -Parent $MainCheckout) 'ds-network'
-$MainNetworkCheckout = $NetworkCheckout
 $NativeCoreCheckout = Join-Path (Split-Path -Parent $MainCheckout) 'ds-command-kernel'
 $CommandKernelCheckout = Join-Path (Split-Path -Parent $MainCheckout) 'ds-command-kernel'
 $RequiredNetworkLink = Join-Path (Split-Path -Parent $RepoRoot) 'ds-network'
@@ -54,9 +57,8 @@ if ($LASTEXITCODE -ne 0 -or $NetworkOrigin -notlike '*nisunze/ds-network.git') {
     throw "with-network-deps: $NetworkCheckout is not the nisunze/ds-network checkout"
 }
 $NetworkSha = (& git -C $NetworkCheckout rev-parse HEAD).Trim()
-$MainNetworkSha = (& git -C $MainNetworkCheckout rev-parse HEAD).Trim()
-if ($LASTEXITCODE -ne 0 -or $NetworkSha -ne $MainNetworkSha) {
-    throw "with-network-deps: ds-network must match the main checkout's exact source revision"
+if ($LASTEXITCODE -ne 0 -or $NetworkSha -ne $ExpectedNetworkSha) {
+    throw "with-network-deps: ds-network must be pinned to $ExpectedNetworkSha"
 }
 $NetworkStatus = @(& git -C $NetworkCheckout status --porcelain --untracked-files=normal -- Cargo.toml Cargo.lock crates)
 if ($LASTEXITCODE -ne 0 -or $NetworkStatus.Count -ne 0) {
@@ -106,7 +108,7 @@ function Ensure-DependencyLink([string] $RequiredLink, [string] $Checkout, [stri
             $Existing.FullName
         }
         if ($ExistingTarget -ne $Resolved) {
-            throw "with-network-deps: $RequiredLink exists and is not the main checkout's $Label"
+            throw "with-network-deps: $RequiredLink exists and is not the admitted $Label"
         }
     } else {
         [void](New-Item -ItemType Junction -Path $RequiredLink -Target $Resolved)
