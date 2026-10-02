@@ -104,7 +104,8 @@ ds-layer-ops = { path = "crates/ds-layer-ops" }
 ds-cli-dsgrid = { path = "crates/ds-cli-dsgrid" }
 ds-cli-dsgrid-exchange = { path = "crates/ds-cli-dsgrid-exchange" }
 ds-cli-library = { path = "crates/ds-cli-library" }
-ds-cli-pls = { path = "crates/ds-cli-pls" }
+# `ds` turns the third-party desktop adapters on through its own feature.
+ds-cli-pls = { path = "crates/ds-cli-pls", default-features = false }
 ds-cli-report = { path = "crates/ds-cli-report" }
 ds-cli-solar = { path = "crates/ds-cli-solar" }
 ds-cli-pm = { path = "crates/ds-cli-pm" }

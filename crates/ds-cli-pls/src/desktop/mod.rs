@@ -21,7 +21,8 @@
 //! The verbs refuse `windows_only` anywhere else, and `pls_cadd_not_found`
 //! where PLS-CADD is not installed at the path every driver pins. `dialogs`
 //! is the exception: it only reads the embedded catalogue, so it answers on
-//! any host.
+//! any host. A build without the `desktop-adapters` feature embeds nothing,
+//! and every verb, `dialogs` included, refuses `adapters_not_embedded` first.
 
 pub mod autosag;
 pub mod bundle;
@@ -47,6 +48,11 @@ use serde_json::{Value, json};
 /// installed anywhere else is not one they will drive.
 pub const PLS_CADD_EXECUTABLE: &str = r"C:\Program Files\PLS\pls_cadd\pls_cadd64.exe";
 
+pub const ADAPTERS_NOT_EMBEDDED: Refusal = Refusal {
+    code: "adapters_not_embedded",
+    when: "this ds was built without its third-party adapter layer",
+    remedy: "use a standard ds build (default desktop-adapters feature)",
+};
 pub const WINDOWS_ONLY: Refusal = Refusal {
     code: "windows_only",
     when: "this host is not Windows; PLS-CADD and its drivers run only there",
@@ -198,9 +204,25 @@ pub const REPORT_TIMEOUT_ARG: Arg = Arg::value(
 )
 .default("1800");
 
+/// Whether this build carries the adapter layer at all. The verbs that only
+/// read or write the embedded bytes need nothing more.
+pub fn adapter_availability() -> Availability {
+    if bundle::embedded() {
+        return Availability::Available;
+    }
+    Availability::unavailable(
+        ADAPTERS_NOT_EMBEDDED.code,
+        "this ds was built without the third-party adapter layer",
+        ADAPTERS_NOT_EMBEDDED.remedy,
+    )
+}
+
 /// Whether this host can run the drivers, from filesystem metadata only:
 /// help and the domain index call this, and it must never start a process.
 pub fn availability() -> Availability {
+    if !bundle::embedded() {
+        return adapter_availability();
+    }
     if !cfg!(windows) {
         return Availability::unavailable(
             WINDOWS_ONLY.code,
@@ -432,6 +454,62 @@ fn provenance(receipt: &str) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const VERBS: &[&ds_cli_contract::spec::Command] = &[
+        &check::COMMAND,
+        &dialogs::COMMAND,
+        &restore::COMMAND,
+        &qualify::COMMAND,
+        &deliver::COMMAND,
+        &autosag::COMMAND,
+        &reports::COMMAND,
+        &sheets_pdf::COMMAND,
+    ];
+
+    #[test]
+    fn every_verb_documents_the_missing_adapter_refusal() {
+        for command in VERBS {
+            assert!(
+                command
+                    .refusals
+                    .iter()
+                    .any(|refusal| refusal.code == ADAPTERS_NOT_EMBEDDED.code),
+                "{} must document adapters_not_embedded",
+                command.id
+            );
+        }
+    }
+
+    /// Built without the adapter layer, every verb refuses one typed,
+    /// explained code before it would need a file, and nothing is embedded.
+    #[cfg(not(feature = "desktop-adapters"))]
+    #[test]
+    fn without_the_adapter_layer_every_verb_refuses_one_typed_code() {
+        assert!(bundle::BUNDLE.is_empty());
+        assert!(!bundle::embedded());
+        for command in VERBS {
+            match (command.availability)() {
+                Availability::Unavailable {
+                    code,
+                    reason,
+                    remedy,
+                } => {
+                    assert_eq!(code, ADAPTERS_NOT_EMBEDDED.code, "{}", command.id);
+                    assert!(reason.contains("adapter layer"), "{}", command.id);
+                    assert!(remedy.contains("desktop-adapters"), "{}", command.id);
+                }
+                Availability::Available => panic!("{} is available without adapters", command.id),
+            }
+        }
+    }
+
+    #[cfg(feature = "desktop-adapters")]
+    #[test]
+    fn with_the_adapter_layer_the_host_neutral_verbs_answer_anywhere() {
+        assert!(bundle::embedded());
+        assert!(adapter_availability().is_available());
+        assert!((dialogs::COMMAND.availability)().is_available());
+    }
 
     #[test]
     fn attach_pid_is_explicit_and_bounded_to_the_native_parameter() {

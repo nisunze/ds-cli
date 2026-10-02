@@ -37,6 +37,7 @@ pub static COMMAND: Command = Command {
         runnable: true,
     }],
     refusals: &[
+        ADAPTERS_NOT_EMBEDDED,
         WINDOWS_ONLY,
         PLS_CADD_NOT_FOUND,
         POWERSHELL_NOT_FOUND,
