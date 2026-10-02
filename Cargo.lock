@@ -258,7 +258,7 @@ dependencies = [
 name = "ds-canvas-lite"
 version = "0.1.0"
 dependencies = [
- "rstar",
+ "ds-geo-lite",
  "serde",
 ]
 

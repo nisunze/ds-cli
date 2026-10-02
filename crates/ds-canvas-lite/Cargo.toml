@@ -18,4 +18,4 @@ path = "../../vendor/ds-geo-lite/canvas/lib.rs"
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
-rstar = "0.12"
+ds-geo-lite = { path = "../ds-geo-lite", features = ["index"] }

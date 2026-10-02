@@ -4,38 +4,23 @@ pub fn rectangle(a: Point, b: Point) -> [Point; 4] {
     [a, Point::new(b.x, a.y), b, Point::new(a.x, b.y)]
 }
 pub fn point_in_polygon(polygon: &[Point], point: Point) -> bool {
-    if polygon.is_empty() {
-        return false;
-    }
-    let mut inside = false;
-    let mut b = polygon[polygon.len() - 1];
-    for &a in polygon {
-        if (a.y > point.y) != (b.y > point.y)
-            && point.x < (b.x - a.x) * (point.y - a.y) / (b.y - a.y) + a.x
-        {
-            inside = !inside;
-        }
-        b = a;
-    }
-    inside
+    ds_geo_lite::predicates::ring_contains_by(
+        polygon,
+        [point.x, point.y],
+        |p| [p.x, p.y],
+        ds_geo_lite::predicates::RingEdges::Previous,
+        ds_geo_lite::predicates::RayArithmetic::ProductFirst,
+    )
 }
 pub fn segments_intersect(a: Point, b: Point, c: Point, d: Point) -> bool {
-    let cross =
-        |p: Point, q: Point, r: Point| (q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x);
-    let on = |p: Point, q: Point, r: Point| {
-        p.x.min(r.x) <= q.x && q.x <= p.x.max(r.x) && p.y.min(r.y) <= q.y && q.y <= p.y.max(r.y)
-    };
-    let (abc, abd, cda, cdb) = (
-        cross(a, b, c),
-        cross(a, b, d),
-        cross(c, d, a),
-        cross(c, d, b),
-    );
-    (abc == 0. && on(a, c, b))
-        || (abd == 0. && on(a, d, b))
-        || (cda == 0. && on(c, a, d))
-        || (cdb == 0. && on(c, b, d))
-        || ((abc > 0.) != (abd > 0.) && (cda > 0.) != (cdb > 0.))
+    ds_geo_lite::predicates::segments_intersect(
+        [a.x, a.y],
+        [b.x, b.y],
+        [c.x, c.y],
+        [d.x, d.y],
+        ds_geo_lite::predicates::SegmentTolerance::EXACT,
+        ds_geo_lite::predicates::Crossing::RawSigns,
+    )
 }
 pub fn polyline_intersects_polygon(polygon: &[Point], points: &[Point]) -> bool {
     if points.iter().any(|&p| point_in_polygon(polygon, p)) {
@@ -49,14 +34,12 @@ pub fn polyline_intersects_polygon(polygon: &[Point], points: &[Point]) -> bool 
     })
 }
 pub fn distance_to_segment(point: Point, from: Point, to: Point) -> f64 {
-    let dx = to.x - from.x;
-    let dy = to.y - from.y;
-    let length2 = dx * dx + dy * dy;
-    if length2 == 0. {
-        return point.distance_to(from);
-    }
-    let t = (((point.x - from.x) * dx + (point.y - from.y) * dy) / length2).clamp(0., 1.);
-    point.distance_to(Point::new(from.x + t * dx, from.y + t * dy))
+    ds_geo_lite::cartesian::point_segment_distance_with(
+        [point.x, point.y],
+        [from.x, from.y],
+        [to.x, to.y],
+        ds_geo_lite::cartesian::DistanceArithmetic::Hypot,
+    )
 }
 #[cfg(test)]
 mod tests {
