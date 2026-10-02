@@ -171,6 +171,14 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     publish(lane, project, &request)
 }
 
+/// Refuse conflicting grouped and transformer scopes before reconciliation.
+pub fn preflight(inputs: &Inputs) -> Result<(), Failure> {
+    if grouping::requested(inputs)?.is_none() {
+        super::transformer_set(inputs)?;
+    }
+    Ok(())
+}
+
 /// One leaf tag group per archive, run one after another through the SAME
 /// publish a single run uses, each over that group's explicit scope.
 ///

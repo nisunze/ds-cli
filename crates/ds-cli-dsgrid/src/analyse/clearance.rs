@@ -90,8 +90,8 @@ the survey-point horizontal case (high wind) — the deficit, the violation \
 flag, the station and offset, and the span's structures. Per-alignment and \
 per-code totals; obstacles checked on a default height and assumed \
 clearances are flagged. Only violations are listed; every point is counted. \
-Definitions follow PLS-CADD's Terrain › Clearances so the two compare; \
-verification level `proposal` — PLS-CADD 16.81 confirms.",
+Definitions follow PLS-CADD Terrain › Clearances. Verification is a proposal; \
+PLS-CADD 16.81 confirms.",
     chapter: Chapter::GridModel,
     effect: Effect::ReadOnly,
     authority: Authority::None,

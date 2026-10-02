@@ -1062,10 +1062,21 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("sre.overview", "read_only", "headless_user"),
     ("survey.form.create", "global_write", "headless_user"),
     ("survey.form.lifecycle", "global_write", "headless_user"),
+    (
+        "survey.form.purge-plan",
+        "local_auth_state",
+        "headless_user",
+    ),
+    ("survey.form.purge", "global_write", "headless_user"),
     ("survey.form.read", "local_auth_state", "headless_user"),
     ("survey.form.types", "local_auth_state", "headless_user"),
     ("survey.form.update", "global_write", "headless_user"),
     ("survey.forms.list", "local_auth_state", "headless_user"),
+    (
+        "survey.forms.purge-candidates",
+        "local_auth_state",
+        "headless_user",
+    ),
     (
         "survey.member-grant.read",
         "local_auth_state",

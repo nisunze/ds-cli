@@ -222,6 +222,12 @@ fn selection(inputs: &Inputs) -> Result<DesignOutputSelection, Failure> {
     Ok(selection)
 }
 
+/// Validate the authored selection before report reconciliation or identity
+/// restoration observes remote state.
+pub fn preflight_set(inputs: &Inputs) -> Result<(), Failure> {
+    selection(inputs).map(|_| ())
+}
+
 fn receipt(lane: &str, summary: &Value) -> Value {
     json!({"lane":lane,"project":summary["project"]})
 }
@@ -323,10 +329,10 @@ pub(crate) fn sheets_with_printing_catalogue(
         None => stored_setup_ids(sheets),
     };
     let mut wanted = wanted;
-    if let Ok(mv) = ds_command_kernel::printing::mv::selection(sheets) {
-        if !wanted.contains(&mv.layout_id) {
-            wanted.push(mv.layout_id);
-        }
+    if let Ok(mv) = ds_command_kernel::printing::mv::selection(sheets)
+        && !wanted.contains(&mv.layout_id)
+    {
+        wanted.push(mv.layout_id);
     }
     if wanted.is_empty() {
         return Ok(with_printing_setups(sheets, Vec::new()));

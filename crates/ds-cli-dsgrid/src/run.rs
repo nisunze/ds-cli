@@ -608,6 +608,16 @@ fn dispatch(
                     .map_err(|error| typed_engine_error(operation_id, error))?,
             )
         }
+        "support_resistance_binding" => {
+            let params: RequestParams<ds_grid_engine::SupportResistanceBindingRequest> =
+                parse(operation_id, params)?;
+            serialize(
+                operation_id,
+                session
+                    .support_resistance_binding(&params.request)
+                    .map_err(|error| typed_engine_error(operation_id, error))?,
+            )
+        }
         "compute_support_demands" => {
             let request: SectionDemandsRequest = parse(operation_id, params)?;
             let mut store = ResultStore::new();

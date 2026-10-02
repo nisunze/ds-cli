@@ -23,7 +23,7 @@ pub static SET: Command = Command {
     args:&[super::PROJECT_ARG,super::LANE_ARG,Arg::value("selection","<json-file>","ds.mv-print-selection/v1: layout_id, exact revision, external_version and fixed issue_date.").required()],
     output:"Exact project and saved canonical selection. Printing readiness must be checked with the resolved model and held assets.",
     examples:&[], refusals:&super::joined::<{super::NATIVE_WRITE_REFUSALS.len()+1}>(&[super::NATIVE_WRITE_REFUSALS,&[REFUSAL]]),
-    reference:Some("docs/reference/report.md"),search:&["MV","front matter","printing"], requires:Requires::Server,availability:ds_cli_auth::native_availability,
+    reference:Some("docs/reference/report.md"),search:&["front matter","template adoption"], requires:Requires::Server,availability:ds_cli_auth::native_availability,
 };
 pub static RESOLVE: Command = Command {
     id: "report.project.mv-setup.resolve",
@@ -56,7 +56,7 @@ pub static RESOLVE: Command = Command {
         &[REFUSAL],
     ]),
     reference: Some("docs/reference/report.md"),
-    search: &["MV", "front matter", "printing"],
+    search: &["front matter", "template adoption"],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
@@ -132,14 +132,13 @@ pub fn set(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let sheets = super::settings::sheets_with_printing_catalogue(lane, project, &sheets, None)?;
     // A model-specific required field is intentionally supplied only by that
     // model at print time. All structural/adoption errors still refuse here.
-    if let Err(error) = mv::resolve(&sheets, project, BTreeMap::new()) {
-        if !matches!(
+    if let Err(error) = mv::resolve(&sheets, project, BTreeMap::new())
+        && (!matches!(
             error.code.as_str(),
             "mv_print_text_missing" | "mv_print_model_binding_missing"
-        ) || !matches!(error.field.as_str(), "model_identity" | "model_title")
-        {
-            return Err(failure(error));
-        }
+        ) || !matches!(error.field.as_str(), "model_identity" | "model_title"))
+    {
+        return Err(failure(error));
     }
     let saved = ds_cli_auth::mv_printing_selection_for_project(
         lane,

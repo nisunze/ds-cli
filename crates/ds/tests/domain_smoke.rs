@@ -1032,7 +1032,7 @@ fn capabilities_requires_separates_the_window_from_the_server() {
     assert_eq!(window["tier"], "requires");
     assert_eq!(window["requires"], "window");
     assert_eq!(window["domain"], "map");
-    assert_eq!(window["matched"], 38, "map's window commands");
+    assert_eq!(window["matched"], 40, "map's window commands");
     let ids: Vec<&str> = window["results"]
         .as_array()
         .expect("results")
@@ -1045,7 +1045,7 @@ fn capabilities_requires_separates_the_window_from_the_server() {
         "moving the camera is the window's own work: {ids:?}"
     );
     assert_eq!(window["more"]["shown"], 5);
-    assert_eq!(window["more"]["matched"], 38);
+    assert_eq!(window["more"]["matched"], 40);
 
     // Survey moved to the server. If a survey command ever needs the window
     // again, this is where it is noticed.
@@ -1752,12 +1752,13 @@ fn dsgrid_inspect_and_validate_expose_the_authored_revision() {
 
 /// The real package's assets: the original PLS-CADD upload comes out
 /// byte-for-byte as the committed backup, a delivered backup attaches bound
-/// to the snapshot and detaches back to the exact package, and the model's own
+/// to the snapshot and detaches back to the same model and asset contents, and the model's own
 /// files are never writable.
 #[test]
 fn dsgrid_asset_extracts_the_original_bak_and_round_trips_a_delivery() {
     use sha2::{Digest, Sha256};
     let model = common::fixture();
+    let original_package = unpack(&std::fs::read(&model).unwrap()).unwrap();
     let committed_bak = PathBuf::from(&model).with_file_name("humble-pole-16.81.bak");
     let listed = ok(&[
         "dsgrid", "asset", "list", "--path", &model, "--output", "json",
@@ -1948,10 +1949,37 @@ fn dsgrid_asset_extracts_the_original_bak_and_round_trips_a_delivery() {
         "json",
     ]);
     assert_eq!(detached["role"], "pls_cadd_delivered_workspace");
+    let restored_package = unpack(&std::fs::read(&restored).unwrap()).unwrap();
+    assert_eq!(restored_package.snapshot, original_package.snapshot);
+    assert_eq!(restored_package.assets, original_package.assets);
     assert_eq!(
-        std::fs::read(&restored).unwrap(),
-        std::fs::read(&model).unwrap(),
-        "detaching the delivery restores the exact package"
+        restored_package.manifest.model,
+        original_package.manifest.model
+    );
+    assert_eq!(
+        restored_package.manifest.resource_providers,
+        original_package.manifest.resource_providers
+    );
+    assert_eq!(
+        restored_package.exchange_bindings,
+        original_package.exchange_bindings
+    );
+    // Detach decodes and verifies the package, removes its attachment, then
+    // writes a newly attested package. This fixture carries a prior additive
+    // feature-code table schema, which the current writer upgrades on repack;
+    // every other non-asset member keeps its exact attestation.
+    let stable_members = |package: &ds_grid_exchange::GridPackage| {
+        package
+            .manifest
+            .members
+            .iter()
+            .filter(|(name, _)| name.as_str() != "tables/feature_codes.arrow")
+            .map(|(name, record)| (name.clone(), record.clone()))
+            .collect::<std::collections::BTreeMap<_, _>>()
+    };
+    assert_eq!(
+        stable_members(&restored_package),
+        stable_members(&original_package)
     );
     let _ = std::fs::remove_dir_all(root);
 }
@@ -9223,8 +9251,9 @@ fn every_design_command_is_discoverable_without_the_desktop_installed() {
         commands.len(),
         // Base 101, minus four retired commands, plus three version and five
         // attachment/comment commands added on 2026-09-25, plus the LV
-        // voltage-drop check (2026-09-28) and one-shot project run (2026-09-30).
-        107,
+        // voltage-drop check (2026-09-28), one-shot project run (2026-09-30),
+        // the governed tag project-list read, and LV analysis availability.
+        108,
         "the design domain should expose its whole family: {commands:?}"
     );
     for command in commands {
@@ -9338,6 +9367,7 @@ fn every_design_command_is_discoverable_without_the_desktop_installed() {
                     | "design.known-columns.set"
                     | "design.materials.preview"
                     | "design.materials.apply"
+                    | "design.lv.analysis-read"
             ) {
                 "unavailable"
             } else if COLLABORATION_WINDOW_BACKLOG.contains(&id) {
@@ -11420,9 +11450,14 @@ fn a_well_formed_pm_call_ends_at_the_native_credential_and_never_at_a_window() {
     // And the surface says so: nothing in `pm` needs a window.
     let index = ok(&["capabilities", "pm", "--output", "json"]);
     for command in index["commands"].as_array().expect("commands") {
+        let expected_authority = if command["id"] == "pm.project.list" {
+            "headless_user"
+        } else {
+            "headless_project"
+        };
         assert_eq!(
-            command["authority"], "headless_project",
-            "`{}` is not a headless project command",
+            command["authority"], expected_authority,
+            "`{}` has the wrong authority",
             command["id"]
         );
         assert_ne!(
@@ -13759,6 +13794,9 @@ fn no_survey_example_names_a_deployment_form_slug() {
                 // The working-area choice is over the project's own catalogue,
                 // which its read answers with the exact slugs.
                 "survey.working-area.select" => "ds survey working-area forms",
+                "survey.form.purge-plan" | "survey.form.purge" => {
+                    "ds survey forms purge-candidates"
+                }
                 _ => "ds survey forms list",
             };
             assert!(
@@ -16197,13 +16235,15 @@ fn dsgrid_replace_structure_raises_a_placed_definition_as_one_revision() {
         dry["capacity"]["after"][1]["maximum_signed_weight_spans_m"],
         json!([550.0, 550.0, 550.0])
     );
-    // The committed model never declared a weight-span basis: the screen says
-    // so rather than guessing one.
+    // The imported capacity does not claim a weight-span definition, so the
+    // screen points to the missing engineering basis rather than guessing.
     assert!(
         dry["capacity_screen"]["unavailable"]
             .as_str()
             .unwrap()
-            .contains("weight-span basis")
+            .contains("weight-span definition"),
+        "unavailability must name its engineering basis: {}",
+        dry["capacity_screen"]["unavailable"]
     );
 
     // The write is pinned to the head and the exact bytes the dry run read.

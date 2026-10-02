@@ -8,6 +8,8 @@ description: Compose and refine DS transformer sheets, custom-area maps, distric
 Use the `ds` skill first. Discover the live printing, layout, style and map
 preview contracts. Their declarations own command inputs and schemas; this
 skill owns the cartographic reasoning. Do not require repository access.
+Use `printing` for layout, context and rendering; `printing-maps` supplies the
+map-specific composition and publication steps.
 
 Start with the live published default for the requested paper and layout family.
 Read its complete layout and revision, compare the project customization, and

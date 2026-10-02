@@ -220,7 +220,7 @@ pub static COMMAND: Command = Command {
     ],
     refusals: &refusals(),
     reference: Some("docs/reference/design.md"),
-    search: &["one shot", "voltage drop", "compute save", "a4"],
+    search: &["one shot", "voltage drop", "compute save"],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };

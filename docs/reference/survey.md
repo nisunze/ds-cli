@@ -326,7 +326,7 @@ Four related objects have separate lifecycles:
 
 1. A **Form Factory form** is a global master schema. Use `survey forms list`,
    `survey form read`, `survey form types`, `survey form create`, `survey form
-   update`, and `survey form lifecycle`.
+   update`, `survey form lifecycle`, `survey form purge-plan`, and `survey form purge`.
 2. A **project-form binding** enables a master form for one project and stores
    that project's settings. Use `survey project-forms list` for the selected
    native project's bounded summary and `survey project-form settings` for one
@@ -554,6 +554,22 @@ binding and permits only an enable-only `false` cleanup. Follow that refusal
 through the same `ds survey` contract—do not open the map, reconstruct settings
 from a cached form, or make template management conditional on an unavailable
 form.
+
+For permanent removal of a retired form containing literal `_-_` and its
+observations, first discover exact identities with `ds survey forms
+purge-candidates`. Use `survey form purge-plan --slug <exact-slug>` as a
+platform administrator. Ordinary form identities refuse before inventory or
+deletion. The permanent Storage fence matches the full legacy form ancestry
+without a Firestore lookup. The plan inventories
+all projects, nested entry data, deleted-entry/schema snapshots, retained media
+versions, template/access references and derived BigQuery/tile projections.
+An incomplete inventory refuses. Apply the inspected scope with `survey form
+purge --slug <exact-slug> --plan-digest <sha256:digest> --yes`. A stale scope
+returns `form_purge_scope_changed`; read and inspect its replacement. A partial
+receipt remains incomplete and resumes with the original digest after its
+dependency is restored. Only a `complete` receipt with every residual count
+zero establishes full removal. Ordinary lifecycle delete does not provide this
+complete purge contract.
 
 Commands under `ds map` remain reserved for operations that genuinely consume
 map-owned local state, such as the Working Area transfer. Form Factory,

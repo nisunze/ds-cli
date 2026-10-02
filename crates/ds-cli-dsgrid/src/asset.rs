@@ -283,7 +283,7 @@ pub static EXTRACT: Command = Command {
     path: &["dsgrid", "asset", "extract"],
     contract: 1,
     summary: "Save one file a local .dsgrid carries, e.g. its original .bak.",
-    purpose: "Recover exact package bytes into a new file without changing the package. Use --leaf for an unambiguous asset, or --resource-id with --expected-digest and --role resource (current row) or origin_resource (preserved resource-graph origin). Exact selection opens the fully verified package through the native owner; library-pinned packages are refused here. Read current ids and digests with dsgrid run --operation project_table and params {\"table_kind\":\"resources\"}; extract origin-authorities.v1.json for historical attestations. Origin selection requires that exact current resource id among interpreted_entity_ids and the same asset leaf. Leaf-only ambiguity still refuses; no re-conversion or fallback occurs.",
+    purpose: "Recover exact package bytes into a new file without changing the package. Select by --leaf, or by --resource-id with --expected-digest and --role resource|origin_resource. Ambiguous leaves and library-pinned packages refuse. The reference explains how to read current resource identities and historical origin authority.",
     chapter: Chapter::GridModel,
     effect: Effect::LocalFileWrite,
     authority: Authority::None,

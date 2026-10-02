@@ -88,7 +88,7 @@ pub static COMMAND: Command = Command {
     ],
     refusals: REFUSALS,
     reference: Some("docs/reference/dsgrid.md"),
-    search: &["forest", "cleared", "ground", "additional clearance", "feature code"],
+    search: &["standing tree", "survey height", "fea columns"],
     requires: Requires::Server,
     availability: || Availability::Available,
 };

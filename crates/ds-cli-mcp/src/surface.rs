@@ -72,6 +72,7 @@ pub const PROFILE_IDS: &[&str] = &[
     "grid-native",
     "grid-corrections",
     "printing",
+    "printing-maps",
     "grid-local-model",
     "clearance",
     "pls",
@@ -91,6 +92,7 @@ pub const PROFILE_IDS: &[&str] = &[
     "layers",
     "tiling",
     "project",
+    "project-task-operations",
     "correspondence",
     "solar-input",
     "solar-migration",
@@ -137,6 +139,7 @@ pub enum Profile {
     GridNative,
     GridCorrections,
     Printing,
+    PrintingMaps,
     GridLocalModel,
     GridClearance,
     Pls,
@@ -156,6 +159,7 @@ pub enum Profile {
     Layers,
     Tiling,
     Project,
+    ProjectTaskOperations,
     Correspondence,
     SolarInput,
     SolarMigration,
@@ -180,6 +184,7 @@ impl Profile {
             "grid-native" => Some(Self::GridNative),
             "grid-corrections" => Some(Self::GridCorrections),
             "printing" => Some(Self::Printing),
+            "printing-maps" => Some(Self::PrintingMaps),
             "grid-local-model" => Some(Self::GridLocalModel),
             "clearance" => Some(Self::GridClearance),
             "pls" => Some(Self::Pls),
@@ -199,6 +204,7 @@ impl Profile {
             "layers" => Some(Self::Layers),
             "tiling" => Some(Self::Tiling),
             "project" => Some(Self::Project),
+            "project-task-operations" => Some(Self::ProjectTaskOperations),
             "correspondence" => Some(Self::Correspondence),
             "solar-input" => Some(Self::SolarInput),
             "solar-migration" => Some(Self::SolarMigration),
@@ -224,6 +230,7 @@ impl Profile {
             Self::GridNative => "grid-native",
             Self::GridCorrections => "grid-corrections",
             Self::Printing => "printing",
+            Self::PrintingMaps => "printing-maps",
             Self::GridLocalModel => "grid-local-model",
             Self::GridClearance => "clearance",
             Self::Pls => "pls",
@@ -243,6 +250,7 @@ impl Profile {
             Self::Layers => "layers",
             Self::Tiling => "tiling",
             Self::Project => "project",
+            Self::ProjectTaskOperations => "project-task-operations",
             Self::Correspondence => "correspondence",
             Self::SolarInput => "solar-input",
             Self::SolarMigration => "solar-migration",
@@ -307,16 +315,15 @@ impl Profile {
             // same bounded desktop-owned workflow without transporting
             // features through MCP.
             Self::DesignEdit => 23,
-            // Twenty-three printing leaves plus both bootstrap tools: city
-            // vector acquisition adds one step to the existing headless
+            // Twenty-three print production leaves plus both bootstrap tools:
+            // city vector acquisition adds one step to the existing headless
             // printing workflow, including projects without held context. The
             // headless loop (context held and seeded on this machine, output
             // selection, export with context) beside the paired leaves that
-            // still need the desktop's own holdings.
-            // Map delivery adds local composition, standalone publication,
-            // and the published map index. General asset referencing remains
-            // discoverable in the Assets chapter, outside this print workflow.
-            Self::Printing => 28,
+            // still need the desktop's own holdings. Map composition and
+            // publication are a separate focused workflow.
+            Self::Printing => 25,
+            Self::PrintingMaps => 7,
             // The layer drawer's profile also carries this machine's prepared
             // local layer catalogue: seventeen leaves plus both bootstrap tools.
             // Preparing, renaming and removing a local layer is the same
@@ -338,7 +345,9 @@ impl Profile {
             // for ambiguity and not publish the answer to it would not be a
             // smaller surface, only a stuck one.
             Self::Operations => 18,
-            // Sixteen leaves plus both bootstrap tools. Raised from the
+            // Fourteen background-report leaves plus two bootstrap tools.
+            // Project output settings and canonical MV setup live in the
+            // focused Printing profile. Raised from the
             // default on 2026-09-19 by the publication queue: an agent doing
             // background delivery work produces report artifacts, and a
             // profile that can produce them but cannot publish them or read
@@ -354,6 +363,9 @@ impl Profile {
             // caller can inspect the plan, delete at its exact revision,
             // inspect the durable backup, and restore at a fresh revision.
             Self::Project => 26,
+            // Task creation with typed geometry, geometry edits, and
+            // admission/field-hours steps: nine leaves plus two bootstrap tools.
+            Self::ProjectTaskOperations => 11,
             // Seventeen working-copy leaves plus both bootstrap tools. Raised
             // from the default on 2026-09-22 when the four 2026-09-21 leaves
             // (`dsgrid model forget`, `dsgrid structure admin-refresh`,
@@ -403,7 +415,7 @@ impl Profile {
                     // profile. Native sync is an exchange delivery act, not
                     // part of the bounded native-model reading/editing set.
                     && !matches!(tool.id.as_str(),
-                        "dsgrid.apply-batch" | "dsgrid.apply-correction" | "dsgrid-exchange.sync")
+                        "dsgrid.apply-batch" | "dsgrid.apply-correction" | "dsgrid-exchange.sync" | "dsgrid.reconcile-cable-source")
                     // A visualization-only view of a truncated spotting
                     // receipt is the spotting workflow's, published by the
                     // `grid` profile `ds-grid-spotting` names; it is not a
@@ -425,6 +437,7 @@ impl Profile {
                 matches!(tool.chapter, Chapter::GridModel | Chapter::Reports)
                     && !matches!(tool.id.as_str(),
                         "dsgrid.apply-batch" | "dsgrid.apply-correction" | "dsgrid-exchange.sync")
+                    && tool.id != "dsgrid.reconcile-cable-source"
                     && !PROJECT_OPERATIONS_COMMANDS.contains(&tool.id.as_str())
                     // The old ZIP command remains a CLI compatibility alias;
                     // focused MCP profiles expose its canonical successor.
@@ -433,6 +446,7 @@ impl Profile {
                     // Printing has its own workflow profile and Reports router;
                     // changing that profile must not expand the Grid surface.
                     && !PRINTING_COMMANDS.contains(&tool.id.as_str())
+                    && !REPORT_CONFIGURATION_COMMANDS.contains(&tool.id.as_str())
                     && !tool.id.starts_with("desktop.printing.")
                     && !tool.id.starts_with("report.layout.")
                     // Project head preparation (this machine's working copies
@@ -457,6 +471,7 @@ impl Profile {
                         && GRID_LOCAL_MODEL_COMMANDS.contains(&tool.id.as_str()))
             }
             Self::Printing => PRINTING_COMMANDS.contains(&tool.id.as_str()),
+            Self::PrintingMaps => PRINTING_MAP_COMMANDS.contains(&tool.id.as_str()),
             Self::GridLocalModel => GRID_LOCAL_MODEL_COMMANDS.contains(&tool.id.as_str()),
             Self::GridClearance => GRID_CLEARANCE_COMMANDS.contains(&tool.id.as_str()),
             // The file-task family. `ds pls desktop …` drives PLS-CADD itself on
@@ -494,8 +509,13 @@ impl Profile {
                 tool.chapter == Chapter::Project
                     && !tool.id.starts_with("auth.")
                     && !tool.id.starts_with("account.")
+                    && (!PROJECT_TASK_OPERATIONS_COMMANDS.contains(&tool.id.as_str())
+                        || tool.id == "pm.task.create")
                     && !(CORRESPONDENCE_COMMANDS.contains(&tool.id.as_str())
                         && tool.id != "pm.plan")
+            }
+            Self::ProjectTaskOperations => {
+                PROJECT_TASK_OPERATIONS_COMMANDS.contains(&tool.id.as_str())
             }
             Self::Correspondence => CORRESPONDENCE_COMMANDS.contains(&tool.id.as_str()),
             Self::Operations => {
@@ -531,6 +551,7 @@ impl Profile {
             Self::Datasets => DATASET_COMMANDS,
             Self::Installations => INSTALLATION_COMMANDS,
             Self::Printing => PRINTING_COMMANDS,
+            Self::PrintingMaps => PRINTING_MAP_COMMANDS,
             Self::GridLocalModel => GRID_LOCAL_MODEL_COMMANDS,
             Self::GridClearance => GRID_CLEARANCE_COMMANDS,
             Self::GridCorrections => GRID_CORRECTION_COMMANDS,
@@ -555,6 +576,7 @@ impl Profile {
             Self::PlsLibrary => PLS_LIBRARY_COMMANDS,
             Self::LibraryGovernance => LIBRARY_GOVERNANCE_COMMANDS,
             Self::ProjectOperations => PROJECT_OPERATIONS_COMMANDS,
+            Self::ProjectTaskOperations => PROJECT_TASK_OPERATIONS_COMMANDS,
             Self::Correspondence => CORRESPONDENCE_COMMANDS,
             Self::Grid
             | Self::GridNative
@@ -578,7 +600,9 @@ impl Profile {
             Self::Installations => chapter == Chapter::Operations,
             Self::Grid => matches!(chapter, Chapter::GridModel | Chapter::Reports),
             Self::GridNative => chapter == Chapter::GridModel,
-            Self::Printing => matches!(chapter, Chapter::Reports | Chapter::MapPresentation),
+            Self::Printing | Self::PrintingMaps => {
+                matches!(chapter, Chapter::Reports | Chapter::MapPresentation)
+            }
             // Version attachments are Design commands carried by this model
             // lifecycle profile beside publication.
             Self::GridLocalModel => matches!(chapter, Chapter::GridModel | Chapter::Design),
@@ -597,7 +621,9 @@ impl Profile {
             }
             Self::Map | Self::Styles | Self::PrintStyles => chapter == Chapter::MapPresentation,
             Self::Tiling => chapter == Chapter::VectorTiles,
-            Self::Project | Self::Correspondence => chapter == Chapter::Project,
+            Self::Project | Self::ProjectTaskOperations | Self::Correspondence => {
+                chapter == Chapter::Project
+            }
             Self::SolarInput
             | Self::SolarMigration
             | Self::SolarApplication
@@ -841,6 +867,9 @@ const GRID_CORRECTION_COMMANDS: &[&str] = &[
     "dsgrid.report.structures",
     "dsgrid.analyse.clearance",
     "dsgrid.apply-correction",
+    // Source-attested cable mechanics are an exact package correction, not
+    // part of the broad grid discovery router.
+    "dsgrid.reconcile-cable-source",
 ];
 
 const PLS_LIBRARY_COMMANDS: &[&str] = &[
@@ -907,6 +936,9 @@ const FORM_FACTORY_COMMANDS: &[&str] = &[
     "survey.form.create",
     "survey.form.update",
     "survey.form.lifecycle",
+    "survey.form.purge-plan",
+    "survey.forms.purge-candidates",
+    "survey.form.purge",
 ];
 
 // Survey photos as one operator workflow: what this machine holds, one
@@ -1002,16 +1034,26 @@ const CORRESPONDENCE_COMMANDS: &[&str] = &[
     "pm.task.unblock",
 ];
 
+/// Task creation with typed geometry, plus task geometry and execution
+/// decisions. Kept apart from correspondence and broad project planning.
+const PROJECT_TASK_OPERATIONS_COMMANDS: &[&str] = &[
+    "pm.task.create",
+    "pm.task.propose",
+    "pm.task.request-admission",
+    "pm.task.admit",
+    "pm.task.decline",
+    "pm.task.log-hours",
+    "pm.task.geometry.read",
+    "pm.task.geometry.set",
+    "pm.task.geometry.clear",
+];
+
 const PROJECT_OPERATIONS_COMMANDS: &[&str] = &[
     "design.status",
     "design.transformer.inventory",
     "design.transformer.retire",
     "design.transformer.restore",
     "report.project.scope",
-    "report.project.settings",
-    "report.project.outputs.set",
-    "report.project.mv-setup.set",
-    "report.project.mv-setup.resolve",
     "report.project.compounded",
     "report.project.archives",
     "report.publication.list",
@@ -1030,6 +1072,15 @@ const PROJECT_OPERATIONS_COMMANDS: &[&str] = &[
     "report.project.publish",
     "report.outbox.status",
     "report.outbox.drain",
+];
+
+/// Project printing configuration belongs to `printing`, but stays outside
+/// the broad Grid router, whose chapter selection also includes Reports.
+const REPORT_CONFIGURATION_COMMANDS: &[&str] = &[
+    "report.project.settings",
+    "report.project.outputs.set",
+    "report.project.mv-setup.set",
+    "report.project.mv-setup.resolve",
 ];
 
 const DESIGN_RUN_COMMANDS: &[&str] = &[
@@ -2351,10 +2402,7 @@ pub const fn chapter_description(chapter: Chapter) -> &'static str {
 // per-transformer overrides, district and custom-area maps.
 const PRINTING_COMMANDS: &[&str] = &[
     "report.artifact.remove",
-    "assets.map.publish",
     "report.layout.render",
-    "assets.maps",
-    "map.print.schema",
     "report.layout.context",
     "report.layout.list",
     "report.layout.get",
@@ -2371,12 +2419,20 @@ const PRINTING_COMMANDS: &[&str] = &[
     "report.project.mv-setup.resolve",
     "report.project.export",
     "report.project.map-inputs",
-    "map.design.attach-print",
     "desktop.printing.prepare",
     "desktop.printing.transformers",
     "desktop.printing.export",
     "desktop.printing.artifact.read",
     "desktop.printing.seed-context",
+];
+
+// Map sheet composition and publication are a small bounded companion to
+// report production, so neither workflow loses its map delivery steps.
+const PRINTING_MAP_COMMANDS: &[&str] = &[
+    "assets.map.publish",
+    "assets.maps",
+    "map.print.schema",
+    "map.design.attach-print",
     "desktop.printing.map.export",
 ];
 

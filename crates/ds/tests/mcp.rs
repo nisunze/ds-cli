@@ -989,6 +989,28 @@ fn form_factory_and_survey_projects_keep_their_distinct_mapless_contracts() {
         .map(|tool| tool["name"].as_str().expect("tool name"))
         .collect::<BTreeSet<_>>();
     assert!(form_factory_names.contains("survey_form_lifecycle"));
+    assert!(form_factory_names.contains("survey_form_purge-plan"));
+    assert!(form_factory_names.contains("survey_form_purge"));
+    assert!(form_factory_names.contains("survey_forms_purge-candidates"));
+    let purge = form_factory
+        .iter()
+        .find(|tool| tool["name"] == "survey_form_purge")
+        .unwrap();
+    assert_eq!(
+        purge["inputSchema"]["properties"]["confirm"]["type"],
+        "boolean"
+    );
+    assert!(
+        purge["inputSchema"]["required"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("plan-digest"))
+    );
+    let plan = form_factory
+        .iter()
+        .find(|tool| tool["name"] == "survey_form_purge-plan")
+        .unwrap();
+    assert!(plan["inputSchema"]["properties"].get("confirm").is_none());
     assert!(!form_factory_names.contains("survey_project-form_settings"));
     assert!(!form_factory_names.contains("survey_project_create-from-template"));
     let lifecycle = form_factory
@@ -1693,6 +1715,7 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
     for profile in [
         "auth-context",
         "printing",
+        "printing-maps",
         "grid",
         "grid-native",
         "grid-corrections",
@@ -1716,6 +1739,7 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
         "layers",
         "tiling",
         "project",
+        "project-task-operations",
         "correspondence",
         "solar-input",
         "solar-migration",
@@ -1802,7 +1826,8 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
             // Twenty-six printing leaves plus bootstrap: city-vector input,
             // local rendering and standalone map delivery complete the headless
             // workflow beside the retained desktop-owned operations.
-            "printing" => 28,
+            "printing" => 25,
+            "printing-maps" => 7,
             // Sixteen layer leaves plus bootstrap: the layer drawer's profile
             // also carries this machine's prepared local layer catalogue,
             // which is the same "one host's own layers" workflow as the local
@@ -1851,12 +1876,12 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
                 .collect(),
         );
     }
-    assert!(published["printing"].contains("map_print_schema"));
-    assert!(published["printing"].contains("desktop_printing_map_export"));
+    assert!(published["printing-maps"].contains("map_print_schema"));
+    assert!(published["printing-maps"].contains("desktop_printing_map_export"));
     assert!(published["printing"].contains("report_layout_edit"));
     assert!(published["printing"].contains("report_transformers"));
     assert!(published["printing"].contains("report_plan"));
-    assert!(published["printing"].contains("assets_map_publish"));
+    assert!(published["printing-maps"].contains("assets_map_publish"));
     assert!(published["printing"].contains("report_artifact_remove"));
     // The headless production loop is reachable through the printing profile.
     for headless in [
@@ -1864,6 +1889,8 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
         "data_project-cache_seed",
         "report_project_settings",
         "report_project_outputs_set",
+        "report_project_mv-setup_set",
+        "report_project_mv-setup_resolve",
         "report_project_export",
     ] {
         assert!(
@@ -1874,6 +1901,14 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
     assert!(!published["grid"].contains("report_transformers"));
     assert!(!published["grid"].contains("report_plan"));
     assert!(!published["grid"].contains("dsgrid_backup_preview"));
+    for configured in [
+        "report_project_settings",
+        "report_project_outputs_set",
+        "report_project_mv-setup_set",
+        "report_project_mv-setup_resolve",
+    ] {
+        assert!(!published["project-operations"].contains(configured));
+    }
     let (backup, _) = mcp(
         &["--exposure", "chapters"],
         &[
@@ -1895,7 +1930,6 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
         "dsgrid_describe",
         "dsgrid_run",
         "dsgrid_apply",
-        "dsgrid_reconcile-cable-source",
         "dsgrid-exchange_inspect",
         "dsgrid-exchange_plan",
         "dsgrid-exchange_convert",
@@ -1910,6 +1944,11 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
     assert!(!published["grid-native"].contains("dsgrid_apply-batch"));
     assert!(!published["grid-native"].contains("dsgrid-exchange_sync"));
     assert!(published["grid-corrections"].contains("dsgrid_apply-correction"));
+    assert!(published["grid-corrections"].contains("dsgrid_reconcile-cable-source"));
+    assert!(published["project-task-operations"].contains("pm_task_geometry_set"));
+    assert!(published["project-task-operations"].contains("pm_task_create"));
+    assert!(!published["project"].contains("pm_task_geometry_set"));
+    assert!(published["project"].contains("pm_task_create"));
     assert!(!published["grid-corrections"].contains("dsgrid_apply-batch"));
     assert!(
         published["grid-local-model"].contains("dsgrid_model_list")

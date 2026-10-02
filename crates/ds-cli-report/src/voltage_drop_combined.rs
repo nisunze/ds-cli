@@ -78,7 +78,7 @@ pub static COMMAND: Command = Command {
         },
     ],
     reference: Some("docs/reference/report.md"),
-    search: &["voltage drop", "combined", "A3", "overview", "headless PDF"],
+    search: &["headless pdf", "reserved transformers"],
     requires: Requires::Server,
     availability,
 };

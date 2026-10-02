@@ -34,6 +34,11 @@ const CLOSED: Refusal = Refusal {
     when: "the window has no held scene for the requested space",
     remedy: "open the exact model and Plan/Profile surface in the paired Desktop",
 };
+const EDIT_CONTEXT_CLOSED: Refusal = Refusal {
+    code: "grid_edit_context_closed",
+    when: "the paired edit context closed before the lasso operation completed",
+    remedy: "reopen the exact model and selection surface, then retry the lasso",
+};
 
 pub static COMMAND: Command = Command {
     id: "map.grid.lasso",
@@ -65,7 +70,7 @@ pub static COMMAND: Command = Command {
         },
     ],
     refusals: &[
-        INVALID, STALE, CLOSED, crate::NOT_PAIRED, crate::AMBIGUOUS,
+        INVALID, STALE, CLOSED, EDIT_CONTEXT_CLOSED, crate::NOT_PAIRED, crate::AMBIGUOUS,
         crate::UNREACHABLE, crate::PAIRING_REJECTED, crate::UNSUPPORTED,
         crate::UNREADABLE, crate::REFUSED,
     ],

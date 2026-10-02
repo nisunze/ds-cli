@@ -84,7 +84,7 @@ pub static READ_COMMAND: Command = Command {
     }],
     refusals: REFUSALS,
     reference: Some("docs/reference/survey.md"),
-    search: &["permission", "member", "grant"],
+    search: &["permission"],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
@@ -120,7 +120,7 @@ pub static PLAN_COMMAND: Command = Command {
     }],
     refusals: REFUSALS,
     reference: Some("docs/reference/survey.md"),
-    search: &["permission", "member", "grant", "dry run"],
+    search: &["permission", "dry run"],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
@@ -153,7 +153,7 @@ pub static APPLY_COMMAND: Command = Command {
     }],
     refusals: REFUSALS,
     reference: Some("docs/reference/survey.md"),
-    search: &["permission", "member", "grant"],
+    search: &["permission"],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };

@@ -204,7 +204,6 @@ pub static SELECT: Command = Command {
     reference: Some("docs/reference/map.md"),
     search: &[
         "selection",
-        "range",
         "structures",
         "tension sections",
         "terrain points",

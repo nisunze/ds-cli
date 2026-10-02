@@ -42,8 +42,8 @@ const PDF_REFUSALS: [Refusal; 7] = [
     },
     Refusal {
         code: "pdf_encrypted",
-        when: "PDF encrypted, including password-free opening",
-        remedy: "use an authorized unencrypted PDF; no passwords accepted",
+        when: "the PDF is encrypted",
+        remedy: "use an unencrypted PDF; encrypted files are not decoded",
     },
     Refusal {
         code: "pdf_resource_limit",

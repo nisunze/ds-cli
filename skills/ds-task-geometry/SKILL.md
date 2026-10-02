@@ -3,6 +3,7 @@ name: ds-task-geometry
 description: "Give a Project Work task the geometry of the DS Grid structures or alignment a comment names, through `ds pm task create --geometry-from` / `ds pm task geometry set` — typed references, a dry-run proposal, then the person's --yes. Never draw, never parse prose."
 metadata:
   ds-chapters: project
+  ds-mcp-profile: project-task-operations
 ---
 
 # Put a task where the work is

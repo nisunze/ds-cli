@@ -509,6 +509,22 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     Ok(output)
 }
 
+/// Reject an absent or malformed local report directory before project
+/// reconciliation touches credentials or remote state.
+pub fn preflight(inputs: &Inputs) -> Result<(), Failure> {
+    super::transformer_set(inputs)?;
+    let from = PathBuf::from(inputs.require("from")?);
+    let metadata = std::fs::metadata(&from)
+        .map_err(|error| from_invalid(format!("{}: {error}", from.display())))?;
+    if !metadata.is_dir() {
+        return Err(from_invalid(format!(
+            "{} is not a directory",
+            from.display()
+        )));
+    }
+    Ok(())
+}
+
 fn verify_scope(
     lane: &str,
     fence: &ds_cli_auth::LayerScopeFence,

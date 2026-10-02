@@ -75,6 +75,8 @@ the source file is never overwritten. This command is available through the
 grid-model MCP chapter and the focused `grid-corrections` typed profile from
 the same live declaration.
 
+Use `dsgrid.reconcile-cable-source` for guarded retained `.wir` reconciliation.
+
 The `level` is `project`, `alignment`, or `angle_interval`. Project scope
 requires every alignment in this exact package. Interval scope requires
 `intervals: [{"alignment_id": "...", "from_structure_id": "...",

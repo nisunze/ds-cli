@@ -171,6 +171,13 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     Ok(output)
 }
 
+/// Reject a malformed or reserved explicit scope before project reconciliation
+/// observes remote state or credentials.
+pub fn preflight(inputs: &Inputs) -> Result<(), Failure> {
+    super::transformer_set(inputs)?;
+    Ok(())
+}
+
 /// The participating names of a `scope_json` plan, in inventory order.
 fn active_names(scope: &Value) -> Vec<String> {
     scope["participating"]

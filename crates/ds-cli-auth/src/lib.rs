@@ -4703,6 +4703,12 @@ fn map_service_refusal(
         return map_design_collaboration_refusal(kind, refusal, message);
     }
     match refusal.code() {
+        Some("form_purge_invalid") => Failure::invalid("form_purge_invalid", message)
+            .remedy("use one exact form slug and the digest from its complete purge plan"),
+        Some("form_purge_scope_changed") => Failure::conflict("form_purge_scope_changed", message)
+            .remedy("read the purge plan again; inspect the changed scope before applying its digest"),
+        Some("form_purge_unavailable") => Failure::unavailable("form_purge_unavailable", message)
+            .remedy("restore the named purge dependency; resume a partial purge with its original digest"),
         Some("version_not_found") => Failure::invalid("version_not_found", message)
             .detail(serde_json::json!({
                 "http_status": refusal.status(),

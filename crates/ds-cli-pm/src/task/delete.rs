@@ -61,14 +61,7 @@ pub static COMMAND: Command = Command {
         crate::deletion::RESPONSE_UNREADABLE,
     ]),
     reference: Some("docs/reference/pm.md"),
-    search: &[
-        "delete",
-        "remove",
-        "milestone",
-        "backup",
-        "recover",
-        "restore",
-    ],
+    search: &["remove", "recover", "restore"],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };

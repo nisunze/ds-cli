@@ -54,6 +54,20 @@ does not author spotting settings. Apply reviewed settings to the model through
 the revision-gated `set_spotting_settings` engine command; references must
 resolve against that model.
 
+## Extracting a package asset
+
+`ds dsgrid asset extract` writes exact asset bytes to a new local file and
+leaves the package unchanged. Use `--leaf` when it selects one asset. When
+leaves are shared, use `--resource-id`, `--expected-digest` and an explicit
+`--role` (`resource` for the current row or `origin_resource` for its preserved
+resource-graph origin). Read current IDs and digests with
+`ds dsgrid run --operation project_table --params` using
+`{"table_kind":"resources"}`. For historical origin attestations, extract
+`origin-authorities.v1.json`. An origin selection must name a current resource
+ID in `interpreted_entity_ids` and the same asset leaf. Ambiguous leaf-only
+selection and library-pinned packages refuse; there is no re-conversion or
+fallback.
+
 ## Local acquisition, activity, and publication
 
 These words are deliberately not interchangeable:

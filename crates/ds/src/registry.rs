@@ -1512,6 +1512,21 @@ static SURVEY_ENTRIES: &[Entry] = &[
         render: ds_cli_survey::forms::render_lifecycle,
     },
     Entry {
+        command: &ds_cli_survey::purge::PLAN_COMMAND,
+        handler: ds_cli_survey::purge::plan,
+        render: ds_cli_survey::purge::render,
+    },
+    Entry {
+        command: &ds_cli_survey::purge::CANDIDATES_COMMAND,
+        handler: ds_cli_survey::purge::candidates,
+        render: ds_cli_survey::purge::render,
+    },
+    Entry {
+        command: &ds_cli_survey::purge::APPLY_COMMAND,
+        handler: ds_cli_survey::purge::apply,
+        render: ds_cli_survey::purge::render,
+    },
+    Entry {
         command: &ds_cli_survey::photo::LOCAL_COMMAND,
         handler: ds_cli_survey::photo::rotate_local,
         render: ds_cli_survey::photo::render,
@@ -3343,7 +3358,25 @@ fn dispatch_entry(entry: &Entry, tokens: &[String], context: &Context) -> Result
     // publication domain. The scoped kernel pass reads its remote heads on
     // every touch; no CLI timer or second freshness rule is involved. MCP
     // invokes this same binary dispatch path.
+    match entry.command.id {
+        "report.project.combined" | "report.project.compounded" => {
+            ds_cli_report::project::combined::preflight(&inputs)?
+        }
+        "report.project.compute" => ds_cli_report::project::compute::preflight(&inputs)?,
+        "report.project.export" => ds_cli_report::project::export::preflight(&inputs)?,
+        "report.project.outputs.set" => ds_cli_report::project::settings::preflight_set(&inputs)?,
+        "report.project.publish" => ds_cli_report::project::publish::preflight(&inputs)?,
+        _ => {}
+    }
     let touch = if report_project_touch(entry.command.id, &inputs) {
+        // Reconciliation is a remote read and may advance held local state.
+        // Establish a named-project identity before it runs for operations
+        // that will require one; offline held reads remain credential-free.
+        if !report_held_read(entry.command.id)
+            && let Some(lane) = inputs.value("lane")
+        {
+            ds_cli_auth::headless_identity_for_named_project(lane)?;
+        }
         Some(ds_cli_report::touch::project(
             inputs.require("lane")?,
             inputs.require("project")?,

@@ -54,7 +54,7 @@ document describing every artifact and every blocker; this command returns \
 that document, so a refused export arrives as typed blockers rather than an \
 exit code and a file path. Use --request to supply the engine's full typed \
 request instead of the flags below; run `ds report tasks --task <name>` for \
-its schema. --task voltage-drop requires --request from render_voltage_drop_result: it prints the exact calculated JSON to A4 with headless Chromium, without processing, repairing topology or inferring missing analysis. A reporter without that task refuses; there is no export fallback.",
+its schema. --task voltage-drop requires --request from render_voltage_drop_result: it prints the exact calculated JSON to A4 with headless Chromium, without processing, repairing topology or inferring missing analysis. Print outputs are regenerated and never reused. Partial exports identify failed_formats beside successful artifacts. A reporter without that task refuses; there is no export fallback.",
     chapter: Chapter::Reports,
     effect: Effect::LocalFileWrite,
     authority: Authority::None,
@@ -117,8 +117,10 @@ its schema. --task voltage-drop requires --request from render_voltage_drop_resu
         ),
     ],
     output: "\
-The engine's own result document: status, the artifacts it produced, and any \
-blockers; voltage-drop returns the source/PDF digests, local PDF path, byte/page counts and nothing-published receipt. `result_path` is present only when --result was given.",
+The engine's result document: status, artifacts produced, failed_formats and \
+blockers; voltage-drop returns source/PDF digests, local PDF path, byte/page \
+counts and a nothing-published receipt. `result_path` appears only when --result \
+was given.",
     examples: &[
         Example {
             command: "ds report tasks --task export_transformer_report --output json",
@@ -194,7 +196,7 @@ blockers; voltage-drop returns the source/PDF digests, local PDF path, byte/page
         },
     ],
     reference: Some("docs/reference/report.md"),
-    search: &["A4", "voltage drop", "calculated JSON", "headless Chromium"],
+    search: &["voltage drop", "calculated json", "headless chromium"],
     requires: Requires::Server,
     availability,
 };

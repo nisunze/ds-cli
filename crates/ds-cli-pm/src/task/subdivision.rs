@@ -84,7 +84,6 @@ pub static SUBDIVIDE: Command = Command {
     ]),
     reference: Some("docs/reference/pm.md"),
     search: &[
-        "subtask",
         "subordinate",
         "subdivision",
         "delegate",
@@ -126,7 +125,7 @@ pub static PROGRESS: Command = Command {
         RESPONSE_UNREADABLE,
     ]),
     reference: Some("docs/reference/pm.md"),
-    search: &["subtask", "progress", "percent", "accepted owner", "rollup"],
+    search: &["subtask", "percent", "accepted owner", "rollup"],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };

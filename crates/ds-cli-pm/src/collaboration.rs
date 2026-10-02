@@ -63,7 +63,7 @@ pub static PROJECTS: Command = Command {
     }],
     refusals: &crate::read_refusals::<19>(&[PAGE_LIMIT, UNREADABLE, INDEX_COMMAND_INVALID]),
     reference: Some("docs/reference/pm.md"),
-    search: &["public projects", "collaboration", "project discovery"],
+    search: &["public projects", "project discovery"],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };

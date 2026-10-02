@@ -10,6 +10,8 @@ metadata:
 
 Use `ds` for live printouts and `ds-map-composition` for cartography.
 
+Map delivery: `printing-maps`.
+
 For MV plan/profile sets, read [booklet workflow](references/mv-plan-profile-booklet.md)
 before setup or batching.
 

@@ -97,14 +97,7 @@ pub static READ: Command = Command {
     }],
     refusals: &crate::correspondence_refusals::<22>(&[RESPONSE_UNREADABLE]),
     reference: Some("docs/reference/pm.md"),
-    search: &[
-        "delete",
-        "deleted task",
-        "backup",
-        "recover",
-        "restore",
-        "snapshot",
-    ],
+    search: &["delete", "deleted task", "recover", "restore", "snapshot"],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
@@ -140,14 +133,7 @@ pub static RESTORE: Command = Command {
         RESPONSE_UNREADABLE,
     ]),
     reference: Some("docs/reference/pm.md"),
-    search: &[
-        "delete",
-        "deleted task",
-        "backup",
-        "recover",
-        "restore",
-        "undo",
-    ],
+    search: &["delete", "deleted task", "recover", "undo"],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };

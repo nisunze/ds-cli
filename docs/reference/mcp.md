@@ -50,13 +50,17 @@ ds mcp serve --exposure commands --profile pls
 ```
 
 Profiles include `auth-context`, `datasets`, `grid`, `grid-native`, `grid-corrections`, `pls`, `pls-desktop`, `pls-library`, `library-governance`, `survey`,
-`form-factory`, `survey-projects`, `survey-media`, `survey-migration`, `design-edit`, `design-run`, `map`, `layers`,
-`tiling`, `project`, `correspondence`, `solar-input`, `solar-application`, `solar-run`, `solar-dashboard`, `solar-delivery`,
+`form-factory`, `survey-projects`, `survey-media`, `survey-migration`, `design-edit`, `design-run`, `map`, `printing-maps`, `layers`,
+`tiling`, `project`, `project-task-operations`, `correspondence`, `solar-input`, `solar-application`, `solar-run`, `solar-dashboard`, `solar-delivery`,
 `solar-portfolio-batch`, `solar-migration`, `design-migration`,
-`operations`, and `project-operations`. `project` owns the plan and the task
-workflow; `datasets` groups catalog discovery, held-layer GeoJSON, planned
+`operations`, and `project-operations`. `project` owns the plan and general
+task workflow; `project-task-operations` owns typed task geometry and
+admission steps. Task creation stays in both profiles. `datasets` groups
+catalog discovery, held-layer GeoJSON, planned
 BigQuery geography, model-line export, local-layer registration and sector
-workbook delivery. Each headless read names its authorized project.
+workbook delivery. `printing` owns report production and output selection;
+`printing-maps` owns map composition and publication. Each headless read names
+its authorized project.
 `correspondence` owns the parties, the records and threads and the
 task blockers (`pm.party.*`, `pm.record.*`, `pm.task.block|unblock`) with the
 plan for their vocabularies — filing letters and scheduling tasks are two
@@ -106,8 +110,9 @@ the broad `grid` router keeps its budget and leaves the typed edits and the
 clearance workflow to those two profiles. `grid-corrections` is the bounded
 typed surface for review comments on an already spotted model: exact package
 inspection, command discovery, graph and report reads, clearance analysis,
-and mandatory-guard `dsgrid.apply-correction`. It admits native conversion into a `.dsgrid`
-working copy, while native PLS-CADD delivery remains the owner's separate gate.
+mandatory-guard `dsgrid.apply-correction`, and exact retained-source cable
+reconciliation. It admits native conversion into a `.dsgrid` working copy,
+while native PLS-CADD delivery remains the owner's separate gate.
 
 The `design-edit` profile includes the same canonical `map.design.open`,
 map-owned `map.design.pin` Working-set operation, and

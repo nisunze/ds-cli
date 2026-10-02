@@ -312,7 +312,7 @@ pub static COMMAND: Command = Command {
     path: &["report", "project", "export"],
     contract: 1,
     summary: "Export all transformer reports and maps headlessly in parallel.",
-    purpose: "Export numbered transformer reports and print outputs. Reuse fresh data; regenerate prints. --dry-run opens no publication queue. Use held rooms or fetch changes; --seed acquires map context. neighbor_transformers uses cached points; photos need a media grant.",
+    purpose: "Export numbered transformer reports and print outputs. Reuse fresh data; prints always regenerate. --dry-run opens no publication queue. Use held rooms or fetch changes; --seed acquires map context. neighbor_transformers uses cached points; photos need a media grant.",
     chapter: Chapter::Reports,
     effect: Effect::LocalFileWrite,
     authority: Authority::HeadlessProject,
@@ -345,7 +345,7 @@ pub static COMMAND: Command = Command {
         LANE_ARG,
         super::PROJECT_ARG,
     ],
-    output: "Lane, project, scope, engine, publication stage, counts and receipt; context, survey and ordered transformer results with artifacts, room source, omitted layers, failed formats and reuse reasons. Publication is `queued` or `nothing_published`.",
+    output: "Lane, project, scope, engine, stage and receipt; results with artifacts, failed_formats[{format,output_id,remedy,partial_formats,overflow/panels/row_mm}]; reuse.reused[{output_id,work_id,sha256}], generate reasons and every output was reused.",
     examples: &[
         Example {
             command: "ds report project export --out-dir ./reports --output json --project <exact-id>",
@@ -559,6 +559,14 @@ fn concurrency_limit(inputs: &Inputs) -> Result<usize, Failure> {
             )
             .remedy(CONCURRENCY.remedy)
         })
+}
+
+/// Local refusal pass that must run before a project report touch restores
+/// credentials or reconciles remote report state.
+pub fn preflight(inputs: &Inputs) -> Result<(), Failure> {
+    super::transformer_set(inputs)?;
+    concurrency_limit(inputs)?;
+    Ok(())
 }
 
 fn require_same_context(

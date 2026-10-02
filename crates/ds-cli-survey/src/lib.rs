@@ -18,6 +18,7 @@ pub mod moments;
 pub mod photo;
 pub mod photo_fetch;
 pub mod project_forms;
+pub mod purge;
 pub mod query;
 pub mod read;
 pub mod templates;
@@ -40,6 +41,9 @@ pub static DOMAIN: Domain = Domain {
         &forms::CREATE_COMMAND,
         &forms::UPDATE_COMMAND,
         &forms::LIFECYCLE_COMMAND,
+        &purge::PLAN_COMMAND,
+        &purge::CANDIDATES_COMMAND,
+        &purge::APPLY_COMMAND,
         &photo::LOCAL_COMMAND,
         &photo::ROTATE_COMMAND,
         &photo::PUBLISH_COMMAND,

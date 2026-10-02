@@ -43,6 +43,7 @@ struct App {
     map: String,
     map_layers: String,
     map_profile: String,
+    map_grid_lasso: String,
     survey: String,
     design: String,
     design_collaboration: String,
@@ -76,6 +77,7 @@ fn app() -> Option<App> {
         map: read("src/lib/desktop/cli-map.ts")?,
         map_layers: read("src/lib/desktop/cli-map-layers.ts")?,
         map_profile: read("src/lib/desktop/cli-map-profile.ts")?,
+        map_grid_lasso: read("src/lib/grid/lasso-request.ts")?,
         survey: read("src/lib/desktop/cli-survey.ts")?,
         design: read("src/lib/desktop/cli-map-design.ts")?,
         design_collaboration: read("src/lib/desktop/cli-design.ts")?,
@@ -170,6 +172,12 @@ fn between<'a>(source: &'a str, open: &str, close: &str) -> &'a str {
 }
 
 fn operation_contract<'a>(source: &'a str, operation: &str) -> &'a str {
+    if operation == "map.grid.lasso" && source.contains("CLI_MAP_GRID_LASSO_OPERATION_CONTRACT") {
+        let marker = "export const GRID_LASSO_ARGUMENTS = [";
+        let start = source.find(marker).expect("lasso argument list is present") + marker.len();
+        let rest = &source[start..];
+        return &rest[..rest.find("] as const").expect("lasso argument list closes")];
+    }
     let single = format!("'{operation}': [");
     let double = format!("\"{operation}\": [");
     let marker = if source.contains(&single) {
@@ -185,7 +193,10 @@ fn operation_contract<'a>(source: &'a str, operation: &str) -> &'a str {
 }
 
 fn has_operation_contract(source: &str, operation: &str) -> bool {
-    source.contains(&format!("'{operation}': [")) || source.contains(&format!("\"{operation}\": ["))
+    source.contains(&format!("'{operation}': ["))
+        || source.contains(&format!("\"{operation}\": ["))
+        || (operation == "map.grid.lasso"
+            && source.contains("CLI_MAP_GRID_LASSO_OPERATION_CONTRACT"))
 }
 
 fn quoted_contract_items(contract: &str) -> BTreeSet<String> {
@@ -359,10 +370,16 @@ fn every_map_command_has_one_closed_operation_owner() {
             operation.operation
         );
 
-        let owners = [&app.map, &app.map_layers, &app.map_profile, &app.survey]
-            .into_iter()
-            .filter(|source| has_operation_contract(source, operation.operation))
-            .collect::<Vec<_>>();
+        let owners = [
+            &app.map,
+            &app.map_layers,
+            &app.map_profile,
+            &app.map_grid_lasso,
+            &app.survey,
+        ]
+        .into_iter()
+        .filter(|source| has_operation_contract(source, operation.operation))
+        .collect::<Vec<_>>();
         assert_eq!(
             owners.len(),
             1,

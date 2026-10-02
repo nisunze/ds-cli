@@ -185,7 +185,6 @@ pub static COMMAND: Command = Command {
         "cable mechanics",
         "wire",
         "retained source",
-        "reconcile",
         "source authority",
     ],
     requires: Requires::Server,
