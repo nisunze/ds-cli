@@ -50,7 +50,7 @@ nothing. The reference names the precedence.",
     args: &[
         crate::PROJECT_ARG,
         LANE_ARG,
-        Arg::flag(
+        Arg::switch(
             "regions",
             "Read ranked region evidence from the saved collisions layer.",
         ),
@@ -88,6 +88,11 @@ detection run would cover. With --regions, ranked evidence without geometry, tot
             code: "collision_limit_invalid",
             when: "limit is outside 1-50",
             remedy: "pass --limit 1-50",
+        },
+        Refusal {
+            code: "collision_identity_changed",
+            when: "the restored principal or lane changed between count and region reads",
+            remedy: "retry the same explicit project under one connected account",
         },
         Refusal {
             code: "collision_regions_unreadable",
@@ -142,6 +147,14 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
                 inputs.require("project")?,
                 COLLISIONS_ROW,
             )?;
+            if context.identity() != headless.identity() {
+                return Err(Failure::unauthorized(
+                    "collision_identity_changed",
+                    "collision read identity changed",
+                )
+                .remedy("retry the same explicit project under one connected account"));
+            }
+            output["region_source"] = json!({"version":context.snapshot().metadata().version(),"content_digest":context.snapshot().metadata().content_digest()});
             let layer = context.snapshot().layers().get("collisions");
             layer
                 .and_then(|l| l["features"].as_array())
@@ -186,14 +199,34 @@ pub fn render(data: &Value) -> String {
         .as_u64()
         .map(|count| count.to_string())
         .unwrap_or_else(|| "unknown".into());
-    format!(
+    let mut text = format!(
         "project {} · {} · {} pairs · {} transformers in scope · {}\n",
         super::transformer::project_label(data),
         data["lane"].as_str().unwrap_or("?"),
         pairs,
         data["transformers"].as_u64().unwrap_or(0),
         data["state"].as_str().unwrap_or("-"),
-    )
+    );
+    if let Some(regions) = data["summary"]["regions"].as_array() {
+        for region in regions {
+            let coverage = region["coveragePct"]
+                .as_f64()
+                .map(|n| format!("{n:.1}%"))
+                .unwrap_or_else(|| "unmeasured".into());
+            text.push_str(&format!(
+                "  {} · coverage {} · LV {} · service {} · shared customers {}\n",
+                region["id"].as_str().unwrap_or("?"),
+                coverage,
+                region["lvCrossings"],
+                region["serviceCrossings"],
+                region["sharedCustomers"]
+            ));
+        }
+        if data["summary"]["more"] == true {
+            text.push_str("  more regions omitted; increase --limit\n");
+        }
+    }
+    text
 }
 
 #[cfg(test)]
