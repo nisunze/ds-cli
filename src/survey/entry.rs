@@ -54,8 +54,25 @@ pub(super) fn length(geometry: &Value) -> Result<f64, String> {
     }
     Ok(total)
 }
+/// Capture needs a downloaded document shape. An empty list encodes no fields
+/// and is not a usable survey form (Entry document schema contract).
+pub(super) fn ready(schema: &Value) -> bool {
+    schema["top_level_keys"]
+        .as_array()
+        .is_some_and(|keys| !keys.is_empty())
+}
+pub(super) fn readiness(schema: &Value) -> Value {
+    let ready = ready(schema);
+    json!({"ready":ready,"reason":if ready { Value::Null } else {
+        json!("Form not downloaded to this device yet — open this project online once to download the form, then it works offline.")
+    }})
+}
+
 pub(super) fn encode(request: &Value) -> Result<Value, String> {
     let schema = &request["schema"];
+    if !ready(schema) {
+        return Err("Resolved entry schema is required offline".into());
+    }
     let keys = schema["top_level_keys"]
         .as_array()
         .ok_or("Resolved entry schema is required offline")?;
@@ -212,5 +229,28 @@ mod tests {
             json!({"schema":schema(&["data","metadata","geometry"]),"location":{"latitude":-1.94,"longitude":29.87},"connectivity":{"precedentDocId":"p1"}}),
         );
         assert!(leaf.get("connectivity").is_none());
+    }
+}
+
+#[cfg(test)]
+mod readiness_tests {
+    use super::*;
+    #[test]
+    fn empty_and_missing_shapes_are_unavailable_to_both_readiness_and_capture() {
+        for schema in [
+            Value::Null,
+            json!({}),
+            json!({"top_level_keys":[]}),
+            json!({"top_level_keys":"data"}),
+        ] {
+            assert_eq!(readiness(&schema)["ready"], false);
+            assert!(encode(&json!({"schema":schema})).is_err());
+        }
+        let schema = json!({"top_level_keys":[{"key":"data"}]});
+        assert_eq!(readiness(&schema)["ready"], true);
+        assert_eq!(
+            encode(&json!({"schema":schema,"data":{"a":1}})).unwrap()["data"],
+            json!({"a":1})
+        );
     }
 }
