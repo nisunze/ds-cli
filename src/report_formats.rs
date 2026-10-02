@@ -1100,7 +1100,7 @@ fn settings_rows(rows: &Value, label: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn project_output_setting(sheets: &Value) -> Result<Option<&Value>, String> {
+pub(crate) fn project_output_setting(sheets: &Value) -> Result<Option<&Value>, String> {
     if !sheets.is_object() {
         return Err("Report sheets must be an object".into());
     }
@@ -2215,14 +2215,24 @@ mod tests {
         // Presentation cannot add a PDF, change a stored choice or its placement.
         let stored = json!({"schema":OUTPUT_SELECTION_SCHEMA,"prints":[],
             "geospatial":["gpkg"],"tabular":["voltage_drop","network_information"],
-            "voltage_drop_report":"brief","execution":{"voltage_drop":["web"]}});
+            "voltage_drop_report":"brief",
+            "execution":{"voltage_drop":["web"],"network_information":["web"]}});
         let selection = stored_output_selection(&stored).unwrap();
         assert_eq!(serde_json::to_value(&selection).unwrap(), stored);
         assert!(!selection
             .tokens()
             .unwrap()
             .contains(&"voltage_drop_pdf".into()));
-        assert_eq!(selection.placements("voltage_drop"), vec![Placement::Web]);
+        // The stored entry stays as authored, but the mandatory saved analysis
+        // is effective on both report hosts (owner ruling 2026-10-02).
+        assert_eq!(
+            selection.placements("voltage_drop"),
+            vec![Placement::Desktop, Placement::Web]
+        );
+        assert_eq!(
+            selection.placements("network_information"),
+            vec![Placement::Web]
+        );
     }
 
     #[test]
@@ -2421,7 +2431,7 @@ mod tests {
     fn mandatory_analysis_remains_inside_the_local_artifact_bound() {
         let mut selection: DesignOutputSelection = serde_json::from_value(json!({
             "schema":OUTPUT_SELECTION_SCHEMA,
-            "geospatial":["shp","kmz","gpkg","pdf_a0","pdf_a3","geojson"],"tabular":["xlsx"]
+            "geospatial":["shp","kmz","gpkg","pdf_a0","pdf_a3"],"tabular":["xlsx","network_information"]
         }))
         .unwrap();
         let mut layouts = Vec::new();

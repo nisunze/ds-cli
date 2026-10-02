@@ -901,6 +901,7 @@
       "expected_outputs": [
         "xlsx",
         "gpkg",
+        "voltage_drop",
         "pdf__detail"
       ]
     },
@@ -912,6 +913,7 @@
       "expected_outputs": [
         "xlsx",
         "gpkg",
+        "voltage_drop",
         "pdf__detail"
       ]
     },
@@ -923,6 +925,7 @@
       "expected_outputs": [
         "xlsx",
         "gpkg",
+        "voltage_drop",
         "pdf__detail"
       ]
     },
@@ -934,6 +937,7 @@
       "expected_outputs": [
         "xlsx",
         "gpkg",
+        "voltage_drop",
         "pdf__detail"
       ]
     },
@@ -945,6 +949,7 @@
       "expected_outputs": [
         "xlsx",
         "gpkg",
+        "voltage_drop",
         "pdf__detail"
       ]
     },
@@ -956,6 +961,7 @@
       "expected_outputs": [
         "xlsx",
         "gpkg",
+        "voltage_drop",
         "pdf__detail"
       ]
     },

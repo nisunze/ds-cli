@@ -2967,7 +2967,7 @@ mod tests {
     fn a_plan_binds_the_run_to_its_inputs_and_policy() {
         let receipt = simple_receipt("Benin");
         let plan = plan_transformer_export("proj-1", &receipt, "tx_a", 7, &layers(), None).unwrap();
-        assert_eq!(plan.formats, vec!["shp", "xlsx"]);
+        assert_eq!(plan.formats, vec!["shp", "xlsx", "voltage_drop"]);
         assert_eq!(plan.outputs[0].output_id, "shp");
         assert!(!plan.requires_admin_bounds);
         assert_eq!(
@@ -3019,7 +3019,8 @@ mod tests {
         let narrowed =
             plan_transformer_export("proj-1", &receipt, "tx_a", 7, &layers(), Some(&selection))
                 .unwrap();
-        assert_eq!(narrowed.formats, vec!["xlsx"]);
+        // A narrowed selection still delivers the mandatory saved analysis.
+        assert_eq!(narrowed.formats, vec!["xlsx", "voltage_drop"]);
         // A named print output needs its setup in the sheets.
         assert!(plan_transformer_export(
             "proj-1",
@@ -3068,7 +3069,7 @@ mod tests {
                 "country": "Rwanda",
                 "admin_bounds_asset": "/assets/asset.dsab",
                 "admin_bounds_sha256": "d".repeat(64),
-                "formats": ["shp", "xlsx"],
+                "formats": ["shp", "xlsx", "voltage_drop"],
             })
         );
         let without = StagedInputs {
@@ -3152,15 +3153,20 @@ mod tests {
     }
 
     fn result_document(plan: &ExportPlan, out_dir: &Path) -> Value {
+        let mut artifacts = vec![
+            json!({"format": "shp", "filename": "tx_a.shp.zip", "path": out_dir.join("tx_a.shp.zip"), "bytes": 10, "sha256": "1".repeat(64)}),
+            json!({"format": "xlsx", "filename": "tx_a.xlsx", "path": out_dir.join("tx_a.xlsx"), "bytes": 20, "sha256": "2".repeat(64)}),
+        ];
+        // Like the Network Reporter, deliver the mandatory saved analysis.
+        if plan.formats.iter().any(|format| format == "voltage_drop") {
+            artifacts.push(json!({"format": "voltage_drop", "filename": "tx_a.voltage-drop.json", "path": out_dir.join("tx_a.voltage-drop.json"), "bytes": 30, "sha256": "3".repeat(64)}));
+        }
         json!({
             "task": REPORT_TASK, "status": "completed", "transformer": plan.transformer,
             "country": plan.country, "layers_decoded": 1, "features_decoded": 1,
             "admin_bounds": {"configured": plan.requires_admin_bounds, "villages_loaded": if plan.requires_admin_bounds {14920} else {0}, "features_matched": 0, "features_requested": 0},
             "geometry_changed": false, "formats_requested": plan.formats,
-            "artifacts": [
-                {"format": "shp", "filename": "tx_a.shp.zip", "path": out_dir.join("tx_a.shp.zip"), "bytes": 10, "sha256": "1".repeat(64)},
-                {"format": "xlsx", "filename": "tx_a.xlsx", "path": out_dir.join("tx_a.xlsx"), "bytes": 20, "sha256": "2".repeat(64)},
-            ],
+            "artifacts": artifacts,
             "blockers": [], "elapsed_ms": 42
         })
     }
@@ -3180,8 +3186,9 @@ mod tests {
         let document = result_document(&plan, &out_dir);
         let verified =
             verify_result(&serde_json::to_vec(&document).unwrap(), &plan, &out_dir).unwrap();
-        assert_eq!(verified.artifacts.len(), 2);
+        assert_eq!(verified.artifacts.len(), 3);
         assert_eq!(verified.artifacts[0].output_id, "shp");
+        assert_eq!(verified.artifacts[2].output_id, "voltage_drop");
         assert_eq!(verified.artifacts[0].content_type, "application/zip");
         assert_eq!(verified.artifacts[1].size_bytes, 20);
 
@@ -3193,7 +3200,8 @@ mod tests {
         nothing["status"] = json!("failed");
         nothing["artifacts"] = json!([]);
         nothing["blockers"] = json!([{"code": "format_build_failed", "message": "shp OOM", "format": "shp"},
-                   {"code": "format_build_failed", "message": "xlsx OOM", "format": "xlsx"}]);
+                   {"code": "format_build_failed", "message": "xlsx OOM", "format": "xlsx"},
+                   {"code": "format_build_failed", "message": "analysis missing", "format": "voltage_drop"}]);
         match verify_result(&serde_json::to_vec(&nothing).unwrap(), &plan, &out_dir).unwrap_err() {
             ResultRefusal::Blocked {
                 status,
@@ -3205,7 +3213,7 @@ mod tests {
                 assert_eq!(artifacts, 0);
                 assert_eq!(
                     blocker_summary(&blockers),
-                    "format_build_failed/shp: shp OOM; format_build_failed/xlsx: xlsx OOM"
+                    "format_build_failed/shp: shp OOM; format_build_failed/xlsx: xlsx OOM; format_build_failed/voltage_drop: analysis missing"
                 );
             }
             other => panic!("{other:?}"),
@@ -3228,7 +3236,7 @@ mod tests {
         };
         assert!(invalid(&|d| d["transformer"] = json!("tx_b")).contains("semantic request"));
         assert!(
-            invalid(&|d| d["formats_requested"] = json!(["xlsx", "shp"]))
+            invalid(&|d| d["formats_requested"] = json!(["xlsx", "shp", "voltage_drop"]))
                 .contains("in the plan's order")
         );
         // A format silently dropped is the failure this whole shape exists to
@@ -3325,6 +3333,7 @@ mod tests {
             "artifacts": [
                 {"format": "shp", "filename": "upgrade_ruturo.shp.zip", "path": path("upgrade_ruturo.shp.zip"), "bytes": 10, "sha256": "1".repeat(64)},
                 {"format": "xlsx", "filename": "upgrade_ruturo.xlsx", "path": path("upgrade_ruturo.xlsx"), "bytes": 20, "sha256": "2".repeat(64)},
+                {"format": "voltage_drop", "filename": "upgrade_ruturo.voltage-drop.json", "path": path("upgrade_ruturo.voltage-drop.json"), "bytes": 50, "sha256": "5".repeat(64)},
                 {"format": "kmz", "filename": "upgrade_ruturo.kmz", "path": path("upgrade_ruturo.kmz"), "bytes": 30, "sha256": "3".repeat(64)},
                 {"format": "pdf_a3", "filename": "upgrade_ruturo.a3.pdf", "path": path("upgrade_ruturo.a3.pdf"), "bytes": 40, "sha256": "4".repeat(64)},
             ],
@@ -3338,19 +3347,19 @@ mod tests {
         let verified =
             verify_result(&serde_json::to_vec(&document).unwrap(), &plan, &out_dir).unwrap();
 
-        // Four completed, matched to their own outputs — the missing A0 in
+        // Five completed, matched to their own outputs — the missing A0 in
         // the middle of the plan shifts nothing.
         let built: Vec<&str> = verified
             .artifacts
             .iter()
             .map(|artifact| artifact.format.as_str())
             .collect();
-        assert_eq!(built, ["shp", "xlsx", "kmz", "pdf_a3"]);
+        assert_eq!(built, ["shp", "xlsx", "voltage_drop", "kmz", "pdf_a3"]);
         assert!(verified
             .artifacts
             .iter()
             .all(|artifact| artifact.output_id == artifact.format));
-        assert_eq!(verified.artifacts[3].filename, "upgrade_ruturo.a3.pdf");
+        assert_eq!(verified.artifacts[4].filename, "upgrade_ruturo.a3.pdf");
 
         // One failed format, named to the knob.
         assert_eq!(verified.failed.len(), 1);
@@ -3381,12 +3390,12 @@ mod tests {
         })
         .unwrap();
         assert_eq!(receipt["status"], "partial");
-        assert_eq!(receipt["outputs"].as_array().unwrap().len(), 4);
+        assert_eq!(receipt["outputs"].as_array().unwrap().len(), 5);
         assert_eq!(receipt["failed_formats"][0]["output_id"], a0);
         assert_eq!(receipt["failed_formats"][0]["layout"]["knob"], "panels");
-        assert_eq!(receipt["formats_requested"].as_array().unwrap().len(), 5);
+        assert_eq!(receipt["formats_requested"].as_array().unwrap().len(), 6);
         // Publication reads the receipt's publication facts, and they are the
-        // same facts a complete run would carry: the four artifacts are
+        // same facts a complete run would carry: the five artifacts are
         // publishable exactly as they are.
         assert_eq!(receipt["publication"]["state"], "pending");
         assert_eq!(receipt["publication"]["transformer"], "upgrade_ruturo");
@@ -3418,12 +3427,13 @@ mod tests {
         // onto the wrong output and refuse the whole run as invalid, and it is
         // the reason a batch reported `report_result_invalid` rather than the
         // work it was holding. Lose the workbook and the A3 — one early, one
-        // late — and the three that built must still land on their own
+        // late — and the four that built must still land on their own
         // outputs, by name, in order.
         let mut gapped = document.clone();
         gapped["artifacts"] = json!([
             document["artifacts"][0].clone(),
             document["artifacts"][2].clone(),
+            document["artifacts"][3].clone(),
             {"format": a0, "filename": "upgrade_ruturo.a0-landscape-gisagara-cjic.pdf", "path": path("upgrade_ruturo.a0-landscape-gisagara-cjic.pdf"), "bytes": 50, "sha256": "5".repeat(64)},
         ]);
         gapped["blockers"] = json!([
@@ -3447,6 +3457,11 @@ mod tests {
             placed,
             [
                 ("shp", "shp", "upgrade_ruturo.shp.zip"),
+                (
+                    "voltage_drop",
+                    "voltage_drop",
+                    "upgrade_ruturo.voltage-drop.json"
+                ),
                 ("kmz", "kmz", "upgrade_ruturo.kmz"),
                 (a0, a0, "upgrade_ruturo.a0-landscape-gisagara-cjic.pdf"),
             ]

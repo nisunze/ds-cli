@@ -273,7 +273,7 @@ mod tests {
                 .as_array()
                 .unwrap()
                 .iter()
-                .any(|output| output["output_id"] == "voltage_drop"));
+                .any(|output| output["outputId"] == "voltage_drop"));
             assert!(report_formats::normalize_output_selection(
                 Some(selection.clone()),
                 None,
