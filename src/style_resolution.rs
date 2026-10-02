@@ -16,6 +16,23 @@ pub enum Target {
     Print,
 }
 
+/// Paper ink is independent of source locality and focus. The omitted value
+/// retains the original colour tuple and its serialized digest.
+#[derive(
+    Debug, Default, Clone, Copy, Serialize, Deserialize, JsonSchema, PartialEq, Eq, PartialOrd, Ord,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum Ink {
+    #[default]
+    Colour,
+    Monochrome,
+}
+impl Ink {
+    fn is_colour(&self) -> bool {
+        *self == Self::Colour
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(deny_unknown_fields)]
 pub struct Key {
@@ -23,10 +40,12 @@ pub struct Key {
     pub source_kind: String,
     pub target: Target,
     pub role: String,
+    #[serde(default, skip_serializing_if = "Ink::is_colour")]
+    pub ink: Ink,
 }
 impl Key {
     pub fn name(&self) -> String {
-        format!(
+        let name = format!(
             "({}, {}, {}, {})",
             self.entity_class,
             self.source_kind,
@@ -36,9 +55,20 @@ impl Key {
                 "print"
             },
             self.role
-        )
+        );
+        if self.ink == Ink::Monochrome {
+            format!("{name}; ink=monochrome")
+        } else {
+            name
+        }
     }
     pub fn validate(&self) -> Result<(), Refusal> {
+        if self.target == Target::Screen && self.ink != Ink::Colour {
+            return Err(refused(
+                "style_resolution_invalid",
+                "ink=monochrome requires target=print",
+            ));
+        }
         for (name, text) in [
             ("entity_class", &self.entity_class),
             ("source_kind", &self.source_kind),
@@ -398,7 +428,43 @@ mod tests {
             source_kind: source.into(),
             target,
             role: role.into(),
+            ink: Ink::Colour,
         }
+    }
+    #[test]
+    fn ink_is_a_governed_dimension_with_unchanged_colour_defaults() {
+        let colour = key("saved_design", Target::Print, "focused");
+        let mut explicit = serde_json::to_value(&colour).unwrap();
+        assert!(explicit.get("ink").is_none());
+        explicit["ink"] = json!("colour");
+        assert_eq!(serde_json::from_value::<Key>(explicit).unwrap(), colour);
+        let mut monochrome = colour.clone();
+        monochrome.ink = Ink::Monochrome;
+        let mut table = snapshot();
+        let error = resolve(&table, &monochrome).unwrap_err();
+        assert_eq!(error.code, "style_resolution_unknown");
+        assert!(error.message.contains("ink=monochrome"));
+        let mut mono_binding = table.bindings[3].clone();
+        mono_binding.key = monochrome.clone();
+        mono_binding.style_ref = "independent-monochrome".into();
+        table.bindings.push(mono_binding);
+        assert_eq!(resolve(&table, &colour).unwrap().style_ref, "paper-focused");
+        assert_eq!(
+            resolve(&table, &monochrome).unwrap().style_ref,
+            "independent-monochrome"
+        );
+        monochrome.target = Target::Screen;
+        assert_eq!(
+            resolve(&table, &monochrome).unwrap_err().code,
+            "style_resolution_invalid"
+        );
+        let mut ambiguous = table.bindings.last().unwrap().clone();
+        ambiguous.key.ink = Ink::Colour;
+        table.bindings.push(ambiguous);
+        assert_eq!(
+            resolve(&table, &colour).unwrap_err().code,
+            "style_resolution_ambiguous"
+        );
     }
     fn snapshot() -> Snapshot {
         let bindings = [

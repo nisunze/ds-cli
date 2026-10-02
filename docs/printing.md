@@ -185,6 +185,14 @@ an exact `style_keys` map, invokes the sole kernel resolver, and returns the
 updated layout plus held `print_styles`, `style_revisions` and the resolution
 revision. A renderer consumes that held capture without another catalogue read.
 There is no inferred style id or source-kind fallback.
+The resolver key optionally declares `ink: "colour" | "monochrome"` for
+paper. Omitted ink and explicit colour are the same key; omission retains the
+original four-dimensional wire representation and document digests. Monochrome
+is an independent governed document binding, never renderer recolouring.
+Unknown ink combinations are refused by name; monochrome on screen is invalid.
+The standard LV consumer's singular classes (for example `lv_line`, `customer`
+and `lv_transformer`) are explicit seed declarations alongside existing layer
+classes, across the declared source kinds and focused/context/project roles.
 The governed `Layout.style_keys` declares those choices per layer. The operation
 uses it when the request omits `style_keys`; a legacy template must acquire its
 exact keys through an API document migration. A host never reverses an old

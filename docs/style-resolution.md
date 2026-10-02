@@ -2,8 +2,12 @@
 
 Status: `ds.style-resolution/v1`, owner ruling 2026-10-02.
 
-Style identity has four independent dimensions: `entity_class`, `source_kind`,
-`target` (`screen` or `print`), and `role`. Source kinds are declared data;
+Style identity declares `entity_class`, `source_kind`, `target` (`screen` or
+`print`), `role`, and optional paper `ink`. Ink is `colour` by default or
+`monochrome`; omitted and explicit colour are the same key. Colour omission
+preserves the original four-dimensional wire representation. Monochrome
+requires print and binds an independent authored document; it never invokes
+consumer recolouring. Source kinds are declared data;
 the standard set uses `live_geojson`, `vector_tile`, `cold_existing`,
 `dataset_geojson`, `saved_design` and `project_model`. A print preparation uses
 `focused`, `context`, `mv_context` or `project` as declared by its template.
