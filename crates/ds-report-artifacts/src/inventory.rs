@@ -326,7 +326,7 @@ mod tests {
                 operation: "export-tx_1".into(),
                 variant: "default".into(),
             },
-            sha256: inventory_digest(
+            sha256: ds_command_kernel::sync_store::inventory_digest(
                 &receipt
                     .outputs
                     .iter()
