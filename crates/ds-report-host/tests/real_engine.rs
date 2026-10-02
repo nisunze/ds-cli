@@ -160,7 +160,18 @@ fn the_installed_engine_produces_prints_and_data_the_host_proves_and_places() {
         }
     }
     assert!(outcome.receipt_path.is_file());
-    assert_eq!(outcome.receipt["publication"]["state"], "local_only");
+    // A release engine creates an eligible pending publication receipt; a
+    // local development engine creates a local-only receipt. Neither proves
+    // a cloud publication merely by placing these local bytes.
+    let build_info = engine.build_info().unwrap();
+    let version = build_info["engine_version"].as_str().unwrap();
+    let expected = if version.starts_with("local-dev:") {
+        "local_only"
+    } else {
+        "pending"
+    };
+    assert_eq!(outcome.receipt["publication"]["state"], expected);
+    assert_eq!(outcome.receipt["publication"]["engine_version"], version);
     assert_eq!(outcome.receipt["country"], "Exampleland");
     assert_eq!(outcome.receipt["admin_bounds"]["configured"], false);
     assert!(std::fs::read_dir(&staging).unwrap().next().is_none());

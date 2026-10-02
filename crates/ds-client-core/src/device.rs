@@ -5,7 +5,7 @@ use sha2::{Digest, Sha256};
 use zeroize::Zeroize;
 
 use crate::project_report::{
-    CompoundedArchive, CompoundedReportReceipt, CompoundedReportRequest, RetirementAction,
+    CompoundedArchiveCatalog, CompoundedReportReceipt, CompoundedReportRequest, RetirementAction,
     RetirementReceipt, RetirementRequest, TransformerInventory, TransformerSet,
     TransformerStatusList,
 };
@@ -1091,6 +1091,9 @@ impl DeviceApiAuthorization<'_> {
 
     /// Read exact persisted analysis bytes using this captured device authority
     /// and an explicit project/head fence. Server refusals retain their codes.
+    // Keep project, transformer, version and content digest explicit at this
+    // existing authenticated boundary rather than changing its public API.
+    #[allow(clippy::too_many_arguments)]
     pub fn transformer_analysis<T: AuthorizedTransport>(
         &self,
         transport: &mut T,
@@ -2059,7 +2062,7 @@ impl DeviceApiAuthorization<'_> {
         transport: &mut T,
         ds_project: &str,
         now: u64,
-    ) -> Result<Vec<CompoundedArchive>, ClientError> {
+    ) -> Result<CompoundedArchiveCatalog, ClientError> {
         crate::authorized::validate_project_report(ds_project)?;
         self.ensure_active(now)?;
         crate::authorized::compounded_report_list(

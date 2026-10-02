@@ -2138,7 +2138,13 @@ mod tests {
         let lease = lease("p", "desktop#1", now + 1);
         let mut refused = receipt("upload", "credential_refused", "export-tx_1");
         refused.detail = Some("the gateway refused this machine's credential (401)".into());
-        let blocked = queue_status(&rows, &[lease.clone()], &[refused.clone()], None, now);
+        let blocked = queue_status(
+            &rows,
+            std::slice::from_ref(&lease),
+            std::slice::from_ref(&refused),
+            None,
+            now,
+        );
         assert!(
             blocked.stuck,
             "a live worker cannot pump with a refused credential"
@@ -2158,7 +2164,8 @@ mod tests {
         // run, and a later accepted attempt supersedes the old refusal.
         let mut session = receipt("session", "credential_refused", "export-tx_1");
         session.identity = None;
-        let heads_blocked = queue_status(&rows, &[lease.clone()], &[session], None, now);
+        let heads_blocked =
+            queue_status(&rows, std::slice::from_ref(&lease), &[session], None, now);
         assert_eq!(heads_blocked.blocked.unwrap().cause, "credential_refused");
         let accepted = receipt("upload", "failed", "export-tx_1");
         let recovered = queue_status(&rows, &[lease], &[accepted, refused], None, now);

@@ -38,7 +38,8 @@ fn scene(input: &[f64]) -> Result<(Bounds, HostSurface, Viewport), String> {
     ))
 }
 /// ABI v1: 0 projection, 1 pan, 2 centered zoom, 3 cursor zoom,
-/// 4 fit, 5 center on scene point, 6 clamp zoom, 7 constants.
+/// 4 fit, 5 center on scene point, 6 clamp zoom, 7 constants,
+/// 8 preserve/rebase a saved camera against the current scene and host.
 pub fn camera_buffer(operation: u8, input: &[f64]) -> Result<Vec<f64>, String> {
     match operation {
         0 => {
@@ -83,6 +84,17 @@ pub fn camera_buffer(operation: u8, input: &[f64]) -> Result<Vec<f64>, String> {
                 viewport::MAX_ZOOM,
                 viewport::FIT_PADDING_PX,
             ])
+        }
+        8 => {
+            exact(input, 11)?;
+            let (b, h, v) = scene(input)?;
+            let focus = point(&input[9..11]);
+            Ok(view_buffer(viewport::rebase_if_offscreen(
+                &b,
+                &h,
+                &v,
+                focus.is_finite().then_some(focus),
+            )))
         }
         _ => Err("unknown canvas camera operation".into()),
     }
@@ -151,5 +163,25 @@ pub fn gesture_buffer(operation: u8, input: &[f64]) -> Result<Vec<f64>, String> 
             ])
         }
         _ => Err("unknown canvas gesture operation".into()),
+    }
+}
+
+#[cfg(test)]
+mod camera_tests {
+    use super::*;
+
+    #[test]
+    fn offscreen_camera_operation_centers_focus_or_fits() {
+        let base = [0., 0., 100., 100., 300., 300., 1., 1_000., 0.];
+        let focused = camera_buffer(8, &[base.as_slice(), &[80., 50.]].concat()).unwrap();
+        assert_eq!(focused.len(), 3);
+        assert_eq!(focused[0], 1.);
+        let (bounds, host, _) = scene(&base).unwrap();
+        let screen =
+            viewport::projection(&bounds, &host, &view(&focused)).project(Point::new(80., 50.));
+        assert!((screen.x - 150.).abs() < 1e-9);
+        let fitted = camera_buffer(8, &[base.as_slice(), &[f64::NAN, f64::NAN]].concat()).unwrap();
+        assert_eq!(fitted, vec![1., 0., 0.]);
+        assert!(camera_buffer(8, &base).is_err());
     }
 }

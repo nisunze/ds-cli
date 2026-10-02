@@ -8,9 +8,9 @@ use sha2::{Digest, Sha256};
 use zeroize::Zeroize;
 
 use crate::project_report::{
-    CompoundedArchive, CompoundedReportReceipt, CompoundedReportRequest, ExportReportsReceipt,
-    RetirementAction, RetirementReceipt, RetirementRequest, TransformerInventory, TransformerSet,
-    TransformerStatusList,
+    CompoundedArchiveCatalog, CompoundedReportReceipt, CompoundedReportRequest,
+    ExportReportsReceipt, RetirementAction, RetirementReceipt, RetirementRequest,
+    TransformerInventory, TransformerSet, TransformerStatusList,
 };
 use crate::weak_network::transient_status;
 use crate::{
@@ -2048,7 +2048,7 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         &mut self,
         ds_project: &str,
         now_epoch_seconds: u64,
-    ) -> Result<Vec<CompoundedArchive>, ClientError> {
+    ) -> Result<CompoundedArchiveCatalog, ClientError> {
         crate::authorized::validate_project_report(ds_project)?;
         self.ensure_fresh_session(now_epoch_seconds)?;
         let session = self.session.as_ref().ok_or_else(signed_out)?;

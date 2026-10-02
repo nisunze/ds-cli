@@ -773,9 +773,7 @@ pub fn run_transformer_report_with(
         )?;
         Ok(())
     })();
-    if let Err(failure) = placed {
-        return Err(failure);
-    }
+    placed?;
     promote_report(&delivery.path, &artifact_dir)?;
     let receipt_path = artifact_dir.join(RUN_RECEIPT_FILE);
     let receipt: Value = serde_json::from_slice(

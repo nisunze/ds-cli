@@ -2,9 +2,9 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 
 use crate::project_report::{
-    CompoundedArchive, CompoundedReportReceipt, CompoundedReportRequest, ExportReportsReceipt,
-    ProjectReportOperation, RetirementAction, RetirementReceipt, RetirementRequest,
-    TransformerInventory, TransformerSet, TransformerStatusList,
+    CompoundedArchiveCatalog, CompoundedReportReceipt, CompoundedReportRequest,
+    ExportReportsReceipt, ProjectReportOperation, RetirementAction, RetirementReceipt,
+    RetirementRequest, TransformerInventory, TransformerSet, TransformerStatusList,
 };
 use crate::projects::ProjectPayload;
 use crate::tiles::TileOperation;
@@ -719,7 +719,7 @@ pub(crate) fn compounded_report_list<T: AuthorizedTransport>(
     transport: &mut T,
     authority: Authority<'_>,
     ds_project: &str,
-) -> Result<Vec<CompoundedArchive>, ClientError> {
+) -> Result<CompoundedArchiveCatalog, ClientError> {
     let response = transport.project_report(ProjectReportCall {
         profile,
         ds_project,

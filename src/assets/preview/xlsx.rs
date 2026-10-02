@@ -62,7 +62,60 @@ struct SheetGrid {
     rows_total: u64,
     columns_total: u64,
     cells_cut: u64,
+    cells_unresolved: u64,
     scan_truncated: bool,
+}
+
+/// Reuse the bounded OOXML decoder for an exact source-column binding.
+/// Unlike a preview, any cut cell, sheet, column or row refuses the source.
+pub fn complete_sheet(
+    bytes: &[u8],
+    name: &str,
+    max_rows: usize,
+) -> Result<Vec<Vec<String>>, String> {
+    check_format_cap(bytes.len() as u64, Format::Xlsx)?;
+    if !(1..=20_000).contains(&max_rows) {
+        return Err("complete sheet row bound must be 1..20000".into());
+    }
+    let mut archive = ZipArchive::new(Cursor::new(bytes)).map_err(|e| e.to_string())?;
+    let xml = part(&mut archive, "xl/workbook.xml")?.ok_or("workbook has no sheet catalogue")?;
+    let (sheets, truncated) = parse_sheets(&xml, MAX_SHEETS)?;
+    let matches = sheets.iter().filter(|s| s.name == name).collect::<Vec<_>>();
+    let [sheet] = matches.as_slice() else {
+        return Err("source sheet must have one exact declared name".into());
+    };
+    if truncated {
+        return Err("source workbook sheet catalogue is truncated".into());
+    }
+    let rels = part(&mut archive, "xl/_rels/workbook.xml.rels")?
+        .ok_or("source workbook has no sheet relationships")?;
+    let relationships = parse_relationships(&rels);
+    let targets = relationships
+        .iter()
+        .filter(|(id, _)| id == &sheet.rel_id)
+        .collect::<Vec<_>>();
+    let [(_, target)] = targets.as_slice() else {
+        return Err("source sheet must have one exact relationship".into());
+    };
+    let member = normalise_part(target).ok_or("source sheet relationship escapes its package")?;
+    let (shared, shared_cut) = match part(&mut archive, "xl/sharedStrings.xml")? {
+        Some(xml) => parse_shared_strings(&xml, MAX_SHARED_STRINGS)?,
+        None => (Vec::new(), false),
+    };
+    let xml = part(&mut archive, &member)?.ok_or("source sheet part is missing")?;
+    let grid = parse_worksheet(&xml, &shared, max_rows, name)?;
+    if shared_cut
+        || grid.cells_unresolved > 0
+        || grid.cells_cut > 0
+        || grid.scan_truncated
+        || grid.rows_total > max_rows as u64
+        || grid.columns_total > MAX_GRID_COLUMNS as u64
+    {
+        return Err(
+            "source sheet exceeds a complete decoding bound; no descriptions were truncated".into(),
+        );
+    }
+    Ok(grid.rows)
 }
 
 pub fn workbook(bytes: &[u8], request: &PreviewRequest) -> Result<PreviewDoc, String> {
@@ -158,6 +211,10 @@ pub fn workbook(bytes: &[u8], request: &PreviewRequest) -> Result<PreviewDoc, St
             thousands(grid.cells_cut),
             thousands(MAX_CELL_CHARS as u64)
         ));
+    }
+    if grid.cells_unresolved > 0 {
+        doc.truncated = true;
+        doc.notes.push("the worksheet contains unresolved or repeated cells; use the original workbook for exact values".into());
     }
     if grid.scan_truncated {
         doc.truncated = true;
@@ -396,6 +453,7 @@ fn parse_worksheet(
         rows_total: 0,
         columns_total: 0,
         cells_cut: 0,
+        cells_unresolved: 0,
         scan_truncated: false,
     };
     let mut row_index = 0usize;
@@ -417,6 +475,9 @@ fn parse_worksheet(
                 row_index = attribute(&element, b"r")
                     .and_then(|reference| reference.trim().parse::<usize>().ok())
                     .map_or(rows_seen, |number| number.saturating_sub(1));
+                if row_index < rows_seen {
+                    grid.cells_unresolved += 1;
+                }
                 if row_index >= MAX_SCAN_ROWS {
                     grid.scan_truncated = true;
                     break;
@@ -430,6 +491,9 @@ fn parse_worksheet(
                 cell_column = attribute(&element, b"r")
                     .and_then(|reference| column_index(&reference))
                     .unwrap_or(cursor);
+                if cell_column < cursor {
+                    grid.cells_unresolved += 1;
+                }
                 cursor = cell_column.saturating_add(1);
                 grid.columns_total = grid.columns_total.max(cell_column as u64 + 1);
                 cell_type = attribute(&element, b"t").unwrap_or_default();
@@ -461,6 +525,15 @@ fn parse_worksheet(
             Event::End(element) if is_end(&element, b"c") => {
                 in_cell = false;
                 capture = false;
+                if cell_type == "s"
+                    && cell_text
+                        .trim()
+                        .parse::<usize>()
+                        .ok()
+                        .is_none_or(|index| index >= shared.len())
+                {
+                    grid.cells_unresolved += 1;
+                }
                 let (text, cut) =
                     cut_text(&cell_value(&cell_type, &cell_text, shared), MAX_CELL_CHARS);
                 if cut {

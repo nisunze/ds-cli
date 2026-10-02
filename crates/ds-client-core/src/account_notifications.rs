@@ -5,7 +5,8 @@ use serde_json::Value;
 use std::collections::VecDeque;
 use zeroize::Zeroizing;
 
-pub const ACCOUNT_STREAM_PATH: &str = "/api/v1/messaging/account-stream?wire_contract=messages-v1&ready=v2";
+pub const ACCOUNT_STREAM_PATH: &str =
+    "/api/v1/messaging/account-stream?wire_contract=messages-v1&ready=v2";
 pub const RESPONSE_LIMIT: usize = 1024 * 1024;
 pub const FRAME_LIMIT: usize = 16 * 1024;
 pub const DEADLINE_SECONDS: u64 = 55;

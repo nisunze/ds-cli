@@ -131,11 +131,19 @@ pub enum StructureLabelField {
     EngineeringNumber,
     EngineeringName,
     StructureType,
+    StructureDescription,
     DisplayLabel,
     Comment1,
     Comment2,
     Comment3,
     Height,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum SpecialClearanceHairAnchor {
+    GroundOffsetGuide,
+    SurveyFeature,
 }
 
 impl SheetFormat {
@@ -178,6 +186,10 @@ pub struct SheetSettings {
     pub feature_label_style: FeatureLabelStyle,
     #[serde(default)]
     pub show_clearance_thresholds: Option<bool>,
+    /// Drawing basis only; absolute canonical thresholds and margins stay exact.
+    /// Absence retains the ground-offset-guide presentation of existing setups.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub special_clearance_hair_anchor: Option<SpecialClearanceHairAnchor>,
     /// Up to three ordered ledger lines, each composed from canonical native
     /// structure facts. An empty value uses the format's project default.
     #[serde(default)]
@@ -257,6 +269,7 @@ impl SheetSettings {
             structure_label_orientation: StructureLabelOrientation::default(),
             show_feature_codes: None,
             feature_label_style: FeatureLabelStyle::default(),
+            special_clearance_hair_anchor: None,
             show_clearance_thresholds: None,
             structure_label_rows: Vec::new(),
             long_axis_plot: true,

@@ -154,7 +154,73 @@ pub fn room(root: &Path, scope: &Scope, transformer: &str) -> Result<Option<Room
             "the held room of {transformer} names another transformer"
         ));
     }
+    if room.version != row.version || layer_counts(&room.layers) != row.layers {
+        return Err(format!(
+            "the held room of {transformer} has inconsistent index metadata"
+        ));
+    }
     Ok(Some(room))
+}
+
+/// Read the complete active transformer roster and its checksum-verified saved
+/// rooms for a preview. No discovery, provider read or partial roster fallback.
+pub fn active_print_rooms(
+    root: &Path,
+    scope: &Scope,
+) -> Result<Vec<ds_command_kernel::printing::adjacent_networks::Room>, String> {
+    let document = inputs(root, scope)?.ok_or("no project print inventory is held")?;
+    let rows = document["rows"]
+        .as_array()
+        .ok_or("held print inventory has no roster")?;
+    let mut names = std::collections::BTreeSet::new();
+    for row in rows {
+        if !matches!(row["kind"].as_str(), Some("transformer" | "project_level"))
+            || !matches!(
+                row["state"].as_str(),
+                Some("active" | "retired" | "deleted" | "missing")
+            )
+        {
+            return Err("held print inventory contains an invalid lifecycle row".into());
+        }
+        if row["kind"] != "transformer" || row["state"] != "active" {
+            continue;
+        }
+        let name = row["name"]
+            .as_str()
+            .filter(|name| !name.is_empty() && name.trim() == *name && name.len() <= 200)
+            .ok_or("active print inventory has no transformer identity")?;
+        if row["retired"] == true {
+            return Err("active print inventory contains a retired transformer".into());
+        }
+        if !names.insert(name) || names.len() > 500 {
+            return Err("active print inventory has duplicates or exceeds 500 rooms".into());
+        }
+    }
+    if names.is_empty() {
+        return Err("held print inventory has no active transformer".into());
+    }
+    names
+        .into_iter()
+        .map(|name| {
+            let room = room(root, scope, name)?
+                .ok_or_else(|| format!("{name} is not held; refresh the project print rooms"))?;
+            let digest =
+                ds_command_kernel::report_export::jcs::layers_content_digest(&room.layers)?;
+            if room.content_digest.as_deref() != Some(digest.as_str()) {
+                return Err(format!(
+                    "{name} has no matching saved content digest; refresh its print room"
+                ));
+            }
+            Ok(ds_command_kernel::printing::adjacent_networks::Room {
+                transformer: room.transformer,
+                version: room
+                    .version
+                    .filter(|v| *v > 0)
+                    .ok_or_else(|| format!("{name} has no saved print revision"))?,
+                layers: room.layers,
+            })
+        })
+        .collect()
 }
 
 /// Hold one room read whole from the service, replacing any older copy.
@@ -323,5 +389,57 @@ mod tests {
         fs::write(&file, serde_json::to_vec(&changed).unwrap()).unwrap();
         let refusal = room(dir.path(), &scope("u1"), "t1").unwrap_err();
         assert!(refusal.contains("does not match its index"), "{refusal}");
+    }
+
+    #[test]
+    fn adjacent_preview_requires_the_complete_scoped_active_roster_and_saved_content() {
+        let dir = tempfile::tempdir().unwrap();
+        let owner = scope("u1");
+        let mut first = saved("t1", 4);
+        first.content_digest = Some(
+            ds_command_kernel::report_export::jcs::layers_content_digest(&first.layers).unwrap(),
+        );
+        let mut second = first.clone();
+        second.transformer = "t2".into();
+        second.version = Some(7);
+        hold_room(dir.path(), &owner, &first).unwrap();
+        hold_inputs(
+            dir.path(),
+            &owner,
+            &json!({"rows": [
+                {"name":"t1","kind":"transformer","state":"active"},
+                {"name":"t2","kind":"transformer","state":"active"},
+                {"name":"old","kind":"transformer","state":"retired"},
+                {"name":"overall","kind":"project_level","state":"active"}
+            ]}),
+        )
+        .unwrap();
+        assert!(active_print_rooms(dir.path(), &scope("u2"))
+            .unwrap_err()
+            .contains("no project print inventory"));
+        assert!(active_print_rooms(dir.path(), &owner)
+            .unwrap_err()
+            .contains("t2 is not held"));
+        hold_room(dir.path(), &owner, &second).unwrap();
+        let rooms = active_print_rooms(dir.path(), &owner).unwrap();
+        assert_eq!(rooms.len(), 2);
+        assert_eq!(rooms[1].transformer, "t2");
+        assert_eq!(rooms[1].version, 7);
+        assert_eq!(rooms[1].layers, second.layers);
+
+        second.content_digest = Some("mismatching saved content".into());
+        hold_room(dir.path(), &owner, &second).unwrap();
+        assert!(active_print_rooms(dir.path(), &owner)
+            .unwrap_err()
+            .contains("matching saved content digest"));
+        hold_inputs(
+            dir.path(),
+            &owner,
+            &json!({"rows":[{"name":"t1","kind":"transformer","state":"active","retired":true}]}),
+        )
+        .unwrap();
+        assert!(active_print_rooms(dir.path(), &owner)
+            .unwrap_err()
+            .contains("retired transformer"));
     }
 }

@@ -90,7 +90,9 @@ pub fn projection(bounds: &Bounds, host: &HostSurface, viewport: &Viewport) -> P
     let h = bounds.height().max(1.);
     let fit =
         ((host.width - FIT_PADDING_PX).max(1.) / w).min((host.height - FIT_PADDING_PX).max(1.) / h);
-    let scale = (fit * clamp_zoom(viewport.zoom)).max(0.01);
+    // Fit is relative to the whole scene. An absolute pixel-per-unit floor
+    // crops long profiles and turns several zoom-out steps into no-ops.
+    let scale = fit * clamp_zoom(viewport.zoom);
     Projection {
         scale,
         offset_x: (host.width - w * scale) / 2. - bounds.min_x * scale + finite_pan(viewport.pan_x),
@@ -166,6 +168,46 @@ pub fn center_on(
     }
 }
 
+/// Keep a saved camera while the scene still intersects the host. A camera is
+/// stored in CSS pixels, so another window size or a later scene can otherwise
+/// leave every engineering mark outside the canvas. When that happens, prefer
+/// the selected scene point; without one, return the whole-scene fit.
+pub fn rebase_if_offscreen(
+    bounds: &Bounds,
+    host: &HostSurface,
+    viewport: &Viewport,
+    selected: Option<Point>,
+) -> Viewport {
+    let current = Viewport {
+        zoom: clamp_zoom(viewport.zoom),
+        pan_x: finite_pan(viewport.pan_x),
+        pan_y: finite_pan(viewport.pan_y),
+    };
+    let projected = projection(bounds, host, &current);
+    let left = projected.offset_x + bounds.min_x * projected.scale;
+    let right = projected.offset_x + bounds.max_x * projected.scale;
+    let top = projected.offset_y + bounds.min_y * projected.scale;
+    let bottom = projected.offset_y + bounds.max_y * projected.scale;
+    let margin = 8_f64.min(host.width / 4.).min(host.height / 4.);
+    if right >= margin
+        && left <= host.width - margin
+        && bottom >= margin
+        && top <= host.height - margin
+    {
+        return current;
+    }
+    match selected.filter(|point| {
+        point.is_finite()
+            && point.x >= bounds.min_x
+            && point.x <= bounds.max_x
+            && point.y >= bounds.min_y
+            && point.y <= bounds.max_y
+    }) {
+        Some(point) => center_on(bounds, host, &current, point),
+        None => Viewport::fitted(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -233,6 +275,105 @@ mod tests {
             )
             .zoom,
             MAX_ZOOM
+        );
+    }
+
+    #[test]
+    fn stale_camera_rebases_to_selected_support_without_changing_zoom() {
+        let bounds = Bounds {
+            min_x: 0.,
+            min_y: 0.,
+            max_x: 100.,
+            max_y: 100.,
+        };
+        let host = HostSurface::new(300., 300., 1.).unwrap();
+        let stale = Viewport {
+            zoom: 2.,
+            pan_x: 1_000.,
+            pan_y: 0.,
+        };
+        let selected = Point::new(80., 50.);
+        let before = projection(&bounds, &host, &stale);
+        assert!(before.project(Point::new(0., 0.)).x > host.width);
+        let restored = rebase_if_offscreen(&bounds, &host, &stale, Some(selected));
+        assert_eq!(restored.zoom, 2.);
+        let screen = projection(&bounds, &host, &restored).project(selected);
+        assert!((screen.x - host.width / 2.).abs() < 1e-9);
+        assert!((screen.y - host.height / 2.).abs() < 1e-9);
+        assert_eq!(
+            rebase_if_offscreen(&bounds, &host, &restored, Some(selected)),
+            restored
+        );
+        // A later pointer pan can leave the same scene again; the next native
+        // camera check returns to the selected support without a scene build.
+        let dragged_away = pan(&restored, -2_000., 0.);
+        assert_eq!(
+            rebase_if_offscreen(&bounds, &host, &dragged_away, Some(selected)),
+            restored
+        );
+    }
+
+    #[test]
+    fn visible_camera_survives_and_resize_rebases_without_selection() {
+        let bounds = Bounds {
+            min_x: 0.,
+            min_y: 0.,
+            max_x: 100.,
+            max_y: 100.,
+        };
+        let large = HostSurface::new(300., 300., 1.).unwrap();
+        let small = HostSurface::new(50., 50., 1.).unwrap();
+        let camera = Viewport {
+            zoom: 1.,
+            pan_x: 120.,
+            pan_y: 0.,
+        };
+        assert_eq!(rebase_if_offscreen(&bounds, &large, &camera, None), camera);
+        assert_eq!(
+            rebase_if_offscreen(&bounds, &small, &camera, None),
+            Viewport::fitted()
+        );
+        let offscreen = Viewport {
+            zoom: 1.,
+            pan_x: 1_000.,
+            pan_y: 0.,
+        };
+        assert_eq!(
+            rebase_if_offscreen(&bounds, &large, &offscreen, Some(Point::new(999., 0.))),
+            Viewport::fitted()
+        );
+    }
+
+    #[test]
+    fn eighteen_band_profile_fits_and_zoom_out_changes_its_scale() {
+        // Eighteen anonymous 10 km alignments. A long Profile has a fit scale
+        // below 0.01 CSS px/m; an absolute floor clips both ends and makes
+        // zoom-out appear capped in the popped-out window.
+        let bounds = Bounds {
+            min_x: 0.,
+            min_y: 0.,
+            max_x: 180_000.,
+            max_y: 100.,
+        };
+        let host = HostSurface::new(1_440., 820., 1.).unwrap();
+        let fitted = projection(&bounds, &host, &Viewport::fitted());
+        let left = fitted.project(Point::new(bounds.min_x, 0.)).x;
+        let right = fitted.project(Point::new(bounds.max_x, 0.)).x;
+        assert!(
+            left >= 0. && right <= host.width,
+            "wide Profile must fully fit: {left}..{right}"
+        );
+        let zoomed_out = projection(
+            &bounds,
+            &host,
+            &Viewport {
+                zoom: 0.5,
+                ..Viewport::fitted()
+            },
+        );
+        assert!(
+            zoomed_out.scale < fitted.scale,
+            "zoom-out must change painted scale"
         );
     }
 }

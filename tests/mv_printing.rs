@@ -3,7 +3,7 @@ use ds_command_kernel::printing::{
     self,
     mv::{self, ModelField, Selection},
 };
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::collections::BTreeMap;
 fn sheets() -> Value {
     serde_json::from_str(include_str!("fixtures/mv-printing-setup.json")).unwrap()
@@ -129,27 +129,23 @@ fn issue_policy_and_library_documents_never_guess_a_date_logo_font_or_presentati
         .as_object_mut()
         .unwrap()
         .remove("title_country");
-    assert!(
-        serde_json::from_value::<printing::Layout>(layout)
-            .unwrap_err()
-            .to_string()
-            .contains("settings.title_country")
-    );
+    assert!(serde_json::from_value::<printing::Layout>(layout)
+        .unwrap_err()
+        .to_string()
+        .contains("settings.title_country"));
     let mut layout: printing::Layout =
         serde_json::from_value(sheets()["printing_setups"][0]["layout"].clone()).unwrap();
     layout.mv.as_mut().unwrap().font_family = "Unknown".into();
-    assert!(
-        printing::validate(&layout)
-            .unwrap_err()
-            .contains("mv_print_template_invalid")
-    );
+    assert!(printing::validate(&layout)
+        .unwrap_err()
+        .contains("mv_print_template_invalid"));
 }
 #[test]
 fn selection_patch_preserves_lv_settings_and_mv_cannot_masquerade_as_lv_geometry() {
     let mut value = sheets();
     let selected = mv::selection(&value).unwrap();
     let original = json!({"parameter":"design_export_format","value":["xlsx"]});
-    let rows = mv::patch_selection(&[original.clone()], &selected).unwrap();
+    let rows = mv::patch_selection(std::slice::from_ref(&original), &selected).unwrap();
     assert_eq!(rows[0], original);
     assert_eq!(rows.len(), 2);
     let inspected =
@@ -160,11 +156,9 @@ fn selection_patch_preserves_lv_settings_and_mv_cannot_masquerade_as_lv_geometry
         .as_array_mut()
         .unwrap()
         .push(json!({"parameter":"design_export_format","value":["pdf__test_project_mv"]}));
-    assert!(
-        ds_command_kernel::report_formats::plan(&value, false)
-            .unwrap_err()
-            .contains("mv_print_requires_model_geometry")
-    );
+    assert!(ds_command_kernel::report_formats::plan(&value, false)
+        .unwrap_err()
+        .contains("mv_print_requires_model_geometry"));
 }
 
 #[test]
@@ -213,10 +207,8 @@ fn two_models_share_one_setup_and_policy_with_exact_distinct_approved_cover_pins
         .as_array_mut()
         .unwrap()
         .push(cover("Model1", "another", '4'));
-    assert!(
-        mv::resolve(&value, "project_a", BTreeMap::new())
-            .unwrap_err()
-            .remedy
-            .contains("ambiguous")
-    );
+    assert!(mv::resolve(&value, "project_a", BTreeMap::new())
+        .unwrap_err()
+        .remedy
+        .contains("ambiguous"));
 }

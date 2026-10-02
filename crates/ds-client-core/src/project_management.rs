@@ -28,11 +28,11 @@
 //! ds-brain decodes with `DisallowUnknownFields`, so a key this file does not
 //! write is a key the request cannot carry.
 
-use serde_json::{Map, Value, json};
+use serde_json::{json, Map, Value};
 
 use crate::{
-    AuthorizedTransport, ClientError, ClientProfile, ErrorKind, ProjectManagementCall,
-    ServiceRefusal, authorized::Authority,
+    authorized::Authority, AuthorizedTransport, ClientError, ClientProfile, ErrorKind,
+    ProjectManagementCall, ServiceRefusal,
 };
 
 /// The largest plan answer this owner will read. A project's whole graph —
@@ -709,24 +709,20 @@ mod collaboration_contract_tests {
             command.payload(""),
             json!({"action":"list_public_projects","status":"active","cursor":"next-id","limit":50})
         );
-        assert!(
-            Command::PublicProjects {
-                status: "all".into(),
-                cursor: String::new(),
-                limit: 50
-            }
-            .validate()
-            .is_err()
-        );
-        assert!(
-            Command::PublicProjects {
-                status: "active".into(),
-                cursor: String::new(),
-                limit: 101
-            }
-            .validate()
-            .is_err()
-        );
+        assert!(Command::PublicProjects {
+            status: "all".into(),
+            cursor: String::new(),
+            limit: 50
+        }
+        .validate()
+        .is_err());
+        assert!(Command::PublicProjects {
+            status: "active".into(),
+            cursor: String::new(),
+            limit: 101
+        }
+        .validate()
+        .is_err());
     }
     #[test]
     fn task_comment_is_scoped_and_cursors_use_the_existing_collection_name() {
@@ -749,24 +745,20 @@ mod collaboration_contract_tests {
             page.payload("p")["cursors"],
             json!({"pm_comments":"old-comment"})
         );
-        assert!(
-            Command::TaskCommentCreate {
-                task_id: "t".into(),
-                id: "comment-1".into(),
-                body: " ".into()
-            }
-            .validate()
-            .is_err()
-        );
-        assert!(
-            Command::TaskCommentCreate {
-                task_id: "t".into(),
-                id: "comment-1".into(),
-                body: "é".repeat(2001)
-            }
-            .validate()
-            .is_err()
-        );
+        assert!(Command::TaskCommentCreate {
+            task_id: "t".into(),
+            id: "comment-1".into(),
+            body: " ".into()
+        }
+        .validate()
+        .is_err());
+        assert!(Command::TaskCommentCreate {
+            task_id: "t".into(),
+            id: "comment-1".into(),
+            body: "é".repeat(2001)
+        }
+        .validate()
+        .is_err());
     }
 }
 
@@ -999,12 +991,10 @@ mod tests {
         );
         let context = Command::Context { limit: Some(100) }.payload("p");
         assert_eq!(context["limit"], 100);
-        assert!(
-            Command::Context { limit: None }
-                .payload("p")
-                .get("limit")
-                .is_none()
-        );
+        assert!(Command::Context { limit: None }
+            .payload("p")
+            .get("limit")
+            .is_none());
     }
 
     /// The bounds the server enforces are refused here first, by the same
@@ -1022,15 +1012,13 @@ mod tests {
         );
         assert!(Command::Context { limit: Some(100) }.validate().is_ok());
         let good = json!({"kind": "accept_assignment", "accept_assignment": {"task_id": "t"}});
-        assert!(
-            Command::Commit {
-                command_id: "pm-1_a.b".into(),
-                base_revision: 0,
-                command: good.clone()
-            }
-            .validate()
-            .is_ok()
-        );
+        assert!(Command::Commit {
+            command_id: "pm-1_a.b".into(),
+            base_revision: 0,
+            command: good.clone()
+        }
+        .validate()
+        .is_ok());
         assert_eq!(
             kind(Command::Commit {
                 command_id: "".into(),

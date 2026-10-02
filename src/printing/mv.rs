@@ -303,7 +303,10 @@ pub fn validate_template(layout: &Layout, template: &Template) -> Result<(), Ref
             "List each allowed identity/title difference once.",
         ));
     }
-    for (key, field) in [("model_identity", ModelField::Identity), ("model_title", ModelField::Title)] {
+    for (key, field) in [
+        ("model_identity", ModelField::Identity),
+        ("model_title", ModelField::Title),
+    ] {
         if template.required_text.iter().any(|k| k == key) && !allowed.contains(&field) {
             return Err(refuse("mv_print_template_invalid", "allowed_model_fields", "Explicitly permit each required model identity/title field; project text cannot bypass a forbidden model field."));
         }
@@ -618,8 +621,11 @@ pub fn inspect(sheets: &Value, project_id: Option<&str>) -> Value {
             json!({"selection":selected,"configured":true,"ready":false,"refusal":Value::Null,"setup_sha256":resolved.sha256,"requires":["model_geometry","held_pdf_assets"]})
         }
         Err(error) => {
-            let model_required = matches!(error.code.as_str(), "mv_print_text_missing" | "mv_print_model_binding_missing")
-                && matches!(error.field.as_str(), "model_identity" | "model_title");
+            let model_required =
+                matches!(
+                    error.code.as_str(),
+                    "mv_print_text_missing" | "mv_print_model_binding_missing"
+                ) && matches!(error.field.as_str(), "model_identity" | "model_title");
             json!({"selection":selected,"configured":model_required,"ready":false,"refusal":error})
         }
     }

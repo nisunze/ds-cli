@@ -168,6 +168,7 @@ pub struct CompoundedReportRequest {
     file_level: ReportFileLevel,
     combine_per_district: bool,
     force: bool,
+    composition: Option<Value>,
 }
 
 impl CompoundedReportRequest {
@@ -182,7 +183,51 @@ impl CompoundedReportRequest {
             file_level,
             combine_per_district,
             force,
+            composition: None,
         }
+    }
+
+    /// The same JSON object the browser sends to the governed orchestrator.
+    /// It stays nested under composition: never an action/project/body override.
+    pub fn from_composition(composition: Value) -> Result<Self, ClientError> {
+        if !composition.is_object() || composition.to_string().len() > 64 * 1024 {
+            return Err(ClientError::new(
+                ErrorKind::InvalidInput,
+                "composition must be one JSON object of at most 64 KiB",
+            ));
+        }
+        let names: Vec<String> = serde_json::from_value(composition["transformers"].clone())
+            .map_err(|_| {
+                ClientError::new(
+                    ErrorKind::InvalidInput,
+                    "composition requires a transformers array",
+                )
+            })?;
+        let transformers = TransformerSet::new(names)?;
+        if transformers
+            .names()
+            .iter()
+            .any(|name| ds_command_kernel::report::is_reserved_report_identity(name))
+        {
+            return Err(ClientError::new(
+                ErrorKind::InvalidInput,
+                "composition requires real transformer identities",
+            ));
+        }
+        let mut request = Self::new(
+            transformers,
+            ReportFileLevel::Transformer,
+            composition["archive_layout"]["combine_per_group"]
+                .as_bool()
+                .unwrap_or(false),
+            composition["force"].as_bool().unwrap_or(false),
+        );
+        request.composition = Some(composition);
+        Ok(request)
+    }
+
+    pub fn composition(&self) -> Option<&Value> {
+        self.composition.as_ref()
     }
 
     pub fn transformers(&self) -> &TransformerSet {
@@ -313,6 +358,10 @@ impl ProjectReportOperation<'_> {
                     "report_type".into(),
                     Value::String(COMPOUNDED_REPORT_TYPE.into()),
                 );
+                if let Some(composition) = &request.composition {
+                    body.insert("composition".into(), composition.clone());
+                    return serde_json::to_vec(&body).expect("a JSON body encodes");
+                }
                 body.insert(
                     "transformers".into(),
                     Value::Array(
@@ -421,6 +470,7 @@ impl MissingIndividualArtifactCause {
 /// The publication receipt of one compounded report run.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CompoundedReportReceipt {
+    composition: Option<Value>,
     project: String,
     status: CompoundedReportStatus,
     prefix: String,
@@ -436,6 +486,9 @@ pub struct CompoundedReportReceipt {
 }
 
 impl CompoundedReportReceipt {
+    pub fn composition(&self) -> Option<&Value> {
+        self.composition.as_ref()
+    }
     pub fn project(&self) -> &str {
         &self.project
     }
@@ -485,6 +538,8 @@ struct MissingIndividualArtifactCauseWire {
 
 #[derive(Deserialize)]
 struct CompoundedWire {
+    #[serde(default)]
+    composition: Option<Value>,
     status: String,
     transformer: String,
     prefix: String,
@@ -519,7 +574,8 @@ pub(crate) fn decode_compounded(
         "partial" => CompoundedReportStatus::Partial,
         _ => return Err(unreadable()),
     };
-    if wire.transformer != COMPOUNDED_TRANSFORMER
+    if !valid_composition(wire.composition.as_ref())
+        || wire.transformer != COMPOUNDED_TRANSFORMER
         || !bounded(&wire.prefix, 512, false)
         || wire.download_files_urls.len() > MAX_ARCHIVES
         || !wire
@@ -598,6 +654,7 @@ pub(crate) fn decode_compounded(
         ));
     }
     Ok(CompoundedReportReceipt {
+        composition: wire.composition,
         project: project.to_owned(),
         status,
         prefix: wire.prefix,
@@ -845,6 +902,7 @@ pub struct CompoundedArchiveMember {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CompoundedArchive {
+    composition: Option<Value>,
     artifact_index_state: Option<String>,
     archive_members: Vec<CompoundedArchiveMember>,
     stem: String,
@@ -865,6 +923,9 @@ pub struct CompoundedArchive {
 }
 
 impl CompoundedArchive {
+    pub fn composition(&self) -> Option<&Value> {
+        self.composition.as_ref()
+    }
     pub fn artifact_index_state(&self) -> Option<&str> {
         self.artifact_index_state.as_deref()
     }
@@ -922,6 +983,8 @@ impl CompoundedArchive {
 #[derive(Deserialize)]
 struct ArchiveWire {
     #[serde(default)]
+    composition: Option<Value>,
+    #[serde(default)]
     artifact_index_state: Option<String>,
     #[serde(default)]
     archive_members: Vec<CompoundedArchiveMember>,
@@ -959,19 +1022,52 @@ struct ArchiveWire {
 #[derive(Deserialize)]
 struct ArchiveListWire {
     compounded_reports: Vec<ArchiveWire>,
+    #[serde(default)]
+    composition_template: Option<Value>,
+    #[serde(default)]
+    composition_schema: Option<Value>,
+}
+
+/// The archive registry and the server's own JSON authoring contract. Older
+/// registries have no recipe metadata; callers must not reconstruct it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CompoundedArchiveCatalog {
+    archives: Vec<CompoundedArchive>,
+    composition_template: Option<Value>,
+    composition_schema: Option<Value>,
+}
+
+impl CompoundedArchiveCatalog {
+    pub fn composition_template(&self) -> Option<&Value> {
+        self.composition_template.as_ref()
+    }
+    pub fn composition_schema(&self) -> Option<&Value> {
+        self.composition_schema.as_ref()
+    }
+}
+
+impl std::ops::Deref for CompoundedArchiveCatalog {
+    type Target = [CompoundedArchive];
+    fn deref(&self) -> &Self::Target {
+        &self.archives
+    }
 }
 
 pub(crate) fn decode_compounded_list(
     response: TransportResponse,
     limit: usize,
-) -> Result<Vec<CompoundedArchive>, ClientError> {
+) -> Result<CompoundedArchiveCatalog, ClientError> {
     let wire: ArchiveListWire = decode(response, limit)?;
-    if wire.compounded_reports.len() > MAX_LIST {
+    if wire.compounded_reports.len() > MAX_LIST
+        || !valid_composition(wire.composition_template.as_ref())
+        || !valid_composition(wire.composition_schema.as_ref())
+    {
         return Err(unreadable());
     }
     let mut out = Vec::with_capacity(wire.compounded_reports.len());
     for entry in wire.compounded_reports {
-        if !bounded(&entry.stem, 512, false)
+        if !valid_composition(entry.composition.as_ref())
+            || !bounded(&entry.stem, 512, false)
             || !opt_bounded(entry.artifact_index_state.as_deref(), 64)
             || entry.archive_members.len() > 10000
             || !entry.archive_members.iter().all(|member| {
@@ -1033,6 +1129,7 @@ pub(crate) fn decode_compounded_list(
             }
         };
         out.push(CompoundedArchive {
+            composition: entry.composition,
             artifact_index_state: nonempty(entry.artifact_index_state),
             archive_members: entry.archive_members,
             stem: entry.stem,
@@ -1052,12 +1149,20 @@ pub(crate) fn decode_compounded_list(
             archive_layout,
         });
     }
-    Ok(out)
+    Ok(CompoundedArchiveCatalog {
+        archives: out,
+        composition_template: wire.composition_template,
+        composition_schema: wire.composition_schema,
+    })
 }
 
 // ---------------------------------------------------------------------------
 // Transformer inventory and retirement
 // ---------------------------------------------------------------------------
+
+fn valid_composition(value: Option<&Value>) -> bool {
+    value.is_none_or(|value| value.is_object() && value.to_string().len() <= 64 * 1024)
+}
 
 /// The lifecycle state of one transformer document in the selected project.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -1778,4 +1883,56 @@ fn unreadable() -> ClientError {
         ErrorKind::UnreadableResponse,
         "the response is outside the closed project report contract",
     )
+}
+
+#[cfg(test)]
+mod composition_tests {
+    use super::*;
+    use serde_json::json;
+    #[test]
+    fn archive_catalog_retains_server_authoring_json_and_does_not_invent_legacy_recipes() {
+        let response = |body: Value| TransportResponse {
+            status: 200,
+            body: serde_json::to_vec(&body).unwrap(),
+        };
+        let template = json!({"schema":"ds.compounded-report/v1","transformers":[],
+            "archive_layout":{"group_depth":null,"transformer_folders":true,"combine_per_group":false},"force":false});
+        let schema = json!({"type":"object","additionalProperties":false});
+        let read = decode_compounded_list(response(json!({"compounded_reports":[],"composition_template":template,"composition_schema":schema})), 1_000_000).unwrap();
+        assert!(read.is_empty());
+        assert_eq!(read.composition_template(), Some(&template));
+        assert_eq!(read.composition_schema(), Some(&schema));
+        let legacy =
+            decode_compounded_list(response(json!({"compounded_reports":[]})), 1_000_000).unwrap();
+        assert_eq!(legacy.composition_template(), None);
+        assert_eq!(legacy.composition_schema(), None);
+        for malformed in [json!([]), json!("x".repeat(65536))] {
+            assert!(decode_compounded_list(
+                response(json!({"compounded_reports":[],"composition_template":malformed})),
+                1_000_000
+            )
+            .is_err());
+        }
+    }
+    #[test]
+    fn json_composition_is_nested_under_the_captured_project_and_action() {
+        let composition = json!({"schema":"ds.compounded-report/v1","transformers":["tx_a"],
+            "archive_layout":{"group_depth":null,"transformer_folders":true,"combine_per_group":false},
+            "force":false});
+        let request = CompoundedReportRequest::from_composition(composition.clone()).unwrap();
+        let body: Value =
+            serde_json::from_slice(&ProjectReportOperation::Compounded(&request).body("project_a"))
+                .unwrap();
+        assert_eq!(body["eds_project_id"], "project_a");
+        assert_eq!(body["action"], "download_transfo");
+        assert_eq!(body["composition"], composition);
+        assert!(body.get("transformers").is_none());
+        assert!(body.get("archive_layout").is_none());
+        assert!(body.get("force").is_none());
+        assert!(CompoundedReportRequest::from_composition(json!([])).is_err());
+        assert!(CompoundedReportRequest::from_composition(
+            json!({"transformers":["combined_transformer"]})
+        )
+        .is_err());
+    }
 }

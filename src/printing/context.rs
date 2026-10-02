@@ -83,7 +83,7 @@ pub fn derived_layers() -> Vec<PrintContextLayer> {
     vec![
         PrintContextLayer {
             id: "project_dsgrid_mv".into(),
-            label: "Proposed MV · project DS Grid models".into(),
+            label: "MV · project DS Grid models".into(),
             source: PrintContextSource::ProjectDsgridMv {
                 buffer_m: DERIVED_BUFFER_M,
                 corridor: Some(default_corridor()),

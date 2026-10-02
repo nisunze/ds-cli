@@ -105,6 +105,56 @@ This scope does not authorize generating a future BOQ or changing quantities.
 
 ## Canonical next-export defaults
 
+### Network hierarchy
+
+Printing keeps three independent facts: **role**, **lifecycle**, and **scope**.
+MV and LV conductors remain different layers and pens. Transformers, main LV
+circuits, service connections, customers and poles each retain their governed
+symbol, casing, dimensions and line pattern. The presence of a new transformer
+does not make its connected LV lines, poles or customers new. A neighbouring
+network is context, not evidence that it is existing. A model or survey source
+does not establish an asset's lifecycle.
+
+| Fact | Authority | Print behaviour |
+|---|---|---|
+| MV versus LV and asset role | Canonical source layer and its governed print style | Separate line/symbol semantics; never classify ABC as a service cable |
+| Proposed versus existing | The feature's explicit `existing_status` (`new`, `existing`) | Independent categorical colours; preserve component-level `existing_status_detail` |
+| Absent or other lifecycle value | The unchanged source value | Explicit unclassified fallback; never infer from ownership or map proximity |
+| Focus versus neighbouring context | Exact transformer identity and saved room version | Focus stays primary; neighbouring circuits render underneath with subdued pens |
+| Engineering verdict and quantities | The pinned producer run for the selected scope | No verdict or schedule inheritance from visible context |
+
+`PrintStyleOverride.palette_fallback` sets the colour for an unknown category
+without flattening a palette. It requires a palette; `color` and `palette`
+remain mutually exclusive. Absent fallback preserves existing documents'
+governed fallback. `color_scope: "body_and_boundary"` applies the effective
+colour and opacity to an existing outline/casing without changing its width,
+icon, coordinates or line pattern. The default `body` preserves legacy pens.
+The renderer and legend use the same resolved style document.
+
+`set_adjacent_networks` atomically binds all five neighbouring roles to their
+governed print references. Empty `style_refs` selects the role-specific
+`print_context/print_context_existing_new_v1_<role>_print` seeds;
+an explicit map must name exactly `tr`, `lv_lines`, `service_cables`, `customers`
+and `lv_poles`. Its optional closed `ds.adjacent-print-hierarchy/v1` policy
+contains proposed, existing and unclassified colours plus opacity. When absent,
+the named governed style owns those values; the kernel does not replace them
+with a hard-coded palette. Brain packages the versioned create-only starter
+registry and exposes it in Style Center through the existing seed/print-clone
+commands. Existing authored screen, tile and print documents are preserved.
+Client palettes replace the starter through a governed print-style edit or an
+explicit project-local policy. No client-specific blue becomes global. Every
+render receipt pins the exact effective styles and source revisions.
+
+Context keeps the fields read by effective governed symbols and lifecycle pens.
+Customer/line/pole labels are hidden; transformer identities can remain labelled.
+It reads all active, checksum-verified saved rooms once and clips their exact
+geometry to the focused viewport, including edge-crossing circuits whose
+transformer is outside it. It does not widen the focused camera, alter topology
+or import context into quantities, customer schedules or electrical reports.
+Held preview uses the same projection and explicitly names unavailable context.
+Partial context pen sets, wrong ownership, missing style documents and incomplete
+rosters refuse rather than silently guessing.
+
 Published global samples and project-adopted revisions are the starting point,
 not an LLM's last temporary recipe. Keep MV front matter, ordered pages, issue
 fields and general presentation in the same project printing library, editable

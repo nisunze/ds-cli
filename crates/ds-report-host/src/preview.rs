@@ -616,6 +616,8 @@ pub fn execute(
     let mut kernel_refusal: Option<printing::preview::Refusal> = None;
     let mut reasons: Vec<(String, String)> = Vec::new();
     let mut wanted_layers: Vec<PrintContextLayer> = Vec::new();
+    let adjacent = printing::adjacent_networks::selected(&request.layout);
+    let mut adjacent_omission = None;
     let outcome = transformer_page(engine, settings, &held.room, &request.layout, |wanted| {
         wanted_layers = wanted.to_vec();
         match preview_context(
@@ -637,7 +639,61 @@ pub fn execute(
                             .map(|omission| (omission.layer.clone(), omission.reason.clone())),
                     );
                 }
-                Ok(context_bytes(context))
+                let context = context_bytes(context);
+                if !adjacent {
+                    return Ok(context);
+                }
+                // Both native hosts read the same account/project hold. A
+                // draft never fetches unheld rooms or silently prints a subset.
+                let rooms = match &held.context.holdings {
+                    Some(holdings) if holdings.scope.project == settings.project_id => {
+                        ds_project_data::room_hold::active_print_rooms(
+                            &holdings.root,
+                            &holdings.scope,
+                        )
+                    }
+                    _ => Err("no project holdings root on this host".into()),
+                };
+                let rooms = match rooms {
+                    Ok(rooms) => rooms,
+                    Err(reason) => {
+                        adjacent_omission = Some(reason);
+                        return Ok(context);
+                    }
+                };
+                let document = context
+                    .as_ref()
+                    .map(|c| serde_json::from_slice::<Value>(&c.bytes))
+                    .transpose()
+                    .map_err(|e| inputs_invalid(e.to_string()))?;
+                let doc = printing::adjacent_networks::attach(
+                    &request.transformer,
+                    &rooms,
+                    document.as_ref(),
+                    &printing::adjacent_networks::required_fields(
+                        std::slice::from_ref(&request.layout),
+                        &settings.receipt.sheets().map_err(inputs_invalid)?["printing_styles"],
+                    )
+                    .map_err(inputs_invalid)?,
+                )
+                .map_err(inputs_invalid)?;
+                let Some(doc) = doc else {
+                    return Ok(context);
+                };
+                let layers: BTreeMap<String, Value> = serde_json::from_value(doc["layers"].clone())
+                    .map_err(|e| inputs_invalid(e.to_string()))?;
+                let bytes = report_export::print_context_document(
+                    &doc["coverage"],
+                    &doc["sources"],
+                    &layers,
+                )
+                .map_err(inputs_invalid)?;
+                Ok(Some(PrintContextBytes {
+                    sha256: report_export::sha256_hex(&bytes),
+                    bytes,
+                    layers: layers.into_keys().collect(),
+                    omitted: context.map_or_else(Vec::new, |c| c.omitted),
+                }))
             }
             Err(PreviewContextRefusal::Kernel(refusal)) => {
                 let failure = inputs_invalid(kernel_message(&refusal));
@@ -654,6 +710,17 @@ pub fn execute(
         (Err(failure), None) => return Err(PreviewRefusal::Host(failure)),
         (Ok(page), _) => page,
     };
+    if let Some(reason) = adjacent_omission {
+        page.context_omitted
+            .extend(
+                printing::adjacent_networks::LAYERS
+                    .into_iter()
+                    .map(|(_, id)| ContextOmission {
+                        layer: id.into(),
+                        reason: reason.clone(),
+                    }),
+            );
+    }
     // The resolver's reason for a layer it omitted is what the sheet shows
     // beside it: named by any of the ids the draft layer prints as.
     for omission in &mut page.context_omitted {

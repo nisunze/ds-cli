@@ -812,6 +812,13 @@ pub fn merge(request: MergeRequest) -> Result<Merged, String> {
 /// `concat`, an `icon-image`, a second categorical dimension's halo or a
 /// filter. The walk is generic on purpose — parsing only the shapes today's
 /// emitters produce would silently drop a field and paint the layer wrong.
+/// Fields read by a resolved style; shared by screen and print projections.
+pub fn referenced_fields(document: &Value) -> BTreeSet<String> {
+    let mut fields = BTreeSet::new();
+    collect_fields(document, &mut fields);
+    fields
+}
+
 fn collect_fields(document: &Value, into: &mut BTreeSet<String>) {
     match document {
         Value::Array(items) => {

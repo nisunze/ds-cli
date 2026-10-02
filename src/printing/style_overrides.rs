@@ -41,7 +41,12 @@ pub fn apply(document: &Value, change: &PrintStyleOverride, paper: &str) -> Resu
         for (value, color) in &change.palette {
             expression.extend([json!(value), json!(color)]);
         }
-        expression.push(original);
+        expression.push(
+            change
+                .palette_fallback
+                .as_ref()
+                .map_or(original, |c| json!(c)),
+        );
         style["paint"][color] = json!(expression);
     }
     if let Some(value) = change.size {
@@ -89,6 +94,26 @@ pub fn apply(document: &Value, change: &PrintStyleOverride, paper: &str) -> Resu
     }
     if let Some(value) = change.opacity {
         style["paint"][opacity] = json!(value);
+    }
+    if change.color_scope == super::PrintColorScope::BodyAndBoundary
+        && style["boundary"].is_object()
+    {
+        let boundary_type = style["boundary"]["type"].as_str().unwrap_or("line");
+        let (boundary_color, boundary_opacity) = match boundary_type {
+            "line" => ("line-color", "line-opacity"),
+            "circle" => ("circle-color", "circle-opacity"),
+            "fill" => ("fill-color", "fill-opacity"),
+            "symbol" => ("icon-color", "icon-opacity"),
+            _ => {
+                return Err("boundary recolouring needs a supported governed geometry style".into())
+            }
+        };
+        if change.color.is_some() || !change.palette.is_empty() {
+            style["boundary"]["paint"][boundary_color] = style["paint"][color].clone();
+        }
+        if let Some(value) = change.opacity {
+            style["boundary"]["paint"][boundary_opacity] = json!(value);
+        }
     }
     if let Some(label) = &change.label {
         use crate::print_scaling::{scaling_from_style, PrintUnits};
@@ -181,11 +206,13 @@ pub fn usable(
     let palette = PrintStyleOverride {
         color: kept.color.clone(),
         palette: kept.palette.clone(),
+        palette_fallback: kept.palette_fallback.clone(),
         field: kept.field.clone(),
         ..only()
     };
     if let Some(part) = refused("palette", !kept.palette.is_empty(), palette) {
         kept.palette.clear();
+        kept.palette_fallback = None;
         skipped.push(part);
     }
     let size = PrintStyleOverride {

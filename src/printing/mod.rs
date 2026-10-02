@@ -1,5 +1,6 @@
 //! Print-layout authority shared by CLI, Canvas2D preview and vector delivery.
 //! Flat page elements in physical millimetres; no tile, HTML or remote-image IO.
+pub mod adjacent_networks;
 pub mod context;
 pub mod custom;
 pub mod diagnostics;
@@ -21,6 +22,7 @@ pub mod project_sources;
 pub mod session;
 pub mod sheet_margin;
 pub mod sheet_status;
+pub mod structure_descriptions;
 pub mod style_overrides;
 pub mod table_columns;
 pub mod table_headings;
@@ -128,6 +130,12 @@ pub struct PrintStyleOverride {
     pub opacity: Option<f64>,
     #[serde(default)]
     pub palette: BTreeMap<String, String>,
+    /// Explicit colour for absent/unrecognised categories; otherwise inherit the governed fallback.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub palette_fallback: Option<String>,
+    /// Recolour an existing casing/outline together with the body, retaining its geometry and width.
+    #[serde(default, skip_serializing_if = "PrintColorScope::is_body")]
+    pub color_scope: PrintColorScope,
     /// Optional explicit category field for palette and size overrides.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub field: Option<String>,
@@ -138,6 +146,18 @@ pub struct PrintStyleOverride {
     pub scale_weight: Option<PrintPenScale>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub label: Option<PrintLabelOverride>,
+}
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum PrintColorScope {
+    #[default]
+    Body,
+    BodyAndBoundary,
+}
+impl PrintColorScope {
+    fn is_body(&self) -> bool {
+        *self == Self::Body
+    }
 }
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
 #[serde(deny_unknown_fields)]
@@ -861,6 +881,7 @@ fn no_stroke_or_bounded(value: f64, low: f64, high: f64) -> bool {
     value == 0. || bounded(value, low, high)
 }
 pub fn validate(layout: &Layout) -> Result<(), String> {
+    adjacent_networks::validate_selection(layout)?;
     if let Some(mv) = &layout.mv {
         mv::validate_template(layout, mv).map_err(|e| e.to_string())?;
     }
@@ -1217,6 +1238,9 @@ pub fn validate(layout: &Layout) -> Result<(), String> {
                     .any(|(key, size)| key.len() > 160 || !bounded(*size, 0., 48.))
                 || o.palette.len() > 128
                 || o.palette.iter().any(|(k, v)| k.len() > 160 || !color(v))
+                || o.palette_fallback
+                    .as_ref()
+                    .is_some_and(|c| o.palette.is_empty() || !color(c))
                 || (o.color.is_some() && !o.palette.is_empty())
         })
     {
@@ -1953,6 +1977,16 @@ pub enum Command {
         network_fit: Option<network_fit::NetworkFit>,
         scale_limits: Option<network_fit::ScaleLimits>,
     },
+    /// Configure print-only neighbouring circuits beneath the focused network,
+    /// preserving each role's governed symbol and explicit lifecycle palette.
+    SetAdjacentNetworks {
+        layout: Layout,
+        enabled: bool,
+        #[serde(default)]
+        style_refs: BTreeMap<String, String>,
+        #[serde(default)]
+        policy: Option<adjacent_networks::Policy>,
+    },
     /// Toggle the configured project transformer shade without changing its style.
     SetFocusVisibility {
         layout: Layout,
@@ -2612,6 +2646,14 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
         Command::SheetFrames { layout } => {
             let layout = upgrade(layout)?;
             json!({"map_space": frames::hierarchy(&layout)})
+        }
+        Command::SetAdjacentNetworks {
+            layout,
+            enabled,
+            style_refs,
+            policy,
+        } => {
+            json!({"layout": adjacent_networks::configure(upgrade(layout)?, enabled, style_refs, policy)?})
         }
         Command::SetContextLayers {
             mut layout,
@@ -3442,7 +3484,8 @@ mod tests {
             refusal(&scale_text),
             "text title binding {scale} needs a map frame; layout atlas-front-matter has none"
         );
-        let options: [(&str, fn(&mut Layout)); 6] = [
+        type LayoutMutation = (&'static str, fn(&mut Layout));
+        let options: [LayoutMutation; 6] = [
             ("a focus area", |l| {
                 l.focus = Some(
                     serde_json::from_value(json!({"buffer_m":50.,"outside_color":"#ffffff",

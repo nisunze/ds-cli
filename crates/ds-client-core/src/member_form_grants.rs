@@ -43,6 +43,9 @@ pub struct GrantResult {
     pub current_version: u64,
 }
 #[derive(Debug, Clone, PartialEq, Eq)]
+// Preserve the public by-value Apply plan; changing it to Box would force an
+// unrelated caller migration for this infrequent, bounded request.
+#[allow(clippy::large_enum_variant)]
 pub enum Request {
     Read {
         member: String,

@@ -383,6 +383,7 @@ dependencies = [
 name = "ds-geo-ops"
 version = "0.1.0"
 dependencies = [
+ "ds-geo-lite",
  "rstar",
 ]
 
