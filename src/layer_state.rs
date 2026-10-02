@@ -197,7 +197,13 @@ pub struct Order {
 enum Op {
     /// Normalize one runtime stack: boundary/casing below its primary,
     /// marker and label above. Unrelated families retain their relative order.
-    StackOrder { ids: Vec<String> },
+    StackOrder {
+        ids: Vec<String>,
+        /// Default screen priorities at mount; temporary foregrounding keeps
+        /// the caller's primary order and normalizes companions only.
+        #[serde(default)]
+        presentation: bool,
+    },
     /// Identity of every document layer, plus the suffix-only role of any
     /// further runtime ids the host names.
     Classify {
@@ -1250,7 +1256,7 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
         return Err(format!("unsupported layer state schema; expected {SCHEMA}"));
     }
     let value = match &request.op {
-        Op::StackOrder { ids } => {
+        Op::StackOrder { ids, presentation } => {
             if let (Some(project), Some(document)) =
                 (request.project.as_deref(), request.document.as_ref())
             {
@@ -1260,7 +1266,7 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
                     );
                 }
             }
-            json!({"ids": stack_order(ids,request.document.as_ref())?})
+            json!({"ids": stack_order(ids,request.document.as_ref(),*presentation)?})
         }
         Op::Fold { values } => {
             if values.len() > MAX_LAYERS {
@@ -1359,7 +1365,44 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
     serde_json::to_string(&value).map_err(|error| error.to_string())
 }
 
-fn stack_order(ids: &[String], document: Option<&Document>) -> Result<Vec<String>, String> {
+fn presentation_tier(row: &LayerRow) -> i64 {
+    match row.metadata["layer_class"].as_str().unwrap_or("") {
+        "global_layer" => {
+            let reference = row.style_ref.as_str().unwrap_or("");
+            if matches!(
+                reference,
+                "gt/lv_line"
+                    | "gt/lv_pole"
+                    | "gt/mv_line"
+                    | "gt/mv_pole"
+                    | "gt/hv_line"
+                    | "gt/hv_tower"
+                    | "gt/transformer"
+                    | "gt/substation"
+                    | "gt/mv_switching"
+                    | "gt/production_point"
+                    | "gt/power_plant"
+            ) {
+                3
+            } else {
+                0
+            }
+        }
+        "survey_tile" => 1,
+        "survey" => 2,
+        "design_tile" => 4,
+        "design" => 5,
+        "user_data" => 6,
+        "project_data" => 7,
+        _ => 8,
+    }
+}
+
+fn stack_order(
+    ids: &[String],
+    document: Option<&Document>,
+    presentation: bool,
+) -> Result<Vec<String>, String> {
     if ids.len() > MAX_LAYERS || ids.iter().any(|id| !valid_runtime_id(id)) {
         return Err("runtime stack ids exceed their bounds".into());
     }
@@ -1381,8 +1424,34 @@ fn stack_order(ids: &[String], document: Option<&Document>) -> Result<Vec<String
                 .collect()
         })
         .unwrap_or_default();
+    let rows: HashMap<&str, &LayerRow> = document
+        .map(|doc| {
+            doc.layers
+                .iter()
+                .map(|row| (row.id.as_str(), row))
+                .collect()
+        })
+        .unwrap_or_default();
+    let primaries: Vec<&LayerRow> = anchors
+        .keys()
+        .filter_map(|id| rows.get(id).copied())
+        .collect();
+    // Older servers erased default-vs-saved order provenance. Never guess
+    // there: their incoming primary order remains authoritative. New servers
+    // emit null for a default and an integer for an operator's saved order.
+    let governed = presentation
+        && !primaries.is_empty()
+        && primaries.iter().all(|row| {
+            row.metadata
+                .as_object()
+                .is_some_and(|metadata| metadata.contains_key("user_order"))
+        });
+    let saved = governed
+        && primaries
+            .iter()
+            .any(|row| row.metadata["user_order"].as_i64().is_some());
     let mut seen = HashSet::new();
-    let mut ordered: Vec<(usize, u8, usize, String)> = ids
+    let mut ordered: Vec<(i64, i64, usize, u8, usize, String)> = ids
         .iter()
         .enumerate()
         .filter(|(_, id)| seen.insert(id.as_str()))
@@ -1401,16 +1470,78 @@ fn stack_order(ids: &[String], document: Option<&Document>) -> Result<Vec<String
                 Role::Companion => 3,
                 Role::Label => 4,
             };
-            (anchors[strip_companion_suffix(id)], rank, index, id.clone())
+            let anchor = anchors[strip_companion_suffix(id)];
+            let (priority, order) = if governed {
+                if let Some(row) = rows.get(strip_companion_suffix(id)) {
+                    let order = row.metadata["order"].as_i64().unwrap_or(anchor as i64);
+                    if saved {
+                        (order, 0)
+                    } else {
+                        let geometry = match row.kind.as_str() {
+                            "fill" | "fill-extrusion" => 0,
+                            "line" => 1,
+                            _ => 2,
+                        };
+                        (presentation_tier(row) * 100 + geometry, order)
+                    }
+                } else {
+                    (800, anchor as i64)
+                }
+            } else {
+                (anchor as i64, 0)
+            };
+            (priority, order, anchor, rank, index, id.clone())
         })
         .collect();
-    ordered.sort_by_key(|(anchor, rank, index, _)| (*anchor, *rank, *index));
-    Ok(ordered.into_iter().map(|(_, _, _, id)| id).collect())
+    ordered.sort_by_key(|(priority, order, anchor, rank, index, _)| {
+        (*priority, *order, *anchor, *rank, *index)
+    });
+    Ok(ordered.into_iter().map(|(_, _, _, _, _, id)| id).collect())
 }
 
 #[cfg(test)]
 mod stacking_tests {
     use super::*;
+    #[test]
+    fn screen_mount_priorities_preserve_explicit_order_and_old_server_authority() {
+        let rows = [
+            (
+                "snapshot",
+                "circle",
+                "design_tile",
+                "master/lv_poles_vt",
+                230,
+            ),
+            ("live", "line", "design", "master/lv_lines", 110),
+            ("survey", "circle", "survey", "edcl_customers_survey", 200),
+            ("existing", "line", "global_layer", "gt/mv_line", 100),
+            ("reference", "fill", "global_layer", "gt/landform", 0),
+        ];
+        let ids: Vec<String> = rows.iter().map(|row| row.0.into()).collect();
+        let mut raw = json!({"project_id":"p","layers":rows.iter().map(|(id,kind,class,reference,order)| json!({"id":id,"type":kind,"style_ref":reference,"metadata":{"layer_class":class,"order":order,"user_order":null}})).collect::<Vec<_>>()});
+        let document: Document = serde_json::from_value(raw.clone()).unwrap();
+        assert_eq!(
+            stack_order(&ids, Some(&document), true).unwrap(),
+            vec!["reference", "survey", "existing", "snapshot", "live"]
+        );
+        assert_eq!(stack_order(&ids, Some(&document), false).unwrap(), ids);
+        // A saved operator order is absolute across presentation tiers;
+        // unedited rows retain their effective order alongside it.
+        raw["layers"][3]["metadata"]["user_order"] = json!(999);
+        raw["layers"][3]["metadata"]["order"] = json!(999);
+        let saved: Document = serde_json::from_value(raw.clone()).unwrap();
+        assert_eq!(
+            stack_order(&ids, Some(&saved), true).unwrap(),
+            vec!["reference", "live", "survey", "snapshot", "existing"]
+        );
+        // Older catalogues never declared provenance: preserve their array.
+        raw["layers"][0]["metadata"]
+            .as_object_mut()
+            .unwrap()
+            .remove("user_order");
+        let legacy: Document = serde_json::from_value(raw).unwrap();
+        assert_eq!(stack_order(&ids, Some(&legacy), true).unwrap(), ids);
+    }
     #[test]
     fn casing_stays_under_primary_on_fresh_mount_and_refetch() {
         for ids in [
@@ -1432,7 +1563,7 @@ mod stacking_tests {
             ],
         ] {
             let ids: Vec<String> = ids.into_iter().map(str::to_owned).collect();
-            let ordered = stack_order(&ids, None).unwrap();
+            let ordered = stack_order(&ids, None, false).unwrap();
             assert_eq!(
                 ordered,
                 vec![
@@ -1444,15 +1575,20 @@ mod stacking_tests {
                     "mv"
                 ]
             );
-            assert_eq!(stack_order(&ordered, None).unwrap(), ordered);
+            assert_eq!(stack_order(&ordered, None, false).unwrap(), ordered);
         }
-        assert!(stack_order(&[" invalid".into()], None).is_err());
+        assert!(stack_order(&[" invalid".into()], None, false).is_err());
         let document: Document = serde_json::from_value(
             json!({"project_id":"p","layers":[{"id":"park","type":"fill"}]}),
         )
         .unwrap();
         assert_eq!(
-            stack_order(&["park__boundary".into(), "park".into()], Some(&document)).unwrap(),
+            stack_order(
+                &["park__boundary".into(), "park".into()],
+                Some(&document),
+                false
+            )
+            .unwrap(),
             vec!["park", "park__boundary"]
         );
     }
