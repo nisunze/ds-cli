@@ -524,7 +524,6 @@ dependencies = [
  "base64",
  "delaunator",
  "ds-geo",
- "ds-geo-ops",
  "ds-graph",
  "ds-grid-physics",
  "encoding_rs",

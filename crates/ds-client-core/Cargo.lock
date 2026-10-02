@@ -425,7 +425,6 @@ dependencies = [
  "ds-graph",
  "ds-profile",
  "rayon",
- "regex",
  "rstar",
  "serde",
  "serde_json",
