@@ -12980,8 +12980,8 @@ fn native_lv_save_atomically_sends_exact_analysis_and_refuses_replaced_readback(
     let context = |layers: &std::collections::BTreeMap<String, serde_json::Value>,
                    version,
                    receipt: serde_json::Value| {
-        serde_json::to_vec(&json!({"total":1,"found_count":1,"failed_count":0,"results":[{"transformer_name":"T1","ok":true,
-            "data":{"layers":layers,"metadata":{"version":version,"content_digest":layers_content_digest(layers).unwrap()},"voltage_drop_metadata":receipt}}]})).unwrap()
+        serde_json::to_vec(&json!({"success":true,"data":{"total":1,"found_count":1,"failed_count":0,"results":[{"transformer_name":"T1","ok":true,
+            "data":{"layers":layers,"metadata":{"version":version,"content_digest":layers_content_digest(layers).unwrap()},"voltage_drop_metadata":receipt}}]}})).unwrap()
     };
     for replace_readback in [false, true] {
         let transport = FixtureTransport::with_sign_in(SIGN_IN);
@@ -13543,6 +13543,7 @@ fn compounded_archive_layout_refuses_malformed_generic_knobs() {
             .unwrap_err();
         assert_eq!(error.kind(), ErrorKind::UnreadableResponse, "{layout}");
     }
+}
 
 #[test]
 fn survey_delete_captures_project_and_stops_after_a_partially_acknowledged_plan() {
