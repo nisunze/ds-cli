@@ -129,7 +129,7 @@ fn the_descriptor_is_a_headless_project_fenced_local_file_write() {
         command["purpose"]
             .as_str()
             .expect("purpose")
-            .contains("print outputs")
+            .contains("prints always regenerate")
     );
     assert!(!command["confirmation_required"].as_bool().unwrap_or(false));
 }

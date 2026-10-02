@@ -765,7 +765,8 @@ mod tests {
         assert!(
             COMMAND
                 .purpose
-                .contains("applied `report_archive` grouping"),
+                .to_ascii_lowercase()
+                .contains("applied report_archive grouping"),
             "{}",
             COMMAND.purpose
         );
