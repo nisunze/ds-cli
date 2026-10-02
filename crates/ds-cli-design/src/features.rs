@@ -458,6 +458,7 @@ fn selector(inputs: &Inputs) -> Result<FeatureSelector, Failure> {
         bbox,
         ids: inputs.repeated("id").to_vec(),
         sample,
+        region: None,
     })
 }
 
