@@ -1,6 +1,6 @@
 //! Template-local pens inherit symbols and categories from governed shared styles.
 use super::{Layout, PrintStyleOverride};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 pub fn apply(document: &Value, change: &PrintStyleOverride, paper: &str) -> Result<Value, String> {
     if let Some(policy) = &change.scale_weight {
@@ -105,7 +105,7 @@ pub fn apply(document: &Value, change: &PrintStyleOverride, paper: &str) -> Resu
             "fill" => ("fill-color", "fill-opacity"),
             "symbol" => ("icon-color", "icon-opacity"),
             _ => {
-                return Err("boundary recolouring needs a supported governed geometry style".into())
+                return Err("boundary recolouring needs a supported governed geometry style".into());
             }
         };
         if change.color.is_some() || !change.palette.is_empty() {
@@ -116,7 +116,7 @@ pub fn apply(document: &Value, change: &PrintStyleOverride, paper: &str) -> Resu
         }
     }
     if let Some(label) = &change.label {
-        use crate::print_scaling::{scaling_from_style, PrintUnits};
+        use crate::print_scaling::{PrintUnits, scaling_from_style};
         if !style["label"].is_object() {
             if label.visible == Some(false) {
                 return Ok(style);
@@ -257,6 +257,36 @@ pub fn usable(
     }
 }
 
+/// Capture the governed document's optical policy into the same declarative
+/// override used by map strokes and legend samples. Explicit template policy
+/// wins; no geometry, style identity or pen value is selected here.
+pub fn inherit_scale_policy(
+    document: &Value,
+    change: &PrintStyleOverride,
+) -> Result<PrintStyleOverride, String> {
+    let Some(value) = document["metadata"].get("scale_weight") else {
+        return Ok(change.clone());
+    };
+    let policy: super::PrintPenScale = serde_json::from_value(value.clone())
+        .map_err(|e| format!("invalid governed scale_weight: {e}"))?;
+    policy.factor(policy.reference_denominator)?;
+    if change.scale_weight.is_some() {
+        return Ok(change.clone());
+    }
+    if document["type"] != "line" {
+        return Err("governed scale_weight requires a line document".into());
+    }
+    let mut resolved = change.clone();
+    resolved.size = resolved
+        .size
+        .or_else(|| document["paint"]["line-width"].as_f64());
+    if resolved.size.is_none() {
+        return Err("governed scale_weight needs a scalar line-width or an explicit declarative base-size override; categorical or zoom width expressions are preserved".into());
+    }
+    resolved.scale_weight = Some(policy);
+    Ok(resolved)
+}
+
 /// Resolve once at the fitted/explicit map scale, shared by map strokes and legend samples.
 pub fn at_scale(
     change: &PrintStyleOverride,
@@ -306,6 +336,29 @@ mod tests {
         assert!(apply(&json!({"type":"circle","paint":{}}), &change, "print_a3").is_err());
     }
     #[test]
+    fn governed_scale_policy_reaches_shared_stroke_and_legend_path() {
+        let document = json!({"type":"line","paint":{"line-width":2.5,"line-color":"#123456"},"metadata":{"scale_weight":{"reference_denominator":10000.,"min_factor":0.7,"max_factor":1.5}}});
+        let inherited = inherit_scale_policy(&document, &PrintStyleOverride::default()).unwrap();
+        let distant = at_scale(&inherited, 40000.).unwrap();
+        assert_eq!(
+            apply(&document, &distant, "A3").unwrap()["paint"]["line-width"],
+            1.75
+        );
+        assert_eq!(document["paint"]["line-width"], 2.5);
+        let explicit:PrintStyleOverride=serde_json::from_value(json!({"size":4.,"scale_weight":{"reference_denominator":10000.,"min_factor":1.,"max_factor":1.}})).unwrap();
+        assert_eq!(
+            inherit_scale_policy(&document, &explicit).unwrap(),
+            explicit
+        );
+        let mut categorical = document.clone();
+        categorical["paint"]["line-width"] = json!(["match", ["get", "cable"], "a", 2, 1]);
+        assert!(
+            inherit_scale_policy(&categorical, &PrintStyleOverride::default())
+                .unwrap_err()
+                .contains("scalar")
+        );
+    }
+    #[test]
     fn hiding_absent_labels_is_a_no_op_but_authoring_needs_a_definition() {
         let base = json!({"type":"symbol", "layout":{"icon-image":"school"}, "paint":{}});
         let hidden: PrintStyleOverride =
@@ -313,9 +366,11 @@ mod tests {
         assert_eq!(apply(&base, &hidden, "print_a3").unwrap(), base);
         let visible: PrintStyleOverride =
             serde_json::from_value(json!({"label":{"visible":true}})).unwrap();
-        assert!(apply(&base, &visible, "print_a3")
-            .unwrap_err()
-            .contains("governed label"));
+        assert!(
+            apply(&base, &visible, "print_a3")
+                .unwrap_err()
+                .contains("governed label")
+        );
     }
 
     #[test]
@@ -431,9 +486,11 @@ mod tests {
         let (kept, skipped) = usable(&raster, &sized, "print_a3");
         assert_eq!(kept, PrintStyleOverride::default());
         assert_eq!(skipped[0].part, "override");
-        assert!(skipped[0]
-            .reason
-            .contains("supported governed geometry style"));
+        assert!(
+            skipped[0]
+                .reason
+                .contains("supported governed geometry style")
+        );
     }
 
     #[test]
@@ -448,8 +505,10 @@ mod tests {
         let documents = json!({"master/lv_lines_print":
             {"type":"line","paint":{"line-color":"#1F4E79","line-width":1.5}}});
         preflight(&layout, &documents).unwrap();
-        assert!(preflight(&layout, &json!({}))
-            .unwrap_err()
-            .contains("is not prepared"));
+        assert!(
+            preflight(&layout, &json!({}))
+                .unwrap_err()
+                .contains("is not prepared")
+        );
     }
 }

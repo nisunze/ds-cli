@@ -896,3 +896,13 @@ releasing consumers; authored changes are never overwritten. Immutable source
 versions and backups retain the original tables. Baseline renders use the old
 read-only lane and original documents; branch renders use the migrated governed
 documents. The migration must preserve their page rasters.
+
+A line document may declare `metadata.scale_weight` with the same closed
+`reference_denominator`, `min_factor` and `max_factor` policy as a template
+override. `ResolveStyles` captures that policy and the document's scalar base
+pen into the shared map/legend override path. Explicit template policy wins.
+A categorical or zoom width expression requires an explicit declarative scalar
+base-size override for this optical policy; otherwise preparation refuses by
+layer instead of flattening authored widths. Fonts and table typography remain
+exact fields in the selected governed printing layout; map labels, halos, casing
+and dash patterns remain exact fields in its resolved style documents.

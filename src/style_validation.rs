@@ -109,6 +109,22 @@ fn layer(
             }
         }
     }
+    if document["metadata"].get("print_scaling").is_some() {
+        crate::print_scaling::scaling_from_style(document)
+            .map_err(|e| format!("{path}.metadata.print_scaling: {e}"))?;
+    }
+    if let Some(value) = document["metadata"].get("scale_weight") {
+        let policy: crate::printing::PrintPenScale = serde_json::from_value(value.clone())
+            .map_err(|e| format!("{path}.metadata.scale_weight: {e}"))?;
+        policy
+            .factor(policy.reference_denominator)
+            .map_err(|e| format!("{path}.metadata.scale_weight: {e}"))?;
+        if kind != "line" {
+            return Err(format!(
+                "{path}.metadata.scale_weight: line document required"
+            ));
+        }
+    }
     if let Some(visibility) = document["layout"].get("visibility") {
         if visibility != "visible" && visibility != "none" {
             return Err(format!(
@@ -159,9 +175,11 @@ mod tests {
                 json!(["match", ["get", "kind"], "a", "fallback"]),
             ] {
                 let document = json!({"type": "circle", "label": {"layout": {property: value}}});
-                assert!(validate(&document)
-                    .unwrap_err()
-                    .contains("match needs at least one"));
+                assert!(
+                    validate(&document)
+                        .unwrap_err()
+                        .contains("match needs at least one")
+                );
             }
         }
     }
