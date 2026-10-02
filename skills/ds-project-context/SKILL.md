@@ -1,31 +1,38 @@
 ---
 name: ds-project-context
-description: "Identify or switch the active DS project, discover one narrow command, and return a bounded asset or operation receipt."
+description: "Use the headless DS Server and explicit --project for named status or combined-report requests; Desktop is for map context."
 metadata:
-  ds-chapters: project
-  ds-mcp-profile: project
+  ds-chapters: project, design, reports
 ---
 
-# Select and work in the active DS project
+# Resolve the project context that owns the request
 
 Treat each CLI command as a declarative contract. Do not model its UI, API
 sequence, cache, IndexedDB, Svelte, WASM, or backend implementation.
 
-1. Run `ds desktop status --output json` and use its exact active project. If
-   the user requested another project, or the current project conflicts with
-   their declared scope, discover the project-list and project-switch command
-   descriptors. List bounded visible projects, switch only to the exact id the
-   user intended, then run status again and require the exact resulting id.
-   Never switch projects merely to make a failing command succeed.
+1. Classify the request before resolving a project. A request such as “status
+   of project X” or “combined report” is headless project work: use
+   `ds auth project list` to resolve the exact named id, then pass
+   `--project <exact-id>` on every command. `ds design dashboard` is the
+   headless project status view; Desktop status is not its substitute. Read
+   [background project operations](references/background-project-operations.md)
+   for the report route. For a request that needs a rendered map or explicitly
+   asks to change the paired application's project, use `ds desktop status
+   --output json`; if the user named a different project, discover the live
+   list and switch descriptors, switch only to that exact id, then verify it
+   with status. Never switch projects merely to make a failing command succeed.
 2. When the command is not already known, discover it the way the `ds` skill
    describes: search, then read only that command's descriptor.
+   For MCP, use `ds_catalog` or the broad project, design, or reports chapter
+   router for this workflow. The typed `project` profile does not include
+   `design.dashboard` or report commands; follow `ds-mcp-host` for profile
+   routing.
 3. Invoke the narrowest command and return its bounded result.
 
-Two project contexts exist and they are not the same thing. The paired
-application's visible project (`ds desktop status`) governs every `map.*`
-command that needs a rendered map. Every headless project command takes a
-required `--project` on every request; no command reads a saved selection, so
-never run `ds auth project use` to steer one.
+The paired application's visible project (`ds desktop status`) governs every
+`map.*` command that needs a rendered map. Every headless project command
+takes a required `--project` on every request; no command reads a saved
+selection, so never run `ds auth project use` to steer one.
 Switching one context never switches the other; read the descriptor's
 `authority` and project argument before a durable operation. For the
 background family, read

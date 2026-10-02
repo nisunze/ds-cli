@@ -9,6 +9,23 @@ make a refusal disappear. (There is no cache to
 prepare: the native report path reads rooms from the service, and the former
 `ds design transformer download` was retired on 2026-09-20.)
 
+For “status of project X”, resolve the exact id with `ds auth project list`
+and read `ds design dashboard --project <exact-id> --output json`; this is a
+headless Server read, independent of the paired Desktop project. For a report,
+choose the computation path deliberately: `ds report project compute
+--project <exact-id> --yes --output json` starts individual cloud report
+generation; claim publication only from its returned task/result receipt.
+`ds report project export --project <exact-id> --out-dir
+<directory> --output json` creates local outputs. Drain queued local
+publications with `ds report outbox drain --project <exact-id> --yes --output
+json` before requesting an archive. Preview its scope with `ds report project
+scope --project <exact-id> --output json`, publish with `ds report project
+compounded --project <exact-id> --file-level <transformer|sector|district|root>
+--yes --output json`, then verify the registry with `ds report project
+archives --project <exact-id> --output json`. A Compounded Report is a ZIP
+snapshot, not a standalone combined PDF; `report project combined` is a
+deprecated alias for that ZIP, not a different deliverable.
+
 1. Read the chosen command's descriptor. Resolve the exact project id the
    user named with `ds auth project list` and pass it as `--project <id>`.
    A project id alone is never authority: the gateway rechecks membership on

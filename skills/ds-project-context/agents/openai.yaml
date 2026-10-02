@@ -1,4 +1,4 @@
 interface:
   display_name: "DS Project Context"
-  short_description: "Select a project and work with its assets"
-  default_prompt: "Use $ds-project-context to discover or switch the active DS project, then work with the relevant project-scoped assets."
+  short_description: "Headless project status and reports"
+  default_prompt: "Use $ds-project-context for named-project status or report work through the headless Server, or for map work through the paired Desktop project."
