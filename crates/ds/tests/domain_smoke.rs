@@ -17873,3 +17873,34 @@ fn pls_structure_translate_names_local_models_and_accepts_them_by_quantities() {
     );
     std::fs::remove_dir_all(&root).ok();
 }
+
+#[test]
+fn survey_delete_preview_runs_the_real_kernel_and_admits_no_write() {
+    let root = temp_root("survey-delete-preview");
+    let path = root.join("held.json");
+    std::fs::write(&path, r#"{"rows":[{"form_slug":"edges","feature":{"id":"e","geometry":{"type":"LineString"},"properties":{"connectivity":{"precedent":"n"}}}}]}"#).unwrap();
+    let reply = ok(&[
+        "survey",
+        "entries",
+        "delete-plan",
+        "--project",
+        "p",
+        "--form",
+        "nodes",
+        "--doc-id",
+        "n",
+        "--document",
+        path.to_str().unwrap(),
+        "--idempotency-key",
+        "review",
+        "--now",
+        "2026-10-02T00:00:00Z",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(reply["deleted"], 2);
+    assert_eq!(reply["cascaded_edges"], 1);
+    assert_eq!(reply["authorized"], false);
+    assert_eq!(reply["intents"][1]["payload"]["doc_id"], "e");
+    std::fs::remove_dir_all(root).unwrap();
+}

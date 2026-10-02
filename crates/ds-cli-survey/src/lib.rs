@@ -8,6 +8,7 @@
 
 pub mod changes;
 pub mod create;
+pub mod delete_plan;
 pub mod entries;
 pub mod forms;
 pub mod import;
@@ -65,6 +66,7 @@ pub static DOMAIN: Domain = Domain {
         &local::STATUS_COMMAND,
         &changes::COMMAND,
         &create::COMMAND,
+        &delete_plan::COMMAND,
         &import::COMMAND,
         &migrate::plan::COMMAND,
         &migrate::apply::COMMAND,
