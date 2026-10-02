@@ -33,6 +33,13 @@ malformed request; every refused **answer** is
   project_id`, `available_fields` of strings, a `field_values` object, a bool
   `create_only`. Anything else is `unknown style payload field <k>`. Serialized
   ≤ 2 MiB (`style_authoring::MAX_STYLE_REQUEST_BYTES`).
+- **Direct JSON is kernel validated before preview or publication.** Layer
+  types and object buckets, visibility, zoom bounds and nested companions are
+  checked. Match expressions require complete nonempty branches, distinct
+  homogeneous string/integer labels and a fallback. Literal arrays are data,
+  not expression trees. Hatch recipe fields belong in metadata. Other
+  expression operators and custom metadata pass through unchanged; ds-brain
+  retains complete property/schema validation at publication.
 - **Routing is the editor row's, then the reference's.** `style_save_payload`
   takes target and identity from `/layers.style_editors`. When the row cannot
   route — absent, no `style_target`, or neither `layer_name` nor `slug` — a

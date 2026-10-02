@@ -2034,6 +2034,82 @@
       "expected": {
         "error": "unsupported style document schema; expected ds.style-document/v1"
       }
+    },
+    {
+      "id": "raw_json_refuses_empty_text_field",
+      "why": "Direct JSON cannot preview or publish a match with no branches, including implicit label companions.",
+      "request": {
+        "kind": "save_payload",
+        "snapshot": {
+          "project_id": "p1",
+          "styles": {},
+          "style_editors": [
+            {
+              "style_ref": "master/roads",
+              "style_target": "design",
+              "layer_name": "roads"
+            }
+          ]
+        },
+        "reference": "master/roads",
+        "document": {
+          "type": "line",
+          "paint": {},
+          "label": {
+            "layout": {
+              "text-field": [
+                "match",
+                [
+                  "get",
+                  "kind"
+                ],
+                "fallback"
+              ]
+            }
+          }
+        }
+      },
+      "expected": {
+        "error": "style.label.layout.text-field: match needs at least one label/output pair and a fallback"
+      }
+    },
+    {
+      "id": "raw_json_refuses_empty_icon_image",
+      "why": "Direct JSON cannot preview or publish a match with no branches, including implicit label companions.",
+      "request": {
+        "kind": "save_payload",
+        "snapshot": {
+          "project_id": "p1",
+          "styles": {},
+          "style_editors": [
+            {
+              "style_ref": "master/roads",
+              "style_target": "design",
+              "layer_name": "roads"
+            }
+          ]
+        },
+        "reference": "master/roads",
+        "document": {
+          "type": "line",
+          "paint": {},
+          "label": {
+            "layout": {
+              "icon-image": [
+                "match",
+                [
+                  "get",
+                  "kind"
+                ],
+                "fallback"
+              ]
+            }
+          }
+        }
+      },
+      "expected": {
+        "error": "style.label.layout.icon-image: match needs at least one label/output pair and a fallback"
+      }
     }
   ]
 }

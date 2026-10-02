@@ -1517,6 +1517,7 @@ pub fn server_status_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue>
 }
 
 pub mod style_document;
+mod style_validation;
 #[cfg(feature = "wasm")]
 #[wasm_bindgen::prelude::wasm_bindgen(js_name = styleDocument)]
 pub fn style_document_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
