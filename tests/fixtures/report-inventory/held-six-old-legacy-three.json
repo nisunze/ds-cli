@@ -1,0 +1,179 @@
+{
+  "snapshot": {
+    "owner": "owned-user",
+    "project": "owned-project",
+    "transformer": "fill_in_gishubi",
+    "variant": "default",
+    "expected_input_base_fingerprint": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "local_read": {
+      "state": "ready",
+      "error": null
+    },
+    "sync_read": {
+      "state": "ready",
+      "error": null
+    },
+    "cloud_read": {
+      "state": "ready",
+      "error": null
+    },
+    "local_sets": [
+      {
+        "owner": "owned-user",
+        "project": "owned-project",
+        "transformer": "fill_in_gishubi",
+        "operation": "export-fill_in_gishubi",
+        "variant": "default",
+        "batch_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "client_publish_id": "publish-sep29",
+        "client_run_id": "report-sep29",
+        "engine_release": "ds-network-reporter@0.1.0+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "engine_build_manifest_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "input_base_fingerprint": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "generated_at_ms": 1790640000000,
+        "artifacts": [
+          {
+            "outputId": "shp",
+            "locator": "ds-reporter:v1:0000000000000000000000000000000000000000000000000000000000000001",
+            "filename": "fill_in_gishubi.shp.zip",
+            "format": "shp",
+            "contentType": "application/zip",
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000065",
+            "sizeBytes": 1000
+          },
+          {
+            "outputId": "kmz",
+            "locator": "ds-reporter:v1:0000000000000000000000000000000000000000000000000000000000000002",
+            "filename": "fill_in_gishubi.kmz",
+            "format": "kmz",
+            "contentType": "application/vnd.google-earth.kmz",
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000066",
+            "sizeBytes": 1001
+          },
+          {
+            "outputId": "xlsx",
+            "locator": "ds-reporter:v1:0000000000000000000000000000000000000000000000000000000000000003",
+            "filename": "fill_in_gishubi.xlsx",
+            "format": "xlsx",
+            "contentType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000067",
+            "sizeBytes": 1002
+          },
+          {
+            "outputId": "geojson",
+            "locator": "ds-reporter:v1:0000000000000000000000000000000000000000000000000000000000000004",
+            "filename": "fill_in_gishubi.geojson.zip",
+            "format": "geojsonzip",
+            "contentType": "application/zip",
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000068",
+            "sizeBytes": 1003
+          },
+          {
+            "outputId": "pdf__a3l",
+            "locator": "ds-reporter:v1:0000000000000000000000000000000000000000000000000000000000000005",
+            "filename": "fill_in_gishubi__a3l.pdf",
+            "format": "pdf",
+            "contentType": "application/pdf",
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000069",
+            "sizeBytes": 1004,
+            "paperSize": "A3",
+            "presentation": {
+              "layout_id": "a3l",
+              "layout_name": "A3 landscape",
+              "paper_name": "A3",
+              "orientation": "landscape",
+              "page_mm": [
+                420,
+                297
+              ]
+            }
+          },
+          {
+            "outputId": "pdf__a0l",
+            "locator": "ds-reporter:v1:0000000000000000000000000000000000000000000000000000000000000006",
+            "filename": "fill_in_gishubi__a0l.pdf",
+            "format": "pdf",
+            "contentType": "application/pdf",
+            "sha256": "000000000000000000000000000000000000000000000000000000000000006a",
+            "sizeBytes": 1005,
+            "paperSize": "A0",
+            "presentation": {
+              "layout_id": "a0l",
+              "layout_name": "A0 landscape",
+              "paper_name": "A0",
+              "orientation": "landscape",
+              "page_mm": [
+                1189,
+                841
+              ]
+            }
+          }
+        ]
+      }
+    ],
+    "sync_artifacts": [
+      {
+        "owner": "owned-user",
+        "project": "owned-project",
+        "operation": "export-fill_in_gishubi",
+        "variant": "default",
+        "batch_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "client_publish_id": "publish-sep29",
+        "input_base_fingerprint": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "state": "held",
+        "updated_at_ms": 1790640001000,
+        "reason": null,
+        "outputs": [
+          {
+            "output_id": "shp",
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000065",
+            "size_bytes": 1000
+          },
+          {
+            "output_id": "kmz",
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000066",
+            "size_bytes": 1001
+          },
+          {
+            "output_id": "xlsx",
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000067",
+            "size_bytes": 1002
+          },
+          {
+            "output_id": "geojson",
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000068",
+            "size_bytes": 1003
+          },
+          {
+            "output_id": "pdf__a3l",
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000069",
+            "size_bytes": 1004
+          },
+          {
+            "output_id": "pdf__a0l",
+            "sha256": "000000000000000000000000000000000000000000000000000000000000006a",
+            "size_bytes": 1005
+          }
+        ]
+      }
+    ],
+    "cloud_head": null,
+    "legacy_cloud": {
+      "state": "success",
+      "reported_at_ms": 1781481600000,
+      "files": [
+        "gs://owned-fixture/old.shp.zip",
+        "gs://owned-fixture/old.kmz",
+        "gs://owned-fixture/old.xlsx"
+      ]
+    },
+    "required_outputs": [
+      "shp",
+      "kmz",
+      "xlsx",
+      "geojson",
+      "pdf__a3l",
+      "pdf__a0l"
+    ]
+  }
+}
