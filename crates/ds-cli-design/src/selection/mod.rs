@@ -30,7 +30,6 @@ use ds_cli_contract::spec::{Arg, Refusal};
 use ds_client_core::{
     DesignSelectionAnswer, DesignSelectionRead, DesignSelectionRequest, DesignSelectionSummary,
 };
-use serde_json::{Value, json};
 
 pub mod archive;
 pub mod assign;
