@@ -337,6 +337,14 @@ pub mod reference_cache;
 /// 2026-09-27): what BigQuery's `ST_GEOGFROMGEOJSON` refuses is refused, and
 /// so is a polygon covering half the globe or more. Host crates reach it here.
 pub use ds_geo_lite::admission as geometry_admission;
+pub mod project_lifecycle;
+
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = projectLifecycle)]
+pub fn project_lifecycle_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
+    project_lifecycle::evaluate(input).map_err(|e| wasm_bindgen::JsValue::from_str(&e))
+}
+
 pub mod report;
 pub mod report_export;
 pub mod solar_batch;
