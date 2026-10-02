@@ -120,10 +120,14 @@ Individual LV transformer sheets retain their own categorical engineering
 palette; an MV background treatment never silently replaces it. Project-specific
 parties, logos and contract facts are not global product defaults.
 
-MV structure labels carry the resolved library type's authored full description
-alongside its short code. Placement descriptions are a different field. Wrap
-and paginate complete names; never report an omitted-description count as a
-complete drawing. Special feature markers, captions and clearance hairs start
+MV structure labels use the existing staking table's authored Structure
+Description alongside the existing structure name. A placed description takes
+precedence over the resolved type description, exactly as in staking Excel;
+an explicitly empty placed value does not invent a library fallback. Preserve
+earthing, DOF, transformer and special tags. Derive no extra pole, height,
+material or stay wording in the renderer. Wrap and paginate complete names;
+never report an omitted-description count as a complete drawing. Special
+feature markers, captions and clearance hairs start
 at the admitted ground-offset guide. Native surveyed elevations, clearance
 thresholds, guide gaps and governing calculations remain unchanged.
 
