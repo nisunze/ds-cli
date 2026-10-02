@@ -55,7 +55,6 @@
       "key": "voltage_drop",
       "label": "Voltage Drop",
       "settings": [
-        "calculate_voltage_drop",
         "assign_customer_phases",
         "rebalance_customer_phases"
       ]
@@ -618,18 +617,6 @@
       "default": true,
       "key": "delete_strange_cols",
       "label": "Drop unknown columns"
-    },
-    {
-      "default": true,
-      "key": "calculate_voltage_drop",
-      "label": "Calculate voltage drop",
-      "value_when_hidden": false,
-      "visible_when": [
-        {
-          "equals": true,
-          "key": "build_network"
-        }
-      ]
     },
     {
       "default": true,
