@@ -144,6 +144,7 @@ pub fn read_snapshot(
                         })))
         });
         if let Some(row) = row {
+            let complete_row_pins_match = committed_row_pins_match(&receipt, row);
             snapshot.sync_artifacts.push(SyncArtifact {
                 owner: owner.into(),
                 project: project.into(),
@@ -159,6 +160,16 @@ pub fn read_snapshot(
                 outputs: row
                     .outputs
                     .iter()
+                    // The catalogue trims an older commit to surviving output
+                    // indices. Preserve its state for that exact subset only
+                    // after checking the FULL stored declaration against the
+                    // committed receipt; extra or duplicate pins cannot hide.
+                    .filter(|output| {
+                        !complete_row_pins_match
+                            || artifacts
+                                .iter()
+                                .any(|artifact| artifact.output_id == output.output_id)
+                    })
                     .map(|output| HeadOutput {
                         output_id: output.output_id.clone(),
                         sha256: output.sha256.clone(),
@@ -187,6 +198,22 @@ pub fn read_snapshot(
     // Reuse the portable owner to validate every assembled shape before IPC.
     ds_command_kernel::report::inventory::project(&snapshot)?;
     Ok(snapshot)
+}
+
+fn committed_row_pins_match(receipt: &PublicationBatchReceipt, row: &ArtifactRow) -> bool {
+    let mut ids = std::collections::BTreeSet::new();
+    row.input_base_fingerprint.as_deref() == Some(receipt.input_base_fingerprint.as_str())
+        && row.outputs.len() == receipt.outputs.len()
+        && row.outputs.iter().all(|stored| {
+            ids.insert(&stored.output_id)
+                && receipt.outputs.iter().any(|output| {
+                    stored.output_id == output.output_id
+                        && stored.sha256 == output.sha256
+                        && stored.size_bytes == output.size_bytes
+                        && stored.format == output.format
+                        && stored.content_type == output.content_type
+                })
+        })
 }
 
 #[cfg(test)]
@@ -465,5 +492,112 @@ mod tests {
                 ["outputs"][0]["publication_phase"],
             json!("conflicted")
         );
+    }
+
+    #[test]
+    fn retained_output_subset_keeps_exact_prior_pins_and_current_store_has_one_row() {
+        let fixture = Fixture::new();
+        let artifact_root = fixture.0.join("report-artifacts");
+        let old = commit(&artifact_root, 'a', &["shp", "kmz", "xlsx", "geojson"]);
+        let fence = Fence {
+            account: "owner-1".into(),
+            deployment: "fixture-deployment".into(),
+            install_id: "fixture-install".into(),
+        };
+        let scope = Scope::Project {
+            project: "project-1".into(),
+        };
+        let database = fixture.0.join("store.sqlite");
+        let mut store = ds_sync_store::Store::open(&database).unwrap();
+        assert!(store
+            .apply(&fence, 1, Event::LocalProduced { row: row(&old) })
+            .unwrap()
+            .refusals
+            .is_empty());
+        let first = store.snapshot(&fence, &scope).unwrap().artifacts;
+        let recent = commit(
+            &artifact_root,
+            'b',
+            &["xlsx", "geojson", "pdf__a3l", "pdf__a0l"],
+        );
+        assert!(store
+            .apply(&fence, 2, Event::LocalProduced { row: row(&recent) })
+            .unwrap()
+            .refusals
+            .is_empty());
+        drop(store);
+        let current = ds_sync_store::Store::open_read_only(&database)
+            .unwrap()
+            .unwrap()
+            .snapshot(&fence, &scope)
+            .unwrap()
+            .artifacts;
+        assert_eq!(current.len(), 1);
+        assert_eq!(current[0].client_publish_id, recent.client_publish_id);
+        // Previously observed durable facts may be retained by a host. They
+        // are not invented history in the current canonical Store.
+        let mut retained = first.clone();
+        retained.extend(current.clone());
+        let snapshot =
+            read_snapshot(&artifact_root, "owner-1", "project-1", "tx_1", &retained).unwrap();
+        let view = serde_json::to_value(report::inventory::project(&snapshot).unwrap()).unwrap();
+        let outputs = view["outputs"].as_array().unwrap();
+        assert_eq!(outputs.len(), 6);
+        assert!(outputs
+            .iter()
+            .all(|output| output["publication_phase"] == "queued"));
+        for output in outputs {
+            let prior = matches!(output["output_id"].as_str().unwrap(), "shp" | "kmz");
+            assert_eq!(
+                output["client_publish_id"],
+                if prior {
+                    &old.client_publish_id
+                } else {
+                    &recent.client_publish_id
+                }
+            );
+        }
+        let snapshot =
+            read_snapshot(&artifact_root, "owner-1", "project-1", "tx_1", &current).unwrap();
+        let view = serde_json::to_value(report::inventory::project(&snapshot).unwrap()).unwrap();
+        for output in view["outputs"].as_array().unwrap() {
+            assert_eq!(
+                output["publication_phase"],
+                if matches!(output["output_id"].as_str().unwrap(), "shp" | "kmz") {
+                    "sealed"
+                } else {
+                    "queued"
+                }
+            );
+        }
+        for corrupt in ["duplicate", "unmatched", "foreign"] {
+            let mut rows = retained.clone();
+            match corrupt {
+                "duplicate" => rows[0].outputs[1] = rows[0].outputs[0].clone(),
+                "unmatched" => rows[0].outputs[2].sha256 = "f".repeat(64),
+                _ => rows[0].client_publish_id = "foreign-publication".into(),
+            }
+            match read_snapshot(&artifact_root, "owner-1", "project-1", "tx_1", &rows) {
+                Err(_) => assert_eq!(corrupt, "duplicate"),
+                Ok(snapshot) => {
+                    let view = serde_json::to_value(report::inventory::project(&snapshot).unwrap())
+                        .unwrap();
+                    let old_output = view["outputs"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .find(|output| output["output_id"] == "shp")
+                        .unwrap();
+                    assert_eq!(
+                        old_output["publication_phase"],
+                        if corrupt == "foreign" {
+                            "sealed"
+                        } else {
+                            "evidence_mismatch"
+                        }
+                    );
+                }
+            }
+        }
     }
 }

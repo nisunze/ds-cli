@@ -52,6 +52,15 @@ Historical generation times and ACK work IDs remain null: directory mtime and
 sync state transition times are not generation or acknowledgement authority.
 The Desktop read and background presentation are consumers of this snapshot.
 
+The native catalogue can retain only a subset of an older committed batch. Its
+sync state applies to those outputs only after the full original stored output
+declaration matches the committed receipt uniquely; unrelated, duplicate or
+changed pins cannot disappear when that subset is projected. The current sync
+store retains one artifact row per operation/variant, not publication history.
+An older surviving output without a still-observed exact row stays `sealed`;
+it does not inherit the newer row's queued or published state. A host may retain
+previous exact observed facts, but a fresh store read cannot invent them.
+
 Snapshots admit at most 4,096 committed sets, 4,096 native sync facts, 32 outputs
 per set and 32 required IDs. Known renderer metadata and output presentation are
 validated by their existing owners. Public `report.plan --action inventory`
