@@ -1,6 +1,7 @@
 //! Offline survey semantics shared by native hosts and WASM. Hosts own IO only.
 mod access;
 mod bridge;
+mod delete_cascade;
 mod draft;
 mod entry;
 mod factory;

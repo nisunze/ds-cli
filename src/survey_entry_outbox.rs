@@ -102,6 +102,10 @@ pub struct Request {
 #[derive(Debug, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Event {
+    AdmitBatch {
+        current_uid: String,
+        headers: Vec<Header>,
+    },
     Summary {
         current_uid: Option<String>,
         project_id: Option<String>,
@@ -445,6 +449,39 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
 
     match req.event {
         Event::Summary { .. } => unreachable!("summary returned before replay"),
+        Event::AdmitBatch {
+            current_uid,
+            headers: batch,
+        } => {
+            if batch.is_empty() || batch.len() > 500 || !valid_text(&current_uid, 512) {
+                return Err("Survey batch admission exceeds its bound".into());
+            }
+            let project = &batch[0].project_id;
+            let mut ids = std::collections::BTreeSet::new();
+            for header in &batch {
+                if !valid(header)
+                    || !owned(header, &current_uid)
+                    || &header.project_id != project
+                    || !ids.insert(&header.id)
+                {
+                    return Err(
+                        "Survey batch admission has an invalid or duplicate identity".into(),
+                    );
+                }
+            }
+            for mut header in batch {
+                header.status = Status::Pending;
+                header.attempts = 0;
+                header.lease = 0;
+                header.next_attempt_at = 0;
+                header.conflict_rebased = false;
+                header.error = None;
+                header.failure_code = None;
+                header.subeffect_phase = None;
+                header.legacy_confirmed = false;
+                actions.push(Action::Admitted { header });
+            }
+        }
         Event::Admit {
             current_uid,
             mut header,
