@@ -176,6 +176,75 @@ pub fn orientation(a: Point, b: Point, c: Point) -> f64 {
     (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
 }
 
+/// Signed area with the original cyclic shoelace evaluation order.
+pub fn signed_ring_area_by<T>(ring: &[T], position: impl Fn(&T) -> Point) -> f64 {
+    let mut twice = 0.0;
+    for index in 0..ring.len() {
+        let a = position(&ring[index]);
+        let b = position(&ring[(index + 1) % ring.len()]);
+        twice += a[0] * b[1] - b[0] * a[1];
+    }
+    twice / 2.0
+}
+
+pub fn polyline_length_by<T>(
+    line: &[T],
+    position: impl Fn(&T) -> Point,
+    arithmetic: DistanceArithmetic,
+) -> f64 {
+    line.windows(2)
+        .map(|pair| distance_with(position(&pair[0]), position(&pair[1]), arithmetic))
+        .sum()
+}
+
+/// De Casteljau sampling, retaining the Canvas curve evaluation order.
+pub fn quadratic(from: Point, control: Point, to: Point, t: f64) -> Point {
+    interpolate(
+        interpolate(from, control, t),
+        interpolate(control, to, t),
+        t,
+    )
+}
+
+pub fn cubic(from: Point, control_a: Point, control_b: Point, to: Point, t: f64) -> Point {
+    let a = interpolate(from, control_a, t);
+    let b = interpolate(control_a, control_b, t);
+    let c = interpolate(control_b, to, t);
+    interpolate(interpolate(a, b, t), interpolate(b, c, t), t)
+}
+
+/// Remove exact repeated payloads and forward collinear runs. Reversals remain.
+pub fn simplify_forward_collinear_by<T: Clone + PartialEq>(
+    points: &[T],
+    position: impl Fn(&T) -> Point,
+) -> Vec<T> {
+    let mut out: Vec<T> = Vec::with_capacity(points.len());
+    for point in points {
+        if out.last().is_some_and(|last| last == point) {
+            continue;
+        }
+        out.push(point.clone());
+    }
+    if out.len() < 3 {
+        return out;
+    }
+    let mut simplified = vec![out[0].clone()];
+    for window in out.windows(3) {
+        let (a, b, c) = (
+            position(&window[0]),
+            position(&window[1]),
+            position(&window[2]),
+        );
+        let cross = orientation(a, b, c);
+        let forward = (b[0] - a[0]) * (c[0] - b[0]) + (b[1] - a[1]) * (c[1] - b[1]);
+        if cross != 0.0 || forward < 0.0 {
+            simplified.push(window[1].clone());
+        }
+    }
+    simplified.push(out[out.len() - 1].clone());
+    simplified
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

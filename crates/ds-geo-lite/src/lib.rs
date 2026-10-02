@@ -218,3 +218,6 @@ pub mod region;
 
 #[cfg(feature = "codec")]
 pub mod wkb;
+
+#[cfg(feature = "index")]
+pub mod measured_path;
