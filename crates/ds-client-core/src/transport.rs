@@ -3217,6 +3217,12 @@ pub trait Transport {
         &mut self,
         call: SurveyEntriesChangesCall<'_>,
     ) -> Result<TransportResponse, TransportError>;
+    fn survey_delete(
+        &mut self,
+        _call: crate::SurveyDeleteCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        Err(TransportError::Unreachable)
+    }
     fn survey_entry_create(
         &mut self,
         call: SurveyEntryCreateCall<'_>,
@@ -3539,6 +3545,12 @@ pub trait AuthorizedTransport {
         &mut self,
         call: SurveyEntriesChangesCall<'_>,
     ) -> Result<TransportResponse, TransportError>;
+    fn survey_delete(
+        &mut self,
+        _call: crate::SurveyDeleteCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        Err(TransportError::Unreachable)
+    }
     fn survey_entry_create(
         &mut self,
         call: SurveyEntryCreateCall<'_>,
@@ -3856,6 +3868,12 @@ impl<T: Transport> AuthorizedTransport for T {
         call: SurveyEntriesChangesCall<'_>,
     ) -> Result<TransportResponse, TransportError> {
         Transport::survey_entries_changes(self, call)
+    }
+    fn survey_delete(
+        &mut self,
+        call: crate::SurveyDeleteCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        Transport::survey_delete(self, call)
     }
     fn survey_entry_create(
         &mut self,

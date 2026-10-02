@@ -241,6 +241,8 @@ struct TransportState {
     survey_entries_select: VecDeque<TransportResponse>,
     survey_entries_changes: VecDeque<TransportResponse>,
     survey_entry_create: VecDeque<TransportResponse>,
+    survey_delete: VecDeque<TransportResponse>,
+    survey_delete_bodies: Vec<serde_json::Value>,
     project_data: VecDeque<TransportResponse>,
     status_processing: VecDeque<TransportResponse>,
     survey_photo: VecDeque<TransportResponse>,
@@ -1148,6 +1150,26 @@ impl Transport for FixtureTransport {
             correlation_valid,
         ));
         Ok(state.survey_entries_changes.pop_front().unwrap())
+    }
+
+    fn survey_delete(
+        &mut self,
+        call: ds_client_core::SurveyDeleteCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        assert_eq!(call.method(), "PUT");
+        assert_eq!(call.path(), "/api/v1/entries/mutate");
+        assert_eq!(call.response_limit(), 65536);
+        assert_eq!(call.timeout_seconds(), 120);
+        assert!(!call.bearer_token().is_empty());
+        assert_eq!(call.canonical_email(), "user@example.com");
+        let mut state = self.0.lock().unwrap();
+        state
+            .survey_delete_bodies
+            .push(serde_json::from_slice(call.body().as_bytes()).unwrap());
+        Ok(state
+            .survey_delete
+            .pop_front()
+            .expect("no unplanned delete dispatch"))
     }
 
     fn survey_entry_create(
@@ -13537,4 +13559,55 @@ fn transformer_analysis_invalid_inputs_and_signed_out_are_refused_before_transpo
         .unwrap()
         .transformer_analysis_bodies
         .is_empty());
+}
+
+#[test]
+fn survey_delete_captures_project_and_stops_after_a_partially_acknowledged_plan() {
+    use serde_json::json;
+    let transport = FixtureTransport::with_sign_in(SIGN_IN);
+    let mut client = signed_in(transport.clone(), MemoryStore::default());
+    let rows=(0..2).map(|i|json!({"form_slug":"lines","feature":{"id":format!("e{i}"),"geometry":{"type":"LineString"},
+        "properties":{"connectivity":{"precedent":"n"},"metadata":{"client_version":4}}}})).collect::<Vec<_>>();
+    let request = ds_client_core::SurveyDeleteRequest::new(
+        "project_a",
+        "poles",
+        "n",
+        "review",
+        "2026-10-02T00:00:00Z",
+        json!({"prior":{"properties":{"metadata":{"client_version":2}}},"rows":rows}),
+    )
+    .unwrap();
+    assert_eq!(
+        client
+            .survey_delete("other", &request, NOW + 1)
+            .unwrap_err()
+            .kind(),
+        ErrorKind::InvalidInput
+    );
+    assert!(transport.0.lock().unwrap().survey_delete_bodies.is_empty());
+    {
+        let mut state = transport.0.lock().unwrap();
+        state.survey_delete.push_back(TransportResponse::new(200,serde_json::to_vec(&json!({"success":true,
+            "service":"data-solutions-backend","version":"1.0.0","timestamp":"2026-10-02T00:00:00Z",
+            "data":{"operation":"delete","doc_id":"n","client_version":3,"deleted_at":"2026-10-02T00:00:00Z"}})).unwrap()));
+        state
+            .survey_delete
+            .push_back(TransportResponse::new(403, b"{}".to_vec()));
+    }
+    let answer = client
+        .survey_delete("project_a", &request, NOW + 1)
+        .unwrap();
+    assert_eq!(answer["acknowledged"], 1);
+    assert_eq!(answer["complete"], false);
+    assert_eq!(answer["failure"]["index"], 1);
+    assert_eq!(answer["failure"]["code"], "authority_refused");
+    let state = transport.0.lock().unwrap();
+    assert_eq!(state.survey_delete_bodies.len(), 2);
+    assert!(state
+        .survey_delete_bodies
+        .iter()
+        .all(|b| b["project_id"] == "project_a" && b["operation"] == "delete"));
+    assert_eq!(state.survey_delete_bodies[0]["expected_version"], 2);
+    assert_eq!(state.survey_delete_bodies[1]["expected_version"], 4);
+    assert_eq!(state.survey_delete_bodies[1]["idempotency_key"], "review:1");
 }

@@ -18,7 +18,7 @@ pub const SCHEMA_VERSION: &str = "ds-web.gateway-registry/v1";
 
 /// sha256 of the exact `routing/operations.json` bytes these rows came from.
 pub const DESCRIPTOR_SHA256: &str =
-    "579c4313940733caca54eb8c64a54b7688ca78bf006df2add3fe5220b372188a";
+    "d93c7f3bf039adf62b4dec148712a878a6a791d0c9574f5bbc5b92c7b12f7f88";
 
 /// Every declared operation that has a gateway route, sorted by id.
 pub const OPERATIONS: &[GatewayOperation] = &[
@@ -1298,6 +1298,25 @@ pub const OPERATIONS: &[GatewayOperation] = &[
         idempotency: "idempotent",
         retry_class: "none",
         timeout_s: 30,
+        response_cap_bytes: 65536,
+        resolution_web: "gateway",
+        resolution_desktop: "gateway",
+        native_command: "",
+    },
+    GatewayOperation {
+        id: "domains.survey_entries.delete",
+        method: "PUT",
+        path: "/api/v1/entries/mutate",
+        path_params: &[],
+        action_key: "operation",
+        actions: &["delete"],
+        transport: "json",
+        authority: "gateway",
+        principal: "user",
+        lane_header: false,
+        idempotency: "idempotent_with_key",
+        retry_class: "none",
+        timeout_s: 120,
         response_cap_bytes: 65536,
         resolution_web: "gateway",
         resolution_desktop: "gateway",
