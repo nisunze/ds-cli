@@ -5,6 +5,28 @@ its paper/family. Record its identity and revision. Compare the existing project
 copy before making changes. Keep sourced project names, branding, engineering
 styles and context; never inherit another project's wording or approvals.
 
+## Two LV print modes
+
+An LV network prints in two modes, and neither borrows the other's treatment.
+
+- **Standalone LV transformer sheet.** The issued drawing of one transformer's
+  network, so the LV is the main content. Keep the categorical engineering
+  palette: LV lines by cable size, poles by structure type, existing and new
+  apart, each category named in the legend. Schedules and the information
+  table belong to this mode. A network drawn in one flat colour on a standalone
+  sheet is a defect, unless the template deliberately authors monochrome and
+  its legend says so.
+- **LV inside an MV plan/profile booklet.** Context that places the MV route
+  among the LV it supplies. Use one bluish family graded by importance (new LV
+  darker; customers and existing LV lighter), all quieter than the red MV route
+  and structures. No categorical palette and no LV schedules here.
+
+An instruction for one mode never changes the other. "Uniform bluish, even
+customers" is a booklet context instruction; a cable-size palette is a
+transformer-sheet instruction. Before delivery, inspect one dense page of each
+at paper size: on the sheet, every drawn category appears in the legend; in the
+booklet, LV reads as blue context beneath the red MV.
+
 ## Measured placement
 
 For the standard engineering arrangement, retain the information table, legend

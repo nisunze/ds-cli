@@ -101,10 +101,10 @@ Follow these printing contracts:
   schedule type may shrink up to 30%; equal fits prefer larger type. Exact
   bounds and controls are in the live schema; the bounded search is a
   heuristic, not an optimum.
-- Protect titles, scale, legend and furniture in map fitting. Include existing
-  and proposed MV context with distinct pens and meaningful legend labels.
-  Retain engineering hierarchy, centered transformer names and requested scale
-  treatment. Keep geographic context subordinate to the network.
+- Fit maps around titles, scale, legend and furniture. Show existing and
+  proposed MV with distinct labelled pens; keep hierarchy, centered names,
+  requested scale, quiet context. LV prints two ways, not mixed: standalone
+  sheets categorical (cable, structure, existing/new), MV booklets bluish.
   For adjacent circuits, use [the focused-context policy](../../ds-map-composition/references/adjacent-networks.md)
   and verify multiple neighbours, edge circuits and crossings without changing
   focused schedules or voltage drop.
