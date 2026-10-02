@@ -21,6 +21,9 @@ pub const INDIVIDUAL: &[&str] = &[
     "voltage_drop",
     "voltage_drop_pdf",
 ];
+/// The output every individual LV report delivers whatever the selection:
+/// the exact saved voltage-drop analysis (owner ruling 2026-10-02).
+pub const MANDATORY_INDIVIDUAL_OUTPUT: &str = "voltage_drop";
 /// The tabular outputs, one list for every reader that classes a token.
 pub const TABULAR: &[&str] = &["xlsx", "network_information", "voltage_drop"];
 pub const COMBINED: &[&str] = &["shp", "xlsx", "geojsonseq"];
@@ -294,7 +297,7 @@ impl DesignOutputSelection {
     /// output id, class, `*`, then both. An empty list refuses a data output
     /// on every lane, except the mandatory voltage-drop JSON.
     pub fn placements(&self, output_id: &str) -> &[Placement] {
-        if output_id == "voltage_drop" {
+        if output_id == MANDATORY_INDIVIDUAL_OUTPUT {
             return BOTH_PLACEMENTS;
         }
         let class = output_class(output_id);
@@ -1006,7 +1009,7 @@ pub fn normalize(values: &[String]) -> Vec<String> {
     }
     let mut ordered: Vec<_> = INDIVIDUAL
         .iter()
-        .filter(|format| **format == "voltage_drop" || selected.iter().any(|v| v == **format))
+        .filter(|format| **format == MANDATORY_INDIVIDUAL_OUTPUT || selected.iter().any(|v| v == **format))
         .map(|s| s.to_string())
         .collect();
     let named: std::collections::BTreeSet<_> = selected
@@ -1251,8 +1254,8 @@ fn selected_plan_for_purpose(
     // Local overrides choose optional artifacts, not whether the saved LV
     // analysis accompanies them. Validate their authored tokens first so the
     // mandatory artifact cannot make an empty or invalid override admissible.
-    if purpose == OutputPurpose::Delivery && !seen.contains("voltage_drop") {
-        outputs.push(output("voltage_drop")?);
+    if purpose == OutputPurpose::Delivery && !seen.contains(MANDATORY_INDIVIDUAL_OUTPUT) {
+        outputs.push(output(MANDATORY_INDIVIDUAL_OUTPUT)?);
     }
     if outputs.len() > 32 {
         return Err(
