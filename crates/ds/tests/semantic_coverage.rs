@@ -1269,6 +1269,10 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("pm.task.decline", "global_write", "headless_project"),
     // Where the work is (task-geometry-from-objects.md, 2026-09-20).
     ("pm.task.geometry.clear", "global_write", "headless_project"),
+    // Exact DS Grid model-version links (work-links-and-spatial-anchors.md).
+    ("pm.model-link.add", "global_write", "headless_project"),
+    ("pm.model-link.remove", "global_write", "headless_project"),
+    ("pm.model-link.list", "read_only", "headless_project"),
     ("pm.task.geometry.read", "read_only", "headless_project"),
     ("pm.task.geometry.set", "global_write", "headless_project"),
     ("pm.task.list", "read_only", "headless_project"),

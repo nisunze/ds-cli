@@ -365,7 +365,10 @@ impl Profile {
             Self::Project => 26,
             // Task creation with typed geometry, geometry edits, and
             // admission/field-hours steps: nine leaves plus two bootstrap tools.
-            Self::ProjectTaskOperations => 11,
+            // Raised to 14 on 2026-10-02 by the three model-link leaves: the
+            // exact DS Grid model version a work item is about sits beside its
+            // WHERE, and reading which work links a model is the same lane.
+            Self::ProjectTaskOperations => 14,
             // Seventeen working-copy leaves plus both bootstrap tools. Raised
             // from the default on 2026-09-22 when the four 2026-09-21 leaves
             // (`dsgrid model forget`, `dsgrid structure admin-refresh`,
@@ -1051,6 +1054,9 @@ const PROJECT_TASK_OPERATIONS_COMMANDS: &[&str] = &[
     "pm.task.geometry.read",
     "pm.task.geometry.set",
     "pm.task.geometry.clear",
+    "pm.model-link.add",
+    "pm.model-link.remove",
+    "pm.model-link.list",
 ];
 
 const PROJECT_OPERATIONS_COMMANDS: &[&str] = &[
