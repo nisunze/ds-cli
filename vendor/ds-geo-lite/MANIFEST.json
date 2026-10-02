@@ -132,23 +132,6 @@
       "sources": [
         { "path": "crates/ds-network/src/network/processor_presets.json", "sha256": "581dc034e38882025bd273d0eef9ca911eb2f52589b880aa2f8ef69ef0a49145" }
       ]
-    },
-    {
-      "vendored": "geo/haversine.rs",
-      "partial": true,
-      "sha256": "c6af168e67126079f892204aaacb29a949e1394e3ae86178dd9f46fe8f7302c1",
-      "source_commit": "4aad0d69296144a5e39b0777bb5aee53e0562916",
-      "why": "ds-geo-ops::haversine_m is three items spread over three files whose siblings pull the whole primitives/operations tree; the kernel calls one function, so the cut is at item level.",
-      "items": [
-        "primitives/haversine.rs::distance  -> haversine_distance_m (Coord args flattened to f64)",
-        "lib.rs::haversine_m                -> haversine_m (non-finite guard)",
-        "types.rs::EARTH_RADIUS_M           -> EARTH_RADIUS_M"
-      ],
-      "sources": [
-        { "path": "crates/ds-geo-ops/src/primitives/haversine.rs", "sha256": "7e20be7216c85aa97cbea130aa7fa10c79d0ace5ff514b017586aa5890286afd" },
-        { "path": "crates/ds-geo-ops/src/lib.rs", "sha256": "543e704fd9c2b41f227bb17130b2b7cbd6a79390f5cf6432afdc8e1b20f7840b" },
-        { "path": "crates/ds-geo-ops/src/types.rs", "sha256": "10ba78f39325c85b45eb9025c5d5c333288873e38be77262bffe4925e2a4cf68" }
-      ]
     }
   ]
 }

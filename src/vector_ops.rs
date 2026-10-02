@@ -1,9 +1,9 @@
 //! Vector-processing decisions: what a geoprocessing run will do, and why.
 //!
-//! The engine that bends coordinates is `ds-network`'s `ds-geo-ops`. This
-//! module owns none of that arithmetic and deliberately cannot reach it —
-//! `docs/contracts/ds-kernel-network-boundary.md` keeps the kernel free of a
-//! Cargo edge to `ds-network` so the kernel still compiles on a field device.
+//! Portable geometry is maintained in the kernel's `ds-geo-lite` crate.
+//! Network delegates to the same core; the kernel has no dependency on the
+//! heavy engineering engine. This module owns processing decisions and the
+//! complete JSON request/result boundary. Hosts own file and transport effects.
 //!
 //! What the kernel owns is every *decision* a vector operation makes before
 //! and after the geometry runs:
@@ -23,6 +23,9 @@
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+
+mod processing;
+pub use processing::{evaluate, execute, ResultProjection, VectorRequest, SCHEMA};
 
 /// The default number of output features a single run returns. Larger runs
 /// are legitimate; they are opt-in through the caller's own limit so the

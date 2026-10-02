@@ -31,6 +31,14 @@ compile, run and remain useful with `ds-network` **completely absent**. Higher
 level hosts may invoke `ds-network` separately when a command genuinely requires
 heavy engineering compute.
 
+Portable vector primitives have one maintained implementation in
+`crates/ds-geo-lite` under the kernel repository. Both the application kernel
+and Network's `ds-geo-ops` use that small crate. The permitted edge is
+`ds-network → ds-geo-lite`, never `ds-network → ds-command-kernel`. The portable
+crate has no application-kernel or Network dependency. Its types, six primitive
+modules, and buffer/sample/crossing operations replace the Network copies;
+the unchanged geometry/canvas snapshots keep their separate drift fence.
+
 ### The question to ask of every piece of logic
 
 > Would we expect this capability to work on an Android or iOS field device
@@ -226,11 +234,11 @@ Preferred shape when a shared contract is genuinely needed:
 independently callable engineering engine that accepts explicit engineering
 inputs and returns explicit deterministic results.
 
-**Measured 2026-09-10: that edge does not exist.** No `Cargo.toml` under
-`ds-network/` references `ds-command-kernel`. The graph is already correct in
-that direction and the work is to keep it so — in particular, a shared
-lightweight crate created while severing §3 must be depended on by *both*, never
-resolved by pointing `ds-network` at the kernel.
+The shared lightweight dependency is `ds-geo-lite`. Its repository location
+inside the kernel does not make it the application kernel: its dependency
+closure excludes `ds-command-kernel`, `ds-network`, Solar and canvas. Network
+may point only at this portable crate, and both hosts use the same primitive
+code. The command kernel continues to build and test with Network absent.
 
 Worth flagging, not acting on: **`ds-network-reporter` does depend on
 `ds-command-kernel`.** That is the report worker, not `ds-network`, so it is

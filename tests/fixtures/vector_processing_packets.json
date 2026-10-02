@@ -1,0 +1,859 @@
+{
+  "baseline": {
+    "source_sha": "b4783c2caf67934a8cb4561e4dc6b8dce7939d4c",
+    "command_kernel_source_sha": "844d8f4fadb1887564b91b0b3ac136b646e2e05e",
+    "ds_network_source_sha": "f96bd3cff867877d6655dd819f804a2c93977253"
+  },
+  "cases": [
+    {
+      "request": {
+        "schema": "ds.vector-processing/v1",
+        "operation": "buffer",
+        "source": "mixed",
+        "limit": 2,
+        "radius_m": 10,
+        "segments": 1,
+        "result_projection": "inline"
+      },
+      "expected": {
+        "operation": "buffer",
+        "source_features": 6,
+        "processed": 2,
+        "produced": 3,
+        "skipped": {
+          "bad_coordinates": 1,
+          "no_geometry": 1
+        },
+        "written_to": null,
+        "result": {
+          "type": "FeatureCollection",
+          "features": [
+            {
+              "type": "Feature",
+              "properties": {
+                "source_index": 0,
+                "source_id": "route-a",
+                "source_kind": "line",
+                "buffer_radius_m": 10.0
+              },
+              "geometry": {
+                "type": "Polygon",
+                "coordinates": [
+                  [
+                    [
+                      29.999999999945185,
+                      -2.000089932160592
+                    ],
+                    [
+                      30.001999999945184,
+                      -2.000089932160592
+                    ],
+                    [
+                      30.00208998697823,
+                      -2.000000000052314
+                    ],
+                    [
+                      30.002000000054814,
+                      -1.9999100678394084
+                    ],
+                    [
+                      30.00000000005481,
+                      -1.9999100678394084
+                    ],
+                    [
+                      29.99991001302177,
+                      -1.999999999942757
+                    ],
+                    [
+                      29.999999999945185,
+                      -2.000089932160592
+                    ]
+                  ]
+                ]
+              }
+            },
+            {
+              "type": "Feature",
+              "properties": {
+                "source_index": 1,
+                "source_id": "route-b",
+                "source_kind": "line",
+                "buffer_radius_m": 10.0
+              },
+              "geometry": {
+                "type": "Polygon",
+                "coordinates": [
+                  [
+                    [
+                      29.999999999972456,
+                      -2.0100899321605916
+                    ],
+                    [
+                      30.000999999972457,
+                      -2.0100899321605916
+                    ],
+                    [
+                      30.00108998752806,
+                      -2.010000000025049
+                    ],
+                    [
+                      30.001000000027545,
+                      -2.0099100678394084
+                    ],
+                    [
+                      30.00000000002754,
+                      -2.0099100678394084
+                    ],
+                    [
+                      29.99991001247194,
+                      -2.0099999999699962
+                    ],
+                    [
+                      29.999999999972456,
+                      -2.0100899321605916
+                    ]
+                  ]
+                ]
+              }
+            }
+          ]
+        },
+        "more": "2 more eligible feature(s) were not returned; raise the limit (max 20000) to see them; 1 more zone(s) were produced than returned inline; pass --out <path> to write them all, or raise --limit (max 20000)",
+        "radius_m": 10.0,
+        "segments": 1
+      }
+    },
+    {
+      "request": {
+        "schema": "ds.vector-processing/v1",
+        "operation": "buffer",
+        "source": "mixed",
+        "limit": 2,
+        "radius_m": 10,
+        "segments": 1,
+        "result_projection": "complete_produced"
+      },
+      "expected": {
+        "operation": "buffer",
+        "source_features": 6,
+        "processed": 2,
+        "produced": 3,
+        "skipped": {
+          "bad_coordinates": 1,
+          "no_geometry": 1
+        },
+        "written_to": null,
+        "result": {
+          "type": "FeatureCollection",
+          "features": [
+            {
+              "type": "Feature",
+              "properties": {
+                "source_index": 0,
+                "source_id": "route-a",
+                "source_kind": "line",
+                "buffer_radius_m": 10.0
+              },
+              "geometry": {
+                "type": "Polygon",
+                "coordinates": [
+                  [
+                    [
+                      29.999999999945185,
+                      -2.000089932160592
+                    ],
+                    [
+                      30.001999999945184,
+                      -2.000089932160592
+                    ],
+                    [
+                      30.00208998697823,
+                      -2.000000000052314
+                    ],
+                    [
+                      30.002000000054814,
+                      -1.9999100678394084
+                    ],
+                    [
+                      30.00000000005481,
+                      -1.9999100678394084
+                    ],
+                    [
+                      29.99991001302177,
+                      -1.999999999942757
+                    ],
+                    [
+                      29.999999999945185,
+                      -2.000089932160592
+                    ]
+                  ]
+                ]
+              }
+            },
+            {
+              "type": "Feature",
+              "properties": {
+                "source_index": 1,
+                "source_id": "route-b",
+                "source_kind": "line",
+                "buffer_radius_m": 10.0
+              },
+              "geometry": {
+                "type": "Polygon",
+                "coordinates": [
+                  [
+                    [
+                      29.999999999972456,
+                      -2.0100899321605916
+                    ],
+                    [
+                      30.000999999972457,
+                      -2.0100899321605916
+                    ],
+                    [
+                      30.00108998752806,
+                      -2.010000000025049
+                    ],
+                    [
+                      30.001000000027545,
+                      -2.0099100678394084
+                    ],
+                    [
+                      30.00000000002754,
+                      -2.0099100678394084
+                    ],
+                    [
+                      29.99991001247194,
+                      -2.0099999999699962
+                    ],
+                    [
+                      29.999999999972456,
+                      -2.0100899321605916
+                    ]
+                  ]
+                ]
+              }
+            },
+            {
+              "type": "Feature",
+              "properties": {
+                "source_index": 1,
+                "source_id": "route-b",
+                "source_kind": "line",
+                "buffer_radius_m": 10.0
+              },
+              "geometry": {
+                "type": "Polygon",
+                "coordinates": [
+                  [
+                    [
+                      30.001999999972455,
+                      -2.0100899321605916
+                    ],
+                    [
+                      30.00299999997246,
+                      -2.0100899321605916
+                    ],
+                    [
+                      30.00308998752806,
+                      -2.010000000025049
+                    ],
+                    [
+                      30.003000000027548,
+                      -2.0099100678394084
+                    ],
+                    [
+                      30.002000000027543,
+                      -2.0099100678394084
+                    ],
+                    [
+                      30.00191001247194,
+                      -2.0099999999699962
+                    ],
+                    [
+                      30.001999999972455,
+                      -2.0100899321605916
+                    ]
+                  ]
+                ]
+              }
+            }
+          ]
+        },
+        "more": "2 more eligible feature(s) were not returned; raise the limit (max 20000) to see them",
+        "radius_m": 10.0,
+        "segments": 1
+      }
+    },
+    {
+      "request": {
+        "schema": "ds.vector-processing/v1",
+        "operation": "sample",
+        "source": "mixed",
+        "limit": 2,
+        "interval_m": 100,
+        "include_ends": true,
+        "result_projection": "inline"
+      },
+      "expected": {
+        "operation": "sample",
+        "source_features": 6,
+        "processed": 2,
+        "produced": 10,
+        "skipped": {
+          "bad_coordinates": 1,
+          "no_geometry": 1,
+          "wrong_kind": 2
+        },
+        "written_to": null,
+        "result": {
+          "type": "FeatureCollection",
+          "features": [
+            {
+              "type": "Feature",
+              "properties": {
+                "source_index": 0,
+                "source_id": "route-a",
+                "part_index": 0,
+                "distance_m": 0.0
+              },
+              "geometry": {
+                "type": "Point",
+                "coordinates": [
+                  30.0,
+                  -2.0
+                ]
+              }
+            },
+            {
+              "type": "Feature",
+              "properties": {
+                "source_index": 0,
+                "source_id": "route-a",
+                "part_index": 0,
+                "distance_m": 100.0
+              },
+              "geometry": {
+                "type": "Point",
+                "coordinates": [
+                  30.000899869782277,
+                  -2.0
+                ]
+              }
+            }
+          ]
+        },
+        "interval_m": 100.0,
+        "include_ends": true,
+        "more": "8 more point(s) were produced than returned inline; pass --out <path> to write them all, or raise --limit (max 20000)"
+      }
+    },
+    {
+      "request": {
+        "schema": "ds.vector-processing/v1",
+        "operation": "sample",
+        "source": "mixed",
+        "limit": 2,
+        "interval_m": 100,
+        "include_ends": true,
+        "result_projection": "complete_produced"
+      },
+      "expected": {
+        "operation": "sample",
+        "source_features": 6,
+        "processed": 2,
+        "produced": 10,
+        "skipped": {
+          "bad_coordinates": 1,
+          "no_geometry": 1,
+          "wrong_kind": 2
+        },
+        "written_to": null,
+        "result": {
+          "type": "FeatureCollection",
+          "features": [
+            {
+              "type": "Feature",
+              "properties": {
+                "source_index": 0,
+                "source_id": "route-a",
+                "part_index": 0,
+                "distance_m": 0.0
+              },
+              "geometry": {
+                "type": "Point",
+                "coordinates": [
+                  30.0,
+                  -2.0
+                ]
+              }
+            },
+            {
+              "type": "Feature",
+              "properties": {
+                "source_index": 0,
+                "source_id": "route-a",
+                "part_index": 0,
+                "distance_m": 100.0
+              },
+              "geometry": {
+                "type": "Point",
+                "coordinates": [
+                  30.000899869782277,
+                  -2.0
+                ]
+              }
+            },
+            {
+              "type": "Feature",
+              "properties": {
+                "source_index": 0,
+                "source_id": "route-a",
+                "part_index": 0,
+                "distance_m": 200.0
+              },
+              "geometry": {
+                "type": "Point",
+                "coordinates": [
+                  30.001799739564554,
+                  -2.0
+                ]
+              }
+            },
+            {
+              "type": "Feature",
+              "properties": {
+                "source_index": 0,
+                "source_id": "route-a",
+                "part_index": 0,
+                "distance_m": 222.25437939912962
+              },
+              "geometry": {
+                "type": "Point",
+                "coordinates": [
+                  30.002,
+                  -2.0
+                ]
+              }
+            },
+            {
+              "type": "Feature",
+              "properties": {
+                "source_index": 1,
+                "source_id": "route-b",
+                "part_index": 0,
+                "distance_m": 0.0
+              },
+              "geometry": {
+                "type": "Point",
+                "coordinates": [
+                  30.0,
+                  -2.01
+                ]
+              }
+            },
+            {
+              "type": "Feature",
+              "properties": {
+                "source_index": 1,
+                "source_id": "route-b",
+                "part_index": 0,
+                "distance_m": 100.0
+              },
+              "geometry": {
+                "type": "Point",
+                "coordinates": [
+                  30.000899875280563,
+                  -2.01
+                ]
+              }
+            },
+            {
+              "type": "Feature",
+              "properties": {
+                "source_index": 1,
+                "source_id": "route-b",
+                "part_index": 0,
+                "distance_m": 111.12651070653853
+              },
+              "geometry": {
+                "type": "Point",
+                "coordinates": [
+                  30.001,
+                  -2.01
+                ]
+              }
+            },
+            {
+              "type": "Feature",
+              "properties": {
+                "source_index": 1,
+                "source_id": "route-b",
+                "part_index": 1,
+                "distance_m": 0.0
+              },
+              "geometry": {
+                "type": "Point",
+                "coordinates": [
+                  30.002,
+                  -2.01
+                ]
+              }
+            },
+            {
+              "type": "Feature",
+              "properties": {
+                "source_index": 1,
+                "source_id": "route-b",
+                "part_index": 1,
+                "distance_m": 100.0
+              },
+              "geometry": {
+                "type": "Point",
+                "coordinates": [
+                  30.002899875280562,
+                  -2.01
+                ]
+              }
+            },
+            {
+              "type": "Feature",
+              "properties": {
+                "source_index": 1,
+                "source_id": "route-b",
+                "part_index": 1,
+                "distance_m": 111.12651070653853
+              },
+              "geometry": {
+                "type": "Point",
+                "coordinates": [
+                  30.003,
+                  -2.01
+                ]
+              }
+            }
+          ]
+        },
+        "interval_m": 100.0,
+        "include_ends": true
+      }
+    },
+    {
+      "request": {
+        "schema": "ds.vector-processing/v1",
+        "operation": "sample",
+        "source": "mixed",
+        "limit": 2,
+        "interval_m": 1000000,
+        "include_ends": false,
+        "result_projection": "inline"
+      },
+      "expected": {
+        "operation": "sample",
+        "source_features": 6,
+        "processed": 2,
+        "produced": 0,
+        "skipped": {
+          "bad_coordinates": 1,
+          "no_geometry": 1,
+          "wrong_kind": 2
+        },
+        "written_to": null,
+        "result": {
+          "type": "FeatureCollection",
+          "features": []
+        },
+        "interval_m": 1000000.0,
+        "include_ends": false,
+        "note": "No station fits: every line is shorter than --interval-m. Pass a smaller interval, or --include-ends to place a point at each line end."
+      }
+    },
+    {
+      "request": {
+        "schema": "ds.vector-processing/v1",
+        "operation": "intersect",
+        "source": "mixed",
+        "limit": 1,
+        "against": "against",
+        "result_projection": "inline"
+      },
+      "expected": {
+        "operation": "intersect",
+        "source_features": 6,
+        "processed": 1,
+        "produced": 1,
+        "skipped": {
+          "bad_coordinates": 1,
+          "no_geometry": 1,
+          "wrong_kind": 2
+        },
+        "written_to": null,
+        "result": {
+          "type": "FeatureCollection",
+          "features": [
+            {
+              "type": "Feature",
+              "properties": {
+                "source_index": 0,
+                "source_id": "route-a",
+                "against_index": 0,
+                "against_id": "0"
+              },
+              "geometry": {
+                "type": "Point",
+                "coordinates": [
+                  30.001,
+                  -2.0
+                ]
+              }
+            }
+          ]
+        },
+        "more": "1 more eligible feature(s) were not returned; raise the limit (max 20000) to see them; 2 feature(s) from --against were not compared; raise --limit (max 20000) to include them",
+        "against_features": 3
+      }
+    },
+    {
+      "request": {
+        "schema": "ds.vector-processing/v1",
+        "operation": "measure",
+        "source": "mixed",
+        "limit": 1
+      },
+      "expected": {
+        "operation": "measure",
+        "source_features": 6,
+        "skipped": {
+          "bad_coordinates": 1,
+          "no_geometry": 1
+        },
+        "totals": {
+          "features": 4,
+          "by_kind": {
+            "line": 2,
+            "point": 1,
+            "polygon": 1
+          },
+          "vertices": 17,
+          "length_m": 889.1517012139756,
+          "area_m2": 11862.512193167906
+        },
+        "features": [
+          {
+            "index": 0,
+            "id": "route-a",
+            "kind": "line",
+            "parts": 1,
+            "holes": 0,
+            "vertices": 2,
+            "length_m": 222.25437939912962,
+            "area_m2": 0.0
+          }
+        ],
+        "more": "3 more feature(s) were measured than listed; the totals count every one. Raise --limit (max 20000) to list more"
+      }
+    }
+  ],
+  "documents": {
+    "mixed": {
+      "type": "FeatureCollection",
+      "features": [
+        {
+          "type": "Feature",
+          "id": "route-a",
+          "properties": {},
+          "geometry": {
+            "type": "LineString",
+            "coordinates": [
+              [
+                30,
+                -2
+              ],
+              [
+                30.002,
+                -2
+              ]
+            ]
+          }
+        },
+        {
+          "type": "Feature",
+          "id": "route-b",
+          "properties": {},
+          "geometry": {
+            "type": "MultiLineString",
+            "coordinates": [
+              [
+                [
+                  30,
+                  -2.01
+                ],
+                [
+                  30.001,
+                  -2.01
+                ]
+              ],
+              [
+                [
+                  30.002,
+                  -2.01
+                ],
+                [
+                  30.003,
+                  -2.01
+                ]
+              ]
+            ]
+          }
+        },
+        {
+          "type": "Feature",
+          "id": "point",
+          "properties": {},
+          "geometry": {
+            "type": "Point",
+            "coordinates": [
+              30,
+              -2
+            ]
+          }
+        },
+        {
+          "type": "Feature",
+          "id": "courtyard",
+          "properties": {},
+          "geometry": {
+            "type": "Polygon",
+            "coordinates": [
+              [
+                [
+                  30,
+                  -2
+                ],
+                [
+                  30.001,
+                  -2
+                ],
+                [
+                  30.001,
+                  -1.999
+                ],
+                [
+                  30,
+                  -1.999
+                ],
+                [
+                  30,
+                  -2
+                ]
+              ],
+              [
+                [
+                  30.0002,
+                  -1.9998
+                ],
+                [
+                  30.0004,
+                  -1.9998
+                ],
+                [
+                  30.0004,
+                  -1.9996
+                ],
+                [
+                  30.0002,
+                  -1.9996
+                ],
+                [
+                  30.0002,
+                  -1.9998
+                ]
+              ]
+            ]
+          }
+        },
+        {
+          "type": "Feature",
+          "properties": {},
+          "geometry": {
+            "type": "LineString",
+            "coordinates": [
+              [
+                30,
+                -2
+              ],
+              [
+                "bad",
+                -2
+              ]
+            ]
+          }
+        },
+        {
+          "type": "Feature",
+          "properties": {},
+          "geometry": null
+        }
+      ]
+    },
+    "against": {
+      "type": "FeatureCollection",
+      "features": [
+        {
+          "type": "Feature",
+          "id": "0",
+          "properties": {},
+          "geometry": {
+            "type": "LineString",
+            "coordinates": [
+              [
+                30.001,
+                -2.02
+              ],
+              [
+                30.001,
+                -1.98
+              ]
+            ]
+          }
+        },
+        {
+          "type": "Feature",
+          "id": "1",
+          "properties": {},
+          "geometry": {
+            "type": "LineString",
+            "coordinates": [
+              [
+                30.0012,
+                -2.02
+              ],
+              [
+                30.0012,
+                -1.98
+              ]
+            ]
+          }
+        },
+        {
+          "type": "Feature",
+          "id": "2",
+          "properties": {},
+          "geometry": {
+            "type": "LineString",
+            "coordinates": [
+              [
+                30.0014,
+                -2.02
+              ],
+              [
+                30.0014,
+                -1.98
+              ]
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

@@ -791,6 +791,54 @@ mod tests {
     }
 
     #[test]
+    fn exact_authority_polygon_uses_shared_vector_measure_and_area_admission() {
+        let geometry = json!({"type":"Polygon","coordinates":[
+            [[30.,-2.],[30.01,-2.],[30.01,-1.99],[30.,-1.99],[30.,-2.]],
+            [[30.002,-1.998],[30.004,-1.998],[30.004,-1.996],[30.002,-1.996],[30.002,-1.998]]
+        ]});
+        let boundary = read_boundary(
+            "11",
+            &json!({
+                "code":"11","level":"district","name":"Authority fixture","geometry":geometry
+            }),
+        )
+        .unwrap();
+        let evidence_before = boundary.evidence();
+        let source = boundary.feature_collection();
+        ds_command_kernel::reference_cache::validate_area(&boundary.geometry.geojson).unwrap();
+        let packet = ds_command_kernel::vector_ops::evaluate(
+            &serde_json::to_vec(&json!({
+                "schema":ds_command_kernel::vector_ops::SCHEMA,
+                "operation":"measure","source":source
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        let measured: Value = serde_json::from_str(&packet).unwrap();
+        assert_eq!(measured["features"][0]["id"], "admin-11");
+        assert_eq!(measured["features"][0]["holes"], 1);
+        assert!(measured["totals"]["area_m2"].as_f64().unwrap() > 0.);
+        assert!(
+            !ds_command_kernel::reference_cache::intersects_area(
+                &json!({"type":"Point","coordinates":[30.003,-1.997]}),
+                &boundary.geometry.geojson
+            )
+            .unwrap(),
+            "a boundary hole must stay outside the selected area"
+        );
+        assert!(
+            ds_command_kernel::reference_cache::intersects_area(
+                &json!({"type":"Point","coordinates":[30.,-2.]}),
+                &boundary.geometry.geojson
+            )
+            .unwrap(),
+            "the exact authority edge remains selected"
+        );
+        assert_eq!(boundary.evidence(), evidence_before);
+        assert_eq!(source["features"][0]["geometry"], geometry);
+    }
+
+    #[test]
     fn the_digest_does_not_depend_on_key_order() {
         let one = read_boundary(
             "11",
