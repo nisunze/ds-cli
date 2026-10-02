@@ -15,6 +15,10 @@ use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::{Map, Value};
 
 use crate::{ClientError, ErrorKind, TransportResponse};
+use ds_command_kernel::report::archive_groups::{self, ArchiveGroupingFields};
+pub use ds_command_kernel::report::archive_groups::{
+    ArchiveGroupingKind, ArchiveGroupingPlan, ArchiveGroups,
+};
 
 /// The most transformers one request may name. ds-brain's own compounded and
 /// retirement paths accept no more, so a larger list is refused locally.
@@ -873,7 +877,14 @@ pub struct CompoundedArchiveLayout {
     file_level: Option<String>,
     transformer_grouping: Option<String>,
     combine_per_district: bool,
+    group_depth: Option<u32>,
+    transformer_folders: Option<bool>,
+    combine_per_group: Option<bool>,
 }
+
+/// The deepest grouping level a recorded layout may name. A plan has at most
+/// a handful of ordered definitions; anything beyond this is not a layout.
+const MAX_ARCHIVE_GROUP_DEPTH: u64 = 64;
 
 impl CompoundedArchiveLayout {
     pub fn file_level(&self) -> Option<&str> {
@@ -889,6 +900,32 @@ impl CompoundedArchiveLayout {
     }
     pub const fn combine_per_district(&self) -> bool {
         self.combine_per_district
+    }
+    /// The generic knobs ds-brain writes on every current entry: how many of
+    /// the applied plan's levels the tree descends (`None` = every level),
+    /// whether each transformer gets its own folder, and whether one combined
+    /// report is added per first-level group. `None` when not recorded.
+    pub const fn group_depth(&self) -> Option<u32> {
+        self.group_depth
+    }
+    pub const fn transformer_folders(&self) -> Option<bool> {
+        self.transformer_folders
+    }
+    pub const fn combine_per_group(&self) -> Option<bool> {
+        self.combine_per_group
+    }
+    /// The recorded layout as the kernel's report layer reads it, so a host
+    /// describes the archive in the one vocabulary (`describe()`), generic
+    /// knobs first, then the current spelling, then the legacy twin.
+    pub fn report_layout(&self) -> ds_command_kernel::report::ArchiveLayout {
+        ds_command_kernel::report::ArchiveLayout {
+            file_level: self.file_level.clone(),
+            transformer_grouping: self.transformer_grouping.clone(),
+            combine_per_district: Some(self.combine_per_district),
+            combine_per_group: self.combine_per_group,
+            group_depth: self.group_depth,
+            transformer_folders: self.transformer_folders,
+        }
     }
 }
 
@@ -914,8 +951,7 @@ pub struct CompoundedArchive {
     status: Option<String>,
     transformer_count: u64,
     transformers: Vec<String>,
-    district_count: u64,
-    districts: Vec<String>,
+    groups: ArchiveGroups,
     individual_artifact_transformer_count: u64,
     missing_individual_artifact_count: u64,
     errors: Vec<String>,
@@ -960,11 +996,15 @@ impl CompoundedArchive {
     pub fn transformers(&self) -> &[String] {
         &self.transformers
     }
-    pub const fn district_count(&self) -> u64 {
-        self.district_count
+    /// How the archive is grouped, decoded by the kernel's report layer:
+    /// ds-brain's generic groups and plan identity, or the pre-plan district
+    /// pair on archives written before grouping plans.
+    pub const fn groups(&self) -> &ArchiveGroups {
+        &self.groups
     }
-    pub fn districts(&self) -> &[String] {
-        &self.districts
+    /// First-level groups the archive covers.
+    pub const fn group_count(&self) -> u64 {
+        self.groups.count
     }
     pub const fn individual_artifact_transformer_count(&self) -> u64 {
         self.individual_artifact_transformer_count
@@ -1005,10 +1045,8 @@ struct ArchiveWire {
     transformer_count: u64,
     #[serde(default)]
     transformers: Vec<String>,
-    #[serde(default)]
-    district_count: u64,
-    #[serde(default)]
-    districts: Vec<String>,
+    #[serde(flatten)]
+    grouping: ArchiveGroupingFields,
     #[serde(default)]
     individual_artifact_transformer_count: u64,
     #[serde(default)]
@@ -1090,11 +1128,6 @@ pub(crate) fn decode_compounded_list(
                 .transformers
                 .iter()
                 .all(|value| bounded(value, PROJECT_REPORT_MAX_TRANSFORMER_CHARS, false))
-            || entry.districts.len() > MAX_LIST
-            || !entry
-                .districts
-                .iter()
-                .all(|value| bounded(value, 512, false))
             || entry.errors.len() > MAX_LIST
             || !entry
                 .errors
@@ -1103,6 +1136,7 @@ pub(crate) fn decode_compounded_list(
         {
             return Err(unreadable());
         }
+        let groups = archive_groups::decode(&entry.grouping).map_err(|_| unreadable())?;
         let archive_layout = match entry.archive_layout {
             None => None,
             Some(layout) => {
@@ -1121,10 +1155,27 @@ pub(crate) fn decode_compounded_list(
                     Some(Value::Bool(value)) => *value,
                     Some(_) => return Err(unreadable()),
                 };
+                let flag = |key: &str| match layout.get(key) {
+                    None | Some(Value::Null) => Ok(None),
+                    Some(Value::Bool(value)) => Ok(Some(*value)),
+                    Some(_) => Err(unreadable()),
+                };
+                let transformer_folders = flag("transformer_folders")?;
+                let combine_per_group = flag("combine_per_group")?;
+                let group_depth = match layout.get("group_depth") {
+                    None | Some(Value::Null) => None,
+                    Some(value) => match value.as_u64() {
+                        Some(depth) if depth <= MAX_ARCHIVE_GROUP_DEPTH => Some(depth as u32),
+                        _ => return Err(unreadable()),
+                    },
+                };
                 Some(CompoundedArchiveLayout {
                     file_level,
                     transformer_grouping,
                     combine_per_district,
+                    group_depth,
+                    transformer_folders,
+                    combine_per_group,
                 })
             }
         };
@@ -1141,8 +1192,7 @@ pub(crate) fn decode_compounded_list(
             status: nonempty(entry.status),
             transformer_count: entry.transformer_count,
             transformers: entry.transformers,
-            district_count: entry.district_count,
-            districts: entry.districts,
+            groups,
             individual_artifact_transformer_count: entry.individual_artifact_transformer_count,
             missing_individual_artifact_count: entry.missing_individual_artifact_count,
             errors: entry.errors,

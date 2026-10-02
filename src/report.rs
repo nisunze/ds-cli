@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 
 pub mod activity;
+pub mod archive_groups;
 pub mod artifacts;
 pub mod inventory;
 
@@ -271,6 +272,12 @@ enum Command {
     ArchiveLayout {
         #[serde(default)]
         layout: ArchiveLayout,
+    },
+    /// How a compounded archive is grouped: ds-brain's generic groups and plan
+    /// identity, with the pre-plan district pair read only as the fallback.
+    ArchiveGroups {
+        #[serde(default)]
+        entry: archive_groups::ArchiveGroupingFields,
     },
     /// What is this artifact called? One answer for a local outbox file and for
     /// a signed storage locator.
@@ -747,6 +754,12 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
             serde_json::json!({"groups":output})
         }
         Command::ArchiveLayout { layout } => layout.describe(),
+        Command::ArchiveGroups { entry } => {
+            let groups = archive_groups::decode(&entry).map_err(|error| error.code().to_owned())?;
+            let mut value = serde_json::to_value(&groups).map_err(|e| e.to_string())?;
+            value["filed_no_group"] = groups.filed_no_group().into();
+            value
+        }
         Command::ArtifactOutput { output_id } => {
             serde_json::json!({"output": artifacts::output(&output_id)})
         }
@@ -871,6 +884,39 @@ mod tests {
             serde_json::json!("sealed")
         );
         assert_eq!(PublicationStage::Sealed.as_str(), "sealed");
+    }
+
+    /// One registry row in, one grouping answer out — generic, flat and legacy.
+    #[test]
+    fn the_archive_groups_command_answers_from_the_whole_registry_row() {
+        let doc: serde_json::Value = serde_json::from_str(include_str!(
+            "../tests/fixtures/compounded-archive-groups.json"
+        ))
+        .unwrap();
+        let ask = |entry: &serde_json::Value| {
+            let request = serde_json::json!({"command":"archive_groups","entry":entry});
+            evaluate(request.to_string().as_bytes()).map(|reply| {
+                serde_json::from_str::<serde_json::Value>(&reply).unwrap()["result"].clone()
+            })
+        };
+        let rows = doc["compounded_reports"].as_array().unwrap();
+        let plan = ask(&rows[0]).unwrap();
+        assert_eq!(plan["kind"], "plan");
+        assert_eq!(plan["count"], 2);
+        assert_eq!(plan["labels"], serde_json::json!(["Huye", "Nyamagabe"]));
+        assert_eq!(plan["key"], "loc_admin_level_2");
+        assert_eq!(plan["plan"]["revision"], 3);
+        assert_eq!(plan["noun_key"], "pctl_groups");
+        assert_eq!(plan["filed_no_group"], false);
+        assert_eq!(ask(&rows[1]).unwrap()["kind"], "flat");
+        let legacy = ask(&rows[2]).unwrap();
+        assert_eq!(legacy["kind"], "legacy_district");
+        assert_eq!(legacy["count"], 3);
+        assert_eq!(legacy["noun_key"], "pctl_districts");
+        assert_eq!(
+            ask(&serde_json::json!({"group_count": 2, "groups": ["A"]})),
+            Err("archive_group_count_mismatch".to_owned())
+        );
     }
 
     /// Five level tokens, four labels, one legacy twin and one default — the
