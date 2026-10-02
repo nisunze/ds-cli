@@ -67,7 +67,7 @@ pub const SETTINGS_OP: BridgeOp = BridgeOp {
 pub static SETTINGS_COMMAND: Command = Command {
  id: "desktop.printing.settings", path: &["desktop", "printing", "settings"], contract: 1,
  summary: "Read project print settings, selected outputs and template papers.",
- purpose: "Read the saved design output selection for one exact project through Brain and the shared Rust report planner. Returns the authored setting, effective outputs and selected template paper metadata; never guesses from filenames, changes settings, runs an export, or switches the GUI map. Start here before printing. Use report layout list/get to inspect templates natively, printing prepare to save an authorized selection, then read settings again and use printing export for a transformer. Available identically through the printing MCP profile.",
+ purpose: "Read the saved design output selection for one exact project through Brain and the shared Rust report planner. Returns the authored setting, effective outputs and selected template paper metadata; never guesses from filenames, changes settings, runs an export, or switches the GUI map. Start here before printing. Use report layout list/get to inspect templates natively, printing prepare to save an authorized selection, then read settings again and use printing export for a transformer. Same printing MCP profile.",
  chapter: Chapter::Reports, effect: Effect::ReadOnly, authority: Authority::DesktopUser, execution: Execution::Sync,
  args: &[Arg::value("project", "<exact-id>", "Exact project whose saved printing output settings should be read; no GUI project switch.").required(), DESCRIPTOR_ARG],
  output: "Exact project, selection source, authored setting, planned outputs, selected template papers and receipt SHA-256. No design features or credentials.", examples: &[],
@@ -215,7 +215,7 @@ pub static PREPARE_COMMAND: Command = Command {
     path: &["desktop", "printing", "prepare"],
     contract: 1,
     summary: "Save a project print layout, select exports and prepare inputs.",
-    purpose: "Runs printing preparation for the request's required exact project under the paired signed-in user without reading or changing the Desktop map project. The request names project, layout, expectedRevision (empty for create) and a ds.design-output-selection/v1 paper-by-format selection. Optional overrides map canonical transformer names to kernel-validated element/table/legend/style instructions for this layout; null removes the exception. Project settings are saved only if their read base is still current. Saves are durable even when a later preparation step fails; the reference lists the sequence. Use the returned revision for further edits. This does not export a report; follow with desktop printing export.",
+    purpose: "Prepares the request's exact project as the paired signed-in user; never reads/changes the Desktop map project. Request: project, layout, expectedRevision (empty for create), ds.design-output-selection/v1 paper-by-format selection. Optional overrides map canonical transformer names to kernel-validated element/table/legend/style instructions for this layout; null removes its exception. Saves settings only at the current read base; saves survive later preparation failures (sequence in reference). Edit using the returned revision. No report export; follow with desktop printing export.",
     chapter: Chapter::Reports,
     effect: Effect::GlobalWrite,
     authority: Authority::DesktopUser,
@@ -224,7 +224,7 @@ pub static PREPARE_COMMAND: Command = Command {
         Arg::value(
             "request",
             "<json-file>",
-            "Required exact project, authored layout, expectedRevision, versioned output selection, optional transformer views, and overrides keyed by transformer; null removes that layout exception. At most 800 KB.",
+            "Exact project, authored layout, expectedRevision, versioned output selection, optional transformer views/transformer-keyed overrides; null removes this layout's exception. <=800 KB.",
         )
         .required(),
         DESCRIPTOR_ARG,

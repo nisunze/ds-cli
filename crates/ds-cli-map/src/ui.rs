@@ -65,12 +65,10 @@ pub mod open {
         contract: 1,
         summary: "Open one named panel of the paired application over a ref.",
         purpose: "\
-Asks the running application to show one of its named panels — the \
-attribute table, the Style Center, or selection properties — over the thing \
---ref names. This is how a frame is staged before `ds map evidence capture`, \
-and it is the whole of what it does: there is no selector, click, keystroke or \
-script here, only a closed target and a reference the application already \
-published. Navigate with `ds map zoom`; edit with `ds map design set`.",
+Shows a named panel — attribute table, Style Center or selection properties — \
+over --ref before `ds map evidence capture`. Uses only a closed target and an \
+application-published reference; no selector, click, keystroke or script. \
+Navigate with `ds map zoom`; edit with `ds map design set`.",
         chapter: Chapter::Survey,
         effect: Effect::LocalUi,
         authority: Authority::DesktopPairing,

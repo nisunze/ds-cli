@@ -127,11 +127,11 @@ pub static COMMAND: Command = Command {
     contract: 1,
     summary: "Discover or configure project-scoped LV process inputs.",
     purpose: "\
-With no configuration flags, reports the project preset, selected customer \
-sources, available Point layers, and effective processor parameters. Source \
-layers, --preset, and typed --setting overrides store the same project-scoped setup the application uses. The CLI \
-names semantic layer keys only; IndexedDB addresses and processor wiring stay \
-inside DS GridDesign. No design features or cloud data are changed.",
+No configuration flags: project preset, selected customer sources, available \
+Point layers and effective processor parameters. Sources/--preset/typed \
+--setting overrides save the application's project-scoped setup. Semantic \
+layer keys only; IndexedDB addresses/processor wiring stay in DS GridDesign. \
+No design/cloud data changes.",
     chapter: Chapter::Design,
     effect: Effect::LocalUi,
     authority: Authority::Project,
@@ -174,12 +174,12 @@ inside DS GridDesign. No design features or cloud data are changed.",
         },
         Example {
             command: "ds map design setup --pole-survey-layer edcl_poles_survey --dry-run --output json",
-            note: "Borrow a surveyed pole layer: the model keeps only poles the drafted LV lines touch, as existing poles.",
+            note: "Borrow surveyed poles only where drafted LV lines touch them, as existing poles.",
             runnable: false,
         },
         Example {
             command: "ds map design setup --preset drafting --setting weld_tolerance=0.1 --setting keep_lv_lines_topology=true --output json",
-            note: "Persist explicit parameters on top of the shared drafting preset.",
+            note: "Persist explicit parameters over the shared drafting preset.",
             runnable: false,
         },
     ],

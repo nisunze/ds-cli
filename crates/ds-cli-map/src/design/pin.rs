@@ -24,7 +24,7 @@ const TRANSFORMERS_ARG: Arg = Arg {
     required: false,
     default: None,
     choices: &[],
-    summary: "Exact transformer to pin or unpin. Repeat for a family.",
+    summary: "Exact pin/unpin transformer; repeat for a family.",
 };
 
 const SELECTION_ARG: Arg = Arg {
@@ -34,7 +34,7 @@ const SELECTION_ARG: Arg = Arg {
     required: false,
     default: None,
     choices: &[],
-    summary: "Saved Transformer Status selection whose present members to load.",
+    summary: "Saved Transformer Status selection's present members to load.",
 };
 
 const MODE_ARG: Arg = Arg {
@@ -52,41 +52,40 @@ pub static COMMAND: Command = Command {
     path: &["map", "design", "pin"],
     contract: 2,
     summary: "Read, load, pin, unpin, or clear the visible map Working set.",
-    purpose: "Manages the paired map's Working set. Pin exact transformers or a saved selection's present members; missing members are reported. No room or project data is changed.",
+    purpose: "Paired map Working set: pin exact transformers or a saved selection's present members; report missing members. No room/project data changes.",
     chapter: Chapter::Design,
     effect: Effect::LocalUi,
     authority: Authority::Project,
     execution: Execution::Sync,
     args: &[TRANSFORMERS_ARG, SELECTION_ARG, MODE_ARG, DESCRIPTOR_ARG],
     output: "\
-The project, the applied mode, the resulting pinned names and count, and — \
-when a selection was loaded — any members missing from the project. \
-`staged` and `persisted` are explicitly false: the Working set is view \
-state.",
+Project, applied mode and resulting pinned names/count; on selection load, \
+missing project members. Working set is view state: staged=false, \
+persisted=false.",
     examples: &[
         Example {
             command: "ds map design pin --mode read --output json",
-            note: "Reads the current Working set without loading or changing it.",
+            note: "Read only; no load or Working set change.",
             runnable: false,
         },
         Example {
             command: "ds map design pin --transformer agasharu --transformer gitega --output json",
-            note: "Replaces the Working set with exactly these two transformers and paints them.",
+            note: "Replace and paint exactly this transformer pair.",
             runnable: false,
         },
         Example {
             command: "ds map design pin --selection phase1-review --mode load --output json",
-            note: "Replaces the Working set with a saved selection's present members.",
+            note: "Replace with present saved-selection members.",
             runnable: false,
         },
         Example {
             command: "ds map design pin --transformer agasharu --mode unpin --output json",
-            note: "Unpins one exact transformer without disturbing the remaining Working set.",
+            note: "Unpin exactly one; keep the rest.",
             runnable: false,
         },
         Example {
             command: "ds map design pin --mode clear --output json",
-            note: "Empties the Working set and hides the pinned context.",
+            note: "Clear set; hide pinned context.",
             runnable: false,
         },
     ],

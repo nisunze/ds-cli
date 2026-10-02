@@ -35,22 +35,18 @@ const TIMEOUT: Duration = Duration::from_secs(30);
 const REQUEST_ID: Arg = Arg::value(
     "request",
     "<request-id>",
-    "Exact public request id shown by `account connect` or `auth link begin`.",
+    "Public ID from `account connect` or `auth link begin`.",
 )
 .required();
 const DEVICE_FINGERPRINT: Arg = Arg::value(
     "device-fingerprint",
     "<sha256:hex>",
-    "Exact public device fingerprint displayed by the requesting device.",
+    "Requesting device's exact public fingerprint.",
 )
 .required();
-const LANE: Arg = Arg::value(
-    "lane",
-    "<stable|canary>",
-    "Deployment lane bound to the authorization request.",
-)
-.default("stable")
-.choices(&["stable", "canary"]);
+const LANE: Arg = Arg::value("lane", "<stable|canary>", "Request's deployment lane.")
+    .default("stable")
+    .choices(&["stable", "canary"]);
 
 pub const APPROVE_OP: BridgeOp = BridgeOp {
     operation: "auth.link.approve",
@@ -105,16 +101,16 @@ pub static COMMAND: Command = Command {
     path: &["auth", "link", "approve"],
     contract: 1,
     chapter: Chapter::Project,
-    summary: "Approve one headless device as the signed-in user (needs --yes).",
-    purpose: "Previews one approval under the restored native user, checks its exact request, fingerprint, lane, scopes, expiry and renewable flag, then commits the same decision only after explicit confirmation. A lane with no native session asks the paired Desktop instead. No credential or device private key enters ds; a device can never admit a sibling.",
+    summary: "Approve a headless device as the signed-in user (--yes).",
+    purpose: "Restored native user: verify exact preview request/fingerprint/lane/scopes/expiry/renewable flag; explicitly confirm, then commit that decision. Paired Desktop only if no native session in this lane. No credential/private key enters ds; devices cannot admit siblings.",
     effect: Effect::GlobalWrite,
     authority: Authority::HeadlessUser,
     execution: Execution::Sync,
     args: &[REQUEST_ID, DEVICE_FINGERPRINT, LANE, DESCRIPTOR_ARG],
-    output: "A bounded public approval receipt: request, decision, device name/platform/fingerprint, scopes, lane/profile/catalog binding and times; never a credential, private key, proof or token.",
+    output: "Bounded public receipt: request/decision, device name/platform/fingerprint, scopes, lane/profile/catalog binding, times; no credential/private key/proof/token.",
     examples: &[Example {
         command: "ds auth link approve --request req_01 --device-fingerprint sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef --lane stable --yes --output json",
-        note: "Compare the request and fingerprint on both devices before confirming.",
+        note: "First compare both devices' request/fingerprint.",
         runnable: false,
     }],
     refusals: &[
