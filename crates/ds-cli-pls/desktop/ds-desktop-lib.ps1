@@ -28,7 +28,17 @@ $DsDeliverableReports = @(
     @{ k = 'Sag Tension'; id = 40403; p = 'Sag-Tension Report'; all = $false }
 )
 
-$deliverTree = [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $here 'pls-deliver-autosag.ps1'), [ref] $null, [ref] $null)
+function Read-DsScriptAst([string] $Path) {
+    $parseErrors = $null
+    $tree = [System.Management.Automation.Language.Parser]::ParseFile($Path, [ref] $null, [ref] $parseErrors)
+    if (@($parseErrors).Count -ne 0) {
+        $first = $parseErrors[0]
+        throw "PowerShell parse error in ${Path}:$($first.Extent.StartLineNumber):$($first.Extent.StartColumnNumber): $($first.Message)"
+    }
+    return $tree
+}
+
+$deliverTree = Read-DsScriptAst (Join-Path $here 'pls-deliver-autosag.ps1')
 $deliverFunctions = @($deliverTree.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] }, $false))
 foreach ($wanted in 'Count', 'Verdict', 'Watch', 'Title', 'Save', 'ExitPls') {
     $found = @($deliverFunctions | Where-Object { $_.Name -ceq $wanted })
