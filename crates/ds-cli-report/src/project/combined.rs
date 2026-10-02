@@ -707,6 +707,23 @@ mod tests {
         assert_eq!(detail["published"]["prefix"], "run-1");
     }
 
+    #[test]
+    fn inputs_not_current_refusal_has_no_published_archive() {
+        let causes = vec![cause("tx_b", "report_stale")];
+        let receipt = json!({"prefix": "run-1", "archives": ["gs://b/run-1.zip"]});
+        let failure = readiness_refusal(&causes, &receipt)
+            .unwrap()
+            .expect("stale inputs refuse");
+        assert_eq!(failure.code(), "combined_inputs_not_current");
+        let detail = failure.detail_value().unwrap();
+        assert!(
+            detail["published"]["archives"]
+                .as_array()
+                .is_none_or(Vec::is_empty),
+            "a refused run already published an archive: {detail}"
+        );
+    }
+
     /// A complete run is not turned into a refusal by the gate.
     #[test]
     fn a_complete_run_is_not_refused() {
