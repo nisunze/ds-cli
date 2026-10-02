@@ -84,6 +84,11 @@ Keep context subordinate to the line, but record any required layer that is
 missing or omitted. The key map may use administrative boundaries where its
 purpose requires them; the no-boundary rule above is for plan/profile sheets.
 
+LV here is context in one bluish family graded by importance, under the red
+MV route. It never takes the categorical cable and structure palette of a
+standalone LV transformer sheet, and a booklet instruction never restyles those
+sheets: see [two LV print modes](../../ds-map-composition/references/transformer-sheets.md#two-lv-print-modes).
+
 A project can explicitly accept an empty prohibited-zone table for a
 particular model. For Nyamagabe-Nyaruguru Model 2, the owner accepted that
 condition on 27 September 2026. Carry it in that model's setup and delivery
