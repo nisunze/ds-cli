@@ -2015,7 +2015,8 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
             // create-from-template and the three working-area form leaves
             // (read, choose, forget which forms the map loads); the photo
             // leaves moved to survey-media.
-            "survey-projects" => 24,
+            // The two cascade leaves join the existing entry workflow.
+            "survey-projects" => 26,
             // Held survey photos (list, read), the one rotation and its
             // publication, and the offline file rotation, plus bootstrap.
             "survey-media" => 10,
