@@ -64,10 +64,12 @@ mod tiles;
 pub mod transformer_analysis;
 mod transformers;
 pub use transformer_analysis::{
+    saved_lv_analysis_pins, validate_saved_lv_analysis_pins, SavedLvAnalysisPins,
     TransformerAnalysisCall, TransformerAnalysisHeaders, TransformerAnalysisResponse,
-    TransformerAnalysisTransportError, TRANSFORMER_ANALYSIS_ACTION, TRANSFORMER_ANALYSIS_METHOD,
-    TRANSFORMER_ANALYSIS_PATH, TRANSFORMER_ANALYSIS_RESPONSE_LIMIT,
-    TRANSFORMER_ANALYSIS_SHA256_HEADER, TRANSFORMER_ANALYSIS_TIMEOUT_SECONDS,
+    TransformerAnalysisTransportError, SAVED_LV_ANALYSIS_METHOD, SAVED_LV_ANALYSIS_SCHEMA,
+    TRANSFORMER_ANALYSIS_ACTION, TRANSFORMER_ANALYSIS_METHOD, TRANSFORMER_ANALYSIS_PATH,
+    TRANSFORMER_ANALYSIS_RESPONSE_LIMIT, TRANSFORMER_ANALYSIS_SHA256_HEADER,
+    TRANSFORMER_ANALYSIS_TIMEOUT_SECONDS,
 };
 mod transport;
 

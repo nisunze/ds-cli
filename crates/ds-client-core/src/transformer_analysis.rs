@@ -20,6 +20,60 @@ pub const TRANSFORMER_ANALYSIS_SHA256_HEADER: &str = "X-DS-Analysis-SHA256";
 pub const TRANSFORMER_ANALYSIS_RESPONSE_LIMIT: usize = 32 * 1024 * 1024;
 pub const TRANSFORMER_ANALYSIS_TIMEOUT_SECONDS: u64 = 120;
 
+pub use ds_network::network::voltage_drop::params::METHOD as SAVED_LV_ANALYSIS_METHOD;
+/// Saved analysis vocabulary is exported from the producer, never retyped.
+pub use ds_network::network::voltage_drop::VOLTAGE_DROP_ANALYSIS_SCHEMA_V1 as SAVED_LV_ANALYSIS_SCHEMA;
+pub type SavedLvAnalysisPins = (u64, String, String);
+
+/// Validate the immutable pins returned by a verified saved-analysis operation.
+pub fn validate_saved_lv_analysis_pins(
+    version: u64,
+    content_digest: &str,
+    analysis_sha256: &str,
+) -> Result<SavedLvAnalysisPins, ClientError> {
+    if version == 0 || !sha256(content_digest) || !sha256(analysis_sha256) {
+        return Err(unreadable(
+            "saved analysis metadata has invalid snapshot pins",
+        ));
+    }
+    Ok((
+        version,
+        content_digest.to_owned(),
+        analysis_sha256.to_owned(),
+    ))
+}
+
+/// Ready receipts must bind the exact held head; stale/missing receipts carry
+/// no usable pins. A malformed ready receipt is never silently downgraded.
+pub fn saved_lv_analysis_pins(
+    metadata: Option<&serde_json::Value>,
+    version: Option<u64>,
+    content_digest: Option<&str>,
+) -> Result<Option<SavedLvAnalysisPins>, ClientError> {
+    let invalid = || unreadable("saved analysis metadata has invalid or oversized snapshot pins");
+    let Some(metadata) = metadata else {
+        return Ok(None);
+    };
+    match metadata["state"].as_str() {
+        Some("stale" | "missing" | "needs_reprocess") => return Ok(None),
+        Some("ready") => {}
+        _ => return Err(invalid()),
+    }
+    let version = version.ok_or_else(invalid)?;
+    let digest = content_digest.ok_or_else(invalid)?;
+    let sha = metadata["analysis_sha256"].as_str().ok_or_else(invalid)?;
+    let bytes = metadata["json_bytes"].as_u64().ok_or_else(invalid)?;
+    if metadata["schema"] != SAVED_LV_ANALYSIS_SCHEMA
+        || metadata["method"] != SAVED_LV_ANALYSIS_METHOD
+        || metadata["content_digest"] != digest
+        || bytes == 0
+        || bytes > TRANSFORMER_ANALYSIS_RESPONSE_LIMIT as u64
+    {
+        return Err(invalid());
+    }
+    validate_saved_lv_analysis_pins(version, digest, sha).map(Some)
+}
+
 /// Closed privileged transport input. The project and all three head pins are
 /// captured for this one call; there is no selected-project lookup in flight.
 pub struct TransformerAnalysisCall<'a> {
@@ -283,4 +337,43 @@ fn refusal(response: &TransportResponse) -> ClientError {
         _ => ErrorKind::UnreadableResponse,
     };
     ClientError::with_service_refusal(kind, "the server refused the fenced analysis read", refusal)
+}
+
+#[cfg(test)]
+mod saved_receipt_tests {
+    use super::*;
+    use serde_json::json;
+    #[test]
+    fn ready_analysis_is_bound_to_head_and_producer_vocabulary() {
+        let digest = "a".repeat(64);
+        let mut metadata = json!({"state":"ready", "schema":SAVED_LV_ANALYSIS_SCHEMA,
+            "method":SAVED_LV_ANALYSIS_METHOD, "content_digest":digest,
+            "analysis_sha256":"b".repeat(64), "json_bytes":TRANSFORMER_ANALYSIS_RESPONSE_LIMIT});
+        assert_eq!(
+            saved_lv_analysis_pins(Some(&metadata), Some(3), Some(&digest)).unwrap(),
+            Some((3, digest.clone(), "b".repeat(64)))
+        );
+        assert!(saved_lv_analysis_pins(Some(&metadata), Some(3), Some(&"c".repeat(64))).is_err());
+        assert!(saved_lv_analysis_pins(Some(&metadata), Some(0), Some(&digest)).is_err());
+        for (key, value) in [
+            ("schema", json!("old")),
+            ("method", json!("guessed")),
+            ("analysis_sha256", json!("B".repeat(64))),
+            ("json_bytes", json!(0)),
+            ("json_bytes", json!(TRANSFORMER_ANALYSIS_RESPONSE_LIMIT + 1)),
+        ] {
+            let mut invalid = metadata.clone();
+            invalid[key] = value;
+            assert!(
+                saved_lv_analysis_pins(Some(&invalid), Some(3), Some(&digest)).is_err(),
+                "{key}"
+            );
+        }
+        for state in ["missing", "stale", "needs_reprocess"] {
+            metadata = json!({"state":state});
+            assert!(saved_lv_analysis_pins(Some(&metadata), None, None)
+                .unwrap()
+                .is_none());
+        }
+    }
 }
