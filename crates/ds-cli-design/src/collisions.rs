@@ -19,7 +19,9 @@ use ds_command_kernel::collisions::state_key;
 
 use ds_cli_auth::TransformerSet;
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Example, Execution, Requires};
+use ds_cli_contract::spec::{
+    Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
+};
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
@@ -33,7 +35,7 @@ pub static COMMAND: Command = Command {
     id: "design.collisions",
     path: &["design", "collisions"],
     contract: 1,
-    summary: "Read this project's collision count and detection state.",
+    summary: "Read collision counts and rank overlapping transformer regions.",
     purpose: "\
 Reads the project-wide collisions document the report owner writes. The count \
 is taken in a fixed precedence, because a run that finds NOTHING writes no \
@@ -45,11 +47,24 @@ nothing. The reference names the precedence.",
     effect: Effect::LocalAuthState,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[crate::PROJECT_ARG, LANE_ARG],
+    args: &[
+        crate::PROJECT_ARG,
+        LANE_ARG,
+        Arg::flag(
+            "regions",
+            "Read ranked region evidence from the saved collisions layer.",
+        ),
+        Arg::value(
+            "limit",
+            "<1-50>",
+            "Maximum ranked regions to return; more reports truncation.",
+        )
+        .default("10"),
+    ],
     output: "\
 Lane and project identity, `checked`, `pairs` (null when unknown), the \
 `state` key an operator reads it under, and how many ordinary transformers a \
-detection run would cover.",
+detection run would cover. With --regions, ranked evidence without geometry, total and more.",
     examples: &[
         Example {
             command: "ds design collisions --output json",
@@ -62,14 +77,40 @@ detection run would cover.",
             runnable: false,
         },
     ],
-    refusals: super::transformer::status::REFUSALS_READ,
+    refusals: &[
+        super::transformer::NATIVE_PROFILE,
+        super::transformer::NATIVE_PROFILE_DIGEST,
+        super::transformer::NATIVE_PROFILE_UNSAFE,
+        super::transformer::HEADLESS_SIGNED_OUT,
+        super::transformer::PROJECT_REQUIRED,
+        super::transformer::CONTEXT_CORRUPT,
+        Refusal {
+            code: "collision_limit_invalid",
+            when: "limit is outside 1-50",
+            remedy: "pass --limit 1-50",
+        },
+        Refusal {
+            code: "collision_regions_unreadable",
+            when: "the saved collision layer exceeds its bounded projection",
+            remedy: "refresh collision detection before reading regions",
+        },
+    ],
     reference: Some("docs/reference/design.md"),
-    search: &[],
+    search: &["overlap", "severity", "ranking", "duplicate transformers"],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
+    let limit: usize = inputs
+        .require("limit")?
+        .parse()
+        .ok()
+        .filter(|n| (1..=50).contains(n))
+        .ok_or_else(|| {
+            Failure::invalid("collision_limit_invalid", "limit must be 1-50")
+                .remedy("pass --limit 1-50")
+        })?;
     let requested = TransformerSet::new(std::iter::empty::<String>())
         .map_err(|error| Failure::invalid("invalid_transformer_scope", error.to_string()))?;
     let headless = ds_cli_auth::transformer_status(
@@ -94,6 +135,44 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     object.insert("pairs".into(), json!(pairs));
     object.insert("state".into(), json!(state_key(document.is_some(), pairs)));
     object.insert("transformers".into(), json!(checked));
+    if inputs.switch("regions") {
+        let features = if document.is_some() && pairs != Some(0) {
+            let context = ds_cli_auth::transformer_context_for_project(
+                inputs.require("lane")?,
+                inputs.require("project")?,
+                COLLISIONS_ROW,
+            )?;
+            let layer = context.snapshot().layers().get("collisions");
+            layer
+                .and_then(|l| l["features"].as_array())
+                .cloned()
+                .ok_or_else(|| {
+                    Failure::unavailable(
+                        "collision_regions_unreadable",
+                        "saved collision layer has no feature inventory",
+                    )
+                    .remedy("refresh collision detection before reading regions")
+                })?
+        } else {
+            Vec::new()
+        };
+        if features.len() > 10_000
+            || serde_json::to_vec(&features).map_or(true, |bytes| bytes.len() > 4 * 1024 * 1024)
+        {
+            return Err(Failure::unavailable(
+                "collision_regions_unreadable",
+                "collision evidence exceeds its bound",
+            )
+            .remedy("refresh collision detection before reading regions"));
+        }
+        output["summary"] = ds_command_kernel::collisions::summarize(
+            &features,
+            true,
+            document.is_some(),
+            None,
+            limit,
+        );
+    }
     Ok(output)
 }
 

@@ -6360,7 +6360,10 @@ fn design_collisions_reads_the_project_document_and_starts_nothing() {
         .collect::<BTreeSet<_>>();
     // The lane and the project, named on every call: the saved selection is
     // never read.
-    assert_eq!(inputs, BTreeSet::from(["lane", "project"]));
+    assert_eq!(
+        inputs,
+        BTreeSet::from(["lane", "project", "regions", "limit"])
+    );
 
     // A call that names no project is refused locally, never answered for a
     // selection.
