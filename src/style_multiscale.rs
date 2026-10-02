@@ -233,7 +233,7 @@ pub(crate) fn color_range(
     let domain = declared_field(editor, field)?;
     if !matches!(
         domain["type"].as_str(),
-        Some("numeric" | "categorical_number" | "number")
+        Some("numeric" | "categorical_number" | "categorical_int" | "number")
     ) {
         return Err("interpolated colour requires a declared numeric field".into());
     }
