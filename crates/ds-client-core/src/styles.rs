@@ -194,6 +194,7 @@ pub(crate) fn history<T: crate::AuthorizedTransport>(
         profile,
         payload: &empty,
         history: Some(&request),
+        governance: None,
         authority: authority.call(),
     })?;
     if response.status != 200 {
@@ -205,4 +206,63 @@ pub(crate) fn history<T: crate::AuthorizedTransport>(
     let response: Value = serde_json::from_slice(&response.body).map_err(|_| bad())?;
     ds_command_kernel::style_history::admit(command, &response)
         .map_err(|sentence| planner_refused(&sentence))
+}
+
+fn governance_refused(sentence: &str) -> ClientError {
+    let code = sentence
+        .split_once(':')
+        .map(|(code, _)| code)
+        .filter(|code| {
+            code.starts_with("style_resolution_")
+                || *code == "style_governance_invalid"
+                || *code == "project_context_changed"
+        })
+        .unwrap_or("style_governance_invalid");
+    ClientError::with_service_refusal(
+        ErrorKind::InvalidInput,
+        PLAN_REFUSED,
+        crate::ServiceRefusal::new(0, Some(code), Some(sentence)),
+    )
+}
+
+/// Fixed actions carried under one captured project. Resolution remains the
+/// kernel's sole function over the API's admitted exact document table.
+pub(crate) fn governance<T: crate::AuthorizedTransport>(
+    profile: &crate::ClientProfile,
+    transport: &mut T,
+    authority: crate::authorized::Authority<'_>,
+    project: &str,
+    command: &ds_command_kernel::style_governance::Command,
+) -> Result<Value, ClientError> {
+    crate::authorized::validate_tiles(project)?;
+    let request = ds_command_kernel::style_governance::Request {
+        project: project.into(),
+        command: command.clone(),
+    };
+    ds_command_kernel::style_governance::request_body(&request)
+        .map_err(|e| governance_refused(&e))?;
+    let empty = Value::Null;
+    let response = transport.styles(crate::StylesCall {
+        profile,
+        payload: &empty,
+        history: None,
+        governance: Some(&request),
+        authority: authority.call(),
+    })?;
+    if response.status != 200 {
+        let kind = match response.status {
+            401 | 403 => ErrorKind::AuthenticationRejected,
+            500..=599 => ErrorKind::Transient,
+            _ => ErrorKind::InvalidInput,
+        };
+        return Err(envelope(&response)
+            .map(|served| ClientError::with_service_refusal(kind, WRITE_REFUSED, served))
+            .unwrap_or_else(|| refusal(&response)));
+    }
+    if response.body.is_empty() || response.body.len() > crate::LAYERS_RESPONSE_LIMIT {
+        return Err(bad());
+    }
+    let response: Value = serde_json::from_slice(&response.body).map_err(|_| bad())?;
+    ds_command_kernel::style_governance::admit(&request, &response)
+        .map_err(|e| governance_refused(&e))
 }
