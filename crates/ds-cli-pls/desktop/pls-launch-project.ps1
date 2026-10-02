@@ -44,24 +44,28 @@ $start = @{
     PassThru = $true
 }
 $process = Start-Process @start
+Import-Module (Join-Path $PSScriptRoot 'pls-window-classification.psm1') -Force
 
 $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+$frameRow = $null
 do {
     Start-Sleep -Milliseconds 250
     $process.Refresh()
     if ($process.HasExited) {
         throw "PLS-CADD exited during startup with code $($process.ExitCode)"
     }
-} while ($process.MainWindowHandle -eq [IntPtr]::Zero -and [DateTime]::UtcNow -lt $deadline)
+    $rows = @(& (Join-Path $PSScriptRoot 'pls-windows.ps1') -ProcessId $process.Id)
+    $frameRow = Get-PlsMainFrameRow $rows
+} while (-not $frameRow -and [DateTime]::UtcNow -lt $deadline)
 
-if ($process.MainWindowHandle -eq [IntPtr]::Zero) {
+if (-not $frameRow) {
     throw "PLS-CADD did not expose a main window within $TimeoutSeconds seconds"
 }
 
 [ordered]@{
     schema = 'ds.pls.launch.v1'
     process_id = $process.Id
-    main_window_handle = [long] $process.MainWindowHandle
+    main_window_handle = [long](($frameRow -split ' ')[0])
     executable_path = $executable
     executable_sha256 = $actualExecutableSha256
     project_path = $project

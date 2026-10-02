@@ -29,8 +29,8 @@ use serde_json::{Value, json};
 
 use super::run::Finished;
 use super::{
-    BACKUP_DIGEST_MISMATCH, BACKUP_INVALID, DIALOG_STOP, DRIVER_FAILED, OUTPUT_EXISTS,
-    PLS_CADD_MISMATCH, PLS_CADD_RUNNING, PLS_CADD_TIMEOUT, RESTORED_TREE_MISMATCH,
+    ATTACH_REFUSED, BACKUP_DIGEST_MISMATCH, BACKUP_INVALID, DIALOG_STOP, DRIVER_FAILED,
+    OUTPUT_EXISTS, PLS_CADD_MISMATCH, PLS_CADD_RUNNING, PLS_CADD_TIMEOUT, RESTORED_TREE_MISMATCH,
     RESULT_UNREADABLE, SYSTEM_DRIVE_REFUSED, UNKNOWN_DIALOG, WORD_NOT_FOUND,
 };
 
@@ -39,6 +39,7 @@ use super::{
 pub(crate) enum Kind {
     PlsCaddRunning,
     PlsCaddMismatch,
+    AttachRefused,
     BackupDigestMismatch,
     BackupInvalid,
     RestoredTreeMismatch,
@@ -56,6 +57,7 @@ impl Kind {
         match self {
             Self::PlsCaddRunning => &PLS_CADD_RUNNING,
             Self::PlsCaddMismatch => &PLS_CADD_MISMATCH,
+            Self::AttachRefused => &ATTACH_REFUSED,
             Self::BackupDigestMismatch => &BACKUP_DIGEST_MISMATCH,
             Self::BackupInvalid => &BACKUP_INVALID,
             Self::RestoredTreeMismatch => &RESTORED_TREE_MISMATCH,
@@ -144,6 +146,7 @@ pub(crate) const MESSAGE_RULES: &[(Kind, &[&str])] = &[
             "already exists:",
         ],
     ),
+    (Kind::AttachRefused, &["PLS-CADD attach refused:"]),
     (Kind::DialogStop, &["requires repair and is not eligible"]),
     (
         Kind::UnknownDialog,
@@ -297,6 +300,7 @@ fn constructed(kind: Kind, message: &str) -> Failure {
     let failure = match kind {
         Kind::PlsCaddRunning => Failure::conflict(PLS_CADD_RUNNING.code, message),
         Kind::PlsCaddMismatch => Failure::unavailable(PLS_CADD_MISMATCH.code, message),
+        Kind::AttachRefused => Failure::conflict(ATTACH_REFUSED.code, message),
         Kind::BackupDigestMismatch => Failure::conflict(BACKUP_DIGEST_MISMATCH.code, message),
         Kind::BackupInvalid => Failure::invalid(BACKUP_INVALID.code, message),
         Kind::RestoredTreeMismatch => Failure::failed(RESTORED_TREE_MISMATCH.code, message),
@@ -561,6 +565,10 @@ mod tests {
                 "Restore/open did not complete within 900 seconds",
                 Kind::Timeout,
             ),
+            (
+                "PLS-CADD attach refused: exact full project identity unavailable",
+                Kind::AttachRefused,
+            ),
             ("Section Table still open after OK", Kind::Other),
         ] {
             assert_eq!(classify(message), expected, "{message}");
@@ -693,6 +701,30 @@ mod tests {
         assert_eq!(detail["pls_cadd_running"], json!([4242]));
         assert_eq!(detail["script"], "pls-deliver-autosag.ps1");
         std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn unsafe_attachment_becomes_a_declared_refusal_with_operator_evidence() {
+        let refusal = outcome(
+            finished(Some(failed_document(
+                "PLS-CADD attach refused: exact full project identity unavailable",
+            ))),
+            &[ATTACH_REFUSED, DRIVER_FAILED],
+            &[],
+        )
+        .unwrap_err();
+        assert_eq!(refusal.code(), "attach_refused");
+        assert!(
+            refusal
+                .remedy_text()
+                .unwrap()
+                .contains("exact full project path")
+        );
+        assert_eq!(
+            refusal.detail_value().unwrap()["pls_cadd_running"],
+            json!([4242])
+        );
+        assert!(refusal.message().contains("still open"));
     }
 
     #[test]

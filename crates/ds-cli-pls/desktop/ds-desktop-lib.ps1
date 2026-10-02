@@ -103,17 +103,91 @@ function Assert-DsWord {
 # digest, refuses a running PLS-CADD), then let the catalogued watcher settle the startup and
 # open-time prompts. The frame must be the PLS-CADD frame and show the project.
 function Open-DsProject([string] $ProjectPath) {
+    $script:DsAttachedProject = $null
     Log "launch $ProjectPath"
     $launch = (& (Join-Path $here 'pls-launch-project.ps1') -ExecutablePath $PlsExecutable -ProjectPath $ProjectPath `
         -ExpectedExecutableSha256 ([string] $DsProfile.ExecutableSha256) | Out-String) | ConvertFrom-Json
     $script:procId = [int] $launch.process_id; $script:frame = [long] $launch.main_window_handle
-    if ((Title) -notmatch '^PLS-CADD(?:\s|$)') { throw "Unexpected PLS-CADD main-window title: '$(Title)'" }
     Log "opened pid=$($script:procId) hwnd=$($script:frame)"
+    # The catalogue handles About (bounded WM_COMMAND) before any enabled-frame
+    # requirement in AutoSag/report capture. An unknown prompt stops here.
     $w0 = Watch 300
     if ($w0.outcome -ne 'ready') { throw "PLS-CADD not ready after open (project): $($w0.outcome)" }
+    if ((Title) -notmatch '^PLS-CADD(?:\s|$)') { throw "Unexpected PLS-CADD main-window title: '$(Title)'" }
     $leaf = [System.IO.Path]::GetFileName($ProjectPath)
     if ((Title) -notmatch [regex]::Escape($leaf)) { throw "Project $leaf did not open in the PLS-CADD frame: $(Title)" }
     $launch
+}
+
+# Attach has no startup/exit action. Full current path evidence is mandatory;
+# neither a matching filename nor the process's launch command proves which
+# same-named working copy is open now. Unknown identity is a refusal.
+function Assert-DsAttachedProject {
+    if (-not $script:DsAttachedProject) { return }
+    Import-Module (Join-Path $here 'pls-window-classification.psm1') -Force
+    $running = @(Get-Process -Name 'pls_cadd64' -ErrorAction SilentlyContinue)
+    if ($running.Count -ne 1 -or $running[0].Id -ne $script:procId) {
+        throw 'PLS-CADD attach refused: expected exactly the named PLS-CADD process'
+    }
+    $p = $running[0]
+    if ($p.StartTime.ToUniversalTime().Ticks -ne $script:DsAttachedProject.start_ticks -or $p.Path -ine $PlsExecutable) {
+        throw 'PLS-CADD attach refused: process identity changed or executable path differs'
+    }
+    $rows = @(& (Join-Path $here 'pls-windows.ps1') -ProcessId $script:procId)
+    try { $row = Get-PlsMainFrameRow $rows } catch { throw "PLS-CADD attach refused: $($_.Exception.Message)" }
+    if (-not $row -or [long](($row -split ' ')[0]) -ne $script:frame) {
+        throw 'PLS-CADD attach refused: main frame is missing, ambiguous or changed'
+    }
+    $frameTitle = if ($row -match "\] '(.*)'$") { $Matches[1] } else { '' }
+    if (-not (Test-PlsProjectFrameTitle $frameTitle $script:DsAttachedProject.project_path)) {
+        throw 'PLS-CADD attach refused: current full project path is not proven by the frame title'
+    }
+    if (-not (Test-PlsFrameResponsive $script:frame $script:procId)) {
+        throw 'PLS-CADD attach refused: frame is disabled, unresponsive or belongs to another process'
+    }
+    Log "attach verified pid=$($script:procId) hwnd=$($script:frame) title=$frameTitle"
+}
+
+function Connect-DsProject([string] $ProjectPath, [int] $AttachProcessId) {
+    # Launch fails closed before starting anything when PLS-CADD already runs;
+    # attachment is the only path that accepts a running process.
+    if ($AttachProcessId -eq 0) { Assert-DsPlsNotRunning; return Open-DsProject $ProjectPath }
+    Import-Module (Join-Path $here 'pls-backup-restore-lib.psm1') -Force
+    Import-Module (Join-Path $here 'pls-window-classification.psm1') -Force
+    $script:DsAttachedProject = $null
+    try {
+        if ($AttachProcessId -lt 1) { throw 'PID must be positive' }
+        $project = Assert-PlsRegularFile $ProjectPath 'PLS-CADD project'
+        if ([System.IO.Path]::GetExtension($project) -ine '.xyz') { throw 'Project must be the .xyz entry point' }
+        $running = @(Get-Process -Name 'pls_cadd64' -ErrorAction SilentlyContinue)
+        if ($running.Count -ne 1 -or $running[0].Id -ne $AttachProcessId) { throw 'expected exactly the named PLS-CADD process' }
+        $p = $running[0]
+        if ($p.Path -ine $PlsExecutable) { throw 'Unexpected executable path' }
+        $digest = Get-PlsFileSha256 $p.Path
+        $version = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($p.Path).FileVersion
+        if ($digest -ine [string]$DsProfile.ExecutableSha256 -or -not (Test-PlsExecutableVersion $version ([string]$DsProfile.ProductVersion))) {
+            throw 'PLS-CADD executable digest mismatch or version mismatch'
+        }
+        $rows = @(& (Join-Path $here 'pls-windows.ps1') -ProcessId $AttachProcessId)
+        $row = Get-PlsMainFrameRow $rows
+        if (-not $row) { throw 'main frame is missing' }
+        $script:procId = $AttachProcessId; $script:frame = [long](($row -split ' ')[0])
+        $script:DsAttachedProject = @{ project_path = $project; start_ticks = $p.StartTime.ToUniversalTime().Ticks }
+        Assert-DsAttachedProject
+        return [ordered]@{
+            schema = 'ds.pls.launch.v1'; process_id = $script:procId; main_window_handle = $script:frame
+            executable_path = $p.Path; executable_sha256 = $digest
+            project_path = $project; project_sha256 = Get-PlsFileSha256 $project
+        }
+    } catch {
+        # No command, dismissal, save or close is sent on an attachment refusal.
+        throw "PLS-CADD attach refused: $($_.Exception.Message)"
+    }
+}
+
+function Get-DsSession([int] $AttachProcessId) {
+    [ordered]@{ mode = $(if ($AttachProcessId -gt 0) { 'attached' } else { 'launched' })
+        process_id = $script:procId; main_window_handle = $script:frame; project_left_open = ($AttachProcessId -gt 0) }
 }
 
 # The native menu identities remain those of the characterized deliver chain.
@@ -130,6 +204,7 @@ function Get-DsReportSet([bool] $IncludeWindWeightSpan = $false) {
 function Invoke-DsReports([string] $ReportDirectory, [int] $TimeoutSeconds, [bool] $IncludeWindWeightSpan = $false) {
     $reports = [ordered]@{}
     foreach ($r in (Get-DsReportSet $IncludeWindWeightSpan)) {
+        Assert-DsAttachedProject
         $ra = @{ ProcessId = $script:procId; MainWindowHandle = $script:frame; CommandId = $r.id; OutputPath = (Join-Path $ReportDirectory "$($r.k).rtf")
                  ReportTitlePattern = $r.p; JournalPath = (Join-Path $ReportDirectory "journal-$($r.id).jsonl"); TimeoutSeconds = $TimeoutSeconds; Rtf = $true }
         if ($r.all) { $ra.AllFeatureCodes = $true }

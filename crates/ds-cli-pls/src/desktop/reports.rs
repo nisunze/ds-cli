@@ -26,8 +26,8 @@ pub static COMMAND: Command = Command {
     id: "pls.desktop.reports",
     path: &["pls", "desktop", "reports"],
     contract: 2,
-    summary: "Save the five canonical PLS-CADD reports as RTF and A4 PDF.",
-    purpose: "Opens a saved project in PLS-CADD 16.81 and saves Section Usage, Structure Usage, Terrain Clearances for every feature code, Summary and Section Sag-Tension as RTF with violation counts, then exits without saving. Microsoft Word converts each report to A4 landscape PDF. A3 paper and the supplementary Wind & Weight Span report require explicit customization. Staking is an Excel deliverable, not a printed report. The project's .xyz is its entry point; no model or engineering setting is changed.",
+    summary: "Save the five canonical PLS-CADD reports as RTF and A4 PDF, or as RTF only.",
+    purpose: "Opens a saved project in PLS-CADD 16.81 and saves Section Usage, Structure Usage, Terrain Clearances for every feature code, Summary and Section Sag-Tension as RTF with violation counts, then exits without saving. Microsoft Word converts each report to A4 landscape PDF. A3 paper and the supplementary Wind & Weight Span report require explicit customization. --rtf-only skips Word and PDF conversion; the default remains RTF plus Word PDF. --attach-pid uses an existing pinned process only when its unique frame proves the current project's exact full path, and leaves that session open instead of exiting. Staking is an Excel deliverable, not a printed report. The project's .xyz is its entry point; no model or engineering setting is changed.",
     chapter: Chapter::PlsCadd,
     effect: Effect::LocalFileWrite,
     authority: Authority::None,
@@ -42,9 +42,14 @@ pub static COMMAND: Command = Command {
         Arg::value(
             "out",
             "<new folder>",
-            "Absent folder off C: that receives the RTFs, PDFs and journals.",
+            "Absent folder off C: that receives the RTFs, selected PDFs and journals.",
         )
         .required(),
+        Arg::switch(
+            "rtf-only",
+            "Save native RTF reports and verdict counts without Microsoft Word or PDFs.",
+        ),
+        ATTACH_PID_ARG,
         REPORT_TIMEOUT_ARG,
         Arg::value(
             "pdf-paper",
@@ -58,7 +63,7 @@ pub static COMMAND: Command = Command {
             "Also produce the supplementary Wind & Weight Span report.",
         ),
     ],
-    output: "The receipt path and driver bundle digest, the project and its sha256, and per report its RTF and PDF paths, sizes, RTF sha256 and verdict counts: section and structure violations, structure warnings, and spans with and without clearance violations.",
+    output: "The receipt path and driver bundle digest, the project and its sha256, report_format and session lifecycle metadata, and per report its RTF path (PDF path only when selected), sizes, RTF sha256 and verdict counts: section and structure violations, structure warnings, and spans with and without clearance violations.",
     examples: &[Example {
         command: r"ds pls desktop reports --project 'G:\Shared drives\Pro\Working\r2\example.xyz' --out 'G:\Shared drives\Pro\Working\reports-r2' --output json",
         note: "Terrain Clearances computes for minutes on a large model; --report-timeout bounds each report.",
@@ -77,6 +82,7 @@ pub static COMMAND: Command = Command {
         SYSTEM_DRIVE_REFUSED,
         PLS_CADD_RUNNING,
         PLS_CADD_MISMATCH,
+        ATTACH_REFUSED,
         WORD_NOT_FOUND,
         UNKNOWN_DIALOG,
         DIALOG_STOP,
@@ -104,6 +110,8 @@ struct Request {
     report_timeout: String,
     pdf_paper: String,
     include_wind_weight_span: bool,
+    rtf_only: bool,
+    attach_pid: Option<String>,
 }
 
 fn request(inputs: &Inputs) -> Result<Request, Failure> {
@@ -113,6 +121,8 @@ fn request(inputs: &Inputs) -> Result<Request, Failure> {
         report_timeout: report_timeout(inputs.value("report-timeout"))?,
         pdf_paper: inputs.require("pdf-paper")?.into(),
         include_wind_weight_span: inputs.switch("include-wind-weight-span"),
+        rtf_only: inputs.switch("rtf-only"),
+        attach_pid: attach_pid(inputs.value("attach-pid"))?,
     })
 }
 
@@ -127,6 +137,8 @@ fn invocation(request: &Request) -> Invocation {
     .value("ReportTimeoutSeconds", request.report_timeout.clone())
     .value("PdfPaper", request.pdf_paper.clone())
     .switch("IncludeWindWeightSpan", request.include_wind_weight_span)
+    .switch("RtfOnly", request.rtf_only)
+    .optional("AttachProcessId", request.attach_pid.clone())
 }
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
@@ -155,6 +167,11 @@ fn shape(receipt_path: &str, receipt: &Value) -> Result<Value, Failure> {
     if let Some(paper) = receipt.get("pdf_paper") {
         shaped["pdf_paper"] = paper.clone();
         shaped["pdf_orientation"] = receipt["pdf_orientation"].clone();
+    }
+    for key in ["report_format", "session"] {
+        if let Some(value) = receipt.get(key) {
+            shaped[key] = value.clone();
+        }
     }
     Ok(shaped)
 }
@@ -218,7 +235,7 @@ mod tests {
         assert!(entry.contains("schema = 'ds.pls.desktop_reports.v1'"));
         assert!(
             entry.contains("Assert-DsWord"),
-            "Word is checked before PLS-CADD starts"
+            "the selected Word PDF path retains its Word preflight"
         );
         let receipt = json!({
             "schema": RECEIPT_SCHEMA,
@@ -270,6 +287,8 @@ mod tests {
             report_timeout: "600".into(),
             pdf_paper: custom.require("pdf-paper").unwrap().into(),
             include_wind_weight_span: custom.switch("include-wind-weight-span"),
+            rtf_only: custom.switch("rtf-only"),
+            attach_pid: None,
         });
         assert!(invocation.params.contains(&("PdfPaper", Some("A3".into()))));
         assert!(invocation.params.contains(&("IncludeWindWeightSpan", None)));
@@ -297,10 +316,81 @@ mod tests {
             report_timeout: "600".into(),
             pdf_paper: "A4".into(),
             include_wind_weight_span: true,
+            rtf_only: true,
+            attach_pid: Some("4242".into()),
         });
         let declared = declared_parameters(Entry::Reports);
         for (name, _) in &invocation.params {
             assert!(declared.iter().any(|d| d == name), "{name} is not declared");
         }
+    }
+
+    // The request fixture lives in the Unix temp directory; Windows temp is
+    // normally on C:, which the delivery folder contract deliberately refuses.
+    #[cfg(unix)]
+    #[test]
+    fn explicit_report_modes_route_from_declared_flags_without_changing_defaults() {
+        let root =
+            std::env::temp_dir().join(format!("ds-cli-pls-reports-flags-{}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        let project = root.join("example.xyz");
+        std::fs::write(&project, "fixture").unwrap();
+        let out = root.join("new-reports");
+        let tokens = vec![
+            "--project".into(),
+            project.display().to_string(),
+            "--out".into(),
+            out.display().to_string(),
+        ];
+        let inputs = ds_cli_contract::args::parse(&COMMAND, &tokens).unwrap();
+        let default = invocation(&request(&inputs).unwrap());
+        // ProjectPath, RunDirectory, ReportTimeoutSeconds and the A4 default.
+        assert_eq!(default.params.len(), 4);
+        assert!(default.params.contains(&("PdfPaper", Some("A4".into()))));
+        assert!(
+            default
+                .params
+                .iter()
+                .all(|(name, _)| *name != "RtfOnly" && *name != "AttachProcessId")
+        );
+
+        let mut explicit = tokens;
+        explicit.extend(["--rtf-only".into(), "--attach-pid".into(), "4242".into()]);
+        let inputs = ds_cli_contract::args::parse(&COMMAND, &explicit).unwrap();
+        let selected = invocation(&request(&inputs).unwrap());
+        assert!(selected.params.contains(&("RtfOnly", None)));
+        assert!(
+            selected
+                .params
+                .contains(&("AttachProcessId", Some("4242".into())))
+        );
+        assert_eq!(selected.params.len(), default.params.len() + 2);
+        assert_eq!(selected.timeout, default.timeout);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn rtf_only_receipt_preserves_verdicts_and_attached_session() {
+        let receipt = json!({
+            "schema": RECEIPT_SCHEMA,
+            "project": { "path": "example.xyz" },
+            "report_format": "rtf_only",
+            "session": {
+                "mode": "attached", "process_id": 4242,
+                "main_window_handle": 1234, "project_left_open": true
+            },
+            "reports": {
+                "Structure Usage": {
+                    "rtf": "Structure Usage.rtf", "bytes": 10,
+                    "verdict": { "structure_violations": 3, "structure_warnings": 2 }
+                }
+            }
+        });
+        let data = shape("reports.json", &receipt).unwrap();
+        assert_eq!(data["report_format"], receipt["report_format"]);
+        assert_eq!(data["session"], receipt["session"]);
+        assert_eq!(data["reports"], receipt["reports"]);
+        assert!(data["reports"]["Structure Usage"].get("pdf").is_none());
+        assert!(render(&data).contains("Structure Usage: Structure Usage.rtf"));
     }
 }

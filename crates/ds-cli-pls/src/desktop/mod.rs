@@ -66,6 +66,11 @@ pub const PLS_CADD_RUNNING: Refusal = Refusal {
     when: "PLS-CADD is already running on this desktop",
     remedy: "look at the open PLS-CADD first, close it, then retry into a new folder",
 };
+pub const ATTACH_REFUSED: Refusal = Refusal {
+    code: "attach_refused",
+    when: "--attach-pid cannot prove a unique pinned PLS-CADD process, its frame, and the current project's exact full path",
+    remedy: "inspect the named process; require one pinned 16.81 process and one visible project frame exposing the exact full project path, or close PLS-CADD and retry without --attach-pid",
+};
 pub const PLS_CADD_MISMATCH: Refusal = Refusal {
     code: "pls_cadd_mismatch",
     when: "the installed PLS-CADD is not the pinned 16.81 build",
@@ -179,6 +184,11 @@ pub const PROJECT_FILE_ARG: Arg = Arg::value(
     "project-file",
     "<name.xyz>",
     "The project to open when the backup holds several.",
+);
+pub const ATTACH_PID_ARG: Arg = Arg::value(
+    "attach-pid",
+    "<pid>",
+    "Attach to PID (1-2147483647); requires a unique pinned process/frame and the current project's exact full path in its title. Leaves it open.",
 );
 pub const REPORT_TIMEOUT_ARG: Arg = Arg::value(
     "report-timeout",
@@ -377,6 +387,16 @@ fn report_timeout(raw: Option<&str>) -> Result<String, Failure> {
     Ok(seconds.to_string())
 }
 
+/// An explicit process id in the Windows PowerShell driver's signed int range.
+/// Absence preserves the driver's launch-and-close lifecycle.
+fn attach_pid(raw: Option<&str>) -> Result<Option<String>, Failure> {
+    raw.map(|raw| {
+        ds_cli_contract::args::integer(raw, "attach-pid", 1, i64::from(i32::MAX))
+            .map(|pid| pid.to_string())
+    })
+    .transpose()
+}
+
 /// Read a receipt a driver wrote, tolerating the UTF-8 BOM Windows
 /// PowerShell 5.1 puts on some files.
 fn read_receipt(path: &str) -> Result<Value, Failure> {
@@ -406,4 +426,24 @@ fn parse_document(bytes: &[u8]) -> Option<Value> {
 /// exact driver bundle that produced it.
 fn provenance(receipt: &str) -> Value {
     json!({ "receipt": receipt, "drivers": bundle::digest() })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn attach_pid_is_explicit_and_bounded_to_the_native_parameter() {
+        assert_eq!(attach_pid(None).unwrap(), None);
+        assert_eq!(attach_pid(Some("1")).unwrap().as_deref(), Some("1"));
+        assert_eq!(
+            attach_pid(Some("2147483647")).unwrap().as_deref(),
+            Some("2147483647")
+        );
+        for value in ["0", "-1", "2147483648", "not-a-pid", "1.5"] {
+            let refusal = attach_pid(Some(value)).unwrap_err();
+            assert_eq!(refusal.code(), "invalid_number", "{value}");
+            assert!(refusal.message().contains("attach-pid"));
+        }
+    }
 }
