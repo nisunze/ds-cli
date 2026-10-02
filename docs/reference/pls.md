@@ -391,7 +391,9 @@ which a test holds to the chain's text.
 - `autosag` saves the project **in place**: AutoSag through the Section Table
   (never menu command 40337, which crashes 16.81), Save, the Section Usage
   gate, Exit. Receipt `autosag.json`.
-- `reports` writes the six RTFs and their A3 PDFs and saves nothing. Receipt
+- `reports` writes the five canonical submission RTFs and A4 landscape PDFs
+  and saves nothing. The live contract exposes explicit paper and supplementary
+  wind/weight customization. Staking remains an Excel deliverable. Receipt
   `reports.json`.
 - `sheets-pdf` writes `pdf\Plan and Profile.pdf` with PLS-CADD's own exporter,
   each sheet at its page size, and saves nothing. Receipt `sheets.json`.

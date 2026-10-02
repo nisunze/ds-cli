@@ -7,9 +7,8 @@
 //! * [`Origin::Vendored`] — identical to ds-work [`UPSTREAM`]; its digest is
 //!   the upstream file's digest.
 //! * [`Origin::Modified`] — vendored from [`UPSTREAM`] and changed here, with
-//!   the upstream digest kept beside the new one. `pls-deliver-autosag.ps1`
-//!   is the only one: it gained `-NoSheets` (the owner no longer prints PLS
-//!   plan & profile), and its receipt schema moved to v4 with it.
+//!   the upstream digest kept beside the new one: no native sheet printing,
+//!   fail-closed helper parsing, or explicit A4/A3 report paper.
 //! * [`Origin::Owned`] — the `ds-desktop-*.ps1` entries `ds` runs, one per
 //!   verb, which compose the drivers and write the one result document `ds`
 //!   reads.
@@ -79,7 +78,7 @@ pub static BUNDLE: &[Script] = &[
     ),
     script!(
         "ds-desktop-lib.ps1",
-        "068e694b30287ab0411df6a8236695354de9d9e80394a11cf8da7414fbcd7323",
+        "c14bf75e341fefe1afe4c49a678ce977ee7a2906a8b8d424e561f575cb471031",
         Origin::Owned
     ),
     script!(
@@ -89,7 +88,7 @@ pub static BUNDLE: &[Script] = &[
     ),
     script!(
         "ds-desktop-reports.ps1",
-        "34c5bc9e9b73665360898c93fbefcffca8e0fa3bc31cb57dd9dbc375c286feb4",
+        "34135face1875dd2bb2fd56b3540ec583668254f1a61b03b107e004dd5ce3772",
         Origin::Owned
     ),
     script!(
@@ -208,8 +207,10 @@ pub static BUNDLE: &[Script] = &[
     ),
     script!(
         "pls-rtf-to-pdf.ps1",
-        "e02e33f25f09b1f2e37ee09c530d032b5b7af1695375a402b5f0a494be3d380e",
-        Origin::Vendored
+        "d412e324fd7d7103b18278cc1c7c8402b373c991fbf88150712830dadd42887f",
+        Origin::Modified {
+            upstream_sha256: "e02e33f25f09b1f2e37ee09c530d032b5b7af1695375a402b5f0a494be3d380e"
+        }
     ),
     script!(
         "pls-save-sheets-pdf.ps1",
@@ -462,7 +463,7 @@ mod tests {
     }
 
     #[test]
-    fn only_the_deliver_chain_and_fail_closed_loader_diverge_from_upstream() {
+    fn modified_drivers_keep_their_upstream_provenance() {
         let modified: Vec<&str> = BUNDLE
             .iter()
             .filter(|s| matches!(s.origin, Origin::Modified { .. }))
@@ -470,7 +471,11 @@ mod tests {
             .collect();
         assert_eq!(
             modified,
-            ["interim/pls-interim-loader.ps1", "pls-deliver-autosag.ps1"]
+            [
+                "interim/pls-interim-loader.ps1",
+                "pls-deliver-autosag.ps1",
+                "pls-rtf-to-pdf.ps1"
+            ]
         );
         let deliver = text("pls-deliver-autosag.ps1").unwrap();
         assert!(deliver.contains("[switch] $NoSheets"));

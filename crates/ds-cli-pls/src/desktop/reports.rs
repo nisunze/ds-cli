@@ -1,8 +1,8 @@
-//! `ds pls desktop reports` — the six deliverable reports of a saved project.
+//! `ds pls desktop reports` — five canonical submission reports of a saved project.
 //!
 //! Part B of the deliver chain without its restore: open the project, save
-//! the six reports as RTF through `pls-report-any.ps1` and read their verdict
-//! lines with the chain's own `Verdict`, exit without saving, then make A3
+//! reports as RTF through `pls-report-any.ps1` and read their verdict
+//! lines with the chain's own `Verdict`, exit without saving, then make A4
 //! landscape PDFs from the RTFs with Word (`pls-rtf-to-pdf.ps1`). Nothing is
 //! written to the project.
 
@@ -25,9 +25,9 @@ const BASE_TIMEOUT: Duration = Duration::from_secs(2 * 3600);
 pub static COMMAND: Command = Command {
     id: "pls.desktop.reports",
     path: &["pls", "desktop", "reports"],
-    contract: 1,
-    summary: "Save a saved project's six PLS-CADD reports as RTF and A3 PDF.",
-    purpose: "Opens a saved project in PLS-CADD 16.81 and saves the deliverable reports as RTF, in the deliver chain's order: Section Usage, Structure Usage, Terrain Clearances for every feature code, Wind & Weight Span, Summary and Sag-Tension, reading the violation lines from each; exits without saving; then makes an A3 landscape PDF of every RTF with Microsoft Word. Nothing is written to the project. The project's .xyz is its entry point.",
+    contract: 2,
+    summary: "Save the five canonical PLS-CADD reports as RTF and A4 PDF.",
+    purpose: "Opens a saved project in PLS-CADD 16.81 and saves Section Usage, Structure Usage, Terrain Clearances for every feature code, Summary and Section Sag-Tension as RTF with violation counts, then exits without saving. Microsoft Word converts each report to A4 landscape PDF. A3 paper and the supplementary Wind & Weight Span report require explicit customization. Staking is an Excel deliverable, not a printed report. The project's .xyz is its entry point; no model or engineering setting is changed.",
     chapter: Chapter::PlsCadd,
     effect: Effect::LocalFileWrite,
     authority: Authority::None,
@@ -46,6 +46,17 @@ pub static COMMAND: Command = Command {
         )
         .required(),
         REPORT_TIMEOUT_ARG,
+        Arg::value(
+            "pdf-paper",
+            "<paper>",
+            "Report PDF paper; landscape orientation.",
+        )
+        .choices(&["A4", "A3"])
+        .default("A4"),
+        Arg::switch(
+            "include-wind-weight-span",
+            "Also produce the supplementary Wind & Weight Span report.",
+        ),
     ],
     output: "The receipt path and driver bundle digest, the project and its sha256, and per report its RTF and PDF paths, sizes, RTF sha256 and verdict counts: section and structure violations, structure warnings, and spans with and without clearance violations.",
     examples: &[Example {
@@ -91,6 +102,8 @@ struct Request {
     project: String,
     out: String,
     report_timeout: String,
+    pdf_paper: String,
+    include_wind_weight_span: bool,
 }
 
 fn request(inputs: &Inputs) -> Result<Request, Failure> {
@@ -98,6 +111,8 @@ fn request(inputs: &Inputs) -> Result<Request, Failure> {
         project: project_file(inputs.require("project")?)?,
         out: new_folder(inputs.require("out")?, "out")?,
         report_timeout: report_timeout(inputs.value("report-timeout"))?,
+        pdf_paper: inputs.require("pdf-paper")?.into(),
+        include_wind_weight_span: inputs.switch("include-wind-weight-span"),
     })
 }
 
@@ -110,6 +125,8 @@ fn invocation(request: &Request) -> Invocation {
     .value("ProjectPath", request.project.clone())
     .value("RunDirectory", request.out.clone())
     .value("ReportTimeoutSeconds", request.report_timeout.clone())
+    .value("PdfPaper", request.pdf_paper.clone())
+    .switch("IncludeWindWeightSpan", request.include_wind_weight_span)
 }
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
@@ -135,6 +152,10 @@ fn shape(receipt_path: &str, receipt: &Value) -> Result<Value, Failure> {
     let mut shaped = provenance(receipt_path);
     shaped["project"] = receipt["project"].clone();
     shaped["reports"] = receipt["reports"].clone();
+    if let Some(paper) = receipt.get("pdf_paper") {
+        shaped["pdf_paper"] = paper.clone();
+        shaped["pdf_orientation"] = receipt["pdf_orientation"].clone();
+    }
     Ok(shaped)
 }
 
@@ -219,11 +240,63 @@ mod tests {
     }
 
     #[test]
+    fn declared_defaults_and_customization_reach_the_native_entry() {
+        let tokens = |parts: &[&str]| parts.iter().map(|p| p.to_string()).collect::<Vec<_>>();
+        let defaults = ds_cli_contract::args::parse(
+            &COMMAND,
+            &tokens(&["--project", "G:\\model.xyz", "--out", "G:\\report-set"]),
+        )
+        .unwrap();
+        assert_eq!(defaults.value("pdf-paper"), Some("A4"));
+        assert!(!defaults.switch("include-wind-weight-span"));
+        let custom = ds_cli_contract::args::parse(
+            &COMMAND,
+            &tokens(&[
+                "--project",
+                "G:\\model.xyz",
+                "--out",
+                "G:\\report-set",
+                "--pdf-paper",
+                "A3",
+                "--include-wind-weight-span",
+            ]),
+        )
+        .unwrap();
+        assert_eq!(custom.value("pdf-paper"), Some("A3"));
+        assert!(custom.switch("include-wind-weight-span"));
+        let invocation = invocation(&Request {
+            project: "G:\\model.xyz".into(),
+            out: "G:\\report-set".into(),
+            report_timeout: "600".into(),
+            pdf_paper: custom.require("pdf-paper").unwrap().into(),
+            include_wind_weight_span: custom.switch("include-wind-weight-span"),
+        });
+        assert!(invocation.params.contains(&("PdfPaper", Some("A3".into()))));
+        assert!(invocation.params.contains(&("IncludeWindWeightSpan", None)));
+        assert!(
+            ds_cli_contract::args::parse(
+                &COMMAND,
+                &tokens(&[
+                    "--project",
+                    "G:\\model.xyz",
+                    "--out",
+                    "G:\\report-set",
+                    "--pdf-paper",
+                    "A2",
+                ])
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
     fn every_parameter_passed_is_one_the_entry_declares() {
         let invocation = invocation(&Request {
             project: r"G:\r2\example.xyz".into(),
             out: r"G:\o".into(),
             report_timeout: "600".into(),
+            pdf_paper: "A4".into(),
+            include_wind_weight_span: true,
         });
         let declared = declared_parameters(Entry::Reports);
         for (name, _) in &invocation.params {

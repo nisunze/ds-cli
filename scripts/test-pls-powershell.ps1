@@ -115,6 +115,38 @@ try {
     Assert-That (-not (Test-Path -LiteralPath $marker)) 'Parsing a helper executed its top-level code.'
     $cases.Add('loaders_preserve_valid_ast_without_execution')
 
+    $libPath = Join-Path $desktop 'ds-desktop-lib.ps1'
+    $libAst = Read-TestAst $libPath
+    $reportLists = @($libAst.FindAll({ param($node)
+        $node -is [System.Management.Automation.Language.AssignmentStatementAst] -and
+        $node.Left -is [System.Management.Automation.Language.VariableExpressionAst] -and
+        $node.Left.VariablePath.UserPath -ceq 'DsDeliverableReports'
+    }, $false))
+    Assert-That ($reportLists.Count -eq 1) 'The native menu table must have one authority.'
+    # Execute only the literal report table and extracted pure selection function.
+    $DsDeliverableReports = & ([scriptblock]::Create($reportLists[0].Right.Extent.Text))
+    . (Import-TestFunction $libPath 'Get-DsReportSet')
+    $originalReports = $DsDeliverableReports | ConvertTo-Json -Depth 4 -Compress
+    $canonicalReports = @(Get-DsReportSet)
+    Assert-That (($canonicalReports.k -join '|') -ceq 'Section Usage|Structure Usage|Terrain Clearances|Summary|Section Sag-Tension') 'The default submission must contain exactly the five named reports.'
+    Assert-That (($canonicalReports.id -join '|') -ceq '40015|40014|40016|40019|40403') 'Canonical names must preserve characterized native menu identities.'
+    Assert-That ($canonicalReports[2].all -eq $true) 'Terrain Clearances must cover all feature codes.'
+    Assert-That (($DsDeliverableReports | ConvertTo-Json -Depth 4 -Compress) -ceq $originalReports) 'Selecting reports changed the source menu facts.'
+    $supplementedReports = @(Get-DsReportSet $true)
+    Assert-That ($supplementedReports.Count -eq 6 -and @($supplementedReports | Where-Object { $_.id -eq 40020 }).Count -eq 1) 'Supplementary wind/weight spans require the explicit option.'
+    $cases.Add('canonical_five_reports_exact_native_ids_and_optional_supplement')
+
+    . (Import-TestFunction (Join-Path $desktop 'pls-rtf-to-pdf.ps1') 'Set-PlsReportPaper')
+    foreach ($paper in 'A4', 'A3') {
+        $sections = @(1, 2 | ForEach-Object { [pscustomobject]@{ PageSetup = [pscustomobject]@{ Orientation = 0; PageWidth = 1; PageHeight = 2 } } })
+        Set-PlsReportPaper $sections $paper
+        $expectedWidth = $(if ($paper -eq 'A4') { 841.89 } else { 1190.55 })
+        $expectedHeight = $(if ($paper -eq 'A4') { 595.28 } else { 841.89 })
+        Assert-That (@($sections | Where-Object { $_.PageSetup.Orientation -ne 1 -or $_.PageSetup.PageWidth -ne $expectedWidth -or $_.PageSetup.PageHeight -ne $expectedHeight }).Count -eq 0) "Every $paper report section must use its exact landscape page box."
+    }
+    $cases.Add('a4_default_and_explicit_a3_all_sections')
+    Assert-Refuses { Set-PlsReportPaper @() 'A2' } 'ValidateSet|validation' 'unsupported_report_paper_negative'
+
     Import-Module (Join-Path $desktop 'pls-window-classification.psm1') -Force -DisableNameChecking
     $handle = [long] 8589934593
     $frame = "$handle vis=True en=True [PLS-CADD] 'same title'"

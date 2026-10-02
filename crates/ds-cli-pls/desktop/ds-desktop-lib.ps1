@@ -116,10 +116,20 @@ function Open-DsProject([string] $ProjectPath) {
     $launch
 }
 
-# pls-deliver-autosag.ps1 part B: the six reports as RTF with their verdict lines.
-function Invoke-DsReports([string] $ReportDirectory, [int] $TimeoutSeconds) {
-    $reports = [ordered]@{}
+# The native menu identities remain those of the characterized deliver chain.
+# The five-report submission omits the supplementary wind/weight report unless requested.
+function Get-DsReportSet([bool] $IncludeWindWeightSpan = $false) {
     foreach ($r in $DsDeliverableReports) {
+        if ($r.id -eq 40020 -and -not $IncludeWindWeightSpan) { continue }
+        $name = $r.k
+        if ($r.id -eq 40403) { $name = 'Section Sag-Tension' }
+        [pscustomobject]@{ k = $name; id = $r.id; p = $r.p; all = $r.all }
+    }
+}
+
+function Invoke-DsReports([string] $ReportDirectory, [int] $TimeoutSeconds, [bool] $IncludeWindWeightSpan = $false) {
+    $reports = [ordered]@{}
+    foreach ($r in (Get-DsReportSet $IncludeWindWeightSpan)) {
         $ra = @{ ProcessId = $script:procId; MainWindowHandle = $script:frame; CommandId = $r.id; OutputPath = (Join-Path $ReportDirectory "$($r.k).rtf")
                  ReportTitlePattern = $r.p; JournalPath = (Join-Path $ReportDirectory "journal-$($r.id).jsonl"); TimeoutSeconds = $TimeoutSeconds; Rtf = $true }
         if ($r.all) { $ra.AllFeatureCodes = $true }

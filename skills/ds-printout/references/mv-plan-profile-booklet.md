@@ -33,10 +33,13 @@ conflicts without supervising every sheet.
 
 Every page, including front matter, is A3 landscape at its native size:
 
-Use the reusable standard at
-`ds-work/standards/mv-plan-profile/frontmatter/` for the cover and naming
-page. Its HTML/CSS is the template; supply project-owned data, not a new
-layout. Verify exact parties and logo bytes through the project's records and
+Start from the exact published MV sample in the governed printing library,
+adopt its revision into the project, and keep front matter and general setup
+in that project template. Read the live `report.project.mv-setup` and
+`report.plan-profile` contracts: the native booklet route resolves the selected
+revision, model bindings and held approved assets before rendering. A ds-work
+HTML/Python assembly is a historical delivery bridge, not the next-export
+authority. Verify exact parties and logo bytes through project records and
 assets. A missing contract number stays absent until verified. Preview the
 effective front matter beside the project key map and a representative sheet
 at paper size before making the full booklet. If this host cannot read the
@@ -68,9 +71,9 @@ or fill a blank with a plausible value.
 
 Print `DS GridDesign by datasolutions.rw` discreetly and legibly on every
 page, clear of engineering content. Confirm page dimensions, page count,
-sequence, identity, version and credit on the assembled PDF itself. If the
-live `ds` contract has no atomic booklet command, report that gap. A local
-assembly is not a governed project publication or verified online delivery.
+sequence, identity, version and credit on the assembled PDF itself. Use the atomic governed booklet route where its declared inputs meet the job;
+report a concrete missing input or refusal rather than rebuilding that route.
+A local render is not verified online delivery.
 
 ## Plan/profile context
 
@@ -95,3 +98,22 @@ key-map transformer names, context colors and labels, title blocks, legibility,
 clipping and sheet sequence. Preserve hashes, QA scope and omissions in the
 project delivery record. A selected proof is labeled as such; it is not a
 complete print set.
+
+## Submission outputs and separate palettes
+
+The canonical MV set includes the governed booklet, native PLS-CADD backup,
+and staking workbook. Staking remains XLSX and never becomes printed pages.
+The five native PLS reports are Structure Usage, Section Usage, Section
+Sag-Tension, Summary and Terrain Clearances, each RTF plus A4 PDF; use the
+live native report contract for an explicit paper or supplementary-report
+customization. These reports do not authorize PLS-CADD plan/profile printing.
+
+Keep the main MV conductors and route pens from the approved project baseline.
+Subdue LV/customer/context colours in the MV plan independently of the LV
+transformer sheet's categorical engineering pens. A background palette from
+an MV booklet is not a new default for individual LV transformer prints.
+Special-code dots, hairs and captions use the admitted ground-offset guide;
+terrain coordinates and engineering thresholds retain their source values.
+Print the resolved library type's full description alongside its short code.
+Do not invent a long name from placement notes or abbreviate away the
+consultant's description. Inspect dense pages for complete readable labels.
