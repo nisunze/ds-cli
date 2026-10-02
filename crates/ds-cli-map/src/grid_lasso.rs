@@ -57,7 +57,7 @@ pub static COMMAND: Command = Command {
         Arg::value("polygon", "<json>", "<=64 KiB, finite exact pairs. Profile: 3..256 [scene_x,scene_y] engineering pairs (not pixels), open/closed once, abs <=1e9; or same-unit GeoJSON. Plan: WGS84 GeoJSON, lon [-180,180], lat [-90,90]. GeoJSON only {type:Polygon,coordinates:[ring]}, closed 4..256 pairs; no holes/extra keys/ordinates.").required(),
         Arg::value("predicate", "<intersects|within>", "Boundary-inclusive; within requires the whole entity.").choices(&["intersects", "within"]).default("intersects"),
         Arg::repeated("family", "<family>", "Repeat distinct scene families; default: held visible families supported in this space. Plan lacks attachment-point geometry; terrain_points = native ground points.").choices(FAMILIES),
-        Arg::value("filter", "<json>", "Closed ProfileTableFilterQuery <=64 KiB: {filters?:[{column,op,value?,value2?}],stats_columns?:[]}. Lists default []; <=64 AND filters, <=8 distinct stats names. Names: nonblank <=200 bytes, no edge whitespace or controls. Strings <=4096 bytes; nullable value2. op: contains|equals|not_equals|starts_with|ends_with|gt|gte|lt|lte|between|is_empty|not_empty. Unknown/duplicate keys refused."),
+        Arg::value("filter", "<json>", "Closed ProfileTableFilterQuery <=64 KiB: {filters?:[{column,op,value?,value2?,values?}],stats_columns?:[]}. Lists default []; <=64 AND filters, <=8 distinct stats names. Names: nonblank <=200 bytes, no edge whitespace or controls. Strings <=4096 bytes; nullable value2. op: contains|equals|not_equals|starts_with|ends_with|gt|gte|lt|lte|between|is_empty|not_empty|in|in_exact|not_in|token_any|token_all (values: <=256 strings). Unknown/duplicate keys refused."),
         Arg::value("mode", "<replace|add|remove|intersect>", "Combine native hits with the current selection.").choices(&["replace", "add", "remove", "intersect"]).default("replace"),
         crate::DESCRIPTOR_ARG,
     ],
@@ -130,6 +130,8 @@ struct ClosedColumnFilter {
     value: String,
     #[serde(default)]
     value2: Option<String>,
+    #[serde(default)]
+    values: Option<Vec<String>>,
 }
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
@@ -273,7 +275,15 @@ fn filter(raw: &str) -> Result<Value, Failure> {
         {
             return Err(invalid("filter values must be <=4096 bytes"));
         }
+        if filter.values.as_ref().is_some_and(|values| {
+            values.len() > 256 || values.iter().any(|value| value.len() > 4096)
+        }) {
+            return Err(invalid(
+                "filter values lists are bounded to 256 strings of <=4096 bytes",
+            ));
+        }
         filters.push(ColumnFilterInput {
+            values: filter.values,
             column: filter.column,
             op: filter.op,
             value: filter.value,
@@ -479,6 +489,7 @@ mod tests {
             r#"{"filters":[],"stats_columns":[]}"#,
             r#"{"filters":[{"column":"name","op":"contains","value":"Pole"}]}"#,
             r#"{"filters":[{"column":"date","op":"between","value":"2026-01-01","value2":"2026-09-30"}]}"#,
+            r#"{"filters":[{"column":"kind","op":"in","values":["pole","tap"]}]}"#,
         ] {
             assert_eq!(
                 filter(raw).unwrap(),
