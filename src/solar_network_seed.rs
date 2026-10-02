@@ -853,12 +853,7 @@ fn line_coordinates_length(
 
 fn segment_length_m(a: (f64, f64), b: (f64, f64), geometry_crs: LvGeometryCrs) -> f64 {
     if matches!(geometry_crs, LvGeometryCrs::GeographicWgs84) {
-        let lat1 = a.1.to_radians();
-        let lat2 = b.1.to_radians();
-        let dlat = lat2 - lat1;
-        let dlon = (b.0 - a.0).to_radians();
-        let h = (dlat / 2.0).sin().powi(2) + lat1.cos() * lat2.cos() * (dlon / 2.0).sin().powi(2);
-        2.0 * 6_371_008.8 * h.sqrt().asin()
+        ds_geo_lite::haversine_m(a.0, a.1, b.0, b.1)
     } else {
         (b.0 - a.0).hypot(b.1 - a.1)
     }
@@ -1171,6 +1166,15 @@ mod tests {
                 "base_document":base("aderm_bere")
             }]
         })
+    }
+
+    #[test]
+    fn geographic_lengths_use_portable_distance_owner() {
+        let a = (30.0, -2.0);
+        let b = (30.001, -2.0);
+        let distance = segment_length_m(a, b, LvGeometryCrs::GeographicWgs84);
+        assert_eq!(distance, ds_geo_lite::haversine_m(a.0, a.1, b.0, b.1));
+        assert!((distance - 111.127189699).abs() < 1e-6);
     }
 
     #[test]
