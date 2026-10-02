@@ -163,6 +163,7 @@ pub fn validate_publish_payload(payload: &Value) -> Result<(), String> {
     if !is_document(fields.get("style_data")) {
         return Err("a style publish payload needs a style_data object with a string type".into());
     }
+    crate::style_validation::validate(&fields["style_data"])?;
     for (key, value) in fields {
         let acceptable = match key.as_str() {
             "style_ref" | "style_target" | "style_data" => true,
@@ -512,6 +513,7 @@ pub fn save_payload(snapshot: &Value, reference: &str, document: &Value) -> Resu
     if !is_document(Some(document)) {
         return Err("a style save needs a style document with a string type".into());
     }
+    crate::style_validation::validate(document)?;
     let payload = crate::style_plan::style_save_payload(snapshot, reference, document)?;
     bounded(&payload)?;
     Ok(payload)

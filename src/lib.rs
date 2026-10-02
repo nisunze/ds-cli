@@ -1517,6 +1517,14 @@ pub fn server_status_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue>
 }
 
 pub mod style_document;
+pub mod style_legend;
+mod style_validation;
+
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = styleLegend)]
+pub fn style_legend_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
+    style_legend::evaluate(input).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
+}
 #[cfg(feature = "wasm")]
 #[wasm_bindgen::prelude::wasm_bindgen(js_name = styleDocument)]
 pub fn style_document_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {

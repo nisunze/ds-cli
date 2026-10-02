@@ -41,12 +41,8 @@ pub struct PenValues {
     pub visible: bool,
 }
 
-/// One category of a data-driven colour, from the document's `match`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-pub struct PenCategory {
-    pub value: String,
-    pub color: String,
-}
+use crate::style_legend::categories;
+pub use crate::style_legend::Category as PenCategory;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct Pen {
@@ -89,8 +85,6 @@ pub enum PenProperty {
     LabelHaloColor,
 }
 
-const MAX_CATEGORIES: usize = 48;
-
 fn paint_keys(kind: &str) -> Option<(&'static str, &'static str, &'static str, &'static str)> {
     // (colour, size, opacity, size group)
     match kind {
@@ -100,63 +94,6 @@ fn paint_keys(kind: &str) -> Option<(&'static str, &'static str, &'static str, &
         "symbol" => Some(("icon-color", "icon-size", "icon-opacity", "layout")),
         _ => None,
     }
-}
-
-/// The category table of a `["match", ["get", field], v, c, …, fallback]`
-/// colour, with its fallback as the flat colour when it is one.
-fn categories(expression: &Value) -> (Option<String>, Option<String>, Vec<PenCategory>) {
-    let Some(items) = expression.as_array() else {
-        return (None, None, Vec::new());
-    };
-    if items.first().and_then(Value::as_str) != Some("match") || items.len() < 3 {
-        return (None, None, Vec::new());
-    }
-    let field = items[1]
-        .as_array()
-        .filter(|get| get.first().and_then(Value::as_str) == Some("get"))
-        .and_then(|get| get.get(1))
-        .and_then(Value::as_str)
-        .map(str::to_owned);
-    let body = &items[2..];
-    let (pairs, fallback) = if body.len() % 2 == 1 {
-        (&body[..body.len() - 1], body.last())
-    } else {
-        (body, None)
-    };
-    let mut rows = Vec::new();
-    for pair in pairs.chunks(2) {
-        let Some(color) = pair[1].as_str() else {
-            continue;
-        };
-        // A label may be one value or a list of values sharing a colour.
-        let values: Vec<String> = match &pair[0] {
-            Value::Array(many) => many
-                .iter()
-                .filter_map(|v| {
-                    v.as_str()
-                        .map(str::to_owned)
-                        .or_else(|| v.as_f64().map(|n| n.to_string()))
-                })
-                .collect(),
-            Value::String(one) => vec![one.clone()],
-            Value::Number(n) => vec![n.to_string()],
-            _ => Vec::new(),
-        };
-        for value in values {
-            if rows.len() == MAX_CATEGORIES {
-                break;
-            }
-            rows.push(PenCategory {
-                value,
-                color: color.to_owned(),
-            });
-        }
-    }
-    (
-        field,
-        fallback.and_then(Value::as_str).map(str::to_owned),
-        rows,
-    )
 }
 
 fn document_values(

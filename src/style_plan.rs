@@ -289,6 +289,24 @@ fn dash_table(snapshot: &Value) -> Map<String, Value> {
     }
     result
 }
+fn describe_casing(style: &Value) -> Value {
+    if style["type"] != "line" || !style["boundary"].is_object() {
+        return Value::Null;
+    }
+    let Some(color) = style["boundary"]["paint"]["line-color"]
+        .as_str()
+        .and_then(normalize_style_color)
+    else {
+        return Value::Null;
+    };
+    match (
+        numeric_baseline(&style["paint"]["line-width"]),
+        numeric_baseline(&style["boundary"]["paint"]["line-width"]),
+    ) {
+        (Some(parent), Some(boundary)) => json!({"color":color,"width":(boundary-parent)/2.}),
+        _ => Value::Null,
+    }
+}
 fn current_line_type(style: &Value, table: &Map<String, Value>) -> String {
     if let Some(name) = style["metadata"]["line_type_name"]
         .as_str()
@@ -1156,7 +1174,7 @@ pub fn describe_style(
     );
     let report = |key: &str| observed.map_or_else(|| json!({}), |value| value[key].clone());
     Ok(
-        json!({"project":snapshot["project_id"],"ref":reference,"type":kind,"target":editor["style_target"],"document":document,"fields":fields,"fieldValues":values,"channels":channels,"propertySchema":snapshot["style_properties"][kind],"labelSchema":snapshot["label_editor"],"icons":icon_names(snapshot).into_iter().take(200).collect::<Vec<_>>(),"fieldDomains":editor["field_domains"],"second":second,"colorField":primary_style_field(document),"observed":observation,"fieldTypes":report("types"),"fieldTypeSource":report("typeSource"),"fieldTypeConflicts":report("typeConflicts"),"fieldCounts":report("counts"),"fieldMatchLabels":report("matchLabels"),"fieldProvenance":report("provenance"),"more":more}),
+        json!({"project":snapshot["project_id"],"ref":reference,"type":kind,"target":editor["style_target"],"document":document,"fields":fields,"fieldValues":values,"channels":channels,"propertySchema":snapshot["style_properties"][kind],"labelSchema":snapshot["label_editor"],"icons":icon_names(snapshot).into_iter().take(200).collect::<Vec<_>>(),"fieldDomains":editor["field_domains"],"second":second,"cartography":{"lineType":current_line_type(document, &dash_table(snapshot)),"casing":describe_casing(document)},"colorField":primary_style_field(document),"observed":observation,"fieldTypes":report("types"),"fieldTypeSource":report("typeSource"),"fieldTypeConflicts":report("typeConflicts"),"fieldCounts":report("counts"),"fieldMatchLabels":report("matchLabels"),"fieldProvenance":report("provenance"),"more":more}),
     )
 }
 pub fn list_styles(snapshot: &Value, query: Option<&str>, limit: usize) -> Result<Value, String> {
@@ -1189,6 +1207,19 @@ pub fn list_styles(snapshot: &Value, query: Option<&str>, limit: usize) -> Resul
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn catalog_describes_line_type_priority_and_expression_casing() {
+        let document = json!({"type":"line", "metadata":{"line_type_name":"dotted", "line_marker":"arrow"},
+            "paint":{"line-width":["interpolate", ["linear"], ["zoom"], 10, 1, 16, 6]},
+            "boundary":{"paint":{"line-color":"#ffffff", "line-width":["interpolate", ["linear"], ["zoom"], 10, 5, 16, 10]}}});
+        let snapshot = json!({"project_id":"p", "styles":{"roads":document}, "style_editors":[{"style_ref":"roads", "style_target":"design", "layer_name":"roads"}]});
+        let description = describe_style(&snapshot, "roads", None).unwrap();
+        assert_eq!(
+            description["cartography"],
+            json!({"lineType":"dotted", "casing":{"color":"#FFFFFF", "width":2.}})
+        );
+    }
 
     #[test]
     fn zoom_and_boundary_visibility_preserve_independent_authorship() {
