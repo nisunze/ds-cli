@@ -8312,6 +8312,95 @@ fn push_survey_control(transport: &FixtureTransport, value: serde_json::Value) {
         ));
 }
 #[test]
+fn survey_form_purge_is_exact_digest_pinned_and_preserves_partial_and_stale_receipts() {
+    use ds_client_core::survey_control::*;
+    use ds_command_kernel::survey_control::FORM_PURGE_COUNTS;
+    use serde_json::{json, Value};
+    let transport = FixtureTransport::with_sign_in(SIGN_IN);
+    let mut client = signed_in(transport.clone(), MemoryStore::default());
+    let slug = "field_notes_-_areas";
+    let digest = format!("sha256:{}", "a".repeat(64));
+    let counts = |n: u64| -> Value {
+        FORM_PURGE_COUNTS
+            .iter()
+            .map(|key| (key.to_string(), json!(n)))
+            .collect()
+    };
+    push_survey_control(
+        &transport,
+        json!({"status":"success","plan":{"slug":slug,"plan_digest":digest,"scope":counts(1),"projects":[],"templates":[]}}),
+    );
+    let plan = client
+        .survey_control(
+            None,
+            &SurveyControlCommand::FormPurgePlan(FormPurgePlan { slug: slug.into() }),
+            NOW + 1,
+        )
+        .unwrap();
+    assert_eq!(plan["plan"]["plan_digest"], digest);
+    let plan_call = transport.calls().last().unwrap().clone();
+    assert!(plan_call.contains("method=POST") && plan_call.contains("path=/api/v1/form-factory"));
+    assert!(plan_call.contains("purge_plan") && !plan_call.contains("confirm_delete"));
+    let request = SurveyControlCommand::FormPurge(FormPurge {
+        slug: slug.into(),
+        plan_digest: digest.clone(),
+    });
+    push_survey_control(
+        &transport,
+        json!({"status":"success","receipt":{"slug":slug,"plan_digest":digest,"state":"partial","scope":counts(1),"remaining":counts(1),"projects":[],"errors":["media unavailable"]}}),
+    );
+    let partial = client.survey_control(None, &request, NOW + 1).unwrap();
+    assert_eq!(partial["receipt"]["state"], "partial");
+    assert_eq!(partial["receipt"]["remaining"]["media_versions"], 1);
+    let apply_call = transport.calls().last().unwrap().clone();
+    assert!(apply_call.contains("confirm_delete") && apply_call.contains(&digest));
+    for (status, code, kind) in [
+        (400, "form_purge_invalid", ErrorKind::InvalidInput),
+        (409, "form_purge_scope_changed", ErrorKind::InvalidInput),
+        (503, "form_purge_unavailable", ErrorKind::RouteUnavailable),
+    ] {
+        transport
+            .0
+            .lock()
+            .unwrap()
+            .survey_control
+            .push_back(TransportResponse::new(
+            status,
+            serde_json::to_vec(
+                &json!({"status":"error","code":code,"error":"purge refused","retryable":false}),
+            )
+            .unwrap(),
+        ));
+        let refusal = client.survey_control(None, &request, NOW + 1).unwrap_err();
+        assert_eq!(refusal.kind(), kind);
+        assert_eq!(refusal.service_refusal().unwrap().code(), Some(code));
+    }
+    let before = transport.calls().len();
+    let invalid = SurveyControlCommand::FormPurge(FormPurge {
+        slug: slug.into(),
+        plan_digest: "not-pinned".into(),
+    });
+    assert_eq!(
+        client
+            .survey_control(None, &invalid, NOW + 1)
+            .unwrap_err()
+            .kind(),
+        ErrorKind::InvalidInput
+    );
+    assert_eq!(transport.calls().len(), before);
+    push_survey_control(
+        &transport,
+        json!({"status":"success","receipt":{"slug":slug,"plan_digest":digest,"state":"complete","scope":counts(1),"remaining":counts(1),"projects":[],"errors":[]}}),
+    );
+    assert_eq!(
+        client
+            .survey_control(None, &request, NOW + 1)
+            .unwrap_err()
+            .kind(),
+        ErrorKind::UnreadableResponse
+    );
+}
+#[test]
 fn survey_control_forms_are_native_bounded_and_identity_checked() {
     use ds_client_core::survey_control::*;
     use serde_json::json;

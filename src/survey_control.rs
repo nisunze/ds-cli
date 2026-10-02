@@ -19,6 +19,10 @@ pub enum SurveyControlCommand {
     FormUpdate(FormUpdate),
     #[serde(rename = "survey.form.lifecycle")]
     FormLifecycle(FormLifecycle),
+    #[serde(rename = "survey.form.purge-plan")]
+    FormPurgePlan(FormPurgePlan),
+    #[serde(rename = "survey.form.purge")]
+    FormPurge(FormPurge),
     #[serde(rename = "survey.project_forms.read")]
     ProjectFormsRead(ProjectQuery),
     #[serde(rename = "survey.project_form.editor")]
@@ -94,6 +98,17 @@ pub struct FormLifecycle {
     pub force: bool,
     #[serde(default)]
     pub expected_version: Option<u64>,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FormPurgePlan {
+    pub slug: String,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct FormPurge {
+    pub slug: String,
+    pub plan_digest: String,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -223,6 +238,8 @@ impl SurveyControlCommand {
                     && (!matches!(v.action, FormAction::Duplicate)
                         || v.new_display_name.as_deref().is_some_and(|s| text(s, 200)))
             }
+            Self::FormPurgePlan(v) => slug(&v.slug),
+            Self::FormPurge(v) => slug(&v.slug) && purge_digest(&v.plan_digest),
             Self::ProjectFormsRead(v) => {
                 text(&v.project, 200)
                     && (1..=500).contains(&v.limit)
@@ -279,6 +296,98 @@ pub fn response(body: &[u8]) -> Result<Value, Refusal> {
         return Ok(wire["data"].clone());
     }
     Err(unreadable())
+}
+
+/// A purge is authorized against one complete, backend-owned scope. Never
+/// infer completeness from an HTTP success or an omitted residual count.
+pub const FORM_PURGE_COUNTS: &[&str] = &[
+    "schemas",
+    "styles",
+    "project_bindings",
+    "entry_documents",
+    "other_documents",
+    "legacy_deleted_documents",
+    "shared_form_documents",
+    "template_references",
+    "access_grant_references",
+    "media_versions",
+    "bq_objects",
+    "bq_rows",
+    "managed_tile_pointers",
+];
+
+fn purge_digest(value: &str) -> bool {
+    value.strip_prefix("sha256:").is_some_and(|hex| {
+        hex.len() == 64
+            && hex
+                .bytes()
+                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+    })
+}
+
+fn purge_counts(value: &Value) -> bool {
+    value.as_object().is_some_and(|counts| {
+        counts.len() == FORM_PURGE_COUNTS.len()
+            && FORM_PURGE_COUNTS.iter().all(|key| {
+                counts
+                    .get(*key)
+                    .and_then(Value::as_u64)
+                    .is_some_and(|n| n <= 9_007_199_254_740_991)
+            })
+    })
+}
+
+pub fn form_purge_plan_response(wire: Value, slug: &str) -> Result<Value, Refusal> {
+    let plan = &wire["plan"];
+    if plan["slug"] != slug
+        || !plan["plan_digest"].as_str().is_some_and(purge_digest)
+        || !purge_counts(&plan["scope"])
+        || !plan["projects"]
+            .as_array()
+            .is_some_and(|rows| rows.len() <= 1000)
+        || !plan["templates"]
+            .as_array()
+            .is_some_and(|rows| rows.len() <= 100_000)
+        || plan
+            .get("remaining")
+            .is_some_and(|counts| !purge_counts(counts))
+    {
+        return Err(unreadable());
+    }
+    if let Some(resume) = plan.get("resume").filter(|value| !value.is_null()) {
+        if !matches!(resume["state"].as_str(), Some("partial" | "complete"))
+            || resume["plan_digest"] != plan["plan_digest"]
+        {
+            return Err(unreadable());
+        }
+    }
+    Ok(json!({"plan": plan}))
+}
+
+pub fn form_purge_response(wire: Value, request: &FormPurge) -> Result<Value, Refusal> {
+    let receipt = &wire["receipt"];
+    if receipt["slug"] != request.slug
+        || receipt["plan_digest"] != request.plan_digest
+        || !matches!(receipt["state"].as_str(), Some("complete" | "partial"))
+        || !purge_counts(&receipt["scope"])
+        || !purge_counts(&receipt["remaining"])
+        || !receipt["projects"]
+            .as_array()
+            .is_some_and(|rows| rows.len() <= 1000)
+        || !receipt["errors"].as_array().is_some_and(|rows| {
+            rows.len() <= 1000
+                && rows
+                    .iter()
+                    .all(|row| row.as_str().is_some_and(|s| text(s, 2000)))
+        })
+        || (receipt["state"] == "complete"
+            && FORM_PURGE_COUNTS
+                .iter()
+                .any(|key| receipt["remaining"][*key] != 0))
+    {
+        return Err(unreadable());
+    }
+    Ok(json!({"receipt": receipt}))
 }
 pub fn form_summary(form: &Value, detail: bool) -> Value {
     let mut result = json!({"slug":form["slug"],"display_name":form["display_name"],"version":form["version"],"visibility":form.get("visibility").cloned().unwrap_or_else(||json!(if form["is_public"]==true{"public"}else{"private"})),"geometry_type":form.get("geometry_type").unwrap_or(&form["drawing_settings"]["geometry_type"]),"field_count":form["fields"].as_array().map_or(0,Vec::len)});

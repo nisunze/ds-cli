@@ -2,6 +2,7 @@
 use crate::{ClientError, ErrorKind};
 use ds_command_kernel::survey::project_forms::ProjectFormChange;
 use ds_command_kernel::survey_control as kernel;
+pub use kernel::{FormPurge, FormPurgePlan};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -20,6 +21,10 @@ pub enum SurveyControlCommand {
     FormUpdate(FormUpdate),
     #[serde(rename = "survey.form.lifecycle")]
     FormLifecycle(FormLifecycle),
+    #[serde(rename = "survey.form.purge-plan")]
+    FormPurgePlan(FormPurgePlan),
+    #[serde(rename = "survey.form.purge")]
+    FormPurge(FormPurge),
     #[serde(rename = "survey.project_forms.read")]
     ProjectFormsRead(ProjectQuery),
     #[serde(rename = "survey.project_form.editor")]

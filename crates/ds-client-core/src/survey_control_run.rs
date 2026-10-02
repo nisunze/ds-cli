@@ -12,6 +12,10 @@ fn call<T: AuthorizedTransport>(
     route: SurveyRoute,
     payload: Value,
 ) -> Result<Value, ClientError> {
+    let purge = payload
+        .get("action")
+        .and_then(Value::as_str)
+        .is_some_and(|action| matches!(action, "purge_plan" | "purge"));
     let response = transport.survey_control(crate::SurveyControlCall {
         profile,
         route,
@@ -19,6 +23,27 @@ fn call<T: AuthorizedTransport>(
         authority: authority.call(),
     })?;
     if response.status != 200 {
+        if purge && response.body.len() <= 8 * 1024 * 1024 {
+            let wire: Value = serde_json::from_slice(&response.body).unwrap_or(Value::Null);
+            let kind = match (response.status, wire["code"].as_str()) {
+                (400, Some("form_purge_invalid")) | (409, Some("form_purge_scope_changed")) => {
+                    Some(crate::ErrorKind::InvalidInput)
+                }
+                (503, Some("form_purge_unavailable")) => Some(crate::ErrorKind::RouteUnavailable),
+                _ => None,
+            };
+            if let Some(kind) = kind {
+                return Err(ClientError::with_service_refusal(
+                    kind,
+                    "form purge refused",
+                    crate::ServiceRefusal::new(
+                        response.status,
+                        wire["code"].as_str(),
+                        wire["error"].as_str(),
+                    ),
+                ));
+            }
+        }
         return Err(classify_tile_error(response.status));
     }
     crate::survey_control::response(response)
@@ -139,6 +164,22 @@ pub(crate) fn run<T: AuthorizedTransport>(
             Ok(
                 json!({"action":action,"slug":v.slug,"result":result.get("form").unwrap_or(&result)}),
             )
+        }
+        FormPurgePlan(v) => {
+            let result = send(
+                SurveyRoute::Factory,
+                json!({"action":"purge_plan","slug":v.slug}),
+            )?;
+            ds_command_kernel::survey_control::form_purge_plan_response(result, &v.slug)
+                .map_err(|_| unreadable())
+        }
+        FormPurge(v) => {
+            let result = send(
+                SurveyRoute::Factory,
+                json!({"action":"purge","slug":v.slug,"plan_digest":v.plan_digest,"confirm_delete":true}),
+            )?;
+            ds_command_kernel::survey_control::form_purge_response(result, v)
+                .map_err(|_| unreadable())
         }
         ProjectFormsRead(v) => {
             let raw = send(
