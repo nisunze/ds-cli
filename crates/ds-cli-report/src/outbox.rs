@@ -10,7 +10,7 @@
 //! head, `conflict`/`refused` is lost, and a live lease on a project is its
 //! pump.
 //!
-//! These two commands are that queue's surface:
+//! These commands are that queue's surface:
 //!
 //! * `status` — the store's own reading: how much is queued, how old the
 //!   oldest is, why queued rows are still here, what stays and what the
@@ -20,6 +20,9 @@
 //! * `drain` — one pass now, through the SAME shared publication runner the
 //!   background pump uses. There is deliberately no second pump: one
 //!   delivery singleton, woken by hand. A pass never says nothing.
+//! * `inventory` — the captured native owner's actual held report files,
+//!   through the shared receipt/catalogue/SHA reader, without touching the
+//!   queue or contacting a provider.
 //!
 //! Neither command decides anything. The queue's reading is
 //! `ds_command_kernel::sync_store::queue_status`, and draining is
@@ -180,6 +183,205 @@ so. An offline pass changes nothing and says so. A dead holder's lease is freed.
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
+
+const INVENTORY_IDENTITY: Refusal = Refusal {
+    code: "report_inventory_identity_unavailable",
+    when: "the lane has no existing protected account/install, or its providers or protection disagree",
+    remedy: "check this Server user's existing native account, install identity and owner-only config in the requested lane; this read never initializes them",
+};
+const INVENTORY_SCOPE: Refusal = Refusal {
+    code: "report_inventory_scope_invalid",
+    when: "project is not an exact path-segment id or transformer is not an individual reportable key",
+    remedy: "name one exact project and individual transformer, without padding or path separators",
+};
+const INVENTORY_UNREADABLE: Refusal = Refusal {
+    code: "report_inventory_unreadable",
+    when: "the native store/catalogue cannot be read or a selected file has missing, corrupt or mismatched committed bytes",
+    remedy: "check the matching Server state directory and preserve the failing committed files; retry the read after their owning workflow resolves the failure",
+};
+const INVENTORY_CHANGED: Refusal = Refusal {
+    code: "report_inventory_identity_changed",
+    when: "the protected account, lane deployment or install changed during the local inventory read",
+    remedy: "retry under the same native Server identity after the concurrent account change finishes",
+};
+
+pub static INVENTORY: Command = Command {
+    id: "report.outbox.inventory",
+    path: &["report", "outbox", "inventory"],
+    contract: 1,
+    summary: "Inspect one transformer's verified held Server report files.",
+    purpose: "Read actual committed local artifacts under the existing native account/install and explicit project. The shared Rust reader checks receipts and physical SHA/size; the projector preserves each output's producing run and publication state. Works without Desktop or a running Server. No provider refresh, cloud read, publication, queue touch or missing-state creation. Cloud publication remains unobserved; historical generation times remain null.",
+    chapter: Chapter::Reports,
+    effect: Effect::ReadOnly,
+    authority: Authority::HeadlessUser,
+    execution: Execution::Sync,
+    args: &[
+        crate::project::PROJECT_ARG,
+        Arg::value(
+            "transformer",
+            "<exact-key>",
+            "One individual reportable transformer key.",
+        )
+        .required(),
+        SERVER_STATE_DIR_ARG,
+        LANE_ARG,
+    ],
+    output: "`ds.report.inventory/v1`: owner/project/transformer/variant; active publication and ambiguity; nullable generated time; status/read facts; outputs with filename, producing batch/publication/run, local locator/SHA/size/format, publication phase and source state; local/published counts, missing outputs and complete observation. No file bytes or credentials. Empty local inventory is valid; absent store is not_observed; cloud_read is not_observed.",
+    examples: &[Example {
+        command: "ds report outbox inventory --project <exact-id> --transformer <exact-key> --output json",
+        note: "Inspect held files without publishing; selected missing/corrupt bytes refuse instead of falling back to an old generation.",
+        runnable: false,
+    }],
+    refusals: &[
+        QUEUE_ROOT_INVALID,
+        INVENTORY_IDENTITY,
+        INVENTORY_SCOPE,
+        INVENTORY_UNREADABLE,
+        INVENTORY_CHANGED,
+    ],
+    reference: Some("docs/reference/report.md"),
+    search: &[
+        "local artifacts",
+        "held files",
+        "pdf",
+        "sha256",
+        "generation",
+        "refresh",
+    ],
+    requires: Requires::Server,
+    availability: ds_cli_auth::native_availability,
+};
+
+fn inventory_principal(lane: &str) -> Result<ds_cli_auth::HeadlessPrincipal, Failure> {
+    ds_cli_auth::headless_principal_read_only(lane).map_err(|error| {
+        Failure::unavailable(INVENTORY_IDENTITY.code, error.message())
+            .remedy(INVENTORY_IDENTITY.remedy)
+            .detail(json!({"native_code": error.code()}))
+    })
+}
+
+pub fn inventory(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
+    let state = server_state(inputs)?;
+    let project = inputs.require("project")?;
+    let transformer = inputs.require("transformer")?;
+    if !ds_command_kernel::execution_context::valid_project(project) {
+        return Err(Failure::invalid(INVENTORY_SCOPE.code, INVENTORY_SCOPE.when)
+            .remedy(INVENTORY_SCOPE.remedy));
+    }
+    // Validate transformer/report scope through the same pure owner before
+    // observing protected identity or reading any native bytes.
+    use ds_command_kernel::report::inventory::{ReadFact, ReadState, Snapshot};
+    let empty = Snapshot {
+        owner: "scope-validation".into(),
+        project: project.into(),
+        transformer: transformer.into(),
+        variant: "default".into(),
+        expected_input_base_fingerprint: None,
+        local_read: ReadFact {
+            state: ReadState::NotObserved,
+            error: None,
+        },
+        sync_read: ReadFact {
+            state: ReadState::NotObserved,
+            error: None,
+        },
+        cloud_read: ReadFact {
+            state: ReadState::NotObserved,
+            error: None,
+        },
+        local_sets: vec![],
+        sync_artifacts: vec![],
+        cloud_head: None,
+        legacy_cloud: None,
+        required_outputs: vec![],
+    };
+    ds_command_kernel::report::inventory::project(&empty).map_err(|error| {
+        Failure::invalid(INVENTORY_SCOPE.code, error).remedy(INVENTORY_SCOPE.remedy)
+    })?;
+    let lane = inputs.require("lane")?;
+    let principal = inventory_principal(lane)?;
+    let fence = Fence {
+        account: principal.account_uid().into(),
+        deployment: principal.deployment().into(),
+        install_id: principal.install_id().into(),
+    };
+    let store =
+        ds_sync_store::Store::open_read_only(&state.join("store.sqlite")).map_err(|error| {
+            Failure::failed(INVENTORY_UNREADABLE.code, error.to_string())
+                .remedy(INVENTORY_UNREADABLE.remedy)
+        })?;
+    let rows = store
+        .as_ref()
+        .map(|store| {
+            store.snapshot(
+                &fence,
+                &ds_command_kernel::sync_store::Scope::Project {
+                    project: project.into(),
+                },
+            )
+        })
+        .transpose()
+        .map_err(|error| {
+            Failure::failed(INVENTORY_UNREADABLE.code, error.to_string())
+                .remedy(INVENTORY_UNREADABLE.remedy)
+        })?
+        .map(|snapshot| snapshot.artifacts)
+        .unwrap_or_default();
+    let mut snapshot = ds_report_artifacts::inventory::read_snapshot(
+        &state.join("report-artifacts"),
+        principal.account_uid(),
+        project,
+        transformer,
+        &rows,
+    )
+    .map_err(|error| {
+        Failure::failed(INVENTORY_UNREADABLE.code, error).remedy(INVENTORY_UNREADABLE.remedy)
+    })?;
+    if store.is_none() {
+        snapshot.sync_read.state = ds_command_kernel::report::inventory::ReadState::NotObserved;
+    }
+    let after = inventory_principal(lane)?;
+    if principal.account_uid() != after.account_uid()
+        || principal.deployment() != after.deployment()
+        || principal.install_id() != after.install_id()
+    {
+        return Err(
+            Failure::conflict(INVENTORY_CHANGED.code, INVENTORY_CHANGED.when)
+                .remedy(INVENTORY_CHANGED.remedy),
+        );
+    }
+    let view = ds_command_kernel::report::inventory::project(&snapshot).map_err(|error| {
+        Failure::failed(INVENTORY_UNREADABLE.code, error).remedy(INVENTORY_UNREADABLE.remedy)
+    })?;
+    serde_json::to_value(view).map_err(|error| {
+        Failure::failed(INVENTORY_UNREADABLE.code, error.to_string())
+            .remedy(INVENTORY_UNREADABLE.remedy)
+    })
+}
+
+pub fn render_inventory(data: &Value) -> String {
+    let mut text = format!(
+        "{}/{}: {} verified local files; cloud read {}\n",
+        data["project"].as_str().unwrap_or(""),
+        data["transformer"].as_str().unwrap_or(""),
+        data["local_output_count"].as_u64().unwrap_or(0),
+        data["cloud_read"]["state"]
+            .as_str()
+            .unwrap_or("not_observed"),
+    );
+    for output in data["outputs"].as_array().into_iter().flatten() {
+        text.push_str(&format!(
+            "  {} · {} · {} · source {}\n",
+            output["output_id"].as_str().unwrap_or(""),
+            output["filename"].as_str().unwrap_or(""),
+            output["publication_phase"]
+                .as_str()
+                .unwrap_or("not_observed"),
+            output["source_state"].as_str().unwrap_or("not_observed"),
+        ));
+    }
+    text
+}
 
 fn server_state(inputs: &Inputs) -> Result<PathBuf, Failure> {
     ds_compute_runtime::server_state_directory(

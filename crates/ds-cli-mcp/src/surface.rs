@@ -1071,6 +1071,7 @@ const PROJECT_OPERATIONS_COMMANDS: &[&str] = &[
     // excludes this list, does not grow by three.
     "report.project.publish",
     "report.outbox.status",
+    "report.outbox.inventory",
     "report.outbox.drain",
 ];
 

@@ -99,6 +99,7 @@ pub static DOMAIN: Domain = Domain {
         &plan_profile_config::SCHEMA,
         &spatial_workbook::COMMAND,
         &outbox::STATUS,
+        &outbox::INVENTORY,
         &outbox::DRAIN,
         &publication::LIST,
         &publication::SHOW,
