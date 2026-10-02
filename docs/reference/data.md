@@ -309,7 +309,7 @@ it in the cloud. It is read two ways:
   the cell; narrow the design buffer. `status` reports cloud rows without a
   room as `cloud_resident`.
 
-Contract: `ds-command-kernel/docs/contracts/foundation-datasets.md`.
+Contract: `ds-brain/docs/contracts/foundation-datasets.md`.
 
 ## `upi lookup`
 
