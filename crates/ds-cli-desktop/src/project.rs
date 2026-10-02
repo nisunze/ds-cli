@@ -193,7 +193,7 @@ pub fn list(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
 }
 
 pub fn switch(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
-    let project = bounded_text(inputs.require("project")?, "project", 160)?;
+    let project = crate::project_id(inputs.require("project")?, "invalid_text")?;
     let descriptor = ops::paired(inputs.value("desktop-descriptor"))?;
     let observed = bridge::session(&descriptor)?;
     let before = bridge::IdentityFence::from_session(&observed)?;
@@ -308,10 +308,10 @@ mod tests {
     #[test]
     fn project_text_is_bounded_and_trimmed() {
         assert_eq!(
-            bounded_text("project-1", "project", 160).unwrap(),
+            crate::project_id("project-1", "invalid_text").unwrap(),
             "project-1"
         );
-        assert!(bounded_text(" project-1", "project", 160).is_err());
-        assert!(bounded_text("", "project", 160).is_err());
+        assert!(crate::project_id(" project-1", "invalid_text").is_err());
+        assert!(crate::project_id("", "invalid_text").is_err());
     }
 }

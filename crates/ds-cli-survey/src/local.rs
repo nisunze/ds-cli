@@ -68,7 +68,7 @@ pub static STATUS_COMMAND: Command = Command {
 };
 
 pub fn status(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
-    let project = crate::text(inputs.require("project")?, "project", 256)?;
+    let project = crate::project_id(inputs.require("project")?)?;
     let lane = inputs.require("lane")?;
     let identity =
         ds_cli_auth::probe_headless_identity_for_named_project(lane)?.ok_or_else(|| {

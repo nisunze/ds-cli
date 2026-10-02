@@ -353,11 +353,7 @@ fn require_request_project<'a>(request: &'a Value, operation: &str) -> Result<&'
 }
 
 fn bounded_project(value: &str) -> Result<&str, Failure> {
-    if value.is_empty() || value.trim() != value || value.chars().count() > 160 {
-        return Err(invalid_read(
-            "`--project` must be non-empty, trimmed, and at most 160 characters",
-        ));
-    }
+    ds_client_core::validate_project_id(value).map_err(|error| invalid_read(error.to_string()))?;
     Ok(value)
 }
 pub fn render(data: &Value) -> String {

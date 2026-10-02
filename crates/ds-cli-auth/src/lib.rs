@@ -2325,7 +2325,9 @@ fn verify_restored_layer_identity(
 /// what gets through this door is what becomes a preference key and a request
 /// path. One rule, one answer, at every door, so this asks for it.
 fn bounded_named_project(value: &str) -> Result<String, Failure> {
-    if !ds_command_kernel::execution_context::valid_project(value) {
+    if ds_client_core::validate_project_id(value).is_err()
+        || !ds_command_kernel::execution_context::valid_project(value)
+    {
         return Err(Failure::invalid(
             "context_corrupt",
             format!(

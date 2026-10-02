@@ -120,6 +120,14 @@ const NOT_A_REFUSAL: &[(&str, &str)] = &[
 /// unscanned while the test passed.
 const CODE_NOT_A_LITERAL: &[(&str, &str)] = &[
     (
+        "ds-cli-desktop/src/lib.rs",
+        "the shared project-ID adapter preserves the caller's declared refusal \
+         code; project.rs, sync.rs/published.rs and artifact.rs pass only the \
+         literal invalid_text, sync_invalid_input and printing_artifact_invalid \
+         codes declared by their commands, while client-core alone validates \
+         the project identity",
+    ),
+    (
         "ds-cli-auth/src/correspondence.rs",
         "the code is ds-brain's own `PM_REFUSED`/`ASSET_REFUSED` reason token \
          (correspondence.md §Refusals), relayed verbatim as the contract's \

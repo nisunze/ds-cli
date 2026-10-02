@@ -77,3 +77,13 @@ pub static DOMAIN: Domain = Domain {
         &sync::SANITIZE_APPLY_COMMAND,
     ],
 };
+
+/// Adapt native project admission while preserving each bridge refusal code.
+pub(crate) fn project_id<'a>(
+    value: &'a str,
+    code: &'static str,
+) -> Result<&'a str, ds_cli_contract::Failure> {
+    ds_client_core::validate_project_id(value)
+        .map_err(|error| ds_cli_contract::Failure::invalid(code, error.to_string()))?;
+    Ok(value)
+}

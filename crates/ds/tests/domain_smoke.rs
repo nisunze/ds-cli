@@ -720,7 +720,7 @@ fn published_read_checks_selectors_and_never_falls_back_to_local_files() {
         "sync",
         "published",
         "--project",
-        &"p".repeat(129),
+        &"p".repeat(201),
         "--operation",
         "export-agasharu",
         "--output",

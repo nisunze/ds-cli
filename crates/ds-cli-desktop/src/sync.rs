@@ -229,7 +229,10 @@ pub fn status(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     }
     let mut args = Map::from_iter([("limit".to_string(), json!(limit))]);
     if let Some(project) = inputs.value("project") {
-        args.insert("project".into(), json!(text(project, "project", 128)?));
+        args.insert(
+            "project".into(),
+            json!(crate::project_id(project, "sync_invalid_input")?),
+        );
     }
     ops::invoke(
         &descriptor(inputs)?,
@@ -241,7 +244,7 @@ pub fn status(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
 }
 
 pub fn retry(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
-    let project = text(inputs.require("project")?, "project", 128)?;
+    let project = crate::project_id(inputs.require("project")?, "sync_invalid_input")?;
     let row = text(inputs.require("row")?, "row", 512)?;
     ops::invoke(
         &descriptor(inputs)?,
@@ -253,7 +256,7 @@ pub fn retry(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
 }
 
 pub fn sanitize_preview(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
-    let project = text(inputs.require("project")?, "project", 128)?;
+    let project = crate::project_id(inputs.require("project")?, "sync_invalid_input")?;
     let limit = inputs
         .value("limit")
         .unwrap_or("50")
@@ -270,7 +273,7 @@ pub fn sanitize_preview(inputs: &Inputs, _: &Context) -> Result<Value, Failure> 
     .map_err(ops::classify_signed_out)
 }
 pub fn sanitize_apply(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
-    let project = text(inputs.require("project")?, "project", 128)?;
+    let project = crate::project_id(inputs.require("project")?, "sync_invalid_input")?;
     let digest = text(inputs.require("digest")?, "digest", 64)?;
     if digest.len() != 64
         || !digest
