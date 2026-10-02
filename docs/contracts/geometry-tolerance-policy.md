@@ -1,0 +1,56 @@
+# Geometry tolerance policy
+
+Owner: `ds-geo-lite`. Applies to portable vector primitives and their consumers.
+
+Coordinate space, operation semantics and named tolerance parameters determine
+an operation's result. A migration preserves its consumer's existing parameters;
+a change requires an explicit rule and a differential regression test. There is
+no universal epsilon and no implicit CRS selection.
+
+## Units and roles
+
+- Geodesic distance/area use the existing 6,371,000 m sphere. Projected engineering
+  distances retain their explicitly chosen metric CRS; they are not haversine.
+- Cartesian distance preserves squared-sum arithmetic by default. Hypot arithmetic
+  is an explicit compatibility option, not a silent numerical replacement.
+- Computational degeneracy, coordinate bounds, determinant/area tolerances,
+  dimensionless segment parameters, metric reach and screen pixels are separate.
+- A user-configured physical tolerance is not permission to spend that tolerance
+  on engineering limits or move retained infrastructure.
+- Output rounding belongs to the codec/report boundary, never to primitive math.
+
+## Line operations
+
+- Cartesian polyline projection skips zero-length segments and retains the first
+  equally-near segment. Empty/singleton/wholly degenerate lines have no foot.
+- Station slicing takes caller-supplied nondecreasing stations and sorted cuts.
+  A cut within the supplied vertex tolerance uses the exact authored vertex;
+  endpoints do not manufacture pieces. All payloads interpolate at the same t.
+- LV station slicing keeps its 0.001 m vertex tolerance. Its 0.05 m cut merging,
+  0.5 m split reach and 0.1 m default welding remain domain decisions; zero
+  welding still disables the cadence, and retained endpoints remain immovable.
+- Editing parameter slicing retains its 1e-10 parameter tolerance during the
+  mechanical move. Its terminal-parameter behavior is a separately characterized
+  migration, not an incidental consequence of changing owners.
+- Degree-space crossing retains its existing determinant tolerance and does not
+  return collinear overlaps. Proper interior crossing, any contact and region
+  boundary crossing are distinct queries.
+
+## Predicates, samples and admission
+
+Boundary-inclusive, interior-only and half-open ownership are distinct modes.
+Hole interior and hole boundary are distinct. Elevation's half-open lattice
+ownership must continue to allocate a shared border to exactly one area.
+
+GeoJSON measurement rejects malformed positions rather than bridging them.
+Viewport extent skips invalid WGS84 positions; strict selection admission rejects
+invalid geometry. Shared walkers must expose these modes instead of guessing.
+
+Sampling seeds, source order, nearest ties, buffer cap/join/miter options and
+native byte/decimal fidelity are observable contracts. Preserve them through
+relocation. The polygon Boolean backend remains the existing geo/i_overlay
+engine. Native TIN admission/edge limits remain in the native consumer.
+
+Remaining compatibility thresholds and numerical differences are inventoried in
+`ds-network/docs/design/geometry-toolkit-consolidation.md`. New consumers choose
+one documented mode; they do not add private epsilons or geometric repair.

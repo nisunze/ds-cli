@@ -9,7 +9,7 @@
 //! exact area predicates, and revision comparison are all things a surveyor
 //! standing in a field, offline, needs.
 //!
-//! Types, primitives and buffer/sample/crossing operations are maintained here.
+//! Types, primitives and vector operations are maintained here.
 //! Network's `ds-geo-ops` delegates to this crate. There is one implementation,
 //! and neither this crate nor the command kernel depends on Network.
 //!
@@ -18,14 +18,19 @@
 //! remains in Network; `tests/geo_lite_drift.rs` and `scripts/sync-geo-lite.sh`
 //! still fence that separate scope. They have not moved in this slice.
 
+#[cfg(feature = "overlay")]
 #[path = "../../../vendor/ds-geo-lite/geo/admission.rs"]
 pub mod admission;
+#[cfg(feature = "geojson")]
 #[path = "../../../vendor/ds-geo-lite/geo/comparison.rs"]
 pub mod comparison;
+#[cfg(feature = "geojson")]
 #[path = "../../../vendor/ds-geo-lite/geo/identity.rs"]
 pub mod identity;
+#[cfg(feature = "overlay")]
 #[path = "../../../vendor/ds-geo-lite/geo/spatial_predicate.rs"]
 pub mod spatial_predicate;
+#[cfg(feature = "geojson")]
 #[path = "../../../vendor/ds-geo-lite/geo/viewport.rs"]
 pub mod viewport;
 
@@ -189,3 +194,22 @@ pub fn destination_point(lng: f64, lat: f64, bearing_deg: f64, distance_m: f64) 
     let p = primitives::destination::destination(Coord::new(lng, lat), bearing_deg, distance_m);
     vec![p.lng, p.lat]
 }
+
+#[cfg(any(
+    feature = "editing",
+    feature = "profile",
+    feature = "tin",
+    feature = "sampling"
+))]
+mod flat_ops;
+#[cfg(any(
+    feature = "editing",
+    feature = "profile",
+    feature = "tin",
+    feature = "sampling"
+))]
+pub use flat_ops::*;
+
+pub mod cartesian;
+pub mod predicates;
+pub mod tolerance;

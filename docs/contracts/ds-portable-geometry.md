@@ -13,10 +13,21 @@ lives, how it stays honest, and what the severance did and did not buy.
 
 `crates/ds-geo-lite` maintains the portable types, six primitive modules
 (`bearing`, `destination`, `haversine`, `interpolation`, `intersection`,
-`spherical_area`) and three composed operations (`buffer`, `points_along`,
-`intersections`). These ten source files move from Network without mathematical
-changes. `ds-geo-ops` uses/re-exports them instead of maintaining copies.
+`spherical_area`) and the composed vector operations. The 2026-10-02 consolidation adds the
+former `ds-geo-ops` editing, sampling, profile-station and terrain operations
+without mathematical changes, including their operation and malformed-packet
+tests. `ds-geo-ops` becomes a compatibility re-export for remaining consumers.
 The former partial haversine snapshot is removed.
+
+The default feature set has no dependencies. `editing`, `sampling` and `tin`
+add portable operations without dependencies; `profile` adds the `index`
+feature (`rstar`). `geojson` adds serde/JSON and the retained revision/extent
+modules; `overlay` adds the one `geo` predicate/boolean engine. The application
+kernel explicitly requests `overlay`. Consumers select capabilities instead
+of inheriting the polygon engine for scalar distance or LV line splitting.
+Cartesian primitives preserve admitted coordinate space, arithmetic, first-hit
+ties, authored vertices and payload interpolation. The governing policy is
+[`geometry-tolerance-policy.md`](geometry-tolerance-policy.md).
 
 The permitted dependency is Network's geometry crate → this small portable
 crate. Kernel → Network and Network → the whole application kernel remain

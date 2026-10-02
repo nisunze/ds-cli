@@ -12,10 +12,21 @@ publish = false
 [lib]
 path = "src/lib.rs"
 
+[features]
+default = []
+geojson = ["dep:serde", "dep:serde_json"]
+overlay = ["geojson", "dep:geo"]
+index = ["dep:rstar"]
+editing = []
+sampling = []
+tin = []
+profile = ["index"]
+
 [dependencies]
 # Exact polygon predicates only (BooleanOps, BoundingRect, Centroid, Intersects).
 # Pinned to the version ds-network resolves, so the snapshot compiles against
 # the same geo the source was written for.
-geo = { version = "0.33.1", default-features = false }
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+geo = { version = "0.33.1", default-features = false, optional = true }
+serde = { version = "1", features = ["derive"], optional = true }
+serde_json = { version = "1", optional = true }
+rstar = { version = "0.12", optional = true }

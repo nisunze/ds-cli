@@ -293,6 +293,7 @@ name = "ds-geo-lite"
 version = "0.1.0"
 dependencies = [
  "geo",
+ "rstar",
  "serde",
  "serde_json",
 ]
