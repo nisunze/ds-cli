@@ -8019,7 +8019,7 @@ fn headless_style_refusals_name_the_rule_that_refused_them() {
         (
             0,
             Some("style_refused".into()),
-            Some("choose colour, icon, size or icon overlap".into())
+            Some("choose colour, icon, size, icon overlap or halo".into())
         )
     );
     assert_eq!(posted(&transport), before);
