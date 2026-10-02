@@ -1627,6 +1627,7 @@ dependencies = [
  "aho-corasick",
  "base64 0.22.1",
  "delaunator",
+ "ds-cleaning",
  "ds-geo",
  "ds-geo-ops",
  "ds-graph",
