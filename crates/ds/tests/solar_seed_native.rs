@@ -60,9 +60,6 @@ fn profile_input(lane: DeploymentLane) -> ClientProfileInput {
         survey_entries_select_path: "/api/v1/survey/entries/select".to_owned(),
         survey_entries_changes_method: "POST".to_owned(),
         survey_entries_changes_path: "/api/v1/survey/entries/changes".to_owned(),
-        survey_entry_create_method: "POST".to_owned(),
-        survey_entry_create_path: "/api/v1/entries/mutate".to_owned(),
-        survey_entry_create_operation: "create".to_owned(),
         project_data_method: "POST".to_owned(),
         project_data_path: "/api/v1/project_data".to_owned(),
         project_data_actions: ["list", "upload_start", "upload", "delete"]
@@ -188,12 +185,6 @@ impl AuthorizedTransport for NativeGateway {
     fn survey_entries_changes(
         &mut self,
         _call: ds_client_core::SurveyEntriesChangesCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Err(TransportError::Unreachable)
-    }
-    fn survey_entry_create(
-        &mut self,
-        _call: ds_client_core::SurveyEntryCreateCall<'_>,
     ) -> Result<TransportResponse, TransportError> {
         Err(TransportError::Unreachable)
     }

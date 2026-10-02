@@ -40,10 +40,9 @@ blocked and committed work separately. Preserve identities and replay keys
 through interruption. Server commit receipts do not prove mirror convergence;
 governed readback supplies that evidence.
 
-For an already prepared online document, use the existing governed
-`survey.entries.create` operation. Canonical NDJSON migration uses
-`survey.entries.import` with its retained checkpoint and receipt. Read the live
-contract for the operation needed; import is not a CSV/Survey123 parser.
+Survey creation writes directly to Firestore from durable browser/field
+outboxes. Backend create and native entry create/import commands are retired.
+Survey queries use BigQuery. Existing edits use ds-brain mutate.
 Project-to-project copy is `survey.migrate.plan` then `survey.migrate.apply`,
 with the source and destination projects both named on every call.
 

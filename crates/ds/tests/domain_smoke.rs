@@ -8120,11 +8120,6 @@ fn design_lv_project_export_refuses_an_existing_artifact_before_auth_or_desktop(
                 "method": "POST",
                 "path": "/api/v1/survey/entries/changes"
             },
-            "survey_entry_create": {
-                "method": "POST",
-                "path": "/api/v1/entries/mutate",
-                "operation": "create"
-            },
             "printing":{"method":"POST","path":"/api/v1/printing","actions":["list","get","create","update","save","delete","copy"]},
             "layers":{"method":"POST","path":"/api/v1/layers","actions":["get_config","get_style_catalog","refresh","reorder","set_default_visibility"]},
             "styles":{"method":"POST","path":"/api/v1/styles","action":"update_style"},
@@ -8177,7 +8172,7 @@ fn design_lv_project_export_refuses_an_existing_artifact_before_auth_or_desktop(
     std::fs::write(
         &profile_path,
         serde_json::to_vec(&json!({
-            "schema_version": "ds.native-client-profiles/v30",
+            "schema_version": "ds.native-client-profiles/v31",
             "development": true,
             "profiles": {
                 "stable": profile(
@@ -13058,6 +13053,17 @@ fn every_cartography_scenario_is_a_declared_example_of_its_own_command() {
 }
 
 #[test]
+fn survey_entry_creation_commands_are_retired() {
+    for command in ["survey.entries.create", "survey.entries.import"] {
+        let result = native_ds(&["capabilities", command, "--output", "json"]);
+        assert_eq!(
+            result.code, 2,
+            "retired command {command} remains discoverable"
+        );
+    }
+}
+
+#[test]
 fn project_forms_native_reads_include_explicit_selected_project_commands() {
     let native = ok(&[
         "capabilities",
@@ -13306,197 +13312,6 @@ fn project_forms_native_reads_include_explicit_selected_project_commands() {
             "`{id}` gives the same remedy for an absent route and an invisible scope"
         );
     }
-
-    let create = ok(&["capabilities", "survey.entries.create", "--output", "json"]);
-    assert_eq!(create["command"]["authority"], "headless_project");
-    assert_eq!(create["command"]["effect"], "global_write");
-    assert_eq!(create["command"]["execution"], "sync");
-    assert_eq!(create["command"]["confirmation_required"], true);
-    let create_help = native_ds(&["survey", "entries", "create", "--help"]);
-    assert_eq!(create_help.code, 0);
-    assert!(
-        create_help
-            .stdout
-            .contains("--idempotency-key <opaque-key>")
-    );
-    assert!(create_help.stdout.contains("Firestore committed"));
-    assert!(create_help.stdout.contains("BigQuery mirror unconfirmed"));
-    let names = create["command"]["inputs"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .filter_map(|arg| arg["name"].as_str())
-        .collect::<BTreeSet<_>>();
-    assert_eq!(
-        names,
-        BTreeSet::from([
-            "context-key",
-            "created-at",
-            "doc-id",
-            "document",
-            "form",
-            "idempotency-key",
-            "lane",
-            "project",
-        ])
-    );
-    for forbidden in [
-        "url",
-        "method",
-        "body",
-        "token",
-        "origin",
-        "operation",
-        "retry",
-        "force",
-        "authority",
-        "desktop-descriptor",
-    ] {
-        assert!(
-            create["command"]["inputs"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .all(|arg| arg["name"] != forbidden),
-            "survey.entries.create exposed --{forbidden}"
-        );
-    }
-    let unconfirmed_create = native_ds(&[
-        "survey",
-        "entries",
-        "create",
-        "--project",
-        "test-project",
-        "--form",
-        "poles",
-        "--doc-id",
-        "pole-1",
-        "--idempotency-key",
-        "opaque-1",
-        "--created-at",
-        "2026-08-30T00:00:00Z",
-        "--document",
-        "missing.json",
-        "--output",
-        "json",
-    ]);
-    assert_eq!(unconfirmed_create.code, 2);
-    assert_eq!(
-        unconfirmed_create.envelope["error"]["code"],
-        "confirmation_required"
-    );
-    let confirmed_invalid_create = native_ds(&[
-        "survey",
-        "entries",
-        "create",
-        "--project",
-        "test-project",
-        "--form",
-        "poles",
-        "--doc-id",
-        "pole-1",
-        "--idempotency-key",
-        "opaque-1",
-        "--created-at",
-        "2026-08-30T00:00:00Z",
-        "--document",
-        "missing.json",
-        "--yes",
-        "--output",
-        "json",
-    ]);
-    assert_eq!(confirmed_invalid_create.code, 2);
-    assert_eq!(
-        confirmed_invalid_create.envelope["error"]["code"],
-        "survey_entry_create_document_invalid"
-    );
-
-    let import = ok(&["capabilities", "survey.entries.import", "--output", "json"]);
-    assert_eq!(import["command"]["authority"], "headless_project");
-    assert_eq!(import["command"]["effect"], "global_write");
-    assert_eq!(import["command"]["confirmation_required"], true);
-    let names = import["command"]["inputs"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .filter_map(|arg| arg["name"].as_str())
-        .collect::<BTreeSet<_>>();
-    assert_eq!(
-        names,
-        BTreeSet::from([
-            "checkpoint",
-            "file",
-            "form",
-            "lane",
-            "on-error",
-            "project",
-            "receipt"
-        ])
-    );
-    for forbidden in [
-        "concurrency",
-        "retry",
-        "origin",
-        "operation",
-        "created-by",
-        "token",
-        "url",
-        "method",
-        "source-provenance",
-    ] {
-        assert!(
-            import["command"]["inputs"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .all(|arg| arg["name"] != forbidden),
-            "survey.entries.import exposed --{forbidden}"
-        );
-    }
-    let root = temp_root("survey-import-preauth");
-    std::fs::create_dir_all(&root).unwrap();
-    let missing = root.join("missing.ndjson").display().to_string();
-    let checkpoint = root.join("state.json").display().to_string();
-    let receipt = root.join("receipt.ndjson").display().to_string();
-    let invalid_import = native_ds(&[
-        "survey",
-        "entries",
-        "import",
-        "--project",
-        "test-project",
-        "--form",
-        "poles",
-        "--file",
-        &missing,
-        "--checkpoint",
-        &checkpoint,
-        "--receipt",
-        &receipt,
-        "--yes",
-        "--output",
-        "json",
-    ]);
-    #[cfg(not(windows))]
-    {
-        assert_eq!(invalid_import.code, 2);
-        assert_eq!(
-            invalid_import.envelope["error"]["code"], "survey_entries_import_source_invalid",
-            "the complete local source contract must fail before profile or auth access"
-        );
-    }
-    #[cfg(windows)]
-    {
-        assert_eq!(invalid_import.code, 3);
-        assert_eq!(
-            invalid_import.envelope["error"]["code"],
-            "survey_entries_import_windows_state_unavailable",
-            "Windows must retain the protected-state refusal before import or auth"
-        );
-    }
-    assert!(!PathBuf::from(checkpoint).exists());
-    assert!(!PathBuf::from(receipt).exists());
-    std::fs::remove_dir_all(root).unwrap();
-
     let legacy = ok(&[
         "capabilities",
         "survey.project-forms.read",

@@ -1582,16 +1582,6 @@ static SURVEY_ENTRIES: &[Entry] = &[
         render: ds_cli_survey::changes::render,
     },
     Entry {
-        command: &ds_cli_survey::create::COMMAND,
-        handler: ds_cli_survey::create::run,
-        render: ds_cli_survey::create::render,
-    },
-    Entry {
-        command: &ds_cli_survey::import::COMMAND,
-        handler: ds_cli_survey::import::run,
-        render: ds_cli_survey::import::render,
-    },
-    Entry {
         command: &ds_cli_survey::migrate::plan::COMMAND,
         handler: ds_cli_survey::migrate::plan::run,
         render: ds_cli_survey::migrate::plan::render,

@@ -1028,7 +1028,7 @@ fn form_factory_and_survey_projects_keep_their_distinct_mapless_contracts() {
     assert!(survey_project_names.contains("survey_query"));
     assert!(survey_project_names.contains("survey_entries_select"));
     assert!(survey_project_names.contains("survey_entries_changes"));
-    assert!(survey_project_names.contains("survey_entries_create"));
+    assert!(!survey_project_names.contains("survey_entries_create"));
     assert!(!survey_project_names.contains("survey_form_lifecycle"));
     assert!(!survey_project_names.contains("survey_entries_import"));
     assert!(!survey_project_names.contains("survey_photo_rotate"));
@@ -1071,8 +1071,8 @@ fn form_factory_and_survey_projects_keep_their_distinct_mapless_contracts() {
         .expect("survey-migration tools");
     assert_eq!(
         migration.len(),
-        5,
-        "catalog and diagnostics plus bounded import and the project-to-project \
+        4,
+        "catalog and diagnostics plus the project-to-project \
          plan/apply; native Survey workspace is retired"
     );
     assert_eq!(migration[0]["name"], "ds_catalog");
@@ -1083,13 +1083,6 @@ fn form_factory_and_survey_projects_keep_their_distinct_mapless_contracts() {
             .find(|tool| tool["name"] == name)
             .unwrap_or_else(|| panic!("survey-migration publishes {name}"))
     };
-    let import = tool("survey_entries_import");
-    assert_eq!(import["title"], "survey.entries.import");
-    assert_eq!(
-        import["inputSchema"]["properties"]["confirm"]["type"],
-        "boolean"
-    );
-    assert!(import["inputSchema"]["properties"].get("project").is_some());
     // Migration is stateless: both projects are required operands of both
     // steps, and only the apply writes.
     for (name, writes) in [
@@ -1219,45 +1212,6 @@ fn form_factory_and_survey_projects_keep_their_distinct_mapless_contracts() {
     assert_eq!(
         changes["inputSchema"]["properties"]["limit"]["default"],
         "100"
-    );
-    let entry_create = survey_projects
-        .iter()
-        .find(|tool| tool["name"] == "survey_entries_create")
-        .expect("native selected-project Survey create tool");
-    assert_eq!(entry_create["title"], "survey.entries.create");
-    assert_eq!(
-        entry_create["inputSchema"]["required"],
-        json!([
-            "project",
-            "form",
-            "doc-id",
-            "idempotency-key",
-            "created-at",
-            "document"
-        ])
-    );
-    assert_eq!(
-        entry_create["inputSchema"]["properties"]
-            .as_object()
-            .unwrap()
-            .keys()
-            .map(String::as_str)
-            .collect::<BTreeSet<_>>(),
-        BTreeSet::from([
-            "confirm",
-            "context-key",
-            "created-at",
-            "doc-id",
-            "document",
-            "form",
-            "idempotency-key",
-            "lane",
-            "project",
-        ])
-    );
-    assert_eq!(
-        entry_create["inputSchema"]["properties"]["confirm"]["type"],
-        "boolean"
     );
 }
 

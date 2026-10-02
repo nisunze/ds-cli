@@ -24,11 +24,11 @@ use ds_client_core::{
     ProjectFormSettingsEditor, ProjectFormsSnapshot, RetirementAction, RetirementReceipt,
     RetirementRequest, SecretRequestBody, SolarSnapshot, StoreError, SurveyEntriesChanges,
     SurveyEntriesChangesRequest, SurveyEntriesRead, SurveyEntriesReadRequest,
-    SurveyEntriesSelectRequest, SurveyEntriesSelection, SurveyEntryCreateReceipt,
-    SurveyEntryCreateRequest, SurveyQueryRequest, SurveyQueryResult, TileOperationResult,
-    TilePreflight, TileType, TransformerContext, TransformerInventory, TransformerSet,
-    TransformerStatusList, TransportError, TransportResponse, WeakNetwork, device_secret_json,
-    parse_device_begin, parse_device_list, parse_device_read, parse_device_revoke,
+    SurveyEntriesSelectRequest, SurveyEntriesSelection, SurveyQueryRequest, SurveyQueryResult,
+    TileOperationResult, TilePreflight, TileType, TransformerContext, TransformerInventory,
+    TransformerSet, TransformerStatusList, TransportError, TransportResponse, WeakNetwork,
+    device_secret_json, parse_device_begin, parse_device_list, parse_device_read,
+    parse_device_revoke,
 };
 use serde_json::{Value, json};
 use zeroize::{Zeroize, Zeroizing};
@@ -748,13 +748,6 @@ impl<T: ds_client_core::Transport> DeviceSession<T> {
         request: &SurveyEntriesChangesRequest,
     ) -> Result<SurveyEntriesChanges, ClientError> {
         fixed_device_call!(self, survey_entries_changes, project, request)
-    }
-    pub fn survey_entry_create(
-        &mut self,
-        project: &str,
-        request: &SurveyEntryCreateRequest,
-    ) -> Result<SurveyEntryCreateReceipt, ClientError> {
-        fixed_device_call!(self, survey_entry_create, project, request)
     }
     pub fn tile_list(
         &mut self,

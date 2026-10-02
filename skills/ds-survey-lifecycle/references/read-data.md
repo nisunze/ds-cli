@@ -32,7 +32,7 @@ the task; the installed contract supplies flags, authority and refusals.
 5. Return the measure, units, scope and freshness with any unresolved evidence.
    Quality flags identify review candidates; they do not authorize deletion or
    a guessed correction. A requested existing-record edit needs its supported
-   mutation workflow; `survey.entries.create` is not an update workaround.
+   mutation workflow; an absent update must never create an entry.
 
 ## Spatial evidence or a design handoff
 

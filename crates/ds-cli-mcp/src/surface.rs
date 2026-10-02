@@ -926,7 +926,6 @@ const SURVEY_PROJECT_COMMANDS: &[&str] = &[
     "survey.query",
     "survey.entries.select",
     "survey.entries.changes",
-    "survey.entries.create",
     "survey.project-forms.list",
     "survey.project-form.settings",
     "survey.project-forms.read",
@@ -946,11 +945,7 @@ const SURVEY_PROJECT_COMMANDS: &[&str] = &[
 
 // Getting survey data into a project: canonical NDJSON import, or a
 // project-to-project copy planned then applied (both projects explicit).
-const SURVEY_MIGRATION_COMMANDS: &[&str] = &[
-    "survey.entries.import",
-    "survey.migrate.plan",
-    "survey.migrate.apply",
-];
+const SURVEY_MIGRATION_COMMANDS: &[&str] = &["survey.migrate.plan", "survey.migrate.apply"];
 
 const DESIGN_EDIT_COMMANDS: &[&str] = &[
     "design.features.select",

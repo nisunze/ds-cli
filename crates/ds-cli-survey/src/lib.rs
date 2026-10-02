@@ -7,10 +7,8 @@
 //! validation or topology. Offline capture stays in the browser application.
 
 pub mod changes;
-pub mod create;
 pub mod entries;
 pub mod forms;
-pub mod import;
 pub mod local;
 pub mod migrate;
 pub mod moments;
@@ -56,8 +54,6 @@ pub static DOMAIN: Domain = Domain {
         &read::COMMAND,
         &local::STATUS_COMMAND,
         &changes::COMMAND,
-        &create::COMMAND,
-        &import::COMMAND,
         &migrate::plan::COMMAND,
         &migrate::apply::COMMAND,
         &templates::LIST_COMMAND,
@@ -224,12 +220,11 @@ mod availability_tests {
     #[test]
     fn native_survey_descriptors_share_the_protected_state_gate() {
         let expected = ds_cli_auth::native_availability as fn() -> Availability;
-        for command in [&entries::COMMAND, &changes::COMMAND, &create::COMMAND] {
+        for command in [&entries::COMMAND, &changes::COMMAND] {
             assert!(std::ptr::fn_addr_eq(command.availability, expected));
         }
-        assert!(!std::ptr::fn_addr_eq(
-            import::COMMAND.availability,
-            expected
-        ));
+        assert!(DOMAIN.commands.iter().all(|command| {
+            command.id != "survey.entries.create" && command.id != "survey.entries.import"
+        }));
     }
 }

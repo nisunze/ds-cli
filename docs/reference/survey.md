@@ -60,8 +60,7 @@ server acknowledgement and mirror visibility are distinct states.
 The separate SQLite-backed native Survey workspace and its
 `survey workspace init|prepare|collect|list|sync` commands are retired. They are
 not replaced with a second CLI capture store. Native query, selection, changes,
-form/template administration, governed online entry creation and canonical
-NDJSON import remain supported.
+form/template administration remain supported.
 
 Retirement does not delete or automatically migrate existing workspace files.
 Keep any retained workspace and its artifacts intact; pending data is not proof
@@ -227,100 +226,10 @@ Malformed, unknown, contradictory, or oversized service envelopes retain a
 coarse status-class refusal. The CLI never parses backend response bodies or
 promotes an unrecognized message into a typed service meaning.
 
-`survey entries create` is the governed single-entry write path. It requires
-explicit `--yes` confirmation and accepts only a form slug, new document id,
-opaque idempotency key, RFC3339 device creation time, one closed local JSON
-document, an optional context ancestor chain, and stable/canary lane. Project
-identity comes only from the restored user's audience-fenced selection. The
-CLI validates the complete local grammar before profile discovery or auth,
-releases the selected-project lease before the request, and calls only the
-create-bound `POST /api/v1/entries/mutate` native-core contract. It never
-retries or falls back automatically.
 
-```text
-ds survey entries create --project <project-id> --form <form-slug> --doc-id pole-104 \
-  --idempotency-key '<opaque-key>' --created-at 2026-08-30T12:00:00Z \
-  --document ./pole-104.json --yes --output json
-```
-
-The document must be a regular non-symlink file no larger than 900 KiB. Its
-root is closed: required `data` must be an object; optional `geometry`,
-`connectivity`, and `detailed_location` must be non-null, with the latter two
-also objects. Unknown root keys are refused. The shared core owns form and
-document identity, context, canonical timestamp, GeoJSON, finite-number, and
-exact serialized payload validation. No project id, raw URL, method, request
-body, token, origin, operation, retry, force, caller authority, or Desktop
-descriptor is accepted.
-
-Success returns a receipt only: Firestore is `committed`, while the BigQuery
-mirror remains `unconfirmed`. The output never contains request data or the
-idempotency key. A later governed selection or changes read establishes mirror
-visibility; the create receipt itself does not. A manual retry after an
-ambiguous service failure must reuse the exact document and idempotency key.
-
-`survey entries import` is the separate bounded migration path. It leaves the
-single-entry command unchanged, requires explicit `--yes`, and accepts one
-immutable NDJSON source, checkpoint path, receipt path, fixed form, and lane.
-It validates the complete source twice before profile discovery, auth, local
-state creation, or network work; restores one native session; freezes the
-named project and form; then invokes the same governed create contract
-sequentially. There is no concurrency, automatic retry, source-format parser,
-project override, per-row form, or transport fallback.
-
-```text
-ds survey entries import --project <project-id> --form <form-slug> \
-  --file ./survey123.ndjson \
-  --checkpoint ./survey123.checkpoint.json \
-  --receipt ./survey123.receipt.ndjson --yes --output json
-```
-
-Each line is one closed canonical object. The four optional buckets, when
-present, must be non-null. `connectivity` and `detailed_location` must be
-objects, and `geometry` must satisfy the shared GeoJSON contract.
-
-```json
-{"doc_id":"pole-104","idempotency_key":"<opaque-key>","data":{},"metadata":{"created_at":"2026-08-30T12:00:00Z"},"context_key":"parent_form:parent-id","geometry":{"type":"Point","coordinates":[30.1,-1.9]},"connectivity":{},"detailed_location":{}}
-```
-
-Only `metadata.created_at` is caller-provided metadata. The selected
-`project_id`, authenticated `created_by`, operation `create`, origin `unknown`,
-audit fields, and Firestore replication clock remain authority-owned. The
-current create contract has no safe source-provenance field, so imports do not
-invent or persist one.
-
-The source is bounded to 8 GiB, 100,000 rows, and 1 MiB per physical line.
-Duplicate idempotency keys or duplicate canonical context/document identities
-are refused before auth. Context keys containing percent encoding are refused
-in this first version because the shared core does not expose an unambiguous
-canonical identity projection for alias detection.
-
-The append-and-sync receipt records only the row number, source-row digest,
-form, document-identity digest, terminal code or verified commit clock/version.
-The atomic checkpoint and machine summary contain no payload, field names, coordinates,
-idempotency material, token, or email. A terminal receipt is synced before the
-checkpoint advances. A crash before that append safely replays the exact
-idempotent create; a complete receipt event one row ahead of the checkpoint is
-reconciled without a network call; a partial receipt tail is removed before
-the exact row is replayed, but only after the unchanged receipt, principal,
-audience, named project, form, and both state paths are rebound. Pre-auth
-inspection never truncates a receipt. Other incomplete or contradictory state
-refuses.
-A non-link sidecar lock derived from the canonical receipt gives one process
-exclusive ownership of every writer to that receipt while allowing imports
-with distinct receipts to run together. Checkpoint and receipt manifests bind
-both canonical state paths.
-`--on-error continue` advances only past the exact row-local `invalid`,
-`idempotency conflict`, and `already exists` create outcomes. Permission,
-disabled/read-only scope, missing-scope, coarse refusal, uncertain, and
-retryable outcomes all pause without advancing because they may affect every
-remaining row.
-
-On Unix, import state also enforces owner and `0600`-equivalent file
-permissions. The current Windows build can prove reparse points, file identity,
-link count, and process exclusion, but cannot yet prove an owner-private DACL.
-The import command therefore reports
-`survey_entries_import_windows_state_unavailable` on Windows until a protected
-state-root adapter is available; it does not claim durable-state privacy there.
+Survey entry creation belongs to direct Firestore client outboxes. The native
+`survey entries create` and `survey entries import` commands are retired.
+Survey reads use BigQuery; existing modifications remain in ds-brain mutate.
 
 Four related objects have separate lifecycles:
 

@@ -42,9 +42,9 @@ use ds_client_core::{
     PROJECT_FORM_EDITOR_ACTION, PROJECT_FORMS_ACTION, PROJECT_REPORT_ACTIONS, ProfileError,
     SOLAR_SNAPSHOT_ACTION, SRE_EVENTS_ACTIONS, STYLES_ACTION, SURVEY_CONTROL_ROUTES,
     SURVEY_ENTRIES_CHANGES_METHOD, SURVEY_ENTRIES_CHANGES_PATH, SURVEY_ENTRIES_SELECT_METHOD,
-    SURVEY_ENTRIES_SELECT_PATH, SURVEY_ENTRY_CREATE_OPERATION, SURVEY_QUERY_METHOD,
-    SURVEY_QUERY_PATH, TILES_ACTIONS, TRANSFORMER_CONTEXT_ACTION, TRANSFORMER_CONTEXT_FIELDS,
-    TRANSFORMER_CONTEXT_METHOD, TRANSFORMER_CONTEXT_PATH,
+    SURVEY_ENTRIES_SELECT_PATH, SURVEY_QUERY_METHOD, SURVEY_QUERY_PATH, TILES_ACTIONS,
+    TRANSFORMER_CONTEXT_ACTION, TRANSFORMER_CONTEXT_FIELDS, TRANSFORMER_CONTEXT_METHOD,
+    TRANSFORMER_CONTEXT_PATH,
 };
 
 /// Every registry operation `ds` can issue, and which of its typed calls does.
@@ -148,8 +148,6 @@ fn profile_from_registry(lane: DeploymentLane, gateway_origin: &str) -> ClientPr
     let (tiles_method, tiles_path) = route("domains.tiles.action");
     let (layers_method, layers_path) = route("domains.layers.action");
     let (project_report_method, project_report_path) = route("domains.project_report.action");
-    let (survey_entry_create_method, survey_entry_create_path) =
-        route("domains.survey_entries.create");
     let (design_selections_method, design_selections_path) =
         route("domains.design_collaboration.selections");
     let (data_distribution_method, data_distribution_path) =
@@ -203,9 +201,6 @@ fn profile_from_registry(lane: DeploymentLane, gateway_origin: &str) -> ClientPr
         survey_entries_select_path: SURVEY_ENTRIES_SELECT_PATH.to_owned(),
         survey_entries_changes_method: SURVEY_ENTRIES_CHANGES_METHOD.to_owned(),
         survey_entries_changes_path: SURVEY_ENTRIES_CHANGES_PATH.to_owned(),
-        survey_entry_create_method,
-        survey_entry_create_path,
-        survey_entry_create_operation: SURVEY_ENTRY_CREATE_OPERATION.to_owned(),
         project_data_method,
         project_data_path,
         // The registry declares this vocabulary too; it is asserted separately
@@ -307,9 +302,6 @@ fn a_drifted_registry_route_is_refused() {
         }),
         ("project_report_path", |input| {
             input.project_report_path = "/reports".to_owned()
-        }),
-        ("survey_entry_create_path", |input| {
-            input.survey_entry_create_path = "/api/v1/entries/create".to_owned()
         }),
         ("auth_device_revoke_path_template", |input| {
             input.auth_device_revoke_path_template = "/api/v1/auth/devices".to_owned()

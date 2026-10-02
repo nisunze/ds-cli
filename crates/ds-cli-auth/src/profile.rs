@@ -84,7 +84,6 @@ struct Entry {
     survey_query: SurveyQuery,
     survey_entries_select: SurveyEntriesSelect,
     survey_entries_changes: SurveyEntriesChanges,
-    survey_entry_create: SurveyEntryCreate,
     project_data: Tiles,
     survey_control: Vec<String>,
     styles: SolarSnapshot,
@@ -189,14 +188,6 @@ struct SurveyEntriesSelect {
 struct SurveyEntriesChanges {
     method: String,
     path: String,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct SurveyEntryCreate {
-    method: String,
-    path: String,
-    operation: String,
 }
 
 #[derive(Deserialize)]
@@ -380,9 +371,6 @@ fn load_path(
         survey_entries_select_path: entry.survey_entries_select.path,
         survey_entries_changes_method: entry.survey_entries_changes.method,
         survey_entries_changes_path: entry.survey_entries_changes.path,
-        survey_entry_create_method: entry.survey_entry_create.method,
-        survey_entry_create_path: entry.survey_entry_create.path,
-        survey_entry_create_operation: entry.survey_entry_create.operation,
         project_data_method: entry.project_data.method,
         project_data_path: entry.project_data.path,
         project_data_actions: entry.project_data.actions,
@@ -479,7 +467,6 @@ mod tests {
                     "survey_query": { "method": "POST", "path": "/api/v1/survey/query" },
                     "survey_entries_select": { "method": "POST", "path": "/api/v1/survey/entries/select" },
                     "survey_entries_changes": { "method": "POST", "path": "/api/v1/survey/entries/changes" },
-                    "survey_entry_create": { "method": "POST", "path": "/api/v1/entries/mutate", "operation": "create" },
                     "survey_control":["POST /api/v1/form-factory: list,get,get_field_types,create,update,duplicate,publish,unpublish,archive,restore,delete", "POST /api/v1/project-forms: activate,settings_editor,bulk_save", "POST /api/v1/projects/templates: list,create,set_public,delete", "GET /api/v1/projects/templates/{slug}", "POST /api/v1/projects: apply_template", "POST /api/v1/projects/from-template", "POST /media: survey_upload_inspect,survey_upload_start,survey_upload_complete"],
                     "project_data": {"method":"POST","path":"/api/v1/project_data","actions":["list","upload_start","upload","delete"]},
                     "styles": { "method": "POST", "path": "/api/v1/styles", "action": "update_style" },
@@ -513,7 +500,6 @@ mod tests {
                     "survey_query": { "method": "POST", "path": "/api/v1/survey/query" },
                     "survey_entries_select": { "method": "POST", "path": "/api/v1/survey/entries/select" },
                     "survey_entries_changes": { "method": "POST", "path": "/api/v1/survey/entries/changes" },
-                    "survey_entry_create": { "method": "POST", "path": "/api/v1/entries/mutate", "operation": "create" },
                     "survey_control":["POST /api/v1/form-factory: list,get,get_field_types,create,update,duplicate,publish,unpublish,archive,restore,delete", "POST /api/v1/project-forms: activate,settings_editor,bulk_save", "POST /api/v1/projects/templates: list,create,set_public,delete", "GET /api/v1/projects/templates/{slug}", "POST /api/v1/projects: apply_template", "POST /api/v1/projects/from-template", "POST /media: survey_upload_inspect,survey_upload_start,survey_upload_complete"],
                     "project_data": {"method":"POST","path":"/api/v1/project_data","actions":["list","upload_start","upload","delete"]},
                     "styles": { "method": "POST", "path": "/api/v1/styles", "action": "update_style" },
@@ -789,23 +775,6 @@ mod tests {
 
         let mut escaped: serde_json::Value = serde_json::from_slice(&fixture(false)).unwrap();
         escaped["profiles"]["stable"]["survey_entries_changes"]["path"] = json!("/api/v1/anything");
-        let escaped = serde_json::to_vec(&escaped).unwrap();
-        with_fixture(&escaped, |path| {
-            assert_eq!(
-                load_path(
-                    path,
-                    Lane::Stable,
-                    false,
-                    format!("{:x}", Sha256::digest(&escaped))
-                )
-                .unwrap_err()
-                .code(),
-                "native_profile_unsafe"
-            );
-        });
-
-        let mut escaped: serde_json::Value = serde_json::from_slice(&fixture(false)).unwrap();
-        escaped["profiles"]["stable"]["survey_entry_create"]["operation"] = json!("update");
         let escaped = serde_json::to_vec(&escaped).unwrap();
         with_fixture(&escaped, |path| {
             assert_eq!(

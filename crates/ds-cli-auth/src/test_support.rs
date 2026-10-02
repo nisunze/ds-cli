@@ -14,8 +14,8 @@ use ds_client_core::{
     DeviceAccessSession, DeviceBinding, DeviceCredential, DevicePrivateKey, ProjectFormEditorCall,
     ProjectFormsCall, ProjectListCall, ProjectReportCall, RefreshCall, RefreshTokenStore,
     SignInCall, SolarSnapshotCall, StoreError, StoreKey, SurveyEntriesChangesCall,
-    SurveyEntriesSelectCall, SurveyEntryCreateCall, SurveyQueryCall, TileCall,
-    TransformerContextCall, Transport, TransportError, TransportResponse,
+    SurveyEntriesSelectCall, SurveyQueryCall, TileCall, TransformerContextCall, Transport,
+    TransportError, TransportResponse,
 };
 
 use crate::device::DeviceSession;
@@ -287,13 +287,6 @@ impl Transport for FixtureTransport {
         Err(TransportError::Unreachable)
     }
 
-    fn survey_entry_create(
-        &mut self,
-        _call: SurveyEntryCreateCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Err(TransportError::Unreachable)
-    }
-
     fn project_data(
         &mut self,
         _call: ds_client_core::ProjectDataCall<'_>,
@@ -437,9 +430,6 @@ pub(crate) fn profile() -> ClientProfile {
         survey_entries_select_path: "/api/v1/survey/entries/select".to_owned(),
         survey_entries_changes_method: "POST".to_owned(),
         survey_entries_changes_path: "/api/v1/survey/entries/changes".to_owned(),
-        survey_entry_create_method: "POST".to_owned(),
-        survey_entry_create_path: "/api/v1/entries/mutate".to_owned(),
-        survey_entry_create_operation: "create".to_owned(),
         project_data_method: "POST".to_owned(),
         project_data_path: "/api/v1/project_data".to_owned(),
         project_data_actions: ["list", "upload_start", "upload", "delete"]

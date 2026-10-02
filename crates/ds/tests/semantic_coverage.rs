@@ -1095,8 +1095,6 @@ const EXPECTED: &[(&str, &str, &str)] = &[
         "local_auth_state",
         "headless_project",
     ),
-    ("survey.entries.create", "global_write", "headless_project"),
-    ("survey.entries.import", "global_write", "headless_project"),
     // Stateless project-to-project copy: both projects are explicit operands.
     ("survey.migrate.apply", "global_write", "headless_project"),
     ("survey.migrate.plan", "read_only", "headless_project"),
