@@ -15,27 +15,21 @@ pub static COMMAND: Command = Command {
     contract: 2,
     summary: "List the named project's published Compounded Report ZIPs.",
     purpose: "\
-Read the named project's audience-fenced Compounded Report archive registry and \
-server-owned `composition_template` / `composition_schema` for JSON authoring. \
-Recorded `composition` is null on older archives that did not save it. \
-newest first. Each row records one `compounded` run and confirms its achieved \
-foldering. The automatic project touch may first publish queued local reports \
-and pull moved remote heads. No URL, body or action override is accepted.",
+Read the audience-fenced archive registry, newest first, with the server's JSON \
+authoring template/schema. Recorded composition is null on older archives. \
+Rows confirm achieved foldering. Project touch may first publish queued local \
+reports and pull remote heads. No URL or action override.",
     chapter: Chapter::Reports,
     effect: Effect::LocalAuthState,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
     args: &[LANE_ARG, PROJECT_ARG],
     output: "\
-Lane and named-project identity/status, `count`, and `archives`: stem, \
-filename, cloud locator, creation actor and time, status, transformer and \
-district counts and names, artifact coverage, bounded errors, the requested \
-layout, and two derivations — `layout_collapsed` (folders asked for, no \
-district resolved, everything filed under `_unassigned/`) and the signed \
-`download_url`'s own expiry, since it is short-lived and can arrive nearly \
-spent: `download_url_expires_at`, `download_url_seconds_remaining`, \
-`download_url_expired`. `composition_template` and `composition_schema` are \
-the server's bounded JSON objects (null when absent), for `report project compounded --composition`.",
+Lane/project, count and archives: identity, cloud locator, actor/time, status, \
+transformer/district scope, artifact coverage, errors, layout and composition. \
+layout_collapsed reports unresolved foldering; download_url_expires_at, \
+download_url_seconds_remaining and download_url_expired report URL validity. \
+composition_template/schema are server-owned authoring objects, null when absent.",
     examples: &[Example {
         command: "ds report project archives --output json --project <exact-id>",
         note: "Check `.data.archives[0].download_url_seconds_remaining` before fetching it.",

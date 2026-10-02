@@ -5828,6 +5828,7 @@ fn background_project_operations_are_map_independent_and_use_the_declared_projec
             "artifact_write",
             BTreeSet::from([
                 "combine-per-group",
+                "composition",
                 "file-level",
                 "force",
                 "group-by",

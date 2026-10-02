@@ -1103,7 +1103,7 @@ mod tests {
         assert!(!ambiguous.remedy_text().unwrap().contains("--target"));
 
         let other = descriptor_route_failure(
-            Failure::unavailable("descriptor_unusable", "invalid descriptor")
+            Failure::unavailable("desktop_unreadable", "invalid descriptor")
                 .remedy("republish the descriptor"),
         );
         assert_eq!(other.remedy_text(), Some("republish the descriptor"));

@@ -55,6 +55,7 @@ new `links` and the model `sources` — plus, when written, `taskId`, \
     reference: Some("docs/reference/pm.md"),
     search: &[
         "task geometry",
+        "polygon",
         "where",
         "attach structures",
         "area",

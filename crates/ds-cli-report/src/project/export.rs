@@ -312,7 +312,7 @@ pub static COMMAND: Command = Command {
     path: &["report", "project", "export"],
     contract: 1,
     summary: "Export all transformer reports and maps headlessly in parallel.",
-    purpose: "Export numbered transformer reports and print outputs. Reuse fresh data; prints always regenerate. --dry-run opens no publication queue. Use held rooms or fetch changes; --seed acquires map context. A layout's set_adjacent_networks intent includes all governed neighboring LV/customer circuits, clipped by the focused sheet's actual view without changing quantities or voltage drop. neighbor_transformers alone remains point context; photos need a media grant.",
+    purpose: "Export reports/prints; reuse data; prints always regenerate. --dry-run cannot publish; --seed acquires context. Adjacent circuits preserve focus, quantities and voltage drop. Photos need grants.",
     chapter: Chapter::Reports,
     effect: Effect::LocalFileWrite,
     authority: Authority::HeadlessProject,
