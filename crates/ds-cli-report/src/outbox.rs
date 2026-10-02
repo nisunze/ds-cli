@@ -210,7 +210,7 @@ pub static INVENTORY: Command = Command {
     path: &["report", "outbox", "inventory"],
     contract: 1,
     summary: "Inspect one transformer's verified held Server report files.",
-    purpose: "Read actual committed local artifacts under the existing native account/install and explicit project. The shared Rust reader checks receipts and physical SHA/size; the projector preserves each output's producing run and publication state. Works without Desktop or a running Server. No provider refresh, cloud read, publication, queue touch or missing-state creation. Cloud publication remains unobserved; historical generation times remain null.",
+    purpose: "Read actual committed local artifacts under the existing native account/install and explicit project. Shared Rust checks receipts and physical SHA/size, preserving each output's producing run and publication state. No Desktop or running Server needed. No provider/cloud call, publication, queue effect or auth/install/store initialization. SQLite may maintain WAL/SHM coordination. Cloud publication remains unobserved; historical generation times remain null.",
     chapter: Chapter::Reports,
     effect: Effect::ReadOnly,
     authority: Authority::HeadlessUser,

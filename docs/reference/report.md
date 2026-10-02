@@ -586,10 +586,14 @@ has agreed to drop unsaved edits. Documents never cross this boundary.
 --output json` reads actual held Server files without Desktop, a running Server
 or a provider call. It uses the existing protected native account/install and
 the same committed receipt/catalogue/physical SHA reader as the native host.
-It never creates missing auth/install state, touches the queue, adopts old
+It never initializes missing auth/install/store state, touches the queue, adopts old
 batches, publishes, reclaims bytes or reads a saved project selection. An empty
 local catalogue is valid; absent sync state is `not_observed`. Missing/corrupt
 current bytes refuse the fresh read instead of resurrecting an old file.
+An existing WAL database is read through SQLite's normal read-only connection,
+so current committed WAL content remains visible. SQLite may create or maintain
+the exact `store.sqlite-wal`/`store.sqlite-shm` coordination files. This is not
+auth initialization, a queue transition, a lease or a publication effect.
 
 Local files retain their producing runs. The current native store has only one
 row per operation/variant; older surviving outputs without an observed matching

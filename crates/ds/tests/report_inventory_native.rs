@@ -175,6 +175,28 @@ impl Fixture {
             .collect()
     }
 
+    fn assert_mcp_parity(&self, cli: &Value) {
+        let arguments = json!({"project":PROJECT,"transformer":TRANSFORMER,"server-state-dir":self.state,"lane":"stable"});
+        let chapter = self.mcp("chapters", &[json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"ds_reports","arguments":{"operation":"invoke","command":"report.outbox.inventory","arguments":arguments}}})]);
+        assert_eq!(&response(&chapter, 1)["result"]["structuredContent"], cli);
+        let typed = self.mcp("commands", &[
+            json!({"jsonrpc":"2.0","id":1,"method":"tools/list"}),
+            json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"report_outbox_inventory","arguments":arguments}}),
+        ]);
+        let tool = response(&typed, 1)["result"]["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|tool| tool["name"] == "report_outbox_inventory")
+            .unwrap();
+        assert_eq!(tool["annotations"]["readOnlyHint"], true);
+        assert_eq!(
+            tool["inputSchema"]["required"],
+            json!(["project", "transformer"])
+        );
+        assert_eq!(&response(&typed, 2)["result"]["structuredContent"], cli);
+    }
+
     fn fence(&self) -> Fence {
         Fence {
             account: OWNER.into(),
@@ -349,6 +371,128 @@ impl Fixture {
         collect(self.root.path(), self.root.path(), &mut files);
         files
     }
+
+    fn assert_read_only(&self, before: &BTreeMap<PathBuf, (Vec<u8>, u32)>) {
+        let mut remaining_before = before.clone();
+        let mut after = self.files();
+        for suffix in ["wal", "shm"] {
+            let exact = PathBuf::from(format!("server/store.sqlite-{suffix}"));
+            let prior = remaining_before.remove(&exact);
+            let observed = after.remove(&exact);
+            if prior != observed {
+                assert!(
+                    before.contains_key(Path::new("server/store.sqlite")),
+                    "no SQLite coordination may initialize an absent store"
+                );
+            }
+            if let Some((bytes, mode)) = &observed {
+                let primary_mode = before.get(Path::new("server/store.sqlite")).unwrap().1;
+                assert_eq!(
+                    *mode, primary_mode,
+                    "coordination protection remains the database's exact mode"
+                );
+                if suffix == "wal" {
+                    // A read may create an EMPTY coordination WAL. Existing
+                    // queued WAL content must remain byte-for-byte unchanged.
+                    assert_eq!(
+                        bytes.as_slice(),
+                        prior.as_ref().map_or(&[][..], |value| value.0.as_slice())
+                    );
+                } else {
+                    assert_eq!(
+                        bytes.len(),
+                        32 * 1024,
+                        "this bounded fixture's WAL index occupies one SQLite index region"
+                    );
+                }
+            } else {
+                assert!(
+                    prior.is_none(),
+                    "a read must not remove existing WAL coordination"
+                );
+            }
+            println!(
+                "sqlite-coordination {}",
+                json!({
+                    "exact_path":exact, "present_before":prior.is_some(), "present_after":observed.is_some(),
+                    "changed":prior != observed, "scope":"sqlite_coordination_only",
+                })
+            );
+        }
+        // No other filename, auth directory, install, credential, mode,
+        // committed report byte or primary database is exempted.
+        assert_eq!(after, remaining_before);
+    }
+}
+
+/// Test-only complete logical inspection of the OWNED fixture through the
+/// store's explicitly test-only connection. Never used by the command host.
+fn all_store_facts(store: &ds_sync_store::Store) -> Value {
+    let connection = store.connection_for_test();
+    let mut statement = connection
+        .prepare("SELECT type, name, tbl_name, sql FROM sqlite_master ORDER BY type, name")
+        .unwrap();
+    let schema = statement
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, Option<String>>(3)?,
+            ))
+        })
+        .unwrap()
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    let mut tables = BTreeMap::new();
+    for (_, name, _, _) in schema.iter().filter(|object| object.0 == "table") {
+        let escaped = name.replace('"', "\"\"");
+        let mut statement = connection
+            .prepare(&format!("SELECT * FROM \"{escaped}\""))
+            .unwrap();
+        let columns = statement.column_count();
+        let mut rows = statement
+            .query_map([], |row| {
+                (0..columns)
+                    .map(|column| row.get_ref(column).map(|value| format!("{value:?}")))
+                    .collect::<Result<Vec<_>, _>>()
+            })
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        rows.sort();
+        tables.insert(name.clone(), rows);
+    }
+    let mut schema_pragmas = BTreeMap::new();
+    for pragma in ["schema_version", "user_version", "application_id"] {
+        let value = connection
+            .query_row(&format!("PRAGMA {pragma}"), [], |row| row.get::<_, i64>(0))
+            .unwrap();
+        schema_pragmas.insert(pragma, value);
+    }
+    json!({"schema":schema,"schema_pragmas":schema_pragmas,"all_tables":tables})
+}
+
+fn native_inventory(fixture: &Fixture, store: &ds_sync_store::Store) -> Value {
+    let rows = store
+        .snapshot(
+            &fixture.fence(),
+            &Scope::Project {
+                project: PROJECT.into(),
+            },
+        )
+        .unwrap()
+        .artifacts;
+    assert_eq!(rows.len(), 1);
+    let snapshot = ds_report_artifacts::inventory::read_snapshot(
+        &fixture.state.join("report-artifacts"),
+        OWNER,
+        PROJECT,
+        TRANSFORMER,
+        &rows,
+    )
+    .unwrap();
+    serde_json::to_value(report::inventory::project(&snapshot).unwrap()).unwrap()
 }
 
 fn response(responses: &[Value], id: u64) -> &Value {
@@ -363,6 +507,10 @@ fn actual_six_files_match_native_cli_chapter_and_typed_mcp_without_writes_or_pub
     let fixture = Fixture::new(true, true);
     let old = fixture.commit('a', &["shp", "kmz", "xlsx", "geojson"]);
     let latest = fixture.commit('b', &["pdf__a3l", "pdf__a0l"]);
+    let store = ds_sync_store::Store::open_read_only(&fixture.state.join("store.sqlite"))
+        .unwrap()
+        .unwrap();
+    let facts = all_store_facts(&store);
     let before = fixture.files();
     let cli = fixture.cli(PROJECT, TRANSFORMER, "stable");
     assert_eq!(cli["status"], "ok", "{cli}");
@@ -388,52 +536,92 @@ fn actual_six_files_match_native_cli_chapter_and_typed_mcp_without_writes_or_pub
         );
         assert!(output["generated_at_ms"].is_null());
     }
-    let store = ds_sync_store::Store::open_read_only(&fixture.state.join("store.sqlite"))
-        .unwrap()
-        .unwrap();
-    let rows = store
-        .snapshot(
+    assert_eq!(*data, native_inventory(&fixture, &store));
+    fixture.assert_mcp_parity(&cli);
+    assert_eq!(all_store_facts(&store), facts);
+    fixture.assert_read_only(&before);
+}
+
+#[test]
+fn live_wal_current_report_is_observed_without_content_schema_or_lease_effects() {
+    let fixture = Fixture::new(true, true);
+    let old = fixture.commit('a', &["shp", "kmz", "xlsx", "geojson"]);
+    // This owning writer stays open throughout every read; it performs no
+    // concurrent effects. Its presence preserves the newly committed WAL.
+    let mut writer = ds_sync_store::Store::open(&fixture.state.join("store.sqlite")).unwrap();
+    let lease = writer
+        .apply(
             &fixture.fence(),
-            &Scope::Project {
-                project: PROJECT.into(),
+            1000,
+            Event::LeaseTake {
+                scope: Scope::Project {
+                    project: PROJECT.into(),
+                },
+                worker_id: "fixture-live-writer".into(),
+                ttl_ms: 600_000,
             },
         )
-        .unwrap()
-        .artifacts;
-    assert_eq!(rows.len(), 1);
-    let snapshot = ds_report_artifacts::inventory::read_snapshot(
-        &fixture.state.join("report-artifacts"),
-        OWNER,
-        PROJECT,
-        TRANSFORMER,
-        &rows,
-    )
-    .unwrap();
-    assert_eq!(
-        *data,
-        serde_json::to_value(report::inventory::project(&snapshot).unwrap()).unwrap()
-    );
-    drop(store);
-    let arguments = json!({"project":PROJECT,"transformer":TRANSFORMER,"server-state-dir":fixture.state,"lane":"stable"});
-    let chapter = fixture.mcp("chapters", &[json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"ds_reports","arguments":{"operation":"invoke","command":"report.outbox.inventory","arguments":arguments}}})]);
-    assert_eq!(response(&chapter, 1)["result"]["structuredContent"], cli);
-    let typed = fixture.mcp("commands", &[
-        json!({"jsonrpc":"2.0","id":1,"method":"tools/list"}),
-        json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"report_outbox_inventory","arguments":arguments}}),
-    ]);
-    let tool = response(&typed, 1)["result"]["tools"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|tool| tool["name"] == "report_outbox_inventory")
         .unwrap();
-    assert_eq!(tool["annotations"]["readOnlyHint"], true);
-    assert_eq!(
-        tool["inputSchema"]["required"],
-        json!(["project", "transformer"])
+    assert!(lease.refusals.is_empty(), "{:?}", lease.refusals);
+    let latest = fixture.commit('b', &["pdf__a3l", "pdf__a0l"]);
+    let before = fixture.files();
+    let contains = |bytes: &[u8], needle: &str| {
+        bytes
+            .windows(needle.len())
+            .any(|window| window == needle.as_bytes())
+    };
+    assert!(contains(
+        &before[Path::new("server/store.sqlite")].0,
+        &old.client_publish_id
+    ));
+    assert!(
+        !contains(
+            &before[Path::new("server/store.sqlite")].0,
+            &latest.client_publish_id
+        ),
+        "latest report must not already be checkpointed into the primary DB"
     );
-    assert_eq!(response(&typed, 2)["result"]["structuredContent"], cli);
-    assert_eq!(fixture.files(), before);
+    assert!(
+        contains(
+            &before[Path::new("server/store.sqlite-wal")].0,
+            &latest.client_publish_id
+        ),
+        "this fixture must exercise committed current WAL content"
+    );
+    let facts = all_store_facts(&writer);
+    let expected = native_inventory(&fixture, &writer);
+    assert_eq!(expected["local_output_count"], 6);
+    assert_eq!(expected["published_output_count"], 0);
+    for output in expected["outputs"].as_array().unwrap() {
+        let recent = output["output_id"].as_str().unwrap().starts_with("pdf__");
+        assert_eq!(
+            output["client_publish_id"].as_str(),
+            Some(if recent {
+                latest.client_publish_id.as_str()
+            } else {
+                old.client_publish_id.as_str()
+            })
+        );
+        assert_eq!(
+            output["publication_phase"],
+            if recent { "queued" } else { "sealed" }
+        );
+    }
+    let cli = fixture.cli(PROJECT, TRANSFORMER, "stable");
+    assert_eq!(cli["status"], "ok", "{cli}");
+    assert_eq!(
+        cli["data"], expected,
+        "CLI must observe current live WAL facts"
+    );
+    fixture.assert_mcp_parity(&cli);
+    assert_eq!(
+        all_store_facts(&writer),
+        facts,
+        "every Store row, lease and schema remains identical"
+    );
+    fixture.assert_read_only(&before);
+    // Drop may checkpoint the owned writer, AFTER the invariance assertions.
+    drop(writer);
 }
 
 #[test]
@@ -450,7 +638,7 @@ fn missing_native_identity_install_or_store_never_initializes_state() {
             "report_inventory_identity_unavailable"
         );
         assert_eq!(refused["error"]["detail"]["native_code"], native_code);
-        assert_eq!(fixture.files(), before);
+        fixture.assert_read_only(&before);
     }
     let fixture = Fixture::new(true, true);
     let before = fixture.files();
@@ -458,7 +646,7 @@ fn missing_native_identity_install_or_store_never_initializes_state() {
     assert_eq!(empty["status"], "ok", "{empty}");
     assert_eq!(empty["data"]["local_output_count"], 0);
     assert_eq!(empty["data"]["sync_read"]["state"], "not_observed");
-    assert_eq!(fixture.files(), before);
+    fixture.assert_read_only(&before);
 }
 
 #[test]
@@ -481,7 +669,7 @@ fn native_scope_and_install_are_captured_without_borrowing_selected_context() {
         fixture.cli("../foreign", TRANSFORMER, "stable")["error"]["code"],
         "report_inventory_scope_invalid"
     );
-    assert_eq!(fixture.files(), before);
+    fixture.assert_read_only(&before);
     private_file(
         &fixture.config.join("ds/edge-admission/stable/install-id"),
         b"223e4567-e89b-42d3-a456-426614174000\n",
@@ -506,7 +694,7 @@ fn native_scope_and_install_are_captured_without_borrowing_selected_context() {
     let other_owner = fixture.cli(PROJECT, TRANSFORMER, "stable");
     assert_eq!(other_owner["status"], "ok", "{other_owner}");
     assert_eq!(other_owner["data"]["local_output_count"], 0);
-    assert_eq!(fixture.files(), after_identity_change);
+    fixture.assert_read_only(&after_identity_change);
     assert_ne!(before, after_identity_change);
 }
 
@@ -530,21 +718,21 @@ fn unsafe_identity_and_corrupt_selected_bytes_refuse_without_repair_or_fallback(
         fixture.cli(PROJECT, TRANSFORMER, "stable")["error"]["code"],
         "report_inventory_unreadable"
     );
-    assert_eq!(fixture.files(), before);
+    fixture.assert_read_only(&before);
     fs::remove_file(&path).unwrap();
     let before = fixture.files();
     assert_eq!(
         fixture.cli(PROJECT, TRANSFORMER, "stable")["error"]["code"],
         "report_inventory_unreadable"
     );
-    assert_eq!(fixture.files(), before);
+    fixture.assert_read_only(&before);
     fs::set_permissions(&fixture.credential, fs::Permissions::from_mode(0o644)).unwrap();
     let before = fixture.files();
     assert_eq!(
         fixture.cli(PROJECT, TRANSFORMER, "stable")["error"]["detail"]["native_code"],
         "native_state_unsafe"
     );
-    assert_eq!(fixture.files(), before);
+    fixture.assert_read_only(&before);
     fs::set_permissions(&fixture.credential, fs::Permissions::from_mode(0o600)).unwrap();
     let target = fixture.root.path().join("fixture-token");
     fs::rename(&fixture.credential, &target).unwrap();
@@ -554,7 +742,7 @@ fn unsafe_identity_and_corrupt_selected_bytes_refuse_without_repair_or_fallback(
         fixture.cli(PROJECT, TRANSFORMER, "stable")["error"]["detail"]["native_code"],
         "native_state_unsafe"
     );
-    assert_eq!(fixture.files(), before);
+    fixture.assert_read_only(&before);
 }
 
 #[test]
@@ -572,11 +760,11 @@ fn existing_device_provider_is_observed_without_leases_and_disagreement_refuses(
     let same = fixture.cli(PROJECT, TRANSFORMER, "stable");
     assert_eq!(same["status"], "ok", "{same}");
     assert_eq!(same["data"]["local_output_count"], 1);
-    assert_eq!(fixture.files(), before);
+    fixture.assert_read_only(&before);
     fs::remove_file(&fixture.credential).unwrap();
     let before = fixture.files();
     assert_eq!(fixture.cli(PROJECT, TRANSFORMER, "stable")["status"], "ok");
-    assert_eq!(fixture.files(), before);
+    fixture.assert_read_only(&before);
     let other = Fixture::new(true, true);
     other.device("different-device-owner");
     let before = other.files();
@@ -585,7 +773,7 @@ fn existing_device_provider_is_observed_without_leases_and_disagreement_refuses(
         refused["error"]["detail"]["native_code"],
         "auth_context_mismatch"
     );
-    assert_eq!(other.files(), before);
+    other.assert_read_only(&before);
 }
 
 #[test]
@@ -602,5 +790,5 @@ fn malformed_existing_store_is_not_treated_as_an_empty_inventory() {
         fixture.cli(PROJECT, TRANSFORMER, "stable")["error"]["code"],
         "report_inventory_unreadable"
     );
-    assert_eq!(fixture.files(), before);
+    fixture.assert_read_only(&before);
 }
