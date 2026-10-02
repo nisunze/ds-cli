@@ -71,3 +71,20 @@ attributes and CRS selection belong to the consumer.
 The consumer supplies the coordinate transform. Additional ordinates, properties,
 authored bbox fields, null geometries and malformed leaves keep their previous
 behavior. The traversal does not choose a projection or invent a bbox update.
+
+## Cartesian envelopes, corridors and planar selection
+
+- Rotated envelopes retain the `geo` minimum-rectangle engine, the first edge
+  longer than 1e-9 caller units as the axis, and the single-point axis fallback.
+  Projection selection and inversion stay with the caller.
+- Round corridors retain 16 segments per half-turn, endpoint Z payloads,
+  rejection of legs of length <= f64::EPSILON, the 1e-12 normal/projection
+  degeneracy thresholds and the ten-width miter clamp. These are the existing
+  Grid geometry rules, now owned here; no engineering rule is inferred.
+- Planar lasso selection uses the same polygon engine's full-segment covers
+  relation, including boundary overlap and concave excursions. Cardinality,
+  coordinate bounds, extent limits, IDs and held-scene pins remain explicit
+  consumer admission. Stable ring anchors preserve orientation and source tie
+  order while closing the emitted ring.
+- Cartesian path measurement streams its coordinate mapper once per source
+  vertex, retaining the original forward summation and arithmetic mode.

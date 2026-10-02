@@ -4,6 +4,12 @@
 
 pub type Point = [f64; 2];
 
+pub fn squared_distance(a: Point, b: Point) -> f64 {
+    let dx = a[0] - b[0];
+    let dy = a[1] - b[1];
+    dx * dx + dy * dy
+}
+
 /// Euclidean distance, preserving the existing LV squared-sum arithmetic.
 pub fn distance(a: Point, b: Point) -> f64 {
     distance_with(a, b, DistanceArithmetic::SquaredSum)
@@ -20,7 +26,7 @@ pub fn distance_with(a: Point, b: Point, arithmetic: DistanceArithmetic) -> f64 
     let dx = a[0] - b[0];
     let dy = a[1] - b[1];
     match arithmetic {
-        DistanceArithmetic::SquaredSum => (dx * dx + dy * dy).sqrt(),
+        DistanceArithmetic::SquaredSum => squared_distance(a, b).sqrt(),
         DistanceArithmetic::Hypot => dx.hypot(dy),
     }
 }
@@ -234,9 +240,23 @@ pub fn polyline_length_by<T>(
     position: impl Fn(&T) -> Point,
     arithmetic: DistanceArithmetic,
 ) -> f64 {
-    line.windows(2)
-        .map(|pair| distance_with(position(&pair[0]), position(&pair[1]), arithmetic))
-        .sum()
+    length_of_points(line.iter().map(position), arithmetic)
+}
+
+/// Streaming accumulation evaluates each coordinate/projection exactly once.
+pub fn length_of_points(
+    points: impl IntoIterator<Item = Point>,
+    arithmetic: DistanceArithmetic,
+) -> f64 {
+    let mut previous = None;
+    let mut total = 0.0;
+    for point in points {
+        if let Some(before) = previous {
+            total += distance_with(before, point, arithmetic);
+        }
+        previous = Some(point);
+    }
+    total
 }
 
 /// De Casteljau sampling, retaining the Canvas curve evaluation order.
@@ -292,6 +312,23 @@ pub fn simplify_forward_collinear_by<T: Clone + PartialEq>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn length_projection_is_streamed_once_per_source_vertex() {
+        let calls = std::cell::Cell::new(0);
+        let points = [[0., 0.], [3., 4.], [6., 8.]];
+        assert_eq!(
+            polyline_length_by(
+                &points,
+                |point| {
+                    calls.set(calls.get() + 1);
+                    *point
+                },
+                DistanceArithmetic::SquaredSum
+            ),
+            10.
+        );
+        assert_eq!(calls.get(), 3);
+    }
 
     #[test]
     fn collinear_reduction_preserves_a_rounded_adjacent_vector_turn() {

@@ -225,3 +225,15 @@ pub mod wkb;
 
 #[cfg(feature = "index")]
 pub mod measured_path;
+
+#[cfg(feature = "editing")]
+pub mod corridor;
+#[cfg(feature = "overlay")]
+pub mod extent;
+#[cfg(feature = "overlay")]
+pub mod planar;
+/// Index types are supplied through the geometry owner; consumers retain rows.
+#[cfg(feature = "index")]
+pub mod index {
+    pub use rstar::*;
+}
