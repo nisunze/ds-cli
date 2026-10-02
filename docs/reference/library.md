@@ -11,8 +11,8 @@ The standards seed layout is fixed:
 library/<library-id>/<version>/
   manifest.json
   receipt.json
-  dsgrid/library.dsgrid-library
-  pls-cadd/<exact-native-leaf>...
+  dsgrid/library.dsgrid-template
+  pls-cadd/<category>/<exact-native-leaf>...
 ```
 
 Schema version 1 is the only accepted schema. Empty provider/pin metadata stays
@@ -25,11 +25,25 @@ The CLI names those immutable coordinates `--library-id` and
 manifests may call the same version a revision id, but callers never select it
 through a decorative or latest-version alias.
 
+Seed provenance is a source-ruling identifier: nonempty, at most 128 bytes,
+without control characters or leading/trailing whitespace. Keep the full
+authority and source-digest ruling separately under that identifier.
+
+Verify the exact bundle named by `manifest.dsgrid_bundle_path` with
+`manifest.dsgrid_bundle_sha256`. A standards seed emits a DS Grid template;
+`library verify` also accepts a `.dsgrid-library` release and authenticates
+its container bytes rather than choosing by filename extension.
+
 `library resolve-native` is the differential-handoff gate. It requires the
 library id, immutable version, expected content-root digest, canonical typed
 name/invariant leaf and expected native kind. Its result names one exact native
 artifact and SHA-256 for the characterized patcher; it does not copy bytes into
 a model or open PLS-CADD.
+
+Native kinds come from characterized native inspection and are recorded in
+the manifest. For a PLS pole definition the exact kind is
+`structure_definition`, not `structure`. Require the expected kind from the
+model/source ruling; there is no kind alias or missing-member inference.
 
 The asset direction is one-way: characterized PLS-CADD members may produce
 typed DS Grid rows with explicit losses. DS Grid library bytes are never

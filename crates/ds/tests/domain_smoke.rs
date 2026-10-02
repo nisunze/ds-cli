@@ -1308,6 +1308,19 @@ fn dsgrid_validate_finds_the_fixture_sound() {
 
 #[test]
 fn library_seed_materializes_two_native_families_idempotently() {
+    let skill = std::fs::read_to_string(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../skills/ds-library-seeding/SKILL.md"),
+    )
+    .unwrap();
+    let example_value = |name: &str| {
+        let prefix = format!("{name}=\"");
+        skill
+            .lines()
+            .find_map(|line| line.strip_prefix(&prefix)?.strip_suffix('"'))
+            .unwrap_or_else(|| panic!("missing skill example value {name}"))
+    };
+    let provenance = example_value("PROVENANCE");
+    let native_kind = example_value("NATIVE_KIND");
     let root = temp_root("library-seed");
     let _ = std::fs::remove_dir_all(&root);
     let source = root.join("source");
@@ -1339,7 +1352,7 @@ fn library_seed_materializes_two_native_families_idempotently() {
         "--role",
         "new_design",
         "--provenance",
-        "synthetic-test",
+        provenance,
         "--yes",
         "--output",
         "json",
@@ -1355,11 +1368,11 @@ fn library_seed_materializes_two_native_families_idempotently() {
             .unwrap();
     let native_path = manifest.members[0].pls_cadd_path.clone();
     assert_eq!(native_path, "pls-cadd/structures/pole.012");
+    assert_eq!(manifest.members[0].source_provenance, provenance);
+    assert_eq!(manifest.members[0].native_kind, native_kind);
     assert!(version.join(&native_path).is_file());
-    let release = unpack_model_template(
-        &std::fs::read(version.join("dsgrid/library.dsgrid-template")).unwrap(),
-    )
-    .unwrap();
+    let bundle_path = version.join(&manifest.dsgrid_bundle_path);
+    let release = unpack_model_template(&std::fs::read(&bundle_path).unwrap()).unwrap();
     assert!(
         !release.assets.is_empty(),
         "the template must embed its exact engineering resource bytes"
@@ -1368,8 +1381,22 @@ fn library_seed_materializes_two_native_families_idempotently() {
     let second = ok(&args);
     assert_eq!(second["idempotent"], true);
 
+    let bundle_text = bundle_path.display().to_string();
+    let bundle_digest = format!("sha256:{}", manifest.dsgrid_bundle_sha256);
+    let verified = ok(&[
+        "library",
+        "verify",
+        "--release",
+        &bundle_text,
+        "--digest",
+        &bundle_digest,
+        "--output",
+        "json",
+    ]);
+    assert_eq!(verified["artifact_id"], "new-design");
+    assert_eq!(verified["version"], "2026-08-27-v1");
+
     let expected_root = format!("sha256:{}", manifest.content_root_sha256);
-    let native_kind = manifest.members[0].native_kind.as_str();
     let resolved = ok(&[
         "library",
         "resolve-native",
@@ -1391,6 +1418,50 @@ fn library_seed_materializes_two_native_families_idempotently() {
     assert_eq!(resolved["canonical_typed_name"], "pole.012");
     assert_eq!(resolved["execution_owner"], "ds");
     assert!(resolved["sha256"].as_str().unwrap().starts_with("sha256:"));
+
+    let wrong_root = format!("sha256:{}", "0".repeat(64));
+    for (digest, kind, code) in [
+        (wrong_root.as_str(), native_kind, "library_digest_mismatch"),
+        (expected_root.as_str(), "structure", "native_kind_mismatch"),
+    ] {
+        let refused = ds(&[
+            "library",
+            "resolve-native",
+            "--store",
+            &out_text,
+            "--library-id",
+            "new-design",
+            "--library-version",
+            "2026-08-27-v1",
+            "--expect-digest",
+            digest,
+            "--native-name",
+            "pole.012",
+            "--native-kind",
+            kind,
+            "--output",
+            "json",
+        ]);
+        assert_ne!(refused.code, 0);
+        assert_eq!(refused.envelope["error"]["code"], code);
+    }
+
+    let overlong_provenance = "x".repeat(129);
+    let mut invalid_args = args;
+    let provenance_index = args.iter().position(|arg| *arg == "--provenance").unwrap() + 1;
+    invalid_args[provenance_index] = &overlong_provenance;
+    let invalid_seed = ds(&invalid_args);
+    assert_ne!(invalid_seed.code, 0);
+    assert_eq!(
+        invalid_seed.envelope["error"]["code"],
+        "library_seed_failed"
+    );
+    assert!(
+        invalid_seed.envelope["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("source_provenance")
+    );
 
     let misrouted = out.join("library/new-design/wrong-version");
     std::fs::create_dir_all(misrouted.join(&native_path).parent().unwrap()).unwrap();

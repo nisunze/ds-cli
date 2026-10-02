@@ -49,8 +49,8 @@ pub static COMMAND: Command = Command {
         Arg::value("native-family", "<family>", "Pinned native family.").default("pls-cadd-16.81"),
         Arg::value(
             "provenance",
-            "<text>",
-            "Source authority/digest ruling carried by every member.",
+            "<id>",
+            "Source ruling identifier carried by every member: nonempty, at most 128 bytes, no control characters or edge whitespace.",
         )
         .required(),
         Arg::repeated(
@@ -67,7 +67,7 @@ pub static COMMAND: Command = Command {
     ],
     output: "Immutable local prefix, manifest/content digests, object/byte counts, loss rollup, execution owner, native-tool handoff and remaining engineer decision.",
     examples: &[Example {
-        command: "ds library seed --source ./healed-workspace --out ./seed-output --library-id new-design --library-version 2026-08-27-v1 --role new_design --provenance 'healed workspace digest pinned in ruling' --yes --output json",
+        command: "ds library seed --source ./healed-workspace --out ./seed-output --library-id new-design --library-version 2026-08-27-v1 --role new_design --provenance healed-workspace-ruling-v1 --yes --output json",
         note: "Create one local immutable version; no cloud write occurs.",
         runnable: false,
     }],
@@ -79,8 +79,8 @@ pub static COMMAND: Command = Command {
         },
         Refusal {
             code: "library_seed_failed",
-            when: "classification, ingestion, schema, digest or immutable-layout planning fails",
-            remedy: "resolve the reported leaf/source conflict; do not substitute another authority",
+            when: "source option identity, classification, ingestion, schema, digest or immutable-layout planning fails",
+            remedy: "correct the reported source option or leaf conflict; keep the exact source authority and provenance identifier",
         },
         Refusal {
             code: "seed_version_conflict",

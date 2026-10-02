@@ -18,7 +18,12 @@ pub static COMMAND: Command = Command {
     authority: Authority::None,
     execution: Execution::Sync,
     args: &[
-        Arg::value("release", "<path>", "The .dsgrid-library release.").required(),
+        Arg::value(
+            "release",
+            "<path>",
+            "Exact .dsgrid-library release or seeded .dsgrid-template bundle from manifest.dsgrid_bundle_path.",
+        )
+        .required(),
         Arg::value(
             "digest",
             "<sha256:hex>",
@@ -27,8 +32,8 @@ pub static COMMAND: Command = Command {
     ],
     output: "Verified artifact id, immutable version, content root, bundle digest, object count and engine capabilities.",
     examples: &[Example {
-        command: "ds library verify --release ./library.dsgrid-library --output json",
-        note: "Verify one local release without network access.",
+        command: "ds library verify --release ./seed-output/library/new-design/2026-08-27-v1/dsgrid/library.dsgrid-template --output json",
+        note: "Verify the seeded bundle at its manifest-declared path without network access; pass --digest to require the pinned transport digest.",
         runnable: false,
     }],
     refusals: &[Refusal {

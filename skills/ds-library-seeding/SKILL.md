@@ -23,11 +23,16 @@ STORE="$PWD/library-store"
 LIBRARY_ID="new-design"
 LIBRARY_VERSION="2026-08-27-v1"
 ROLE="new_design"
-PROVENANCE="operator-selected curated source; source digests recorded in the project ruling"
+PROVENANCE="curated-source-ruling-v1"
 NATIVE_NAME="pole.012"
-NATIVE_KIND="structure"
+NATIVE_KIND="structure_definition"
 VERSION_ROOT="$STORE/library/$LIBRARY_ID/$LIBRARY_VERSION"
 ```
+
+Keep the full source/digest ruling under the provenance identifier; discover
+its accepted limits in `library.seed`. Select the actual native name and
+expected kind from that ruling and the characterized inventory. The pole
+example uses `structure_definition`; do not infer missing native members.
 
 Discover, seed, and re-run the identical seed:
 
@@ -59,11 +64,12 @@ Require the second receipt to report `idempotent: true`. Read the exact pins
 from the promoted manifest, then verify and resolve:
 
 ```bash
+BUNDLE_PATH="$(jq -r .dsgrid_bundle_path "$VERSION_ROOT/manifest.json")"
 BUNDLE_SHA256="sha256:$(jq -r .dsgrid_bundle_sha256 "$VERSION_ROOT/manifest.json")"
 CONTENT_ROOT="sha256:$(jq -r .content_root_sha256 "$VERSION_ROOT/manifest.json")"
 
 ds library verify \
-  --release "$VERSION_ROOT/dsgrid/library.dsgrid-library" \
+  --release "$VERSION_ROOT/$BUNDLE_PATH" \
   --digest "$BUNDLE_SHA256" \
   --output json
 
@@ -83,8 +89,9 @@ ds library resolve-native \
 - `library_verify_failed` or `library_digest_mismatch`: obtain the exact pinned
   release and digest.
 - `native_name_missing`, `native_name_ambiguous`, or `native_kind_mismatch`:
-  correct the source/ruling and seed a new version; never use basename/latest
-  fallback.
+  check the exact name/kind against the model/source ruling and pinned
+  manifest. If the immutable source or mapping is wrong, seed a new version;
+  never use basename/latest fallback.
 - Any inferred source authority or certification scope: stop for the engineer.
 
 Successful seed/verify/resolve proves exact bytes, mappings, declared losses

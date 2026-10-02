@@ -58,7 +58,7 @@ pub static COMMAND: Command = Command {
     ],
     output: "Exact library coordinates, canonical native member path, SHA-256 and byte length, plus deterministic patcher/UI handoff ownership.",
     examples: &[Example {
-        command: "ds library resolve-native --store ./seed-output --library-id new-design --library-version 2026-08-27-v1 --expect-digest sha256:0123 --native-name pole.012 --native-kind structure --output json",
+        command: "ds library resolve-native --store ./seed-output --library-id new-design --library-version 2026-08-27-v1 --expect-digest sha256:0123 --native-name pole.012 --native-kind structure_definition --output json",
         note: "Resolve only after replacing the illustrative digest with the exact manifest content root.",
         runnable: false,
     }],
