@@ -61,6 +61,18 @@ An older surviving output without a still-observed exact row stays `sealed`;
 it does not inherit the newer row's queued or published state. A host may retain
 previous exact observed facts, but a fresh store read cannot invent them.
 
+The Server CLI/MCP `report.outbox.inventory` reads the same native snapshot,
+using the existing protected account/deployment/install and explicitly named
+project/transformer. Identity observation does not create state or locks,
+change permissions, refresh a credential or read saved project selection.
+The host uses the sync store's read-only exact-fence snapshot API, then the
+shared committed catalogue and physical-byte reader; it rechecks the captured
+principal before returning the projection. Missing install/identity refuses;
+a missing sync store is `not_observed`. The physical receipt binds owner/project
+while the install fence governs observed queue facts. This read does not touch
+project publication, call a provider, pump, adopt or reclaim. It supplies no
+fresh cloud observation or reconstructed ACK work ID.
+
 Snapshots admit at most 4,096 committed sets, 4,096 native sync facts, 32 outputs
 per set and 32 required IDs. Known renderer metadata and output presentation are
 validated by their existing owners. Public `report.plan --action inventory`

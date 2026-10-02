@@ -25,7 +25,7 @@ use x509_cert::Certificate;
 mod install_identity;
 mod jcs;
 mod offline_install;
-pub use install_identity::load_or_create_install_id;
+pub use install_identity::{load_install_id, load_or_create_install_id, read_install_id};
 pub use offline_install::RetainedDesktopLicense;
 
 pub use jcs::{
