@@ -102,10 +102,8 @@ impl MediaGrants {
     }
 
     /// The grants as the document the report engine reads
-    /// (`ds-network-reporter` `media_link::MediaScopeGrants`): one flat grant
-    /// when the older service supplies one scope, or `{"grants": [...]}` for
-    /// modern and legacy scopes. The token leaves this type only here,
-    /// written into a host's private staging for the engine.
+    /// (`ds-network-reporter` `media_link::MediaScopeGrants`): `{grants: [...]}`.
+    /// The token leaves this type only here, written into private staging for the engine.
     pub fn report_grant_document(&self) -> Result<Vec<u8>, ClientError> {
         let scope = |grant: &MediaGrant| {
             json!({
@@ -116,11 +114,10 @@ impl MediaGrants {
                 "expires_at": grant.expires_at,
             })
         };
-        let document = match self.grants.as_slice() {
-            [] => return Err(invalid("a report media grant names at least one project")),
-            [single] => scope(single),
-            several => json!({"grants": several.iter().map(scope).collect::<Vec<_>>()}),
-        };
+        if self.grants.is_empty() {
+            return Err(invalid("a report media grant names at least one project"));
+        }
+        let document = json!({"grants": self.grants.iter().map(scope).collect::<Vec<_>>()});
         serde_json::to_vec(&document)
             .map_err(|_| unreadable("the media grant could not be encoded"))
     }
@@ -506,8 +503,8 @@ mod tests {
             serde_json::from_slice(&single.report_grant_document().unwrap()).unwrap();
         assert_eq!(
             document,
-            json!({"resolver_origin":"https://brain.example","bucket":"media-bucket",
-                   "prefix":"projects/p1/","token":"tok-p1","expires_at":"2026-09-25T02:00:00Z"})
+            json!({"grants":[{"resolver_origin":"https://brain.example","bucket":"media-bucket",
+                   "prefix":"projects/p1/","token":"tok-p1","expires_at":"2026-09-25T02:00:00Z"}]})
         );
         let several = decode_grants(&grant_body(&["p1", "p0"]), &["p1", "p0"]).unwrap();
         let document: Value =
