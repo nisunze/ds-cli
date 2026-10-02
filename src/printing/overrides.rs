@@ -304,3 +304,43 @@ mod settings_tests {
         .is_err());
     }
 }
+
+#[cfg(test)]
+mod scoped_tests {
+    use super::*;
+    #[test]
+    fn saved_scoped_title_is_revision_content_and_cannot_change_a_peer() {
+        let mut layout = super::super::default_layout();
+        let patch: PrintOverride = serde_json::from_value(
+            serde_json::json!({"elements":{"title":{"text":"Zihari · Version 1"}}}),
+        )
+        .unwrap();
+        layout
+            .transformer_overrides
+            .insert("zihari".into(), patch.clone());
+        super::super::validate(&layout).unwrap();
+        let saved = serde_json::to_vec(&layout).unwrap();
+        let restored: Layout = serde_json::from_slice(&saved).unwrap();
+        let focused = apply(&restored, &restored.transformer_overrides["zihari"]).unwrap();
+        assert_eq!(
+            focused
+                .elements
+                .iter()
+                .find(|e| e.id == "title")
+                .unwrap()
+                .text,
+            "Zihari · Version 1"
+        );
+        assert_eq!(
+            restored
+                .elements
+                .iter()
+                .find(|e| e.id == "title")
+                .unwrap()
+                .text,
+            "{title}"
+        );
+        assert!(!restored.transformer_overrides.contains_key("peer"));
+        assert_eq!(restored, layout);
+    }
+}
