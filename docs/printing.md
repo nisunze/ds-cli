@@ -1,3 +1,10 @@
+The owner ruling of 2026-10-02 requires API-resolved entity/source/target/role
+style documents. [LV standard capture](printing/lv-standard.md) consumes those
+exact receipts; it generates no pens, ids or typography. This supersedes older
+implicit-style instructions below. `set_adjacent_networks` now requires the
+complete explicit API-resolved ref map and refuses an omitted map. Missing
+optional geometry does not require a reserved colour palette or label override.
+
 # Printing document authority
 
 `printing::Layout` is a closed `ds.print-layout/v2` document. Page dimensions and

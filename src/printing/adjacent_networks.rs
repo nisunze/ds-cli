@@ -1,6 +1,6 @@
 //! Print-only neighbouring circuits. The focused room remains the sole
 //! engineering/report source; the renderer clips context to its actual camera.
-use super::{Layout, PrintLabelOverride, PrintStyleOverride};
+use super::{Layout, PrintStyleOverride};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -40,27 +40,6 @@ pub fn selected(layout: &Layout) -> bool {
         .any(|(_, id)| layout.styles.contains_key(*id) || layout.style_refs.contains_key(*id))
 }
 
-/// All roles need governed symbols and explicit lifecycle distinctions.
-pub fn validate_selection(layout: &Layout) -> Result<(), String> {
-    if !selected(layout) {
-        return Ok(());
-    }
-    for (_, id) in LAYERS {
-        let change = layout
-            .style_overrides
-            .get(id)
-            .ok_or("adjacent networks require the complete governed context pen set")?;
-        if !layout.style_refs.contains_key(id)
-            || layout.styles.contains_key(id)
-            || (id != "neighbor_transformers"
-                && change.label.as_ref().and_then(|l| l.visible) != Some(false))
-        {
-            return Err("adjacent networks require role-specific governed symbols, existing/new colours and an unclassified fallback; reapply set_adjacent_networks".into());
-        }
-    }
-    Ok(())
-}
-
 /// Bind each role's governed print symbol independently, preserving its icon,
 /// casing, dimensions and line pattern. Foreground and camera stay exact.
 pub fn configure(
@@ -85,18 +64,15 @@ pub fn configure(
                 return Err("adjacent hierarchy requires its exact schema, three distinct colours and opacity between zero and one".into());
             }
         }
-        if !style_refs.is_empty()
-            && (style_refs.len() != LAYERS.len()
-                || LAYERS
-                    .iter()
-                    .any(|(source, _)| !style_refs.contains_key(*source)))
+        if style_refs.len() != LAYERS.len()
+            || LAYERS
+                .iter()
+                .any(|(source, _)| !style_refs.contains_key(*source))
         {
-            return Err("adjacent style_refs require exactly tr, lv_lines, service_cables, customers and lv_poles".into());
+            return Err("style_resolution_required: pass API-resolved context refs for tr, lv_lines, service_cables, customers and lv_poles".into());
         }
         for (source, id) in LAYERS {
-            let reference = style_refs.get(source).cloned().unwrap_or_else(|| {
-                format!("print_context/print_context_existing_new_v1_{source}_print")
-            });
+            let reference = style_refs[source].clone();
             layout.styles.remove(id);
             layout.style_refs.insert(id.into(), reference);
             layout.style_overrides.insert(
@@ -112,10 +88,6 @@ pub fn configure(
                         ])
                     }),
                     opacity: policy.as_ref().map(|p| p.opacity),
-                    label: (source != "tr").then(|| PrintLabelOverride {
-                        visible: Some(false),
-                        ..Default::default()
-                    }),
                     ..Default::default()
                 },
             );
@@ -154,25 +126,19 @@ pub fn required_fields(
 ) -> Result<BTreeMap<String, BTreeSet<String>>, String> {
     let mut result: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
     for layout in layouts.iter().filter(|l| selected(l)) {
-        validate_selection(layout)?;
         for (source, target) in LAYERS {
-            let reference = &layout.style_refs[target];
+            let Some(reference) = layout.style_refs.get(target) else {
+                continue;
+            };
             let document = documents
                 .get(reference)
                 .filter(|d| d.is_object())
                 .ok_or_else(|| format!("adjacent print style {reference} is not held"))?;
-            let mut effective = super::style_overrides::apply(
-                document,
-                &layout.style_overrides[target],
-                layout.paper.expression_value(),
-            )?;
-            validate_lifecycle_pen(&effective)?;
-            if source != "tr" {
-                effective.as_object_mut().unwrap().remove("label");
-                if let Some(properties) = effective["layout"].as_object_mut() {
-                    properties.remove("text-field");
-                }
-            }
+            let effective = if let Some(change) = layout.style_overrides.get(target) {
+                super::style_overrides::apply(document, change, layout.paper.expression_value())?
+            } else {
+                document.clone()
+            };
             result
                 .entry(source.into())
                 .or_default()
@@ -180,45 +146,6 @@ pub fn required_fields(
         }
     }
     Ok(result)
-}
-
-fn validate_lifecycle_pen(document: &Value) -> Result<(), String> {
-    let (color, opacity) = match document["type"].as_str() {
-        Some("line") => ("line-color", "line-opacity"),
-        Some("circle") => ("circle-color", "circle-opacity"),
-        Some("symbol") => ("icon-color", "icon-opacity"),
-        _ => return Err("adjacent role needs a governed line or point symbol".into()),
-    };
-    let expression = &document["paint"][color];
-    let categories: BTreeMap<&str, &str> = expression
-        .as_array()
-        .filter(|items| items.len() == 7)
-        .map(|items| {
-            items[2..items.len().saturating_sub(1)]
-                .chunks_exact(2)
-                .filter_map(|pair| Some((pair[0].as_str()?, pair[1].as_str()?)))
-                .collect()
-        })
-        .unwrap_or_default();
-    let fallback = expression
-        .as_array()
-        .and_then(|items| items.last())
-        .and_then(Value::as_str);
-    if expression[0] != "match"
-        || expression[1] != json!(["get", "existing_status"])
-        || categories.len() != 2
-        || !categories.contains_key("new")
-        || !categories.contains_key("existing")
-        || fallback.is_none_or(|c| !super::color(c) || categories.values().any(|v| *v == c))
-        || categories.values().any(|v| !super::color(v))
-        || categories.get("new") == categories.get("existing")
-        || document["paint"][opacity]
-            .as_f64()
-            .is_none_or(|v| !v.is_finite() || v <= 0. || v >= 1.)
-    {
-        return Err("adjacent print refs must distinguish proposed, existing and unknown status with subdued opacity; use the print_context_existing_new_v1 seeds or an explicit project policy".into());
-    }
-    Ok(())
 }
 
 /// Keep every circuit, even when its transformer lies outside the sheet.
@@ -437,6 +364,9 @@ mod tests {
                 }
             };
         }
+        for document in documents.as_object_mut().unwrap().values_mut() {
+            document.as_object_mut().unwrap().remove("label");
+        }
         let refs = LAYERS
             .iter()
             .map(|(source, _)| (source.to_string(), format!("master/{source}_print")))
@@ -546,14 +476,21 @@ mod tests {
         }
         layout.layer_order = vec!["buildings".into(), "lv_lines".into(), "customers".into()];
         let before = layout.clone();
-        let configured = configure(layout, true, BTreeMap::new(), None).unwrap();
+        let refs = LAYERS
+            .iter()
+            .map(|(source, _)| (source.to_string(), format!("fixture/{source}_print")))
+            .collect();
+        assert!(configure(layout.clone(), true, BTreeMap::new(), None)
+            .unwrap_err()
+            .starts_with("style_resolution_required:"));
+        let configured = configure(layout, true, refs, None).unwrap();
         assert!(selected(&configured));
         assert_eq!(configured.styles["lv_lines"], before.styles["lv_lines"]);
         assert_eq!(configured.focus, before.focus);
         assert_eq!(configured.elements, before.elements);
         assert_eq!(
             configured.style_refs["neighbor_customers"],
-            "print_context/print_context_existing_new_v1_customers_print"
+            "fixture/customers_print"
         );
         assert_eq!(
             configured.style_overrides["neighbor_customers"]
@@ -576,9 +513,7 @@ mod tests {
         );
         let mut partial = configured.clone();
         partial.style_overrides.remove("neighbor_customers");
-        assert!(super::super::validate(&partial)
-            .unwrap_err()
-            .contains("complete"));
+        super::super::validate(&partial).unwrap();
         assert!(!selected(
             &configure(configured, false, BTreeMap::new(), None).unwrap()
         ));

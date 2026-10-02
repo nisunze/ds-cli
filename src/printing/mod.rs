@@ -16,11 +16,11 @@ pub mod mv_settings;
 pub mod names;
 pub mod network_fit;
 pub mod overrides;
-pub mod paper_pens;
 pub mod pens;
 pub mod placement;
 pub mod preview;
 pub mod project_sources;
+pub mod resolved_styles;
 pub mod session;
 pub mod sheet_margin;
 pub mod sheet_status;
@@ -910,7 +910,6 @@ pub fn validate(layout: &Layout) -> Result<(), String> {
         overrides::validate_inventory(&overrides, &layouts)?;
     }
 
-    adjacent_networks::validate_selection(layout)?;
     if let Some(mv) = &layout.mv {
         mv::validate_template(layout, mv).map_err(|e| e.to_string())?;
     }
@@ -1121,7 +1120,7 @@ pub fn validate(layout: &Layout) -> Result<(), String> {
         _ => {
             return Err(
                 "a geographic sheet must have exactly one map frame; front matter has none".into(),
-            )
+            );
         }
     }
     if let Some(composition) = &layout.composition {
@@ -1754,16 +1753,18 @@ pub enum Command {
         patch: Option<overrides::PrintOverride>,
     },
     StandardRegistry,
+    ConsumeResolvedStyles {
+        capture: Value,
+        keys: BTreeMap<String, Value>,
+        project: String,
+    },
     StandardLayout {
+        templates: standards::Templates,
         kind: standards::Kind,
         role: standards::PageRole,
         identity: standards::Identity,
         #[serde(default)]
         overrides: Option<standards::Overrides>,
-    },
-    StandardPens {
-        layout: Layout,
-        layers: Vec<paper_pens::VectorLayer>,
     },
     /// Native and WASM hosts pass measured occupied furniture after layout.
     AssessFurniture {
@@ -2227,15 +2228,19 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
             json!({"layout":layout})
         }
         Command::StandardRegistry => standards::registry(),
+        Command::ConsumeResolvedStyles {
+            capture,
+            keys,
+            project,
+        } => resolved_styles::consume(&capture, &keys, &project)?,
         Command::StandardLayout {
+            templates,
             kind,
             role,
             identity,
             overrides,
-        } => json!({"layout":standards::layout(kind, role, &identity, overrides.as_ref())?}),
-        Command::StandardPens { mut layout, layers } => {
-            let layers = paper_pens::materialize(&mut layout, layers)?;
-            json!({"layout":layout,"layers":layers})
+        } => {
+            json!({"layout":standards::layout(&templates, kind, role, &identity, overrides.as_ref())?})
         }
         Command::TableColumns {
             layout,
