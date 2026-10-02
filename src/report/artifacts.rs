@@ -27,11 +27,18 @@ fn lower_hex(value: &str) -> bool {
             .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
 }
 
-/// Canonical output metadata, including GeoJSON's distinct ID and wire format.
+/// Bridge metadata retains GeoJSON's stored ZIP format; the reporter request
+/// uses the selection token `geojson` instead.
 pub fn output(output_id: &str) -> Option<report_formats::Output> {
     report_formats::output(output_id)
         .ok()
         .filter(|o| o.output_id == output_id)
+        .map(|mut output| {
+            if output_id == "geojson" {
+                output.format = "geojsonzip".into();
+            }
+            output
+        })
 }
 
 pub fn validate(
