@@ -862,3 +862,42 @@ bytes remain required, and `ready` is false. MvSelectionPatch preserves other
 settings rows. Native persistence adds an exact-base expected-data fence and
 readback; adapters own IO, never layout decisions. Reporter renders the shared
 layout furniture and consumes the resolved ordered page pins before output.
+
+## Standard MV booklet consumer (2026-10-02)
+
+`mv_standardize` canonizes an approved cover/naming pair in the existing global/
+project printing library, then adds sheet index, key plan, legend/general notes
+and the native drawing slot. It preserves optional approved context documents.
+A3 landscape, H1500/V500, vertical native identities, a fixed external version/
+issue date and the guide-anchored clearance hair are the standard. Required
+formal parties/contract and exact approved logo/PDF assets refuse when missing.
+Overrides are declarative revisions of that Layout, validated by the kernel;
+the renderer accepts no transient furniture or style choices.
+
+`mv_booklet_plan` seals ordered page roles/content with project, model revision
+and adopted printing revision. `mv_booklet_preview` admits each ordered PNG
+against that plan, checks dimensions and encoded/decoded hashes, and returns
+portable data URLs. Native and `printingCommand`/WASM admission share this code.
+The native reporter rasterizes finalized component PDF pages, including the
+existing footer owner, before assembling the booklet. Preview-only omits the
+assembled PDF; every PNG and plan must equal the later full render.
+
+The MV consumer needs the print-styles resolver binding for
+`(mv_booklet, project_model, print, project)`. Its MapLibre document must carry
+`metadata.mv_paper` (`ds.mv-paper-style/v1`): physical primitive bindings for
+pens, fonts, label sizes, halos, casing/dashes, symbols and generated index
+ typography. `metadata.print_scaling` and optional `metadata.scale_weight`
+use the existing kernel policies. Primitive expressions receive governed
+SheetSettings and exact native feature/cable properties; ink policy lives in
+those expressions. The synthetic baseline-value reply is test data, not a
+seed, catalogue entry, or production fallback. Print-styles owns API seeding.
+
+Geographic captures carry explicit per-layer source queries and exact resolver
+bindings inside their source digest. Required combinations include LV lines,
+poles, transformers and existing/proposed MV, with live_geojson/vector_tile/
+cold_existing/dataset_geojson sources and focused/context/mv_context/project
+roles as declared by acquisition. Rivers, roads, boundaries, places and model
+zones likewise require their actual source/role. MV never constructs style ids,
+seeds zone pens or post-rewrites captured colours. Main integrates acquisition
+of these replies; absent or changed bindings refuse. Share these generic query/
+binding and page-role contracts with LV; do not copy either renderer's paints.
