@@ -18054,7 +18054,7 @@ fn pls_structure_translate_names_local_models_and_accepts_them_by_quantities() {
 #[test]
 fn style_instruction_schema_covers_primary_scale_and_guarded_replay() {
     let schema = ok(&["style", "instruction", "schema", "--output", "json"]);
-    let text = serde_json::to_string(&schema["data"]).unwrap();
+    let text = serde_json::to_string(&schema).unwrap();
     for word in [
         "categorical",
         "color_range",
@@ -18066,7 +18066,7 @@ fn style_instruction_schema_covers_primary_scale_and_guarded_replay() {
         assert!(text.contains(word), "schema missing {word}");
     }
     let descriptor = ok(&["capabilities", "style.zoom.plan", "--output", "json"]);
-    let inputs = descriptor["data"]["command"]["inputs"].as_array().unwrap();
+    let inputs = descriptor["command"]["inputs"].as_array().unwrap();
     assert!(
         inputs
             .iter()
