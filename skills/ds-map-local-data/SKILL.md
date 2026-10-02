@@ -44,7 +44,9 @@ headless command and not a saved Transformer Status selection. Discover
 - `--mode read` returns the current pins without changing or painting them;
 - `--mode load --selection <id>` replaces pins from the selection's current
   present members and reports missing members;
-- `--mode unpin --transformer <name>` removes only exact named pins;
+- `--mode unpin --transformer <name>` removes only exact named pins. It is
+  local and idempotent, so a stale pin can be removed even after its
+  transformer no longer appears in the project catalogue;
 - `--mode clear` empties the Working set.
 
 Require `staged: false` and `persisted: false`. Never change the CLI-selected
