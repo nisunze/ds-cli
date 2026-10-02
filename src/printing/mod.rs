@@ -896,6 +896,17 @@ fn no_stroke_or_bounded(value: f64, low: f64, high: f64) -> bool {
     value == 0. || bounded(value, low, high)
 }
 pub fn validate(layout: &Layout) -> Result<(), String> {
+    validate_with_semantic_layers(layout, &BTreeSet::new())
+}
+/// Governed standard documents declare resolver layer keys before refs exist.
+/// This validates their document controls without selecting a style document.
+pub(super) fn validate_with_semantic_layers(
+    layout: &Layout,
+    semantic_layers: &BTreeSet<String>,
+) -> Result<(), String> {
+    if semantic_layers.iter().any(|id| !identifier(id)) {
+        return Err("invalid semantic print layer key".into());
+    }
     if let Some(style) = &layout.attribution {
         style.validate()?;
     }
@@ -1246,7 +1257,7 @@ pub fn validate(layout: &Layout) -> Result<(), String> {
     if layout.style_overrides.len() > 100
         || layout.style_overrides.iter().any(|(id, o)| {
             !identifier(id)
-                || !layout.style_refs.contains_key(id)
+                || (!layout.style_refs.contains_key(id) && !semantic_layers.contains(id))
                 || o.color.as_ref().is_some_and(|c| !color(c))
                 || o.size.is_some_and(|v| !bounded(v, 0., 100.))
                 || o.scale_weight

@@ -316,7 +316,11 @@ impl Templates {
         {
             return Err("print_template_invalid: paper mismatch or embedded style choice".into());
         }
-        validate(&document.layout).map_err(|e| format!("print_template_invalid: {e}"))?;
+        super::validate_with_semantic_layers(
+            &document.layout,
+            &document.layer_keys.keys().cloned().collect(),
+        )
+        .map_err(|e| format!("print_template_invalid: {e}"))?;
         Ok(document)
     }
 }
@@ -352,7 +356,7 @@ pub fn layout(
             out.assets.remove(slot);
         }
     }
-    validate(&out)?;
+    super::validate_with_semantic_layers(&out, &document.layer_keys.keys().cloned().collect())?;
     Ok(out)
 }
 
@@ -400,5 +404,30 @@ mod tests {
             .validate()
             .unwrap_err()
             .starts_with("print_logo_invalid:"));
+    }
+    #[test]
+    fn declared_semantic_layers_admit_label_controls_before_style_resolution() {
+        let mut layout = default_layout();
+        layout.style_refs.clear();
+        layout.style_overrides.insert(
+            "lv_lines".into(),
+            PrintStyleOverride {
+                label: Some(PrintLabelOverride {
+                    display: Some(names::LabelDisplay::TitleCase),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+        );
+        assert!(validate(&layout).is_err());
+        super::super::validate_with_semantic_layers(&layout, &BTreeSet::from(["lv_lines".into()]))
+            .unwrap();
+        assert!(super::super::validate_with_semantic_layers(
+            &layout,
+            &BTreeSet::from(["unrelated".into()]),
+        )
+        .is_err());
+        assert!(layout.style_refs.is_empty());
+        assert!(layout.styles.is_empty());
     }
 }

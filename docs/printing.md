@@ -878,7 +878,10 @@ complete layout, ordered logo slots and semantic resolver keys by immutable
 revision and normalized content digest. Native and WASM instantiate the same
 held document. No layout generator, typography seed, pen catalogue or style
 selection belongs to this consumer. Missing or ambiguous captures and stale
-content have named refusals.
+content have named refusals. Document-level label controls may bind to declared
+semantic layer keys before style references exist; this is validation of the
+API printing document, not style selection. Rendering still requires the exact
+resolver receipt and resolved reference for every active key.
 
 Every standard layout also holds `attribution`: its physical type size, SVG and
 native PDF font families, colour, right inset and baseline. These are governed
