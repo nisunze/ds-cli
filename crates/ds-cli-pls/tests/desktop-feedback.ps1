@@ -2,7 +2,7 @@
 # Run with PowerShell on Linux or Windows; native acceptance remains separate.
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 2.0
-$desktop = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../desktop'))
+$desktop = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../desktop/adapters/pls-cadd'))
 $checks = 0
 function Assert([bool] $Condition, [string] $Message) {
     if (-not $Condition) { throw $Message }

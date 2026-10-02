@@ -37,6 +37,7 @@ pub static COMMAND: Command = Command {
         runnable: true,
     }],
     refusals: &[
+        ADAPTERS_NOT_EMBEDDED,
         WINDOWS_ONLY,
         PLS_CADD_NOT_FOUND,
         POWERSHELL_NOT_FOUND,
@@ -96,7 +97,7 @@ pub fn render(data: &Value) -> String {
     text
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "desktop-adapters"))]
 mod tests {
     use super::*;
 

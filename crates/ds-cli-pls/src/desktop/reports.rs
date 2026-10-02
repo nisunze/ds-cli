@@ -70,6 +70,7 @@ pub static COMMAND: Command = Command {
         runnable: false,
     }],
     refusals: &[
+        ADAPTERS_NOT_EMBEDDED,
         WINDOWS_ONLY,
         PLS_CADD_NOT_FOUND,
         POWERSHELL_NOT_FOUND,
@@ -199,7 +200,7 @@ pub fn render(data: &Value) -> String {
     text
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "desktop-adapters"))]
 mod tests {
     use super::*;
     use crate::desktop::bundle;
@@ -209,8 +210,8 @@ mod tests {
     /// shared entry plumbing. Every id and document title must be the chain's.
     #[test]
     fn the_six_reports_are_the_deliver_chain_s_six() {
-        let chain = bundle::text("pls-deliver-autosag.ps1").unwrap();
-        let lib = bundle::text("ds-desktop-lib.ps1").unwrap();
+        let chain = bundle::pls_cadd_text("pls-deliver-autosag.ps1").unwrap();
+        let lib = bundle::pls_cadd_text("ds-desktop-lib.ps1").unwrap();
         let reports = [
             "@{ k = 'Section Usage'; id = 40015; p = 'Section Usage Report'; all = $false }",
             "@{ k = 'Structure Usage'; id = 40014; p = 'Structure Usage Report'; all = $false }",

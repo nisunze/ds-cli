@@ -301,7 +301,7 @@ fn tail(path: &Path) -> String {
         .join("\n")
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "desktop-adapters"))]
 pub(crate) mod tests {
     use super::*;
 

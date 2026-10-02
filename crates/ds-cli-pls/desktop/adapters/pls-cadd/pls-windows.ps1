@@ -31,6 +31,14 @@ function Text([IntPtr]$h) {
     [DsPw]::SendMessage($h, 0x000D, [IntPtr]4096, $sb) | Out-Null   # WM_GETTEXT works across processes
     $sb.ToString()
 }
+# Top-level windows: GetWindowText returns the caption Windows stores and sends NO message to the target process.
+# Polling PLS-POLE's top-level windows with WM_GETTEXT (hidden ones included) coincided with silent PLS-POLE exits
+# on 2026-09-26; a window procedure that ignores the buffer size overflows inside PLS and kills it.
+function Caption([IntPtr]$h) {
+    $sb = New-Object System.Text.StringBuilder 1024
+    [DsPw]::GetWindowText($h, $sb, 1024) | Out-Null
+    $sb.ToString()
+}
 function Cls([IntPtr]$h) { $sb = New-Object System.Text.StringBuilder 256; [DsPw]::GetClassName($h, $sb, 256) | Out-Null; $sb.ToString() }
 
 if ($Click -ne 0) {
@@ -56,7 +64,7 @@ $pid_ = $ProcessId
 $cb = [DsPw+EnumWindowsProc]{ param($h, $l)
     $p = [uint32]0; [DsPw]::GetWindowThreadProcessId($h, [ref]$p) | Out-Null
     if ($p -eq $pid_) {
-        $t = Text $h; $vis = [DsPw]::IsWindowVisible($h)
+        $t = Caption $h; $vis = [DsPw]::IsWindowVisible($h)
         if ($All -or $vis -or $t.Length -gt 0) {
             [void]$rows.Add("$([long]$h) vis=$vis en=$([DsPw]::IsWindowEnabled($h)) owner=$([long][DsPw]::GetWindow($h, 4)) [$(Cls $h)] '$t'")
         }

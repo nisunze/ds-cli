@@ -12,6 +12,13 @@ publish.workspace = true
 name = "ds"
 path = "src/main.rs"
 
+[features]
+# The PLS-CADD desktop toolkit (third-party adapters) embedded in `ds`. Off,
+# `ds` still builds and every `ds pls desktop` verb refuses
+# `adapters_not_embedded`.
+default = ["pls-desktop-adapters"]
+pls-desktop-adapters = ["ds-cli-pls/desktop-adapters"]
+
 [dependencies]
 ds-cli-auth = { workspace = true }
 ds-cli-server = { workspace = true }

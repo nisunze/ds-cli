@@ -173,10 +173,13 @@ for ($attempt = 1; $attempt -le 3 -and -not $save; $attempt++) {
 }
 if (-not $save) { throw "Save As dialog did not appear after 3 attempts; journal: $($journal -join ' ;; ')" }
 $kids = Kids (Handle $save)
-$fileEdit = Ctl $kids "id=1001 .*vis=True en=True '[^']*\.[A-Za-z0-9]{1,4}'"
+# host Magese 2026-09-26: the modern Save As hides extensions ('report1'), and the Address bar also carries
+# id 1001 ('Address: ...'): match the filename Edit without requiring an extension, never the Address bar.
+$fileEdit = Ctl $kids "id=1001 .*vis=True en=True '(?!Address: )[^']*'"
 $saveBtn = Ctl $kids "id=1 .*vis=True en=True '&Save'"
 if (-not $fileEdit -or -not $saveBtn) { throw "Save As controls not found: $($kids -join ' || ')" }
-& "$here\pls-control.ps1" -SetText ([long]$fileEdit) -Text $OutputPath | Out-Null
+# WM_SETTEXT reads back correctly but the modern dialog saves under the old name; type the path as WM_CHAR.
+TypeInto ([long]$fileEdit) $OutputPath
 $readback = & "$here\pls-control.ps1" -GetText ([long]$fileEdit)
 if ($readback -ne $OutputPath) { throw "filename did not take: '$readback'" }
 Click ([long]$saveBtn)
@@ -199,6 +202,21 @@ for ($i = 0; $i -lt 40 -and -not (Test-Path -LiteralPath $OutputPath); $i++) {
     foreach ($e in $r.events) { [void]$journal.Add(($e | ConvertTo-Json -Compress -Depth 4)) }
 }
 if (-not (Test-Path -LiteralPath $OutputPath)) { throw "Report was not written to $OutputPath; journal: $($journal -join ' ;; ')" }
+# PLS creates the file before it has finished writing it: hashing Terrain Clearances.rtf right away hit a sharing
+# violation (2026-09-26). Wait until the writer has closed it (a read open that denies writers succeeds) and its
+# length holds between two polls.
+$deadline = [DateTime]::UtcNow.AddSeconds(120); $last = -1; $closed = $false
+while (-not $closed -and [DateTime]::UtcNow -lt $deadline) {
+    try {
+        $fs = [System.IO.File]::Open($OutputPath, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::Read)
+        $len = $fs.Length; $fs.Close()
+        if ($len -gt 0 -and $len -eq $last) { $closed = $true; break }
+        $last = $len
+    } catch [System.IO.IOException] { $last = -1 }
+    $r = & "$here\pls-dialog-watch.ps1" -ProcessId $ProcessId -MainWindowHandle $MainWindowHandle -TimeoutSeconds 1 -Once -JournalPath $JournalPath | ConvertFrom-Json
+    foreach ($e in $r.events) { [void]$journal.Add(($e | ConvertTo-Json -Compress -Depth 4)) }
+}
+if (-not $closed) { throw "Report $OutputPath was still being written after 120 s; journal: $($journal -join ' ;; ')" }
 [ordered]@{
     schema = 'ds.pls.report_any.v2'
     command_id = $CommandId

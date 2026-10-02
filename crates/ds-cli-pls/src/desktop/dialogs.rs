@@ -7,7 +7,7 @@
 //! its drivers will use. It only reads, so it answers on any host.
 
 use ds_cli_contract::spec::{
-    Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
+    Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Failure, Inputs};
 use serde_json::{Value, json};
@@ -68,11 +68,15 @@ pub static COMMAND: Command = Command {
             runnable: true,
         },
     ],
-    refusals: &[DIALOG_NOT_FOUND, CATALOG_UNREADABLE],
+    refusals: &[
+        super::ADAPTERS_NOT_EMBEDDED,
+        DIALOG_NOT_FOUND,
+        CATALOG_UNREADABLE,
+    ],
     reference: Some("docs/reference/pls.md"),
     search: &["dialog catalogue", "unknown dialog", "pls-cadd prompts"],
     requires: Requires::Server,
-    availability: || Availability::Available,
+    availability: super::adapter_availability,
 };
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {

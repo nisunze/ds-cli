@@ -21,7 +21,7 @@ Invoke-DsEntry $ResultPath 'reports' {
     if ($AttachProcessId -eq 0) { ExitPls 'project' } else { Assert-DsAttachedProject }
     if (-not $RtfOnly) {
         $paperArgs = @{ A4Landscape = ($PdfPaper -eq 'A4'); A3Landscape = ($PdfPaper -eq 'A3') }
-        $pdfs = & (Join-Path $here 'pls-rtf-to-pdf.ps1') @paperArgs -RtfPath @($reports.Values | ForEach-Object { $_.rtf }) | ConvertFrom-Json
+        $pdfs = & (Join-Path $here '..\word\pls-rtf-to-pdf.ps1') @paperArgs -RtfPath @($reports.Values | ForEach-Object { $_.rtf }) | ConvertFrom-Json
         foreach ($p in @($pdfs)) { $k = [System.IO.Path]::GetFileNameWithoutExtension($p.pdf); $reports[$k].pdf = $p.pdf; $reports[$k].pdf_bytes = $p.bytes }
         Log "report pdfs $(@($pdfs).Count)"
     }

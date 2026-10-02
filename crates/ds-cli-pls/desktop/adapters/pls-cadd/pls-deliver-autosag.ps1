@@ -6,7 +6,12 @@ param(
     [string] $SourceRoot,
     [double] $AlignmentGap = 100,
     [int] $ReportTimeoutSeconds = 1800,
-    [switch] $NoSheets
+    [switch] $NoSheets,
+    # keep the DS-authored stringing (every section's sag as the .dsgrid carries it, e.g. sections the designer set to an
+    # explicit catenary) instead of re-sagging every section to the criteria; the gate still runs Section Usage
+    [switch] $SkipAutoSag,
+    # common root of the PLS-written backup when it frames files outside the project folder (see interim backup driver)
+    [string] $OutputSourceRoot
 )
 # Deliverable chain for a DS-exported .bak, unattended, every step a proven driver; any refusal stops it.
 #  A. working session (restore r1):
@@ -92,8 +97,13 @@ function ExitPls([string]$tag) {
 
 # ================= A. working session
 $o = Open $BackupPath $ExpectedBackupSha256 'r1' $SourceRoot
-$autosag = (& (Join-Path $here 'pls-section-table-autosag.ps1') -ProcessId $procId -MainWindowHandle $frame -EvidenceDirectory (Join-Path $run 'ev-autosag') | Out-String) | ConvertFrom-Json
-Log "autosag done: fill=$($autosag.fill.text) attempts-journal=ev-autosag watcher=$($autosag.watcher_after_ok.outcome)"
+if ($SkipAutoSag) {
+    $autosag = [pscustomobject]@{ evidence_directory = $null; fill = 'skipped: DS-authored stringing kept'; watcher_after_ok = [pscustomobject]@{ outcome = $null } }
+    Log 'autosag skipped (-SkipAutoSag: the DS-authored section sags are kept as exported)'
+} else {
+    $autosag = (& (Join-Path $here 'pls-section-table-autosag.ps1') -ProcessId $procId -MainWindowHandle $frame -EvidenceDirectory (Join-Path $run 'ev-autosag') | Out-String) | ConvertFrom-Json
+    Log "autosag done: fill=$($autosag.fill.text) attempts-journal=ev-autosag watcher=$($autosag.watcher_after_ok.outcome)"
+}
 $paging = & (Join-Path $here 'pls-sheet-paging.ps1') -ProcessId $procId -MainWindowHandle $frame -AlignmentGap $AlignmentGap -JournalPath (Join-Path $run 'watch-journal.jsonl') | ConvertFrom-Json
 Log "paging $($paging.before | ConvertTo-Json -Compress) -> $($paging.after | ConvertTo-Json -Compress)"
 Save 'after autosag and paging'
@@ -103,13 +113,15 @@ $gate = Verdict $g.output
 Log "gate: section violations after AutoSag = $($gate.section_violations)"
 Save 'before backup'
 $bakOut = Join-Path $run "backup\$Label.bak"
-& (Join-Path $here 'interim\pls-backup-open-interim.ps1') -ProcessId $procId -MainWindowHandle $frame -OutputPath $bakOut -EvidenceDirectory (Join-Path $run 'ev-backup') | Out-Null
+$ba = @{ ProcessId = $procId; MainWindowHandle = $frame; OutputPath = $bakOut; EvidenceDirectory = (Join-Path $run 'ev-backup') }
+if ($OutputSourceRoot) { $ba.SourceRoot = $OutputSourceRoot }
+& (Join-Path $here 'interim\pls-backup-open-interim.ps1') @ba | Out-Null
 $bakSha = (Get-FileHash -LiteralPath $bakOut -Algorithm SHA256).Hash.ToLowerInvariant()
 Log "backup $bakSha $((Get-Item -LiteralPath $bakOut).Length) bytes"
 ExitPls 'r1'
 
 # ================= B. deliverables from a fresh restore of the delivered backup
-$o2 = Open $bakOut $bakSha 'r2' $null
+$o2 = Open $bakOut $bakSha 'r2' $OutputSourceRoot
 $reports = [ordered]@{}
 foreach ($r in @(@{ k = 'Section Usage'; id = 40015; p = 'Section Usage Report'; all = $false },
                  @{ k = 'Structure Usage'; id = 40014; p = 'Structure Usage Report'; all = $false },
@@ -140,7 +152,7 @@ Log "sheets $($sheets.bytes) bytes in $($sheets.seconds) s"
 ExitPls 'r2'
 
 # ---- report PDFs
-$pdfs = & (Join-Path $here 'pls-rtf-to-pdf.ps1') -A3Landscape -RtfPath @($reports.Values | ForEach-Object { $_.rtf }) | ConvertFrom-Json
+$pdfs = & (Join-Path $here '..\word\pls-rtf-to-pdf.ps1') -A3Landscape -RtfPath @($reports.Values | ForEach-Object { $_.rtf }) | ConvertFrom-Json
 foreach ($p in @($pdfs)) { $k = [System.IO.Path]::GetFileNameWithoutExtension($p.pdf); $reports[$k].pdf = $p.pdf; $reports[$k].pdf_bytes = $p.bytes }
 Log "report pdfs $(@($pdfs).Count)"
 

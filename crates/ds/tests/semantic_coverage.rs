@@ -46,6 +46,7 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("pls.desktop.reports", "local_file_write", "none"),
     ("pls.desktop.restore", "local_file_write", "none"),
     ("pls.desktop.sheets-pdf", "local_file_write", "none"),
+    ("pls.desktop.toolkit", "local_file_write", "none"),
     (
         "report.project.mv-setup.set",
         "global_write",

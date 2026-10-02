@@ -52,6 +52,7 @@ pub static COMMAND: Command = Command {
         runnable: false,
     }],
     refusals: &[
+        ADAPTERS_NOT_EMBEDDED,
         WINDOWS_ONLY,
         PLS_CADD_NOT_FOUND,
         POWERSHELL_NOT_FOUND,
@@ -135,7 +136,7 @@ pub fn render(data: &Value) -> String {
     )
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "desktop-adapters"))]
 mod tests {
     use super::*;
     use crate::desktop::bundle;
@@ -145,8 +146,8 @@ mod tests {
     /// commands it posts must be the chain's.
     #[test]
     fn the_sheets_view_step_is_the_deliver_chain_s() {
-        let chain = bundle::text("pls-deliver-autosag.ps1").unwrap();
-        let lib = bundle::text("ds-desktop-lib.ps1").unwrap();
+        let chain = bundle::pls_cadd_text("pls-deliver-autosag.ps1").unwrap();
+        let lib = bundle::pls_cadd_text("ds-desktop-lib.ps1").unwrap();
         for line in [
             "-CommandId 61504 -Post | Out-Null; Start-Sleep -Milliseconds 1500",
             "-CommandId 40075 -Post | Out-Null   # Window > New Window > Sheets View",

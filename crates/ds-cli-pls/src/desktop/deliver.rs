@@ -1,7 +1,7 @@
 //! `ds pls desktop deliver` — a DS-exported backup to the full deliverable set.
 //!
 //! `pls-deliver-autosag.ps1` owns the chain and proved it end to end on the
-//! v19 cap6 export (ds-work `ea67e9b`): a working session that AutoSags,
+//! v19 cap6 export: a working session that AutoSags,
 //! pages, saves, gates on Section Usage and backs up; then every deliverable
 //! from a fresh restore of that backup, because a report made in the working
 //! session can differ from what a reviewer opening the backup sees. This
@@ -81,6 +81,7 @@ pub static COMMAND: Command = Command {
         runnable: false,
     }],
     refusals: &[
+        ADAPTERS_NOT_EMBEDDED,
         WINDOWS_ONLY,
         PLS_CADD_NOT_FOUND,
         POWERSHELL_NOT_FOUND,
@@ -306,7 +307,7 @@ pub fn render(data: &Value) -> String {
     text
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "desktop-adapters"))]
 mod tests {
     use super::*;
     use crate::desktop::run::tests::declared_parameters;
@@ -433,7 +434,7 @@ mod tests {
         assert_eq!(invocation.params.len(), 8, "every flag reaches the driver");
         // The entry passes each one on to the chain under the chain's own name.
         let entry = crate::desktop::bundle::text(Entry::Deliver.file()).unwrap();
-        let chain = crate::desktop::bundle::text("pls-deliver-autosag.ps1").unwrap();
+        let chain = crate::desktop::bundle::pls_cadd_text("pls-deliver-autosag.ps1").unwrap();
         for name in [
             "BackupPath",
             "ExpectedBackupSha256",

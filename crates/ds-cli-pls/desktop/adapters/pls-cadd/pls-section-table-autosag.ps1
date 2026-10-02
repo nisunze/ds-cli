@@ -129,6 +129,11 @@ try {
     throw
 }
 Start-Sleep -Seconds 2
+# The Section Table stays on screen while PLS applies the column (AutoSag of every section): on a loaded host
+# (2026-09-26, two PLS-POLE analyses running) it was still up when the watcher looked, and the watcher read it as a
+# flow dialog. Wait for it to close before handing over to the watcher.
+for ($i = 0; $i -lt $TimeoutSeconds -and [DsAutoSag]::IsWindow([IntPtr]$script:dialog); $i++) { Start-Sleep -Seconds 1 }
+Log 'section_table_closed' @{ waited_s = $i }
 $w = & "$here\pls-dialog-watch.ps1" -ProcessId $ProcessId -MainWindowHandle $MainWindowHandle -TimeoutSeconds $TimeoutSeconds -JournalPath $journal | ConvertFrom-Json
 if ($w.outcome -ne 'ready') { throw "after OK the watcher ended '$($w.outcome)'; see $journal" }
 if ([DsAutoSag]::IsWindow([IntPtr]$script:dialog)) { throw 'Section Table still open after OK' }

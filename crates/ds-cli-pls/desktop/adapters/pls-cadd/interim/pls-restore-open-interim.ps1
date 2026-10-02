@@ -7,7 +7,11 @@
     [string] $SourceRoot,
     [string] $ExecutablePath = 'C:\Program Files\PLS\pls_cadd\pls_cadd64.exe',
     [switch] $CloseAfter,
-    [switch] $Execute
+    [switch] $Execute,
+    # A pls_cadd64 that was killed but cannot exit (one thread left in an Executive kernel wait, e.g. I/O stuck in
+    # the Google Drive driver; 2026-09-29 PID 11340) owns no usable window and is not "running". Name it here to
+    # let the restore proceed; windows are always found by the NEW process id, never by title.
+    [int[]] $IgnoreStuckPid = @()
 )
 # INTERIM (2026-09-23) - one fresh native Restore + open with the characterized qualify
 # functions (C3a/C3c/C3d fixed upstream in 88c0885) and the patches in
@@ -33,6 +37,15 @@ if ($candidateDigest -cne $ExpectedCandidateBackupSha256.ToLowerInvariant()) { t
 Assert-FreshAbsolutePath $RestoreDirectory 'restore directory' $true
 Assert-FreshAbsolutePath $EvidenceDirectory 'evidence directory' $true
 $running = @(Get-Process -Name 'pls_cadd64' -ErrorAction SilentlyContinue)
+foreach ($stuck in $IgnoreStuckPid) {
+    $p = $running | Where-Object { $_.Id -eq $stuck }
+    if (-not $p) { continue }
+    $threads = @($p.Threads)
+    if ($threads.Count -ne 1 -or [string] $threads[0].WaitReason -ne 'Executive') {
+        throw "PID $stuck is not a stuck, already-killed PLS-CADD ($($threads.Count) threads); refusing to ignore it"
+    }
+    $running = @($running | Where-Object { $_.Id -ne $stuck })
+}
 if ($running.Count -ne 0) { throw "Refusing to run while PLS-CADD is already running (PID(s): $($running.Id -join ', '))" }
 
 [System.IO.Directory]::CreateDirectory($EvidenceDirectory) | Out-Null

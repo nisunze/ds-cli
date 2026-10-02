@@ -61,6 +61,7 @@ pub static DOMAIN: Domain = Domain {
         &desktop::autosag::COMMAND,
         &desktop::reports::COMMAND,
         &desktop::sheets_pdf::COMMAND,
+        &desktop::toolkit::COMMAND,
     ],
 };
 

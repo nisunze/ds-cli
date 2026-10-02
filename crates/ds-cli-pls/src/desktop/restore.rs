@@ -57,6 +57,7 @@ pub static COMMAND: Command = Command {
         runnable: false,
     }],
     refusals: &[
+        ADAPTERS_NOT_EMBEDDED,
         WINDOWS_ONLY,
         PLS_CADD_NOT_FOUND,
         POWERSHELL_NOT_FOUND,
@@ -203,7 +204,7 @@ pub fn render(data: &Value) -> String {
     )
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "desktop-adapters"))]
 mod tests {
     use super::*;
     use crate::desktop::run::tests::declared_parameters;
@@ -279,7 +280,8 @@ mod tests {
         }
         assert_eq!(invocation.params.len(), 6);
         // …and the entry hands each to the interim driver under its own name.
-        let driver = crate::desktop::bundle::text("interim/pls-restore-open-interim.ps1").unwrap();
+        let driver =
+            crate::desktop::bundle::pls_cadd_text("interim/pls-restore-open-interim.ps1").unwrap();
         for name in [
             "CandidateBackupPath",
             "ExpectedCandidateBackupSha256",

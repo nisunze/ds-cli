@@ -294,24 +294,37 @@ That schema is the task's own, so it cannot drift from what the task accepts.
 
 ## PLS-CADD on its desktop: `ds pls desktop`
 
-Eight verbs run PLS-CADD 16.81 itself: native Restore, the two-restore
-qualification, the whole deliver chain, AutoSag, the deliverable reports and
-the plan & profile PDF. The owner of that work is the set of PowerShell
-drivers proven on the Nyamagabe delivery (ds-work `ea67e9b`, the deliver chain
-proven end to end on the v19 cap6 export). `ds` carries them rather than
-re-implementing a click:
+Nine verbs: seven run PLS-CADD 16.81 itself (readiness, native Restore, the
+two-restore qualification, the whole deliver chain, AutoSag, the deliverable
+reports and the plan & profile PDF), `dialogs` reads the dialog catalogue, and
+`toolkit` writes the whole toolkit for another install. The work is done by
+the PLS-CADD desktop toolkit, product code owned by `ds-cli-pls` and proven on
+the Nyamagabe delivery (the deliver chain end to end on the v19 cap6 export).
+`ds` carries it rather than re-implementing a click:
 
-- **Embedded byte for byte.** `crates/ds-cli-pls/desktop/` holds the 26 driver
-  files and the ds entry scripts. Each file's sha256 is pinned in
-  `src/desktop/bundle.rs`, with its origin: vendored unchanged, vendored and
-  modified (only `pls-deliver-autosag.ps1`, which gained `-NoSheets`), or owned
-  by `ds`. `.gitattributes` exempts the folder from line-ending conversion, so
-  every checkout embeds the same bytes.
-- **Extracted per call.** A run writes the bundle into a new private folder
-  under `%TEMP%`, reads every file back against its pin, runs one
-  `ds-desktop-<verb>.ps1` with `powershell.exe -NoLogo -NoProfile
+- **A disposable third-party layer.** `crates/ds-cli-pls/desktop/` has three
+  areas: `adapters/pls-cadd/` (PLS-CADD and PLS-POLE 16.81 GUI automation, the
+  `ds-desktop-<verb>.ps1` entries, the dialog catalogue and native profiles),
+  `adapters/word/` (Microsoft Word, RTF to PDF) and `lab/` (Python authoring
+  tools that still carry engineering logic and await a Rust owner; no verb runs
+  them). Each area's README names its third party, version, and what an
+  adapter may and may not do: adapters operate the program and return raw
+  evidence; Rust validates and decides.
+- **Embedded byte for byte.** Every file's sha256 is pinned in
+  `src/desktop/bundle.rs`; a test refuses a file the table does not name or a
+  pin that moved. `.gitattributes` exempts the folder from line-ending
+  conversion, so every checkout embeds the same bytes.
+- **Removable.** The layer sits behind `ds-cli-pls`'s default
+  `desktop-adapters` feature (`ds`'s `pls-desktop-adapters`). Built without it,
+  nothing is embedded, `ds` still builds, and every `ds pls desktop` verb —
+  `dialogs` and `toolkit` included — refuses `adapters_not_embedded`.
+- **Extracted per call, never reused.** A run writes the bundle into a new
+  private folder under `%TEMP%`, reads every file back against its pin, runs
+  one `ds-desktop-<verb>.ps1` with `powershell.exe -NoLogo -NoProfile
   -NonInteractive -ExecutionPolicy Bypass -File …`, and removes the folder.
-  Windows PowerShell 5.1 is found under `%SystemRoot%`, never on `PATH`.
+  Extracted copies are disposable: no verb reads state from an earlier
+  extraction or from a `toolkit` copy. Windows PowerShell 5.1 is found under
+  `%SystemRoot%`, never on `PATH`.
 - **One result document.** The entry writes `status: ok` with its receipt's
   path, or `status: failed` with the driver's own message and the PLS-CADD
   processes still running. `ds` reads the receipt the drivers wrote
@@ -319,7 +332,7 @@ re-implementing a click:
   console text. Every result carries `receipt` and `drivers`, the bundle
   digest that names the exact scripts.
 
-Every verb except `dialogs` refuses `windows_only` off Windows,
+Every verb except `dialogs` and `toolkit` refuses `windows_only` off Windows,
 `pls_cadd_not_found` when `C:\Program Files\PLS\pls_cadd\pls_cadd64.exe` is
 absent, and `powershell_not_found` without Windows PowerShell 5.1. Every folder
 a verb creates must not exist yet, must have an existing parent, and must not
@@ -334,7 +347,7 @@ remote shell without one cannot drive PLS-CADD.
 An unknown dialog stops the run. Record it in the catalogue with its
 decision; never click through it blind.
 
-`pls-dialog-catalog.psd1` lists every modal the drivers have met: when it
+`adapters/pls-cadd/pls-dialog-catalog.psd1` lists every modal the drivers have met: when it
 fires, how it is recognised, and the decision — `wait` (a progress box, never
 clicked), `click` a named button, `click_any_ok`, `options` (press only the
 visible OK of a tabbed dialog), `flow` (a dialog a driver fills in), `ignore`,
@@ -452,6 +465,24 @@ These three compose proven steps in an order the deliver chain already runs;
 the compositions themselves have not yet run on the desktop. `deliver`,
 `restore` and `qualify` run the drivers' proven sequences as they are.
 
+### `toolkit`
+
+```bash
+ds pls desktop toolkit --out <new folder>
+```
+
+Writes every embedded file into one new folder with the bundle's layout,
+reads each back against its pin, and adds `toolkit-manifest.json`
+(`ds.pls.desktop_toolkit.v1`): the `ds` version, the toolkit digest the run
+receipts carry as `drivers`, and every file's path, sha256 and size. It only
+writes files and starts no process, so it answers on Linux and Windows and is
+not bound by the `C:` rule. It refuses an existing folder (`output_exists`) or a
+missing parent (`output_parent_missing`), and removes what it created if a
+write fails (`toolkit_write_failed`). The answer carries the counts per area;
+every path is in the manifest. Use the copy to review the adapters, run one by
+hand on a PLS-CADD desktop, or install them elsewhere; the run verbs never
+read it.
+
 ### Refusals from a run
 
 The drivers already refuse precisely; `ds` names those refusals. The cause
@@ -510,13 +541,14 @@ Every command calls one function in `ds-grid-tasks`:
 The `desktop` verbs call no task: each runs one ds entry of the embedded
 PLS-CADD driver bundle, as above.
 
-| Command | Driver |
+| Command | Driver (below `adapters/`) |
 |---|---|
-| `desktop check` | `ds-desktop-check.ps1` (reads only) |
-| `desktop dialogs` | the embedded `pls-dialog-catalog.psd1`, read in `ds` |
-| `desktop restore` | `interim/pls-restore-open-interim.ps1`, `interim/pls-close-interim.ps1` |
-| `desktop qualify` | `pls-backup-restore-qualify.ps1` |
-| `desktop deliver` | `pls-deliver-autosag.ps1` |
-| `desktop autosag` | `pls-launch-project.ps1`, `pls-section-table-autosag.ps1`, `pls-report-any.ps1` |
-| `desktop reports` | `pls-launch-project.ps1`, `pls-report-any.ps1`, `pls-rtf-to-pdf.ps1` |
-| `desktop sheets-pdf` | `pls-launch-project.ps1`, `pls-save-sheets-pdf.ps1` |
+| `desktop check` | `pls-cadd/ds-desktop-check.ps1` (reads only) |
+| `desktop dialogs` | the embedded `pls-cadd/pls-dialog-catalog.psd1`, read in `ds` |
+| `desktop restore` | `pls-cadd/interim/pls-restore-open-interim.ps1`, `pls-cadd/interim/pls-close-interim.ps1` |
+| `desktop qualify` | `pls-cadd/pls-backup-restore-qualify.ps1` |
+| `desktop deliver` | `pls-cadd/pls-deliver-autosag.ps1`, `word/pls-rtf-to-pdf.ps1` |
+| `desktop autosag` | `pls-cadd/pls-launch-project.ps1`, `pls-cadd/pls-section-table-autosag.ps1`, `pls-cadd/pls-report-any.ps1` |
+| `desktop reports` | `pls-cadd/pls-launch-project.ps1`, `pls-cadd/pls-report-any.ps1`, `word/pls-rtf-to-pdf.ps1` |
+| `desktop sheets-pdf` | `pls-cadd/pls-launch-project.ps1`, `pls-cadd/pls-save-sheets-pdf.ps1` |
+| `desktop toolkit` | every embedded file, written, not run |
