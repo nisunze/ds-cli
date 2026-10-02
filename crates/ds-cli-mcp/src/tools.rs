@@ -1403,20 +1403,6 @@ pub fn discover_tools(executable: &PathBuf) -> Result<Vec<Tool>, Failure> {
     Ok(tools)
 }
 
-/// Resolve one command's ordinary live descriptor on an explicit catalogue
-/// request. Startup discovery deliberately uses the unchecked schema mode;
-/// this function is the lazy availability boundary.
-pub fn live_command_descriptor(executable: &PathBuf, id: &str) -> Result<Value, Failure> {
-    let data = capabilities(executable, Some(id), false)?;
-    data.get("command").cloned().ok_or_else(|| {
-        Failure::failed(
-            "mcp_capabilities_unavailable",
-            format!("`ds capabilities {id}` omitted its command descriptor"),
-        )
-        .remedy("repair the command registry and rebuild this exact `ds` executable")
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

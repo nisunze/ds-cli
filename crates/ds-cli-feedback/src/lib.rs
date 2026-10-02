@@ -57,10 +57,6 @@ pub static DOMAIN: Domain = Domain {
 // The declared wire contract
 // ---------------------------------------------------------------------------
 
-/// The two statuses the shared backlog counts as addressed. Held here because
-/// the command's choices and the adapter's guard must be the same two words.
-pub const CLOSED_STATUSES: &[&str] = &["resolved", "wont_fix"];
-
 /// The longest resolution ds-brain stores, in characters. A hand copy of the
 /// service bound, so an over-long resolution is refused locally rather than
 /// after a round trip.
@@ -78,7 +74,6 @@ pub const MAX_BLOCKED_ON_CHARS: usize = 200;
 // Refusals this domain adds to the shared pairing set
 // ---------------------------------------------------------------------------
 
-pub const NOT_SIGNED_IN: Refusal = ds_cli_auth::SIGNED_OUT_REFUSAL;
 pub const INVALID_TEXT: Refusal = Refusal {
     code: "invalid_text",
     when: "a required report field is empty, untrimmed, or exceeds its bound",
@@ -181,14 +176,4 @@ pub fn invoke_native(
                 .remedy(INVALID_TEXT.remedy)
         })?;
     ds_cli_auth::feedback(inputs.value("lane").unwrap_or("stable"), &command)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn closing_names_only_addressed_statuses() {
-        assert_eq!(CLOSED_STATUSES, ["resolved", "wont_fix"]);
-    }
 }

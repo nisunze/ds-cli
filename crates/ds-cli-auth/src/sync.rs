@@ -320,19 +320,6 @@ impl NativeSyncSession {
         &self.install_id
     }
 
-    /// Register the exact release whose prepared executor will use this
-    /// session. A release is not guessed from a connection secret or an env
-    /// default; the Solar runtime supplies its sealed engine identity.
-    pub fn register_engine(&self, addition: NativeEngineAddition) -> Result<(), String> {
-        validate_addition(&addition)?;
-        let mut state = self
-            .state
-            .lock()
-            .map_err(|_| "native Sync Center session is unavailable")?;
-        state.addition = Some(addition);
-        self.heartbeat_locked(&mut state)
-    }
-
     /// Solar's publication pump needs the same registration heartbeat, but it
     /// must retain closed HTTP refusal classes so a revoked install is stored
     /// as refused instead of retried as a transport outage.

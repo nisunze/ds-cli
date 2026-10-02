@@ -188,16 +188,3 @@ fn radix36(mut value: u128) -> String {
     out.reverse();
     String::from_utf8(out).expect("base-36 digits are ASCII")
 }
-
-/// One selection head, in the shape the register's own CLI answer has always
-/// had. The residency moved; the answer did not.
-pub fn head_json(project: &str, head: &DesignSelectionSummary) -> Value {
-    json!({
-        "project": project,
-        "selection": head.selection_id,
-        "name": head.name,
-        "mode": head.mode,
-        "version": head.version,
-        "state": head.state,
-    })
-}

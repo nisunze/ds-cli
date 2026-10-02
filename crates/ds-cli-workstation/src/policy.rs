@@ -169,16 +169,6 @@ pub(crate) fn read_browser_selection_at(path: &Path) -> Result<Option<BrowserSel
     Ok(Some(receipt))
 }
 
-pub fn write_browser_selection(
-    platform: Platform,
-    receipt: &BrowserSelection,
-) -> Result<PathBuf, String> {
-    let path = browser_selection_path(platform)
-        .ok_or_else(|| "the platform component root is unavailable".to_string())?;
-    write_browser_selection_at(&path, receipt)?;
-    Ok(path)
-}
-
 pub(crate) fn write_browser_selection_at(
     path: &Path,
     receipt: &BrowserSelection,
@@ -406,40 +396,10 @@ pub fn write_install_receipt(path: &Path, receipt: &InstallReceipt) -> Result<()
         .map_err(|error| format!("receipt could not be persisted: {}", error.kind()))
 }
 
-pub fn uninstall_authorized(receipt: &InstallReceipt, component: &str, package_id: &str) -> bool {
-    receipt.schema == INSTALL_RECEIPT_SCHEMA
-        && receipt.task_owned
-        && !receipt.preexisting
-        && receipt.component == component
-        && receipt.package_id == package_id
-}
-
 pub(crate) fn sha256(path: &Path) -> Result<String, String> {
     let bytes = std::fs::read(path)
         .map_err(|error| format!("component file could not be read: {}", error.kind()))?;
     Ok(format!("{:x}", Sha256::digest(bytes)))
-}
-
-/// A LibreOffice fallback may proceed only when the official Metalink named
-/// the URL and the completed bytes match its SHA-256.
-pub fn validate_official_artifact(
-    official_urls: &[String],
-    selected_url: &str,
-    published_sha256: &str,
-    actual_sha256: &str,
-) -> Result<(), &'static str> {
-    if !official_urls.iter().any(|url| url == selected_url) {
-        return Err("installer URL is not present in the official Metalink");
-    }
-    let expected = published_sha256.trim_start_matches("sha256:");
-    let actual = actual_sha256.trim_start_matches("sha256:");
-    if expected.len() != 64
-        || !expected.bytes().all(|byte| byte.is_ascii_hexdigit())
-        || !expected.eq_ignore_ascii_case(actual)
-    {
-        return Err("installer SHA-256 does not match the published digest");
-    }
-    Ok(())
 }
 
 /// Merge only VS Code's Windows default-profile key. Existing JSONC text,
@@ -508,21 +468,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn official_source_and_hash_are_both_mandatory() {
-        let urls = vec!["https://download.documentfoundation.org/official.msi".to_string()];
-        let digest = "a".repeat(64);
-        assert!(validate_official_artifact(&urls, &urls[0], &digest, &digest).is_ok());
-        assert_eq!(
-            validate_official_artifact(&urls, "https://mirror.invalid/file.msi", &digest, &digest),
-            Err("installer URL is not present in the official Metalink")
-        );
-        assert_eq!(
-            validate_official_artifact(&urls, &urls[0], &digest, &"b".repeat(64)),
-            Err("installer SHA-256 does not match the published digest")
-        );
-    }
-
-    #[test]
     fn settings_merge_preserves_comments_and_unrelated_values() {
         let original = "{\n  // keep this\n  \"editor.fontSize\": 15,\n  \"terminal.integrated.defaultProfile.windows\": \"PowerShell\"\n}\n";
         let merged = merge_vscode_windows_profile(original, "Git Bash").unwrap();
@@ -567,37 +512,5 @@ mod tests {
             before
         );
         std::fs::remove_dir_all(root).unwrap();
-    }
-
-    #[test]
-    fn uninstall_requires_the_exact_task_owned_installation() {
-        let receipt = InstallReceipt {
-            schema: INSTALL_RECEIPT_SCHEMA.to_string(),
-            run_id: "fixture-run".to_string(),
-            component: "libreoffice".to_string(),
-            package_id: "TheDocumentFoundation.LibreOffice".to_string(),
-            source: "package-manager".to_string(),
-            installed_at_unix_s: 1,
-            task_owned: true,
-            preexisting: false,
-            executable: None,
-            version: None,
-            verified: true,
-            smoke: "passed".to_string(),
-        };
-        assert!(uninstall_authorized(
-            &receipt,
-            "libreoffice",
-            "TheDocumentFoundation.LibreOffice"
-        ));
-        let preexisting = InstallReceipt {
-            preexisting: true,
-            ..receipt
-        };
-        assert!(!uninstall_authorized(
-            &preexisting,
-            "libreoffice",
-            "TheDocumentFoundation.LibreOffice"
-        ));
     }
 }

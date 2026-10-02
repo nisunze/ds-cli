@@ -353,10 +353,6 @@ impl AuthContext {
     pub fn session_state(&self) -> SessionState {
         self.session_state
     }
-
-    pub fn has_capability(&self, capability: AuthorityCapability) -> bool {
-        self.authority_capabilities.contains(&capability)
-    }
 }
 
 fn profile_fence(profile: &ClientProfile) -> ProfileFence {
@@ -384,7 +380,7 @@ mod tests {
     }
 
     #[test]
-    fn signed_out_context_has_only_none_capability() {
+    fn signed_out_context_reports_its_session_state() {
         let context = AuthContext::build(
             "stable",
             profile(),
@@ -394,35 +390,7 @@ mod tests {
             None,
             SessionState::SignedOut,
         );
-        assert!(context.has_capability(AuthorityCapability::None));
-        assert!(!context.has_capability(AuthorityCapability::User));
         assert_eq!(context.session_state(), SessionState::SignedOut);
-    }
-
-    #[test]
-    fn selected_project_adds_project_without_desktop_or_map() {
-        let context = AuthContext::build(
-            "stable",
-            profile(),
-            Some(CanonicalPrincipal {
-                uid: "uid-1".to_owned(),
-                email: "operator@example.com".to_owned(),
-            }),
-            Some(SelectedProject::new(
-                "project-1",
-                "Project One",
-                None,
-                Some("editor"),
-                "active",
-            )),
-            CredentialProviderKind::NativeRefresh,
-            None,
-            SessionState::Active,
-        );
-        assert!(context.has_capability(AuthorityCapability::User));
-        assert!(context.has_capability(AuthorityCapability::Project));
-        assert!(!context.has_capability(AuthorityCapability::Desktop));
-        assert!(!context.has_capability(AuthorityCapability::Map));
     }
 
     #[test]

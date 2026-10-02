@@ -39,9 +39,6 @@ use crate::server_sync::sessions::{self, ServerSessions};
 /// The activity envelope every `/v1/activity` answer carries, one entry per
 /// project. One shape whether the caller narrowed or not.
 pub const ACTIVITY_SCHEMA: &str = "ds.server-activity/v1";
-/// The typed refusal for an operation that genuinely needs a rendered map.
-/// The operation keeps its id and its shape; only this host cannot run it.
-pub const NEEDS_PAIRED_MAP: &str = "needs_paired_map";
 
 /// The one Server a protected state directory holds: whose it is, on which
 /// lane, and the socket it answers on.
@@ -1365,7 +1362,7 @@ pub(crate) mod tests {
         )
         .await;
         assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{refused}");
-        assert_eq!(refused["code"], NEEDS_PAIRED_MAP);
+        assert_eq!(refused["code"], "needs_paired_map");
         assert!(
             refused["remedy"]
                 .as_str()

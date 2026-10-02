@@ -400,22 +400,13 @@ pub const FOLDER_KINDS: &[&str] = &["system", "user"];
 
 /// The catalogue's codes, re-exported under the names the command files use.
 pub const ASSET_NOT_FOUND: Refusal = ds_cli_auth::ASSET_NOT_FOUND_REFUSAL;
-pub const ASSET_CLASS_FORBIDDEN: Refusal = ds_cli_auth::ASSET_CLASS_FORBIDDEN_REFUSAL;
-pub const ASSET_VERSION_CONFLICT: Refusal = ds_cli_auth::ASSET_VERSION_CONFLICT_REFUSAL;
 pub const ASSET_REQUEST_INVALID: Refusal = ds_cli_auth::ASSET_REQUEST_INVALID_REFUSAL;
-pub const ASSET_RULE_REFUSED: Refusal = ds_cli_auth::ASSET_REFUSED_REFUSAL;
-pub const ASSETS_SERVICE_FAILED: Refusal = ds_cli_auth::ASSETS_SERVICE_FAILED_REFUSAL;
 /// A page cursor from an index generation that has since been rebuilt.
 pub const ASSETS_INDEX_MOVED: Refusal = ds_cli_auth::ASSETS_INDEX_MOVED_REFUSAL;
 pub const ASSETS_INDEX_UNAVAILABLE: Refusal = Refusal {
     code: "assets_index_unavailable",
     when: "this lane's ds-brain predates the assets index, the only holder of version history",
     remedy: "read the row with `ds assets list`; versions arrive with the next ds-brain deployment on this lane",
-};
-pub const ASSET_BYTES_NOT_HELD: Refusal = Refusal {
-    code: "asset_bytes_not_held",
-    when: "an external reference has no bytes in DS",
-    remedy: "open the external URL in the asset row",
 };
 pub const INVALID_EXTERNAL_REFERENCE: Refusal = Refusal {
     code: "invalid_external_reference",

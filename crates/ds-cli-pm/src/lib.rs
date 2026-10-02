@@ -362,8 +362,6 @@ pub const fn correspondence_refusals<const TOTAL: usize>(own: &[Refusal]) -> [Re
     }
     out
 }
-/// `READ_BASE` + [`CORRESPONDENCE_BASE`].
-pub const CORRESPONDENCE_READ: usize = 16 + 5;
 
 /// One correspondence action through the door, its refusal classified for
 /// this domain.

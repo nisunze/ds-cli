@@ -11,8 +11,6 @@
 //! platform's ordinary API for the user's own profile: no shell is spawned,
 //! no rc file is edited, no machine-wide setting is touched.
 
-use std::path::Path;
-
 use ds_cli_contract::outcome::Failure;
 use serde_json::{Value, json};
 
@@ -81,9 +79,6 @@ fn unwritable(detail: String) -> Failure {
 fn directory_entry(reach: &Reach) -> String {
     crate::reach::display(&reach.directory)
 }
-
-#[allow(dead_code)]
-fn unused(_: &Path) {}
 
 // ---------------------------------------------------------------------------
 // Windows: HKCU\Environment\Path
