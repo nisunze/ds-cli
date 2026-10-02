@@ -34,12 +34,18 @@ crate. Kernel → Network and Network → the whole application kernel remain
 forbidden. Kernel native/WASM builds must work with Network absent. This moves
 no engineering analysis, voltage, terrain, strength or optimization code.
 
+Admission (including the BigQuery corpus), exact spatial predicates, region
+algebra, measurement and viewport extents are now canonical Lite modules.
+Network keeps compatibility module paths and calls this same implementation.
+The optional `codec` feature owns the fixed 2D WKB writer and structural bbox
+reader; cleaning and columnar retain their own schema/IPC responsibilities.
+
 The following remaining snapshots retain their existing Network authority:
 
 | | |
 |---|---|
 | `vendor/ds-geo-lite/` | the snapshot — ds-network bytes, plus `MANIFEST.json` |
-| `crates/ds-geo-lite` | owns portable primitives; mounts unchanged legacy `geo/*` snapshots |
+| `crates/ds-geo-lite` | owns portable primitives; mounts legacy identity/comparison snapshots |
 | `crates/ds-canvas-lite` | compiles `vendor/ds-geo-lite/canvas/*` as `ds_canvas_lite` |
 | `tests/geo_lite_drift.rs` | the proof that the snapshot is still the source |
 | `scripts/sync-geo-lite.sh` | the only sanctioned way to move bytes across the line |
@@ -79,7 +85,7 @@ distance yardsticks and installed four-operation packets.
 all need editing, and byte-identity is the whole proof — so the snapshot of
 `ds-canvas/src/**` is a crate of its own whose `[lib] path` IS the vendored
 `lib.rs`. `ds-geo-lite`'s own crate root is authored (it is not a snapshot of
-anything) and mounts the four ds-geo modules by `#[path]`.
+anything) and mounts the two legacy ds-geo modules by `#[path]`.
 
 Both are edition 2024, because `ds-network` is and `comparison.rs` uses a
 let-chain. Compiling the bytes as they were written is part of snapshotting
@@ -117,30 +123,27 @@ Snapshot hashes are not a substitute for numerical or packet parity.
 
 ## 2. What is snapshotted
 
-14 files, `vendor/ds-geo-lite/MANIFEST.json`, taken at ds-network `a644fb0`
+10 remaining files, `vendor/ds-geo-lite/MANIFEST.json`, taken at ds-network `a644fb0`
 (`577ec83` until geometry admission was added, 2026-09-27):
 
 | Vendored | ds-network source | Whole |
 |---|---|---|
-| `geo/viewport.rs` | `crates/ds-geo/src/viewport.rs` | yes |
-| `geo/spatial_predicate.rs` | `crates/ds-geo/src/spatial_predicate.rs` | yes |
 | `geo/identity.rs` | `crates/ds-geo/src/identity.rs` | yes |
 | `geo/comparison.rs` | `crates/ds-geo/src/comparison.rs` | yes |
-| `geo/admission.rs`, `geo/admission_corpus.json` | `crates/ds-geo/src/admission{.rs,_corpus.json}` | yes |
 | `canvas/{lib,viewport,selection,measured_path,free_layout,packed,layout_session}.rs` | `crates/ds-canvas/src/**` | yes |
 | `network/processor_presets.json` | `crates/ds-network/src/network/processor_presets.json` | yes |
 
 The last one is not geometry — it is the processor catalogue
 `process_settings` is pure over, and §5 explains why it is here. The directory
 is named after its first tenant rather than its contents; renaming it is one
-string in `scripts/sync-geo-lite.sh` and three `#[path]`s.
+string in `scripts/sync-geo-lite.sh` and the legacy `#[path]` mounts.
 
-`geo/admission.rs` is the one rule every input door applies to a geometry
+`admission.rs` is the one rule every input door applies to a geometry
 (owner ruling, 2026-09-27: what BigQuery rejects is rejected at our input
-boundary, and a globe-covering polygon never exists in our system). Its source
-stays in ds-network so the file importers there (`ds-io`) and the kernel's doors
-judge with the same bytes. Its parity is with BigQuery rather than with
-ds-network, so it ships its own corpus: `geo/admission_corpus.json` records
+boundary, and a globe-covering polygon never exists in our system). Its canonical source
+is `crates/ds-geo-lite/src/admission.rs`; Network file importers and kernel
+doors judge through that same crate. Its parity is with BigQuery rather than with
+ds-network, so it ships its own corpus: `crates/ds-geo-lite/src/admission_corpus.json` records
 `ST_GEOGFROMGEOJSON`'s answer for every case, and the tests inside the file
 assert each one here too.
 
@@ -259,3 +262,9 @@ code under `crates/ds-geo-lite/src` is outside the snapshot and is never copied.
 **Do not edit `vendor/ds-geo-lite/` by hand.** `cargo fmt` will happily reformat
 those files, because they are real modules of a real crate; the drift test is
 what catches it. A fix belongs in `ds-network`, followed by a sync.
+
+The 2026-10-02 canonical geometry handoff uses
+`scripts/sync-geo-lite.sh --retire-canonical`: it verifies the retired bytes
+against their existing pins, requires their canonical files to exist, removes
+only those retired entries and preserves every remaining source pin. It reads
+no dirty Network source. Ordinary refresh still requires a clean checkout.

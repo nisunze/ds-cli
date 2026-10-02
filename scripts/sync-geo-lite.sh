@@ -16,6 +16,31 @@
 set -euo pipefail
 
 kernel_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+# Ownership handoff only: preserve remaining source pins without reading a
+# potentially dirty Network checkout. Retired bytes must match their old pins.
+if [[ "${1:-}" == "--retire-canonical" ]]; then
+    python3 - "${kernel_root}" <<'PYTHON'
+from pathlib import Path
+import hashlib, json, sys
+root = Path(sys.argv[1])
+vendor = root / "vendor/ds-geo-lite"
+manifest_path = vendor / "MANIFEST.json"
+manifest = json.loads(manifest_path.read_text())
+retired = {"geo/admission.rs", "geo/admission_corpus.json", "geo/spatial_predicate.rs", "geo/viewport.rs"}
+for entry in manifest["files"]:
+    if entry["vendored"] in retired:
+        path = vendor / entry["vendored"]
+        assert hashlib.sha256(path.read_bytes()).hexdigest() == entry["sha256"], path
+        assert (root / "crates/ds-geo-lite/src" / path.name).is_file(), path
+for name in retired:
+    (vendor / name).unlink(missing_ok=True)
+manifest["files"] = [e for e in manifest["files"] if e["vendored"] not in retired]
+manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
+print("Retired canonical geometry snapshots; remaining drift pins preserved")
+PYTHON
+    exit 0
+fi
+
 network_root="${1:-${kernel_root}/../ds-network}"
 vendor_dir="${kernel_root}/vendor/ds-geo-lite"
 
@@ -30,13 +55,8 @@ dirty="$(git -C "${network_root}" status --porcelain --untracked-files=no | head
 
 # vendored-path : ds-network source path(s), ':' separated
 whole=(
-	"geo/viewport.rs:crates/ds-geo/src/viewport.rs"
-	"geo/spatial_predicate.rs:crates/ds-geo/src/spatial_predicate.rs"
 	"geo/identity.rs:crates/ds-geo/src/identity.rs"
 	"geo/comparison.rs:crates/ds-geo/src/comparison.rs"
-	"geo/admission.rs:crates/ds-geo/src/admission.rs"
-	# The admission tests read their BigQuery parity corpus beside them.
-	"geo/admission_corpus.json:crates/ds-geo/src/admission_corpus.json"
 	"canvas/lib.rs:crates/ds-canvas/src/lib.rs"
 	"canvas/viewport.rs:crates/ds-canvas/src/viewport.rs"
 	"canvas/selection.rs:crates/ds-canvas/src/selection.rs"
@@ -53,6 +73,12 @@ whole=(
 digest() { sha256sum "$1" | cut -d' ' -f1; }
 
 mkdir -p "${vendor_dir}/geo" "${vendor_dir}/canvas" "${vendor_dir}/network"
+
+# Admission, predicates and extents are now canonical toolkit modules.
+# Remove their retired snapshots while retaining the drift fence for the rest.
+for retired in geo/admission.rs geo/admission_corpus.json geo/spatial_predicate.rs geo/viewport.rs; do
+    rm -f -- "${vendor_dir}/${retired}"
+done
 
 changed=0
 for pair in "${whole[@]}"; do

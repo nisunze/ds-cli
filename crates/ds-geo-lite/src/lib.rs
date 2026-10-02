@@ -13,13 +13,12 @@
 //! Network's `ds-geo-ops` delegates to this crate. There is one implementation,
 //! and neither this crate nor the command kernel depends on Network.
 //!
-//! The remaining admission, predicate, identity, comparison and viewport modules
-//! are unchanged byte-pinned snapshots from `vendor/ds-geo-lite/`. Their source
-//! remains in Network; `tests/geo_lite_drift.rs` and `scripts/sync-geo-lite.sh`
-//! still fence that separate scope. They have not moved in this slice.
+//! Admission, spatial predicates, region algebra, measurement and extents are
+//! maintained here. Identity/comparison and canvas remain byte-pinned snapshots
+//! from `vendor/ds-geo-lite/`, fenced by `tests/geo_lite_drift.rs` and
+//! `scripts/sync-geo-lite.sh`.
 
 #[cfg(feature = "overlay")]
-#[path = "../../../vendor/ds-geo-lite/geo/admission.rs"]
 pub mod admission;
 #[cfg(feature = "geojson")]
 #[path = "../../../vendor/ds-geo-lite/geo/comparison.rs"]
@@ -28,10 +27,8 @@ pub mod comparison;
 #[path = "../../../vendor/ds-geo-lite/geo/identity.rs"]
 pub mod identity;
 #[cfg(feature = "overlay")]
-#[path = "../../../vendor/ds-geo-lite/geo/spatial_predicate.rs"]
 pub mod spatial_predicate;
 #[cfg(feature = "geojson")]
-#[path = "../../../vendor/ds-geo-lite/geo/viewport.rs"]
 pub mod viewport;
 
 pub mod operations;
@@ -213,3 +210,11 @@ pub use flat_ops::*;
 pub mod cartesian;
 pub mod predicates;
 pub mod tolerance;
+
+#[cfg(feature = "geojson")]
+pub mod measurement;
+#[cfg(feature = "geojson")]
+pub mod region;
+
+#[cfg(feature = "codec")]
+pub mod wkb;

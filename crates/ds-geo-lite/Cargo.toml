@@ -14,6 +14,7 @@ path = "src/lib.rs"
 
 [features]
 default = []
+codec = ["geojson"]
 geojson = ["dep:serde", "dep:serde_json"]
 overlay = ["geojson", "dep:geo"]
 index = ["dep:rstar"]

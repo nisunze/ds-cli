@@ -8,30 +8,15 @@
   },
   "files": [
     {
-      "vendored": "geo/viewport.rs",
-      "partial": false,
-      "sha256": "94f66afade7164f63ba794ad105d65c5d76182b4bd286c1fc071aeecabd1f864",
-      "source_commit": "f4b15107738d865551862474b73b85958905361b",
-      "sources": [
-        { "path": "crates/ds-geo/src/viewport.rs", "sha256": "94f66afade7164f63ba794ad105d65c5d76182b4bd286c1fc071aeecabd1f864" }
-      ]
-    },
-    {
-      "vendored": "geo/spatial_predicate.rs",
-      "partial": false,
-      "sha256": "fc60c95f1c3d11ba9397090344d35ebc6842dd473091ea420082f03ed1719b33",
-      "source_commit": "f4b15107738d865551862474b73b85958905361b",
-      "sources": [
-        { "path": "crates/ds-geo/src/spatial_predicate.rs", "sha256": "fc60c95f1c3d11ba9397090344d35ebc6842dd473091ea420082f03ed1719b33" }
-      ]
-    },
-    {
       "vendored": "geo/identity.rs",
       "partial": false,
       "sha256": "c697a357db7edc8fcc94e48853844deddc254f2ce0727ef5b2d1e47e0772b7b5",
       "source_commit": "f4b15107738d865551862474b73b85958905361b",
       "sources": [
-        { "path": "crates/ds-geo/src/identity.rs", "sha256": "c697a357db7edc8fcc94e48853844deddc254f2ce0727ef5b2d1e47e0772b7b5" }
+        {
+          "path": "crates/ds-geo/src/identity.rs",
+          "sha256": "c697a357db7edc8fcc94e48853844deddc254f2ce0727ef5b2d1e47e0772b7b5"
+        }
       ]
     },
     {
@@ -40,25 +25,10 @@
       "sha256": "021dfb6f4172f3d21205d9e56272eeb3c318fd526f972f0af378e2b5b611e3ef",
       "source_commit": "f4b15107738d865551862474b73b85958905361b",
       "sources": [
-        { "path": "crates/ds-geo/src/comparison.rs", "sha256": "021dfb6f4172f3d21205d9e56272eeb3c318fd526f972f0af378e2b5b611e3ef" }
-      ]
-    },
-    {
-      "vendored": "geo/admission.rs",
-      "partial": false,
-      "sha256": "397fb84500975948e94d7f4e0abec6cf1e93f72472532664a312c942653f046e",
-      "source_commit": "f4b15107738d865551862474b73b85958905361b",
-      "sources": [
-        { "path": "crates/ds-geo/src/admission.rs", "sha256": "397fb84500975948e94d7f4e0abec6cf1e93f72472532664a312c942653f046e" }
-      ]
-    },
-    {
-      "vendored": "geo/admission_corpus.json",
-      "partial": false,
-      "sha256": "76a72eb78aeeda1f2bcefed6159dcb4bad8c05b61a57492bb4b986fc8829abe8",
-      "source_commit": "f4b15107738d865551862474b73b85958905361b",
-      "sources": [
-        { "path": "crates/ds-geo/src/admission_corpus.json", "sha256": "76a72eb78aeeda1f2bcefed6159dcb4bad8c05b61a57492bb4b986fc8829abe8" }
+        {
+          "path": "crates/ds-geo/src/comparison.rs",
+          "sha256": "021dfb6f4172f3d21205d9e56272eeb3c318fd526f972f0af378e2b5b611e3ef"
+        }
       ]
     },
     {
@@ -67,7 +37,10 @@
       "sha256": "ec1ed921c67fe61122bf2d369191ee25a62a5bb3f101bacfbc10973e082c0e0c",
       "source_commit": "f4b15107738d865551862474b73b85958905361b",
       "sources": [
-        { "path": "crates/ds-canvas/src/lib.rs", "sha256": "ec1ed921c67fe61122bf2d369191ee25a62a5bb3f101bacfbc10973e082c0e0c" }
+        {
+          "path": "crates/ds-canvas/src/lib.rs",
+          "sha256": "ec1ed921c67fe61122bf2d369191ee25a62a5bb3f101bacfbc10973e082c0e0c"
+        }
       ]
     },
     {
@@ -76,7 +49,10 @@
       "sha256": "1ac6e7f3b19285eff4b2c6a07ea1f6b12d00679bd7b92c574654238cc808691a",
       "source_commit": "f4b15107738d865551862474b73b85958905361b",
       "sources": [
-        { "path": "crates/ds-canvas/src/viewport.rs", "sha256": "1ac6e7f3b19285eff4b2c6a07ea1f6b12d00679bd7b92c574654238cc808691a" }
+        {
+          "path": "crates/ds-canvas/src/viewport.rs",
+          "sha256": "1ac6e7f3b19285eff4b2c6a07ea1f6b12d00679bd7b92c574654238cc808691a"
+        }
       ]
     },
     {
@@ -85,7 +61,10 @@
       "sha256": "b577d55a58176f8e5a23a65cbfb46e96b4c9306e6e7128098c525610e06a3761",
       "source_commit": "f4b15107738d865551862474b73b85958905361b",
       "sources": [
-        { "path": "crates/ds-canvas/src/selection.rs", "sha256": "b577d55a58176f8e5a23a65cbfb46e96b4c9306e6e7128098c525610e06a3761" }
+        {
+          "path": "crates/ds-canvas/src/selection.rs",
+          "sha256": "b577d55a58176f8e5a23a65cbfb46e96b4c9306e6e7128098c525610e06a3761"
+        }
       ]
     },
     {
@@ -94,7 +73,10 @@
       "sha256": "c22c71ce4d23968f8767dc90c314ceeb81976f145fcd637ce48a4cccb206fbc1",
       "source_commit": "f4b15107738d865551862474b73b85958905361b",
       "sources": [
-        { "path": "crates/ds-canvas/src/measured_path.rs", "sha256": "c22c71ce4d23968f8767dc90c314ceeb81976f145fcd637ce48a4cccb206fbc1" }
+        {
+          "path": "crates/ds-canvas/src/measured_path.rs",
+          "sha256": "c22c71ce4d23968f8767dc90c314ceeb81976f145fcd637ce48a4cccb206fbc1"
+        }
       ]
     },
     {
@@ -103,7 +85,10 @@
       "sha256": "08b0e65655a9fbc782cec406a4317cb6f1410a63aca1c03362d587fd5177550d",
       "source_commit": "f4b15107738d865551862474b73b85958905361b",
       "sources": [
-        { "path": "crates/ds-canvas/src/free_layout.rs", "sha256": "08b0e65655a9fbc782cec406a4317cb6f1410a63aca1c03362d587fd5177550d" }
+        {
+          "path": "crates/ds-canvas/src/free_layout.rs",
+          "sha256": "08b0e65655a9fbc782cec406a4317cb6f1410a63aca1c03362d587fd5177550d"
+        }
       ]
     },
     {
@@ -112,7 +97,10 @@
       "sha256": "e9b8dfc0bd2631dc64fa68311e5f32829025d1ed2bea26d50dc5b6817840ab4c",
       "source_commit": "f4b15107738d865551862474b73b85958905361b",
       "sources": [
-        { "path": "crates/ds-canvas/src/packed.rs", "sha256": "e9b8dfc0bd2631dc64fa68311e5f32829025d1ed2bea26d50dc5b6817840ab4c" }
+        {
+          "path": "crates/ds-canvas/src/packed.rs",
+          "sha256": "e9b8dfc0bd2631dc64fa68311e5f32829025d1ed2bea26d50dc5b6817840ab4c"
+        }
       ]
     },
     {
@@ -121,7 +109,10 @@
       "sha256": "29d3e4f98036b450df42f1dfab6480eb04ca59a8f0382296213c848105d039a5",
       "source_commit": "f4b15107738d865551862474b73b85958905361b",
       "sources": [
-        { "path": "crates/ds-canvas/src/layout_session.rs", "sha256": "29d3e4f98036b450df42f1dfab6480eb04ca59a8f0382296213c848105d039a5" }
+        {
+          "path": "crates/ds-canvas/src/layout_session.rs",
+          "sha256": "29d3e4f98036b450df42f1dfab6480eb04ca59a8f0382296213c848105d039a5"
+        }
       ]
     },
     {
@@ -130,7 +121,10 @@
       "sha256": "cd52e880d9c4f37cb28584d8b7c3c8a193c1da3ea4ad0d38f19353595bf96b01",
       "source_commit": "f4b15107738d865551862474b73b85958905361b",
       "sources": [
-        { "path": "crates/ds-network/src/network/processor_presets.json", "sha256": "cd52e880d9c4f37cb28584d8b7c3c8a193c1da3ea4ad0d38f19353595bf96b01" }
+        {
+          "path": "crates/ds-network/src/network/processor_presets.json",
+          "sha256": "cd52e880d9c4f37cb28584d8b7c3c8a193c1da3ea4ad0d38f19353595bf96b01"
+        }
       ]
     }
   ]
