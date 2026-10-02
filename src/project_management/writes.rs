@@ -24,7 +24,7 @@
 //! identifier — a task id the caller did not supply is the CLI's to mint,
 //! because only a host has entropy.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 
 use super::reads::task_route;
@@ -175,7 +175,8 @@ pub struct PreparedBatch {
 // ── create ──────────────────────────────────────────────────────────────
 
 /// `--kind parent|child|inbox|milestone` (cli-pm.ts:567).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
 pub enum CreateKind {
     Parent,
     Child,
@@ -205,12 +206,14 @@ impl CreateKind {
 
 /// What `ds pm task create` was given. Dates are already `YYYY-MM-DD`; the
 /// CLI checks the calendar before the kernel sees them, as the adapter did.
-#[derive(Debug, Clone)]
+#[derive(Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CreateTask {
     /// The id to mint — the caller's, or one the host minted for this call.
     pub id: String,
     pub title: String,
     pub kind: CreateKind,
+    #[serde(alias = "parentTaskId")]
     pub parent: Option<String>,
     pub description: Option<String>,
     pub discipline: Option<String>,
@@ -223,6 +226,7 @@ pub struct CreateTask {
     pub geometry: Option<Value>,
     /// The task's outgoing `links[]`, as the engine's wire links. Empty is
     /// what the Plan sheet sends for a new item.
+    #[serde(default)]
     pub links: Vec<Value>,
     /// Correspondence record this task answers in the same commit.
     pub from_record: Option<String>,
@@ -261,7 +265,7 @@ pub fn create_task(
                 input.kind.token()
             )));
         }
-        CreateKind::Milestone if start.is_some() && finish.is_some() => {
+        CreateKind::Milestone if start.is_some() && finish.is_some() && start != finish => {
             return Err(Refusal::InvalidShape(
                 "A milestone takes one date, not both startDate and finishDate.".into(),
             ));
@@ -341,13 +345,15 @@ pub fn create_task(
 
 /// What `ds pm task update` was given. Every member optional; an absent one
 /// is a field left alone, never cleared.
-#[derive(Debug, Clone, Default)]
+#[derive(Deserialize, Debug, Clone, Default)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct UpdateTask {
     pub task: String,
     pub title: Option<String>,
     pub description: Option<String>,
     pub discipline: Option<String>,
     pub priority: Option<String>,
+    #[serde(alias = "type")]
     pub task_type: Option<String>,
     pub placement: Option<String>,
     pub scheduling_mode: Option<String>,
@@ -362,6 +368,7 @@ pub struct UpdateTask {
     /// `None` leaves it alone.
     pub geometry: Option<Value>,
     /// Remove the task's geometry (`update_task_fields.clear_geometry`).
+    #[serde(default)]
     pub clear_geometry: bool,
     /// Replace the task's whole `links[]` — the engine keeps the first
     /// attachment of a link that was already there. `None` leaves them alone.
