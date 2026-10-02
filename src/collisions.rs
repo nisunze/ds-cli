@@ -17,7 +17,9 @@
 //! Every phrase this module emits is a key with its parameters. The words are
 //! the host's; the kernel never carries English.
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{json, Value};
+use std::collections::BTreeSet;
+use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 
 pub const SCHEMA: &str = "collisions/1";
 
@@ -116,9 +118,110 @@ pub fn state_key(checked: bool, pairs: Option<u64>) -> &'static str {
     }
 }
 
+/// Read and rank dissolved regions without fabricating a missing measure.
+/// Missing coverage sorts last. Ties use the exact region id.
+pub fn summarize(
+    features: &[Value],
+    loaded: bool,
+    computed: bool,
+    last_read: Option<bool>,
+    limit: usize,
+) -> Value {
+    let number = |p: &Value, key: &str| p[key].as_f64().filter(|n| n.is_finite());
+    let mut involved = BTreeSet::new();
+    let mut newest: Option<i64> = None;
+    let mut regions = Vec::new();
+    let mut consolidatable = 0;
+    for (index, feature) in features.iter().enumerate() {
+        let p = &feature["properties"];
+        let transformers: Vec<String> =
+            if let Some(text) = p["transformers"].as_str().filter(|s| !s.trim().is_empty()) {
+                text.split(',')
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .map(str::to_owned)
+                    .collect()
+            } else {
+                ["transfo_a", "transfo_b"]
+                    .iter()
+                    .filter_map(|k| p[*k].as_str().map(str::to_owned))
+                    .collect()
+            };
+        involved.extend(transformers.iter().filter(|s| !s.is_empty()).cloned());
+        if let Some(stamp) = p["computed_at"]
+            .as_str()
+            .and_then(|s| OffsetDateTime::parse(s, &Rfc3339).ok())
+        {
+            let ms = (stamp.unix_timestamp_nanos() / 1_000_000) as i64;
+            newest = Some(newest.map_or(ms, |prev| prev.max(ms)));
+        }
+        let id = p["collision_id"]
+            .as_str()
+            .filter(|s| !s.is_empty())
+            .map(str::to_owned)
+            .unwrap_or_else(|| match &feature["id"] {
+                Value::String(s) => s.clone(),
+                Value::Number(n) => n.to_string(),
+                _ => index.to_string(),
+            });
+        let can = p["can_consolidate"] == true;
+        if can {
+            consolidatable += 1;
+        }
+        regions.push(json!({"index":index,"id":id,"transformerCount":number(p,"tr_count").unwrap_or(transformers.len() as f64),
+            "transformers":transformers,"pairCount":number(p,"collision_count").unwrap_or(1.0),"coveragePct":number(p,"coverage_pct"),
+            "overlapClass":p["overlap_class"].as_str().filter(|s| matches!(*s,"duplicated"|"overlapping")),
+            "canConsolidate":can,"lvCrossings":number(p,"lv_line_crossings").unwrap_or(0.0),
+            "serviceCrossings":number(p,"service_cable_crossings").unwrap_or(0.0),"sharedCustomers":number(p,"shared_customers").unwrap_or(0.0)}));
+    }
+    let ranked = regions.iter().any(|r| !r["coveragePct"].is_null());
+    regions.sort_by(|a, b| {
+        let n = |r: &Value, k: &str| r[k].as_f64().unwrap_or(0.0);
+        if ranked {
+            b["coveragePct"]
+                .as_f64()
+                .unwrap_or(-1.0)
+                .total_cmp(&a["coveragePct"].as_f64().unwrap_or(-1.0))
+                .then_with(|| {
+                    (n(b, "lvCrossings") + n(b, "serviceCrossings"))
+                        .total_cmp(&(n(a, "lvCrossings") + n(a, "serviceCrossings")))
+                })
+                .then_with(|| n(b, "sharedCustomers").total_cmp(&n(a, "sharedCustomers")))
+                .then_with(|| n(b, "transformerCount").total_cmp(&n(a, "transformerCount")))
+                .then_with(|| a["id"].as_str().cmp(&b["id"].as_str()))
+        } else {
+            a["id"].as_str().cmp(&b["id"].as_str())
+        }
+    });
+    let phase = if !loaded {
+        "idle"
+    } else if last_read == Some(false) && !regions.is_empty() {
+        "held"
+    } else if !computed {
+        "never"
+    } else if regions.is_empty() {
+        "clear"
+    } else {
+        "found"
+    };
+    let more = regions.len() > limit;
+    regions.truncate(limit);
+    json!({"phase":phase,"regions":regions,"total":features.len(),"ranked":ranked,
+        "transformerCount":involved.len(),"consolidatableCount":consolidatable,"computedAtMs":newest,"more":more})
+}
+
 #[derive(Deserialize)]
 #[serde(tag = "op", rename_all = "snake_case", deny_unknown_fields)]
 enum Request {
+    Summary {
+        features: Vec<Value>,
+        loaded: bool,
+        computed: bool,
+        #[serde(default)]
+        last_read_computed: Option<bool>,
+        #[serde(default = "summary_limit")]
+        limit: usize,
+    },
     /// Where does this project's pair count come from?
     Count {
         #[serde(default)]
@@ -153,6 +256,10 @@ struct Reply {
     phrases: Vec<Phrase>,
 }
 
+fn summary_limit() -> usize {
+    10_000
+}
+
 pub fn evaluate(input: &[u8]) -> Result<String, String> {
     if input.len() > 4 * 1024 * 1024 {
         return Err("collisions_input_too_large".into());
@@ -160,6 +267,25 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
     let request: Request = serde_json::from_slice(input)
         .map_err(|error| format!("collisions_request_invalid: {error}"))?;
     let reply = match request {
+        Request::Summary {
+            features,
+            loaded,
+            computed,
+            last_read_computed,
+            limit,
+        } => {
+            if features.len() > 10_000 || limit > 10_000 {
+                return Err("collisions_summary_too_large".into());
+            }
+            return serde_json::to_string(&summarize(
+                &features,
+                loaded,
+                computed,
+                last_read_computed,
+                limit,
+            ))
+            .map_err(|e| e.to_string());
+        }
         Request::Count {
             status_row,
             response,
@@ -313,5 +439,32 @@ mod tests {
             reply.contains("pctl_collisions_fresh") && reply.contains("pctl_collisions_pairs_one")
         );
         assert!(evaluate(br#"{"op":"detect"}"#).is_err());
+    }
+}
+
+#[cfg(test)]
+mod ranking_tests {
+    use super::*;
+    #[test]
+    fn ranking_uses_coverage_evidence_customers_size_and_stable_id() {
+        let f = |id, coverage, crossings| json!({"id":id,"properties":{"coverage_pct":coverage,"lv_line_crossings":crossings,"transformers":"a, b"}});
+        let features = vec![
+            f("old", Value::Null, 100),
+            f("z", json!(80), 1),
+            f("a", json!(80), 1),
+            f("b", json!(80), 2),
+        ];
+        let result = summarize(&features, true, true, None, 2);
+        assert_eq!(result["regions"][0]["id"], "b");
+        assert_eq!(result["regions"][1]["id"], "a");
+        assert_eq!(result["more"], true);
+        assert_eq!(result["transformerCount"], 2);
+        assert_eq!(
+            summarize(&features, true, true, Some(false), 4)["phase"],
+            "held"
+        );
+        assert_eq!(summarize(&[], true, true, None, 4)["phase"], "clear");
+        assert_eq!(summarize(&[], true, false, None, 4)["phase"], "never");
+        assert_eq!(summarize(&[], false, false, None, 4)["phase"], "idle");
     }
 }
