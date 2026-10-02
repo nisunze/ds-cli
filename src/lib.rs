@@ -1565,6 +1565,8 @@ pub fn transform_style_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValu
 
 pub mod style_label;
 pub mod style_plan;
+pub mod style_multiscale;
+pub mod style_history;
 
 #[cfg(feature = "wasm")]
 #[wasm_bindgen::prelude::wasm_bindgen(js_name = stylePlan)]
