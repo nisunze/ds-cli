@@ -992,7 +992,12 @@ pub fn plan_transformer_export_with_survey(
             )
         }
     };
-    let outputs = report_formats::selected_plan(&sheets, false, selection)?;
+    let outputs = match receipt.local_print_recipe.as_ref() {
+        Some(provenance) if provenance.preview.is_some() => {
+            preview::plan_outputs(&sheets, selection, provenance)?
+        }
+        _ => report_formats::selected_plan(&sheets, false, selection)?,
+    };
     if outputs.is_empty() {
         return Err("the project's output policy names no individual report output".to_string());
     }

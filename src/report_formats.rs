@@ -4,9 +4,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 
-/// The outputs an absent or empty selection produces. `voltage_drop` is on by
-/// default (owner ruling 2026-09-28): ds-network solves every processed
-/// transformer, and the report states those results.
+/// The outputs an absent or empty selection produces. Every individual LV
+/// report also delivers `voltage_drop`, including an explicit selection
+/// (owner ruling 2026-10-02). It consumes the producer's saved analysis JSON;
+/// reporting never recomputes the electrical result.
 pub const DEFAULT_INDIVIDUAL: &[&str] = &["shp", "kmz", "xlsx", "voltage_drop"];
 pub const INDIVIDUAL: &[&str] = &[
     "shp",
@@ -284,12 +285,17 @@ impl DesignOutputSelection {
         Ok(())
     }
 
-    /// Which runtimes may produce one output of this selection. Prints — fixed
+    /// Which runtimes may produce one output of this selection. The mandatory
+    /// saved voltage-drop JSON is available on both report hosts regardless of
+    /// a stored suppression. Prints — fixed
     /// A0/A3/A4 PDFs and every named spelling — always use
     /// [`PRINT_PLACEMENTS`]. Data outputs use ds-brain's precedence: exact
     /// output id, class, `*`, then both. An empty list refuses a data output
-    /// on every lane.
+    /// on every lane, except the mandatory voltage-drop JSON.
     pub fn placements(&self, output_id: &str) -> &[Placement] {
+        if output_id == "voltage_drop" {
+            return BOTH_PLACEMENTS;
+        }
         let class = output_class(output_id);
         if class == "print" {
             return PRINT_PLACEMENTS;
@@ -969,9 +975,18 @@ pub fn normalize(values: &[String]) -> Vec<String> {
             alias_format(&value.trim().to_ascii_lowercase()).to_string()
         })
         .collect();
+    // Preserve the established absent/empty/unknown-only policy default.
+    // A recognized selection keeps its optional outputs and always includes
+    // the exact saved voltage-drop analysis, in the same policy order.
+    if !selected
+        .iter()
+        .any(|token| INDIVIDUAL.contains(&token.as_str()) || named_print_output(token).is_some())
+    {
+        return DEFAULT_INDIVIDUAL.iter().map(|s| s.to_string()).collect();
+    }
     let mut ordered: Vec<_> = INDIVIDUAL
         .iter()
-        .filter(|format| selected.iter().any(|v| v == **format))
+        .filter(|format| **format == "voltage_drop" || selected.iter().any(|v| v == **format))
         .map(|s| s.to_string())
         .collect();
     let named: std::collections::BTreeSet<_> = selected
@@ -980,12 +995,7 @@ pub fn normalize(values: &[String]) -> Vec<String> {
         .cloned()
         .collect();
     ordered.extend(named);
-    // Preserve the established absent/empty policy default. PDF is always opt-in.
-    if ordered.is_empty() {
-        DEFAULT_INDIVIDUAL.iter().map(|s| s.to_string()).collect()
-    } else {
-        ordered
-    }
+    ordered
 }
 
 pub fn combined(selected: &[String]) -> Vec<&str> {
@@ -1132,6 +1142,42 @@ pub fn selected_plan(
     is_combined: bool,
     selection: Option<&DesignOutputSelection>,
 ) -> Result<Vec<Output>, String> {
+    selected_plan_for_purpose(sheets, is_combined, selection, OutputPurpose::Delivery)
+}
+
+#[derive(PartialEq, Eq)]
+enum OutputPurpose {
+    Delivery,
+    AuthoringPreview,
+}
+
+/// Only the kernel's typed authoring-preview path enters here. Public format
+/// lists always use the delivery planner, including a list containing SVG.
+pub(crate) fn selected_authoring_preview_plan(
+    sheets: &Value,
+    selection: &DesignOutputSelection,
+) -> Result<Vec<Output>, String> {
+    let tokens = selection.tokens()?;
+    if tokens.len() != 1
+        || !named_print_output(&tokens[0])
+            .is_some_and(|(format, _)| format == PrintArtifactFormat::Svg)
+    {
+        return Err("An authoring preview requires exactly one named SVG page".into());
+    }
+    selected_plan_for_purpose(
+        sheets,
+        false,
+        Some(selection),
+        OutputPurpose::AuthoringPreview,
+    )
+}
+
+fn selected_plan_for_purpose(
+    sheets: &Value,
+    is_combined: bool,
+    selection: Option<&DesignOutputSelection>,
+    purpose: OutputPurpose,
+) -> Result<Vec<Output>, String> {
     let Some(selection) = selection else {
         return plan(sheets, is_combined);
     };
@@ -1181,6 +1227,17 @@ pub fn selected_plan(
             }
         }
         outputs.push(output);
+    }
+    // Local overrides choose optional artifacts, not whether the saved LV
+    // analysis accompanies them. Validate their authored tokens first so the
+    // mandatory artifact cannot make an empty or invalid override admissible.
+    if purpose == OutputPurpose::Delivery && !seen.contains("voltage_drop") {
+        outputs.push(output("voltage_drop")?);
+    }
+    if outputs.len() > 32 {
+        return Err(
+            "Report exceeds 32 selected output artifacts including mandatory voltage drop".into(),
+        );
     }
     outputs.sort_by(|a, b| {
         let rank = |output: &Output| {
@@ -1420,7 +1477,7 @@ mod tests {
             .into_iter()
             .map(|output| output.output_id)
             .collect();
-        assert_eq!(planned, ["xlsx"]);
+        assert_eq!(planned, ["xlsx", "voltage_drop"]);
         assert!(is_printout("pdf_a3") && is_printout("pdf__a0-landscape-missing"));
         assert!(is_printout("voltage_drop_pdf"));
         assert!(!is_printout("xlsx"));
@@ -1444,7 +1501,7 @@ mod tests {
             .into_iter()
             .map(|output| output.output_id)
             .collect();
-        assert_eq!(planned, ["xlsx", "pdf_a3"]);
+        assert_eq!(planned, ["xlsx", "pdf_a3", "voltage_drop"]);
         // The class the grant filters on is the class this selection answers
         // for, so a project that keeps prints on the desktop keeps this one
         // there too.
@@ -1540,10 +1597,10 @@ mod tests {
                 .iter()
                 .map(|o| o.output_id.as_str())
                 .collect::<Vec<_>>(),
-            vec!["pdf__detail"]
+            vec!["voltage_drop", "pdf__detail"]
         );
         assert_eq!(sheets, original);
-        assert_eq!(selected_plan(&sheets, false, None).unwrap().len(), 2);
+        assert_eq!(selected_plan(&sheets, false, None).unwrap().len(), 3);
         assert!(selected_plan(&json!({}), false, Some(&selection)).is_err());
         assert!(selected_plan(&sheets, true, Some(&selection)).is_err());
         let empty = DesignOutputSelection {
@@ -1609,9 +1666,9 @@ mod tests {
                 .iter()
                 .map(|o| o.output_id.as_str())
                 .collect::<Vec<_>>(),
-            ["xlsx", "pdf__detail"]
+            ["xlsx", "voltage_drop", "pdf__detail"]
         );
-        assert_eq!(outputs[1].suffix, ".detail.pdf");
+        assert_eq!(outputs[2].suffix, ".detail.pdf");
         sheets["printing_setups"][0]["layout"]["name"] = json!("Renamed");
         assert_eq!(plan(&sheets, false).unwrap(), outputs);
         assert_eq!(
@@ -1643,7 +1700,7 @@ mod tests {
                 .iter()
                 .map(|o| o.output_id.as_str())
                 .collect::<Vec<_>>(),
-            ["xlsx", "pdf_a3"]
+            ["xlsx", "pdf_a3", "voltage_drop"]
         );
         assert_eq!(
             plan(&sheets, true)
@@ -1682,7 +1739,7 @@ mod tests {
                     .iter()
                     .map(|o| o.output_id.as_str())
                     .collect::<Vec<_>>(),
-                ["xlsx", "pdf_a3"]
+                ["xlsx", "pdf_a3", "voltage_drop"]
             );
         }
         assert!(plan(&json!({"project_settings":{}}), false).is_err());
@@ -1713,10 +1770,16 @@ mod tests {
                 .iter()
                 .map(|item| item.output_id.as_str())
                 .collect::<Vec<_>>(),
-            ["xlsx", "gpkg", "jpeg__aderm-a3", "pdf__aderm-a3"]
+            [
+                "xlsx",
+                "gpkg",
+                "voltage_drop",
+                "jpeg__aderm-a3",
+                "pdf__aderm-a3"
+            ]
         );
-        assert_eq!(outputs[2].content_type, "image/jpeg");
-        assert_eq!(outputs[2].suffix, ".aderm-a3.jpg");
+        assert_eq!(outputs[3].content_type, "image/jpeg");
+        assert_eq!(outputs[3].suffix, ".aderm-a3.jpg");
     }
 
     /// ds-brain's precedence for a data output, reproduced: exact output id,
@@ -2017,7 +2080,7 @@ mod tests {
                 .iter()
                 .map(|output| output.output_id.as_str())
                 .collect::<Vec<_>>(),
-            ["gpkg"]
+            ["gpkg", "voltage_drop"]
         );
     }
 
@@ -2114,14 +2177,15 @@ mod tests {
         assert!(normalize_output_selection(None, Some(vec!["gif__a3".into()]), None).is_err());
     }
 
-    /// Voltage drop (owner ruling 2026-09-28): a per-transformer JSON result,
-    /// tabular, and produced by default. A project that stored an explicit
-    /// selection keeps exactly what it chose, and the combined report stays
-    /// data-only: its summary sheet rides the combined workbook.
+    /// Every individual LV report delivers the saved JSON analysis, even if
+    /// the project chose only other outputs. Optional PDFs keep their type.
     #[test]
-    fn voltage_drop_is_a_default_tabular_json_output() {
+    fn voltage_drop_is_a_mandatory_tabular_json_output() {
         assert_eq!(normalize(&[]), ["shp", "kmz", "xlsx", "voltage_drop"]);
-        assert!(!normalize(&["shp".into(), "xlsx".into()]).contains(&"voltage_drop".to_string()));
+        assert_eq!(
+            normalize(&["shp".into(), "xlsx".into()]),
+            ["shp", "xlsx", "voltage_drop"]
+        );
         let definition = output("voltage_drop").unwrap();
         assert_eq!(definition.output_id, "voltage_drop");
         assert_eq!(definition.format, "voltage_drop");
@@ -2141,6 +2205,177 @@ mod tests {
             Some("voltage_drop")
         );
         assert!(!combined(&["voltage_drop".into()]).contains(&"voltage_drop"));
+    }
+
+    #[test]
+    fn mandatory_analysis_preserves_defaults_aliases_optional_outputs_and_order() {
+        for (raw, expected) in [
+            (vec![], vec!["shp", "kmz", "xlsx", "voltage_drop"]),
+            (vec!["unknown"], vec!["shp", "kmz", "xlsx", "voltage_drop"]),
+            (vec![" SHP ", "excel"], vec!["shp", "xlsx", "voltage_drop"]),
+            (
+                vec!["VOLtage_drop", "voltage_drop", "xlsx"],
+                vec!["xlsx", "voltage_drop"],
+            ),
+            (vec!["pdf__detail"], vec!["voltage_drop", "pdf__detail"]),
+            (
+                vec!["voltage_drop_pdf"],
+                vec!["voltage_drop", "voltage_drop_pdf"],
+            ),
+        ] {
+            let raw = raw.into_iter().map(str::to_string).collect::<Vec<_>>();
+            assert_eq!(normalize(&raw), expected, "{raw:?}");
+        }
+    }
+
+    #[test]
+    fn mandatory_analysis_does_not_rewrite_saved_selection_or_its_layout_choice() {
+        let raw = json!({"schema":OUTPUT_SELECTION_SCHEMA,"prints":[],
+            "geospatial":["gpkg"],"tabular":[],"execution":{"voltage_drop":[],"*":[]},
+            "voltage_drop_report":"brief"});
+        let sheets = json!({"project_settings":[{"parameter":"report_formats","value":raw}]});
+        let original = sheets.clone();
+        let selection = stored_output_selection(&raw).unwrap();
+        assert_eq!(selection.tokens().unwrap(), ["gpkg"]);
+        assert_eq!(serde_json::to_value(&selection).unwrap(), raw);
+        assert_eq!(selection.placements("gpkg"), [] as [Placement; 0]);
+        assert_eq!(selection.placements("voltage_drop"), BOTH_PLACEMENTS);
+        assert_eq!(
+            project_voltage_drop_report_format(&sheets).unwrap(),
+            VoltageDropReportFormat::Brief
+        );
+        for outputs in [
+            plan(&sheets, false).unwrap(),
+            plan_data_outputs(&sheets).unwrap(),
+        ] {
+            assert_eq!(
+                outputs
+                    .iter()
+                    .map(|output| output.output_id.as_str())
+                    .collect::<Vec<_>>(),
+                ["gpkg", "voltage_drop"]
+            );
+        }
+        assert_eq!(
+            inspect_project_settings(&sheets, None).unwrap()["setting"]["value"],
+            raw
+        );
+        assert_eq!(sheets, original);
+
+        for raw in [
+            json!(null),
+            json!(""),
+            json!([]),
+            json!({}),
+            json!({"schema":OUTPUT_SELECTION_SCHEMA,"prints":[],"geospatial":[],"tabular":[]}),
+        ] {
+            let sheets = json!({"project_settings":[{"parameter":"report_formats","value":raw}]});
+            assert_eq!(
+                plan(&sheets, false)
+                    .unwrap()
+                    .iter()
+                    .map(|output| output.output_id.as_str())
+                    .collect::<Vec<_>>(),
+                DEFAULT_INDIVIDUAL
+            );
+        }
+    }
+
+    #[test]
+    fn only_mandatory_analysis_ignores_stored_placement_suppression() {
+        for execution in [
+            json!({"voltage_drop":[]}),
+            json!({"voltage_drop":["desktop"],"tabular":[]}),
+            json!({"voltage_drop":["web"],"tabular":[]}),
+            json!({"tabular":[]}),
+            json!({"*":["web"]}),
+            json!({"*":[]}),
+        ] {
+            let raw = json!({"schema":OUTPUT_SELECTION_SCHEMA,"prints":[],
+                "geospatial":[],"tabular":["xlsx"],"execution":execution});
+            let selection = stored_output_selection(&raw).unwrap();
+            assert_eq!(
+                selection.placements("voltage_drop"),
+                BOTH_PLACEMENTS,
+                "{execution}"
+            );
+            let ordinary = execution.get("tabular").or_else(|| execution.get("*"));
+            let expected: Vec<Placement> = ordinary.map_or_else(
+                || BOTH_PLACEMENTS.to_vec(),
+                |value| serde_json::from_value(value.clone()).unwrap(),
+            );
+            assert_eq!(selection.placements("xlsx"), expected, "{execution}");
+            assert_eq!(serde_json::to_value(&selection).unwrap(), raw);
+        }
+        assert!(
+            stored_output_selection(&json!({"schema":OUTPUT_SELECTION_SCHEMA,
+            "execution":{"voltage_drop":["web","WEB"]}}))
+            .is_err()
+        );
+        assert!(
+            stored_output_selection(&json!({"schema":OUTPUT_SELECTION_SCHEMA,
+            "execution":{"voltage_drop":["cloud"]}}))
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn local_override_keeps_mandatory_analysis_and_refuses_invalid_inventory() {
+        let selection = |tokens: Value| -> DesignOutputSelection {
+            serde_json::from_value(json!({"schema":OUTPUT_SELECTION_SCHEMA,"tabular":tokens}))
+                .unwrap()
+        };
+        let sheets = json!({"project_settings":[{"parameter":"report_formats","value":"gpkg"}]});
+        for tokens in [json!(["xlsx"]), json!(["xlsx", "voltage_drop"])] {
+            let selection = selection(tokens);
+            let original = serde_json::to_value(&selection).unwrap();
+            assert_eq!(
+                selected_plan(&sheets, false, Some(&selection))
+                    .unwrap()
+                    .iter()
+                    .map(|output| output.output_id.as_str())
+                    .collect::<Vec<_>>(),
+                ["xlsx", "voltage_drop"]
+            );
+            assert_eq!(serde_json::to_value(&selection).unwrap(), original);
+        }
+        for tokens in [json!([]), json!(["unknown"]), json!(["xlsx", "xlsx"])] {
+            assert!(selected_plan(&sheets, false, Some(&selection(tokens))).is_err());
+        }
+    }
+
+    #[test]
+    fn mandatory_analysis_remains_inside_the_local_artifact_bound() {
+        let mut selection: DesignOutputSelection = serde_json::from_value(json!({
+            "schema":OUTPUT_SELECTION_SCHEMA,
+            "geospatial":["shp","kmz","gpkg","pdf_a0","pdf_a3","geojson"],"tabular":["xlsx"]
+        }))
+        .unwrap();
+        let mut layouts = Vec::new();
+        for index in 0..25 {
+            let id = format!("detail-{index}");
+            let mut layout = crate::printing::default_layout();
+            layout.id = id.clone();
+            layouts.push(json!({"id":id,"revision":"a".repeat(64),"layout":layout}));
+            selection.prints.push(NamedPrintSelection {
+                layout_id: id,
+                enabled: true,
+                formats: vec![PrintArtifactFormat::Pdf],
+            });
+        }
+        let sheets = json!({"printing_setups":layouts});
+        assert!(selected_plan(&sheets, false, Some(&selection))
+            .is_err_and(|error| error.contains("including mandatory voltage drop")));
+        selection.prints.pop();
+        let outputs = selected_plan(&sheets, false, Some(&selection)).unwrap();
+        assert_eq!(outputs.len(), 32);
+        assert_eq!(
+            outputs
+                .iter()
+                .filter(|output| output.output_id == "voltage_drop")
+                .count(),
+            1
+        );
     }
 
     #[test]
@@ -2187,10 +2422,14 @@ mod tests {
         let sheets = json!({"project_settings":[{"parameter":"design_export_format",
             "value":selected}]});
         let planned = plan(&sheets, false).unwrap();
-        assert_eq!(planned.len(), 1);
-        assert_eq!(planned[0].output_id, pdf.output_id);
-        assert_eq!(planned[0].content_type, pdf.content_type);
-        assert!(plan_data_outputs(&sheets).unwrap().is_empty());
+        assert_eq!(planned.len(), 2);
+        assert_eq!(planned[0].output_id, "voltage_drop");
+        assert_eq!(planned[1].output_id, pdf.output_id);
+        assert_eq!(planned[1].content_type, pdf.content_type);
+        assert_eq!(
+            plan_data_outputs(&sheets).unwrap()[0].output_id,
+            "voltage_drop"
+        );
         let local = serde_json::from_value(json!({"schema":OUTPUT_SELECTION_SCHEMA,
             "geospatial":["voltage_drop_pdf"]}))
         .unwrap();
@@ -2198,7 +2437,7 @@ mod tests {
             selected_plan(&json!({}), false, Some(&local))
                 .unwrap()
                 .len(),
-            1
+            2
         );
     }
 

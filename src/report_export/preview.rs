@@ -70,6 +70,43 @@ pub struct Preview {
     pub facts: Facts,
 }
 
+/// A proven local authoring preview remains one page. A caller-supplied output
+/// list cannot select this purpose; the receipt must carry the existing
+/// nonpublishable preview provenance and its exact one-layout byte pin.
+pub(super) fn plan_outputs(
+    sheets: &Value,
+    selection: Option<&DesignOutputSelection>,
+    provenance: &proof::Provenance,
+) -> Result<Vec<report_formats::Output>, String> {
+    if !provenance
+        .preview
+        .as_ref()
+        .is_some_and(|facts| facts.format == FORMAT)
+        || provenance.layouts.len() != 1
+    {
+        return Err("An authoring preview requires its exact one-page provenance".into());
+    }
+    let stored;
+    let selection = match selection {
+        Some(selection) => selection,
+        None => {
+            let row = report_formats::project_output_setting(sheets)?
+                .ok_or("An authoring preview has no page selection")?;
+            stored = report_formats::stored_output_selection(&row["value"])?;
+            &stored
+        }
+    };
+    let outputs = report_formats::selected_authoring_preview_plan(sheets, selection)?;
+    let (_, id) = report_formats::named_print_output(&outputs[0].format)
+        .ok_or("An authoring preview has no named page")?;
+    let layouts = report_formats::named_layouts(sheets)?;
+    let digest = sha256_hex(&serde_json::to_vec(&layouts[id]).map_err(|e| e.to_string())?);
+    if provenance.layouts.get(id) != Some(&digest) {
+        return Err("An authoring preview page differs from its pinned layout".into());
+    }
+    Ok(outputs)
+}
+
 /// The receipt for one draft layout as the shared preview page.
 pub fn with_layout(source: &InputReceipt, layout: &Layout) -> Result<Preview, String> {
     source.validate()?;
@@ -118,7 +155,7 @@ pub fn with_layout(source: &InputReceipt, layout: &Layout) -> Result<Preview, St
     // refusing a project whose delivered reports append them from the cloud.
     let survey_forms_omitted = omit_survey_append(&mut rows);
     sheets["project_settings"] = Value::Array(rows);
-    let outputs = report_formats::selected_plan(&sheets, false, Some(&selection))?;
+    let outputs = report_formats::selected_authoring_preview_plan(&sheets, &selection)?;
     let output_id = match outputs.as_slice() {
         [one] => one.output_id.clone(),
         _ => return Err("A print preview is exactly one output".into()),
@@ -191,15 +228,59 @@ mod tests {
         );
         let named = report_formats::named_layouts(&sheets).unwrap();
         assert_eq!(named["draft-a3"], layout);
-        let plan = report_formats::selected_plan(&sheets, false, Some(&preview.selection)).unwrap();
+        let plan = plan_outputs(&sheets, Some(&preview.selection), recipe).unwrap();
         assert_eq!(plan.len(), 1);
         assert_eq!(plan[0].output_id, "svg__draft-a3");
         assert_eq!(plan[0].content_type, "image/svg+xml");
         assert_eq!(plan[0].suffix, ".draft-a3.svg");
-        // The rewritten in-memory policy names only the preview page.
+        // A delivery planner cannot claim this caller-authored SVG list is an
+        // authoring preview: delivery still includes the saved analysis.
         let policy = report_formats::plan(&sheets, false).unwrap();
-        assert_eq!(policy.len(), 1);
-        assert_eq!(policy[0].output_id, "svg__draft-a3");
+        assert_eq!(policy.len(), 2);
+        assert_eq!(policy[0].output_id, "voltage_drop");
+        assert_eq!(policy[1].output_id, "svg__draft-a3");
+    }
+
+    #[test]
+    fn a_preview_requires_its_pinned_page_and_cannot_hide_delivery_analysis() {
+        let layout = crate::printing::default_layout();
+        let preview = with_layout(&source(json!([])), &layout).unwrap();
+        let sheets: Value = serde_json::from_str(&preview.receipt.sheets_json).unwrap();
+        let provenance = preview.receipt.local_print_recipe.as_ref().unwrap();
+        let mut changed = provenance.clone();
+        changed.layouts.insert(layout.id.clone(), "b".repeat(64));
+        assert!(plan_outputs(&sheets, None, &changed)
+            .is_err_and(|error| error.contains("pinned layout")));
+        changed = provenance.clone();
+        changed.preview.as_mut().unwrap().format = PrintArtifactFormat::Pdf;
+        assert!(plan_outputs(&sheets, None, &changed)
+            .is_err_and(|error| error.contains("one-page provenance")));
+        let mut mixed = preview.selection.clone();
+        mixed.tabular.push("xlsx".into());
+        assert!(plan_outputs(&sheets, Some(&mixed), provenance)
+            .is_err_and(|error| error.contains("exactly one named SVG")));
+        for selection in [&preview.selection, &mixed] {
+            let public = crate::report::evaluate(
+                &serde_json::to_vec(&json!({
+                    "command":"formats", "sheets":sheets,
+                    "combined":false, "selection":selection
+                }))
+                .unwrap(),
+            )
+            .unwrap();
+            let public: Value = serde_json::from_str(&public).unwrap();
+            assert!(public["result"]["outputs"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|output| output["output_id"] == "voltage_drop"));
+            assert!(report_formats::normalize_output_selection(
+                Some(selection.clone()),
+                None,
+                None
+            )
+            .is_err());
+        }
     }
 
     #[test]
