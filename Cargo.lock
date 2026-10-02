@@ -270,6 +270,7 @@ dependencies = [
  "csv",
  "ds-canvas-lite",
  "ds-geo-lite",
+ "ds-kml",
  "ds-solar-contracts",
  "image",
  "imagesize",
@@ -295,6 +296,16 @@ dependencies = [
  "geo",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "ds-kml"
+version = "0.1.0"
+dependencies = [
+ "percent-encoding",
+ "quick-xml 0.41.0",
+ "serde_json",
+ "sha2",
 ]
 
 [[package]]

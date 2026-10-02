@@ -14,6 +14,7 @@ use zeroize::Zeroize;
 /// The time crate the kernel's instants are spelled in, for hosts that pass them.
 pub use time;
 pub mod assets;
+pub use ds_kml as kml;
 pub mod solar_dashboard;
 pub mod solar_report_bundle;
 #[cfg(feature = "wasm")]

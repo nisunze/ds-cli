@@ -1,0 +1,29 @@
+{
+  "type": "symbol",
+  "metadata": {
+    "label_size_px": 16,
+    "kml": {
+      "IconStyle": {
+        "color": "ffffffff",
+        "scale": 1,
+        "heading": 0,
+        "href": "https://maps.google.com/mapfiles/kml/pushpin/ylw-pushpin.png"
+      },
+      "LineStyle": {
+        "color": "ffffffff",
+        "width": 1
+      },
+      "PolyStyle": {
+        "color": "ffffffff",
+        "fill": true,
+        "outline": true
+      },
+      "LabelStyle": {
+        "color": "ffffffff",
+        "scale": 1
+      }
+    },
+    "label_field": "kml_name"
+  },
+  "paint": {}
+}
