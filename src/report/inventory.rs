@@ -28,7 +28,7 @@ pub struct ReadFact {
     pub error: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct CommittedSet {
     pub owner: String,
@@ -47,7 +47,7 @@ pub struct CommittedSet {
     pub artifacts: Vec<Artifact>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct SyncArtifact {
     pub owner: String,
@@ -66,7 +66,7 @@ pub struct SyncArtifact {
     pub outputs: Vec<HeadOutput>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct CloudHead {
     pub owner: String,
@@ -83,7 +83,7 @@ pub struct LegacyCloud {
     pub files: Vec<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Snapshot {
     pub owner: String,
@@ -115,6 +115,8 @@ pub struct CloudBinding<'a> {
 #[derive(Debug, Serialize)]
 pub struct Output<'a> {
     pub output_id: &'a str,
+    /// The existing renderer/inventory owner names cloud-only outputs too.
+    pub filename: String,
     pub batch_id: Option<&'a str>,
     pub client_publish_id: Option<&'a str>,
     pub client_run_id: Option<&'a str>,
@@ -393,6 +395,7 @@ pub fn project(snapshot: &Snapshot) -> Result<View<'_>, String> {
                 artifact.output_id.as_str(),
                 Output {
                     output_id: &artifact.output_id,
+                    filename: artifact.filename.clone(),
                     batch_id: Some(&set.batch_id),
                     client_publish_id: Some(&set.client_publish_id),
                     client_run_id: Some(&set.client_run_id),
@@ -425,6 +428,11 @@ pub fn project(snapshot: &Snapshot) -> Result<View<'_>, String> {
         for output in &head.outputs {
             outputs.entry(&output.output_id).or_insert_with(|| Output {
                 output_id: &output.output_id,
+                filename: compute_artifact_inventory::filename(
+                    "network_reporter",
+                    &operation,
+                    output,
+                ),
                 batch_id: None,
                 client_publish_id: None,
                 client_run_id: None,
