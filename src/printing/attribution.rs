@@ -19,11 +19,11 @@ pub struct Style {
 impl Style {
     pub fn validate(&self) -> Result<(), String> {
         if !self.font_pt.is_finite()
-            || !(4.0..=48.0).contains(&self.font_pt)
+            || !(7.0..=48.0).contains(&self.font_pt)
             || !self.right_inset_pt.is_finite()
-            || !(0.0..=1000.0).contains(&self.right_inset_pt)
+            || !(40.0..=1000.0).contains(&self.right_inset_pt)
             || !self.baseline_pt.is_finite()
-            || !(0.0..=1000.0).contains(&self.baseline_pt)
+            || !(7.0..=1000.0).contains(&self.baseline_pt)
             || self.color.len() != 7
             || !self.color.starts_with('#')
             || !self.color[1..].bytes().all(|b| b.is_ascii_hexdigit())
@@ -51,6 +51,15 @@ impl Style {
         {
             return Err(
                 "print_attribution_invalid: invalid governed type, ink or placement".into(),
+            );
+        }
+        let lightness = (0..3)
+            .map(|i| u8::from_str_radix(&self.color[1 + i * 2..3 + i * 2], 16).unwrap() as f64)
+            .sum::<f64>()
+            / (3. * 255.);
+        if lightness > 0.6 {
+            return Err(
+                "print_attribution_invalid: licensing ink must remain visible on paper".into(),
             );
         }
         Ok(())
@@ -108,5 +117,11 @@ mod tests {
         assert_eq!(from_svg(&svg).unwrap(), Some(style));
         assert_eq!(svg.matches(CREDIT).count(), 1);
         assert!(!without_svg_credit(&svg).contains(CREDIT));
+        let mut invalid = from_svg(&svg).unwrap().unwrap();
+        invalid.color = "#ffffff".into();
+        assert!(invalid.validate().is_err());
+        invalid.color = "#123456".into();
+        invalid.font_pt = 0.;
+        assert!(invalid.validate().is_err());
     }
 }
