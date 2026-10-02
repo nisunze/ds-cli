@@ -12,7 +12,7 @@ use super::{LANE_ARG, PROJECT_ARG};
 pub static COMMAND: Command = Command {
     id: "report.project.archives",
     path: &["report", "project", "archives"],
-    contract: 2,
+    contract: 3,
     summary: "List the named project's published Compounded Report ZIPs.",
     purpose: "\
 Read the audience-fenced archive registry, newest first, with the server's JSON \
@@ -26,7 +26,7 @@ reports and pull remote heads. No URL or action override.",
     args: &[LANE_ARG, PROJECT_ARG],
     output: "\
 Lane/project, count and archives: identity, cloud locator, actor/time, status, \
-transformer/district scope, artifact coverage, errors, layout and composition. \
+transformer/group scope, artifact coverage, errors, layout and composition. \
 layout_collapsed reports unresolved foldering; download_url_expires_at, \
 download_url_seconds_remaining and download_url_expired report URL validity. \
 composition_template/schema are server-owned authoring objects, null when absent.",
@@ -62,8 +62,9 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
                 "status": archive.status(),
                 "transformer_count": archive.transformer_count(),
                 "transformers": archive.transformers(),
-                "district_count": archive.district_count(),
-                "districts": archive.districts(),
+                "group_count": archive.group_count(),
+                "groups": &archive.groups().labels,
+                "grouping": archive.groups(),
                 "individual_artifact_transformer_count": archive.individual_artifact_transformer_count(),
                 "missing_individual_artifact_count": archive.missing_individual_artifact_count(),
                 "errors": archive.errors(),
@@ -91,10 +92,10 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
                     recorded
                 }),
                 "composition": archive.composition(),
-                "layout_collapsed": archive.archive_layout().map(|layout| layout_collapsed(
+                "layout_collapsed": archive.archive_layout().map(|layout| archive.groups().filed_no_group() && layout_collapsed(
                     layout.file_level().or(layout.transformer_grouping()),
                     layout.combine_per_district(),
-                    archive.district_count(),
+                    archive.group_count(),
                     archive.transformer_count(),
                 )),
             });
