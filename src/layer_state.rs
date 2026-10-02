@@ -71,7 +71,7 @@ pub const MAX_CATALOG_LIMIT: usize = 500;
 pub const DEFAULT_MINZOOM: f64 = 0.0;
 pub const DEFAULT_MAXZOOM: f64 = 25.0;
 
-const COMPANION_SUFFIXES: [&str; 3] = ["__label", "__boundary", "__d3"];
+const COMPANION_SUFFIXES: [&str; 4] = ["__label", "__boundary", "__marker", "__d3"];
 const MATRIX_DOMAINS: [&str; 5] = ["survey", "design", "global", "user_data", "project_data"];
 
 // ── the request ─────────────────────────────────────────────────────────
@@ -350,6 +350,8 @@ fn suffix_role(id: &str, style_ref: &str, parent: &str, kind: &str) -> Role {
         || strip_companion_suffix(id) != id;
     if has("__d3") || (!parent.is_empty() && kind == "fill-extrusion") {
         Role::D3
+    } else if has("__marker") {
+        Role::Companion
     } else if style_ref.ends_with("__label")
         || id.ends_with("__label")
         || (!parent.is_empty() && kind == "symbol")
@@ -1440,6 +1442,19 @@ mod tests {
         assert_eq!(strip_companion_suffix("roads__label__2"), "roads");
         assert_eq!(strip_companion_suffix("roads__boundary"), "roads");
         assert_eq!(strip_companion_suffix("roads"), "roads");
+    }
+
+    #[test]
+    fn directional_marker_is_a_companion_even_without_parent_metadata() {
+        let out = ask(
+            json!({}),
+            json!({"kind":"classify", "ids":["roads__marker", "roads__marker__2", "roads"]}),
+        );
+        assert_eq!(out["ids"][0]["role"], "companion");
+        assert_eq!(out["ids"][1]["role"], "companion");
+        assert_eq!(out["ids"][0]["base"], "roads");
+        assert_eq!(out["ids"][1]["base"], "roads");
+        assert_eq!(out["ids"][2]["role"], "primary");
     }
 
     #[test]
