@@ -317,6 +317,7 @@ impl Fixture {
             grant_engine: None,
             resource: Some(TRANSFORMER.into()),
             client_publish_id: receipt.client_publish_id.clone(),
+            acknowledged_work_id: None,
             outputs: receipt
                 .outputs
                 .iter()

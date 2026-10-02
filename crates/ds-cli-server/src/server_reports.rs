@@ -308,6 +308,7 @@ mod tests {
             grant_engine: None,
             resource: None,
             client_publish_id: "k".into(),
+            acknowledged_work_id: None,
             outputs: Vec::new(),
             bytes_locator: "l".into(),
             readable: true,
