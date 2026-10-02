@@ -30,14 +30,14 @@ pub mod table_rows;
 pub mod table_values;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};
 
 /// The settings row the native reporter reads per-transformer print views from.
 pub const PRINTING_VIEWS_SETTING: &str = "printing_views";
 
 mod artifact;
-pub use artifact::{ArtifactPresentation, validate_artifact_presentation};
+pub use artifact::{validate_artifact_presentation, ArtifactPresentation};
 
 pub const SCHEMA: &str = "ds.print-layout/v2";
 pub const LEGACY_SCHEMA: &str = "ds.print-layout/v1";
@@ -3275,18 +3275,14 @@ mod tests {
 
     #[test]
     fn output_selection_can_require_the_layout_being_authored() {
-        assert!(
-            evaluate(
-                br#"{"op":"output_selection","legacy_formats":["pdf__a3"],"required_layout":"a3"}"#
-            )
-            .is_ok()
-        );
-        assert!(
-            evaluate(
-                br#"{"op":"output_selection","legacy_formats":["xlsx"],"required_layout":"a3"}"#
-            )
-            .is_err()
-        );
+        assert!(evaluate(
+            br#"{"op":"output_selection","legacy_formats":["pdf__a3"],"required_layout":"a3"}"#
+        )
+        .is_ok());
+        assert!(evaluate(
+            br#"{"op":"output_selection","legacy_formats":["xlsx"],"required_layout":"a3"}"#
+        )
+        .is_err());
     }
     #[test]
     fn minimum_column_widths_are_ordered_and_bounded_by_caps() {
@@ -3393,15 +3389,13 @@ mod tests {
             }
         }
         let layout = default_layout();
-        assert!(
-            evaluate(
-                &serde_json::to_vec(
-                    &json!({"op":"duplicate","layout":layout,"id":layout.id,"name":"Copy"})
-                )
-                .unwrap()
+        assert!(evaluate(
+            &serde_json::to_vec(
+                &json!({"op":"duplicate","layout":layout,"id":layout.id,"name":"Copy"})
             )
-            .is_err()
-        );
+            .unwrap()
+        )
+        .is_err());
         let result = evaluate(
             &serde_json::to_vec(&json!({"op":"rename","layout":layout,"name":"Renamed"})).unwrap(),
         )
@@ -3450,13 +3444,11 @@ mod tests {
             result["layout"]["elements"][0]["rect"],
             serde_json::json!([12., 32., 300., 235.])
         );
-        assert!(
-            evaluate(
-                &serde_json::to_vec(&serde_json::json!({"op":"remove","layout":layout,"id":"map"}))
-                    .unwrap()
-            )
-            .is_err()
-        );
+        assert!(evaluate(
+            &serde_json::to_vec(&serde_json::json!({"op":"remove","layout":layout,"id":"map"}))
+                .unwrap()
+        )
+        .is_err());
     }
 
     /// Front matter: the default sheet with every map-bound element removed.
@@ -3727,19 +3719,17 @@ mod tests {
             graticule: None,
         });
         assert!(validate(&layout).is_err());
-        assert!(
-            evaluate(
-                &serde_json::to_vec(&json!({
-                    "op":"set_viewport",
-                    "layout":default_layout(),
-                    "id":"title",
-                    "name":"Wrong",
-                    "view_slot":"wrong"
-                }))
-                .unwrap()
-            )
-            .is_err()
-        );
+        assert!(evaluate(
+            &serde_json::to_vec(&json!({
+                "op":"set_viewport",
+                "layout":default_layout(),
+                "id":"title",
+                "name":"Wrong",
+                "view_slot":"wrong"
+            }))
+            .unwrap()
+        )
+        .is_err());
     }
     #[test]
     fn category_sizes_need_a_field_and_scale_rounding_is_bounded() {

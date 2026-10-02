@@ -175,11 +175,9 @@ mod tests {
                 json!(["match", ["get", "kind"], "a", "fallback"]),
             ] {
                 let document = json!({"type": "circle", "label": {"layout": {property: value}}});
-                assert!(
-                    validate(&document)
-                        .unwrap_err()
-                        .contains("match needs at least one")
-                );
+                assert!(validate(&document)
+                    .unwrap_err()
+                    .contains("match needs at least one"));
             }
         }
     }

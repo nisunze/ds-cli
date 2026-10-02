@@ -2,7 +2,7 @@
 //! hosts neither construct style ids nor edit inventory documents themselves.
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "operation", rename_all = "snake_case", deny_unknown_fields)]
@@ -301,11 +301,9 @@ mod tests {
             backup_id: "snapshot".into(),
             all_projects: false,
         };
-        assert!(
-            request_body(&request)
-                .unwrap_err()
-                .contains("inventory digest")
-        );
+        assert!(request_body(&request)
+            .unwrap_err()
+            .contains("inventory digest"));
         assert!(serde_json::from_value::<Command>(json!({"operation":"delete"})).is_err());
         request.command = Command::Inventory {
             cursor: None,
@@ -324,11 +322,9 @@ mod tests {
         let mut receipt = json!({"success":true,"data":{"manifest_revision":"a".repeat(64),"plan_sha256":"b".repeat(64),"creates":[],"preserves":[],"apply_allowed":true,"migrations":[{"style_ref":"fixture/line_print","expected_head":"c".repeat(64),"expected_content_sha256":"d".repeat(64),"content_sha256":crate::style_plan::style_digest(&document),"document":document}]}});
         assert!(admit(&request, &receipt).is_ok());
         receipt["data"]["migrations"][0]["document"]["paint"]["line-width"] = json!(3);
-        assert!(
-            admit(&request, &receipt)
-                .unwrap_err()
-                .contains("destination authority")
-        );
+        assert!(admit(&request, &receipt)
+            .unwrap_err()
+            .contains("destination authority"));
     }
     #[test]
     fn retirement_admission_never_accepts_an_executable_deletion() {
@@ -344,11 +340,9 @@ mod tests {
         assert!(admit(&request, &receipt).is_ok());
         let mut other_project = receipt.clone();
         other_project["data"]["scope"]["project_id"] = json!("other");
-        assert!(
-            admit(&request, &other_project)
-                .unwrap_err()
-                .contains("project_context_changed")
-        );
+        assert!(admit(&request, &other_project)
+            .unwrap_err()
+            .contains("project_context_changed"));
         receipt["data"]["deletion_executable"] = json!(true);
         assert!(admit(&request, &receipt).is_err());
     }

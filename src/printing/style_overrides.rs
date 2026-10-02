@@ -1,6 +1,6 @@
 //! Template-local pens inherit symbols and categories from governed shared styles.
 use super::{Layout, PrintStyleOverride};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 
 pub fn apply(document: &Value, change: &PrintStyleOverride, paper: &str) -> Result<Value, String> {
     if let Some(policy) = &change.scale_weight {
@@ -105,7 +105,9 @@ pub fn apply(document: &Value, change: &PrintStyleOverride, paper: &str) -> Resu
             "fill" => ("fill-color", "fill-opacity"),
             "symbol" => ("icon-color", "icon-opacity"),
             _ => {
-                return Err("boundary recolouring needs a supported governed geometry style".into());
+                return Err(
+                    "boundary recolouring needs a supported governed geometry style".into(),
+                );
             }
         };
         if change.color.is_some() || !change.palette.is_empty() {
@@ -116,7 +118,7 @@ pub fn apply(document: &Value, change: &PrintStyleOverride, paper: &str) -> Resu
         }
     }
     if let Some(label) = &change.label {
-        use crate::print_scaling::{PrintUnits, scaling_from_style};
+        use crate::print_scaling::{scaling_from_style, PrintUnits};
         if !style["label"].is_object() {
             if label.visible == Some(false) {
                 return Ok(style);
@@ -366,11 +368,9 @@ mod tests {
         assert_eq!(apply(&base, &hidden, "print_a3").unwrap(), base);
         let visible: PrintStyleOverride =
             serde_json::from_value(json!({"label":{"visible":true}})).unwrap();
-        assert!(
-            apply(&base, &visible, "print_a3")
-                .unwrap_err()
-                .contains("governed label")
-        );
+        assert!(apply(&base, &visible, "print_a3")
+            .unwrap_err()
+            .contains("governed label"));
     }
 
     #[test]
@@ -486,11 +486,9 @@ mod tests {
         let (kept, skipped) = usable(&raster, &sized, "print_a3");
         assert_eq!(kept, PrintStyleOverride::default());
         assert_eq!(skipped[0].part, "override");
-        assert!(
-            skipped[0]
-                .reason
-                .contains("supported governed geometry style")
-        );
+        assert!(skipped[0]
+            .reason
+            .contains("supported governed geometry style"));
     }
 
     #[test]
@@ -505,10 +503,8 @@ mod tests {
         let documents = json!({"master/lv_lines_print":
             {"type":"line","paint":{"line-color":"#1F4E79","line-width":1.5}}});
         preflight(&layout, &documents).unwrap();
-        assert!(
-            preflight(&layout, &json!({}))
-                .unwrap_err()
-                .contains("is not prepared")
-        );
+        assert!(preflight(&layout, &json!({}))
+            .unwrap_err()
+            .contains("is not prepared"));
     }
 }
