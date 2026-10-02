@@ -2319,6 +2319,7 @@ impl SolarProjectCall<'_> {
 }
 
 pub struct StylesCall<'a> {
+    pub(crate) history: Option<&'a ds_command_kernel::style_history::Request>,
     pub(crate) profile: &'a ClientProfile,
     pub(crate) payload: &'a serde_json::Value,
     pub(crate) authority: CallAuthority<'a>,
@@ -2369,10 +2370,12 @@ impl StylesCall<'_> {
     /// so a refusal here would be a contract the client broke itself.
     pub fn body(&self) -> SecretRequestBody {
         SecretRequestBody(
-            serde_json::to_vec(
-                &ds_command_kernel::style_document::publish_body(self.payload)
+            serde_json::to_vec(&match self.history {
+                Some(request) => ds_command_kernel::style_history::request_body(request)
+                    .expect("admitted history request"),
+                None => ds_command_kernel::style_document::publish_body(self.payload)
                     .expect("admitted style payload"),
-            )
+            })
             .expect("closed style payload"),
         )
     }

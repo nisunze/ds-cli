@@ -7656,6 +7656,8 @@ fn headless_style_plan_publishes_only_on_apply_and_checks_the_returned_target() 
     fixture["data"]["warnings"] = serde_json::json!(["catalog omission"]);
     let instruction = StyleInstruction::Appearance {
         icon_overlap: None,
+        halo_color: None,
+        halo_width: None,
         color: Some("#ff0000".into()),
         icon: None,
         size: None,
@@ -7728,6 +7730,8 @@ fn headless_style_publish_normalises_issue_warnings_and_refuses_a_foreign_receip
     fixture["data"]["style_editors"] = serde_json::json!([{"style_ref":"master/roads","style_target":"design","layer_name":"roads"}]);
     let instruction = StyleInstruction::Appearance {
         icon_overlap: None,
+        halo_color: None,
+        halo_width: None,
         color: Some("#00ff00".into()),
         icon: None,
         size: None,
@@ -7998,6 +8002,8 @@ fn headless_style_refusals_name_the_rule_that_refused_them() {
             "gt/roads",
             &StyleInstruction::Appearance {
                 icon_overlap: None,
+                halo_color: None,
+                halo_width: None,
                 color: None,
                 icon: None,
                 size: None,
@@ -13677,4 +13683,66 @@ fn compounded_archive_layout_refuses_malformed_generic_knobs() {
             .unwrap_err();
         assert_eq!(error.kind(), ErrorKind::UnreadableResponse, "{layout}");
     }
+}
+
+#[test]
+fn headless_print_history_carries_explicit_project_and_exact_revision_fence() {
+    use ds_command_kernel::style_history::Command;
+    let transport = FixtureTransport::with_sign_in(SIGN_IN);
+    let mut client = signed_in(transport.clone(), MemoryStore::default());
+    let reference = "gt/rivers_print".to_owned();
+    let revision = "a".repeat(64);
+    let head = "b".repeat(64);
+    push_styles(
+        &transport,
+        serde_json::json!({"success":true,"data":{"style_ref":reference,"head_revision":head,"revisions":[{"revision_id":revision,"author":"owner","created_at":"2026-10-02T00:00:00Z"}]}}),
+    );
+    let listed = client
+        .style_history(
+            "project_a",
+            &Command::List {
+                reference: reference.clone(),
+            },
+            NOW + 1,
+        )
+        .unwrap();
+    assert_eq!(listed["head_revision"], head);
+    push_styles(
+        &transport,
+        serde_json::json!({"success":true,"data":{"style_ref":reference,"head_revision":"c".repeat(64),"restored_from":revision,"updated":true,"style_data":{"type":"line","paint":{"line-color":"#FFFFFF"}}}}),
+    );
+    let restored = client
+        .style_history(
+            "project_b",
+            &Command::Restore {
+                reference: reference.clone(),
+                revision: revision.clone(),
+                expected_head: head.clone(),
+            },
+            NOW + 1,
+        )
+        .unwrap();
+    assert_eq!(restored["restored_from"], revision);
+    let calls = transport.calls();
+    assert!(calls.iter().any(|call| call.starts_with("styles ")
+        && call.contains("list_versions")
+        && call.contains("project_a")));
+    assert!(calls.iter().any(|call| call.starts_with("styles ")
+        && call.contains("restore_version")
+        && call.contains("project_b")
+        && call.contains(&head)));
+    push_styles(
+        &transport,
+        serde_json::json!({"success":true,"data":{"style_ref":"gt/other_print","revision":{"revision_id":revision},"style_data":{"type":"line"}}}),
+    );
+    assert!(client
+        .style_history(
+            "project_a",
+            &Command::Read {
+                reference,
+                revision
+            },
+            NOW + 1
+        )
+        .is_err());
 }

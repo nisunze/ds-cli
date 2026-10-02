@@ -1916,6 +1916,28 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
             apply,
         )
     }
+    pub fn style_history(
+        &mut self,
+        ds_project: &str,
+        command: &ds_command_kernel::style_history::Command,
+        now_epoch_seconds: u64,
+    ) -> Result<serde_json::Value, ClientError> {
+        crate::authorized::validate_tiles(ds_project)?;
+        self.ensure_fresh_session(now_epoch_seconds)?;
+        let session = self.session.as_ref().ok_or_else(signed_out)?;
+        crate::styles::history(
+            &self.profile,
+            &mut self.transport,
+            crate::authorized::Authority {
+                bearer_token: &session.id_token,
+                uid: &session.stored.uid,
+                email: &session.stored.email,
+                device_id: None,
+            },
+            ds_project,
+            command,
+        )
+    }
     pub fn tile_status(
         &mut self,
         ds_project: &str,

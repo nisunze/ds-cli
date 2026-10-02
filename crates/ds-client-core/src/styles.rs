@@ -51,7 +51,15 @@ pub(crate) fn planner_refused(sentence: &str) -> ClientError {
     ClientError::with_service_refusal(
         ErrorKind::InvalidInput,
         PLAN_REFUSED,
-        crate::ServiceRefusal::new(0, Some(STYLE_REFUSED_CODE), Some(sentence)),
+        crate::ServiceRefusal::new(
+            0,
+            Some(if sentence.starts_with("style_digest_conflict:") {
+                "style_digest_conflict"
+            } else {
+                STYLE_REFUSED_CODE
+            }),
+            Some(sentence),
+        ),
     )
 }
 
@@ -81,7 +89,7 @@ pub(crate) fn exists(sentence: &str) -> ClientError {
 pub(crate) fn refusal(response: &TransportResponse) -> ClientError {
     let (kind, message) = match response.status {
         409 => (ErrorKind::InvalidInput, STYLE_EXISTS),
-        400 | 422 => (ErrorKind::InvalidInput, WRITE_REFUSED),
+        400 | 404 | 422 => (ErrorKind::InvalidInput, WRITE_REFUSED),
         401 | 403 => (ErrorKind::AuthenticationRejected, WRITE_FORBIDDEN),
         status => return crate::authorized::classify_tile_error(status),
     };
@@ -164,4 +172,37 @@ impl StyleEditReceipt {
     pub fn data(&self) -> &Value {
         &self.data
     }
+}
+
+/// One exact print revision operation under the captured project authority.
+pub(crate) fn history<T: crate::AuthorizedTransport>(
+    profile: &crate::ClientProfile,
+    transport: &mut T,
+    authority: crate::authorized::Authority<'_>,
+    project: &str,
+    command: &ds_command_kernel::style_history::Command,
+) -> Result<Value, ClientError> {
+    crate::authorized::validate_tiles(project)?;
+    let request = ds_command_kernel::style_history::Request {
+        project: project.into(),
+        command: command.clone(),
+    };
+    ds_command_kernel::style_history::request_body(&request)
+        .map_err(|sentence| planner_refused(&sentence))?;
+    let empty = Value::Null;
+    let response = transport.styles(crate::StylesCall {
+        profile,
+        payload: &empty,
+        history: Some(&request),
+        authority: authority.call(),
+    })?;
+    if response.status != 200 {
+        return Err(refusal(&response));
+    }
+    if response.body.len() > 4 * 1024 * 1024 {
+        return Err(bad());
+    }
+    let response: Value = serde_json::from_slice(&response.body).map_err(|_| bad())?;
+    ds_command_kernel::style_history::admit(command, &response)
+        .map_err(|sentence| planner_refused(&sentence))
 }

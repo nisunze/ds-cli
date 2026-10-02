@@ -1502,6 +1502,7 @@ pub(crate) fn style_edit<T: AuthorizedTransport>(
         );
     if apply {
         let response = transport.styles(crate::StylesCall {
+            history: None,
             profile,
             payload: &plan.payload,
             authority: authority.call(),
