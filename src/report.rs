@@ -4,6 +4,7 @@ use std::collections::BTreeSet;
 
 pub mod activity;
 pub mod artifacts;
+pub mod inventory;
 
 pub const DEVELOPMENT_ENGINE: &str = "ds-network-reporter@0.1.0+development";
 pub const LOCAL_ONLY_SCHEMA: u32 = 4;
@@ -161,6 +162,9 @@ pub fn publication_state(
 #[derive(Deserialize)]
 #[serde(tag = "command", rename_all = "snake_case", deny_unknown_fields)]
 enum Command {
+    Inventory {
+        snapshot: inventory::Snapshot,
+    },
     Activity {
         snapshot: activity::Snapshot,
     },
@@ -513,6 +517,8 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
     }
     let command: Command = serde_json::from_slice(input).map_err(|e| e.to_string())?;
     let result = match command {
+        Command::Inventory { snapshot } => serde_json::to_value(inventory::project(&snapshot)?)
+            .map_err(|error| error.to_string())?,
         Command::Activity { snapshot } => serde_json::to_value(activity::project(&snapshot)?)
             .map_err(|error| error.to_string())?,
         Command::MapModelRoom {

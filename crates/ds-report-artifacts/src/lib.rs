@@ -2,6 +2,7 @@
 //! Owns crash-durable publication commits and receipt-bound artifact access.
 //! No Tauri dependency, process launcher, browser session or gateway credential.
 pub mod confined_fs;
+pub mod inventory;
 pub mod publication;
 use confined_fs::{HeldDirectory, HeldFileLock};
 use publication::{

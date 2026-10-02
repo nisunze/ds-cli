@@ -64,6 +64,22 @@ fn read_open(mut file: File) -> Result<String, String> {
     parse(std::str::from_utf8(&bytes).map_err(|_| "native install identity is not UTF-8")?)
 }
 
+/// Observe an existing installation identity without creating any file or
+/// directory. The host still validates its private authority directory.
+pub fn load_install_id(path: &Path) -> Result<Option<String>, String> {
+    match read_options().open(path) {
+        Ok(file) => read_open(file).map(Some),
+        Err(error) if error.kind() == ErrorKind::NotFound => Ok(None),
+        Err(_) => Err("could not open native install identity".into()),
+    }
+}
+
+/// Decode a held, read-only handle whose private ownership/ACL the host has
+/// already verified. This avoids reopening a Windows protected-state path.
+pub fn read_install_id(file: File) -> Result<String, String> {
+    read_open(file)
+}
+
 /// Load or create the one host-owned installation UUID. `authority_dir` must
 /// already be private and free of symlinks; its validation remains host-owned.
 pub fn load_or_create_install_id(path: &Path) -> Result<String, String> {
@@ -109,6 +125,48 @@ mod tests {
         let first = load_or_create_install_id(&path).unwrap();
         assert_eq!(first, load_or_create_install_id(&path).unwrap());
         assert_eq!(Uuid::parse_str(&first).unwrap().get_version_num(), 4);
+    }
+
+    #[test]
+    fn observation_never_creates_missing_identity_or_parents() {
+        let root = tempfile::tempdir().unwrap();
+        let absent = root.path().join("absent").join("install-id");
+        assert_eq!(load_install_id(&absent).unwrap(), None);
+        assert!(!absent.parent().unwrap().exists());
+        let path = root.path().join("install-id");
+        assert_eq!(load_install_id(&path).unwrap(), None);
+        assert!(!path.exists());
+        let id = load_or_create_install_id(&path).unwrap();
+        let before = std::fs::read(&path).unwrap();
+        assert_eq!(load_install_id(&path).unwrap(), Some(id));
+        assert_eq!(std::fs::read(&path).unwrap(), before);
+    }
+
+    #[test]
+    fn observation_preserves_invalid_bytes_and_refuses_noncanonical_identity() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("install-id");
+        for bytes in [b"not-a-uuid".as_slice(), b"", &[b'x'; 65]] {
+            std::fs::write(&path, bytes).unwrap();
+            assert!(load_install_id(&path).is_err());
+            assert_eq!(std::fs::read(&path).unwrap(), bytes);
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn observation_refuses_link_without_following_or_replacing_it() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("install-id");
+        let target = root.path().join("target");
+        let id = load_or_create_install_id(&target).unwrap();
+        std::os::unix::fs::symlink(&target, &path).unwrap();
+        assert!(load_install_id(&path).is_err());
+        assert_eq!(load_install_id(&target).unwrap(), Some(id));
+        assert!(std::fs::symlink_metadata(&path)
+            .unwrap()
+            .file_type()
+            .is_symlink());
     }
 
     #[cfg(unix)]
