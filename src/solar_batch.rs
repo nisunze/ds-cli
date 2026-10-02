@@ -1,5 +1,6 @@
 //! Deterministic portfolio batch command. Hosts execute effects, persist state,
 //! and supply completion events; no scheduler or cancellation policy lives there.
+use crate::is_solar_id as id;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 
@@ -34,13 +35,6 @@ pub struct Request {
     pub report_drafts: Vec<String>,
     pub language: String,
     pub placement: Placement,
-}
-fn id(value: &str) -> bool {
-    !value.is_empty()
-        && value.len() <= 128
-        && value
-            .bytes()
-            .all(|b| b.is_ascii_alphanumeric() || b"_-".contains(&b))
 }
 impl Request {
     pub fn validate_catalog(&self, catalog: &[Portfolio]) -> Result<(), String> {
@@ -522,6 +516,15 @@ mod tests {
             status: "succeeded".into(),
         }]
     }
+    #[test]
+    fn batch_rejects_ids_outside_the_contract_grammar() {
+        for candidate in ["-x", "_x", "a.b", &"a".repeat(129)] {
+            let mut request = request();
+            request.portfolios[0].id = candidate.into();
+            assert!(request.validate().is_err(), "{candidate}");
+        }
+    }
+
     #[test]
     fn bounded_parallelism_and_failure_isolation() {
         let first = start(request(), &sources(), 1).unwrap();

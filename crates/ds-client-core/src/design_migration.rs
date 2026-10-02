@@ -28,10 +28,7 @@ pub struct Command {
 }
 
 fn id(s: &str) -> bool {
-    !s.is_empty()
-        && s.len() <= 200
-        && s.trim() == s
-        && !s.chars().any(|c| c.is_control() || matches!(c, '/' | '\\'))
+    crate::validate_project_id(s).is_ok() && !s.contains(['/', '\\'])
 }
 
 fn invalid() -> ClientError {
@@ -155,6 +152,13 @@ mod tests {
             items: vec!["TX-1".into()],
             overwrite_existing: false,
         }
+    }
+
+    #[test]
+    fn migration_projects_use_the_native_character_bound() {
+        assert!(command().validate(&"é".repeat(200)).is_ok());
+        assert!(command().validate(&"é".repeat(201)).is_err());
+        assert!(command().validate("a/b").is_err());
     }
 
     #[test]

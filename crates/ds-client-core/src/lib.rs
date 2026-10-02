@@ -5,6 +5,8 @@
 //! atomic [`RefreshTokenStore`] adapters. Ordinary callers receive identity and
 //! project values, never Firebase ID/refresh tokens or an arbitrary URL/path API.
 
+mod project_id;
+pub use project_id::{validate_project_id, MAX_PROJECT_ID_CHARS};
 mod authorized;
 mod project_feeders;
 pub use project_feeders::{FeederConfiguration, ProjectConfigurationChange};
@@ -64,10 +66,12 @@ mod tiles;
 pub mod transformer_analysis;
 mod transformers;
 pub use transformer_analysis::{
+    saved_lv_analysis_pins, validate_saved_lv_analysis_pins, SavedLvAnalysisPins,
     TransformerAnalysisCall, TransformerAnalysisHeaders, TransformerAnalysisResponse,
-    TransformerAnalysisTransportError, TRANSFORMER_ANALYSIS_ACTION, TRANSFORMER_ANALYSIS_METHOD,
-    TRANSFORMER_ANALYSIS_PATH, TRANSFORMER_ANALYSIS_RESPONSE_LIMIT,
-    TRANSFORMER_ANALYSIS_SHA256_HEADER, TRANSFORMER_ANALYSIS_TIMEOUT_SECONDS,
+    TransformerAnalysisTransportError, SAVED_LV_ANALYSIS_METHOD, SAVED_LV_ANALYSIS_SCHEMA,
+    TRANSFORMER_ANALYSIS_ACTION, TRANSFORMER_ANALYSIS_METHOD, TRANSFORMER_ANALYSIS_PATH,
+    TRANSFORMER_ANALYSIS_RESPONSE_LIMIT, TRANSFORMER_ANALYSIS_SHA256_HEADER,
+    TRANSFORMER_ANALYSIS_TIMEOUT_SECONDS,
 };
 mod transport;
 

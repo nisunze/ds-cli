@@ -813,17 +813,7 @@ pub(crate) fn validate_transformer_context(
 }
 
 pub(crate) fn validate_project_forms(ds_project: &str) -> Result<(), ClientError> {
-    if ds_project.is_empty()
-        || ds_project.trim() != ds_project
-        || ds_project.chars().count() > 200
-        || ds_project.chars().any(char::is_control)
-    {
-        return Err(ClientError::new(
-            ErrorKind::InvalidInput,
-            "the selected project id is empty, untrimmed, or outside its 200-character bound",
-        ));
-    }
-    Ok(())
+    crate::validate_project_id(ds_project)
 }
 
 pub(crate) fn validate_project_form_editor(

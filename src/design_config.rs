@@ -382,4 +382,4 @@ mod projection;
 pub use projection::{bounded_page, read_sheet};
 
 mod catalog;
-pub use catalog::{canonical, catalog_hazards};
+pub use catalog::{alias_map, canonical, catalog_hazards};

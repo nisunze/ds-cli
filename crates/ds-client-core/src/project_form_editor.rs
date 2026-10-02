@@ -5,7 +5,6 @@ use serde_json::{Map, Value};
 
 use crate::{ClientError, ErrorKind, TransportResponse};
 
-const MAX_PROJECT_CHARS: usize = 200;
 const MAX_FORM_SLUG_CHARS: usize = 160;
 const MAX_DISPLAY_NAME_CHARS: usize = 500;
 const MAX_DESCRIPTION_CHARS: usize = 8_000;
@@ -166,7 +165,8 @@ struct CapabilitiesWire {
 }
 
 pub(crate) fn validate_editor_input(ds_project: &str, form_slug: &str) -> Result<(), ClientError> {
-    if !bounded(ds_project, MAX_PROJECT_CHARS) || !bounded(form_slug, MAX_FORM_SLUG_CHARS) {
+    crate::validate_project_id(ds_project)?;
+    if !bounded(form_slug, MAX_FORM_SLUG_CHARS) {
         return Err(ClientError::new(
             ErrorKind::InvalidInput,
             "the selected project or form identity is empty, untrimmed, or outside its bound",

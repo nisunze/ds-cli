@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use zeroize::Zeroize;
 
+pub use ds_solar_contracts::is_solar_id;
 /// The time crate the kernel's instants are spelled in, for hosts that pass them.
 pub use time;
 pub mod assets;

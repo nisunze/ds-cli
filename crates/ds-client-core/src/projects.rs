@@ -273,11 +273,7 @@ impl WireProject {
         ];
         let mut id: Option<&str> = None;
         for value in aliases.into_iter().flatten() {
-            if value.is_empty()
-                || value.trim() != value
-                || value.chars().count() > 200
-                || value.chars().any(char::is_control)
-            {
+            if crate::validate_project_id(value).is_err() {
                 return Err(unreadable());
             }
             if id.is_some_and(|current| current != value) {

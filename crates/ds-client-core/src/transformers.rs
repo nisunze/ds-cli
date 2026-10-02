@@ -5,7 +5,6 @@ use serde_json::Value;
 
 use crate::{ClientError, ErrorKind, TransportResponse};
 
-pub(crate) const MAX_PROJECT_ID_CHARS: usize = 200;
 pub(crate) const MAX_TRANSFORMER_NAME_CHARS: usize = 160;
 const MAX_LAYER_NAME_CHARS: usize = 120;
 const MAX_CONTENT_DIGEST_CHARS: usize = 256;
@@ -110,12 +109,7 @@ pub(crate) fn validate_context_input(
     ds_project: &str,
     transformer: &str,
 ) -> Result<(), ClientError> {
-    if !bounded_identifier(ds_project, MAX_PROJECT_ID_CHARS) {
-        return Err(ClientError::new(
-            ErrorKind::InvalidInput,
-            "the selected project id is empty, untrimmed, or outside its 200-character bound",
-        ));
-    }
+    crate::validate_project_id(ds_project)?;
     if !bounded_identifier(transformer, MAX_TRANSFORMER_NAME_CHARS) || transformer == "__all__" {
         return Err(ClientError::new(
             ErrorKind::InvalidInput,
