@@ -12,10 +12,12 @@ use super::{LANE_ARG, PROJECT_ARG};
 pub static COMMAND: Command = Command {
     id: "report.project.archives",
     path: &["report", "project", "archives"],
-    contract: 1,
+    contract: 2,
     summary: "List the named project's published Compounded Report ZIPs.",
     purpose: "\
-Read the named project's audience-fenced Compounded Report archive registry, \
+Read the named project's audience-fenced Compounded Report archive registry and \
+server-owned `composition_template` / `composition_schema` for JSON authoring. \
+Recorded `composition` is null on older archives that did not save it. \
 newest first. Each row records one `compounded` run and confirms its achieved \
 foldering. The automatic project touch may first publish queued local reports \
 and pull moved remote heads. No URL, body or action override is accepted.",
@@ -32,7 +34,8 @@ layout, and two derivations — `layout_collapsed` (folders asked for, no \
 district resolved, everything filed under `_unassigned/`) and the signed \
 `download_url`'s own expiry, since it is short-lived and can arrive nearly \
 spent: `download_url_expires_at`, `download_url_seconds_remaining`, \
-`download_url_expired`.",
+`download_url_expired`. `composition_template` and `composition_schema` are \
+the server's bounded JSON objects (null when absent), for `report project compounded --composition`.",
     examples: &[Example {
         command: "ds report project archives --output json --project <exact-id>",
         note: "Check `.data.archives[0].download_url_seconds_remaining` before fetching it.",
@@ -93,6 +96,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
                         .extend(vocabulary.as_object().expect("vocabulary is an object").clone());
                     recorded
                 }),
+                "composition": archive.composition(),
                 "layout_collapsed": archive.archive_layout().map(|layout| layout_collapsed(
                     layout.file_level().or(layout.transformer_grouping()),
                     layout.combine_per_district(),
@@ -114,6 +118,8 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let mut output = super::project_receipt(&headless);
     output["count"] = json!(archives.len());
     output["archives"] = Value::Array(archives);
+    output["composition_template"] = json!(headless.result().composition_template());
+    output["composition_schema"] = json!(headless.result().composition_schema());
     Ok(output)
 }
 

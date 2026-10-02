@@ -1,6 +1,6 @@
 ---
 name: ds-map-composition
-description: Compose and refine DS transformer sheets, custom-area maps, district MV and project atlases through CLI/MCP, including per-transformer print exceptions.
+description: Compose DS transformer sheets with adjacent circuits, custom-area maps, district MV and project atlases through CLI/MCP; refine extent, legend, furniture and per-transformer exceptions.
 ---
 
 # Compose DS engineering maps
@@ -20,6 +20,9 @@ For transformer sheets, read [default-based sheet placement](references/transfor
 before authoring A0/A3 furniture. For one crowded or unusually shaped transformer,
 read [outlier adjustments](references/outlier-transformers.md); keep its exception
 separate from the project default.
+For neighbouring LV/customer circuits on a focused transformer sheet, read
+[adjacent network context](references/adjacent-networks.md). Use the project's
+context pen; preserve the focused network's categories, quantities and camera.
 
 Read [composition guidance](references/composition.md) when choosing hierarchy,
 relief, landmarks, labels or page furniture. It provides references and review

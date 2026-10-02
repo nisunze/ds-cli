@@ -104,7 +104,7 @@ pub static EDIT: Command = Command {
     path: &["report", "layout", "edit"],
     contract: 1,
     summary: "Validate and apply one print document intent.",
-    purpose: "Applies a local Rust-owned request with top-level op and layout. Discover its exact grammar with map.print.schema --section edit. For shade use op=set_focus_visibility and visible=false; for table headings or indexed values use op=edit with the complete element carrying table.heading_mode or table.value_key. Returns the edited document without saving a project template; global/project save is a separate command.",
+    purpose: "Apply a local Rust intent; discover op/layout grammar with map.print.schema --section edit. set_adjacent_networks binds neighboring circuits to role-specific print_context_existing_new_v1 seeds, distinguishing new, existing and unknown status. Focused pens and view stay exact. Optional policy changes context colours. Returns a document; saving is separate. See the reference for shade and table edits.",
     chapter: Chapter::Reports,
     effect: Effect::ReadOnly,
     authority: Authority::None,
@@ -123,7 +123,11 @@ pub static EDIT: Command = Command {
     }],
     refusals: REFUSALS,
     reference: Some("docs/reference/report.md"),
-    search: &[],
+    search: &[
+        "adjacent transformers",
+        "neighbor circuits",
+        "print context",
+    ],
     requires: Requires::Server,
     availability: local,
 };

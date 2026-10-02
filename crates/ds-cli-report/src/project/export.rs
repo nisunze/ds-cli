@@ -243,7 +243,7 @@ const CONTEXT_TOO_LARGE: Refusal = Refusal {
 };
 const NEIGHBOR_POINTS_UNAVAILABLE: Refusal = Refusal {
     code: "neighbor_transformer_points_unavailable",
-    when: "a sheet binds neighbor_transformers but an active project room has no verified transformer point",
+    when: "a sheet selects neighboring transformer points or circuit context but an active project room is missing, changed or has no verified transformer point",
     remedy: "refresh the active transformer rooms for this project, then retry the sheet",
 };
 const HOLDINGS_STORE: Refusal = Refusal {
@@ -312,7 +312,7 @@ pub static COMMAND: Command = Command {
     path: &["report", "project", "export"],
     contract: 1,
     summary: "Export all transformer reports and maps headlessly in parallel.",
-    purpose: "Export numbered transformer reports and print outputs. Reuse fresh data; prints always regenerate. --dry-run opens no publication queue. Use held rooms or fetch changes; --seed acquires map context. neighbor_transformers uses cached points; photos need a media grant.",
+    purpose: "Export numbered transformer reports and print outputs. Reuse fresh data; prints always regenerate. --dry-run opens no publication queue. Use held rooms or fetch changes; --seed acquires map context. A layout's set_adjacent_networks intent includes all governed neighboring LV/customer circuits, clipped by the focused sheet's actual view without changing quantities or voltage drop. neighbor_transformers alone remains point context; photos need a media grant.",
     chapter: Chapter::Reports,
     effect: Effect::LocalFileWrite,
     authority: Authority::HeadlessProject,
@@ -1177,6 +1177,11 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         && super::neighbor_points::selected(&receipt, &held_inputs.setups).map_err(|error| {
             Failure::invalid(INPUTS_INVALID.code, error).remedy(INPUTS_INVALID.remedy)
         })?;
+    let neighbor_networks_selected = preview_request.is_none()
+        && super::neighbor_points::networks_selected(&receipt, &held_inputs.setups).map_err(
+            |error| Failure::invalid(INPUTS_INVALID.code, error).remedy(INPUTS_INVALID.remedy),
+        )?;
+    let neighbors_selected = neighbor_points_selected || neighbor_networks_selected;
     let mv_buffer = contexts
         .iter()
         .filter_map(|c| match &c.source {
@@ -1302,7 +1307,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     // The same rows are the only reuse evidence, kept whole and only when
     // the answer is for this account and this project.
     let all_transformers = ds_cli_auth::TransformerSet::default();
-    let status_scope = if neighbor_points_selected {
+    let status_scope = if neighbors_selected {
         &all_transformers
     } else {
         &requested
@@ -1489,7 +1494,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     } else {
         None
     };
-    if neighbor_points_selected && status_rows.is_none() && link.unreachable().is_none() {
+    if neighbors_selected && status_rows.is_none() && link.unreachable().is_none() {
         return Err(Failure::unavailable(
             NEIGHBOR_POINTS_UNAVAILABLE.code,
             "the project-wide transformer status could not be verified for the neighboring point catalogue",
@@ -1508,7 +1513,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     // governed style binding. Build the project point catalogue once; held
     // rooms at their current heads cost no network read, and an unheld room is
     // acquired once before any of this batch's sheets render.
-    let neighbor_markers = neighbor_points_selected
+    let neighbor_markers = neighbors_selected
         .then(|| {
             super::neighbor_points::catalogue(
                 lane,
@@ -1521,6 +1526,21 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             )
         })
         .transpose()?;
+    let neighbor_networks = if neighbor_networks_selected {
+        Some(super::neighbor_points::networks(
+            neighbor_markers.as_ref().expect("selected catalogue"),
+            &hold,
+            status_rows.as_ref(),
+        )?)
+    } else {
+        None
+    };
+    let neighbor_fields = if neighbor_networks_selected {
+        super::neighbor_points::network_fields(&receipt, &held_inputs.setups)
+            .map_err(|e| Failure::invalid(INPUTS_INVALID.code, e))?
+    } else {
+        BTreeMap::new()
+    };
     if let Some(markers) = &neighbor_markers {
         let bytes = serde_json::to_vec(markers).map_err(|error| {
             Failure::failed(NEIGHBOR_POINTS_UNAVAILABLE.code, error.to_string())
@@ -1530,6 +1550,8 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             "points": markers.len(),
             "sha256": ds_command_kernel::report_export::sha256_hex(&bytes),
             "room_source": if status_rows.is_some() { "verified_or_refreshed" } else { "held_offline" },
+            "circuits": neighbor_networks_selected,
+            "selection": "all active project rooms; final focused map viewport clips context",
         });
     }
 
@@ -1704,7 +1726,10 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         } else {
             print_context
         };
-        let print_context = if let Some(markers) = &neighbor_markers {
+        let print_context = if let Some(networks) = &neighbor_networks {
+            super::neighbor_points::attach_networks(name, networks, print_context, &neighbor_fields)
+                .map_err(|error| HostFailure::new(CONTEXT_INVALID.code, error))?
+        } else if let Some(markers) = &neighbor_markers {
             super::neighbor_points::attach(name, markers, print_context)
                 .map_err(|error| HostFailure::new(CONTEXT_INVALID.code, error))?
         } else {

@@ -110,7 +110,7 @@ pub static SCHEMA: Command = Command {
     path: &["report", "plan-profile-config", "schema"],
     contract: 2,
     summary: "Describe the JSON plan/profile print configuration.",
-    purpose: "Return versioned geometry/asset/destination fields and a complete minimal example inheriting the canonical project printing setup. This is local discovery and does not render a sheet.",
+    purpose: "Return versioned geometry/asset/destination fields, the exact staking workbook Description binding schema, and a complete minimal example inheriting the canonical project printing setup. This is local discovery and does not render a sheet.",
     chapter: Chapter::Reports,
     effect: Effect::Discovery,
     authority: Authority::None,
@@ -124,7 +124,12 @@ pub static SCHEMA: Command = Command {
     }],
     refusals: &[],
     reference: Some("docs/reference/report.md"),
-    search: &["dsgrid", "variants"],
+    search: &[
+        "dsgrid",
+        "variants",
+        "staking description",
+        "workbook column",
+    ],
     requires: Requires::Server,
     availability: schema_available,
 };
@@ -140,7 +145,8 @@ pub fn schema_run(_inputs: &Inputs, _context: &Context) -> Result<Value, Failure
 fn schema_document() -> Value {
     json!({"schema":"ds.grid-plan-profile-print/v2",
         "required":["schema","project_id","scene_path","plan_path","output_root","variants"],
-        "optional":["sample_pages","side_profiles_path","notes_path","model_crs","context_page_files","model_fields","publication_assets"],
+        "optional":["sample_pages","side_profiles_path","notes_path","structure_descriptions_path","model_crs","context_page_files","model_fields","publication_assets"],
+        "structure_description_binding":ds_command_kernel::printing::structure_descriptions::schema(),
         "settings_rule":"All text, logos, layout, scales, fonts, ink and fixed version/date inherit the project's canonical adopted MV setup. This configuration only binds geometry, held approved assets and destinations. V1 transient settings are refused.",
         "path_rule":"Relative paths resolve beside the configuration; output_root must be fresh.",
         "example":{"schema":"ds.grid-plan-profile-print/v2","project_id":"project-id","scene_path":"sources/profile-scene.json","plan_path":"sources/plan.json","output_root":"publication-output","variants":[{"name":"publication"}]}
@@ -167,6 +173,8 @@ struct PrintConfig {
     side_profiles_path: Option<PathBuf>,
     #[serde(default)]
     notes_path: Option<PathBuf>,
+    #[serde(default)]
+    structure_descriptions_path: Option<PathBuf>,
     #[serde(default)]
     sample_pages: Option<usize>,
     #[serde(default)]
@@ -304,6 +312,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             "plan_path": resolve(base, &config.plan_path),
             "side_profiles_path": config.side_profiles_path.as_deref().map(|p| resolve(base, p)),
             "notes_path": config.notes_path.as_deref().map(|p| resolve(base, p)),
+            "structure_descriptions_path": config.structure_descriptions_path.as_deref().map(|p| resolve(base, p)),
             "out_dir": out_dir,
             "settings": resolved.settings,
             "mv_setup": resolved,
@@ -447,6 +456,7 @@ mod tests {
             output_root: "out".into(),
             side_profiles_path: None,
             notes_path: None,
+            structure_descriptions_path: None,
             sample_pages: Some(1),
             model_crs: None,
             context_page_files: vec![],

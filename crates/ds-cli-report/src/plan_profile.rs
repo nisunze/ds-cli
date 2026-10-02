@@ -72,6 +72,11 @@ pub static COMMAND: Command = Command {
             "Optional explicit scoped drawing annotations.",
         ),
         Arg::value(
+            "structure-descriptions",
+            "<json-file>",
+            "Exact staking XLSX Description binding; discover its schema with report plan-profile-config schema. Project, model revision, workbook SHA, number, native name and XY must match.",
+        ),
+        Arg::value(
             "context-pages",
             "<json-file>",
             "Ordered model-pinned map captures for the drawing sheets.",
@@ -141,7 +146,7 @@ pub static COMMAND: Command = Command {
         ],
     ]),
     reference: Some("docs/reference/report.md"),
-    search: &["dsgrid", "print"],
+    search: &["dsgrid", "print", "staking description", "workbook column"],
     requires: Requires::Server,
     availability,
 };
@@ -240,7 +245,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
                 .ok_or_else(|| Failure::invalid("invalid_scale", "sample-pages must be 1..20"))
         })
         .transpose()?;
-    let request = json!({"project_id":project,"scene_path":scene,"plan_path":plan,"side_profiles_path":inputs.value("side-profiles"),"notes_path":inputs.value("notes"),"out_dir":out_dir,"sample_pages":sample_pages,"context_page_files":context_page_files,"model_crs":inputs.value("model-crs"),"settings":resolved.settings,"mv_setup":resolved,"publication_assets":publication_assets});
+    let request = json!({"project_id":project,"scene_path":scene,"plan_path":plan,"side_profiles_path":inputs.value("side-profiles"),"notes_path":inputs.value("notes"),"structure_descriptions_path":inputs.value("structure-descriptions"),"out_dir":out_dir,"sample_pages":sample_pages,"context_page_files":context_page_files,"model_crs":inputs.value("model-crs"),"settings":resolved.settings,"mv_setup":resolved,"publication_assets":publication_assets});
     let bytes = serde_json::to_vec(&request)
         .map_err(|e| Failure::internal("request_encode_failed", e.to_string()))?;
     ds_layer_store::private::write(&request_path, bytes)

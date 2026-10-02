@@ -8,7 +8,13 @@ metadata:
 
 # DS Printout specialist
 
-Use `ds` for live printouts and `ds-map-composition` for cartography.
+Use `ds` for printouts and `ds-map-composition` for maps.
+
+Choose the deliverable before discovery: individual transformer sheets and
+MV booklets are different from combined LV plans/workbooks, a one-row-per-
+transformer voltage-drop overview, and staking/BOQ reconciliation. Read
+[delivery modes and source truth](references/delivery-modes.md) when the request
+mixes them. Staking is an XLSX submission, never printed booklet pages.
 
 Map delivery: `printing-maps`.
 
@@ -25,11 +31,9 @@ engineering verdict or online publication.
 
 ## Establish the assignment and host
 
-Recover project, source revision, audience, geography, papers, formats,
-destination and decisions; build the subject/layout/format matrix. “All” means
-complete inventory, resolved pagination and explicit exclusions. Keep
-authorization, input/recipe revisions, receipts, QA coverage and next action
-in host task state or the deliverables directory.
+Pin project, sources, audience, papers, formats and destination. “All” means
+complete inventory, resolved pagination and explicit exclusions. Keep receipts
+and QA coverage with the delivery.
 
 Use a signed-in headless server/workstation. Check `auth.status`; pass
 `--project` on every call. Discover
@@ -50,10 +54,8 @@ and identities. Printing authorizes no redesign, renumbering, invented ratings
 or construction approval. Preserve infrastructure, dirty rooms, model versions
 and unrelated outputs.
 
-Use `ds-assets` for governed documents and logos, retaining bytes/digests.
-Keep unknown contract numbers or signatures unresolved; never inherit approvals
-or branding from another project. Missing required evidence is a named
-delivery limit.
+Use `ds-assets` for governed documents/logos and their digests. Never guess
+contract numbers, signatures or approvals, or borrow another project's branding.
 
 Acquire context for the printed extent and purpose, including margins and
 disconnected clusters. Ready-empty, incomplete and stale differ. Seed through
@@ -76,7 +78,7 @@ before any required approval.
 Read live schema and optimistic revision. `report.project.export` supports local
 same-paper recipe proofs (discover inputs): they keep provenance, leave saved
 recipes intact and cannot publish. Save a governed recipe before publication.
-Read back ambiguous writes after errors before retrying.
+Read back ambiguous writes before retrying.
 
 Follow these printing contracts:
 
@@ -103,8 +105,11 @@ Follow these printing contracts:
   and proposed MV context with distinct pens and meaningful legend labels.
   Retain engineering hierarchy, centered transformer names and requested scale
   treatment. Keep geographic context subordinate to the network.
+  For adjacent circuits, use [the focused-context policy](../../ds-map-composition/references/adjacent-networks.md)
+  and verify multiple neighbours, edge circuits and crossings without changing
+  focused schedules or voltage drop.
 
-Individual sheets and exceptions: [transformer sheets](../../ds-map-composition/references/transformer-sheets.md),
+Sheets: [transformer sheets](../../ds-map-composition/references/transformer-sheets.md),
 [outlier adjustments](../../ds-map-composition/references/outlier-transformers.md);
 combined A0/A3 sets and numbering: [drawing collections](references/drawing-collections.md).
 
@@ -122,26 +127,23 @@ existing/proposed line categories; required rows and fields survive, adjacency
 holds, the full network fits vertically. Ground scale and quantities in owner
 output. A successful render is not visual QA.
 
-Revise, rerender and inspect. Review every page of a small set; for a large
-set review templates and outliers and record exact coverage — sampling never
-becomes an every-page claim. After a workflow change, run one blind
+Review small sets completely; record template/outlier coverage for larger sets.
+After a workflow change, run one blind
 smaller-model trial: give the job and limits, not source or command syntax;
 its real artifact attempt is the evidence.
 
 ## Deliver and recover
 
-Run the complete matrix through the owner batch route, reusing only fresh
-outputs with matching dependencies. Match identities to output IDs, paper
-dimensions, revisions, hashes and receipts; flag missing, duplicate, failed
-and stale rows.
+Batch the requested matrix through its owner; reuse only dependency-current
+outputs. Check IDs, paper, revisions, hashes and receipts for missing,
+duplicate, failed and stale members.
 Keep A0/A3 multipage collections separate and preserve project-wide drawing
 numbers on individual and grouped sheets, per the owner’s bundling contract.
 
-Deliver to the requested destination. Local-only work avoids publication
-queues; online, queued is incomplete until cross-machine/server readback.
-Report exact paths, counts, QA coverage and material limitations.
+Verify destination bytes and visibility. Queued online delivery needs remote
+readback. Report paths, counts, QA coverage and material limitations.
 
-Detailed execution and handoff: [procedure](references/procedure.md),
+Execution: [procedure](references/procedure.md),
 [delivery record](references/delivery-record.md), [acceptance](references/acceptance.md).
 
 Stops at: the human eye and the printer — visual acceptance and the physical

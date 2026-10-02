@@ -934,6 +934,26 @@ is missing or malformed, `neighbor_transformer_points_unavailable` refuses the
 print instead of silently dropping a neighbor. Layouts without the binding
 perform no point-catalogue read.
 
+For complete adjacent circuits, discover `report.layout.edit` and
+`map.print.schema --section edit`: `set_adjacent_networks` configures the complete
+neighboring transformer, LV, service, customer and pole layer set atomically.
+Omitted `style_refs` selects the named `print_context_existing_new_v1` role
+documents from Style Center. Alternatively, supply all five governed print refs.
+An optional project `policy` overrides proposed/existing/unknown colours and
+context opacity; it never replaces role symbols, line patterns or dimensions.
+The kernel refuses partial sets or inconsistent lifecycle pens. It preserves
+the focused pens and camera, and orders context underneath the focused network.
+Save the edited layout through the governed printing library before publication.
+
+The export retains every other active project's saved circuit for the final
+viewport clip, including circuits whose transformer lies outside that view.
+It copies geometry and owner/source/version provenance only; focused schedules,
+quantities, geographic exports and voltage-drop verdicts never include nearby
+networks. Missing or changed required rooms refuse before rendering. CLI and
+Desktop previews use the same kernel projection from their scoped held roster
+and rooms; they never acquire context and name unavailable rooms as omissions.
+Preview omissions are not complete-context acceptance.
+
 ### Multipage drawing collections
 
 Discover `report.bundle` and the reporter's `export_compounded_report` task. Its
@@ -946,6 +966,16 @@ the collection rather than silently dropping a drawing.
 The governed `report.project.compounded` workflow adds one collection per named
 PDF layout to the overall archive and each requested grouping slice. Selected
 sector exports keep the complete project's original drawing numbers.
+
+Its JSON composition uses the same server contract as the Project Control JSON
+editor. The archive catalogue returns the server-owned `composition_template`
+and `composition_schema`; send a reviewed object with `--composition` instead
+of competing scope, grouping or layout flags. The service records the resolved
+transformer scope, achieved permission-gated force and requested folder policy
+in the manifest and registry. Each archive exposes that `composition` for
+inspection and adaptation. Historical archives without it return null; neither
+the UI nor CLI reconstructs a recipe that was never saved. The named project,
+actor and action stay outside the editable JSON and retain their normal guards.
 
 The layout schema exposes measured sheet anchors, workbook schedule bindings,
 explicit unequal `table.panel_rows`, and flow-connected composition groups.

@@ -41,10 +41,35 @@ use serde_json::{Map, Value, json};
 // nothing about a paired window, so they come from the contract crate.
 pub use ds_cli_contract::args::{INVALID_NUMBER, integer, plural};
 pub use ds_cli_desktop::ops::{
-    AMBIGUOUS, BridgeOp, DESCRIPTOR_ARG, NOT_PAIRED, OFFLINE, PAIRING_REJECTED, PROJECT_NOT_OPEN,
-    REFUSED, SIGNED_OUT, SIGNED_OUT_MARKERS, UNREACHABLE, UNREADABLE, UNSUPPORTED,
-    classify_signed_out as classify_design_failure, invoke, paired, paired_availability,
+    BridgeOp, DESCRIPTOR_ARG, OFFLINE, PAIRING_REJECTED, PROJECT_NOT_OPEN, REFUSED, SIGNED_OUT,
+    SIGNED_OUT_MARKERS, UNREACHABLE, UNREADABLE, UNSUPPORTED,
+    classify_signed_out as classify_design_failure, invoke, paired_availability,
 };
+
+pub const AMBIGUOUS: Refusal = Refusal {
+    code: "desktop_ambiguous",
+    when: "two or more live DS GridDesign instances can serve this",
+    remedy: "run `ds desktop list`, then pass one instance's descriptor path with --desktop-descriptor <path>",
+};
+pub const NOT_PAIRED: Refusal = Refusal {
+    code: "desktop_not_paired",
+    when: "no DS GridDesign session is running on this machine",
+    remedy: "start DS GridDesign and run `ds desktop list`; use --desktop-descriptor <path> to select one instance",
+};
+
+/// These map commands select a descriptor, so their routing remedy names the
+/// selector their own argument contract accepts.
+pub fn paired(explicit: Option<&str>) -> Result<ds_cli_desktop::discover::Descriptor, Failure> {
+    ds_cli_desktop::ops::paired(explicit).map_err(descriptor_route_failure)
+}
+
+fn descriptor_route_failure(failure: Failure) -> Failure {
+    match failure.code() {
+        "desktop_ambiguous" => failure.remedy(AMBIGUOUS.remedy),
+        "desktop_not_paired" => failure.remedy(NOT_PAIRED.remedy),
+        _ => failure,
+    }
+}
 
 pub static DOMAIN: Domain = Domain {
     id: "map",
@@ -1057,6 +1082,31 @@ mod tests {
                 .code(),
             "invalid_pair"
         );
+    }
+
+    #[test]
+    fn descriptor_routing_names_a_declared_selector_and_preserves_the_refusal() {
+        let candidates = json!({"candidates": [{"instance_id": "alpha"}, {"instance_id": "beta"}]});
+        let ambiguous = descriptor_route_failure(
+            Failure::unavailable("desktop_ambiguous", "two live instances")
+                .detail(candidates.clone()),
+        );
+        assert_eq!(ambiguous.code(), "desktop_ambiguous");
+        assert_eq!(ambiguous.detail_value(), Some(&candidates));
+        assert_eq!(ambiguous.remedy_text(), Some(AMBIGUOUS.remedy));
+        assert!(
+            view::COMMAND
+                .args
+                .iter()
+                .any(|arg| arg.name == "desktop-descriptor")
+        );
+        assert!(!ambiguous.remedy_text().unwrap().contains("--target"));
+
+        let other = descriptor_route_failure(
+            Failure::unavailable("descriptor_unusable", "invalid descriptor")
+                .remedy("republish the descriptor"),
+        );
+        assert_eq!(other.remedy_text(), Some("republish the descriptor"));
     }
 
     #[test]

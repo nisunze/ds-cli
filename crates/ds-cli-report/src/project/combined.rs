@@ -45,6 +45,11 @@ pub(super) const FORCE_ARG: Arg = Arg::switch(
 );
 
 pub(super) const ARGS: &[Arg] = &[
+    Arg::value(
+        "composition",
+        "<json>",
+        "Dynamic ds.compounded-report/v1 JSON object; same server contract as the project JSON editor. Use instead of scope/layout/force flags.",
+    ),
     TRANSFORMER_ARG,
     GROUP_BY_ARG,
     WHERE_ARG,
@@ -56,15 +61,13 @@ pub(super) const ARGS: &[Arg] = &[
 ];
 
 pub(super) const PURPOSE: &str = "\
-Asks the governed report service for a Compounded Report \
-ZIP archive over the named project: it resolves the scope, composes the sets and publishes one \
-ZIP with a registry row. District and sector folders come from the project's \
-applied `report_archive` grouping, not from this request. Retired \
-transformers are never in scope. Rooms not current refuse the run. Blocks \
-until the service answers \
-(up to ten minutes). A project is required; no URL, body or action override is accepted. \
---group-by/--where publish an archive per leaf tag group, in turn \
-(`_unassigned` holds the untagged); nothing is saved on the project.";
+Publish a project ZIP and registry row through the governed service. \
+Applied report_archive grouping supplies district/sector folders; retired \
+or noncurrent rooms refuse. Waits up to ten minutes. --group-by/--where \
+produce one archive per leaf group (_unassigned holds untagged rooms). \
+--composition uses the server JSON schema/template from report project archives \
+and replaces scope/grouping/layout/force flags. The service records the resolved \
+recipe. Explicit project required; no URL or action override.";
 
 pub(super) const OUTPUT: &str = "\
 Lane, named project ID, requested scope, and \
@@ -101,7 +104,13 @@ pub static COMMAND: Command = Command {
     ],
     refusals: super::COMBINED_REFUSALS,
     reference: Some("docs/reference/report.md"),
-    search: &["combined archive", "per city", "group by"],
+    search: &[
+        "combined archive",
+        "per city",
+        "group by",
+        "composition json",
+        "archive recipe",
+    ],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
@@ -151,6 +160,13 @@ pub fn render_combined_alias(data: &Value) -> String {
 }
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
+    if let Some(request) = composition_request(inputs)? {
+        return publish(
+            inputs.require("lane")?,
+            inputs.require("project")?,
+            &request,
+        );
+    }
     let file_level = ReportFileLevel::parse(inputs.require("file-level")?)
         .expect("the command parser enforces the file-level choices");
     let combine_per_group = inputs.switch("combine-per-group");
@@ -173,10 +189,45 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
 
 /// Refuse conflicting grouped and transformer scopes before reconciliation.
 pub fn preflight(inputs: &Inputs) -> Result<(), Failure> {
+    if composition_request(inputs)?.is_some() {
+        return Ok(());
+    }
     if grouping::requested(inputs)?.is_none() {
         super::transformer_set(inputs)?;
     }
     Ok(())
+}
+
+fn composition_request(inputs: &Inputs) -> Result<Option<CompoundedReportRequest>, Failure> {
+    let Some(raw) = inputs.value("composition") else {
+        return Ok(None);
+    };
+    if !inputs.repeated("transformer").is_empty()
+        || !inputs.repeated("group-by").is_empty()
+        || !inputs.repeated("where").is_empty()
+        || inputs
+            .value("file-level")
+            .is_some_and(|level| level != "transformer")
+        || inputs.switch("combine-per-group")
+        || inputs.switch("force")
+    {
+        return Err(Failure::invalid(
+            "compounded_composition_conflict",
+            "composition cannot be mixed with scope, grouping, layout or force flags",
+        )
+        .remedy("pass composition or ordinary flags"));
+    }
+    let invalid = |message: String| {
+        Failure::invalid("compounded_composition_invalid", message)
+        .remedy("read the composition schema/template from the project's archive listing and correct the JSON")
+    };
+    if raw.len() > 64 * 1024 {
+        return Err(invalid("composition exceeds 64 KiB".into()));
+    }
+    let value = serde_json::from_str(raw).map_err(|e| invalid(e.to_string()))?;
+    CompoundedReportRequest::from_composition(value)
+        .map(Some)
+        .map_err(|e| invalid(e.to_string()))
 }
 
 /// One leaf tag group per archive, run one after another through the SAME
@@ -272,7 +323,9 @@ fn publish(lane: &str, project: &str, request: &CompoundedReportRequest) -> Resu
             "mode": if request.transformers().is_empty() { "all_active" } else { "explicit" },
             "requested": request.transformers().names(),
         },
-        "archive_layout": archive_layout(file_level.token(), combine_per_group),
+        "archive_layout": request.composition().map(|c| c["archive_layout"].clone())
+            .unwrap_or_else(|| archive_layout(file_level.token(), combine_per_group)),
+        "composition": receipt.composition(),
         "force": force,
         "status": receipt.status().token(),
         "prefix": receipt.prefix(),
@@ -494,6 +547,52 @@ fn render_grouped(data: &Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn json_composition_preflight_accepts_one_recipe_and_refuses_competing_scope_before_publication()
+     {
+        let recipe = r#"{"schema":"ds.compounded-report/v1","transformers":["tx_a"],"archive_layout":{"group_depth":null,"transformer_folders":true,"combine_per_group":false},"force":false}"#;
+        let base = ["--project", "project_a", "--composition", recipe];
+        let parse = |tokens: Vec<String>| ds_cli_contract::args::parse(&COMMAND, &tokens).unwrap();
+        let valid = parse(base.iter().map(|v| (*v).into()).collect());
+        assert!(preflight(&valid).is_ok());
+        assert_eq!(
+            composition_request(&valid)
+                .unwrap()
+                .unwrap()
+                .transformers()
+                .names(),
+            &["tx_a"]
+        );
+        for extra in [
+            vec!["--transformer", "tx_b"],
+            vec!["--group-by", "district"],
+            vec!["--file-level", "root"],
+            vec!["--force"],
+            vec!["--combine-per-group"],
+        ] {
+            let tokens = base
+                .iter()
+                .chain(extra.iter())
+                .map(|v| (*v).into())
+                .collect();
+            let refusal = preflight(&parse(tokens)).unwrap_err();
+            assert_eq!(refusal.code(), "compounded_composition_conflict");
+            assert!(refusal.remedy_text().is_some());
+        }
+        for raw in ["[]", "{", r#"{"transformers":["combined_transformer"]}"#] {
+            let inputs = parse(
+                ["--project", "project_a", "--composition", raw]
+                    .iter()
+                    .map(|v| (*v).into())
+                    .collect(),
+            );
+            assert_eq!(
+                preflight(&inputs).unwrap_err().code(),
+                "compounded_composition_invalid"
+            );
+        }
+    }
 
     /// Each archive is one line naming its group, so an operator can see
     /// which city a prefix belongs to without opening JSON.

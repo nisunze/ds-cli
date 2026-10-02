@@ -15,6 +15,12 @@ yourself — there is no flag that takes one, by design.
 
 ## Pick screen or print before appearance
 
+For adjacent transformer/LV/customer context on a focused print, read
+[adjacent network context](../ds-map-composition/references/adjacent-networks.md).
+The layout's atomic intent takes the project context pen; do not recolour the
+focused categorical network or main MV conductors to create that background.
+Keep customer body/outline and legend swatches consistent with the chosen pen.
+
 Determine the output first. For printed sheets, select a returned `_print` ref
 and verify `style read` reports `target: print`. A bare or `_vt` ref styles the
 interactive map; a print request never authorizes changing it. Style Center
@@ -25,6 +31,10 @@ clone command. This is a one-time independent copy, never a linked style or
 an instruction to overwrite an existing print variant. Later edits address
 only the intended ref. Conversely, a print edit must not propagate to screen.
 Keep template/project pen overrides distinct from the reusable governed style.
+
+For repeatable neighbouring-network print defaults, read
+[print seed families](references/print-seeds.md). Keep role, lifecycle and focus
+independent; use the named Style Center print seeds before inventing a palette.
 
 For print icons, preserve the landmark's meaning; do not replace a school with
 a generic circle merely to reduce clutter. Read the catalog icon vocabulary,

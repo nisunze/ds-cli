@@ -186,31 +186,31 @@ so. An offline pass changes nothing and says so. A dead holder's lease is freed.
 
 const INVENTORY_IDENTITY: Refusal = Refusal {
     code: "report_inventory_identity_unavailable",
-    when: "the lane has no existing protected account/install, or its providers or protection disagree",
-    remedy: "check this Server user's existing native account, install identity and owner-only config in the requested lane; this read never initializes them",
+    when: "the lane's protected account/install is absent or inconsistent",
+    remedy: "check the Server user's existing account/install and owner-only lane config; this read cannot initialize them",
 };
 const INVENTORY_SCOPE: Refusal = Refusal {
     code: "report_inventory_scope_invalid",
-    when: "project is not an exact path-segment id or transformer is not an individual reportable key",
-    remedy: "name one exact project and individual transformer, without padding or path separators",
+    when: "project or individual transformer key is invalid",
+    remedy: "name exact project/transformer keys without padding or separators",
 };
 const INVENTORY_UNREADABLE: Refusal = Refusal {
     code: "report_inventory_unreadable",
-    when: "the native store/catalogue cannot be read or a selected file has missing, corrupt or mismatched committed bytes",
-    remedy: "check the matching Server state directory and preserve the failing committed files; retry the read after their owning workflow resolves the failure",
+    when: "the store/catalogue is unreadable or committed file bytes fail verification",
+    remedy: "preserve failing files in the Server state directory; retry after the owning workflow repairs them",
 };
 const INVENTORY_CHANGED: Refusal = Refusal {
     code: "report_inventory_identity_changed",
-    when: "the protected account, lane deployment or install changed during the local inventory read",
-    remedy: "retry under the same native Server identity after the concurrent account change finishes",
+    when: "account, lane or install changed during the read",
+    remedy: "retry under the same Server identity after the account change finishes",
 };
 
 pub static INVENTORY: Command = Command {
     id: "report.outbox.inventory",
     path: &["report", "outbox", "inventory"],
     contract: 1,
-    summary: "Inspect one transformer's verified held Server report files.",
-    purpose: "Read actual committed local artifacts under the existing native account/install and explicit project. Shared Rust checks receipts and physical SHA/size, preserving each output's producing run and publication state. No Desktop or running Server needed. No provider/cloud call, publication, queue effect or auth/install/store initialization. SQLite may maintain WAL/SHM coordination. Cloud publication remains unobserved; historical generation times remain null.",
+    summary: "Inspect verified held Server files for one transformer.",
+    purpose: "Verify committed receipts and file SHA/size under the existing native account/install and explicit project. No Desktop, cloud call, publication or initialization. SQLite may coordinate WAL/SHM. Historical times stay null; cloud stays unobserved.",
     chapter: Chapter::Reports,
     effect: Effect::ReadOnly,
     authority: Authority::HeadlessUser,
@@ -226,10 +226,10 @@ pub static INVENTORY: Command = Command {
         SERVER_STATE_DIR_ARG,
         LANE_ARG,
     ],
-    output: "`ds.report.inventory/v1`: owner/project/transformer/variant; active publication and ambiguity; nullable generated time; status/read facts; outputs with filename, producing batch/publication/run, local locator/SHA/size/format, publication phase and source state; local/published counts, missing outputs and complete observation. No file bytes or credentials. Empty local inventory is valid; absent store is not_observed; cloud_read is not_observed.",
+    output: "`ds.report.inventory/v1`: scope, publication, nullable time, read facts, output provenance/locator/SHA/size/format/phase, counts, missing files. Empty is valid; absent store/cloud are not_observed. No bytes or credentials.",
     examples: &[Example {
         command: "ds report outbox inventory --project <exact-id> --transformer <exact-key> --output json",
-        note: "Inspect held files without publishing; selected missing/corrupt bytes refuse instead of falling back to an old generation.",
+        note: "Read held files; corrupt bytes refuse without historical fallback.",
         runnable: false,
     }],
     refusals: &[

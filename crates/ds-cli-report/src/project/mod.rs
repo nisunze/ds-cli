@@ -343,19 +343,30 @@ pub const SCOPE_REFUSALS: &[Refusal] = &joined::<
 /// `compounded`: the write lane, the readiness refusals the published receipt
 /// is read through, the grouping's own refusals, and the grouped run that
 /// did not publish every group.
-pub const COMBINED_REFUSALS: &[Refusal] =
-    &joined::<{ NATIVE_WRITE_REFUSALS.len() + 5 + grouping::REFUSALS.len() + 1 }>(&[
-        NATIVE_WRITE_REFUSALS,
-        &[
-            COMBINED_INPUTS_PUBLICATION_PENDING,
-            COMBINED_INPUTS_NOT_CURRENT,
-            COMBINED_INPUTS_EMPTY,
-            COMBINED_NO_INPUTS,
-            COMBINED_READINESS_UNAVAILABLE,
-        ],
-        &grouping::REFUSALS,
-        &[grouping::GROUPS_PARTIAL],
-    ]);
+pub const COMBINED_REFUSALS: &[Refusal] = &joined::<
+    { NATIVE_WRITE_REFUSALS.len() + 7 + grouping::REFUSALS.len() + 1 },
+>(&[
+    NATIVE_WRITE_REFUSALS,
+    &[
+        COMBINED_INPUTS_PUBLICATION_PENDING,
+        COMBINED_INPUTS_NOT_CURRENT,
+        COMBINED_INPUTS_EMPTY,
+        COMBINED_NO_INPUTS,
+        COMBINED_READINESS_UNAVAILABLE,
+        Refusal {
+            code: "compounded_composition_invalid",
+            when: "composition JSON is malformed, oversized or rejected by the server's closed schema",
+            remedy: "read the composition schema/template from the project's archive listing and correct the JSON",
+        },
+        Refusal {
+            code: "compounded_composition_conflict",
+            when: "composition is mixed with scope, grouping, layout or force flags",
+            remedy: "pass composition or ordinary flags",
+        },
+    ],
+    &grouping::REFUSALS,
+    &[grouping::GROUPS_PARTIAL],
+]);
 
 pub fn transformer_set(inputs: &ds_cli_contract::Inputs) -> Result<TransformerSet, Failure> {
     let names = inputs.repeated("transformer");

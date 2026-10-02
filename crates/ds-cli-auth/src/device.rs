@@ -16,7 +16,7 @@ use ds_cli_contract::spec::{
 };
 use ds_cli_contract::{Context, Failure, Inputs};
 use ds_client_core::{
-    ClientError, ClientProfile, CompoundedArchive, CompoundedReportReceipt,
+    ClientError, ClientProfile, CompoundedArchiveCatalog, CompoundedReportReceipt,
     CompoundedReportRequest, DeviceAccessSession, DeviceAuthContext, DeviceAuthorizationStatus,
     DeviceBeginPublic, DeviceBeginRequest, DeviceBinding, DeviceCallFailure, DeviceCredential,
     DeviceError, DevicePendingAuthorization, DevicePrivateKey, DeviceProtectedCall,
@@ -1099,7 +1099,7 @@ impl<T: ds_client_core::Transport> DeviceSession<T> {
     pub fn compounded_report_list(
         &mut self,
         project: &str,
-    ) -> Result<Vec<CompoundedArchive>, ClientError> {
+    ) -> Result<CompoundedArchiveCatalog, ClientError> {
         fixed_device_call!(self, compounded_report_list, project)
     }
     /// The cloud individual-report computation: server-side like the

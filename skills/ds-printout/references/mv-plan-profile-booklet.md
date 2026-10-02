@@ -114,6 +114,11 @@ transformer sheet's categorical engineering pens. A background palette from
 an MV booklet is not a new default for individual LV transformer prints.
 Special-code dots, hairs and captions use the admitted ground-offset guide;
 terrain coordinates and engineering thresholds retain their source values.
-Print the resolved library type's full description alongside its short code.
-Do not invent a long name from placement notes or abbreviate away the
-consultant's description. Inspect dense pages for complete readable labels.
+When the requested description is the existing staking workbook column, bind
+that exact source using the native plan/profile source schema; a library
+description is not proof of equality to the delivered workbook. Preserve
+number/name/XY and revision/source-byte pins, native comments and engineering
+tags. Use the explicit structure-description label field where a separate row
+is wanted. Do not edit model facts or invent material/stay/voltage wording for
+printing. Inspect complete labels around native angle text and conductor
+curves, including the project's known dense cases.

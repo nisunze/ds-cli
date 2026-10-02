@@ -72,9 +72,9 @@ pub use ds_client_core::{
     SurveyPhoto, SurveyThumbnail,
 };
 pub use ds_client_core::{
-    CompoundedArchive, CompoundedArchiveLayout, CompoundedReportReceipt, CompoundedReportRequest,
-    CompoundedReportStatus, ExportReportOutcome, ExportReportResult, ExportReportsReceipt,
-    LayerOrder, LayerOrderReceipt, LayerSnapshot, LayerVisibilityDefault,
+    CompoundedArchive, CompoundedArchiveCatalog, CompoundedArchiveLayout, CompoundedReportReceipt,
+    CompoundedReportRequest, CompoundedReportStatus, ExportReportOutcome, ExportReportResult,
+    ExportReportsReceipt, LayerOrder, LayerOrderReceipt, LayerSnapshot, LayerVisibilityDefault,
     LayerVisibilityDefaultReceipt, PROJECT_REPORT_MAX_REASON_CHARS,
     PROJECT_REPORT_MAX_TRANSFORMER_CHARS, PROJECT_REPORT_MAX_TRANSFORMERS, ReportFileLevel,
     RetirementAction, RetirementBackup, RetirementReceipt, RetirementRecord, RetirementRefusal,
@@ -2834,7 +2834,7 @@ pub fn export_reports_for_project(
 pub fn compounded_report_list_for_project(
     lane_value: &str,
     project: &str,
-) -> Result<HeadlessNamedProject<Vec<CompoundedArchive>>, Failure> {
+) -> Result<HeadlessNamedProject<CompoundedArchiveCatalog>, Failure> {
     headless_named_project(
         lane_value,
         project,

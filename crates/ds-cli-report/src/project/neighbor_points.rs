@@ -1,6 +1,5 @@
-//! Point-only context for other active transformers on an individual sheet.
-//! Rooms remain the authority for their own networks and schedules.  This
-//! module projects only their transformer markers into the print context.
+//! Acquire verified active rooms for point-only or complete circuit context.
+//! The kernel owns the print projection; each room owns its engineering data.
 
 use std::collections::BTreeMap;
 
@@ -28,6 +27,110 @@ pub(super) fn selected(
             .as_str()
             .is_some_and(|reference| !reference.is_empty())
     }))
+}
+
+pub(super) fn networks_selected(
+    receipt: &ds_command_kernel::report_export::InputReceipt,
+    held_setups: &[Value],
+) -> Result<bool, String> {
+    let sheets = receipt.sheets()?;
+    let setups = sheets["printing_setups"]
+        .as_array()
+        .map_or(held_setups, Vec::as_slice);
+    setups.iter().try_fold(false, |selected, setup| {
+        let layout: ds_command_kernel::printing::Layout =
+            serde_json::from_value(setup["layout"].clone())
+                .map_err(|e| format!("invalid adjacent-network layout: {e}"))?;
+        ds_command_kernel::printing::adjacent_networks::validate_selection(&layout)?;
+        Ok(selected || ds_command_kernel::printing::adjacent_networks::selected(&layout))
+    })
+}
+
+/// The point catalogue has already acquired and verified every active room.
+/// Capture the exact same saved versions; the kernel projects print-only data.
+pub(super) fn networks(
+    markers: &BTreeMap<String, Value>,
+    hold: &Hold,
+    status: Option<&BTreeMap<String, Value>>,
+) -> Result<Vec<ds_command_kernel::printing::adjacent_networks::Room>, Failure> {
+    markers
+        .keys()
+        .map(|name| {
+            let room = hold
+                .room(name)
+                .map_err(unavailable)?
+                .ok_or_else(|| unavailable(format!("{name} room is no longer held")))?;
+            let version = room
+                .version
+                .filter(|v| *v > 0)
+                .ok_or_else(|| unavailable(format!("{name} has no saved revision")))?;
+            if status.is_some_and(|rows| {
+                rows.get(name).and_then(|row| head_version(row).as_i64()) != Some(version)
+            }) || marker(&room).map_err(unavailable)? != markers[name]
+            {
+                return Err(unavailable(format!(
+                    "{name} changed during adjacent-network acquisition"
+                )));
+            }
+            Ok(ds_command_kernel::printing::adjacent_networks::Room {
+                transformer: room.transformer,
+                version,
+                layers: room.layers,
+            })
+        })
+        .collect()
+}
+
+pub(super) fn attach_networks(
+    current: &str,
+    rooms: &[ds_command_kernel::printing::adjacent_networks::Room],
+    context: Option<PrintContextBytes>,
+    fields: &BTreeMap<String, std::collections::BTreeSet<String>>,
+) -> Result<Option<PrintContextBytes>, String> {
+    let held = context
+        .as_ref()
+        .map(|c| serde_json::from_slice::<Value>(&c.bytes).map_err(|e| e.to_string()))
+        .transpose()?;
+    let Some(doc) = ds_command_kernel::printing::adjacent_networks::attach(
+        current,
+        rooms,
+        held.as_ref(),
+        fields,
+    )?
+    else {
+        return Ok(None);
+    };
+    let layers: BTreeMap<String, Value> =
+        serde_json::from_value(doc["layers"].clone()).map_err(|e| e.to_string())?;
+    let bytes = ds_command_kernel::report_export::print_context_document(
+        &doc["coverage"],
+        &doc["sources"],
+        &layers,
+    )?;
+    Ok(Some(PrintContextBytes {
+        sha256: ds_command_kernel::report_export::sha256_hex(&bytes),
+        bytes,
+        layers: layers.into_keys().collect(),
+        omitted: context.map_or_else(Vec::new, |c| c.omitted),
+    }))
+}
+
+pub(super) fn network_fields(
+    receipt: &ds_command_kernel::report_export::InputReceipt,
+    held_setups: &[Value],
+) -> Result<BTreeMap<String, std::collections::BTreeSet<String>>, String> {
+    let sheets = receipt.sheets()?;
+    let setups = sheets["printing_setups"]
+        .as_array()
+        .map_or(held_setups, Vec::as_slice);
+    let layouts = setups
+        .iter()
+        .map(|setup| serde_json::from_value(setup["layout"].clone()).map_err(|e| e.to_string()))
+        .collect::<Result<Vec<_>, _>>()?;
+    ds_command_kernel::printing::adjacent_networks::required_fields(
+        &layouts,
+        &sheets["printing_styles"],
+    )
 }
 
 fn unavailable(message: impl Into<String>) -> Failure {
