@@ -63,7 +63,7 @@ pub(super) const ARGS: &[Arg] = &[
 pub(super) const PURPOSE: &str = "\
 Publish a project ZIP and registry row through the governed service. \
 Applied report_archive grouping supplies district/sector folders; retired \
-or noncurrent rooms refuse. Waits up to ten minutes. --group-by/--where \
+or noncurrent rooms refuse before ZIP publication or registry write. Waits up to ten minutes. --group-by/--where \
 produce one archive per leaf group (_unassigned holds untagged rooms). \
 --composition uses the server JSON schema/template from report project archives \
 and replaces scope/grouping/layout/force flags. The service records the resolved \
@@ -391,7 +391,8 @@ fn readiness_rooms(causes: &[Value]) -> Vec<RoomInput> {
         .collect()
 }
 
-/// The refusal, when the archive that was published does not cover its scope.
+/// A defensive check for an older owner returning a partial publication as 200.
+/// Readiness refusals now come from the owner before it publishes anything.
 fn readiness_refusal(causes: &[Value], receipt: &Value) -> Result<Option<Failure>, Failure> {
     if causes.is_empty() {
         return Ok(None);
@@ -408,6 +409,17 @@ fn readiness_refusal(causes: &[Value], receipt: &Value) -> Result<Option<Failure
     let Some(refusal) = verdict.get("refusal").filter(|value| !value.is_null()) else {
         return Ok(None);
     };
+    if receipt["archives"]
+        .as_array()
+        .is_some_and(|archives| !archives.is_empty())
+    {
+        return Err(Failure::unavailable(
+            "auth_response_unreadable",
+            "The report owner published an archive with unready inputs. Its receipt violates the atomic publication contract; do not deliver this archive.",
+        )
+        .remedy("update the report owner, make the inputs current, and retry")
+        .detail(json!({"readiness": verdict, "published": {"prefix": receipt["prefix"], "archives": receipt["archives"]}})));
+    }
     let command = refusal["command"]
         .as_str()
         .unwrap_or("ds report project scope");
@@ -417,7 +429,7 @@ fn readiness_refusal(causes: &[Value], receipt: &Value) -> Result<Option<Failure
         .unwrap_or_default();
     let more = refusal["rooms"]["more"].as_u64().unwrap_or(0);
     let mut message = format!(
-        "The Compounded Report was published without {} room(s): {}",
+        "The Compounded Report requires current reports for {} room(s): {}",
         refusal["rooms"]["total"]
             .as_u64()
             .unwrap_or(named.len() as u64),
@@ -426,7 +438,7 @@ fn readiness_refusal(causes: &[Value], receipt: &Value) -> Result<Option<Failure
     if more > 0 {
         message.push_str(&format!(" and {more} more"));
     }
-    message.push_str(". It does not cover its scope; do not hand it over as the answer.");
+    message.push_str(". No archive was published.");
     // The kernel decides WHICH refusal applies; each one is constructed here
     // from its own declared `Refusal`, so `ds capabilities` lists every code
     // this command can emit and nothing has to infer them from a variable. A
@@ -448,10 +460,6 @@ fn readiness_refusal(causes: &[Value], receipt: &Value) -> Result<Option<Failure
             .next("ds report project scope")
             .detail(json!({
                 "readiness": verdict,
-                "published": {
-                    "prefix": receipt["prefix"].clone(),
-                    "archives": receipt["archives"].clone(),
-                },
             })),
     ))
 }
@@ -677,16 +685,14 @@ mod tests {
         );
     }
 
-    /// A Compounded Report published over a scope it silently shrank must not
-    /// exit zero. That success is what let a project be handed over missing
-    /// half its rooms.
+    /// A refused preparation names the rooms without a publication receipt.
     #[test]
-    fn a_published_archive_with_missing_rooms_refuses_and_names_them() {
+    fn unready_inputs_refuse_and_name_rooms_without_publication() {
         let causes = vec![
             cause("tx_a", "report_not_published"),
             cause("tx_b", "report_stale"),
         ];
-        let receipt = json!({"prefix": "run-1", "archives": ["gs://b/run-1.zip"]});
+        let receipt = json!({});
         let failure = readiness_refusal(&causes, &receipt)
             .expect("the predicate answers")
             .expect("missing rooms refuse");
@@ -701,27 +707,18 @@ mod tests {
             "{:?}",
             failure.remedy_text()
         );
-        // The archive that WAS published is still named, so nobody hunts for a
-        // file the refusal did not mention.
         let detail = failure.detail_value().expect("detail travels");
-        assert_eq!(detail["published"]["prefix"], "run-1");
+        assert!(detail.get("published").is_none());
     }
 
     #[test]
-    fn inputs_not_current_refusal_has_no_published_archive() {
+    fn a_locator_bearing_receipt_is_never_a_readiness_refusal() {
         let causes = vec![cause("tx_b", "report_stale")];
         let receipt = json!({"prefix": "run-1", "archives": ["gs://b/run-1.zip"]});
-        let failure = readiness_refusal(&causes, &receipt)
-            .unwrap()
-            .expect("stale inputs refuse");
-        assert_eq!(failure.code(), "combined_inputs_not_current");
+        let failure = readiness_refusal(&causes, &receipt).unwrap_err();
+        assert_eq!(failure.code(), "auth_response_unreadable");
         let detail = failure.detail_value().unwrap();
-        assert!(
-            detail["published"]["archives"]
-                .as_array()
-                .is_none_or(Vec::is_empty),
-            "a refused run already published an archive: {detail}"
-        );
+        assert_eq!(detail["published"]["archives"], receipt["archives"]);
     }
 
     /// A complete run is not turned into a refusal by the gate.
