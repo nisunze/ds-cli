@@ -1874,7 +1874,7 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
             // Twenty-six printing leaves plus bootstrap: city-vector input,
             // local rendering and standalone map delivery complete the headless
             // workflow beside the retained desktop-owned operations.
-            "printing" => 25,
+            "printing" => 26,
             "printing-maps" => 7,
             // Sixteen layer leaves plus bootstrap: the layer drawer's profile
             // also carries this machine's prepared local layer catalogue,

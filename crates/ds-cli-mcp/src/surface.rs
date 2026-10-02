@@ -315,14 +315,14 @@ impl Profile {
             // same bounded desktop-owned workflow without transporting
             // features through MCP.
             Self::DesignEdit => 23,
-            // Twenty-three print production leaves plus both bootstrap tools:
+            // Twenty-four print production leaves plus both bootstrap tools:
             // city vector acquisition adds one step to the existing headless
             // printing workflow, including projects without held context. The
             // headless loop (context held and seeded on this machine, output
             // selection, export with context) beside the paired leaves that
             // still need the desktop's own holdings. Map composition and
             // publication are a separate focused workflow.
-            Self::Printing => 25,
+            Self::Printing => 26,
             Self::PrintingMaps => 7,
             // The layer drawer's profile also carries this machine's prepared
             // local layer catalogue: seventeen leaves plus both bootstrap tools.
@@ -1071,7 +1071,6 @@ const PROJECT_OPERATIONS_COMMANDS: &[&str] = &[
     // excludes this list, does not grow by three.
     "report.project.publish",
     "report.outbox.status",
-    "report.outbox.inventory",
     "report.outbox.drain",
 ];
 
@@ -2411,6 +2410,7 @@ const PRINTING_COMMANDS: &[&str] = &[
     "report.layout.save",
     "report.transformers",
     "report.plan",
+    "report.outbox.inventory",
     "data.project-cache.status",
     "data.project-cache.seed",
     "data.city-vectors",
