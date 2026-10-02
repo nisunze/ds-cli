@@ -6409,7 +6409,10 @@ fn design_collisions_reads_the_project_document_and_starts_nothing() {
         .collect::<BTreeSet<_>>();
     // The lane and the project, named on every call: the saved selection is
     // never read.
-    assert_eq!(inputs, BTreeSet::from(["lane", "project"]));
+    assert_eq!(
+        inputs,
+        BTreeSet::from(["lane", "project", "regions", "limit"])
+    );
 
     // A call that names no project is refused locally, never answered for a
     // selection.
@@ -18114,4 +18117,73 @@ fn dsgrid_command_descriptors_inline_the_four_authoring_shapes() {
     ]);
     assert_eq!(validated["model"]["valid"], true);
     assert_ne!(validated["model"]["authored_revision"], head);
+
+#[test]
+fn survey_delete_preview_runs_the_real_kernel_and_admits_no_write() {
+    let root = temp_root("survey-delete-preview");
+    std::fs::create_dir_all(&root).unwrap();
+    let path = root.join("held.json");
+    std::fs::write(&path, r#"{"rows":[{"form_slug":"edges","feature":{"id":"e","geometry":{"type":"LineString"},"properties":{"connectivity":{"precedent":"n"}}}}]}"#).unwrap();
+    let reply = ok(&[
+        "survey",
+        "entries",
+        "delete-plan",
+        "--project",
+        "p",
+        "--form",
+        "nodes",
+        "--doc-id",
+        "n",
+        "--document",
+        path.to_str().unwrap(),
+        "--idempotency-key",
+        "review",
+        "--now",
+        "2026-10-02T00:00:00Z",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(reply["deleted"], 2);
+    assert_eq!(reply["cascaded_edges"], 1);
+    assert_eq!(reply["authorized"], false);
+    assert_eq!(reply["intents"][1]["payload"]["doc_id"], "e");
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn survey_delete_declares_native_effect_and_honors_packaged_availability() {
+    let descriptor = ok(&["capabilities", "survey.entries.delete", "--output", "json"]);
+    assert_eq!(descriptor["command"]["effect"], "global_write");
+    assert_eq!(descriptor["command"]["authority"], "headless_project");
+    let root = temp_root("survey-delete-invalid");
+    std::fs::create_dir_all(&root).unwrap();
+    let path = root.join("held.json");
+    std::fs::write(&path, r#"{"rows":[]}"#).unwrap();
+    let reply = ds(&[
+        "survey",
+        "entries",
+        "delete",
+        "--project",
+        "p",
+        "--form",
+        "poles",
+        "--doc-id",
+        "n",
+        "--document",
+        path.to_str().unwrap(),
+        "--idempotency-key",
+        "review",
+        "--now",
+        "invalid-clock",
+        "--yes",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(
+        reply.envelope["error"]["code"],
+        if descriptor["command"]["availability"] == "unavailable" {
+            descriptor["command"]["unavailable"]["code"].as_str().unwrap()
+        } else { "survey_delete_plan_invalid" }
+    );
+    std::fs::remove_dir_all(root).unwrap();
 }

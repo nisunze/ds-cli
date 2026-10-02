@@ -309,7 +309,9 @@ impl Profile {
             // the map loads for the project — a local choice, no fetch. The
             // photo leaves are `survey-media`'s (2026-09-20).
             // Single-target finite member grants add read/plan/apply.
-            Self::SurveyProjects => 24,
+            // Cascade preview and native delete complete the existing entry
+            // workflow without displacing project bindings or template tools.
+            Self::SurveyProjects => 26,
             // Twenty-one governed design-edit leaves plus the two bootstrap
             // tools. Version history and the pinned Working set project the
             // same bounded desktop-owned workflow without transporting
@@ -973,6 +975,8 @@ const SURVEY_PROJECT_COMMANDS: &[&str] = &[
     "survey.entries.select",
     "survey.entries.changes",
     "survey.entries.create",
+    "survey.entries.delete-plan",
+    "survey.entries.delete",
     "survey.project-forms.list",
     "survey.project-form.settings",
     "survey.project-forms.read",

@@ -2015,7 +2015,8 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
             // create-from-template and the three working-area form leaves
             // (read, choose, forget which forms the map loads); the photo
             // leaves moved to survey-media.
-            "survey-projects" => 24,
+            // The two cascade leaves join the existing entry workflow.
+            "survey-projects" => 26,
             // Held survey photos (list, read), the one rotation and its
             // publication, and the offline file rotation, plus bootstrap.
             "survey-media" => 10,
@@ -3216,7 +3217,8 @@ fn member_form_grants_project_survey_mcp_matches_cli_confirmation() {
     let tools = response(&responses, 1)["result"]["tools"]
         .as_array()
         .unwrap();
-    assert!(tools.len() <= 24);
+    // Cascade preview and delete add two leaves to this existing profile.
+    assert!(tools.len() <= 26);
     for verb in ["read", "plan", "apply"] {
         let name = format!("survey_member-grant_{verb}");
         let tool = tools

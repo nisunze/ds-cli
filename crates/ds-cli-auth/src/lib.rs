@@ -787,13 +787,13 @@ pub static PROJECT_LIST_COMMAND: Command = Command {
     path: &["auth", "project", "list"],
     contract: 1,
     chapter: Chapter::Project,
-    summary: "List fresh visible projects across all lifecycle buckets.",
+    summary: "List visible projects with expiry and lifecycle notices.",
     purpose: "Restores the native user and fetches active, archived, and testing projects through the one closed gateway route. A returned ID is visibility, not authority.",
     effect: Effect::LocalAuthState,
     authority: Authority::HeadlessUser,
     execution: Execution::Sync,
     args: &[LANE, LIST_LIMIT],
-    output: "Fresh visible project identities, names, roles, and lifecycle states; `elevated` says the list came by governance elevation, and a roleless row then reads `elevated`.",
+    output: "Fresh visible project identities, names, roles, lifecycle states and expiry projections (notice, chip, support contacts); `elevated` says the list came by governance elevation, and a roleless row then reads `elevated`.",
     examples: &[Example {
         command: "ds auth project list",
         note: "Reads all three lifecycle buckets.",
@@ -801,7 +801,7 @@ pub static PROJECT_LIST_COMMAND: Command = Command {
     }],
     refusals: PROJECT_LIST_REFUSALS,
     reference: Some("docs/reference/auth.md"),
-    search: &[],
+    search: &["expiration", "expiry", "support contact", "lifecycle"],
     requires: Requires::Server,
     availability: native_availability,
 };
@@ -3605,6 +3605,20 @@ pub fn survey_entries_changes(
 }
 
 /// Create one governed Survey entry in the caller's explicit project.
+/// Execute the kernel's closed held-row deletion plan; no selection is read.
+pub fn survey_delete(
+    lane: &str,
+    project: &str,
+    request: &ds_client_core::SurveyDeleteRequest,
+) -> Result<HeadlessNamedProject<serde_json::Value>, Failure> {
+    headless_named_project(
+        lane,
+        project,
+        |device, project| device.survey_delete(project, request),
+        |client, project| client.survey_delete(project, request, now()),
+    )
+}
+
 pub fn survey_entry_create(
     lane_value: &str,
     project: &str,
@@ -4545,6 +4559,7 @@ fn project_json(project: &Project, elevated: bool) -> Value {
         "display_name": project.display_name(),
         "role": presented_role(project.role(), elevated),
         "status": project_status(project.status()),
+        "lifecycle": project.lifecycle((now() * 1000) as i64),
     })
 }
 
