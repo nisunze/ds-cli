@@ -36,6 +36,7 @@
 
 pub mod correspondence;
 mod hierarchy;
+pub mod model_links;
 pub mod projections;
 pub mod reads;
 pub mod wire;
