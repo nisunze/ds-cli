@@ -278,10 +278,29 @@ where it is inspected, re-planned and applied, and a project without it is one
 of the causes the service reports here as `auth_input_invalid`.
 
 The receipt does not confirm the foldering. `--file-level sector|district` and
-`--combine-per-group` are a request: when no administrative value resolves,
-the requested layout silently collapses to `_unassigned` folders while the run
+`--combine-per-group` are a request: when no group value resolves, the
+requested layout silently collapses to `_unassigned` folders while the run
 still reports `success`, which the archives registry row exposes as
-`district_count: 0` and `ds` derives there as `layout_collapsed`.
+`group_count: 0` under an applied plan and `ds` derives there as
+`layout_collapsed`.
+
+**Archive rows carry the archive's grouping as the kernel reads it** (command
+contract 3). `group_count` and `groups` are the first-level group labels the
+archive covers (`_unassigned` excluded), and `grouping` says where they came
+from: `kind` is `plan` (an applied `report_archive` plan, whose identity —
+`purpose`, ordered `definition_ids`, `plan_digest`, `projection_sha256`,
+`revision`, `member_count`, `unassigned_count` and the plan's own all-level
+`group_count` — is under `plan`, and whose first definition id is `key`),
+`flat` (no plan was applied; the archive is flat by contract, never
+`layout_collapsed`, with the service's sentence in `detail`), `recorded`,
+`legacy_district` (an archive written before grouping plans: its
+`district_count`/`districts` fill `group_count`/`groups`, `key: "district"`)
+or `unrecorded`. Generic fields win on presence; the district pair is read only
+when none is present. A contradictory record (count and labels disagree, a flat
+archive naming groups, a malformed plan block) refuses the listing as
+unreadable instead of guessing. The decoding is
+`ds-command-kernel::report::archive_groups`, the same one the application uses.
+Contract 2 rows carried `district_count`/`districts`; those keys are gone.
 
 **Both commands describe the layout in the report layer's own vocabulary.**
 `archive_layout` carries the recorded spelling plus `level`, `level_key`,
@@ -293,6 +312,17 @@ sector-level archive; an unrecognised or absent level is the default,
 transformer). Until 2026-09-11 `ds report project archives` ignored the legacy
 spelling entirely and reported a foldered archive as having no layout at all,
 which is how one archive came to be described two ways.
+
+Current archives also record ds-brain's generic knobs — `group_depth` (how many
+of the applied plan's levels the tree descends; null is every level),
+`transformer_folders` and `combine_per_group` — and `archives` carries them on
+`archive_layout` beside the legacy spellings. When either of the first two is
+recorded the kernel resolves the level from them first (depth 0 is `root`, or
+`flat` with transformer folders; depth 1 is `district`; deeper is `sector`;
+every level is `transformer` with folders, else `sector`), because ds-brain
+writes the legacy words only for older readers. `layout_collapsed` reads that
+resolved level: `root` and `flat` request no group folders unless a combined
+report per group was asked for.
 
 The registry's `download_url` is freshly signed by the service with about an
 hour of validity, but has been observed arriving with seconds left, so a caller
