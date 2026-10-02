@@ -1365,39 +1365,6 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
     serde_json::to_string(&value).map_err(|error| error.to_string())
 }
 
-fn presentation_tier(row: &LayerRow) -> i64 {
-    match row.metadata["layer_class"].as_str().unwrap_or("") {
-        "global_layer" => {
-            let reference = row.style_ref.as_str().unwrap_or("");
-            if matches!(
-                reference,
-                "gt/lv_line"
-                    | "gt/lv_pole"
-                    | "gt/mv_line"
-                    | "gt/mv_pole"
-                    | "gt/hv_line"
-                    | "gt/hv_tower"
-                    | "gt/transformer"
-                    | "gt/substation"
-                    | "gt/mv_switching"
-                    | "gt/production_point"
-                    | "gt/power_plant"
-            ) {
-                3
-            } else {
-                0
-            }
-        }
-        "survey_tile" => 1,
-        "survey" => 2,
-        "design_tile" => 4,
-        "design" => 5,
-        "user_data" => 6,
-        "project_data" => 7,
-        _ => 8,
-    }
-}
-
 fn stack_order(
     ids: &[String],
     document: Option<&Document>,
@@ -1445,6 +1412,9 @@ fn stack_order(
             row.metadata
                 .as_object()
                 .is_some_and(|metadata| metadata.contains_key("user_order"))
+                && row.metadata["presentation_tier"]
+                    .as_i64()
+                    .is_some_and(|tier| (0..=1_000_000).contains(&tier))
         });
     let saved = governed
         && primaries
@@ -1482,7 +1452,14 @@ fn stack_order(
                             "line" => 1,
                             _ => 2,
                         };
-                        (presentation_tier(row) * 100 + geometry, order)
+                        (
+                            row.metadata["presentation_tier"]
+                                .as_i64()
+                                .expect("governed tier")
+                                * 100
+                                + geometry,
+                            order,
+                        )
                     }
                 } else {
                     (800, anchor as i64)
@@ -1519,6 +1496,14 @@ mod stacking_tests {
         ];
         let ids: Vec<String> = rows.iter().map(|row| row.0.into()).collect();
         let mut raw = json!({"project_id":"p","layers":rows.iter().map(|(id,kind,class,reference,order)| json!({"id":id,"type":kind,"style_ref":reference,"metadata":{"layer_class":class,"order":order,"user_order":null}})).collect::<Vec<_>>()});
+        for (row, tier) in raw["layers"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .zip([4, 5, 2, 3, 0])
+        {
+            row["metadata"]["presentation_tier"] = json!(tier);
+        }
         let document: Document = serde_json::from_value(raw.clone()).unwrap();
         assert_eq!(
             stack_order(&ids, Some(&document), true).unwrap(),

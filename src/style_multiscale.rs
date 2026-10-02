@@ -416,11 +416,41 @@ pub(crate) fn zoom(
 }
 
 /// Published capability vocabulary used by the guided UI and headless readback.
-pub(crate) fn vocabulary(kind: &str, document: &Value) -> Value {
-    json!({"presets":["satellite","existing-assets"],"categorical":{"channels":if kind == "symbol" { vec!["color","icon","label"] } else { vec!["color","label"] },"maxValues":50,"fallbackRequired":true,"merge":true,"field_types":["string","number"],"current":current_categories(kind,document)},
+pub(crate) fn vocabulary(kind: &str, document: &Value, snapshot: &Value) -> Value {
+    let presets = snapshot["style_presets"]["authoring"]
+        .as_object()
+        .map(|recipes| recipes.keys().take(200).cloned().collect::<Vec<_>>())
+        .unwrap_or_default();
+    json!({"presets":presets,"categorical":{"channels":if kind == "symbol" { vec!["color","icon","label"] } else { vec!["color","label"] },"maxValues":50,"fallbackRequired":true,"merge":true,"field_types":["string","number"],"current":current_categories(kind,document)},
         "colorRange":{"available":kind != "symbol","maxStops":50,"interpolation":"linear","inputType":"number"},
         "zoom":{"channels":if kind == "symbol" { vec!["size","opacity","icon_overlap"] } else if kind == "circle" || kind == "line" {vec!["size","opacity"]} else {vec!["opacity"]},"interpolations":["step","linear"],"min":0,"max":24,"maxStops":50},
         "flatHalo":kind == "symbol" || kind == "circle"})
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PresetInk {
+    color: String,
+    width: f64,
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PresetRecipe {
+    #[serde(default)]
+    palette: Vec<String>,
+    missing_color: String,
+    flat_color: String,
+    #[serde(default)]
+    flatten_categories: bool,
+    #[serde(default)]
+    halo: Option<PresetInk>,
+    #[serde(default)]
+    casing: Option<PresetInk>,
+    #[serde(default = "preserve_halo")]
+    preserve_secondary_halo: bool,
+}
+fn preserve_halo() -> bool {
+    true
 }
 
 pub(crate) fn preset(
@@ -430,7 +460,7 @@ pub(crate) fn preset(
     reference: &str,
     name: &str,
 ) -> Result<(), String> {
-    if reference.ends_with("_print") {
+    if editor["style_target"] == "print" {
         return Err(
             "screen presets address screen refs; print styles have independent standards".into(),
         );
@@ -440,57 +470,69 @@ pub(crate) fn preset(
         .ok_or("style type missing")?
         .to_owned();
     let property = primary_property(&kind)?;
-    match name {
-        "satellite" => {
-            // Keep exact category identities and distinguish every current
-            // band. This is a declared product recipe, never request code.
-            let palette = [
-                "#FACC15", "#22D3EE", "#F472B6", "#A3E635", "#FB923C", "#C4B5FD", "#FFFFFF",
-                "#60A5FA", "#F87171", "#34D399", "#E879F9", "#FDE68A", "#67E8F9", "#FDA4AF",
-                "#BEF264", "#DDD6FE",
-            ];
-            let current = style["paint"][property].clone();
-            if current.as_array().is_some_and(|expr| {
-                expr.first() == Some(&json!("match")) && expr.len() >= 5 && expr.len() % 2 == 1
-            }) {
-                let expr = current.as_array().expect("match");
-                let mut next = vec![json!("match"), expr[1].clone()];
-                let mut band = 0;
-                for index in (2..expr.len() - 1).step_by(2) {
-                    for label in expr[index]
-                        .as_array()
-                        .map(Vec::as_slice)
-                        .unwrap_or_else(|| std::slice::from_ref(&expr[index]))
-                    {
-                        next.push(label.clone());
-                        next.push(json!(palette[band % palette.len()]));
-                        band += 1;
-                    }
-                }
-                next.push(json!("#94A3B8"));
-                put(style, "paint", property, json!(next))?;
-            } else if !current.is_array() {
-                put(style, "paint", property, json!("#FACC15"))?;
-            }
-            if kind == "line" {
-                *style = crate::style_authoring::apply_casing(style.clone(), "#0F172A", 0.75)?;
-            }
-            if (kind == "symbol" || kind == "circle")
-                && !crate::style_plan::second_style_channel(style)
-                    .is_some_and(|channel| channel.key == "halo")
-            {
-                halo(style, snapshot, Some("#FFFFFF"), Some(0.9))?;
-            }
-        }
-        "existing-assets" => {
-            put(style, "paint", property, json!("#E2E8F0"))?;
-            if kind == "symbol" || kind == "circle" {
-                halo(style, snapshot, Some("#475569"), Some(0.9))?;
-            }
-        }
-        _ => return Err("unknown screen preset; choose satellite or existing-assets".into()),
+    let raw = &snapshot["style_presets"]["authoring"][name];
+    if !raw.is_object() {
+        return Err(format!("governed screen preset {name} is unavailable; initialize the declared seed manifest through the Styles API"));
     }
-    let _ = editor;
+    let recipe: PresetRecipe = serde_json::from_value(raw.clone())
+        .map_err(|error| format!("invalid governed preset {name}: {error}"))?;
+    let flat = color(&recipe.flat_color)?;
+    let missing = color(&recipe.missing_color)?;
+    let palette = recipe
+        .palette
+        .iter()
+        .map(|ink| color(ink))
+        .collect::<Result<Vec<_>, _>>()?;
+    if palette.len() > 200 {
+        return Err("governed preset palette exceeds 200 colours".into());
+    }
+    if recipe.flatten_categories {
+        put(style, "paint", property, json!(flat))?;
+    } else {
+        let current = style["paint"][property].clone();
+        if current.as_array().is_some_and(|expr| {
+            expr.first() == Some(&json!("match")) && expr.len() >= 5 && expr.len() % 2 == 1
+        }) {
+            let expr = current.as_array().expect("match");
+            let mut next = vec![json!("match"), expr[1].clone()];
+            let mut band = 0;
+            for index in (2..expr.len() - 1).step_by(2) {
+                for label in expr[index]
+                    .as_array()
+                    .map(Vec::as_slice)
+                    .unwrap_or_else(|| std::slice::from_ref(&expr[index]))
+                {
+                    next.push(label.clone());
+                    let ink = palette.get(band).ok_or_else(||format!("governed preset {name} needs a colour for every category; its declared palette is too short"))?;
+                    next.push(json!(ink));
+                    band += 1;
+                }
+            }
+            next.push(json!(missing));
+            put(style, "paint", property, json!(next))?;
+        } else if !current.is_array() {
+            put(style, "paint", property, json!(flat))?;
+        }
+    }
+    if kind == "line" {
+        if let Some(casing) = &recipe.casing {
+            *style = crate::style_authoring::apply_casing(
+                style.clone(),
+                &color(&casing.color)?,
+                casing.width,
+            )?;
+        }
+    }
+    if (kind == "symbol" || kind == "circle")
+        && (!recipe.preserve_secondary_halo
+            || !crate::style_plan::second_style_channel(style)
+                .is_some_and(|channel| channel.key == "halo"))
+    {
+        if let Some(ink) = &recipe.halo {
+            halo(style, snapshot, Some(&color(&ink.color)?), Some(ink.width))?;
+        }
+    }
+    let _ = reference;
     Ok(())
 }
 
@@ -659,6 +701,7 @@ mod tests {
     #[test]
     fn guarded_replay_uses_storage_digest_and_satellite_retains_secondary_authorship() {
         let mut snapshot = snapshot("symbol");
+        snapshot["style_presets"]["authoring"]["satellite"] = json!({"palette":["#FACC15","#22D3EE"],"missing_color":"#94A3B8","flat_color":"#FACC15","flatten_categories":false,"halo":{"color":"#FFFFFF","width":0.9},"casing":{"color":"#0F172A","width":0.75}});
         snapshot["style_editors"][0]["content_sha256"] = json!("a".repeat(64));
         let instruction:StyleInstruction=serde_json::from_value(json!({"kind":"guarded","expected_digest":"a".repeat(64),"instruction":{"kind":"categorical","channel":"color","field":"kind","values":[{"value":"wood","output":"#FFFFFF"}],"other":"#64748B"}})).unwrap();
         let planned = plan_style_edit(&snapshot, "master/test", &instruction).unwrap();
