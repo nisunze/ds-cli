@@ -29,6 +29,8 @@ pub enum Command {
     },
     ReadBackup {
         backup_id: String,
+        #[serde(default)]
+        all_projects: bool,
     },
     PlanRetirement {
         expected_inventory_sha256: String,
@@ -117,11 +119,12 @@ pub fn request_body(request: &Request) -> Result<Value, String> {
     }
     if let Command::Inventory { all_projects, .. }
     | Command::Backup { all_projects, .. }
+    | Command::ReadBackup { all_projects, .. }
     | Command::PlanRetirement { all_projects, .. } = &request.command
     {
         data["all_projects"] = json!(all_projects);
     }
-    if let Command::ReadBackup { backup_id } | Command::PlanRetirement { backup_id, .. } =
+    if let Command::ReadBackup { backup_id, .. } | Command::PlanRetirement { backup_id, .. } =
         &request.command
     {
         if !exact(backup_id, 200) {
@@ -136,6 +139,23 @@ pub fn admit(request: &Request, response: &Value) -> Result<Value, String> {
         return Err("style_governance_invalid: missing governed API receipt".into());
     }
     let data = &response["data"];
+    let requested_scope = match &request.command {
+        Command::Inventory { all_projects, .. }
+        | Command::Backup { all_projects, .. }
+        | Command::ReadBackup { all_projects, .. }
+        | Command::PlanRetirement { all_projects, .. } => Some(*all_projects),
+        _ => None,
+    };
+    if let Some(all_projects) = requested_scope {
+        if data["scope"]["project_id"] != request.project.as_str()
+            || data["scope"]["all_projects"] != all_projects
+        {
+            return Err(
+                "project_context_changed: inventory or backup belongs to another captured scope"
+                    .into(),
+            );
+        }
+    }
     match &request.command {
         Command::Table => {
             let table: crate::style_resolution::Snapshot = serde_json::from_value(data.clone())
@@ -235,7 +255,7 @@ pub fn admit(request: &Request, response: &Value) -> Result<Value, String> {
                 );
             }
         }
-        Command::ReadBackup { backup_id } => {
+        Command::ReadBackup { backup_id, .. } => {
             if data["backup_id"] != backup_id.as_str()
                 || !data["entries"].is_array()
                 || !data["inventory_sha256"].as_str().is_some_and(digest)
@@ -320,8 +340,15 @@ mod tests {
                 all_projects: true,
             },
         };
-        let mut receipt = json!({"success":true,"data":{"dry_run":true,"deletion_executable":false,"inventory_sha256":"a".repeat(64),"backup_id":"snapshot","candidates":[],"blocked":[]}});
+        let mut receipt = json!({"success":true,"data":{"dry_run":true,"deletion_executable":false,"inventory_sha256":"a".repeat(64),"backup_id":"snapshot","scope":{"project_id":"fixture","all_projects":true},"candidates":[],"blocked":[]}});
         assert!(admit(&request, &receipt).is_ok());
+        let mut other_project = receipt.clone();
+        other_project["data"]["scope"]["project_id"] = json!("other");
+        assert!(
+            admit(&request, &other_project)
+                .unwrap_err()
+                .contains("project_context_changed")
+        );
         receipt["data"]["deletion_executable"] = json!(true);
         assert!(admit(&request, &receipt).is_err());
     }
