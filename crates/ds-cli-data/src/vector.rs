@@ -31,11 +31,17 @@ const SOURCE: Arg = Arg {
     name: "source",
     kind: ds_cli_contract::spec::ArgKind::Value,
     value: "<path>",
-    required: true,
+    required: false,
     default: None,
     choices: &[],
-    summary: "Path to a GeoJSON document: a FeatureCollection, a Feature, or a bare geometry.",
+    summary: "Local GeoJSON path; supply exactly one of source or source-json.",
 };
+
+const SOURCE_JSON: Arg = Arg::value(
+    "source-json",
+    "<json-text>",
+    "Inline GeoJSON text, not an MCP object; alternative to source.",
+);
 
 const OUT: Arg = Arg::value(
     "out",
@@ -62,6 +68,11 @@ pub const DOCUMENT_EMPTY: Refusal = Refusal {
     code: "vector_document_empty",
     when: "The document parsed but holds no features.",
     remedy: "Pass a GeoJSON document with at least one feature.",
+};
+pub const INPUT_CHOICE_INVALID: Refusal = Refusal {
+    code: "vector_input_choice_invalid",
+    when: "A document has both file and JSON-text inputs, or neither.",
+    remedy: "Supply exactly one of source/source-json, and one of against/against-json for intersect.",
 };
 pub const NO_ELIGIBLE_FEATURE: Refusal = Refusal {
     code: "vector_no_eligible_feature",
@@ -124,17 +135,26 @@ fn refuse(refusal: VectorRefusal) -> Failure {
 }
 
 fn read_document(inputs: &Inputs, arg: &str) -> Result<Value, Failure> {
-    let path = inputs.value(arg).ok_or_else(|| {
-        Failure::invalid("source_unreadable", format!("--{arg} is required."))
-            .remedy("Pass the path to a local GeoJSON file.")
-    })?;
-    let bytes = crate::read_source(path)?;
-    serde_json::from_slice(&bytes).map_err(|error| {
+    let json_arg = format!("{arg}-json");
+    let parsed = match (inputs.value(arg), inputs.value(&json_arg)) {
+        (Some(path), None) => serde_json::from_slice(&crate::read_source(path)?),
+        (None, Some(text)) => serde_json::from_str(text),
+        _ => {
+            return Err(Failure::invalid(
+                INPUT_CHOICE_INVALID.code,
+                format!("Supply exactly one of --{arg} or --{json_arg}."),
+            )
+            .remedy(format!(
+                "Use --{arg} for a local GeoJSON path or --{json_arg} for GeoJSON text."
+            )));
+        }
+    };
+    parsed.map_err(|error| {
         Failure::invalid(
-            "vector_document_malformed",
-            format!("Could not parse {path}: {error}"),
+            DOCUMENT_MALFORMED.code,
+            format!("Could not parse --{arg} document: {error}"),
         )
-        .remedy("Pass a FeatureCollection, a Feature, or a bare geometry object.")
+        .remedy(DOCUMENT_MALFORMED.remedy)
     })
 }
 
@@ -333,7 +353,7 @@ fn render_produced(data: &Value, noun: &str) -> String {
 pub static BUFFER_COMMAND: Command = Command {
     id: "data.vector.buffer",
     path: &["data", "vector", "buffer"],
-    contract: 1,
+    contract: 2,
     summary: "Buffer each feature by a fixed distance into a polygon zone.",
     purpose: "\
 Grows a zone of --radius-m metres around every point, line and polygon in a \
@@ -347,6 +367,7 @@ a corridor, a setback or a service area stays traceable to what produced it.",
     execution: Execution::Sync,
     args: &[
         SOURCE,
+        SOURCE_JSON,
         Arg::value("radius-m", "<0.01..100000>", "Buffer distance in metres.").required(),
         Arg::value(
             "segments",
@@ -372,6 +393,7 @@ made but not returned inline. `--out` writes every one of them.",
         crate::UNREADABLE,
         DOCUMENT_MALFORMED,
         DOCUMENT_EMPTY,
+        INPUT_CHOICE_INVALID,
         NO_ELIGIBLE_FEATURE,
         DISTANCE_OUT_OF_RANGE,
         LIMIT_OUT_OF_RANGE,
@@ -471,7 +493,7 @@ pub fn render_buffer(data: &Value) -> String {
 pub static SAMPLE_COMMAND: Command = Command {
     id: "data.vector.sample",
     path: &["data", "vector", "sample"],
-    contract: 1,
+    contract: 2,
     summary: "Place points along each line at a fixed interval.",
     purpose: "\
 Walks every line in a GeoJSON document and drops a point every --interval-m \
@@ -485,6 +507,7 @@ rather than silently dropped.",
     execution: Execution::Sync,
     args: &[
         SOURCE,
+        SOURCE_JSON,
         Arg::value("interval-m", "<0.01..1000000>", "Spacing in metres.").required(),
         Arg::switch("include-ends", "Also place a point at each line end."),
         OUT,
@@ -506,6 +529,7 @@ them; `note` says why a run that worked placed no point.",
         crate::UNREADABLE,
         DOCUMENT_MALFORMED,
         DOCUMENT_EMPTY,
+        INPUT_CHOICE_INVALID,
         NO_ELIGIBLE_FEATURE,
         DISTANCE_OUT_OF_RANGE,
         LIMIT_OUT_OF_RANGE,
@@ -521,7 +545,6 @@ them; `note` says why a run that worked placed no point.",
         "chainage",
         "stationing",
         "interpolate",
-        "densify",
         "sampling",
     ],
     requires: Requires::Server,
@@ -580,21 +603,31 @@ pub fn render_sample(data: &Value) -> String {
 pub static INTERSECT_COMMAND: Command = Command {
     id: "data.vector.intersect",
     path: &["data", "vector", "intersect"],
-    contract: 1,
+    contract: 2,
     summary: "Find the points where two line documents cross.",
     purpose: "\
 Compares every line in --source against every line in --against and returns a \
 point for each crossing, naming the two features that produced it. This is \
-the overlay question a network engineer asks — where does this feeder cross \
-that road, that river, that other feeder — answered from two local files with \
-no project and no window.",
+the line-crossing question — where does this feeder cross that road, river \
+or feeder — answered from local files or inline GeoJSON text, with no project \
+or window. Returns crossing points, not polygon clipping or overlap geometry.",
     chapter: Chapter::Data,
     effect: Effect::LocalFileWrite,
     authority: Authority::None,
     execution: Execution::Sync,
     args: &[
         SOURCE,
-        Arg::value("against", "<path>", "The second GeoJSON document of lines.").required(),
+        SOURCE_JSON,
+        Arg::value(
+            "against",
+            "<path>",
+            "Second line document; alternative to against-json.",
+        ),
+        Arg::value(
+            "against-json",
+            "<json-text>",
+            "Second line document as JSON text, not an MCP object.",
+        ),
         OUT,
         OVERWRITE,
         LIMIT,
@@ -614,6 +647,7 @@ every crossing; `note` says so when nothing crosses, which is an answer.",
         crate::UNREADABLE,
         DOCUMENT_MALFORMED,
         DOCUMENT_EMPTY,
+        INPUT_CHOICE_INVALID,
         NO_ELIGIBLE_FEATURE,
         LIMIT_OUT_OF_RANGE,
         crate::OUTPUT_REFUSED,
@@ -627,9 +661,7 @@ every crossing; `note` says so when nothing crosses, which is an answer.",
         "overlay",
         "crossing",
         "intersection",
-        "st_intersection",
         "topology",
-        "clip",
     ],
     requires: Requires::Server,
     availability: crate::available,
@@ -690,7 +722,7 @@ pub fn render_intersect(data: &Value) -> String {
 pub static MEASURE_COMMAND: Command = Command {
     id: "data.vector.measure",
     path: &["data", "vector", "measure"],
-    contract: 1,
+    contract: 2,
     summary: "Length, area and vertex counts for every feature in a document.",
     purpose: "\
 Reports what a GeoJSON document actually contains: each feature's geometry \
@@ -703,7 +735,7 @@ guessed at.",
     effect: Effect::ReadOnly,
     authority: Authority::None,
     execution: Execution::Sync,
-    args: &[SOURCE, LIMIT],
+    args: &[SOURCE, SOURCE_JSON, LIMIT],
     output: "\
 `totals` (features, by geometry class, length_m, area_m2, vertices) counted \
 over the WHOLE document, and a `features` array — bounded by --limit, which \
@@ -719,6 +751,7 @@ its holes.",
         crate::UNREADABLE,
         DOCUMENT_MALFORMED,
         DOCUMENT_EMPTY,
+        INPUT_CHOICE_INVALID,
         NO_ELIGIBLE_FEATURE,
         LIMIT_OUT_OF_RANGE,
     ],

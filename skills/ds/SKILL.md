@@ -92,6 +92,8 @@ DS data or effects or route around `ds` with a gap file or API call.
   customers in a boundary; seeded per project).
 - Maps — `ds-map-composition` (print hierarchy, relief), `ds-map-local-data`
   (temporary layers, viewport), `ds-style-composite` (two-field cartography).
+- Local geometry — `ds-vector-tools` (native GeoJSON measurement, zones,
+  points along lines and line crossings).
 - Design and delivery — `ds-grid-spotting`, `ds-lv-design-revision`,
   `ds-lv-voltage-drop`, `ds-pls-cadd-terrain-roundtrip`,
   `ds-pls-cadd-backup-delivery`, `ds-pls-cadd-native-dialogs`,

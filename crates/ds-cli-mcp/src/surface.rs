@@ -391,7 +391,9 @@ impl Profile {
             // Seventeen geospatial leaves plus bootstrap: the same answer
             // can be kept as GeoJSON or converted to the analytical
             // GeoParquet format without switching MCP profiles.
-            Self::Datasets => 19,
+            // Complete the local vector workflow beside buffer: measurement,
+            // line sampling and crossings add three leaves, plus bootstrap.
+            Self::Datasets => 22,
             // The file-in/file-out engine workflow: sixteen leaves plus both
             // bootstrap tools. `dsgrid replace-structure` belongs beside
             // `import-structure`; `dsgrid.backup.preview` inspects the native
@@ -686,6 +688,9 @@ const DATASET_COMMANDS: &[&str] = &[
     "data.customers.query",
     "data.upi.lookup",
     "data.vector.buffer",
+    "data.vector.measure",
+    "data.vector.sample",
+    "data.vector.intersect",
     "data.admin-bounds.list",
     "data.admin-bounds.read",
     "data.inspect",
@@ -2351,7 +2356,7 @@ pub const fn chapter_description(chapter: Chapter) -> &'static str {
     match chapter {
         Chapter::Catalog => "Discover DS chapters, commands, and one exact live contract.",
         Chapter::Data => {
-            "Discover project-visible geographic datasets, plan bounded BigQuery reads with a cost estimate, and query held local layers as GeoJSON. Name the authorized project on every project data request. Local file inspection and conversion need no project. Describe a command before invoking it."
+            "Process local GeoJSON with native vector measurement, buffering, line sampling and crossing tools; inspect or convert local files. Discover project-visible datasets, plan costed BigQuery reads and query held layers as GeoJSON. Local tools need no project; name the authorized project on project requests. Describe a command before invoking it."
         }
         Chapter::Project => {
             "Discover authorized projects and manage plans, tasks, assignments, and records for the project named in each request. Describe a command before invoking it."

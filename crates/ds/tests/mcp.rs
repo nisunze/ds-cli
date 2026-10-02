@@ -15,6 +15,100 @@ use sha2::{Digest, Sha256};
 static NEXT_TEMP: AtomicU64 = AtomicU64::new(0);
 
 #[test]
+fn datasets_vector_tools_accept_json_text_and_match_native_cli_answers() {
+    let line = json!({"type":"LineString","coordinates":[[30.0619,-1.9441],[30.0719,-1.9441]]});
+    let road = json!({"type":"LineString","coordinates":[[30.0669,-1.9491],[30.0669,-1.9391]]});
+    let line_json = line.to_string();
+    let road_json = road.to_string();
+    let mut requests = vec![json!({"jsonrpc":"2.0","id":1,"method":"tools/list"})];
+    for (id, name, args) in [
+        (2, "data_vector_measure", json!({"source-json":line_json})),
+        (
+            3,
+            "data_vector_buffer",
+            json!({"source-json":line_json,"radius-m":"30"}),
+        ),
+        (
+            4,
+            "data_vector_sample",
+            json!({"source-json":line_json,"interval-m":"25","include-ends":true}),
+        ),
+        (
+            5,
+            "data_vector_intersect",
+            json!({"source-json":line_json,"against-json":road_json}),
+        ),
+        (6, "data_vector_measure", json!({"source-json":line})),
+        (
+            7,
+            "data_vector_measure",
+            json!({"source-json":line_json,"source":"unread-source.geojson"}),
+        ),
+        (8, "data_vector_intersect", json!({"source-json":line_json})),
+        (9, "data_vector_measure", json!({"source-json":"{"})),
+    ] {
+        requests.push(json!({"jsonrpc":"2.0","id":id,"method":"tools/call","params":{"name":name,"arguments":args}}));
+    }
+    let (messages, _) = mcp(
+        &["--exposure", "commands", "--profile", "datasets"],
+        &requests,
+    );
+    let tools = response(&messages, 1)["result"]["tools"]
+        .as_array()
+        .unwrap();
+    assert_eq!(tools.len(), 22);
+    for operation in ["measure", "buffer", "sample", "intersect"] {
+        let name = format!("data_vector_{operation}");
+        let tool = tools.iter().find(|tool| tool["name"] == name).unwrap();
+        assert_eq!(
+            tool["inputSchema"]["properties"]["source-json"]["type"],
+            "string"
+        );
+        assert!(
+            tool["inputSchema"]["properties"]["source-json"]["description"]
+                .as_str()
+                .unwrap()
+                .contains("not an MCP object")
+        );
+        assert_eq!(
+            cli(&[
+                "capabilities",
+                &format!("data.vector.{operation}"),
+                "--output",
+                "json"
+            ])["data"]["command"]["contract"],
+            2
+        );
+    }
+    for (id, operation, extra) in [
+        (2, "measure", vec![]),
+        (3, "buffer", vec!["--radius-m", "30"]),
+        (4, "sample", vec!["--interval-m", "25", "--include-ends"]),
+        (5, "intersect", vec!["--against-json", &road_json]),
+    ] {
+        let mut args = vec!["data", "vector", operation, "--source-json", &line_json];
+        args.extend(extra);
+        args.extend(["--output", "json"]);
+        assert_eq!(
+            response(&messages, id)["result"]["structuredContent"],
+            cli_envelope(&args)
+        );
+    }
+    for (id, code) in [
+        (6, "mcp_arguments_invalid"),
+        (7, "vector_input_choice_invalid"),
+        (8, "vector_input_choice_invalid"),
+        (9, "vector_document_malformed"),
+    ] {
+        assert_eq!(
+            response(&messages, id)["result"]["structuredContent"]["error"]["code"],
+            code
+        );
+        assert_eq!(response(&messages, id)["result"]["isError"], true);
+    }
+}
+
+#[test]
 fn exact_global_member_is_discovered_and_invoked_as_the_same_cli_contract() {
     let id = "library.global.resolve-member";
     let direct = cli(&["capabilities", id, "--output", "json"]);

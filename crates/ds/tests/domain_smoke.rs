@@ -14992,6 +14992,203 @@ fn vector_fixture(root: &std::path::Path) -> (PathBuf, PathBuf) {
     (feeder, road)
 }
 
+#[test]
+fn vector_json_text_and_file_inputs_produce_the_same_native_answers() {
+    let root = temp_root("vector-json-inputs");
+    let (feeder, road) = vector_fixture(&root);
+    let feeder_json = std::fs::read_to_string(&feeder).unwrap();
+    let road_json = std::fs::read_to_string(&road).unwrap();
+    let feeder = feeder.to_str().unwrap();
+    let road = road.to_str().unwrap();
+
+    for (operation, arguments) in [
+        ("measure", vec![]),
+        ("buffer", vec!["--radius-m", "30"]),
+        ("sample", vec!["--interval-m", "25", "--include-ends"]),
+        ("intersect", vec!["--against", road]),
+    ] {
+        let mut from_file = vec!["data", "vector", operation, "--source", feeder];
+        from_file.extend_from_slice(&arguments);
+        from_file.extend(["--output", "json"]);
+        let mut from_json = vec!["data", "vector", operation, "--source-json", &feeder_json];
+        from_json.extend_from_slice(&arguments);
+        from_json.extend(["--output", "json"]);
+        assert_eq!(ok(&from_json), ok(&from_file), "{operation}");
+    }
+    let expected = ok(&[
+        "data",
+        "vector",
+        "intersect",
+        "--source",
+        feeder,
+        "--against",
+        road,
+        "--output",
+        "json",
+    ]);
+    for (source_arg, source) in [
+        ("--source", feeder),
+        ("--source-json", feeder_json.as_str()),
+    ] {
+        assert_eq!(
+            ok(&[
+                "data",
+                "vector",
+                "intersect",
+                source_arg,
+                source,
+                "--against-json",
+                &road_json,
+                "--output",
+                "json",
+            ]),
+            expected,
+        );
+    }
+
+    for args in [
+        vec!["data", "vector", "measure", "--output", "json"],
+        vec![
+            "data",
+            "vector",
+            "measure",
+            "--source",
+            feeder,
+            "--source-json",
+            &feeder_json,
+            "--output",
+            "json",
+        ],
+        vec![
+            "data",
+            "vector",
+            "intersect",
+            "--source-json",
+            &feeder_json,
+            "--output",
+            "json",
+        ],
+        vec![
+            "data",
+            "vector",
+            "intersect",
+            "--source-json",
+            &feeder_json,
+            "--against",
+            road,
+            "--against-json",
+            &road_json,
+            "--output",
+            "json",
+        ],
+    ] {
+        assert_eq!(refusal(&args), "vector_input_choice_invalid");
+    }
+    for malformed in ["", "{", "17"] {
+        assert_eq!(
+            refusal(&[
+                "data",
+                "vector",
+                "measure",
+                "--source-json",
+                malformed,
+                "--output",
+                "json"
+            ]),
+            "vector_document_malformed",
+        );
+    }
+    assert_eq!(
+        refusal(&[
+            "data",
+            "vector",
+            "intersect",
+            "--source-json",
+            &feeder_json,
+            "--against-json",
+            "{",
+            "--output",
+            "json"
+        ]),
+        "vector_document_malformed",
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn vector_json_input_bounds_and_refusals_preserve_complete_output_claims() {
+    let root = temp_root("vector-json-bounds");
+    let (feeder, road) = vector_fixture(&root);
+    let mut source: Value = serde_json::from_slice(&std::fs::read(feeder).unwrap()).unwrap();
+    let line = source["features"][0].clone();
+    source["features"] = json!([line.clone(), line.clone(), line]);
+    let source_json = source.to_string();
+    let written = root.join("bounded.geojson");
+    let buffered = ok(&[
+        "data",
+        "vector",
+        "buffer",
+        "--source-json",
+        &source_json,
+        "--radius-m",
+        "30",
+        "--limit",
+        "1",
+        "--out",
+        written.to_str().unwrap(),
+        "--output",
+        "json",
+    ]);
+    assert_eq!(buffered["source_features"], 3);
+    assert_eq!(buffered["processed"], 1);
+    assert_eq!(buffered["produced"], 1);
+    assert!(buffered["more"].as_str().unwrap().contains("2"));
+    let output_bytes = std::fs::read(&written).unwrap();
+    let output: Value = serde_json::from_slice(&output_bytes).unwrap();
+    assert_eq!(output["features"].as_array().unwrap().len(), 1);
+    let refused = refusal(&[
+        "data",
+        "vector",
+        "buffer",
+        "--source",
+        road.to_str().unwrap(),
+        "--source-json",
+        &source_json,
+        "--radius-m",
+        "30",
+        "--out",
+        written.to_str().unwrap(),
+        "--overwrite",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(refused, "vector_input_choice_invalid");
+    assert_eq!(std::fs::read(&written).unwrap(), output_bytes);
+
+    let road_json = std::fs::read_to_string(&road).unwrap();
+    let mut against: Value = serde_json::from_str(&road_json).unwrap();
+    let road_line = against["features"][0].clone();
+    against["features"] = json!([road_line.clone(), road_line]);
+    let crossing = ok(&[
+        "data",
+        "vector",
+        "intersect",
+        "--source-json",
+        &source_json,
+        "--against-json",
+        &against.to_string(),
+        "--limit",
+        "1",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(crossing["source_features"], 3);
+    assert_eq!(crossing["against_features"], 2);
+    assert_eq!(crossing["produced"], 1);
+    assert!(crossing["more"].as_str().unwrap().contains("--against"));
+    let _ = std::fs::remove_dir_all(&root);
+}
+
 /// The failure this family was built for, proved end to end.
 ///
 /// An engineer's coding agent could not find this stack's vector processing

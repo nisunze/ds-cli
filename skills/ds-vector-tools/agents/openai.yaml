@@ -1,0 +1,4 @@
+interface:
+  display_name: "DS Vector Tools"
+  short_description: "Native local GeoJSON processing through CLI or MCP"
+  default_prompt: "Use $ds-vector-tools to process local GeoJSON through the compiled DS tools and report complete JSON geometry results."

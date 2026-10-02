@@ -21,6 +21,20 @@ work through MCP with no map open.
 inspect → (choose the sheet, layer, or coordinate columns) → convert
 ```
 
+## Native local vector processing
+
+`data vector measure`, `buffer`, `sample` and `intersect` call the same compiled
+Rust operations used by the map. They accept WGS84 GeoJSON from a local file
+or inline JSON text and return JSON receipts with GeoJSON results. Read each
+live descriptor for its mutually exclusive inputs and bounds. MCP inline
+documents are strings containing JSON text, not object arguments; all four
+tools are in the `datasets` profile or the broad `ds_data` chapter. Sampling
+returns points along lines and intersection returns line-crossing points;
+neither promises line densification or polygon overlay. Check `skipped`,
+`more` and `note` for eligibility and completeness. An output file includes
+all produced results, but cannot include source features excluded by a bound.
+Use the shipped `ds-vector-tools` skill for this local workflow.
+
 ## `admin-bounds attach`
 
 Writes a new CSV, TSV, or GeoJSON elevation-point file carrying `province`,
