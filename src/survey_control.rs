@@ -9,6 +9,8 @@ use serde_json::{json, Value};
 pub enum SurveyControlCommand {
     #[serde(rename = "survey.forms.list")]
     FormsList(CatalogQuery),
+    #[serde(rename = "survey.forms.purge-candidates")]
+    FormPurgeCandidates(Empty),
     #[serde(rename = "survey.form.read")]
     FormRead(FormRead),
     #[serde(rename = "survey.form.types")]
@@ -219,7 +221,7 @@ impl SurveyControlCommand {
             Self::FormRead(q) => {
                 slug(&q.slug) && q.field_offset <= 100_000 && (1..=100).contains(&q.field_limit)
             }
-            Self::FormTypes(_) => true,
+            Self::FormTypes(_) | Self::FormPurgeCandidates(_) => true,
             Self::FormCreate(v) => v.schema.is_object(),
             Self::FormUpdate(v) => {
                 slug(&v.slug)
@@ -315,6 +317,22 @@ pub const FORM_PURGE_COUNTS: &[&str] = &[
     "bq_rows",
     "managed_tile_pointers",
 ];
+
+pub fn form_purge_candidates_response(wire: Value) -> Result<Value, Refusal> {
+    let rows = wire["slugs"].as_array().ok_or_else(unreadable)?;
+    if wire["pattern"] != "_-_" || wire["complete"] != true || rows.len() > 500 {
+        return Err(unreadable());
+    }
+    let mut previous: Option<&str> = None;
+    for row in rows {
+        let value = row.as_str().ok_or_else(unreadable)?;
+        if !slug(value) || !value.contains("_-_") || previous.is_some_and(|p| p >= value) {
+            return Err(unreadable());
+        }
+        previous = Some(value);
+    }
+    Ok(json!({"pattern":"_-_","complete":true,"total":rows.len(),"slugs":rows}))
+}
 
 fn purge_digest(value: &str) -> bool {
     value.strip_prefix("sha256:").is_some_and(|hex| {

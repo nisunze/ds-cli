@@ -8319,6 +8319,23 @@ fn survey_form_purge_is_exact_digest_pinned_and_preserves_partial_and_stale_rece
     let transport = FixtureTransport::with_sign_in(SIGN_IN);
     let mut client = signed_in(transport.clone(), MemoryStore::default());
     let slug = "field_notes_-_areas";
+    push_survey_control(
+        &transport,
+        json!({"status":"success","pattern":"_-_","complete":true,"slugs":[slug]}),
+    );
+    let candidates = client
+        .survey_control(
+            None,
+            &SurveyControlCommand::FormPurgeCandidates(Empty {}),
+            NOW + 1,
+        )
+        .unwrap();
+    assert_eq!(candidates["slugs"], json!([slug]));
+    assert!(transport
+        .calls()
+        .last()
+        .unwrap()
+        .contains("purge_candidates"));
     let digest = format!("sha256:{}", "a".repeat(64));
     let counts = |n: u64| -> Value {
         FORM_PURGE_COUNTS

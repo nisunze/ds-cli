@@ -15,7 +15,7 @@ fn call<T: AuthorizedTransport>(
     let purge = payload
         .get("action")
         .and_then(Value::as_str)
-        .is_some_and(|action| matches!(action, "purge_plan" | "purge"));
+        .is_some_and(|action| matches!(action, "purge_candidates" | "purge_plan" | "purge"));
     let response = transport.survey_control(crate::SurveyControlCall {
         profile,
         route,
@@ -78,6 +78,11 @@ pub(crate) fn run<T: AuthorizedTransport>(
     let mut send = |route, payload| call(profile, transport, authority, route, payload);
     use SurveyControlCommand::*;
     match command {
+        FormPurgeCandidates(_) => {
+            let result = send(SurveyRoute::Factory, json!({"action":"purge_candidates"}))?;
+            ds_command_kernel::survey_control::form_purge_candidates_response(result)
+                .map_err(|_| unreadable())
+        }
         FormsList(q) => {
             let mut body = json!({"action":"list"});
             if let Some(status) = q.status.as_deref().filter(|s| *s != "all") {

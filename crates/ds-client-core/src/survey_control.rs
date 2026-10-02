@@ -11,6 +11,8 @@ use serde_json::Value;
 pub enum SurveyControlCommand {
     #[serde(rename = "survey.forms.list")]
     FormsList(CatalogQuery),
+    #[serde(rename = "survey.forms.purge-candidates")]
+    FormPurgeCandidates(Empty),
     #[serde(rename = "survey.form.read")]
     FormRead(FormRead),
     #[serde(rename = "survey.form.types")]

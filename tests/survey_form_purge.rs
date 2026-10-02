@@ -1,8 +1,34 @@
+use ds_command_kernel::survey_control::form_purge_candidates_response;
 use ds_command_kernel::survey_control::{
     form_purge_plan_response, form_purge_response, FormPurge, SurveyControlCommand,
     FORM_PURGE_COUNTS,
 };
 use serde_json::{json, Value};
+
+#[test]
+fn candidates_require_complete_distinct_ordered_exact_legacy_slugs() {
+    let valid = json!({"pattern":"_-_","complete":true,"slugs":["aderm_-_institutions","field_notes_-_areas"]});
+    assert_eq!(
+        form_purge_candidates_response(valid.clone()).unwrap()["total"],
+        2
+    );
+    for (key, value) in [
+        ("complete", json!(false)),
+        ("slugs", json!(["field_notes"])),
+        ("slugs", json!(["x_-_x", "x_-_x"])),
+        ("slugs", json!(["z_-_z", "a_-_a"])),
+        ("slugs", json!(["../_-_x"])),
+    ] {
+        let mut invalid = valid.clone();
+        invalid[key] = value;
+        assert!(form_purge_candidates_response(invalid).is_err());
+    }
+    assert_eq!(
+        form_purge_candidates_response(json!({"pattern":"_-_","complete":true,"slugs":[]}))
+            .unwrap()["total"],
+        0
+    );
+}
 
 fn digest() -> String {
     format!("sha256:{}", "a".repeat(64))
