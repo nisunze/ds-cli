@@ -34,6 +34,7 @@
 //! respond`) and the fold of the engine's answer. Same doctrine — the browser's
 //! rules, translated as they were, reachable without a window.
 
+mod browser;
 pub mod correspondence;
 mod hierarchy;
 pub mod model_links;
@@ -94,6 +95,8 @@ struct PlanRequest {
     ds_project: String,
     /// The canonical graph exactly as the engine published it.
     graph: Value,
+    #[serde(default = "browser::wire_format")]
+    graph_format: String,
     #[serde(default)]
     limit: Option<i64>,
 }
@@ -213,7 +216,7 @@ fn plan(request: PlanRequest) -> Result<PlanReply, String> {
             ));
         }
     };
-    let graph = decode_project_graph(&request.graph, &request.ds_project);
+    let graph = browser::graph(&request.graph, &request.ds_project, &request.graph_format)?;
     let day = request.today;
 
     let all_phases = projections::phases(&graph);
@@ -297,6 +300,26 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn browser_canonical_graph_uses_the_same_lateness_and_timestamps() {
+        let reply = run(json!({
+            "schema": SCHEMA, "action": "plan", "today": "2026-10-02",
+            "graph_format": "canonical", "graph": {"projectId": "p", "revision": 7,
+                "tasks": [
+                    {"id": "late", "title": "Late", "finishDate": "2026-10-01",
+                     "deliveryState": "in_progress", "updatedAt": 1790812800000i64, "updatedBy": "owner"},
+                    {"id": "inbox", "title": "Unscheduled", "finishDate": "", "placement": "inbox"},
+                    {"id": "done", "title": "Done", "finishDate": "2026-10-01", "deliveryState": "complete"}
+                ], "permissions": {"view": true, "editSchedule": true}
+            }
+        })).unwrap();
+        assert_eq!(reply["project"], "p");
+        assert_eq!(reply["dashboard"]["pastPlannedFinish"], 1);
+        assert_eq!(reply["attentionTotal"], 1);
+        assert_eq!(reply["recent"][0]["updatedBy"], "owner");
+        assert_eq!(reply["permissions"]["editSchedule"], true);
+    }
 
     fn run(request: Value) -> Result<Value, String> {
         evaluate(&serde_json::to_vec(&request).expect("request serialises"))
