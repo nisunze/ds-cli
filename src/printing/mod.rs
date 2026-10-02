@@ -68,6 +68,10 @@ pub struct Layout {
     /// separately, so a template never embeds mutable global style JSON.
     #[serde(default)]
     pub style_refs: BTreeMap<String, String>,
+    /// Exact semantic choices authored in the governed template. Legacy
+    /// explicit refs remain readable; no host infers a key from a ref name.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub style_keys: BTreeMap<String, crate::style_resolution::Key>,
     /// Context requested by this named layout. Desktop resolves exact locally
     /// installed catalog versions and may retain bounded derived sources with
     /// the transformer room. Hosted rendering deliberately ignores this list.
@@ -1199,6 +1203,17 @@ pub fn validate(layout: &Layout) -> Result<(), String> {
     {
         return Err("title block carries at most 64 identifier keys of up to 2000 bytes".into());
     }
+    if layout.style_keys.len() > 100 {
+        return Err("print style keys exceed 100 layer bindings".into());
+    }
+    for (layer, key) in &layout.style_keys {
+        if !identifier(layer) || key.target != crate::style_resolution::Target::Print {
+            return Err(format!(
+                "print layer {layer} requires an exact print resolution key"
+            ));
+        }
+        key.validate().map_err(|error| error.to_string())?;
+    }
     if layout.style_refs.len() > 100
         || layout.style_refs.iter().any(|(layer, reference)| {
             !identifier(layer)
@@ -1427,6 +1442,7 @@ pub fn default_layout() -> Layout {
         assets: BTreeMap::new(),
         styles: BTreeMap::new(),
         style_refs: BTreeMap::new(),
+        style_keys: BTreeMap::new(),
         context_layers: Vec::new(),
         elements: vec![
             Element {
@@ -1986,6 +2002,14 @@ pub enum Command {
         style_refs: BTreeMap<String, String>,
         #[serde(default)]
         policy: Option<adjacent_networks::Policy>,
+    },
+    /// Resolve an exact held API table into the renderer's held document map.
+    /// Style documents own all pens; this operation selects no style by name.
+    ResolveStyles {
+        layout: Layout,
+        resolution: crate::style_resolution::Snapshot,
+        #[serde(default)]
+        style_keys: BTreeMap<String, crate::style_resolution::Key>,
     },
     /// Toggle the configured project transformer shade without changing its style.
     SetFocusVisibility {
@@ -2654,6 +2678,31 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
             policy,
         } => {
             json!({"layout": adjacent_networks::configure(upgrade(layout)?, enabled, style_refs, policy)?})
+        }
+        Command::ResolveStyles {
+            layout,
+            resolution,
+            style_keys,
+        } => {
+            let mut layout = upgrade(layout)?;
+            let keys = if style_keys.is_empty() {
+                &layout.style_keys
+            } else {
+                &style_keys
+            };
+            if keys.is_empty() && !layout.style_refs.is_empty() {
+                return Err("style_resolution_required: migrate the governed printing template to exact style_keys through the API".into());
+            }
+            let captured = crate::style_resolution::prepare_print(&resolution, keys)
+                .map_err(|error| error.to_string())?;
+            for (layer, reference) in captured["style_refs"].as_object().unwrap() {
+                layout.styles.remove(layer);
+                layout
+                    .style_refs
+                    .insert(layer.clone(), reference.as_str().unwrap().into());
+            }
+            validate(&layout)?;
+            json!({"layout":layout,"capture":captured})
         }
         Command::SetContextLayers {
             mut layout,

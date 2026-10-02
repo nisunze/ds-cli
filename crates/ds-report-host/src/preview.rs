@@ -240,12 +240,35 @@ pub fn transformer_page(
     layout: &printing::Layout,
     print_context: impl FnOnce(&[PrintContextLayer]) -> Result<Option<PrintContextBytes>, HostFailure>,
 ) -> Result<PreviewPage, HostFailure> {
+    transformer_page_with_styles(engine, settings, room, layout, None, print_context)
+}
+
+/// A local preview may carry a kernel-produced exact style capture. It is
+/// admitted only after the governed source receipt becomes a local recipe;
+/// the original source digest and layout provenance stay unchanged.
+pub fn transformer_page_with_styles(
+    engine: &dyn crate::ReportEngine,
+    settings: &PreviewSettings<'_>,
+    room: &HeldRoom,
+    layout: &printing::Layout,
+    captured: Option<&Value>,
+    print_context: impl FnOnce(&[PrintContextLayer]) -> Result<Option<PrintContextBytes>, HostFailure>,
+) -> Result<PreviewPage, HostFailure> {
     // The recipe is over the draft's current form: a draft a host still holds
     // under the legacy schema, or without its completed bindings, is upgraded
     // here, so every host stages the same document for the same draft.
     let layout = printing::upgrade(layout.clone()).map_err(inputs_invalid)?;
-    let preview =
+    let mut preview =
         report_export::preview::with_layout(settings.receipt, &layout).map_err(inputs_invalid)?;
+    if let Some(captured) = captured {
+        preview.receipt = ds_command_kernel::style_resolution::overlay_local_preview(
+            settings.project_id,
+            &layout.style_refs,
+            &preview.receipt,
+            captured,
+        )
+        .map_err(|refusal| inputs_invalid(refusal.to_string()))?;
+    }
     let contexts = draft_context_layers(&preview)?;
     let context = print_context(&contexts)?;
     let (context_layers, context_omitted) = context_summary(&contexts, context.as_ref());
@@ -586,6 +609,18 @@ pub fn execute(
     request: &PreviewRequest,
     held: &HeldState,
 ) -> Result<PreviewPage, PreviewRefusal> {
+    execute_with_styles(engine, settings, request, held, None)
+}
+
+/// Carry exact immutable style data into the shared local-preview execution.
+/// Delivery paths continue to use their governed source receipts unchanged.
+pub fn execute_with_styles(
+    engine: &dyn crate::ReportEngine,
+    settings: &PreviewSettings<'_>,
+    request: &PreviewRequest,
+    held: &HeldState,
+    captured: Option<&Value>,
+) -> Result<PreviewPage, PreviewRefusal> {
     if held.room.transformer != request.transformer {
         return Err(PreviewRefusal::Host(inputs_invalid(format!(
             "the held room is {}'s, not {}'s",
@@ -618,93 +653,106 @@ pub fn execute(
     let mut wanted_layers: Vec<PrintContextLayer> = Vec::new();
     let adjacent = printing::adjacent_networks::selected(&request.layout);
     let mut adjacent_omission = None;
-    let outcome = transformer_page(engine, settings, &held.room, &request.layout, |wanted| {
-        wanted_layers = wanted.to_vec();
-        match preview_context(
-            root,
-            scope,
-            settings.project_id,
-            &request.transformer,
-            &layers,
-            wanted,
-            catalog,
-            &state,
-        ) {
-            Ok(context) => {
-                if let Some(context) = &context {
-                    reasons.extend(
-                        context
-                            .omitted
-                            .iter()
-                            .map(|omission| (omission.layer.clone(), omission.reason.clone())),
-                    );
-                }
-                let context = context_bytes(context);
-                if !adjacent {
-                    return Ok(context);
-                }
-                // Both native hosts read the same account/project hold. A
-                // draft never fetches unheld rooms or silently prints a subset.
-                let rooms = match &held.context.holdings {
-                    Some(holdings) if holdings.scope.project == settings.project_id => {
-                        ds_project_data::room_hold::active_print_rooms(
-                            &holdings.root,
-                            &holdings.scope,
-                        )
+    let outcome = transformer_page_with_styles(
+        engine,
+        settings,
+        &held.room,
+        &request.layout,
+        captured,
+        |wanted| {
+            wanted_layers = wanted.to_vec();
+            match preview_context(
+                root,
+                scope,
+                settings.project_id,
+                &request.transformer,
+                &layers,
+                wanted,
+                catalog,
+                &state,
+            ) {
+                Ok(context) => {
+                    if let Some(context) = &context {
+                        reasons.extend(
+                            context
+                                .omitted
+                                .iter()
+                                .map(|omission| (omission.layer.clone(), omission.reason.clone())),
+                        );
                     }
-                    _ => Err("no project holdings root on this host".into()),
-                };
-                let rooms = match rooms {
-                    Ok(rooms) => rooms,
-                    Err(reason) => {
-                        adjacent_omission = Some(reason);
+                    let context = context_bytes(context);
+                    if !adjacent {
                         return Ok(context);
                     }
-                };
-                let document = context
-                    .as_ref()
-                    .map(|c| serde_json::from_slice::<Value>(&c.bytes))
-                    .transpose()
-                    .map_err(|e| inputs_invalid(e.to_string()))?;
-                let doc = printing::adjacent_networks::attach(
-                    &request.transformer,
-                    &rooms,
-                    document.as_ref(),
-                    &printing::adjacent_networks::required_fields(
-                        std::slice::from_ref(&request.layout),
-                        &settings.receipt.sheets().map_err(inputs_invalid)?["printing_styles"],
+                    // Both native hosts read the same account/project hold. A
+                    // draft never fetches unheld rooms or silently prints a subset.
+                    let rooms = match &held.context.holdings {
+                        Some(holdings) if holdings.scope.project == settings.project_id => {
+                            ds_project_data::room_hold::active_print_rooms(
+                                &holdings.root,
+                                &holdings.scope,
+                            )
+                        }
+                        _ => Err("no project holdings root on this host".into()),
+                    };
+                    let rooms = match rooms {
+                        Ok(rooms) => rooms,
+                        Err(reason) => {
+                            adjacent_omission = Some(reason);
+                            return Ok(context);
+                        }
+                    };
+                    let document = context
+                        .as_ref()
+                        .map(|c| serde_json::from_slice::<Value>(&c.bytes))
+                        .transpose()
+                        .map_err(|e| inputs_invalid(e.to_string()))?;
+                    let doc = printing::adjacent_networks::attach(
+                        &request.transformer,
+                        &rooms,
+                        document.as_ref(),
+                        &printing::adjacent_networks::required_fields(
+                            std::slice::from_ref(&request.layout),
+                            captured
+                                .and_then(|capture| capture.get("print_styles"))
+                                .unwrap_or(
+                                    &settings.receipt.sheets().map_err(inputs_invalid)?
+                                        ["printing_styles"],
+                                ),
+                        )
+                        .map_err(inputs_invalid)?,
                     )
-                    .map_err(inputs_invalid)?,
-                )
-                .map_err(inputs_invalid)?;
-                let Some(doc) = doc else {
-                    return Ok(context);
-                };
-                let layers: BTreeMap<String, Value> = serde_json::from_value(doc["layers"].clone())
-                    .map_err(|e| inputs_invalid(e.to_string()))?;
-                let bytes = report_export::print_context_document(
-                    &doc["coverage"],
-                    &doc["sources"],
-                    &layers,
-                )
-                .map_err(inputs_invalid)?;
-                Ok(Some(PrintContextBytes {
-                    sha256: report_export::sha256_hex(&bytes),
-                    bytes,
-                    layers: layers.into_keys().collect(),
-                    omitted: context.map_or_else(Vec::new, |c| c.omitted),
-                }))
+                    .map_err(inputs_invalid)?;
+                    let Some(doc) = doc else {
+                        return Ok(context);
+                    };
+                    let layers: BTreeMap<String, Value> =
+                        serde_json::from_value(doc["layers"].clone())
+                            .map_err(|e| inputs_invalid(e.to_string()))?;
+                    let bytes = report_export::print_context_document(
+                        &doc["coverage"],
+                        &doc["sources"],
+                        &layers,
+                    )
+                    .map_err(inputs_invalid)?;
+                    Ok(Some(PrintContextBytes {
+                        sha256: report_export::sha256_hex(&bytes),
+                        bytes,
+                        layers: layers.into_keys().collect(),
+                        omitted: context.map_or_else(Vec::new, |c| c.omitted),
+                    }))
+                }
+                Err(PreviewContextRefusal::Kernel(refusal)) => {
+                    let failure = inputs_invalid(kernel_message(&refusal));
+                    kernel_refusal = Some(refusal);
+                    Err(failure)
+                }
+                Err(PreviewContextRefusal::Holdings(failure)) => {
+                    Err(HostFailure::new(failure.code(), failure.message()))
+                }
             }
-            Err(PreviewContextRefusal::Kernel(refusal)) => {
-                let failure = inputs_invalid(kernel_message(&refusal));
-                kernel_refusal = Some(refusal);
-                Err(failure)
-            }
-            Err(PreviewContextRefusal::Holdings(failure)) => {
-                Err(HostFailure::new(failure.code(), failure.message()))
-            }
-        }
-    });
+        },
+    );
     let mut page = match (outcome, kernel_refusal) {
         (Err(_), Some(refusal)) => return Err(PreviewRefusal::Kernel(refusal)),
         (Err(failure), None) => return Err(PreviewRefusal::Host(failure)),
@@ -1004,6 +1052,67 @@ mod tests {
         assert!(engine.media_grant_seen.lock().unwrap().is_some());
         assert!(nothing_left(&staging));
         assert!(!temp.path().join("out").exists());
+    }
+
+    #[test]
+    fn local_preview_carries_new_styles_and_preserves_governed_source_provenance() {
+        let temp = tempfile::tempdir().unwrap();
+        let staging = temp.path().join("staging");
+        let engine = FakeEngine::release();
+        let source = governed();
+        let mut layout = draft();
+        layout.style_refs = BTreeMap::from([("roads".into(), "opaque/new-after-build".into())]);
+        let document = json!({"type":"line","paint":{"line-color":"#123456","line-width":2}});
+        let captured = json!({
+            "project_id":"proj-1", "resolution_revision":"a".repeat(64),
+            "style_refs": layout.style_refs,
+            "print_styles":{"opaque/new-after-build":document},
+            "style_revisions":{"opaque/new-after-build":{"revision_id":"b".repeat(64),"content_sha256":ds_command_kernel::style_plan::style_digest(&document)}}
+        });
+        let page = transformer_page_with_styles(
+            &engine,
+            &settings(&source, &staging),
+            &room("tx_a"),
+            &layout,
+            Some(&captured),
+            |_| Ok(None),
+        )
+        .unwrap();
+        assert_eq!(
+            page.receipt["local_print_recipe"]["source_sheets_sha256"],
+            source.sheets_sha256
+        );
+        assert!(page.receipt["local_print_recipe"]["layouts"][&layout.id].is_string());
+        assert!(source.local_print_recipe.is_none());
+        assert!(source.sheets().unwrap()["printing_styles"].is_null());
+        assert!(nothing_left(&staging));
+        for (field, value, code) in [
+            (
+                "project_id",
+                json!("another-project"),
+                "project_context_changed",
+            ),
+            (
+                "style_revisions",
+                json!({"opaque/new-after-build":{"revision_id":"b".repeat(64),"content_sha256":"0".repeat(64)}}),
+                "style_resolution_revision_mismatch",
+            ),
+        ] {
+            let mut tampered = captured.clone();
+            tampered[field] = value;
+            let calls = engine.calls.load(Ordering::SeqCst);
+            let refusal = transformer_page_with_styles(
+                &engine,
+                &settings(&source, &staging),
+                &room("tx_a"),
+                &layout,
+                Some(&tampered),
+                |_| panic!("refused before context reads"),
+            )
+            .unwrap_err();
+            assert!(refusal.message.contains(code), "{}", refusal.message);
+            assert_eq!(engine.calls.load(Ordering::SeqCst), calls);
+        }
     }
 
     #[test]

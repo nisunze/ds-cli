@@ -1,5 +1,14 @@
 # Printing document authority
 
+The 2026-10-02 style-resolution ruling supersedes any older instruction below
+that constructs a style id, borrows a source sibling, or selects reserved pens
+in code. See [governed style resolution](style-resolution.md): templates declare
+the entity/source/target/role key, the shared kernel resolves the API snapshot,
+and the renderer consumes the exact document and revision. Focused LV, adjacent
+LV context and LV inside MV sheets keep independent governed documents. Pen
+scaling, typography and emphasis remain editable database documents. The
+before/after fixture raster comparison protects existing output.
+
 `printing::Layout` is a closed `ds.print-layout/v2` document. Page dimensions and
 frames use millimetres; typography uses points. It persists paper size and
 orientation and contains one named, clipped print viewport,
@@ -171,11 +180,21 @@ colour and opacity to an existing outline/casing without changing its width,
 icon, coordinates or line pattern. The default `body` preserves legacy pens.
 The renderer and legend use the same resolved style document.
 
+`resolve_styles` accepts a captured `ds.style-resolution/v1` API table and
+an exact `style_keys` map, invokes the sole kernel resolver, and returns the
+updated layout plus held `print_styles`, `style_revisions` and the resolution
+revision. A renderer consumes that held capture without another catalogue read.
+There is no inferred style id or source-kind fallback.
+The governed `Layout.style_keys` declares those choices per layer. The operation
+uses it when the request omits `style_keys`; a legacy template must acquire its
+exact keys through an API document migration. A host never reverses an old
+style ref to guess source kind or print role.
+
 `set_adjacent_networks` atomically binds all five neighbouring roles to their
-governed print references. Empty `style_refs` selects the role-specific
-`print_context/print_context_existing_new_v1_<role>_print` seeds;
-an explicit map must name exactly `tr`, `lv_lines`, `service_cables`, `customers`
-and `lv_poles`. Its optional closed `ds.adjacent-print-hierarchy/v1` policy
+API-resolved print references. Empty `style_refs` refuses with
+`style_resolution_required`; a map must name exactly `tr`, `lv_lines`,
+`service_cables`, `customers` and `lv_poles`. Its optional closed
+`ds.adjacent-print-hierarchy/v1` policy
 contains proposed, existing and unclassified colours plus opacity. When absent,
 the named governed style owns those values; the kernel does not replace them
 with a hard-coded palette. Brain packages the versioned create-only starter
@@ -186,7 +205,9 @@ explicit project-local policy. No client-specific blue becomes global. Every
 render receipt pins the exact effective styles and source revisions.
 
 Context keeps the fields read by effective governed symbols and lifecycle pens.
-Customer/line/pole labels are hidden; transformer identities can remain labelled.
+Label visibility belongs to the resolved context documents: the standard
+customer/line/pole documents have no labels; transformer identities can remain
+labelled. Configuration and field projection no longer erase an authored label.
 It reads all active, checksum-verified saved rooms once and clips their exact
 geometry to the focused viewport, including edge-crossing circuits whose
 transformer is outside it. It does not widen the focused camera, alter topology
