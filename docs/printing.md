@@ -33,14 +33,22 @@ and GeoJSON sequence, with GPKG and Network Information when selected. A saved
 PDF selection applies to individual transformer reports only. The Combined
 workbook and geospatial outputs remain one project-wide set.
 
-No host ever renders a combined PDF: not Cloud Run, not the Server, not the
-Desktop, not the CLI or MCP. There is no project overview sheet and no
-concatenation of transformer pages, in the Combined export or anywhere else.
-A project-wide print does not fit in memory; the owner's ruling (2026-09-24,
-restated 2026-09-25) is that it is never attempted. A print package is
-assembled by hand: print each chosen transformer individually (`ds report
-project export` per transformer, from the CLI or through MCP) and combine
-those PDFs outside the product. Nothing may add a combined print path back.
+The owner revised the print-delivery requirement on 2026-10-02. A canonical
+LV combined delivery must include a district/project MV A0 overview with
+project statistics. This supersedes the earlier blanket prohibition on project
+overviews and combined print delivery. Rendering runs only on a PC, including
+the signed-in Linux Server; cloud compute remains data-only. Each transformer
+sheet and the overview are bounded local jobs with exact project/model/layout
+pins. Package their admitted artifacts without rerunning engineering or
+pretending that a compounded data ZIP is the requested print set.
+
+The current combined data task does not produce this overview or a complete
+print collection. That remains an implementation and delivery gap: neither a
+saved PDF selection nor a successful data task proves that these pages exist.
+The legacy `Layout.project_overview` boolean remains ignored; the new overview
+must be a named governed printout with its own layout and artifact identity,
+not a hidden effect of an individual transformer layout. Verify exact online
+publication independently of local rendering and outbox reclamation.
 
 `new` accepts optional `id`, `name`, `paper` (A0–A5 or bounded custom paper,
 default A3) and
@@ -94,6 +102,36 @@ Prove the existing headless CLI/MCP behavior before changing this workflow.
 Where the proof exposes a missing operation, extend its owning contract in a
 bounded slice and verify the result through CLI/MCP before adding UI behavior.
 This scope does not authorize generating a future BOQ or changing quantities.
+
+## Canonical next-export defaults
+
+Published global samples and project-adopted revisions are the starting point,
+not an LLM's last temporary recipe. Keep MV front matter, ordered pages, issue
+fields and general presentation in the same project printing library, editable
+and previewable through the native CLI/MCP surface. New-install preparation
+must schedule the existing idempotent context owners in the background under
+a captured principal/project; a read or preview never acquires providers.
+
+The preferred MV reference is the October 1 Nyamagabe Model 1 A3 booklet:
+`Nyamagabe-MV-Model1-Plan-and-Profile-A3.pdf`, 100 A3 landscape pages,
+SHA-256 `13e82d117c84c0b80b2cff271de3927a1ca6335bc09a967a3f7ed7d6c689d9cb`.
+Its approved MV wire hierarchy is independent of secondary LV/customer context.
+Individual LV transformer sheets retain their own categorical engineering
+palette; an MV background treatment never silently replaces it. Project-specific
+parties, logos and contract facts are not global product defaults.
+
+MV structure labels carry the resolved library type's authored full description
+alongside its short code. Placement descriptions are a different field. Wrap
+and paginate complete names; never report an omitted-description count as a
+complete drawing. Special feature markers, captions and clearance hairs start
+at the admitted ground-offset guide. Native surveyed elevations, clearance
+thresholds, guide gaps and governing calculations remain unchanged.
+
+Staking tables are Excel deliverables and never printed pages. The canonical
+native PLS report set is Structure Usage, Section Usage, Section Sag-Tension,
+Summary and Terrain Clearances, each RTF plus A4 PDF. Explicit customization
+may request other supported outputs without rewriting the project's baseline.
+These native reports do not authorize PLS-CADD plan/profile sheet printing.
 
 ## Fixed legend anchors
 
