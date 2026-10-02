@@ -476,14 +476,7 @@ fn bounded_usize(value: &str, max: usize, code: &'static str) -> Result<usize, F
 }
 
 fn parse_bbox(value: &str) -> Result<[f64; 4], Failure> {
-    let values = value
-        .split(',')
-        .map(str::parse::<f64>)
-        .collect::<Result<Vec<_>, _>>();
-    let values = values.map_err(|_| map_kernel(FeatureSelectionError::InvalidBbox))?;
-    values
-        .try_into()
-        .map_err(|_| map_kernel(FeatureSelectionError::InvalidBbox))
+    ds_cli_contract::args::bbox(value).map_err(|_| map_kernel(FeatureSelectionError::InvalidBbox))
 }
 
 fn map_kernel(error: FeatureSelectionError) -> Failure {
@@ -564,18 +557,11 @@ mod tests {
     }
 
     #[test]
-    fn bbox_parser_rejects_bad_arity_and_kernel_rejects_nonfinite_coordinates() {
-        assert_eq!(parse_bbox("1,2,3").unwrap_err().code(), "invalid_bbox");
-        let parsed = parse_bbox("NaN,2,3,4").unwrap();
-        let error = select_geojson_features(
-            &BTreeMap::new(),
-            FeatureSelector {
-                bbox: Some(parsed),
-                ..FeatureSelector::default()
-            },
-        )
-        .unwrap_err();
-        assert_eq!(map_kernel(error).code(), "invalid_bbox");
+    fn bbox_parser_uses_shared_finite_wgs84_admission() {
+        for raw in ["1,2,3", "NaN,2,3,4", "181,0,182,1", "3,2,1,4"] {
+            assert_eq!(parse_bbox(raw).unwrap_err().code(), "invalid_bbox");
+        }
+        assert_eq!(parse_bbox(" 1, 2, 3, 4 ").unwrap(), [1., 2., 3., 4.]);
     }
 
     #[test]

@@ -265,10 +265,7 @@ impl NativeSyncSession {
         selected_project: String,
         credential_binding: String,
     ) -> Result<Self, String> {
-        if selected_project.is_empty()
-            || selected_project.len() > 200
-            || selected_project.chars().any(char::is_control)
-        {
+        if ds_client_core::validate_project_id(&selected_project).is_err() {
             return Err("native Sync Center selected project is invalid".into());
         }
         let authority_dir =

@@ -496,14 +496,7 @@ fn parse(inputs: &Inputs) -> Result<SurveyEntriesReadRequest, Failure> {
 }
 
 fn parse_bbox(raw: &str) -> Result<[f64; 4], Failure> {
-    let values = raw
-        .split(',')
-        .map(|value| value.trim().parse::<f64>())
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|_| invalid("`--bbox` must contain exactly four decimal coordinates"))?;
-    values
-        .try_into()
-        .map_err(|_| invalid("`--bbox` must contain west,south,east,north"))
+    ds_cli_contract::args::bbox(raw).map_err(|error| invalid(error.message()))
 }
 
 fn invalid(message: impl Into<String>) -> Failure {

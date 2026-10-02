@@ -447,12 +447,12 @@ fn require_exact_value<'a>(
     name: &str,
     code: &'static str,
 ) -> Result<&'a str, Failure> {
-    if !value.is_empty() && value.trim() == value && value.len() <= 128 {
+    if ds_command_kernel::is_solar_id(value) {
         return Ok(value);
     }
     Err(Failure::invalid(
         code,
-        format!("--{name} must be a non-blank exact identifier of at most 128 bytes"),
+        format!("--{name} must use the closed Solar ID grammar"),
     )
     .remedy(format!(
         "pass the exact {name} identifier without surrounding whitespace"
@@ -484,9 +484,7 @@ fn parse_graph_strategy(value: &str) -> Result<&str, Failure> {
         });
     }
     if let Some(city_id) = value.strip_prefix("city:")
-        && !city_id.is_empty()
-        && city_id.trim() == city_id
-        && city_id.len() <= 128
+        && ds_command_kernel::is_solar_id(city_id)
     {
         return Ok(value);
     }

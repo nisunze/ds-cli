@@ -490,19 +490,9 @@ fn transformer_rectangle(
 }
 
 fn parse_bbox(raw: &str) -> Result<[f64; 4], Failure> {
-    let parts: Vec<f64> = raw
-        .split(',')
-        .map(|part| part.trim().parse::<f64>())
-        .collect::<Result<_, _>>()
-        .map_err(|_| {
-            Failure::invalid(INVALID_SCOPE.code, "--bbox is west,south,east,north")
-                .remedy(INVALID_SCOPE.remedy)
-        })?;
-    let bounds: [f64; 4] = parts.try_into().map_err(|_| {
-        Failure::invalid(INVALID_SCOPE.code, "--bbox is west,south,east,north")
-            .remedy(INVALID_SCOPE.remedy)
-    })?;
-    Ok(bounds)
+    ds_cli_contract::args::bbox(raw).map_err(|error| {
+        Failure::invalid(INVALID_SCOPE.code, error.message()).remedy(INVALID_SCOPE.remedy)
+    })
 }
 
 /// One bound, read from the inputs: the same grammar for customers and parcels.

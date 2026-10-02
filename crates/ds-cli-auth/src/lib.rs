@@ -1661,42 +1661,11 @@ fn saved_analysis_pins(
     metadata: Option<&Value>,
     version: Option<u64>,
     content_digest: Option<&str>,
-) -> Result<Option<(u64, String, String)>, Failure> {
-    let invalid = || {
-        Failure::failed(
-            "auth_response_unreadable",
-            "saved analysis metadata has invalid or oversized snapshot pins",
-        )
-        .remedy("Update ds and report the authoritative saved-analysis receipt; never infer missing pins or truncate its JSON.")
-    };
-    let Some(metadata) = metadata else {
-        return Ok(None);
-    };
-    match metadata["state"].as_str() {
-        Some("stale" | "missing" | "needs_reprocess") => return Ok(None),
-        Some("ready") => {}
-        _ => return Err(invalid()),
-    }
-    let version = version.filter(|v| *v > 0).ok_or_else(invalid)?;
-    let digest = content_digest.ok_or_else(invalid)?;
-    let sha = metadata["analysis_sha256"].as_str().ok_or_else(invalid)?;
-    let is_sha = |s: &str| {
-        s.len() == 64
-            && s.bytes()
-                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
-    };
-    let bytes = metadata["json_bytes"].as_u64().ok_or_else(invalid)?;
-    if metadata["schema"] != "ds.lv-voltage-drop.analysis/v1"
-        || metadata["method"] != "ds-lv-vd/1"
-        || metadata["content_digest"] != digest
-        || !is_sha(digest)
-        || !is_sha(sha)
-        || bytes == 0
-        || bytes > ds_client_core::TRANSFORMER_ANALYSIS_RESPONSE_LIMIT as u64
-    {
-        return Err(invalid());
-    }
-    Ok(Some((version, digest.to_owned(), sha.to_owned())))
+) -> Result<Option<ds_client_core::SavedLvAnalysisPins>, Failure> {
+    ds_client_core::saved_lv_analysis_pins(metadata, version, content_digest).map_err(|error| {
+        Failure::failed("auth_response_unreadable", error.to_string())
+            .remedy("Update ds and report the authoritative saved-analysis receipt; never infer missing pins or truncate its JSON.")
+    })
 }
 
 #[cfg(test)]
@@ -1704,7 +1673,7 @@ mod saved_analysis_read_tests {
     use super::*;
 
     fn receipt() -> Value {
-        json!({"state":"ready", "schema":"ds.lv-voltage-drop.analysis/v1", "method":"ds-lv-vd/1",
+        json!({"state":"ready", "schema":ds_client_core::SAVED_LV_ANALYSIS_SCHEMA, "method":ds_client_core::SAVED_LV_ANALYSIS_METHOD,
             "content_digest":"a".repeat(64), "analysis_sha256":"b".repeat(64), "json_bytes":123})
     }
 
@@ -2325,7 +2294,9 @@ fn verify_restored_layer_identity(
 /// what gets through this door is what becomes a preference key and a request
 /// path. One rule, one answer, at every door, so this asks for it.
 fn bounded_named_project(value: &str) -> Result<String, Failure> {
-    if !ds_command_kernel::execution_context::valid_project(value) {
+    if ds_client_core::validate_project_id(value).is_err()
+        || !ds_command_kernel::execution_context::valid_project(value)
+    {
         return Err(Failure::invalid(
             "context_corrupt",
             format!(

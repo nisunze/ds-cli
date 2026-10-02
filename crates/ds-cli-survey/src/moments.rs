@@ -229,7 +229,7 @@ fn refused(refusal: survey_moments::Refusal) -> Failure {
 }
 
 pub fn list(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
-    let project = crate::text(inputs.require("project")?, "project", 200)?;
+    let project = crate::project_id(inputs.require("project")?)?;
     let state = server_state(inputs)?;
     let rows: Vec<_> = records(&state, project)?
         .iter()
@@ -264,7 +264,7 @@ pub fn list(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
 }
 
 pub fn read(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
-    let project = crate::text(inputs.require("project")?, "project", 200)?;
+    let project = crate::project_id(inputs.require("project")?)?;
     let path = inputs.require("path")?;
     let state = server_state(inputs)?;
     let held = record(&state, project, path)?;

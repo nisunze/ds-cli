@@ -160,7 +160,7 @@ fn bounded(value: &str, label: &str, max: usize) -> Result<String, Failure> {
 
 fn selector(inputs: &Inputs) -> Result<Value, Failure> {
     Ok(json!({
-        "project": bounded(inputs.require("project")?, "project", 160)?,
+        "project": crate::project_id(inputs.require("project")?, "printing_artifact_invalid")?,
         "transformer": bounded(inputs.require("transformer")?, "transformer", 160)?,
         "outputId": bounded(inputs.require("output-id")?, "output-id", 160)?,
     }))

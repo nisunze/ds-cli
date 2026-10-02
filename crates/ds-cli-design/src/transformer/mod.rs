@@ -317,7 +317,7 @@ pub fn transformer_set(
 /// watching a credential restore fail for no stated reason.
 pub fn named_project(inputs: &ds_cli_contract::Inputs) -> Result<String, Failure> {
     let project = inputs.require("project")?;
-    if project.trim().is_empty() || project.trim() != project {
+    if ds_client_core::validate_project_id(project).is_err() {
         return Err(Failure::invalid(
             PROJECT_REQUIRED.code,
             "--project must be one exact, trimmed, non-empty project id",
