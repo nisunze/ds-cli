@@ -48,6 +48,27 @@ pub const MAX_TEMPERATURES: usize = 512;
 pub const MAX_INTERFACES: usize = 512;
 pub const MAX_ADDRESSES: usize = 128;
 pub const MAX_SAMPLES: usize = 8_192;
+/// One reason per health check; the monitor has three.
+pub const MAX_REASONS: usize = 16;
+/// The monitor names at most three tools per agent.
+pub const MAX_ACTIVITY_TOOLS: usize = 8;
+/// Labels the monitor caps at ~100 characters (task, branch); a member longer
+/// than this is a broken producer, not a long task.
+pub const MAX_LABEL_CHARS: usize = 256;
+
+/// Closed vocabularies the monitor publishes. A value outside one decodes to
+/// absent — a newer producer renders less until this list learns it, rather
+/// than costing the whole snapshot — while a non-string is still refused.
+pub const AGENT_ACTIVITIES: &[&str] = &["tool", "model", "idle", "stopped"];
+pub const AGENT_CPU_SOURCES: &[&str] = &["cgroup", "process_tree"];
+pub const AGENT_MEMORY_SOURCES: &[&str] = &["cgroup", "pss", "rss"];
+pub const AGENT_TASK_SOURCES: &[&str] = &[
+    "ds_agent_task",
+    "agent_name",
+    "tmux_session",
+    "worktree",
+    "output_file",
+];
 
 /// What a backend that refused without words is reported as.
 const SNAPSHOT_FALLBACK: &str = "Failed to read the server status snapshot";
@@ -150,6 +171,32 @@ fn optional_array<'a>(
         Some(Value::Array(_)) => Err(format!("{field} exceeds its bound of {bound} entries")),
         Some(_) => Err(format!("{field} must be an array")),
     }
+}
+
+/// A label the publisher caps: present, a string, and inside the bound.
+fn optional_label(
+    record: &Map<String, Value>,
+    key: &str,
+    field: &str,
+) -> Result<Option<String>, String> {
+    let value = optional_string(record, key, field)?;
+    match value {
+        Some(text) if text.chars().count() > MAX_LABEL_CHARS => {
+            Err(format!("{field} exceeds {MAX_LABEL_CHARS} characters"))
+        }
+        other => Ok(other),
+    }
+}
+
+/// A member of a closed vocabulary: a non-string is refused, an unknown value
+/// decodes to absent (see `AGENT_ACTIVITIES`).
+fn optional_enum(
+    record: &Map<String, Value>,
+    key: &str,
+    field: &str,
+    allowed: &[&str],
+) -> Result<Option<String>, String> {
+    Ok(optional_string(record, key, field)?.filter(|value| allowed.contains(&value.as_str())))
 }
 
 /// Non-strings are dropped rather than refused, exactly as the boundary this
@@ -391,6 +438,29 @@ fn decode_proc_info(value: &Value) -> Result<Value, String> {
     Ok(out.into_value())
 }
 
+/// Why the box is degraded: one entry per failed check. `check` is an
+/// identifier rather than a closed vocabulary, so a check a newer monitor adds
+/// is still shown (by its name) instead of being hidden from the reader.
+fn decode_reason(value: &Value, index: usize) -> Result<Value, String> {
+    let field = format!("health.reasons[{index}]");
+    let r = object(value, &field)?;
+    let check = required_string(r, "check", &format!("{field}.check"))?;
+    let identifier = check.len() <= 32
+        && check.starts_with(|first: char| first.is_ascii_lowercase())
+        && check.chars().all(|character| {
+            character.is_ascii_lowercase() || character.is_ascii_digit() || character == '_'
+        });
+    if !identifier {
+        return Err(format!("{field}.check must be a lowercase identifier"));
+    }
+    let mut out = Doc::new();
+    out.set("check", check);
+    for key in ["observed", "threshold"] {
+        out.set(key, required_number(r, key, &format!("{field}.{key}"))?);
+    }
+    Ok(out.into_value())
+}
+
 fn decode_optional<'a>(
     record: &'a Map<String, Value>,
     key: &str,
@@ -432,6 +502,15 @@ fn decode_health(value: &Value) -> Result<Value, String> {
         decode_optional(r, "processes", decode_proc_info)?,
     );
     out.put("history", decode_optional(r, "history", decode_history)?);
+    if let Some(rows) = optional_array(r, "reasons", "health.reasons", MAX_REASONS)? {
+        out.set(
+            "reasons",
+            rows.iter()
+                .enumerate()
+                .map(|(index, row)| decode_reason(row, index))
+                .collect::<Result<Vec<_>, _>>()?,
+        );
+    }
     Ok(out.into_value())
 }
 
@@ -470,7 +549,7 @@ fn decode_process_report(value: &Value) -> Result<Value, String> {
         Some(_) => return Err("task_manager.process_report.processes must be an array".into()),
     };
     let mut out = Doc::new();
-    for key in ["total", "shown"] {
+    for key in ["total", "shown", "cpu_window_seconds"] {
         out.put(
             key,
             optional_number(r, key, &format!("task_manager.process_report.{key}"))?,
@@ -494,8 +573,37 @@ fn decode_agent(value: &Value, index: usize) -> Result<Value, String> {
         "process_count",
         "inprocess_subagents",
         "inprocess_workflows",
+        "page_cache_bytes",
+        "evidence_age_seconds",
     ] {
         out.put(key, optional_number(r, key, &format!("{field}.{key}"))?);
+    }
+    for key in ["task", "slice", "branch"] {
+        out.put(key, optional_label(r, key, &format!("{field}.{key}"))?);
+    }
+    for (key, allowed) in [
+        ("task_source", AGENT_TASK_SOURCES),
+        ("activity", AGENT_ACTIVITIES),
+        ("cpu_source", AGENT_CPU_SOURCES),
+        ("memory_source", AGENT_MEMORY_SOURCES),
+    ] {
+        out.put(
+            key,
+            optional_enum(r, key, &format!("{field}.{key}"), allowed)?,
+        );
+    }
+    if let Some(tools) = optional_string_array(
+        r,
+        "activity_tools",
+        &format!("{field}.activity_tools"),
+        MAX_ACTIVITY_TOOLS,
+    )? {
+        if let Some(long) = tools.iter().position(|tool| tool.chars().count() > 64) {
+            return Err(format!(
+                "{field}.activity_tools[{long}] exceeds 64 characters"
+            ));
+        }
+        out.set("activity_tools", tools);
     }
     for key in [
         "role",
@@ -542,6 +650,10 @@ fn decode_agents(value: &Value) -> Result<Value, String> {
         "supervisor_count",
         "inprocess_subagent_count",
         "discarded_noise_count",
+        "cpu_window_seconds",
+        "sampled_unix",
+        "machine_cpu_percent",
+        "agents_cpu_percent",
     ] {
         out.put(
             key,
@@ -764,7 +876,7 @@ mod tests {
             "schema": 1,
             "published_unix": 1_700_000_000,
             "health": {
-                "status": "healthy",
+                "status": "degraded",
                 "hostname": "ds-server",
                 "uptime_seconds": 259_428.0,
                 "system": {"os_name": "Ubuntu 26.04", "kernel": "7.0.0-31-generic", "machine_model": "MS-7E26"},
@@ -775,11 +887,25 @@ mod tests {
                 "temperatures": [{"label": "k10temp · Tctl", "celsius": 77.8}],
                 "network": [{"name": "wlp5s0", "state": "up", "addresses": ["192.168.1.20"]}],
                 "processes": {"count": 512.0, "tcp_connections": 44.0},
-                "history": {"interval_seconds": 5.0, "interface": "wlp5s0", "sample_unix": [1.0, 2.0], "cpu_percent": [30.0, 39.9]}
+                "history": {"interval_seconds": 5.0, "interface": "wlp5s0", "sample_unix": [1.0, 2.0], "cpu_percent": [30.0, 39.9]},
+                "reasons": [{"check": "load", "observed": 2.36, "threshold": 2.0}]
             },
             "task_manager": {
-                "agents": {"count": 2.0, "agents": [{"pid": 4242.0, "product": "claude", "orphaned": false}]},
-                "process_report": {"total": 512.0, "shown": 1.0, "processes": [{"pid": 1.0, "name": "systemd"}]},
+                "agents": {
+                    "count": 2.0, "cpu_window_seconds": 10.04, "sampled_unix": 1_699_999_998.25,
+                    "machine_cpu_percent": 1484.8, "agents_cpu_percent": 1279.1,
+                    "agents": [{
+                        "pid": 4242.0, "product": "claude", "orphaned": false,
+                        "task": "Server monitor: accurate agent CPU", "task_source": "ds_agent_task",
+                        "slice": "server-monitor", "branch": "slice/server-monitor",
+                        "activity": "tool", "activity_tools": ["rustc", "cargo"],
+                        "evidence_age_seconds": 12.0,
+                        "cpu_percent": 371.5, "cpu_source": "cgroup",
+                        "memory_bytes": 2_861_563_904.0, "memory_source": "cgroup",
+                        "page_cache_bytes": 2_014_314_496.0
+                    }]
+                },
+                "process_report": {"total": 512.0, "shown": 1.0, "cpu_window_seconds": 10.04, "processes": [{"pid": 1.0, "name": "systemd"}]},
                 "internet": {"reachable": true, "latency_ms": 72.0, "target": "1.1.1.1"},
                 "wifi": {"available": true, "ssid": "DS-FIELD", "signal_dbm": -77.0},
                 "tailscale": {"installed": true, "backend_state": "Running", "peers_total": 5.0, "peers_online": 3.0},
@@ -1014,6 +1140,160 @@ mod tests {
         assert_eq!(
             refusal(with(&["health", "temperatures"], json!(rows))).message,
             format!("health.temperatures exceeds its bound of {MAX_TEMPERATURES} entries")
+        );
+    }
+
+    #[test]
+    fn members_this_reader_does_not_know_are_ignored_so_the_producer_ships_first() {
+        // The decoder copies an allow-list: a field the monitor adds before
+        // this kernel learns it is dropped, never a refusal.
+        let mut document = snapshot();
+        document["health"]["future_gauge"] = json!({"x": 1});
+        document["task_manager"]["agents"]["agents"][0]["future_field"] = json!("y");
+        document["task_manager"]["future_panel"] = json!([1, 2]);
+        let decoded = decode_snapshot(&document).unwrap();
+        assert_eq!(decoded, snapshot());
+    }
+
+    #[test]
+    fn degraded_reasons_name_the_check_its_reading_and_threshold() {
+        let decoded = decode_snapshot(&snapshot()).unwrap();
+        assert_eq!(
+            decoded["health"]["reasons"],
+            json!([{"check": "load", "observed": 2.36, "threshold": 2.0}])
+        );
+        // A check a newer monitor adds is shown by name, not hidden.
+        let newer = with(
+            &["health", "reasons"],
+            json!([{"check": "temperature_c", "observed": 91.0, "threshold": 90.0}]),
+        );
+        assert_eq!(
+            decode_snapshot(&newer).unwrap()["health"]["reasons"][0]["check"],
+            "temperature_c"
+        );
+        for (reasons, message) in [
+            (json!({}), "health.reasons must be an array"),
+            (
+                json!([{"observed": 1.0, "threshold": 1.0}]),
+                "health.reasons[0].check must be a non-empty string",
+            ),
+            (
+                json!([{"check": "Load <b>", "observed": 1.0, "threshold": 1.0}]),
+                "health.reasons[0].check must be a lowercase identifier",
+            ),
+            (
+                json!([{"check": "load", "observed": "2.36", "threshold": 2.0}]),
+                "health.reasons[0].observed must be a finite number",
+            ),
+            (
+                json!([{"check": "load", "observed": 2.36}]),
+                "health.reasons[0].threshold must be a finite number",
+            ),
+        ] {
+            assert_eq!(
+                refusal(with(&["health", "reasons"], reasons)).message,
+                message
+            );
+        }
+        let rows: Vec<Value> = (0..=MAX_REASONS)
+            .map(|_| json!({"check": "load", "observed": 1.0, "threshold": 1.0}))
+            .collect();
+        assert_eq!(
+            refusal(with(&["health", "reasons"], json!(rows))).message,
+            format!("health.reasons exceeds its bound of {MAX_REASONS} entries")
+        );
+    }
+
+    fn with_agent(key: &str, value: Value) -> Value {
+        let mut document = snapshot();
+        document["task_manager"]["agents"]["agents"][0][key] = value;
+        document
+    }
+
+    fn decoded_agent(document: &Value) -> Value {
+        decode_snapshot(document).unwrap()["task_manager"]["agents"]["agents"][0].clone()
+    }
+
+    #[test]
+    fn agent_vocabularies_drop_unknown_values_and_refuse_wrong_types() {
+        for (key, allowed) in [
+            ("activity", AGENT_ACTIVITIES),
+            ("cpu_source", AGENT_CPU_SOURCES),
+            ("memory_source", AGENT_MEMORY_SOURCES),
+            ("task_source", AGENT_TASK_SOURCES),
+        ] {
+            for value in allowed {
+                assert_eq!(
+                    decoded_agent(&with_agent(key, json!(value)))[key],
+                    json!(value)
+                );
+            }
+            // A newer producer's value renders less, never a refusal.
+            assert!(decoded_agent(&with_agent(key, json!("compacting")))
+                .get(key)
+                .is_none());
+            assert_eq!(
+                refusal(with_agent(key, json!(7))).message,
+                format!("task_manager.agents.agents[0].{key} must be a string")
+            );
+        }
+    }
+
+    #[test]
+    fn agent_labels_and_tools_are_bounded() {
+        let long = "x".repeat(MAX_LABEL_CHARS + 1);
+        for key in ["task", "slice", "branch"] {
+            assert_eq!(
+                refusal(with_agent(key, json!(long))).message,
+                format!("task_manager.agents.agents[0].{key} exceeds {MAX_LABEL_CHARS} characters")
+            );
+        }
+        // At the bound is fine, multi-byte characters count once.
+        let edge = "é".repeat(MAX_LABEL_CHARS);
+        assert_eq!(
+            decoded_agent(&with_agent("task", json!(edge)))["task"],
+            json!(edge)
+        );
+        // One odd tool entry is dropped, like an odd address.
+        assert_eq!(
+            decoded_agent(&with_agent("activity_tools", json!(["cargo", 7, "rustc"])))
+                ["activity_tools"],
+            json!(["cargo", "rustc"])
+        );
+        let tools: Vec<Value> = (0..=MAX_ACTIVITY_TOOLS).map(|_| json!("cargo")).collect();
+        assert_eq!(
+            refusal(with_agent("activity_tools", json!(tools))).message,
+            format!(
+                "task_manager.agents.agents[0].activity_tools exceeds its bound of {MAX_ACTIVITY_TOOLS} entries"
+            )
+        );
+        assert_eq!(
+            refusal(with_agent("activity_tools", json!(["y".repeat(65)]))).message,
+            "task_manager.agents.agents[0].activity_tools[0] exceeds 64 characters"
+        );
+        assert_eq!(
+            refusal(with_agent("evidence_age_seconds", json!("12"))).message,
+            "task_manager.agents.agents[0].evidence_age_seconds must be a finite number"
+        );
+    }
+
+    #[test]
+    fn the_measurement_window_and_machine_reconciliation_are_admitted() {
+        let decoded = decode_snapshot(&snapshot()).unwrap();
+        let agents = &decoded["task_manager"]["agents"];
+        assert_eq!(agents["cpu_window_seconds"], json!(10.04));
+        assert_eq!(agents["sampled_unix"], json!(1_699_999_998.25));
+        assert_eq!(agents["machine_cpu_percent"], json!(1484.8));
+        assert_eq!(agents["agents_cpu_percent"], json!(1279.1));
+        assert_eq!(
+            decoded["task_manager"]["process_report"]["cpu_window_seconds"],
+            json!(10.04)
+        );
+        let mut document = snapshot();
+        document["task_manager"]["agents"]["machine_cpu_percent"] = json!("1484.8");
+        assert_eq!(
+            refusal(document).message,
+            "task_manager.agents.machine_cpu_percent must be a finite number"
         );
     }
 
