@@ -88,16 +88,16 @@ fn inventory(rows: &[Value], limit: usize) -> Result<Value, Failure> {
 pub static PLAN: Command = Command {
     id: "report.plan",
     path: &["report", "plan"],
-    contract: 2,
+    contract: 3,
     summary: "Inspect report progress or an export decision without IO.",
-    purpose: "Pure shared kernel; no export or project access. Export receives project, transformer and host context; batch-outcome receives results. Activity receives {snapshot:{project,now_ms,rows,...}} with queued/preparing/generating/generated/failed phases and optional native sync artifacts/receipts. It separates generation from publication and names stalled work. See the reference for fields and bounds. Request <=4 MiB; --action selects the operation.",
+    purpose: "Pure kernel; no IO/project access. Export: project, transformer, host context. Batch: results. Activity: {snapshot:{project,now_ms,rows,...}}, queued/preparing/generating/generated/failed phases and sync facts; separates generation/publication, names stalls. Inventory: supplied scoped sets/sync/cloud pins, never date-selected. Request <=4 MiB; see reference.",
     chapter: Chapter::Reports,
     effect: Effect::ReadOnly,
     authority: Authority::None,
     execution: Execution::Sync,
     args: &[
         Arg::value("action", "<action>", "Planning operation.")
-            .choices(&["export", "batch-outcome", "activity"])
+            .choices(&["export", "batch-outcome", "activity", "inventory"])
             .required(),
         Arg::value(
             "request",
@@ -106,7 +106,7 @@ pub static PLAN: Command = Command {
         )
         .required(),
     ],
-    output: "Export: project, target, kind, scope, label, selection and preparation policy. Batch: ordered results and failed count. Activity: ds.report.activity/v1, explicit project, generation/publication counts, row phases/timestamps/errors, outbox summary, stalled and waiting_on.",
+    output: "Export: project, target, kind, scope, label, selection, preparation. Batch: ordered results, failed count. Activity: project, generation/publication counts, row phases/times/errors, outbox, stalled, waiting_on. Inventory: scoped output runs/pins, generation/publication/source/read facts, missing outputs, separate legacy cloud. ds.report.activity/v1; ds.report.inventory/v1.",
     examples: &[Example {
         command: "ds report plan --action export --request export.json --output json",
         note: "Inspect a report decision without running an exporter.",
@@ -140,6 +140,7 @@ pub fn plan(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
         "export" => "export",
         "batch-outcome" => "batch_outcome",
         "activity" => "activity",
+        "inventory" => "inventory",
         _ => return Err(invalid("Unknown report planning action")),
     };
     fields.insert("command".into(), json!(command));

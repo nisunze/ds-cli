@@ -582,6 +582,22 @@ has agreed to drop unsaved edits. Documents never cross this boundary.
 
 ## Printable inventory and report plans
 
+`ds report plan --action inventory --request inventory.json --output json`
+projects supplied native facts for one owner/project/transformer/variant. It
+does not read disk, connect to DS, generate reports or publish. The request is
+`{"snapshot":{...}}` under the same 4 MiB bound as other report plans.
+`ds.report.inventory/v1` retains each output's batch, client publication/run,
+digest/size/presentation and generation time separately from its cloud head and
+publication state. Older legacy cloud URLs/timestamps stay separate. Missing
+outputs, changed input, native-pin disagreement and held/unavailable reads are
+explicit; timestamps never select a producing generation. See the
+[owned snapshot contract](../../../ds-command-kernel/docs/contracts/report-inventory.md)
+and [six-output fixture](../../../ds-command-kernel/tests/fixtures/report-inventory/held-six-old-legacy-three.json).
+
+The fixture is an owned supplied-facts example, not evidence about a real
+project. Actual publication still uses the one native sync queue and requires
+verified head/output evidence.
+
 `ds report transformers --project <id> --limit 100 --output json` reads the
 named project (the saved selection is never read) and asks `printing::inventory` which rows are printable.
 Reserved aggregate, analysis and project-document identities are excluded even
