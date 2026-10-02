@@ -243,10 +243,10 @@ loudly rather than passing quietly when the engine is absent.
 
 `bridge_parity.rs` needs the `ds-web` checkout. It defaults to the sibling
 directory and takes `DS_WEB_DIR` when that is not the layout — a git worktree
-of this repository is two levels deeper, and the first run of that suite from
-one skipped every check and reported green. A skipped parity suite is worse
-than no parity suite, so the skip names the path it looked in and CI fails if
-it appears.
+of this repository is two levels deeper. Missing source files, empty sources,
+missing patterns and missing operation contracts fail the check with a diagnostic;
+they never skip parity. Each check loads only the sources it inspects. A genuinely
+inapplicable subcheck must record its skip by name and reason.
 
 ## Budgets
 

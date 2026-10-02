@@ -128,15 +128,6 @@ const CODE_NOT_A_LITERAL: &[(&str, &str)] = &[
          the project identity",
     ),
     (
-        "ds-cli-auth/src/correspondence.rs",
-        "the code is ds-brain's own `PM_REFUSED`/`ASSET_REFUSED` reason token \
-         (correspondence.md §Refusals), relayed verbatim as the contract's \
-         vocabulary; every token a command can surface is declared as a literal \
-         `Refusal` in `ds-cli-pm` (`CORRESPONDENCE_REFUSALS`) or `ds-cli-assets`, \
-         and each domain's classifier renames a token it does not declare to its \
-         generic `pm_refused` / `asset_refused` before it can reach a caller",
-    ),
-    (
         "ds-cli-auth/src/state.rs",
         "the protected-state code is chosen by a `StoreError` match above the \
          constructor; each of the three is declared by the commands that touch \
@@ -384,9 +375,12 @@ fn codes_in_source(
                 codes.insert(literal.to_string());
                 continue;
             }
-            // `NAME.code` names a declared `Refusal`, so the code is written
+            // `NAME.code` or a literal `NAME[index].code` names a declared
+            // `Refusal`, so the code is written
             // down — once, beside its `when` and `remedy` — rather than absent.
-            if let Some(code) = const_reference(argument, consts) {
+            if let Some(code) = indexed_refusal_reference(argument, source)
+                .or_else(|| const_reference(argument, consts))
+            {
                 codes.insert(code);
                 continue;
             }
@@ -475,6 +469,90 @@ fn const_reference(text: &str, consts: &BTreeMap<String, String>) -> Option<Stri
         return None;
     }
     consts.get(path.rsplit("::").next()?).cloned()
+}
+
+/// Resolve a literal index into a source-local array of literal Refusals.
+/// Keep this local: unrelated modules routinely reuse names such as `OWN`.
+/// An unknown index, initializer or code stays unresolved, never guessed.
+fn indexed_refusal_reference(text: &str, source: &str) -> Option<String> {
+    let name = leading_name(text);
+    if name.is_empty() {
+        return None;
+    }
+    let (index, after) = text[name.len()..].strip_prefix('[')?.split_once(']')?;
+    let index = index.parse::<usize>().ok()?;
+    let after = after.strip_prefix(".code")?;
+    if after.starts_with(|c: char| c.is_ascii_alphanumeric() || c == '_') {
+        return None;
+    }
+    let marker = format!("const {name}: [Refusal;");
+    let declaration = source.split_once(&marker)?.1;
+    let initializer = declaration
+        .split_once(']')?
+        .1
+        .trim_start()
+        .strip_prefix('=')?;
+    let body = initializer
+        .trim_start()
+        .strip_prefix('[')?
+        .split_once("];")?
+        .0;
+    let mut rest = body;
+    for current in 0..=index {
+        let entry = skip_trivia(rest)
+            .strip_prefix("Refusal")?
+            .trim_start()
+            .strip_prefix('{')?;
+        let (fields, tail) = entry.split_once('}')?;
+        if current == index {
+            return field_literal(fields, "code:");
+        }
+        rest = tail.trim_start().strip_prefix(',')?;
+    }
+    None
+}
+
+#[test]
+fn indexed_refusal_codes_are_source_local_and_unknown_references_stay_unresolved() {
+    let source = r#"
+const OWN: [Refusal; 2] = [
+    Refusal { code: "first_code", when: "first", remedy: "fix first" },
+    Refusal { code: "second_code", when: "second", remedy: "fix second" },
+];
+fn failures(index: usize) {
+    Failure::invalid(OWN[0].code, "first");
+    Failure::unavailable(OWN[1].code, "second");
+    Failure::invalid(OWN[2].code, "out of bounds");
+    Failure::invalid(OWN[index].code, "dynamic");
+    Failure::invalid(OWN[0].code_other, "different field");
+}
+"#;
+    let (codes, unresolved) = codes_in_source(source, &BTreeMap::new());
+    assert_eq!(
+        codes,
+        BTreeSet::from(["first_code".into(), "second_code".into()])
+    );
+    assert_eq!(
+        unresolved.len(),
+        3,
+        "unknown references must be reported: {unresolved:?}"
+    );
+    let other = source.replace("first_code", "other_module_code");
+    assert_eq!(
+        indexed_refusal_reference("OWN[0].code,", &other).as_deref(),
+        Some("other_module_code")
+    );
+    assert!(
+        indexed_refusal_reference("OWN[0].code,", "const OWN: [Refusal; 1] = [COMPUTED];")
+            .is_none()
+    );
+    assert!(
+        indexed_refusal_reference(
+            "OWN[1].code,",
+            "const OWN: [Refusal; 2] = [COMPUTED, Refusal { code: \"later\" }];"
+        )
+        .is_none()
+    );
 }
 
 /// The literals of the match arm whose body starts where `before` ends.
@@ -948,13 +1026,17 @@ fn every_constructible_refusal_code_is_documented() {
 ///
 /// Source analysis, like the Rust half above, and for the same reason: these
 /// refusals are reached only in situations a test cannot reliably produce.
-fn ds_web() -> Option<PathBuf> {
+fn ds_web() -> PathBuf {
     let root = match std::env::var_os("DS_WEB_DIR") {
         Some(explicit) => PathBuf::from(explicit),
         None => PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../ds-web"),
     };
-    let root = root.canonicalize().unwrap_or(root);
-    root.is_dir().then_some(root)
+    assert!(
+        root.is_dir(),
+        "application bridge refusal parity requires ds-web at {}; set DS_WEB_DIR to the current checkout",
+        root.display()
+    );
+    root.canonicalize().expect("canonicalize ds-web checkout")
 }
 
 /// The shapes that mint an application refusal. The class is the first
@@ -1172,7 +1254,12 @@ fn application_refusal_codes(root: &Path) -> (BTreeSet<String>, Vec<String>) {
         {
             continue;
         }
-        let source = std::fs::read_to_string(&file).expect("read application source");
+        let source = std::fs::read_to_string(&file).unwrap_or_else(|error| {
+            panic!(
+                "application bridge refusal parity cannot read {}: {error}",
+                file.display()
+            )
+        });
         let (found, unread) = application_codes_in_source(&file, &source);
         codes.extend(found);
         unreadable.extend(unread);
@@ -1183,10 +1270,14 @@ fn application_refusal_codes(root: &Path) -> (BTreeSet<String>, Vec<String>) {
 /// `.ts` and `.svelte`: a `<script lang="ts">` block is TypeScript too, and a
 /// refusal thrown from a component was invisible while this walked only `.ts`.
 fn typescript_files(dir: &Path, out: &mut Vec<PathBuf>) {
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return;
-    };
-    for entry in entries.flatten() {
+    let entries = std::fs::read_dir(dir).unwrap_or_else(|error| {
+        panic!(
+            "application bridge refusal parity cannot walk {}: {error}",
+            dir.display()
+        )
+    });
+    for entry in entries {
+        let entry = entry.expect("read application source directory entry");
         let path = entry.path();
         if path.is_dir() {
             typescript_files(&path, out);
@@ -1486,14 +1577,7 @@ fn every_desktop_instance_refusal_is_declared_by_a_command() {
 
 #[test]
 fn every_application_refusal_code_is_documented() {
-    let Some(root) = ds_web() else {
-        eprintln!(
-            "SKIPPED: this check proves every refusal DS GridDesign can send \
-             across the bridge is one `ds` documents.\n  Set DS_WEB_DIR to the \
-             ds-web checkout to run it."
-        );
-        return;
-    };
+    let root = ds_web();
     // The walk has to reach components: a refusal thrown from a
     // `<script lang="ts">` block crosses the same bridge, and ds-web has none
     // today, so nothing but this says the walk could still see one.
