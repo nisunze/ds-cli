@@ -73,6 +73,14 @@ while the install fence governs observed queue facts. This read does not touch
 project publication, call a provider, pump, adopt or reclaim. It supplies no
 fresh cloud observation or reconstructed ACK work ID.
 
+Read-only store observation does not initialize a missing database or change
+its schema, rows or leases. Normal SQLite WAL reads include current committed
+WAL content and may create or maintain the exact `store.sqlite-wal` and
+`store.sqlite-shm` coordination files. Read-only does not promise an unchanged
+directory tree. Protected account/install state, primary database content,
+existing WAL content and committed report bytes remain outside those
+coordination effects; an immutable SQLite connection is not used to hide WAL.
+
 Snapshots admit at most 4,096 committed sets, 4,096 native sync facts, 32 outputs
 per set and 32 required IDs. Known renderer metadata and output presentation are
 validated by their existing owners. Public `report.plan --action inventory`
