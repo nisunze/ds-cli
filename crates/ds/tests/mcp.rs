@@ -2236,6 +2236,33 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
             && published["styles"].contains("style_label_set"),
         "the styles profile must expose reviewed label planning and publication"
     );
+    for leaf in [
+        "style_categorical_plan",
+        "style_categorical_set",
+        "style_color-range_plan",
+        "style_color-range_set",
+        "style_zoom_plan",
+        "style_zoom_set",
+        "style_preset_plan",
+        "style_preset_set",
+        "style_instruction_schema",
+        "style_instruction_plan",
+        "style_instruction_set",
+        "style_resolve",
+        "style_resolution_table",
+        "style_catalogue_manifest",
+        "style_catalogue_seed_plan",
+        "style_catalogue_seed_apply",
+        "style_catalogue_inventory",
+        "style_catalogue_backup_create",
+        "style_catalogue_backup_read",
+        "style_catalogue_retirement_plan",
+    ] {
+        assert!(
+            published["styles"].contains(leaf),
+            "styles must expose {leaf}"
+        );
+    }
     assert!(
         published["print-styles"].contains("style_seed_plan")
             && published["print-styles"].contains("style_seed_create")
@@ -2243,6 +2270,17 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
             && published["print-styles"].contains("style_print_create"),
         "the print-styles profile must expose create-only source and print workflows"
     );
+    for leaf in [
+        "style_print_versions_list",
+        "style_print_versions_read",
+        "style_print_versions_compare",
+        "style_print_versions_restore",
+    ] {
+        assert!(
+            published["print-styles"].contains(leaf),
+            "print-styles must expose {leaf}"
+        );
+    }
     assert!(
         published["map"].is_disjoint(&published["styles"]),
         "map navigation and style authoring must remain separate profiles"

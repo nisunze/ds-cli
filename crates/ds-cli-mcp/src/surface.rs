@@ -403,6 +403,10 @@ impl Profile {
             // package before the same file workflow imports or restores it.
             // Exact retained-source cable reconciliation adds one native package leaf.
             Self::GridNative => 19,
+            // The existing eleven guided leaves plus eleven primary/zoom/
+            // preset/JSON leaves form the complete authoring workflow;
+            // two bootstrap tools accompany that closed command set.
+            Self::Styles => STYLE_COMMANDS.len() + 2,
             _ => 16,
         }
     }
@@ -720,6 +724,26 @@ const STYLE_COMMANDS: &[&str] = &[
     "style.dimension.clear",
     "style.cartography.plan",
     "style.cartography.set",
+    "style.categorical.plan",
+    "style.categorical.set",
+    "style.color-range.plan",
+    "style.color-range.set",
+    "style.zoom.plan",
+    "style.zoom.set",
+    "style.preset.plan",
+    "style.preset.set",
+    "style.instruction.schema",
+    "style.resolve",
+    "style.resolution.table",
+    "style.catalogue.manifest",
+    "style.catalogue.seed.plan",
+    "style.catalogue.seed.apply",
+    "style.catalogue.inventory",
+    "style.catalogue.backup.create",
+    "style.catalogue.backup.read",
+    "style.catalogue.retirement.plan",
+    "style.instruction.plan",
+    "style.instruction.set",
 ];
 
 /// Create-only source seeding and print cloning are one small publication
@@ -729,6 +753,10 @@ const PRINT_STYLE_COMMANDS: &[&str] = &[
     "style.seed.create",
     "style.print.plan",
     "style.print.create",
+    "style.print.versions.list",
+    "style.print.versions.read",
+    "style.print.versions.compare",
+    "style.print.versions.restore",
 ];
 
 // DS Grid working copies and governed project model lifecycle. Discover every

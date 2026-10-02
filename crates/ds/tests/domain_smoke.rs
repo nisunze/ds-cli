@@ -13200,7 +13200,11 @@ fn ds_style_asks_no_host_question_and_refuses_without_a_window() {
         .filter_map(|command| command["id"].as_str())
         .map(str::to_owned)
         .collect();
-    assert_eq!(ids.len(), 15, "the style domain publishes fifteen commands");
+    assert_eq!(
+        ids.len(),
+        ds_cli_style::DOMAIN.commands.len(),
+        "every style leaf is registered"
+    );
     for id in &ids {
         let descriptor = ok(&["capabilities", id, "--output", "json"]);
         let command = &descriptor["command"];
@@ -13210,6 +13214,14 @@ fn ds_style_asks_no_host_question_and_refuses_without_a_window() {
             .iter()
             .filter_map(|input| input["name"].as_str())
             .collect();
+        if id == "style.instruction.schema" {
+            assert!(
+                flags.is_empty(),
+                "pure schema discovery needs no project or lane"
+            );
+            assert!(command["refusals"].as_array().unwrap().is_empty());
+            continue;
+        }
         assert!(
             flags.contains(&"lane"),
             "`{id}` does not name the lane it authenticates on"
@@ -13218,7 +13230,13 @@ fn ds_style_asks_no_host_question_and_refuses_without_a_window() {
             flags.contains(&"project"),
             "`{id}` does not name the project it reads or writes"
         );
-        for windowed in ["host", "desktop-descriptor", "target"] {
+        if flags.contains(&"target") {
+            assert_eq!(
+                id, "style.resolve",
+                "only governed screen/print resolution declares a semantic target"
+            );
+        }
+        for windowed in ["host", "desktop-descriptor"] {
             assert!(
                 !flags.contains(&windowed),
                 "`{id}` still asks `--{windowed}`, which only a paired window needed"
@@ -18031,4 +18049,27 @@ fn pls_structure_translate_names_local_models_and_accepts_them_by_quantities() {
             .is_file()
     );
     std::fs::remove_dir_all(&root).ok();
+}
+
+#[test]
+fn style_instruction_schema_covers_primary_scale_and_guarded_replay() {
+    let schema = ok(&["style", "instruction", "schema", "--output", "json"]);
+    let text = serde_json::to_string(&schema["data"]).unwrap();
+    for word in [
+        "categorical",
+        "color_range",
+        "zoom",
+        "guarded",
+        "halo_color",
+        "expected_digest",
+    ] {
+        assert!(text.contains(word), "schema missing {word}");
+    }
+    let descriptor = ok(&["capabilities", "style.zoom.plan", "--output", "json"]);
+    let inputs = descriptor["data"]["command"]["inputs"].as_array().unwrap();
+    assert!(
+        inputs
+            .iter()
+            .any(|input| input["name"] == "stop" && input["kind"] == "repeated")
+    );
 }
