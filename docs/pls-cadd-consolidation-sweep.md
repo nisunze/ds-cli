@@ -9,6 +9,9 @@ The kernel carries little PLS code: `src/local_models.rs` (`PlsSourceLink`),
 `crates/ds-client-core/src/grid_catalog.rs`.
 
 ### K1 — Copied contract doc (slice S3)
+**Resolved 2026-10-02:** the ds-cli copy was current and ds-cli owns 01; the
+kernel file is a pointer stub. The note below is the 2026-09-22 state.
+
 `docs/contracts/dsgrid-authority/01-server-required.md` is byte-identical to
 ds-cli's copy, and both differ from the ds-network authority. Keep one text in
 ds-network and link to it; settle which version is current first.
