@@ -26,6 +26,20 @@ they are not command-kernel WASM exports. PDF/SVG formatting, GeoJSON projection
 and legend rendering belong to ds-network-reporter. Brain owns global/project
 sharing and expected-revision saves. This module owns no storage or network IO.
 
+## Individual saved voltage-drop analysis
+
+Every individual LV report includes `voltage_drop`, the exact saved producer
+JSON with the suffix `.voltage-drop.json`. An explicit project selection or
+local override cannot omit it. Missing or stale analysis remains a report
+blocker; reporting never runs the solver or repairs the saved analysis.
+
+The effective policy keeps this artifact available on both declared data-report
+hosts (`desktop`, including the headless Linux Server, and `web`). A historical
+execution entry that suppresses this mandatory artifact cannot disable it.
+The selection, execution matrix and voltage-drop presentation choice remain
+stored as authored; other outputs retain their placement rules. The separate
+A4 `voltage_drop_pdf` remains optional and uses the local print runtime.
+
 ## Combined report output
 
 The Combined Report is a project-wide data export. It always selects SHP, XLSX,
