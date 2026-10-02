@@ -144,7 +144,7 @@ pub fn compose(request: Request) -> Result<Dashboard, String> {
                 "simple_payback":number(&d["payback"],"simple_payback_years"),
                 "discounted_payback":number(&d["payback"],"discounted_payback_years"),
                 "min_dscr":number(dscr,"min_dscr"), "avg_dscr":number(dscr,"avg_dscr"),
-                "dscr_threshold":number(dscr,"bankability_threshold").or_else(||number(pfa,"min_dscr_target")).unwrap_or(1.2),
+                "dscr_threshold":number(dscr,"bankability_threshold").or_else(||number(pfa,"min_dscr_target")),
                 "base_price":first_number(params,&["sell_price_kwh_base","sell_price_kwh_used","base_price","used_price"]),
                 "lifetime":number(params,"project_lifetime_years").or_else(||number(lcoe,"project_lifetime_years")).unwrap_or(25.)
             });
@@ -161,15 +161,12 @@ pub fn compose(request: Request) -> Result<Dashboard, String> {
                 number(ps, "total_fuel_lifetime"),
                 number(ps, "total_maintenance_lifetime")
             ));
-            values["npv_profitable"] = json!(values["npv"].as_f64().map(|v| v >= 0.));
-            values["irr_viable"] = json!(values["irr_pct"]
-                .as_f64()
-                .zip(values["wacc_pct"].as_f64())
-                .map(|(a, b)| a > b));
-            values["dscr_bankable"] = json!(values["min_dscr"]
-                .as_f64()
-                .zip(values["dscr_threshold"].as_f64())
-                .map(|(a, b)| a >= b));
+            // Retain dashboard field names while consuming the engine verdict.
+            // Missing owner evidence remains unknown, even with numeric metrics.
+            values["project_viable"] = json!(d["project_viable"].as_bool());
+            values["npv_profitable"] = values["project_viable"].clone();
+            values["irr_viable"] = values["project_viable"].clone();
+            values["dscr_bankable"] = json!(dscr["is_bankable"].as_bool());
             for (key, source) in [
                 ("simple_payback_viable", "simple_payback"),
                 ("discounted_payback_viable", "discounted_payback"),
@@ -829,7 +826,7 @@ mod tests {
     fn finance_preserves_zero_authority_and_normalizes_negative_fractional_irr() {
         let d=compose(Request{section:Section::Finance,system:None,report:json!({"05_financial":{"hybrid_financial_analysis":{
             "parameters":{"wacc":0.08,"sell_price_kwh_base":0,"sell_price_kwh_used":300},
-            "npv":{"npv":0,"value":100},"irr":{"irr":-0.05,"value":5},
+            "project_viable":false,"npv":{"npv":0,"value":100},"irr":{"irr":-0.05,"value":5},
             "lcoe":{"lcoe_discounted_with_network":0,"cost_per_kwh":300},
             "project_summary":{"plant_cost":30,"network_cost":70,"initial_investment":0,"total_capex":100}
         }}})}).unwrap();
@@ -841,10 +838,45 @@ mod tests {
         assert_eq!(d.derived["plant_share_pct"], 30.);
         assert_eq!(d.derived["network_share_pct"], 70.);
         assert!(d.derived["min_dscr"].is_null());
-        assert_eq!(d.derived["npv_profitable"], true);
+        assert_eq!(d.derived["npv_profitable"], false);
         assert_eq!(d.derived["irr_viable"], false);
         assert!(d.derived["dscr_bankable"].is_null());
     }
+    #[test]
+    fn finance_uses_engine_verdicts_and_leaves_missing_evidence_unknown() {
+        for verdict in [Some(true), Some(false), None] {
+            let mut analysis = json!({
+                "parameters":{"wacc":0.08}, "npv":{"npv":0}, "irr":{"irr":0.08},
+                "project_finance_analysis":{"dscr":{"min_dscr":0.5,"bankability_threshold":1.7}}
+            });
+            if let Some(verdict) = verdict {
+                analysis["project_viable"] = json!(verdict);
+                analysis["project_finance_analysis"]["dscr"]["is_bankable"] = json!(verdict);
+            }
+            let dashboard = compose(Request {
+                section: Section::Finance,
+                system: None,
+                report: json!({"05_financial":{"hybrid_financial_analysis":analysis}}),
+            })
+            .unwrap();
+            for key in [
+                "project_viable",
+                "npv_profitable",
+                "irr_viable",
+                "dscr_bankable",
+            ] {
+                assert_eq!(dashboard.derived[key], json!(verdict));
+            }
+        }
+        let dashboard = compose(Request {
+            section: Section::Finance,
+            system: None,
+            report: json!({"05_financial":{"hybrid_financial_analysis":{}}}),
+        })
+        .unwrap();
+        assert!(dashboard.derived["dscr_threshold"].is_null());
+    }
+
     #[test]
     fn boq_preserves_rows_and_refuses_cross_currency_sums() {
         let report = json!({"04_plant_cost":{"hybrid_boq":{"currency":"XAF","grand_total":0,"display_rows":[{"is_header":true},{"quantity":0,"total":0},{"is_subtotal":true},{"quantity":1}]},"network_costs":{"currency":"XAF","grand_total":10}}});
