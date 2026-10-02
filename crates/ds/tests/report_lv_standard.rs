@@ -59,7 +59,7 @@ esac
 }
 
 #[test]
-fn standard_registry_and_missing_job_are_discoverable_without_engine() {
+fn standard_registry_and_missing_job_have_named_refusals() {
     let output = Command::new(env!("CARGO_BIN_EXE_ds"))
         .args(["report", "layout", "schema", "--output", "json"])
         .output()
@@ -85,6 +85,22 @@ fn standard_registry_and_missing_job_are_discoverable_without_engine() {
             "json",
         ])
         .env("DS_REPORT_BIN", "/nonexistent")
+        .output()
+        .unwrap();
+    let answer: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(answer["error"]["code"], json!("reporter_engine_missing"));
+    // The platform availability gate precedes the handler. With an executable
+    // present, the missing job is refused before any engine task is invoked.
+    let output = Command::new(env!("CARGO_BIN_EXE_ds"))
+        .args([
+            "report",
+            "export",
+            "--task",
+            "lv-standard",
+            "--output",
+            "json",
+        ])
+        .env("DS_REPORT_BIN", "/bin/false")
         .output()
         .unwrap();
     let answer: Value = serde_json::from_slice(&output.stdout).unwrap();
