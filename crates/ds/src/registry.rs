@@ -833,6 +833,11 @@ static REPORT_ENTRIES: &[Entry] = &[
         render: ds_cli_report::outbox::render,
     },
     Entry {
+        command: &ds_cli_report::outbox::INVENTORY,
+        handler: ds_cli_report::outbox::inventory,
+        render: ds_cli_report::outbox::render_inventory,
+    },
+    Entry {
         command: &ds_cli_report::outbox::DRAIN,
         handler: ds_cli_report::outbox::drain,
         render: ds_cli_report::outbox::render,
@@ -3595,5 +3600,12 @@ mod report_touch_tests {
             &["--project", "p", "--out-dir", "/tmp/prints"],
         );
         assert!(report_project_touch("report.project.export", &ordinary));
+
+        let inventory = inputs(
+            &ds_cli_report::outbox::INVENTORY,
+            &["--project", "p", "--transformer", "tx_1"],
+        );
+        assert!(!report_project_touch("report.outbox.inventory", &inventory));
+        assert!(!report_held_read("report.outbox.inventory"));
     }
 }

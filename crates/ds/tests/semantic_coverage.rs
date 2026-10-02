@@ -900,6 +900,7 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     // unnoticed have no session. `drain` publishes artifacts of record and is
     // gated like every other publication.
     ("report.outbox.status", "read_only", "none"),
+    ("report.outbox.inventory", "read_only", "headless_user"),
     ("report.outbox.drain", "artifact_write", "headless_project"),
     // Shared heads require the restored native session and exact project but
     // never read a local room or publication queue.

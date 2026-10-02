@@ -287,6 +287,57 @@ pub fn headless_principal(lane_value: &str) -> Result<HeadlessPrincipal, Failure
     })
 }
 
+/// Observe the existing principal for a local read. Unlike Server startup,
+/// this never initializes auth/install state, creates a lock, refreshes a
+/// provider, reads a saved project selection or changes file permissions.
+pub fn headless_principal_read_only(lane_value: &str) -> Result<HeadlessPrincipal, Failure> {
+    let lane = Lane::parse(lane_value)?;
+    let profile = profile::load(lane)?;
+    let refresh = NativeRefreshStore::probe_read_only(&profile)?
+        .map(|context| {
+            ProviderIdentity::new(
+                context.lane(),
+                context.credential_audience_sha256(),
+                context.uid(),
+            )
+        })
+        .transpose()?;
+    let device = device::probe_identity_read_only(lane)?;
+    let identity = match (refresh, device) {
+        (None, None) => {
+            return Err(Failure::conflict(
+                "headless_signed_out",
+                "the server has no existing native identity",
+            )
+            .remedy(format!(
+                "connect the server's native account in the {} lane",
+                lane.token()
+            )));
+        }
+        (Some(identity), None) | (None, Some(identity)) => identity,
+        (Some(refresh), Some(device)) if refresh == device => device,
+        _ => return Err(Failure::conflict(
+            "auth_context_mismatch",
+            "the protected Firebase and DS device providers disagree on canonical identity",
+        )
+        .remedy(
+            "explicitly sign out or revoke the unintended provider before reading held artifacts",
+        )),
+    };
+    let install = state::read_only_install_file(lane.token())?
+        .map(ds_edge_authority::read_install_id)
+        .transpose()
+        .map_err(|error| Failure::failed("headless_install_unavailable", error)
+            .remedy("check the server user's existing protected install identity"))?
+        .ok_or_else(|| Failure::unavailable("headless_install_unavailable", "the lane has no existing native install identity")
+            .remedy("start the authorized Server once to register its install before inspecting its held artifacts"))?;
+    Ok(HeadlessPrincipal {
+        account_uid: identity.uid().into(),
+        deployment: profile.gateway_origin().into(),
+        install_id: install,
+    })
+}
+
 pub static DOMAIN: Domain = Domain {
     id: "auth",
     summary: "Sign in headlessly and select a visible project.",

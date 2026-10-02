@@ -582,6 +582,43 @@ has agreed to drop unsaved edits. Documents never cross this boundary.
 
 ## Printable inventory and report plans
 
+`ds report outbox inventory --project <exact-id> --transformer <exact-key>
+--output json` reads actual held Server files without Desktop, a running Server
+or a provider call. It uses the existing protected native account/install and
+the same committed receipt/catalogue/physical SHA reader as the native host.
+It never initializes missing auth/install/store state, touches the queue, adopts old
+batches, publishes, reclaims bytes or reads a saved project selection. An empty
+local catalogue is valid; absent sync state is `not_observed`. Missing/corrupt
+current bytes refuse the fresh read instead of resurrecting an old file.
+An existing WAL database is read through SQLite's normal read-only connection,
+so current committed WAL content remains visible. SQLite may create or maintain
+the exact `store.sqlite-wal`/`store.sqlite-shm` coordination files. This is not
+auth initialization, a queue transition, a lease or a publication effect.
+
+Local files retain their producing runs. The current native store has only one
+row per operation/variant; older surviving outputs without an observed matching
+row stay sealed. A queued or historically acknowledged row does not prove fresh
+cloud publication: this command always reports `cloud_read: not_observed`.
+Historical generation dates remain null. It returns metadata and locators,
+never file contents or credentials. Use the command's live descriptor for its
+inputs, bounded output and named refusals.
+
+`ds report plan --action inventory --request inventory.json --output json`
+projects supplied native facts for one owner/project/transformer/variant. It
+does not read disk, connect to DS, generate reports or publish. The request is
+`{"snapshot":{...}}` under the same 4 MiB bound as other report plans.
+`ds.report.inventory/v1` retains each output's batch, client publication/run,
+digest/size/presentation and generation time separately from its cloud head and
+publication state. Older legacy cloud URLs/timestamps stay separate. Missing
+outputs, changed input, native-pin disagreement and held/unavailable reads are
+explicit; timestamps never select a producing generation. See the
+[owned snapshot contract](../../../ds-command-kernel/docs/contracts/report-inventory.md)
+and [six-output fixture](../../../ds-command-kernel/tests/fixtures/report-inventory/held-six-old-legacy-three.json).
+
+The fixture is an owned supplied-facts example, not evidence about a real
+project. Actual publication still uses the one native sync queue and requires
+verified head/output evidence.
+
 `ds report transformers --project <id> --limit 100 --output json` reads the
 named project (the saved selection is never read) and asks `printing::inventory` which rows are printable.
 Reserved aggregate, analysis and project-document identities are excluded even

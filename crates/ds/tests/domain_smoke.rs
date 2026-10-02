@@ -14472,6 +14472,62 @@ fn printable_inventory_is_headless_and_limits_before_reading_credentials() {
 }
 
 #[test]
+fn report_inventory_plan_matches_native_projection_and_refuses_foreign_facts_without_auth() {
+    let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(
+        "../../../ds-command-kernel/tests/fixtures/report-inventory/held-six-old-legacy-three.json",
+    );
+    let request = fixture.to_str().unwrap();
+    let descriptor = ok(&["capabilities", "report.plan", "--output", "json"]);
+    assert_eq!(descriptor["command"]["contract"], 3);
+    assert_eq!(descriptor["command"]["authority"], "none");
+    assert_eq!(descriptor["command"]["effect"], "read_only");
+    let actual = ok(&[
+        "report",
+        "plan",
+        "--action",
+        "inventory",
+        "--request",
+        request,
+        "--output",
+        "json",
+    ]);
+    let mut facts: Value = serde_json::from_slice(&std::fs::read(&fixture).unwrap()).unwrap();
+    facts["command"] = json!("inventory");
+    let native: Value = serde_json::from_str(
+        &ds_command_kernel::report::evaluate(&serde_json::to_vec(&facts).unwrap()).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(actual, native["result"]);
+    assert_eq!(actual["outputs"].as_array().unwrap().len(), 6);
+    assert_eq!(actual["generated_at_ms"], 1790640000000_u64);
+    assert!(
+        actual["outputs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|file| file["publication_phase"] == "queued")
+    );
+    facts.as_object_mut().unwrap().remove("command");
+    facts["snapshot"]["project"] = json!("another-project");
+    let temp = tempfile::tempdir().unwrap();
+    let wrong = temp.path().join("foreign.json");
+    std::fs::write(&wrong, serde_json::to_vec(&facts).unwrap()).unwrap();
+    assert_eq!(
+        refusal(&[
+            "report",
+            "plan",
+            "--action",
+            "inventory",
+            "--request",
+            wrong.to_str().unwrap(),
+            "--output",
+            "json"
+        ]),
+        "report_plan_invalid"
+    );
+}
+
+#[test]
 fn symbol_icon_collision_control_is_discoverable_without_print_screen_aliasing() {
     let descriptor = ok(&["capabilities", "style.appearance.plan", "--output", "json"]);
     let inputs = descriptor["command"]["inputs"].as_array().unwrap();

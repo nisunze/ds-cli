@@ -109,6 +109,54 @@ fn datasets_vector_tools_accept_json_text_and_match_native_cli_answers() {
 }
 
 #[test]
+fn report_inventory_uses_identical_cli_chapter_and_typed_profile_projection() {
+    let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(
+        "../../../ds-command-kernel/tests/fixtures/report-inventory/held-six-old-legacy-three.json",
+    );
+    let request = fixture.to_str().unwrap();
+    let expected = cli_envelope(&[
+        "report",
+        "plan",
+        "--action",
+        "inventory",
+        "--request",
+        request,
+        "--output",
+        "json",
+    ]);
+    let (chapter, _) = mcp(
+        &["--exposure", "chapters"],
+        &[
+            json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"ds_reports","arguments":{"operation":"invoke","command":"report.plan","arguments":{"action":"inventory","request":request}}}}),
+        ],
+    );
+    assert_eq!(
+        response(&chapter, 1)["result"]["structuredContent"],
+        expected
+    );
+    let (typed, _) = mcp(
+        &["--exposure", "commands", "--profile", "printing"],
+        &[
+            json!({"jsonrpc":"2.0","id":1,"method":"tools/list"}),
+            json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"report_plan","arguments":{"action":"inventory","request":request}}}),
+        ],
+    );
+    let tools = response(&typed, 1)["result"]["tools"].as_array().unwrap();
+    let tool = tools
+        .iter()
+        .find(|tool| tool["name"] == "report_plan")
+        .unwrap();
+    assert!(
+        tool["inputSchema"]["properties"]["action"]["enum"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("inventory"))
+    );
+    assert_eq!(response(&typed, 2)["result"]["structuredContent"], expected);
+    assert_eq!(expected["data"]["outputs"].as_array().unwrap().len(), 6);
+}
+
+#[test]
 fn exact_global_member_is_discovered_and_invoked_as_the_same_cli_contract() {
     let id = "library.global.resolve-member";
     let direct = cli(&["capabilities", id, "--output", "json"]);
@@ -1920,7 +1968,7 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
             // Twenty-six printing leaves plus bootstrap: city-vector input,
             // local rendering and standalone map delivery complete the headless
             // workflow beside the retained desktop-owned operations.
-            "printing" => 25,
+            "printing" => 26,
             "printing-maps" => 7,
             // Sixteen layer leaves plus bootstrap: the layer drawer's profile
             // also carries this machine's prepared local layer catalogue,

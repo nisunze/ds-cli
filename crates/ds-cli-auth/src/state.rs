@@ -58,6 +58,21 @@ impl NativeDeviceStore {
         Ok(Self { root, lease: None })
     }
 
+    /// One atomically written protected blob, observed without opening a
+    /// lease, creating directories, cleaning stages or changing permissions.
+    pub(crate) fn read_only(key: &str) -> Result<Option<Vec<u8>>, Failure> {
+        let Some(root) = read_only_state_root()? else {
+            return Ok(None);
+        };
+        let root = root.join("devices");
+        if !existing_private_dir(&root).map_err(state_failure)? {
+            return Ok(None);
+        }
+        let store = Self { root, lease: None };
+        let (_, path, _) = store.paths(key).map_err(state_failure)?;
+        protected_read(&path).map_err(state_failure)
+    }
+
     fn paths(&self, key: &str) -> Result<(String, PathBuf, PathBuf), StoreError> {
         if key.is_empty()
             || key.len() > 512
@@ -224,6 +239,41 @@ impl NativeRefreshStore {
             .transpose();
         let _ = unlock(&lock);
         result
+    }
+
+    /// Read an existing atomic protected refresh record without a lease or
+    /// initializing any native state. No refresh request is performed.
+    pub(crate) fn probe_read_only(
+        profile: &ClientProfile,
+    ) -> Result<Option<StoredAuthContext>, Failure> {
+        let Some(root) = read_only_state_root()? else {
+            return Ok(None);
+        };
+        let root = root.join("credentials");
+        if !existing_private_dir(&root).map_err(state_failure)? {
+            return Ok(None);
+        }
+        let raw_key = format!(
+            "ds-client/{}/{}",
+            profile.lane().token(),
+            profile.credential_audience_sha256()
+        );
+        let identity = format!("{:x}", Sha256::digest(raw_key.as_bytes()));
+        let loaded = protected_read(&root.join(format!("{identity}.json")))
+            .map_err(state_failure)?
+            .map(Zeroizing::new);
+        loaded
+            .as_deref()
+            .map(|bytes| {
+                probe_stored_refresh(bytes, profile).map_err(|_| {
+                    Failure::unavailable(
+                        "native_state_unsafe",
+                        "the protected native refresh identity is malformed or mismatched",
+                    )
+                    .remedy("run ds auth logout and sign in again")
+                })
+            })
+            .transpose()
     }
 }
 
@@ -482,41 +532,160 @@ fn state_root() -> Result<PathBuf, Failure> {
     }
     #[cfg(not(windows))]
     {
-        let base = if let Some(path) = std::env::var_os("DS_CONFIG_HOME").filter(|v| !v.is_empty())
-        {
-            let path = PathBuf::from(path);
-            if !path.is_absolute() {
-                return Err(Failure::invalid(
-                    "native_state_root_invalid",
-                    "DS_CONFIG_HOME must be an absolute path",
-                ));
-            }
-            path
-        } else if let Some(path) = std::env::var_os("XDG_CONFIG_HOME").filter(|v| !v.is_empty()) {
-            let path = PathBuf::from(path);
-            if !path.is_absolute() {
-                return Err(Failure::invalid(
-                    "native_state_root_invalid",
-                    "XDG_CONFIG_HOME must be an absolute path",
-                ));
-            }
-            path
-        } else {
-            std::env::var_os("HOME")
-                .filter(|v| !v.is_empty())
-                .map(PathBuf::from)
-                .filter(|path| path.is_absolute())
-                .map(|path| path.join(".config"))
-                .ok_or_else(|| {
-                    Failure::unavailable(
-                        "native_state_unavailable",
-                        "the absolute per-user config root cannot be resolved",
-                    )
-                })?
-        };
-        let root = base.join("ds");
+        let root = resolved_state_root()?;
         secure_dir(&root).map_err(state_failure)?;
         Ok(root)
+    }
+}
+
+#[cfg(not(windows))]
+fn resolved_state_root() -> Result<PathBuf, Failure> {
+    let base = if let Some(path) = std::env::var_os("DS_CONFIG_HOME").filter(|v| !v.is_empty()) {
+        let path = PathBuf::from(path);
+        if !path.is_absolute() {
+            return Err(Failure::invalid(
+                "native_state_root_invalid",
+                "DS_CONFIG_HOME must be an absolute path",
+            ));
+        }
+        path
+    } else if let Some(path) = std::env::var_os("XDG_CONFIG_HOME").filter(|v| !v.is_empty()) {
+        let path = PathBuf::from(path);
+        if !path.is_absolute() {
+            return Err(Failure::invalid(
+                "native_state_root_invalid",
+                "XDG_CONFIG_HOME must be an absolute path",
+            ));
+        }
+        path
+    } else {
+        std::env::var_os("HOME")
+            .filter(|v| !v.is_empty())
+            .map(PathBuf::from)
+            .filter(|path| path.is_absolute())
+            .map(|path| path.join(".config"))
+            .ok_or_else(|| {
+                Failure::unavailable(
+                    "native_state_unavailable",
+                    "the absolute per-user config root cannot be resolved",
+                )
+            })?
+    };
+    Ok(base.join("ds"))
+}
+
+fn read_only_state_root() -> Result<Option<PathBuf>, Failure> {
+    #[cfg(windows)]
+    {
+        state_windows::read_only_state_root().map_err(state_failure)
+    }
+    #[cfg(not(windows))]
+    {
+        let root = resolved_state_root()?;
+        Ok(existing_private_dir(&root)
+            .map_err(state_failure)?
+            .then_some(root))
+    }
+}
+
+/// Resolve only already-protected install state. Never creates an identity or
+/// repairs permissions. The edge owner alone decodes its UUID.
+pub(crate) fn read_only_install_file(lane: &str) -> Result<Option<File>, Failure> {
+    let Some(root) = read_only_state_root()? else {
+        return Ok(None);
+    };
+    let admission = root.join("edge-admission");
+    let authority = admission.join(lane);
+    if !existing_private_dir(&admission).map_err(state_failure)?
+        || !existing_private_dir(&authority).map_err(state_failure)?
+    {
+        return Ok(None);
+    }
+    let path = authority.join("install-id");
+    match fs::symlink_metadata(&path) {
+        Ok(metadata) => {
+            if metadata.file_type().is_symlink() || !metadata.is_file() {
+                return Err(state_failure(StoreError::UnsafeOrUnreadable));
+            }
+            validate_file_metadata(&metadata).map_err(state_failure)?;
+            let file = protected_open_read(&path).map_err(state_failure)?;
+            validate_file_metadata(
+                &file
+                    .metadata()
+                    .map_err(|_| state_failure(StoreError::Unavailable))?,
+            )
+            .map_err(state_failure)?;
+            Ok(Some(file))
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(_) => Err(state_failure(StoreError::Unavailable)),
+    }
+}
+
+#[cfg(unix)]
+fn existing_private_dir(path: &Path) -> Result<bool, StoreError> {
+    use std::os::unix::fs::{MetadataExt, PermissionsExt};
+    match fs::symlink_metadata(path) {
+        Ok(metadata)
+            if metadata.is_dir()
+                && !metadata.file_type().is_symlink()
+                && metadata.uid() == unsafe { libc::geteuid() }
+                && metadata.permissions().mode() & 0o077 == 0 =>
+        {
+            Ok(true)
+        }
+        Ok(_) => Err(StoreError::UnsafeOrUnreadable),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(_) => Err(StoreError::Unavailable),
+    }
+}
+
+#[cfg(windows)]
+fn existing_private_dir(path: &Path) -> Result<bool, StoreError> {
+    state_windows::existing_private_dir(path)
+}
+
+#[cfg(all(test, unix))]
+mod read_only_tests {
+    use super::*;
+    use std::os::unix::fs::PermissionsExt;
+
+    #[test]
+    fn existing_directory_observation_never_creates_tightens_or_follows() {
+        let root = std::env::temp_dir().join(format!(
+            "ds-auth-read-only-{}-{}",
+            std::process::id(),
+            TEMP_SEQUENCE.fetch_add(1, Ordering::Relaxed)
+        ));
+        fs::create_dir(&root).unwrap();
+        let path = root.join("private");
+        assert_eq!(existing_private_dir(&path), Ok(false));
+        assert!(!path.exists());
+        fs::create_dir(&path).unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
+        assert_eq!(
+            existing_private_dir(&path),
+            Err(StoreError::UnsafeOrUnreadable)
+        );
+        assert_eq!(
+            fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+            0o755
+        );
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o700)).unwrap();
+        assert_eq!(existing_private_dir(&path), Ok(true));
+        let link = root.join("linked");
+        std::os::unix::fs::symlink(&path, &link).unwrap();
+        assert_eq!(
+            existing_private_dir(&link),
+            Err(StoreError::UnsafeOrUnreadable)
+        );
+        assert!(
+            fs::symlink_metadata(&link)
+                .unwrap()
+                .file_type()
+                .is_symlink()
+        );
+        fs::remove_dir_all(root).unwrap();
     }
 }
 
