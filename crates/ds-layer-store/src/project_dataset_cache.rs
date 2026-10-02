@@ -1485,6 +1485,56 @@ mod tests {
     }
 
     #[test]
+    fn shared_vector_corridor_drives_the_exact_scoped_held_query() {
+        let root = tempfile::tempdir().unwrap();
+        let key = open(root.path(), &scope(), &buildings());
+        acquire(
+            root.path(),
+            &key,
+            [29.99, -2.01, 30.02, -1.98],
+            vec![
+                feature(30.005, -2.00005, "inside"),
+                feature(29.9996, -1.9996, "bbox-only"),
+                feature(30.015, -1.985, "outside"),
+            ],
+            0,
+        );
+        let packet = ds_command_kernel::vector_ops::evaluate(
+            &serde_json::to_vec(&json!({
+                "schema":ds_command_kernel::vector_ops::SCHEMA,"operation":"buffer",
+                "source":{"type":"LineString","coordinates":[[30.,-2.],[30.01,-2.]]},
+                "radius_m":50.,"result_projection":"complete_produced"
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        let buffered: Value = serde_json::from_str(&packet).unwrap();
+        let corridor = buffered["result"]["features"][0]["geometry"].clone();
+        ds_command_kernel::reference_cache::validate_area(&corridor).unwrap();
+        let before = status_of(root.path(), &key);
+        let request = json!({"action":"query","dataset_key":key,
+            "principal":"uid-1","project":"project-a","area":corridor,"limit":10});
+        let read = execute_at(root.path(), request.clone()).unwrap();
+        assert_eq!(read["features"].as_array().unwrap().len(), 1);
+        assert_eq!(read["features"][0]["properties"]["name"], "inside");
+        assert_eq!(read["truncated"], false);
+        assert_eq!(read["generation"], before["generation"]);
+        let mut cross_project = request.clone();
+        cross_project["project"] = json!("project-b");
+        assert!(execute_at(root.path(), cross_project)
+            .unwrap_err()
+            .contains("different account or project"));
+        let mut cross_principal = request;
+        cross_principal["principal"] = json!("uid-2");
+        assert!(execute_at(root.path(), cross_principal).is_err());
+        assert_eq!(
+            status_of(root.path(), &key),
+            before,
+            "vector processing/query does not mutate held data"
+        );
+    }
+
+    #[test]
     fn paginated_queries_are_complete_ordered_and_generation_pinned() {
         let root = tempfile::tempdir().unwrap();
         let key = open(root.path(), &scope(), &buildings());

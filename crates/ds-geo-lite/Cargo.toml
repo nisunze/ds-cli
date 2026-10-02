@@ -1,6 +1,6 @@
 [package]
 name = "ds-geo-lite"
-description = "Portable geometry the kernel carries: great-circle distance, GeoJSON extent, exact area predicates, geometry admission, layer comparison. Digest-pinned snapshot of ds-network source — see vendor/ds-geo-lite/MANIFEST.json."
+description = "Canonical portable geometry primitives and vector operations shared by kernel and Network, plus fenced legacy geometry snapshots."
 version = "0.1.0"
 # The snapshot is taken from ds-network, whose workspace is edition 2024
 # (comparison.rs uses a let-chain). Compiling the bytes as they were written is

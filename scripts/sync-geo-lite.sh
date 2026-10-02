@@ -3,18 +3,16 @@
 # MANIFEST.json.
 #
 # The kernel does NOT depend on ds-network (docs/contracts/
-# ds-kernel-network-boundary.md). The portable geometry it needs is maintained
-# in ds-network and compiled into the kernel as a digest-pinned SNAPSHOT —
+# ds-kernel-network-boundary.md). Legacy geometry/canvas snapshots remain
+# maintained in ds-network; canonical primitives live in crates/ds-geo-lite —
 # see docs/contracts/ds-portable-geometry.md. This script is the only
 # sanctioned way to move bytes across that line; tests/geo_lite_drift.rs is
 # what keeps the snapshot honest afterwards.
 #
 #   scripts/sync-geo-lite.sh [path-to-ds-network]   (default: ../ds-network)
 #
-# Whole-file entries are copied byte for byte. The one PARTIAL entry
-# (geo/haversine.rs) is hand-derived from three ds-geo-ops files and is never
-# overwritten: the script only re-reads its sources' digests, and tells you to
-# re-derive it by hand when they moved.
+# Whole-file entries are copied byte for byte. Primitive geometry is now
+# canonical in crates/ds-geo-lite and must never be copied by this script.
 set -euo pipefail
 
 kernel_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -52,21 +50,7 @@ whole=(
 	# dependency — so it is snapshotted here too.
 	"network/processor_presets.json:crates/ds-network/src/network/processor_presets.json"
 )
-partial_vendored="geo/haversine.rs"
-partial_sources=(
-	"crates/ds-geo-ops/src/primitives/haversine.rs"
-	"crates/ds-geo-ops/src/lib.rs"
-	"crates/ds-geo-ops/src/types.rs"
-)
-partial_items=(
-	"primitives/haversine.rs::distance  -> haversine_distance_m (Coord args flattened to f64)"
-	"lib.rs::haversine_m                -> haversine_m (non-finite guard)"
-	"types.rs::EARTH_RADIUS_M           -> EARTH_RADIUS_M"
-)
-partial_why="ds-geo-ops::haversine_m is three items spread over three files whose siblings pull the whole primitives/operations tree; the kernel calls one function, so the cut is at item level."
-
 digest() { sha256sum "$1" | cut -d' ' -f1; }
-json_array() { local first=1 x; for x in "$@"; do [[ ${first} -eq 1 ]] || printf ',\n'; first=0; printf '        "%s"' "${x}"; done; printf '\n'; }
 
 mkdir -p "${vendor_dir}/geo" "${vendor_dir}/canvas" "${vendor_dir}/network"
 
@@ -84,8 +68,6 @@ for pair in "${whole[@]}"; do
 	fi
 done
 
-[[ -f "${vendor_dir}/${partial_vendored}" ]] ||
-	{ echo "${partial_vendored} is hand-derived and missing; restore it from git" >&2; exit 1; }
 
 {
 	printf '{\n'
@@ -114,28 +96,7 @@ done
 		printf '      ]\n'
 		printf '    }'
 	done
-	printf ',\n'
-	printf '    {\n'
-	printf '      "vendored": "%s",\n' "${partial_vendored}"
-	printf '      "partial": true,\n'
-	printf '      "sha256": "%s",\n' "$(digest "${vendor_dir}/${partial_vendored}")"
-	printf '      "source_commit": "%s",\n' "${commit}"
-	printf '      "why": "%s",\n' "${partial_why}"
-	printf '      "items": [\n'
-	json_array "${partial_items[@]}"
-	printf '      ],\n'
-	printf '      "sources": [\n'
-	pfirst=1
-	for source in "${partial_sources[@]}"; do
-		[[ -f "${network_root}/${source}" ]] ||
-			{ echo "missing in ds-network: ${source}" >&2; exit 1; }
-		[[ ${pfirst} -eq 1 ]] || printf ',\n'
-		pfirst=0
-		printf '        { "path": "%s", "sha256": "%s" }' \
-			"${source}" "$(digest "${network_root}/${source}")"
-	done
-	printf '\n      ]\n'
-	printf '    }\n'
+	printf '\n'
 	printf '  ]\n'
 	printf '}\n'
 } >"${vendor_dir}/MANIFEST.json"

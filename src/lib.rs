@@ -1818,6 +1818,12 @@ pub mod local_layers;
 pub mod local_models;
 pub mod vector_ops;
 #[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = vectorProcess)]
+pub fn vector_process_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
+    vector_ops::evaluate(input)
+        .map_err(|error| wasm_bindgen::JsValue::from_str(&serde_json::json!(error).to_string()))
+}
+#[cfg(feature = "wasm")]
 #[wasm_bindgen::prelude::wasm_bindgen(js_name = localLayers)]
 pub fn local_layers_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
     local_layers::evaluate(input).map_err(|e| wasm_bindgen::JsValue::from_str(&e))
@@ -1833,11 +1839,11 @@ pub fn application_settings_wasm(input: &[u8]) -> Result<String, wasm_bindgen::J
 /// Cross-project design migration — ONE endpoint, `kind` transformer|dsgrid.
 /// Not a cross-domain migration registry: Survey and Solar own their own.
 pub mod design_migration;
+pub mod grid_model_management;
 pub mod grid_publication;
 /// Versions and revisions of one project DS Grid model: exact ordinals from
 /// the parent chain, and catalog pages grouped by version.
 pub mod grid_versions;
-pub mod grid_model_management;
 #[cfg(feature = "wasm")]
 #[wasm_bindgen::prelude::wasm_bindgen(js_name = gridModelManagement)]
 pub fn grid_model_management_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {

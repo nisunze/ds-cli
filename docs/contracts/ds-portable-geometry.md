@@ -9,20 +9,26 @@ The ruling forbids `ds-command-kernel ──► ds-network` and permits "a light
 dependency beneath it". This document names where that lightweight geometry
 lives, how it stays honest, and what the severance did and did not buy.
 
-## 1. The destination — the owner's ruling
+## 1. The destination — one portable primitive implementation
 
-> **Source stays maintained in `ds-network`. It is compiled into the kernel at
-> build time. NO Cargo edge in either direction. Digest-pinned with a drift
-> check.**
+`crates/ds-geo-lite` maintains the portable types, six primitive modules
+(`bearing`, `destination`, `haversine`, `interpolation`, `intersection`,
+`spherical_area`) and three composed operations (`buffer`, `points_along`,
+`intersections`). These ten source files move from Network without mathematical
+changes. `ds-geo-ops` uses/re-exports them instead of maintaining copies.
+The former partial haversine snapshot is removed.
 
-`ds-network` is **not edited**. It keeps `ds-geo`, `ds-geo-ops` and `ds-canvas`
-exactly as they were, with their own tests. The kernel carries a **snapshot** of
-the files it needs:
+The permitted dependency is Network's geometry crate → this small portable
+crate. Kernel → Network and Network → the whole application kernel remain
+forbidden. Kernel native/WASM builds must work with Network absent. This moves
+no engineering analysis, voltage, terrain, strength or optimization code.
+
+The following remaining snapshots retain their existing Network authority:
 
 | | |
 |---|---|
 | `vendor/ds-geo-lite/` | the snapshot — ds-network bytes, plus `MANIFEST.json` |
-| `crates/ds-geo-lite` | compiles `vendor/ds-geo-lite/geo/*` as `ds_geo_lite` |
+| `crates/ds-geo-lite` | owns portable primitives; mounts unchanged legacy `geo/*` snapshots |
 | `crates/ds-canvas-lite` | compiles `vendor/ds-geo-lite/canvas/*` as `ds_canvas_lite` |
 | `tests/geo_lite_drift.rs` | the proof that the snapshot is still the source |
 | `scripts/sync-geo-lite.sh` | the only sanctioned way to move bytes across the line |
@@ -51,9 +57,9 @@ the sha256 of every source they were cut from. `tests/geo_lite_drift.rs`:
 
 Parity needs no corpus for the whole-file entries, because parity is by
 construction: the bytes are the same bytes, and the unit tests that ship
-inside those files run here too (`cargo test --workspace`). The drift test is
-the named proof. The partial entry below is the one place
-that argument does not reach, so it carries a corpus of its own.
+inside those files run here too (`cargo test --workspace`). The drift test remains the named proof for this snapshot scope. Primitive
+parity uses the shared implementation, numeric/operation fixtures, independent
+distance yardsticks and installed four-operation packets.
 
 ### Why two crates
 
@@ -68,31 +74,39 @@ Both are edition 2024, because `ds-network` is and `comparison.rs` uses a
 let-chain. Compiling the bytes as they were written is part of snapshotting
 rather than rewriting them.
 
-### The one partial entry
+### Primitive and processing semantics
 
-`ds-geo-ops::haversine_m` is three items in three files
-(`primitives/haversine.rs::distance`, `lib.rs::haversine_m`,
-`types.rs::EARTH_RADIUS_M`) whose siblings pull the whole primitives and
-operations tree. The kernel calls one function, so the cut is at item level:
-`vendor/ds-geo-lite/geo/haversine.rs` is marked `partial: true`, lists the items
-it carries, and is checked against its three SOURCES' digests rather than by
-byte comparison. Upstream touching any of the three fails the drift test and
-asks for a re-derivation by hand.
+The shared primitive retains the 6,371,000 m sphere, existing flat-packet
+finite/odd-pair admission, empty/NaN results and signed-zero behavior. Sampling
+stations use spherical distance and linear longitude/latitude interpolation;
+crossings use planar degree-space segment determinants and existing tolerances,
+including no collinear-overlap output. Buffers return an outer ring with round
+caps/convex joins, ignore polygon holes, and may self-overlap. These are not
+polygon overlay or ellipsoidal geography operations.
 
-Those digests prove upstream has not moved. They prove nothing about whether the
-transcription was faithful the day it was cut — a transposed argument, a dropped
-halving or a different Earth radius would pass every digest in this contract. So
-the partial entry is additionally checked against closed forms computed WITHOUT
-the haversine formula (an exact meridian arc, and the spherical law of cosines)
-in `tests/geo_lite_drift.rs::the_transcribed_haversine_matches_an_independent_yardstick`.
-Two independent formulations of the same distance on the same sphere agree with
-a correct transcription and disagree with a wrong one. **Any future partial
-entry owes the same kind of proof**, because for a partial entry the bytes are
-ours, not ds-network's.
+`vector_ops::evaluate` is the native/WASM JSON processing boundary for the four
+existing operations, with schema `ds.vector-processing/v1`, a closed typed
+operation request and the existing CLI result packet. It owns parameters,
+eligibility, multipart traversal, numeric results and completeness reporting.
+Producing operations support `inline` or `complete_produced` output projection;
+the latter returns all results of bounded inputs, never implying that
+withheld input features were read. Measure totals cover all eligible features
+and only listed rows are bounded. Hosts alone read/write files, authorize
+project data and perform transport. A WASM export does not prove a server route.
+
+Finite out-of-range coordinates retain the old vector contract's behavior;
+this slice does not silently add WGS84-range or topology repair. Provider-area
+reuse still passes through `reference_cache::validate_area` and its stronger
+WGS84/topology/hemisphere admission. Area selection remains the separately
+named `Intersects`/`CentroidInside` predicate, never line-crossing output.
+
+The independent meridian-arc/law-of-cosines test remains in
+`tests/geo_lite_drift.rs::canonical_haversine_matches_an_independent_yardstick`.
+Snapshot hashes are not a substitute for numerical or packet parity.
 
 ## 2. What is snapshotted
 
-15 files, `vendor/ds-geo-lite/MANIFEST.json`, taken at ds-network `a644fb0`
+14 files, `vendor/ds-geo-lite/MANIFEST.json`, taken at ds-network `a644fb0`
 (`577ec83` until geometry admission was added, 2026-09-27):
 
 | Vendored | ds-network source | Whole |
@@ -102,7 +116,6 @@ ours, not ds-network's.
 | `geo/identity.rs` | `crates/ds-geo/src/identity.rs` | yes |
 | `geo/comparison.rs` | `crates/ds-geo/src/comparison.rs` | yes |
 | `geo/admission.rs`, `geo/admission_corpus.json` | `crates/ds-geo/src/admission{.rs,_corpus.json}` | yes |
-| `geo/haversine.rs` | `crates/ds-geo-ops/src/{primitives/haversine.rs,lib.rs,types.rs}` | **partial** |
 | `canvas/{lib,viewport,selection,measured_path,free_layout,packed,layout_session}.rs` | `crates/ds-canvas/src/**` | yes |
 | `network/processor_presets.json` | `crates/ds-network/src/network/processor_presets.json` | yes |
 
@@ -228,10 +241,9 @@ scripts/sync-geo-lite.sh [path-to-ds-network]     # default ../ds-network
 cargo test --test geo_lite_drift
 ```
 
-It refuses a dirty ds-network checkout, copies the whole-file entries, rewrites
-`MANIFEST.json` at the current ds-network commit, and never overwrites the
-partial entry — for that it only re-reads the source digests, and the drift test
-tells you the items to re-derive.
+It refuses a dirty ds-network checkout, copies the remaining whole-file entries
+and rewrites `MANIFEST.json` at the current ds-network commit. Canonical primitive
+code under `crates/ds-geo-lite/src` is outside the snapshot and is never copied.
 
 **Do not edit `vendor/ds-geo-lite/` by hand.** `cargo fmt` will happily reformat
 those files, because they are real modules of a real crate; the drift test is

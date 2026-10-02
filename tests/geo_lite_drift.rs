@@ -19,10 +19,9 @@
 //!    human runs `scripts/sync-geo-lite.sh` rather than discovering the
 //!    divergence months later in a field build.
 //!
-//! One entry is deliberately PARTIAL: `geo/haversine.rs` is three items lifted
-//! out of three `ds-geo-ops` files whose siblings pull the whole primitives
-//! tree. Its bytes are ours, so half 2 checks its SOURCES' digests instead —
-//! upstream touching any of the three fails here and asks for a re-derivation.
+//! Primitive geometry now has one canonical implementation in ds-geo-lite,
+//! shared by Network. The former partial haversine snapshot is removed; these
+//! checks retain the untouched legacy snapshots and kernel severance fences.
 
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -382,27 +381,16 @@ fn every_detached_workspace_is_covered_by_the_gate_script() {
     }
 }
 
-/// The ONE entry whose parity is not by construction.
-///
-/// Twelve of the thirteen vendored files ARE the ds-network bytes, so the
-/// digest check is the whole proof. `geo/haversine.rs` is different: it is a
-/// hand transcription of three items out of three `ds-geo-ops` files, so its
-/// bytes are ours. The drift test above pins its SOURCES — it proves upstream
-/// has not moved, and says nothing about whether the transcription was faithful
-/// the day it was cut. A transposed argument, a dropped halving or a different
-/// Earth radius would pass every other gate in this file.
-///
-/// So this one is checked against closed forms computed WITHOUT the haversine
-/// formula: an exact meridian arc, and the spherical law of cosines. Both are
-/// independent formulations of the same distance on the same sphere, so they
-/// agree with a correct transcription and disagree with every wrong one.
+/// Independent numerical proof remains necessary after removing the partial
+/// haversine copy. The shared primitive must still agree with meridian arcs
+/// and the spherical law of cosines; digest checks are not a math oracle.
 #[test]
-fn the_transcribed_haversine_matches_an_independent_yardstick() {
+fn canonical_haversine_matches_an_independent_yardstick() {
     use ds_geo_lite::{haversine_distance_m, haversine_m, EARTH_RADIUS_M};
 
     assert_eq!(
         EARTH_RADIUS_M, 6_371_000.0,
-        "the radius is `ds-geo-ops::types::EARTH_RADIUS_M`; changing it here is drift"
+        "the shared primitive retains the established spherical Earth radius"
     );
 
     // 1. A meridian arc is exact on a sphere: R * dlat, no trigonometry.

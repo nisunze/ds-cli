@@ -35,9 +35,9 @@ wasm-bindgen = { version = "0.2", optional = true }
 zeroize = "1"
 url = "2"
 regex = "1"
-# Portable geometry. These are digest-pinned SNAPSHOTS of ds-network source
-# compiled into the kernel; there is no Cargo edge to ds-network in either
-# direction (docs/contracts/ds-kernel-network-boundary.md, ds-portable-geometry.md).
+# Portable primitives are canonical in ds-geo-lite; Network delegates to it.
+# The remaining geometry/canvas snapshots keep their existing drift fence.
+# Neither this kernel nor its portable crates depend on ds-network.
 ds-geo-lite = { path = "crates/ds-geo-lite" }
 ds-canvas-lite = { path = "crates/ds-canvas-lite" }
 zip = { version = "2", default-features = false, features = ["deflate"] }
