@@ -1218,8 +1218,7 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
     }
     /// One governed catalogue action on the project's assets. `reader`
     /// carries the bytes of an ingest and nothing else. An index form
-    /// answers `index_status` (`served`, or `unavailable` after its one
-    /// catalogue fallback on a ds-brain that predates the index).
+    /// answers `index_status: "served"` with the server index response.
     pub fn project_assets(
         &mut self,
         project: &str,

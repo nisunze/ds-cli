@@ -1,14 +1,12 @@
 //! The store survives what the runtime contract names: restart, a second
-//! worker, another account, an incompatible upgrade, and the handoff.
+//! worker, another account, and an incompatible upgrade.
 
 use ds_command_kernel::sync::Identity;
 use ds_command_kernel::sync_store::ABANDONED_AFTER_MS;
 use ds_command_kernel::sync_store::{
-    ArtifactOutput, ArtifactRow, ArtifactState, BytesEvidence, Event, Fence, LegacyHandoff,
-    ReceiptRow, Scope,
+    ArtifactOutput, ArtifactRow, ArtifactState, Event, Fence, ReceiptRow, Scope,
 };
 use ds_sync_store::{Error, Store, SCHEMA_VERSION};
-use serde_json::json;
 
 const SHA: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
@@ -252,61 +250,6 @@ fn a_newer_schema_on_disk_is_refused_and_left_alone() {
         .query_row("SELECT COUNT(*) FROM artifacts", [], |r| r.get(0))
         .unwrap();
     assert_eq!(kept, 1, "the queue is never erased");
-}
-
-#[test]
-fn the_handoff_imports_across_scopes_once() {
-    let mut store = Store::in_memory().unwrap();
-    let rows: Vec<LegacyHandoff> = serde_json::from_value(json!([
-        {"row": {"kind": "compute_artifact", "id": "legacy-1", "owner_uid": "alice", "project_id": "p", "root": "/r", "client_run_id": "run",
-                 "engine": "network_reporter", "operation": "export-a", "variant": "default", "engine_version": "r", "input_base_fingerprint": "b",
-                 "client_publish_id": "pub-1", "status": "failed", "phase": "pending", "attempts": 3, "created_at": 4, "updated_at": 5, "synced_at": null,
-                 "error": "The producing engine build is not admitted.", "outputs": [{"output_id": "xlsx", "local_path": "/x", "format": "xlsx", "content_type": "application/x", "sha256": SHA, "size_bytes": 7, "state": "pending"}]},
-         "bytes": {"kind": "verified", "locator": "batch:pub-1"}},
-        {"row": {"kind": "compute_artifact", "id": "legacy-2", "owner_uid": "alice", "project_id": "q", "root": "/r", "client_run_id": "run",
-                 "engine": "solar", "operation": "calculate-city", "variant": "default", "engine_version": "s", "input_base_fingerprint": "",
-                 "status": "pending", "phase": "pending", "attempts": 0, "created_at": 4, "updated_at": 5, "synced_at": null, "error": null,
-                 "outputs": [{"output_id": "result", "local_path": "", "format": "json", "content_type": "application/json", "sha256": "", "size_bytes": 0, "expected_sha256": SHA, "expected_size_bytes": 3, "state": "preparing"}]},
-         "bytes": {"kind": "missing", "reason": "no sealed Solar batch on this machine"}}
-    ]))
-    .unwrap();
-    let t = store
-        .apply(
-            &fence("alice"),
-            100,
-            Event::HandoffLegacy { rows: rows.clone() },
-        )
-        .unwrap();
-    assert_eq!(t.changes.len(), 4);
-    let p = store.snapshot(&fence("alice"), &scope()).unwrap();
-    assert_eq!(p.artifacts.len(), 1);
-    assert_eq!(p.artifacts[0].state, ArtifactState::Held);
-    assert_eq!(p.artifacts[0].replay_key, "pub-1");
-    let q = store
-        .snapshot(
-            &fence("alice"),
-            &Scope::Project {
-                project: "q".into(),
-            },
-        )
-        .unwrap();
-    assert_eq!(q.artifacts[0].state, ArtifactState::Refused);
-    assert!(matches!(&rows[1].bytes, BytesEvidence::Missing { .. }));
-    let again = store
-        .apply(&fence("alice"), 101, Event::HandoffLegacy { rows })
-        .unwrap();
-    assert!(again.changes.is_empty());
-    // The producer recording the same publication later is one row, not two.
-    let recorded = store
-        .apply(
-            &fence("alice"),
-            102,
-            Event::LocalProduced {
-                row: row("export-a", "pub-1"),
-            },
-        )
-        .unwrap();
-    assert_eq!(recorded.refusals[0].code, "already_recorded");
 }
 
 #[test]

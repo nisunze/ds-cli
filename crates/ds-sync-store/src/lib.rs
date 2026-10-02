@@ -442,20 +442,7 @@ impl Store {
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
         let scope = event_scope(&event);
-        let snapshot = match &scope {
-            Some(scope) => Self::snapshot_on(&tx, fence, scope)?,
-            // A handoff spans scopes: the kernel needs every artifact row of
-            // this fence to keep the import idempotent.
-            None => Snapshot {
-                artifacts: Self::rows_on::<ArtifactRow>(
-                    &tx,
-                    "SELECT row FROM artifacts WHERE account=?1 AND deployment=?2 AND install_id=?3 AND ?4 = ?4 ORDER BY scope, engine, operation, variant",
-                    fence,
-                    "",
-                )?,
-                ..Snapshot::default()
-            },
-        };
+        let snapshot = Self::snapshot_on(&tx, fence, &scope)?;
         // A receipt is appended once: the same receipt applied again (a
         // retried host call, a replayed log) changes nothing.
         if let Event::ActionReceipt { receipt } = &event {
@@ -662,17 +649,16 @@ impl Store {
     }
 }
 
-fn event_scope(event: &Event) -> Option<Scope> {
+fn event_scope(event: &Event) -> Scope {
     match event {
-        Event::LocalProduced { row } => Some(row.scope.clone()),
+        Event::LocalProduced { row } => row.scope.clone(),
         Event::HeadsRead { scope, .. }
         | Event::LeaseTake { scope, .. }
         | Event::LeaseRenew { scope, .. }
         | Event::LeaseRelease { scope, .. }
-        | Event::Cancel { scope, .. } => Some(scope.clone()),
-        Event::GrantOpened { grant } => Some(grant.scope.clone()),
-        Event::ActionReceipt { receipt } => Some(receipt.scope.clone()),
-        Event::HandoffLegacy { .. } => None,
+        | Event::Cancel { scope, .. } => scope.clone(),
+        Event::GrantOpened { grant } => grant.scope.clone(),
+        Event::ActionReceipt { receipt } => receipt.scope.clone(),
     }
 }
 

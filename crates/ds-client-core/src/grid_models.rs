@@ -470,13 +470,8 @@ fn revision_read<T: AuthorizedTransport>(
     Ok((record.clone(), approval))
 }
 
-/// Walk the catalog newest first until the revision's whole version has been
-/// seen (a lower version appears, or the catalog ends), within
-/// [`MAX_POSITION_PAGES`]. The kernel decides the ordinal from the chain.
-///
-/// `stored` is the revision's ordinal as a Server that stores ordinals
-/// reported it. Its version's newest row then already holds the count, so
-/// the walk stops at the first row of that version.
+/// Walk at most [`MAX_POSITION_PAGES`] to the version's newest revision,
+/// whose stored ordinal is its revision count.
 #[allow(clippy::too_many_arguments)]
 fn walk<T: AuthorizedTransport>(
     profile: &ClientProfile,
@@ -488,10 +483,9 @@ fn walk<T: AuthorizedTransport>(
     version: u64,
     stored: Option<u64>,
 ) -> Result<Value, ClientError> {
-    let mut rows = Vec::new();
+    let ordinal = stored.ok_or_else(bad)?;
     let mut cursor = String::new();
     let mut pages = 0;
-    let mut ended = false;
     while pages < MAX_POSITION_PAGES {
         let data = request(
             profile,
@@ -512,22 +506,16 @@ fn walk<T: AuthorizedTransport>(
         let lower = page
             .iter()
             .any(|row| row["version"].as_u64().is_some_and(|v| v < version));
-        rows.extend(
-            page.iter()
-                .filter(|row| row["version"].as_u64() == Some(version))
-                .cloned(),
-        );
-        if let (Some(ordinal), Some(count)) = (
-            stored,
-            rows.first()
-                .and_then(ds_command_kernel::grid_versions::stored_ordinal),
-        ) {
+        if let Some(row) = page
+            .iter()
+            .find(|row| row["version"].as_u64() == Some(version))
+        {
+            let count = ds_command_kernel::grid_versions::stored_ordinal(row).ok_or_else(bad)?;
             return Ok(json!({"version":version,"revision_id":revision,
                 "revision_ordinal_within_version":ordinal,"version_revision_count":count,
                 "count_exact":true,"pages_read":pages}));
         }
         if lower || !more {
-            ended = true;
             break;
         }
         cursor = data["next_cursor"]
@@ -536,18 +524,10 @@ fn walk<T: AuthorizedTransport>(
             .ok_or_else(bad)?
             .to_owned();
     }
-    let position = ds_command_kernel::grid_versions::position(&rows, revision, ended)
-        .filter(|p| p.version == version)
-        .ok_or_else(|| {
-            ClientError::new(
-                ErrorKind::UnreadableResponse,
-                "the revision is not listed in its own version within the bounded catalog walk",
-            )
-        })?;
-    Ok(json!({"version":position.version,"revision_id":revision,
-        "revision_ordinal_within_version":position.ordinal,
-        "version_revision_count":position.count,"count_exact":position.complete,
-        "pages_read":pages}))
+    Err(ClientError::new(
+        ErrorKind::UnreadableResponse,
+        "the revision is not listed in its own version within the bounded catalog walk",
+    ))
 }
 
 /// The head projection `show` and `list` share: the catalog row without
@@ -639,8 +619,7 @@ pub(crate) fn run<T: AuthorizedTransport>(
             if row["project_id"] != project || row["model_id"] != *model {
                 return Err(bad());
             }
-            // A Server that stores ordinals counts the head's version itself
-            // (the head is its newest revision); an older one is walked.
+            // The head is its version's newest revision; the Server supplies its count.
             let count = row["head_version_revision_count"]
                 .as_u64()
                 .filter(|n| *n > 0);
@@ -650,9 +629,7 @@ pub(crate) fn run<T: AuthorizedTransport>(
                         "revision_ordinal_within_version":count,"version_revision_count":count,
                         "count_exact":true,"pages_read":0})
                 }
-                (Some(head), Some(version), None) => walk(
-                    profile, transport, authority, project, model, head, version, None,
-                )?,
+                (Some(_), Some(_), None) => return Err(bad()),
                 _ => Value::Null,
             };
             // Deliberate LV/MV version markers are independent of legacy
@@ -859,9 +836,8 @@ pub(crate) fn run<T: AuthorizedTransport>(
                 return Err(bad());
             }
             // Revisions are grouped by the version they were saved into;
-            // the kernel orders each group by its parent chain.
-            let versions =
-                ds_command_kernel::grid_versions::group_page(rows, more).map_err(|_| bad())?;
+            // the kernel orders each group by its stored ordinals.
+            let versions = ds_command_kernel::grid_versions::group_page(rows).map_err(|_| bad())?;
             Ok(Receipt {
                 data: json!({"project":project,"model_id":model,"versions":versions,
                     "revisions_listed":rows.len(),"more":more,"next_cursor":cursor}),

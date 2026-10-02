@@ -155,8 +155,8 @@ silent no-op: the operator's computation lost, and they are told which batch
 and why. It is not an error — the local bytes may be discarded.
 
 **Replay is idempotent** and always was: `Event::LocalProduced` refuses a row
-whose `sha256` or `replay_key` is already recorded (`already_recorded`), the
-handoff is re-runnable, and `work/publish` restates one declaration for at most
+whose `sha256` or `replay_key` is already recorded (`already_recorded`), and
+`work/publish` restates one declaration for at most
 three rounds. A cancelled row is never resurrected.
 
 ## 5. The stage a reader sees

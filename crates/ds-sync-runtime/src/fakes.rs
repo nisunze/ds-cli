@@ -60,9 +60,6 @@ pub struct FakeWorld {
     /// Refuse every `open` with a 400 and this message — a declaration the
     /// project's inputs do not produce.
     pub invalid_declaration: Option<String>,
-    /// Answer every `open` with 403 `WORK_GRANT_REQUIRED`, the way a lane
-    /// whose authority predates the report door does.
-    pub door_closed: bool,
     /// Refuse every `finalize` with this message, no verdict.
     pub refuse_publish: Option<String>,
     /// Refuse the n-th record call (0-based, opens and finalizes counted
@@ -107,7 +104,6 @@ impl Default for FakeWorld {
             refuse_open: None,
             refuse_open_resource: None,
             invalid_declaration: None,
-            door_closed: false,
             refuse_publish: None,
             refuse_publish_from: None,
             never_commit: false,
@@ -226,13 +222,6 @@ impl FakeWorld {
     /// the bytes it still lacks.
     fn open(&mut self, body: &Value) -> Result<Value, GatewayError> {
         self.opens += 1;
-        if self.door_closed {
-            return Err(refused(
-                403,
-                "WORK_GRANT_REQUIRED",
-                "Network Reporter publication requires /api/v1/work/open and /api/v1/work/publish",
-            ));
-        }
         if let Some(reason) = &self.refuse_open {
             return Err(refused(403, "INSUFFICIENT_PERMISSIONS", reason.clone()));
         }

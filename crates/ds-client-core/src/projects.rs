@@ -76,8 +76,7 @@ impl ProjectDirectory {
     /// A `platform_admin` sees every project through the elevated path with no
     /// membership document behind any row, so every row's `role` is empty —
     /// which reads as "no role" when the truth is "seen by elevation". The
-    /// verdict is what lets a caller say so. `false` when the server did not
-    /// say (an older ds-brain), never a guess.
+    /// verdict is what lets a caller say so.
     pub const fn elevated(&self) -> bool {
         self.elevated
     }
@@ -171,73 +170,34 @@ pub(crate) struct WireBucket {
 }
 
 #[derive(Deserialize)]
-pub(crate) struct ProjectEnvelope {
-    #[serde(default)]
-    pub error: Option<serde_json::Value>,
-    #[serde(default)]
-    pub data: Option<ProjectData>,
-    #[serde(default)]
-    pub projects: Option<Vec<WireProject>>,
+pub(crate) struct ProjectPayload {
+    success: bool,
+    data: ProjectData,
 }
 
 #[derive(Deserialize)]
 pub(crate) struct ProjectData {
     pub projects: Vec<WireProject>,
-    /// `handlers_user.go` writes `"elevated": true|false` beside `projects`.
-    /// Absent on an older ds-brain, and absence must not make the answer
-    /// unreadable: it means "not said", which this crate reads as `false`.
-    #[serde(default)]
     pub elevated: bool,
-}
-
-#[derive(Deserialize)]
-#[serde(untagged)]
-pub(crate) enum ProjectPayload {
-    Array(Vec<WireProject>),
-    Envelope(ProjectEnvelope),
 }
 
 impl ProjectPayload {
     pub(crate) fn bucket(self) -> Result<WireBucket, ClientError> {
-        match self {
-            // A bare array and a top-level `projects` are the older shapes;
-            // neither carries a verdict.
-            Self::Array(rows) => Ok(WireBucket {
-                rows,
-                elevated: false,
-            }),
-            Self::Envelope(envelope) => envelope.bucket(),
-        }
-    }
-}
-
-impl ProjectEnvelope {
-    pub(crate) fn bucket(self) -> Result<WireBucket, ClientError> {
-        if self.error.is_some() {
+        if !self.success {
             return Err(unreadable());
         }
-        match (self.data, self.projects) {
-            (Some(data), None) => Ok(WireBucket {
-                rows: data.projects,
-                elevated: data.elevated,
-            }),
-            (None, Some(rows)) => Ok(WireBucket {
-                rows,
-                elevated: false,
-            }),
-            _ => Err(unreadable()),
-        }
+        Ok(WireBucket {
+            rows: self.data.projects,
+            elevated: self.data.elevated,
+        })
     }
 }
 
 #[derive(Deserialize)]
 pub(crate) struct WireProject {
-    #[serde(default)]
-    eds_project_id: Option<String>,
+    eds_project_id: String,
     #[serde(default)]
     id: Option<String>,
-    #[serde(default)]
-    project_id: Option<String>,
     #[serde(default)]
     project_name: Option<String>,
     #[serde(default)]
@@ -266,22 +226,15 @@ pub(crate) struct WireProject {
 
 impl WireProject {
     fn exact_id(&self) -> Result<String, ClientError> {
-        let aliases = [
-            self.eds_project_id.as_deref(),
-            self.id.as_deref(),
-            self.project_id.as_deref(),
-        ];
-        let mut id: Option<&str> = None;
-        for value in aliases.into_iter().flatten() {
-            if crate::validate_project_id(value).is_err() {
-                return Err(unreadable());
-            }
-            if id.is_some_and(|current| current != value) {
-                return Err(unreadable());
-            }
-            id = Some(value);
+        // One canonical project id, validated by the one owner; a stray `id`
+        // alias must agree with it.
+        let id = &self.eds_project_id;
+        if crate::validate_project_id(id).is_err()
+            || self.id.as_deref().is_some_and(|alias| alias != id)
+        {
+            return Err(unreadable());
         }
-        id.map(str::to_owned).ok_or_else(unreadable)
+        Ok(id.clone())
     }
 
     fn validate_bucket(&self, status: ProjectStatus) -> Result<(), ClientError> {
@@ -337,37 +290,48 @@ mod tests {
     }
 
     #[test]
-    fn the_elevation_verdict_is_read_and_absence_is_false_not_unreadable() {
-        // ds-brain writes `elevated` beside `projects` inside `data`
-        // (handlers_user.go). Read it; and read an older server that never
-        // wrote it as "not said".
+    fn the_elevation_verdict_is_required_from_the_server() {
+        for elevated in [true, false] {
+            let body =
+                serde_json::json!({"success":true,"data":{"projects":[],"elevated":elevated}});
+            assert_eq!(
+                payload(&body.to_string()).bucket().unwrap().elevated,
+                elevated
+            );
+        }
+        assert!(serde_json::from_str::<ProjectPayload>(
+            r#"{"success":true,"data":{"projects":[]}}"#
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn only_the_current_project_envelope_is_read() {
+        for body in [
+            r#"[]"#,
+            r#"{"projects":[]}"#,
+            r#"{"data":{"projects":[],"elevated":false}}"#,
+        ] {
+            assert!(serde_json::from_str::<ProjectPayload>(body).is_err());
+        }
         assert!(
-            payload(
-                r#"{"data":{"count":1,"projects":[{"id":"p"}],"elevated":true,"status":"active"}}"#
-            )
-            .bucket()
-            .unwrap()
-            .elevated
-        );
-        assert!(
-            !payload(r#"{"data":{"projects":[{"id":"p"}],"elevated":false}}"#)
+            payload(r#"{"success":false,"data":{"projects":[],"elevated":false}}"#)
                 .bucket()
-                .unwrap()
-                .elevated
+                .is_err()
         );
-        assert!(
-            !payload(r#"{"data":{"projects":[{"id":"p"}]}}"#)
-                .bucket()
-                .unwrap()
-                .elevated
-        );
-        assert!(
-            !payload(r#"{"projects":[{"id":"p"}]}"#)
-                .bucket()
-                .unwrap()
-                .elevated
-        );
-        assert!(!payload(r#"[{"id":"p"}]"#).bucket().unwrap().elevated);
+    }
+
+    #[test]
+    fn the_project_identity_is_the_canonical_eds_project_id() {
+        for body in [r#"{"id":"p"}"#, r#"{"project_id":"p"}"#] {
+            assert!(serde_json::from_str::<WireProject>(body).is_err());
+        }
+        let row: WireProject =
+            serde_json::from_str(r#"{"eds_project_id":"p","id":"other"}"#).unwrap();
+        assert!(row.exact_id().is_err());
+        let control: WireProject =
+            serde_json::from_str(r#"{"eds_project_id":"bad\u0001id"}"#).unwrap();
+        assert!(control.exact_id().is_err());
     }
 
     #[test]

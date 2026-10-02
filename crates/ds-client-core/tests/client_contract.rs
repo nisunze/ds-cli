@@ -2536,15 +2536,20 @@ fn transformer_context_profile_and_runtime_inputs_have_no_escape_hatch() {
 #[test]
 fn transformer_context_refuses_mismatched_or_unbounded_responses() {
     let malformed = [
+        serde_json::json!({"total":1,"found_count":1,"failed_count":0,
+            "results":[{"transformer_name":"tx_1","ok":true,"data":{"layers":{}}}]}),
         serde_json::json!({
+            "success": true,
             "data": {"total": 2, "found_count": 1, "failed_count": 0, "results": []}
         }),
         serde_json::json!({
+            "success": true,
             "data": {"total": 1, "found_count": 1, "failed_count": 0, "results": [{
                 "transformer_name": "another", "ok": true, "data": {"layers": {}}
             }]}
         }),
         serde_json::json!({
+            "success": true,
             "data": {"total": 1, "found_count": 1, "failed_count": 0, "results": [{
                 "transformer_name": "tx_1", "ok": true,
                 "data": {"layers": {" bad": {"type": "FeatureCollection", "features": []}}}
@@ -3210,7 +3215,7 @@ fn durable_and_auth_error_bodies_are_independently_bounded() {
 
 #[test]
 fn duplicate_or_mislabelled_project_identity_is_refused() {
-    let duplicate = br#"{"data":{"projects":[{"eds_project_id":"active-project","lifecycle_state":"archived"}]}}"#;
+    let duplicate = br#"{"success":true,"data":{"elevated":false,"projects":[{"eds_project_id":"active-project","lifecycle_state":"archived"}]}}"#;
     let transport = FixtureTransport::with_sign_in(SIGN_IN);
     transport.push_project(duplicate);
     transport.push_project(ARCHIVED);
@@ -3221,7 +3226,7 @@ fn duplicate_or_mislabelled_project_identity_is_refused() {
         ErrorKind::UnreadableResponse
     );
 
-    let duplicate = br#"{"data":{"projects":[{"eds_project_id":"active-project","lifecycle_state":"archived","is_archived":true}]}}"#;
+    let duplicate = br#"{"success":true,"data":{"elevated":false,"projects":[{"eds_project_id":"active-project","lifecycle_state":"archived","is_archived":true}]}}"#;
     let transport = FixtureTransport::with_sign_in(SIGN_IN);
     transport.push_project(ACTIVE);
     transport.push_project(duplicate);
@@ -3307,38 +3312,6 @@ fn login_input_may_vary_ascii_case_but_canonical_email_and_issuer_are_exact() {
             .kind(),
         ErrorKind::IdentityMismatch
     );
-}
-
-#[test]
-fn project_payload_container_parity_is_explicit_and_controls_are_refused() {
-    let top_level = br#"[{"eds_project_id":"array-project","lifecycle_state":"active"}]"#;
-    let transport = FixtureTransport::with_sign_in(SIGN_IN);
-    transport.push_project(top_level);
-    transport.push_project(br#"{"data":{"projects":[]}}"#);
-    transport.push_project(br#"{"data":{"projects":[]}}"#);
-    let mut client = signed_in(transport, MemoryStore::default());
-    assert_eq!(
-        client.list_projects(NOW + 1).unwrap().projects()[0].ds_project(),
-        "array-project"
-    );
-
-    for invalid in [
-        br#"{}"#.as_slice(),
-        br#"{"data":{}}"#.as_slice(),
-        br#"{"data":{"projects":[]},"projects":[]}"#.as_slice(),
-        br#"{"error":"refused","data":{"projects":[]}}"#.as_slice(),
-        b"{\"data\":{\"projects\":[{\"eds_project_id\":\"bad\\u0001id\"}]}}".as_slice(),
-    ] {
-        let transport = FixtureTransport::with_sign_in(SIGN_IN);
-        transport.push_project(invalid);
-        transport.push_project(br#"{"data":{"projects":[]}}"#);
-        transport.push_project(br#"{"data":{"projects":[]}}"#);
-        let mut client = signed_in(transport, MemoryStore::default());
-        assert_eq!(
-            client.list_projects(NOW + 1).unwrap_err().kind(),
-            ErrorKind::UnreadableResponse
-        );
-    }
 }
 
 #[test]
@@ -9755,13 +9728,6 @@ fn index_meta() -> serde_json::Value {
     })
 }
 
-fn old_ds_brain() -> TransportResponse {
-    TransportResponse::new(
-        400,
-        br#"{"success":false,"error":{"code":"VALIDATION_FAILED","message":"Invalid assets request"}}"#,
-    )
-}
-
 #[test]
 fn project_assets_index_list_carries_the_meta_through_and_refuses_a_foreign_row() {
     use ds_client_core::project_assets::{Command, IndexList, IndexOrder};
@@ -9908,137 +9874,20 @@ fn project_assets_index_tree_and_versions_are_served_with_their_rows_checked() {
 }
 
 #[test]
-fn project_assets_index_falls_back_once_and_says_so_on_an_old_ds_brain() {
-    use ds_client_core::project_assets::{Command, IndexList, IndexOrder};
-    use serde_json::json;
+fn project_assets_index_relays_validation_refusal_without_retrying() {
+    use ds_client_core::project_assets::Command;
     let transport = FixtureTransport::with_sign_in(SIGN_IN);
     let mut client = signed_in(transport.clone(), MemoryStore::default());
-    let push = |response: TransportResponse| {
-        transport
-            .0
-            .lock()
-            .unwrap()
-            .shared_assets
-            .push_back(response)
-    };
-    let bodies = || transport.0.lock().unwrap().asset_bodies.clone();
-    let list = |folder: Option<&str>| {
-        Command::IndexList(IndexList {
-            order: IndexOrder::Name,
-            folder: folder.map(str::to_owned),
-            kind: Some("doc".into()),
-            status: None,
-            sensitivity: None,
-            since: None,
-            limit: 50,
-            cursor: None,
-            refresh: true,
-        })
-    };
-    let upload =
-        json!({"schema":"ds.assets.asset/v1","asset_id":"a_000000000001","project_id":"p-1"});
-
-    // list: the same filters, without view, order, folder or refresh.
-    push(old_ds_brain());
-    push(project_response(
-        json!({"assets":[upload.clone()],"has_more":false,"scanned":1}),
-    ));
-    let page = client
-        .project_assets("p-1", &list(None), None, NOW + 1)
-        .unwrap();
-    assert_eq!(page["index_status"], "unavailable");
-    assert!(
-        page.get("index").is_none(),
-        "a catalogue page is never the index"
-    );
-    assert_eq!(page["assets"][0]["asset_id"], "a_000000000001");
-    assert_eq!(bodies()[0]["view"], "index");
-    assert_eq!(
-        bodies()[1],
-        json!({"action":"list","ds_project":"p-1","kind":"doc","limit":50})
-    );
-
-    // tree: the declared folders.
-    push(old_ds_brain());
-    push(project_response(json!({"folders":[]})));
-    let tree = client
-        .project_assets("p-1", &Command::IndexTree { refresh: false }, None, NOW + 1)
-        .unwrap();
-    assert_eq!(tree, json!({"folders":[],"index_status":"unavailable"}));
-    assert_eq!(bodies()[3], json!({"action":"tree","ds_project":"p-1"}));
-
-    // get of a catalogued row: the row, and no claim about its versions.
-    push(old_ds_brain());
-    push(project_response(json!({"asset": upload.clone()})));
-    let got = client
-        .project_assets(
-            "p-1",
-            &Command::IndexGet {
-                asset_id: "a_000000000001".into(),
-            },
-            None,
-            NOW + 1,
-        )
-        .unwrap();
-    assert_eq!(got["asset"], upload);
-    assert_eq!(got["index_status"], "unavailable");
-    assert!(got.get("versions").is_none());
-    assert_eq!(
-        bodies()[5],
-        json!({"action":"get","ds_project":"p-1","asset_id":"a_000000000001"})
-    );
-
-    // No catalogue form — a folder path, a projected id — no retry: the
-    // marker alone.
-    for command in [
-        list(Some("Transformers/TX-104")),
-        Command::IndexGet {
-            asset_id: "sys:transformers:TX-104".into(),
-        },
-    ] {
-        let before = bodies().len();
-        push(old_ds_brain());
-        assert_eq!(
-            client
-                .project_assets("p-1", &command, None, NOW + 1)
-                .unwrap(),
-            json!({"index_status":"unavailable"})
-        );
-        assert_eq!(bodies().len(), before + 1);
-    }
-
-    // Once: a refused retry crosses as it is, and is not retried again.
-    let before = bodies().len();
-    push(old_ds_brain());
-    push(old_ds_brain());
+    transport.0.lock().unwrap().shared_assets.push_back(TransportResponse::new(
+        400, br#"{"success":false,"error":{"code":"VALIDATION_FAILED","message":"Invalid assets request"}}"#));
     let error = client
-        .project_assets("p-1", &list(None), None, NOW + 1)
+        .project_assets("p-1", &Command::IndexTree { refresh: false }, None, NOW + 1)
         .unwrap_err();
     assert_eq!(
         error.service_refusal().and_then(|r| r.code()),
         Some("validation_failed")
     );
-    assert_eq!(bodies().len(), before + 2);
-
-    // Any other refusal is the index's own: no fallback.
-    for (status, body) in [
-        (
-            409,
-            &br#"{"success":false,"error":{"code":"ASSETS_INDEX_MOVED","message":"the index moved; restart"}}"#[..],
-        ),
-        (
-            400,
-            br#"{"success":false,"error":{"code":"ASSET_REFUSED","message":"no"}}"#,
-        ),
-    ] {
-        let before = bodies().len();
-        push(TransportResponse::new(status, body));
-        let error = client
-            .project_assets("p-1", &list(None), None, NOW + 1)
-            .unwrap_err();
-        assert_eq!(error.service_refusal().map(|r| r.status()), Some(status));
-        assert_eq!(bodies().len(), before + 1);
-    }
+    assert_eq!(transport.0.lock().unwrap().asset_bodies.len(), 1);
 }
 
 #[test]
@@ -11852,8 +11701,14 @@ fn native_attachment_publication_preserves_bytes_and_one_original_pointer_fence(
 }
 
 /// A catalog revision row as `list_versions` / `get_version` return it.
-fn grid_revision(id: &str, version: u64, parent: &str, digest: &str) -> serde_json::Value {
-    serde_json::json!({"project_id":"p-1","model_id":"m","revision_id":id,"version":version,
+fn grid_revision(
+    id: &str,
+    version: u64,
+    ordinal: u64,
+    parent: &str,
+    digest: &str,
+) -> serde_json::Value {
+    serde_json::json!({"project_id":"p-1","model_id":"m","revision_id":id,"version":version,"revision_ordinal_within_version":ordinal,
         "parent_revision_id":parent,"model":{"digest":digest,
         "object":format!("ds-grid/objects/sha256/{}/{}", &digest[..2], digest),"byte_length":5},
         "reason":"save","milestone":"","approval":{"status":"draft"},"created_by":"a@b.c"})
@@ -11874,7 +11729,7 @@ fn grid_show_reports_the_current_version_its_revision_count_and_the_head_ordinal
     let mut client = signed_in(t.clone(), MemoryStore::default());
     let digest = "a".repeat(64);
     let head = json!({"project_id":"p-1","model_id":"m","display_name":"Kamonyi MV","head_revision_id":"rev-c",
-        "head_version":2,"head_model_digest":digest,"approval_status":"submitted","state":"active",
+        "head_version":2,"head_version_revision_count":3,"head_model_digest":digest,"approval_status":"submitted","state":"active",
         "updated_at":"2026-09-25T10:00:00Z","backup":{"bucket":"private","object":"private"}});
     {
         let mut state = t.0.lock().unwrap();
@@ -11882,16 +11737,6 @@ fn grid_show_reports_the_current_version_its_revision_count_and_the_head_ordinal
         state
             .grid_models
             .push_back(project_response(json!({"model":head})));
-        // Page 1 holds two v2 saves in hash order; page 2 finishes v2 and
-        // reaches v1, so the walk is complete after two pages.
-        state.grid_models.push_back(project_response(json!({"versions":[
-            grid_revision("rev-c", 2, "rev-b", &digest), grid_revision("rev-a", 2, "rev-z", &digest)],
-            "has_more":true,"next_cursor":"page-2"})));
-        state
-            .grid_models
-            .push_back(project_response(json!({"versions":[
-            grid_revision("rev-b", 2, "rev-a", &digest), grid_revision("rev-z", 1, "", &digest)],
-            "has_more":false,"next_cursor":""})));
     }
     let shown = client
         .grid_models("p-1", &Command::Show { model: "m".into() }, NOW + 1)
@@ -11914,7 +11759,7 @@ fn grid_show_reports_the_current_version_its_revision_count_and_the_head_ordinal
     assert_eq!(shown.data["current_version"]["count_exact"], true);
     let state = t.0.lock().unwrap();
     assert_eq!(state.grid_bodies[0]["action"], "get_model");
-    assert_eq!(state.grid_bodies[2]["cursor"], "page-2");
+    assert_eq!(state.grid_bodies.len(), 1);
     assert!(state.grid_models.is_empty());
 }
 
@@ -11960,7 +11805,7 @@ fn grid_show_version_reads_metadata_without_fetching_bytes_or_leaking_the_locato
     use serde_json::json;
     let t = FixtureTransport::with_sign_in(SIGN_IN);
     let mut client = signed_in(t.clone(), MemoryStore::default());
-    let mut revision = grid_revision("rev-c", 2, "rev-b", &"a".repeat(64));
+    let mut revision = grid_revision("rev-c", 2, 3, "rev-b", &"a".repeat(64));
     revision["migration_source"] = json!({"kind":"pls_cadd_bak","reference":"k.bak"});
     t.0.lock().unwrap().grid_models.push_back(project_response(json!({"revision":revision,
         "download_url":"https://storage.googleapis.com/b/o?X-Goog-Signature=secret","expires_at":"x"})));
@@ -11983,7 +11828,7 @@ fn grid_show_version_reads_metadata_without_fetching_bytes_or_leaking_the_locato
     assert!(shown.bytes.is_none());
     assert!(!shown.data.to_string().contains("Signature"));
     // A revision of another model is refused, not shown.
-    let mut foreign = grid_revision("rev-c", 2, "rev-b", &"a".repeat(64));
+    let mut foreign = grid_revision("rev-c", 2, 3, "rev-b", &"a".repeat(64));
     foreign["model_id"] = json!("other");
     t.0.lock()
         .unwrap()
@@ -12012,9 +11857,9 @@ fn grid_versions_group_revisions_by_version_in_save_order() {
         .unwrap()
         .grid_models
         .push_back(project_response(json!({"versions":[
-        grid_revision("rev-e", 2, "rev-d", &digest), grid_revision("rev-d", 2, "rev-c", &digest),
-        grid_revision("rev-b", 1, "rev-a", &digest), grid_revision("rev-c", 1, "rev-b", &digest),
-        grid_revision("rev-a", 1, "", &digest)],"has_more":false,"next_cursor":""})));
+        grid_revision("rev-e", 2, 2, "rev-d", &digest), grid_revision("rev-d", 2, 1, "rev-c", &digest),
+        grid_revision("rev-b", 1, 2, "rev-a", &digest), grid_revision("rev-c", 1, 3, "rev-b", &digest),
+        grid_revision("rev-a", 1, 1, "", &digest)],"has_more":false,"next_cursor":""})));
     let listed = client
         .grid_models(
             "p-1",
@@ -12139,7 +11984,7 @@ fn grid_exports_publish_pins_the_revision_digest_and_download_verifies_bytes() {
     {
         let mut state = t.0.lock().unwrap();
         state.grid_models.push_back(project_response(
-            json!({"revision":grid_revision("rev-c", 2, "rev-b", &model_digest)}),
+            json!({"revision":grid_revision("rev-c", 2, 3, "rev-b", &model_digest)}),
         ));
         state.grid_models.push_back(project_response(json!({"artifact":artifact,"already_exists":false,
             "session_uri":"https://storage.googleapis.com/upload/storage/v1/b/bucket/o?upload_id=private"})));
@@ -12392,8 +12237,7 @@ fn grid_governance_bumps_renames_decides_and_reads_the_backup() {
         reason: "Submitted to REG".into(),
         milestone: Some("Submission 2".into()),
     };
-    let mut bumped = grid_revision("bump-0123", 3, "rev-c", &digest);
-    bumped["revision_ordinal_within_version"] = json!(1);
+    let mut bumped = grid_revision("bump-0123", 3, 1, "rev-c", &digest);
     bumped["milestone"] = json!("Submission 2");
     t.0.lock()
         .unwrap()
