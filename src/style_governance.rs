@@ -2,7 +2,7 @@
 //! hosts neither construct style ids nor edit inventory documents themselves.
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "operation", rename_all = "snake_case", deny_unknown_fields)]
@@ -173,6 +173,28 @@ pub fn admit(request: &Request, response: &Value) -> Result<Value, String> {
             {
                 return Err("style_governance_invalid: seed plan authority is incomplete".into());
             }
+            if let Some(migrations) = data.get("migrations") {
+                let rows = migrations
+                    .as_array()
+                    .ok_or("style_governance_invalid: seed migrations must be an array")?;
+                if rows.len() > crate::style_resolution::MAX_BINDINGS {
+                    return Err(
+                        "style_governance_invalid: seed migrations exceed their bound".into(),
+                    );
+                }
+                for row in rows {
+                    if !row["style_ref"].as_str().is_some_and(|id| exact(id, 500))
+                        || !row["expected_head"].as_str().is_some_and(digest)
+                        || !row["expected_content_sha256"].as_str().is_some_and(digest)
+                        || !row["content_sha256"].as_str().is_some_and(digest)
+                        || !row["document"].is_object()
+                        || row["content_sha256"]
+                            != crate::style_plan::style_digest(&row["document"])
+                    {
+                        return Err("style_governance_invalid: seed migration lacks exact original and destination authority".into());
+                    }
+                }
+            }
             if let Command::Seed {
                 expected_manifest_revision,
                 expected_plan_sha256,
@@ -259,9 +281,11 @@ mod tests {
             backup_id: "snapshot".into(),
             all_projects: false,
         };
-        assert!(request_body(&request)
-            .unwrap_err()
-            .contains("inventory digest"));
+        assert!(
+            request_body(&request)
+                .unwrap_err()
+                .contains("inventory digest")
+        );
         assert!(serde_json::from_value::<Command>(json!({"operation":"delete"})).is_err());
         request.command = Command::Inventory {
             cursor: None,
@@ -269,6 +293,22 @@ mod tests {
             all_projects: false,
         };
         assert!(request_body(&request).is_err());
+    }
+    #[test]
+    fn declared_scaling_migrations_require_exact_heads_and_destination_bytes() {
+        let request = Request {
+            project: "fixture".into(),
+            command: Command::PlanSeed,
+        };
+        let document = json!({"type":"line","paint":{"line-width":2},"metadata":{"print_scaling":{"reference_paper":"A3","units":"css_px","factors":{"A0":1,"A1":1,"A2":1,"A3":1,"A4":1,"A5":1,"Custom":1}}}});
+        let mut receipt = json!({"success":true,"data":{"manifest_revision":"a".repeat(64),"plan_sha256":"b".repeat(64),"creates":[],"preserves":[],"apply_allowed":true,"migrations":[{"style_ref":"fixture/line_print","expected_head":"c".repeat(64),"expected_content_sha256":"d".repeat(64),"content_sha256":crate::style_plan::style_digest(&document),"document":document}]}});
+        assert!(admit(&request, &receipt).is_ok());
+        receipt["data"]["migrations"][0]["document"]["paint"]["line-width"] = json!(3);
+        assert!(
+            admit(&request, &receipt)
+                .unwrap_err()
+                .contains("destination authority")
+        );
     }
     #[test]
     fn retirement_admission_never_accepts_an_executable_deletion() {

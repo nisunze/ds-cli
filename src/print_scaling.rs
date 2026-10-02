@@ -42,42 +42,6 @@ impl Default for PrintScaling {
     }
 }
 
-/// The superseded ISO-area table that every `_print` style created before
-/// 2026-09-08 carries. Reading it yields the identity policy above so those
-/// styles print at the ruled size without a hand-edited document.
-fn legacy_iso_area_table() -> PrintScaling {
-    PrintScaling {
-        reference_paper: "A3".into(),
-        units: PrintUnits::CssPx,
-        factors: [
-            ("A0", 8_f64.sqrt()),
-            ("A1", 2.),
-            ("A2", 2_f64.sqrt()),
-            ("A3", 1.),
-            ("A4", 0.5_f64.sqrt()),
-            ("A5", 0.5),
-            ("Custom", 1.),
-        ]
-        .into_iter()
-        .map(|(paper, scale)| (paper.into(), scale))
-        .collect(),
-    }
-}
-
-impl PrintScaling {
-    fn is_legacy_iso_area_table(&self) -> bool {
-        let legacy = legacy_iso_area_table();
-        self.reference_paper == legacy.reference_paper
-            && self.units == legacy.units
-            && self.factors.len() == legacy.factors.len()
-            && legacy.factors.iter().all(|(paper, factor)| {
-                self.factors
-                    .get(paper)
-                    .is_some_and(|f| (f - factor).abs() < 1e-9)
-            })
-    }
-}
-
 impl PrintScaling {
     pub fn validate(&self) -> Result<(), String> {
         let papers = ["A0", "A1", "A2", "A3", "A4", "A5", "Custom"];
@@ -125,9 +89,6 @@ pub fn scaling_from_style(document: &Value) -> Result<Option<PrintScaling>, Stri
     let scaling: PrintScaling =
         serde_json::from_value(value.clone()).map_err(|e| format!("Invalid print scaling: {e}"))?;
     scaling.validate()?;
-    if scaling.is_legacy_iso_area_table() {
-        return Ok(Some(PrintScaling::default()));
-    }
     Ok(Some(scaling))
 }
 
@@ -153,7 +114,7 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn one_document_scales_by_iso_linear_ratio_without_changing_symbols() {
+    fn one_document_keeps_authored_physical_sizes_without_changing_symbols() {
         let original = json!({"type":"symbol","layout":{"icon-image":"school","icon-size":1.2},"metadata":{"source":"catalog"}});
         let style = apply_print_scaling(original.clone(), PrintScaling::default()).unwrap();
         let scaling = scaling_from_style(&style).unwrap().unwrap();
@@ -168,12 +129,12 @@ mod tests {
     #[test]
     // The literals are the stored legacy table's bytes, not an approximation.
     #[allow(clippy::approx_constant)]
-    fn the_legacy_iso_area_table_reads_as_the_identity_policy() {
+    fn every_stored_factor_is_honored_without_a_legacy_code_override() {
         let legacy = json!({"type":"line","metadata":{"print_scaling":{"reference_paper":"A3","units":"css_px",
             "factors":{"A0":2.8284271247461903,"A1":2,"A2":1.4142135623730951,"A3":1,"A4":0.7071067811865476,"A5":0.5,"Custom":1}}}});
         let scaling = scaling_from_style(&legacy).unwrap().unwrap();
-        assert_eq!(scaling, PrintScaling::default());
-        assert_eq!(scaling.factor("A0").unwrap(), 1.);
+        assert_eq!(scaling.factor("A0").unwrap(), 2.8284271247461903);
+        assert_eq!(scaling.factor("A5").unwrap(), 0.5);
         // A deliberately authored table is honoured as written.
         let authored = json!({"type":"line","metadata":{"print_scaling":{"reference_paper":"A3","units":"css_px",
             "factors":{"A0":1.5,"A1":1.25,"A2":1.1,"A3":1,"A4":1,"A5":1,"Custom":1}}}});

@@ -38,22 +38,22 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use ds_command_kernel::envelope::{self, Class};
-use ds_command_kernel::printing::context::{printed_layer_ids, RetainedContext};
+use ds_command_kernel::printing::context::{RetainedContext, printed_layer_ids};
 use ds_command_kernel::printing::held_context::HeldCapture;
 use ds_command_kernel::printing::table_rows::PrintWarning;
 use ds_command_kernel::printing::{self, PrintContextLayer};
 use ds_command_kernel::project_dataset_cache::Scope;
 use ds_command_kernel::report_export::{self, EngineIdentity, InputReceipt};
 use ds_command_kernel::report_formats::PrintArtifactFormat;
-use ds_project_data::held::{preview_context, HeldPreviewState, PreviewContextRefusal};
+use ds_project_data::held::{HeldPreviewState, PreviewContextRefusal, preview_context};
 use ds_project_data::{PrintContext, ReferenceResource};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
 use crate::{
-    random_run_id, run_transformer_report_with, AdminBoundsAsset, HostFailure, PrintContextBytes,
-    RunExtras, RunSettings, Staging, TransformerReportInputs, CODE_INPUTS_INVALID,
-    CODE_RESULT_INVALID,
+    AdminBoundsAsset, CODE_INPUTS_INVALID, CODE_RESULT_INVALID, HostFailure, PrintContextBytes,
+    RunExtras, RunSettings, Staging, TransformerReportInputs, random_run_id,
+    run_transformer_report_with,
 };
 
 /// The largest page a preview hands back in memory.
@@ -155,7 +155,7 @@ pub struct PreviewPage {
 /// appends survey layers the local proof was rendered without — the kernel's
 /// own, so a preview and a delivery name the omission with one word.
 pub use ds_command_kernel::report_export::{
-    survey_layers_omitted_message, SURVEY_LAYERS_OMITTED, SURVEY_LAYER_OMISSION_REASON,
+    SURVEY_LAYER_OMISSION_REASON, SURVEY_LAYERS_OMITTED, survey_layers_omitted_message,
 };
 
 fn inputs_invalid(message: impl Into<String>) -> HostFailure {
@@ -317,7 +317,7 @@ pub fn transformer_page_with_styles(
         _ => {
             return Err(page_invalid(
                 "the print preview produced more than its one page",
-            ))
+            ));
         }
     };
     if artifact.size_bytes > MAX_PREVIEW_BYTES {
@@ -864,10 +864,10 @@ pub fn answer(project: &str, lane: &str, pages: &[(&PreviewPage, PageRef<'_>)]) 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tests::{receipt, FakeEngine};
+    use crate::tests::{FakeEngine, receipt};
     use ds_command_kernel::printing::PrintContextSource;
-    use std::sync::atomic::Ordering;
     use std::sync::Mutex;
+    use std::sync::atomic::Ordering;
 
     fn room(name: &str) -> HeldRoom {
         let mut layers = BTreeMap::new();
@@ -979,10 +979,11 @@ mod tests {
             .expect("the omission is a diagnostic");
         assert_eq!(named["forms"], json!(["field_notes", "transformer_survey"]));
         assert!(named["message"].as_str().unwrap().contains("field_notes"));
-        assert!(page
-            .context_omitted
-            .iter()
-            .any(|o| o.layer == "transformer_survey" && o.reason.contains("survey layer")));
+        assert!(
+            page.context_omitted
+                .iter()
+                .any(|o| o.layer == "transformer_survey" && o.reason.contains("survey layer"))
+        );
         let recipe = &page.receipt["local_print_recipe"];
         assert_eq!(
             recipe["preview"]["survey_forms_omitted"],
@@ -993,11 +994,13 @@ mod tests {
             answer["preview"]["survey_forms_omitted"],
             json!(["field_notes", "transformer_survey"])
         );
-        assert!(answer["results"][0]["print_diagnostics"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|d| d["code"] == SURVEY_LAYERS_OMITTED));
+        assert!(
+            answer["results"][0]["print_diagnostics"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|d| d["code"] == SURVEY_LAYERS_OMITTED)
+        );
         assert!(nothing_left(&staging));
     }
 
@@ -1061,13 +1064,14 @@ mod tests {
         let engine = FakeEngine::release();
         let source = governed();
         let mut layout = draft();
-        layout.style_refs = BTreeMap::from([("roads".into(), "opaque/new-after-build".into())]);
+        layout.style_refs =
+            BTreeMap::from([("roads".into(), "opaque/new-after-build_print".into())]);
         let document = json!({"type":"line","paint":{"line-color":"#123456","line-width":2}});
         let captured = json!({
             "project_id":"proj-1", "resolution_revision":"a".repeat(64),
             "style_refs": layout.style_refs,
-            "print_styles":{"opaque/new-after-build":document},
-            "style_revisions":{"opaque/new-after-build":{"revision_id":"b".repeat(64),"content_sha256":ds_command_kernel::style_plan::style_digest(&document)}}
+            "print_styles":{"opaque/new-after-build_print":document},
+            "style_revisions":{"opaque/new-after-build_print":{"revision_id":"b".repeat(64),"content_sha256":ds_command_kernel::style_plan::style_digest(&document)}}
         });
         let page = transformer_page_with_styles(
             &engine,
@@ -1094,7 +1098,7 @@ mod tests {
             ),
             (
                 "style_revisions",
-                json!({"opaque/new-after-build":{"revision_id":"b".repeat(64),"content_sha256":"0".repeat(64)}}),
+                json!({"opaque/new-after-build_print":{"revision_id":"b".repeat(64),"content_sha256":"0".repeat(64)}}),
                 "style_resolution_revision_mismatch",
             ),
         ] {
@@ -1699,9 +1703,11 @@ mod tests {
         expected.dedup();
         assert_eq!(listed, expected, "the table names exactly these codes once");
         assert_eq!(CLASS_TABLE.len(), listed.len(), "no code is listed twice");
-        assert!(CLASS_TABLE
-            .iter()
-            .all(|(_, class)| *class != Class::Internal));
+        assert!(
+            CLASS_TABLE
+                .iter()
+                .all(|(_, class)| *class != Class::Internal)
+        );
         // A code the table does not know is a defect, and says so.
         assert_eq!(
             PreviewRefusal::Host(HostFailure::new("something_new", "why")).class(),

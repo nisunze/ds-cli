@@ -883,3 +883,16 @@ bytes remain required, and `ready` is false. MvSelectionPatch preserves other
 settings rows. Native persistence adds an exact-base expected-data fence and
 readback; adapters own IO, never layout decisions. Reporter renders the shared
 layout furniture and consumes the resolved ordered page pins before output.
+
+### Governed paper scaling migration (2026-10-02)
+
+The renderer now honors every stored `metadata.print_scaling` factor exactly.
+The historical ISO-area table no longer triggers a code-side substitution to
+identity factors. The standard seed manifest records explicit exact-head
+migrations for installed legacy tables to the currently effective all-one
+factors. A fresh install receives those governed values. Existing installations
+must review and apply the versioned migration through the style API before
+releasing consumers; authored changes are never overwritten. Immutable source
+versions and backups retain the original tables. Baseline renders use the old
+read-only lane and original documents; branch renders use the migrated governed
+documents. The migration must preserve their page rasters.
