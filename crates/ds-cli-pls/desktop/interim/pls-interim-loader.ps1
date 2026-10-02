@@ -15,7 +15,12 @@ $PlsLogPath = Join-Path $env:APPDATA 'PLS\temp\PLS-CADD.log'
 Add-Type -AssemblyName System.Windows.Forms
 
 function Get-AstFunctions([string] $Path) {
-    $tree = [System.Management.Automation.Language.Parser]::ParseFile($Path, [ref] $null, [ref] $null)
+    $parseErrors = $null
+    $tree = [System.Management.Automation.Language.Parser]::ParseFile($Path, [ref] $null, [ref] $parseErrors)
+    if (@($parseErrors).Count -ne 0) {
+        $first = $parseErrors[0]
+        throw "PowerShell parse error in ${Path}:$($first.Extent.StartLineNumber):$($first.Extent.StartColumnNumber): $($first.Message)"
+    }
     $map = @{}
     foreach ($fn in $tree.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] }, $false)) {
         $map[$fn.Name] = $fn.Extent.Text

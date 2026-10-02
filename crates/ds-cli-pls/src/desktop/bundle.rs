@@ -79,7 +79,7 @@ pub static BUNDLE: &[Script] = &[
     ),
     script!(
         "ds-desktop-lib.ps1",
-        "1d88a8bf038acfe7e32aa92a23a083c3053b56cdf05f8c74a71ac18f8d555c82",
+        "068e694b30287ab0411df6a8236695354de9d9e80394a11cf8da7414fbcd7323",
         Origin::Owned
     ),
     script!(
@@ -114,8 +114,10 @@ pub static BUNDLE: &[Script] = &[
     ),
     script!(
         "interim/pls-interim-loader.ps1",
-        "2f6a39f0fb190ceae42d03a3083c30bb990af3e87b9d32d4d2f1b6da4c05f286",
-        Origin::Vendored
+        "d358eadf79f2b1099d3f490178531abb71e7c9d54e054c72639b3dfe08f9ab4b",
+        Origin::Modified {
+            upstream_sha256: "2f6a39f0fb190ceae42d03a3083c30bb990af3e87b9d32d4d2f1b6da4c05f286",
+        }
     ),
     script!(
         "interim/pls-restore-open-interim.ps1",
@@ -460,13 +462,16 @@ mod tests {
     }
 
     #[test]
-    fn only_the_deliver_chain_diverges_from_upstream() {
+    fn only_the_deliver_chain_and_fail_closed_loader_diverge_from_upstream() {
         let modified: Vec<&str> = BUNDLE
             .iter()
             .filter(|s| matches!(s.origin, Origin::Modified { .. }))
             .map(|s| s.path)
             .collect();
-        assert_eq!(modified, ["pls-deliver-autosag.ps1"]);
+        assert_eq!(
+            modified,
+            ["interim/pls-interim-loader.ps1", "pls-deliver-autosag.ps1"]
+        );
         let deliver = text("pls-deliver-autosag.ps1").unwrap();
         assert!(deliver.contains("[switch] $NoSheets"));
         assert!(deliver.contains("'ds.pls.deliver_autosag.v4'"));
