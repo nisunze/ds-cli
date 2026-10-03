@@ -633,7 +633,9 @@ fn run_ds(args: &[&str], native: bool) -> Run {
     command
         .args(args)
         .env("NO_COLOR", "1")
-        .env("DS_DESKTOP_DESCRIPTOR", config.join("no-desktop.json"));
+        .env("DS_DESKTOP_DESCRIPTOR", config.join("no-desktop.json"))
+        .env("XDG_STATE_HOME", &config)
+        .env_remove("DS_NATIVE_CLIENT_PROFILE_BUNDLE");
     if native {
         command
             .env("DS_NATIVE_CLIENT_PROFILE_BUNDLE", &bundle)
@@ -4412,6 +4414,8 @@ impl Machine {
             .args(args)
             .env("NO_COLOR", "1")
             .env("XDG_DATA_HOME", &self.root)
+            .env("APPDATA", &self.root)
+            .env_remove("DS_NATIVE_CLIENT_PROFILE_BUNDLE")
             .env_remove("DS_DESKTOP_DESCRIPTOR")
             .env_remove("DS_TARGET");
         for (name, value) in environment {
@@ -18183,8 +18187,12 @@ fn survey_delete_declares_native_effect_and_honors_packaged_availability() {
     assert_eq!(
         reply.envelope["error"]["code"],
         if descriptor["command"]["availability"] == "unavailable" {
-            descriptor["command"]["unavailable"]["code"].as_str().unwrap()
-        } else { "survey_delete_plan_invalid" }
+            descriptor["command"]["unavailable"]["code"]
+                .as_str()
+                .unwrap()
+        } else {
+            "survey_delete_plan_invalid"
+        }
     );
     std::fs::remove_dir_all(root).unwrap();
 }

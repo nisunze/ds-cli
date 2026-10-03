@@ -89,9 +89,9 @@ pub struct App {
     pub database: PathBuf,
     pub connection: Connection,
     /// The operating-system account this host runs as: the only peer its
-    /// socket admits (`transport::own_uid()`), or `None` where there is no
+    /// socket admits (`transport::own_account()`), or `None` where there is no
     /// socket and so no peer to admit.
-    pub os_uid: Option<u32>,
+    pub os_account: Option<crate::transport::AccountId>,
     pub auth: Arc<dyn Authorizer>,
     /// How many requests this host answers at once, and what it says when it
     /// is full.
@@ -296,7 +296,7 @@ async fn access(
         .extensions()
         .get::<crate::transport::Peer>()
         .copied();
-    crate::transport::admit(peer, app.os_uid).map_err(|refused| typed(&refused))?;
+    crate::transport::admit(peer, app.os_account).map_err(|refused| typed(&refused))?;
     let permit = app.requests.enter().map_err(|full| typed(&full))?;
     tokio::task::spawn_blocking(move || authorize(&app))
         .await
@@ -783,32 +783,39 @@ fn host_failure(message: impl ToString) -> Failure {
 }
 
 pub fn prepare_directory(path: &Path) -> Result<(), String> {
-    if !path.is_absolute() {
-        return Err("server state directory must be absolute".into());
+    #[cfg(windows)]
+    {
+        crate::transport::prepare_directory(path)
     }
-    if !path.exists() {
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::DirBuilderExt;
-            fs::DirBuilder::new()
-                .recursive(true)
-                .mode(0o700)
-                .create(path)
-                .map_err(|e| e.to_string())?;
+    #[cfg(not(windows))]
+    {
+        if !path.is_absolute() {
+            return Err("server state directory must be absolute".into());
         }
-        #[cfg(not(unix))]
-        {
-            return Err(
-                "server hosting currently requires Linux protected filesystem state".into(),
-            );
+        if !path.exists() {
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::DirBuilderExt;
+                fs::DirBuilder::new()
+                    .recursive(true)
+                    .mode(0o700)
+                    .create(path)
+                    .map_err(|e| e.to_string())?;
+            }
+            #[cfg(not(unix))]
+            {
+                return Err(
+                    "server hosting requires Linux or Windows protected filesystem state".into(),
+                );
+            }
         }
+        protected(path, true)?;
+        // Everything the Server keeps below its protected directory is private
+        // too (owner rule, ds_layer_store::private): an install from before the
+        // rule — store.sqlite, the tile cache, held media — is tightened once.
+        ds_layer_store::private::tighten_root_once(path);
+        Ok(())
     }
-    protected(path, true)?;
-    // Everything the Server keeps below its protected directory is private
-    // too (owner rule, ds_layer_store::private): an install from before the
-    // rule — store.sqlite, the tile cache, held media — is tightened once.
-    ds_layer_store::private::tighten_root_once(path);
-    Ok(())
 }
 fn protected(path: &Path, directory: bool) -> Result<(), String> {
     let metadata = fs::symlink_metadata(path).map_err(|e| e.to_string())?;
@@ -829,7 +836,11 @@ fn protected(path: &Path, directory: bool) -> Result<(), String> {
         }
         Ok(())
     }
-    #[cfg(not(unix))]
+    #[cfg(windows)]
+    {
+        crate::transport::protected(path, directory)
+    }
+    #[cfg(not(any(unix, windows)))]
     {
         Err("server connection requires a protected native state adapter on this platform".into())
     }
@@ -1094,9 +1105,10 @@ pub(crate) mod tests {
 
     /// The operating-system account every host in these tests runs as, and
     /// so the peer the kernel would name for its owner's own `ds`.
-    pub(crate) const OS_UID: u32 = 4242;
+    pub(crate) const OS_UID: crate::transport::AccountId = crate::transport::AccountId::Unix(4242);
     /// The peer the socket hands the router for the owner's own process.
-    pub(crate) const OWNER_PEER: crate::transport::Peer = crate::transport::Peer { uid: OS_UID };
+    pub(crate) const OWNER_PEER: crate::transport::Peer =
+        crate::transport::Peer { account: OS_UID };
 
     pub(crate) fn test_connection(state: &Path) -> Connection {
         Connection {
@@ -1154,7 +1166,7 @@ pub(crate) mod tests {
         App {
             database,
             connection,
-            os_uid: Some(OS_UID),
+            os_account: Some(OS_UID),
             auth: Arc::new(Auth(authorized)),
             requests: Arc::new(Door::new(4)),
             activity: None,
@@ -1275,7 +1287,12 @@ pub(crate) mod tests {
     async fn unauthenticated_or_revoked_calls_never_read_or_create_jobs() {
         let dir = tempfile::tempdir().unwrap();
         for (allowed, peer) in [
-            (true, Some(crate::transport::Peer { uid: OS_UID + 1 })),
+            (
+                true,
+                Some(crate::transport::Peer {
+                    account: crate::transport::AccountId::Unix(4243),
+                }),
+            ),
             (true, None),
             (false, Some(OWNER_PEER)),
         ] {
@@ -1300,10 +1317,13 @@ pub(crate) mod tests {
     #[tokio::test]
     async fn one_owner_per_server_is_the_socket_peer_and_nothing_else() {
         let dir = tempfile::tempdir().unwrap();
-        for stranger in [OS_UID + 1, 0] {
+        for stranger in [
+            crate::transport::AccountId::Unix(4243),
+            crate::transport::AccountId::Unix(0),
+        ] {
             let response = as_peer(
                 app(dir.path(), true),
-                Some(crate::transport::Peer { uid: stranger }),
+                Some(crate::transport::Peer { account: stranger }),
             )
             .await;
             assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
@@ -1325,7 +1345,9 @@ pub(crate) mod tests {
         for (peer, expected) in [
             (OWNER_PEER, StatusCode::OK),
             (
-                crate::transport::Peer { uid: OS_UID + 1 },
+                crate::transport::Peer {
+                    account: crate::transport::AccountId::Unix(4243),
+                },
                 StatusCode::UNAUTHORIZED,
             ),
         ] {
@@ -2997,5 +3019,87 @@ pub(crate) mod tests {
         prepare_directory(dir.path()).unwrap();
         assert_eq!(mode(&cache), 0o700);
         assert_eq!(mode(&store), 0o600);
+    }
+
+    /// The production router and durable kernel queue over real Windows IO.
+    /// Only the protected credential source is a fixture; no real account or
+    /// gateway is touched. Account admission comes from the OS pipe peer.
+    #[cfg(windows)]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn windows_pipe_routes_project_jobs_across_restart_and_observes_revocation() {
+        use crate::transport;
+        use std::time::Duration;
+        let dir = tempfile::tempdir().unwrap();
+        let state = dir.path().join("native-server");
+        prepare_directory(&state).unwrap();
+        let source = crate::auth::tests::FixtureCredential::held("test-owner", "fixture-device");
+        let mut a_id = String::new();
+        for round in 0..2 {
+            let mut app = offline_app(&state, source.clone());
+            app.os_account = transport::own_account();
+            let listening = transport::listen(&state).unwrap();
+            let pipe = listening.socket().to_owned();
+            let (stop, stopped) = tokio::sync::oneshot::channel();
+            let task = tokio::spawn(transport::serve(listening, router(app), async {
+                let _ = stopped.await;
+            }));
+            let exchange = |method: &str, path: &str, bytes: Option<Vec<u8>>| {
+                let reply = transport::call(
+                    &pipe,
+                    method,
+                    path,
+                    &[("content-type", "application/json")],
+                    bytes.as_deref(),
+                    1024 * 1024,
+                    Duration::from_secs(5),
+                )
+                .unwrap();
+                (
+                    reply.status,
+                    serde_json::from_slice::<Value>(&reply.body).unwrap(),
+                )
+            };
+            if round == 0 {
+                let (status, first) = exchange(
+                    "POST",
+                    &format!("/v1/transformer-processing/first?project={A}"),
+                    Some(transformer("T1")),
+                );
+                assert_eq!(status, 202, "{first}");
+                assert_eq!(first["job"]["context"]["project"], A);
+                a_id = first["job"]["id"].as_str().unwrap().into();
+                let (status, second) = exchange(
+                    "POST",
+                    &format!("/v1/transformer-processing/first?project={B}"),
+                    Some(transformer("T2")),
+                );
+                assert_eq!(status, 202, "{second}");
+                assert_ne!(second["job"]["id"], first["job"]["id"]);
+                assert_eq!(second["job"]["context"]["project"], B);
+            }
+            let (status, listed) = exchange("GET", &format!("/v1/jobs?project={A}"), None);
+            assert_eq!(status, 200, "{listed}");
+            assert_eq!(listed["jobs"].as_array().unwrap().len(), 1);
+            assert_eq!(listed["jobs"][0]["id"], a_id);
+            let (status, invisible) =
+                exchange("GET", &format!("/v1/jobs/{a_id}?project={B}"), None);
+            assert_eq!(status, 409, "{invisible}");
+            assert_eq!(invisible["code"], "not_visible");
+            assert_eq!(invisible["class"], "conflict");
+            assert!(!invisible.to_string().contains(A));
+            if round == 1 {
+                source.set(Ok(crate::auth::OwnerAnswer::SignedOut));
+                let (status, denied) = exchange("GET", &format!("/v1/jobs?project={A}"), None);
+                assert_eq!(status, 401, "{denied}");
+                assert_eq!(denied["code"], "server_owner_changed");
+            }
+            stop.send(()).unwrap();
+            tokio::time::timeout(Duration::from_secs(5), task)
+                .await
+                .unwrap()
+                .unwrap()
+                .unwrap();
+        }
+        assert_eq!(source.refreshes(), 0);
     }
 }

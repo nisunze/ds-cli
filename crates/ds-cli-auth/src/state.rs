@@ -719,8 +719,36 @@ fn private_parent(path: &Path) {
             let _ = fs::set_permissions(path, fs::Permissions::from_mode(0o700));
         }
     }
-    #[cfg(not(unix))]
+    #[cfg(windows)]
+    {
+        // The lane below needs this parent on a fresh Windows installation.
+        // The native guard creates a missing directory and checks existing
+        // ownership without repairing another account's permissions.
+        let _ = state_windows::ensure_directory(path);
+    }
+    #[cfg(not(any(unix, windows)))]
     let _ = path;
+}
+
+#[cfg(all(test, windows))]
+mod windows_authority_parent_tests {
+    use super::*;
+
+    #[test]
+    fn a_fresh_authority_parent_allows_a_guarded_windows_lane() {
+        let root = tempfile::tempdir().unwrap();
+        let parent = root.path().join("edge-admission");
+        private_parent(&parent);
+        let lane = parent.join("stable");
+        secure_dir(&lane).unwrap();
+        assert!(existing_private_dir(&parent).unwrap());
+        assert!(existing_private_dir(&lane).unwrap());
+        // A second initialization retains already owned state.
+        let receipt = lane.join("retained.txt");
+        fs::write(&receipt, b"retained").unwrap();
+        private_parent(&parent);
+        assert_eq!(fs::read(receipt).unwrap(), b"retained");
+    }
 }
 
 pub(crate) fn availability() -> ds_cli_contract::spec::Availability {

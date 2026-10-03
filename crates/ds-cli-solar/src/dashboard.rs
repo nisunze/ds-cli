@@ -168,7 +168,9 @@ pub fn execute(i: &Inputs, _: &Context) -> Result<Value, Failure> {
     if let Some(parent) = out.parent() {
         std::fs::create_dir_all(parent).map_err(io)?;
     }
-    let mut builder = std::fs::DirBuilder::new();
+    let builder = std::fs::DirBuilder::new();
+    #[cfg(unix)]
+    let mut builder = builder;
     #[cfg(unix)]
     {
         use std::os::unix::fs::DirBuilderExt;

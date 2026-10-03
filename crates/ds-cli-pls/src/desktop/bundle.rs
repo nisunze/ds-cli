@@ -76,7 +76,7 @@ pub static BUNDLE: &[Script] = &[
     ),
     script!(
         "adapters/pls-cadd/ds-desktop-check.ps1",
-        "200f1a6a577c89d34203fba5d3e07eba6aa66341d0a27bc5e5c286bd07d26896"
+        "89f3d75ee6693ab2b49035880e4e638aef99b0da1d15c73be7b5dd56842d5930"
     ),
     script!(
         "adapters/pls-cadd/ds-desktop-deliver.ps1",

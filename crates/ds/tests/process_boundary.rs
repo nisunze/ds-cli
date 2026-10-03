@@ -130,11 +130,21 @@ fn spawning_files() -> BTreeSet<String> {
             .iter()
             .any(|constructor| shipped.contains(constructor))
         {
-            let relative = path
-                .strip_prefix(&root)
-                .expect("inside the workspace")
-                .to_string_lossy()
-                .replace('\\', "/");
+            // Directory entries normalize parent segments on Windows. Resolve both
+            // trees before spelling the explicitly linked sibling relative
+            // to this workspace; the inventory stays identical on each OS.
+            let path = path.canonicalize().expect("source path resolves");
+            let relative = match path.strip_prefix(&root) {
+                Ok(relative) => relative.to_string_lossy().replace('\\', "/"),
+                Err(_) => {
+                    let relative = path
+                        .strip_prefix(root.parent().expect("workspace parent"))
+                        .expect("source is in the sibling workspace")
+                        .to_string_lossy()
+                        .replace('\\', "/");
+                    format!("../{relative}")
+                }
+            };
             found.insert(relative);
         }
     }

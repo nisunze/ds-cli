@@ -42,6 +42,34 @@ Changed crates and different test feature sets can require substantial new
 compilation even with a persistent target. Linux/server-offload timings were
 not measured because ds-server is reserved for stabilization.
 
+The portable-kernel gate at `02d147d` provides a separate test-cache measurement:
+its first test build took 18m47s, a fixture-change rebuild 5m40s, and an unchanged
+test build 0.86s. The full cached workspace suite (1,732 tests) completed in
+43.5s. These measurements show both the initial cache cost and the remaining
+compile/link cost when source changes; they do not predict release build times.
+
+Keep the native development toolchain and target stable between runs. Cargo
+retains downloaded sources, dependency objects and incremental state; it
+rechecks changed inputs before running the executable. Sharing the native dev
+target across sibling crates is useful when their compiler, lock entries,
+features and build flags match. Different profiles, targets or dependency
+versions still require their own entries; a shared directory cannot avoid that
+compilation.
+
+Pinned production Solar and Reporter builds keep their own persistent targets
+for their respective compilers. Updating those pins requires their owners'
+gates; the different pins alone do not establish an unmaintained dependency.
+Standalone engine executables are not required for this development host.
+WASM has separate wasm32 outputs. Go's GOCACHE/GOMODCACHE and the package
+manager's download cache remain reusable independently of Cargo.
+
+Disk usage grows with distinct compiler/feature combinations and Windows debug
+symbols. This launcher creates one dev target and one state namespace instead
+of a target per launch or worktree. It leaves cache removal to an explicit,
+scoped maintenance decision; it does not clear active caches or create a fresh
+release build on each edit. Use a dedicated target when testing another
+compiler or build-flag experiment so returning to the usual dev lane stays warm.
+
 `-CliArguments` drives the same source executable without starting a host. CLI
 arguments pass through unchanged: name their lane and development state explicitly
 when the live command contract requires them. The source launcher sets a dedicated

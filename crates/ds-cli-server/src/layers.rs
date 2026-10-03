@@ -224,7 +224,7 @@ pub(crate) async fn run<T: Send + 'static>(
     project: Option<String>,
     about: Vec<u8>,
     operation: impl FnOnce(&mut dyn LayerDocuments, &Preferences) -> Result<T, Failure> + Send + 'static,
-) -> Result<T, Response> {
+) -> Result<T, Box<Response>> {
     tokio::task::spawn_blocking(move || {
         // Middleware admission can be separated from this queued native task.
         // Recheck the original Server owner at the effect boundary.
@@ -254,8 +254,13 @@ pub(crate) async fn run<T: Send + 'static>(
         operation(&mut documents, &preferences)
     })
     .await
-    .map_err(|_| refusal(&Failure::internal("server_refused", "native task failed")))?
-    .map_err(|failure| refusal(&failure))
+    .map_err(|_| {
+        Box::new(refusal(&Failure::internal(
+            "server_refused",
+            "native task failed",
+        )))
+    })?
+    .map_err(|failure| Box::new(refusal(&failure)))
 }
 
 #[derive(Deserialize, Default)]
@@ -301,7 +306,7 @@ pub async fn list(State(app): State<App>, query: Option<Query<ListQuery>>) -> Re
     .await
     {
         Ok(value) => Json(value).into_response(),
-        Err(response) => response,
+        Err(response) => *response,
     }
 }
 
@@ -330,7 +335,7 @@ pub async fn visibility(
     .await
     {
         Ok(value) => Json(value).into_response(),
-        Err(response) => response,
+        Err(response) => *response,
     }
 }
 
@@ -357,7 +362,7 @@ pub async fn order(
     .await
     {
         Ok(value) => Json(value).into_response(),
-        Err(response) => response,
+        Err(response) => *response,
     }
 }
 
@@ -384,7 +389,7 @@ pub async fn default_visibility(
     .await
     {
         Ok(value) => Json(value).into_response(),
-        Err(response) => response,
+        Err(response) => *response,
     }
 }
 
@@ -631,7 +636,7 @@ pub(crate) mod tests {
                 Arc::new(crate::host::tests::NoGateway),
             ),
             connection,
-            os_uid: crate::transport::own_uid(),
+            os_account: crate::transport::own_account(),
             auth: Arc::new(Auth(allowed)),
             requests: Arc::new(crate::host::Door::new(4)),
             activity: None,

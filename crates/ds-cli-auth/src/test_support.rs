@@ -24,6 +24,7 @@ pub(crate) const NOW: u64 = 1_900_000_000;
 pub(crate) const SIGN_IN: &[u8] = include_bytes!(
     "../../../../ds-command-kernel/crates/ds-client-core/tests/fixtures/firebase-sign-in.json"
 );
+#[cfg(unix)]
 pub(crate) const REFRESH: &[u8] = include_bytes!(
     "../../../../ds-command-kernel/crates/ds-client-core/tests/fixtures/firebase-refresh.json"
 );
@@ -69,6 +70,7 @@ impl FixtureTransport {
         transport
     }
 
+    #[cfg(unix)]
     pub(crate) fn with_refresh(body: &[u8]) -> Self {
         let transport = Self::default();
         transport.lock().refresh = Some(body.to_vec());
