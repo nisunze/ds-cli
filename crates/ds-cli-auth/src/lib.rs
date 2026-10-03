@@ -801,7 +801,7 @@ pub static PROJECT_LIST_COMMAND: Command = Command {
     }],
     refusals: PROJECT_LIST_REFUSALS,
     reference: Some("docs/reference/auth.md"),
-    search: &["expiration", "expiry", "support contact", "lifecycle"],
+    search: &["expiration", "support contact"],
     requires: Requires::Server,
     availability: native_availability,
 };
