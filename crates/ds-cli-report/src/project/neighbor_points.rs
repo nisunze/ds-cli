@@ -41,7 +41,7 @@ pub(super) fn networks_selected(
         let layout: ds_command_kernel::printing::Layout =
             serde_json::from_value(setup["layout"].clone())
                 .map_err(|e| format!("invalid adjacent-network layout: {e}"))?;
-        ds_command_kernel::printing::adjacent_networks::validate_selection(&layout)?;
+        ds_command_kernel::printing::validate(&layout)?;
         Ok(selected || ds_command_kernel::printing::adjacent_networks::selected(&layout))
     })
 }
