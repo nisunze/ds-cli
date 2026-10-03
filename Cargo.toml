@@ -39,7 +39,7 @@ regex = "1"
 # Portable primitives are canonical in ds-geo-lite; Network delegates to it.
 # The remaining geometry/canvas snapshots keep their existing drift fence.
 # Neither this kernel nor its portable crates depend on ds-network.
-ds-geo-lite = { path = "crates/ds-geo-lite" }
+ds-geo-lite = { path = "crates/ds-geo-lite", features = ["overlay", "revision", "vector_types"] }
 ds-canvas-lite = { path = "crates/ds-canvas-lite" }
 zip = { version = "2", default-features = false, features = ["deflate"] }
 quick-xml = { version = "0.41", default-features = false, features = ["encoding"] }

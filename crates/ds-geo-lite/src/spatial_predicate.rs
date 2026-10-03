@@ -149,7 +149,7 @@ fn geometry_value(value: &Value) -> Result<&Value, String> {
     }
 }
 
-fn parsed_area(area: &Value) -> Result<Geometry<f64>, String> {
+pub(crate) fn parsed_area(area: &Value) -> Result<Geometry<f64>, String> {
     let mut count = 0;
     let area = parse_geometry(geometry_value(area)?, &mut count)?;
     match area {

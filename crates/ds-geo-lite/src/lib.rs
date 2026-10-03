@@ -9,29 +9,38 @@
 //! exact area predicates, and revision comparison are all things a surveyor
 //! standing in a field, offline, needs.
 //!
-//! Types, primitives and buffer/sample/crossing operations are maintained here.
+//! Types, primitives and vector operations are maintained here.
 //! Network's `ds-geo-ops` delegates to this crate. There is one implementation,
 //! and neither this crate nor the command kernel depends on Network.
 //!
-//! The remaining admission, predicate, identity, comparison and viewport modules
-//! are unchanged byte-pinned snapshots from `vendor/ds-geo-lite/`. Their source
-//! remains in Network; `tests/geo_lite_drift.rs` and `scripts/sync-geo-lite.sh`
-//! still fence that separate scope. They have not moved in this slice.
+//! Admission, spatial predicates, region algebra, measurement and extents are
+//! maintained here. Identity/comparison and canvas remain byte-pinned snapshots
+//! from `vendor/ds-geo-lite/`, fenced by `tests/geo_lite_drift.rs` and
+//! `scripts/sync-geo-lite.sh`.
 
-#[path = "../../../vendor/ds-geo-lite/geo/admission.rs"]
+#[cfg(feature = "overlay")]
 pub mod admission;
+#[cfg(feature = "revision")]
 #[path = "../../../vendor/ds-geo-lite/geo/comparison.rs"]
 pub mod comparison;
+#[cfg(feature = "geojson")]
+pub mod geojson;
+#[cfg(feature = "revision")]
 #[path = "../../../vendor/ds-geo-lite/geo/identity.rs"]
 pub mod identity;
-#[path = "../../../vendor/ds-geo-lite/geo/spatial_predicate.rs"]
+#[cfg(feature = "overlay")]
+pub mod overlay;
+#[cfg(feature = "overlay")]
 pub mod spatial_predicate;
-#[path = "../../../vendor/ds-geo-lite/geo/viewport.rs"]
+#[cfg(feature = "geojson")]
 pub mod viewport;
 
+#[cfg(feature = "line_corridor")]
+pub mod line_corridor;
 pub mod operations;
 pub mod primitives;
 pub mod types;
+#[cfg(feature = "vector_types")]
 pub mod vector_types;
 use types::Coord;
 pub use types::EARTH_RADIUS_M;
@@ -189,4 +198,46 @@ pub fn destination_point(lng: f64, lat: f64, bearing_deg: f64, distance_m: f64) 
     }
     let p = primitives::destination::destination(Coord::new(lng, lat), bearing_deg, distance_m);
     vec![p.lng, p.lat]
+}
+
+#[cfg(any(
+    feature = "editing",
+    feature = "profile",
+    feature = "tin",
+    feature = "sampling"
+))]
+mod flat_ops;
+#[cfg(any(
+    feature = "editing",
+    feature = "profile",
+    feature = "tin",
+    feature = "sampling"
+))]
+pub use flat_ops::*;
+
+pub mod cartesian;
+pub mod predicates;
+pub mod tolerance;
+
+#[cfg(feature = "geojson")]
+pub mod measurement;
+#[cfg(feature = "geojson")]
+pub mod region;
+
+#[cfg(feature = "codec")]
+pub mod wkb;
+
+#[cfg(feature = "index")]
+pub mod measured_path;
+
+#[cfg(feature = "corridor")]
+pub mod corridor;
+#[cfg(feature = "overlay")]
+pub mod extent;
+#[cfg(feature = "planar")]
+pub mod planar;
+/// Index types are supplied through the geometry owner; consumers retain rows.
+#[cfg(feature = "index")]
+pub mod index {
+    pub use rstar::*;
 }

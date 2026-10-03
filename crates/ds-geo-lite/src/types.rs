@@ -1,5 +1,5 @@
 /// A WGS-84 coordinate (degrees).
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Coord {
     pub lng: f64,
     pub lat: f64,
