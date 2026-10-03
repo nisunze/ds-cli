@@ -20,7 +20,11 @@ impl Point {
         self.x.is_finite() && self.y.is_finite()
     }
     pub fn distance_to(self, other: Self) -> f64 {
-        (self.x - other.x).hypot(self.y - other.y)
+        ds_geo_lite::cartesian::distance_with(
+            [self.x, self.y],
+            [other.x, other.y],
+            ds_geo_lite::cartesian::DistanceArithmetic::Hypot,
+        )
     }
 }
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
