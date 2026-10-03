@@ -956,6 +956,7 @@ dependencies = [
  "ds-grid-engine",
  "ds-grid-exchange",
  "ds-layer-store",
+ "ds-network",
  "ds-report-artifacts",
  "ds-solar-contracts",
  "ds-sync-store",
@@ -1051,6 +1052,7 @@ dependencies = [
  "ds-command-kernel",
  "ds-io",
  "ds-layer-store",
+ "ds-network",
  "ds-project-data",
  "serde_json",
  "ureq",
@@ -1518,6 +1520,9 @@ dependencies = [
 name = "ds-geo"
 version = "0.1.0"
 dependencies = [
+ "arrow-array",
+ "arrow-ipc",
+ "arrow-schema",
  "ds-geo-ops",
  "geo",
  "regex",
@@ -1674,8 +1679,12 @@ name = "ds-network"
 version = "0.1.0"
 dependencies = [
  "ds-cleaning",
+ "ds-command-kernel",
  "ds-geo",
+ "ds-geo-lite",
+ "ds-geo-ops",
  "ds-graph",
+ "ds-io",
  "ds-profile",
  "rayon",
  "regex",
@@ -1684,6 +1693,7 @@ dependencies = [
  "serde_json",
  "sha2 0.10.9",
  "thiserror",
+ "time",
 ]
 
 [[package]]
