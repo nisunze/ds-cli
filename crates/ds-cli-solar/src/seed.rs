@@ -20,11 +20,12 @@ const OVERWRITE_ARG: Arg = Arg::switch(
     "overwrite",
     "Replace changed city inputs and remove obsolete seeded input documents; bind this choice in both preview and apply.",
 );
-const LANE_ARG: Arg = Arg::value(
-    "lane",
-    "<stable|canary>",
-    "Native authentication lane; defaults to stable.",
-);
+const LANE_ARG: Arg = ds_cli_contract::spec::Arg {
+    summary: "Native authentication lane; defaults to stable.",
+    default: None,
+    choices: &[],
+    ..ds_cli_contract::spec::LANE
+};
 fn native_available() -> Availability {
     // The restored native identity owns backend availability at execution.
     Availability::Available

@@ -6,9 +6,7 @@ use ds_cli_contract::{
 };
 use serde_json::{Value, json};
 
-const LANE: Arg = Arg::value("lane", "<stable|canary>", "Deployment lane.")
-    .default("stable")
-    .choices(&["stable", "canary"]);
+const LANE: ds_cli_contract::spec::Arg = ds_cli_contract::spec::LANE.summary("Deployment lane.");
 const NAME: Arg = Arg::value(
     "name",
     "<name>",

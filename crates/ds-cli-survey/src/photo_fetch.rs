@@ -114,13 +114,10 @@ pub static FETCH_COMMAND: Command = Command {
             "<dir>",
             "Write here instead of the core's held photos (see `survey local status`).",
         ),
-        Arg::value(
-            "lane",
-            "<stable|canary>",
-            "Deployment lane; stable is the default.",
-        )
-        .default("stable")
-        .choices(&["stable", "canary"]),
+        ds_cli_contract::spec::Arg {
+            summary: "Deployment lane; stable is the default.",
+            ..ds_cli_contract::spec::LANE
+        },
     ],
     output: "The project and output directory; each photo fetched (object path, file, bytes, media type, and whether a thumbnail was generated), each already present, and each that failed with its code and reason; `complete` is true only when none failed.",
     examples: &[

@@ -138,11 +138,7 @@ fn receipt(transformer: &str, from: &str, to: &str, result: &Value) -> Result<Va
     shared::require_false(result, "persisted")?;
     let comparison_id = shared::nonempty_text(result, "comparisonId")?;
     let digest = comparison_id.strip_prefix("comparison-").unwrap_or("");
-    if digest.len() != 64
-        || !digest
-            .bytes()
-            .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
-    {
+    if !ds_cli_contract::util::is_sha256_hex(digest, ds_cli_contract::util::HexCase::Lower) {
         return Err(shared::unreadable("comparison room identity is invalid"));
     }
     shared::require_true(result, "comparisonPersisted")?;

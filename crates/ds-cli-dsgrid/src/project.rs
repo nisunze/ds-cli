@@ -85,9 +85,8 @@ const fn geojson_refusals() -> [Refusal; 6 + ds_cli_auth::PROJECT_STATUS_COMMAND
     r
 }
 const GEOJSON_REFUSALS: &[Refusal] = &geojson_refusals();
-pub(crate) const LANE: Arg = Arg::value("lane", "<stable|canary>", "Native authentication lane.")
-    .default("stable")
-    .choices(&["stable", "canary"]);
+pub(crate) const LANE: ds_cli_contract::spec::Arg =
+    ds_cli_contract::spec::LANE.summary("Native authentication lane.");
 pub(crate) const PROJECT: Arg =
     Arg::value("project", "<ds-project>", "Exact project for this request.").required();
 pub static RETIRE: Command = Command {

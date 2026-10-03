@@ -73,9 +73,8 @@ const PROJECT_ARG: Arg = Arg::value(
     "Exact ds_project this read is billed and authorized against; the saved selection is never read.",
 )
 .required();
-const LANE_ARG: Arg = Arg::value("lane", "<stable|canary>", "Native authentication lane.")
-    .default("stable")
-    .choices(&["stable", "canary"]);
+const LANE_ARG: ds_cli_contract::spec::Arg =
+    ds_cli_contract::spec::LANE.summary("Native authentication lane.");
 
 macro_rules! refusal {
     ($name:ident, $code:literal, $when:literal, $remedy:literal) => {

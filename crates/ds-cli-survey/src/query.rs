@@ -12,9 +12,6 @@ use serde_json::{Map, Value, json};
 use std::fmt;
 
 const MAX_FILTER_BYTES: usize = 8 * 1024;
-const MAX_FILTERS: usize = 8;
-const MAX_IN_VALUES: usize = 20;
-const MAX_VALUE_CHARS: usize = 2_048;
 
 const FORM: Arg = Arg::value("form", "<form-slug>", "Exact governed form slug.").required();
 const METRIC: Arg = Arg::value("metric", "<count|count_distinct>", "Aggregate metric.")
@@ -56,13 +53,8 @@ const ORDER: Arg = Arg::value("order", "<asc|desc>", "Aggregate row order.")
     .default("desc")
     .choices(&["asc", "desc"]);
 const LIMIT: Arg = Arg::value("limit", "<1-200>", "Maximum aggregate rows.").default("50");
-const LANE: Arg = Arg::value(
-    "lane",
-    "<stable|canary>",
-    "Deployment lane; stable is the default.",
-)
-.default("stable")
-.choices(&["stable", "canary"]);
+const LANE: ds_cli_contract::spec::Arg =
+    ds_cli_contract::spec::LANE.summary("Deployment lane; stable is the default.");
 
 const QUERY_REFUSALS: &[Refusal] = &[
     Refusal {
@@ -307,14 +299,18 @@ fn parse(inputs: &Inputs) -> Result<SurveyQueryRequest, Failure> {
         .require("limit")?
         .parse::<u16>()
         .ok()
-        .filter(|limit| (1..=200).contains(limit))
+        .filter(|limit| accepts_bounds(*limit, Vec::new(), Vec::new()))
         .ok_or_else(|| query_failure("`--limit` must be an integer from 1 through 200"))?;
     let group_by = inputs.repeated("group-by");
-    if group_by.len() > 2 {
+    if !accepts_bounds(1, vec!["group".to_owned(); group_by.len()], Vec::new()) {
         return Err(query_failure("at most two `--group-by` flags may be given"));
     }
     let raw_filters = inputs.repeated("filter");
-    if raw_filters.len() > MAX_FILTERS {
+    if !accepts_bounds(
+        1,
+        Vec::new(),
+        vec![SurveyQueryFilter::is_null("field"); raw_filters.len()],
+    ) {
         return Err(filter_failure(
             "at most eight `--filter` flags may be given",
         ));
@@ -357,7 +353,16 @@ fn parse_filter(raw: &str) -> Result<SurveyQueryFilter, Failure> {
             let values = object
                 .get("values")
                 .and_then(Value::as_array)
-                .filter(|values| (1..=MAX_IN_VALUES).contains(&values.len()))
+                .filter(|values| {
+                    accepts_bounds(
+                        1,
+                        Vec::new(),
+                        vec![SurveyQueryFilter::in_values(
+                            "field",
+                            vec![String::new(); values.len()],
+                        )],
+                    )
+                })
                 .ok_or_else(|| filter_failure("`in` requires 1 through 20 string values"))?
                 .iter()
                 .map(|value| {
@@ -423,9 +428,29 @@ fn bounded_string(
 }
 
 fn bounded_value(value: &str, nonempty: bool) -> bool {
-    (!nonempty || !value.is_empty())
-        && value.chars().count() <= MAX_VALUE_CHARS
-        && !value.chars().any(char::is_control)
+    let filter = if nonempty {
+        SurveyQueryFilter::between("field", value, value)
+    } else {
+        SurveyQueryFilter::eq("field", value)
+    };
+    accepts_bounds(1, Vec::new(), vec![filter])
+}
+
+/// Ask the typed owner about one dimension before interpreting the rest of
+/// the flags. Neutral, valid context keeps the CLI's existing diagnostic order
+/// and refusal codes, without a second copy of aggregate bounds or value rules.
+/// Actual caller identifiers are validated by the final request constructor.
+fn accepts_bounds(limit: u16, group_by: Vec<String>, filters: Vec<SurveyQueryFilter>) -> bool {
+    SurveyQueryRequest::new(
+        "cli_bounds",
+        SurveyQueryMetric::Count,
+        None,
+        group_by,
+        filters,
+        SurveyQueryOrder::Asc,
+        limit,
+    )
+    .is_ok()
 }
 
 fn exact_keys(object: &Map<String, Value>, expected: &[&str]) -> Result<(), Failure> {
@@ -582,6 +607,43 @@ mod tests {
                 "survey_filter_invalid"
             );
         }
+    }
+
+    #[test]
+    fn owner_bounds_keep_boundary_acceptance_and_cli_refusals() {
+        for limit in ["1", "200"] {
+            assert!(super::parse(&inputs(&["--form", "a_poles", "--limit", limit])).is_ok());
+        }
+        for limit in ["0", "201"] {
+            let failure =
+                super::parse(&inputs(&["--form", "a_poles", "--limit", limit])).unwrap_err();
+            assert_eq!(failure.code(), "survey_query_invalid");
+            assert_eq!(
+                failure.message(),
+                "`--limit` must be an integer from 1 through 200"
+            );
+        }
+        for (length, valid) in [(20, true), (21, false)] {
+            let raw =
+                serde_json::json!({"field":"f", "op":"in", "values":vec!["v"; length]}).to_string();
+            assert_eq!(parse_filter(&raw).is_ok(), valid);
+        }
+        assert!(bounded_value(&"é".repeat(2048), false));
+        assert!(!bounded_value(&"é".repeat(2049), false));
+        assert!(bounded_value("", false));
+        assert!(!bounded_value("", true));
+        assert!(!bounded_value("x\n", false));
+        assert!(accepts_bounds(
+            1,
+            vec!["group".into(); 2],
+            vec![SurveyQueryFilter::is_null("field"); 8]
+        ));
+        assert!(!accepts_bounds(1, vec!["group".into(); 3], Vec::new()));
+        assert!(!accepts_bounds(
+            1,
+            Vec::new(),
+            vec![SurveyQueryFilter::is_null("field"); 9]
+        ));
     }
 
     #[test]

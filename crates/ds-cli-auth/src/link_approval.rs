@@ -44,9 +44,8 @@ const DEVICE_FINGERPRINT: Arg = Arg::value(
     "Requesting device's exact public fingerprint.",
 )
 .required();
-const LANE: Arg = Arg::value("lane", "<stable|canary>", "Request's deployment lane.")
-    .default("stable")
-    .choices(&["stable", "canary"]);
+const LANE: ds_cli_contract::spec::Arg =
+    ds_cli_contract::spec::LANE.summary("Request's deployment lane.");
 
 pub const APPROVE_OP: BridgeOp = BridgeOp {
     operation: "auth.link.approve",
@@ -384,11 +383,7 @@ fn bounded_fingerprint(value: &str) -> Result<&str, Failure> {
 }
 
 fn is_digest(value: &str) -> bool {
-    value.len() == 71
-        && value.starts_with("sha256:")
-        && value[7..]
-            .bytes()
-            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    ds_cli_contract::util::is_sha256_digest(value, ds_cli_contract::util::HexCase::Lower)
 }
 
 fn valid_digest(value: Option<&Value>) -> bool {
@@ -397,10 +392,7 @@ fn valid_digest(value: Option<&Value>) -> bool {
 
 fn valid_raw_digest(value: Option<&Value>) -> bool {
     value.and_then(Value::as_str).is_some_and(|digest| {
-        digest.len() == 64
-            && digest
-                .bytes()
-                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        ds_cli_contract::util::is_sha256_hex(digest, ds_cli_contract::util::HexCase::Lower)
     })
 }
 

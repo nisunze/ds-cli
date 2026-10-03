@@ -1,11 +1,6 @@
-use ds_cli_contract::spec::{Arg, Refusal};
-pub const LANE_ARG: Arg = Arg::value(
-    "lane",
-    "<stable|canary>",
-    "Deployment lane; stable is the default.",
-)
-.default("stable")
-.choices(&["stable", "canary"]);
+use ds_cli_contract::spec::Refusal;
+pub const LANE_ARG: ds_cli_contract::spec::Arg =
+    ds_cli_contract::spec::LANE.summary("Deployment lane; stable is the default.");
 pub const CONFIRMATION_REQUIRED: Refusal = Refusal {
     code: "confirmation_required",
     when: "--yes was not supplied",

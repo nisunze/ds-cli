@@ -23,9 +23,10 @@ pub static COMMAND: Command = Command {
         Arg::value("city", "<id>", "One exact local city.").required(),
         crate::portfolio_headless::PROJECT,
         Arg::value("cache", "<dir>", "Destination verified reference cache.").required(),
-        Arg::value("lane", "<stable|canary>", "Native authentication lane.")
-            .default("stable")
-            .choices(&["stable", "canary"]),
+        ds_cli_contract::spec::Arg {
+            summary: "Native authentication lane.",
+            ..ds_cli_contract::spec::LANE
+        },
     ],
     output: "Project, city, input digest, readiness, cache location and acquisition receipt. No bytes, token or signed URL.",
     examples: &[],

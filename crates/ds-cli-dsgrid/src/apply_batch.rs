@@ -596,12 +596,10 @@ fn read_guard(raw_path: &str) -> Result<(CorrectionGuardFile, String), Failure> 
             format!("invalid guard JSON: {error}"),
         )
     })?;
-    if !guard.source_sha256.starts_with("sha256:")
-        || guard.source_sha256.len() != 71
-        || !guard.source_sha256[7..]
-            .bytes()
-            .all(|byte| byte.is_ascii_hexdigit())
-    {
+    if !ds_cli_contract::util::is_sha256_digest(
+        &guard.source_sha256,
+        ds_cli_contract::util::HexCase::Any,
+    ) {
         return Err(Failure::invalid(
             "correction_guard_invalid",
             "source_sha256 must be a full SHA-256 digest",

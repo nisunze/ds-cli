@@ -225,10 +225,7 @@ fn validate_side(side: &Value, label: &str) -> Result<(), Failure> {
 }
 
 fn lower_hex(value: &str, len: usize) -> bool {
-    value.len() == len
-        && value
-            .bytes()
-            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    ds_cli_contract::util::is_hex(value, len, ds_cli_contract::util::HexCase::Lower)
 }
 
 fn exact_object<'a>(

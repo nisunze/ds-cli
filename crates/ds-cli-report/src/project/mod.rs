@@ -47,13 +47,8 @@ pub const TRANSFORMER_ARG: Arg = Arg::repeated(
     "<name>",
     "Explicit scope; repeat per name. Omit for every active saved transformer.",
 );
-pub const LANE_ARG: Arg = Arg::value(
-    "lane",
-    "<stable|canary>",
-    "Deployment lane; stable is the default.",
-)
-.default("stable")
-.choices(&["stable", "canary"]);
+pub const LANE_ARG: ds_cli_contract::spec::Arg =
+    ds_cli_contract::spec::LANE.summary("Deployment lane; stable is the default.");
 pub const PROJECT_ARG: Arg =
     Arg::value("project", "<ds-project>", "Project named for this request.").required();
 

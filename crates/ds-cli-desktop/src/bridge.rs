@@ -343,11 +343,10 @@ impl IdentityFence {
             return Err(crate::ops::unprovisioned_lane());
         }
         if fence.uid.is_empty()
-            || fence.credential_audience_sha256.len() != 64
-            || !fence
-                .credential_audience_sha256
-                .bytes()
-                .all(|byte| byte.is_ascii_digit() || matches!(byte, b'a'..=b'f'))
+            || !ds_cli_contract::util::is_sha256_hex(
+                &fence.credential_audience_sha256,
+                ds_cli_contract::util::HexCase::Lower,
+            )
             || fence.session_revision == 0
         {
             return Err(Failure::conflict(

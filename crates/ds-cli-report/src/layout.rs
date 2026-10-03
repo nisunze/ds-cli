@@ -54,7 +54,8 @@ const PROJECT: Arg = Arg::value(
     "<exact-id>",
     "Exact ds_project for --scope project, or for a copy whose source or destination is a project; the saved selection is never read.",
 );
-const LANE: Arg = Arg::value("lane", "<lane>", "Native credential lane.")
+const LANE: ds_cli_contract::spec::Arg = ds_cli_contract::spec::LANE
+    .placeholder("<lane>")
     .choices(&["canary", "stable"])
     .default("canary");
 fn invalid(e: impl std::fmt::Display) -> Failure {
@@ -1039,7 +1040,7 @@ fn compact_save_receipt(
     let revision = saved["revision"]
         .as_str()
         .filter(|revision| {
-            revision.len() == 64 && revision.bytes().all(|byte| byte.is_ascii_hexdigit())
+            ds_cli_contract::util::is_sha256_hex(revision, ds_cli_contract::util::HexCase::Any)
         })
         .ok_or_else(|| invalid("printing service returned no exact saved revision"))?;
     let layout = saved

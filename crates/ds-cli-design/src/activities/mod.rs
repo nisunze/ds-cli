@@ -48,13 +48,8 @@ use serde_json::{Map, Value, json};
 
 /// The lane whose captures a command reads or writes. Two lanes are two
 /// stores: a canary capture never answers for stable.
-pub const LANE_ARG: Arg = Arg::value(
-    "lane",
-    "<stable|canary>",
-    "Deployment lane; stable is the default.",
-)
-.default("stable")
-.choices(&["stable", "canary"]);
+pub const LANE_ARG: ds_cli_contract::spec::Arg =
+    ds_cli_contract::spec::LANE.summary("Deployment lane; stable is the default.");
 
 pub const STATE_DIR_ARG: Arg = Arg::value(
     "state-dir",
@@ -602,12 +597,7 @@ pub fn secure_dir(path: &Path) -> Result<(), Failure> {
     Ok(())
 }
 
-pub fn now_ms() -> i64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|elapsed| elapsed.as_millis() as i64)
-        .unwrap_or(0)
-}
+pub use ds_cli_contract::util::now_ms_i64 as now_ms;
 
 /// The not-claimed list as the replies carry it.
 pub fn not_claimed() -> Value {

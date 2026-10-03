@@ -26,13 +26,8 @@ const CURSOR: Arg = Arg::value(
     "<opaque-cursor>",
     "Exact next_cursor for an incomplete page; no whitespace, maximum 4096 bytes.",
 );
-const LANE: Arg = Arg::value(
-    "lane",
-    "<stable|canary>",
-    "Deployment lane; stable is the default.",
-)
-.default("stable")
-.choices(&["stable", "canary"]);
+const LANE: ds_cli_contract::spec::Arg =
+    ds_cli_contract::spec::LANE.summary("Deployment lane; stable is the default.");
 
 const REFUSALS: &[Refusal] = &[
     Refusal {

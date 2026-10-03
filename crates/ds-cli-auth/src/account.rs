@@ -87,13 +87,8 @@ pub static DOMAIN: Domain = Domain {
     commands: &[&CONNECT_COMMAND],
 };
 
-const LANE: Arg = Arg::value(
-    "lane",
-    "<stable|canary>",
-    "Deployment lane; stable is the default.",
-)
-.default("stable")
-.choices(&["stable", "canary"]);
+const LANE: ds_cli_contract::spec::Arg =
+    ds_cli_contract::spec::LANE.summary("Deployment lane; stable is the default.");
 const TIMEOUT: Arg = Arg::value(
     "timeout",
     "<0-900>",

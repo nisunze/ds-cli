@@ -51,13 +51,8 @@ const ON_ERROR: Arg = Arg::value(
 )
 .default("stop")
 .choices(&["stop", "continue"]);
-const LANE: Arg = Arg::value(
-    "lane",
-    "<stable|canary>",
-    "Deployment lane; stable is the default.",
-)
-.default("stable")
-.choices(&["stable", "canary"]);
+const LANE: ds_cli_contract::spec::Arg =
+    ds_cli_contract::spec::LANE.summary("Deployment lane; stable is the default.");
 
 const REFUSALS: &[Refusal] = &[
     Refusal {

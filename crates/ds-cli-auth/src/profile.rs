@@ -427,10 +427,7 @@ fn load_path(
 }
 
 fn valid_digest(value: &str) -> bool {
-    value.len() == 64
-        && value
-            .bytes()
-            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    ds_cli_contract::util::is_sha256_hex(value, ds_cli_contract::util::HexCase::Lower)
 }
 
 fn not_configured() -> Failure {

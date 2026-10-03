@@ -12,6 +12,7 @@ pub mod help;
 pub mod outcome;
 pub mod output;
 pub mod spec;
+pub mod util;
 
 pub use args::{Inputs, parse};
 pub use outcome::{ExitClass, Failure, SuccessEnvelope, success_envelope};

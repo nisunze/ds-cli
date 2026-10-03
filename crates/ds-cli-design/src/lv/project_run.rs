@@ -184,13 +184,10 @@ pub static COMMAND: Command = Command {
             "Absent directory for request, result and bounded export/process/save receipts.",
         )
         .required(),
-        Arg::value(
-            "lane",
-            "<stable|canary>",
-            "Native credential lane for the entire captured run.",
-        )
-        .default("stable")
-        .choices(&["stable", "canary"]),
+        ds_cli_contract::spec::Arg {
+            summary: "Native credential lane for the entire captured run.",
+            ..ds_cli_contract::spec::LANE
+        },
         Arg::switch(
             "resume",
             "Reuse captured export/process bytes; with --print-a4 retry the first successful save's print without saving again.",

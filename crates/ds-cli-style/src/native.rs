@@ -12,13 +12,8 @@ use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{Arg, Refusal};
 use serde_json::{Value, json};
 
-pub const LANE_ARG: Arg = Arg::value(
-    "lane",
-    "<stable|canary>",
-    "Deployment lane; stable is the default.",
-)
-.default("stable")
-.choices(&["stable", "canary"]);
+pub const LANE_ARG: ds_cli_contract::spec::Arg =
+    ds_cli_contract::spec::LANE.summary("Deployment lane; stable is the default.");
 pub const PROJECT_ARG: Arg = Arg::value(
     "project",
     "<exact-id>",

@@ -926,11 +926,7 @@ impl Producer for SolarProducer<'_> {
     }
 }
 
-fn now_ms() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |value| value.as_millis() as u64)
-}
+use ds_cli_contract::util::now_ms;
 
 /// The only native adapter allowed to turn a sealed Solar result into a
 /// compute-artifact publication. The store owns leases, retries and receipts;

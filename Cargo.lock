@@ -1013,7 +1013,6 @@ name = "ds-cli-auth"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
- "ds-cli-auth",
  "ds-cli-contract",
  "ds-cli-desktop",
  "ds-client-core",
@@ -1306,6 +1305,7 @@ dependencies = [
 name = "ds-cli-skills"
 version = "0.1.0"
 dependencies = [
+ "ds-cli-contract",
  "serde_json",
  "sha2 0.10.9",
 ]
@@ -1898,6 +1898,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.10.9",
+ "tempfile",
  "ureq",
  "url",
  "uuid",

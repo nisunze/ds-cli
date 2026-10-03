@@ -51,13 +51,8 @@ const IDS: Arg = Arg::value(
     "Return this many matched stable feature ids.",
 )
 .default("0");
-const LANE: Arg = Arg::value(
-    "lane",
-    "<stable|canary>",
-    "Deployment lane; stable is the default.",
-)
-.default("stable")
-.choices(&["stable", "canary"]);
+const LANE: ds_cli_contract::spec::Arg =
+    ds_cli_contract::spec::LANE.summary("Deployment lane; stable is the default.");
 
 macro_rules! refusal {
     ($name:ident, $code:literal, $when:literal, $remedy:literal) => {

@@ -26,11 +26,7 @@ pub fn resolve_ds_network_pin(
     let release_pin = release_pin.ok_or(
         "release builds require DS_RELEASE_PIN_DS_NETWORK as one exact lowercase 40-hex SHA",
     )?;
-    if release_pin.len() != 40
-        || !release_pin
-            .bytes()
-            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
-    {
+    if !ds_cli_contract::util::is_hex(release_pin, 40, ds_cli_contract::util::HexCase::Lower) {
         return Err(
             "release builds require DS_RELEASE_PIN_DS_NETWORK as one exact lowercase 40-hex SHA",
         );

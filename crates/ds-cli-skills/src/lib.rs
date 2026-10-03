@@ -836,10 +836,7 @@ fn required_sha(value: &Value, field: &str) -> Result<String, String> {
 }
 
 fn lower_hex(value: &str, length: usize) -> bool {
-    value.len() == length
-        && value
-            .bytes()
-            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    ds_cli_contract::util::is_hex(value, length, ds_cli_contract::util::HexCase::Lower)
 }
 
 fn valid_skill_name(name: &str) -> bool {
@@ -852,14 +849,7 @@ fn valid_skill_name(name: &str) -> bool {
         })
 }
 
-fn safe_relative(path: &str) -> bool {
-    !path.is_empty()
-        && !path.starts_with('/')
-        && !path.contains('\\')
-        && path
-            .split('/')
-            .all(|part| !part.is_empty() && part != "." && part != "..")
-}
+use ds_cli_contract::util::safe_relative;
 
 #[cfg(test)]
 mod tests {

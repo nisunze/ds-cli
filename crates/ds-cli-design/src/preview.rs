@@ -75,12 +75,7 @@ pub const MIRROR_ARG: Arg = Arg::switch(
     "This project uses the combined mirror; without it those two verbs target nothing.",
 );
 
-fn now_ms() -> i64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|elapsed| elapsed.as_millis() as i64)
-        .unwrap_or(0)
-}
+use ds_cli_contract::util::now_ms_i64 as now_ms;
 
 fn rows_of(list: &TransformerStatusList) -> Vec<Value> {
     list.rows().iter().map(|row| row.row().clone()).collect()

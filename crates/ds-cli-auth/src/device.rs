@@ -40,9 +40,7 @@ use crate::transport::NativeTransport;
 const TIMEOUT: Duration = Duration::from_secs(30);
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 
-const LANE: Arg = Arg::value("lane", "<stable|canary>", "Deployment lane.")
-    .default("stable")
-    .choices(&["stable", "canary"]);
+const LANE: ds_cli_contract::spec::Arg = ds_cli_contract::spec::LANE.summary("Deployment lane.");
 const DEVICE_NAME: Arg = Arg::value(
     "device-name",
     "<name>",

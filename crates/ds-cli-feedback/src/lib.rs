@@ -134,18 +134,9 @@ pub fn bounded_text<'a>(value: &'a str, flag: &str, max: usize) -> Result<&'a st
 }
 
 /// Fit one column of a human line without breaking a character.
-pub fn truncate(text: &str, width: usize) -> String {
-    if text.chars().count() <= width {
-        return text.to_string();
-    }
-    let kept: String = text.chars().take(width.saturating_sub(1)).collect();
-    format!("{kept}…")
-}
+pub use ds_cli_contract::util::truncate;
 
-pub const LANE_ARG: ds_cli_contract::spec::Arg =
-    ds_cli_contract::spec::Arg::value("lane", "<stable|canary>", "Native credential lane.")
-        .choices(&["stable", "canary"])
-        .default("stable");
+pub use ds_cli_contract::spec::LANE as LANE_ARG;
 /// This domain's own refusals, then the native user's. There is no host to
 /// choose any more, so no target refusal is appended.
 pub const fn native_refusals<const N: usize, const M: usize>(old: [Refusal; N]) -> [Refusal; M] {

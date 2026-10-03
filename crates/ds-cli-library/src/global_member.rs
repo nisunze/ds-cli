@@ -57,13 +57,10 @@ pub static COMMAND: Command = Command {
             "Exact inventory artifact.digest: 64 lowercase hexadecimal characters.",
         )
         .required(),
-        Arg::value(
-            "lane",
-            "<stable|canary>",
-            "Native authentication lane and account/device context.",
-        )
-        .default("stable")
-        .choices(&["stable", "canary"]),
+        ds_cli_contract::spec::Arg {
+            summary: "Native authentication lane and account/device context.",
+            ..ds_cli_contract::spec::LANE
+        },
     ],
     output: "One exact library_id/release_id/member metadata record (at most 8 KiB), including artifact digest and byte_length, provenance and optional external_definition. Signed delivery URLs are excluded; bytes_fetched=false. The server verified object integrity; this call does not verify locally downloaded bytes.",
     examples: &[Example {

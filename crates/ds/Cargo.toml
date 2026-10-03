@@ -82,3 +82,6 @@ zip = { workspace = true }
 ds-solar-contracts = { workspace = true }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
+
+[build-dependencies]
+ds-cli-contract = { workspace = true }

@@ -141,10 +141,7 @@ impl ServerSyncSession {
             .store
             .lock()
             .map_err(|_| "The sync gate is unavailable".to_string())?;
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|elapsed| elapsed.as_millis() as u64)
-            .unwrap_or_default();
+        let now = ds_cli_contract::util::now_ms();
         let Some(lease) = store
             .leases_of_fence(&self.fence)
             .map_err(|error| error.to_string())?

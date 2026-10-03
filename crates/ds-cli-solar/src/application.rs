@@ -21,9 +21,10 @@ pub static COMMAND: Command = Command {
             "Explicit authorized project; selection remains unchanged.",
         )
         .required(),
-        Arg::value("lane", "<stable|canary>", "Native Server authority lane.")
-            .default("stable")
-            .choices(&["stable", "canary"]),
+        ds_cli_contract::spec::Arg {
+            summary: "Native Server authority lane.",
+            ..ds_cli_contract::spec::LANE
+        },
         Arg::value(
             "state-dir",
             "<absolute-path>",

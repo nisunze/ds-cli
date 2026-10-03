@@ -3,8 +3,8 @@
 > "we use and prove resumable uploads on weak networks."
 
 This is the live half of that proof. The automated half is
-`crates/ds-cli-auth/tests/weak_network.rs`, which runs on every
-`cargo test -p ds-cli-auth`. **This document is not run by CI and must not be
+the shared `ds-sync-runtime::native_transfer` tests and the kernel's transfer
+protocol tests. **This document is not run by CI and must not be
 run casually**: every step here degrades a real network interface on a real
 box, and one variant takes the box off the network on purpose.
 
@@ -13,12 +13,11 @@ a run of it is only evidence if the receipts in §6 are kept.
 
 ## 0. What a live run adds
 
-The harness already proves the protocol against faults a live link cannot be
-asked to produce on cue — a duplicate acknowledgement, a commit shorter than
-the bytes written, a socket cut at byte 4 194 303. It runs the same
-`ds-cli-auth` transfer host and the same `ds_command_kernel::transfer` machine
-the product runs, end to end in Rust, and it is the faster and stricter of the
-two. Run it first; a live run on a red harness proves nothing.
+The shared transport tests exercise real TCP acknowledgements, resumed
+prefixes, digest re-proof, cancellation and terminal storage statuses. The
+kernel tests own protocol decisions, including strict acknowledgement facts
+and retry bounds. Run those checks first; a live run on failing tests proves
+nothing.
 
 What only a live run adds:
 
@@ -138,7 +137,8 @@ time ds map data upload --project <id> --path ./acceptance-64mib.geojson --yes -
 
 `inspect` computes the SHA-256 locally, offline, before a byte moves. `upload`
 is the native path under test: `ds-client-core` mints the session, and
-`crates/ds-cli-auth/src/upload.rs` streams it while
+`ds-sync-runtime::native_transfer` seals the forward-only client stream to a
+private temporary file and streams it through the shared verified driver while
 `ds_command_kernel::transfer` decides every probe, resume point, retry and
 verdict. No browser, no Node, no TypeScript is involved at any point.
 
@@ -176,7 +176,7 @@ Killing the **process** (`Ctrl-C`, or `pkill -INT -f 'ds map data upload'`) and
 re-running the command does **not** resume today. Resume works fully inside one
 `upload_bytes` call; the durable `transfer::TransferState` has nowhere to go
 across the call boundary, because `Transport::upload_bytes` returns only a
-`TransportResponse` (stated in `upload.rs`'s own header). A cross-invocation
+`TransportResponse`. A cross-invocation
 resume needs a `ds-client-core` change. Record the observed behaviour; do not
 report it as a pass.
 
@@ -190,7 +190,7 @@ report it as a pass.
 | `sudo tc -s qdisc show dev "$EGRESS"` — `sent`/`dropped`/`overlimits` counters, captured before and after | the box | the link really was degraded during that window. Without this the run proves nothing about a weak network |
 | `time` on the upload, read against the curve (1+2+4+8+16 s) | the run | the waiting was the kernel's bounded backoff, not an unbounded loop |
 | `dmesg -T \| tail` around the `ip link` window | the box | the outage happened when it was supposed to |
-| `cargo test -p ds-cli-auth --test weak_network` output | this repo | the ten fault scenarios a live link cannot schedule |
+| `cargo test` in `ds-command-kernel/crates/ds-sync-runtime` output | kernel repo | shared native transport and digest re-proof |
 
 Keep all of it with the campaign's evidence. A live run with no `tc -s`
 counters is a slow upload, not an acceptance.

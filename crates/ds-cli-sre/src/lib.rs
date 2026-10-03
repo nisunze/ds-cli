@@ -42,10 +42,7 @@ pub use sre::{
     MAX_OVERVIEW_ROWS, MAX_SCAN_EVENTS,
 };
 
-pub const LANE_ARG: ds_cli_contract::spec::Arg =
-    ds_cli_contract::spec::Arg::value("lane", "<stable|canary>", "Native credential lane.")
-        .choices(&["stable", "canary"])
-        .default("stable");
+pub use ds_cli_contract::spec::LANE as LANE_ARG;
 
 /// The route answers 401/403 through the shared `map_client`, so the code is
 /// the one it emits; the reason and remedy are this domain's.
@@ -105,13 +102,7 @@ pub fn invoke_native(
     ds_cli_auth::sre(inputs.value("lane").unwrap_or("stable"), command)
 }
 
-pub fn truncate(text: &str, width: usize) -> String {
-    if text.chars().count() <= width {
-        return text.to_string();
-    }
-    let kept: String = text.chars().take(width.saturating_sub(1)).collect();
-    format!("{kept}…")
-}
+pub use ds_cli_contract::util::truncate;
 
 #[cfg(test)]
 mod tests {

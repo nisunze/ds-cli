@@ -20,9 +20,8 @@ use ds_layer_store::local_models::StoreError;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
-pub const LANE_ARG: Arg = Arg::value("lane", "<stable|canary>", "Which lane's catalogue.")
-    .default("stable")
-    .choices(&["stable", "canary"]);
+pub const LANE_ARG: ds_cli_contract::spec::Arg =
+    ds_cli_contract::spec::LANE.summary("Which lane's catalogue.");
 
 pub const ACCOUNT_ARG: Arg = Arg::value(
     "account",

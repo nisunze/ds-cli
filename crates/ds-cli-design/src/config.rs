@@ -9,9 +9,7 @@ use ds_client_core::ProjectConfigurationChange as Change;
 use ds_command_kernel::design_config::{self, Request};
 use serde_json::{Value, json};
 use std::io::{Read, Write};
-const LANE: Arg = Arg::value("lane", "<stable|canary>", "Deployment lane.")
-    .default("stable")
-    .choices(&["stable", "canary"]);
+const LANE: ds_cli_contract::spec::Arg = ds_cli_contract::spec::LANE.summary("Deployment lane.");
 const SHEET: Arg = Arg::value("sheet", "<key>", "Exact sheet key from config sheets.").required();
 const LIMIT: Arg = Arg::value("limit", "<n>", "Maximum returned items, 1–100.").default("50");
 const OFFSET: Arg = Arg::value("offset", "<n>", "Skip this many items.").default("0");

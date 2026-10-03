@@ -218,9 +218,7 @@ pub const PROJECT: ds_cli_contract::spec::Arg = ds_cli_contract::spec::Arg::valu
 .required();
 
 pub const LANE: ds_cli_contract::spec::Arg =
-    ds_cli_contract::spec::Arg::value("lane", "<stable|canary>", "Native deployment lane.")
-        .default("stable")
-        .choices(&["stable", "canary"]);
+    ds_cli_contract::spec::LANE.summary("Native deployment lane.");
 pub const COMMON_REFUSALS: &[Refusal] = &{
     const BASE: &[Refusal] = project_forms::LIST_COMMAND.refusals;
     let mut list = [INVALID_TEXT; BASE.len() + 3];

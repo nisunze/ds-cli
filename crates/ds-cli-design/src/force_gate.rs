@@ -129,10 +129,7 @@ pub fn run(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
             .ok_or_else(|| invalid("a confirmation needs the --gesture it belongs to"))?;
         let now_ms: u64 = match i.value("now-ms") {
             Some(raw) => raw.trim().parse().map_err(invalid)?,
-            None => std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map_err(invalid)?
-                .as_millis() as u64,
+            None => ds_cli_contract::util::epoch_ms().map_err(invalid)?,
         };
         out["grant"] = ask(json!({
             "op": "verify",

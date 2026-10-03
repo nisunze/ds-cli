@@ -81,14 +81,7 @@ pub static COMMAND: Command = Command {
     availability: || Availability::Available,
 };
 
-fn safe_relative(path: &str) -> bool {
-    !path.is_empty()
-        && !path.starts_with('/')
-        && !path.contains('\\')
-        && path
-            .split('/')
-            .all(|part| !part.is_empty() && part != "." && part != "..")
-}
+use ds_cli_contract::util::safe_relative;
 
 fn asset_class(category: StandardsLibraryNativeCategory) -> &'static str {
     match category {

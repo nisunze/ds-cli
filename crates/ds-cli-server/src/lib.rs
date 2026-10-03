@@ -47,9 +47,8 @@ const STATE: Arg = Arg::value(
     "<absolute-path>",
     "Protected server state directory; defaults to the lane's user state directory.",
 );
-const LANE: Arg = Arg::value("lane", "<stable|canary>", "Native authentication lane.")
-    .default("stable")
-    .choices(&["stable", "canary"]);
+const LANE: ds_cli_contract::spec::Arg =
+    ds_cli_contract::spec::LANE.summary("Native authentication lane.");
 const JOB: Arg = Arg::value("job", "<id>", "Exact job id returned by submit.").required();
 /// Explicit project context for each project-scoped call. No saved selection is read.
 const PROJECT: Arg = Arg::value(

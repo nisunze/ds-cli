@@ -56,9 +56,8 @@ const LIMIT: Arg = Arg::value(
     "<1..5000>",
     "Maximum features; execution reports total and truncation.",
 );
-const LANE: Arg = Arg::value("lane", "<stable|canary>", "Native authentication lane.")
-    .default("stable")
-    .choices(&["stable", "canary"]);
+const LANE: ds_cli_contract::spec::Arg =
+    ds_cli_contract::spec::LANE.summary("Native authentication lane.");
 const OUT: Arg = Arg::value(
     "out",
     "<new.json>",

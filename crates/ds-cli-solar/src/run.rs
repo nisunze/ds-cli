@@ -301,10 +301,7 @@ fn validate_batch_receipt(batch: &Value, expected_run_id: Option<&str>) -> Resul
     let batch_id = batch["batch_id"]
         .as_str()
         .filter(|batch_id| {
-            batch_id.len() == 32
-                && batch_id
-                    .bytes()
-                    .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+            ds_cli_contract::util::is_hex(batch_id, 32, ds_cli_contract::util::HexCase::Lower)
         })
         .ok_or_else(|| invalid_batch_receipt("batch_id is not 32 lowercase hexadecimal bytes"))?;
 
@@ -489,13 +486,7 @@ fn valid_logical_segment(value: Option<&str>) -> Option<&str> {
 }
 
 fn valid_logical_name(value: &str) -> bool {
-    !value.is_empty()
-        && value.len() <= 1_024
-        && !value.starts_with(['/', '\\'])
-        && !value.contains(['\\', '\0'])
-        && !value
-            .split('/')
-            .any(|segment| segment.is_empty() || matches!(segment, "." | ".."))
+    ds_cli_contract::util::safe_relative(value) && value.len() <= 1_024 && !value.contains('\0')
 }
 
 /// The engine's own summary, bounded. The results are documents in `--out`;

@@ -41,9 +41,8 @@ const fn refusals() -> [Refusal; 2 + ds_cli_auth::PROJECT_LIST_COMMAND.refusals.
 }
 const REFUSAL_SET: [Refusal; 2 + ds_cli_auth::PROJECT_LIST_COMMAND.refusals.len()] = refusals();
 const REFUSALS: &[Refusal] = &REFUSAL_SET;
-const LANE: Arg = Arg::value("lane", "<stable|canary>", "Native authentication lane.")
-    .default("stable")
-    .choices(&["stable", "canary"]);
+const LANE: ds_cli_contract::spec::Arg =
+    ds_cli_contract::spec::LANE.summary("Native authentication lane.");
 
 pub static CATALOG: Command = Command {
     id: "tile.global.catalog",

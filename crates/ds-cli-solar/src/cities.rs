@@ -19,11 +19,12 @@ pub static COMMAND: Command = Command {
             "Explicit authorized project; selection remains unchanged.",
         )
         .required(),
-        Arg::value(
-            "lane",
-            "<stable|canary>",
-            "Native lane; defaults to stable.",
-        ),
+        ds_cli_contract::spec::Arg {
+            summary: "Native lane; defaults to stable.",
+            default: None,
+            choices: &[],
+            ..ds_cli_contract::spec::LANE
+        },
     ],
     output: "Project id, templates with template_id/display_name and metadata, and count. No city input body.",
     examples: &[],

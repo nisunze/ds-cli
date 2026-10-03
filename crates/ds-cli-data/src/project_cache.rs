@@ -58,13 +58,8 @@ const MV_MODEL_ARG: Arg = Arg::value(
     "Optional exact local DS Grid draft whose route also needs geographic coverage; the receipt pins its SHA-256. Seed still authorizes --project.",
 );
 
-const LANE_ARG: Arg = Arg::value(
-    "lane",
-    "<stable|canary>",
-    "Deployment lane; stable is the default.",
-)
-.default("stable")
-.choices(&["stable", "canary"]);
+const LANE_ARG: ds_cli_contract::spec::Arg =
+    ds_cli_contract::spec::LANE.summary("Deployment lane; stable is the default.");
 
 // Never implicit: without it seed reads only gaps, so the seed after a
 // refresh is warm again.

@@ -773,10 +773,7 @@ fn valid_reporter_version(version: &str) -> bool {
     let Some(revision) = version.strip_prefix("0.1.0+") else {
         return false;
     };
-    revision.len() == 40
-        && revision
-            .bytes()
-            .all(|byte| byte.is_ascii_digit() || matches!(byte, b'a'..=b'f'))
+    ds_cli_contract::util::is_hex(revision, 40, ds_cli_contract::util::HexCase::Lower)
 }
 fn check_runtime_fence(
     expected_principal: &ProviderIdentity,

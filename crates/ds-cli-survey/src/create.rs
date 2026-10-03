@@ -44,13 +44,8 @@ const CONTEXT_KEY: Arg = Arg::value(
     "<ancestor-chain>",
     "Optional governed form:document ancestor chain.",
 );
-const LANE: Arg = Arg::value(
-    "lane",
-    "<stable|canary>",
-    "Deployment lane; stable is the default.",
-)
-.default("stable")
-.choices(&["stable", "canary"]);
+const LANE: ds_cli_contract::spec::Arg =
+    ds_cli_contract::spec::LANE.summary("Deployment lane; stable is the default.");
 
 pub(crate) const REFUSALS: &[Refusal] = &[
     Refusal {

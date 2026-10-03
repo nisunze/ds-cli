@@ -57,9 +57,10 @@ pub static COMMAND: Command = Command {
             "<settings.json>",
             "Optional scalar JSON settings object, used only by lv-process.",
         ),
-        Arg::value("lane", "<stable|canary>", "Native user lane.")
-            .default("stable")
-            .choices(&["stable", "canary"]),
+        ds_cli_contract::spec::Arg {
+            summary: "Native user lane.",
+            ..ds_cli_contract::spec::LANE
+        },
     ],
     output: "Frozen project/lane, terminal upload phase, aggregate progress, and one success or error result per source file.",
     examples: &[Example {

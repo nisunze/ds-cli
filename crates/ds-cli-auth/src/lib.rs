@@ -18,18 +18,11 @@ pub mod sync;
 #[cfg(test)]
 mod test_support;
 mod transport;
-mod upload;
 
 pub use account::{
     APPROVAL_INSTRUCTIONS, SIGNED_OUT_NEXT, SIGNED_OUT_REFUSAL, SIGNED_OUT_REMEDY, signed_out_next,
     signed_out_remedy,
 };
-
-/// The weak-network acceptance seam. Feature-gated, so it exists only for
-/// `crates/ds-cli-auth/tests/weak_network.rs` and never in a release build;
-/// see the module's own header for why an integration test needs it.
-#[cfg(feature = "weak-network-harness")]
-pub use upload::weak_network_harness;
 
 #[cfg(unix)]
 use std::io::Write;
@@ -360,13 +353,8 @@ pub static DOMAIN: Domain = Domain {
     ],
 };
 
-const LANE: Arg = Arg::value(
-    "lane",
-    "<stable|canary>",
-    "Deployment lane; stable is the default.",
-)
-.default("stable")
-.choices(&["stable", "canary"]);
+const LANE: ds_cli_contract::spec::Arg =
+    ds_cli_contract::spec::LANE.summary("Deployment lane; stable is the default.");
 const EMAIL: Arg = Arg::value("email", "<address>", "Firebase account email.").required();
 const PASSWORD_STDIN: Arg = Arg::switch(
     "password-stdin",

@@ -37,13 +37,8 @@ const OUT: Arg = Arg::value(
     "Absent path for one ds-solar.governed-city-intake/v1 document.",
 )
 .required();
-const LANE: Arg = Arg::value(
-    "lane",
-    "<stable|canary>",
-    "Deployment lane; stable is the default.",
-)
-.default("stable")
-.choices(&["stable", "canary"]);
+const LANE: ds_cli_contract::spec::Arg =
+    ds_cli_contract::spec::LANE.summary("Deployment lane; stable is the default.");
 
 macro_rules! refusal {
     ($code:literal, $when:literal, $remedy:literal) => {
@@ -473,7 +468,6 @@ struct IntakeAuthorityWire {
 
 fn verify_intake(bytes: &[u8], expected: &ExpectedIntake) -> Result<VerifiedIntake, Failure> {
     let intake: GovernedIntakeWire = serde_json::from_slice(bytes).map_err(|_| unsafe_output())?;
-    let digest = intake.city_input.content_digest.as_bytes();
     if intake.schema_version != GOVERNED_INTAKE_SCHEMA
         || intake.city_input.schema_version != "ds-solar.city-input/v1"
         || intake.city_input.identity.project_id != expected.ds_project
@@ -492,11 +486,10 @@ fn verify_intake(bytes: &[u8], expected: &ExpectedIntake) -> Result<VerifiedInta
         || intake.city_input.revision.revision.as_deref()
             != Some(expected.input_base_fingerprint.as_str())
         || intake.city_input.revision.record_updated_at_ms.is_some()
-        || digest.len() != 71
-        || !digest.starts_with(b"sha256:")
-        || !digest[7..]
-            .iter()
-            .all(|byte| byte.is_ascii_digit() || matches!(*byte, b'a'..=b'f'))
+        || !ds_cli_contract::util::is_sha256_digest(
+            &intake.city_input.content_digest,
+            ds_cli_contract::util::HexCase::Lower,
+        )
         || !intake.city_input.site.is_object()
         || !intake.city_input.run_options.is_object()
         || !intake.city_input.seeded.is_object()

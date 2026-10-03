@@ -137,10 +137,7 @@ fn dashboard_json(list: &TransformerStatusList, tz_offset_minutes: i64) -> Value
         // A headless client holds no browser session, so it holds none of the
         // live process diagnostics the application folds in.
         "diagnostics": [],
-        "now_ms": std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|elapsed| elapsed.as_millis() as i64)
-            .unwrap_or(0),
+        "now_ms": ds_cli_contract::util::now_ms_i64(),
         "tz_offset_minutes": tz_offset_minutes,
     });
     let Ok(input) = serde_json::to_vec(&request) else {

@@ -51,11 +51,11 @@ fn main() {
     )
     .expect("native client source pin");
     let native_client_core_sha = native_pin.trim();
-    let native_client_core_sha = if native_client_core_sha.len() == 40
-        && native_client_core_sha
-            .bytes()
-            .all(|byte| byte.is_ascii_hexdigit())
-    {
+    let native_client_core_sha = if ds_cli_contract::util::is_hex(
+        native_client_core_sha,
+        40,
+        ds_cli_contract::util::HexCase::Any,
+    ) {
         native_client_core_sha
     } else {
         "unknown"
@@ -70,10 +70,7 @@ fn main() {
     let native_client_profile_sha256 = std::env::var("DS_NATIVE_CLIENT_PROFILE_SHA256")
         .ok()
         .filter(|digest| {
-            digest.len() == 64
-                && digest
-                    .bytes()
-                    .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+            ds_cli_contract::util::is_sha256_hex(digest, ds_cli_contract::util::HexCase::Lower)
         })
         .unwrap_or_else(|| "unknown".to_owned());
     println!(
@@ -102,11 +99,8 @@ fn main() {
 
 fn exact_source_pin(value: &str) -> Option<&str> {
     let value = value.trim();
-    (value.len() == 40
-        && value
-            .bytes()
-            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte)))
-    .then_some(value)
+    (ds_cli_contract::util::is_hex(value, 40, ds_cli_contract::util::HexCase::Lower))
+        .then_some(value)
 }
 
 fn git_sha() -> Option<String> {

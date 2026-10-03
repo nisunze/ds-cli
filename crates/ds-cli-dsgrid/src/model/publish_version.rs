@@ -312,15 +312,7 @@ const SOURCE_ARGS: [Arg; 14] = [
         choices: &[],
         summary: "Explicit project for native --path publication; never changes active selection.",
     },
-    Arg {
-        name: "lane",
-        kind: ArgKind::Value,
-        value: "<stable|canary>",
-        required: false,
-        default: Some("stable"),
-        choices: &["stable", "canary"],
-        summary: "Native publication deployment lane.",
-    },
+    ds_cli_contract::spec::LANE.summary("Native publication deployment lane."),
     ATTACH_ARG,
 ];
 const ARG_COUNT: usize = SOURCE_ARGS.len() + GOVERNANCE_ARGS.len() + 1;

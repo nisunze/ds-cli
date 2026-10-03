@@ -26,13 +26,8 @@ const OUT: Arg = Arg::value(
     "Absent path for one ds.fast-lv.request/v1 document.",
 )
 .required();
-const LANE: Arg = Arg::value(
-    "lane",
-    "<stable|canary>",
-    "Deployment lane; stable is the default.",
-)
-.default("stable")
-.choices(&["stable", "canary"]);
+const LANE: ds_cli_contract::spec::Arg =
+    ds_cli_contract::spec::LANE.summary("Deployment lane; stable is the default.");
 
 macro_rules! refusal {
     ($code:literal, $when:literal, $remedy:literal) => {

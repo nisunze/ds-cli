@@ -241,9 +241,8 @@ const EXPECTED_SHA256: Arg = Arg::value(
 const LIMIT: Arg = Arg::value("limit", "<n>", "Cap the listed assets.").default(DEFAULT_LIMIT);
 const PROJECT: Arg =
     Arg::value("project", "<ds-project>", "Exact project for this request.").required();
-const LANE: Arg = Arg::value("lane", "<stable|canary>", "Native authentication lane.")
-    .default("stable")
-    .choices(&["stable", "canary"]);
+const LANE: ds_cli_contract::spec::Arg =
+    ds_cli_contract::spec::LANE.summary("Native authentication lane.");
 const MODEL: Arg = Arg::value("model", "<id>", "Exact project model ID.").required();
 const REVISION: Arg = Arg::value(
     "revision",
@@ -555,11 +554,7 @@ fn extraction_selector(inputs: &Inputs) -> Result<ExtractionSelector<'_>, Failur
         (Some(leaf), None, None, None) => Ok(ExtractionSelector::Leaf(leaf)),
         (None, Some(id), Some(digest), Some(role)) => {
             let hex = digest.strip_prefix("sha256:").unwrap_or(digest);
-            if hex.len() != 64
-                || !hex
-                    .bytes()
-                    .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
-            {
+            if !ds_cli_contract::util::is_sha256_hex(hex, ds_cli_contract::util::HexCase::Lower) {
                 return Err(Failure::invalid(
                     ASSET_DIGEST_INVALID.code,
                     "invalid resource SHA-256",

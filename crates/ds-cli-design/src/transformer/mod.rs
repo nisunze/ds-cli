@@ -45,13 +45,8 @@ pub const REASON_ARG: Arg = Arg::value(
     "Why the transformer leaves the project's active set; recorded and audited (1-512 characters).",
 )
 .required();
-pub const LANE_ARG: Arg = Arg::value(
-    "lane",
-    "<stable|canary>",
-    "Deployment lane; stable is the default.",
-)
-.default("stable")
-.choices(&["stable", "canary"]);
+pub const LANE_ARG: ds_cli_contract::spec::Arg =
+    ds_cli_contract::spec::LANE.summary("Deployment lane; stable is the default.");
 /// The project a read is about, named rather than inherited.
 ///
 /// A read that silently follows this machine's saved selection answers a

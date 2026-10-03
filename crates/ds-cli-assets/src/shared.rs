@@ -27,12 +27,11 @@ const fn refusals() -> [Refusal; 2 + ds_cli_auth::PROJECT_STATUS_COMMAND.refusal
     out
 }
 const ARGS: &[Arg] = &[
-    Arg::value(
-        "lane",
-        "<stable|canary>",
-        "Native credential lane; default stable.",
-    )
-    .choices(&["stable", "canary"]),
+    ds_cli_contract::spec::Arg {
+        summary: "Native credential lane; default stable.",
+        default: None,
+        ..ds_cli_contract::spec::LANE
+    },
     Arg::value(
         "role",
         "<network_information|city_map|transformer_map>",

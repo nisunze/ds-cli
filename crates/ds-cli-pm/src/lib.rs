@@ -149,9 +149,7 @@ pub const MAX_CONTEXT_ROWS: i64 = ds_client_core::project_management::MAX_CONTEX
 // ---------------------------------------------------------------------------
 
 /// Which native credential lane a `ds pm` command authenticates on.
-pub const LANE_ARG: Arg = Arg::value("lane", "<stable|canary>", "Native credential lane.")
-    .choices(&["stable", "canary"])
-    .default("stable");
+pub use ds_cli_contract::spec::LANE as LANE_ARG;
 
 pub const PROJECT_ARG: Arg =
     Arg::value("project", "<ds-project>", "Project named for this request.").required();
@@ -871,13 +869,7 @@ pub fn task_line(row: &serde_json::Value) -> String {
 }
 
 /// Keep a human line one line wide without hiding that it was cut.
-pub fn truncate(text: &str, width: usize) -> String {
-    if text.chars().count() <= width {
-        return text.to_string();
-    }
-    let kept: String = text.chars().take(width.saturating_sub(1)).collect();
-    format!("{kept}…")
-}
+pub use ds_cli_contract::util::truncate;
 
 /// Serialise a kernel reply into the envelope's `data`.
 pub fn data<T: serde::Serialize>(reply: &T) -> Result<Value, Failure> {

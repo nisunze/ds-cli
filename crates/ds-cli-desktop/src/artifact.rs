@@ -206,10 +206,7 @@ fn absolute_new_destination(raw: &str) -> Result<PathBuf, Failure> {
 
 fn verified_result(expected: &Value, result: Value) -> Result<Value, Failure> {
     let valid_sha = result["sha256"].as_str().is_some_and(|value| {
-        value.len() == 64
-            && value
-                .bytes()
-                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        ds_cli_contract::util::is_sha256_hex(value, ds_cli_contract::util::HexCase::Lower)
     });
     if result["project"] != expected["project"]
         || result["transformer"] != expected["transformer"]

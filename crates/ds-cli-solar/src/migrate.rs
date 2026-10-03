@@ -124,11 +124,12 @@ const OVERWRITE_ARG: Arg = Arg::switch(
     "Replace an object that already exists in the destination with a different definition; bind this choice in both plan and apply.",
 );
 
-const LANE_ARG: Arg = Arg::value(
-    "lane",
-    "<stable|canary>",
-    "Native authentication lane; defaults to stable.",
-);
+const LANE_ARG: Arg = ds_cli_contract::spec::Arg {
+    summary: "Native authentication lane; defaults to stable.",
+    default: None,
+    choices: &[],
+    ..ds_cli_contract::spec::LANE
+};
 
 /// Refusals raised at the native migration boundary.
 static MIGRATE_REFUSALS: &[Refusal] = &[

@@ -34,9 +34,8 @@ const SERVER_STATE_DIR_ARG: Arg = Arg::value(
     "<absolute-path>",
     "Matching `ds server serve --state-dir` when the Server uses a custom state root.",
 );
-const LANE_ARG: Arg = Arg::value("lane", "<stable|canary>", "Native deployment lane.")
-    .default("stable")
-    .choices(&["stable", "canary"]);
+const LANE_ARG: ds_cli_contract::spec::Arg =
+    ds_cli_contract::spec::LANE.summary("Native deployment lane.");
 const STORE_ARG: Arg = Arg::repeated(
     "store",
     "<store-id>",
@@ -148,12 +147,7 @@ fn unreadable(error: impl std::fmt::Display) -> Failure {
     Failure::failed(STORE_UNREADABLE.code, error.to_string()).remedy(STORE_UNREADABLE.remedy)
 }
 
-fn now_ms() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_millis() as u64)
-        .unwrap_or(0)
-}
+use ds_cli_contract::util::now_ms;
 
 /// Files and bytes below one directory; a missing directory holds nothing.
 fn walk(root: &Path) -> (u64, u64) {

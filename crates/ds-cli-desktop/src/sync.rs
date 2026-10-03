@@ -275,11 +275,7 @@ pub fn sanitize_preview(inputs: &Inputs, _: &Context) -> Result<Value, Failure> 
 pub fn sanitize_apply(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     let project = crate::project_id(inputs.require("project")?, "sync_invalid_input")?;
     let digest = text(inputs.require("digest")?, "digest", 64)?;
-    if digest.len() != 64
-        || !digest
-            .bytes()
-            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
-    {
+    if !ds_cli_contract::util::is_sha256_hex(&digest, ds_cli_contract::util::HexCase::Lower) {
         return Err(Failure::invalid(
             "sync_invalid_input",
             "--digest must be the exact preview SHA-256",

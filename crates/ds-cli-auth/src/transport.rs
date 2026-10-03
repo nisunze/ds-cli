@@ -524,34 +524,22 @@ impl Transport for NativeTransport {
         bounded(response, call.response_limit())
     }
 
-    /// Stream one artifact to its DS-minted storage session under the shared
-    /// resumable protocol.
-    ///
-    /// The whole body of this call is `crate::upload`, which drives
-    /// `ds_command_kernel::transfer` — the same state machine the desktop shell
-    /// drives. It probes before writing, resumes from the server's committed
-    /// prefix, streams bounded chunks, and never restarts a session because a
-    /// probe was inconclusive. No DS credential is attached: under
-    /// `authority: storage_session` the session URI is the whole credential.
+    /// Seal the closed client's forward-only stream and drive the shared native
+    /// transport. Completion includes the digest re-proof; refusal mapping stays
+    /// in this host because the client call returns only an HTTP-shaped outcome.
     fn upload_bytes(
         &mut self,
         mut call: ds_client_core::UploadBytesCall<'_>,
     ) -> Result<TransportResponse, TransportError> {
-        // A credential: copied out before the reader is borrowed, scrubbed on
-        // drop, and never logged or formatted into an error.
         let session_uri = Zeroizing::new(call.uri().to_owned());
         let size = call.size();
-        crate::upload::transfer(
+        let result = ds_sync_runtime::native_transfer::drive_upload_stream(
             &session_uri,
-            crate::upload::SessionOrigin::Storage,
             size,
             call.reader(),
-            // `ds` runs one synchronous command per process and has no
-            // cancellation source of its own; a signal ends the process. The
-            // seam is the kernel's, so a caller that gains one wires it here
-            // rather than reinterpreting the protocol.
-            &|| false,
         )
+        .map_err(|_| TransportError::Unreachable)?;
+        upload_response(result)
     }
 
     fn project_data(
@@ -2140,6 +2128,27 @@ fn correlation_headers() -> (String, String) {
     (request_id.clone(), request_id)
 }
 
+/// Keep the native client's stable transfer classifications. The shared
+/// driver owns completion, retry decisions and causes; this only shapes them.
+fn upload_response(
+    result: ds_sync_runtime::native_transfer::NativeTransferResult,
+) -> Result<TransportResponse, TransportError> {
+    use ds_command_kernel::transfer::Cause;
+    use ds_sync_runtime::native_transfer::NativeTransferOutcome;
+    if result.outcome == NativeTransferOutcome::Done {
+        return Ok(TransportResponse::new(200, Vec::new()));
+    }
+    match result.cause {
+        Some(Cause::HttpStatus { status }) => Ok(TransportResponse::new(status, Vec::new())),
+        Some(Cause::SessionExpired) => Ok(TransportResponse::new(
+            result.last_http_status.unwrap_or(410),
+            Vec::new(),
+        )),
+        Some(Cause::Timeout { .. }) => Err(TransportError::TimedOut),
+        _ => Err(TransportError::Unreachable),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2286,6 +2295,86 @@ mod tests {
 
     /// One scripted loopback `GET` answer. Returns the port and the thread that
     /// yields the request line and the lower-cased header names it saw.
+    #[test]
+    fn shared_upload_results_keep_client_refusal_classifications() {
+        use ds_command_kernel::transfer::{Cause, Phase, Stage, TransferState};
+        use ds_sync_runtime::native_transfer::{NativeTransferOutcome, NativeTransferResult};
+        let result = |outcome, cause, status| NativeTransferResult {
+            outcome,
+            cause,
+            last_http_status: status,
+            retryable: false,
+            committed_bytes: 0,
+            total_bytes: 1,
+            state: TransferState {
+                schema: ds_command_kernel::transfer::TRANSFER_SCHEMA.into(),
+                total_bytes: 1,
+                chunk_bytes: ds_command_kernel::transfer::DEFAULT_CHUNK_BYTES,
+                committed: 0,
+                sent: 0,
+                stage: Stage::Probing,
+                stalled_attempts: 0,
+                inconclusive_probes: 0,
+                last_cause: None,
+                retry_at: 0,
+            },
+        };
+        assert_eq!(
+            upload_response(result(NativeTransferOutcome::Done, None, Some(201)))
+                .unwrap()
+                .status,
+            200
+        );
+        for status in [404, 410] {
+            assert_eq!(
+                upload_response(result(
+                    NativeTransferOutcome::Reopen,
+                    Some(Cause::SessionExpired),
+                    Some(status)
+                ))
+                .unwrap()
+                .status,
+                status
+            );
+        }
+        for status in [401, 403, 302, 500] {
+            assert_eq!(
+                upload_response(result(
+                    NativeTransferOutcome::Failed,
+                    Some(Cause::HttpStatus { status }),
+                    Some(status)
+                ))
+                .unwrap()
+                .status,
+                status
+            );
+        }
+        assert!(matches!(
+            upload_response(result(
+                NativeTransferOutcome::Failed,
+                Some(Cause::Timeout {
+                    phase: Phase::Response
+                }),
+                None
+            )),
+            Err(TransportError::TimedOut)
+        ));
+        for cause in [
+            Cause::DigestMismatch,
+            Cause::Cancelled,
+            Cause::ConnectionClosed,
+        ] {
+            assert!(matches!(
+                upload_response(result(
+                    NativeTransferOutcome::Failed,
+                    Some(cause),
+                    Some(200)
+                )),
+                Err(TransportError::Unreachable)
+            ));
+        }
+    }
+
     fn serve_once(
         status: u16,
         body: Vec<u8>,
@@ -2324,7 +2413,7 @@ mod tests {
         (port, worker)
     }
 
-    /// Mirrors `upload::tests::a_storage_session_carries_no_ds_credential`:
+    /// Storage transfers and downloads carry no DS control-plane credential:
     /// the bundle host is not ours, so nothing of ours travels with the GET.
     #[test]
     fn a_bundle_download_carries_no_ds_credential() {

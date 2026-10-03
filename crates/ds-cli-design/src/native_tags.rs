@@ -4,9 +4,8 @@ use ds_cli_contract::spec::{
 };
 use ds_cli_contract::{Context, Failure, Inputs};
 use serde_json::Value;
-const LANE: Arg = Arg::value("lane", "<stable|canary>", "Native authentication lane.")
-    .default("stable")
-    .choices(&["stable", "canary"]);
+const LANE: ds_cli_contract::spec::Arg =
+    ds_cli_contract::spec::LANE.summary("Native authentication lane.");
 pub static DEFINITIONS: Command = Command {
     id: "design.tag.project-list",
     path: &["design", "tag", "project-list"],

@@ -101,13 +101,10 @@ pub static COMMAND: Command = Command {
             "Stable idempotency key for this source/result save; retain on retry.",
         )
         .required(),
-        Arg::value(
-            "lane",
-            "<stable|canary>",
-            "Native user lane matching the source receipt.",
-        )
-        .default("stable")
-        .choices(&["stable", "canary"]),
+        ds_cli_contract::spec::Arg {
+            summary: "Native user lane matching the source receipt.",
+            ..ds_cli_contract::spec::LANE
+        },
     ],
     output: "Selected project/lane, transformer save outcome and fresh verified server version/content digest. A local process result alone is never a saved receipt.",
     examples: &[],

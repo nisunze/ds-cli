@@ -105,10 +105,7 @@ fn section(op: &str, mut body: Value) -> Result<Value, Failure> {
 }
 
 fn host_now_ms() -> Result<u64, Failure> {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|since| since.as_millis() as u64)
-        .map_err(invalid)
+    ds_cli_contract::util::epoch_ms().map_err(invalid)
 }
 
 pub fn run(i: &Inputs, _c: &Context) -> Result<Value, Failure> {

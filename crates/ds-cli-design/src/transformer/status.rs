@@ -395,12 +395,7 @@ fn offered_values(options: &Value) -> Vec<String> {
         .collect()
 }
 
-fn now_ms() -> i64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_millis() as i64)
-        .unwrap_or(0)
-}
+use ds_cli_contract::util::now_ms_i64 as now_ms;
 
 /// The rows as they arrived, each with the verdict the shared kernel reads
 /// from it, plus the count and the per-bucket summary the caller would

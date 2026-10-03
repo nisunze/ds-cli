@@ -73,12 +73,11 @@ pub static COMMAND: Command = Command {
             "Existing city to seed; no geographic data required.",
         )
         .required(),
-        Arg::value(
-            "lane",
-            "<stable|canary>",
-            "Credential lane for shared asset reads; default stable.",
-        )
-        .choices(&["stable", "canary"]),
+        ds_cli_contract::spec::Arg {
+            summary: "Credential lane for shared asset reads; default stable.",
+            default: None,
+            ..ds_cli_contract::spec::LANE
+        },
         Arg::value(
             "tag-definition",
             "<id>",

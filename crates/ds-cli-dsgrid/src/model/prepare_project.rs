@@ -40,9 +40,7 @@ const PROJECT_ARG: Arg = Arg::value(
 )
 .required();
 
-const LANE_ARG: Arg = Arg::value("lane", "<stable|canary>", "Native credential lane.")
-    .choices(&["stable", "canary"])
-    .default("stable");
+use ds_cli_contract::spec::LANE as LANE_ARG;
 
 /// The listing is paged at the service's bound; a project past this many
 /// heads is not folded silently as "complete".

@@ -21,13 +21,8 @@ const LIMIT: Arg = Arg::value(
     "Maximum selected rows; truncated results must use a narrower bounding box.",
 )
 .default("100");
-const LANE: Arg = Arg::value(
-    "lane",
-    "<stable|canary>",
-    "Deployment lane; stable is the default.",
-)
-.default("stable")
-.choices(&["stable", "canary"]);
+const LANE: ds_cli_contract::spec::Arg =
+    ds_cli_contract::spec::LANE.summary("Deployment lane; stable is the default.");
 
 const REFUSALS: &[Refusal] = &[
     Refusal {

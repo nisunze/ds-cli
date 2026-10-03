@@ -161,11 +161,12 @@ pub static RUN: Command = Command {
                 "apd, network, plant or financial; default apd.",
             ),
             Arg::switch("charts", "Produce chart images."),
-            Arg::value(
-                "lane",
-                "<stable|canary>",
-                "Reserved publication lane; local calculation uses owned inputs.",
-            ),
+            ds_cli_contract::spec::Arg {
+                summary: "Reserved publication lane; local calculation uses owned inputs.",
+                default: None,
+                choices: &[],
+                ..ds_cli_contract::spec::LANE
+            },
         ],
         Effect::LocalFileWrite,
     )

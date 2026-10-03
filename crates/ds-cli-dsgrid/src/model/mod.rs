@@ -333,13 +333,7 @@ pub fn model_line(row: &serde_json::Value, active: &str) -> String {
 }
 
 /// Keep a human line one line wide without hiding that it was cut.
-pub fn truncate(text: &str, width: usize) -> String {
-    if text.chars().count() <= width {
-        return text.to_string();
-    }
-    let kept: String = text.chars().take(width.saturating_sub(1)).collect();
-    format!("{kept}…")
-}
+pub use ds_cli_contract::util::truncate;
 
 #[cfg(test)]
 mod tests {

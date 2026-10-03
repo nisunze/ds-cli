@@ -29,7 +29,13 @@ pub static COMMAND: Command = Command {
     args: &[
         crate::portfolio_headless::PROJECT,
         Arg::value("workspace", "<dir>", "Private local Solar workspace.").required(),
-        Arg::value("lane", "<lane>", "stable or canary; default stable."),
+        ds_cli_contract::spec::Arg {
+            summary: "stable or canary; default stable.",
+            value: "<lane>",
+            default: None,
+            choices: &[],
+            ..ds_cli_contract::spec::LANE
+        },
         Arg::value(
             "run-id",
             "<id>",

@@ -108,9 +108,7 @@ pub static DOMAIN: Domain = Domain {
 // ---------------------------------------------------------------------------
 
 /// Which native credential lane a `ds assets` command authenticates on.
-pub const LANE_ARG: Arg = Arg::value("lane", "<stable|canary>", "Native credential lane.")
-    .choices(&["stable", "canary"])
-    .default("stable");
+pub use ds_cli_contract::spec::LANE as LANE_ARG;
 pub const PROJECT_ARG: Arg =
     Arg::value("project", "<ds-project>", "Project named for this request.").required();
 
@@ -451,7 +449,7 @@ pub fn digest(raw: &str, flag: &str) -> Result<String, Failure> {
         .strip_prefix("sha256:")
         .unwrap_or(trimmed)
         .to_ascii_lowercase();
-    if cleaned.len() != 64 || !cleaned.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+    if !ds_cli_contract::util::is_sha256_hex(&cleaned, ds_cli_contract::util::HexCase::Any) {
         return Err(Failure::invalid(
             INVALID_EXTERNAL_REFERENCE.code,
             format!("`--{flag}` must be a SHA-256 digest of 64 hex characters"),
@@ -915,13 +913,7 @@ pub fn asset_line(row: &Value) -> String {
 }
 
 /// Keep a human line one line wide without hiding that it was cut.
-pub fn truncate(text: &str, width: usize) -> String {
-    if text.chars().count() <= width {
-        return text.to_string();
-    }
-    let kept: String = text.chars().take(width.saturating_sub(1)).collect();
-    format!("{kept}…")
-}
+pub use ds_cli_contract::util::truncate;
 
 #[cfg(test)]
 mod tests {

@@ -280,9 +280,7 @@ pub const LIMIT_ARG: Arg = Arg {
 };
 
 /// Which native credential lane a headless design command authenticates on.
-pub const LANE_ARG: Arg = Arg::value("lane", "<stable|canary>", "Native credential lane.")
-    .choices(&["stable", "canary"])
-    .default("stable");
+pub use ds_cli_contract::spec::LANE as LANE_ARG;
 /// The project a headless design command is about, always named: the saved
 /// selection is never read, so one host serves several projects at once.
 pub const PROJECT_ARG: Arg = Arg::value(

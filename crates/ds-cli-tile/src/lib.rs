@@ -336,13 +336,8 @@ pub const PROJECT_ARG: Arg = Arg::value(
     "Exact ds_project this call is about; the saved selection is never read.",
 )
 .required();
-pub const LANE_ARG: Arg = Arg::value(
-    "lane",
-    "<stable|canary>",
-    "Deployment lane; stable is the default.",
-)
-.default("stable")
-.choices(&["stable", "canary"]);
+pub const LANE_ARG: ds_cli_contract::spec::Arg =
+    ds_cli_contract::spec::LANE.summary("Deployment lane; stable is the default.");
 
 pub fn tile_type(value: &str) -> TileType {
     match value {
@@ -512,13 +507,7 @@ pub fn plan_decision(
 }
 
 /// Keep a human line one line wide without hiding that it was cut.
-pub fn truncate(text: &str, width: usize) -> String {
-    if text.chars().count() <= width {
-        return text.to_string();
-    }
-    let kept: String = text.chars().take(width.saturating_sub(1)).collect();
-    format!("{kept}…")
-}
+pub use ds_cli_contract::util::truncate;
 
 /// One line describing a tile status object as ds-brain reports it.
 pub fn status_line(status: &Value) -> String {

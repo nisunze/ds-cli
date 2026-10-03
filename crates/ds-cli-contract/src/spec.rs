@@ -452,7 +452,23 @@ pub struct Arg {
     pub summary: &'static str,
 }
 
+/// The native lane grammar shared by all CLI domains. Commands retain their
+/// own explanatory text and explicit presentation/default overrides.
+pub const LANE: Arg = Arg::value("lane", "<stable|canary>", "Native credential lane.")
+    .choices(&["stable", "canary"])
+    .default("stable");
+
 impl Arg {
+    pub const fn summary(mut self, summary: &'static str) -> Self {
+        self.summary = summary;
+        self
+    }
+
+    pub const fn placeholder(mut self, placeholder: &'static str) -> Self {
+        self.value = placeholder;
+        self
+    }
+
     pub const fn value(
         name: &'static str,
         placeholder: &'static str,

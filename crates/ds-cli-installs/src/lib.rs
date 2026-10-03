@@ -53,10 +53,7 @@ pub static DOMAIN: Domain = Domain {
     ],
 };
 
-pub const LANE_ARG: ds_cli_contract::spec::Arg =
-    ds_cli_contract::spec::Arg::value("lane", "<stable|canary>", "Native credential lane.")
-        .choices(&["stable", "canary"])
-        .default("stable");
+pub use ds_cli_contract::spec::LANE as LANE_ARG;
 
 pub const INSTALL_ARG: ds_cli_contract::spec::Arg = ds_cli_contract::spec::Arg::value(
     "install",
@@ -149,12 +146,7 @@ pub fn invoke(
 /// The host's clock, in epoch milliseconds. The kernel holds no clock of its
 /// own; every age in the answer is measured against this one value, so an
 /// answer is reproducible from the pair (records, now_ms).
-fn now_ms() -> i64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|elapsed| elapsed.as_millis() as i64)
-        .unwrap_or_default()
-}
+use ds_cli_contract::util::now_ms_i64 as now_ms;
 
 /// Hand the raw inventory page to the kernel and return its projection.
 ///

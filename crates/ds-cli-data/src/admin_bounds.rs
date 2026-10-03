@@ -69,9 +69,8 @@ const GEOMETRY_OUT_ARG: Arg = Arg::value(
     "<path.geojson>",
     "Also write the exact polygon here, as a one-feature GeoJSON layer. Existing files are never overwritten.",
 );
-const LANE_ARG: Arg = Arg::value("lane", "<stable|canary>", "Native authentication lane.")
-    .default("stable")
-    .choices(&["stable", "canary"]);
+const LANE_ARG: ds_cli_contract::spec::Arg =
+    ds_cli_contract::spec::LANE.summary("Native authentication lane.");
 
 const INVALID_ADMIN_SCOPE: Refusal = Refusal {
     code: "invalid_admin_scope",

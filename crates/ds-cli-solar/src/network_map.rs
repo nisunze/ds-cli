@@ -31,8 +31,11 @@ pub static COMMAND: Command = Command {
         )
         .required(),
         Arg::value("file", "<file>", "Map image, at most 16 MiB.").required(),
-        Arg::value("lane", "<stable|canary>", "Signed-in lane; default stable.")
-            .choices(&["stable", "canary"]),
+        ds_cli_contract::spec::Arg {
+            summary: "Signed-in lane; default stable.",
+            default: None,
+            ..ds_cli_contract::spec::LANE
+        },
     ],
     output: "Solar-owned immutable media identity with byte hash; saved city digest and pending input sync receipt.",
     examples: &[],

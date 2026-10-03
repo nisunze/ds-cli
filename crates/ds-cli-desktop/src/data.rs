@@ -232,10 +232,7 @@ fn descriptor(inputs: &Inputs) -> Result<Descriptor, Failure> {
     ops::paired(inputs.value("desktop-descriptor"))
 }
 fn valid_id(value: &str) -> bool {
-    value.len() == 64
-        && value
-            .bytes()
-            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+    ds_cli_contract::util::is_sha256_hex(value, ds_cli_contract::util::HexCase::Lower)
 }
 fn ids(inputs: &Inputs) -> Result<Vec<String>, Failure> {
     let values = inputs.repeated("resource");

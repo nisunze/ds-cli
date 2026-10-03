@@ -122,9 +122,8 @@ const PUBLISH_SET: [Refusal; 19] =
     with_native::<3, 19>([ARTIFACT_REFUSAL, UPLOAD_REFUSAL, PREPARED_REFUSAL]);
 const REFUSALS: &[Refusal] = NATIVE;
 
-const LANE: Arg = Arg::value("lane", "<stable|canary>", "Native authentication lane.")
-    .default("stable")
-    .choices(&["stable", "canary"]);
+const LANE: ds_cli_contract::spec::Arg =
+    ds_cli_contract::spec::LANE.summary("Native authentication lane.");
 const PREPARED: Arg = Arg::value(
     "prepared",
     "<directory>",
@@ -574,12 +573,7 @@ fn prepared_path(
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .ok_or_else(|| prepared_invalid(&format!("{field_name}.path"), "is required"))?;
-    if relative.starts_with('/')
-        || relative.contains('\\')
-        || relative
-            .split('/')
-            .any(|part| part.is_empty() || part == "." || part == "..")
-    {
+    if !ds_cli_contract::util::safe_relative(relative) {
         return Err(prepared_invalid(
             &format!("{field_name}.path"),
             "must name a file inside the prepared directory",

@@ -598,7 +598,7 @@ fn decode_receipt(bytes: &[u8], path: &str) -> Result<RunReceipt, Failure> {
 
 fn normalize_sha256(raw: &str) -> Result<String, Failure> {
     let hex = raw.strip_prefix("sha256:").unwrap_or(raw);
-    if hex.len() != 64 || !hex.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+    if !ds_cli_contract::util::is_sha256_hex(hex, ds_cli_contract::util::HexCase::Any) {
         return Err(Failure::invalid(
             "receipt_digest_invalid",
             "expected receipt digest is not SHA-256 hex",

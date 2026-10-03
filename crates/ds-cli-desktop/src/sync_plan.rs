@@ -140,12 +140,7 @@ fn json_file(path: &str) -> Result<Value, Failure> {
     serde_json::from_slice(&bytes).map_err(|e| invalid(format!("{path}: {e}")))
 }
 
-fn now_ms() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_millis() as u64)
-        .unwrap_or(0)
-}
+use ds_cli_contract::util::now_ms;
 
 pub fn run(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
     let now = match i.value("now-ms") {

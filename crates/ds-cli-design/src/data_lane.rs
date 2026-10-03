@@ -8,16 +8,14 @@
 //! reach, and it stays.
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
+    Authority, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
 use ds_client_core::ProjectConfigurationChange as Change;
 use ds_command_kernel::design_config::{self, Request};
 use serde_json::Value;
 
-const LANE: Arg = Arg::value("lane", "<stable|canary>", "Deployment lane.")
-    .default("stable")
-    .choices(&["stable", "canary"]);
+const LANE: ds_cli_contract::spec::Arg = ds_cli_contract::spec::LANE.summary("Deployment lane.");
 
 const REFUSALS: &[Refusal] = &[
     ds_cli_report::project::NATIVE_PROFILE,

@@ -9,11 +9,12 @@ pub const PROJECT: Arg = Arg::value(
     "Explicit authorized project; leaves selection unchanged.",
 )
 .required();
-pub const LANE: Arg = Arg::value(
-    "lane",
-    "<stable|canary>",
-    "Native authority lane; defaults to stable.",
-);
+pub const LANE: Arg = ds_cli_contract::spec::Arg {
+    summary: "Native authority lane; defaults to stable.",
+    default: None,
+    choices: &[],
+    ..ds_cli_contract::spec::LANE
+};
 const PORTFOLIO: Arg =
     Arg::value("portfolio", "<id>", "Governed portfolio id from list.").required();
 pub fn execute(i: &Inputs, command: ds_cli_auth::SolarPortfolioCommand) -> Result<Value, Failure> {

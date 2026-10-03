@@ -37,9 +37,8 @@ pub mod list;
 pub mod read;
 pub mod save;
 
-pub const LANE: Arg = Arg::value("lane", "<stable|canary>", "Deployment lane.")
-    .default("stable")
-    .choices(&["stable", "canary"]);
+pub const LANE: ds_cli_contract::spec::Arg =
+    ds_cli_contract::spec::LANE.summary("Deployment lane.");
 
 /// A selection id a caller may pin instead of letting `ds` mint one.
 pub const ID_ARG: Arg = Arg::value(

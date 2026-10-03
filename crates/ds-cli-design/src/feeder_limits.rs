@@ -19,9 +19,7 @@ const MAXIMUM: Arg = Arg::value(
     "Maximum feeder conductor area in mm²; not a transformer ampere rating.",
 )
 .required();
-const LANE: Arg = Arg::value("lane", "<stable|canary>", "Deployment lane.")
-    .default("stable")
-    .choices(&["stable", "canary"]);
+const LANE: ds_cli_contract::spec::Arg = ds_cli_contract::spec::LANE.summary("Deployment lane.");
 const OUT: Arg = Arg::value(
     "out",
     "<path>",
