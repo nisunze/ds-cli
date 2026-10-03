@@ -122,8 +122,9 @@ ds design project report --workspace ./design-work --run-id draft-1 --transforme
 
 The reporter consumes the completed run, its captured configuration and exact
 saved producer analysis. Every selection also delivers voltage-drop JSON;
-missing, invalid or stale saved analysis refuses before staging and never
-triggers a calculation. Use a named print layout held in the captured
+missing sources and invalid envelope/identity/digest bindings refuse before
+staging and never trigger a calculation. The reporter admits deeper saved-run
+content and presentation before complete retention. Use a named print layout held in the captured
 configuration, with its governed layout, styles and renderer documents.
 Completed report bytes are verified against the complete selected set and the
 saved JSON source, retained locally and queued. Physical printer spooling is
