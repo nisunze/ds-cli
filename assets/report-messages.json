@@ -973,7 +973,7 @@
       "Area class not specified; guideline unavailable": "Area class not specified; guideline unavailable",
       "longest": "longest",
       "overloaded": "overloaded",
-      "check only": "check only",
+      "check only": "flag only",
       "pole": "pole"
     },
     "fr": {
@@ -1948,7 +1948,7 @@
       "Area class not specified; guideline unavailable": "Classe de zone non définie ; critère indisponible",
       "longest": "le plus long",
       "overloaded": "en surcharge",
-      "check only": "contrôle uniquement",
+      "check only": "à titre indicatif",
       "pole": "poteau"
     }
   },
