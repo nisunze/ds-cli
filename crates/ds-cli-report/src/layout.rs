@@ -82,7 +82,7 @@ pub static NEW: Command = Command {
     path: &["report", "layout", "new"],
     contract: 1,
     summary: "Create an A3 vector map layout.",
-    purpose: "Printing commands delegate to their owning Rust and native client contracts. Shared templates live in ds-brain; project scope names its project with --project. Geometry stays in ds-network and document validation in ds-command-kernel.",
+    purpose: "Create a local A3 map document. Governed A0/A3 LV standards, identity and overrides are described by report layout schema and exported through report export --task lv-standard.",
     chapter: Chapter::Reports,
     effect: Effect::Discovery,
     authority: Authority::None,
@@ -103,9 +103,9 @@ pub static NEW: Command = Command {
 pub static EDIT: Command = Command {
     id: "report.layout.edit",
     path: &["report", "layout", "edit"],
-    contract: 1,
+    contract: 2,
     summary: "Validate and apply one print document intent.",
-    purpose: "Apply a local Rust intent; discover op/layout grammar with map.print.schema --section edit. set_adjacent_networks binds neighboring circuits to role-specific print_context_existing_new_v1 seeds, distinguishing new, existing and unknown status. Focused pens and view stay exact. Optional policy changes context colours. Returns a document; saving is separate. See the reference for shade and table edits.",
+    purpose: "Apply a local kernel print intent. mv_standardize preserves approved cover/naming and canonizes A3 booklet defaults; mv_booklet_preview admits every PNG against its plan. Discover typed grammar with report layout schema. Adjacent circuits require held API resolver references; transformer overrides, table and shade edits remain kernel intents. Saving and selection use the revision-fenced library; this call returns a document or receipt.",
     chapter: Chapter::Reports,
     effect: Effect::ReadOnly,
     authority: Authority::None,
@@ -125,6 +125,8 @@ pub static EDIT: Command = Command {
     refusals: REFUSALS,
     reference: Some("docs/reference/report.md"),
     search: &[
+        "mv booklet",
+        "front matter",
         "adjacent transformers",
         "neighbor circuits",
         "print context",
@@ -137,7 +139,7 @@ pub static SCHEMA: Command = Command {
     path: &["report", "layout", "schema"],
     contract: 1,
     summary: "Describe the exact print document and editing grammar.",
-    purpose: "Printing commands delegate to their owning Rust and native client contracts. Shared templates live in ds-brain; project scope names its project with --project. Geometry stays in ds-network and document validation in ds-command-kernel.",
+    purpose: "Returns the versioned kernel standard registry, identity and override schemas, and the print document/edit grammar. LV standards provide A0/A3 transformer sheets and combined sets with six A0 opening pages. Printing commands delegate to their owning Rust and native client contracts. Shared saved templates live in ds-brain; project scope names its project with --project. Geometry stays in ds-network and validation in ds-command-kernel.",
     chapter: Chapter::Reports,
     effect: Effect::Discovery,
     authority: Authority::None,
@@ -500,7 +502,7 @@ pub static RENDER: Command = Command {
     path: &["report", "layout", "render"],
     contract: 1,
     summary: "Print captured maps with collision and clipping diagnostics.",
-    purpose: "Headlessly render a ds.print-layout-export/v1 capture, including render-request.json from report.project.map-inputs. Supports MV/LV maps with held context, PDF/PNG/SVG/JPEG. out_dir must not exist; keep the request outside it. Schema: report tasks --task render_print_layout. Composition: report layout commands.",
+    purpose: "Headlessly render a ds.print-layout-export/v1 capture, including render-request.json from report.project.map-inputs. Supports MV/LV maps with held context, PDF/PNG/SVG/JPEG. out_dir must not exist; keep the request outside it. Schema: report tasks --task render_print_layout. Governed LV defaults and override schema: report layout schema standards. Use report export --task lv-standard for a complete set with A0 front matter. Composition: report layout commands.",
     chapter: Chapter::Reports,
     effect: Effect::LocalFileWrite,
     authority: Authority::None,
@@ -697,7 +699,7 @@ pub fn new(_i: &Inputs, _c: &Context) -> Result<Value, Failure> {
 }
 pub fn schema(_i: &Inputs, _c: &Context) -> Result<Value, Failure> {
     Ok(
-        json!({"mv_selection":ds_command_kernel::printing::mv::selection_schema(),"mv_resolved":ds_command_kernel::printing::mv::resolved_schema(),"map_request":ds_command_kernel::printing::map::request_schema(),"layout":ds_command_kernel::printing::layout_schema(),"edit":ds_command_kernel::printing::command_schema(),"output_selection":ds_command_kernel::report_formats::output_selection_schema(),"transactions":{"create":{"action":"create","layout":"<layout document>"},"update":{"action":"update","layout":"<layout document>","expected_revision":"<exact revision>"},"save":{"action":"save","layout":"<layout document>","expected_revision":"<empty to create, or the exact revision to update>"},"delete":"use --id and --expected-revision","copy":{"action":"copy","source":{"scope":"global|project","id":"<id>","revision":"<exact revision>"},"destination":{"scope":"global|project","id":"<new id>","name":"<optional name>","expected_revision":"<empty for create or exact revision>"}}},"render":"ds report tasks --task render_print_layout --output json"}),
+        json!({"standards":ds_command_kernel::printing::standards::registry(),"mv_selection":ds_command_kernel::printing::mv::selection_schema(),"mv_resolved":ds_command_kernel::printing::mv::resolved_schema(),"map_request":ds_command_kernel::printing::map::request_schema(),"layout":ds_command_kernel::printing::layout_schema(),"edit":ds_command_kernel::printing::command_schema(),"output_selection":ds_command_kernel::report_formats::output_selection_schema(),"transactions":{"create":{"action":"create","layout":"<layout document>"},"update":{"action":"update","layout":"<layout document>","expected_revision":"<exact revision>"},"save":{"action":"save","layout":"<layout document>","expected_revision":"<empty to create, or the exact revision to update>"},"delete":"use --id and --expected-revision","copy":{"action":"copy","source":{"scope":"global|project","id":"<id>","revision":"<exact revision>"},"destination":{"scope":"global|project","id":"<new id>","name":"<optional name>","expected_revision":"<empty for create or exact revision>"}}},"render":"ds report tasks --task render_print_layout --output json"}),
     )
 }
 pub fn edit(i: &Inputs, _c: &Context) -> Result<Value, Failure> {

@@ -132,6 +132,14 @@ const CODE_NOT_A_LITERAL: &[(&str, &str)] = &[
          the project identity",
     ),
     (
+        "ds-cli-style/src/governance.rs",
+        "backend codes are selected only from this module's declared REFUSALS; \
+         unknown service codes use the ordinary native style classifier. The \
+         resolver adapter preserves the kernel style_resolution::Error code \
+         (unknown, ambiguous, invalid or revision_mismatch), all declared in \
+         that same roster, instead of inventing another CLI vocabulary",
+    ),
+    (
         "ds-cli-auth/src/state.rs",
         "the protected-state code is chosen by a `StoreError` match above the \
          constructor; each of the three is declared by the commands that touch \

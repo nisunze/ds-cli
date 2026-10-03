@@ -16,10 +16,13 @@ Never infer it from transformer nature, survey origin, proximity or model presen
 Unknown status uses the explicit neutral fallback. Retain transformer, customer,
 service and pole symbols, casings, sizes and line patterns. The optional project
 policy supplies three distinct subdued colours and opacity. With no override,
-the named `print_context_existing_new_v1` role styles own the colours and weights.
-Discover them in Style Center or `style list`; use the existing create-only seed
-and print-clone commands to prepare missing variants. Saved authored documents
-are never silently reseeded. Colour the body and outline together. The starter
+the resolved role documents own the colours and weights. Discover style resolve
+and use the API's exact class/source/print/context/ink binding and revision.
+Focused and neighbouring networks resolve independently. Unknown combinations
+go to the style owner; printing consumers never seed or construct ids. The
+style owner reviews the governed catalogue seed plan, retaining its backup and
+version fences. Saved authored documents are never silently reseeded.
+Colour the body and outline together when an explicit override is authorized. The starter
 is customizable through governed print-style edits, without changing screen styles or the
 focused pens. Context labels identify transformers; hidden customer identities
 and electrical verdicts are not copied. The legend distinguishes each role and

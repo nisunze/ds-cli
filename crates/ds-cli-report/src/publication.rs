@@ -323,7 +323,9 @@ mod tests {
             "variant": "default", "input_base_fingerprint": "a".repeat(64),
             "head_revision": 1, "updated_at": "2026-09-28T14:00:00Z",
             "outputs": [{
-                "output_id": "report-pdf", "format": "pdf", "content_type": "application/pdf",
+                "output_id": "pdf__a0", "format": "pdf__a0", "content_type": "application/pdf",
+                "filename": ds_command_kernel::report_formats::report_filename("test", "pdf__a0").unwrap(),
+                "paper_size": "A0", "presentation": {"layout_id":"a0", "layout_name":"A0 sheet", "paper_name":"A0", "orientation":"landscape", "page_mm":[1189,841]},
                 "sha256": "b".repeat(64), "size_bytes": 123,
             }],
         })
@@ -334,6 +336,15 @@ mod tests {
         let first = head();
         let good = json!({"heads": [first.clone()], "limit": 25, "has_more": false});
         assert_eq!(validated_page(good, 25).unwrap()["count"], 1);
+        let mut undeclared_format = first.clone();
+        undeclared_format["outputs"][0]["format"] = json!("pdf");
+        assert!(
+            validated_page(
+                json!({"heads": [undeclared_format], "limit": 25, "has_more": false}),
+                25,
+            )
+            .is_err()
+        );
         let duplicate =
             json!({"heads": [first.clone(), first.clone()], "limit": 25, "has_more": false});
         assert!(validated_page(duplicate, 25).is_err());

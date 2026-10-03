@@ -18,16 +18,15 @@ mixes them. Staking is an XLSX submission, never printed booklet pages.
 
 Map delivery: `printing-maps`.
 
-For MV plan/profile sets, read [booklet workflow](references/mv-plan-profile-booklet.md)
+For MV sets, read [the standard booklet workflow](references/mv-plan-profile-booklet.md)
 before setup or batching.
 
-For voltage-drop A4, choose `voltage_drop_pdf`. Discover the workstation Chromium configuration and verification contracts
-before headless rendering. Use the declared project export route, then verify
-online publication before web preview or delivery. See `ds-lv-voltage-drop`
-for calculation and remediation. Distinguish saved voltage-drop analysis JSON from the A4 report PDF in the live
-output catalogue. Verify the installed build's declared outputs and actual
-artifacts before claiming delivery; a successful PDF render is not a complete
-engineering verdict or online publication.
+For voltage-drop A4, discover Chromium verification and the project export route.
+Verify publication before web delivery. Use `ds-lv-voltage-drop` for calculations;
+distinguish saved analysis JSON, rendered PDF and an engineering verdict.
+
+Report language comes from the Network Template. Missing locale or a stored-name
+mismatch requires a reviewed backfill; see [standard sets](references/lv-standard.md).
 
 ## Establish the assignment and host
 
@@ -65,15 +64,15 @@ context. Do not seed every dataset by habit or substitute reference
 transformers for the project network. Check carried/omitted layers, coverage,
 freshness and digests; exclude optional layers only if the map's purpose survives.
 
-Source rules: [sources and context](references/sources-and-context.md).
+See [sources and context](references/sources-and-context.md).
 
 ## Author sheets from the contract
 
-Start from the published paper/family default; compare the project recipe.
-Keep source identity/revision when adopting a copy. Preserve globals, live-map
-styles, unselected output policy and subject exceptions. Compose each paper
-independently: a reduced A0 is not a readable A3. Inspect a concrete recipe
-before any required approval.
+Start with the governed standard; discover `report.layout.schema` and
+`report.export`. For LV, read [standard sets](references/lv-standard.md).
+Preserve source identity/revision, globals, live-map styles, unselected output
+policy and exceptions. Compose each paper independently; a reduced A0 is not
+readable A3. Inspect the recipe before approval.
 
 Read live schema and optimistic revision. `report.project.export` supports local
 same-paper recipe proofs (discover inputs): they keep provenance, leave saved

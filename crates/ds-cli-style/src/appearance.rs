@@ -41,6 +41,17 @@ const SIZE_ARG: Arg = Arg {
     summary: "Base circle radius, line width or symbol scale. Live Style Center bounds are returned by `ds style read`.",
 };
 
+const HALO_COLOR_ARG: Arg = Arg::value(
+    "halo-color",
+    "<#hex>",
+    "Flat symbol halo or circle outline colour without a field; lines use cartography casing.",
+);
+const HALO_WIDTH_ARG: Arg = Arg::value(
+    "halo-width",
+    "<number>",
+    "Flat halo width in pixels, bounded by the published property schema; no categorical field needed.",
+);
+
 const ICON_OVERLAP_ARG: Arg = Arg::value("icon-overlap", "<on|off>", "Symbol icon collision policy. On sets both icon-allow-overlap and icon-ignore-placement, so its own label cannot displace the icon; off restores collision placement. Changes only the addressed screen or print document.").choices(&["on", "off"]);
 
 pub(crate) fn arguments(inputs: &Inputs, apply: bool) -> Result<Value, Failure> {
@@ -69,13 +80,35 @@ pub(crate) fn arguments(inputs: &Inputs, apply: bool) -> Result<Value, Failure> 
         )
         .remedy("read .data.appearance.size from `ds style read`, then pass a number inside its min/max"));
     }
+    let halo_color = inputs
+        .value("halo-color")
+        .map(|raw| crate::color(raw, "halo-color"))
+        .transpose()?;
+    let halo_width = inputs
+        .value("halo-width")
+        .map(|raw| {
+            raw.parse::<f64>()
+                .ok()
+                .filter(|n| n.is_finite())
+                .ok_or_else(|| {
+                    Failure::invalid("invalid_number", "halo width must be finite")
+                        .remedy("read the published halo width bounds with style read")
+                })
+        })
+        .transpose()?;
     let icon_overlap = inputs.value("icon-overlap").map(|value| value == "on");
-    if colour.is_none() && icon.is_none() && size.is_none() && icon_overlap.is_none() {
+    if colour.is_none()
+        && icon.is_none()
+        && size.is_none()
+        && icon_overlap.is_none()
+        && halo_color.is_none()
+        && halo_width.is_none()
+    {
         return Err(Failure::invalid(
             "invalid_appearance",
             "no base appearance change was requested",
         )
-        .remedy("pass at least one of --color, --icon, --size or --icon-overlap"));
+        .remedy("pass at least one of --color, --icon, --size, --icon-overlap, --halo-color or --halo-width"));
     }
 
     let mut arguments = Map::new();
@@ -91,6 +124,12 @@ pub(crate) fn arguments(inputs: &Inputs, apply: bool) -> Result<Value, Failure> 
     }
     if let Some(overlap) = icon_overlap {
         arguments.insert("icon_overlap".into(), json!(overlap));
+    }
+    if let Some(value) = halo_color {
+        arguments.insert("halo_color".into(), json!(value));
+    }
+    if let Some(value) = halo_width {
+        arguments.insert("halo_width".into(), json!(value));
     }
     arguments.insert("apply".into(), json!(apply));
     Ok(Value::Object(arguments))
@@ -129,7 +168,7 @@ pub mod plan {
     pub static COMMAND: Command = Command {
         id: "style.appearance.plan",
         path: &["style", "appearance", "plan"],
-        contract: 3,
+        contract: 4,
         summary: "Plan a layer's flat colour, icon and base size; publishes nothing.",
         purpose: "\
 Uses the Style Center's guided property schema and returns the exact document \
@@ -146,6 +185,8 @@ the fallback when size already carries the second dimension. Icon overlap change
             ICON_ARG,
             SIZE_ARG,
             ICON_OVERLAP_ARG,
+            HALO_COLOR_ARG,
+            HALO_WIDTH_ARG,
             LANE_ARG,
         ],
         output: "`requested`, the resolved guided `appearance`, whether base size updated an existing fallback, `dryRun: true`, `published: false`, and the exact `document`.",
@@ -180,7 +221,7 @@ pub mod set {
     pub static COMMAND: Command = Command {
         id: "style.appearance.set",
         path: &["style", "appearance", "set"],
-        contract: 3,
+        contract: 4,
         summary: "Publish a layer's flat colour, icon or base size natively.",
         purpose: "\
 Applies the same guided colour, icon and size properties the Style Center owns, \
@@ -197,6 +238,8 @@ Flat colour or icon replaces a field-driven primary expression; plan first. Icon
             ICON_ARG,
             SIZE_ARG,
             ICON_OVERLAP_ARG,
+            HALO_COLOR_ARG,
+            HALO_WIDTH_ARG,
             LANE_ARG,
         ],
         output: "The plan receipt with `published: true`, ds-brain `warnings`, and the exact persisted `document`.",
@@ -238,6 +281,26 @@ mod tests {
     }
 
     use super::*;
+    #[test]
+    fn flat_halo_only_reaches_the_kernel_without_a_field() {
+        let tokens = [
+            "--ref",
+            "edcl_customers_survey",
+            "--halo-color",
+            "#ffffff",
+            "--halo-width",
+            "0.9",
+        ]
+        .map(str::to_owned);
+        let inputs = parse(&plan::COMMAND, &tokens).unwrap();
+        let args = arguments(&inputs, false).unwrap();
+        let instruction =
+            crate::native::instruction(crate::native::Edit::Appearance, args, &inputs).unwrap();
+        let encoded = serde_json::to_value(instruction).unwrap();
+        assert_eq!(encoded["halo_color"], "#FFFFFF");
+        assert_eq!(encoded["halo_width"], 0.9);
+        assert!(encoded.get("field").is_none());
+    }
 
     #[test]
     fn appearance_arguments_are_typed_and_plan_set_differ_only_by_apply() {

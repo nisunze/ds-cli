@@ -255,7 +255,7 @@ impl Fixture {
             outputs.push(PublicationOutput {
                 output_id: (*id).into(),
                 locator,
-                filename: format!("{TRANSFORMER}{}", metadata.suffix),
+                filename: ds_command_kernel::report_formats::report_filename(TRANSFORMER, &metadata.format).unwrap(),
                 format: metadata.format,
                 content_type: metadata.content_type.into(),
                 sha256,
@@ -322,6 +322,9 @@ impl Fixture {
                 .outputs
                 .iter()
                 .map(|output| ArtifactOutput {
+                    filename: Some(output.filename.clone()),
+                    paper_size: output.paper_size.clone(),
+                    presentation: output.presentation.as_ref().map(|p| serde_json::json!(p)),
                     output_id: output.output_id.clone(),
                     format: output.format.clone(),
                     content_type: output.content_type.clone(),

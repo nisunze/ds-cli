@@ -23,7 +23,7 @@ const FIELD_ARG: Arg = Arg {
     required: true,
     default: None,
     choices: &[],
-    summary: "The second field, from `ds style read` .data.fields. Not the colour field.",
+    summary: "The field from style read .data.fields; may redundantly drive primary colour and size.",
 };
 const FIELD_TYPE_ARG: Arg = Arg::value(
     "field-type",

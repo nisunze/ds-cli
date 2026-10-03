@@ -33,7 +33,7 @@ use serde_json::{Map, Value, json};
 
 use crate::{DS_REPORT, EXPORT_TIMEOUT};
 
-const TASKS: &[&str] = &["transformer", "combined", "voltage-drop"];
+const TASKS: &[&str] = &["transformer", "combined", "voltage-drop", "lv-standard"];
 const INPUT_SHAPES: &[&str] = &["firestore_rest", "plain_local"];
 
 /// The engine subcommand behind each `--task`. Named here, in source, and
@@ -41,12 +41,13 @@ const INPUT_SHAPES: &[&str] = &["firestore_rest", "plain_local"];
 const TRANSFORMER_SUBCOMMAND: &str = "export-transformer-report";
 const COMBINED_SUBCOMMAND: &str = "export-combined-transformer-report";
 const VOLTAGE_DROP_SUBCOMMAND: &str = "render-voltage-drop-result";
+const LV_STANDARD_SUBCOMMAND: &str = "export-lv-standard";
 
 pub static COMMAND: Command = Command {
     id: "report.export",
     path: &["report", "export"],
-    contract: 2,
-    summary: "Export local reports or print an exact voltage-drop result to A4.",
+    contract: 3,
+    summary: "Export governed LV standard sets or local engineering reports.",
     purpose: "\
 Builds report artifacts with the installed reporter engine. Reads only local \
 bytes and makes no network call of any kind. The engine writes a result \
@@ -54,7 +55,7 @@ document describing every artifact and every blocker; this command returns \
 that document, so a refused export arrives as typed blockers rather than an \
 exit code and a file path. Use --request to supply the engine's full typed \
 request instead of the flags below; run `ds report tasks --task <name>` for \
-its schema. --task voltage-drop requires --request from render_voltage_drop_result: it prints the exact calculated JSON to A4 with headless Chromium, without processing, repairing topology or inferring missing analysis. Print outputs are regenerated and never reused. Partial exports identify failed_formats beside successful artifacts. A reporter without that task refuses; there is no export fallback.",
+its schema. --task lv-standard requires the export_lv_standard JSON job: A0/A3 sheets, PNG before PDF and separate combined sets with six A0 opening pages. Governed defaults and overrides: report layout schema; details in the reference. --task voltage-drop requires --request from render_voltage_drop_result: it prints admitted calculated JSON or explicit reserved/incomplete/refused status to A4, without processing or inferring analysis. Governed identity supplies title blocks/logos. Report language comes from Network Template project_settings.report_locale (en/fr shipped; other locales require complete catalogue data). Missing language refuses; it is never inferred. PDF naming is owned by the kernel. Prints are regenerated; partial exports list failed_formats. A reporter without that task refuses; there is no export fallback.",
     chapter: Chapter::Reports,
     effect: Effect::LocalFileWrite,
     authority: Authority::None,
@@ -140,9 +141,44 @@ was given.",
     ],
     refusals: &[
         Refusal {
+            code: "report_locale_missing",
+            when: "the reporter refuses this presentation contract",
+            remedy: "set report_locale in the existing Network Template project_settings sheet; backfill dry run first",
+        },
+        Refusal {
+            code: "report_locale_invalid",
+            when: "the reporter refuses this presentation contract",
+            remedy: "use one exact nonempty report locale key in project_settings",
+        },
+        Refusal {
+            code: "report_locale_unsupported",
+            when: "the reporter refuses this presentation contract",
+            remedy: "supply the complete locale in the one report message catalogue",
+        },
+        Refusal {
+            code: "report_catalogue_invalid",
+            when: "the reporter refuses this presentation contract",
+            remedy: "supply ds.report-messages/v1 with an English reference locale",
+        },
+        Refusal {
+            code: "report_catalogue_incomplete",
+            when: "the reporter refuses this presentation contract",
+            remedy: "complete every message and preserve named placeholders",
+        },
+        Refusal {
+            code: "report_message_missing",
+            when: "the reporter refuses this presentation contract",
+            remedy: "add the message to every locale in the catalogue",
+        },
+        Refusal {
+            code: "report_header_alias_invalid",
+            when: "the reporter refuses this presentation contract",
+            remedy: "fix ambiguous cleaned_header/misspelled_header mappings in the Network Template",
+        },
+        Refusal {
             code: "unknown_task",
-            when: "the installed reporter does not publish the exact voltage-drop render task",
-            remedy: "install a reporter exposing render_voltage_drop_result; no network recomputation fallback is permitted",
+            when: "the installed reporter does not publish the selected voltage-drop or LV standard task",
+            remedy: "install a reporter exposing the selected task in report tasks; no alternate rendering or recomputation fallback is permitted",
         },
         Refusal {
             code: "reporter_engine_missing",
@@ -221,7 +257,7 @@ const CONTENT_FLAGS: &[&str] = &[
 
 /// Discover the exact owner task before any project compute/save effect.
 pub fn voltage_drop_preflight() -> Result<(), Failure> {
-    require_voltage_drop_task()
+    require_task("render_voltage_drop_result", VOLTAGE_DROP_SUBCOMMAND)
 }
 
 /// Inspect the workstation-owned browser selection without effects. The
@@ -250,16 +286,15 @@ pub fn voltage_drop_browser_preflight() -> Result<(), String> {
     Ok(())
 }
 
-fn require_voltage_drop_task() -> Result<(), Failure> {
+fn require_task(name: &str, subcommand: &str) -> Result<(), Failure> {
     let schemas = crate::tasks::schemas()?;
     if !schemas["tasks"].as_array().is_some_and(|tasks| {
-        tasks.iter().any(|task| {
-            task["name"] == "render_voltage_drop_result"
-                && task["subcommand"] == VOLTAGE_DROP_SUBCOMMAND
-        })
+        tasks
+            .iter()
+            .any(|task| task["name"] == name && task["subcommand"] == subcommand)
     }) {
-        return Err(Failure::unavailable("unknown_task", "the installed reporter does not expose render_voltage_drop_result")
-            .remedy("install a reporter exposing render_voltage_drop_result; no network recomputation fallback is permitted"));
+        return Err(Failure::unavailable("unknown_task", format!("the installed reporter does not expose {name}"))
+            .remedy(format!("install a reporter exposing {name}; no alternate rendering or recomputation fallback is permitted")));
     }
     Ok(())
 }
@@ -313,6 +348,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         "transformer" => TRANSFORMER_SUBCOMMAND,
         "combined" => COMBINED_SUBCOMMAND,
         "voltage-drop" => VOLTAGE_DROP_SUBCOMMAND,
+        "lv-standard" => LV_STANDARD_SUBCOMMAND,
         other => {
             return Err(Failure::internal(
                 "unmapped_task",
@@ -337,6 +373,14 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         .detail(json!({ "conflicting": used_content })));
     }
 
+    if task == "lv-standard" && supplied_request.is_none() {
+        return Err(Failure::invalid(
+            "missing_input",
+            "lv-standard requires its declarative JSON job",
+        )
+        .remedy("discover ds report tasks --task export_lv_standard and pass --request"));
+    }
+
     if task == "voltage-drop" {
         if supplied_request.is_none() {
             return Err(Failure::invalid(
@@ -345,7 +389,11 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             )
             .remedy("discover `ds report tasks --task render_voltage_drop_result` and supply its exact request"));
         }
-        require_voltage_drop_task()?;
+        require_task("render_voltage_drop_result", VOLTAGE_DROP_SUBCOMMAND)?;
+    }
+
+    if task == "lv-standard" {
+        require_task("export_lv_standard", LV_STANDARD_SUBCOMMAND)?;
     }
 
     // Where the engine's result document goes. A caller-named path is theirs
@@ -414,6 +462,28 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let Some(mut document) = document else {
         // No document at all means the engine failed before doing any work —
         // a bad request, a missing input file, an unusable output directory.
+        if let Some(code) = ds_command_kernel::report_messages::refusal_code(&completed.stderr) {
+            let sentence = "Report locale or catalogue refused";
+            let failure = match code {
+                "report_locale_missing" => Failure::invalid("report_locale_missing", sentence),
+                "report_locale_invalid" => Failure::invalid("report_locale_invalid", sentence),
+                "report_locale_unsupported" => {
+                    Failure::invalid("report_locale_unsupported", sentence)
+                }
+                "report_catalogue_invalid" => {
+                    Failure::invalid("report_catalogue_invalid", sentence)
+                }
+                "report_catalogue_incomplete" => {
+                    Failure::invalid("report_catalogue_incomplete", sentence)
+                }
+                "report_message_missing" => Failure::invalid("report_message_missing", sentence),
+                "report_header_alias_invalid" => {
+                    Failure::invalid("report_header_alias_invalid", sentence)
+                }
+                _ => Failure::invalid("engine_refused", "Reporter refused the request"),
+            };
+            return Err(failure.remedy("Use project_settings.report_locale and a complete report catalogue; inspect the named refusal").detail(json!({"engine":completed.stderr})));
+        }
         return Err(DS_REPORT.failure_from(&completed, subcommand));
     };
 

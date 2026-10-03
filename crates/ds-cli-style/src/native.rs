@@ -43,6 +43,11 @@ pub enum Edit {
     Seed,
     PrintVariant,
     Appearance,
+    Preset,
+    Instruction,
+    Categorical,
+    ColorRange,
+    Zoom,
     Label,
     Dimension,
     ClearDimension,
@@ -104,6 +109,16 @@ const OWN: &[Refusal] = &[
     FIELD_DOMAIN_REFUSED,
     STYLE_REFUSED,
     STYLE_EXISTS,
+    Refusal {
+        code: "style_digest_conflict",
+        when: "the authored style storage digest changed since review",
+        remedy: "read the current document and contentSha256, then review the plan again",
+    },
+    Refusal {
+        code: "style_head_conflict",
+        when: "the print style head changed since the reviewed restore",
+        remedy: "list current revisions and compare before restoring against the new expected head",
+    },
     crate::INVALID_NUMBER,
     crate::INVALID_VALUE_SPEC,
     crate::INVALID_COLOR,
@@ -239,6 +254,8 @@ pub(crate) fn instruction(
     inputs: &Inputs,
 ) -> Result<ds_cli_auth::StyleInstruction, Failure> {
     Ok(match action {
+        Edit::Instruction => serde_json::from_value(args["instruction"].clone())
+            .map_err(|e| refused(format!("invalid instruction: {e}")))?,
         Edit::Seed => ds_cli_auth::StyleInstruction::Seed,
         Edit::PrintVariant => ds_cli_auth::StyleInstruction::PrintVariant,
         Edit::Appearance => ds_cli_auth::StyleInstruction::Appearance {
@@ -246,7 +263,28 @@ pub(crate) fn instruction(
             icon: args["icon"].as_str().map(str::to_owned),
             size: args["size"].as_f64(),
             icon_overlap: args["icon_overlap"].as_bool(),
+            halo_color: args["halo_color"].as_str().map(str::to_owned),
+            halo_width: args["halo_width"].as_f64(),
         },
+        Edit::Preset | Edit::Categorical | Edit::ColorRange | Edit::Zoom => {
+            let mut args = args;
+            let object = args
+                .as_object_mut()
+                .ok_or_else(|| refused("invalid style instruction"))?;
+            object.remove("ref");
+            object.remove("apply");
+            object.insert(
+                "kind".into(),
+                json!(match action {
+                    Edit::Preset => "preset",
+                    Edit::Categorical => "categorical",
+                    Edit::ColorRange => "color_range",
+                    _ => "zoom",
+                }),
+            );
+            serde_json::from_value(args)
+                .map_err(|e| refused(format!("invalid instruction: {e}")))?
+        }
         Edit::Label => ds_cli_auth::StyleInstruction::Label {
             field: args["field"].as_str().unwrap_or_default().to_owned(),
             options: if args["options"].is_null() {
@@ -299,7 +337,7 @@ fn refused(message: impl Into<String>) -> Failure {
 /// (the planner's rule, status 0) or ds-brain's 400/422 with its issues; a
 /// 401/403 is the write capability. The match is on the status and code,
 /// never on prose; anything else keeps the shared mapping.
-fn named(failure: Failure) -> Failure {
+pub(crate) fn named(failure: Failure) -> Failure {
     let Some(detail) = failure.detail_value() else {
         return failure;
     };
@@ -311,6 +349,19 @@ fn named(failure: Failure) -> Failure {
         .to_owned();
     let kept = detail.clone();
     match (status, code) {
+        (Some(0 | 409), Some("style_digest_conflict")) => {
+            Failure::invalid("style_digest_conflict", sentence)
+                .remedy(
+                    "read the current style and contentSha256, review, then replay with its digest",
+                )
+                .detail(kept)
+        }
+        (Some(409), Some("style_head_conflict")) => Failure::invalid(
+            "style_head_conflict",
+            sentence,
+        )
+        .remedy("read the current version list and compare before restoring against the new head")
+        .detail(kept),
         (Some(0), Some("style_exists")) | (Some(409), _) => {
             Failure::invalid(STYLE_EXISTS.code, sentence)
                 .remedy(STYLE_EXISTS.remedy)
@@ -319,7 +370,7 @@ fn named(failure: Failure) -> Failure {
         (Some(401 | 403), _) => Failure::unauthorized(STYLE_NOT_PERMITTED.code, sentence)
             .remedy(STYLE_NOT_PERMITTED.remedy)
             .detail(kept),
-        (Some(0), Some("style_refused")) | (Some(400 | 422), _) => {
+        (Some(0), Some("style_refused")) | (Some(400 | 404 | 422), _) => {
             Failure::invalid(STYLE_REFUSED.code, sentence)
                 .remedy(STYLE_REFUSED.remedy)
                 .detail(kept)

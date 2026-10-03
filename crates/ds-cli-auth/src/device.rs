@@ -1064,6 +1064,20 @@ impl<T: ds_client_core::Transport> DeviceSession<T> {
     ) -> Result<ds_client_core::StyleEditReceipt, ClientError> {
         fixed_device_call!(self, style_edit, project, reference, instruction, apply)
     }
+    pub fn style_history(
+        &mut self,
+        project: &str,
+        command: &ds_command_kernel::style_history::Command,
+    ) -> Result<Value, ClientError> {
+        fixed_device_call!(self, style_history, project, command)
+    }
+    pub fn style_governance(
+        &mut self,
+        project: &str,
+        command: &ds_command_kernel::style_governance::Command,
+    ) -> Result<Value, ClientError> {
+        fixed_device_call!(self, style_governance, project, command)
+    }
     pub fn tile_status(
         &mut self,
         project: &str,

@@ -14,6 +14,11 @@ pub const REFUSAL: Refusal = Refusal {
     when: "the canonical MV selection, adopted revision, required text or allowed model differences are incomplete or changed",
     remedy: "read the keyed refusal in detail; inspect ds report project settings and the adopted ds report layout get document, then intentionally repair or select its exact revision",
 };
+pub const STYLE_REFUSAL: Refusal = Refusal {
+    code: "mv_print_style_unresolved",
+    when: "the project API has not supplied the governed MV paper binding",
+    remedy: "integrate the print-styles resolver for (mv_booklet, project_model, print, project); adopt governed defaults through the API",
+};
 pub static SET: Command = Command {
     id:"report.project.mv-setup.set", path:&["report","project","mv-setup","set"], contract:1,
     summary:"Select the project's one canonical MV printing revision.",
@@ -103,6 +108,37 @@ pub(crate) fn resolve_project(
     )?;
     mv::resolve(&sheets, project, fields).map_err(failure)
 }
+/// Resolver acquisition seam for print-styles integration. The authorized
+/// project API materializes this exact binding; the CLI never searches a
+/// catalogue, constructs an id, or supplies a packaged paint default.
+pub(crate) fn resolve_project_print(
+    lane: &str,
+    project: &str,
+    fields: BTreeMap<ModelField, String>,
+) -> Result<(Resolved, Value, Value), Failure> {
+    let configuration = ds_cli_auth::feeder_configuration_for_project(lane, project)?.into_result();
+    let sheets = super::settings::sheets_with_printing_catalogue(
+        lane,
+        project,
+        &configuration.document["sheets"],
+        None,
+    )?;
+    let setup = mv::resolve(&sheets, project, fields).map_err(failure)?;
+    let table = ds_cli_auth::style_governance(
+        lane,
+        project,
+        &ds_command_kernel::style_governance::Command::Table,
+    )?;
+    let snapshot: ds_command_kernel::style_resolution::Snapshot = serde_json::from_value(table)
+        .map_err(|error| {
+            Failure::failed(STYLE_REFUSAL.code, error.to_string()).remedy(STYLE_REFUSAL.remedy)
+        })?;
+    let (paper, renderer) = mv::resolve_print_bindings(&setup, &snapshot).map_err(|error| {
+        Failure::failed(STYLE_REFUSAL.code, error.to_string()).remedy(STYLE_REFUSAL.remedy)
+    })?;
+    Ok((setup, json!(paper), json!(renderer)))
+}
+
 pub fn set(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let mut bytes = Vec::new();
     std::fs::File::open(inputs.require("selection")?)

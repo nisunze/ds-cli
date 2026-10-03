@@ -19,7 +19,7 @@ use crate::{DS_REPORT, EXPORT_TIMEOUT};
 pub static COMMAND: Command = Command {
     id: "report.plan-profile",
     path: &["report", "plan-profile"],
-    contract: 2,
+    contract: 3,
     summary: "Render DS Grid plan/profile sheets from a pinned scene and plan.",
     purpose: "Resolve the named project canonical MV setup from its exact adopted printing-library revision, then render same-revision engine projections and approved front matter into one local PDF. Repeat --alignment for exact scene band IDs, or omit it for every alignment. Title, party logos, page order, scales, fonts and fixed publication version/date come only from that setup. Allowed model identity/title differences are explicit. Missing configuration or held approved assets refuses before output. Use report layout copy and report project mv-setup set to adopt and select; no print data is mutated by this command.",
     chapter: Chapter::Reports,
@@ -27,6 +27,10 @@ pub static COMMAND: Command = Command {
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
     args: &[
+        Arg::switch(
+            "preview-only",
+            "Produce the complete ordered PNG preview set and layout plan before assembling a PDF.",
+        ),
         crate::project::PROJECT_ARG,
         crate::project::LANE_ARG,
         Arg::value(
@@ -85,7 +89,7 @@ pub static COMMAND: Command = Command {
         Arg::value(
             "context-pages",
             "<json-file>",
-            "Ordered model-pinned map captures for the drawing sheets.",
+            "Alignment-keyed geographic context pinned to its source/recipe digest; legacy ordered model-pinned captures remain supported.",
         ),
         Arg::value(
             "model-crs",
@@ -99,16 +103,17 @@ pub static COMMAND: Command = Command {
         ),
         Arg::value("result", "<path>", "Fresh reporter receipt path."),
     ],
-    output: "Model revision, projection SHA-256 digests, page count, SVG preview paths, PDF path and PDF SHA-256; notes and image digests when supplied. With --alignment, the source scene digest and selected band IDs.",
+    output: "Exact model revision, layout plan digest, ordered PNG paths and raster hashes including front matter; PDF path/digest unless preview-only; source and approved component digests.",
     examples: &[Example {
         command: "ds report plan-profile --project gisagara --scene /project/profile.json --plan /project/plan.json --alignment al-main --out-dir /project/gisagara-sheets --output json",
         note: "Render the adopted publication for one alignment from held engine projections.",
         runnable: false,
     }],
-    refusals: &crate::project::joined::<{ crate::project::NATIVE_READ_REFUSALS.len() + 10 }>(&[
+    refusals: &crate::project::joined::<{ crate::project::NATIVE_READ_REFUSALS.len() + 11 }>(&[
         crate::project::NATIVE_READ_REFUSALS,
         &[
             crate::project::mv_setup::REFUSAL,
+            crate::project::mv_setup::STYLE_REFUSAL,
             Refusal {
                 code: "alignment_selection_invalid",
                 when: "selection names an unknown band, is unbounded or malformed, or its scene cannot be decoded",
@@ -232,8 +237,8 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     }
     // Validate the held geometry scope before any authenticated setup read.
     let selected = stage_selected_scene(&scene, inputs.repeated("alignment"))?;
-    let resolved =
-        crate::project::mv_setup::resolve_project(inputs.require("lane")?, project, fields)?;
+    let (resolved, style_resolution, renderer_defaults) =
+        crate::project::mv_setup::resolve_project_print(inputs.require("lane")?, project, fields)?;
     let read_manifest = |name: &str, empty: Value| -> Result<Value, Failure> {
         let Some(path) = inputs.value(name) else {
             return Ok(empty);
@@ -270,7 +275,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         .as_ref()
         .map(|selection| selection.file.path())
         .unwrap_or(&scene);
-    let request = json!({"project_id":project,"scene_path":scene_path,"plan_path":plan,"side_profiles_path":inputs.value("side-profiles"),"notes_path":inputs.value("notes"),"structure_descriptions_path":inputs.value("structure-descriptions"),"out_dir":out_dir,"sample_pages":sample_pages,"context_page_files":context_page_files,"model_crs":inputs.value("model-crs"),"settings":resolved.settings,"mv_setup":resolved,"publication_assets":publication_assets});
+    let request = json!({"renderer_defaults":renderer_defaults,"style_resolution":style_resolution,"preview_only":inputs.switch("preview-only"),"project_id":project,"scene_path":scene_path,"plan_path":plan,"side_profiles_path":inputs.value("side-profiles"),"notes_path":inputs.value("notes"),"structure_descriptions_path":inputs.value("structure-descriptions"),"out_dir":out_dir,"sample_pages":sample_pages,"context_page_files":context_page_files,"model_crs":inputs.value("model-crs"),"settings":resolved.settings,"mv_setup":resolved,"publication_assets":publication_assets});
     let bytes = serde_json::to_vec(&request)
         .map_err(|e| Failure::internal("request_encode_failed", e.to_string()))?;
     ds_layer_store::private::write(&request_path, bytes)
@@ -350,11 +355,21 @@ fn stage_selected_scene(
 }
 
 pub fn render(data: &Value) -> String {
+    let artifact = data["pdf"]
+        .as_str()
+        .map(|path| format!("PDF {path}"))
+        .unwrap_or_else(|| {
+            format!(
+                "PNG previews: {} pages",
+                data["booklet_previews"].as_array().map_or(0, Vec::len)
+            )
+        });
     format!(
-        "{} A3 sheets · {} alignments\nPDF {}\nrevision {}",
-        data["page_count"],
+        "{} A3 booklet pages · {} alignments\n{}\nrevision {}",
+        data.get("publication_page_count")
+            .unwrap_or(&data["page_count"]),
         data["alignments"],
-        data["pdf"].as_str().unwrap_or("?"),
+        artifact,
         data["model_revision"].as_str().unwrap_or("?")
     )
 }

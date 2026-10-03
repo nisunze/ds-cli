@@ -89,6 +89,34 @@ The schemas are never copied into this repository. They are read from the
 engine installed on this machine, at the version actually installed, so they
 cannot be stale.
 
+## Governed LV printing
+
+Start with the standard job; no layout or paper choice is required:
+
+```sh
+ds report layout schema --output json
+ds report tasks --task export_lv_standard --output json
+ds report export --task lv-standard --request ./lv-job.json \
+  --result ./lv-receipt.json --output json
+```
+
+The kernel registry names the independent A0/A3 transformer and combined
+templates. Each combined PDF starts with six A0 pages: cover, key map with
+drawing references, sheet index, legend, notes and revisions. The job pins
+project parties, contract, logos/digests, model version and issue identity.
+It supplies exact-version held layers and optional context. Focused circuits
+own schedules and labels; neighbours use muted unlabelled pens. Missing
+optional context is an omission receipt. Dense schedules continue at readable
+type in both the standalone and combined PDFs. PNG previews precede PDFs.
+
+Use the discovered `ds.print-standard-overrides/v1` schema for declarative
+issue text, monochrome ink or named transformer furniture patches. To retain
+a scoped patch in a saved project layout, apply `set_transformer_override`
+with `report layout edit` and persist the returned layout with `report layout
+update` and its exact expected revision. All validation belongs to the kernel.
+Local exports publish nothing; keep the receipts for visual QA and later
+delivery. Georeference and switchable PDF layers remain outside standard v1.
+
 ## Voltage-drop printing
 
 Print a complete, already calculated voltage-drop JSON to A4 through the
@@ -103,7 +131,10 @@ ds report export --task voltage-drop --request ./a4-request.json \
 Author the request from the installed owner's schema. This route passes the
 request unchanged and refuses when that render task is unavailable. The
 project label is presentation only; it grants no project authority. Missing
-analysis must be produced by the network owner before printing.
+analysis must be produced by the network owner before printing. Admitted
+reserved, incomplete and refused saved analyses produce explicit A4 status
+pages without inventing results. Optional governed printing identity carries
+the project display label and digest-pinned logos onto every A4 title block.
 
 `report.voltage-drop-combined` prints one local A3 overview for an exact
 transformer roster from held voltage-drop result files. The reporter owns
@@ -1058,7 +1089,7 @@ plan unchanged. The receipt's `alignment_selection` pins the original scene
 SHA-256 and selected IDs; the reporter's scene digest pins the staged geometry.
 The same selection still requires the project's adopted publication setup.
 
-`report.plan-profile` contract 2 requires the named project's canonical setup
+`report.plan-profile` contract 3 requires the named project's canonical setup
 and paired scene/plan projections from one unchanged model revision. Only
 `--model-identity` / `--model-title` fields explicitly allowed by the template
 can differ. Transient title, logo, date, version, scale, ink and presentation
@@ -1069,17 +1100,18 @@ or forbidden overrides return keyed actionable refusals. Desktop re-resolves
 the same command/receipt before preview or print and refuses stale receipts.
 MCP exposes the same declared commands.
 
-`report.plan-profile-config` contract 2 accepts `ds.grid-plan-profile-print/v2`
-with `project_id`, `scene_path`, `plan_path`, fresh `output_root`, and 1..8
-`variants` containing only a safe `name`. Optional geometry inputs are
+`report.plan-profile-config` contract 3 accepts `ds.grid-plan-profile-print/v2`
+with `project_id`, `scene_path`, `plan_path` and fresh `output_root`. Omitted
+`variants` chooses one `booklet`; an explicit list accepts 1..8 entries
+containing only a safe `name`. Optional geometry inputs are
 `sample_pages`, `side_profiles_path`, `notes_path`, `model_crs`,
 `context_page_files`; `model_fields` and `publication_assets` bind the same
 approved receipt/held assets. Relative paths resolve beside the configuration.
 V1 per-run `settings`, `logo_files`, and variant `ink_mode` refuse rather than
 silently changing approved furniture. `report plan-profile-config schema`
-returns the current example. A failed first publication creates no final
-output root; a later failure preserves completed variants and a partial
-receipt. Each result pins model revision, canonical setup digest, publication
+returns the current example. Any failed publication leaves the final output
+root absent; all variants and the receipt commit together. Each result pins
+model revision, canonical setup digest, publication
 order, component digests and page count. A new global head never advances the
 project's adopted revision.
 
@@ -1098,12 +1130,12 @@ measured, station-ordered trace segments:
 
 `left` and `right` print with different dash patterns; gaps use separate trace
 segments so the drawing never invents terrain between missing observations.
-Each default vertical label row holds one entity field: structure number,
-structure type, then comments in the advanced format. `--ink monochrome` is
-the default; `--ink reference_accents` applies
-green OPGW, plum phase and red route and structure pens inspired by the
-approved CJIC 120 ACSR sheets. Context is gray except the featured transformer
-and new LV design pens.
+Each standard vertical label row holds one entity field: native structure
+identity, comments, then an admitted staking Description. The adopted
+template sets `reference_accents`; the resolved paper document supplies the
+actual conductor, route and structure pens. Each context layer and focused
+transformer consumes its exact source/role resolver binding. Colour, muting,
+label ink and physical scaling belong to those governed documents.
 
 `--notes /absolute/notes.json` places project-authored text or images in vacant
 space within the plan or profile panel. The manifest is independent of the
@@ -1293,3 +1325,47 @@ the native project authority. Name the project with `--project` and supply its s
 locator and SHA-256 from the current print receipt, then confirm with `--yes`.
 A replaced print is refused. The operation retains stored bytes and other
 outputs. Archive standalone custom maps through their Assets lifecycle.
+
+
+The standardization layout intent retains approved cover/naming and produces
+A3 landscape sheets at H/plan 1:1500, V 1:500 with profile above plan, vertical
+labels and reference accent inks. Generated sheet index, model key plan and
+legend/general notes precede engineering sheets. Optional context remains a
+project-template decision. Formal facts, approved logos, external submission
+version and fixed issue date belong to the selected revision, never the job.
+Use the live layout schema for validated declarative overrides.
+
+The print JSON needs no variant options: omission chooses one `booklet`.
+`preview_only` produces the full ordered PNG inventory and portable
+`ds.mv-booklet-plan/v1`/`ds.mv-booklet-preview/v1` documents before PDF assembly.
+Every PNG is 96 DPI at its native paper dimensions and has PNG plus decoded
+RGBA SHA-256. Previews rasterize the finalized component PDF pages, including
+the existing attribution footer; those exact pages form the assembled PDF.
+Preserved approved PDF pages use the server Poppler renderer for PNG evidence.
+An unavailable PDF rasterizer refuses instead of dropping cover previews.
+The same kernel preview admission is available through WASM `printingCommand`.
+
+Paper appearance comes from the API resolver binding for
+`(mv_booklet, project_model, print, project)`. The CLI acquisition seam consumes
+`mv_print_style_resolution` from the authorized project response. Until the
+resolver is integrated, `mv_print_style_unresolved` refuses the job. The CLI
+never selects a style catalogue row or supplies default pens. Template edits
+and style-document revisions remain separate governed operations.
+A complete JSON job stages all outputs and receipts, then commits one fresh
+directory; failure never leaves partial completed variants.
+
+Alignment-keyed geographic context (`ds.mv-alignment-context/v1`) pins its
+source/recipe digest and contains no captured MV geometry. It is reused for
+new sheet windows and MV revisions. Duplicate, missing or unused alignment
+keys refuse. Legacy ordered captures retain exact model/count fences.
+Booklet attachment publication remains the design-attachment owner's explicit
+operation on the exact MV model/content revision, never project-wide maps.
+
+Report locale comes from the existing Network Template `project_settings` row
+`report_locale`. English and French ship in the one kernel message catalogue;
+a third locale needs complete catalogue data. Missing language refuses by name.
+Capture the existing project configuration with LV standard/A4 requests; do not
+choose language from country or the UI. See the [owner contract](../../../ds-command-kernel/docs/printing.md#report-language-and-artifact-names)
+and [dry-run-first backfills](../../../ds-command-kernel/migrations/report-locale-and-artifact-names.md).
+No migration is performed by export. Report filenames and stored-name validation
+use the kernel rule; PDF title casing preserves the protected delivery.

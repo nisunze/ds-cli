@@ -59,7 +59,13 @@ visual Style Center (WASM):
 
 | Command family | Authoring |
 |---|---|
-| `appearance plan/set` | Flat colour, symbol icon and base size |
+| `appearance plan/set` | Flat colour, symbol icon, base size and flat halo colour/width |
+| `categorical plan/set` | Primary colour, categorical icon or label text, with typed categories and explicit fallback |
+| `color-range plan/set` | Interpolated numeric colour for line, fill and circle |
+| `zoom plan/set` | Zoom stops for size, opacity and symbol collision overlap |
+| `preset plan/set` | Opt-in satellite contrast or neutral existing-assets appearance on one exact screen ref |
+| `instruction schema/plan/set` | Discover, validate and replay the same closed JSON instruction vocabulary |
+| `print versions list/read/compare/restore` | Immutable exact print documents and restore under a head fence |
 | `label plan/set` | Label field, visibility, zoom bounds, size, print papers and point placement |
 | `dimension plan/set/clear` | A second field on halo, opacity or size |
 | `cartography plan/set` | Visibility, zoom bounds, polygon boundaries, line type, direction, casing and hatching |
@@ -71,6 +77,44 @@ paint properties survive. `style label` checks `--field` against the fields from
 `style read`; when a style has no label, it starts from the backend's published
 label model. Style targets may be global: changing one can affect other projects
 that share it, exactly as saving globally in Style Center does.
+
+Primary categorical colour accepts `--channel color --field cable_size
+--value '35=#F59E0B' --value '50=#22C55E' --other '#94A3B8'`. Icon and label
+channels use the same vocabulary with a catalog icon name or literal label text
+as the output. The field must be declared by the editor; domain types determine
+string versus numeric match labels. `--field-type` is available when the declared
+field has no domain. `--merge` retains unmentioned bands of an existing match on
+the same field. A fallback is always required. Symbol categories compile finite
+raster sprite recipes with the existing halo and secondary dimensions retained.
+Continuous symbol colour ranges are refused explicitly because those raster
+recipes cannot represent an unbounded palette.
+
+For zoom authoring, use `--channel size|opacity|icon_overlap --base <value>` and
+repeat `--stop <zoom>=<value>`. Numeric values are finite; opacity is 0–1 and
+size uses the editor's bounds. Overlap takes `on|off` and changes both icon
+placement flags. Stops are strictly increasing from zoom 0 through 24. The
+default is `step`; `--interpolation linear` is available for numeric channels
+with a first stop at zoom 0. Flat halos use `appearance --halo-color '#FFFFFF'
+--halo-width 0.9` without a category field. These screen controls preserve
+independent print documents.
+
+`ds style instruction schema --output json` returns the compiled JSON Schema
+without login. Save one instruction to a file, then `instruction plan --project
+<id> --ref <ref> --file <file>` and `instruction set ... --yes`. Pass
+`--expected-digest <contentSha256>` from a reviewed `style read` with
+`digestAuthority: storage` to refuse stale replay. Every save uses the backend's
+storage digest fence when offered; guarded replay refuses older backends that
+cannot supply that fence. Unknown JSON keys are refused. Only the named ref is
+changed, so design, vector-tile and print scopes remain explicit.
+
+Print documents ship as a standard catalogue, including every style referenced
+by governed global templates. `print versions list --project <id> --ref
+gt/rivers_print` returns the head, latest 200 revisions and `more`; exact older
+ids remain readable. `read` and `compare` take `--revision <64hex>`. `restore`
+takes that revision plus `--expected-head <64hex> --yes`, appends a new revision
+and retains earlier content. Each revision records its author, time, scope and
+content digest. Printing receipts seal document, style revision and layout
+revision together, including the separate MV printing setup.
 
 Label options include `--visible on|off`, `--size` within the backend's published
 bounds, repeatable `--paper A0` (or `--paper all` to clear paper restrictions),
@@ -112,6 +156,35 @@ sample the current viewport.
 
 Discover exact flags, ranges and return shapes with `ds capabilities <command-id>`.
 
+Style choice has four independent dimensions. `style resolution table --project
+<id>` reads the API's persisted table. `style resolve --project <id>
+--entity-class lv_line --source-kind saved_design --target print --role focused`
+returns one exact document and revision through the shared kernel resolver.
+Changing the source or role changes the authority; an unknown combination
+refuses by name. Hosts never construct a style id from a layer name.
+
+`style catalogue manifest` reads the versioned declarative standard set.
+`style catalogue seed plan --project <id>` names missing documents and preserves
+authored heads. Apply only the reviewed `manifest_revision` and `plan_sha256`
+using `seed apply --expected-manifest <64hex> --expected-plan <64hex> --yes`.
+This is an explicit API initialization; reads never seed silently.
+
+`style catalogue inventory --project <id>` reports exact catalogue and selected
+project documents, resolver mappings, explicit obsolete declarations and an
+opaque continuation. Its scope is not an all-project census. Read every page
+before `backup create --expected-inventory <64hex> --yes`; the API stores an
+immutable exact backup. `backup read --backup <id>` reads those exact bytes.
+`retirement plan --expected-inventory <64hex> --backup <id>` names ids, reasons,
+replacements and blocked dependencies. It never deletes documents. The main
+session must obtain owner approval before a later deletion through the API.
+
 `style appearance plan/set --icon-overlap on|off` controls independent symbol
 icon placement. Both MapLibre icon placement flags change together; label overlap
 and the other screen/print document remain authored independently. Plan first.
+
+The standard seed plan also names exact installed legacy-scaling migrations.
+They append immutable original and normalized revisions only when the original
+content, current head and update time match the declared baseline. Other authored
+changes are preserved. Review the migration rows with the create/preserve rows;
+`style_resolution_migration_required` names a consumer deployment prerequisite.
+All effective paper factors now come from the stored document.

@@ -2065,6 +2065,38 @@ pub fn style_edit(
     })
 }
 
+/// Exact immutable print revision operations through the existing native style route.
+pub fn style_history(
+    lane: &str,
+    project: &str,
+    command: &ds_command_kernel::style_history::Command,
+) -> Result<Value, Failure> {
+    let named = headless_named_project(
+        lane,
+        project,
+        |device, project| device.style_history(project, command),
+        |client, project| client.style_history(project, command, now()),
+    )?;
+    let mut result = named.result;
+    result["lane"] = json!(named.lane);
+    Ok(result)
+}
+
+/// Fixed governed catalogue actions over captured headless project authority.
+pub fn style_governance(
+    lane: &str,
+    project: &str,
+    command: &ds_command_kernel::style_governance::Command,
+) -> Result<Value, Failure> {
+    let named = headless_named_project(
+        lane,
+        project,
+        |device, project| device.style_governance(project, command),
+        |client, project| client.style_governance(project, command, now()),
+    )?;
+    Ok(named.result)
+}
+
 /// One governed action on the GLOBAL reference publications.
 ///
 /// Global, like the library catalog: no project is selected and none is
