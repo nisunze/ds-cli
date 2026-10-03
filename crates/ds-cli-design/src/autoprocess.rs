@@ -1,12 +1,11 @@
-//! What AutoProcess would do with a set of committed edits — the kernel's
-//! four admission answers, headless.
+//! What AutoProcess would do with committed edits, from its Rust owners.
 //!
-//! The host half of AutoProcess (the accumulator, the GDF walk that maps
-//! changed features to feeders, the timer and the engine latch) is a browser
-//! edit session and stays there. The RULES are not: whether an edit warrants
+//! The host half of AutoProcess (the accumulator, timer and engine latch)
+//! stays in the browser edit session. The RULES are not: whether an edit warrants
 //! re-running the LV network, how wide the next run must be, and when queued
-//! work dispatches are `ds_command_kernel::autoprocess`, so an agent can ask
-//! them without a Desktop and get the answer the page acts on.
+//! work dispatches belong to `ds_command_kernel::autoprocess` and
+//! `ds_network::network::differential`. An agent can ask them without a Desktop
+//! and get the answer the page acts on.
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
     Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
@@ -15,7 +14,8 @@ use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 use std::io::Read;
 
-const MAX_BYTES: usize = 1024 * 1024;
+// Differential scope now carries complete transformer layers, like native LV input.
+const MAX_BYTES: usize = 64 * 1024 * 1024;
 
 fn local() -> Availability {
     Availability::Available
@@ -23,14 +23,14 @@ fn local() -> Availability {
 
 const REFUSALS: &[Refusal] = &[Refusal {
     code: "autoprocess_request_invalid",
-    when: "The changes document is malformed, too large, or a section is not a kernel request",
+    when: "The changes document is malformed, too large, or a section is not an owner request",
     remedy: "Pass {mode?, trigger?, differential_scope?, cadence?} with the fields `ds capabilities design.autoprocess.plan` names",
 }];
 
 const CHANGES: Arg = Arg::value(
     "changes",
     "<json-file>",
-    "{mode?, trigger?, differential_scope?, cadence?}, at most 1 MiB.",
+    "{mode?, trigger?, differential_scope?:{gdfs,differential:{selected_feeders,auto_process?:{differential_enabled,is_mv_session,accumulator_bound,force_full,changed_features:[{layer_name,feature_id}]}},customer_source_addresses}, cadence?}, at most 64 MiB.",
 )
 .required();
 const NOW_MS: Arg = Arg::value(
@@ -42,7 +42,7 @@ const NOW_MS: Arg = Arg::value(
 pub static COMMAND: Command = Command {
     id: "design.autoprocess.plan",
     path: &["design", "autoprocess", "plan"],
-    contract: 3,
+    contract: 4,
     summary: "Plan what AutoProcess would do with committed edits.",
     purpose: "Answers the four AutoProcess admission questions from one document: whether the process runs by itself or by hand in this editing context, whether a committed edit warrants re-running the LV network, whether the next run must be differential or full, and whether queued work dispatches now or waits. The clock is an input, so the same document always plans the same way. This plans AutoProcess without running it.",
     chapter: Chapter::Design,
@@ -50,7 +50,7 @@ pub static COMMAND: Command = Command {
     authority: Authority::None,
     execution: Execution::Sync,
     args: &[CHANGES, NOW_MS],
-    output: "The sections present in the request: mode {mode, reason_key}, trigger {schedule, reason_key}, differential_scope {scope, reason_key, pending?} and cadence {decision, wait_ms?, reason_key, waiting_not_executing}.",
+    output: "The sections present in the request: mode {mode, reason_key}, trigger {schedule, reason_key}, differential_scope {scope, feeders, reason_key, selected_count, frozen_count} and cadence {decision, wait_ms?, reason_key, waiting_not_executing}.",
     examples: &[Example {
         command: "ds design autoprocess plan --changes edits.json --output json",
         note: "`.data.cadence.wait_ms` is when the host should evaluate again.",
@@ -77,18 +77,25 @@ fn document(path: &str) -> Result<Value, Failure> {
         .read_to_end(&mut bytes)
         .map_err(invalid)?;
     if bytes.len() > MAX_BYTES {
-        return Err(invalid("changes document exceeds 1 MiB"));
+        return Err(invalid("changes document exceeds 64 MiB"));
     }
     serde_json::from_slice(&bytes).map_err(invalid)
 }
 
-/// One section through the kernel. `op` is added here so the document stays
-/// the four plain request bodies rather than a tagged union the caller has
-/// to spell.
+/// One section through its Rust owner. `op` is added for kernel sections so
+/// the document keeps plain request bodies rather than a tagged union.
 fn section(op: &str, mut body: Value) -> Result<Value, Failure> {
     let Some(map) = body.as_object_mut() else {
         return Err(invalid(format!("`{op}` must be an object")));
     };
+    if op == "differential_scope" {
+        let request: ds_network::network::differential::DifferentialPlanRequest =
+            serde_json::from_value(body).map_err(invalid)?;
+        return serde_json::to_value(
+            ds_network::network::differential::plan(&request).map_err(invalid)?,
+        )
+        .map_err(invalid);
+    }
     map.insert("op".into(), json!(op));
     let reply =
         ds_command_kernel::autoprocess::evaluate(&serde_json::to_vec(&body).map_err(invalid)?)
@@ -187,6 +194,25 @@ mod tests {
         assert_eq!(answer["mode"], "auto");
         assert_eq!(answer["reason_key"], "autoprocess_mode_enabled");
         assert!(render(&json!({"mode": answer})).contains("mode               auto"));
+    }
+
+    #[test]
+    fn differential_scope_reads_layers_and_rejects_host_authored_mapping() {
+        let answer = section("differential_scope", json!({
+            "gdfs": {
+                "lv_lines":{"features":[{"id":"f1","properties":{"path_id":"path1"}},{"id":"f2","properties":{"path_id":"path2"}}]},
+                "lv_poles":{"features":[{"id":"p1","properties":{"path_id":"path1"}}]}
+            },
+            "differential":{"selected_feeders":[],"auto_process":{
+                "differential_enabled":true,"is_mv_session":false,"accumulator_bound":true,"force_full":false,
+                "changed_features":[{"layer_name":"lv_poles","feature_id":"p1"}]
+            }},
+            "customer_source_addresses":[]
+        })).unwrap();
+        assert_eq!(answer["feeders"], json!(["f1"]));
+        assert_eq!(answer["frozen_count"], 1);
+        assert_eq!(answer["reason_key"], "differential_narrowed");
+        assert_eq!(section("differential_scope",json!({"differential_enabled":true,"change_count":1,"blocking_diagnostics":false,"mapping":{"unmapped":false,"feeder_ids":["f1"]}})).unwrap_err().code(),"autoprocess_request_invalid");
     }
 
     #[test]

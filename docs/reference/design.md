@@ -76,6 +76,9 @@ closed `ds.fast-lv.request/v1` file:
 }
 ```
 
+For a selected-feeders run, add `"differential":{"selected_feeders":["feeder-1"]}`
+to a job whose `lv_lines` contains that id. Omit it for full processing.
+
 The schema has no project id, credential, mutable session, browser table
 address, or operation name. It cannot impersonate a project or dispatch a
 different engine action. A batch holds 1–32 uniquely named transformers, at
@@ -1235,8 +1238,8 @@ properties on the engine side, and no longer pretends to here.
 ## AutoProcess, planned without running it
 
 `ds design autoprocess plan --changes edits.json [--now-ms 1789…]` answers the
-four admission questions AutoProcess asks in the browser, from the same kernel
-module (`autoprocess`). The document holds up to four sections and the answer
+four admission questions AutoProcess asks in the browser, from the kernel
+(`autoprocess`) and LV pipeline (`network::differential`). The document holds up to four sections and the answer
 carries the ones it found:
 
 - `mode` — `{process_active, auto_process_enabled}` → `auto` when the process
@@ -1247,12 +1250,11 @@ carries the ones it found:
   network. The two attribute vocabularies are ds-network's and are passed in;
   the kernel owns only the rule that unions them with the sizing and topology
   extras (`plan_kva`, `ex_tr_size`, the connection identity fields).
-- `differential_scope` — `{differential_enabled, is_mv_session,
-  accumulator_bound, force_full, change_count, blocking_diagnostics?,
-  mapping?}` → `feeders` or `full`, and which of the seven fallbacks answered.
-  The two expensive host walks are optional: leave them out and the kernel
-  either decides on a cheaper branch or answers `pending`, naming the input it
-  now needs.
+- `differential_scope` — the LV owner's `{gdfs, differential, customer_source_addresses}`
+  preview request. `differential` is `{selected_feeders:[id,...]}`, or
+  `{selected_feeders:[], auto_process:{differential_enabled,is_mv_session,
+  accumulator_bound,force_full,changed_features:[{layer_name,feature_id}]}}`.
+  Rust derives diagnostics, feeder mapping and scope from the supplied layers.
 - `cadence` — `{enabled, running, queued, force, pending_edit_count,
   window_started_at_ms, cadence{min_pending_edits, max_pending_seconds},
   now_ms}` → `dispatch` / `wait` with `wait_ms` / `idle`, plus
@@ -1260,7 +1262,7 @@ carries the ones it found:
 
 `now_ms` is an input, never a clock the kernel reads, so the same document
 always plans the same way; `--now-ms` overrides the cadence section's own value.
-The timer, the change accumulator, the GDF walk and the engine latch stay with
+The timer, the change accumulator and the engine latch stay with
 whoever runs AutoProcess — this plans, it never runs.
 
 ## The force gate, headless

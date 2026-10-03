@@ -5018,10 +5018,10 @@ fn map_validates_its_own_inputs_before_it_opens_the_bridge() {
                 "process",
                 "--transformer",
                 "T",
-                "--differential-where",
-                "nope",
+                "--request",
+                "/nonexistent-lv-request.json",
             ],
-            "invalid_pair",
+            "differential_request_invalid",
         ),
         // `ds map ui open` is a panel door, not a UI driver. A selector, an
         // expression and a URL each have to be refused here — after the
@@ -9054,10 +9054,13 @@ fn autoprocess_plan_answers_the_three_admissions_from_one_document() {
             "vocabulary": {"lockable_cells": [], "status_fields": []}
           },
           "differential_scope": {
-            "differential_enabled": true, "is_mv_session": false,
-            "accumulator_bound": true, "force_full": false, "change_count": 3,
-            "blocking_diagnostics": false,
-            "mapping": {"unmapped": false, "feeder_ids": ["f1"]}
+            "gdfs": {"lv_lines":{"type":"FeatureCollection","features":[{"id":"f1","properties":{"path_id":"path1"}}]},"lv_poles":{"type":"FeatureCollection","features":[{"id":"p1","properties":{"path_id":"path1"}}]}},
+            "differential": {"selected_feeders": [], "auto_process": {
+                "differential_enabled": true, "is_mv_session": false,
+                "accumulator_bound": true, "force_full": false,
+                "changed_features": [{"layer_name":"lv_poles","feature_id":"p1"}]
+            }},
+            "customer_source_addresses": []
           },
           "cadence": {
             "enabled": true, "running": false, "queued": true, "force": false,
@@ -9083,6 +9086,7 @@ fn autoprocess_plan_answers_the_three_admissions_from_one_document() {
     // The sizing pin is inside the rule, not a transcribed list.
     assert_eq!(data["trigger"]["schedule"], true);
     assert_eq!(data["differential_scope"]["scope"], "feeders");
+    assert_eq!(data["differential_scope"]["feeders"], json!(["f1"]));
     // `now_ms` is an input, not a clock the kernel reads: --now-ms 1100 is
     // 100 ms into the one-second window, so 900 ms of it remain. The document
     // alone would have answered 1000.

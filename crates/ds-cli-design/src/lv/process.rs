@@ -19,9 +19,9 @@ use super::artifact::{RESULT, ensure_absent, sha256, write_new};
 pub static COMMAND: Command = Command {
     id: "design.lv.process",
     path: &["design", "lv", "process"],
-    contract: 1,
+    contract: 2,
     summary: "Process transformer batches headlessly in parallel from local files.",
-    purpose: "Reprocess LV transformers headlessly in parallel from their layers, intended settings and network configuration. Supply one ds.fast-lv.request/v1 with 1..=32 jobs and at most 100,000 aggregate features. design.lv.project-export --project-config includes current material seeds with owner-default settings. Native Rayon preserves input order. Full processed layers go to --out; retain this JSON receipt for design.lv.project-save to publish selected results. Printing and report publication follow separately.",
+    purpose: "Reprocess LV transformers headlessly in parallel from their layers, intended settings and network configuration. Supply one ds.fast-lv.request/v1 with 1..=32 jobs and at most 100,000 aggregate features. design.lv.project-export --project-config includes current material seeds with owner-default settings. Each job may carry differential intent: selected_feeders, or auto_process with captured changed_features; the same Rust LV owner decides scope for web, map and native runs. Native Rayon preserves input order. Full processed layers go to --out; retain this JSON receipt for design.lv.project-save to publish selected results. Printing and report publication follow separately.",
     chapter: Chapter::Design,
     effect: Effect::LocalFileWrite,
     authority: Authority::None,
@@ -30,7 +30,7 @@ pub static COMMAND: Command = Command {
         Arg::value(
             "input",
             "<path>",
-            "Closed ds.fast-lv.request/v1 batch document (maximum 64 MiB).",
+            "Closed ds.fast-lv.request/v1 batch document; optional job differential uses the map.design.process JSON shape (maximum 64 MiB).",
         )
         .required(),
         Arg::value(

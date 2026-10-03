@@ -295,15 +295,7 @@ pub const DESIGN_CREATE: BridgeOp = BridgeOp {
 };
 pub const DESIGN_PROCESS: BridgeOp = BridgeOp {
     operation: "design.process.run",
-    arguments: &[
-        "transformer",
-        // The application fixes the differential's `layers` to `lv_lines`
-        // itself, so this domain must not send one — a declared key is the
-        // only key that can be sent, which is what stops it.
-        "differential.where",
-        "differential.ids",
-        "differential.bbox",
-    ],
+    arguments: &["transformer", "differential"],
 };
 pub const DESIGN_PROCESS_CONFIGURE: BridgeOp = BridgeOp {
     operation: "design.process.configure",

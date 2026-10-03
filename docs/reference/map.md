@@ -463,7 +463,7 @@ asked, and `design process` bounds its warnings.
 
 ## Selector semantics
 
-`design select`, `design set` and `design process --differential-*` take the
+`design select` and `design set` take the
 same selector, ANDed:
 
 | Flag | Meaning |
@@ -527,21 +527,17 @@ composite, mismatched, or older desktop response refuses as
 
 ## The differential process run
 
-`design process` with no differential flags runs FULL and recalculates
-everything, including an as-built network that was just approved. A
-differential flag narrows the run to the matching `lv_lines` and freezes the
-rest for that run only — the kernel treats frozen rows as approved and strips
-the flag from every output, so the operator's real `drafting_status` is
-untouched.
+`design process --transformer T --request feeders.json` forwards the same JSON
+request the web sends: `{"selected_feeders":["feeder-1"]}`. Omit `--request` for
+full processing. AutoProcess intent can be supplied in `auto_process` with
+captured `changed_features`; Rust computes their feeders and full-run reasons.
+Discover the complete request through `ds capabilities map.design.process`.
 
-Two honest reports come back with it:
-
-- a differential selector that matches nothing is **refused**, not widened
-  into a full run. Widening would recalculate exactly the network the caller
-  was protecting.
-- a blocking diagnostic makes the kernel run full regardless. That arrives as
-  `blocked_from_differential: true` alongside `mode`, so a caller can tell the
-  freeze did not hold rather than assuming it did.
+Rust owns the freeze and selected/frozen counts. A selection matching no LV
+lines retains the existing refusal message. Manual explicit selections retain
+their existing diagnostic behavior; AutoProcess diagnostics can force full.
+The `mode` and `blocked_from_differential` receipt report the effective scope.
+The process stages locally; `design save` remains the publishing boundary.
 
 ## The wire contract is proved, not trusted
 
