@@ -55,10 +55,21 @@ impl Messages {
                 "report_catalogue_invalid: version or English reference locale missing".into(),
             );
         }
-        let selected = catalogue.locales.get(locale)
+        let _selected = catalogue.locales.get(locale)
             .ok_or_else(|| format!("report_locale_unsupported: {locale}: supply a complete locale in the report catalogue"))?;
         let english = &catalogue.locales["en"];
-        if selected.keys().ne(english.keys()) || selected.values().any(|s| s.is_empty()) {
+        if default_catalogue().locales["en"]
+            .keys()
+            .any(|key| !english.contains_key(key))
+        {
+            return Err(
+                "report_catalogue_incomplete: English reference must retain every governed message"
+                    .into(),
+            );
+        }
+        if catalogue.locales.values().any(|messages| {
+            messages.keys().ne(english.keys()) || messages.values().any(|s| s.is_empty())
+        }) {
             return Err(format!(
                 "report_catalogue_incomplete: {locale}: every reference message needs a translation"
             ));
@@ -69,11 +80,13 @@ impl Messages {
             tokens.sort();
             tokens
         };
-        for (key, original) in english {
-            if placeholders(original) != placeholders(&selected[key]) {
-                return Err(format!(
-                    "report_catalogue_incomplete: {locale}.{key}: placeholders must be preserved"
-                ));
+        for (language, messages) in &catalogue.locales {
+            for (key, original) in english {
+                if placeholders(original) != placeholders(&messages[key]) {
+                    return Err(format!(
+                        "report_catalogue_incomplete: {language}.{key}: placeholders must be preserved"
+                    ));
+                }
             }
         }
         Ok(Self {
@@ -330,6 +343,19 @@ mod tests {
             .unwrap()
             .remove("SHEET INDEX");
         assert!(Messages::new(Some("fr"), Some(&catalogue))
+            .unwrap_err()
+            .starts_with("report_catalogue_incomplete:"));
+    }
+    #[test]
+    fn an_override_cannot_remove_governed_messages_from_every_locale() {
+        let mut catalogue = serde_json::to_value(default_catalogue()).unwrap();
+        for language in ["en", "fr"] {
+            catalogue["locales"][language]
+                .as_object_mut()
+                .unwrap()
+                .remove("SHEET INDEX");
+        }
+        assert!(Messages::new(Some("en"), Some(&catalogue))
             .unwrap_err()
             .starts_with("report_catalogue_incomplete:"));
     }
