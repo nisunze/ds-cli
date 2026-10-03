@@ -26,6 +26,10 @@ pub const INDIVIDUAL: &[&str] = &[
 pub const MANDATORY_INDIVIDUAL_OUTPUT: &str = "voltage_drop";
 /// The tabular outputs, one list for every reader that classes a token.
 pub const TABULAR: &[&str] = &["xlsx", "network_information", "voltage_drop"];
+/// Public archive/download filters, consumed directly by CLI declarations.
+pub const DOWNLOAD_FORMATS: &[&str] = &[
+    "xlsx", "shp", "kmz", "gpkg", "pdf", "png", "zip", "geojsonl",
+];
 pub const COMBINED: &[&str] = &["shp", "xlsx", "geojsonseq"];
 pub const OPTIONAL_COMBINED: &[&str] = &["gpkg", "network_information"];
 
