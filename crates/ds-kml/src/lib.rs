@@ -399,25 +399,26 @@ pub fn layer_document(features: &[Value], geometry: &str) -> Option<Value> {
         };
     let identity = |v: &Value| v.clone();
     let colour = |v: &Value| css(v.as_str().unwrap());
+    let opacity = |v: &Value| json!(if v.as_bool().unwrap() { 1 } else { 0 });
     let mut doc = match geometry {
         "LineString" => json!({"type":"line", "paint": {
             "line-color": expression("LineStyle", "color", colour, css(defaults["metadata"]["kml"]["LineStyle"]["color"].as_str().unwrap())),
             "line-width": expression("LineStyle", "width", identity, defaults["metadata"]["kml"]["LineStyle"]["width"].clone())}}),
         "Polygon" => json!({"type":"fill", "paint": {
             "fill-color": expression("PolyStyle", "color", colour, css(defaults["metadata"]["kml"]["PolyStyle"]["color"].as_str().unwrap())),
-            "fill-opacity": expression("PolyStyle", "fill", |v| json!(if v.as_bool() == Some(false) {0} else {1}), json!(1))},
+            "fill-opacity": expression("PolyStyle", "fill", opacity, opacity(&defaults["metadata"]["kml"]["PolyStyle"]["fill"]))},
             "boundary":{"type":"line", "paint": {
                 "line-color": expression("LineStyle", "color", colour, css(defaults["metadata"]["kml"]["LineStyle"]["color"].as_str().unwrap())),
                 "line-width": expression("LineStyle", "width", identity, defaults["metadata"]["kml"]["LineStyle"]["width"].clone()),
-                "line-opacity": expression("PolyStyle", "outline", |v| json!(if v.as_bool() == Some(false) {0} else {1}), json!(1))}}}),
+                "line-opacity": expression("PolyStyle", "outline", opacity, opacity(&defaults["metadata"]["kml"]["PolyStyle"]["outline"]))}}}),
         _ => json!({"type":"symbol", "paint": {}, "layout": {
             "icon-image": expression("IconStyle", "href", identity, json!("")),
             "icon-size": expression("IconStyle", "scale", identity, defaults["metadata"]["kml"]["IconStyle"]["scale"].clone()),
             "icon-rotate": expression("IconStyle", "heading", identity, defaults["metadata"]["kml"]["IconStyle"]["heading"].clone()),
-            "icon-rotation-alignment":"map"}}),
+            "icon-rotation-alignment":defaults["layout"]["icon-rotation-alignment"]}}),
     };
-    doc["label"] = json!({"type":"symbol", "layout":{"visibility":"visible", "text-field":["get",defaults["metadata"]["label_field"]],
-        "text-size":expression("LabelStyle", "scale", |v| v.clone(), json!(1))},
+    doc["label"] = json!({"type":"symbol", "layout":{"visibility":defaults["label"]["layout"]["visibility"], "text-field":["get",defaults["metadata"]["label_field"]],
+        "text-size":expression("LabelStyle", "scale", identity, defaults["metadata"]["kml"]["LabelStyle"]["scale"].clone())},
         "paint":{"text-color":expression("LabelStyle", "color", colour, css(defaults["metadata"]["kml"]["LabelStyle"]["color"].as_str().unwrap()))}});
     let scale = doc["label"]["layout"]["text-size"].take();
     doc["label"]["layout"]["text-size"] =
@@ -434,8 +435,13 @@ pub fn layer_document(features: &[Value], geometry: &str) -> Option<Value> {
                 json!(["coalesce", ["get", "kml_line_color"], default_color])
         }
         "Polygon" => {
-            doc["paint"]["fill-color"] =
-                json!(["coalesce", ["get", "kml_fill_color"], default_color]);
+            doc["paint"]["fill-color"] = json!([
+                "coalesce",
+                ["get", "kml_fill_color"],
+                css(defaults["metadata"]["kml"]["PolyStyle"]["color"]
+                    .as_str()
+                    .unwrap())
+            ]);
             doc["boundary"]["paint"]["line-color"] =
                 json!(["coalesce", ["get", "kml_line_color"], default_color]);
         }

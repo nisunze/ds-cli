@@ -1,5 +1,7 @@
 {
   "type": "symbol",
+  "layout": { "icon-rotation-alignment": "map" },
+  "label": { "type": "symbol", "layout": { "visibility": "visible" } },
   "metadata": {
     "label_size_px": 16,
     "kml": {
