@@ -52,7 +52,11 @@
     "info_section_fill": "#DFCFBE",
     "schedule_title_fill": "#D3D3D3",
     "schedule_band_fill": "#F8F8F8",
-    "styled_header_font_factor": 1.08
+    "styled_header_font_factor": 1.08,
+    "min_font_pt": 4,
+    "styled_title_bold": true,
+    "section_bold": true,
+    "header_bold": true
   },
   "furniture": {
     "fill_outline_mm": 0.2,
@@ -64,7 +68,10 @@
     "scale_bar_stroke_mm": 0.18,
     "scale_bar_halo_mm": 0.6,
     "text_line_height": 1.35,
-    "paper_fill": "#ffffff"
+    "paper_fill": "#ffffff",
+    "legend_row_font_factor": 1.7,
+    "legend_group_bold": true,
+    "legend_group_font_width_factor": 1.08
   },
   "svg_font_family": "DejaVu Sans",
   "converter_font_family": "DejaVu Sans",

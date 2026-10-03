@@ -28,6 +28,10 @@ pub struct Label {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Table {
+    pub min_font_pt: f64,
+    pub styled_title_bold: bool,
+    pub section_bold: bool,
+    pub header_bold: bool,
     pub border_width_mm: f64,
     pub plain_header_fill: String,
     pub omission_fill: String,
@@ -43,6 +47,9 @@ pub struct Table {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Furniture {
+    pub legend_row_font_factor: f64,
+    pub legend_group_bold: bool,
+    pub legend_group_font_width_factor: f64,
     pub fill_outline_mm: f64,
     pub map_frame_mm: f64,
     pub rectangle_mm: f64,
@@ -165,6 +172,7 @@ impl Defaults {
                 ]
                 .contains(&a.as_str())
             })
+            || !bounded(self.table.min_font_pt, 1., 48.)
             || !bounded(self.table.border_width_mm, 0., 10.)
             || !bounded(self.table.styled_header_font_factor, 0.5, 2.)
             || [
@@ -193,6 +201,8 @@ impl Defaults {
             .iter()
             .any(|v| !bounded(*v, 0., 10.))
             || !bounded(self.furniture.text_line_height, 0.5, 5.)
+            || !bounded(self.furniture.legend_row_font_factor, 0.5, 5.)
+            || !bounded(self.furniture.legend_group_font_width_factor, 0.5, 5.)
             || [
                 self.map_fonts.title_a0_pt,
                 self.map_fonts.title_a3_pt,
