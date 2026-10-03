@@ -426,6 +426,21 @@ pub struct TableBinding {
     pub row_mm: Option<f64>,
     #[serde(default)]
     pub align: TableAlignment,
+    /// Number this table's layer once before the sheet is drawn, so the map
+    /// labels and this index print the same key numbers.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub numbering: Option<FeatureNumbering>,
+}
+
+/// One 1-based key number per feature of a table's layer, written into
+/// `property` in ascending `order_by` order (numbers numerically, text
+/// case-insensitively, ties in layer order). A key map declares it on its
+/// transformer index; nothing outside the sheet is changed.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct FeatureNumbering {
+    pub property: String,
+    pub order_by: String,
 }
 impl Default for TableBinding {
     fn default() -> Self {
@@ -451,6 +466,7 @@ impl Default for TableBinding {
             presentation: TablePresentation::Auto,
             row_mm: None,
             align: TableAlignment::Right,
+            numbering: None,
         }
     }
 }
@@ -1157,6 +1173,18 @@ pub(super) fn validate_with_semantic_layers(
             || element.text.len() > 4000
         {
             return Err("invalid element typography or color".into());
+        }
+        if let Some(numbering) = element.table.as_ref().and_then(|t| t.numbering.as_ref()) {
+            let table = element.table.as_ref().expect("numbering lives on a table");
+            if table.layer.is_empty()
+                || !identifier(&numbering.property)
+                || !identifier(&numbering.order_by)
+            {
+                return Err(format!(
+                    "table {} numbering needs its layer and identifier property and order_by",
+                    element.id
+                ));
+            }
         }
         if let Some(style) = &element.text_style {
             if element.kind != ElementKind::Text {
@@ -3037,6 +3065,34 @@ mod tests {
         assert_eq!(reply["plan"]["status"], "migrate");
         assert_eq!(reply["layout"]["style_keys"]["lv_lines"]["role"], "focused");
         assert_eq!(reply["layout"]["style_refs"], json!({}));
+    }
+    #[test]
+    fn table_numbering_is_declared_on_a_bound_layer_with_identifier_keys() {
+        let mut layout = default_layout();
+        let mut index = elements::new_element(ElementKind::Table, "index".into(), "");
+        index.rect = [12., 40., 80., 40.];
+        index.table.as_mut().unwrap().layer = "tr".into();
+        index.table.as_mut().unwrap().numbering = Some(FeatureNumbering {
+            property: "key_number".into(),
+            order_by: "name".into(),
+        });
+        layout.elements.push(index);
+        validate(&layout).unwrap();
+        let held = serde_json::to_value(&layout).unwrap();
+        assert_eq!(
+            held["elements"].as_array().unwrap().last().unwrap()["table"]["numbering"],
+            json!({"property":"key_number","order_by":"name"})
+        );
+        let last = layout.elements.len() - 1;
+        layout.elements[last]
+            .table
+            .as_mut()
+            .unwrap()
+            .numbering
+            .as_mut()
+            .unwrap()
+            .property = "key number".into();
+        assert!(validate(&layout).unwrap_err().contains("numbering"));
     }
     #[test]
     fn text_style_is_bounded_to_bundled_faces_and_omitted_when_unset() {

@@ -72,6 +72,7 @@ pub fn new_element(kind: ElementKind, id: String, asset: &str) -> Element {
             row_mm: None,
             align: Default::default(),
             presentation: Default::default(),
+            numbering: None,
         }),
         // A legend carries its binding from the start, so an inspector reads
         // the values the document holds rather than guessing them.
