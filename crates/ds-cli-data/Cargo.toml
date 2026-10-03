@@ -9,7 +9,7 @@ authors.workspace = true
 publish.workspace = true
 
 [dependencies]
-ds-network = { path = "../../../ds-network/crates/ds-network" }
+ds-network = { path = "../../../ds-network/crates/ds-network", features = ["arrow_ipc"] }
 ureq = { workspace = true }
 ds-cli-contract = { workspace = true }
 ds-cli-desktop = { workspace = true }

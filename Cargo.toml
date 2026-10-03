@@ -96,7 +96,7 @@ ds-client-core = { path = "../ds-command-kernel/crates/ds-client-core" }
 ds-edge-authority = { path = "../ds-command-kernel/crates/ds-edge-authority" }
 ds-sync-runtime = { path = "../ds-command-kernel/crates/ds-sync-runtime" }
 ds-geo-lite = { path = "../ds-command-kernel/crates/ds-geo-lite" }
-ds-geo = { path = "../ds-network/crates/ds-geo" }
+ds-geo = { path = "../ds-network/crates/ds-geo", features = ["arrow_ipc"] }
 ds-cli-desktop = { path = "crates/ds-cli-desktop" }
 ds-cli-design = { path = "crates/ds-cli-design" }
 ds-cli-exec = { path = "crates/ds-cli-exec" }
@@ -134,7 +134,7 @@ ds-grid-engine = { path = "../ds-network/crates/ds-grid-engine" }
 ds-grid-exchange = { path = "../ds-network/crates/ds-grid-exchange" }
 ds-grid-tasks = { path = "../ds-network/crates/ds-grid-tasks" }
 ds-io = { path = "../ds-network/crates/ds-io" }
-ds-network = { path = "../ds-network/crates/ds-network" }
+ds-network = { path = "../ds-network/crates/ds-network", features = ["arrow_ipc"] }
 
 [profile.release]
 opt-level = "s"
