@@ -159,11 +159,15 @@ pub fn bind_style_keys(layout: &mut Layout, layer: &PrintContextLayer) {
             PrintContextSource::Catalog { layer, .. } => {
                 style_key(layer, "cold_existing", "context")
             }
-            PrintContextSource::LocalLayer { .. } => style_key(&id, "live_geojson", "context"),
+            PrintContextSource::LocalLayer { .. } | PrintContextSource::Survey { .. } => {
+                style_key(&id, "live_geojson", "context")
+            }
             PrintContextSource::GoogleOpenBuildings { .. } => {
                 style_key("buildings_context", "derived_geojson", "context")
             }
-            _ => style_key(&id, "derived_geojson", "context"),
+            PrintContextSource::ElevationContours { .. } => {
+                style_key(&id, "derived_geojson", "context")
+            }
         };
         layout.style_keys.insert(id, key);
     }
