@@ -5,25 +5,12 @@
 //! generated. The engineering is entirely the application's — the same
 //! kernel, through the same edit session the operator's own run uses.
 //!
-//! ## The differential is the interesting half
-//!
-//! A full run recalculates everything, including the as-built network that
-//! was just marked approved. `--differential-where drafting_status=draft`
-//! narrows the run to the LV lines that matched, freezing the rest for that
-//! one run. The freeze is transient: the kernel treats the frozen rows as
-//! approved for the run and strips the flag from every output, so the
-//! operator's real `drafting_status` is untouched.
-//!
-//! Two things about that are reported rather than hidden. A differential
-//! selector that matches nothing is a refusal from the application, not a
-//! silent widening into a full run — because a full run is exactly what the
-//! caller was trying to avoid. And a blocking diagnostic makes the kernel run
-//! full regardless, which arrives here as `blocked_from_differential: true`
-//! alongside `mode`, so a caller can tell that the freeze did not hold.
+//! A JSON differential request is forwarded unchanged to the LV owner. The
+//! same selection/edit intent is used by the browser and native processors.
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Arg, ArgKind, Authority, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
+    Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
@@ -31,35 +18,11 @@ use serde_json::{Map, Value, json};
 use crate::DESCRIPTOR_ARG;
 use crate::design::TRANSFORMER_ARG;
 
-const DIFFERENTIAL_WHERE: Arg = Arg {
-    name: "differential-where",
-    kind: ArgKind::Repeated,
-    value: "<key=value>",
-    required: false,
-    default: None,
-    choices: &[],
-    summary: "Recalculate only lv_lines matching this. Repeat to AND.",
-};
-
-const DIFFERENTIAL_ID: Arg = Arg {
-    name: "differential-id",
-    kind: ArgKind::Repeated,
-    value: "<feature-id>",
-    required: false,
-    default: None,
-    choices: &[],
-    summary: "Recalculate only these lv_lines. Repeat.",
-};
-
-const DIFFERENTIAL_BBOX: Arg = Arg {
-    name: "differential-bbox",
-    kind: ArgKind::Value,
-    value: "<w,s,e,n>",
-    required: false,
-    default: None,
-    choices: &[],
-    summary: "Recalculate only lv_lines meeting this box, in degrees.",
-};
+const REQUEST: Arg = Arg::value(
+    "request",
+    "<json-file>",
+    "The web differential request: {selected_feeders:[id,...], auto_process?:{differential_enabled,is_mv_session,accumulator_bound,force_full,changed_features:[{layer_name,feature_id}]}}; at most 1 MiB. Omit for a full run.",
+);
 
 /// Enough warnings to see what went wrong; the application caps its own list
 /// at fifty.
@@ -68,42 +31,34 @@ const DEFAULT_LIMIT: &str = "10";
 pub static COMMAND: Command = Command {
     id: "map.design.process",
     path: &["map", "design", "process"],
-    contract: 1,
+    contract: 2,
     summary: "Run the LV process on a staged transformer.",
-    purpose: "\
-Generates the LV network for one transformer — customers, poles, spans and \
-service cables — through the same kernel and the same edit session the \
-operator's own run uses. With no differential flags it runs FULL, \
-recalculating everything. Any differential flag narrows it to the matching \
-lv_lines and freezes the rest for that run only. It stages; nothing reaches \
-the project until `ds map design save`.",
+    purpose: "Generates the LV network for one transformer through the Rust LV pipeline. Pass --request with the same JSON differential selection or AutoProcess edits the web sends; Rust decides the scope and freeze. Omit it for a full run. It stages; nothing reaches the project until `ds map design save`.",
     chapter: Chapter::Design,
     effect: Effect::LocalUi,
     authority: Authority::Project,
     execution: Execution::Sync,
     args: &[
         TRANSFORMER_ARG,
-        DIFFERENTIAL_WHERE,
-        DIFFERENTIAL_ID,
-        DIFFERENTIAL_BBOX,
+        REQUEST,
         Arg::value("limit", "<n>", "Report at most this many warnings; 0..50.")
             .default(DEFAULT_LIMIT),
         DESCRIPTOR_ARG,
     ],
     output: "\
 Whether the run was `full` or `differential` and how many lv_lines it \
-selected, whether a blocking diagnostic forced it full anyway, the layer and \
+selected, whether captured edits and blocking diagnostics forced a full AutoProcess run, the layer and \
 feature counts it produced, per-layer totals, bounded warnings, and `staged` \
 and `persisted` separately.",
     examples: &[
         Example {
-            command: "ds map design process --transformer T-1042 --differential-where drafting_status=draft --output json",
-            note: "Only the new feeders move; the approved as-built network is frozen.",
+            command: "ds map design process --transformer T-1042 --request feeders.json --output json",
+            note: "feeders.json contains a selected_feeders array. Rust freezes everything outside the selection.",
             runnable: false,
         },
         Example {
             command: "ds map design process --transformer T-1042",
-            note: "No differential flags: a full run, recalculating everything.",
+            note: "No request: a full run, recalculating everything.",
             runnable: false,
         },
     ],
@@ -116,15 +71,17 @@ and `persisted` separately.",
         Refusal {
             code: "desktop_refused",
             when: "the differential matched no lv_lines, those lines carry no stable id, or an edit is already open",
-            remedy: "run `ds map design select --layer lv_lines` with the same selector to see what it matches",
+            remedy: "run `ds map design read --transformer <name>` to inspect feature ids and the open edit context",
         },
         crate::UNSUPPORTED,
         crate::UNREADABLE,
         crate::SIGNED_OUT,
-        crate::INVALID_PAIR,
-        crate::INVALID_BBOX,
         crate::INVALID_NUMBER,
-        super::TOO_MANY_IDS,
+        Refusal {
+            code: "differential_request_invalid",
+            when: "the request file cannot be read, exceeds 1 MiB, or is not JSON",
+            remedy: "pass --request with the JSON body described by this command; Rust validates its fields",
+        },
     ],
     reference: Some("docs/reference/map.md"),
     search: &[],
@@ -136,15 +93,26 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let transformer = inputs.require("transformer")?;
     let limit = crate::integer(inputs.require("limit")?, "limit", 0, 50)? as usize;
 
-    let differential = super::selector(inputs, "differential")?;
     let mut arguments = Map::new();
     arguments.insert("transformer".into(), json!(transformer));
-    // Absent rather than empty. An empty differential object would ask the
-    // application to narrow to nothing, and it refuses that rather than
-    // widening — which would turn "no flags given" into a hard failure
-    // instead of the full run it means.
-    if !differential.is_empty() {
-        arguments.insert("differential".into(), Value::Object(differential.clone()));
+    if let Some(path) = inputs.value("request") {
+        use std::io::Read;
+        let invalid = |error: String| {
+            Failure::invalid("differential_request_invalid", error)
+                .remedy("pass --request with the JSON body described by this command")
+        };
+        let mut bytes = Vec::new();
+        std::fs::File::open(path)
+            .map_err(|e| invalid(e.to_string()))?
+            .take(1024 * 1024 + 1)
+            .read_to_end(&mut bytes)
+            .map_err(|e| invalid(e.to_string()))?;
+        if bytes.len() > 1024 * 1024 {
+            return Err(invalid("request exceeds 1 MiB".into()));
+        }
+        let differential: Value =
+            serde_json::from_slice(&bytes).map_err(|e| invalid(e.to_string()))?;
+        arguments.insert("differential".into(), differential);
     }
 
     let descriptor = crate::paired(inputs.value("desktop-descriptor"))?;
@@ -165,15 +133,9 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         "transformer": transformer,
         "project": result["project"],
         "mode": result["mode"],
-        "selector": if differential.is_empty() {
-            Value::Null
-        } else {
-            json!(super::describe(&differential))
-        },
         "differential_selected": result["differentialSelected"].as_u64().unwrap_or(0),
-        // True means a blocking diagnostic made the kernel run full even
-        // though a differential was asked for. Reported because the freeze
-        // silently not holding is the failure a caller cannot see otherwise.
+        // The Rust preview owns this diagnostic receipt; a manual selection
+        // can remain differential even when retry diagnostics exist.
         "blocked_from_differential": result["blockedFromDifferential"].as_bool().unwrap_or(false),
         "layers": result["layerCount"],
         "features": result["featureCount"],
@@ -199,9 +161,9 @@ pub fn render(data: &Value) -> String {
         mode,
         data["transformer"].as_str().unwrap_or("")
     );
-    if let Some(selector) = data["selector"].as_str() {
+    if mode == "differential" {
         out.push_str(&format!(
-            "  selector  {selector}  ·  {} lv_line(s)\n",
+            "  {} lv_line(s) selected\n",
             data["differential_selected"]
         ));
     }
