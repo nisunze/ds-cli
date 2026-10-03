@@ -4,7 +4,7 @@ use ds_cli_contract::spec::{
     Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
-use ds_grid_tasks::placed_structure_inventory;
+use ds_grid_tasks::{backup_stringing_inventory, placed_structure_inventory};
 use serde_json::Value;
 use std::path::PathBuf;
 
@@ -13,18 +13,30 @@ pub static COMMAND: Command = Command {
     path: &["pls", "structure-inventory"],
     contract: 1,
     summary: "Count placed structures in a PLS-CADD backup, DON or workspace.",
-    purpose: "Reads DON design blocks through the native parser and counts actual placed rows by structure definition leaf. Keeps projects and active or historical blocks separate, so unused library files never enter the denominator. Read-only; no CRS or native conversion required.",
+    purpose: "Reads DON design blocks through the native parser and counts actual placed rows by structure definition leaf. Keeps projects and active or historical blocks separate. With --stringing, reads one .bak without normalization and reports bounded section evidence: STRUCT set addresses, phase counts, dead-end flags and display labels, plus every PLS-CADD load-rule blocker count. No CRS or model import is required. A clean headless check does not grant native Restore/reopen acceptance.",
     chapter: Chapter::PlsCadd,
     effect: Effect::Discovery,
     authority: Authority::None,
     execution: Execution::Sync,
-    args: &[Arg::value(
-        "source",
-        "<bak|don|dir>",
-        "Native backup, direct DON, or workspace folder.",
-    )
-    .required()],
-    output: "Per DON and design block: exact placed total, case-insensitive A- family count and fraction, definition leaf counts, active marker, and source digest.",
+    args: &[
+        Arg::value(
+            "source",
+            "<bak|don|dir>",
+            "Native backup, direct DON, or workspace folder.",
+        )
+        .required(),
+        Arg::switch(
+            "stringing",
+            "Check native section endpoints and phase counts; requires a .bak.",
+        ),
+        Arg::value(
+            "limit",
+            "<1..5000>",
+            "Cap stringing findings and sections; withheld counts stay explicit.",
+        )
+        .default("50"),
+    ],
+    output: "Placed counts by DON block, or --stringing: source and DON/STR/PPS digests, all blocker counts, bounded findings and section/set evidence, and explicit withheld counts.",
     examples: &[Example {
         command: "ds pls structure-inventory --source ./model.bak --output json",
         note: "Read placed rows without importing or changing the model.",
@@ -60,17 +72,33 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
                 .remedy("pass an existing backup, DON, or workspace directory"),
         );
     }
-    placed_structure_inventory(
-        &source
-            .canonicalize()
-            .map_err(|e| Failure::failed("task_refused", e.to_string()))?,
-    )
-    .map_err(|e| {
+    let source = source
+        .canonicalize()
+        .map_err(|e| Failure::failed("task_refused", e.to_string()))?;
+    let result = if inputs.switch("stringing") {
+        let limit = inputs
+            .value("limit")
+            .unwrap_or("50")
+            .parse::<usize>()
+            .map_err(|_| Failure::invalid("task_refused", "limit must be 1..5000"))?;
+        backup_stringing_inventory(&source, limit)
+    } else {
+        placed_structure_inventory(&source)
+    };
+    result.map_err(|e| {
         Failure::failed("task_refused", e)
             .remedy("inspect the source and report the parser's exact detail")
     })
 }
 pub fn render(data: &Value) -> String {
+    if data.get("stringing").is_some() {
+        return format!(
+            "{} structures, {} sections, {} stringing blockers; native Restore/reopen unverified\n",
+            data["stringing"]["structure_count"],
+            data["stringing"]["section_count"],
+            data["stringing"]["blocker_count"]
+        );
+    }
     let mut out = String::new();
     if let Some(projects) = data["projects"].as_array() {
         for project in projects {

@@ -42,6 +42,25 @@ ds pls shading-variants --backup './Final Huye Gisagara.bak' --source-sha256 'sh
 The receipt proves the changed model set and carries before/after digests.
 Fresh native Restore/reopen remains a separate acceptance gate.
 
+## Exact native stringing evidence
+
+`structure-inventory --stringing` reads a `.bak` through the native backup
+reader, without importing or normalizing it. It checks dead-end section
+endpoints, suspension interiors, matching endpoint phase counts, referenced
+phase slots, structure-instance set inventories, cable definitions and the
+exact sequential DON support table. Attachment roles come from explicit
+STRUCT fields and numeric set addresses; display labels do not select sets.
+
+```bash
+ds pls structure-inventory --source ./candidate.bak --stringing --limit 2000 --output json
+```
+
+The result includes DON/STR/PPS digests and bounded section evidence with
+selected and available sets, phase counts, dead-end flags and display labels.
+`--limit` defaults to 50; withheld section and finding counts stay explicit,
+and the total blocker count is never truncated. A zero headless blocker count
+does not grant native Restore/reopen acceptance.
+
 ## Complete backup creation
 
 `backup-create` takes a closed, already portable workspace and an absent
