@@ -226,6 +226,7 @@ pub fn plan(r: &Request, boundaries: Vec<Boundary>, sheets: &Value) -> Result<Va
             l.style_refs = base.style_refs.clone();
             l.style_keys = base.style_keys.clone();
             l.attribution = base.attribution.clone();
+            l.ink_mode = base.ink_mode;
             l.context_layers = base.context_layers.clone();
             l.layer_order = base.layer_order.clone();
             l.style_overrides = base.style_overrides.clone();

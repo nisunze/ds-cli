@@ -89,6 +89,8 @@ pub struct LegacyAttribution {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Defaults {
+    /// Bounded physical raster size for held PNG logos.
+    pub logo_dpi: u32,
     pub base_style: super::PrintStyle,
     pub label: Label,
     pub table: Table,
@@ -146,7 +148,8 @@ pub fn from_document(document: &serde_json::Value) -> Result<Defaults, String> {
 impl Defaults {
     pub fn validate(&self) -> Result<(), String> {
         let bounded = super::bounded;
-        if !super::color(&self.label.color)
+        if !(72..=1200).contains(&self.logo_dpi)
+            || !super::color(&self.label.color)
             || !super::color(&self.label.halo)
             || !bounded(self.label.halo_mm, 0., 10.)
             || !bounded(self.label.padding_mm, 0., 20.)
@@ -248,6 +251,36 @@ impl Defaults {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn logo_resolution_is_required_bounded_and_integer() {
+        let value: serde_json::Value = serde_json::from_str(include_str!(
+            "../../tests/fixtures/governed-renderer-defaults.json"
+        ))
+        .unwrap();
+        for dpi in [72, 300, 1200] {
+            let mut candidate = value.clone();
+            candidate["logo_dpi"] = serde_json::json!(dpi);
+            serde_json::from_value::<Defaults>(candidate)
+                .unwrap()
+                .validate()
+                .unwrap();
+        }
+        for dpi in [0, 71, 1201] {
+            let mut candidate = value.clone();
+            candidate["logo_dpi"] = serde_json::json!(dpi);
+            assert!(serde_json::from_value::<Defaults>(candidate)
+                .unwrap()
+                .validate()
+                .is_err());
+        }
+        let mut fractional = value.clone();
+        fractional["logo_dpi"] = serde_json::json!(300.5);
+        assert!(serde_json::from_value::<Defaults>(fractional).is_err());
+        let mut missing = value;
+        missing.as_object_mut().unwrap().remove("logo_dpi");
+        assert!(serde_json::from_value::<Defaults>(missing).is_err());
+    }
+
     #[test]
     fn defaults_are_complete_closed_and_refuse_a_wrong_source_or_digest() {
         let value: serde_json::Value = serde_json::from_str(include_str!(

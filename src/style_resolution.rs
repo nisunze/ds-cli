@@ -28,7 +28,7 @@ pub enum Ink {
     Monochrome,
 }
 impl Ink {
-    fn is_colour(&self) -> bool {
+    pub(crate) fn is_colour(&self) -> bool {
         *self == Self::Colour
     }
 }

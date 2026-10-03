@@ -51,6 +51,12 @@ pub const MAX_INPUT_BYTES: usize = 32 * 1024 * 1024;
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct Layout {
+    /// Paper identity only; exact governed style keys determine the pens.
+    #[serde(
+        default,
+        skip_serializing_if = "crate::style_resolution::Ink::is_colour"
+    )]
+    pub ink_mode: crate::style_resolution::Ink,
     /// Governed attribution typography held by the printing document.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub attribution: Option<attribution::Style>,
@@ -1500,6 +1506,7 @@ pub fn default_layout() -> Layout {
         opacity: opaque(),
     };
     complete(Layout {
+        ink_mode: crate::style_resolution::Ink::Colour,
         attribution: None,
         mv: None,
         composition: None,
@@ -2807,6 +2814,34 @@ pub fn command_schema() -> serde_json::Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn layout_ink_identity_is_closed_and_preserves_authored_pens() {
+        let colour = default_layout();
+        let mut value = serde_json::to_value(&colour).unwrap();
+        assert!(value.get("ink_mode").is_none());
+        value["ink_mode"] = json!("monochrome");
+        let monochrome: Layout = serde_json::from_value(value.clone()).unwrap();
+        validate(&monochrome).unwrap();
+        assert_eq!(
+            monochrome.ink_mode,
+            crate::style_resolution::Ink::Monochrome
+        );
+        assert_eq!(monochrome.styles, colour.styles);
+        assert_eq!(monochrome.elements, colour.elements);
+        assert_eq!(
+            serde_json::to_value(&monochrome).unwrap()["ink_mode"],
+            "monochrome"
+        );
+        value["ink_mode"] = json!("gray");
+        assert!(serde_json::from_value::<Layout>(value.clone()).is_err());
+        value["ink_mode"] = json!("colour");
+        value["ink"] = json!("monochrome");
+        assert!(serde_json::from_value::<Layout>(value)
+            .unwrap_err()
+            .to_string()
+            .contains("unknown field"));
+    }
 
     #[test]
     fn metric_corridor_roundtrips_and_rejects_invalid_distance() {
