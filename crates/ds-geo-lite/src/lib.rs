@@ -32,6 +32,7 @@ pub mod viewport;
 pub mod operations;
 pub mod primitives;
 pub mod types;
+pub mod vector_types;
 use types::Coord;
 pub use types::EARTH_RADIUS_M;
 
