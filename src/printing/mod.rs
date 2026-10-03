@@ -697,6 +697,49 @@ pub enum TextAlign {
     Right,
 }
 
+/// A bundled typeface family. Hosts measure and draw only faces every
+/// renderer ships, so a PDF, a raster and a preview agree glyph for glyph.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum FontFamily {
+    #[default]
+    Sans,
+    Serif,
+}
+
+/// Authored typography of one text element: family, weight, slant and
+/// letter spacing. Omission keeps the renderer's regular sans face.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct TextStyle {
+    #[serde(default, skip_serializing_if = "is_sans")]
+    pub family: FontFamily,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub bold: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub italic: bool,
+    /// Extra space after each letter, in em of the element's font size.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub tracking_em: f64,
+}
+fn is_sans(family: &FontFamily) -> bool {
+    *family == FontFamily::Sans
+}
+fn is_zero(value: &f64) -> bool {
+    *value == 0.
+}
+impl TextStyle {
+    pub fn validate(&self) -> Result<(), String> {
+        if !self.tracking_em.is_finite() || !(0.0..=0.5).contains(&self.tracking_em) {
+            return Err("text tracking_em must be between 0 and 0.5".into());
+        }
+        if self.family == FontFamily::Serif && self.italic {
+            return Err("no bundled serif italic face; use sans italic or upright serif".into());
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct Element {
@@ -709,6 +752,9 @@ pub struct Element {
     /// ignore it.
     #[serde(default, skip_serializing_if = "is_left")]
     pub align: TextAlign,
+    /// Typeface, weight, slant and letter spacing of a text element.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub text_style: Option<TextStyle>,
     #[serde(default)]
     pub asset: String,
     #[serde(default = "font")]
@@ -1111,6 +1157,17 @@ pub(super) fn validate_with_semantic_layers(
             || element.text.len() > 4000
         {
             return Err("invalid element typography or color".into());
+        }
+        if let Some(style) = &element.text_style {
+            if element.kind != ElementKind::Text {
+                return Err(format!(
+                    "element {} carries text_style but is not text",
+                    element.id
+                ));
+            }
+            style
+                .validate()
+                .map_err(|e| format!("element {}: {e}", element.id))?;
         }
         if element.kind == ElementKind::Map {
             maps += 1;
@@ -1555,6 +1612,7 @@ pub fn default_layout() -> Layout {
         rect,
         text: text.into(),
         align: TextAlign::Left,
+        text_style: None,
         asset: String::new(),
         font_pt,
         color: ink(),
@@ -2945,6 +3003,45 @@ pub fn command_schema() -> serde_json::Value {
 mod tests {
     use super::*;
 
+    #[test]
+    fn text_style_is_bounded_to_bundled_faces_and_omitted_when_unset() {
+        let mut layout = default_layout();
+        let title = layout
+            .elements
+            .iter()
+            .position(|e| e.kind == ElementKind::Text)
+            .unwrap();
+        let unstyled = serde_json::to_value(&layout).unwrap();
+        assert!(unstyled["elements"][title].get("text_style").is_none());
+        layout.elements[title].text_style = Some(TextStyle {
+            family: FontFamily::Serif,
+            bold: true,
+            italic: false,
+            tracking_em: 0.25,
+        });
+        validate(&layout).unwrap();
+        let held = serde_json::to_value(&layout).unwrap();
+        assert_eq!(
+            held["elements"][title]["text_style"],
+            json!({"family":"serif","bold":true,"tracking_em":0.25})
+        );
+        assert_eq!(serde_json::from_value::<Layout>(held).unwrap(), layout);
+        layout.elements[title].text_style.as_mut().unwrap().italic = true;
+        assert!(validate(&layout).unwrap_err().contains("serif italic"));
+        layout.elements[title].text_style = Some(TextStyle {
+            tracking_em: 0.6,
+            ..Default::default()
+        });
+        assert!(validate(&layout).unwrap_err().contains("tracking_em"));
+        layout.elements[title].text_style = None;
+        let frame = layout
+            .elements
+            .iter()
+            .position(|e| e.kind != ElementKind::Text)
+            .unwrap();
+        layout.elements[frame].text_style = Some(TextStyle::default());
+        assert!(validate(&layout).unwrap_err().contains("not text"));
+    }
     #[test]
     fn layout_ink_identity_is_closed_and_preserves_authored_pens() {
         let colour = default_layout();
