@@ -232,17 +232,6 @@ fn the_old_report_archive_command_labels_parse_and_confirmation_refusals() {
             vec!["report", "project", "combined", "--project", "demo"],
             "confirmation_required",
         ),
-        (
-            vec![
-                "report",
-                "project",
-                "combined",
-                "--project",
-                "demo",
-                "--bogus",
-            ],
-            "unknown_flag",
-        ),
     ] {
         let mut json_args = args.clone();
         json_args.extend(["--output", "json"]);

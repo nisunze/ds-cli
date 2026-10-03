@@ -683,6 +683,7 @@ its holes. --out exports a derived GeoJSON or Arrow layer with length_m, area_m2
         "geoprocessing",
         "gis",
         "spatial",
+        "geometry",
         "perimeter",
         "distance",
         "st_length",

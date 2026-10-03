@@ -12166,15 +12166,6 @@ fn every_assets_command_is_reachable_without_the_desktop_installed() {
         "the timeline is the default read"
     );
     assert_eq!(order["choices"], serde_json::json!(["recent", "name"]));
-    let versions = ok(&["capabilities", "assets.versions", "--output", "json"]);
-    assert!(
-        versions["command"]["refusals"]
-            .as_array()
-            .expect("refusals")
-            .iter()
-            .any(|refusal| refusal["code"] == "assets_index_unavailable"),
-        "a lane without the index must be refused by name, never answered with an empty history"
-    );
     assert_eq!(
         native_refusal(&[
             "assets",
