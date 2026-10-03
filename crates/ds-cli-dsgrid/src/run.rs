@@ -54,16 +54,11 @@ pub static COMMAND: Command = Command {
     contract: 1,
     summary: "Run one native DS Grid read, solve, or proposal headlessly.",
     purpose: "\
-Opens one verified .dsgrid package and executes an operation published by the \
-native engine's live descriptor catalogue. Only non-journaled read, solve and \
-propose operations are admitted. The source file is never changed, no command \
-enters the model journal, and the typed result is recursively bounded with \
-explicit truncation receipts. For structure usage, discover analyze_model_defaults, \
-screen_structure_usage, structure_capacity_tables and engineering_issue_layer \
-through dsgrid describe. Analyze and Issues report structure_screening_needs_inputs \
-as a blocking finding with a full affected-structure count and named blockers. \
-Profile index requests use the default native \
-atlas; copy its revision and axis pin from project_profile_atlas with default options.",
+Runs one native read, solve or proposal on a verified .dsgrid package without \
+journaling. Results retain exact source/revision pins and truncation receipts. \
+Discover structure usage and Analyze/Issues through dsgrid describe; missing \
+screening inputs remain blocking findings with exact affected counts. Profile \
+indices require the default project_profile_atlas revision and axis pin.",
     chapter: Chapter::GridModel,
     effect: Effect::ReadOnly,
     authority: Authority::None,
@@ -193,8 +188,8 @@ path can check it; its request's max_reported_rejections bounds its rows.",
         "model analysis",
         "structure usage",
         "structure screening",
-        "screening needs inputs",
-        "capacity load handshake",
+        "screening inputs",
+        "capacity handshake",
     ],
     requires: Requires::Server,
     availability: available,

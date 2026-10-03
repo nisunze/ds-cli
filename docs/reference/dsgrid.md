@@ -352,6 +352,14 @@ ds dsgrid describe --kind operations --id project_profile
 ds dsgrid run --model model.dsgrid --operation project_profile --params profile.json --output json
 ```
 
+For structure usage, discover `analyze_model_defaults`,
+`screen_structure_usage`, `structure_capacity_tables`, and
+`engineering_issue_layer` through `ds dsgrid describe --kind operations --id <id>`.
+Analyze and Issues report `structure_screening_needs_inputs` as a blocking
+finding with the full affected-structure count and named blockers.
+Profile index requests use the default native atlas: copy its revision and axis
+pin from `project_profile_atlas` with default options.
+
 Optimum structure spotting uses the same mapless path. Discover the exact
 request first, then provide only authored ids and bounds from that model
 revision:
