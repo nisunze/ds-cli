@@ -21,6 +21,7 @@ chrono = "0.4"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 sha2 = "0.10"
+tempfile = "3"
 # Both native hosts already resolve ureq 3.4.x; this asks for nothing newer.
 ureq = "3.3"
 url = "2"
@@ -30,7 +31,6 @@ uuid = { version = "1", features = ["v4"] }
 # The route table is cross-checked against the reviewed gateway registry.
 ds-client-core = { path = "../ds-client-core" }
 ds-sync-runtime = { path = ".", features = ["fakes"] }
-tempfile = "3"
 
 # Native host crate: not part of the portable WASM workspace.
 [workspace]

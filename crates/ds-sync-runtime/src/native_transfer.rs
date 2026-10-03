@@ -6,9 +6,9 @@
 //! supply an already receipt-sealed, seekable handle; the declared digest is
 //! re-proved while bytes leave the process.
 
-use std::io::{self, Read, Seek, SeekFrom};
+use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
 
 use ds_command_kernel::transfer::{
     self, Action, Cause, Event, Phase, RangeObservation, Stage, TransferPlan, TransferState,
@@ -16,7 +16,7 @@ use ds_command_kernel::transfer::{
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 
-use crate::rows::TransferReceipt;
+use crate::rows::{now_ms, TransferReceipt};
 
 const ALLOWED_STORAGE_SESSION_HOSTS: &[&str] = &["storage.googleapis.com"];
 const MAX_SESSION_URI_BYTES: usize = 4096;
@@ -51,6 +51,8 @@ pub enum NativeTransferOutcome {
 
 #[derive(Clone, Debug)]
 pub struct NativeTransferResult {
+    /// Last observed storage status, retained for host refusal mapping.
+    pub last_http_status: Option<u16>,
     pub outcome: NativeTransferOutcome,
     pub cause: Option<Cause>,
     pub retryable: bool,
@@ -96,14 +98,6 @@ pub fn validated_storage_session(raw: &str) -> Result<String, SessionRefusal> {
 struct KernelReply {
     state: TransferState,
     action: Action,
-}
-
-fn now_ms() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_or(0, |value| {
-            value.as_millis().min(u128::from(u64::MAX)) as u64
-        })
 }
 
 fn kernel_step(
@@ -321,6 +315,7 @@ struct Driver<'a, R: Read + Seek> {
     cancel: &'a dyn Fn() -> bool,
     progress: &'a mut dyn FnMut(NativeTransferProgress),
     widest_read: AtomicUsize,
+    last_http_status: Option<u16>,
 }
 
 impl<R: Read + Seek> Driver<'_, R> {
@@ -343,6 +338,7 @@ impl<R: Read + Seek> Driver<'_, R> {
         {
             Ok(response) => {
                 let (status, range) = observe(response);
+                self.last_http_status = Some(status);
                 Event::ProbeResponse { status, range }
             }
             Err(error) => {
@@ -397,6 +393,7 @@ impl<R: Read + Seek> Driver<'_, R> {
         match response {
             Ok(response) => {
                 let (status, range) = observe(response);
+                self.last_http_status = Some(status);
                 Event::ChunkResponse {
                     status,
                     range,
@@ -496,6 +493,7 @@ impl<R: Read + Seek> Driver<'_, R> {
             match reply.action.clone() {
                 Action::Done { committed } => {
                     return Ok(NativeTransferResult {
+                        last_http_status: self.last_http_status,
                         outcome: NativeTransferOutcome::Done,
                         cause: None,
                         retryable: false,
@@ -506,6 +504,7 @@ impl<R: Read + Seek> Driver<'_, R> {
                 }
                 Action::Reopen { cause } => {
                     return Ok(NativeTransferResult {
+                        last_http_status: self.last_http_status,
                         outcome: NativeTransferOutcome::Reopen,
                         cause: Some(cause),
                         retryable: true,
@@ -516,6 +515,7 @@ impl<R: Read + Seek> Driver<'_, R> {
                 }
                 Action::Fail { cause, retryable } => {
                     return Ok(NativeTransferResult {
+                        last_http_status: self.last_http_status,
                         outcome: NativeTransferOutcome::Failed,
                         cause: Some(cause),
                         retryable,
@@ -545,6 +545,72 @@ impl<R: Read + Seek> Driver<'_, R> {
         }
         Err("transfer exceeded its bounded step count".into())
     }
+}
+
+/// Seal a forward-only host stream into a private temporary file. The bounded
+/// staging pass establishes exact size and digest; the existing native driver
+/// re-proves that digest before reporting completion, including resumed prefixes.
+/// The temporary handle is deleted on drop and holds no storage credential.
+fn seal_stream<R: Read + ?Sized>(
+    total_bytes: u64,
+    reader: &mut R,
+) -> Result<(std::fs::File, String), String> {
+    if total_bytes == 0 {
+        return Err("a resumable transfer needs at least one byte".into());
+    }
+    let mut file = tempfile::tempfile().map_err(|_| "could not stage native upload stream")?;
+    let mut digest = Sha256::new();
+    let mut total = 0_u64;
+    let mut buffer = vec![0_u8; MAX_BODY_READ_BYTES];
+    loop {
+        // Read at most one extra byte to detect an oversized declaration.
+        let budget = total_bytes
+            .saturating_sub(total)
+            .saturating_add(1)
+            .min(MAX_BODY_READ_BYTES as u64) as usize;
+        let read = reader
+            .read(&mut buffer[..budget])
+            .map_err(|_| "could not read native upload stream")?;
+        if read == 0 {
+            break;
+        }
+        total = total.saturating_add(read as u64);
+        if total > total_bytes {
+            return Err("native upload stream does not match its declared size".into());
+        }
+        file.write_all(&buffer[..read])
+            .map_err(|_| "could not stage native upload stream")?;
+        digest.update(&buffer[..read]);
+    }
+    if total != total_bytes {
+        return Err("native upload stream does not match its declared size".into());
+    }
+    file.seek(SeekFrom::Start(0))
+        .map_err(|_| "could not rewind staged native upload stream")?;
+    Ok((file, format!("{:x}", digest.finalize())))
+}
+
+/// Native hosts whose closed client call supplies only `Read` use this door.
+/// Validate storage authority before touching the stream, then seal once and
+/// drive the sole verified native transport. No whole-artifact memory buffer.
+pub fn drive_upload_stream<R: Read + ?Sized>(
+    session_uri: &str,
+    total_bytes: u64,
+    reader: &mut R,
+) -> Result<NativeTransferResult, String> {
+    validated_storage_session(session_uri)
+        .map_err(|_| "native Sync Center storage session is invalid")?;
+    let (file, digest) = seal_stream(total_bytes, reader)?;
+    drive_verified_output(
+        session_uri,
+        total_bytes,
+        &digest,
+        file,
+        None,
+        None,
+        &|| false,
+        &mut |_| {},
+    )
 }
 
 /// Drive one receipt-sealed file through a DS-minted storage session. This is
@@ -589,6 +655,7 @@ pub fn drive_verified_output<R: Read + Seek>(
         cancel,
         progress,
         widest_read: AtomicUsize::new(0),
+        last_http_status: None,
     }
     .run(state)
 }
@@ -631,6 +698,7 @@ pub fn drive_loopback_output<R: Read + Seek>(
         cancel,
         progress,
         widest_read: AtomicUsize::new(0),
+        last_http_status: None,
     }
     .run(state)
 }
@@ -681,6 +749,147 @@ mod tests {
     use std::sync::atomic::AtomicBool;
 
     #[test]
+    fn forward_only_stream_is_sealed_with_exact_size_and_bounded_reads() {
+        struct BoundedReader(std::io::Cursor<Vec<u8>>);
+        impl Read for BoundedReader {
+            fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+                assert!(buffer.len() <= MAX_BODY_READ_BYTES);
+                self.0.read(buffer)
+            }
+        }
+        let bytes = vec![7_u8; MAX_BODY_READ_BYTES * 2 + 13];
+        let (mut file, digest) = seal_stream(
+            bytes.len() as u64,
+            &mut BoundedReader(Cursor::new(bytes.clone())),
+        )
+        .unwrap();
+        assert_eq!(digest, format!("{:x}", Sha256::digest(&bytes)));
+        let mut staged = Vec::new();
+        file.read_to_end(&mut staged).unwrap();
+        assert_eq!(staged, bytes);
+        for declared in [0, bytes.len() as u64 - 1, bytes.len() as u64 + 1] {
+            assert!(seal_stream(declared, &mut Cursor::new(&bytes)).is_err());
+        }
+    }
+
+    #[test]
+    fn invalid_storage_authority_is_refused_before_staging() {
+        struct Unreadable;
+        impl Read for Unreadable {
+            fn read(&mut self, _: &mut [u8]) -> io::Result<usize> {
+                panic!("invalid authority must not consume the source")
+            }
+        }
+        assert!(
+            drive_upload_stream("https://attacker.example/session", 1, &mut Unreadable).is_err()
+        );
+    }
+
+    // Exercise the shared driver on real TCP, with a stream sealed by the same
+    // forward-only door the CLI uses. No duplicate transport or test driver.
+    fn scripted_transfer(
+        replies: &[(u16, Option<&str>)],
+        expected_digest: Option<&str>,
+    ) -> (NativeTransferResult, Vec<(String, Vec<u8>)>) {
+        use std::io::{BufRead, BufReader};
+        use std::net::TcpListener;
+        let bytes = b"sealed upload bytes";
+        let (file, digest) = seal_stream(bytes.len() as u64, &mut Cursor::new(bytes)).unwrap();
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let replies: Vec<_> = replies
+            .iter()
+            .map(|(status, range)| (*status, range.map(str::to_owned)))
+            .collect();
+        let worker = std::thread::spawn(move || {
+            let mut requests = Vec::new();
+            for (status, range) in replies {
+                let (mut stream, _) = listener.accept().unwrap();
+                stream
+                    .set_read_timeout(Some(Duration::from_secs(5)))
+                    .unwrap();
+                let mut reader = BufReader::new(stream.try_clone().unwrap());
+                let mut headers = String::new();
+                loop {
+                    let mut line = String::new();
+                    assert!(reader.read_line(&mut line).unwrap() > 0);
+                    headers.push_str(&line);
+                    if line == "\r\n" {
+                        break;
+                    }
+                }
+                let length = headers
+                    .lines()
+                    .find_map(|line| {
+                        line.to_ascii_lowercase()
+                            .strip_prefix("content-length:")
+                            .map(|value| value.trim().parse::<usize>().unwrap())
+                    })
+                    .unwrap();
+                let mut body = vec![0; length];
+                reader.read_exact(&mut body).unwrap();
+                let lower = headers.to_ascii_lowercase();
+                for forbidden in ["authorization:", "x-api-key:", "x-user-email:"] {
+                    assert!(!lower.contains(forbidden));
+                }
+                requests.push((headers, body));
+                let range = range
+                    .map(|value| format!("Range: {value}\r\n"))
+                    .unwrap_or_default();
+                write!(stream, "HTTP/1.1 {status} Test\r\n{range}Content-Length: 0\r\nConnection: close\r\n\r\n").unwrap();
+            }
+            requests
+        });
+        let result = drive_loopback_output(
+            &format!("http://{address}/session"),
+            bytes.len() as u64,
+            expected_digest.unwrap_or(&digest),
+            file,
+            None,
+            None,
+            &|| false,
+            &mut |_| {},
+        )
+        .unwrap();
+        (result, worker.join().unwrap())
+    }
+
+    #[test]
+    fn sealed_stream_uploads_resume_and_reprove_skipped_prefixes() {
+        let (result, requests) = scripted_transfer(&[(308, Some("bytes=0-3")), (201, None)], None);
+        assert_eq!(result.outcome, NativeTransferOutcome::Done);
+        assert_eq!(requests.len(), 2);
+        assert!(requests[0]
+            .0
+            .to_ascii_lowercase()
+            .contains("content-range: bytes */19"));
+        assert!(requests[1]
+            .0
+            .to_ascii_lowercase()
+            .contains("content-range: bytes 4-18/19"));
+        assert_eq!(requests[1].1, b"sealed upload bytes"[4..]);
+        let (result, _) = scripted_transfer(&[(200, None)], Some(&"0".repeat(64)));
+        assert_eq!(result.outcome, NativeTransferOutcome::Failed);
+        assert_eq!(result.cause, Some(Cause::DigestMismatch));
+    }
+
+    #[test]
+    fn shared_transport_keeps_observed_terminal_http_statuses() {
+        for status in [404, 410, 401, 403, 302] {
+            let (result, requests) = scripted_transfer(&[(status, None)], None);
+            assert_eq!(result.last_http_status, Some(status));
+            assert_eq!(requests.len(), 1);
+            if matches!(status, 404 | 410) {
+                assert_eq!(result.outcome, NativeTransferOutcome::Reopen);
+                assert_eq!(result.cause, Some(Cause::SessionExpired));
+            } else {
+                assert_eq!(result.outcome, NativeTransferOutcome::Failed);
+                assert_eq!(result.cause, Some(Cause::HttpStatus { status }));
+            }
+        }
+    }
+
+    #[test]
     fn storage_sessions_refuse_redirect_targets_before_any_byte_can_leave() {
         for raw in [
             "http://storage.googleapis.com/upload/session",
@@ -711,6 +920,7 @@ mod tests {
             cancel: &|| false,
             progress: &mut progress,
             widest_read: AtomicUsize::new(0),
+            last_http_status: None,
         };
         assert_eq!(driver.digest_matches().unwrap(), Some(false));
     }
@@ -770,6 +980,7 @@ mod tests {
             cancel: &|| false,
             progress: &mut progress,
             widest_read: AtomicUsize::new(0),
+            last_http_status: None,
         };
         driver.digest.absorb(8, &bytes[8..]);
         assert!(!driver.digest.complete(bytes.len() as u64));
