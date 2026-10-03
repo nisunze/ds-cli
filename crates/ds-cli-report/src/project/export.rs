@@ -3725,9 +3725,11 @@ mod tests {
 
     #[test]
     fn server_queue_root_is_the_exact_custom_server_state_child() {
+        let temp = tempfile::tempdir().expect("native absolute test root");
+        let root = temp.path().join("ds-server");
         assert_eq!(
-            server_report_artifacts_root("stable", Some(Path::new("/var/lib/ds"))).unwrap(),
-            PathBuf::from("/var/lib/ds/report-artifacts"),
+            server_report_artifacts_root("stable", Some(&root)).unwrap(),
+            root.join("report-artifacts"),
         );
         assert_eq!(
             server_report_artifacts_root("stable", Some(Path::new("relative")))

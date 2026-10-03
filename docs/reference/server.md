@@ -8,12 +8,12 @@ their Cargo dependency closures can differ. Development builds omit release
 provenance and cannot be admitted as release engines.
 
 `ds server serve` hosts the shared Rust compute runtime under the identity
-established by `ds account connect` (device linking). Run both under the same Linux
+established by `ds account connect` (device linking). Run both under the same operating-system
 user and lane. No browser, paired Desktop, ADC or service-account impersonation
 is involved. The Server is the desktop's own core without the desktop: it
 stands on the desktop's side of the one boundary with ds-brain, and the API is
-that owner's control over an owner-only Unix socket in the Server's state
-directory — no TCP port and no bearer (see [The door](#the-door-an-owner-only-socket)).
+that owner's control over an account-restricted local transport: a Unix socket on Linux
+and a named pipe on Windows — no TCP port and no bearer (see [The door](#the-door-an-owner-only-socket)).
 One authenticated owner per Server, always
 — a Server on a rented machine is one the owner signs in on, works on and
 shuts down; many users are many machines, never many accounts in one process.
@@ -258,7 +258,7 @@ account is established (`auth_rejected`), not filtered out of a directory this
 host does not hold.
 
 Browser-to-Server layer control is **not** provided: the door is an owner-only
-Unix socket, which a web page cannot reach and a web visitor is not the owner
+local socket or named pipe, which a web page cannot reach and a web visitor is not the owner
 of. The long-term direction is a browser UI talking to this Server in place of
 the kernel in WASM; nothing here assumes a short-lived process or that a
 webview is the only client, and nothing more is built for it yet.
@@ -306,11 +306,27 @@ say what to do; neither hangs:
 | Older `ds` client, Server started by the new `ds` | The older client cannot read the new record and fails at once with `invalid protected server connection`. Upgrade that `ds`. |
 | Older `ds server serve` over a new record | Refused at start with `invalid protected server connection`. Use the new `ds`. |
 
-**Where there are no Unix sockets.** `ds server serve` has only ever been
-available on Linux, and its protected state is Unix-only. On Windows nothing
-changes: the Server commands remain unavailable (`server_platform_unsupported`),
-nothing listens and nothing is sent. The Desktop does not use this Server; its
-own local bridge to `ds` is a separate transport (`ds desktop`).
+**Windows uses a named pipe.** The same Rust router, native runtime, explicit
+project context, durable queue, cancellation and receipts run without Tauri.
+The pipe name is derived from the canonical state directory and full Windows
+account SID; it is never accepted from a connection file. The server rejects
+remote pipe clients, uses a DACL granting only its owner access, and checks the
+connected client's process token. The CLI checks the server process token and
+pipe DACL before sending HTTP. Both checks compare the complete SID.
+
+Windows state requires an absolute local disk path without reparse points.
+New server directories have a protected, inheritable owner-only DACL; existing
+state with broader access is refused without changing its ACL. Children inherit
+that restriction. The same state lock admits one host per directory, and a
+stopped or crashed host releases its pipe through Windows handle ownership.
+Stable, Canary and development hosts use separate state directories.
+
+See [Windows development and packaging](../development/windows-server.md) for
+persistent caches, the source launcher, exact-byte ZIPs and per-user installation.
+
+This adds native Windows CLI hosting. Browser-to-Server control still needs
+its own reviewed binding; running Vite alone does not pair a browser with this
+pipe or move an interactive Grid WASM session into the native host.
 
 ## Protected state and authority
 
