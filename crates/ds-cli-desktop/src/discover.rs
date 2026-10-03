@@ -5,11 +5,9 @@
 //! windows of one build, a developer's local build beside an installed one —
 //! so the unit of pairing is an *instance*, never an install profile. Each
 //! running instance publishes its own descriptor under
-//! `<app data>/cli-bridge.d/<instance_id>.json`, and the first one also
-//! refreshes the legacy `<app data>/cli-bridge.json` so an older `ds` keeps
-//! working. This module reads both, de-duplicates them, proves each one is
-//! alive with an authenticated handshake, and then asks the kernel which
-//! instance the operation belongs to.
+//! `<app data>/cli-bridge.d/<instance_id>.json`. This module reads the
+//! instance registry, proves liveness with an authenticated handshake, and
+//! asks the kernel which instance the operation belongs to.
 //!
 //! **Nothing here decides.** `ds_command_kernel::desktop_instance` owns four
 //! answers — may this descriptor be used, who is it, which instance is this
@@ -44,10 +42,6 @@ pub const PROFILES: &[(&str, &str)] = &[
     ("dev", "rw.datasolutions.desktop.local-dev"),
     ("dev-canary", "rw.datasolutions.desktop.dev"),
 ];
-
-/// The legacy per-profile descriptor. One live instance keeps refreshing it so
-/// a `ds` that predates the registry directory still pairs with something real.
-pub const DESCRIPTOR_FILE: &str = "cli-bridge.json";
 
 /// The registry directory: one file per live instance, named by its id.
 pub const DESCRIPTOR_DIR: &str = "cli-bridge.d";
@@ -273,9 +267,7 @@ fn unreadable(reason: &str) -> Failure {
     .detail(json!({ "reason": reason }))
 }
 
-/// Every descriptor file on this machine, newest registry first and the legacy
-/// per-profile file last, so an instance that publishes both is read under its
-/// minted identity rather than a derived one.
+/// Every per-instance descriptor in the install profiles' registry directories.
 fn descriptor_files() -> Vec<(&'static str, PathBuf)> {
     let mut files = Vec::new();
     for (profile, identifier) in PROFILES {
@@ -299,10 +291,6 @@ fn descriptor_files() -> Vec<(&'static str, PathBuf)> {
         // commands would make one refusal and one route out of one machine.
         registry.sort();
         files.extend(registry.into_iter().map(|path| (*profile, path)));
-        let legacy = dir.join(DESCRIPTOR_FILE);
-        if legacy.is_file() {
-            files.push((*profile, legacy));
-        }
     }
     files
 }
@@ -330,11 +318,8 @@ where
         }
         match read(&path, Some(profile)) {
             Ok(descriptor) => {
-                // One instance publishes two files — its own, and the legacy
-                // copy for an older `ds`. Presenting it twice is a hard fault
-                // in the kernel, deliberately, so the de-duplication is here.
-                // It is by identity *and* by endpoint, because a legacy copy
-                // written without an instance id admits under a derived one.
+                // Refuse duplicate identities and endpoints before passing
+                // candidates to the kernel.
                 let endpoint = format!("{}#{}", descriptor.url, descriptor.pid);
                 if !seen.insert(descriptor.instance_id.clone()) || !seen.insert(endpoint) {
                     continue;
@@ -921,33 +906,10 @@ mod tests {
     }
 
     #[test]
-    fn one_instance_that_publishes_two_files_is_enumerated_once() {
-        let root = scratch();
-        // The registry file and the legacy copy of the same running instance,
-        // the legacy one written the old way with no instance id at all.
-        write_descriptor(
-            &root.join(format!("cli-bridge.d-{ONE}.json")),
-            descriptor_body(41234, 4711, Some(ONE)),
-        );
-        write_descriptor(
-            &root.join("cli-bridge.json"),
-            descriptor_body(41234, 4711, None),
-        );
-        let enumeration = enumerated(&root, &[("http://127.0.0.1:41234", session(ONE, None))]);
-        assert_eq!(enumeration.live.len(), 1, "one process, one instance");
-        assert_eq!(enumeration.live[0].instance_id(), ONE);
-        assert_eq!(
-            enumeration.live[0].found.descriptor.identity,
-            kernel::Identity::Minted
-        );
-        fs::remove_dir_all(root).expect("cleanup");
-    }
-
-    #[test]
     fn an_older_instance_is_enumerated_under_the_identity_the_kernel_derives() {
         let root = scratch();
         write_descriptor(
-            &root.join("cli-bridge.json"),
+            &root.join(format!("{ONE}.json")),
             descriptor_body(41240, 91, None),
         );
         let mut older = session(ONE, Some("project-a"));

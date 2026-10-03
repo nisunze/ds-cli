@@ -254,7 +254,7 @@ pub static PUBLISH_EXAMPLE_COMMAND: Command = Command {
     path: &["library", "global", "publish-example"],
     contract: 1,
     summary: "Create or advance a governed global example from a prepared directory.",
-    purpose: "Publisher-only, map-independent publication. The paired desktop reads example.json and its named model, project-plane and preview files, uploads them under closed purposes, and pins one exact library release. It does not run or approve a solver.",
+    purpose: "Publisher-only, map-independent publication. The native client reads example.json and its named model, project-plane and preview files, uploads them under closed purposes, and pins one exact library release. It does not run or approve a solver.",
     chapter: Chapter::PlsCadd,
     effect: Effect::GlobalWrite,
     authority: Authority::HeadlessUser,

@@ -104,8 +104,6 @@ pub static DESCRIBE_COMMAND: Command = Command {
     refusals: &[REFUSALS[0]],
     reference: Some("docs/reference/data.md"),
     search: &[
-        "vector",
-        "workflow",
         "model",
         "modelbuilder",
         "chain",
@@ -138,13 +136,9 @@ pub static VALIDATE_COMMAND: Command = Command {
     refusals: REFUSALS,
     reference: Some("docs/reference/data.md"),
     search: &[
-        "vector",
-        "workflow",
-        "validate",
         "graph",
         "cycle",
         "schema",
-        "types",
         "geoprocessing",
         "gis",
         "geometry",
@@ -173,12 +167,8 @@ pub static RUN_COMMAND: Command = Command {
     refusals: REFUSALS,
     reference: Some("docs/reference/data.md"),
     search: &[
-        "vector",
-        "workflow",
-        "run",
         "chain",
         "modelbuilder",
-        "provenance",
         "iterator",
         "geoprocessing",
         "gis",
@@ -244,18 +234,17 @@ fn read(inputs: &Inputs) -> Result<(Value, Value), Failure> {
         workflow::parse(inputs.value("inputs").unwrap_or("{}")).map_err(refusal)?,
     ))
 }
+type BoundWorkflow = (
+    Value,
+    Value,
+    std::collections::BTreeMap<String, std::sync::Arc<ds_network::vector::Layer>>,
+);
+
 fn bind_files(
     mut document: Value,
     mut bindings: Value,
     inputs: &Inputs,
-) -> Result<
-    (
-        Value,
-        Value,
-        std::collections::BTreeMap<String, std::sync::Arc<ds_network::vector::Layer>>,
-    ),
-    Failure,
-> {
+) -> Result<BoundWorkflow, Failure> {
     let base = Path::new(inputs.value("file").unwrap())
         .parent()
         .unwrap_or(Path::new("."));
@@ -332,15 +321,13 @@ pub fn run_workflow(inputs: &Inputs, _context: &Context) -> Result<Value, Failur
     let result =
         workflow::run(document, bindings, layers, RunOptions { dry_run }).map_err(refusal)?;
     let mut answer = result.metadata;
-    if !dry_run {
-        if let Some(directory) = inputs.value("out") {
-            export(
-                &mut answer,
-                &result.outputs,
-                &result.completed_layers,
-                Path::new(directory),
-            )?;
-        }
+    if !dry_run && let Some(directory) = inputs.value("out") {
+        export(
+            &mut answer,
+            &result.outputs,
+            &result.completed_layers,
+            Path::new(directory),
+        )?;
     }
     if answer["status"] == "failed" {
         return Err(Failure::failed(

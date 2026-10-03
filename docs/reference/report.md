@@ -209,8 +209,6 @@ rules, layout vocabulary and archive tree are ds-brain's
 is the `combined_transformer` data report (Excel and spatial outputs). The
 Compounded Report is a ZIP snapshot containing individual artifacts and a
 combined set; publishing it does not update the Combined Report row.
-`ds report project combined` remains a deprecated compatibility alias for
-the ZIP and marks its receipt with `deprecated_command`.
 
 ## The project's output policy
 

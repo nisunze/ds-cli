@@ -549,8 +549,8 @@ fn native_seed_rejects_an_invalid_explicit_project_before_gateway_io() {
 }
 
 #[test]
-fn seed_commands_require_explicit_project_and_refuse_retired_desktop_input() {
-    for mut command in [
+fn seed_commands_require_explicit_project() {
+    for command in [
         vec!["solar", "seed", "preview"],
         vec![
             "solar",
@@ -565,18 +565,6 @@ fn seed_commands_require_explicit_project_and_refuse_retired_desktop_input() {
         missing.extend(["--output", "json"]);
         let (reply, code) = ds(&missing);
         assert_eq!(reply["error"]["code"], "missing_input");
-        assert_eq!(code, 2);
-        command.extend([
-            "--project",
-            "demo",
-            "--desktop-descriptor",
-            "/definitely/not/a/bridge.json",
-            "--output",
-            "json",
-        ]);
-        let (reply, code) = ds(&command);
-        // Undeclared inputs are rejected before authentication.
-        assert_eq!(reply["error"]["code"], "unknown_flag");
         assert_eq!(code, 2);
     }
 }

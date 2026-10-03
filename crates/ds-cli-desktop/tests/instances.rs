@@ -418,35 +418,22 @@ fn a_reused_port_never_answers_to_the_descriptor_of_the_instance_it_replaced() {
 }
 
 /// A second instance starting cannot remove or overwrite the first's
-/// descriptor. The shell writes one file per instance and claims the legacy
-/// per-profile file only when no live instance owns it — proven where the
-/// writing happens, in `ds-web/src-tauri/src/cli_bridge.rs`
-/// (`a_second_instance_writes_its_own_descriptor_and_never_the_first`,
-/// `the_legacy_descriptor_is_claimed_only_when_it_is_ours_absent_or_dead`,
-/// `exit_removes_only_the_descriptors_this_instance_published`). From the
-/// CLI's side, what has to be true is that the first instance's bytes are
-/// untouched, that it is still enumerated exactly once despite publishing two
-/// files, and that it is still routable by name.
+/// descriptor. The shell writes one file per instance. The first instance's
+/// bytes must remain untouched and it must still be routable by name.
 #[test]
 fn a_second_instance_leaves_the_first_descriptor_intact_and_still_routable() {
     let machine = Machine::new();
     let alpha = Bridge::start(ALPHA, Some("project-a"), SHARED_NAME);
     let own = machine.publish(&alpha);
-    // The first live instance also refreshes the legacy file for an older `ds`.
-    let legacy = machine.publish_legacy(&alpha);
     let own_bytes = std::fs::read(&own).expect("the first descriptor");
-    let legacy_bytes = std::fs::read(&legacy).expect("the legacy descriptor");
 
-    // A second instance starts and publishes its own file. It does not claim
-    // the legacy one, because the instance that holds it is live.
+    // A second instance publishes its own file.
     let beta = Bridge::start(BETA, Some("project-b"), SHARED_NAME);
     machine.publish(&beta);
 
     assert_eq!(std::fs::read(&own).expect("still there"), own_bytes);
-    assert_eq!(std::fs::read(&legacy).expect("still there"), legacy_bytes);
 
-    // Three descriptor files, two instances: the legacy copy of the first is
-    // the same instance, not a third.
+    // Two descriptor files name two instances.
     let listed = Invocation::signed_in()
         .run(
             &ds_cli_desktop::list::COMMAND,
@@ -832,8 +819,7 @@ fn a_pinned_descriptor_and_a_target_that_disagree_refuse_without_an_effect() {
     );
     untouched(&[&alpha, &beta]);
 
-    // And the pinned file alone, with no target, is used verbatim: the legacy
-    // explicit path a pinned terminal relies on is unchanged.
+    // The pinned per-instance file alone, with no target, is used verbatim.
     let answer = Invocation::signed_in()
         .invoke_pinned(&pinned, None, &PROJECT_OP, json!({}))
         .expect("a pinned descriptor is used as it always has been");

@@ -135,22 +135,9 @@ impl Machine {
         self.registry().join(format!("{instance_id}.json"))
     }
 
-    /// The legacy per-profile file the first live instance keeps refreshing so
-    /// an older `ds` still pairs with something real.
-    pub fn legacy_path(&self) -> PathBuf {
-        self.app_data().join(discover::DESCRIPTOR_FILE)
-    }
-
-    /// Publish one instance's descriptor, in the shell's own bytes.
+    /// Publish this instance's descriptor in the registry.
     pub fn publish(&self, bridge: &Bridge) -> PathBuf {
         let path = self.descriptor_path(&bridge.instance_id);
-        write_descriptor(&path, bridge.descriptor());
-        path
-    }
-
-    /// Publish the legacy copy naming `bridge`, as the first live instance does.
-    pub fn publish_legacy(&self, bridge: &Bridge) -> PathBuf {
-        let path = self.legacy_path();
         write_descriptor(&path, bridge.descriptor());
         path
     }

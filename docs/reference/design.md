@@ -622,7 +622,7 @@ material-propagation report action) that `ds auth` runs under the restored
 native user against the project named by `--project` (the saved selection
 is never read) for `--lane stable|canary`. `ds` sends a request and receives an outcome. It never holds
 a window, never receives a credential it did not mint, and answers the same
-on the Server and on the desktop. Undeclared flags are refused before any credential is consulted.
+on the Server and on the desktop.
 
 **Saved selections** `ds design selection list|read|save|archive|assign`
 reach ds-brain the same way. Nothing about the authority changed: ds-brain
@@ -1158,8 +1158,8 @@ flat download list. `source_uploads` counts those inputs and how many have a
 URL. The fetch itself stays with the caller.
 
 `ds design version status --project <id> --kind <kind> --object <id>` reads
-that object's exact server head. For MV, source_revision identifies the immutable content, while
-published_version is the governance ordinal; manifest_model_revision is the
+that object's exact server head. For MV, source_revision identifies the immutable
+content, while published_version is the governance ordinal; manifest_model_revision is the
 native package's separate nonnegative lineage counter. Status never inspects
 an unsaved room or guesses whether its local contents need publication.
 
@@ -1328,9 +1328,8 @@ Unknown archive coverage is explicit and does not justify regeneration.
 
 ### Governed design history
 
-`design.version` names one explicit project and either an LV transformer or MV
-project model. The transformer flag remains the LV compatibility spelling.
-The server alone assigns governed `vN` identities; native Server and Web use
+`design.version` names one explicit project, kind and object: an LV transformer
+or MV project model. The server alone assigns governed `vN` identities; native Server and Web use
 shared Rust request planning and response validation. Creation snapshots saved
 server content, with an exact idempotency key, independently of an open map.
 LV comparisons use immutable snapshots; MV comparisons describe pinned content

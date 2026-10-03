@@ -102,7 +102,7 @@ pinned project layers.
 
 ## Version deliberately; save separately
 
-Discover `design.version.list` with the explicit project and transformer. Server
+Discover `design.version.list` with the explicit project, kind and object. Server
 `vN` history is authoritative; device-local drafts are separate retained work.
 Use `map.design.version.play` only for a returned version with
 `playback_available=true`; metadata-only history cannot be played as content.
@@ -110,7 +110,7 @@ Playback and paired comparison are read-only evidence, never restore or editing.
 
 Decide explicitly whether an engineering edit needs a new governance version.
 If so, save the authorized engineering state first, then discover
-`design.version.begin`. Supply the explicit project, object kind and identity, a
+`design.version.begin`. Supply the explicit project, LV kind and object, a
 reason and a stable idempotency key; ds-brain assigns `vN` from the saved server
 state. Beginning history does not publish an unsaved device-local room. Read the
 headless descriptor before using confirmation or LV-only restore.

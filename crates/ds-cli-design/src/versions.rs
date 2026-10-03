@@ -34,7 +34,7 @@ const REFUSALS: &[Refusal] = &[
     Refusal {
         code: "invalid_input",
         when: "A local request is invalid",
-        remedy: "Pass --project, --kind and the exact --object identity.",
+        remedy: "Pass an explicit --project, --kind and --object; use the live command schema for local requests.",
     },
 ];
 const fn command(
@@ -192,9 +192,6 @@ pub static RESTORE: Command = command(
     ],
     Effect::GlobalWrite,
 );
-fn object(i: &Inputs) -> Result<String, Failure> {
-    Ok(i.require("object")?.into())
-}
 fn ask(i: &Inputs, request: Request) -> Result<Value, Failure> {
     let request = Request::Object {
         kind: i.require("kind")?.into(),
@@ -206,7 +203,7 @@ pub fn list(i: &Inputs, _: &Context) -> Result<Value, Failure> {
     ask(
         i,
         Request::List {
-            transformer: object(i)?,
+            transformer: i.require("object")?.into(),
         },
     )
 }
@@ -214,7 +211,7 @@ pub fn status(i: &Inputs, _: &Context) -> Result<Value, Failure> {
     ask(
         i,
         Request::Status {
-            transformer: object(i)?,
+            transformer: i.require("object")?.into(),
         },
     )
 }
@@ -222,7 +219,7 @@ pub fn compare(i: &Inputs, _: &Context) -> Result<Value, Failure> {
     ask(
         i,
         Request::Compare {
-            transformer: object(i)?,
+            transformer: i.require("object")?.into(),
             from: i.require("from")?.into(),
             to: i.require("to")?.into(),
         },
@@ -232,7 +229,7 @@ pub fn show(i: &Inputs, _: &Context) -> Result<Value, Failure> {
     ask(
         i,
         Request::Show {
-            transformer: object(i)?,
+            transformer: i.require("object")?.into(),
             version: i.require("version")?.into(),
         },
     )
@@ -241,7 +238,7 @@ pub fn begin(i: &Inputs, _: &Context) -> Result<Value, Failure> {
     ask(
         i,
         Request::Begin {
-            transformer: object(i)?,
+            transformer: i.require("object")?.into(),
             create: Create {
                 reason: i.require("reason")?.into(),
                 milestone: i.value("milestone").map(str::to_owned),
@@ -330,7 +327,7 @@ pub fn restore(i: &Inputs, _: &Context) -> Result<Value, Failure> {
     ask(
         i,
         Request::Restore {
-            transformer: object(i)?,
+            transformer: i.require("object")?.into(),
             version: i.require("version")?.into(),
             reason: i.require("reason")?.into(),
             idempotency_key: i.require("idempotency-key")?.into(),

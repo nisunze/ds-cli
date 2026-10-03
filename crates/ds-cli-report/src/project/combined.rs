@@ -1,7 +1,6 @@
 //! `ds report project compounded` publishes a ZIP containing individual
 //! reports and an overall combined data set. The distinct `combined_transformer`
 //! report is updated through its own export path.
-//! `ds report project combined` remains a labeled compatibility alias.
 //!
 //! The other change is that this command REFUSES.
 //!
@@ -114,50 +113,6 @@ pub static COMMAND: Command = Command {
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
-
-/// Existing scripts may keep using this path for a compatibility window.
-/// Discovery and receipts state what it actually publishes.
-pub static COMBINED_ALIAS: Command = Command {
-    id: "report.project.combined",
-    path: &["report", "project", "combined"],
-    contract: 1,
-    summary: "Deprecated: use `report project compounded` for the ZIP.",
-    purpose: "Compatibility alias for `ds report project compounded`. This publishes a Compounded Report ZIP archive; it does not refresh the separate `combined_transformer` report. Move scripts and MCP callers to the compounded command.",
-    chapter: Chapter::Reports,
-    effect: Effect::ArtifactWrite,
-    authority: Authority::HeadlessProject,
-    execution: Execution::Sync,
-    args: ARGS,
-    output: "The Compounded Report receipt, plus `deprecated_command` naming the canonical command.",
-    examples: &[Example {
-        command: "ds report project compounded --project <exact-id> --yes --output json",
-        note: "Canonical ZIP archive command.",
-        runnable: false,
-    }],
-    refusals: super::COMBINED_REFUSALS,
-    reference: Some("docs/reference/report.md"),
-    search: &[],
-    requires: Requires::Server,
-    availability: ds_cli_auth::native_availability,
-};
-
-pub fn run_combined_alias(inputs: &Inputs, context: &Context) -> Result<Value, Failure> {
-    let mut receipt = run(inputs, context)?;
-    if let Some(object) = receipt.as_object_mut() {
-        object.insert(
-            "deprecated_command".to_owned(),
-            json!({"use": "ds report project compounded", "publishes": "compounded_report_zip"}),
-        );
-    }
-    Ok(receipt)
-}
-
-pub fn render_combined_alias(data: &Value) -> String {
-    format!(
-        "Deprecated command: use `ds report project compounded`.\n{}",
-        render(data)
-    )
-}
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     if let Some(request) = composition_request(inputs)? {
@@ -650,7 +605,7 @@ mod tests {
         json!({"transformer": name, "code": code, "detail": ""})
     }
 
-    /// The archive has its own command; the old name remains visibly deprecated.
+    /// The archive has its own command.
     #[test]
     fn the_archive_command_is_named_compounded() {
         assert_eq!(COMMAND.id, "report.project.compounded");
@@ -660,9 +615,6 @@ mod tests {
             "{}",
             COMMAND.summary
         );
-        assert_eq!(COMBINED_ALIAS.id, "report.project.combined");
-        assert!(COMBINED_ALIAS.summary.contains("Deprecated"));
-        assert!(COMBINED_ALIAS.purpose.contains("does not refresh"));
     }
 
     /// Rooms whose reports are sealed on a PC and not drained must be told to

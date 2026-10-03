@@ -48,15 +48,10 @@ pub static COMMAND: Command = Command {
         note: "Render every named variant from one pinned configuration; see docs/reference/report.md for the schema.",
         runnable: false,
     }],
-    refusals: &crate::project::joined::<{ crate::project::NATIVE_READ_REFUSALS.len() + 10 }>(&[
+    refusals: &crate::project::joined::<{ crate::project::NATIVE_READ_REFUSALS.len() + 9 }>(&[
         crate::project::NATIVE_READ_REFUSALS,
         &[
             crate::project::mv_setup::REFUSAL,
-            Refusal {
-                code: "mv_print_legacy_request_refused",
-                when: "a V1 configuration supplies transient approved printing furniture",
-                remedy: "copy the approved global layout into the project, approve its presentation and select the exact revision with report project mv-setup set; use the V2 geometry/asset configuration",
-            },
             Refusal {
                 code: "print_config_invalid",
                 when: "the JSON is unreadable, ambiguous, unsafe, or names the wrong project",
@@ -197,16 +192,6 @@ struct PrintVariant {
 fn decode_config(bytes: &[u8]) -> Result<PrintConfig, Failure> {
     let value: Value = serde_json::from_slice(bytes)
         .map_err(|e| Failure::invalid("print_config_invalid", e.to_string()))?;
-    if value["schema"] == "ds.grid-plan-profile-print/v1"
-        || value.get("settings").is_some()
-        || value.get("logo_files").is_some()
-        || value["variants"]
-            .as_array()
-            .is_some_and(|items| items.iter().any(|item| item.get("ink_mode").is_some()))
-    {
-        return Err(Failure::invalid("mv_print_legacy_request_refused", "Transient text, logos and presentation cannot issue an approved MV booklet.")
-            .remedy("Adopt the approved global printing layout through report layout copy, approve project fields and select its exact revision with report project mv-setup set. Use report plan-profile-config schema for the V2 geometry and held asset configuration."));
-    }
     serde_json::from_value(value)
         .map_err(|e| Failure::invalid("print_config_invalid", e.to_string()))
 }
@@ -490,22 +475,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn legacy_furniture_has_a_keyed_adoption_remedy_and_never_falls_back() {
-        let mut value = schema_document()["example"].clone();
-        value["settings"] = json!({"project_title":"OLD PER-RUN WORDING"});
-        let refused = decode_config(&serde_json::to_vec(&value).unwrap()).unwrap_err();
-        assert_eq!(refused.code(), "mv_print_legacy_request_refused");
-        assert!(refused.remedy_text().unwrap().contains("mv-setup set"));
-        value.as_object_mut().unwrap().remove("settings");
-        value["schema"] = json!("ds.grid-plan-profile-print/v1");
-        assert_eq!(
-            decode_config(&serde_json::to_vec(&value).unwrap())
-                .unwrap_err()
-                .code(),
-            "mv_print_legacy_request_refused"
-        );
-    }
     #[test]
     fn discovery_example_parses_as_the_live_configuration() {
         let example = schema_document()["example"].clone();

@@ -51,7 +51,7 @@ paired is an answer, not a failure; an explicit target must be live.",
 missing or signed-out Desktop includes guidance to list and target instances. When \
 paired, the instance id and how it was identified, the install profile and the \
 application's process id. `design_context` is null unless a project transformer \
-is open for editing; a current desktop also reports its project, context type, \
+is open for editing; the context reports its project, context type, \
 editor/map readiness, dirty, staged and persisted state. Never a token, JWT or \
 credential.",
     examples: &[
@@ -145,20 +145,16 @@ struct SessionView {
 struct DesignContextView {
     mode: DesignContextMode,
     transformer: String,
-    #[serde(default)]
-    project: Option<String>,
-    #[serde(default, rename = "contextType")]
-    context_type: Option<String>,
-    #[serde(default, rename = "editorReady")]
-    editor_ready: Option<bool>,
-    #[serde(default, rename = "mapReady")]
-    map_ready: Option<bool>,
-    #[serde(default)]
-    dirty: Option<bool>,
-    #[serde(default)]
-    staged: Option<bool>,
-    #[serde(default)]
-    persisted: Option<bool>,
+    project: String,
+    #[serde(rename = "contextType")]
+    context_type: DesignContextMode,
+    #[serde(rename = "editorReady")]
+    editor_ready: bool,
+    #[serde(rename = "mapReady")]
+    map_ready: bool,
+    dirty: bool,
+    staged: bool,
+    persisted: bool,
 }
 
 #[derive(Deserialize, serde::Serialize)]
@@ -277,24 +273,17 @@ fn paired_data(profile: &str, descriptor: &discover::Descriptor, session: Sessio
 }
 
 fn design_context_data(context: DesignContextView) -> Value {
-    let mut data = serde_json::Map::from_iter([
-        ("mode".to_string(), json!(context.mode)),
-        ("transformer".to_string(), json!(context.transformer)),
-    ]);
-    for (key, value) in [
-        ("project", context.project.map(Value::String)),
-        ("context_type", context.context_type.map(Value::String)),
-        ("editor_ready", context.editor_ready.map(Value::Bool)),
-        ("map_ready", context.map_ready.map(Value::Bool)),
-        ("dirty", context.dirty.map(Value::Bool)),
-        ("staged", context.staged.map(Value::Bool)),
-        ("persisted", context.persisted.map(Value::Bool)),
-    ] {
-        if let Some(value) = value {
-            data.insert(key.to_string(), value);
-        }
-    }
-    Value::Object(data)
+    json!({
+        "mode": context.mode,
+        "transformer": context.transformer,
+        "project": context.project,
+        "context_type": context.context_type,
+        "editor_ready": context.editor_ready,
+        "map_ready": context.map_ready,
+        "dirty": context.dirty,
+        "staged": context.staged,
+        "persisted": context.persisted,
+    })
 }
 
 fn fetch_session(descriptor: &discover::Descriptor) -> Result<SessionView, Failure> {
@@ -473,27 +462,12 @@ mod tests {
     }
 
     #[test]
-    fn legacy_two_field_design_context_remains_readable() {
-        let session: SessionView = serde_json::from_value(json!({
-            "signed_in": true,
-            "project": "arjgpydw_survey_test",
-            "design_context": { "mode": "edit", "transformer": "agasharu" }
-        }))
-        .expect("legacy context parses");
-        let data = paired_data("stable", &descriptor(42), session);
-        assert_eq!(
-            data["design_context"],
-            json!({ "mode": "edit", "transformer": "agasharu" })
-        );
-    }
-
-    #[test]
-    fn older_desktop_sessions_have_no_design_context() {
+    fn sessions_without_an_open_editor_have_no_design_context() {
         let session: SessionView = serde_json::from_value(json!({
             "signed_in": true,
             "project": "arjgpydw_survey_test"
         }))
-        .expect("backward-compatible session view parses");
+        .expect("session without an editor parses");
         let data = paired_data("canary", &descriptor(42), session);
 
         assert!(data["design_context"].is_null());

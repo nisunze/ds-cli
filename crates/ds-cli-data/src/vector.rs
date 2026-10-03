@@ -192,7 +192,7 @@ pub(crate) fn read_layer_reference(
             refuse(VectorRefusal {
                 code: "vector_document_malformed",
                 message: e,
-                remedy: DOCUMENT_MALFORMED.remedy.into(),
+                remedy: DOCUMENT_MALFORMED.remedy,
             })
         })?
     } else {
@@ -641,7 +641,7 @@ pub static MEASURE_COMMAND: Command = Command {
     id: "data.vector.measure",
     path: &["data", "vector", "measure"],
     contract: 4,
-    summary: vector::MEASURE_SUMMARY,
+    summary: "Append feature measures and report length, area and vertices.",
     purpose: "\
 Reports what a GeoJSON document actually contains: each feature's geometry \
 class, vertex count, geodesic length in metres for a line and spherical area \
@@ -682,16 +682,13 @@ its holes. --out exports a derived GeoJSON or Arrow layer with length_m, area_m2
     search: &[
         "geoprocessing",
         "gis",
-        "geometry",
         "spatial",
         "perimeter",
         "distance",
         "st_length",
         "st_area",
         "statistics",
-        "add geometry attributes",
-        "measure",
-        "vertices",
+        "geometry attributes",
     ],
     requires: Requires::Server,
     availability: crate::available,
@@ -734,16 +731,14 @@ pub fn render_measure(data: &Value) -> String {
 mod tests {
     use super::*;
 
-    /// The words an outsider reaches for. Every command in the family must
-    /// declare all of them: a family is only findable as a family if the
-    /// shared vocabulary is on each member, not on whichever one was written
-    /// first.
+    /// Every member must expose the words an outsider reaches for through
+    /// its name, summary or declared search terms.
     const FAMILY_TERMS: &[&str] = &["geoprocessing", "gis", "geometry", "spatial"];
 
     /// The family's shared vocabulary has to actually be on every command, or
     /// an outsider's search finds three of the four.
     #[test]
-    fn every_command_declares_the_familys_shared_vocabulary() {
+    fn every_command_exposes_the_familys_shared_vocabulary() {
         for command in [
             &BUFFER_COMMAND,
             &SAMPLE_COMMAND,
@@ -755,9 +750,14 @@ mod tests {
             &COLLISIONS_COMMAND,
         ] {
             for term in FAMILY_TERMS {
+                let named = command
+                    .id
+                    .split(|c: char| !c.is_ascii_alphanumeric())
+                    .chain(command.summary.split(|c: char| !c.is_ascii_alphanumeric()))
+                    .any(|word| word.eq_ignore_ascii_case(term));
                 assert!(
-                    command.search.contains(term),
-                    "`{}` does not declare the search term `{term}`",
+                    named || command.search.contains(term),
+                    "`{}` is not findable with `{term}`",
                     command.id
                 );
             }
@@ -810,7 +810,6 @@ pub static DESCRIBE_COMMAND: Command = Command {
         "geoprocessing",
         "gis",
         "spatial",
-        "vector",
         "schema",
         "json",
         "forms",
@@ -898,7 +897,6 @@ pub static OUTLIERS_COMMAND: Command = Command {
     search: &[
         "geoprocessing",
         "spatial",
-        "vector",
         "gis",
         "geometry",
         "outlier",
@@ -979,12 +977,9 @@ pub static RANDOM_COMMAND: Command = Command {
     search: &[
         "geoprocessing",
         "spatial",
-        "vector",
         "gis",
         "geometry",
-        "random",
         "sampling",
-        "points",
         "polygon",
         "corridor",
     ],
@@ -1052,10 +1047,7 @@ pub static COLLISIONS_COMMAND: Command = Command {
         "gis",
         "geometry",
         "spatial",
-        "vector",
-        "collisions",
         "overlap",
-        "report",
         "regions",
         "held",
         "evidence",

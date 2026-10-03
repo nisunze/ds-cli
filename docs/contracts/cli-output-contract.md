@@ -101,10 +101,7 @@ A few codes belong to the argument parser rather than to any command, and
 apply to every command equally, so they are documented here once rather than
 repeated in every `REFUSALS` section: `unknown_flag`, `missing_value`,
 `invalid_choice`, `switch_takes_no_value`, `unexpected_operand`,
-`too_many_operands`, `operand_not_a_flag`, and
-
-| Code | When | Remedy |
-|---|---|---|
+`too_many_operands` and `operand_not_a_flag`.
 
 `requires: window` remains only on `desktop.*` and on the map commands that
 drive a viewport; every other command answers on a bare Server and on the

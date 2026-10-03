@@ -76,8 +76,8 @@ never overwrite or delete an immutable child. `library global fork-example`
 creates a project model from one exact active example revision and records its
 server-derived provenance without copying or re-uploading the source object.
 
-These commands use the signed-in Desktop API bridge but do not require the map
-or a project page to be open. Read and publisher-write commands have separate
+These commands use the restored native user or device credential. Read and
+publisher-write commands have separate
 effect/authority contracts; exact project forks additionally require project
 authorization. Local `library seed` does not publish anything globally.
 

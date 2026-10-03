@@ -17,7 +17,6 @@ Each running instance publishes its own descriptor:
 
 ```
 <app data>/cli-bridge.d/<instance_id>.json   one file per live instance
-<app data>/cli-bridge.json                   the legacy file, for an older ds
 ```
 
 …where `<app data>` is that install profile's Tauri identifier directory —
@@ -25,11 +24,8 @@ Each running instance publishes its own descriptor:
 `~/Library/Application Support/<identifier>/` on macOS — for the four profiles
 `stable`, `canary`, `dev` and `dev-canary`.
 
-`ds` reads **both**: an instance that publishes its own file and refreshes the
-legacy one is de-duplicated to a single instance, by identity and by endpoint,
-before anything else happens. Presenting one instance twice is a defect the
-kernel refuses outright, deliberately, so the de-duplication has to be right
-here rather than tolerated there.
+`ds` reads the per-instance registry and checks descriptor identity and
+endpoint uniqueness before passing candidates to the kernel.
 
 A descriptor that names no instance id — written by a desktop that predates
 them — is given one **derived** from what it does say: its profile, its

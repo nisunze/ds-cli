@@ -32,9 +32,8 @@ and it can never authorize a project write on its own.
 
 **The unit of pairing is a live instance, not an install.** Since 2026-09-12
 each running instance publishes its own descriptor under
-`<app data>/cli-bridge.d/<instance_id>.json`, one file per instance, and the
-first one also refreshes the legacy per-profile `cli-bridge.json` below so an
-older `ds` keeps pairing. `ds desktop list` enumerates them and `--target
+`<app data>/cli-bridge.d/<instance_id>.json`, one file per instance.
+`ds desktop list` enumerates them and `--target
 desktop:<instance_id>` names one; the whole rule is in
 [`ds desktop`](desktop.md), and what follows is where the files live.
 
@@ -47,7 +46,7 @@ instances' descriptors:
 | canary | `rw.datasolutions.desktop.canary` |
 | dev | `rw.datasolutions.desktop.dev` |
 
-The registry directory `cli-bridge.d/` and the legacy `cli-bridge.json` are in
+The registry directory `cli-bridge.d/` is in
 that identifier's app-data directory:
 
 | Platform | Location |

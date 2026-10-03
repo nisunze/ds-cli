@@ -340,7 +340,7 @@ mod tests {
                 live(TWO, Handshake::Unusable(Unusable::Contract)),
             ],
             unusable: vec![(
-                std::path::PathBuf::from("/tmp/cli-bridge.json"),
+                std::path::PathBuf::from("/tmp/cli-bridge.d/instance.json"),
                 "descriptor is not valid JSON".to_owned(),
             )],
             omitted: 0,
@@ -357,7 +357,7 @@ mod tests {
             data["unusable"][0]["reason"],
             json!("descriptor is not valid JSON")
         );
-        assert!(render(&data).contains("unusable  /tmp/cli-bridge.json"));
+        assert!(render(&data).contains("unusable  /tmp/cli-bridge.d/instance.json"));
     }
 
     #[test]

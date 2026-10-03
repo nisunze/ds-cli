@@ -451,9 +451,6 @@ impl Profile {
                         "dsgrid.apply-batch" | "dsgrid.apply-correction" | "dsgrid-exchange.sync")
                     && tool.id != "dsgrid.reconcile-cable-source"
                     && !PROJECT_OPERATIONS_COMMANDS.contains(&tool.id.as_str())
-                    // The old ZIP command remains a CLI compatibility alias;
-                    // focused MCP profiles expose its canonical successor.
-                    && tool.id != "report.project.combined"
                     && tool.id != "report.spatial.workbook"
                     // Printing has its own workflow profile and Reports router;
                     // changing that profile must not expand the Grid surface.

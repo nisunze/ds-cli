@@ -52,8 +52,7 @@
 //! inside the application.
 //!
 //! **A window path.** `--desktop-descriptor` is not an input of any `ds pm`
-//! command; a caller that still passes it is told `unknown_flag`
-//! by the parser, with the remedy of dropping the flag.
+//! command.
 
 pub mod collaboration;
 pub mod deletion;

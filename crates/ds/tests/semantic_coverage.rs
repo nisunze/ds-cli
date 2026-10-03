@@ -953,11 +953,6 @@ const EXPECTED: &[(&str, &str, &str)] = &[
         "artifact_write",
         "headless_project",
     ),
-    (
-        "report.project.combined",
-        "artifact_write",
-        "headless_project",
-    ),
     // The cloud twin of `report.project.export`: the same individual report,
     // computed and published server-side. A durable artifact of the project,
     // so it confirms like the Combined Report does.

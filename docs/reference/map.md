@@ -153,7 +153,7 @@ ds map design pin --mode clear --output json
 Retained transformer history has one similarly closed read-only workflow:
 
 ```bash
-ds map design version list --transformer agasharu --output json
+ds design version list --project <id> --kind lv_transformer --object agasharu --output json
 ds map design version play --transformer agasharu --version v2 --output json
 ds map design version compare --transformer agasharu --from v1 --to head --output json
 ```
@@ -702,7 +702,7 @@ A minimal fit request is `{"operation":"fit"}`. Results use `zoom`, `pan_x`,
 
 `kind` is `none`, `structures`, `tension_sections`, `alignments`, `terrain_points`, `attachment_points`, or `mixed`. `entity_ids` follows the engine's order for a single selected family; mixed selections retain the selected IDs. `primary` is an ID in the selection or `null`. `structures` contains ID and display number only for a homogeneous structure selection; `number` is `null` if unknown. `model_id` and `revision` are `null` without an open model Profile. The older `model` field remains for existing consumers. These fields describe the paired Desktop's current focus and do not authorize a model edit. Use an explicit model and revision in the corresponding `ds dsgrid` command.
 
-`ds map profile select --model <model-id> --revision <revision-id> --from <entity-id> --to <entity-id> [--mode replace|add|remove|intersect]` changes only that transient selection. The Desktop refuses a different model or revision. The native held scene resolves an inclusive range when both IDs belong to the same entity family; use the same ID for both endpoints to select one item. The default mode is `replace`. `add`, `remove` and `intersect` combine that resolved range with the current selection. The CLI sends the two IDs unchanged and returns the Desktop's selection receipt; it does not reconstruct scene order or author the model. On a local development Desktop, pass `--desktop-descriptor ~/.local/share/rw.datasolutions.desktop.local-dev/cli-bridge.json` to address that instance directly.
+`ds map profile select --model <model-id> --revision <revision-id> --from <entity-id> --to <entity-id> [--mode replace|add|remove|intersect]` changes only that transient selection. The Desktop refuses a different model or revision. The native held scene resolves an inclusive range when both IDs belong to the same entity family; use the same ID for both endpoints to select one item. The default mode is `replace`. `add`, `remove` and `intersect` combine that resolved range with the current selection. The CLI sends the two IDs unchanged and returns the Desktop's selection receipt; it does not reconstruct scene order or author the model. On a local development Desktop, pass `--desktop-descriptor ~/.local/share/rw.datasolutions.desktop.local-dev/cli-bridge.d/<instance-id>.json` to address that instance directly.
 
 `ds map grid lasso` adds a Plan/Profile polygon selection lens with optional
 family and native table filters. Discover its complete wire-input contract with

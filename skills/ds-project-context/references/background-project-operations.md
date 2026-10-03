@@ -23,8 +23,7 @@ scope --project <exact-id> --output json`, publish with `ds report project
 compounded --project <exact-id> --file-level <transformer|sector|district|root>
 --yes --output json`, then verify the registry with `ds report project
 archives --project <exact-id> --output json`. A Compounded Report is a ZIP
-snapshot, not a standalone combined PDF; `report project combined` is a
-deprecated alias for that ZIP, not a different deliverable.
+snapshot containing individual reports and a combined data set.
 
 1. Read the chosen command's descriptor. Resolve the exact project id the
    user named with `ds auth project list` and pass it as `--project <id>`.

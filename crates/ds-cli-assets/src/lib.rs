@@ -53,8 +53,7 @@
 //! source. A projected `sys:` id is listed and versioned, but its bytes are
 //! refused by name (`origin_read_unavailable`) — a projected row is read from
 //! the surface that owns it. **A window path.** `--desktop-descriptor` is not
-//! an input of any `ds assets` command; a caller that still passes it is told
-//! `unknown_flag` by the parser.
+//! an input of any `ds assets` command.
 
 pub mod attach;
 pub mod backup;
@@ -165,19 +164,13 @@ pub fn catalogue(lane: &str, project: &str, command: &CatalogueCommand) -> Resul
     Ok(ds_cli_auth::project_assets_for_project(lane, project, command, None)?.into_result())
 }
 
-pub use ds_client_core::project_assets::{
-    EDGE_ONLY_SOURCES, INDEX_SERVED, INDEX_UNAVAILABLE, IndexList, IndexOrder,
-};
+pub use ds_client_core::project_assets::{EDGE_ONLY_SOURCES, INDEX_SERVED, IndexList, IndexOrder};
 
 /// Whether an answer is the index (`index_status: "served"`), as the native
 /// client marked it — typed, never read from a sentence.
 pub fn index_served(answer: &Value) -> bool {
     answer["index_status"] == INDEX_SERVED
 }
-
-/// What a person reads when this lane's ds-brain does not serve the index.
-pub const INDEX_UNAVAILABLE_NOTICE: &str = "! this lane's ds-brain does not serve the assets index yet: \
-     this is the catalogue (uploads only), not the index";
 
 /// The version chip of an index row: `v3 · 12 versions`, or `None` when the
 /// row has no versions.
@@ -403,11 +396,6 @@ pub const ASSET_NOT_FOUND: Refusal = ds_cli_auth::ASSET_NOT_FOUND_REFUSAL;
 pub const ASSET_REQUEST_INVALID: Refusal = ds_cli_auth::ASSET_REQUEST_INVALID_REFUSAL;
 /// A page cursor from an index generation that has since been rebuilt.
 pub const ASSETS_INDEX_MOVED: Refusal = ds_cli_auth::ASSETS_INDEX_MOVED_REFUSAL;
-pub const ASSETS_INDEX_UNAVAILABLE: Refusal = Refusal {
-    code: "assets_index_unavailable",
-    when: "this lane's ds-brain predates the assets index, the only holder of version history",
-    remedy: "read the row with `ds assets list`; versions arrive with the next ds-brain deployment on this lane",
-};
 pub const INVALID_EXTERNAL_REFERENCE: Refusal = Refusal {
     code: "invalid_external_reference",
     when: "the external URL, digest, size, or provider is invalid",

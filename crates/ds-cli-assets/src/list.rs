@@ -5,12 +5,6 @@
 //! `tree` are where one comes from. `--order recent`, the default, is the
 //! project's timeline: whatever changed last, across uploads and every source
 //! the index projects, first.
-//!
-//! The index is ds-brain's (assets-index §5.1). On a lane whose ds-brain
-//! predates it, the native client falls back once to the catalogue and marks
-//! the answer `index_status: "unavailable"`; this command then answers as it
-//! did before the index — catalogued uploads, newest received first — and
-//! says so.
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
@@ -83,9 +77,7 @@ Solar, prints — newest change first, each with its folder, kind and version \
 count. --order name sorts by name; --folder narrows to one exact index folder. \
 Read from the index ds-brain builds and serves; --refresh rebuilds it first. \
 Every other `ds assets` command takes an asset_id from here or `ds assets \
-tree`. A class the caller cannot read has no row and no count. A lane whose \
-ds-brain predates the index answers the catalogue of uploads instead, marked \
-`index_status: unavailable`. Changes nothing. Headless.",
+tree`. A class the caller cannot read has no row and no count. Changes nothing. Headless.",
     chapter: Chapter::Assets,
     effect: Effect::ReadOnly,
     authority: Authority::HeadlessProject,
@@ -107,8 +99,7 @@ ds-brain predates the index answers the catalogue of uploads instead, marked \
 `assets` rows (`asset_id`, `name`, `kind`, `folder_path`, `modified_at`, \
 `versions` {count, current, latest_at} …), `more` and `next_cursor`, `order`, \
 ds-brain's `index` {generation, built_at, checked_at, rebuilt, stale_sources, \
-truncated_sources} and `index_status` `served`. When `unavailable`: catalogue \
-rows with `more`, `next_cursor`, `scanned` and `truncated`.",
+truncated_sources} and `index_status` `served`.",
     examples: &[Example {
         command: "ds assets list --project <exact-id> --folder Transformers/TX-104 --output json",
         note: "Read .data.assets[].asset_id to feed versions, read, preview or attach.",
@@ -200,59 +191,12 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             refresh: arguments["refresh"] == Value::Bool(true),
         }),
     )?;
-    if crate::index_served(&page) {
-        let mut answer = json!({
-            "assets": page["assets"],
-            "more": page["more"] == Value::Bool(true),
-            "order": order.as_str(),
-            "index": page["index"],
-            "index_status": crate::INDEX_SERVED,
-        });
-        if let Some(cursor) = page["next_cursor"]
-            .as_str()
-            .filter(|cursor| !cursor.is_empty())
-        {
-            answer["next_cursor"] = json!(cursor);
-        }
-        return Ok(answer);
-    }
-
-    // This lane's ds-brain predates the index. The native client already
-    // answered the catalogue page when the request had a catalogue form; a
-    // folder path has none, so it is resolved the way it always was: a
-    // declared folder, by the one folder authority.
-    let page = if page["assets"].is_array() {
-        page
-    } else {
-        let folder_id = match text("folder") {
-            Some(path) => Some(
-                crate::folder_at(lane, project, &path)?["folder_id"]
-                    .as_str()
-                    .unwrap_or_default()
-                    .to_owned(),
-            ),
-            None => None,
-        };
-        crate::catalogue(
-            lane,
-            project,
-            &CatalogueCommand::List {
-                folder_id,
-                kind: text("kind"),
-                status: text("status"),
-                sensitivity: text("sensitivity"),
-                since: text("since"),
-                limit,
-                cursor: text("cursor"),
-            },
-        )?
-    };
     let mut answer = json!({
         "assets": page["assets"],
-        "more": page["has_more"] == Value::Bool(true),
-        "scanned": page["scanned"],
-        "truncated": page["truncated"] == Value::Bool(true),
-        "index_status": crate::INDEX_UNAVAILABLE,
+        "more": page["more"] == Value::Bool(true),
+        "order": order.as_str(),
+        "index": page["index"],
+        "index_status": crate::INDEX_SERVED,
     });
     if let Some(cursor) = page["next_cursor"]
         .as_str()
@@ -266,43 +210,30 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
 pub fn render(data: &Value) -> String {
     let rows = data["assets"].as_array();
     let on_page = rows.map_or(0, Vec::len);
-    let served = crate::index_served(data);
     let mut out = format!("{} on this page", crate::plural(on_page as u64, "asset"));
-    if served {
-        out.push_str(match data["order"].as_str() {
-            Some("name") => " · by name",
-            _ => " · newest change first",
-        });
-        let index = &data["index"];
-        if let Some(generation) = index["generation"].as_i64() {
-            out.push_str(&format!(" · index generation {generation}"));
-        }
-        if let Some(built) = index["built_at"]
-            .as_str()
-            .zip(index["checked_at"].as_str())
-            .and_then(|(built, checked)| crate::ago(built, checked))
-        {
-            out.push_str(&format!(", built {built}"));
-        }
-    } else if let Some(scanned) = data["scanned"].as_u64() {
-        out.push_str(&format!(" · {scanned} scanned"));
+    out.push_str(match data["order"].as_str() {
+        Some("name") => " · by name",
+        _ => " · newest change first",
+    });
+    let index = &data["index"];
+    if let Some(generation) = index["generation"].as_i64() {
+        out.push_str(&format!(" · index generation {generation}"));
+    }
+    if let Some(built) = index["built_at"]
+        .as_str()
+        .zip(index["checked_at"].as_str())
+        .and_then(|(built, checked)| crate::ago(built, checked))
+    {
+        out.push_str(&format!(", built {built}"));
     }
     out.push('\n');
-    if !served {
-        out.push_str(crate::INDEX_UNAVAILABLE_NOTICE);
-        out.push('\n');
-    }
     let shown = on_page.min(MAX_LINES);
     // Times are relative to the moment the index was checked, which is this
     // read to within the index's own 30-second probe window: the same answer
     // renders the same way however late it is printed.
     let now = data["index"]["checked_at"].as_str();
     for row in rows.into_iter().flatten().take(shown) {
-        if served {
-            out.push_str(&timeline_line(row, now));
-        } else {
-            out.push_str(&crate::asset_line(row));
-        }
+        out.push_str(&timeline_line(row, now));
     }
     if on_page > shown {
         out.push_str(&format!("  … {} more on this page\n", on_page - shown));
@@ -315,11 +246,6 @@ pub fn render(data: &Value) -> String {
             Some(cursor) => out.push_str(&format!("  … more; continue with --cursor {cursor}\n")),
             None => out.push_str("  … more\n"),
         }
-    }
-    if data["truncated"].as_bool().unwrap_or(false) {
-        out.push_str(
-            "  ! the scan stopped at its bound; narrow with --folder, --kind or --since\n",
-        );
     }
     let names = |list: &Value| -> Vec<String> {
         list.as_array()
@@ -498,53 +424,6 @@ mod tests {
         assert!(
             !out.contains("catalogue"),
             "a served page is the index: {out}"
-        );
-    }
-
-    #[test]
-    fn the_catalogue_fallback_says_it_is_not_the_index() {
-        let rows: Vec<Value> = (0..MAX_LINES + 7)
-            .map(|index| {
-                json!({
-                    "asset_id": format!("a_{index:012}"),
-                    "folder": "contracts",
-                    "name": format!("lot-{index}.pdf"),
-                    "kind": "doc",
-                    "status": "durable",
-                    "sensitivity": "internal",
-                    "bytes": 811_233,
-                })
-            })
-            .collect();
-        let out = render(&json!({
-            "assets": rows,
-            "next_cursor": "c_207",
-            "more": true,
-            "scanned": 400,
-            "truncated": true,
-            "index_status": "unavailable",
-        }));
-        let lines: Vec<&str> = out.lines().collect();
-        assert_eq!(lines[0], "207 assets on this page · 400 scanned");
-        assert_eq!(lines[1], crate::INDEX_UNAVAILABLE_NOTICE);
-        assert_eq!(
-            out.matches("lot-").count(),
-            MAX_LINES,
-            "the projection must stop at its own bound"
-        );
-        assert!(out.contains("… 7 more on this page"), "{out}");
-        assert!(out.contains("… more; continue with --cursor c_207"));
-        assert!(out.ends_with(
-            "! the scan stopped at its bound; narrow with --folder, --kind or --since\n"
-        ));
-
-        let short = render(&json!({ "assets": [], "more": false, "index_status": "unavailable" }));
-        assert_eq!(
-            short,
-            format!(
-                "0 assets on this page\n{}\n",
-                crate::INDEX_UNAVAILABLE_NOTICE
-            )
         );
     }
 }

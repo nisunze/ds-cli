@@ -31,14 +31,7 @@ ds-brain's `index` meta (`generation`, `built_at`, `checked_at`, `rebuilt`,
 names them in `sources_omitted` with `reason: edge_only`; any other source
 the served tree itself did not load is named with `reason: not_in_index`.
 
-A lane whose ds-brain predates the index refuses the index request by strict
-decoding; the native client retries once as the catalogue call and marks the
-answer `index_status: unavailable`. `list` and `tree` then answer as they did
-before the index — catalogued uploads, declared folders, system roots `not
-loaded` with `reason: index_unavailable` — and say so; `versions` is refused
-`assets_index_unavailable`, because only the index holds a history. The
-catalogue answer is never presented as the index. A `sys:` id given to
-`read`, `preview`, `promote` or `tree --into` is refused by name
+A `sys:` id given to `read`, `preview`, `promote` or `tree --into` is refused by name
 (`origin_read_unavailable`) — a projected row's bytes are read from the
 surface that owns it.
 
@@ -51,8 +44,7 @@ credential, against the explicit `--project <id>` on that call, on `--lane`.
 The ID is an address to authorize, never proof of authority. The local-only
 `assets.backup.plan` needs no project or credential. No command needs a window: until
 2026-09-20 nine of them relayed through the paired desktop (`requires:
-window`); that path is retired, `--desktop-descriptor` is no longer an input,
-and a caller that still passes it is told `unknown_flag`.
+window`); `--desktop-descriptor` is no longer an input.
 
 City maps are members of the general **tag-group-map** representation class.
 The map index groups existing producer asset identities by exact tag definition
@@ -288,7 +280,6 @@ catalogue's.
 | `assets_not_implemented` | this lane's ds-brain does not serve this action yet |
 | `assets_service_failed` | the catalogue service faulted (HTTP 5xx, `detail.http_status`); retry once |
 | `assets_index_moved` | a `list --cursor` from an index generation that has since been rebuilt; restart from the first page without `--cursor` |
-| `assets_index_unavailable` | `versions` on a lane whose ds-brain predates the index, the only holder of version history |
 | `asset_too_large` | the bytes are above the 32 MiB read bound; open the asset from its own surface |
 | `origin_read_failed` | the signed read expired, the bytes did not match the row's digest, or the destination could not be written; retry once |
 | `origin_read_unavailable` | a projected `sys:` row was named; its bytes are served by the surface that owns it, not by the catalogue |
@@ -297,7 +288,6 @@ catalogue's.
 | `asset_not_geographic` | `promote` named an asset that is not `geo` and no geo member; only a geographic asset or member promotes |
 | `invalid_payload` / `malformed_descriptor` / `local_layer_refused` | the prepared local layer store's own refusals on `promote`, in the words `ds map local` uses |
 | `assets_unreadable` | the catalogue answered a shape this build cannot fold; report it with the project id |
-| `unknown_flag` | `--desktop-descriptor` was passed; drop it |
 
 `--since 01-09-2026` is refused here rather than at the catalogue on purpose: a
 transposed day and month is the commonest filter mistake there is, and

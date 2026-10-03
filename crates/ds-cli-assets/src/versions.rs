@@ -50,11 +50,7 @@ empty list. Changes nothing. Headless.",
         note: "Read .data.versions[].asset_id to preview or read one version.",
         runnable: false,
     }],
-    refusals: &crate::refusals::<25>(&[
-        crate::INVALID_ASSET_ID,
-        crate::ASSETS_INDEX_UNAVAILABLE,
-        crate::ASSETS_UNREADABLE,
-    ]),
+    refusals: &crate::refusals::<24>(&[crate::INVALID_ASSET_ID, crate::ASSETS_UNREADABLE]),
     reference: Some("docs/reference/assets.md"),
     search: &[
         "history",
@@ -77,15 +73,6 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             asset_id: asset.clone(),
         },
     )?;
-    if !crate::index_served(&answer) {
-        return Err(Failure::unavailable(
-            crate::ASSETS_INDEX_UNAVAILABLE.code,
-            format!("this lane's ds-brain does not serve the assets index, which holds the versions of `{asset}`"),
-        )
-        .remedy(crate::ASSETS_INDEX_UNAVAILABLE.remedy)
-        .detail(json!({ "asset": asset, "index_status": answer["index_status"] }))
-        .next(format!("ds assets list --project {project} --output json")));
-    }
     let mut data = json!({
         "asset": answer["asset"],
         "versions": answer["versions"],

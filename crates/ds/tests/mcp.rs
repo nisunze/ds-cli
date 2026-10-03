@@ -2064,8 +2064,7 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
             // whole-model spotting receipt stays viewable. The installed
             // canary exposes 30 leaves plus two bootstrap tools; reporter
             // engine identity remains beside export so a delivery can name
-            // the binary that produced it. The deprecated `combined` ZIP
-            // alias is kept out of this profile.
+            // the binary that produced it.
             // One retained-source cable reconciliation leaf.
             "grid" => 33,
             // Seventeen working-copy leaves plus bootstrap: the four

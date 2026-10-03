@@ -185,7 +185,7 @@ pub static SELECT: Command = Command {
     ],
     output: "The paired Desktop's native selection receipt with the held model and revision, selected entity IDs and primary focus. The range follows the native scene's family order; no range is calculated by the CLI.",
     examples: &[Example {
-        command: "ds map profile select --model <model-id> --revision <revision-id> --from <entity-id> --to <entity-id> --mode replace --desktop-descriptor ~/.local/share/rw.datasolutions.desktop.local-dev/cli-bridge.json --output json",
+        command: "ds map profile select --model <model-id> --revision <revision-id> --from <entity-id> --to <entity-id> --mode replace --desktop-descriptor ~/.local/share/rw.datasolutions.desktop.local-dev/cli-bridge.d/<instance-id>.json --output json",
         note: "Select one entity by using the same ID twice; the explicit descriptor addresses the local development Desktop without discovery.",
         runnable: false,
     }],

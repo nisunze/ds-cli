@@ -7,13 +7,6 @@
 //! system folders included, redacted for the caller. `--folder`, `--kind` and
 //! `--depth` bound what is printed of it; nothing here projects a source.
 //! With `--into` it is one pack's central directory, read but never unpacked.
-//!
-//! Two reads are still the catalogue's, and say so in `index_status`: a lane
-//! whose ds-brain predates the index (`unavailable`), and `--query`/`--link`,
-//! which the kernel filters while it builds a tree and which the served index
-//! does not take (`not_read`). Both answer the declared folders and the
-//! catalogued uploads, projected by the kernel on this host, exactly as
-//! before the index.
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
@@ -37,7 +30,6 @@ pub const INDEX_NOT_READ: &str = "not_read";
 /// Why a source is absent from a tree answer. Typed words, never a sentence.
 const EDGE_ONLY: &str = "edge_only";
 const NOT_IN_INDEX: &str = "not_in_index";
-const INDEX_UNAVAILABLE_REASON: &str = "index_unavailable";
 const INDEX_NOT_READ_REASON: &str = "index_not_read";
 
 const INTO_ARG: Arg = Arg::value(
@@ -85,8 +77,7 @@ folders (Transformers, MV models, Survey, Reports, Solar …) and declared \
 folders, with counts, to --depth. --folder roots it at one exact path; \
 --refresh rebuilds the index. `sources_omitted` names the edge-only Local \
 data and local prints the shared index never holds. --query and --link \
-search catalogued uploads only (`index_status: not_read`), as does a lane \
-whose ds-brain predates the index (`unavailable`). --into walks one `pack` \
+search catalogued uploads only (`index_status: not_read`). --into walks one `pack` \
 asset's members with sizes, never unpacking. Headless.",
     chapter: Chapter::Assets,
     effect: Effect::ReadOnly,
@@ -106,7 +97,7 @@ asset's members with sizes, never unpacking. Headless.",
     output: "\
 `ds.assets.tree/v1`: `folders` nested to `depth`, each with `path`, `kind` \
 (system or user), `counts` and its `assets`; `truncated` when a bound cut it; \
-ds-brain's `index` meta; `index_status` `served`, `not_read` or `unavailable`; \
+ds-brain's `index` meta; `index_status` `served` or `not_read`; \
 `sources_omitted` [{source, reason}]. With --into, `ds.assets.container/v1`: \
 the `members` of one pack with `path`, `bytes`, `kind`, `format` and shapefile \
 `companions`, plus `walked` and `truncated` (5,000 members, 8 levels).",
@@ -196,7 +187,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     // reads the catalogue, as it always has, and says it did not read the
     // index.
     if arguments.get("query").is_some() || arguments.get("link").is_some() {
-        return catalogue_tree(lane, project, &arguments, None, INDEX_NOT_READ);
+        return catalogue_tree(lane, project, &arguments);
     }
     let served = crate::catalogue(
         lane,
@@ -205,18 +196,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             refresh: arguments["refresh"] == Value::Bool(true),
         },
     )?;
-    if crate::index_served(&served) {
-        return Ok(bounded_index(served, &arguments));
-    }
-    // This lane's ds-brain predates the index: the native client fell back
-    // to the declared folders, and the tree is the catalogue's.
-    catalogue_tree(
-        lane,
-        project,
-        &arguments,
-        Some(served),
-        crate::INDEX_UNAVAILABLE,
-    )
+    Ok(bounded_index(served, &arguments))
 }
 
 /// The served index tree, bounded for this caller: rooted at `--folder`
@@ -322,22 +302,12 @@ fn total_folders(folder: &Value) -> u64 {
         .sum::<u64>()
 }
 
-/// The catalogue's tree, as before the index: the declared folders and the
+/// The search tree: the declared folders and the
 /// first page of catalogued uploads, projected by the kernel on this host.
-/// `folders` is the declared-folder answer when the caller already holds it.
-fn catalogue_tree(
-    lane: &str,
-    project: &str,
-    arguments: &Value,
-    folders: Option<Value>,
-    status: &str,
-) -> Result<Value, Failure> {
+fn catalogue_tree(lane: &str, project: &str, arguments: &Value) -> Result<Value, Failure> {
     // One read per authority, both bounded: the declared folders, and the
     // first page of the catalogue (everything but archive, newest first).
-    let folders = match folders {
-        Some(folders) => folders,
-        None => crate::catalogue(lane, project, &CatalogueCommand::Folders)?,
-    };
+    let folders = crate::catalogue(lane, project, &CatalogueCommand::Folders)?;
     let page = crate::catalogue(
         lane,
         project,
@@ -393,18 +363,13 @@ fn catalogue_tree(
     // Every source this tree did not load is named with why: edge-only ones
     // are never in the shared index; the rest are the index's, which this
     // read did not have.
-    let reason = if status == INDEX_NOT_READ {
-        INDEX_NOT_READ_REASON
-    } else {
-        INDEX_UNAVAILABLE_REASON
-    };
     tree["sources_omitted"] = omitted
         .iter()
         .map(|source| {
             let edge = crate::EDGE_ONLY_SOURCES
                 .iter()
                 .any(|(edge, _)| edge == source);
-            json!({"source": source, "reason": if edge { EDGE_ONLY } else { reason }})
+            json!({"source": source, "reason": if edge { EDGE_ONLY } else { INDEX_NOT_READ_REASON }})
         })
         .collect();
     tree["sources_unavailable"] = json!([]);
@@ -412,7 +377,7 @@ fn catalogue_tree(
     tree["catalogue_loaded"] = json!(true);
     tree["catalogue_more"] = json!(page["has_more"] == Value::Bool(true));
     tree["catalogue_error"] = Value::Null;
-    tree["index_status"] = json!(status);
+    tree["index_status"] = json!(INDEX_NOT_READ);
     Ok(tree)
 }
 
@@ -500,15 +465,10 @@ fn render_tree(data: &Value) -> String {
         }
     }
     out.push('\n');
-    match data["index_status"].as_str() {
-        Some(crate::INDEX_UNAVAILABLE) => {
-            out.push_str(crate::INDEX_UNAVAILABLE_NOTICE);
-            out.push('\n');
-        }
-        Some(INDEX_NOT_READ) => out.push_str(
+    if data["index_status"] == INDEX_NOT_READ {
+        out.push_str(
             "! --query and --link search the catalogued uploads only; drop them to read the index\n",
-        ),
-        _ => {}
+        );
     }
     let shown = lines.len().min(MAX_LINES);
     for line in &lines[..shown] {
@@ -1011,15 +971,6 @@ mod tests {
         assert!(out.contains("! not rebuilt since they changed: solar; --refresh rebuilds"));
         assert!(!out.contains("catalogue"), "{out}");
 
-        let fallback = render(&json!({
-            "schema": "ds.assets.tree/v1", "folders": [], "total_assets": 0, "total_folders": 0,
-            "truncated": false, "index_status": "unavailable",
-            "sources_omitted": [{"source": "transformers", "reason": "index_unavailable"}],
-        }));
-        assert!(
-            fallback.contains(crate::INDEX_UNAVAILABLE_NOTICE),
-            "{fallback}"
-        );
         let search = render(&json!({
             "schema": "ds.assets.tree/v1", "folders": [], "total_assets": 0, "total_folders": 0,
             "truncated": false, "index_status": "not_read",
