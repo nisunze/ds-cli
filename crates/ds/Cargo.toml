@@ -75,6 +75,9 @@ ds-report-artifacts = { path = "../../../ds-command-kernel/crates/ds-report-arti
 # store `ds dsgrid model link` writes, then proves `ds dsgrid model unlink`
 # removes exactly that link through the binary.
 ds-layer-store = { path = "../../../ds-command-kernel/crates/ds-layer-store" }
+# Linked-model CLI fixtures use the authoritative typed rows and requests.
+ds-grid-model = { workspace = true }
+serde = { workspace = true }
 ds-grid-engine = { workspace = true }
 ds-grid-exchange = { workspace = true }
 # tests/domain_smoke.rs opens the KMZ and Shapefile ZIP `ds dsgrid-exchange

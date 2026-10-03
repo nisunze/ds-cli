@@ -124,6 +124,10 @@ const NOT_A_REFUSAL: &[(&str, &str)] = &[
 /// unscanned while the test passed.
 const CODE_NOT_A_LITERAL: &[(&str, &str)] = &[
     (
+        "ds-cli-dsgrid/src/model/composite.rs",
+        "the linked engine's refusal code is preserved; dsgrid_composite::every_engine_linked_refusal_is_declared_by_the_cli compares the authoritative engine vocabulary with the command refusals",
+    ),
+    (
         "ds-cli-desktop/src/lib.rs",
         "the shared project-ID adapter preserves the caller's declared refusal \
          code; project.rs, sync.rs/published.rs and artifact.rs pass only the \

@@ -700,16 +700,30 @@ impl Command {
         self.args.iter().find(|arg| arg.name == name)
     }
 
-    /// The one supported mixed-effect command shape: a machine-level
-    /// proposal whose declared boolean `--write` switch selects its writing
-    /// path. Global and artifact writes never become conditional merely by
-    /// naming an input `write`.
+    /// A declared planning shape: machine proposals use `--write`; linked
+    /// artifact plans use `--apply` plus a typed `--publication` option.
+    /// The latter's local output is a file write, while publication needs
+    /// the global confirmation. Other global writes retain their usual gate.
     pub fn confirmation_trigger(&self) -> Option<&'static str> {
+        if self.confirmation_parameter().is_some() {
+            return Some("--apply");
+        }
         (self.effect == Effect::MachineWrite
             && self
                 .arg("write")
                 .is_some_and(|arg| arg.kind == ArgKind::Switch))
         .then_some("--write")
+    }
+
+    pub fn confirmation_parameter(&self) -> Option<&'static str> {
+        (self.effect == Effect::GlobalWrite
+            && self
+                .arg("apply")
+                .is_some_and(|arg| arg.kind == ArgKind::Switch)
+            && self
+                .arg("publication")
+                .is_some_and(|arg| arg.kind == ArgKind::Value))
+        .then_some("--publication")
     }
 
     /// The declared previewing path of a writing command: a boolean
@@ -725,8 +739,12 @@ impl Command {
     }
 
     pub fn confirmation_required_for(&self, inputs: &crate::args::Inputs) -> bool {
-        if self.confirmation_trigger().is_some() {
-            return inputs.switch("write");
+        match self.confirmation_trigger() {
+            Some("--apply") => {
+                return inputs.switch("apply") && inputs.value("publication").is_some()
+            }
+            Some("--write") => return inputs.switch("write"),
+            _ => {}
         }
         if self.preview_switch().is_some() && inputs.switch("dry-run") {
             return false;
@@ -876,6 +894,33 @@ mod tests {
     }
 
     #[test]
+    fn typed_publication_plans_confirm_only_the_applied_project_path() {
+        static ARGS: [Arg; 2] = [
+            Arg::switch("apply", "Apply the candidate."),
+            Arg::value("publication", "<json>", "Typed project binding."),
+        ];
+        let mut command = confirmation_fixture(Effect::GlobalWrite);
+        command.args = &ARGS;
+        for (args, confirmed) in [
+            (vec![], false),
+            (vec!["--publication", "binding.json"], false),
+            (vec!["--apply"], false),
+            (vec!["--apply", "--publication", "binding.json"], true),
+        ] {
+            let args = args.into_iter().map(str::to_owned).collect::<Vec<_>>();
+            let inputs = crate::parse(&command, &args).unwrap();
+            assert_eq!(command.confirmation_required_for(&inputs), confirmed);
+        }
+        let descriptor = crate::help::command_json(&command);
+        assert_eq!(descriptor["confirmation_trigger"], "--apply");
+        assert_eq!(descriptor["confirmation_parameter"], "--publication");
+        assert!(crate::help::command(&command).contains("required with --apply and --publication"));
+        // Merely naming an apply switch cannot bypass an existing write gate.
+        command.args = &ARGS[..1];
+        assert!(command.confirmation_required_for(&crate::parse(&command, &[]).unwrap()));
+    }
+
+    #[test]
     fn only_machine_write_can_use_the_declared_write_trigger() {
         let machine = confirmation_fixture(Effect::MachineWrite);
         assert_eq!(machine.confirmation_trigger(), Some("--write"));
@@ -960,11 +1005,9 @@ mod tests {
             availability: available,
         };
         assert_eq!(VALUE.preview_switch(), None);
-        assert!(
-            crate::help::command_json(&VALUE)
-                .get("preview_switch")
-                .is_none()
-        );
+        assert!(crate::help::command_json(&VALUE)
+            .get("preview_switch")
+            .is_none());
         let gated = crate::parse(&VALUE, &["--dry-run".to_string(), "x".to_string()]).unwrap();
         assert!(VALUE.confirmation_required_for(&gated));
     }

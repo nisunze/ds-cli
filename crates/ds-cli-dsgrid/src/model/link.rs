@@ -32,7 +32,7 @@ const MODEL_ARG: Arg = Arg {
     name: "model",
     kind: ArgKind::Value,
     value: "<model-id>",
-    required: true,
+    required: false,
     default: None,
     choices: &[],
     summary: "The working copy to link, by the id `ds dsgrid model list` reports.",
@@ -42,7 +42,7 @@ const WORKSPACE_ARG: Arg = Arg {
     name: "workspace",
     kind: ArgKind::Value,
     value: "<folder>",
-    required: true,
+    required: false,
     default: None,
     choices: &[],
     summary: "The PLS-CADD workspace folder (the one holding the .don) this copy was converted from.",
@@ -55,9 +55,12 @@ const LINK_OWN: [Refusal; 5] = [
     crate::folder::TOO_LARGE,
     crate::folder::UNREADABLE,
 ];
-const REFUSALS: &[Refusal; LINK_OWN.len() + workspace::REFUSALS.len()] = &refusals();
-const fn refusals() -> [Refusal; LINK_OWN.len() + workspace::REFUSALS.len()] {
-    let mut all = [WORKSPACE_NOT_FOUND; LINK_OWN.len() + workspace::REFUSALS.len()];
+const REFUSALS: &[Refusal;
+     LINK_OWN.len() + workspace::REFUSALS.len() + super::composite::REFUSALS.len()] = &refusals();
+const fn refusals()
+-> [Refusal; LINK_OWN.len() + workspace::REFUSALS.len() + super::composite::REFUSALS.len()] {
+    let mut all = [WORKSPACE_NOT_FOUND;
+        LINK_OWN.len() + workspace::REFUSALS.len() + super::composite::REFUSALS.len()];
     let mut index = 0;
     while index < LINK_OWN.len() {
         all[index] = LINK_OWN[index];
@@ -68,16 +71,22 @@ const fn refusals() -> [Refusal; LINK_OWN.len() + workspace::REFUSALS.len()] {
         all[LINK_OWN.len() + shared] = workspace::REFUSALS[shared];
         shared += 1;
     }
+    let mut linked = 0;
+    while linked < super::composite::REFUSALS.len() {
+        all[LINK_OWN.len() + workspace::REFUSALS.len() + linked] =
+            super::composite::REFUSALS[linked];
+        linked += 1;
+    }
     all
 }
 
 pub static COMMAND: Command = Command {
     id: "dsgrid.model.link",
     path: &["dsgrid", "model", "link"],
-    contract: 1,
-    summary: "Pin a working copy to the live PLS-CADD workspace it came from.",
+    contract: 2,
+    summary: "Link owner parts to a composite or a PLS-CADD source workspace.",
     purpose: "\
-Records on this machine's catalogue row which PLS-CADD workspace folder a \
+With --request, link exact .dsgrid parts into a composite using explicit shared ownership. The engine schemas are at ds dsgrid describe --linked-models. This mode plans by default; --apply --out commits one local linked checkpoint, and --publication also publishes one atomic project generation. It refuses mixed workspace and graph arguments. Without --request, --model, --workspace and --account name the explicit PLS-CADD source-workspace operation. Records on this machine's catalogue row which PLS-CADD workspace folder a \
 working copy was converted from: the folder, the exchange digest of its \
 member tree (the digest `ds dsgrid-exchange inspect` prints), the PLS-CADD \
 program version and each native member family's version (DON 57, CRI 94, \
@@ -87,25 +96,40 @@ sync` writes DS edits back into that folder in place. Relinking replaces the \
 previous link. Nothing in the workspace is read for engineering and nothing \
 in it is written.",
     chapter: Chapter::GridModel,
-    effect: Effect::LocalFileWrite,
-    authority: Authority::None,
+    effect: Effect::GlobalWrite,
+    authority: Authority::HeadlessProject,
     execution: Execution::Sync,
     args: &[
         MODEL_ARG,
         WORKSPACE_ARG,
         workspace::LANE_ARG,
-        workspace::ACCOUNT_ARG,
+        Arg::value(
+            "account",
+            "<uid>",
+            "Required for the PLS-CADD workspace mode; the working copy's DS account.",
+        ),
+        super::composite::REQUEST,
+        super::composite::OUT,
+        super::composite::APPLY,
+        super::composite::PUBLICATION,
     ],
     output: "\
-`status: linked`, the `model` row with its `pls_source` {path, digest, \
+Graph mode returns dry-run/apply status, canonical digest and exact candidate pins; --publication adds the atomic project request or verified receipt. Workspace mode returns `status: linked`, the `model` row with its `pls_source` {path, digest, \
 pls_version, member_versions, member_count, linked_at}, `replaced` when a \
 previous link was overwritten, and a `streamed_volume` warning when the \
 folder is on a streamed or network drive.",
-    examples: &[Example {
-        command: "ds dsgrid model link --model local-5ff16cd0a3d6416b --workspace \"/srv/pls/Nyamagabe\" --account <uid> --output json",
-        note: "Then `ds dsgrid-exchange sync --model local-5ff16cd0a3d6416b --dry-run`.",
-        runnable: false,
-    }],
+    examples: &[
+        Example {
+            command: "ds dsgrid model link --request /work/link.json --output json",
+            note: "Dry run with explicit package sources and shared owners; add --apply --out <new-path> to commit.",
+            runnable: false,
+        },
+        Example {
+            command: "ds dsgrid model link --model local-5ff16cd0a3d6416b --workspace \"/srv/pls/Nyamagabe\" --account <uid> --output json",
+            note: "Then `ds dsgrid-exchange sync --model local-5ff16cd0a3d6416b --dry-run`.",
+            runnable: false,
+        },
+    ],
     refusals: REFUSALS,
     reference: Some("docs/reference/dsgrid.md"),
     search: &["pls-cadd", "provenance", "connect"],
@@ -113,7 +137,37 @@ folder is on a streamed or network drive.",
     availability: || Availability::Available,
 };
 
-pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
+pub fn run(inputs: &Inputs, context: &Context) -> Result<Value, Failure> {
+    if inputs.value("request").is_some() {
+        if ["model", "workspace", "account"]
+            .iter()
+            .any(|name| inputs.value(name).is_some())
+        {
+            return Err(Failure::invalid(
+                "composite_invalid",
+                "choose the linked graph or the PLS-CADD workspace mode explicitly",
+            ));
+        }
+        return super::composite::link(inputs, context);
+    }
+    if inputs.switch("apply")
+        || inputs.value("out").is_some()
+        || inputs.value("publication").is_some()
+    {
+        return Err(Failure::invalid(
+            "composite_invalid",
+            "--apply and --out require the linked graph --request mode",
+        ));
+    }
+    if ["model", "workspace", "account"]
+        .iter()
+        .any(|name| inputs.value(name).is_none())
+    {
+        return Err(Failure::invalid(
+            "composite_invalid",
+            "workspace mode requires --model, --workspace and --account; graph mode requires --request",
+        ));
+    }
     let id = inputs.require("model")?.trim().to_owned();
     let opened = pls_source::open(inputs, &id)?;
     let source = pls_source::pls_source(&id, &opened.package)?;

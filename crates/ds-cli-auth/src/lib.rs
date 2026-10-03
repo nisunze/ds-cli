@@ -5818,6 +5818,10 @@ pub use ds_client_core::design_attachments::{
     Command as DesignAttachmentsCommand, Object as DesignAttachmentObject,
 };
 pub use ds_client_core::grid_models::Command as GridModelsCommand;
+pub use ds_client_core::grid_models::linked_publication::{
+    LinkedIntent as LinkedGridIntent, Participant as LinkedGridParticipant,
+    Retirement as LinkedGridRetirement,
+};
 pub use ds_client_core::report_artifact::{
     Command as ReportArtifactCommand, RemoveCommand as RemoveReportArtifactCommand,
 };
