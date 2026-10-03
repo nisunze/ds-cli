@@ -704,11 +704,15 @@ fn edge_outputs_follow_the_kernel_output_policy() {
     let sheets = serde_json::json!({"project_settings":[{"parameter":"design_export_format",
         "value":{"schema":"ds.design-output-selection/v1",
             "geospatial":["voltage_drop_pdf"]}}]});
-    assert!(
+    // 1244cd0c made saved analysis mandatory on 2026-10-02; the PDF stays local.
+    assert_eq!(
         ds_command_kernel::report_formats::plan_data_outputs(&sheets)
             .unwrap()
-            .is_empty(),
-        "the local signed output is absent from the Web compute plan"
+            .into_iter()
+            .map(|output| output.output_id)
+            .collect::<Vec<_>>(),
+        ["voltage_drop"],
+        "the Web data plan retains saved analysis and excludes the local PDF"
     );
 }
 
