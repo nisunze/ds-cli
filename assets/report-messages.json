@@ -967,7 +967,14 @@
       "rating from the project seeds": "rating from the project seeds",
       "Connect each service cable to the ABC core shown: 1, 2 or 3 (1-2-3 = three-phase). Poles in pole-number order, customers by house number · ": "Connect each service cable to the ABC core shown: 1, 2 or 3 (1-2-3 = three-phase). Poles in pole-number order, customers by house number · ",
       "; ✗ = over the ": "; ✗ = over the ",
-      " in pole-number order, customers by house number · ": " in pole-number order, customers by house number · "
+      " in pole-number order, customers by house number · ": " in pole-number order, customers by house number · ",
+      "format.brief": "brief",
+      "format.extended": "extended",
+      "Area class not specified; guideline unavailable": "Area class not specified; guideline unavailable",
+      "longest": "longest",
+      "overloaded": "overloaded",
+      "check only": "check only",
+      "pole": "pole"
     },
     "fr": {
       "%": "%",
@@ -1935,7 +1942,14 @@
       "rating from the project seeds": "calibre des référentiels du projet",
       "Connect each service cable to the ABC core shown: 1, 2 or 3 (1-2-3 = three-phase). Poles in pole-number order, customers by house number · ": "Raccorder chaque branchement à la phase torsadée indiquée : 1, 2 ou 3 (1-2-3 = triphasé). Poteaux et clients classés par numéro · ",
       "; ✗ = over the ": " ; ✗ = au-delà de la limite de ",
-      " in pole-number order, customers by house number · ": " classés par numéro, clients par numéro de maison · "
+      " in pole-number order, customers by house number · ": " classés par numéro, clients par numéro de maison · ",
+      "format.brief": "abrégé",
+      "format.extended": "détaillé",
+      "Area class not specified; guideline unavailable": "Classe de zone non définie ; critère indisponible",
+      "longest": "le plus long",
+      "overloaded": "en surcharge",
+      "check only": "contrôle uniquement",
+      "pole": "poteau"
     }
   },
   "headers": {
