@@ -92,8 +92,8 @@ pub struct TransformerSet(Vec<String>);
 
 impl TransformerSet {
     /// Validate and canonicalize one explicit set using the same reference
-    /// shape as ds-brain. Canonical aliases are de-duplicated in first-seen
-    /// order so the request and its exact per-transformer receipt cannot
+    /// shape as ds-brain. Canonical aliases are de-duplicated, then sorted in
+    /// byte-wise identity order so the request and its exact receipt cannot
     /// disagree after the service normalizes a name.
     pub fn new(names: impl IntoIterator<Item = String>) -> Result<Self, ClientError> {
         let out = ds_command_kernel::report::transformers::transformer_set(names)

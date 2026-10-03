@@ -5565,7 +5565,7 @@ fn project_report_profile_inputs_receipts_and_bounds_fail_closed() {
         ])
         .unwrap()
         .names(),
-        &["tx_1", "_001_main", "combined_transformer"]
+        &["_001_main", "combined_transformer", "tx_1"]
     );
     assert!(TransformerSet::new((0..501).map(|index| format!("tx_{index}"))).is_err());
     assert!(RetirementRequest::retire(TransformerSet::default(), "why".to_owned()).is_err());

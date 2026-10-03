@@ -31,6 +31,8 @@ pub fn canonical_transformer_reference(value: &str) -> String {
     canonical
 }
 
+/// Canonicalize and de-duplicate names, then return byte-wise identity order.
+/// Selection order cannot change the admitted request or its report receipts.
 pub fn transformer_set(
     names: impl IntoIterator<Item = String>,
 ) -> Result<Vec<String>, &'static str> {
@@ -57,6 +59,7 @@ pub fn transformer_set(
             return Err("one request names more transformers than the fixed bound");
         }
     }
+    out.sort_unstable();
     Ok(out)
 }
 
@@ -67,8 +70,8 @@ pub struct Admitted {
     pub revision: u64,
 }
 
-/// Admitted rooms retain first-seen order. Aliases with conflicting revisions
-/// cannot identify one exact input room and are refused before staging.
+/// Admitted rooms use the canonical order from `transformer_set`. Aliases with
+/// conflicting revisions cannot identify one exact room and are refused before staging.
 pub fn admitted(inputs: Vec<Admitted>) -> Result<Vec<Admitted>, String> {
     if inputs.len() > MAX_TRANSFORMERS {
         return Err("Combined report exceeds 500 admitted rooms".into());
@@ -112,7 +115,7 @@ pub fn admitted(inputs: Vec<Admitted>) -> Result<Vec<Admitted>, String> {
 mod tests {
     use super::*;
     #[test]
-    fn native_reference_rules_keep_first_seen_order_and_fold_aliases() {
+    fn native_reference_rules_sort_canonical_identities_and_fold_aliases() {
         assert_eq!(canonical_transformer_reference("!!!"), "transformer");
         assert_eq!(canonical_transformer_reference(""), "transformer");
         assert_eq!(canonical_transformer_reference("3 A"), "_3_a");
@@ -122,10 +125,43 @@ mod tests {
         );
         assert_eq!(
             transformer_set(["Z".into(), "a-b".into(), "A B".into()]).unwrap(),
-            ["z", "a_b"]
+            ["a_b", "z"]
         );
         assert!(transformer_set(["".into()]).is_err());
     }
+    #[test]
+    fn selection_permutations_admit_the_same_canonical_rooms_and_revisions() {
+        let room = |name: &str, revision| Admitted {
+            transformer: name.into(),
+            revision,
+        };
+        let expected = vec![room("tx_a", 7), room("tx_b", 9), room("tx_c", 3)];
+        assert_eq!(
+            admitted(vec![
+                room("TX B", 9),
+                room("tx_c", 3),
+                room("tx_a", 7),
+                room("tx_b", 9)
+            ])
+            .unwrap(),
+            expected
+        );
+        assert_eq!(
+            admitted(vec![room("tx_c", 3), room("tx_b", 9), room("TX A", 7)]).unwrap(),
+            expected
+        );
+        assert_eq!(
+            transformer_set([
+                "TX-1".into(),
+                "001 Main".into(),
+                "tx_1".into(),
+                "combined-transformers".into()
+            ])
+            .unwrap(),
+            ["_001_main", "combined_transformer", "tx_1"]
+        );
+    }
+
     #[test]
     fn exact_revision_admission_refuses_conflicts_reserved_and_too_small_sets() {
         let a = |name: &str, revision| Admitted {
@@ -134,7 +170,7 @@ mod tests {
         };
         assert_eq!(
             admitted(vec![a("Z", 1), a("a-b", 2), a("A B", 2)]).unwrap(),
-            vec![a("z", 1), a("a_b", 2)]
+            vec![a("a_b", 2), a("z", 1)]
         );
         assert!(admitted(vec![a("z", 1), a("Z", 2)]).is_err());
         assert!(admitted(vec![a("combined_transformer", 1), a("z", 2)]).is_err());
