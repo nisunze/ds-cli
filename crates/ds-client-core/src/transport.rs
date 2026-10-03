@@ -2988,6 +2988,13 @@ pub(crate) fn save_config_body(
 }
 
 pub trait Transport {
+    fn messaging(
+        &mut self,
+        _call: crate::messaging::MessagingCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        Err(TransportError::Unreachable)
+    }
+
     /// Read exact persisted analysis bytes; adapters must retain the response
     /// headers and obey the call's bounded response limit.
     fn transformer_analysis(
@@ -3324,6 +3331,13 @@ pub trait Transport {
 /// bearer as ordinary `Authorization: Bearer ...` without inferring that it is
 /// a Firebase token.
 pub trait AuthorizedTransport {
+    fn messaging(
+        &mut self,
+        _call: crate::messaging::MessagingCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        Err(TransportError::Unreachable)
+    }
+
     /// Read exact persisted analysis bytes; adapters must retain the response
     /// headers and obey the call's bounded response limit.
     fn transformer_analysis(
@@ -3635,6 +3649,13 @@ pub trait AuthorizedTransport {
 }
 
 impl<T: Transport> AuthorizedTransport for T {
+    fn messaging(
+        &mut self,
+        call: crate::messaging::MessagingCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        Transport::messaging(self, call)
+    }
+
     fn transformer_analysis(
         &mut self,
         call: crate::TransformerAnalysisCall<'_>,
