@@ -31,6 +31,7 @@ pub mod sheet_margin;
 pub mod sheet_status;
 pub mod standards;
 pub mod structure_descriptions;
+pub mod style_migration;
 pub mod style_overrides;
 pub mod table_columns;
 pub mod table_headings;

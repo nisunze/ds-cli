@@ -152,24 +152,24 @@ pub fn bind_style_keys(layout: &mut Layout, layer: &PrintContextLayer) {
         {
             continue;
         }
-        let key = match &layer.source {
-            PrintContextSource::ProjectDsgridMv { .. } => {
-                style_key(&id, "project_model", "mv_context")
-            }
-            PrintContextSource::Catalog { layer, .. } => {
-                style_key(layer, "cold_existing", "context")
-            }
-            PrintContextSource::LocalLayer { .. } | PrintContextSource::Survey { .. } => {
-                style_key(&id, "live_geojson", "context")
-            }
-            PrintContextSource::GoogleOpenBuildings { .. } => {
-                style_key("buildings_context", "derived_geojson", "context")
-            }
-            PrintContextSource::ElevationContours { .. } => {
-                style_key(&id, "derived_geojson", "context")
-            }
-        };
+        let key = context_style_key(layer, &id);
         layout.style_keys.insert(id, key);
+    }
+}
+
+/// The one semantic key a context source declares for each print layer id it
+/// expands into. New bindings and the legacy-ref migration share it.
+pub fn context_style_key(layer: &PrintContextLayer, id: &str) -> crate::style_resolution::Key {
+    match &layer.source {
+        PrintContextSource::ProjectDsgridMv { .. } => style_key(id, "project_model", "mv_context"),
+        PrintContextSource::Catalog { layer, .. } => style_key(layer, "cold_existing", "context"),
+        PrintContextSource::LocalLayer { .. } | PrintContextSource::Survey { .. } => {
+            style_key(id, "live_geojson", "context")
+        }
+        PrintContextSource::GoogleOpenBuildings { .. } => {
+            style_key("buildings_context", "derived_geojson", "context")
+        }
+        PrintContextSource::ElevationContours { .. } => style_key(id, "derived_geojson", "context"),
     }
 }
 
