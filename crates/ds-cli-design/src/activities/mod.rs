@@ -676,21 +676,22 @@ mod tests {
 
     #[test]
     fn an_explicit_absolute_state_dir_is_the_store_root_exactly() {
+        let temp = tempfile::tempdir().expect("native absolute test root");
+        let root = temp.path().join("ds-activities-test");
         let inputs = ds_cli_contract::args::parse(
             &read::COMMAND,
-            &["--state-dir".into(), "/var/tmp/ds-activities-test".into()],
+            &["--state-dir".into(), root.to_string_lossy().into_owned()],
         )
         .expect("the flag parses");
-        assert_eq!(
-            state_root(&inputs).expect("an absolute root answers"),
-            std::path::Path::new("/var/tmp/ds-activities-test")
-        );
+        assert_eq!(state_root(&inputs).expect("an absolute root answers"), root);
     }
 
     #[test]
     fn a_capture_never_names_the_account_in_its_path() {
+        let temp = tempfile::tempdir().expect("native absolute test root");
+        let root = temp.path().join("store");
         let key = capture_key(
-            std::path::Path::new("/tmp/store"),
+            &root,
             "uid-of-a-real-person",
             &"a".repeat(64),
             "canary",
@@ -700,7 +701,11 @@ mod tests {
         .expect("the kernel answers a well-formed key");
         let spelled = key.directory.to_string_lossy().into_owned();
         assert!(!spelled.contains("uid-of-a-real-person"), "{spelled}");
-        assert!(spelled.contains("design-activities/canary/"), "{spelled}");
+        assert!(
+            key.directory
+                .starts_with(root.join("design-activities/canary")),
+            "{spelled}"
+        );
         assert_eq!(key.file_name, "1758000000000.json");
     }
 

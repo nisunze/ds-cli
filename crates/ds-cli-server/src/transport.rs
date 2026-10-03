@@ -25,9 +25,9 @@
 //! socket file left by a host that died is removed only by the host that
 //! holds the lock, and only when nothing answers on it.
 //!
-//! Platforms without Unix sockets have no door at all. `ds server serve` was
-//! never available there and the protected state it needs is Unix-only, so
-//! nothing listens and nothing is sent: both halves refuse by name.
+//! Windows uses an owner-only local named pipe (transport_windows.rs), with
+//! the same router and bounded HTTP exchange. Both ends compare full account
+//! SIDs from OS process tokens before admitting or sending a request.
 
 use ds_cli_contract::Failure;
 use std::path::{Path, PathBuf};
@@ -40,7 +40,14 @@ pub const LOCK: &str = "server.lock";
 
 /// Where the Server over `state` answers.
 pub fn socket_path(state: &Path) -> PathBuf {
-    state.join(SOCKET)
+    #[cfg(windows)]
+    {
+        windows::pipe_path(state)
+    }
+    #[cfg(not(windows))]
+    {
+        state.join(SOCKET)
+    }
 }
 
 /// Who the kernel says is at the other end of one accepted connection.
@@ -50,18 +57,40 @@ pub fn socket_path(state: &Path) -> PathBuf {
 /// through this door and is refused like a stranger.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Peer {
-    pub uid: u32,
+    pub account: AccountId,
+}
+
+/// An OS account, never a caller-provided identity or a truncated SID hash.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AccountId {
+    Unix(u32),
+    #[cfg(windows)]
+    Windows([u8; 68]),
+}
+
+impl std::fmt::Display for AccountId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Unix(uid) => uid.fmt(f),
+            #[cfg(windows)]
+            Self::Windows(_) => f.write_str("Windows account"),
+        }
+    }
 }
 
 /// The account this process runs as, or `None` where there is no such
 /// question to ask of a socket.
-pub fn own_uid() -> Option<u32> {
+pub fn own_account() -> Option<AccountId> {
     #[cfg(unix)]
     {
         // SAFETY: geteuid reads the calling process identity and has no pointers.
-        Some(unsafe { libc::geteuid() })
+        Some(AccountId::Unix(unsafe { libc::geteuid() }))
     }
-    #[cfg(not(unix))]
+    #[cfg(windows)]
+    {
+        windows::current_account().ok()
+    }
+    #[cfg(not(any(unix, windows)))]
     {
         None
     }
@@ -72,9 +101,9 @@ pub fn own_uid() -> Option<u32> {
 /// second identity a request can name.
 ///
 /// The refusal names nobody: not the peer, not the owner, not a project.
-pub fn admit(peer: Option<Peer>, own: Option<u32>) -> Result<(), Failure> {
+pub fn admit(peer: Option<Peer>, own: Option<AccountId>) -> Result<(), Failure> {
     match (peer, own) {
-        (Some(peer), Some(own)) if peer.uid == own => Ok(()),
+        (Some(peer), Some(own)) if peer.account == own => Ok(()),
         _ => Err(Failure::unauthorized(
             // A literal: the refusal-coverage scan reads literals, and a code
             // it cannot read is a code nothing checks is documented.
@@ -118,16 +147,23 @@ pub struct Reply {
     pub body: Vec<u8>,
 }
 
-#[cfg(not(unix))]
+#[cfg(not(any(unix, windows)))]
 const NO_SOCKETS: &str = "the native server needs an owner-only Unix socket, which this platform does not provide; run the Server and its callers on Linux";
 
 // ── the server half ─────────────────────────────────────────────────────
 
 #[cfg(unix)]
 pub use unix::{Listening, listen, serve};
+#[cfg(windows)]
+#[path = "transport_windows.rs"]
+mod windows;
+#[cfg(windows)]
+pub use windows::{Listening, listen, serve};
+#[cfg(windows)]
+pub(crate) use windows::{prepare_directory, protected};
 #[cfg(unix)]
 mod unix {
-    use super::{Peer, own_uid};
+    use super::{AccountId, Peer, own_account};
     use hyper::body::Incoming;
     use hyper_util::rt::TokioIo;
     use std::fs::{self, File, OpenOptions};
@@ -297,7 +333,7 @@ mod unix {
                 continue;
             };
             let peer = Peer {
-                uid: credential.uid(),
+                account: AccountId::Unix(credential.uid()),
             };
             let router = router.clone();
             let service =
@@ -343,7 +379,8 @@ mod unix {
         timeout: Duration,
     ) -> Result<super::Reply, super::CallError> {
         use super::CallError;
-        let own = own_uid().ok_or_else(|| CallError::NotOwner("no account to compare".into()))?;
+        let own =
+            own_account().ok_or_else(|| CallError::NotOwner("no account to compare".into()))?;
         // What is at this path must be this account's own socket before
         // anything connects to it — a symlink or someone else's file is
         // refused without a connection.
@@ -361,7 +398,7 @@ mod unix {
             }
             Ok(meta) => {
                 use std::os::unix::fs::MetadataExt;
-                if !meta.file_type().is_socket() || meta.uid() != own {
+                if !meta.file_type().is_socket() || AccountId::Unix(meta.uid()) != own {
                     return Err(CallError::NotOwner(format!(
                         "{} is not this account's Server socket; nothing was sent",
                         socket.display()
@@ -404,7 +441,7 @@ mod unix {
                 let answering = stream
                     .peer_cred()
                     .map_err(|error| CallError::Failed(error.to_string()))?;
-                if answering.uid() != own {
+                if AccountId::Unix(answering.uid()) != own {
                     return Err(CallError::NotOwner(
                         "the process answering on this state directory's socket runs as another account; nothing was sent".into(),
                     ));
@@ -468,21 +505,21 @@ mod unix {
     }
 }
 
-#[cfg(not(unix))]
+#[cfg(not(any(unix, windows)))]
 pub struct Listening {
     never: std::convert::Infallible,
 }
-#[cfg(not(unix))]
+#[cfg(not(any(unix, windows)))]
 impl Listening {
     pub fn socket(&self) -> &Path {
         match self.never {}
     }
 }
-#[cfg(not(unix))]
+#[cfg(not(any(unix, windows)))]
 pub fn listen(_: &Path) -> Result<Listening, String> {
     Err(NO_SOCKETS.into())
 }
-#[cfg(not(unix))]
+#[cfg(not(any(unix, windows)))]
 pub async fn serve(
     listening: Listening,
     _: axum::Router,
@@ -525,7 +562,11 @@ pub fn call(
     {
         unix::call(socket, request, limit, timeout)
     }
-    #[cfg(not(unix))]
+    #[cfg(windows)]
+    {
+        windows::call(socket, request, limit, timeout)
+    }
+    #[cfg(not(any(unix, windows)))]
     {
         let _ = (socket, request, limit, timeout);
         Err(CallError::Unreachable(NO_SOCKETS.into()))
@@ -538,10 +579,24 @@ mod tests {
 
     #[test]
     fn only_the_servers_own_account_is_admitted() {
-        assert!(admit(Some(Peer { uid: 1000 }), Some(1000)).is_ok());
+        assert!(
+            admit(
+                Some(Peer {
+                    account: AccountId::Unix(1000)
+                }),
+                Some(AccountId::Unix(1000))
+            )
+            .is_ok()
+        );
         // Another account — root included — is a stranger to this door.
         for peer in [1001, 0, u32::MAX] {
-            let refused = admit(Some(Peer { uid: peer }), Some(1000)).unwrap_err();
+            let refused = admit(
+                Some(Peer {
+                    account: AccountId::Unix(peer),
+                }),
+                Some(AccountId::Unix(1000)),
+            )
+            .unwrap_err();
             assert_eq!(refused.code(), "server_peer_refused");
             assert_eq!(
                 refused.class(),
@@ -555,8 +610,16 @@ mod tests {
         }
         // A request that did not come through the socket has no peer, and a
         // platform with no sockets has no account to compare: both refused.
-        assert!(admit(None, Some(1000)).is_err());
-        assert!(admit(Some(Peer { uid: 1000 }), None).is_err());
+        assert!(admit(None, Some(AccountId::Unix(1000))).is_err());
+        assert!(
+            admit(
+                Some(Peer {
+                    account: AccountId::Unix(1000)
+                }),
+                None
+            )
+            .is_err()
+        );
         assert!(admit(None, None).is_err());
     }
 

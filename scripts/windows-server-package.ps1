@@ -21,6 +21,17 @@ function Assert-ServerLocalPath([string]$Path) {
     return $resolved
 }
 
+# Revalidate immediately before moving or recursively removing owned scratch.
+function Assert-ServerChildPath([string]$Root, [string]$Path) {
+    $parent = (Assert-ServerLocalPath $Root).TrimEnd('\') + '\'
+    $child = Assert-ServerLocalPath $Path
+    if ($child.TrimEnd('\').Equals($parent.TrimEnd('\'), [StringComparison]::OrdinalIgnoreCase) -or
+        -not $child.StartsWith($parent, [StringComparison]::OrdinalIgnoreCase)) {
+        throw 'Temporary path must stay strictly below its admitted root.'
+    }
+    return $child
+}
+
 function Assert-ServerRelativePath([string]$Path) {
     if (-not $Path -or $Path.Contains('\') -or $Path.StartsWith('/')) { throw 'Invalid package member path.' }
     foreach ($part in $Path.Split('/')) {

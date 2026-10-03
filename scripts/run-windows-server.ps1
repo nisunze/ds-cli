@@ -22,6 +22,28 @@ if (-not $TargetDirectory) {
 $target = [IO.Path]::GetFullPath($TargetDirectory)
 $devRoot = [IO.Path]::GetFullPath($DevelopmentRoot)
 $installedRoot = [IO.Path]::GetFullPath((Join-Path $env:LOCALAPPDATA 'ds\server'))
+# A loaded Windows image must not lock Cargo's next link output.
+function Get-ServerDevelopmentRuntime([string]$Executable, [string]$Target) {
+    $digest = (Get-FileHash -LiteralPath $Executable -Algorithm SHA256).Hash.ToLowerInvariant()
+    $runtimeRoot = Join-Path $Target 'windows-server-runtime'
+    $runtimeDirectory = Join-Path $runtimeRoot $digest
+    [IO.Directory]::CreateDirectory($runtimeDirectory) | Out-Null
+    $runtimeExecutable = Join-Path $runtimeDirectory 'ds.exe'
+    if (-not (Test-Path -LiteralPath $runtimeExecutable -PathType Leaf)) {
+        $pending = Join-Path $runtimeDirectory ('ds-' + [guid]::NewGuid().ToString('N') + '.pending')
+        try {
+            [IO.File]::Copy($Executable, $pending, $false)
+            if ((Get-FileHash -LiteralPath $pending).Hash -ine $digest) { throw 'Source executable changed while staging the runtime.' }
+            try { [IO.File]::Move($pending, $runtimeExecutable) }
+            catch [IO.IOException] { if (-not (Test-Path -LiteralPath $runtimeExecutable -PathType Leaf)) { throw } }
+        } finally {
+            if (Test-Path -LiteralPath $pending) { Remove-Item -LiteralPath $pending -Force }
+        }
+    }
+    if ((Get-FileHash -LiteralPath $runtimeExecutable).Hash -ine $digest) { throw 'Runtime executable differs from its admitted source bytes.' }
+    return $runtimeExecutable
+}
+
 function Contains-Path([string]$Root, [string]$Path) {
     $Path.Equals($Root, [StringComparison]::OrdinalIgnoreCase) -or
         $Path.StartsWith($Root.TrimEnd('\') + '\', [StringComparison]::OrdinalIgnoreCase)
@@ -107,8 +129,11 @@ try {
     & cargo @buildArguments
     if ($LASTEXITCODE) { throw "Native server build failed ($LASTEXITCODE). Cache retained." }
     if ($PrepareOnly) { Write-Host 'Native server prepared; no service started.'; exit 0 }
-    if ($CliArguments.Count) { & $executable @CliArguments }
-    else { & $executable @serverArguments }
+    $runtimeExecutable = Get-ServerDevelopmentRuntime $executable $target
+    Write-Host "Native runtime: $runtimeExecutable"
+    # The state lock refuses a second host; jobs are never killed implicitly.
+    if ($CliArguments.Count) { & $runtimeExecutable @CliArguments }
+    else { & $runtimeExecutable @serverArguments }
     exit $LASTEXITCODE
 } finally {
     foreach ($name in $names) { [Environment]::SetEnvironmentVariable($name, $previous[$name], 'Process') }

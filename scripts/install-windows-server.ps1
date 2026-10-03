@@ -42,8 +42,8 @@ try {
         if ($priorManifest.version -ne $manifest.version -or
             (Get-FileHash -LiteralPath (Join-Path $destination 'release.json')).Hash -cne
             (Get-FileHash -LiteralPath (Join-Path $stage 'release.json')).Hash) { throw 'Existing version differs from the exact archive payload.' }
-        Remove-Item -LiteralPath $stage -Recurse -Force
-    } else { [IO.Directory]::Move($stage, $destination) }
+        Remove-Item -LiteralPath (Assert-ServerChildPath $root $stage) -Recurse -Force
+    } else { [IO.Directory]::Move((Assert-ServerChildPath $root $stage), (Assert-ServerChildPath $versions $destination)) }
     $receipt = [ordered]@{ contract='ds.windows-server-install/v1'; lane=$Lane; version=$manifest.version;
         artifact_sha256=$Sha256.ToLowerInvariant(); directory=$destination; installed_at=[DateTime]::UtcNow.ToString('o') }
     $pending = Join-Path $root ('current-' + [guid]::NewGuid().ToString('N') + '.json')
@@ -55,7 +55,7 @@ try {
     Write-Output "Installed Windows server $($manifest.version) ($Lane)."
     Write-Output "Launch: & '$destination\start-windows-server.ps1'"
 } finally {
-    if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -Force }
+    if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath (Assert-ServerChildPath $root $stage) -Recurse -Force }
     $lock.Dispose()
     Remove-Item -LiteralPath $lockPath -Force
 }

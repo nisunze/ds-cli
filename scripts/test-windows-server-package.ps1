@@ -52,6 +52,50 @@ try {
     if ((Get-Item -LiteralPath (Join-Path $destination 'bounded.bin')).Length -gt 1) { throw 'Malformed archive exceeded its admitted write budget.' }
     $script:passed++
 
+    # A prefix sibling, the parent itself and traversal never become cleanup targets.
+    Assert-Refused { Assert-ServerChildPath $taskRoot $taskRoot }
+    Assert-Refused { Assert-ServerChildPath $taskRoot ($taskRoot + '\') }
+    Assert-Refused { Assert-ServerChildPath $taskRoot ($taskRoot + '-sibling') }
+    Assert-Refused { Assert-ServerChildPath $taskRoot (Join-Path $taskRoot '..\escape') }
+    $owned = Join-Path $taskRoot 'owned-scratch'
+    if ((Assert-ServerChildPath $taskRoot $owned) -ine [IO.Path]::GetFullPath($owned)) { throw 'Owned temporary child was refused.' }
+    $script:passed++
+
+    # Execute the launcher's actual staging function, without Cargo or a DS account.
+    $parseTokens = $null; $parseErrors = $null
+    $launcher = [Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot 'run-windows-server.ps1'), [ref]$parseTokens, [ref]$parseErrors)
+    if ($parseErrors.Count) { throw 'Development launcher does not parse.' }
+    $runtimeFunction = $launcher.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Get-ServerDevelopmentRuntime' }, $false)
+    if (-not $runtimeFunction) { throw 'Development runtime owner function missing.' }
+    . ([scriptblock]::Create($runtimeFunction.Extent.Text))
+    $script:passed++
+    $cargoOutput = Join-Path $taskRoot 'cargo-ds.exe'
+    $cargoTarget = Join-Path $taskRoot 'cargo-target'
+    [IO.File]::WriteAllBytes($cargoOutput, [byte[]]@(1,2,3,4))
+    $firstRuntime = Get-ServerDevelopmentRuntime $cargoOutput $cargoTarget
+    if ($firstRuntime -ieq $cargoOutput -or -not $firstRuntime.StartsWith((Join-Path $cargoTarget 'windows-server-runtime') + '\', [StringComparison]::OrdinalIgnoreCase)) { throw 'Runtime did not leave Cargo output.' }
+    $script:passed++
+    if ((Get-FileHash -LiteralPath $cargoOutput).Hash -cne (Get-FileHash -LiteralPath $firstRuntime).Hash) { throw 'Runtime copy changed bytes.' }
+    $script:passed++
+    if ((Get-ServerDevelopmentRuntime $cargoOutput $cargoTarget) -cne $firstRuntime) { throw 'Unchanged executable created another runtime copy.' }
+    $script:passed++
+    $lockedRuntime = [IO.File]::Open($firstRuntime, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+    try {
+        # Model a loaded image's write refusal: rebuilding the independent
+        # Cargo output remains possible while the old runtime is locked.
+        [IO.File]::WriteAllBytes($cargoOutput, [byte[]]@(5,6,7,8))
+        $secondRuntime = Get-ServerDevelopmentRuntime $cargoOutput $cargoTarget
+        if ($secondRuntime -ceq $firstRuntime) { throw 'Changed executable replaced its locked runtime.' }
+        $script:passed++
+        if (([IO.File]::ReadAllBytes($firstRuntime) -join ',') -cne '1,2,3,4') { throw 'Previous runtime bytes changed.' }
+        $script:passed++
+    } finally { $lockedRuntime.Dispose() }
+    [IO.File]::WriteAllBytes($secondRuntime, [byte[]]@(9))
+    Assert-Refused { Get-ServerDevelopmentRuntime $cargoOutput $cargoTarget }
+    if (([IO.File]::ReadAllBytes($secondRuntime) -join ',') -cne '9') { throw 'An unknown changed runtime was overwritten.' }
+    if (@(Get-ChildItem -LiteralPath $cargoTarget -Recurse -Filter '*.pending').Count) { throw 'Runtime staging left temporary files.' }
+    $script:passed++
+
     $safe = New-TestZip 'safe.zip' @('normal/bytes.txt')
     $extracted = Join-Path $taskRoot 'safe'
     Expand-ServerArchive $safe $extracted
@@ -84,5 +128,5 @@ try {
 } finally {
     $temporaryParent = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\') + '\'
     if (-not $taskRoot.StartsWith($temporaryParent, [StringComparison]::OrdinalIgnoreCase)) { throw 'Test cleanup escaped temporary root.' }
-    Remove-Item -LiteralPath $taskRoot -Recurse -Force
+    Remove-Item -LiteralPath (Assert-ServerChildPath ([IO.Path]::GetTempPath()) $taskRoot) -Recurse -Force
 }

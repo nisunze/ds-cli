@@ -85,6 +85,24 @@ Assert ($unknownBranch.Contains("event = 'unknown_dialog'") -and -not $unknownBr
 $scratch = Join-Path ([System.IO.Path]::GetTempPath()) ('ds-pls-mocks-' + [guid]::NewGuid().ToString('N'))
 [void][System.IO.Directory]::CreateDirectory($scratch)
 try {
+    # Real Get-Content strings carry provider notes. Read the source entry's
+    # bounded INI projection, then prove it cannot serialize that graph.
+    $checkEntry = Tree 'ds-desktop-check.ps1'
+    $iniBranch = @($checkEntry.FindAll({ param($n) $n -is [System.Management.Automation.Language.IfStatementAst] -and $n.Extent.Text.StartsWith('if ($iniFound)') }, $true))
+    Assert ($iniBranch.Count -eq 1) 'Expected one readiness INI evidence projection'
+    $ini = [System.IO.Path]::Combine($scratch, 'PLS_CADD.INI')
+    $expectedLines = @(1..41 | ForEach-Object { 'Interface' + $_ + '=Classic' })
+    [System.IO.File]::WriteAllLines($ini, (@('Ignored=not evidence') + $expectedLines))
+    $iniFound = $true; $iniLines = @()
+    . ([scriptblock]::Create($iniBranch[0].Extent.Text))
+    Assert ($iniLines.Count -eq 40) 'INI evidence must keep its forty-line bound'
+    Assert ($iniLines[0] -ceq $expectedLines[0] -and $iniLines[39] -ceq $expectedLines[39]) 'INI evidence bytes and order must be retained'
+    foreach ($line in $iniLines) {
+        Assert (@($line.PSObject.Properties.Name) -notcontains 'PSDrive' -and @($line.PSObject.Properties.Name) -notcontains 'PSProvider') 'INI evidence must contain plain strings, without filesystem-provider properties'
+    }
+    $iniJson = @{ matching_lines = $iniLines } | ConvertTo-Json -Depth 12
+    Assert ($iniJson.Length -lt 4096 -and ($iniJson | ConvertFrom-Json).matching_lines.Count -eq 40) 'Readiness evidence must stay a bounded string JSON array'
+
     $windowsMock = Join-Path $scratch 'windows.ps1'
     [System.IO.File]::WriteAllText($windowsMock, 'param([int] $ProcessId); $global:DsTestRows')
     Load-Function $lib 'Assert-DsAttachedProject'

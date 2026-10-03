@@ -2536,7 +2536,14 @@ fn the_instance_enumeration_is_projected_and_never_gated_on_what_it_reports() {
             json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": { "name": "ds_operations", "arguments": { "operation": "invoke", "command": "desktop.list", "arguments": {} } } }),
             json!({ "jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": { "name": "ds_project", "arguments": { "operation": "describe", "command": "desktop.status" } } }),
         ],
-        &[("XDG_DATA_HOME", &machine.0)],
+        &[(
+            if cfg!(windows) {
+                "APPDATA"
+            } else {
+                "XDG_DATA_HOME"
+            },
+            &machine.0,
+        )],
     );
 
     let described = &response(&responses, 1)["result"]["structuredContent"];

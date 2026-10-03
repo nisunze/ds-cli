@@ -133,6 +133,6 @@ try {
     foreach ($envName in $names) { [Environment]::SetEnvironmentVariable($envName, $previous[$envName], 'Process') }
     $lock.Dispose()
     # Both paths were created by this invocation under the checked output root.
-    if (Test-Path -LiteralPath $work) { Remove-Item -LiteralPath $work -Recurse -Force }
+    if (Test-Path -LiteralPath $work) { Remove-Item -LiteralPath (Assert-ServerChildPath $output $work) -Recurse -Force }
     Remove-Item -LiteralPath $lockPath -Force
 }

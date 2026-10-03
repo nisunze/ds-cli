@@ -588,7 +588,7 @@ fn bounds_are_enforced_not_merely_documented() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn unavailable_refusals_carry_a_remedy_and_a_next_step() {
+fn desktop_status_reports_or_carries_an_actionable_refusal() {
     // `desktop status` reaches the real world. Whatever this machine's state,
     // the answer must be actionable: either a report, or a refusal naming a
     // remedy.
@@ -617,6 +617,30 @@ fn unavailable_refusals_carry_a_remedy_and_a_next_step() {
         return;
     }
     let error = &run.envelope["error"];
+    if error["code"] == "desktop_ambiguous" {
+        assert_eq!(error["class"], "invalid_input");
+        assert!(
+            error["remedy"]
+                .as_str()
+                .expect("selection remedy")
+                .contains("--target")
+        );
+        assert!(
+            error["next"]
+                .as_array()
+                .expect("next commands")
+                .iter()
+                .any(|next| next == "ds desktop list")
+        );
+        assert!(
+            error["detail"]["instances"]
+                .as_array()
+                .expect("instance choices")
+                .len()
+                > 1
+        );
+        return;
+    }
     assert_eq!(error["class"], "unavailable");
     assert!(
         error["remedy"].is_string(),

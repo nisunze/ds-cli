@@ -44,7 +44,7 @@ pub async fn read(State(app): State<App>, query: Option<Query<ScopeQuery>>) -> R
     .await
     {
         Ok(value) => Json(value).into_response(),
-        Err(response) => response,
+        Err(response) => *response,
     }
 }
 
@@ -74,7 +74,7 @@ pub async fn select(
     .await
     {
         Ok(value) => Json(value).into_response(),
-        Err(response) => response,
+        Err(response) => *response,
     }
 }
 
@@ -102,7 +102,7 @@ pub async fn clear(
     .await
     {
         Ok(value) => Json(value).into_response(),
-        Err(response) => response,
+        Err(response) => *response,
     }
 }
 

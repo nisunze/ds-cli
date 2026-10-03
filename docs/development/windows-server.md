@@ -30,7 +30,14 @@ the launcher must not precreate them with ordinary inherited permissions.
 The persistent default Cargo target is the CLI checkout's `target` directory,
 with six build jobs. `-TargetDirectory` or `DS_SERVER_CARGO_TARGET_DIR` selects
 another persistent target. Source edits are incrementally rebuilt at the next
-launch; there is no Rust watcher in this launcher yet. It never calls `cargo
+launch; there is no Rust watcher in this launcher yet. The launcher runs an
+exact SHA-256-checked copy under `target/windows-server-runtime/<digest>` so a
+running Windows host does not lock Cargo's `debug/ds.exe` against the next build.
+An unchanged executable reuses the same runtime copy. A changed build does not
+restart an existing host or interrupt its jobs: stop that host explicitly
+before starting the new one. These copies contain only the executable, no
+credentials or additional Cargo target; their storage grows by the executable
+size per distinct build and is separate from the compiler cache. It never calls `cargo
 clean`, deletes Go caches, builds standalone Solar/Reporter executables, or runs
 work on ds-server. The linked native engines are rebuilt only when Cargo's
 dependency graph requires it.
@@ -41,6 +48,43 @@ are development measurements, not release packaging or full test-suite times.
 Changed crates and different test feature sets can require substantial new
 compilation even with a persistent target. Linux/server-offload timings were
 not measured because ds-server is reserved for stabilization.
+
+The portable-kernel gate at `02d147d` provides a separate test-cache measurement:
+its first test build took 18m47s, a fixture-change rebuild 5m40s, and an unchanged
+test build 0.86s. The full cached workspace suite (1,732 tests) completed in
+43.5s. These measurements show both the initial cache cost and the remaining
+compile/link cost when source changes; they do not predict release build times.
+
+Keep the native development toolchain and target stable between runs. Cargo
+retains downloaded sources, dependency objects and incremental state; it
+rechecks changed inputs before running the executable. Sharing the native dev
+target across sibling crates is useful when their compiler, lock entries,
+features and build flags match. Different profiles, targets or dependency
+versions still require their own entries; a shared directory cannot avoid that
+compilation.
+
+Pinned production Solar and Reporter builds keep their own persistent targets
+for their respective compilers. Updating those pins requires their owners'
+gates; the different pins alone do not establish an unmaintained dependency.
+Standalone engine executables are not required for this development host.
+WASM has separate wasm32 outputs. Go's GOCACHE/GOMODCACHE and the package
+manager's download cache remain reusable independently of Cargo.
+
+Disk usage grows with distinct compiler/feature combinations and Windows debug
+symbols. This launcher creates one dev target and one state namespace instead
+of a target per launch or worktree. It leaves cache removal to an explicit,
+scoped maintenance decision; it does not clear active caches or create a fresh
+release build on each edit. Use a dedicated target when testing another
+compiler or build-flag experiment so returning to the usual dev lane stays warm.
+
+A measured snapshot during the full workspace test build on MAGESE used
+186 GiB in this shared target, including 58 GiB of Windows debug symbols,
+with 503 GiB still free on C:. This is the accumulated development and test
+cache, not a server installation size or a guaranteed steady-state budget.
+Keep that storage cost visible when adding feature sets or toolchains.
+Changing debug-symbol or compiler settings creates another compilation set;
+make such changes deliberately rather than invalidating the usual cache on
+every launch. No old Rust or Go cache was removed for this setup.
 
 `-CliArguments` drives the same source executable without starting a host. CLI
 arguments pass through unchanged: name their lane and development state explicitly
