@@ -917,6 +917,11 @@ placeholders. `en` and `fr` ship; another locale is a document change. A project
 may supply the same complete document as the existing JSON-valued
 `project_settings` parameter `report_messages`; the project API preserves this
 value. Unknown object sheets are not a served catalogue source.
+The same document carries `script_code_literals`: authored template protocol IDs,
+selectors and enum literals that are preserved during HTML materialization.
+Overrides retain this required set and every governed reference message; all
+locale dictionaries are complete and preserve placeholders. Captions and code
+literals may have the same spelling without changing program behavior.
 `report_messages::Messages` validates it. Named refusals are
 `report_locale_missing`, `report_locale_invalid`, `report_locale_unsupported`,
 `report_catalogue_invalid`, `report_catalogue_incomplete`, `report_message_missing`

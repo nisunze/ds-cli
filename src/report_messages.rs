@@ -34,6 +34,9 @@ pub struct Catalogue {
     pub schema: String,
     pub locales: BTreeMap<String, BTreeMap<String, String>>,
     pub headers: BTreeMap<String, BTreeMap<String, Vec<String>>>,
+    /// Protocol IDs, selectors and enum literals in authored report scripts.
+    #[serde(default)]
+    pub script_code_literals: std::collections::BTreeSet<String>,
 }
 #[derive(Debug, Clone)]
 pub struct Messages {
@@ -57,6 +60,15 @@ impl Messages {
         }
         let _selected = catalogue.locales.get(locale)
             .ok_or_else(|| format!("report_locale_unsupported: {locale}: supply a complete locale in the report catalogue"))?;
+        if !default_catalogue()
+            .script_code_literals
+            .is_subset(&catalogue.script_code_literals)
+        {
+            return Err(
+                "report_catalogue_incomplete: retain the template's protected script literals"
+                    .into(),
+            );
+        }
         let english = &catalogue.locales["en"];
         if default_catalogue().locales["en"]
             .keys()
@@ -96,6 +108,9 @@ impl Messages {
             locale: locale.into(),
             catalogue,
         })
+    }
+    pub fn script_literal_is_code(&self, literal: &str) -> bool {
+        self.catalogue.script_code_literals.contains(literal)
     }
     pub fn is_default_english(&self) -> bool {
         self.locale == "en" && self.catalogue.locales["en"] == default_catalogue().locales["en"]
@@ -359,6 +374,17 @@ mod tests {
                 .remove("SHEET INDEX");
         }
         assert!(Messages::new(Some("en"), Some(&catalogue))
+            .unwrap_err()
+            .starts_with("report_catalogue_incomplete:"));
+    }
+    #[test]
+    fn catalogue_retains_script_protocol_literals() {
+        let messages = Messages::new(Some("fr"), None).unwrap();
+        assert!(messages.script_literal_is_code("incomplete"));
+        assert!(!messages.script_literal_is_code("Summary and compliance"));
+        let mut catalogue = serde_json::to_value(default_catalogue()).unwrap();
+        catalogue["script_code_literals"] = json!([]);
+        assert!(Messages::new(Some("fr"), Some(&catalogue))
             .unwrap_err()
             .starts_with("report_catalogue_incomplete:"));
     }
