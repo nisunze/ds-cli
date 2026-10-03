@@ -483,6 +483,7 @@ dependencies = [
  "sha2",
  "tempfile",
  "tokio",
+ "windows-sys",
 ]
 
 [[package]]
@@ -510,6 +511,7 @@ dependencies = [
 name = "ds-geo-ops"
 version = "0.1.0"
 dependencies = [
+ "ds-geo-lite",
  "rstar",
 ]
 
@@ -526,6 +528,7 @@ dependencies = [
 name = "ds-grid-model"
 version = "0.1.0"
 dependencies = [
+ "schemars",
  "serde",
  "serde_json",
  "thiserror",
@@ -536,6 +539,7 @@ name = "ds-grid-physics"
 version = "0.1.0"
 dependencies = [
  "ds-grid-model",
+ "schemars",
  "serde",
  "thiserror",
 ]
@@ -549,10 +553,10 @@ dependencies = [
  "ds-graph",
  "ds-profile",
  "rayon",
- "regex",
  "rstar",
  "serde",
  "serde_json",
+ "sha2",
  "thiserror",
 ]
 
@@ -602,7 +606,6 @@ dependencies = [
  "ds-solar-contracts",
  "serde",
  "serde_json",
- "tracing",
 ]
 
 [[package]]
@@ -624,7 +627,6 @@ dependencies = [
  "ds-solar-contracts",
  "serde",
  "serde_json",
- "sha2",
  "thiserror",
 ]
 

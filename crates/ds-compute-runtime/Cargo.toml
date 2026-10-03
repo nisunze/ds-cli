@@ -27,3 +27,6 @@ tempfile = "3"
 # is the only honest way to prove recovery, and that needs the same SQLite
 # the store itself uses. Already in this lock through ds-sync-store.
 rusqlite = { version = "0.32", features = ["bundled"] }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_System_SystemInformation"] }

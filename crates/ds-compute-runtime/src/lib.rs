@@ -1137,7 +1137,15 @@ pub fn capacity() -> usize {
                 .and_then(|n| n.checked_mul(1024))
         })
     });
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(windows)]
+    let memory = {
+        use windows_sys::Win32::System::SystemInformation::{GlobalMemoryStatusEx, MEMORYSTATUSEX};
+        let mut status: MEMORYSTATUSEX = unsafe { std::mem::zeroed() };
+        status.dwLength = std::mem::size_of::<MEMORYSTATUSEX>() as u32;
+        // SAFETY: writable initialized structure with the required byte length.
+        (unsafe { GlobalMemoryStatusEx(&mut status) } != 0).then_some(status.ullAvailPhys)
+    };
+    #[cfg(not(any(target_os = "linux", windows)))]
     let memory = None;
     compute_jobs::concurrent_jobs(cpus, memory).min(256)
 }
@@ -1148,10 +1156,11 @@ mod tests {
 
     #[test]
     fn server_state_directory_uses_an_explicit_absolute_server_root() {
-        let root = Path::new("/var/lib/ds-server");
-        assert_eq!(server_state_directory("stable", Some(root)).unwrap(), root);
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("ds-server");
+        assert_eq!(server_state_directory("stable", Some(&root)).unwrap(), root);
         assert!(server_state_directory("stable", Some(Path::new("relative"))).is_err());
-        assert!(server_state_directory("preview", Some(root)).is_err());
+        assert!(server_state_directory("preview", Some(&root)).is_err());
     }
 
     /// A report about rows nothing else can list names them, and says so when
