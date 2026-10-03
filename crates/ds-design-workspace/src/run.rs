@@ -20,7 +20,15 @@ struct CapturedOutput<'a> {
 
 /// Read the producer's retained member without serializing it again. Admission
 /// hashes the captured final layers/settings; it never runs network processing.
-fn saved_voltage_drop(bytes: &[u8], result: &Value, transformer: &str) -> Result<Vec<u8>> {
+fn saved_voltage_drop(
+    bytes: &[u8],
+    result: &Value,
+    transformer: &str,
+    revision: &str,
+) -> Result<Vec<u8>> {
+    if result["input_revision"] != revision {
+        return Err(invalid("voltage_drop_result_stale: result input revision differs from the independently captured job revision"));
+    }
     let captured: CapturedResult<'_> = serde_json::from_slice(bytes)?;
     let raw = captured.output.voltage_drop.ok_or_else(|| {
         invalid("voltage_drop_result_missing: captured run has no saved producer analysis")
@@ -259,19 +267,19 @@ impl Workspace {
         })
     }
     pub fn export_result(&self, id: &str, transformer: &str, out: &Path) -> Result<Value> {
-        let (bytes, sha) = self.result(id, transformer)?;
+        let (bytes, sha, _) = self.result(id, transformer)?;
         write_new(out, &bytes)?;
         Ok(
             json!({"run_id":id,"transformer":transformer,"out":out,"sha256":sha,"bytes":bytes.len()}),
         )
     }
-    fn result(&self, id: &str, transformer: &str) -> Result<(Vec<u8>, String)> {
-        let result:Option<(Vec<u8>,String)>=self.db.query_row("SELECT result,result_sha256 FROM jobs WHERE run=?1 AND transformer=?2 AND result IS NOT NULL",params![id,transformer],|r|Ok((r.get(0)?,r.get(1)?))).optional()?;
-        let (bytes, sha) = result.ok_or_else(|| invalid("job has no result"))?;
+    fn result(&self, id: &str, transformer: &str) -> Result<(Vec<u8>, String, String)> {
+        let result:Option<(Vec<u8>,String,String)>=self.db.query_row("SELECT result,result_sha256,revision FROM jobs WHERE run=?1 AND transformer=?2 AND result IS NOT NULL",params![id,transformer],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?))).optional()?;
+        let (bytes, sha, revision) = result.ok_or_else(|| invalid("job has no result"))?;
         if format!("{:x}", Sha256::digest(&bytes)) != sha {
             return Err(invalid("result digest mismatch"));
         }
-        Ok((bytes, sha))
+        Ok((bytes, sha, revision))
     }
     /// Publish an immutable report-input directory. This deliberately does not
     /// accept the current room: reporting always consumes a captured run result.
@@ -281,9 +289,9 @@ impl Workspace {
                 "report input directory already exists".into(),
             ));
         }
-        let (bytes, sha) = self.result(id, transformer)?;
+        let (bytes, sha, captured_revision) = self.result(id, transformer)?;
         let result: Value = serde_json::from_slice(&bytes)?;
-        let analysis = saved_voltage_drop(&bytes, &result, transformer)?;
+        let analysis = saved_voltage_drop(&bytes, &result, transformer, &captured_revision)?;
         let analysis_sha = format!("{:x}", Sha256::digest(&analysis));
         let layers = result["output"]["gdfs"]
             .as_object()
@@ -340,9 +348,9 @@ impl Workspace {
                 "only a completed matching report can be queued; inspect partial blockers",
             ));
         }
-        let (result_bytes, result_sha) = self.result(id, transformer)?;
+        let (result_bytes, result_sha, captured_revision) = self.result(id, transformer)?;
         let result: Value = serde_json::from_slice(&result_bytes)?;
-        let analysis = saved_voltage_drop(&result_bytes, &result, transformer)?;
+        let analysis = saved_voltage_drop(&result_bytes, &result, transformer, &captured_revision)?;
         if read_file(&root.join("voltage-drop.json"), 64 * 1024 * 1024)? != analysis {
             return Err(invalid(
                 "voltage_drop_result_stale: report analysis changed after capture",
@@ -564,7 +572,7 @@ mod report_source_tests {
             .unwrap();
         workspace.prepare_run("run", &["T1".into()]).unwrap();
         assert_eq!(workspace.process("run", 1).unwrap().completed, 1);
-        let (bytes, _) = workspace.result("run", "T1").unwrap();
+        let (bytes, _, _) = workspace.result("run", "T1").unwrap();
         let result = serde_json::from_slice(&bytes).unwrap();
         (temp, workspace, result)
     }
@@ -611,7 +619,12 @@ mod report_source_tests {
 
     #[test]
     fn missing_invalid_and_stale_saved_analysis_refuse_before_staging() {
-        let (temp, workspace, original) = captured();
+        let (temp, mut workspace, original) = captured();
+        let changed = workspace.edit(&serde_json::to_vec(&json!({
+            "schema":"ds.design.edit/v1","transformer":"T1","expected_revision":original["input_revision"],
+            "operation_id":"later-edit","mutations":[{"kind":"set_properties","layer":"lv_lines","ids":["line"],"values":{"note":"later held revision"}}]
+        })).unwrap()).unwrap();
+        assert!(workspace.read("T1", changed["revision"].as_str()).is_ok());
         let before = workspace.outbox(0, 100).unwrap();
         for (case, code) in [
             ("missing", "voltage_drop_result_missing"),
@@ -621,6 +634,9 @@ mod report_source_tests {
             ("identity", "voltage_drop_result_invalid"),
             ("digest", "voltage_drop_result_stale"),
             ("layers", "voltage_drop_result_stale"),
+            ("revision", "voltage_drop_result_stale"),
+            ("settings", "voltage_drop_result_stale"),
+            ("summary", "voltage_drop_result_stale"),
         ] {
             let mut result = original.clone();
             match case {
@@ -641,6 +657,17 @@ mod report_source_tests {
                     result["output"]["gdfs"]["tr"]["features"][0]["geometry"]["coordinates"] =
                         json!([30.1, -2.0])
                 }
+                "revision" => result["input_revision"] = changed["revision"].clone(),
+                "settings" => {
+                    let previous = result["output"]["settings_used"]["keep_lv_lines_topology"]
+                        .as_bool()
+                        .unwrap();
+                    result["output"]["settings_used"]["keep_lv_lines_topology"] = json!(!previous);
+                }
+                "summary" => {
+                    result["output"]["voltage_drop"]["summary"]["calculation"] =
+                        json!("changed after capture")
+                }
                 _ => unreachable!(),
             }
             let bytes = serde_json::to_vec(&result).unwrap();
@@ -649,6 +676,13 @@ mod report_source_tests {
             let error = workspace.report_inputs("run", "T1", &out).unwrap_err();
             assert!(error.to_string().starts_with(code), "{case}: {error}");
             assert!(!out.exists(), "{case}");
+            if case == "revision" {
+                let report = json!({"transformer":"T1","status":"completed"});
+                let error = workspace
+                    .retain_report("run", "T1", &out, &report)
+                    .unwrap_err();
+                assert!(error.to_string().starts_with(code), "retention: {error}");
+            }
             assert_eq!(workspace.result("run", "T1").unwrap().0, bytes);
             assert_eq!(workspace.outbox(0, 100).unwrap(), before);
         }
