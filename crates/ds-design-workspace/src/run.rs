@@ -44,6 +44,7 @@ pub(crate) fn compute_input(snapshot: &Snapshot) -> Result<LvProcessInput> {
         pole_sources,
         include_design_customers: snapshot.include_design_customers,
         local_tables: tables,
+        differential: None,
     })
 }
 

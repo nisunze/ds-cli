@@ -1,10 +1,9 @@
 //! AutoProcess admission: whether the process action runs on its own or on
-//! request, whether a committed edit warrants re-running the LV network, how
-//! wide the next run must be, and when queued work dispatches.
+//! request, whether a committed edit warrants re-running the LV network,
+//! and when queued work dispatches. LV differential scope lives in ds-network.
 //!
-//! Four decisions live here, and nothing else. The HOST keeps the effects it
-//! already owned — the accumulator bookkeeping, the GDF walk that maps changed
-//! features to feeders, the `setTimeout`, and the engine latch. It keeps no
+//! Three decisions live here. The host keeps accumulator bookkeeping,
+//! the `setTimeout`, and the engine latch. It keeps no
 //! rule: a second copy of "does this field feed the rebuild" is exactly the
 //! hand-transcription this migration exists to remove (the previous TS list
 //! offered `tr_size`, an output, and missed every sizing pin).
@@ -17,7 +16,7 @@ use serde::Deserialize;
 use serde_json::json;
 use std::collections::BTreeSet;
 
-pub const SCHEMA: &str = "ds.design-autoprocess/v3";
+pub const SCHEMA: &str = "ds.design-autoprocess/v4";
 const MAX_INPUT_BYTES: usize = 1024 * 1024;
 
 /// Settle window. A rapid burst coalesces behind it even at the every-edit
@@ -80,34 +79,6 @@ pub struct Cadence {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct Mapping {
-    pub unmapped: bool,
-    #[serde(default)]
-    pub feeder_ids: Vec<String>,
-}
-
-/// `blocking_diagnostics` and `mapping` are the host's GDF walks. They are
-/// optional because the earlier branches short-circuit without them: the kernel
-/// answers `pending` naming the input it now needs, so the host never pays for
-/// a walk a cheaper branch already decided against. The ORDER of the seven
-/// fallbacks stays here, where it is testable.
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct DifferentialScopeRequest {
-    pub differential_enabled: bool,
-    pub is_mv_session: bool,
-    /// The accumulator is still bound to the live edit scope.
-    pub accumulator_bound: bool,
-    pub force_full: bool,
-    pub change_count: u32,
-    #[serde(default)]
-    pub blocking_diagnostics: Option<bool>,
-    #[serde(default)]
-    pub mapping: Option<Mapping>,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct CadenceRequest {
     pub enabled: bool,
     pub running: bool,
@@ -140,8 +111,6 @@ enum Request {
         changed_fields: Vec<String>,
         vocabulary: Vocabulary,
     },
-    /// Should the next run recompute only the edited feeders, or everything?
-    DifferentialScope(DifferentialScopeRequest),
     /// When does queued work actually dispatch?
     Cadence(CadenceRequest),
 }
@@ -161,7 +130,6 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
             changed_fields,
             vocabulary,
         } => trigger(&reason, &changed_fields, &vocabulary),
-        Request::DifferentialScope(request) => differential_scope(&request),
         Request::Cadence(request) => cadence(&request)?,
     };
     Ok(json!({"schema": SCHEMA, "result": result}).to_string())
@@ -223,52 +191,6 @@ fn trigger(reason: &str, changed_fields: &[String], vocabulary: &Vocabulary) -> 
         return json!({"schedule": false, "reason_key": "autoprocess_trigger_fields_irrelevant"});
     }
     json!({"schedule": true, "reason_key": "autoprocess_trigger_fields_relevant", "fields": matched})
-}
-
-fn differential_scope(request: &DifferentialScopeRequest) -> serde_json::Value {
-    let full = |key: &str| json!({"scope": "full", "feeders": [], "reason_key": key});
-    if request.is_mv_session {
-        return full("differential_full_mv_session");
-    }
-    if !request.differential_enabled {
-        return full("differential_full_toggle_off");
-    }
-    if !request.accumulator_bound {
-        return full("differential_full_edit_context_reloaded");
-    }
-    if request.force_full {
-        return full("differential_full_commit_forced");
-    }
-    if request.change_count == 0 {
-        return full("differential_full_no_changes");
-    }
-    let Some(blocking) = request.blocking_diagnostics else {
-        return json!({"scope": "pending", "needs": "blocking_diagnostics"});
-    };
-    if blocking {
-        return full("differential_full_blocking_diagnostics");
-    }
-    let Some(mapping) = request.mapping.as_ref() else {
-        return json!({"scope": "pending", "needs": "mapping"});
-    };
-    if mapping.unmapped {
-        return full("differential_full_changes_unmapped");
-    }
-    if mapping.feeder_ids.is_empty() {
-        return full("differential_full_no_feeders");
-    }
-    // Order-preserving unique. `Vec::dedup` drops only ADJACENT repeats: the
-    // browser hands this in from a Set, but `ds design autoprocess plan` hands
-    // in whatever the document says, and a feeder listed twice apart would
-    // have been narrowed to twice.
-    let mut seen = BTreeSet::new();
-    let feeders: Vec<String> = mapping
-        .feeder_ids
-        .iter()
-        .filter(|id| seen.insert((*id).clone()))
-        .cloned()
-        .collect();
-    json!({"scope": "feeders", "feeders": feeders, "reason_key": "differential_narrowed"})
 }
 
 fn cadence(request: &CadenceRequest) -> Result<serde_json::Value, String> {
@@ -413,70 +335,6 @@ mod tests {
     }
 
     #[test]
-    fn seven_full_fallbacks_are_individually_named() {
-        let base = json!({
-            "op": "differential_scope", "differential_enabled": true, "is_mv_session": false,
-            "accumulator_bound": true, "force_full": false, "change_count": 2,
-            "blocking_diagnostics": false, "mapping": {"unmapped": false, "feeder_ids": ["f1"]},
-        });
-        let with = |key: &str, value: Value| {
-            let mut request = base.clone();
-            request[key] = value;
-            run(request)
-        };
-        assert_eq!(run(base.clone())["scope"], "feeders");
-        assert_eq!(
-            with("is_mv_session", json!(true))["reason_key"],
-            "differential_full_mv_session"
-        );
-        assert_eq!(
-            with("differential_enabled", json!(false))["reason_key"],
-            "differential_full_toggle_off"
-        );
-        assert_eq!(
-            with("accumulator_bound", json!(false))["reason_key"],
-            "differential_full_edit_context_reloaded"
-        );
-        assert_eq!(
-            with("force_full", json!(true))["reason_key"],
-            "differential_full_commit_forced"
-        );
-        assert_eq!(
-            with("change_count", json!(0))["reason_key"],
-            "differential_full_no_changes"
-        );
-        assert_eq!(
-            with("blocking_diagnostics", json!(true))["reason_key"],
-            "differential_full_blocking_diagnostics"
-        );
-        assert_eq!(
-            with("mapping", json!({"unmapped": true}))["reason_key"],
-            "differential_full_changes_unmapped"
-        );
-        assert_eq!(
-            with("mapping", json!({"unmapped": false, "feeder_ids": []}))["reason_key"],
-            "differential_full_no_feeders"
-        );
-    }
-
-    #[test]
-    fn expensive_host_walks_are_requested_only_when_reached() {
-        let mut request = json!({
-            "op": "differential_scope", "differential_enabled": true, "is_mv_session": false,
-            "accumulator_bound": true, "force_full": false, "change_count": 2,
-        });
-        assert_eq!(run(request.clone())["needs"], "blocking_diagnostics");
-        request["blocking_diagnostics"] = json!(false);
-        assert_eq!(run(request.clone())["needs"], "mapping");
-        // A cheaper branch never asks for either.
-        request = json!({
-            "op": "differential_scope", "differential_enabled": false, "is_mv_session": false,
-            "accumulator_bound": true, "force_full": false, "change_count": 2,
-        });
-        assert_eq!(run(request)["scope"], "full");
-    }
-
-    #[test]
     fn cadence_reproduces_the_settle_and_window_arithmetic() {
         let base = json!({
             "op": "cadence", "enabled": true, "running": false, "queued": true, "force": false,
@@ -508,18 +366,6 @@ mod tests {
         // No window open yet: the whole max window.
         request["window_started_at_ms"] = json!(0);
         assert_eq!(run(request)["wait_ms"], 30_000);
-    }
-
-    #[test]
-    fn a_feeder_named_twice_apart_is_narrowed_to_once() {
-        let out = run(json!({
-            "op": "differential_scope", "differential_enabled": true, "is_mv_session": false,
-            "accumulator_bound": true, "force_full": false, "change_count": 3,
-            "blocking_diagnostics": false,
-            "mapping": {"unmapped": false, "feeder_ids": ["f1", "f2", "f1"]},
-        }));
-        assert_eq!(out["scope"], "feeders");
-        assert_eq!(out["feeders"], json!(["f1", "f2"]));
     }
 
     #[test]
