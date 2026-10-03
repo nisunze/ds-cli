@@ -522,11 +522,8 @@ pub fn project_project_control_local_reports(
                     {
                         return Err(error("transformer report output metadata mismatch"));
                     }
-                    if output.output_id == "voltage_drop_pdf" {
-                        crate::report_formats::voltage_drop_pdf_filename(transformer)
-                    } else {
-                        format!("{transformer}{}", definition.suffix)
-                    }
+                    crate::report_formats::report_filename(transformer, &output.output_id)
+                        .map_err(|message| error(&message))?
                 } else {
                     crate::report_formats::combined_output_filename(
                         kind,
@@ -2182,7 +2179,7 @@ mod tests {
                 "agasharu.xlsx",
                 "agasharu.shp.zip",
                 "agasharu.gpkg",
-                "agasharu.a0.pdf",
+                "Agasharu.a0.pdf",
                 "agasharu_geojson.zip"
             ]
         );

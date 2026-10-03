@@ -759,6 +759,36 @@ pub fn output(format: &str) -> Result<Output, String> {
     })
 }
 
+/// Canonical report filename. PDF stems use title case (the protected delivery
+/// spelling); exchange and raster stems retain their canonical identifier.
+/// All suffixes and media types come from `output`, including named layouts.
+pub fn report_filename(stem: &str, format: &str) -> Result<String, String> {
+    let definition = output(format)?;
+    if format == "voltage_drop_pdf" {
+        return Ok(voltage_drop_pdf_filename(stem));
+    }
+    let stem = if definition.content_type == "application/pdf" {
+        pdf_stem(stem)
+    } else {
+        stem.to_owned()
+    };
+    Ok(format!("{stem}{}", definition.suffix))
+}
+
+pub fn pdf_stem(value: &str) -> String {
+    let mut start = true;
+    let mut result = String::with_capacity(value.len());
+    for ch in value.chars() {
+        if start {
+            result.extend(ch.to_uppercase());
+        } else {
+            result.extend(ch.to_lowercase());
+        }
+        start = !ch.is_alphabetic();
+    }
+    result
+}
+
 /// The one human-facing filename for an analytical voltage-drop PDF. The
 /// transformer key remains unchanged in requests and receipts. Underscore
 /// runs separate display words; the first ASCII letter of each word is
@@ -971,17 +1001,9 @@ pub fn combined_output_filename(kind: &str, output_id: &str, format: &str) -> St
     if kind == "compounded" {
         return "compounded_reports.zip".to_string();
     }
-    if let Ok(definition) = output(output_id) {
-        if definition.format == format {
-            return format!("combined_transformer{}", definition.suffix);
-        }
-    }
-    match output_id {
-        "shp" => "combined_transformer.shp.zip".to_string(),
-        "xlsx" => "combined_transformer.xlsx".to_string(),
-        "geojsonseq" => "combined_transformer_geojsonl.zip".to_string(),
-        _ => format!("combined_transformer.{format}"),
-    }
+    // Combined exchange identities use their fixed canonical stem.
+    report_filename("combined_transformer", output_id)
+        .unwrap_or_else(|_| format!("combined_transformer.{format}"))
 }
 
 pub fn normalize(values: &[String]) -> Vec<String> {
@@ -1005,7 +1027,9 @@ pub fn normalize(values: &[String]) -> Vec<String> {
     }
     let mut ordered: Vec<_> = INDIVIDUAL
         .iter()
-        .filter(|format| **format == MANDATORY_INDIVIDUAL_OUTPUT || selected.iter().any(|v| v == **format))
+        .filter(|format| {
+            **format == MANDATORY_INDIVIDUAL_OUTPUT || selected.iter().any(|v| v == **format)
+        })
         .map(|s| s.to_string())
         .collect();
     let named: std::collections::BTreeSet<_> = selected
@@ -1415,6 +1439,29 @@ mod tests {
 
     /// The name is the artifact's own, whatever evidence it came from: a signed
     /// storage locator, a plain path, or the output id of a local outbox row.
+    #[test]
+    fn one_filename_rule_covers_every_output_and_pdf_case() {
+        assert_eq!(
+            report_filename("run_ruhuha", "pdf_a0").unwrap(),
+            "Run_Ruhuha.a0.pdf"
+        );
+        assert_eq!(
+            report_filename("RUN_RUHUHA", "pdf_a0").unwrap(),
+            "Run_Ruhuha.a0.pdf"
+        );
+        assert_eq!(
+            report_filename("run_ruhuha", "pdf__layout").unwrap(),
+            "Run_Ruhuha.layout.pdf"
+        );
+        for token in INDIVIDUAL.iter().chain(COMBINED) {
+            let definition = output(token).unwrap();
+            assert!(report_filename("run_ruhuha", token)
+                .unwrap()
+                .ends_with(&definition.suffix));
+        }
+        assert!(report_filename("run_ruhuha", "unknown").is_err());
+    }
+
     #[test]
     fn one_artifact_has_one_name_from_either_kind_of_evidence() {
         // A storage locator carries the object path percent-encoded after /o/,

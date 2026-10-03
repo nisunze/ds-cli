@@ -285,6 +285,10 @@ enum Command {
         #[serde(default)]
         locator: String,
     },
+    ArtifactFilename {
+        stem: String,
+        format: String,
+    },
     ArtifactOutput {
         output_id: String,
     },
@@ -759,6 +763,9 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
             let mut value = serde_json::to_value(&groups).map_err(|e| e.to_string())?;
             value["filed_no_group"] = groups.filed_no_group().into();
             value
+        }
+        Command::ArtifactFilename { stem, format } => {
+            serde_json::json!({"filename": crate::report_formats::report_filename(&stem, &format)?})
         }
         Command::ArtifactOutput { output_id } => {
             serde_json::json!({"output": artifacts::output(&output_id)})
