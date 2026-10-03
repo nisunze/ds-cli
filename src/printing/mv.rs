@@ -519,6 +519,40 @@ pub fn selection(sheets: &Value) -> Result<Selection, Refusal> {
     Ok(result)
 }
 
+/// An explicit project selection always wins, including its refusals. Only
+/// absence uses the approved global binding captured by the configuration API.
+pub fn uses_global_default(sheets: &Value) -> bool {
+    !sheets["project_settings"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .any(|row| crate::report_formats::setting_parameter_key(row).as_deref() == Some(SETTING))
+}
+
+pub fn effective_selection(sheets: &Value) -> Result<Selection, Refusal> {
+    if !uses_global_default(sheets) {
+        return selection(sheets);
+    }
+    let defaults = &sheets["printing_defaults"];
+    if defaults["schema"] != "ds.printing-defaults/v1" {
+        return Err(refuse(
+            "mv_print_setup_missing",
+            SETTING,
+            "Seed the approved global MV printing default, then refresh configuration.",
+        ));
+    }
+    let selection: Selection =
+        serde_json::from_value(defaults["mv_selection"].clone()).map_err(|_| {
+            refuse(
+                "mv_print_selection_invalid",
+                "printing_defaults.mv_selection",
+                "Seed the exact approved global MV selection.",
+            )
+        })?;
+    selection.validate()?;
+    Ok(selection)
+}
+
 pub fn resolve(
     sheets: &Value,
     project_id: &str,
@@ -535,8 +569,21 @@ pub fn resolve(
             "Supply the exact authorized project context.",
         ));
     }
-    let selected = selection(sheets)?;
-    let setups = sheets["printing_setups"].as_array().ok_or_else(|| refuse("mv_print_setup_not_adopted", "printing_setups", "Adopt the global printing revision with ds report layout copy, then refresh project inputs."))?;
+    let global = uses_global_default(sheets);
+    let selected = effective_selection(sheets)?;
+    let setups = sheets[if global {
+        "global_printing_setups"
+    } else {
+        "printing_setups"
+    }]
+    .as_array()
+    .ok_or_else(|| {
+        refuse(
+            "mv_print_setup_not_adopted",
+            "printing_setups",
+            "Refresh the selected printing library document.",
+        )
+    })?;
     let rows: Vec<_> = setups
         .iter()
         .filter(|r| r["id"].as_str() == Some(&selected.layout_id))
@@ -567,7 +614,16 @@ pub fn resolve(
         ));
     }
     super::validate(&layout).map_err(|e| refuse("mv_print_template_invalid", "layout", &e))?;
-    let origin: Origin = serde_json::from_value(row["inherited_from"].clone()).map_err(|_| refuse("mv_print_setup_not_adopted", "inherited_from", "Copy an exact global template revision into the project; preserve its library lineage."))?;
+    let origin: Origin = if global {
+        Origin {
+            scope: "global".into(),
+            project_id: None,
+            id: selected.layout_id.clone(),
+            revision: selected.revision.clone(),
+        }
+    } else {
+        serde_json::from_value(row["inherited_from"].clone()).map_err(|_| refuse("mv_print_setup_not_adopted", "inherited_from", "Copy an exact global template revision into the project; preserve its library lineage."))?
+    };
     if origin.scope != "global"
         || origin.project_id.is_some()
         || !super::identifier(&origin.id)
@@ -757,7 +813,7 @@ pub fn patch_selection(rows: &[Value], selected: &Selection) -> Result<Vec<Value
     Ok(next)
 }
 pub fn inspect(sheets: &Value, project_id: Option<&str>) -> Value {
-    let selected = match selection(sheets) {
+    let selected = match effective_selection(sheets) {
         Ok(value) => value,
         Err(error) => {
             return json!({"selection":Value::Null,"configured":false,"ready":false,"refusal":error})

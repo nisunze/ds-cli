@@ -9,6 +9,30 @@ fn sheets() -> Value {
     serde_json::from_str(include_str!("fixtures/mv-printing-setup.json")).unwrap()
 }
 #[test]
+fn missing_project_selection_uses_only_the_pinned_global_default() {
+    let mut value = sheets();
+    let adopted = mv::resolve(&value, "project_a", BTreeMap::new()).unwrap();
+    value["printing_defaults"] =
+        json!({"schema":"ds.printing-defaults/v1","mv_selection":adopted.selection});
+    value["global_printing_setups"] = value["printing_setups"].clone();
+    value["project_settings"] = json!([]);
+    value["printing_setups"] = json!([]);
+    let global = mv::resolve(&value, "project_a", BTreeMap::new()).unwrap();
+    assert_eq!(global.settings, adopted.settings);
+    assert_eq!(global.layout, adopted.layout);
+    assert_eq!(global.inherited_from.id, global.selection.layout_id);
+    value["global_printing_setups"][0]["revision"] = json!("c".repeat(64));
+    assert_eq!(
+        mv::resolve(&value, "project_a", BTreeMap::new())
+            .unwrap_err()
+            .code,
+        "mv_print_setup_revision_changed"
+    );
+    value["project_settings"] = json!([{"parameter":mv::SETTING,"value":null}]);
+    assert!(!mv::uses_global_default(&value));
+    assert!(mv::effective_selection(&value).is_err());
+}
+#[test]
 fn selected_adopted_revision_is_the_only_authority_and_never_tracks_global_head() {
     let mut value = sheets();
     let resolved = mv::resolve(&value, "project_a", BTreeMap::new()).unwrap();

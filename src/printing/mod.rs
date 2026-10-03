@@ -1490,6 +1490,11 @@ pub fn resolve_style_documents(
     if layout.style_keys.is_empty() && !layout.style_refs.is_empty() {
         return Err("style_resolution_required: migrate the governed printing template to exact style_keys through the API".into());
     }
+    if layout.ink_mode == crate::style_resolution::Ink::Monochrome {
+        for key in layout.style_keys.values_mut() {
+            key.ink = crate::style_resolution::Ink::Monochrome;
+        }
+    }
     let mut captured = crate::style_resolution::prepare_print(resolution, &layout.style_keys)
         .map_err(|e| e.to_string())?;
     captured["renderer_defaults"] =
@@ -4053,4 +4058,20 @@ mod tests {
             .unwrap_err()
             .contains("print_attribution_invalid"));
     }
+}
+#[test]
+fn monochrome_layout_cannot_resolve_a_colour_only_key() {
+    let document = json!({"type":"line","paint":{"line-color":"#123456","line-width":1}});
+    let key: crate::style_resolution::Key = serde_json::from_value(json!({"entity_class":"test_line","source_kind":"project_model","target":"print","role":"project"})).unwrap();
+    let table: crate::style_resolution::Snapshot = serde_json::from_value(json!({
+            "schema":"ds.style-resolution/v1","project_id":"test","revision_id":"a".repeat(64),
+            "bindings":[{"key":key,"style_ref":"test/line_print","revision_id":"b".repeat(64),
+                "content_sha256":crate::style_plan::style_digest(&document),"scope":"global","document":document}]
+        })).unwrap();
+    let mut layout = default_layout();
+    layout.style_keys.insert("line".into(), key);
+    layout.ink_mode = crate::style_resolution::Ink::Monochrome;
+    let refusal = resolve_style_documents(layout, &table).unwrap_err();
+    assert!(refusal.contains("style_resolution_unknown"));
+    assert!(refusal.contains("monochrome"));
 }

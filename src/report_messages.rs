@@ -192,20 +192,36 @@ pub fn project_locale(sheets: &Value) -> Result<String, String> {
         .get("project_settings")
         .filter(|v| v.as_array().is_some_and(|r| !r.is_empty()))
         .or_else(|| sheets.pointer("/parameters/project_settings"))
-        .and_then(Value::as_array)
-        .ok_or("report_locale_missing: project_settings missing")?;
+        .and_then(Value::as_array);
     let values: Vec<_> = rows
-        .iter()
+        .into_iter()
+        .flatten()
         .filter(|row| {
             crate::report_formats::setting_parameter_key(row).as_deref() == Some(LOCALE_SETTING)
         })
         .collect();
-    if values.len() != 1 {
-        return Err(
-            "report_locale_missing: exactly one report_locale project setting is required".into(),
-        );
+    if values.len() > 1 {
+        return Err("report_locale_invalid: duplicate report_locale project settings".into());
     }
-    let locale = values[0]["value"]
+    // The authorized configuration reader captures the project's language and
+    // its governed country configuration. No country/language table belongs
+    // to the renderer, and a malformed explicit override never defaults.
+    let value = if let Some(row) = values.first() {
+        &row["value"]
+    } else {
+        let context = &sheets["report_context"];
+        if context["schema"] != "ds.report-context/v1" {
+            return Err(
+                "report_locale_missing: capture project locale and governed country configuration"
+                    .into(),
+            );
+        }
+        context
+            .get("project_locale")
+            .filter(|v| !v.is_null())
+            .unwrap_or(&context["country_locale"])
+    };
+    let locale = value
         .as_str()
         .ok_or("report_locale_invalid: locale must be a nonempty string")?;
     if locale.is_empty()
@@ -347,6 +363,28 @@ pub fn default_catalogue() -> &'static Catalogue {
 mod tests {
     use super::*;
     use serde_json::json;
+    #[test]
+    fn governed_project_and_country_locales_default_without_a_stored_override() {
+        let mut config = json!({"report_context":{"schema":"ds.report-context/v1","project_locale":"fr","country_locale":"en"}});
+        assert_eq!(project_locale(&config).unwrap(), "fr");
+        config["report_context"]
+            .as_object_mut()
+            .unwrap()
+            .remove("project_locale");
+        config["report_context"]["country_locale"] = json!("fr");
+        assert_eq!(project_locale(&config).unwrap(), "fr");
+        config["project_settings"] = json!([{"parameter":"report_locale","value":"en"}]);
+        assert_eq!(project_locale(&config).unwrap(), "en");
+        config["project_settings"][0]["value"] = json!("");
+        assert!(project_locale(&config)
+            .unwrap_err()
+            .starts_with("report_locale_invalid:"));
+        config["project_settings"]
+            .as_array_mut()
+            .unwrap()
+            .push(json!({"parameter":"report_locale","value":"fr"}));
+        assert!(project_locale(&config).unwrap_err().contains("duplicate"));
+    }
     #[test]
     fn missing_unknown_and_incomplete_locales_refuse_by_name() {
         assert!(Messages::new(None, None)

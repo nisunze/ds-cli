@@ -294,8 +294,16 @@ impl Templates {
         {
             return Err("print_template_invalid: paper mismatch or embedded style choice".into());
         }
+        // Global role documents author slots, while the project identity owns
+        // logo bytes. Validate unbound slots without installing fixture logos.
+        let mut validation_layout = document.layout.clone();
+        validation_layout.elements.retain(|element| {
+            !(element.kind == ElementKind::Logo
+                && document.logo_slots.contains(&element.asset)
+                && !validation_layout.assets.contains_key(&element.asset))
+        });
         super::validate_with_semantic_layers(
-            &document.layout,
+            &validation_layout,
             &document.layer_keys.keys().cloned().collect(),
         )
         .map_err(|e| format!("print_template_invalid: {e}"))?;
