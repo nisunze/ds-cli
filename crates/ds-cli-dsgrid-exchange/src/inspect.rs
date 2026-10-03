@@ -56,7 +56,7 @@ that decides whether a conversion is worth attempting.",
     ],
     output: "\
 One entry per source with its classification, digest, member count and any \
-version or units evidence the engine recovered; then the capabilities, \
+version or units evidence the engine recovered, plus pinned PLS export source/member digests and typed inspection refusals with remedies; then the capabilities, \
 available ones by default. GIS sources also list their layers, geometry, feature counts and CRS evidence.",
     examples: &[
         Example {

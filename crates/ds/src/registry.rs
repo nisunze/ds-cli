@@ -300,6 +300,11 @@ static DSGRID_ENTRIES: &[Entry] = &[
         render: ds_cli_dsgrid::reconcile_cable_source::render,
     },
     Entry {
+        command: &ds_cli_dsgrid::cable_export::COMMAND,
+        handler: ds_cli_dsgrid::cable_export::run,
+        render: ds_cli_dsgrid::cable_export::render,
+    },
+    Entry {
         command: &ds_cli_dsgrid::apply_batch::COMMAND,
         handler: ds_cli_dsgrid::apply_batch::run,
         render: ds_cli_dsgrid::apply_batch::render,

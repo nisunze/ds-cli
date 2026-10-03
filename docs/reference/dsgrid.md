@@ -68,6 +68,29 @@ ID in `interpreted_entity_ids` and the same asset leaf. Ambiguous leaf-only
 selection and library-pinned packages refuse; there is no re-conversion or
 fallback.
 
+## Exporting one edited native cable
+
+`ds dsgrid cable export` emits one cable member independently of whole-model
+earthing, structures and criteria. Read its cable ID, retained resource ID,
+source digest and authored revision from the package. Select the retained
+resource explicitly even when a generic cable edit has removed its current
+resource link. The Rust owner verifies the package, revision, source bytes,
+native representability and readback before emission.
+
+```bash
+ds dsgrid cable export --model reviewed.dsgrid --cable-id <id> --revision <rev:...> --source-resource-id <id> --expect-source-digest <sha256:...> --dry-run --output json
+```
+
+The preview returns the exact filename, original and emitted digests, native
+version, parsed Cable Data values in native and SI units, and
+field/old/new/owner-rule patch receipts. For emission, replace
+`--dry-run` with `--out <new-cables-directory/exact-filename>`. The directory
+must exist, the member leaf must match the source, and an existing file is
+never overwritten. An unchanged member is copied byte for byte. Inconsistent
+nominal and strand moduli refuse by field name. The receipt explicitly leaves
+`native_cable_data_accepted` false: compare the emitted member in PLS-CADD
+Cable Data before declaring native acceptance.
+
 ## Local acquisition, activity, and publication
 
 These words are deliberately not interchangeable:

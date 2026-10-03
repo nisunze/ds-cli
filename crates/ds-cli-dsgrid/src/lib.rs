@@ -36,6 +36,7 @@ pub mod apply;
 pub mod apply_batch;
 pub mod asset;
 pub mod backup;
+pub mod cable_export;
 mod command_shape;
 pub mod create;
 pub mod criteria;
@@ -101,6 +102,7 @@ pub static DOMAIN: Domain = Domain {
         &preview_receipt::COMMAND,
         &apply::COMMAND,
         &reconcile_cable_source::COMMAND,
+        &cable_export::COMMAND,
         &apply_batch::COMMAND,
         &apply_batch::CORRECTION,
         &profile::labels::SHOW,

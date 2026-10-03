@@ -213,6 +213,74 @@ fn discovers_and_reconciles_exact_retained_mechanics_to_a_new_package() {
 }
 
 #[test]
+fn cable_member_export_is_discoverable_fenced_and_never_overwrites() {
+    let descriptor = ok(&["capabilities", "dsgrid.cable.export", "--output", "json"]);
+    assert_eq!(descriptor["command"]["effect"], "local_file_write");
+    assert_eq!(descriptor["command"]["authority"], "none");
+    let fixture = Fixture::new();
+    let model = fixture.model();
+    let invoke = |extra: &[&str]| {
+        let mut args = vec![
+            "dsgrid",
+            "cable",
+            "export",
+            "--model",
+            model.to_str().unwrap(),
+            "--cable-id",
+            "cb-70",
+            "--revision",
+            fixture.revision.as_str(),
+            "--source-resource-id",
+            "res-cable",
+            "--expect-source-digest",
+            &fixture.source_digest,
+            "--output",
+            "json",
+        ];
+        args.extend_from_slice(extra);
+        ds(&args)
+    };
+    let preview = invoke(&["--dry-run", "--limit", "1"]);
+    assert_eq!(preview.code, 0, "{}", preview.envelope);
+    assert_eq!(
+        preview.envelope["data"]["native_cable_data_accepted"],
+        false
+    );
+    assert_eq!(preview.envelope["data"]["persisted"], false);
+    assert_eq!(
+        preview.envelope["data"]["patches"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    assert!(
+        !preview.envelope["data"]["more"]["truncated"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
+
+    let wrong_leaf = fixture.root.path().join("renamed.wir");
+    let refused = invoke(&["--out", wrong_leaf.to_str().unwrap()]);
+    assert_ne!(refused.code, 0);
+    assert!(refused.stdout.contains("output_member_identity_mismatch"));
+    assert!(!wrong_leaf.exists());
+
+    let out = fixture.root.path().join("retained.wir");
+    let written = invoke(&["--out", out.to_str().unwrap()]);
+    assert_eq!(written.code, 0, "{}", written.envelope);
+    let emitted = std::fs::read(&out).unwrap();
+    assert_eq!(written.envelope["data"]["emitted_digest"], digest(&emitted));
+    assert_eq!(written.envelope["data"]["persisted"], true);
+    let refused = invoke(&["--out", out.to_str().unwrap()]);
+    assert_ne!(refused.code, 0);
+    assert!(refused.stdout.contains("output_exists"));
+    assert_eq!(std::fs::read(&out).unwrap(), emitted);
+    fixture.unchanged();
+}
+
+#[test]
 fn stale_authored_revision_refuses_without_writing() {
     let fixture = Fixture::new();
     let stale = RevisionId::from_content_root("stale");
