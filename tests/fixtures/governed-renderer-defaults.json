@@ -75,5 +75,13 @@
     "right_inset_pt": 146,
     "baseline_pt": 7,
     "min_x_pt": 5
+  },
+  "map_fonts": {
+    "title_a0_pt": 28,
+    "title_a3_pt": 18,
+    "legend_pt": 9,
+    "scale_pt": 8,
+    "project_pt": 8,
+    "footer_pt": 8
   }
 }

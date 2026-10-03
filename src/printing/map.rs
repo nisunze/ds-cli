@@ -159,6 +159,20 @@ pub fn plan(r: &Request, boundaries: Vec<Boundary>, sheets: &Value) -> Result<Va
     } else {
         captured.into_values().map(|b| (b.code.clone(),b.name.clone(),b.geometry.clone(),json!({"type":"FeatureCollection","features":[{"type":"Feature","properties":{"name":b.name,"code":b.code},"geometry":b.geometry}]}))).collect()
     };
+    let from_sheets = sheets
+        .get("style_resolution")
+        .filter(|v| !v.is_null())
+        .map(|v| serde_json::from_value::<crate::style_resolution::Snapshot>(v.clone()))
+        .transpose()
+        .map_err(|e| format!("style_resolution_invalid: {e}"))?;
+    let resolution = r.style_resolution.as_ref().or(from_sheets.as_ref()).ok_or(
+        "style_resolution_required: map plan requires the project API style-resolution table",
+    )?;
+    if resolution.project_id != r.project {
+        return Err("project_context_changed: map style table belongs to another project".into());
+    }
+    let renderer_defaults = super::renderer_defaults::resolve(resolution)?;
+    let policy = super::renderer_defaults::admit(&renderer_defaults)?;
     let templates = crate::report_formats::named_layouts(sheets)?;
     let base = templates
         .values()
@@ -181,24 +195,28 @@ pub fn plan(r: &Request, boundaries: Vec<Boundary>, sheets: &Value) -> Result<Va
                 "map" => e.rect = [12., 32., w - sidebar - 34., h - 56.],
                 "title" => {
                     e.rect = [12., 9., w - 24., 18.];
-                    e.font_pt = if r.paper == Paper::A0 { 28. } else { 18. };
+                    e.font_pt = if r.paper == Paper::A0 {
+                        policy.map_fonts.title_a0_pt
+                    } else {
+                        policy.map_fonts.title_a3_pt
+                    };
                 }
                 "legend" => {
                     e.rect = [w - sidebar - 12., 43., sidebar, h - 170.];
-                    e.font_pt = 9.;
+                    e.font_pt = policy.map_fonts.legend_pt;
                 }
                 "north" => e.rect = [w - 42., h - 114., 20., 27.],
                 "scale" => {
                     e.rect = [20., h - 44., 78., 12.];
-                    e.font_pt = 8.;
+                    e.font_pt = policy.map_fonts.scale_pt;
                 }
                 "project" => {
                     e.rect = [w - sidebar - 12., h - 75., sidebar, 48.];
-                    e.font_pt = 8.;
+                    e.font_pt = policy.map_fonts.project_pt;
                 }
                 "footer" => {
                     e.rect = [12., h - 16., w - 24., 10.];
-                    e.font_pt = 8.;
+                    e.font_pt = policy.map_fonts.footer_pt;
                 }
                 _ => {}
             }
@@ -265,25 +283,15 @@ pub fn plan(r: &Request, boundaries: Vec<Boundary>, sheets: &Value) -> Result<Va
                 if matches!(class.as_str(), "village_boundaries" | "rwanda_villages")
                     && !layout.style_keys.contains_key(&layer.id)
                 {
-                    return Err(format!("style_resolution_required: MV map layer {} needs declared class/source key for mv_map_context", layer.id));
+                    return Err(format!(
+                        "style_resolution_required: MV map layer {} needs declared class/source key for mv_map_context",
+                        layer.id
+                    ));
                 }
             }
         }
     }
     let mut held_styles = sheets["printing_styles"].clone();
-    let from_sheets = sheets
-        .get("style_resolution")
-        .filter(|v| !v.is_null())
-        .map(|v| serde_json::from_value::<crate::style_resolution::Snapshot>(v.clone()))
-        .transpose()
-        .map_err(|e| format!("style_resolution_invalid: {e}"))?;
-    let resolution = r.style_resolution.as_ref().or(from_sheets.as_ref()).ok_or(
-        "style_resolution_required: map plan requires the project API style-resolution table",
-    )?;
-    if resolution.project_id != r.project {
-        return Err("project_context_changed: map style table belongs to another project".into());
-    }
-    let renderer_defaults = super::renderer_defaults::resolve(resolution)?;
     let mut style_capture = json!({"renderer_defaults":renderer_defaults});
     if !layout.style_keys.is_empty() {
         let (resolved, capture) = super::resolve_style_documents(layout, resolution)?;
@@ -651,6 +659,38 @@ mod tests {
             layout: None,
             style_resolution: Some(test_resolution()),
         }
+    }
+    #[test]
+    fn map_typography_uses_the_held_policy_and_preserves_authored_values() {
+        let mut r = request("mv-map", &["22"]);
+        let snapshot = r.style_resolution.as_mut().unwrap();
+        let policy = snapshot
+            .bindings
+            .iter_mut()
+            .find(|b| b.key == super::renderer_defaults::key())
+            .unwrap();
+        policy.document["metadata"]["print_renderer_defaults"]["map_fonts"]["title_a3_pt"] =
+            json!(22.);
+        policy.content_sha256 = crate::style_plan::style_digest(&policy.document);
+        policy.revision_id = policy.content_sha256.clone();
+        let planned = plan(&r, vec![boundary("22", "district", 29.)], &json!({})).unwrap();
+        let mut authored: Layout = serde_json::from_value(planned["layout"].clone()).unwrap();
+        let title = authored
+            .elements
+            .iter_mut()
+            .find(|e| e.id == "title")
+            .unwrap();
+        assert_eq!(title.font_pt, 22.);
+        title.font_pt = 13.;
+        r.layout = Some(authored);
+        let planned = plan(&r, vec![boundary("22", "district", 29.)], &json!({})).unwrap();
+        let title = planned["layout"]["elements"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|e| e["id"] == "title")
+            .unwrap();
+        assert_eq!(title["font_pt"], json!(13.));
     }
     #[test]
     fn an_area_map_refuses_map_free_front_matter_by_name() {

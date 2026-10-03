@@ -55,6 +55,17 @@ pub struct Furniture {
     pub paper_fill: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct MapFonts {
+    pub title_a0_pt: f64,
+    pub title_a3_pt: f64,
+    pub legend_pt: f64,
+    pub scale_pt: f64,
+    pub project_pt: f64,
+    pub footer_pt: f64,
+}
+
 /// Exact compatibility typography for documents preceding Layout.attribution.
 /// Its gray operator remains gray, preserving the original PDF representation.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
@@ -75,6 +86,7 @@ pub struct Defaults {
     pub label: Label,
     pub table: Table,
     pub furniture: Furniture,
+    pub map_fonts: MapFonts,
     pub svg_font_family: String,
     pub converter_font_family: String,
     pub legacy_attribution: LegacyAttribution,
@@ -181,6 +193,16 @@ impl Defaults {
             .iter()
             .any(|v| !bounded(*v, 0., 10.))
             || !bounded(self.furniture.text_line_height, 0.5, 5.)
+            || [
+                self.map_fonts.title_a0_pt,
+                self.map_fonts.title_a3_pt,
+                self.map_fonts.legend_pt,
+                self.map_fonts.scale_pt,
+                self.map_fonts.project_pt,
+                self.map_fonts.footer_pt,
+            ]
+            .iter()
+            .any(|v| !bounded(*v, 4., 48.))
             || [&self.svg_font_family, &self.converter_font_family]
                 .iter()
                 .any(|f| !["DejaVu Sans"].contains(&f.as_str()))
