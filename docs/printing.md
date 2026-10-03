@@ -938,3 +938,9 @@ authored overrides for readable stored layouts. Omitted fields inherit the
 resolved corridor document. They are converted mechanically into declarative
 `PrintStyleOverride`, including physical `dash_mm`, never into inline generated
 pens. Geometry distance and retained-source coverage remain source parameters.
+
+### Governed renderer defaults
+
+A render holds the sole resolver's exact reply for `(print_renderer_defaults, dataset_geojson, print, project)` beside its authored page capture. Its complete `metadata.print_renderer_defaults` object is owned by `printing::renderer_defaults::Defaults`. The object supplies the initial physical interpretation, label ink/halo/collision placement, table border/header/warning/workbook fills, furniture stroke widths, measured font family and pre-attribution licensing typography. Unknown, missing and out-of-bounds fields refuse; parallel geometry or label policy refuses. Current registered measurement/conversion supports DejaVu Sans regular/bold/italic faces. Other families refuse until their matching metrics and embedded faces are registered.
+
+`ResolveStyles` carries the exact reply as `capture.renderer_defaults`; native preview admission carries it into `sheets.printing_renderer_defaults`. LV file exports and MV renders accept the same held Binding as `renderer_defaults`. It is companion API data: a renderer neither edits the original page capture nor looks up a mutable style head. The immutable policy reply participates in render/cache identity. Typography, colours and widths are configured through the governed document; physical conversions and placement geometry remain shared mechanics.

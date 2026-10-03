@@ -51,7 +51,20 @@ pub fn physical_style(document: &Value) -> Result<Option<super::PrintStyle>, Str
     let style: super::PrintStyle = serde_json::from_value(value.clone())
         .map_err(|e| format!("physical_print_style invalid: {e}"))?;
     super::validate_physical_style("governed", &style)?;
+    physical_label_override(document)?;
     Ok(Some(style))
+}
+
+pub fn physical_label_override(
+    document: &Value,
+) -> Result<Option<super::PrintLabelOverride>, String> {
+    let Some(value) = document["metadata"].get("physical_label_override") else {
+        return Ok(None);
+    };
+    let label: super::PrintLabelOverride = serde_json::from_value(value.clone())
+        .map_err(|e| format!("physical_label_override invalid: {e}"))?;
+    super::validate_label_override(&label)?;
+    Ok(Some(label))
 }
 
 /// Mechanically apply the document's shared paper factors to physical values.
@@ -148,17 +161,7 @@ fn apply_physical(
         if let Some(size) = label.size_pt {
             pen.label_pt = size;
         }
-        if label.color.is_some()
-            || label.halo_color.is_some()
-            || label.halo_mm.is_some()
-            || label.allow_overlap.is_some()
-            || label.priority.is_some()
-            || label.offset_mm.is_some()
-        {
-            return Err(
-                "physical label placement/ink overrides require an authored label section".into(),
-            );
-        }
+        super::validate_label_override(label)?;
     }
     if change.visible == Some(false) {
         pen.width_mm = 0.;
@@ -175,6 +178,9 @@ fn apply_physical(
     // Retain complete physical fields even where Layout serialization omits an identity opacity.
     out["metadata"]["physical_print_style"]["stroke_opacity"] = json!(pen.stroke_opacity);
     out["metadata"]["physical_print_style"]["fill_opacity"] = json!(pen.fill_opacity);
+    if let Some(label) = &change.label {
+        out["metadata"]["physical_label_override"] = json!(label);
+    }
     Ok(out)
 }
 
@@ -590,6 +596,12 @@ mod tests {
             ("#123456", 0.7, 0.6)
         );
         assert_eq!(pen.dash_mm, vec![3., 2.]);
+        let change: PrintStyleOverride = serde_json::from_value(json!({"label":{"color":"#123456","halo_color":"#ffffff","halo_mm":0.4,"priority":8,"offset_mm":[1.,2.],"allow_overlap":false,"below_geometry":true}})).unwrap();
+        let labelled = apply(&corridor["document"], &change, "A3").unwrap();
+        assert_eq!(physical_label_override(&labelled).unwrap(), change.label);
+        assert!(physical_label_override(&corridor["document"])
+            .unwrap()
+            .is_none());
     }
 
     #[test]

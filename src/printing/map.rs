@@ -271,22 +271,21 @@ pub fn plan(r: &Request, boundaries: Vec<Boundary>, sheets: &Value) -> Result<Va
         }
     }
     let mut held_styles = sheets["printing_styles"].clone();
-    let mut style_capture = Value::Null;
+    let from_sheets = sheets
+        .get("style_resolution")
+        .filter(|v| !v.is_null())
+        .map(|v| serde_json::from_value::<crate::style_resolution::Snapshot>(v.clone()))
+        .transpose()
+        .map_err(|e| format!("style_resolution_invalid: {e}"))?;
+    let resolution = r.style_resolution.as_ref().or(from_sheets.as_ref()).ok_or(
+        "style_resolution_required: map plan requires the project API style-resolution table",
+    )?;
+    if resolution.project_id != r.project {
+        return Err("project_context_changed: map style table belongs to another project".into());
+    }
+    let renderer_defaults = super::renderer_defaults::resolve(resolution)?;
+    let mut style_capture = json!({"renderer_defaults":renderer_defaults});
     if !layout.style_keys.is_empty() {
-        let from_sheets = sheets
-            .get("style_resolution")
-            .filter(|v| !v.is_null())
-            .map(|v| serde_json::from_value::<crate::style_resolution::Snapshot>(v.clone()))
-            .transpose()
-            .map_err(|e| format!("style_resolution_invalid: {e}"))?;
-        let resolution = r.style_resolution.as_ref().or(from_sheets.as_ref()).ok_or(
-            "style_resolution_required: map plan requires the project API style-resolution table",
-        )?;
-        if resolution.project_id != r.project {
-            return Err(
-                "project_context_changed: map style table belongs to another project".into(),
-            );
-        }
         let (resolved, capture) = super::resolve_style_documents(layout, resolution)?;
         layout = resolved;
         if !held_styles.is_object() {
@@ -339,7 +338,7 @@ pub fn plan(r: &Request, boundaries: Vec<Boundary>, sheets: &Value) -> Result<Va
         })
         .collect::<Result<Vec<_>, String>>()?;
     Ok(
-        json!({"request":r,"layout":layout,"context_layout":context_layout,"style_capture":style_capture,"printing_styles":held_styles,"pages":pages,"design_layers":if r.family == "mv-map" {json!(["tr"])} else {Value::Null},"filename":format!("{}.{}-landscape.pdf",r.id,if r.paper==Paper::A0 {"a0"} else {"a3"}),"family":r.family}),
+        json!({"request":r,"layout":layout,"context_layout":context_layout,"style_capture":style_capture,"renderer_defaults":renderer_defaults,"printing_styles":held_styles,"pages":pages,"design_layers":if r.family == "mv-map" {json!(["tr"])} else {Value::Null},"filename":format!("{}.{}-landscape.pdf",r.id,if r.paper==Paper::A0 {"a0"} else {"a3"}),"family":r.family}),
     )
 }
 
@@ -616,6 +615,20 @@ mod tests {
             .clone();
         area.key.role = "project".into();
         bindings.push(area);
+        let defaults: Value = serde_json::from_str(include_str!(
+            "../../tests/fixtures/governed-renderer-defaults.json"
+        ))
+        .unwrap();
+        let document = json!({"type":"line","paint":{},"layout":{},"metadata":{"print_renderer_defaults":defaults}});
+        bindings.push(crate::style_resolution::Binding {
+            key: super::renderer_defaults::key(),
+            style_ref: "test/renderer_defaults_print".into(),
+            revision_id: crate::style_plan::style_digest(&document),
+            content_sha256: crate::style_plan::style_digest(&document),
+            scope: "catalogue".into(),
+            document,
+            presentation_tier: None,
+        });
         crate::style_resolution::Snapshot {
             schema: crate::style_resolution::SCHEMA.into(),
             project_id: "project".into(),

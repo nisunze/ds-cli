@@ -87,3 +87,5 @@ unknown fields and parallel paint/layout/label/boundary/d3 policy are refused.
 Its paper factors use the existing shared physical scaling contract. This
 representation preserves the original physical context pens without introducing
 another CSS conversion or renderer-specific pen factory.
+
+The standard document consumer also requires `(print_renderer_defaults, dataset_geojson, print, project)`. This independent policy reply supplies complete paper interpretation and table/label/furniture defaults, including the exact typography for a historical Layout with no attribution field. It is held as a companion Binding, never selected by an id inside a renderer. The governing metadata is the closed Kernel `printing::renderer_defaults::Defaults` contract.

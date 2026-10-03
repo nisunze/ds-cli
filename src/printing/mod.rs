@@ -23,6 +23,7 @@ pub mod pens;
 pub mod placement;
 pub mod preview;
 pub mod project_sources;
+pub mod renderer_defaults;
 pub mod session;
 pub mod sheet_margin;
 pub mod sheet_status;
@@ -943,6 +944,21 @@ pub fn validate_physical_style(id: &str, style: &PrintStyle) -> Result<(), Strin
     Ok(())
 }
 
+pub fn validate_label_override(label: &PrintLabelOverride) -> Result<(), String> {
+    if label.size_pt.is_some_and(|v| !bounded(v, 1., 60.))
+        || label.halo_mm.is_some_and(|v| !bounded(v, 0., 5.))
+        || label
+            .offset_mm
+            .is_some_and(|v| v.iter().any(|n| !bounded(*n, -20., 20.)))
+        || label.priority.is_some_and(|v| !bounded(v, -1000., 1000.))
+        || label.color.as_ref().is_some_and(|c| !color(c))
+        || label.halo_color.as_ref().is_some_and(|c| !color(c))
+    {
+        return Err("invalid physical label override".into());
+    }
+    Ok(())
+}
+
 pub fn validate(layout: &Layout) -> Result<(), String> {
     if let Some(style) = &layout.attribution {
         style.validate()?;
@@ -1264,15 +1280,9 @@ pub fn validate(layout: &Layout) -> Result<(), String> {
                 || o.dash_mm
                     .as_ref()
                     .is_some_and(|v| v.len() > 8 || v.iter().any(|n| !bounded(*n, 0.1, 100.)))
-                || o.label.as_ref().is_some_and(|l| {
-                    l.size_pt.is_some_and(|v| !bounded(v, 1., 60.))
-                        || l.halo_mm.is_some_and(|v| !bounded(v, 0., 5.))
-                        || l.offset_mm
-                            .is_some_and(|v| v.iter().any(|n| !bounded(*n, -20., 20.)))
-                        || l.priority.is_some_and(|v| !bounded(v, -1000., 1000.))
-                        || l.color.as_ref().is_some_and(|c| !color(c))
-                        || l.halo_color.as_ref().is_some_and(|c| !color(c))
-                })
+                || o.label
+                    .as_ref()
+                    .is_some_and(|l| validate_label_override(l).is_err())
                 || o.field.as_ref().is_some_and(|field| {
                     field.is_empty() || field.len() > 160 || field.trim() != field
                 })
@@ -1435,8 +1445,10 @@ pub fn resolve_style_documents(
     if layout.style_keys.is_empty() && !layout.style_refs.is_empty() {
         return Err("style_resolution_required: migrate the governed printing template to exact style_keys through the API".into());
     }
-    let captured = crate::style_resolution::prepare_print(resolution, &layout.style_keys)
+    let mut captured = crate::style_resolution::prepare_print(resolution, &layout.style_keys)
         .map_err(|e| e.to_string())?;
+    captured["renderer_defaults"] =
+        serde_json::to_value(renderer_defaults::resolve(resolution)?).map_err(|e| e.to_string())?;
     for (layer, reference) in captured["style_refs"].as_object().unwrap() {
         layout.styles.remove(layer);
         layout

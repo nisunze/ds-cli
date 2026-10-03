@@ -217,6 +217,19 @@ pub fn admit_binding<'a>(binding: &'a Binding, key: &Key) -> Result<&'a Binding,
             )
         })?;
     }
+    if binding.document["metadata"]
+        .get("print_renderer_defaults")
+        .is_some()
+    {
+        if *key != crate::printing::renderer_defaults::key() {
+            return Err(refused(
+                "style_resolution_invalid",
+                "print_renderer_defaults requires its declared project print key",
+            ));
+        }
+        crate::printing::renderer_defaults::from_document(&binding.document)
+            .map_err(|e| refused("style_resolution_invalid", e))?;
+    }
     crate::style_validation::validate(&binding.document).map_err(|error| {
         refused(
             "style_resolution_invalid",
@@ -336,6 +349,8 @@ struct PrintCapture {
     style_refs: BTreeMap<String, String>,
     print_styles: BTreeMap<String, Value>,
     style_revisions: BTreeMap<String, RevisionPin>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    renderer_defaults: Option<Binding>,
 }
 /// Admit the sole resolver's held capture at a native preview boundary. This
 /// validates authority and exact content; it makes no style choice and permits
@@ -356,6 +371,10 @@ pub fn admit_print_capture(
             "project_context_changed",
             "print styles belong to another project",
         ));
+    }
+    if let Some(binding) = &capture.renderer_defaults {
+        crate::printing::renderer_defaults::admit(binding)
+            .map_err(|e| refused("style_resolution_invalid", e))?;
     }
     let refs: std::collections::BTreeSet<_> = layout_refs.values().collect();
     if !digest(&capture.resolution_revision)
@@ -424,6 +443,9 @@ pub fn overlay_local_preview(
     let admitted = admit_print_capture(project, layout_refs, captured)?;
     let mut sheets: Value = serde_json::from_str(&preview.sheets_json)
         .map_err(|e| refused("style_resolution_invalid", e.to_string()))?;
+    if !admitted["renderer_defaults"].is_null() {
+        sheets["printing_renderer_defaults"] = admitted["renderer_defaults"].clone();
+    }
     for (field, values) in [
         ("printing_styles", &admitted["print_styles"]),
         ("printing_style_revisions", &admitted["style_revisions"]),
