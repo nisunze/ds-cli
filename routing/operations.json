@@ -1237,7 +1237,7 @@
           "summary": "Read one shared class style, seed a starter style without persisting it, or assemble one work-map runtime family.",
           "transport": "json",
           "action_key": "action",
-          "actions": ["get_user_data_style", "seed_style", "assemble_work_map_runtime_style"],
+          "actions": ["get_user_data_style", "seed_style", "assemble_work_map_runtime_style", "list_versions", "read_version", "compare_version", "restore_version", "get_style_table", "get_seed_manifest", "plan_seed_manifest", "seed_manifest", "inventory_styles", "backup_inventory", "read_inventory_backup", "plan_retirement"],
           "idempotency": "idempotent",
           "retry_class": "none",
           "timeout_s": 30,
