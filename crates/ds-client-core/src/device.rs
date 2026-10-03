@@ -1377,6 +1377,17 @@ impl DeviceApiAuthorization<'_> {
             request,
         )
     }
+    /// One account-scoped messaging or notification action, authorized under
+    /// this protected device principal by the same owner as a user session.
+    pub fn messaging<T: AuthorizedTransport>(
+        &self,
+        transport: &mut T,
+        command: &crate::messaging::Command,
+        now: u64,
+    ) -> Result<serde_json::Value, ClientError> {
+        self.ensure_active(now)?;
+        crate::messaging::run(self.profile, transport, self.authority(), command)
+    }
     /// One governed correspondence action, on a device session — the same
     /// door as [`Self::project_management`].
     pub fn project_correspondence<T: AuthorizedTransport>(
