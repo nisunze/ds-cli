@@ -255,7 +255,11 @@ impl Fixture {
             outputs.push(PublicationOutput {
                 output_id: (*id).into(),
                 locator,
-                filename: ds_command_kernel::report_formats::report_filename(TRANSFORMER, &metadata.format).unwrap(),
+                filename: ds_command_kernel::report_formats::report_filename(
+                    TRANSFORMER,
+                    &metadata.format,
+                )
+                .unwrap(),
                 format: metadata.format,
                 content_type: metadata.content_type.into(),
                 sha256,
