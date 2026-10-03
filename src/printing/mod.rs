@@ -720,6 +720,9 @@ pub struct Element {
     /// a map placed below them in the canonical sheet order.
     #[serde(default = "opaque")]
     pub opacity: f64,
+    /// Governed physical rectangle pen; omitted elements inherit renderer policy.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stroke_mm: Option<f64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub table: Option<TableBinding>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1083,19 +1086,27 @@ pub(super) fn validate_with_semantic_layers(
             return Err("page element ids must be unique".into());
         }
         let [x, y, w, h] = element.rect;
+        let minimum_dimension = if element.kind == ElementKind::Rectangle {
+            0.01
+        } else {
+            1.
+        };
         if !bounded(x, 0., layout.page_mm[0])
             || !bounded(y, 0., layout.page_mm[1])
-            || !bounded(w, 1., layout.page_mm[0])
-            || !bounded(h, 1., layout.page_mm[1])
+            || !bounded(w, minimum_dimension, layout.page_mm[0])
+            || !bounded(h, minimum_dimension, layout.page_mm[1])
             || x + w > layout.page_mm[0] + 1e-7
             || y + h > layout.page_mm[1] + 1e-7
         {
             return Err(format!("element {} lies outside the page", element.id));
         }
-        if !bounded(element.font_pt, 4., 144.)
+        if !bounded(element.font_pt, 3.5, 144.)
             || !color(&element.color)
             || !color(&element.fill)
             || !bounded(element.opacity, 0., 1.)
+            || element
+                .stroke_mm
+                .is_some_and(|v| element.kind != ElementKind::Rectangle || !bounded(v, 0., 5.))
             || element.text.len() > 4000
         {
             return Err("invalid element typography or color".into());
@@ -1548,6 +1559,7 @@ pub fn default_layout() -> Layout {
         color: ink(),
         fill: white(),
         opacity: opaque(),
+        stroke_mm: None,
     };
     complete(Layout {
         ink_mode: crate::style_resolution::Ink::Colour,

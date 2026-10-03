@@ -1068,6 +1068,64 @@ pub fn installed_admin_bounds_path(shared_root: &Path, semantic_sha256: &str) ->
         .join(ADMIN_BOUNDS_FILE)
 }
 
+/// Complete the combined request from its captured, governed country binding.
+/// Explicit asset/digest pairs remain untouched and the engine validates them.
+/// No project identifiers, country choices or dataset digests live in this host.
+pub fn complete_combined_reference(request: &mut Value) -> Result<(), String> {
+    complete_combined_reference_using(request, shared_root)
+}
+
+fn complete_combined_reference_using(
+    request: &mut Value,
+    root: impl FnOnce() -> Result<PathBuf, String>,
+) -> Result<(), String> {
+    if request
+        .get("admin_bounds_asset")
+        .is_some_and(|v| !v.is_null())
+        || request
+            .get("admin_bounds_sha256")
+            .is_some_and(|v| !v.is_null())
+    {
+        return Ok(());
+    }
+    let path = request["network_config"]
+        .as_str()
+        .ok_or("combined_missing_admin_bounds_asset: network_config path is required")?;
+    let file = File::open(path).map_err(|e| format!("combined_missing_admin_bounds_asset: {e}"))?;
+    let mut bytes = Vec::new();
+    file.take(MAX_SEMANTIC_REQUEST_BYTES as u64 + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|e| format!("combined_missing_admin_bounds_asset: {e}"))?;
+    if bytes.len() as u64 > MAX_SEMANTIC_REQUEST_BYTES {
+        return Err(
+            "combined_missing_admin_bounds_asset: configuration exceeds the input limit".into(),
+        );
+    }
+    let config: Value = serde_json::from_slice(&bytes)
+        .map_err(|e| format!("combined_missing_admin_bounds_asset: invalid configuration: {e}"))?;
+    let sheets = config.get("sheets").unwrap_or(&config);
+    let context = &sheets["report_context"];
+    if context["schema"] != "ds.report-context/v1" {
+        return Ok(());
+    }
+    if let Some(country) = request["country"].as_str() {
+        if Some(country) != context["country"].as_str() {
+            return Ok(());
+        }
+    } else if let Some(country) = context["country"].as_str() {
+        request["country"] = json!(country);
+    }
+    let Some(semantic) = context["reference_semantic_sha256"].as_str() else {
+        return Ok(());
+    };
+    let root = root().map_err(|e| format!("combined_missing_admin_bounds_asset: {e}"))?;
+    let asset = verify_admin_bounds_asset(&installed_admin_bounds_path(&root, semantic), semantic)
+        .map_err(|e| format!("combined_missing_admin_bounds_asset: {}", e.message))?;
+    request["admin_bounds_asset"] = json!(asset.path);
+    request["admin_bounds_sha256"] = json!(asset.sha256);
+    Ok(())
+}
+
 /// Prove one DSAB file is the villages index of the named dataset snapshot:
 /// the magic and schema, the payload length, the source digest in its header
 /// and the content digest over its payload. Returns the exact byte identity
@@ -1945,6 +2003,21 @@ pub(crate) mod tests {
         bytes.extend_from_slice(&payload);
         fs::write(&path, &bytes).unwrap();
         let asset = verify_admin_bounds_asset(&path, &semantic).unwrap();
+        let config_path = root.join("config.json");
+        fs::write(&config_path, serde_json::to_vec(&json!({"sheets":{"report_context":{
+            "schema":"ds.report-context/v1","country":"Rwanda","country_locale":"en","reference_semantic_sha256":semantic
+        }}})).unwrap()).unwrap();
+        let mut request = json!({"network_config":config_path});
+        complete_combined_reference_using(&mut request, || Ok(root.to_path_buf())).unwrap();
+        assert_eq!(request["country"], "Rwanda");
+        assert_eq!(request["admin_bounds_asset"], json!(path));
+        assert_eq!(request["admin_bounds_sha256"], json!(asset.sha256));
+        let completed = request.clone();
+        complete_combined_reference_using(&mut request, || {
+            panic!("explicit binding must not read defaults")
+        })
+        .unwrap();
+        assert_eq!(request, completed);
         assert_eq!(asset.size_bytes, bytes.len() as u64);
         assert_eq!(asset.sha256, format!("{:x}", Sha256::digest(&bytes)));
         assert_eq!(asset.semantic_sha256, semantic);

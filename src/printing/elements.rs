@@ -48,6 +48,7 @@ pub fn new_element(kind: ElementKind, id: String, asset: &str) -> Element {
         color: super::ink(),
         fill: super::white(),
         opacity: super::opaque(),
+        stroke_mm: None,
         table: (kind == ElementKind::Table).then(|| TableBinding {
             phase: None,
             workbook: None,

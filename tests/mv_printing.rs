@@ -236,3 +236,34 @@ fn two_models_share_one_setup_and_policy_with_exact_distinct_approved_cover_pins
         .remedy
         .contains("ambiguous"));
 }
+
+#[test]
+fn canonical_global_body_admits_generic_and_exact_preserved_model_pages() {
+    let layout: Value =
+        serde_json::from_str(include_str!("fixtures/mv-global-canonical.json")).unwrap();
+    let selected = json!({"schema":mv::SELECTION_SCHEMA,"layout_id":layout["id"],"revision":"a".repeat(64),"external_version":"1","issue_date":"2026-10-02"});
+    let sheets = json!({"project_settings":[],"printing_defaults":{"schema":"ds.printing-defaults/v1","mv_selection":selected},"report_context":{"project_title":"Gisagara MV Design"},"global_printing_setups":[{"id":layout["id"],"revision":"a".repeat(64),"layout":layout}]});
+    let generic = mv::resolve(&sheets, "gisagara", BTreeMap::new()).unwrap();
+    assert!(generic.preserved_pages.is_empty());
+    assert_eq!(generic.settings.vertical_scale, Some(800));
+    assert_eq!(generic.settings.project_title, "Gisagara MV Design");
+    generic.validate("gisagara").unwrap();
+    let model = mv::resolve(
+        &sheets,
+        "nyamagabe",
+        BTreeMap::from([
+            (ModelField::Identity, "Nyamagabe-MV-Model1".into()),
+            (
+                ModelField::Title,
+                "MV Plan and Profile - Model 1 - Display 5 C initial, no wind".into(),
+            ),
+        ]),
+    )
+    .unwrap();
+    assert_eq!(model.preserved_pages.len(), 3);
+    assert_eq!(
+        model.settings.sheet_title,
+        "MV Plan and Profile - Model 1 - Display 5 C initial, no wind"
+    );
+    model.validate("nyamagabe").unwrap();
+}

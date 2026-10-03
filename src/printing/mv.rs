@@ -200,11 +200,32 @@ pub enum Page {
     ModelPreservedPdf {
         bindings: Vec<ModelPageBinding>,
     },
+    /// Explicitly authored generic page, with exact approved model-specific bytes.
+    ModelPage {
+        bindings: Vec<ModelPageBinding>,
+        default: Box<Page>,
+    },
     PlanProfile,
     /// Standard computed front matter uses the held model and final sheet plan.
     Generated {
         role: super::mv_booklet::PageRole,
     },
+}
+impl Page {
+    pub fn effective<'a>(&'a self, fields: &BTreeMap<ModelField, String>) -> &'a Page {
+        match self {
+            Page::ModelPage { bindings, default }
+                if !fields.get(&ModelField::Identity).is_some_and(|identity| {
+                    bindings
+                        .iter()
+                        .any(|binding| &binding.model_identity == identity)
+                }) =>
+            {
+                default
+            }
+            _ => self,
+        }
+    }
 }
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
 #[serde(deny_unknown_fields)]
@@ -431,6 +452,23 @@ pub fn validate_template(layout: &Layout, template: &Template) -> Result<(), Ref
                     }
                 }
             }
+            Page::ModelPage { bindings, default } => {
+                if !matches!(
+                    default.as_ref(),
+                    Page::Layout { .. } | Page::Generated { .. }
+                ) {
+                    return Err(refuse("mv_print_template_invalid", "pages.model_page.default", "Author an ordinary layout or generated page; nested model bindings and geometry slots are forbidden."));
+                }
+                let mut check = template.clone();
+                check.pages = vec![
+                    Page::ModelPreservedPdf {
+                        bindings: bindings.clone(),
+                    },
+                    default.as_ref().clone(),
+                    Page::PlanProfile,
+                ];
+                validate_template(layout, &check)?;
+            }
             Page::PlanProfile => {}
             Page::Generated { role } => {
                 if !matches!(
@@ -648,12 +686,19 @@ pub fn resolve(
         }
     }
     let mut settings = template.settings.clone();
+    if global {
+        if let Some(title) = sheets["report_context"]["project_title"]
+            .as_str()
+            .filter(|title| valid_text(title, 200))
+        {
+            settings.project_title = title.into();
+        }
+    }
     for (field, value) in [
         ("project_title", &settings.project_title),
         ("sheet_title", &settings.sheet_title),
         ("title_country", &settings.title_country),
         ("title_employer", &settings.title_employer),
-        ("title_contractor", &settings.title_contractor),
     ] {
         if !valid_text(value, 200) {
             return Err(refuse(
@@ -680,6 +725,7 @@ pub fn resolve(
         text.insert(key.into(), value.clone());
     }
 
+    text.insert("model_title".into(), settings.sheet_title.clone());
     text.insert("external_version".into(), selected.external_version.clone());
     text.insert("issue_date".into(), selected.issue_date.clone());
     for (field, value) in &model_fields {
@@ -717,6 +763,14 @@ pub fn resolve(
                     refuse("mv_print_model_binding_missing", "model_identity", "This identity has no approved preserved page binding. Review and pin its exact asset in the same project layout, then intentionally select that revision."))?;
                 Some((&binding.asset_id, &binding.sha256))
             }
+            Page::ModelPage { bindings, .. } => model_fields
+                .get(&ModelField::Identity)
+                .and_then(|identity| {
+                    bindings
+                        .iter()
+                        .find(|binding| &binding.model_identity == identity)
+                })
+                .map(|binding| (&binding.asset_id, &binding.sha256)),
             _ => None,
         };
         if let Some((asset_id, sha256)) = pin {
@@ -727,6 +781,13 @@ pub fn resolve(
             });
         }
     }
+    let mut layout = layout;
+    layout
+        .mv
+        .as_mut()
+        .expect("validated template")
+        .settings
+        .project_title = settings.project_title.clone();
     let mut resolved = Resolved {
         schema: "ds.mv-print-resolved/v1".into(),
         project_id: project_id.into(),
