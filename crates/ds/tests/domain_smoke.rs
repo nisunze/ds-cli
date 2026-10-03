@@ -3358,6 +3358,65 @@ fn pls_backup_create_frames_every_real_workspace_member_and_refuses_overwrite() 
     assert_eq!(inspected["sources"][0]["kind"], "PlsBackupContainer");
     assert_eq!(inspected["sources"][0]["counts"]["members"], 15);
 
+    let inventory = ok(&[
+        "pls",
+        "backup-extract",
+        "--backup",
+        &backup_text,
+        "--source-sha256",
+        created["sha256"].as_str().unwrap(),
+        "--limit",
+        "4096",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(inventory["member_count"], 15);
+    assert_eq!(inventory["omitted_members"], 0);
+    let member = inventory["members"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|m| m["leaf"].as_str().unwrap().ends_with(".012"))
+        .unwrap();
+    let extracted = root.join(member["leaf"].as_str().unwrap());
+    let extracted_text = extracted.display().to_string();
+    let recovered = ok(&[
+        "pls",
+        "backup-extract",
+        "--backup",
+        &backup_text,
+        "--source-sha256",
+        created["sha256"].as_str().unwrap(),
+        "--member",
+        member["member"].as_str().unwrap(),
+        "--out",
+        &extracted_text,
+        "--output",
+        "json",
+    ]);
+    assert_eq!(recovered["members"][0]["sha256"], member["sha256"]);
+    assert_eq!(recovered["path_healing_performed"], false);
+    assert_eq!(
+        std::fs::read(&extracted).unwrap(),
+        std::fs::read(std::path::Path::new(&source).join(member["member"].as_str().unwrap()))
+            .unwrap()
+    );
+    let again = ds(&[
+        "pls",
+        "backup-extract",
+        "--backup",
+        &backup_text,
+        "--source-sha256",
+        created["sha256"].as_str().unwrap(),
+        "--member",
+        member["member"].as_str().unwrap(),
+        "--out",
+        &extracted_text,
+        "--output",
+        "json",
+    ]);
+    assert_eq!(again.envelope["error"]["code"], "output_exists");
+
     let overwrite = ds(&[
         "pls",
         "backup-create",

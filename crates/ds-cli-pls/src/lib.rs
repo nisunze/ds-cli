@@ -22,6 +22,7 @@
 //! drivers that own that work. See [`desktop`].
 
 pub mod backup_create;
+pub mod backup_extract;
 pub mod compare_don;
 pub mod delivery_verify;
 pub mod desktop;
@@ -42,6 +43,7 @@ pub static DOMAIN: Domain = Domain {
     summary: "PLS-CADD workspaces: structures, capacity, references, DONs.",
     commands: &[
         &backup_create::COMMAND,
+        &backup_extract::COMMAND,
         &pole_capacity::COMMAND,
         &reference_closure::COMMAND,
         &section_orientation::COMMAND,
