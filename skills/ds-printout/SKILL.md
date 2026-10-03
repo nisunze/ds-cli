@@ -18,7 +18,7 @@ mixes them. Staking is an XLSX submission, never printed booklet pages.
 
 Map delivery: `printing-maps`.
 
-For MV plan/profile sets, read [booklet workflow](references/mv-plan-profile-booklet.md)
+For MV sets, read [the standard booklet workflow](references/mv-plan-profile-booklet.md)
 before setup or batching.
 
 For voltage-drop A4, choose `voltage_drop_pdf`. Discover the workstation Chromium configuration and verification contracts

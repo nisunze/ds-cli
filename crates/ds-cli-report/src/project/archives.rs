@@ -358,6 +358,31 @@ fn download_note(archive: &Value) -> String {
 mod tests {
     use super::*;
 
+    #[test]
+    fn legacy_district_projection_uses_the_native_group_contract() {
+        use ds_command_kernel::report::archive_groups::{ArchiveGroupingFields, decode};
+        let legacy = decode(
+            &serde_json::from_value::<ArchiveGroupingFields>(json!({
+                "district_count":1,"districts":["Nyamagabe"]
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            district_scope(&legacy),
+            (1, ["Nyamagabe".to_string()].as_slice())
+        );
+        let generic = decode(
+            &serde_json::from_value::<ArchiveGroupingFields>(json!({
+                "group_count":1,"groups":["Sector A"],
+                "district_count":1,"districts":["stale legacy value"]
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(district_scope(&generic), (0, [].as_slice()));
+    }
+
     const HOUR: u64 = 3_600;
 
     #[test]

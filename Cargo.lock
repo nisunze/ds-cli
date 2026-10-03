@@ -1253,6 +1253,7 @@ dependencies = [
  "ds-report-host",
  "ds-sync-runtime",
  "ds-sync-store",
+ "libc",
  "lopdf",
  "serde",
  "serde_json",

@@ -125,3 +125,27 @@ can be opened, what was verified and what limitations remain. If any required
 matrix row or publication step is incomplete, report partial completion with
 counts and the exact remaining dependency. A proof can be useful without being
 the requested production deliverable.
+
+## MV standard booklet proof
+
+Verify all A3 landscape page roles in order: approved cover and naming, sheet
+index, model key plan, legend/notes, complete plan/profile inventory, then any
+approved context pages. Every visible submission version/date agrees with the
+selected project setup; model draft identity is provenance, never publication
+version. Approved migrated PDF components retain their exact bytes/page streams.
+
+For each page, retain its final content digest, PNG digest and decoded raster
+hash. A preview-only run and full PDF job must have identical layout-plan and
+raster hashes. Compare the committed golden fixture and inspect cover, index,
+two different plan/profile sheets, a T-off and changed elevation/angle labels.
+Prove a later failure and a preexisting destination expose no partial job or
+overwrite. CLI/MCP discovery must expose the same JSON job and portable preview.
+Local fixture proof does not close actual-project visual, attachment migration,
+canonical-library mapping or online-publication acceptance.
+
+MV standard protection requires two baseline and two branch renders, matched
+page raster hashes and before/after thumbnails. Every changed pixel region must
+be intentional and attributed to a feedback id or brief rule. Every ordered PNG
+(including cover) must equal its finalized PDF page. Missing resolver replies,
+changed document digests, source/role mismatches and late rendering failures
+refuse atomically. No packaged style default substitutes for an API binding.
