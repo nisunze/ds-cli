@@ -48,14 +48,7 @@ pub static COMMAND: Command = Command {
     path: &["report", "export"],
     contract: 4,
     summary: "Export governed LV standard sets or local engineering reports.",
-    purpose: "\
-Builds report artifacts with the installed reporter engine. Reads only local \
-bytes and makes no network call of any kind. The engine writes a result \
-document describing every artifact and every blocker; this command returns \
-that document, so a refused export arrives as typed blockers rather than an \
-exit code and a file path. Use --request to supply the engine's full typed \
-request instead of the flags below; omitted transformer formats still use this command's defaults, never the saved project output set. Run `ds report tasks --task <name>` for \
-its schema. --task lv-standard requires the export_lv_standard A0/A3 JSON job; report layout schema describes its governed defaults and overrides. --task voltage-drop requires --request from render_voltage_drop_result: it prints admitted calculated JSON or explicit reserved/incomplete/refused status to A4, without processing or inferring analysis. Governed identity supplies title blocks/logos. Report language defaults from captured project locale and governed country configuration; report_locale overrides it. Combined requests resolve their country's captured reference binding to the installed digest-pinned asset. PDF naming is kernel-owned. Prints regenerate; partial exports list failed_formats. Missing tasks refuse.",
+    purpose: "Build local artifacts with ds-report and return its result, including typed blockers on refusal. --request accepts the full typed request; `ds report tasks --task <name>` shows its schema. Omitted transformer formats use this invocation's defaults, independent of saved output sets. LV standard requires the export_lv_standard A0/A3 job; report layout schema describes its governed defaults and overrides. Voltage-drop requires a render_voltage_drop_result request: print calculated JSON or reserved/incomplete/refused status on A4, without processing or inferring analysis. Governed identity supplies title blocks/logos; report_locale overrides captured project/country locale. Combined requests require installed digest-pinned country reference bytes. The kernel owns PDF names. Prints regenerate; partial exports name failed_formats. No network calls.",
     chapter: Chapter::Reports,
     effect: Effect::LocalFileWrite,
     authority: Authority::None,

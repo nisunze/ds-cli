@@ -6308,7 +6308,7 @@ fn export_reuse_is_declared_forceable_and_reported() {
     assert_eq!(force["kind"], "switch");
     let purpose = command["purpose"].as_str().expect("purpose");
     assert!(
-        purpose.contains("prints always regenerate"),
+        purpose.contains("Prints regenerate; data may reuse"),
         "a caller must see from the descriptor that a print is never reused: {purpose}"
     );
     let output = command["output"].as_str().expect("output");

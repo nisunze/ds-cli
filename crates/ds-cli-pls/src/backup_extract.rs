@@ -72,7 +72,7 @@ pub static COMMAND: Command = Command {
         crate::RESULT_ENCODING_REFUSAL,
     ],
     reference: Some("docs/reference/pls.md"),
-    search: &["recover", "archive", "native source", "structure files"],
+    search: &["archive", "native source", "structure files"],
     requires: Requires::Server,
     availability: || Availability::Available,
 };
