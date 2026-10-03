@@ -109,7 +109,7 @@ pub static COMMAND: Command = Command {
         note: "Render the adopted publication for one alignment from held engine projections.",
         runnable: false,
     }],
-    refusals: &crate::project::joined::<{ crate::project::NATIVE_READ_REFUSALS.len() + 10 }>(&[
+    refusals: &crate::project::joined::<{ crate::project::NATIVE_READ_REFUSALS.len() + 11 }>(&[
         crate::project::NATIVE_READ_REFUSALS,
         &[
             crate::project::mv_setup::REFUSAL,
@@ -237,7 +237,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     }
     // Validate the held geometry scope before any authenticated setup read.
     let selected = stage_selected_scene(&scene, inputs.repeated("alignment"))?;
-    let (resolved, style_resolution) =
+    let (resolved, style_resolution, renderer_defaults) =
         crate::project::mv_setup::resolve_project_print(inputs.require("lane")?, project, fields)?;
     let read_manifest = |name: &str, empty: Value| -> Result<Value, Failure> {
         let Some(path) = inputs.value(name) else {
@@ -275,7 +275,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         .as_ref()
         .map(|selection| selection.file.path())
         .unwrap_or(&scene);
-    let request = json!({"style_resolution":style_resolution,"preview_only":inputs.switch("preview-only"),"project_id":project,"scene_path":scene_path,"plan_path":plan,"side_profiles_path":inputs.value("side-profiles"),"notes_path":inputs.value("notes"),"structure_descriptions_path":inputs.value("structure-descriptions"),"out_dir":out_dir,"sample_pages":sample_pages,"context_page_files":context_page_files,"model_crs":inputs.value("model-crs"),"settings":resolved.settings,"mv_setup":resolved,"publication_assets":publication_assets});
+    let request = json!({"renderer_defaults":renderer_defaults,"style_resolution":style_resolution,"preview_only":inputs.switch("preview-only"),"project_id":project,"scene_path":scene_path,"plan_path":plan,"side_profiles_path":inputs.value("side-profiles"),"notes_path":inputs.value("notes"),"structure_descriptions_path":inputs.value("structure-descriptions"),"out_dir":out_dir,"sample_pages":sample_pages,"context_page_files":context_page_files,"model_crs":inputs.value("model-crs"),"settings":resolved.settings,"mv_setup":resolved,"publication_assets":publication_assets});
     let bytes = serde_json::to_vec(&request)
         .map_err(|e| Failure::internal("request_encode_failed", e.to_string()))?;
     ds_layer_store::private::write(&request_path, bytes)

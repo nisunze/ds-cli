@@ -115,7 +115,7 @@ pub(crate) fn resolve_project_print(
     lane: &str,
     project: &str,
     fields: BTreeMap<ModelField, String>,
-) -> Result<(Resolved, Value), Failure> {
+) -> Result<(Resolved, Value, Value), Failure> {
     let configuration = ds_cli_auth::feeder_configuration_for_project(lane, project)?.into_result();
     let sheets = super::settings::sheets_with_printing_catalogue(
         lane,
@@ -124,11 +124,19 @@ pub(crate) fn resolve_project_print(
         None,
     )?;
     let setup = mv::resolve(&sheets, project, fields).map_err(failure)?;
-    let binding = configuration.document["mv_print_style_resolution"].clone();
-    if binding.is_null() {
-        return Err(Failure::failed("mv_print_style_unresolved","The project API has not supplied the governed MV paper resolution.").remedy("Integrate the print-styles resolver for (mv_booklet, project_model, print, project); seed and adopt through the governed API. No renderer fallback is permitted."));
-    }
-    Ok((setup, binding))
+    let table = ds_cli_auth::style_governance(
+        lane,
+        project,
+        &ds_command_kernel::style_governance::Command::Table,
+    )?;
+    let snapshot: ds_command_kernel::style_resolution::Snapshot = serde_json::from_value(table)
+        .map_err(|error| {
+            Failure::failed(STYLE_REFUSAL.code, error.to_string()).remedy(STYLE_REFUSAL.remedy)
+        })?;
+    let (paper, renderer) = mv::resolve_print_bindings(&setup, &snapshot).map_err(|error| {
+        Failure::failed(STYLE_REFUSAL.code, error.to_string()).remedy(STYLE_REFUSAL.remedy)
+    })?;
+    Ok((setup, json!(paper), json!(renderer)))
 }
 
 pub fn set(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {

@@ -368,10 +368,10 @@ mod tests {
             .unwrap(),
         )
         .unwrap();
-        assert_eq!(
-            district_scope(&legacy),
-            (1, ["Nyamagabe".to_string()].as_slice())
-        );
+        let legacy = grouping_fields(&legacy);
+        assert_eq!(legacy["group_count"], 1);
+        assert_eq!(legacy["groups"], json!(["Nyamagabe"]));
+        assert_eq!(legacy["grouping"]["kind"], "legacy_district");
         let generic = decode(
             &serde_json::from_value::<ArchiveGroupingFields>(json!({
                 "group_count":1,"groups":["Sector A"],
@@ -380,7 +380,10 @@ mod tests {
             .unwrap(),
         )
         .unwrap();
-        assert_eq!(district_scope(&generic), (0, [].as_slice()));
+        let generic = grouping_fields(&generic);
+        assert_eq!(generic["group_count"], 1);
+        assert_eq!(generic["groups"], json!(["Sector A"]));
+        assert!(generic.get("district_count").is_none());
     }
 
     const HOUR: u64 = 3_600;

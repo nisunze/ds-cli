@@ -323,7 +323,9 @@ mod tests {
             "variant": "default", "input_base_fingerprint": "a".repeat(64),
             "head_revision": 1, "updated_at": "2026-09-28T14:00:00Z",
             "outputs": [{
-                "output_id": "report-pdf", "format": "pdf_a0", "content_type": "application/pdf",
+                "output_id": "pdf__a0", "format": "pdf__a0", "content_type": "application/pdf",
+                "filename": ds_command_kernel::report_formats::report_filename("test", "pdf__a0").unwrap(),
+                "paper_size": "A0", "presentation": {"layout_id":"a0", "layout_name":"A0 sheet", "paper_name":"A0", "orientation":"landscape", "page_mm":[1189,841]},
                 "sha256": "b".repeat(64), "size_bytes": 123,
             }],
         })

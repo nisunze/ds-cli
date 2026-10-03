@@ -1770,8 +1770,9 @@ fn style_cartography_offers_only_the_vocabulary_the_renderer_paints() {
     );
     assert!(
         marker_renderer.contains("style.metadata?.line_marker !== 'arrow'")
-            && marker_renderer.contains("'text-field': '>'"),
-        "the renderer must consume the kernel's arrow marker and paint a direction glyph"
+            && marker_renderer.contains("clone(recipe)")
+            && marker_renderer.contains("style_renderer_recipe_required"),
+        "the renderer must consume the kernel's arrow marker through the governed companion recipe"
     );
 }
 

@@ -140,15 +140,6 @@ const CODE_NOT_A_LITERAL: &[(&str, &str)] = &[
          that same roster, instead of inventing another CLI vocabulary",
     ),
     (
-        "ds-cli-auth/src/correspondence.rs",
-        "the code is ds-brain's own `PM_REFUSED`/`ASSET_REFUSED` reason token \
-         (correspondence.md §Refusals), relayed verbatim as the contract's \
-         vocabulary; every token a command can surface is declared as a literal \
-         `Refusal` in `ds-cli-pm` (`CORRESPONDENCE_REFUSALS`) or `ds-cli-assets`, \
-         and each domain's classifier renames a token it does not declare to its \
-         generic `pm_refused` / `asset_refused` before it can reach a caller",
-    ),
-    (
         "ds-cli-auth/src/state.rs",
         "the protected-state code is chosen by a `StoreError` match above the \
          constructor; each of the three is declared by the commands that touch \

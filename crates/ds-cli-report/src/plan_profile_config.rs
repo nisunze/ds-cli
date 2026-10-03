@@ -48,7 +48,7 @@ pub static COMMAND: Command = Command {
         note: "Render every named variant from one pinned configuration; see docs/reference/report.md for the schema.",
         runnable: false,
     }],
-    refusals: &crate::project::joined::<{ crate::project::NATIVE_READ_REFUSALS.len() + 11 }>(&[
+    refusals: &crate::project::joined::<{ crate::project::NATIVE_READ_REFUSALS.len() + 10 }>(&[
         crate::project::NATIVE_READ_REFUSALS,
         &[
             crate::project::mv_setup::REFUSAL,
@@ -286,11 +286,12 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let config = decode_config(&bytes)?;
     let base = config_path.parent().expect("absolute file has parent");
     let output_root = validate(&config, project, base)?;
-    let (resolved, style_resolution) = crate::project::mv_setup::resolve_project_print(
-        inputs.require("lane")?,
-        project,
-        config.model_fields.clone(),
-    )?;
+    let (resolved, style_resolution, renderer_defaults) =
+        crate::project::mv_setup::resolve_project_print(
+            inputs.require("lane")?,
+            project,
+            config.model_fields.clone(),
+        )?;
     let staging =
         tempfile::tempdir_in(output_root.parent().ok_or_else(|| {
             Failure::invalid("print_config_invalid", "output_root has no parent")
@@ -314,6 +315,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             "out_dir": out_dir,
             "settings": resolved.settings,
             "style_resolution": style_resolution,
+            "renderer_defaults": renderer_defaults,
             "mv_setup": resolved,
             "publication_assets": config.publication_assets.iter().map(|(id,p)|(id.clone(),resolve(base,p))).collect::<BTreeMap<_,_>>(),
             "sample_pages": config.sample_pages,
