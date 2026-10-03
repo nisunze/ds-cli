@@ -7669,3 +7669,5 @@ impl NamedSolarProjectSession {
         result
     }
 }
+
+pub mod messaging;

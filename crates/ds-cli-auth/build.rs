@@ -3,6 +3,12 @@
 //! convenience version.
 
 fn main() {
+    println!("cargo:rustc-check-cfg=cfg(ds_messaging_emulator)");
+    println!("cargo:rerun-if-env-changed=DS_CLI_MESSAGING_EMULATOR_BUILD");
+    if std::env::var("DS_CLI_MESSAGING_EMULATOR_BUILD").as_deref() == Ok("1") {
+        println!("cargo:rustc-cfg=ds_messaging_emulator");
+    }
+
     let manifest_dir = std::path::PathBuf::from(
         std::env::var("CARGO_MANIFEST_DIR").expect("Cargo manifest directory"),
     );

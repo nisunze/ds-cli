@@ -2024,6 +2024,7 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
         "project",
         "project-task-operations",
         "correspondence",
+        "messaging",
         "solar-input",
         "solar-migration",
         "solar-application",
@@ -3421,4 +3422,48 @@ fn mcp_grid_describe_preserves_inline_authoring_schemas() {
         assert_eq!(result["structuredContent"], direct);
         assert!(result.to_string().len() < ds_cli_mcp::surface::MAX_RESULT_BYTES);
     }
+}
+
+#[test]
+fn messaging_profile_uses_descriptor_inputs_and_confirmation() {
+    let requests = [
+        json!({"jsonrpc":"2.0","id":1,"method":"tools/list"}),
+        json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"messaging_reply","arguments":{"conversation":"fixture","text":"Checked","key":"retry-1"}}}),
+    ];
+    let (messages, _) = mcp(
+        &["--exposure", "commands", "--profile", "messaging"],
+        &requests,
+    );
+    let tools = response(&messages, 1)["result"]["tools"]
+        .as_array()
+        .unwrap();
+    assert_eq!(tools.len(), 14);
+    for leaf in ["send", "reply"] {
+        let name = format!("messaging_{leaf}");
+        let tool = tools.iter().find(|t| t["name"] == name).unwrap();
+        for input in ["conversation", "text", "key"] {
+            assert!(
+                tool["inputSchema"]["required"]
+                    .as_array()
+                    .unwrap()
+                    .contains(&json!(input))
+            );
+            assert_eq!(tool["inputSchema"]["properties"][input]["type"], "string");
+        }
+        assert_eq!(
+            tool["inputSchema"]["properties"]["confirm"]["type"],
+            "boolean"
+        );
+    }
+    let read = tools
+        .iter()
+        .find(|t| t["name"] == "messaging_read")
+        .unwrap();
+    for input in ["cursor", "since"] {
+        assert_eq!(read["inputSchema"]["properties"][input]["type"], "string");
+    }
+    assert_eq!(
+        response(&messages, 2)["result"]["structuredContent"]["error"]["code"],
+        "confirmation_required"
+    );
 }

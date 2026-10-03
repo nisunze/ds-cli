@@ -93,6 +93,7 @@ struct Globals {
 fn split_globals(argv: &[String]) -> Result<(Globals, Vec<String>), Failure> {
     let mut rest: Vec<String> = Vec::new();
     let mut format = Format::Human;
+    let mut explicit_output = false;
     let mut pretty = false;
     let mut no_color = false;
     let mut confirmed = false;
@@ -121,10 +122,12 @@ fn split_globals(argv: &[String]) -> Result<(Globals, Vec<String>), Failure> {
                 })?;
                 index += 1;
                 format = parse_format(value)?;
+                explicit_output = true;
             }
             other => {
                 if let Some(value) = other.strip_prefix("--output=") {
                     format = parse_format(value)?;
+                    explicit_output = true;
                 } else {
                     rest.push(token.clone());
                 }
@@ -132,6 +135,9 @@ fn split_globals(argv: &[String]) -> Result<(Globals, Vec<String>), Failure> {
         }
     }
 
+    if !explicit_output && !help && rest.first().is_some_and(|arg| arg == "messaging") {
+        format = Format::Json;
+    }
     Ok((
         Globals {
             output: Output::resolve(format, pretty, no_color),

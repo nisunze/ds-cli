@@ -245,7 +245,7 @@ writes workspace configuration.",
             required: false,
             default: None,
             choices: &[],
-            summary: "Merge the entry into the host's user-level file instead of only printing it.",
+            summary: "Merge the entry into the host's user-level file.",
         },
         Arg {
             name: "exposure",

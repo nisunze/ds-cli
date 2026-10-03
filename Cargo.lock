@@ -939,6 +939,7 @@ dependencies = [
  "ds-cli-library",
  "ds-cli-map",
  "ds-cli-mcp",
+ "ds-cli-messaging",
  "ds-cli-pls",
  "ds-cli-pm",
  "ds-cli-report",
@@ -1204,6 +1205,16 @@ dependencies = [
  "libc",
  "serde_json",
  "toml_edit",
+]
+
+[[package]]
+name = "ds-cli-messaging"
+version = "0.1.0"
+dependencies = [
+ "ds-cli-auth",
+ "ds-cli-contract",
+ "ds-client-core",
+ "serde_json",
 ]
 
 [[package]]

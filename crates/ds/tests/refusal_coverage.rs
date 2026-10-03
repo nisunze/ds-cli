@@ -848,6 +848,7 @@ fn every_constructible_refusal_code_is_documented() {
         ("ds-cli-server", &["server", "map", "survey"]),
         ("ds-cli-solar", &["solar"]),
         ("ds-cli-pm", &["pm"]),
+        ("ds-cli-messaging", &["messaging"]),
         ("ds-cli-assets", &["assets"]),
         ("ds-cli-sre", &["sre"]),
         ("ds-cli-installs", &["install"]),

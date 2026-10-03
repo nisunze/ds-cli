@@ -135,7 +135,10 @@ fn root_help_is_cheap() {
     // refusal in the product now names it, and a stranger reading root help
     // for "sign in" must find it without opening `auth`. Measured 2,640 bytes
     // with 24 domains.
-    assert_within("root help", &["--help"], 2_650);
+    // 2026-10-03: messaging earns one bounded domain line: conversations and
+    // canonical notices previously had no CLI surface. Its twelve commands
+    // stay below this tier; the per-domain scaling gate is unchanged.
+    assert_within("root help", &["--help"], 2_730);
 }
 
 #[test]

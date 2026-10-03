@@ -3193,7 +3193,74 @@ static SERVER_ENTRIES: &[Entry] = &[
     // owner-only socket those commands call for the Server target.
 ];
 
+static MESSAGING_ENTRIES: &[Entry] = &[
+    Entry {
+        command: &ds_cli_messaging::CONFIG,
+        handler: ds_cli_messaging::config,
+        render: ds_cli_messaging::render,
+    },
+    Entry {
+        command: &ds_cli_messaging::PEOPLE,
+        handler: ds_cli_messaging::people,
+        render: ds_cli_messaging::render,
+    },
+    Entry {
+        command: &ds_cli_messaging::CONVERSATIONS,
+        handler: ds_cli_messaging::conversations,
+        render: ds_cli_messaging::render,
+    },
+    Entry {
+        command: &ds_cli_messaging::PROJECT,
+        handler: ds_cli_messaging::project,
+        render: ds_cli_messaging::render,
+    },
+    Entry {
+        command: &ds_cli_messaging::DIRECT,
+        handler: ds_cli_messaging::direct,
+        render: ds_cli_messaging::render,
+    },
+    Entry {
+        command: &ds_cli_messaging::PERSONAL,
+        handler: ds_cli_messaging::personal,
+        render: ds_cli_messaging::render,
+    },
+    Entry {
+        command: &ds_cli_messaging::READ,
+        handler: ds_cli_messaging::read,
+        render: ds_cli_messaging::render,
+    },
+    Entry {
+        command: &ds_cli_messaging::SEND,
+        handler: ds_cli_messaging::send,
+        render: ds_cli_messaging::render,
+    },
+    Entry {
+        command: &ds_cli_messaging::REPLY,
+        handler: ds_cli_messaging::reply,
+        render: ds_cli_messaging::render,
+    },
+    Entry {
+        command: &ds_cli_messaging::MARK_READ,
+        handler: ds_cli_messaging::mark_read,
+        render: ds_cli_messaging::render,
+    },
+    Entry {
+        command: &ds_cli_messaging::NOTIFICATIONS,
+        handler: ds_cli_messaging::notifications,
+        render: ds_cli_messaging::render,
+    },
+    Entry {
+        command: &ds_cli_messaging::ACK,
+        handler: ds_cli_messaging::acknowledge,
+        render: ds_cli_messaging::render,
+    },
+];
+
 static DOMAINS: &[Registered] = &[
+    Registered {
+        domain: &ds_cli_messaging::DOMAIN,
+        entries: MESSAGING_ENTRIES,
+    },
     Registered {
         domain: &ds_cli_server::DOMAIN,
         entries: SERVER_ENTRIES,
