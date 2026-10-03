@@ -18433,8 +18433,12 @@ fn survey_delete_declares_native_effect_and_honors_packaged_availability() {
     assert_eq!(
         reply.envelope["error"]["code"],
         if descriptor["command"]["availability"] == "unavailable" {
-            descriptor["command"]["unavailable"]["code"].as_str().unwrap()
-        } else { "survey_delete_plan_invalid" }
+            descriptor["command"]["unavailable"]["code"]
+                .as_str()
+                .unwrap()
+        } else {
+            "survey_delete_plan_invalid"
+        }
     );
     std::fs::remove_dir_all(root).unwrap();
 }

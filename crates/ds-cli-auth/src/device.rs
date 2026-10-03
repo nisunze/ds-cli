@@ -1165,6 +1165,12 @@ impl<T: ds_client_core::Transport> DeviceSession<T> {
     ) -> Result<ds_client_core::member_form_grants::GrantResult, ClientError> {
         fixed_device_call!(self, member_form_grant, project, command)
     }
+    pub fn messaging(
+        &mut self,
+        command: &ds_client_core::messaging::Command,
+    ) -> Result<Value, ClientError> {
+        fixed_device_call!(self, messaging, command)
+    }
     pub fn project_correspondence(
         &mut self,
         project: &str,
@@ -1532,7 +1538,14 @@ impl NativeDeviceTransport {
         path: &str,
         body: SecretRequestBody,
     ) -> Result<TransportResponse, TransportError> {
-        let response = ureq::post(format!("{}{}", self.origin, path))
+        #[cfg(ds_messaging_emulator)]
+        let origin = {
+            let _fenced_origin = &self.origin;
+            crate::messaging::emulator_origin()
+        };
+        #[cfg(not(ds_messaging_emulator))]
+        let origin = self.origin.as_str();
+        let response = ureq::post(format!("{}{}", origin, path))
             .header("Accept", "application/json")
             .header("Content-Type", "application/json")
             .header("X-App-Id", ds_client_core::NATIVE_CLIENT_ID)

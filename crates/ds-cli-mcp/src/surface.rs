@@ -95,6 +95,7 @@ pub const PROFILE_IDS: &[&str] = &[
     "project",
     "project-task-operations",
     "correspondence",
+    "messaging",
     "solar-input",
     "solar-migration",
     "design-migration",
@@ -163,6 +164,7 @@ pub enum Profile {
     Project,
     ProjectTaskOperations,
     Correspondence,
+    Messaging,
     SolarInput,
     SolarMigration,
     DesignMigration,
@@ -209,6 +211,7 @@ impl Profile {
             "project" => Some(Self::Project),
             "project-task-operations" => Some(Self::ProjectTaskOperations),
             "correspondence" => Some(Self::Correspondence),
+            "messaging" => Some(Self::Messaging),
             "solar-input" => Some(Self::SolarInput),
             "solar-migration" => Some(Self::SolarMigration),
             "design-migration" => Some(Self::DesignMigration),
@@ -256,6 +259,7 @@ impl Profile {
             Self::Project => "project",
             Self::ProjectTaskOperations => "project-task-operations",
             Self::Correspondence => "correspondence",
+            Self::Messaging => "messaging",
             Self::SolarInput => "solar-input",
             Self::SolarMigration => "solar-migration",
             Self::DesignMigration => "design-migration",
@@ -369,6 +373,7 @@ impl Profile {
             // caller can inspect the plan, delete at its exact revision,
             // inspect the durable backup, and restore at a fresh revision.
             Self::Project => 26,
+            Self::Messaging => 14,
             // Task creation with typed geometry, geometry edits, and
             // admission/field-hours steps: nine leaves plus two bootstrap tools.
             // Raised to 14 on 2026-10-02 by the three model-link leaves: the
@@ -522,6 +527,7 @@ impl Profile {
                 tool.chapter == Chapter::Project
                     && !tool.id.starts_with("auth.")
                     && !tool.id.starts_with("account.")
+                    && !tool.id.starts_with("messaging.")
                     && (!PROJECT_TASK_OPERATIONS_COMMANDS.contains(&tool.id.as_str())
                         || tool.id == "pm.task.create")
                     && !(CORRESPONDENCE_COMMANDS.contains(&tool.id.as_str())
@@ -531,6 +537,7 @@ impl Profile {
                 PROJECT_TASK_OPERATIONS_COMMANDS.contains(&tool.id.as_str())
             }
             Self::Correspondence => CORRESPONDENCE_COMMANDS.contains(&tool.id.as_str()),
+            Self::Messaging => tool.id.starts_with("messaging."),
             Self::Operations => {
                 tool.chapter == Chapter::Operations
                     && !INSTALLATION_COMMANDS.contains(&tool.id.as_str())
@@ -599,6 +606,7 @@ impl Profile {
             | Self::Map
             | Self::Tiling
             | Self::Project
+            | Self::Messaging
             | Self::Operations => &[],
         }
     }
@@ -637,9 +645,10 @@ impl Profile {
             }
             Self::Map | Self::Styles | Self::PrintStyles => chapter == Chapter::MapPresentation,
             Self::Tiling => chapter == Chapter::VectorTiles,
-            Self::Project | Self::ProjectTaskOperations | Self::Correspondence => {
-                chapter == Chapter::Project
-            }
+            Self::Project
+            | Self::ProjectTaskOperations
+            | Self::Correspondence
+            | Self::Messaging => chapter == Chapter::Project,
             Self::SolarInput
             | Self::SolarMigration
             | Self::SolarApplication

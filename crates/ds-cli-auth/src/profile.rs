@@ -338,6 +338,17 @@ fn load_path(
         Lane::Stable => catalog.profiles.stable,
         Lane::Canary => catalog.profiles.canary,
     };
+    // The compile-time emulator transport must never restore an operator's
+    // packaged credentials. Admit only our explicit development fixture.
+    #[cfg(ds_messaging_emulator)]
+    if !allow_development
+        || !matches!(
+            entry.gateway.origin.as_str(),
+            "https://fixture.ue.gateway.dev" | "https://fixture-canary.ue.gateway.dev"
+        )
+    {
+        return Err(unsafe_catalog());
+    }
     ClientProfile::validate(ClientProfileInput {
         schema_version: catalog.schema_version,
         lane: lane.core(),
