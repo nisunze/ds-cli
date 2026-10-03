@@ -28,7 +28,9 @@ CRS84 declared explicitly, statistics on every column. Conversion consumes \
 what `ds data inspect` reports — it does not re-derive the delimiter, header \
 row or coordinate columns. The receipt carries a source digest and a \
 conversion id, so re-converting an unchanged source with unchanged options is \
-detectable and the artifact can be reclaimed later by identity.",
+detectable and the artifact can be reclaimed later by identity. KML/KMZ \
+styles and embedded icons are preserved in the ds:style_document metadata; \
+features retain kml_style_id and decoded style properties.",
     chapter: Chapter::Data,
     effect: Effect::LocalFileWrite,
     authority: Authority::None,
