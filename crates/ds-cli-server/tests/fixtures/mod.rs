@@ -639,11 +639,17 @@ impl Host {
     /// Server's own router the peer the kernel would have named for that
     /// process — exactly what the socket's accept loop hands it — and asks.
     pub fn as_stranger(&self, method: &str, path: &str, body: Option<&[u8]>) -> Answer {
-        let own = ds_cli_server::transport::own_uid().expect("a Unix account");
+        let own = ds_cli_server::transport::own_account().expect("a Unix account");
         routed(
             &self.app,
             Some(ds_cli_server::transport::Peer {
-                uid: own.wrapping_add(1),
+                account: match own {
+                    ds_cli_server::transport::AccountId::Unix(uid) => {
+                        ds_cli_server::transport::AccountId::Unix(uid.wrapping_add(1))
+                    }
+                    #[cfg(windows)]
+                    ds_cli_server::transport::AccountId::Windows(_) => unreachable!(),
+                },
             }),
             method,
             path,
@@ -757,7 +763,7 @@ fn build_app_as(
         connection,
         // The account this test runs as: the real socket's peer check is the
         // production one, against the real process on the other end.
-        os_uid: ds_cli_server::transport::own_uid(),
+        os_account: ds_cli_server::transport::own_account(),
         auth: Arc::new(Allow),
         requests: Arc::new(ds_cli_server::host::Door::new(8)),
         activity: None,
@@ -993,7 +999,7 @@ pub const CUT_NETWORK_SHIM: &str = "DS_ISOLATION_NO_NETWORK";
 pub fn cut_network() -> Option<PathBuf> {
     static SHIM: OnceLock<Option<PathBuf>> = OnceLock::new();
     SHIM.get_or_init(|| {
-        if !cfg!(target_os = "linux") {
+        if !cfg!(any(target_os = "linux", windows)) {
             return None;
         }
         // A run that is ALREADY under the cut network inherits the shim

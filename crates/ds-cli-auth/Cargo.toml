@@ -42,6 +42,7 @@ libc = { workspace = true }
 windows-sys = { workspace = true }
 
 [dev-dependencies]
+tempfile = "3"
 # A package may dev-depend on itself, and that is the only way a test target
 # outside the crate can turn on one of its own features. `cargo test -p
 # ds-cli-auth` therefore compiles `tests/weak_network.rs` against a library
