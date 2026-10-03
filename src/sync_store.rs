@@ -16,7 +16,7 @@
 
 use crate::sync::{Identity, Trigger};
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 
 pub const SCHEMA: &str = "ds.sync-store/v1";
@@ -1330,12 +1330,10 @@ mod tests {
                 1,
                 "attempt remains audit evidence"
             );
-            assert!(
-                !transition
-                    .changes
-                    .iter()
-                    .any(|change| matches!(change, RowChange::UpsertHead(_)))
-            );
+            assert!(!transition
+                .changes
+                .iter()
+                .any(|change| matches!(change, RowChange::UpsertHead(_))));
             assert!(transition.plan_trigger.is_none());
         }
         let transition = apply(&request(
@@ -1471,17 +1469,15 @@ mod tests {
         ))
         .unwrap();
         assert_eq!(renew_dead.refusals[0].code, "lease_expired");
-        assert!(
-            apply(&request(
-                Snapshot::default(),
-                Event::LeaseTake {
-                    scope: scope(),
-                    worker_id: "w1".into(),
-                    ttl_ms: LEASE_TTL_MAX_MS + 1
-                }
-            ))
-            .is_err()
-        );
+        assert!(apply(&request(
+            Snapshot::default(),
+            Event::LeaseTake {
+                scope: scope(),
+                worker_id: "w1".into(),
+                ttl_ms: LEASE_TTL_MAX_MS + 1
+            }
+        ))
+        .is_err());
     }
 
     #[test]

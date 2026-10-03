@@ -104,8 +104,19 @@ fn restart_at_each_persisted_boundary_keeps_bytes_and_work_identity() {
 fn refuses_changed_bytes_outputs_work_identity_owner_and_terminal_replay() {
     let mut wrong = row();
     wrong["owner_uid"] = json!("other");
-    assert!(
-        apply(Request {
+    assert!(apply(Request {
+        owner: "owner".into(),
+        now: 100,
+        row: wrong,
+        event: Event::Start,
+        reopens: 0,
+        lease_id: "worker-a".into(),
+    })
+    .is_err());
+    for state in ["synced", "conflict", "failed"] {
+        let mut wrong = row();
+        wrong["status"] = json!(state);
+        assert!(apply(Request {
             owner: "owner".into(),
             now: 100,
             row: wrong,
@@ -113,22 +124,7 @@ fn refuses_changed_bytes_outputs_work_identity_owner_and_terminal_replay() {
             reopens: 0,
             lease_id: "worker-a".into(),
         })
-        .is_err()
-    );
-    for state in ["synced", "conflict", "failed"] {
-        let mut wrong = row();
-        wrong["status"] = json!(state);
-        assert!(
-            apply(Request {
-                owner: "owner".into(),
-                now: 100,
-                row: wrong,
-                event: Event::Start,
-                reopens: 0,
-                lease_id: "worker-a".into(),
-            })
-            .is_err()
-        );
+        .is_err());
     }
     let ready = step(row(), Event::Start);
     let changed = apply(Request {
@@ -147,33 +143,29 @@ fn refuses_changed_bytes_outputs_work_identity_owner_and_terminal_replay() {
     .unwrap_err();
     assert_eq!(changed.status, "conflict");
     let ready = prepared();
-    assert!(
-        apply(Request {
-            owner: "owner".into(),
-            now: 100,
-            row: ready.row.clone(),
-            event: Event::Opened {
-                response: json!({"work_id":"work","head_revision":0,"outputs":[]})
-            },
-            reopens: 0,
-            lease_id: "worker-a".into(),
-        })
-        .is_err()
-    );
+    assert!(apply(Request {
+        owner: "owner".into(),
+        now: 100,
+        row: ready.row.clone(),
+        event: Event::Opened {
+            response: json!({"work_id":"work","head_revision":0,"outputs":[]})
+        },
+        reopens: 0,
+        lease_id: "worker-a".into(),
+    })
+    .is_err());
     let pending = opened(ready.row);
-    assert!(
-        apply(Request {
-            owner: "owner".into(),
-            now: 100,
-            row: pending.row,
-            event: Event::Finalized {
-                response: json!({"state":"published","work_id":"work","head_revision":2})
-            },
-            reopens: 0,
-            lease_id: "worker-a".into(),
-        })
-        .is_err()
-    );
+    assert!(apply(Request {
+        owner: "owner".into(),
+        now: 100,
+        row: pending.row,
+        event: Event::Finalized {
+            response: json!({"state":"published","work_id":"work","head_revision":2})
+        },
+        reopens: 0,
+        lease_id: "worker-a".into(),
+    })
+    .is_err());
 }
 #[test]
 fn expired_session_reopens_same_run_only_once_per_attempt() {

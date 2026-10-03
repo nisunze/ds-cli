@@ -9,7 +9,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use ds_command_kernel::sync;
 use ds_command_kernel::sync_store as store;
 use serde::Serialize;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 
 /// The plan-and-receipts envelope this runtime answers with.
 pub const SCHEMA: &str = "ds.sync-run/v1";
@@ -656,13 +656,18 @@ mod printing_metadata_tests {
         row.outputs[0].format = "pdf__governed".into();
         row.outputs[0].content_type = "application/pdf".into();
         row.outputs[0].paper_size = Some("A0".into());
-        row.outputs[0].presentation = Some(json!({"layout_id":"governed","layout_name":"Governed","paper_name":"A0","orientation":"landscape","page_mm":[1189,841]}));
+        row.outputs[0].presentation = Some(
+            json!({"layout_id":"governed","layout_name":"Governed","paper_name":"A0","orientation":"landscape","page_mm":[1189,841]}),
+        );
         let stored = store_row("project-1", &row, 1);
         let restored = local_row_from_store(&stored);
         assert_eq!(restored.outputs, row.outputs);
         let open = open_declaration("project-1", &restored);
         assert_eq!(open["outputs"][0]["filename"], "Tx_1.governed.pdf");
         assert_eq!(open["outputs"][0]["paper_size"], "A0");
-        assert_eq!(open["outputs"][0]["presentation"], row.outputs[0].presentation.clone().unwrap());
+        assert_eq!(
+            open["outputs"][0]["presentation"],
+            row.outputs[0].presentation.clone().unwrap()
+        );
     }
 }

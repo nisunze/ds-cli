@@ -1,6 +1,6 @@
 //! Published artifact declarations and canonical names shared by every client.
 //! The host transports responses; it never invents formats or drops layout metadata.
-use crate::printing::{ArtifactPresentation, validate_artifact_presentation};
+use crate::printing::{validate_artifact_presentation, ArtifactPresentation};
 use crate::report_export::exact_lower_sha256;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
@@ -424,12 +424,11 @@ mod tests {
         prior["output_origins"]["xlsx"] =
             json!({"work_id":"work_prior", "input_base_fingerprint":"f".repeat(64)});
         let head = decode_head(&serde_json::to_vec(&prior).unwrap()).unwrap();
-        assert!(
-            head.output_origin("xlsx")
-                .unwrap()
-                .engine_build_manifest_sha256
-                .is_none()
-        );
+        assert!(head
+            .output_origin("xlsx")
+            .unwrap()
+            .engine_build_manifest_sha256
+            .is_none());
     }
 
     #[test]
@@ -448,18 +447,14 @@ mod tests {
         assert_eq!(wire, legacy, "an older head projects exactly as before");
         let head = decode_head(projected.as_bytes()).unwrap();
         assert!(head.output_origins.is_none());
-        assert!(
-            ["xlsx", "gpkg"]
-                .iter()
-                .all(|id| head.output_origin(id).is_none())
-        );
+        assert!(["xlsx", "gpkg"]
+            .iter()
+            .all(|id| head.output_origin(id).is_none()));
         legacy["output_origins"] = json!(null);
-        assert!(
-            decode_head(&serde_json::to_vec(&legacy).unwrap())
-                .unwrap()
-                .output_origin("xlsx")
-                .is_none()
-        );
+        assert!(decode_head(&serde_json::to_vec(&legacy).unwrap())
+            .unwrap()
+            .output_origin("xlsx")
+            .is_none());
     }
 
     #[test]
@@ -543,11 +538,9 @@ mod tests {
                 "landscape"
             );
             input["download"]["output"]["presentation"]["layout_name"] = json!("Changed");
-            assert!(
-                evaluate(&serde_json::to_vec(&input).unwrap())
-                    .unwrap_err()
-                    .contains("download projection")
-            );
+            assert!(evaluate(&serde_json::to_vec(&input).unwrap())
+                .unwrap_err()
+                .contains("download projection"));
         }
     }
     #[test]
@@ -557,11 +550,9 @@ mod tests {
         assert!(evaluate(&serde_json::to_vec(&input).unwrap()).is_err());
         input["outputs"] = json!([output.clone()]);
         input["download"] = json!({"output":output,"file_name":"../agasharu.pdf"});
-        assert!(
-            evaluate(&serde_json::to_vec(&input).unwrap())
-                .unwrap_err()
-                .contains("file_name")
-        );
+        assert!(evaluate(&serde_json::to_vec(&input).unwrap())
+            .unwrap_err()
+            .contains("file_name"));
         input["outputs"][0]["paper_size"] = json!("A0");
         input["outputs"][0]["presentation"] = json!({"layout_id":"other","layout_name":"Wrong","paper_name":"A0","orientation":"landscape","page_mm":[1189,841]});
         assert!(evaluate(&serde_json::to_vec(&input).unwrap()).is_err());

@@ -1,6 +1,9 @@
 //! Export reviewed native naming examples for the cross-language receipt consumer tests.
 fn main() {
-    let input: serde_json::Value = serde_json::from_slice(&std::fs::read(std::env::args().nth(1).expect("input inventory")).unwrap()).unwrap();
+    let input: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(std::env::args().nth(1).expect("input inventory")).unwrap(),
+    )
+    .unwrap();
     let mut output = serde_json::Map::new();
     for stem in input["stems"].as_array().unwrap() {
         let stem = stem.as_str().unwrap();

@@ -7,8 +7,8 @@
 //! decide what is queued; the directory is bytes, and every decision reads
 //! the row.
 use crate::{
-    LocalOutput, LocalRow, MAX_ROWS, Producer, SharedStore, TransferReceipt, kernel_sync as sync,
-    store,
+    kernel_sync as sync, store, LocalOutput, LocalRow, Producer, SharedStore, TransferReceipt,
+    MAX_ROWS,
 };
 use ds_report_artifacts::publication::PublicationBatchReceipt;
 use ds_report_artifacts::{
@@ -416,7 +416,7 @@ mod tests {
     use super::*;
     use crate::rows::store_scope;
     use ds_report_artifacts::publication::{
-        BATCH_SCHEMA, PendingPublicationCommit, PublicationBatchReceipt, PublicationOutput,
+        PendingPublicationCommit, PublicationBatchReceipt, PublicationOutput, BATCH_SCHEMA,
     };
     use std::collections::BTreeMap;
 
@@ -590,11 +590,9 @@ mod tests {
                 .exists(),
             "the batch directory retired with its last output"
         );
-        assert!(
-            inventory(directory.path(), "project-a")
-                .expect("inventory")
-                .is_empty()
-        );
+        assert!(inventory(directory.path(), "project-a")
+            .expect("inventory")
+            .is_empty());
         assert_eq!(
             producer
                 .reclaim("project-a", &rows[0])
@@ -696,10 +694,12 @@ mod tests {
             owner_uid: "owner-1",
             project_id: "project-a",
             engine_version: "ds-network-reporter@0.1.0+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-            engine_build_manifest_sha256: "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            engine_build_manifest_sha256:
+                "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
             transformer: "tx_1",
             transformer_revision: 3,
-            input_base_fingerprint: "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            input_base_fingerprint:
+                "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
             room_content_sha256: "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
             client_run_id: "report-0123456789abcdef0123456789abcdef",
             artifacts,
@@ -910,13 +910,11 @@ mod tests {
             reclaimed.committed_bytes,
             Some(b"first computation".len() as u64)
         );
-        assert!(
-            reclaimed
-                .detail
-                .as_deref()
-                .unwrap()
-                .contains(&older.receipt.client_publish_id)
-        );
+        assert!(reclaimed
+            .detail
+            .as_deref()
+            .unwrap()
+            .contains(&older.receipt.client_publish_id));
         assert_eq!(inventory(&root, "project-a").unwrap().len(), 1);
     }
 
