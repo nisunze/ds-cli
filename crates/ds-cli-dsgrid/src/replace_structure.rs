@@ -21,7 +21,7 @@ pub static COMMAND: Command = Command {
     path: &["dsgrid", "replace-structure"],
     contract: 1,
     summary: "Replace one structure definition with new native bytes.",
-    purpose: "Replaces the definition of a structure type the model already holds (raised allowable tables, corrected attachments) with one exact native structure file, as ONE engine revision. The type id is kept, so every placed structure and strung support stays bound; supports rebind by attachment set and slot, and a set or slot in use that the new file drops refuses. Resource bytes, support properties, geometry and the analytical capacity are derived from the new file; a weight-span basis and case bindings the model declared survive. The receipt compares the capacity tables and names the placements whose usage screen changes. Writes a new package, never the source; the previous bytes stay in it as history.",
+    purpose: "Replaces the definition of a structure type the model already holds (raised allowable tables, corrected attachments) with one exact native structure file, as ONE engine revision. The type id is kept, so every placed structure and strung support stays bound; supports rebind by attachment set and slot, and a set or slot in use that the new file drops refuses. An explicit --attachment-set-renames map can migrate labels only when every physical attachment field is unchanged. Resource bytes, support properties, geometry and the analytical capacity are derived from the new file; a weight-span basis and case bindings the model declared survive. The receipt compares the capacity tables and names the placements whose usage screen changes. Writes a new package, never the source; the previous bytes stay in it as history.",
     chapter: Chapter::GridModel,
     effect: Effect::LocalFileWrite,
     authority: Authority::None,
@@ -49,6 +49,11 @@ pub static COMMAND: Command = Command {
             "<sha256:hex>",
             "Optional exact native source digest.",
         ),
+        Arg::value(
+            "attachment-set-renames",
+            "<json>",
+            "Explicit old-to-native set label map; all physical attachment fields must match.",
+        ),
         Arg::switch(
             "dry-run",
             "Evaluate the replacement and its capacity screen; write nothing.",
@@ -74,6 +79,11 @@ pub static COMMAND: Command = Command {
         },
     ],
     refusals: &[
+        Refusal {
+            code: "attachment_set_renames_invalid",
+            when: "the set rename map is not a JSON object of string labels",
+            remedy: "supply explicit old-to-native label pairs from the exact source",
+        },
         Refusal {
             code: "model_not_found",
             when: "the package path is absent or not a regular file",
@@ -227,6 +237,17 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             .remedy("name one readable native structure file")
         })?;
     let native = crate::import_structure::read_source(source)?;
+    let set_renames: std::collections::BTreeMap<String, String> = inputs
+        .value("attachment-set-renames")
+        .map(serde_json::from_str)
+        .transpose()
+        .map_err(|error| {
+            Failure::invalid(
+                "attachment_set_renames_invalid",
+                format!("expected a JSON object of old-to-native set labels: {error}"),
+            )
+        })?
+        .unwrap_or_default();
     let writing = out.is_some() && !dry_run;
     let result = replace_structure_package(
         &package,
@@ -235,6 +256,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         inputs.value("revision"),
         inputs.value("expect-sha256"),
         writing,
+        &set_renames,
     )
     .map_err(owner_failure)?;
     let mut receipt = serde_json::to_value(&result).expect("typed replacement receipt serializes");

@@ -16954,6 +16954,46 @@ fn dsgrid_replace_structure_raises_a_placed_definition_as_one_revision() {
             .any(|asset| asset.invariant_leaf == "hp-m1-strain.012" && asset.bytes == raised)
     );
 
+    // An explicit set-label migration keeps every physical attachment and
+    // retains exact native bytes, without releasing the strung supports.
+    let renamed = replace_native(&raised, "'30kV' 'S' 'S' 'S' 1 3", "'33kV' 'S' 'S' 'S' 1 3");
+    let rename_dir = root.join("native-label");
+    std::fs::create_dir_all(&rename_dir).unwrap();
+    let rename_source = rename_dir.join("hp-m1-strain.012");
+    std::fs::write(&rename_source, &renamed).unwrap();
+    let rename_out = root.join("native-label.dsgrid");
+    let rename_receipt = ok(&[
+        "dsgrid",
+        "replace-structure",
+        "--package",
+        &model,
+        "--source",
+        rename_source.to_str().unwrap(),
+        "--revision",
+        dry["source_revision"].as_str().unwrap(),
+        "--attachment-set-renames",
+        r#"{"30kV":"33kV"}"#,
+        "--out",
+        rename_out.to_str().unwrap(),
+        "--output",
+        "json",
+    ]);
+    assert_eq!(
+        rename_receipt["attachment_set_renames"],
+        json!({"30kV":"33kV"})
+    );
+    let renamed_package = unpack(&std::fs::read(&rename_out).unwrap()).unwrap();
+    assert_eq!(
+        renamed_package.snapshot.tension_section_supports,
+        before.snapshot.tension_section_supports
+    );
+    assert!(
+        renamed_package
+            .assets
+            .iter()
+            .any(|asset| asset.invariant_leaf == "hp-m1-strain.012" && asset.bytes == renamed)
+    );
+
     // Refusals, each by name and nothing written.
     let unchanged = root.join("unchanged").join("hp-m1-strain.012");
     std::fs::write(&unchanged, &native).unwrap();
