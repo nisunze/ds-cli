@@ -175,7 +175,7 @@ pub static COMMAND: Command = Command {
         },
     ],
     reference: Some("docs/reference/library.md"),
-    search: &["capacity basis", "weight span", "canonical capacity", "engineering citation", "strength curves", "LIC", "generation bindings"],
+    search: &["capacity basis", "weight span", "canonical capacity", "engineering citation", "strength curves", "lic", "generation bindings"],
     requires: Requires::Server,
     availability: || Availability::Available,
 };
