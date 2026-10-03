@@ -40,14 +40,14 @@ pub fn selected(layout: &Layout) -> bool {
         .any(|(_, id)| layout.styles.contains_key(*id) || layout.style_refs.contains_key(*id))
 }
 
-/// All roles need governed symbols and explicit lifecycle distinctions.
+/// An effective page may omit absent roles or partition them by source kind.
+/// The configuration boundary below still requires all five API-resolved roles.
+/// Every active context role must use a governed reference, never an inline pen.
 pub fn validate_selection(layout: &Layout) -> Result<(), String> {
-    if !selected(layout) {
-        return Ok(());
-    }
-    for (_, id) in LAYERS {
-        if !layout.style_refs.contains_key(id) || layout.styles.contains_key(id) {
-            return Err("adjacent networks require the complete resolved context style set; reapply set_adjacent_networks with API-resolved references".into());
+    for id in layout.styles.keys() {
+        let base = id.split("-source-").next().unwrap_or(id);
+        if LAYERS.iter().any(|(_, role)| *role == base) {
+            return Err("adjacent networks require API-resolved context references; inline context pens are forbidden".into());
         }
     }
     Ok(())
@@ -379,6 +379,31 @@ mod tests {
         }
     }
     #[test]
+    fn effective_context_can_omit_absent_roles_but_configuration_is_complete() {
+        let mut page = super::super::default_layout();
+        page.style_refs.insert(
+            "neighbor_lv_lines-source-live".into(),
+            "master/lv_lines_print".into(),
+        );
+        validate_selection(&page).unwrap();
+        assert!(configure(
+            page.clone(),
+            true,
+            BTreeMap::from([("lv_lines".into(), "master/lv_lines_print".into())]),
+            None
+        )
+        .unwrap_err()
+        .contains("tr, lv_lines"));
+        page.styles.insert(
+            "neighbor_lv_lines-source-live".into(),
+            serde_json::from_value(json!({"stroke":"#112233","width_mm":0.2})).unwrap(),
+        );
+        assert!(validate_selection(&page)
+            .unwrap_err()
+            .contains("inline context pens"));
+    }
+
+    #[test]
     fn all_owned_circuits_survive_with_crossings_and_edge_transformers_and_no_engineering_attributes(
     ) {
         let rooms = vec![
@@ -583,9 +608,7 @@ mod tests {
         );
         let mut partial = configured.clone();
         partial.style_refs.remove("neighbor_customers");
-        assert!(super::super::validate(&partial)
-            .unwrap_err()
-            .contains("complete"));
+        super::super::validate(&partial).unwrap();
         assert!(!selected(
             &configure(configured, false, BTreeMap::new(), None).unwrap()
         ));
