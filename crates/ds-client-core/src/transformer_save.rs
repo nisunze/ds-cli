@@ -551,9 +551,9 @@ mod tests {
         layers: &BTreeMap<String, Value>,
         version: u64,
     ) -> crate::TransformerContext {
-        let body = serde_json::to_vec(&json!({"total":1,"found_count":1,"failed_count":0,"results":[{
+        let body = serde_json::to_vec(&json!({"success":true,"data":{"total":1,"found_count":1,"failed_count":0,"results":[{
             "transformer_name":item.transformer_name,"ok":true,"data":{"layers":layers,"voltage_drop_metadata":analysis_metadata(item),"metadata":{"version":version,"content_digest":digest(layers).unwrap()}}
-        }]})).unwrap();
+        }]}})).unwrap();
         crate::transformers::decode_context(
             crate::TransportResponse { status: 200, body },
             1024 * 1024,
@@ -737,9 +737,9 @@ mod tests {
         ] {
             let mut meta = analysis_metadata(&item);
             meta[key] = json!("replaced");
-            let body = serde_json::to_vec(&json!({"total":1,"found_count":1,"failed_count":0,"results":[{
+            let body = serde_json::to_vec(&json!({"success":true,"data":{"total":1,"found_count":1,"failed_count":0,"results":[{
                 "transformer_name":"T1","ok":true,"data":{"layers":item.gdfs,"metadata":{"version":8,"content_digest":result_digest},"voltage_drop_metadata":meta}
-            }]})).unwrap();
+            }]}})).unwrap();
             let replaced = crate::transformers::decode_context(
                 crate::TransportResponse { status: 200, body },
                 MAX_SAVE_BYTES,
