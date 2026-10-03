@@ -18117,6 +18117,7 @@ fn dsgrid_command_descriptors_inline_the_four_authoring_shapes() {
     ]);
     assert_eq!(validated["model"]["valid"], true);
     assert_ne!(validated["model"]["authored_revision"], head);
+}
 
 #[test]
 fn survey_delete_preview_runs_the_real_kernel_and_admits_no_write() {
