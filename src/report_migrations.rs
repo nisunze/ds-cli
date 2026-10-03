@@ -28,12 +28,15 @@ pub fn plan(snapshot: &Snapshot) -> Result<Value, String> {
     }
     crate::report_messages::Messages::new(
         Some(&snapshot.locale_if_missing),
-        snapshot.config.get("report_messages"),
+        crate::report_messages::project_catalogue(&snapshot.config)?.as_ref(),
     )?;
     let mut config = snapshot.config.clone();
     let locale_change = match crate::report_messages::project_locale(&config) {
         Ok(locale) => {
-            crate::report_messages::Messages::new(Some(&locale), config.get("report_messages"))?;
+            crate::report_messages::Messages::new(
+                Some(&locale),
+                crate::report_messages::project_catalogue(&config)?.as_ref(),
+            )?;
             false
         }
         Err(error) if error.starts_with("report_locale_missing:") => {

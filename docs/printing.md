@@ -914,7 +914,9 @@ as part of rendering.
 [assets/report-messages.json](../assets/report-messages.json). Each locale supplies
 exactly the English reference key set, nonempty values and identical named
 placeholders. `en` and `fr` ship; another locale is a document change. A project
-may supply the same complete document in its served Network Template config.
+may supply the same complete document as the existing JSON-valued
+`project_settings` parameter `report_messages`; the project API preserves this
+value. Unknown object sheets are not a served catalogue source.
 `report_messages::Messages` validates it. Named refusals are
 `report_locale_missing`, `report_locale_invalid`, `report_locale_unsupported`,
 `report_catalogue_invalid`, `report_catalogue_incomplete`, `report_message_missing`

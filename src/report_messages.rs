@@ -188,6 +188,38 @@ pub fn project_locale(sheets: &Value) -> Result<String, String> {
     }
     Ok(locale.into())
 }
+/// Complete catalogue overrides use the existing JSON-valued project-settings
+/// parameter, which the project config API actually serves and saves.
+pub fn project_catalogue(config: &Value) -> Result<Option<Value>, String> {
+    let rows = config
+        .get("project_settings")
+        .filter(|v| v.as_array().is_some_and(|r| !r.is_empty()))
+        .or_else(|| config.pointer("/parameters/project_settings"))
+        .and_then(Value::as_array);
+    let values: Vec<_> = rows
+        .into_iter()
+        .flatten()
+        .filter(|row| {
+            crate::report_formats::setting_parameter_key(row).as_deref() == Some("report_messages")
+        })
+        .collect();
+    if values.len() > 1 {
+        return Err("report_catalogue_invalid: duplicate report_messages project setting".into());
+    }
+    values
+        .first()
+        .map(|row| match row.get("value") {
+            Some(Value::Object(_)) => Ok(row["value"].clone()),
+            Some(Value::String(text)) => {
+                serde_json::from_str(text).map_err(|e| format!("report_catalogue_invalid: {e}"))
+            }
+            _ => Err(
+                "report_catalogue_invalid: report_messages must be a complete JSON catalogue"
+                    .into(),
+            ),
+        })
+        .transpose()
+}
 /// The same alias function is used by column filtering and workbook scheduling.
 /// Header maps are the template's per-layer canonical-field → alias arrays.
 pub fn header_alias<'a>(
@@ -211,9 +243,9 @@ pub fn header_alias<'a>(
 pub fn template_headers(
     config: &Value,
 ) -> Result<BTreeMap<String, BTreeMap<String, Vec<String>>>, String> {
-    let mut headers = config
-        .get("report_messages")
-        .map(|v| serde_json::from_value::<Catalogue>(v.clone()).map(|c| c.headers))
+    let catalogue = project_catalogue(config)?;
+    let mut headers = catalogue
+        .map(|v| serde_json::from_value::<Catalogue>(v).map(|c| c.headers))
         .transpose()
         .map_err(|e| format!("report_catalogue_invalid: {e}"))?
         .unwrap_or_else(|| default_catalogue().headers.clone());
@@ -322,6 +354,20 @@ mod tests {
             "house_number"
         );
         assert!(template_headers(&json!({"customers_header":[{"cleaned_header":"a","misspelled_header":["x"]},{"cleaned_header":"b","misspelled_header":["x"]}]})).unwrap_err().starts_with("report_header_alias_invalid:"));
+    }
+    #[test]
+    fn catalogue_override_uses_the_existing_json_parameter() {
+        let catalogue = serde_json::to_value(default_catalogue()).unwrap();
+        let rows = serde_json::json!([{"parameter":"report_locale","value":"fr"},{"parameter":"report_messages","value":catalogue}]);
+        assert_eq!(
+            project_catalogue(&serde_json::json!({"project_settings":rows})).unwrap(),
+            Some(catalogue.clone())
+        );
+        assert_eq!(
+            project_catalogue(&serde_json::json!({"parameters":{"project_settings":rows}}))
+                .unwrap(),
+            Some(catalogue)
+        );
     }
     #[test]
     fn grouped_and_served_project_settings_have_the_same_locale() {
