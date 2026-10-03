@@ -2017,6 +2017,14 @@
         "name",
         "customer_name",
         "full_name"
+      ],
+      "cable_size": [
+        "service_cable_size"
+      ]
+    },
+    "service_cables": {
+      "length": [
+        "length_m"
       ]
     }
   },
