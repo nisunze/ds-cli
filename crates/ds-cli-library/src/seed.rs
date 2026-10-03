@@ -4,7 +4,8 @@ use ds_cli_contract::spec::{
 };
 use ds_cli_contract::{Context, Failure, Inputs};
 use ds_grid_exchange::{
-    StandardsLibrarySeedOptions, plan_standards_library_seed, portable_backup_seed_members,
+    StandardsCapacityBasisDeclaration, StandardsLibrarySeedOptions, plan_standards_library_seed,
+    portable_backup_seed_members,
 };
 use ds_io::{
     PlsCaddAvailableStructureSpottingEdit, pls_cadd_parse_available_structure_list,
@@ -18,7 +19,7 @@ use std::path::{Path, PathBuf};
 pub static COMMAND: Command = Command {
     id: "library.seed",
     path: &["library", "seed"],
-    contract: 1,
+    contract: 2,
     summary: "Seed an immutable as-built, new-design or custom parallel library.",
     purpose: "Discovers explicit local roots or backups, classifies members by native headers, keeps exact pinned PLS-CADD assets in pls-cadd/, ingests only the characterized PLS-CADD-to-DS-Grid projection into dsgrid/, and atomically promotes library/<id>/<version>. It never publishes, overwrites, opens PLS-CADD or converts DS Grid assets to PLS-CADD.",
     chapter: Chapter::PlsCadd,
@@ -60,6 +61,11 @@ pub static COMMAND: Command = Command {
         ),
         Arg::value("schema", "<n>", "Manifest schema; only 1 is accepted.").default("1"),
         Arg::value(
+            "capacity-basis-declarations",
+            "<json-path>",
+            "Bounded JSON array of {source_sha256, weight_span_basis, authority}. Each exact native source digest declares its imported capacity basis once. No capacity, case applicability or verification is inferred; without a declaration the basis stays undeclared.",
+        ),
+        Arg::value(
             "spotting-price-rules",
             "<json-path>",
             "Versioned price-factor rule. Derives the native STR and its DS Grid catalog together; the source is unchanged.",
@@ -72,6 +78,11 @@ pub static COMMAND: Command = Command {
         runnable: false,
     }],
     refusals: &[
+        Refusal {
+            code: "capacity_basis_declarations_invalid",
+            when: "the declaration file exceeds 1 MiB or is not a typed declaration array",
+            remedy: "provide exact source SHA-256 digests, declared weight-span definitions and their engineering citations",
+        },
         Refusal {
             code: "spotting_price_rules_invalid",
             when: "the optional spotting price rules are malformed or incompatible with the seed",
@@ -408,6 +419,24 @@ pub fn run(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     if let Some(rule_path) = inputs.value("spotting-price-rules") {
         compatibility.push(apply_spotting_price_rules(&mut source_members, rule_path)?);
     }
+    let capacity_basis_declarations = match inputs.value("capacity-basis-declarations") {
+        None => Vec::new(),
+        Some(path) => {
+            let metadata = fs::metadata(path).map_err(|error| {
+                Failure::invalid("capacity_basis_declarations_invalid", error.to_string())
+            })?;
+            if metadata.len() > 1024 * 1024 {
+                return Err(Failure::invalid(
+                    "capacity_basis_declarations_invalid",
+                    "declaration file exceeds 1 MiB",
+                ));
+            }
+            let bytes = read(path)?;
+            serde_json::from_slice::<Vec<StandardsCapacityBasisDeclaration>>(&bytes).map_err(
+                |error| Failure::invalid("capacity_basis_declarations_invalid", error.to_string()),
+            )?
+        }
+    };
     let options = StandardsLibrarySeedOptions {
         library_id: inputs.require("library-id")?.to_string(),
         version: inputs.require("library-version")?.to_string(),
@@ -422,6 +451,7 @@ pub fn run(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
             .to_string(),
         source_provenance: inputs.require("provenance")?.to_string(),
         compatibility,
+        capacity_basis_declarations,
     };
     let plan = plan_standards_library_seed(schema, &source_members, &options)
         .map_err(|error| engine_failure("library_seed_failed", error))?;

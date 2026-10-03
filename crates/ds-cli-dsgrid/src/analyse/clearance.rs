@@ -199,6 +199,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             alignment_ids,
             case,
             criterion_set_id,
+            analysis_case_ids: vec![],
             corridor_half_width_m,
         })
         .map_err(map_error)?;

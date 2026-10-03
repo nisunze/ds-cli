@@ -1566,6 +1566,7 @@ dependencies = [
 name = "ds-grid-engine"
 version = "0.1.0"
 dependencies = [
+ "ds-geo",
  "ds-geo-lite",
  "ds-graph",
  "ds-grid-model",
