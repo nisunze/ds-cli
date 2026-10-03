@@ -101,6 +101,12 @@ including no collinear-overlap output. Buffers return an outer ring with round
 caps/convex joins, ignore polygon holes, and may self-overlap. These are not
 polygon overlay or ellipsoidal geography operations.
 
+Shared `GeometryKind`, `VectorOperation` and `PlannedFeature` packets live in
+`ds-geo-lite::vector_types` behind the `vector_types` capability (serde only),
+re-exported through `vector_ops`. The default portable toolkit remains dependency-free. Network links
+only the portable crate. The descriptor registry and binary layer runner live
+in `ds-network::vector`; CLI/MCP and web use that authority.
+
 `vector_ops::evaluate` is the native/WASM JSON processing boundary for the four
 existing operations, with schema `ds.vector-processing/v1`, a closed typed
 operation request and the existing CLI result packet. It owns parameters,

@@ -40,6 +40,8 @@ pub mod line_corridor;
 pub mod operations;
 pub mod primitives;
 pub mod types;
+#[cfg(feature = "vector_types")]
+pub mod vector_types;
 use types::Coord;
 pub use types::EARTH_RADIUS_M;
 
