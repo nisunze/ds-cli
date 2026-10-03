@@ -21,7 +21,7 @@ pub static COMMAND: Command = Command {
     path: &["library", "seed"],
     contract: 2,
     summary: "Seed an immutable as-built, new-design or custom parallel library.",
-    purpose: "Discovers explicit local roots or backups, classifies members by native headers, keeps exact pinned PLS-CADD assets in pls-cadd/, ingests only the characterized PLS-CADD-to-DS-Grid projection into dsgrid/, and atomically promotes library/<id>/<version>. It never publishes, overwrites, opens PLS-CADD or converts DS Grid assets to PLS-CADD.",
+    purpose: "Discovers explicit local roots or backups, classifies members by native headers, keeps exact pinned PLS-CADD assets in pls-cadd/, ingests only the characterized PLS-CADD-to-DS-Grid projection into dsgrid/, and atomically promotes library/<id>/<version>. Reviewed capacity-basis declarations name each exact native digest, its weight-span definition and engineering citation once in the reusable library. They change no strength, verification or load-case applicability. It never publishes, overwrites, opens PLS-CADD or converts DS Grid assets to PLS-CADD.",
     chapter: Chapter::PlsCadd,
     effect: Effect::ArtifactWrite,
     authority: Authority::None,
@@ -165,7 +165,7 @@ pub static COMMAND: Command = Command {
         },
     ],
     reference: Some("docs/reference/library.md"),
-    search: &[],
+    search: &["capacity basis", "weight span", "canonical capacity", "engineering citation"],
     requires: Requires::Server,
     availability: || Availability::Available,
 };

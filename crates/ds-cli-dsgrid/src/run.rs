@@ -58,7 +58,11 @@ Opens one verified .dsgrid package and executes an operation published by the \
 native engine's live descriptor catalogue. Only non-journaled read, solve and \
 propose operations are admitted. The source file is never changed, no command \
 enters the model journal, and the typed result is recursively bounded with \
-explicit truncation receipts. Profile index requests use the default native \
+explicit truncation receipts. For structure usage, discover analyze_model_defaults, \
+screen_structure_usage, structure_capacity_tables and engineering_issue_layer \
+through dsgrid describe. Analyze and Issues report structure_screening_needs_inputs \
+as a blocking finding with a full affected-structure count and named blockers. \
+Profile index requests use the default native \
 atlas; copy its revision and axis pin from project_profile_atlas with default options.",
     chapter: Chapter::GridModel,
     effect: Effect::ReadOnly,
@@ -187,6 +191,10 @@ path can check it; its request's max_reported_rejections bounds its rows.",
         "support resistance",
         "anchorage evidence",
         "model analysis",
+        "structure usage",
+        "structure screening",
+        "screening needs inputs",
+        "capacity load handshake",
     ],
     requires: Requires::Server,
     availability: available,
