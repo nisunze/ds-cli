@@ -974,7 +974,8 @@
       "longest": "longest",
       "overloaded": "overloaded",
       "check only": "flag only",
-      "pole": "pole"
+      "pole": "pole",
+      "outside": "outside"
     },
     "fr": {
       "%": "%",
@@ -1949,7 +1950,8 @@
       "longest": "le plus long",
       "overloaded": "en surcharge",
       "check only": "à titre indicatif",
-      "pole": "poteau"
+      "pole": "poteau",
+      "outside": "hors limite"
     }
   },
   "headers": {
