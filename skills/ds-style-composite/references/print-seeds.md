@@ -1,16 +1,19 @@
 # Repeatable print style families
 
-The backend publishes a named `print_context_existing_new_v1` family for
-transformers, LV circuits, services, customers, poles and MV reference context.
-Discover the exact refs through `style list`; read their field domains and
-documents before changing them. The family is renderer-only and appears in
-Style Center without mounting an interactive map layer.
+The governed standard manifest declares independent documents for focused
+networks, neighbouring circuits and project/MV context, with separate paper
+ink variants. Discover style resolve and resolution table for the exact
+class/source/target/role/ink combination. Bind the returned id and immutable
+revision; consumers never derive an id from a layer name or recolour a variant.
+Read its field domains and document before editing it.
 
-Use the existing `style seed plan/create` to persist a missing declared source,
-then `style print plan/create` for its independent print variant. Both creates
-refuse an existing document. Never reseed authored styles during a read,
-installation or refresh. A future revised starter uses a new versioned name;
-project printing setups keep their selected governed refs.
+Only the style owner governs the standard catalogue. Discover catalogue seed
+plan/apply for a missing standard, review the exact manifest and plan fences,
+and retain its backup and original/destination revision receipts. The API
+preserves authored documents and performs only declared baseline migrations;
+reads and refreshes never seed. Printing/template consumers only resolve.
+Create-only print clones remain available for explicitly authorized independent
+custom documents, with exact refusal when an id already exists.
 
 Proposed/existing comes from each feature's explicit lifecycle field. Unknown
 values remain unknown and use a neutral fallback. A proposed transformer does

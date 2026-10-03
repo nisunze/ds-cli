@@ -6,8 +6,12 @@ pub use native::{LANE_ARG, PROJECT_ARG};
 pub mod appearance;
 pub mod cartography;
 pub mod dimension;
+pub mod governance;
+pub mod history;
+pub mod instruction;
 pub mod label;
 pub mod list;
+pub mod multiscale;
 pub mod native;
 pub mod print_variant;
 pub mod read;
@@ -38,12 +42,36 @@ pub static DOMAIN: Domain = Domain {
     commands: &[
         &list::COMMAND,
         &read::COMMAND,
+        &governance::resolve::COMMAND,
+        &governance::table::COMMAND,
+        &governance::manifest::COMMAND,
+        &governance::seed_plan::COMMAND,
+        &governance::seed_apply::COMMAND,
+        &governance::inventory::COMMAND,
+        &governance::backup_create::COMMAND,
+        &governance::backup_read::COMMAND,
+        &governance::retirement_plan::COMMAND,
+        &instruction::schema::COMMAND,
+        &instruction::plan::COMMAND,
+        &instruction::set::COMMAND,
         &seed::plan::COMMAND,
         &seed::create::COMMAND,
         &print_variant::plan::COMMAND,
         &print_variant::create::COMMAND,
+        &history::list::COMMAND,
+        &history::read::COMMAND,
+        &history::compare::COMMAND,
+        &history::restore::COMMAND,
         &appearance::plan::COMMAND,
         &appearance::set::COMMAND,
+        &multiscale::preset::plan::COMMAND,
+        &multiscale::preset::set::COMMAND,
+        &multiscale::categorical::plan::COMMAND,
+        &multiscale::categorical::set::COMMAND,
+        &multiscale::color_range::plan::COMMAND,
+        &multiscale::color_range::set::COMMAND,
+        &multiscale::zoom::plan::COMMAND,
+        &multiscale::zoom::set::COMMAND,
         &label::plan::COMMAND,
         &label::set::COMMAND,
         &dimension::plan::COMMAND,
@@ -86,8 +114,8 @@ pub const INVALID_COLOR: Refusal = Refusal {
 };
 pub const INVALID_APPEARANCE: Refusal = Refusal {
     code: "invalid_appearance",
-    when: "no colour, icon, size or icon overlap was supplied",
-    remedy: "pass at least one of --color, --icon, --size or --icon-overlap",
+    when: "no colour, icon, size, overlap or flat halo was supplied",
+    remedy: "pass --color, --icon, --size, --icon-overlap, or both --halo-color and --halo-width",
 };
 pub const INVALID_LABEL: Refusal = Refusal {
     code: "invalid_label",
@@ -226,24 +254,33 @@ mod tests {
         );
     }
 
-    /// Fifteen commands, one route. A style document is governed state behind
-    /// ds-brain, so every one of them names its lane and none of them names a
-    /// window.
+    /// Governed commands capture project and lane; schema discovery is pure.
+    /// A screen/print semantic target is independent of a paired window.
     #[test]
     fn no_style_command_takes_a_host_or_a_pairing_descriptor() {
         for command in DOMAIN.commands {
             let flags: Vec<&str> = command.args.iter().map(|arg| arg.name).collect();
-            assert!(
-                flags.contains(&"lane"),
-                "`{}` does not name the deployment lane it authenticates on",
-                command.id
-            );
-            assert!(
-                flags.contains(&"project"),
-                "`{}` does not name the project it reads or writes",
-                command.id
-            );
-            for windowed in ["host", "desktop-descriptor", "target"] {
+            if command.authority == ds_cli_contract::spec::Authority::None {
+                assert_eq!(command.id, "style.instruction.schema");
+                assert_eq!(command.effect, ds_cli_contract::spec::Effect::ReadOnly);
+            } else {
+                assert!(
+                    flags.contains(&"lane"),
+                    "`{}` does not name the deployment lane it authenticates on",
+                    command.id
+                );
+                assert!(
+                    flags.contains(&"project"),
+                    "`{}` does not name the project it reads or writes",
+                    command.id
+                );
+            }
+            if let Some(target) = command.arg("target") {
+                assert_eq!(command.id, "style.resolve");
+                assert_eq!(target.choices, ["screen", "print"]);
+                assert!(target.required);
+            }
+            for windowed in ["host", "desktop-descriptor"] {
                 assert!(
                     !flags.contains(&windowed),
                     "`{}` still declares `--{windowed}`, which only a paired window needed",

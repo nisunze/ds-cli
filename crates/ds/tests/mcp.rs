@@ -2111,6 +2111,10 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
             // workflow beside the retained desktop-owned operations.
             "printing" => 26,
             "printing-maps" => 7,
+            // Eleven existing guided leaves, eleven new authoring leaves and
+            // nine resolver/catalogue leaves. Mirrors the explicitly closed
+            // STYLE_COMMANDS profile, including both bootstrap tools.
+            "styles" => 33,
             // Sixteen layer leaves plus bootstrap: the layer drawer's profile
             // also carries this machine's prepared local layer catalogue,
             // which is the same "one host's own layers" workflow as the local
@@ -2322,6 +2326,33 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
             && published["styles"].contains("style_label_set"),
         "the styles profile must expose reviewed label planning and publication"
     );
+    for leaf in [
+        "style_categorical_plan",
+        "style_categorical_set",
+        "style_color-range_plan",
+        "style_color-range_set",
+        "style_zoom_plan",
+        "style_zoom_set",
+        "style_preset_plan",
+        "style_preset_set",
+        "style_instruction_schema",
+        "style_instruction_plan",
+        "style_instruction_set",
+        "style_resolve",
+        "style_resolution_table",
+        "style_catalogue_manifest",
+        "style_catalogue_seed_plan",
+        "style_catalogue_seed_apply",
+        "style_catalogue_inventory",
+        "style_catalogue_backup_create",
+        "style_catalogue_backup_read",
+        "style_catalogue_retirement_plan",
+    ] {
+        assert!(
+            published["styles"].contains(leaf),
+            "styles must expose {leaf}"
+        );
+    }
     assert!(
         published["print-styles"].contains("style_seed_plan")
             && published["print-styles"].contains("style_seed_create")
@@ -2329,6 +2360,17 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
             && published["print-styles"].contains("style_print_create"),
         "the print-styles profile must expose create-only source and print workflows"
     );
+    for leaf in [
+        "style_print_versions_list",
+        "style_print_versions_read",
+        "style_print_versions_compare",
+        "style_print_versions_restore",
+    ] {
+        assert!(
+            published["print-styles"].contains(leaf),
+            "print-styles must expose {leaf}"
+        );
+    }
     assert!(
         published["map"].is_disjoint(&published["styles"]),
         "map navigation and style authoring must remain separate profiles"
@@ -2593,6 +2635,9 @@ fn the_host_is_one_flag_and_the_other_targets_are_a_closed_set() {
         "dsgrid-exchange.convert",
         "workstation.plan",
         "workstation.configure",
+        // The resolver's screen/print cartographic target is a dimension of
+        // the governed style key; execution still uses the native server.
+        "style.resolve",
     ];
     const HOST_PLACEHOLDER: &str = "<desktop|desktop:instance|server>";
     /// `ds mcp install --host` names an MCP host *program* — Claude Code,

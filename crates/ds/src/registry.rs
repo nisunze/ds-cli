@@ -1744,6 +1744,126 @@ static STYLE_ENTRIES: &[Entry] = &[
         render: ds_cli_style::print_variant::create::render,
     },
     Entry {
+        command: &ds_cli_style::instruction::schema::COMMAND,
+        handler: ds_cli_style::instruction::schema::run,
+        render: ds_cli_style::instruction::schema::render,
+    },
+    Entry {
+        command: &ds_cli_style::instruction::plan::COMMAND,
+        handler: ds_cli_style::instruction::plan::run,
+        render: ds_cli_style::instruction::plan::render,
+    },
+    Entry {
+        command: &ds_cli_style::instruction::set::COMMAND,
+        handler: ds_cli_style::instruction::set::run,
+        render: ds_cli_style::instruction::set::render,
+    },
+    Entry {
+        command: &ds_cli_style::governance::resolve::COMMAND,
+        handler: ds_cli_style::governance::resolve::run,
+        render: ds_cli_style::governance::resolve::render,
+    },
+    Entry {
+        command: &ds_cli_style::governance::table::COMMAND,
+        handler: ds_cli_style::governance::table::run,
+        render: ds_cli_style::governance::table::render,
+    },
+    Entry {
+        command: &ds_cli_style::governance::manifest::COMMAND,
+        handler: ds_cli_style::governance::manifest::run,
+        render: ds_cli_style::governance::manifest::render,
+    },
+    Entry {
+        command: &ds_cli_style::governance::seed_plan::COMMAND,
+        handler: ds_cli_style::governance::seed_plan::run,
+        render: ds_cli_style::governance::seed_plan::render,
+    },
+    Entry {
+        command: &ds_cli_style::governance::seed_apply::COMMAND,
+        handler: ds_cli_style::governance::seed_apply::run,
+        render: ds_cli_style::governance::seed_apply::render,
+    },
+    Entry {
+        command: &ds_cli_style::governance::inventory::COMMAND,
+        handler: ds_cli_style::governance::inventory::run,
+        render: ds_cli_style::governance::inventory::render,
+    },
+    Entry {
+        command: &ds_cli_style::governance::backup_create::COMMAND,
+        handler: ds_cli_style::governance::backup_create::run,
+        render: ds_cli_style::governance::backup_create::render,
+    },
+    Entry {
+        command: &ds_cli_style::governance::backup_read::COMMAND,
+        handler: ds_cli_style::governance::backup_read::run,
+        render: ds_cli_style::governance::backup_read::render,
+    },
+    Entry {
+        command: &ds_cli_style::governance::retirement_plan::COMMAND,
+        handler: ds_cli_style::governance::retirement_plan::run,
+        render: ds_cli_style::governance::retirement_plan::render,
+    },
+    Entry {
+        command: &ds_cli_style::history::list::COMMAND,
+        handler: ds_cli_style::history::list::run,
+        render: ds_cli_style::history::list::render,
+    },
+    Entry {
+        command: &ds_cli_style::history::read::COMMAND,
+        handler: ds_cli_style::history::read::run,
+        render: ds_cli_style::history::read::render,
+    },
+    Entry {
+        command: &ds_cli_style::history::compare::COMMAND,
+        handler: ds_cli_style::history::compare::run,
+        render: ds_cli_style::history::compare::render,
+    },
+    Entry {
+        command: &ds_cli_style::history::restore::COMMAND,
+        handler: ds_cli_style::history::restore::run,
+        render: ds_cli_style::history::restore::render,
+    },
+    Entry {
+        command: &ds_cli_style::multiscale::categorical::plan::COMMAND,
+        handler: ds_cli_style::multiscale::categorical::plan::run,
+        render: ds_cli_style::multiscale::categorical::plan::render,
+    },
+    Entry {
+        command: &ds_cli_style::multiscale::categorical::set::COMMAND,
+        handler: ds_cli_style::multiscale::categorical::set::run,
+        render: ds_cli_style::multiscale::categorical::set::render,
+    },
+    Entry {
+        command: &ds_cli_style::multiscale::color_range::plan::COMMAND,
+        handler: ds_cli_style::multiscale::color_range::plan::run,
+        render: ds_cli_style::multiscale::color_range::plan::render,
+    },
+    Entry {
+        command: &ds_cli_style::multiscale::color_range::set::COMMAND,
+        handler: ds_cli_style::multiscale::color_range::set::run,
+        render: ds_cli_style::multiscale::color_range::set::render,
+    },
+    Entry {
+        command: &ds_cli_style::multiscale::zoom::plan::COMMAND,
+        handler: ds_cli_style::multiscale::zoom::plan::run,
+        render: ds_cli_style::multiscale::zoom::plan::render,
+    },
+    Entry {
+        command: &ds_cli_style::multiscale::zoom::set::COMMAND,
+        handler: ds_cli_style::multiscale::zoom::set::run,
+        render: ds_cli_style::multiscale::zoom::set::render,
+    },
+    Entry {
+        command: &ds_cli_style::multiscale::preset::plan::COMMAND,
+        handler: ds_cli_style::multiscale::preset::plan::run,
+        render: ds_cli_style::multiscale::preset::plan::render,
+    },
+    Entry {
+        command: &ds_cli_style::multiscale::preset::set::COMMAND,
+        handler: ds_cli_style::multiscale::preset::set::run,
+        render: ds_cli_style::multiscale::preset::set::render,
+    },
+    Entry {
         command: &ds_cli_style::appearance::plan::COMMAND,
         handler: ds_cli_style::appearance::plan::run,
         render: ds_cli_style::appearance::plan::render,
