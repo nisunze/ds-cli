@@ -1,6 +1,26 @@
 //! Display casing for transformer names in plans. Engineering identities stay exact.
 use std::collections::BTreeMap;
 
+/// Declarative display-only transforms; engineering identities remain exact.
+#[derive(
+    Debug, Clone, Copy, serde::Serialize, serde::Deserialize, schemars::JsonSchema, PartialEq, Eq,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum LabelDisplay {
+    Raw,
+    UnderscoresToSpaces,
+    TitleCase,
+}
+impl LabelDisplay {
+    pub fn apply(self, value: &str) -> String {
+        match self {
+            Self::Raw => value.into(),
+            Self::UnderscoresToSpaces => value.replace('_', " "),
+            Self::TitleCase => transformer_title(value),
+        }
+    }
+}
+
 /// Presentation casing for transformer names. Underscores in an engineering
 /// identity become word spaces on paper; the identity itself stays unchanged.
 /// A cased run starts with uppercase and continues lowercase; digits and

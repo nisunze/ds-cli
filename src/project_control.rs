@@ -522,11 +522,8 @@ pub fn project_project_control_local_reports(
                     {
                         return Err(error("transformer report output metadata mismatch"));
                     }
-                    if output.output_id == "voltage_drop_pdf" {
-                        crate::report_formats::voltage_drop_pdf_filename(transformer)
-                    } else {
-                        format!("{transformer}{}", definition.suffix)
-                    }
+                    crate::report_formats::report_filename(transformer, &output.output_id)
+                        .map_err(|message| error(&message))?
                 } else {
                     crate::report_formats::combined_output_filename(
                         kind,
@@ -1438,20 +1435,11 @@ fn download_archives(
                 bounded_text(path, "archive member", 1024)?;
                 let lower = path.to_ascii_lowercase();
                 let base = lower.rsplit('/').next().unwrap_or_default();
-                let format = if lower.ends_with(".shp.zip") || lower.ends_with("_shp.zip") {
-                    "shp"
-                } else if lower.ends_with("_geojsonl.zip") || lower.ends_with(".geojsonl.zip") {
-                    "geojsonl"
-                } else {
-                    lower.rsplit('.').next().unwrap_or_default()
-                };
-                *format_counts.entry(format.into()).or_default() += 1;
-                let paper = ["a0", "a1", "a2", "a3", "a4"].into_iter().find(|paper| {
-                    base.split(|c: char| !c.is_ascii_alphanumeric())
-                        .any(|token| token == *paper)
-                });
+                let format = crate::report_formats::artifact_file_format(path);
+                *format_counts.entry(format.clone()).or_default() += 1;
+                let paper = crate::report_formats::artifact_paper(path);
                 if format == "pdf" {
-                    if let Some(paper) = paper {
+                    if let Some(paper) = &paper {
                         *paper_counts.entry(paper.to_ascii_uppercase()).or_default() += 1;
                     }
                 }
@@ -1474,7 +1462,7 @@ fn download_archives(
                     continue;
                 }
                 members.push(json!({"archive_stem":stem,"path":path,"size_bytes":member["size_bytes"],
-                    "format":format,"paper_size":paper.map(str::to_ascii_uppercase),"transformer":transformer,
+                    "format":format,"paper_size":paper.as_deref().map(str::to_ascii_uppercase),"transformer":transformer,
                     "kind":if combined { "combined_report" } else if transformer.is_some() { "transformer" } else { "archive_member" },
                     "delivery":"extract_from_archive"}));
             }
@@ -1618,26 +1606,9 @@ fn apply_format_filter(urls: &[String], formats: &[String]) -> Vec<String> {
     }
     urls.iter()
         .filter(|url| {
-            let lower = url
-                .split('?')
-                .next()
-                .unwrap_or_default()
-                .to_ascii_lowercase();
-            formats.iter().any(|format| match format.as_str() {
-                "xlsx" => lower.ends_with(".xlsx"),
-                "gpkg" => lower.ends_with(".gpkg"),
-                "kmz" => lower.ends_with(".kmz"),
-                "shp" => lower.ends_with(".shp.zip") || lower.contains("_shp.zip"),
-                "pdf" => lower.ends_with(".pdf"),
-                "png" => lower.ends_with(".png"),
-                "zip" => lower.ends_with(".zip"),
-                "geojsonl" => {
-                    lower.ends_with(".geojsonl.zip")
-                        || lower.ends_with("_geojsonl.zip")
-                        || lower.ends_with(".geojsonl")
-                }
-                _ => false,
-            })
+            formats
+                .iter()
+                .any(|format| crate::report_formats::artifact_matches_format(url, format))
         })
         .cloned()
         .collect()
@@ -2182,7 +2153,7 @@ mod tests {
                 "agasharu.xlsx",
                 "agasharu.shp.zip",
                 "agasharu.gpkg",
-                "agasharu.a0.pdf",
+                "Agasharu.a0.pdf",
                 "agasharu_geojson.zip"
             ]
         );

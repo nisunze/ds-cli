@@ -1,0 +1,5326 @@
+{
+  "source": "ds-brain/docs/master.seed.json",
+  "sha256": "c26a9eebfe5a7a417225c3657f92d3972e0e64e8731c9229555ecafe8f78fcd0",
+  "leaves": [
+    {
+      "path": "/display_name",
+      "kind": "str",
+      "value": "Master Template"
+    },
+    {
+      "path": "/version",
+      "kind": "int",
+      "value": 4
+    },
+    {
+      "path": "/name",
+      "kind": "str",
+      "value": "master"
+    },
+    {
+      "path": "/client",
+      "kind": "str",
+      "value": "EDCL"
+    },
+    {
+      "path": "/updated_at",
+      "kind": "int",
+      "value": 1738339200
+    },
+    {
+      "path": "/_comment",
+      "kind": "str",
+      "value": "Pipeline config only. Workhorse UI/validation/layer schemas live in ds-data-workhorse."
+    },
+    {
+      "path": "/electrical/voltage/lv_v",
+      "kind": "int",
+      "value": 400
+    },
+    {
+      "path": "/electrical/voltage/mv_15kv_v",
+      "kind": "int",
+      "value": 15000
+    },
+    {
+      "path": "/electrical/voltage/mv_30kv_v",
+      "kind": "int",
+      "value": 30000
+    },
+    {
+      "path": "/electrical/min_tr_size_kva",
+      "kind": "int",
+      "value": 100
+    },
+    {
+      "path": "/electrical/min_cable_size",
+      "kind": "str",
+      "value": "3 x 35 + 54.6mm² ABC"
+    },
+    {
+      "path": "/electrical/transfo_sizes/0/kva",
+      "kind": "int",
+      "value": 25
+    },
+    {
+      "path": "/electrical/transfo_sizes/0/lv_breaker_a",
+      "kind": "int",
+      "value": 40
+    },
+    {
+      "path": "/electrical/transfo_sizes/0/cable_to_db",
+      "kind": "str",
+      "value": "4 x 35 mm²"
+    },
+    {
+      "path": "/electrical/transfo_sizes/0/main_cable",
+      "kind": "str",
+      "value": "3 x 35 + 54.6mm² ABC"
+    },
+    {
+      "path": "/electrical/transfo_sizes/0/mv_fuse_30kv_a",
+      "kind": "int",
+      "value": 1
+    },
+    {
+      "path": "/electrical/transfo_sizes/0/mv_fuse_15kv_a",
+      "kind": "int",
+      "value": 2
+    },
+    {
+      "path": "/electrical/transfo_sizes/1/kva",
+      "kind": "int",
+      "value": 50
+    },
+    {
+      "path": "/electrical/transfo_sizes/1/lv_breaker_a",
+      "kind": "int",
+      "value": 80
+    },
+    {
+      "path": "/electrical/transfo_sizes/1/cable_to_db",
+      "kind": "str",
+      "value": "4 x 35 mm²"
+    },
+    {
+      "path": "/electrical/transfo_sizes/1/main_cable",
+      "kind": "str",
+      "value": "3 x 50 + 54.6mm² ABC"
+    },
+    {
+      "path": "/electrical/transfo_sizes/1/mv_fuse_30kv_a",
+      "kind": "int",
+      "value": 2
+    },
+    {
+      "path": "/electrical/transfo_sizes/1/mv_fuse_15kv_a",
+      "kind": "int",
+      "value": 4
+    },
+    {
+      "path": "/electrical/transfo_sizes/2/kva",
+      "kind": "int",
+      "value": 100
+    },
+    {
+      "path": "/electrical/transfo_sizes/2/lv_breaker_a",
+      "kind": "int",
+      "value": 160
+    },
+    {
+      "path": "/electrical/transfo_sizes/2/cable_to_db",
+      "kind": "str",
+      "value": "4 x 50 mm²"
+    },
+    {
+      "path": "/electrical/transfo_sizes/2/main_cable",
+      "kind": "str",
+      "value": "3 x 70 + 54.6mm² ABC"
+    },
+    {
+      "path": "/electrical/transfo_sizes/2/mv_fuse_30kv_a",
+      "kind": "int",
+      "value": 4
+    },
+    {
+      "path": "/electrical/transfo_sizes/2/mv_fuse_15kv_a",
+      "kind": "int",
+      "value": 6
+    },
+    {
+      "path": "/electrical/transfo_sizes/3/kva",
+      "kind": "int",
+      "value": 160
+    },
+    {
+      "path": "/electrical/transfo_sizes/3/lv_breaker_a",
+      "kind": "int",
+      "value": 250
+    },
+    {
+      "path": "/electrical/transfo_sizes/3/cable_to_db",
+      "kind": "str",
+      "value": "4 x 95 mm²"
+    },
+    {
+      "path": "/electrical/transfo_sizes/3/main_cable",
+      "kind": "str",
+      "value": "3 x 70 + 54.6mm² ABC"
+    },
+    {
+      "path": "/electrical/transfo_sizes/3/mv_fuse_30kv_a",
+      "kind": "int",
+      "value": 6
+    },
+    {
+      "path": "/electrical/transfo_sizes/3/mv_fuse_15kv_a",
+      "kind": "int",
+      "value": 8
+    },
+    {
+      "path": "/electrical/transfo_sizes/4/kva",
+      "kind": "int",
+      "value": 200
+    },
+    {
+      "path": "/electrical/transfo_sizes/4/lv_breaker_a",
+      "kind": "int",
+      "value": 315
+    },
+    {
+      "path": "/electrical/transfo_sizes/4/cable_to_db",
+      "kind": "str",
+      "value": "4 x 120 mm²"
+    },
+    {
+      "path": "/electrical/transfo_sizes/4/main_cable",
+      "kind": "str",
+      "value": "3 x 70 + 54.6mm² ABC"
+    },
+    {
+      "path": "/electrical/transfo_sizes/4/mv_fuse_30kv_a",
+      "kind": "int",
+      "value": 6
+    },
+    {
+      "path": "/electrical/transfo_sizes/4/mv_fuse_15kv_a",
+      "kind": "int",
+      "value": 10
+    },
+    {
+      "path": "/electrical/transfo_sizes/5/kva",
+      "kind": "int",
+      "value": 250
+    },
+    {
+      "path": "/electrical/transfo_sizes/5/lv_breaker_a",
+      "kind": "int",
+      "value": 400
+    },
+    {
+      "path": "/electrical/transfo_sizes/5/cable_to_db",
+      "kind": "str",
+      "value": "4 x 1 x 185 mm²"
+    },
+    {
+      "path": "/electrical/transfo_sizes/5/main_cable",
+      "kind": "str",
+      "value": "4 x 120"
+    },
+    {
+      "path": "/electrical/transfo_sizes/5/mv_fuse_30kv_a",
+      "kind": "int",
+      "value": 6
+    },
+    {
+      "path": "/electrical/transfo_sizes/5/mv_fuse_15kv_a",
+      "kind": "int",
+      "value": 16
+    },
+    {
+      "path": "/electrical/transfo_sizes/6/kva",
+      "kind": "int",
+      "value": 315
+    },
+    {
+      "path": "/electrical/transfo_sizes/6/lv_breaker_a",
+      "kind": "int",
+      "value": 500
+    },
+    {
+      "path": "/electrical/transfo_sizes/6/cable_to_db",
+      "kind": "str",
+      "value": "4 x 1 x 240 mm²"
+    },
+    {
+      "path": "/electrical/transfo_sizes/6/main_cable",
+      "kind": "str",
+      "value": "4 x 150"
+    },
+    {
+      "path": "/electrical/transfo_sizes/6/mv_fuse_30kv_a",
+      "kind": "int",
+      "value": 10
+    },
+    {
+      "path": "/electrical/transfo_sizes/6/mv_fuse_15kv_a",
+      "kind": "int",
+      "value": 10
+    },
+    {
+      "path": "/electrical/transfo_sizes/7/kva",
+      "kind": "int",
+      "value": 400
+    },
+    {
+      "path": "/electrical/transfo_sizes/7/lv_breaker_a",
+      "kind": "int",
+      "value": 630
+    },
+    {
+      "path": "/electrical/transfo_sizes/7/cable_to_db",
+      "kind": "str",
+      "value": "4 x 1 x 240 mm²"
+    },
+    {
+      "path": "/electrical/transfo_sizes/7/main_cable",
+      "kind": "str",
+      "value": "4 x 185"
+    },
+    {
+      "path": "/electrical/transfo_sizes/7/mv_fuse_30kv_a",
+      "kind": "int",
+      "value": 10
+    },
+    {
+      "path": "/electrical/transfo_sizes/7/mv_fuse_15kv_a",
+      "kind": "int",
+      "value": 16
+    },
+    {
+      "path": "/electrical/transfo_sizes/8/kva",
+      "kind": "int",
+      "value": 500
+    },
+    {
+      "path": "/electrical/transfo_sizes/8/lv_breaker_a",
+      "kind": "int",
+      "value": 800
+    },
+    {
+      "path": "/electrical/transfo_sizes/8/cable_to_db",
+      "kind": "str",
+      "value": "4 x 1 x 300 mm²"
+    },
+    {
+      "path": "/electrical/transfo_sizes/8/main_cable",
+      "kind": "str",
+      "value": "4 x 240"
+    },
+    {
+      "path": "/electrical/transfo_sizes/8/mv_fuse_30kv_a",
+      "kind": "int",
+      "value": 16
+    },
+    {
+      "path": "/electrical/transfo_sizes/8/mv_fuse_15kv_a",
+      "kind": "int",
+      "value": 16
+    },
+    {
+      "path": "/electrical/transfo_sizes/9/kva",
+      "kind": "int",
+      "value": 630
+    },
+    {
+      "path": "/electrical/transfo_sizes/9/lv_breaker_a",
+      "kind": "int",
+      "value": 1000
+    },
+    {
+      "path": "/electrical/transfo_sizes/9/cable_to_db",
+      "kind": "str",
+      "value": "2 x 4 x 1 x 240 mm²"
+    },
+    {
+      "path": "/electrical/transfo_sizes/9/main_cable",
+      "kind": "str",
+      "value": "4 x 300"
+    },
+    {
+      "path": "/electrical/transfo_sizes/9/mv_fuse_30kv_a",
+      "kind": "int",
+      "value": 16
+    },
+    {
+      "path": "/electrical/transfo_sizes/9/mv_fuse_15kv_a",
+      "kind": "int",
+      "value": 20
+    },
+    {
+      "path": "/electrical/service_cable_sizes/0/peak_power_w",
+      "kind": "int",
+      "value": 100
+    },
+    {
+      "path": "/electrical/service_cable_sizes/0/meter_type",
+      "kind": "str",
+      "value": "Single Phase"
+    },
+    {
+      "path": "/electrical/service_cable_sizes/0/service_cable_size",
+      "kind": "str",
+      "value": "2 x 4 mm²"
+    },
+    {
+      "path": "/electrical/service_cable_sizes/1/peak_power_w",
+      "kind": "int",
+      "value": 150
+    },
+    {
+      "path": "/electrical/service_cable_sizes/1/meter_type",
+      "kind": "str",
+      "value": "Single Phase"
+    },
+    {
+      "path": "/electrical/service_cable_sizes/1/service_cable_size",
+      "kind": "str",
+      "value": "2 x 6 mm²"
+    },
+    {
+      "path": "/electrical/service_cable_sizes/2/peak_power_w",
+      "kind": "int",
+      "value": 250
+    },
+    {
+      "path": "/electrical/service_cable_sizes/2/meter_type",
+      "kind": "str",
+      "value": "Single Phase"
+    },
+    {
+      "path": "/electrical/service_cable_sizes/2/service_cable_size",
+      "kind": "str",
+      "value": "2 x 6 mm²"
+    },
+    {
+      "path": "/electrical/service_cable_sizes/3/peak_power_w",
+      "kind": "int",
+      "value": 300
+    },
+    {
+      "path": "/electrical/service_cable_sizes/3/meter_type",
+      "kind": "str",
+      "value": "Single Phase"
+    },
+    {
+      "path": "/electrical/service_cable_sizes/3/service_cable_size",
+      "kind": "str",
+      "value": "2 x 6 mm²"
+    },
+    {
+      "path": "/electrical/service_cable_sizes/4/peak_power_w",
+      "kind": "int",
+      "value": 600
+    },
+    {
+      "path": "/electrical/service_cable_sizes/4/meter_type",
+      "kind": "str",
+      "value": "Single Phase"
+    },
+    {
+      "path": "/electrical/service_cable_sizes/4/service_cable_size",
+      "kind": "str",
+      "value": "2 x 10 mm²"
+    },
+    {
+      "path": "/electrical/service_cable_sizes/5/peak_power_w",
+      "kind": "int",
+      "value": 1000
+    },
+    {
+      "path": "/electrical/service_cable_sizes/5/meter_type",
+      "kind": "str",
+      "value": "Three Phase"
+    },
+    {
+      "path": "/electrical/service_cable_sizes/5/service_cable_size",
+      "kind": "str",
+      "value": "4 x 10 mm²"
+    },
+    {
+      "path": "/electrical/service_cable_sizes/6/peak_power_w",
+      "kind": "int",
+      "value": 1500
+    },
+    {
+      "path": "/electrical/service_cable_sizes/6/meter_type",
+      "kind": "str",
+      "value": "Three Phase"
+    },
+    {
+      "path": "/electrical/service_cable_sizes/6/service_cable_size",
+      "kind": "str",
+      "value": "4 x 10 mm²"
+    },
+    {
+      "path": "/electrical/struct_sizes/0/base_structure",
+      "kind": "str",
+      "value": "S100"
+    },
+    {
+      "path": "/electrical/struct_sizes/0/result_structure",
+      "kind": "str",
+      "value": "8m 150daN"
+    },
+    {
+      "path": "/electrical/struct_sizes/0/base_stay",
+      "kind": "int",
+      "value": 0
+    },
+    {
+      "path": "/electrical/struct_sizes/0/result_stay",
+      "kind": "int",
+      "value": 0
+    },
+    {
+      "path": "/electrical/struct_sizes/1/base_structure",
+      "kind": "str",
+      "value": "S140"
+    },
+    {
+      "path": "/electrical/struct_sizes/1/result_structure",
+      "kind": "str",
+      "value": "9m 150daN"
+    },
+    {
+      "path": "/electrical/struct_sizes/1/base_stay",
+      "kind": "int",
+      "value": 0
+    },
+    {
+      "path": "/electrical/struct_sizes/1/result_stay",
+      "kind": "int",
+      "value": 0
+    },
+    {
+      "path": "/electrical/struct_sizes/2/base_structure",
+      "kind": "str",
+      "value": "S190"
+    },
+    {
+      "path": "/electrical/struct_sizes/2/result_structure",
+      "kind": "str",
+      "value": "9m 300daN"
+    },
+    {
+      "path": "/electrical/struct_sizes/2/base_stay",
+      "kind": "int",
+      "value": 0
+    },
+    {
+      "path": "/electrical/struct_sizes/2/result_stay",
+      "kind": "int",
+      "value": 0
+    },
+    {
+      "path": "/electrical/struct_sizes/3/base_structure",
+      "kind": "str",
+      "value": "S255"
+    },
+    {
+      "path": "/electrical/struct_sizes/3/result_structure",
+      "kind": "str",
+      "value": "9m 300daN"
+    },
+    {
+      "path": "/electrical/struct_sizes/3/base_stay",
+      "kind": "int",
+      "value": 0
+    },
+    {
+      "path": "/electrical/struct_sizes/3/result_stay",
+      "kind": "int",
+      "value": 0
+    },
+    {
+      "path": "/electrical/struct_sizes/4/base_structure",
+      "kind": "str",
+      "value": "S140"
+    },
+    {
+      "path": "/electrical/struct_sizes/4/result_structure",
+      "kind": "str",
+      "value": "9m 500daN"
+    },
+    {
+      "path": "/electrical/struct_sizes/4/base_stay",
+      "kind": "int",
+      "value": 1
+    },
+    {
+      "path": "/electrical/struct_sizes/4/result_stay",
+      "kind": "int",
+      "value": 0
+    },
+    {
+      "path": "/electrical/struct_sizes/5/base_structure",
+      "kind": "str",
+      "value": "S190"
+    },
+    {
+      "path": "/electrical/struct_sizes/5/result_structure",
+      "kind": "str",
+      "value": "9m 300daN"
+    },
+    {
+      "path": "/electrical/struct_sizes/5/base_stay",
+      "kind": "int",
+      "value": 1
+    },
+    {
+      "path": "/electrical/struct_sizes/5/result_stay",
+      "kind": "int",
+      "value": 1
+    },
+    {
+      "path": "/electrical/struct_sizes/6/base_structure",
+      "kind": "str",
+      "value": "S255"
+    },
+    {
+      "path": "/electrical/struct_sizes/6/result_structure",
+      "kind": "str",
+      "value": "9m 650daN"
+    },
+    {
+      "path": "/electrical/struct_sizes/6/base_stay",
+      "kind": "int",
+      "value": 1
+    },
+    {
+      "path": "/electrical/struct_sizes/6/result_stay",
+      "kind": "int",
+      "value": 0
+    },
+    {
+      "path": "/electrical/lv_cables/0/name",
+      "kind": "str",
+      "value": "3 x 25 + 54.6mm² ABC"
+    },
+    {
+      "path": "/electrical/lv_cables/0/cross_section_mm2",
+      "kind": "int",
+      "value": 25
+    },
+    {
+      "path": "/electrical/lv_cables/0/resistance_ohm_per_km",
+      "kind": "float",
+      "value": 1.2
+    },
+    {
+      "path": "/electrical/lv_cables/0/max_load_kw",
+      "kind": "int",
+      "value": 40
+    },
+    {
+      "path": "/electrical/lv_cables/0/max_current_a",
+      "kind": "int",
+      "value": 100
+    },
+    {
+      "path": "/electrical/lv_cables/0/max_span_m",
+      "kind": "int",
+      "value": 55
+    },
+    {
+      "path": "/electrical/lv_cables/0/min_size",
+      "kind": "bool",
+      "value": true
+    },
+    {
+      "path": "/electrical/lv_cables/1/name",
+      "kind": "str",
+      "value": "3 x 35 + 54.6mm² ABC"
+    },
+    {
+      "path": "/electrical/lv_cables/1/cross_section_mm2",
+      "kind": "int",
+      "value": 35
+    },
+    {
+      "path": "/electrical/lv_cables/1/resistance_ohm_per_km",
+      "kind": "float",
+      "value": 0.868
+    },
+    {
+      "path": "/electrical/lv_cables/1/max_load_kw",
+      "kind": "int",
+      "value": 50
+    },
+    {
+      "path": "/electrical/lv_cables/1/max_current_a",
+      "kind": "int",
+      "value": 125
+    },
+    {
+      "path": "/electrical/lv_cables/1/max_span_m",
+      "kind": "int",
+      "value": 50
+    },
+    {
+      "path": "/electrical/lv_cables/1/min_size",
+      "kind": "bool",
+      "value": false
+    },
+    {
+      "path": "/electrical/lv_cables/2/name",
+      "kind": "str",
+      "value": "3 x 50 + 54.6mm² ABC"
+    },
+    {
+      "path": "/electrical/lv_cables/2/cross_section_mm2",
+      "kind": "int",
+      "value": 50
+    },
+    {
+      "path": "/electrical/lv_cables/2/resistance_ohm_per_km",
+      "kind": "float",
+      "value": 0.641
+    },
+    {
+      "path": "/electrical/lv_cables/2/max_load_kw",
+      "kind": "int",
+      "value": 60
+    },
+    {
+      "path": "/electrical/lv_cables/2/max_current_a",
+      "kind": "int",
+      "value": 150
+    },
+    {
+      "path": "/electrical/lv_cables/2/max_span_m",
+      "kind": "int",
+      "value": 47
+    },
+    {
+      "path": "/electrical/lv_cables/2/min_size",
+      "kind": "bool",
+      "value": false
+    },
+    {
+      "path": "/electrical/lv_cables/3/name",
+      "kind": "str",
+      "value": "3 x 70 + 54.6mm² ABC"
+    },
+    {
+      "path": "/electrical/lv_cables/3/cross_section_mm2",
+      "kind": "int",
+      "value": 70
+    },
+    {
+      "path": "/electrical/lv_cables/3/resistance_ohm_per_km",
+      "kind": "float",
+      "value": 0.443
+    },
+    {
+      "path": "/electrical/lv_cables/3/max_load_kw",
+      "kind": "int",
+      "value": 74
+    },
+    {
+      "path": "/electrical/lv_cables/3/max_current_a",
+      "kind": "int",
+      "value": 185
+    },
+    {
+      "path": "/electrical/lv_cables/3/max_span_m",
+      "kind": "int",
+      "value": 44
+    },
+    {
+      "path": "/electrical/lv_cables/3/min_size",
+      "kind": "bool",
+      "value": false
+    },
+    {
+      "path": "/electrical/lv_cables/4/name",
+      "kind": "str",
+      "value": "3 x 95 + 54.6mm² ABC"
+    },
+    {
+      "path": "/electrical/lv_cables/4/cross_section_mm2",
+      "kind": "int",
+      "value": 95
+    },
+    {
+      "path": "/electrical/lv_cables/4/resistance_ohm_per_km",
+      "kind": "float",
+      "value": 0.32
+    },
+    {
+      "path": "/electrical/lv_cables/4/max_load_kw",
+      "kind": "int",
+      "value": 90
+    },
+    {
+      "path": "/electrical/lv_cables/4/max_current_a",
+      "kind": "int",
+      "value": 225
+    },
+    {
+      "path": "/electrical/lv_cables/4/max_span_m",
+      "kind": "int",
+      "value": 42
+    },
+    {
+      "path": "/electrical/lv_cables/4/min_size",
+      "kind": "bool",
+      "value": false
+    },
+    {
+      "path": "/electrical/lv_cables/5/name",
+      "kind": "str",
+      "value": "3 x 120 + 70mm² ABC"
+    },
+    {
+      "path": "/electrical/lv_cables/5/cross_section_mm2",
+      "kind": "int",
+      "value": 120
+    },
+    {
+      "path": "/electrical/lv_cables/5/resistance_ohm_per_km",
+      "kind": "float",
+      "value": 0.253
+    },
+    {
+      "path": "/electrical/lv_cables/5/max_load_kw",
+      "kind": "int",
+      "value": 104
+    },
+    {
+      "path": "/electrical/lv_cables/5/max_current_a",
+      "kind": "int",
+      "value": 260
+    },
+    {
+      "path": "/electrical/lv_cables/5/max_span_m",
+      "kind": "int",
+      "value": 40
+    },
+    {
+      "path": "/electrical/lv_cables/5/min_size",
+      "kind": "bool",
+      "value": false
+    },
+    {
+      "path": "/defaults/project/_comment",
+      "kind": "str",
+      "value": "Electrical constants and design standards. Set once per project, never per-transformer."
+    },
+    {
+      "path": "/defaults/project/power_factor/value",
+      "kind": "float",
+      "value": 0.85
+    },
+    {
+      "path": "/defaults/project/power_factor/description",
+      "kind": "str",
+      "value": "PF (cos phi) for kW to kVA conversion."
+    },
+    {
+      "path": "/defaults/project/cos_phi/value",
+      "kind": "float",
+      "value": 0.85
+    },
+    {
+      "path": "/defaults/project/cos_phi/description",
+      "kind": "str",
+      "value": "Power factor angle cosine."
+    },
+    {
+      "path": "/defaults/project/minimum_tr_size/value",
+      "kind": "int",
+      "value": 100
+    },
+    {
+      "path": "/defaults/project/minimum_tr_size/description",
+      "kind": "str",
+      "value": "Minimum transformer size in kVA."
+    },
+    {
+      "path": "/defaults/project/minimum_cable_size/value",
+      "kind": "str",
+      "value": "3 x 35 + 54.6mm² ABC"
+    },
+    {
+      "path": "/defaults/project/minimum_cable_size/description",
+      "kind": "str",
+      "value": "Minimum LV cable size."
+    },
+    {
+      "path": "/defaults/project/max_cable_size/value",
+      "kind": "str",
+      "value": "3 x 70 + 54.6mm² ABC"
+    },
+    {
+      "path": "/defaults/project/max_cable_size/description",
+      "kind": "str",
+      "value": "Maximum LV cable size. Cables above this are clamped. Must be in the cable_size domain."
+    },
+    {
+      "path": "/defaults/project/simultaneity_factor_tr/value",
+      "kind": "int",
+      "value": 1
+    },
+    {
+      "path": "/defaults/project/simultaneity_factor_tr/description",
+      "kind": "str",
+      "value": "Simultaneity factor for transformer sizing."
+    },
+    {
+      "path": "/defaults/project/simultaneity_factor_cables/value",
+      "kind": "int",
+      "value": 20
+    },
+    {
+      "path": "/defaults/project/simultaneity_factor_cables/description",
+      "kind": "str",
+      "value": "Simultaneity factor for cable sizing."
+    },
+    {
+      "path": "/defaults/project/sc_real_length/value",
+      "kind": "str",
+      "value": "x + (x*0.01) + 6"
+    },
+    {
+      "path": "/defaults/project/sc_real_length/description",
+      "kind": "str",
+      "value": "Formula for service cable real length from geometric length x."
+    },
+    {
+      "path": "/defaults/project/default_category/value",
+      "kind": "str",
+      "value": "Residential"
+    },
+    {
+      "path": "/defaults/project/default_category/description",
+      "kind": "str",
+      "value": "Fallback customer category when field data is missing."
+    },
+    {
+      "path": "/defaults/project/delete_strange_cols/value",
+      "kind": "bool",
+      "value": true
+    },
+    {
+      "path": "/defaults/project/delete_strange_cols/description",
+      "kind": "str",
+      "value": "Drop columns not listed in layers after header cleaning."
+    },
+    {
+      "path": "/defaults/project/connect_customers_to_tapping_poles/value",
+      "kind": "bool",
+      "value": true
+    },
+    {
+      "path": "/defaults/project/connect_customers_to_tapping_poles/description",
+      "kind": "str",
+      "value": "Allow customer service drops to connect to tapping poles."
+    },
+    {
+      "path": "/defaults/project/growth_forecast_tr/value/0",
+      "kind": "float",
+      "value": 0.03
+    },
+    {
+      "path": "/defaults/project/growth_forecast_tr/value/1",
+      "kind": "float",
+      "value": 0.03
+    },
+    {
+      "path": "/defaults/project/growth_forecast_tr/value/2",
+      "kind": "float",
+      "value": 0.03
+    },
+    {
+      "path": "/defaults/project/growth_forecast_tr/value/3",
+      "kind": "float",
+      "value": 0.03
+    },
+    {
+      "path": "/defaults/project/growth_forecast_tr/value/4",
+      "kind": "float",
+      "value": 0.03
+    },
+    {
+      "path": "/defaults/project/growth_forecast_tr/value/5",
+      "kind": "float",
+      "value": 0.02
+    },
+    {
+      "path": "/defaults/project/growth_forecast_tr/description",
+      "kind": "str",
+      "value": "Annual transformer sizing growth rates (3% years 1-5, 2% year 10)."
+    },
+    {
+      "path": "/defaults/project/growth_forecast_abc/value/0",
+      "kind": "float",
+      "value": 0.03
+    },
+    {
+      "path": "/defaults/project/growth_forecast_abc/value/1",
+      "kind": "float",
+      "value": 0.03
+    },
+    {
+      "path": "/defaults/project/growth_forecast_abc/value/2",
+      "kind": "float",
+      "value": 0.03
+    },
+    {
+      "path": "/defaults/project/growth_forecast_abc/value/3",
+      "kind": "float",
+      "value": 0.03
+    },
+    {
+      "path": "/defaults/project/growth_forecast_abc/value/4",
+      "kind": "float",
+      "value": 0.03
+    },
+    {
+      "path": "/defaults/project/growth_forecast_abc/value/5",
+      "kind": "float",
+      "value": 0.02
+    },
+    {
+      "path": "/defaults/project/growth_forecast_abc/description",
+      "kind": "str",
+      "value": "Annual ABC cable sizing growth rates (3% years 1-5, 2% year 10)."
+    },
+    {
+      "path": "/defaults/project/max_service_length/value",
+      "kind": "int",
+      "value": 37
+    },
+    {
+      "path": "/defaults/project/max_service_length/description",
+      "kind": "str",
+      "value": "Maximum customer-to-pole service drop length in meters."
+    },
+    {
+      "path": "/defaults/project/earthing_on_pole_with_house/value",
+      "kind": "bool",
+      "value": true
+    },
+    {
+      "path": "/defaults/project/earthing_on_pole_with_house/description",
+      "kind": "str",
+      "value": "Prefer placing earthing on poles that serve houses."
+    },
+    {
+      "path": "/defaults/transformer/_comment",
+      "kind": "str",
+      "value": "Per-transformer re-drafting knobs. Controls what gets recalculated (true) vs. kept from previous draft (false)."
+    },
+    {
+      "path": "/defaults/transformer/_groups/0/key",
+      "kind": "str",
+      "value": "poles"
+    },
+    {
+      "path": "/defaults/transformer/_groups/0/display_name",
+      "kind": "str",
+      "value": "Poles"
+    },
+    {
+      "path": "/defaults/transformer/_groups/0/description",
+      "kind": "str",
+      "value": "Pole placement, assemblies, structures, and numbering."
+    },
+    {
+      "path": "/defaults/transformer/_groups/1/key",
+      "kind": "str",
+      "value": "service_cables"
+    },
+    {
+      "path": "/defaults/transformer/_groups/1/display_name",
+      "kind": "str",
+      "value": "Service Cables"
+    },
+    {
+      "path": "/defaults/transformer/_groups/1/description",
+      "kind": "str",
+      "value": "Service cable generation and extension."
+    },
+    {
+      "path": "/defaults/transformer/_groups/2/key",
+      "kind": "str",
+      "value": "customers"
+    },
+    {
+      "path": "/defaults/transformer/_groups/2/display_name",
+      "kind": "str",
+      "value": "Customers"
+    },
+    {
+      "path": "/defaults/transformer/_groups/2/description",
+      "kind": "str",
+      "value": "Customer connection numbering."
+    },
+    {
+      "path": "/defaults/transformer/_groups/3/key",
+      "kind": "str",
+      "value": "_top_level"
+    },
+    {
+      "path": "/defaults/transformer/_groups/3/display_name",
+      "kind": "str",
+      "value": "General"
+    },
+    {
+      "path": "/defaults/transformer/_groups/3/description",
+      "kind": "str",
+      "value": "Pipeline-wide validation and cleanup."
+    },
+    {
+      "path": "/defaults/transformer/poles/spacing_m/value",
+      "kind": "int",
+      "value": 50
+    },
+    {
+      "path": "/defaults/transformer/poles/spacing_m/description",
+      "kind": "str",
+      "value": "Default pole spacing in meters (overridden by spacing_per_cable_size)."
+    },
+    {
+      "path": "/defaults/transformer/poles/spacing_per_cable_size/value",
+      "kind": "bool",
+      "value": false
+    },
+    {
+      "path": "/defaults/transformer/poles/spacing_per_cable_size/description",
+      "kind": "str",
+      "value": "Pass 2: redistribute poles where spans violate cable-specific max_span_m."
+    },
+    {
+      "path": "/defaults/transformer/poles/divide_spans_per_cable_size_equally/value",
+      "kind": "bool",
+      "value": false
+    },
+    {
+      "path": "/defaults/transformer/poles/divide_spans_per_cable_size_equally/description",
+      "kind": "str",
+      "value": "Equal segments (yes) or max-then-share last 2 spans (no)."
+    },
+    {
+      "path": "/defaults/transformer/poles/material_type/value",
+      "kind": "str",
+      "value": "wood"
+    },
+    {
+      "path": "/defaults/transformer/poles/material_type/description",
+      "kind": "str",
+      "value": "Default pole material (wood / concrete / steel). Can be mixed per pole."
+    },
+    {
+      "path": "/defaults/transformer/poles/override_assemblies/value",
+      "kind": "bool",
+      "value": true
+    },
+    {
+      "path": "/defaults/transformer/poles/override_assemblies/description",
+      "kind": "str",
+      "value": "Recalculate pole assembly types."
+    },
+    {
+      "path": "/defaults/transformer/poles/override_structures/value",
+      "kind": "bool",
+      "value": true
+    },
+    {
+      "path": "/defaults/transformer/poles/override_structures/description",
+      "kind": "str",
+      "value": "Recalculate pole structure types."
+    },
+    {
+      "path": "/defaults/transformer/poles/override_stays/value",
+      "kind": "bool",
+      "value": true
+    },
+    {
+      "path": "/defaults/transformer/poles/override_stays/description",
+      "kind": "str",
+      "value": "Recalculate stay wire requirements."
+    },
+    {
+      "path": "/defaults/transformer/poles/override_earthing/value",
+      "kind": "bool",
+      "value": true
+    },
+    {
+      "path": "/defaults/transformer/poles/override_earthing/description",
+      "kind": "str",
+      "value": "Recalculate earthing placement."
+    },
+    {
+      "path": "/defaults/transformer/poles/override_numbers/value",
+      "kind": "bool",
+      "value": true
+    },
+    {
+      "path": "/defaults/transformer/poles/override_numbers/description",
+      "kind": "str",
+      "value": "Renumber poles from transformer outward."
+    },
+    {
+      "path": "/defaults/transformer/poles/override_cable_sizes/value",
+      "kind": "bool",
+      "value": true
+    },
+    {
+      "path": "/defaults/transformer/poles/override_cable_sizes/description",
+      "kind": "str",
+      "value": "Recalculate cable sizes from cumulative load. False = keep user-uploaded cable sizes."
+    },
+    {
+      "path": "/defaults/transformer/poles/override_lv_topology/value",
+      "kind": "bool",
+      "value": false
+    },
+    {
+      "path": "/defaults/transformer/poles/override_lv_topology/description",
+      "kind": "str",
+      "value": "Retrace LV line topology algorithmically (longest-path). False = keep original uploaded line grouping."
+    },
+    {
+      "path": "/defaults/transformer/poles/drop_zero_customer_terminals/value",
+      "kind": "bool",
+      "value": false
+    },
+    {
+      "path": "/defaults/transformer/poles/drop_zero_customer_terminals/description",
+      "kind": "str",
+      "value": "Drop terminal poles (and their spans) that have zero connected customers. Existing poles are never dropped."
+    },
+    {
+      "path": "/defaults/transformer/poles/break_suspensions/value",
+      "kind": "bool",
+      "value": true
+    },
+    {
+      "path": "/defaults/transformer/poles/break_suspensions/description",
+      "kind": "str",
+      "value": "Break long runs of suspension assemblies by inserting strain assemblies."
+    },
+    {
+      "path": "/defaults/transformer/poles/max_consecutive_suspensions/value",
+      "kind": "int",
+      "value": 5
+    },
+    {
+      "path": "/defaults/transformer/poles/max_consecutive_suspensions/description",
+      "kind": "str",
+      "value": "Max consecutive suspension poles before inserting a strain break."
+    },
+    {
+      "path": "/defaults/transformer/poles/earthing_interval/value",
+      "kind": "int",
+      "value": 4
+    },
+    {
+      "path": "/defaults/transformer/poles/earthing_interval/description",
+      "kind": "str",
+      "value": "Distribute earthing every N poles within each earthing run."
+    },
+    {
+      "path": "/defaults/transformer/service_cables/regenerate_service_cables/value",
+      "kind": "bool",
+      "value": true
+    },
+    {
+      "path": "/defaults/transformer/service_cables/regenerate_service_cables/description",
+      "kind": "str",
+      "value": "Regenerate service cable geometries."
+    },
+    {
+      "path": "/defaults/transformer/service_cables/extend_m/value",
+      "kind": "int",
+      "value": 0
+    },
+    {
+      "path": "/defaults/transformer/service_cables/extend_m/description",
+      "kind": "str",
+      "value": "Extend service cables toward customers (meters). 0 = off."
+    },
+    {
+      "path": "/defaults/transformer/customers/override_house_numbers/value",
+      "kind": "bool",
+      "value": true
+    },
+    {
+      "path": "/defaults/transformer/customers/override_house_numbers/description",
+      "kind": "str",
+      "value": "Renumber customer connections."
+    },
+    {
+      "path": "/defaults/transformer/customers/connect_unconnected_customers/value",
+      "kind": "bool",
+      "value": true
+    },
+    {
+      "path": "/defaults/transformer/customers/connect_unconnected_customers/description",
+      "kind": "str",
+      "value": "Retry previously unconnected customers during network processing."
+    },
+    {
+      "path": "/defaults/transformer/keep_lv_lines_length/value",
+      "kind": "bool",
+      "value": false
+    },
+    {
+      "path": "/defaults/transformer/keep_lv_lines_length/description",
+      "kind": "str",
+      "value": "Preserve uploaded LV line length values instead of recalculating from geometry."
+    },
+    {
+      "path": "/defaults/transformer/validate_network/value",
+      "kind": "bool",
+      "value": true
+    },
+    {
+      "path": "/defaults/transformer/validate_network/description",
+      "kind": "str",
+      "value": "Run topology validation after drafting."
+    },
+    {
+      "path": "/layers/_comment",
+      "kind": "str",
+      "value": "Per-layer output schema + domain references. Shared domains are referenced by name from the 'domains' section."
+    },
+    {
+      "path": "/layers/tr/columns/0",
+      "kind": "str",
+      "value": "name"
+    },
+    {
+      "path": "/layers/tr/columns/1",
+      "kind": "str",
+      "value": "tr_size"
+    },
+    {
+      "path": "/layers/tr/columns/2",
+      "kind": "str",
+      "value": "plan_kva"
+    },
+    {
+      "path": "/layers/tr/columns/3",
+      "kind": "str",
+      "value": "ex_tr_size"
+    },
+    {
+      "path": "/layers/tr/columns/4",
+      "kind": "str",
+      "value": "main_cable_size"
+    },
+    {
+      "path": "/layers/tr/columns/5",
+      "kind": "str",
+      "value": "standard_cable_transfo_to_db"
+    },
+    {
+      "path": "/layers/tr/columns/6",
+      "kind": "str",
+      "value": "lv_circuit_breaker"
+    },
+    {
+      "path": "/layers/tr/columns/7",
+      "kind": "str",
+      "value": "mv_fuze_30_kv_amp"
+    },
+    {
+      "path": "/layers/tr/columns/8",
+      "kind": "str",
+      "value": "app_power_total"
+    },
+    {
+      "path": "/layers/tr/columns/9",
+      "kind": "str",
+      "value": "load_detail"
+    },
+    {
+      "path": "/layers/tr/columns/10",
+      "kind": "str",
+      "value": "num_feeders"
+    },
+    {
+      "path": "/layers/lv_lines/columns/0",
+      "kind": "str",
+      "value": "line_number"
+    },
+    {
+      "path": "/layers/lv_lines/columns/1",
+      "kind": "str",
+      "value": "cable_size"
+    },
+    {
+      "path": "/layers/lv_lines/columns/2",
+      "kind": "str",
+      "value": "Path"
+    },
+    {
+      "path": "/layers/lv_lines/columns/3",
+      "kind": "str",
+      "value": "source_node"
+    },
+    {
+      "path": "/layers/lv_lines/columns/4",
+      "kind": "str",
+      "value": "length"
+    },
+    {
+      "path": "/layers/lv_lines/columns/5",
+      "kind": "str",
+      "value": "level"
+    },
+    {
+      "path": "/layers/lv_lines/fields/cable_size/domain",
+      "kind": "str",
+      "value": "cable_size"
+    },
+    {
+      "path": "/layers/lv_lines/fields/level/domain",
+      "kind": "str",
+      "value": "level"
+    },
+    {
+      "path": "/layers/lv_lines/headers/cable_size/0",
+      "kind": "str",
+      "value": "cable_si"
+    },
+    {
+      "path": "/layers/lv_lines/headers/cable_size/1",
+      "kind": "str",
+      "value": "cable_ty"
+    },
+    {
+      "path": "/layers/lv_lines/headers/cable_size/2",
+      "kind": "str",
+      "value": "size_of_wi"
+    },
+    {
+      "path": "/layers/lv_lines/headers/cable_size/3",
+      "kind": "str",
+      "value": "cablesize"
+    },
+    {
+      "path": "/layers/lv_lines/headers/cable_size/4",
+      "kind": "str",
+      "value": "cables_siz"
+    },
+    {
+      "path": "/layers/lv_lines/headers/cable_size/5",
+      "kind": "str",
+      "value": "cables_cla"
+    },
+    {
+      "path": "/layers/lv_lines/headers/line_number/0",
+      "kind": "str",
+      "value": "line_numb"
+    },
+    {
+      "path": "/layers/lv_lines/headers/geometry/0",
+      "kind": "str",
+      "value": "geometry"
+    },
+    {
+      "path": "/layers/lv_lines/headers/source_node/0",
+      "kind": "str",
+      "value": "source_n"
+    },
+    {
+      "path": "/layers/lv_lines/headers/level/0",
+      "kind": "str",
+      "value": "level"
+    },
+    {
+      "path": "/layers/lv_lines/headers/level/1",
+      "kind": "str",
+      "value": "lev"
+    },
+    {
+      "path": "/layers/lv_lines/headers/level/2",
+      "kind": "str",
+      "value": "lvl"
+    },
+    {
+      "path": "/layers/lv_poles/columns/0",
+      "kind": "str",
+      "value": "pole_number"
+    },
+    {
+      "path": "/layers/lv_poles/columns/1",
+      "kind": "str",
+      "value": "cable_size"
+    },
+    {
+      "path": "/layers/lv_poles/columns/2",
+      "kind": "str",
+      "value": "line_number"
+    },
+    {
+      "path": "/layers/lv_poles/columns/3",
+      "kind": "str",
+      "value": "earthing"
+    },
+    {
+      "path": "/layers/lv_poles/columns/4",
+      "kind": "str",
+      "value": "stay"
+    },
+    {
+      "path": "/layers/lv_poles/columns/5",
+      "kind": "str",
+      "value": "flying_stay"
+    },
+    {
+      "path": "/layers/lv_poles/columns/6",
+      "kind": "str",
+      "value": "struct_type"
+    },
+    {
+      "path": "/layers/lv_poles/columns/7",
+      "kind": "str",
+      "value": "assembly_type"
+    },
+    {
+      "path": "/layers/lv_poles/columns/8",
+      "kind": "str",
+      "value": "num_houses"
+    },
+    {
+      "path": "/layers/lv_poles/columns/9",
+      "kind": "str",
+      "value": "num_spans"
+    },
+    {
+      "path": "/layers/lv_poles/columns/10",
+      "kind": "str",
+      "value": "dev_angle"
+    },
+    {
+      "path": "/layers/lv_poles/columns/11",
+      "kind": "str",
+      "value": "position"
+    },
+    {
+      "path": "/layers/lv_poles/columns/12",
+      "kind": "str",
+      "value": "back_span"
+    },
+    {
+      "path": "/layers/lv_poles/columns/13",
+      "kind": "str",
+      "value": "from_tr_distance"
+    },
+    {
+      "path": "/layers/lv_poles/columns/14",
+      "kind": "str",
+      "value": "material"
+    },
+    {
+      "path": "/layers/lv_poles/columns/15",
+      "kind": "str",
+      "value": "existing"
+    },
+    {
+      "path": "/layers/lv_poles/columns/16",
+      "kind": "str",
+      "value": "level"
+    },
+    {
+      "path": "/layers/lv_poles/fields/cable_size/domain",
+      "kind": "str",
+      "value": "cable_size"
+    },
+    {
+      "path": "/layers/lv_poles/fields/assembly_type/domain",
+      "kind": "str",
+      "value": "assembly_type"
+    },
+    {
+      "path": "/layers/lv_poles/fields/struct_type/domain",
+      "kind": "str",
+      "value": "struct_type"
+    },
+    {
+      "path": "/layers/lv_poles/fields/existing/domain",
+      "kind": "str",
+      "value": "existing"
+    },
+    {
+      "path": "/layers/lv_poles/fields/level/domain",
+      "kind": "str",
+      "value": "level"
+    },
+    {
+      "path": "/layers/lv_poles/headers/pole_number/0",
+      "kind": "str",
+      "value": "poles:"
+    },
+    {
+      "path": "/layers/lv_poles/headers/pole_number/1",
+      "kind": "str",
+      "value": "pole_n:"
+    },
+    {
+      "path": "/layers/lv_poles/headers/pole_number/2",
+      "kind": "str",
+      "value": "pole_numbe"
+    },
+    {
+      "path": "/layers/lv_poles/headers/cable_size/0",
+      "kind": "str",
+      "value": "cable_si"
+    },
+    {
+      "path": "/layers/lv_poles/headers/cable_size/1",
+      "kind": "str",
+      "value": "size_of_wi"
+    },
+    {
+      "path": "/layers/lv_poles/headers/line_number/0",
+      "kind": "str",
+      "value": "line_num"
+    },
+    {
+      "path": "/layers/lv_poles/headers/earthing/0",
+      "kind": "str",
+      "value": "earthing"
+    },
+    {
+      "path": "/layers/lv_poles/headers/earthing/1",
+      "kind": "str",
+      "value": "earth"
+    },
+    {
+      "path": "/layers/lv_poles/headers/flying_stay/0",
+      "kind": "str",
+      "value": "overh"
+    },
+    {
+      "path": "/layers/lv_poles/headers/flying_stay/1",
+      "kind": "str",
+      "value": "ovh"
+    },
+    {
+      "path": "/layers/lv_poles/headers/flying_stay/2",
+      "kind": "str",
+      "value": "fly"
+    },
+    {
+      "path": "/layers/lv_poles/headers/stay/0",
+      "kind": "str",
+      "value": "stay_ass"
+    },
+    {
+      "path": "/layers/lv_poles/headers/stay/1",
+      "kind": "str",
+      "value": "stay"
+    },
+    {
+      "path": "/layers/lv_poles/headers/struct_type/0",
+      "kind": "str",
+      "value": "wooden"
+    },
+    {
+      "path": "/layers/lv_poles/headers/struct_type/1",
+      "kind": "str",
+      "value": "stracture"
+    },
+    {
+      "path": "/layers/lv_poles/headers/struct_type/2",
+      "kind": "str",
+      "value": "structure"
+    },
+    {
+      "path": "/layers/lv_poles/headers/struct_type/3",
+      "kind": "str",
+      "value": "struct_typ"
+    },
+    {
+      "path": "/layers/lv_poles/headers/assembly_type/0",
+      "kind": "str",
+      "value": "pole_str"
+    },
+    {
+      "path": "/layers/lv_poles/headers/assembly_type/1",
+      "kind": "str",
+      "value": "assemb"
+    },
+    {
+      "path": "/layers/lv_poles/headers/position/0",
+      "kind": "str",
+      "value": "position"
+    },
+    {
+      "path": "/layers/lv_poles/headers/dev_angle/0",
+      "kind": "str",
+      "value": "dev_angle"
+    },
+    {
+      "path": "/layers/lv_poles/headers/num_houses/0",
+      "kind": "str",
+      "value": "num_houses"
+    },
+    {
+      "path": "/layers/lv_poles/headers/num_houses/1",
+      "kind": "str",
+      "value": "number_of_"
+    },
+    {
+      "path": "/layers/lv_poles/headers/num_spans/0",
+      "kind": "str",
+      "value": "num_spans"
+    },
+    {
+      "path": "/layers/lv_poles/headers/back_span/0",
+      "kind": "str",
+      "value": "back_span"
+    },
+    {
+      "path": "/layers/lv_poles/headers/from_tr_distance/0",
+      "kind": "str",
+      "value": "from_tr_di"
+    },
+    {
+      "path": "/layers/lv_poles/headers/existing/0",
+      "kind": "str",
+      "value": "existing"
+    },
+    {
+      "path": "/layers/lv_poles/headers/existing/1",
+      "kind": "str",
+      "value": "exist"
+    },
+    {
+      "path": "/layers/lv_poles/headers/level/0",
+      "kind": "str",
+      "value": "level"
+    },
+    {
+      "path": "/layers/lv_poles/headers/level/1",
+      "kind": "str",
+      "value": "lev"
+    },
+    {
+      "path": "/layers/lv_poles/headers/level/2",
+      "kind": "str",
+      "value": "lvl"
+    },
+    {
+      "path": "/layers/lv_poles/headers/geometry/0",
+      "kind": "str",
+      "value": "geometry"
+    },
+    {
+      "path": "/layers/customers/columns/0",
+      "kind": "str",
+      "value": "pole_number"
+    },
+    {
+      "path": "/layers/customers/columns/1",
+      "kind": "str",
+      "value": "house_number"
+    },
+    {
+      "path": "/layers/customers/columns/2",
+      "kind": "str",
+      "value": "names"
+    },
+    {
+      "path": "/layers/customers/columns/3",
+      "kind": "str",
+      "value": "meter_number"
+    },
+    {
+      "path": "/layers/customers/columns/4",
+      "kind": "str",
+      "value": "meter_type"
+    },
+    {
+      "path": "/layers/customers/columns/5",
+      "kind": "str",
+      "value": "category"
+    },
+    {
+      "path": "/layers/customers/columns/6",
+      "kind": "str",
+      "value": "from_tr_distance"
+    },
+    {
+      "path": "/layers/customers/columns/7",
+      "kind": "str",
+      "value": "nid"
+    },
+    {
+      "path": "/layers/customers/columns/8",
+      "kind": "str",
+      "value": "upi"
+    },
+    {
+      "path": "/layers/customers/columns/9",
+      "kind": "str",
+      "value": "phone_number"
+    },
+    {
+      "path": "/layers/customers/columns/10",
+      "kind": "str",
+      "value": "cable_size"
+    },
+    {
+      "path": "/layers/customers/columns/11",
+      "kind": "str",
+      "value": "peak_power_w"
+    },
+    {
+      "path": "/layers/customers/fields/category/domain",
+      "kind": "str",
+      "value": "customer_category"
+    },
+    {
+      "path": "/layers/customers/fields/meter_type/domain",
+      "kind": "str",
+      "value": "meter_type"
+    },
+    {
+      "path": "/layers/customers/headers/house_number/0",
+      "kind": "str",
+      "value": "hs"
+    },
+    {
+      "path": "/layers/customers/headers/house_number/1",
+      "kind": "str",
+      "value": "hh"
+    },
+    {
+      "path": "/layers/customers/headers/house_number/2",
+      "kind": "str",
+      "value": "hou"
+    },
+    {
+      "path": "/layers/customers/headers/house_number/3",
+      "kind": "str",
+      "value": "house_num"
+    },
+    {
+      "path": "/layers/customers/headers/house_number/4",
+      "kind": "str",
+      "value": "house_n"
+    },
+    {
+      "path": "/layers/customers/headers/geometry/0",
+      "kind": "str",
+      "value": "geometry"
+    },
+    {
+      "path": "/layers/customers/headers/meter_number/0",
+      "kind": "str",
+      "value": "meter_n"
+    },
+    {
+      "path": "/layers/customers/headers/meter_type/0",
+      "kind": "str",
+      "value": "meter_t"
+    },
+    {
+      "path": "/layers/customers/headers/meter_type/1",
+      "kind": "str",
+      "value": "type"
+    },
+    {
+      "path": "/layers/customers/headers/meter_type/2",
+      "kind": "str",
+      "value": "phas"
+    },
+    {
+      "path": "/layers/customers/headers/names/0",
+      "kind": "str",
+      "value": "name"
+    },
+    {
+      "path": "/layers/customers/headers/category/0",
+      "kind": "str",
+      "value": "cat"
+    },
+    {
+      "path": "/layers/customers/headers/pole_number/0",
+      "kind": "str",
+      "value": "pole_num"
+    },
+    {
+      "path": "/layers/customers/headers/from_tr_distance/0",
+      "kind": "str",
+      "value": "from_tr_di"
+    },
+    {
+      "path": "/layers/customers/headers/peak_power_w/0",
+      "kind": "str",
+      "value": "peak_pow"
+    },
+    {
+      "path": "/layers/customers/headers/phone_number/0",
+      "kind": "str",
+      "value": "phone"
+    },
+    {
+      "path": "/layers/customers/headers/nid/0",
+      "kind": "str",
+      "value": "id"
+    },
+    {
+      "path": "/layers/customers/headers/service_length/0",
+      "kind": "str",
+      "value": "length"
+    },
+    {
+      "path": "/layers/customers/headers/upi/0",
+      "kind": "str",
+      "value": "upi"
+    },
+    {
+      "path": "/layers/unconnected_customers/columns/0",
+      "kind": "str",
+      "value": "pole_number"
+    },
+    {
+      "path": "/layers/unconnected_customers/columns/1",
+      "kind": "str",
+      "value": "house_number"
+    },
+    {
+      "path": "/layers/unconnected_customers/columns/2",
+      "kind": "str",
+      "value": "names"
+    },
+    {
+      "path": "/layers/unconnected_customers/columns/3",
+      "kind": "str",
+      "value": "meter_number"
+    },
+    {
+      "path": "/layers/unconnected_customers/columns/4",
+      "kind": "str",
+      "value": "meter_type"
+    },
+    {
+      "path": "/layers/unconnected_customers/columns/5",
+      "kind": "str",
+      "value": "category"
+    },
+    {
+      "path": "/layers/unconnected_customers/columns/6",
+      "kind": "str",
+      "value": "from_tr_distance"
+    },
+    {
+      "path": "/layers/unconnected_customers/columns/7",
+      "kind": "str",
+      "value": "nid"
+    },
+    {
+      "path": "/layers/unconnected_customers/columns/8",
+      "kind": "str",
+      "value": "upi"
+    },
+    {
+      "path": "/layers/unconnected_customers/columns/9",
+      "kind": "str",
+      "value": "phone_number"
+    },
+    {
+      "path": "/layers/unconnected_customers/columns/10",
+      "kind": "str",
+      "value": "cable_size"
+    },
+    {
+      "path": "/layers/unconnected_customers/columns/11",
+      "kind": "str",
+      "value": "peak_power_w"
+    },
+    {
+      "path": "/layers/unconnected_customers/fields/category/domain",
+      "kind": "str",
+      "value": "customer_category"
+    },
+    {
+      "path": "/layers/unconnected_customers/fields/meter_type/domain",
+      "kind": "str",
+      "value": "meter_type"
+    },
+    {
+      "path": "/layers/unconnected_customers/headers/house_number/0",
+      "kind": "str",
+      "value": "hs"
+    },
+    {
+      "path": "/layers/unconnected_customers/headers/house_number/1",
+      "kind": "str",
+      "value": "hh"
+    },
+    {
+      "path": "/layers/unconnected_customers/headers/house_number/2",
+      "kind": "str",
+      "value": "hou"
+    },
+    {
+      "path": "/layers/unconnected_customers/headers/house_number/3",
+      "kind": "str",
+      "value": "house_num"
+    },
+    {
+      "path": "/layers/unconnected_customers/headers/house_number/4",
+      "kind": "str",
+      "value": "house_n"
+    },
+    {
+      "path": "/layers/unconnected_customers/headers/geometry/0",
+      "kind": "str",
+      "value": "geometry"
+    },
+    {
+      "path": "/layers/unconnected_customers/headers/meter_number/0",
+      "kind": "str",
+      "value": "meter_n"
+    },
+    {
+      "path": "/layers/unconnected_customers/headers/meter_type/0",
+      "kind": "str",
+      "value": "meter_t"
+    },
+    {
+      "path": "/layers/unconnected_customers/headers/meter_type/1",
+      "kind": "str",
+      "value": "type"
+    },
+    {
+      "path": "/layers/unconnected_customers/headers/meter_type/2",
+      "kind": "str",
+      "value": "phas"
+    },
+    {
+      "path": "/layers/unconnected_customers/headers/names/0",
+      "kind": "str",
+      "value": "name"
+    },
+    {
+      "path": "/layers/unconnected_customers/headers/category/0",
+      "kind": "str",
+      "value": "cat"
+    },
+    {
+      "path": "/layers/unconnected_customers/headers/pole_number/0",
+      "kind": "str",
+      "value": "pole_num"
+    },
+    {
+      "path": "/layers/unconnected_customers/headers/from_tr_distance/0",
+      "kind": "str",
+      "value": "from_tr_di"
+    },
+    {
+      "path": "/layers/unconnected_customers/headers/peak_power_w/0",
+      "kind": "str",
+      "value": "peak_pow"
+    },
+    {
+      "path": "/layers/unconnected_customers/headers/phone_number/0",
+      "kind": "str",
+      "value": "phone"
+    },
+    {
+      "path": "/layers/unconnected_customers/headers/nid/0",
+      "kind": "str",
+      "value": "id"
+    },
+    {
+      "path": "/layers/unconnected_customers/headers/service_length/0",
+      "kind": "str",
+      "value": "length"
+    },
+    {
+      "path": "/layers/unconnected_customers/headers/upi/0",
+      "kind": "str",
+      "value": "upi"
+    },
+    {
+      "path": "/layers/service_cables/columns/0",
+      "kind": "str",
+      "value": "pole_number"
+    },
+    {
+      "path": "/layers/service_cables/columns/1",
+      "kind": "str",
+      "value": "meter_type"
+    },
+    {
+      "path": "/layers/service_cables/columns/2",
+      "kind": "str",
+      "value": "cable_size"
+    },
+    {
+      "path": "/layers/service_cables/columns/3",
+      "kind": "str",
+      "value": "service_length"
+    },
+    {
+      "path": "/layers/service_cables/fields/cable_size/domain",
+      "kind": "str",
+      "value": "service_cable_size"
+    },
+    {
+      "path": "/layers/service_cables/headers/cable_size/0",
+      "kind": "str",
+      "value": "cable_si"
+    },
+    {
+      "path": "/layers/service_cables/headers/cable_size/1",
+      "kind": "str",
+      "value": "cable_ty"
+    },
+    {
+      "path": "/layers/service_cables/headers/cable_size/2",
+      "kind": "str",
+      "value": "service_ca"
+    },
+    {
+      "path": "/layers/service_cables/headers/cable_size/3",
+      "kind": "str",
+      "value": "cable"
+    },
+    {
+      "path": "/layers/service_cables/headers/pole_number/0",
+      "kind": "str",
+      "value": "pole_numbe"
+    },
+    {
+      "path": "/layers/service_cables/headers/meter_type/0",
+      "kind": "str",
+      "value": "meter_typ"
+    },
+    {
+      "path": "/layers/service_cables/headers/length/0",
+      "kind": "str",
+      "value": "leng"
+    },
+    {
+      "path": "/layers/service_cables/headers/service_length/0",
+      "kind": "str",
+      "value": "et_dist"
+    },
+    {
+      "path": "/layers/service_cables/headers/service_length/1",
+      "kind": "str",
+      "value": "service_length"
+    },
+    {
+      "path": "/layers/service_cables/headers/service_length/2",
+      "kind": "str",
+      "value": "real_length"
+    },
+    {
+      "path": "/layers/service_cables/headers/geometry/0",
+      "kind": "str",
+      "value": "geometry"
+    },
+    {
+      "path": "/layers/spans/columns/0",
+      "kind": "str",
+      "value": "length"
+    },
+    {
+      "path": "/layers/spans/columns/1",
+      "kind": "str",
+      "value": "cable_size"
+    },
+    {
+      "path": "/layers/spans/columns/2",
+      "kind": "str",
+      "value": "segment_number"
+    },
+    {
+      "path": "/layers/spans/columns/3",
+      "kind": "str",
+      "value": "Path"
+    },
+    {
+      "path": "/layers/spans/columns/4",
+      "kind": "str",
+      "value": "cum_load"
+    },
+    {
+      "path": "/layers/spans/columns/5",
+      "kind": "str",
+      "value": "is_span_end"
+    },
+    {
+      "path": "/layers/spans/columns/6",
+      "kind": "str",
+      "value": "is_branching"
+    },
+    {
+      "path": "/layers/spans/columns/7",
+      "kind": "str",
+      "value": "incoming_deviation_angle"
+    },
+    {
+      "path": "/layers/spans/columns/8",
+      "kind": "str",
+      "value": "assembly"
+    },
+    {
+      "path": "/layers/spans/columns/9",
+      "kind": "str",
+      "value": "line_number"
+    },
+    {
+      "path": "/layers/spans/columns/10",
+      "kind": "str",
+      "value": "num_spans"
+    },
+    {
+      "path": "/layers/spans/columns/11",
+      "kind": "str",
+      "value": "level"
+    },
+    {
+      "path": "/layers/spans/fields/cable_size/domain",
+      "kind": "str",
+      "value": "cable_size"
+    },
+    {
+      "path": "/layers/spans/fields/level/domain",
+      "kind": "str",
+      "value": "level"
+    },
+    {
+      "path": "/layers/common/columns/0",
+      "kind": "str",
+      "value": "village"
+    },
+    {
+      "path": "/layers/common/columns/1",
+      "kind": "str",
+      "value": "cell"
+    },
+    {
+      "path": "/layers/common/columns/2",
+      "kind": "str",
+      "value": "sector"
+    },
+    {
+      "path": "/layers/common/columns/3",
+      "kind": "str",
+      "value": "district"
+    },
+    {
+      "path": "/layers/common/columns/4",
+      "kind": "str",
+      "value": "transfo"
+    },
+    {
+      "path": "/layers/common/columns/5",
+      "kind": "str",
+      "value": "geometry"
+    },
+    {
+      "path": "/layers/common_points/columns/0",
+      "kind": "str",
+      "value": "x"
+    },
+    {
+      "path": "/layers/common_points/columns/1",
+      "kind": "str",
+      "value": "y"
+    },
+    {
+      "path": "/layers/common_lines/columns/0",
+      "kind": "str",
+      "value": "length"
+    },
+    {
+      "path": "/domains/_comment",
+      "kind": "str",
+      "value": "Value domains for data cleaning and load assignment. Accepts = misspelling mappings from field surveys."
+    },
+    {
+      "path": "/domains/customer_category/Residential/peak_power_w",
+      "kind": "int",
+      "value": 250
+    },
+    {
+      "path": "/domains/customer_category/Residential/client",
+      "kind": "str",
+      "value": "EDCL"
+    },
+    {
+      "path": "/domains/customer_category/Residential/country",
+      "kind": "str",
+      "value": "Rwanda"
+    },
+    {
+      "path": "/domains/customer_category/Residential/accepts/0",
+      "kind": "str",
+      "value": "Residential"
+    },
+    {
+      "path": "/domains/customer_category/Residential/accepts/1",
+      "kind": "str",
+      "value": "RESIDENTIAL"
+    },
+    {
+      "path": "/domains/customer_category/Residential/accepts/2",
+      "kind": "str",
+      "value": "residential"
+    },
+    {
+      "path": "/domains/customer_category/Commercial/peak_power_w",
+      "kind": "int",
+      "value": 600
+    },
+    {
+      "path": "/domains/customer_category/Commercial/client",
+      "kind": "str",
+      "value": "EDCL"
+    },
+    {
+      "path": "/domains/customer_category/Commercial/country",
+      "kind": "str",
+      "value": "Rwanda"
+    },
+    {
+      "path": "/domains/customer_category/Commercial/accepts/0",
+      "kind": "str",
+      "value": "COMMERCIAL"
+    },
+    {
+      "path": "/domains/customer_category/Commercial/accepts/1",
+      "kind": "str",
+      "value": "Commercial"
+    },
+    {
+      "path": "/domains/customer_category/Commercial/accepts/2",
+      "kind": "str",
+      "value": "Bar"
+    },
+    {
+      "path": "/domains/customer_category/Lodge/peak_power_w",
+      "kind": "int",
+      "value": 600
+    },
+    {
+      "path": "/domains/customer_category/Lodge/client",
+      "kind": "str",
+      "value": "EDCL"
+    },
+    {
+      "path": "/domains/customer_category/Lodge/country",
+      "kind": "str",
+      "value": "Rwanda"
+    },
+    {
+      "path": "/domains/customer_category/Lodge/accepts/0",
+      "kind": "str",
+      "value": "Moteri"
+    },
+    {
+      "path": "/domains/customer_category/Lodge/accepts/1",
+      "kind": "str",
+      "value": "lodge"
+    },
+    {
+      "path": "/domains/customer_category/Cell Office/peak_power_w",
+      "kind": "int",
+      "value": 1000
+    },
+    {
+      "path": "/domains/customer_category/Cell Office/client",
+      "kind": "str",
+      "value": "EDCL"
+    },
+    {
+      "path": "/domains/customer_category/Cell Office/country",
+      "kind": "str",
+      "value": "Rwanda"
+    },
+    {
+      "path": "/domains/customer_category/Cell Office/accepts/0",
+      "kind": "str",
+      "value": "Cell"
+    },
+    {
+      "path": "/domains/customer_category/Cell Office/accepts/1",
+      "kind": "str",
+      "value": "CELL"
+    },
+    {
+      "path": "/domains/customer_category/Cell Office/accepts/2",
+      "kind": "str",
+      "value": "Cell Office"
+    },
+    {
+      "path": "/domains/customer_category/Cell Office/accepts/3",
+      "kind": "str",
+      "value": "Office"
+    },
+    {
+      "path": "/domains/customer_category/Cell Office/accepts/4",
+      "kind": "str",
+      "value": "OFFICE"
+    },
+    {
+      "path": "/domains/customer_category/Cell Office/accepts/5",
+      "kind": "str",
+      "value": "cell_office"
+    },
+    {
+      "path": "/domains/customer_category/Church/peak_power_w",
+      "kind": "int",
+      "value": 1000
+    },
+    {
+      "path": "/domains/customer_category/Church/client",
+      "kind": "str",
+      "value": "EDCL"
+    },
+    {
+      "path": "/domains/customer_category/Church/country",
+      "kind": "str",
+      "value": "Rwanda"
+    },
+    {
+      "path": "/domains/customer_category/Church/accepts/0",
+      "kind": "str",
+      "value": "Church"
+    },
+    {
+      "path": "/domains/customer_category/Church/accepts/1",
+      "kind": "str",
+      "value": "CHURCH"
+    },
+    {
+      "path": "/domains/customer_category/Church/accepts/2",
+      "kind": "str",
+      "value": "church"
+    },
+    {
+      "path": "/domains/customer_category/Church/accepts/3",
+      "kind": "str",
+      "value": "churchl"
+    },
+    {
+      "path": "/domains/customer_category/Cooperative/peak_power_w",
+      "kind": "int",
+      "value": 1000
+    },
+    {
+      "path": "/domains/customer_category/Cooperative/client",
+      "kind": "str",
+      "value": "EDCL"
+    },
+    {
+      "path": "/domains/customer_category/Cooperative/country",
+      "kind": "str",
+      "value": "Rwanda"
+    },
+    {
+      "path": "/domains/customer_category/Cooperative/accepts/0",
+      "kind": "str",
+      "value": "Cooperative"
+    },
+    {
+      "path": "/domains/customer_category/Cooperative/accepts/1",
+      "kind": "str",
+      "value": "CCOPERATIVE"
+    },
+    {
+      "path": "/domains/customer_category/Cooperative/accepts/2",
+      "kind": "str",
+      "value": "Coperative"
+    },
+    {
+      "path": "/domains/customer_category/School/peak_power_w",
+      "kind": "int",
+      "value": 2000
+    },
+    {
+      "path": "/domains/customer_category/School/client",
+      "kind": "str",
+      "value": "EDCL"
+    },
+    {
+      "path": "/domains/customer_category/School/country",
+      "kind": "str",
+      "value": "Rwanda"
+    },
+    {
+      "path": "/domains/customer_category/School/accepts/0",
+      "kind": "str",
+      "value": "School"
+    },
+    {
+      "path": "/domains/customer_category/School/accepts/1",
+      "kind": "str",
+      "value": "Ecole Primaire"
+    },
+    {
+      "path": "/domains/customer_category/School/accepts/2",
+      "kind": "str",
+      "value": "Nursery School"
+    },
+    {
+      "path": "/domains/customer_category/School/accepts/3",
+      "kind": "str",
+      "value": "SCHOOL"
+    },
+    {
+      "path": "/domains/customer_category/Industry/peak_power_w",
+      "kind": "int",
+      "value": 2000
+    },
+    {
+      "path": "/domains/customer_category/Industry/client",
+      "kind": "str",
+      "value": "EDCL"
+    },
+    {
+      "path": "/domains/customer_category/Industry/country",
+      "kind": "str",
+      "value": "Rwanda"
+    },
+    {
+      "path": "/domains/customer_category/Industry/accepts/0",
+      "kind": "str",
+      "value": "industry"
+    },
+    {
+      "path": "/domains/customer_category/Farm/peak_power_w",
+      "kind": "int",
+      "value": 2000
+    },
+    {
+      "path": "/domains/customer_category/Farm/client",
+      "kind": "str",
+      "value": "EDCL"
+    },
+    {
+      "path": "/domains/customer_category/Farm/country",
+      "kind": "str",
+      "value": "Rwanda"
+    },
+    {
+      "path": "/domains/customer_category/Farm/accepts/0",
+      "kind": "str",
+      "value": "Farm"
+    },
+    {
+      "path": "/domains/customer_category/Health Post/peak_power_w",
+      "kind": "int",
+      "value": 5000
+    },
+    {
+      "path": "/domains/customer_category/Health Post/client",
+      "kind": "str",
+      "value": "EDCL"
+    },
+    {
+      "path": "/domains/customer_category/Health Post/country",
+      "kind": "str",
+      "value": "Rwanda"
+    },
+    {
+      "path": "/domains/customer_category/Health Post/accepts/0",
+      "kind": "str",
+      "value": "Health Post"
+    },
+    {
+      "path": "/domains/customer_category/Health Post/accepts/1",
+      "kind": "str",
+      "value": "Poste de Sante"
+    },
+    {
+      "path": "/domains/customer_category/Health Post/accepts/2",
+      "kind": "str",
+      "value": "Centre de Sante"
+    },
+    {
+      "path": "/domains/customer_category/Health Post/accepts/3",
+      "kind": "str",
+      "value": "Heath Post"
+    },
+    {
+      "path": "/domains/customer_category/Health Post/accepts/4",
+      "kind": "str",
+      "value": "HEALTH POST"
+    },
+    {
+      "path": "/domains/customer_category/Health Post/accepts/5",
+      "kind": "str",
+      "value": "Health Poste"
+    },
+    {
+      "path": "/domains/customer_category/Health Post/accepts/6",
+      "kind": "str",
+      "value": "health_post"
+    },
+    {
+      "path": "/domains/customer_category/Telecommunication Tower/peak_power_w",
+      "kind": "int",
+      "value": 5000
+    },
+    {
+      "path": "/domains/customer_category/Telecommunication Tower/client",
+      "kind": "str",
+      "value": "EDCL"
+    },
+    {
+      "path": "/domains/customer_category/Telecommunication Tower/country",
+      "kind": "str",
+      "value": "Rwanda"
+    },
+    {
+      "path": "/domains/customer_category/Telecommunication Tower/accepts/0",
+      "kind": "str",
+      "value": "Telecommunication Tower"
+    },
+    {
+      "path": "/domains/customer_category/Water Pumping Station/peak_power_w",
+      "kind": "int",
+      "value": 5000
+    },
+    {
+      "path": "/domains/customer_category/Water Pumping Station/client",
+      "kind": "str",
+      "value": "EDCL"
+    },
+    {
+      "path": "/domains/customer_category/Water Pumping Station/country",
+      "kind": "str",
+      "value": "Rwanda"
+    },
+    {
+      "path": "/domains/customer_category/Water Pumping Station/accepts/0",
+      "kind": "str",
+      "value": "Water Pumping Station"
+    },
+    {
+      "path": "/domains/customer_category/Pauvre/peak_power_w",
+      "kind": "int",
+      "value": 150
+    },
+    {
+      "path": "/domains/customer_category/Pauvre/client",
+      "kind": "str",
+      "value": "ADERM"
+    },
+    {
+      "path": "/domains/customer_category/Pauvre/country",
+      "kind": "str",
+      "value": "Tchad"
+    },
+    {
+      "path": "/domains/customer_category/Pauvre/accepts/0",
+      "kind": "str",
+      "value": "Pauvre"
+    },
+    {
+      "path": "/domains/customer_category/Pauvre/accepts/1",
+      "kind": "str",
+      "value": "pouvre"
+    },
+    {
+      "path": "/domains/customer_category/Moyenne/peak_power_w",
+      "kind": "int",
+      "value": 250
+    },
+    {
+      "path": "/domains/customer_category/Moyenne/client",
+      "kind": "str",
+      "value": "ADERM"
+    },
+    {
+      "path": "/domains/customer_category/Moyenne/country",
+      "kind": "str",
+      "value": "Tchad"
+    },
+    {
+      "path": "/domains/customer_category/Moyenne/accepts/0",
+      "kind": "str",
+      "value": "Moyenne"
+    },
+    {
+      "path": "/domains/customer_category/Moyenne/accepts/1",
+      "kind": "str",
+      "value": "Moyen"
+    },
+    {
+      "path": "/domains/customer_category/Commerce_I/peak_power_w",
+      "kind": "int",
+      "value": 600
+    },
+    {
+      "path": "/domains/customer_category/Commerce_I/client",
+      "kind": "str",
+      "value": "ADERM"
+    },
+    {
+      "path": "/domains/customer_category/Commerce_I/country",
+      "kind": "str",
+      "value": "Tchad"
+    },
+    {
+      "path": "/domains/customer_category/Commerce_I/accepts/0",
+      "kind": "str",
+      "value": "Commerce_I"
+    },
+    {
+      "path": "/domains/customer_category/Commerce_I/accepts/1",
+      "kind": "str",
+      "value": "Radio"
+    },
+    {
+      "path": "/domains/customer_category/Commerce_I/accepts/2",
+      "kind": "str",
+      "value": "Communication"
+    },
+    {
+      "path": "/domains/customer_category/Commerce_I/accepts/3",
+      "kind": "str",
+      "value": "Petit Commerce"
+    },
+    {
+      "path": "/domains/customer_category/Commerce_I/accepts/4",
+      "kind": "str",
+      "value": "boutique"
+    },
+    {
+      "path": "/domains/customer_category/Commerce_I/accepts/5",
+      "kind": "str",
+      "value": "Agence de voyage"
+    },
+    {
+      "path": "/domains/customer_category/Commerce_I/accepts/6",
+      "kind": "str",
+      "value": "ste"
+    },
+    {
+      "path": "/domains/customer_category/Commerce_I/accepts/7",
+      "kind": "str",
+      "value": "SOCIETE"
+    },
+    {
+      "path": "/domains/customer_category/Commerce_I/accepts/8",
+      "kind": "str",
+      "value": "Station communication"
+    },
+    {
+      "path": "/domains/customer_category/Commerce_I/accepts/9",
+      "kind": "str",
+      "value": "Salon de coiffure"
+    },
+    {
+      "path": "/domains/customer_category/Commerce_I/accepts/10",
+      "kind": "str",
+      "value": "ANATS"
+    },
+    {
+      "path": "/domains/customer_category/Industrie_I/peak_power_w",
+      "kind": "int",
+      "value": 600
+    },
+    {
+      "path": "/domains/customer_category/Industrie_I/client",
+      "kind": "str",
+      "value": "ADERM"
+    },
+    {
+      "path": "/domains/customer_category/Industrie_I/country",
+      "kind": "str",
+      "value": "Tchad"
+    },
+    {
+      "path": "/domains/customer_category/Industrie_I/accepts/0",
+      "kind": "str",
+      "value": "Industrie_I"
+    },
+    {
+      "path": "/domains/customer_category/Industrie_I/accepts/1",
+      "kind": "str",
+      "value": "atelier"
+    },
+    {
+      "path": "/domains/customer_category/Industrie_I/accepts/2",
+      "kind": "str",
+      "value": "Atelier soudure"
+    },
+    {
+      "path": "/domains/customer_category/Pompage_Eau_I/peak_power_w",
+      "kind": "int",
+      "value": 600
+    },
+    {
+      "path": "/domains/customer_category/Pompage_Eau_I/client",
+      "kind": "str",
+      "value": "ADERM"
+    },
+    {
+      "path": "/domains/customer_category/Pompage_Eau_I/country",
+      "kind": "str",
+      "value": "Tchad"
+    },
+    {
+      "path": "/domains/customer_category/Pompage_Eau_I/accepts/0",
+      "kind": "str",
+      "value": "Pompage_Eau_I"
+    },
+    {
+      "path": "/domains/customer_category/Pompage_Eau_I/accepts/1",
+      "kind": "str",
+      "value": "Entreprise de fourniture d'eau"
+    },
+    {
+      "path": "/domains/customer_category/Pompage_Eau_I/accepts/2",
+      "kind": "str",
+      "value": "Point d'eau"
+    },
+    {
+      "path": "/domains/customer_category/Technologie_I/peak_power_w",
+      "kind": "int",
+      "value": 600
+    },
+    {
+      "path": "/domains/customer_category/Technologie_I/client",
+      "kind": "str",
+      "value": "ADERM"
+    },
+    {
+      "path": "/domains/customer_category/Technologie_I/country",
+      "kind": "str",
+      "value": "Tchad"
+    },
+    {
+      "path": "/domains/customer_category/Technologie_I/accepts/0",
+      "kind": "str",
+      "value": "Technologie_I"
+    },
+    {
+      "path": "/domains/customer_category/Technologie_I/accepts/1",
+      "kind": "str",
+      "value": "Cyber café"
+    },
+    {
+      "path": "/domains/customer_category/Technologie_I/accepts/2",
+      "kind": "str",
+      "value": "Cyber"
+    },
+    {
+      "path": "/domains/customer_category/Technologie_I/accepts/3",
+      "kind": "str",
+      "value": "Centre multimedia"
+    },
+    {
+      "path": "/domains/customer_category/Administration_I/peak_power_w",
+      "kind": "int",
+      "value": 1000
+    },
+    {
+      "path": "/domains/customer_category/Administration_I/client",
+      "kind": "str",
+      "value": "ADERM"
+    },
+    {
+      "path": "/domains/customer_category/Administration_I/country",
+      "kind": "str",
+      "value": "Tchad"
+    },
+    {
+      "path": "/domains/customer_category/Administration_I/accepts/0",
+      "kind": "str",
+      "value": "Administration_I"
+    },
+    {
+      "path": "/domains/customer_category/Administration_I/accepts/1",
+      "kind": "str",
+      "value": "Justice"
+    },
+    {
+      "path": "/domains/customer_category/Administration_I/accepts/2",
+      "kind": "str",
+      "value": "Anader/Environment"
+    },
+    {
+      "path": "/domains/customer_category/Administration_I/accepts/3",
+      "kind": "str",
+      "value": "Projet"
+    },
+    {
+      "path": "/domains/customer_category/Administration_I/accepts/4",
+      "kind": "str",
+      "value": "Impôts"
+    },
+    {
+      "path": "/domains/customer_category/Administration_I/accepts/5",
+      "kind": "str",
+      "value": "Trésor"
+    },
+    {
+      "path": "/domains/customer_category/Administration_I/accepts/6",
+      "kind": "str",
+      "value": "Delegation"
+    },
+    {
+      "path": "/domains/customer_category/Administration_I/accepts/7",
+      "kind": "str",
+      "value": "Service public"
+    },
+    {
+      "path": "/domains/customer_category/Administration_I/accepts/8",
+      "kind": "str",
+      "value": "Douanes"
+    },
+    {
+      "path": "/domains/customer_category/Administration_I/accepts/9",
+      "kind": "str",
+      "value": "Elevage"
+    },
+    {
+      "path": "/domains/customer_category/Administration_I/accepts/10",
+      "kind": "str",
+      "value": "Programme"
+    },
+    {
+      "path": "/domains/customer_category/Education_I/peak_power_w",
+      "kind": "int",
+      "value": 1000
+    },
+    {
+      "path": "/domains/customer_category/Education_I/client",
+      "kind": "str",
+      "value": "ADERM"
+    },
+    {
+      "path": "/domains/customer_category/Education_I/country",
+      "kind": "str",
+      "value": "Tchad"
+    },
+    {
+      "path": "/domains/customer_category/Education_I/accepts/0",
+      "kind": "str",
+      "value": "Education_I"
+    },
+    {
+      "path": "/domains/customer_category/Education_I/accepts/1",
+      "kind": "str",
+      "value": "Ecole Primaire"
+    },
+    {
+      "path": "/domains/customer_category/Education_I/accepts/2",
+      "kind": "str",
+      "value": "Education"
+    },
+    {
+      "path": "/domains/customer_category/Education_I/accepts/3",
+      "kind": "str",
+      "value": "Éducation"
+    },
+    {
+      "path": "/domains/customer_category/Education_I/accepts/4",
+      "kind": "str",
+      "value": "Ecole"
+    },
+    {
+      "path": "/domains/customer_category/Humanitaire_I/peak_power_w",
+      "kind": "int",
+      "value": 1000
+    },
+    {
+      "path": "/domains/customer_category/Humanitaire_I/client",
+      "kind": "str",
+      "value": "ADERM"
+    },
+    {
+      "path": "/domains/customer_category/Humanitaire_I/country",
+      "kind": "str",
+      "value": "Tchad"
+    },
+    {
+      "path": "/domains/customer_category/Humanitaire_I/accepts/0",
+      "kind": "str",
+      "value": "Humanitaire_I"
+    },
+    {
+      "path": "/domains/customer_category/Humanitaire_I/accepts/1",
+      "kind": "str",
+      "value": "ONG"
+    },
+    {
+      "path": "/domains/customer_category/Humanitaire_I/accepts/2",
+      "kind": "str",
+      "value": "Action social"
+    },
+    {
+      "path": "/domains/customer_category/Humanitaire_I/accepts/3",
+      "kind": "str",
+      "value": "Croix rouge"
+    },
+    {
+      "path": "/domains/customer_category/Humanitaire_I/accepts/4",
+      "kind": "str",
+      "value": "Agence humanitaire"
+    },
+    {
+      "path": "/domains/customer_category/Riche/peak_power_w",
+      "kind": "int",
+      "value": 1000
+    },
+    {
+      "path": "/domains/customer_category/Riche/client",
+      "kind": "str",
+      "value": "ADERM"
+    },
+    {
+      "path": "/domains/customer_category/Riche/country",
+      "kind": "str",
+      "value": "Tchad"
+    },
+    {
+      "path": "/domains/customer_category/Riche/accepts/0",
+      "kind": "str",
+      "value": "Riche"
+    },
+    {
+      "path": "/domains/customer_category/Riche/accepts/1",
+      "kind": "str",
+      "value": "Elevé"
+    },
+    {
+      "path": "/domains/customer_category/Religion_I/peak_power_w",
+      "kind": "int",
+      "value": 1000
+    },
+    {
+      "path": "/domains/customer_category/Religion_I/client",
+      "kind": "str",
+      "value": "ADERM"
+    },
+    {
+      "path": "/domains/customer_category/Religion_I/country",
+      "kind": "str",
+      "value": "Tchad"
+    },
+    {
+      "path": "/domains/customer_category/Religion_I/accepts/0",
+      "kind": "str",
+      "value": "Religion_I"
+    },
+    {
+      "path": "/domains/customer_category/Religion_I/accepts/1",
+      "kind": "str",
+      "value": "Religion"
+    },
+    {
+      "path": "/domains/customer_category/Religion_I/accepts/2",
+      "kind": "str",
+      "value": "Eglise"
+    },
+    {
+      "path": "/domains/customer_category/Religion_I/accepts/3",
+      "kind": "str",
+      "value": "Lieu de culte"
+    },
+    {
+      "path": "/domains/customer_category/Religion_I/accepts/4",
+      "kind": "str",
+      "value": "Mission"
+    },
+    {
+      "path": "/domains/customer_category/Securite Publique_I/peak_power_w",
+      "kind": "int",
+      "value": 1000
+    },
+    {
+      "path": "/domains/customer_category/Securite Publique_I/client",
+      "kind": "str",
+      "value": "ADERM"
+    },
+    {
+      "path": "/domains/customer_category/Securite Publique_I/country",
+      "kind": "str",
+      "value": "Tchad"
+    },
+    {
+      "path": "/domains/customer_category/Securite Publique_I/accepts/0",
+      "kind": "str",
+      "value": "Securite Publique_I"
+    },
+    {
+      "path": "/domains/customer_category/Securite Publique_I/accepts/1",
+      "kind": "str",
+      "value": "Police/Gendarme/Camp Militaire"
+    },
+    {
+      "path": "/domains/customer_category/Securite Publique_I/accepts/2",
+      "kind": "str",
+      "value": "Securite publique"
+    },
+    {
+      "path": "/domains/customer_category/Securite Publique_I/accepts/3",
+      "kind": "str",
+      "value": "Securité"
+    },
+    {
+      "path": "/domains/customer_category/Centre de Sante/peak_power_w",
+      "kind": "int",
+      "value": 1500
+    },
+    {
+      "path": "/domains/customer_category/Centre de Sante/client",
+      "kind": "str",
+      "value": "ADERM"
+    },
+    {
+      "path": "/domains/customer_category/Centre de Sante/country",
+      "kind": "str",
+      "value": "Tchad"
+    },
+    {
+      "path": "/domains/customer_category/Centre de Sante/accepts/0",
+      "kind": "str",
+      "value": "Centre de Sante"
+    },
+    {
+      "path": "/domains/customer_category/Centre de Sante/accepts/1",
+      "kind": "str",
+      "value": "Centre de Santé"
+    },
+    {
+      "path": "/domains/customer_category/Centre de Sante/accepts/2",
+      "kind": "str",
+      "value": "Clinique"
+    },
+    {
+      "path": "/domains/customer_category/Centre de Sante/accepts/3",
+      "kind": "str",
+      "value": "Centre medicale"
+    },
+    {
+      "path": "/domains/customer_category/Centre de Sante/accepts/4",
+      "kind": "str",
+      "value": "Santé"
+    },
+    {
+      "path": "/domains/customer_category/Centre de Sante/accepts/5",
+      "kind": "str",
+      "value": "Laboratoire"
+    },
+    {
+      "path": "/domains/customer_category/Commerce_II/peak_power_w",
+      "kind": "int",
+      "value": 1500
+    },
+    {
+      "path": "/domains/customer_category/Commerce_II/client",
+      "kind": "str",
+      "value": "ADERM"
+    },
+    {
+      "path": "/domains/customer_category/Commerce_II/country",
+      "kind": "str",
+      "value": "Tchad"
+    },
+    {
+      "path": "/domains/customer_category/Commerce_II/accepts/0",
+      "kind": "str",
+      "value": "Commerce_II"
+    },
+    {
+      "path": "/domains/customer_category/Commerce_II/accepts/1",
+      "kind": "str",
+      "value": "Grand Commerce"
+    },
+    {
+      "path": "/domains/customer_category/Commerce_II/accepts/2",
+      "kind": "str",
+      "value": "Pharmacie"
+    },
+    {
+      "path": "/domains/customer_category/Commerce_II/accepts/3",
+      "kind": "str",
+      "value": "pharmaci"
+    },
+    {
+      "path": "/domains/customer_category/Commerce_II/accepts/4",
+      "kind": "str",
+      "value": "Boulangerie"
+    },
+    {
+      "path": "/domains/customer_category/Commerce_II/accepts/5",
+      "kind": "str",
+      "value": "super marcher"
+    },
+    {
+      "path": "/domains/customer_category/Commerce_II/accepts/6",
+      "kind": "str",
+      "value": "Alimentation buvette"
+    },
+    {
+      "path": "/domains/customer_category/Commerce_II/accepts/7",
+      "kind": "str",
+      "value": "Station service"
+    },
+    {
+      "path": "/domains/customer_category/Administration_II/peak_power_w",
+      "kind": "int",
+      "value": 2500
+    },
+    {
+      "path": "/domains/customer_category/Administration_II/client",
+      "kind": "str",
+      "value": "ADERM"
+    },
+    {
+      "path": "/domains/customer_category/Administration_II/country",
+      "kind": "str",
+      "value": "Tchad"
+    },
+    {
+      "path": "/domains/customer_category/Administration_II/accepts/0",
+      "kind": "str",
+      "value": "Administration_II"
+    },
+    {
+      "path": "/domains/customer_category/Administration_II/accepts/1",
+      "kind": "str",
+      "value": "Mairie"
+    },
+    {
+      "path": "/domains/customer_category/Administration_II/accepts/2",
+      "kind": "str",
+      "value": "Sous/Prefecture"
+    },
+    {
+      "path": "/domains/customer_category/Administration_II/accepts/3",
+      "kind": "str",
+      "value": "Edifice public"
+    },
+    {
+      "path": "/domains/customer_category/Administration_II/accepts/4",
+      "kind": "str",
+      "value": "Maison de la culture"
+    },
+    {
+      "path": "/domains/customer_category/Administration_II/accepts/5",
+      "kind": "str",
+      "value": "Ministere"
+    },
+    {
+      "path": "/domains/customer_category/Banque_I/peak_power_w",
+      "kind": "int",
+      "value": 3000
+    },
+    {
+      "path": "/domains/customer_category/Banque_I/client",
+      "kind": "str",
+      "value": "ADERM"
+    },
+    {
+      "path": "/domains/customer_category/Banque_I/country",
+      "kind": "str",
+      "value": "Tchad"
+    },
+    {
+      "path": "/domains/customer_category/Banque_I/accepts/0",
+      "kind": "str",
+      "value": "Banque/Micro-Finance"
+    },
+    {
+      "path": "/domains/customer_category/Banque_I/accepts/1",
+      "kind": "str",
+      "value": "Finance"
+    },
+    {
+      "path": "/domains/customer_category/Hotel_I/peak_power_w",
+      "kind": "int",
+      "value": 3000
+    },
+    {
+      "path": "/domains/customer_category/Hotel_I/client",
+      "kind": "str",
+      "value": "ADERM"
+    },
+    {
+      "path": "/domains/customer_category/Hotel_I/country",
+      "kind": "str",
+      "value": "Tchad"
+    },
+    {
+      "path": "/domains/customer_category/Hotel_I/accepts/0",
+      "kind": "str",
+      "value": "Auberge"
+    },
+    {
+      "path": "/domains/customer_category/Hotel_I/accepts/1",
+      "kind": "str",
+      "value": "Hotel"
+    },
+    {
+      "path": "/domains/customer_category/Administration_III/peak_power_w",
+      "kind": "int",
+      "value": 5000
+    },
+    {
+      "path": "/domains/customer_category/Administration_III/client",
+      "kind": "str",
+      "value": "ADERM"
+    },
+    {
+      "path": "/domains/customer_category/Administration_III/country",
+      "kind": "str",
+      "value": "Tchad"
+    },
+    {
+      "path": "/domains/customer_category/Administration_III/accepts/0",
+      "kind": "str",
+      "value": "Administration_III"
+    },
+    {
+      "path": "/domains/customer_category/Administration_III/accepts/1",
+      "kind": "str",
+      "value": "Gouvernorat"
+    },
+    {
+      "path": "/domains/customer_category/Administration_III/accepts/2",
+      "kind": "str",
+      "value": "Gourvernorat"
+    },
+    {
+      "path": "/domains/customer_category/Education_II/peak_power_w",
+      "kind": "int",
+      "value": 5000
+    },
+    {
+      "path": "/domains/customer_category/Education_II/client",
+      "kind": "str",
+      "value": "ADERM"
+    },
+    {
+      "path": "/domains/customer_category/Education_II/country",
+      "kind": "str",
+      "value": "Tchad"
+    },
+    {
+      "path": "/domains/customer_category/Education_II/accepts/0",
+      "kind": "str",
+      "value": "Education_II"
+    },
+    {
+      "path": "/domains/customer_category/Education_II/accepts/1",
+      "kind": "str",
+      "value": "Lycée"
+    },
+    {
+      "path": "/domains/customer_category/Education_II/accepts/2",
+      "kind": "str",
+      "value": "Collège"
+    },
+    {
+      "path": "/domains/customer_category/Education_II/accepts/3",
+      "kind": "str",
+      "value": "Ecole Professionelle"
+    },
+    {
+      "path": "/domains/customer_category/Education_II/accepts/4",
+      "kind": "str",
+      "value": "Ecole Normale"
+    },
+    {
+      "path": "/domains/customer_category/Mosque_I/peak_power_w",
+      "kind": "int",
+      "value": 5000
+    },
+    {
+      "path": "/domains/customer_category/Mosque_I/client",
+      "kind": "str",
+      "value": "ADERM"
+    },
+    {
+      "path": "/domains/customer_category/Mosque_I/country",
+      "kind": "str",
+      "value": "Tchad"
+    },
+    {
+      "path": "/domains/customer_category/Mosque_I/accepts/0",
+      "kind": "str",
+      "value": "Mosque"
+    },
+    {
+      "path": "/domains/customer_category/Mosque_I/accepts/1",
+      "kind": "str",
+      "value": "Mosquee"
+    },
+    {
+      "path": "/domains/customer_category/Mosque_I/accepts/2",
+      "kind": "str",
+      "value": "Mosqué"
+    },
+    {
+      "path": "/domains/customer_category/Pompage_Eau_II/peak_power_w",
+      "kind": "int",
+      "value": 5000
+    },
+    {
+      "path": "/domains/customer_category/Pompage_Eau_II/client",
+      "kind": "str",
+      "value": "ADERM"
+    },
+    {
+      "path": "/domains/customer_category/Pompage_Eau_II/country",
+      "kind": "str",
+      "value": "Tchad"
+    },
+    {
+      "path": "/domains/customer_category/Pompage_Eau_II/accepts/0",
+      "kind": "str",
+      "value": "Pompage_Eau_II"
+    },
+    {
+      "path": "/domains/customer_category/Pompage_Eau_II/accepts/1",
+      "kind": "str",
+      "value": "Château d'Eau"
+    },
+    {
+      "path": "/domains/customer_category/Pompage_Eau_II/accepts/2",
+      "kind": "str",
+      "value": "Chateau d'eau"
+    },
+    {
+      "path": "/domains/customer_category/Education_III/peak_power_w",
+      "kind": "int",
+      "value": 20000
+    },
+    {
+      "path": "/domains/customer_category/Education_III/client",
+      "kind": "str",
+      "value": "ADERM"
+    },
+    {
+      "path": "/domains/customer_category/Education_III/country",
+      "kind": "str",
+      "value": "Tchad"
+    },
+    {
+      "path": "/domains/customer_category/Education_III/accepts/0",
+      "kind": "str",
+      "value": "Universite"
+    },
+    {
+      "path": "/domains/customer_category/Education_III/accepts/1",
+      "kind": "str",
+      "value": "Université"
+    },
+    {
+      "path": "/domains/customer_category/Grand Marche/peak_power_w",
+      "kind": "int",
+      "value": 75000
+    },
+    {
+      "path": "/domains/customer_category/Grand Marche/client",
+      "kind": "str",
+      "value": "ADERM"
+    },
+    {
+      "path": "/domains/customer_category/Grand Marche/country",
+      "kind": "str",
+      "value": "Tchad"
+    },
+    {
+      "path": "/domains/customer_category/Grand Marche/accepts/0",
+      "kind": "str",
+      "value": "Grand Marche"
+    },
+    {
+      "path": "/domains/customer_category/Hopital de District/peak_power_w",
+      "kind": "int",
+      "value": 75000
+    },
+    {
+      "path": "/domains/customer_category/Hopital de District/client",
+      "kind": "str",
+      "value": "ADERM"
+    },
+    {
+      "path": "/domains/customer_category/Hopital de District/country",
+      "kind": "str",
+      "value": "Tchad"
+    },
+    {
+      "path": "/domains/customer_category/Hopital de District/accepts/0",
+      "kind": "str",
+      "value": "Hopital de District"
+    },
+    {
+      "path": "/domains/customer_category/Hopital de District/accepts/1",
+      "kind": "str",
+      "value": "Hopital"
+    },
+    {
+      "path": "/domains/meter_type/Single Phase/accepts/0",
+      "kind": "str",
+      "value": "Residential"
+    },
+    {
+      "path": "/domains/meter_type/Single Phase/accepts/1",
+      "kind": "str",
+      "value": "SINGLE HASE"
+    },
+    {
+      "path": "/domains/meter_type/Single Phase/accepts/2",
+      "kind": "str",
+      "value": "SINGLE PHASE"
+    },
+    {
+      "path": "/domains/meter_type/Single Phase/accepts/3",
+      "kind": "str",
+      "value": "Single Phase"
+    },
+    {
+      "path": "/domains/meter_type/Single Phase/accepts/4",
+      "kind": "str",
+      "value": "single Phase"
+    },
+    {
+      "path": "/domains/meter_type/Single Phase/accepts/5",
+      "kind": "str",
+      "value": "Single phase"
+    },
+    {
+      "path": "/domains/meter_type/Single Phase/accepts/6",
+      "kind": "str",
+      "value": "Singles Phase"
+    },
+    {
+      "path": "/domains/meter_type/Single Phase/accepts/7",
+      "kind": "str",
+      "value": "Single  Phase"
+    },
+    {
+      "path": "/domains/meter_type/Single Phase/accepts/8",
+      "kind": "str",
+      "value": "sing"
+    },
+    {
+      "path": "/domains/meter_type/Three Phase/accepts/0",
+      "kind": "str",
+      "value": "Church"
+    },
+    {
+      "path": "/domains/meter_type/Three Phase/accepts/1",
+      "kind": "str",
+      "value": "Three Phase"
+    },
+    {
+      "path": "/domains/meter_type/Three Phase/accepts/2",
+      "kind": "str",
+      "value": "Three phase"
+    },
+    {
+      "path": "/domains/meter_type/Three Phase/accepts/3",
+      "kind": "str",
+      "value": "THREE PHASE"
+    },
+    {
+      "path": "/domains/meter_type/Three Phase/accepts/4",
+      "kind": "str",
+      "value": "3- PHASE"
+    },
+    {
+      "path": "/domains/meter_type/Three Phase/accepts/5",
+      "kind": "str",
+      "value": "three"
+    },
+    {
+      "path": "/domains/meter_type/Three Phase/accepts/6",
+      "kind": "str",
+      "value": "3"
+    },
+    {
+      "path": "/domains/assembly_type/ABC Suspension Assembly (0° - 30°)/simple_match",
+      "kind": "str",
+      "value": "susp-30"
+    },
+    {
+      "path": "/domains/assembly_type/ABC Suspension Assembly (0° - 30°)/accepts/0",
+      "kind": "str",
+      "value": "ABC Suspension Assembly (0º - 30º)"
+    },
+    {
+      "path": "/domains/assembly_type/ABC Suspension Assembly (0° - 30°)/accepts/1",
+      "kind": "str",
+      "value": "ABC Suspension Assembly (0°-30°)"
+    },
+    {
+      "path": "/domains/assembly_type/ABC Suspension Assembly (0° - 30°)/accepts/2",
+      "kind": "str",
+      "value": "ABC Suspension Assembly (0° - 30°)"
+    },
+    {
+      "path": "/domains/assembly_type/ABC Suspension Assembly (0° - 30°)/accepts/3",
+      "kind": "str",
+      "value": "suspension"
+    },
+    {
+      "path": "/domains/assembly_type/Strain Assembly (0° - 60°)/simple_match",
+      "kind": "str",
+      "value": "str-30-60"
+    },
+    {
+      "path": "/domains/assembly_type/Strain Assembly (0° - 60°)/accepts/0",
+      "kind": "str",
+      "value": "Strain Assembly (0º - 60º)"
+    },
+    {
+      "path": "/domains/assembly_type/Strain Assembly (0° - 60°)/accepts/1",
+      "kind": "str",
+      "value": "Strain Assembly (0°-60°)"
+    },
+    {
+      "path": "/domains/assembly_type/Strain Assembly (0° - 60°)/accepts/2",
+      "kind": "str",
+      "value": "Strain Assembly (30°-60°)"
+    },
+    {
+      "path": "/domains/assembly_type/Strain Assembly (0° - 60°)/accepts/3",
+      "kind": "str",
+      "value": "ABC Strain Assembly (30° - 60°)"
+    },
+    {
+      "path": "/domains/assembly_type/Strain Assembly (60° - 90°)/simple_match",
+      "kind": "str",
+      "value": "str-60-90"
+    },
+    {
+      "path": "/domains/assembly_type/Strain Assembly (60° - 90°)/accepts/0",
+      "kind": "str",
+      "value": "Strain Assembly (60º - 90º)"
+    },
+    {
+      "path": "/domains/assembly_type/Strain Assembly (60° - 90°)/accepts/1",
+      "kind": "str",
+      "value": "Strain Assembly (60°-90°)"
+    },
+    {
+      "path": "/domains/assembly_type/Strain Assembly (60° - 90°)/accepts/2",
+      "kind": "str",
+      "value": "ABC Strain Assembly (60° - 90°)"
+    },
+    {
+      "path": "/domains/assembly_type/ABC Terminal Assembly/simple_match",
+      "kind": "str",
+      "value": "termi"
+    },
+    {
+      "path": "/domains/assembly_type/ABC Terminal Assembly/accepts/0",
+      "kind": "str",
+      "value": "ABC Terminal Assembly"
+    },
+    {
+      "path": "/domains/assembly_type/ABC Terminal Assembly/accepts/1",
+      "kind": "str",
+      "value": "terminal"
+    },
+    {
+      "path": "/domains/assembly_type/T-Off Assembly from Intermediate/simple_match",
+      "kind": "str",
+      "value": "off-int"
+    },
+    {
+      "path": "/domains/assembly_type/T-Off Assembly from Intermediate/accepts/0",
+      "kind": "str",
+      "value": "T-Off Assembly from Intermediate"
+    },
+    {
+      "path": "/domains/assembly_type/T-Off Assembly from Intermediate/accepts/1",
+      "kind": "str",
+      "value": "T-Off Assemly from Intermediate"
+    },
+    {
+      "path": "/domains/assembly_type/T-Off Assembly from Intermediate/accepts/2",
+      "kind": "str",
+      "value": "T-Off Assembly fom Intermediate"
+    },
+    {
+      "path": "/domains/assembly_type/T-Off Assembly from Strain/simple_match",
+      "kind": "str",
+      "value": "off-str"
+    },
+    {
+      "path": "/domains/assembly_type/T-Off Assembly from Strain/accepts/0",
+      "kind": "str",
+      "value": "T-Off Assembly from Strain"
+    },
+    {
+      "path": "/domains/assembly_type/T-Off Assembly from Strain/accepts/1",
+      "kind": "str",
+      "value": "T-Off Assemly from Strain"
+    },
+    {
+      "path": "/domains/assembly_type/T-Off Assembly from Strain/accepts/2",
+      "kind": "str",
+      "value": "T-Off Assembly from strain"
+    },
+    {
+      "path": "/domains/assembly_type/T-Off Assembly from Strain/accepts/3",
+      "kind": "str",
+      "value": "T-Off Assembly fom Stain"
+    },
+    {
+      "path": "/domains/assembly_type/Cross Intermediate-Intermediate Assembly/simple_match",
+      "kind": "str",
+      "value": "cross-int"
+    },
+    {
+      "path": "/domains/assembly_type/Cross Intermediate-Intermediate Assembly/accepts/0",
+      "kind": "str",
+      "value": "Cross Intermediate - Intermediate Assembly"
+    },
+    {
+      "path": "/domains/assembly_type/Cross Intermediate-Intermediate Assembly/accepts/1",
+      "kind": "str",
+      "value": "Cross Assembly fom Intermediate"
+    },
+    {
+      "path": "/domains/assembly_type/Cross Intermediate-Intermediate Assembly/accepts/2",
+      "kind": "str",
+      "value": "Cross Assembly from Intermediate"
+    },
+    {
+      "path": "/domains/assembly_type/Cross Intermediate-Strain Assembly/simple_match",
+      "kind": "str",
+      "value": "cross-strain"
+    },
+    {
+      "path": "/domains/assembly_type/Cross Intermediate-Strain Assembly/accepts/0",
+      "kind": "str",
+      "value": "Cross Intermediate - Strain Assembly"
+    },
+    {
+      "path": "/domains/assembly_type/Cross Intermediate-Strain Assembly/accepts/1",
+      "kind": "str",
+      "value": "cross"
+    },
+    {
+      "path": "/domains/assembly_type/Service Pole/simple_match",
+      "kind": "str",
+      "value": "service"
+    },
+    {
+      "path": "/domains/assembly_type/Service Pole/accepts/0",
+      "kind": "str",
+      "value": "Service Pole"
+    },
+    {
+      "path": "/domains/assembly_type/Existing/simple_match",
+      "kind": "str",
+      "value": "exists"
+    },
+    {
+      "path": "/domains/assembly_type/Existing/accepts/0",
+      "kind": "str",
+      "value": "exist"
+    },
+    {
+      "path": "/domains/existing/No/default",
+      "kind": "bool",
+      "value": true
+    },
+    {
+      "path": "/domains/existing/No/accepts/0",
+      "kind": "str",
+      "value": "No"
+    },
+    {
+      "path": "/domains/existing/No/accepts/1",
+      "kind": "str",
+      "value": "no"
+    },
+    {
+      "path": "/domains/existing/No/accepts/2",
+      "kind": "str",
+      "value": "false"
+    },
+    {
+      "path": "/domains/existing/No/accepts/3",
+      "kind": "str",
+      "value": "False"
+    },
+    {
+      "path": "/domains/existing/No/accepts/4",
+      "kind": "str",
+      "value": "0"
+    },
+    {
+      "path": "/domains/existing/No/accepts/5",
+      "kind": "str",
+      "value": "n"
+    },
+    {
+      "path": "/domains/existing/No/accepts/6",
+      "kind": "str",
+      "value": "N"
+    },
+    {
+      "path": "/domains/existing/No/accepts/7",
+      "kind": "str",
+      "value": ""
+    },
+    {
+      "path": "/domains/existing/Yes/default",
+      "kind": "bool",
+      "value": false
+    },
+    {
+      "path": "/domains/existing/Yes/accepts/0",
+      "kind": "str",
+      "value": "Yes"
+    },
+    {
+      "path": "/domains/existing/Yes/accepts/1",
+      "kind": "str",
+      "value": "yes"
+    },
+    {
+      "path": "/domains/existing/Yes/accepts/2",
+      "kind": "str",
+      "value": "true"
+    },
+    {
+      "path": "/domains/existing/Yes/accepts/3",
+      "kind": "str",
+      "value": "True"
+    },
+    {
+      "path": "/domains/existing/Yes/accepts/4",
+      "kind": "str",
+      "value": "1"
+    },
+    {
+      "path": "/domains/existing/Yes/accepts/5",
+      "kind": "str",
+      "value": "existing"
+    },
+    {
+      "path": "/domains/existing/Yes/accepts/6",
+      "kind": "str",
+      "value": "Existing"
+    },
+    {
+      "path": "/domains/existing/Yes/accepts/7",
+      "kind": "str",
+      "value": "EXISTING"
+    },
+    {
+      "path": "/domains/existing/Replace/default",
+      "kind": "bool",
+      "value": false
+    },
+    {
+      "path": "/domains/existing/Replace/accepts/0",
+      "kind": "str",
+      "value": "Replace"
+    },
+    {
+      "path": "/domains/existing/Replace/accepts/1",
+      "kind": "str",
+      "value": "replace"
+    },
+    {
+      "path": "/domains/existing/Replace/accepts/2",
+      "kind": "str",
+      "value": "REPLACE"
+    },
+    {
+      "path": "/domains/level/A/default",
+      "kind": "bool",
+      "value": false
+    },
+    {
+      "path": "/domains/level/A/accepts/0",
+      "kind": "str",
+      "value": "A"
+    },
+    {
+      "path": "/domains/level/A/accepts/1",
+      "kind": "str",
+      "value": "a"
+    },
+    {
+      "path": "/domains/level/B/default",
+      "kind": "bool",
+      "value": false
+    },
+    {
+      "path": "/domains/level/B/accepts/0",
+      "kind": "str",
+      "value": "B"
+    },
+    {
+      "path": "/domains/level/B/accepts/1",
+      "kind": "str",
+      "value": "b"
+    },
+    {
+      "path": "/domains/level/C/default",
+      "kind": "bool",
+      "value": false
+    },
+    {
+      "path": "/domains/level/C/accepts/0",
+      "kind": "str",
+      "value": "C"
+    },
+    {
+      "path": "/domains/level/C/accepts/1",
+      "kind": "str",
+      "value": "c"
+    },
+    {
+      "path": "/domains/level/D/default",
+      "kind": "bool",
+      "value": false
+    },
+    {
+      "path": "/domains/level/D/accepts/0",
+      "kind": "str",
+      "value": "D"
+    },
+    {
+      "path": "/domains/level/D/accepts/1",
+      "kind": "str",
+      "value": "d"
+    },
+    {
+      "path": "/domains/struct_type/S140/default",
+      "kind": "bool",
+      "value": true
+    },
+    {
+      "path": "/domains/struct_type/S140/accepts/0",
+      "kind": "str",
+      "value": "S140"
+    },
+    {
+      "path": "/domains/struct_type/S140/accepts/1",
+      "kind": "str",
+      "value": "140S"
+    },
+    {
+      "path": "/domains/struct_type/S140/accepts/2",
+      "kind": "str",
+      "value": "S100"
+    },
+    {
+      "path": "/domains/struct_type/S140/accepts/3",
+      "kind": "str",
+      "value": "140"
+    },
+    {
+      "path": "/domains/struct_type/S190/default",
+      "kind": "bool",
+      "value": false
+    },
+    {
+      "path": "/domains/struct_type/S190/accepts/0",
+      "kind": "str",
+      "value": "S190"
+    },
+    {
+      "path": "/domains/struct_type/S190/accepts/1",
+      "kind": "str",
+      "value": "190S"
+    },
+    {
+      "path": "/domains/struct_type/S190/accepts/2",
+      "kind": "str",
+      "value": "190"
+    },
+    {
+      "path": "/domains/struct_type/S190/accepts/3",
+      "kind": "str",
+      "value": "SS190"
+    },
+    {
+      "path": "/domains/struct_type/S255/default",
+      "kind": "bool",
+      "value": false
+    },
+    {
+      "path": "/domains/struct_type/S255/accepts/0",
+      "kind": "str",
+      "value": "S255"
+    },
+    {
+      "path": "/domains/struct_type/S255/accepts/1",
+      "kind": "str",
+      "value": "255S"
+    },
+    {
+      "path": "/domains/struct_type/S255/accepts/2",
+      "kind": "str",
+      "value": "255"
+    },
+    {
+      "path": "/domains/struct_type/S255/accepts/3",
+      "kind": "str",
+      "value": "250"
+    },
+    {
+      "path": "/domains/cable_size/3 x 25 + 54.6mm² ABC/max_kva",
+      "kind": "int",
+      "value": 40
+    },
+    {
+      "path": "/domains/cable_size/3 x 25 + 54.6mm² ABC/cross_section_mm2",
+      "kind": "int",
+      "value": 25
+    },
+    {
+      "path": "/domains/cable_size/3 x 25 + 54.6mm² ABC/ampacity_a",
+      "kind": "int",
+      "value": 75
+    },
+    {
+      "path": "/domains/cable_size/3 x 25 + 54.6mm² ABC/simple_match",
+      "kind": "str",
+      "value": "25"
+    },
+    {
+      "path": "/domains/cable_size/3 x 25 + 54.6mm² ABC/minimum",
+      "kind": "bool",
+      "value": true
+    },
+    {
+      "path": "/domains/cable_size/3 x 25 + 54.6mm² ABC/max_span_m",
+      "kind": "int",
+      "value": 55
+    },
+    {
+      "path": "/domains/cable_size/3 x 25 + 54.6mm² ABC/accepts/0",
+      "kind": "str",
+      "value": "3 x 25 + 54.6mm² ABC"
+    },
+    {
+      "path": "/domains/cable_size/3 x 35 + 54.6mm² ABC/max_kva",
+      "kind": "int",
+      "value": 55
+    },
+    {
+      "path": "/domains/cable_size/3 x 35 + 54.6mm² ABC/cross_section_mm2",
+      "kind": "int",
+      "value": 35
+    },
+    {
+      "path": "/domains/cable_size/3 x 35 + 54.6mm² ABC/ampacity_a",
+      "kind": "int",
+      "value": 95
+    },
+    {
+      "path": "/domains/cable_size/3 x 35 + 54.6mm² ABC/simple_match",
+      "kind": "str",
+      "value": "35"
+    },
+    {
+      "path": "/domains/cable_size/3 x 35 + 54.6mm² ABC/minimum",
+      "kind": "bool",
+      "value": false
+    },
+    {
+      "path": "/domains/cable_size/3 x 35 + 54.6mm² ABC/max_span_m",
+      "kind": "int",
+      "value": 50
+    },
+    {
+      "path": "/domains/cable_size/3 x 35 + 54.6mm² ABC/accepts/0",
+      "kind": "str",
+      "value": "3x35mm²+54.6mm² ABC"
+    },
+    {
+      "path": "/domains/cable_size/3 x 35 + 54.6mm² ABC/accepts/1",
+      "kind": "str",
+      "value": "3C*35 mm² ABC"
+    },
+    {
+      "path": "/domains/cable_size/3 x 35 + 54.6mm² ABC/accepts/2",
+      "kind": "str",
+      "value": "3C*35 mm²"
+    },
+    {
+      "path": "/domains/cable_size/3 x 35 + 54.6mm² ABC/accepts/3",
+      "kind": "str",
+      "value": "3CX35 sqmm"
+    },
+    {
+      "path": "/domains/cable_size/3 x 35 + 54.6mm² ABC/accepts/4",
+      "kind": "str",
+      "value": "4x35mm² - 35mm²"
+    },
+    {
+      "path": "/domains/cable_size/3 x 35 + 54.6mm² ABC/accepts/5",
+      "kind": "str",
+      "value": "3*35 mm² ABC"
+    },
+    {
+      "path": "/domains/cable_size/3 x 35 + 54.6mm² ABC/accepts/6",
+      "kind": "str",
+      "value": "3x35 Sqmm"
+    },
+    {
+      "path": "/domains/cable_size/3 x 35 + 54.6mm² ABC/accepts/7",
+      "kind": "str",
+      "value": "3C*35mm² ABC"
+    },
+    {
+      "path": "/domains/cable_size/3 x 35 + 54.6mm² ABC/accepts/8",
+      "kind": "str",
+      "value": "(3C*35 mm² ABC"
+    },
+    {
+      "path": "/domains/cable_size/3 x 35 + 54.6mm² ABC/accepts/9",
+      "kind": "str",
+      "value": "(3x35mm²+54.6mm² ABC"
+    },
+    {
+      "path": "/domains/cable_size/3 x 35 + 54.6mm² ABC/accepts/10",
+      "kind": "str",
+      "value": "3x35mm²+54.6mm² ABC"
+    },
+    {
+      "path": "/domains/cable_size/3 x 35 + 54.6mm² ABC/accepts/11",
+      "kind": "str",
+      "value": "3C*35 mm²"
+    },
+    {
+      "path": "/domains/cable_size/3 x 35 + 54.6mm² ABC/accepts/12",
+      "kind": "str",
+      "value": "4X35 sqmm"
+    },
+    {
+      "path": "/domains/cable_size/3 x 35 + 54.6mm² ABC/accepts/13",
+      "kind": "str",
+      "value": "3C*35 mm²"
+    },
+    {
+      "path": "/domains/cable_size/3 x 35 + 54.6mm² ABC/accepts/14",
+      "kind": "str",
+      "value": "3C*35 mm² ABC"
+    },
+    {
+      "path": "/domains/cable_size/3 x 35 + 54.6mm² ABC/accepts/15",
+      "kind": "str",
+      "value": "35"
+    },
+    {
+      "path": "/domains/cable_size/3 x 35 + 54.6mm² ABC/accepts/16",
+      "kind": "str",
+      "value": "x35 25"
+    },
+    {
+      "path": "/domains/cable_size/3 x 50 + 54.6mm² ABC/max_kva",
+      "kind": "int",
+      "value": 75
+    },
+    {
+      "path": "/domains/cable_size/3 x 50 + 54.6mm² ABC/cross_section_mm2",
+      "kind": "int",
+      "value": 50
+    },
+    {
+      "path": "/domains/cable_size/3 x 50 + 54.6mm² ABC/ampacity_a",
+      "kind": "int",
+      "value": 125
+    },
+    {
+      "path": "/domains/cable_size/3 x 50 + 54.6mm² ABC/simple_match",
+      "kind": "str",
+      "value": "50"
+    },
+    {
+      "path": "/domains/cable_size/3 x 50 + 54.6mm² ABC/minimum",
+      "kind": "bool",
+      "value": false
+    },
+    {
+      "path": "/domains/cable_size/3 x 50 + 54.6mm² ABC/max_span_m",
+      "kind": "int",
+      "value": 47
+    },
+    {
+      "path": "/domains/cable_size/3 x 50 + 54.6mm² ABC/accepts/0",
+      "kind": "str",
+      "value": "3x50mm²+54.6mm² ABC"
+    },
+    {
+      "path": "/domains/cable_size/3 x 50 + 54.6mm² ABC/accepts/1",
+      "kind": "str",
+      "value": "3C*50 mm² ABC"
+    },
+    {
+      "path": "/domains/cable_size/3 x 50 + 54.6mm² ABC/accepts/2",
+      "kind": "str",
+      "value": "3CX50 sqmm"
+    },
+    {
+      "path": "/domains/cable_size/3 x 50 + 54.6mm² ABC/accepts/3",
+      "kind": "str",
+      "value": "3*50 mm² ABC"
+    },
+    {
+      "path": "/domains/cable_size/3 x 50 + 54.6mm² ABC/accepts/4",
+      "kind": "str",
+      "value": "3C*50mm² ABC"
+    },
+    {
+      "path": "/domains/cable_size/3 x 50 + 54.6mm² ABC/accepts/5",
+      "kind": "str",
+      "value": "3C*50mm² ABC"
+    },
+    {
+      "path": "/domains/cable_size/3 x 50 + 54.6mm² ABC/accepts/6",
+      "kind": "str",
+      "value": "3C*50mm² ABC"
+    },
+    {
+      "path": "/domains/cable_size/3 x 50 + 54.6mm² ABC/accepts/7",
+      "kind": "str",
+      "value": "3C*50mm² ABC#4X50 sqmm"
+    },
+    {
+      "path": "/domains/cable_size/3 x 50 + 54.6mm² ABC/accepts/8",
+      "kind": "str",
+      "value": "3C*50 mm² ABC"
+    },
+    {
+      "path": "/domains/cable_size/3 x 50 + 54.6mm² ABC/accepts/9",
+      "kind": "str",
+      "value": "4X50 sqmm"
+    },
+    {
+      "path": "/domains/cable_size/3 x 50 + 54.6mm² ABC/accepts/10",
+      "kind": "str",
+      "value": "3x50mm²546mm²abc"
+    },
+    {
+      "path": "/domains/cable_size/3 x 50 + 54.6mm² ABC/accepts/11",
+      "kind": "str",
+      "value": "4x50mm²50mm²"
+    },
+    {
+      "path": "/domains/cable_size/3 x 50 + 54.6mm² ABC/accepts/12",
+      "kind": "str",
+      "value": "3x50sqmm"
+    },
+    {
+      "path": "/domains/cable_size/3 x 50 + 54.6mm² ABC/accepts/13",
+      "kind": "str",
+      "value": "50"
+    },
+    {
+      "path": "/domains/cable_size/3 x 50 + 54.6mm² ABC/accepts/14",
+      "kind": "str",
+      "value": "3x50"
+    },
+    {
+      "path": "/domains/cable_size/3 x 70 + 54.6mm² ABC/max_kva",
+      "kind": "int",
+      "value": 100
+    },
+    {
+      "path": "/domains/cable_size/3 x 70 + 54.6mm² ABC/cross_section_mm2",
+      "kind": "int",
+      "value": 70
+    },
+    {
+      "path": "/domains/cable_size/3 x 70 + 54.6mm² ABC/ampacity_a",
+      "kind": "int",
+      "value": 170
+    },
+    {
+      "path": "/domains/cable_size/3 x 70 + 54.6mm² ABC/simple_match",
+      "kind": "str",
+      "value": "70"
+    },
+    {
+      "path": "/domains/cable_size/3 x 70 + 54.6mm² ABC/minimum",
+      "kind": "bool",
+      "value": false
+    },
+    {
+      "path": "/domains/cable_size/3 x 70 + 54.6mm² ABC/max_span_m",
+      "kind": "int",
+      "value": 44
+    },
+    {
+      "path": "/domains/cable_size/3 x 70 + 54.6mm² ABC/accepts/0",
+      "kind": "str",
+      "value": "3x70mm²+54.6mm² ABC"
+    },
+    {
+      "path": "/domains/cable_size/3 x 70 + 54.6mm² ABC/accepts/1",
+      "kind": "str",
+      "value": "3C*70 mm² ABC"
+    },
+    {
+      "path": "/domains/cable_size/3 x 70 + 54.6mm² ABC/accepts/2",
+      "kind": "str",
+      "value": "3x70mm²546mm²abc"
+    },
+    {
+      "path": "/domains/cable_size/3 x 70 + 54.6mm² ABC/accepts/3",
+      "kind": "str",
+      "value": "4x70mm²70mm²"
+    },
+    {
+      "path": "/domains/cable_size/3 x 70 + 54.6mm² ABC/accepts/4",
+      "kind": "str",
+      "value": "3x70sqmm"
+    },
+    {
+      "path": "/domains/cable_size/3 x 70 + 54.6mm² ABC/accepts/5",
+      "kind": "str",
+      "value": "70"
+    },
+    {
+      "path": "/domains/cable_size/3 x 70 + 54.6mm² ABC/accepts/6",
+      "kind": "str",
+      "value": "3x75"
+    },
+    {
+      "path": "/domains/service_cable_size/2 x 4 mm²/ampacity_a",
+      "kind": "int",
+      "value": 25
+    },
+    {
+      "path": "/domains/service_cable_size/2 x 4 mm²/for_meter_type",
+      "kind": "str",
+      "value": "Single Phase"
+    },
+    {
+      "path": "/domains/service_cable_size/2 x 4 mm²/default",
+      "kind": "bool",
+      "value": false
+    },
+    {
+      "path": "/domains/service_cable_size/2 x 4 mm²/accepts/0",
+      "kind": "str",
+      "value": "2 x 4 mm²"
+    },
+    {
+      "path": "/domains/service_cable_size/2 x 6 mm²/ampacity_a",
+      "kind": "int",
+      "value": 32
+    },
+    {
+      "path": "/domains/service_cable_size/2 x 6 mm²/for_meter_type",
+      "kind": "str",
+      "value": "Single Phase"
+    },
+    {
+      "path": "/domains/service_cable_size/2 x 6 mm²/default",
+      "kind": "bool",
+      "value": true
+    },
+    {
+      "path": "/domains/service_cable_size/2 x 6 mm²/accepts/0",
+      "kind": "str",
+      "value": "2 x 6 mm²"
+    },
+    {
+      "path": "/domains/service_cable_size/2 x 6 mm²/accepts/1",
+      "kind": "str",
+      "value": "2CX6SQMM"
+    },
+    {
+      "path": "/domains/service_cable_size/2 x 6 mm²/accepts/2",
+      "kind": "str",
+      "value": "(2CX6SQMM)"
+    },
+    {
+      "path": "/domains/service_cable_size/2 x 6 mm²/accepts/3",
+      "kind": "str",
+      "value": "2CX6SQMM"
+    },
+    {
+      "path": "/domains/service_cable_size/2 x 6 mm²/accepts/4",
+      "kind": "str",
+      "value": "2Cx 6 Sqmm"
+    },
+    {
+      "path": "/domains/service_cable_size/2 x 6 mm²/accepts/5",
+      "kind": "str",
+      "value": "2Cx 6 Sqmm"
+    },
+    {
+      "path": "/domains/service_cable_size/2 x 6 mm²/accepts/6",
+      "kind": "str",
+      "value": "2Cx6 Sqmm"
+    },
+    {
+      "path": "/domains/service_cable_size/2 x 6 mm²/accepts/7",
+      "kind": "str",
+      "value": "2Cx6Sqmm"
+    },
+    {
+      "path": "/domains/service_cable_size/2 x 6 mm²/accepts/8",
+      "kind": "str",
+      "value": "2Cx 6 Sqmm"
+    },
+    {
+      "path": "/domains/service_cable_size/2 x 6 mm²/accepts/9",
+      "kind": "str",
+      "value": "2Cx6 sqmm"
+    },
+    {
+      "path": "/domains/service_cable_size/2 x 6 mm²/accepts/10",
+      "kind": "str",
+      "value": "2Cx 6 Sqmm"
+    },
+    {
+      "path": "/domains/service_cable_size/2 x 6 mm²/accepts/11",
+      "kind": "str",
+      "value": "2x6"
+    },
+    {
+      "path": "/domains/service_cable_size/2 x 10 mm²/ampacity_a",
+      "kind": "int",
+      "value": 45
+    },
+    {
+      "path": "/domains/service_cable_size/2 x 10 mm²/for_meter_type",
+      "kind": "str",
+      "value": "Single Phase"
+    },
+    {
+      "path": "/domains/service_cable_size/2 x 10 mm²/default",
+      "kind": "bool",
+      "value": false
+    },
+    {
+      "path": "/domains/service_cable_size/2 x 10 mm²/accepts/0",
+      "kind": "str",
+      "value": "2 x 10 mm²"
+    },
+    {
+      "path": "/domains/service_cable_size/2 x 10 mm²/accepts/1",
+      "kind": "str",
+      "value": "2CX10SQMM"
+    },
+    {
+      "path": "/domains/service_cable_size/2 x 10 mm²/accepts/2",
+      "kind": "str",
+      "value": "2CX10SQMM"
+    },
+    {
+      "path": "/domains/service_cable_size/2 x 10 mm²/accepts/3",
+      "kind": "str",
+      "value": "2Cx10sqmm"
+    },
+    {
+      "path": "/domains/service_cable_size/2 x 10 mm²/accepts/4",
+      "kind": "str",
+      "value": "2Cx10 Sqmm"
+    },
+    {
+      "path": "/domains/service_cable_size/2 x 10 mm²/accepts/5",
+      "kind": "str",
+      "value": "2x10"
+    },
+    {
+      "path": "/domains/service_cable_size/4 x 10 mm²/ampacity_a",
+      "kind": "int",
+      "value": 45
+    },
+    {
+      "path": "/domains/service_cable_size/4 x 10 mm²/for_meter_type",
+      "kind": "str",
+      "value": "Three Phase"
+    },
+    {
+      "path": "/domains/service_cable_size/4 x 10 mm²/default",
+      "kind": "bool",
+      "value": false
+    },
+    {
+      "path": "/domains/service_cable_size/4 x 10 mm²/accepts/0",
+      "kind": "str",
+      "value": "4 x 10 mm²"
+    },
+    {
+      "path": "/domains/service_cable_size/4 x 10 mm²/accepts/1",
+      "kind": "str",
+      "value": "4CX10SQMM"
+    },
+    {
+      "path": "/domains/service_cable_size/4 x 10 mm²/accepts/2",
+      "kind": "str",
+      "value": "4CX10SQMM"
+    },
+    {
+      "path": "/domains/service_cable_size/4 x 10 mm²/accepts/3",
+      "kind": "str",
+      "value": "4Cx10 Sqmm"
+    },
+    {
+      "path": "/domains/service_cable_size/4 x 10 mm²/accepts/4",
+      "kind": "str",
+      "value": "three"
+    },
+    {
+      "path": "/settings_dependencies/_comment",
+      "kind": "str",
+      "value": "Dependency graph for per-transformer settings. Frontend uses this to auto-enable required settings, hide irrelevant ones, and warn about conflicts."
+    },
+    {
+      "path": "/settings_dependencies/_legend/requires",
+      "kind": "str",
+      "value": "These settings MUST be true when this setting is enabled — otherwise results are inconsistent. Frontend should auto-check them."
+    },
+    {
+      "path": "/settings_dependencies/_legend/reveals",
+      "kind": "str",
+      "value": "These settings become visible/relevant ONLY when this setting is enabled. Frontend should hide them otherwise."
+    },
+    {
+      "path": "/settings_dependencies/_legend/cascade_group",
+      "kind": "str",
+      "value": "Settings in the same cascade group form a dependency chain (top requires all below it). Disabling one breaks the chain."
+    },
+    {
+      "path": "/settings_dependencies/_legend/stage",
+      "kind": "str",
+      "value": "Pipeline execution order. Lower = earlier. Settings at the same stage are independent."
+    },
+    {
+      "path": "/settings_dependencies/spacing_per_cable_size/requires/0",
+      "kind": "str",
+      "value": "override_assemblies"
+    },
+    {
+      "path": "/settings_dependencies/spacing_per_cable_size/requires/1",
+      "kind": "str",
+      "value": "override_structures"
+    },
+    {
+      "path": "/settings_dependencies/spacing_per_cable_size/requires/2",
+      "kind": "str",
+      "value": "override_stays"
+    },
+    {
+      "path": "/settings_dependencies/spacing_per_cable_size/requires/3",
+      "kind": "str",
+      "value": "override_earthing"
+    },
+    {
+      "path": "/settings_dependencies/spacing_per_cable_size/requires/4",
+      "kind": "str",
+      "value": "override_numbers"
+    },
+    {
+      "path": "/settings_dependencies/spacing_per_cable_size/requires/5",
+      "kind": "str",
+      "value": "regenerate_spans"
+    },
+    {
+      "path": "/settings_dependencies/spacing_per_cable_size/reveals/0",
+      "kind": "str",
+      "value": "divide_spans_per_cable_size_equally"
+    },
+    {
+      "path": "/settings_dependencies/spacing_per_cable_size/stage",
+      "kind": "int",
+      "value": 2
+    },
+    {
+      "path": "/settings_dependencies/spacing_per_cable_size/reason",
+      "kind": "str",
+      "value": "Adds intermediate poles at cable-specific max_span_m. New poles need assembly/structure/stay/earthing calculation and renumbering. Spans are re-split."
+    },
+    {
+      "path": "/settings_dependencies/divide_spans_per_cable_size_equally/requires/0",
+      "kind": "str",
+      "value": "spacing_per_cable_size"
+    },
+    {
+      "path": "/settings_dependencies/divide_spans_per_cable_size_equally/stage",
+      "kind": "int",
+      "value": 2
+    },
+    {
+      "path": "/settings_dependencies/divide_spans_per_cable_size_equally/reason",
+      "kind": "str",
+      "value": "Only meaningful when spacing_per_cable_size is enabled. Controls placement mode: equal segments vs. max-then-share."
+    },
+    {
+      "path": "/settings_dependencies/regenerate_spans/requires/0",
+      "kind": "str",
+      "value": "override_assemblies"
+    },
+    {
+      "path": "/settings_dependencies/regenerate_spans/requires/1",
+      "kind": "str",
+      "value": "override_numbers"
+    },
+    {
+      "path": "/settings_dependencies/regenerate_spans/stage",
+      "kind": "int",
+      "value": 3
+    },
+    {
+      "path": "/settings_dependencies/regenerate_spans/reason",
+      "kind": "str",
+      "value": "Rebuilding spans changes pole angles → assemblies must be recalculated. New span count → renumber."
+    },
+    {
+      "path": "/settings_dependencies/override_assemblies/requires/0",
+      "kind": "str",
+      "value": "override_structures"
+    },
+    {
+      "path": "/settings_dependencies/override_assemblies/requires/1",
+      "kind": "str",
+      "value": "override_stays"
+    },
+    {
+      "path": "/settings_dependencies/override_assemblies/stage",
+      "kind": "int",
+      "value": 4
+    },
+    {
+      "path": "/settings_dependencies/override_assemblies/reason",
+      "kind": "str",
+      "value": "Assembly type determines structure type and stay requirements. Changing assembly without updating structure/stay leaves them stale."
+    },
+    {
+      "path": "/settings_dependencies/override_structures/stage",
+      "kind": "int",
+      "value": 5
+    },
+    {
+      "path": "/settings_dependencies/override_structures/reason",
+      "kind": "str",
+      "value": "Leaf setting — structure type is derived from assembly type. No further dependencies."
+    },
+    {
+      "path": "/settings_dependencies/override_stays/stage",
+      "kind": "int",
+      "value": 5
+    },
+    {
+      "path": "/settings_dependencies/override_stays/reason",
+      "kind": "str",
+      "value": "Leaf setting — stay wire assignment is derived from assembly type. No further dependencies."
+    },
+    {
+      "path": "/settings_dependencies/override_numbers/requires/0",
+      "kind": "str",
+      "value": "override_earthing"
+    },
+    {
+      "path": "/settings_dependencies/override_numbers/stage",
+      "kind": "int",
+      "value": 6
+    },
+    {
+      "path": "/settings_dependencies/override_numbers/reason",
+      "kind": "str",
+      "value": "Earthing uses evenly_distribute_ones() based on pole_number ordering. Renumbering without re-distributing earthing leaves gaps or clusters."
+    },
+    {
+      "path": "/settings_dependencies/override_earthing/stage",
+      "kind": "int",
+      "value": 7
+    },
+    {
+      "path": "/settings_dependencies/override_earthing/reason",
+      "kind": "str",
+      "value": "Leaf setting — earthing placement depends on pole numbering and house connections."
+    },
+    {
+      "path": "/settings_dependencies/override_house_numbers/stage",
+      "kind": "int",
+      "value": 8
+    },
+    {
+      "path": "/settings_dependencies/override_house_numbers/reason",
+      "kind": "str",
+      "value": "Leaf setting — renumbers customers based on from_tr_distance."
+    },
+    {
+      "path": "/settings_dependencies/connect_unconnected_customers/stage",
+      "kind": "int",
+      "value": 0
+    },
+    {
+      "path": "/settings_dependencies/connect_unconnected_customers/reason",
+      "kind": "str",
+      "value": "Input-boundary setting. Previously unconnected customers are retried as normal customer points before network building."
+    },
+    {
+      "path": "/settings_dependencies/regenerate_service_cables/requires/0",
+      "kind": "str",
+      "value": "override_house_numbers"
+    },
+    {
+      "path": "/settings_dependencies/regenerate_service_cables/stage",
+      "kind": "int",
+      "value": 3
+    },
+    {
+      "path": "/settings_dependencies/regenerate_service_cables/reason",
+      "kind": "str",
+      "value": "Rebuilding service cables changes pole-customer connections → house numbers must be recalculated."
+    },
+    {
+      "path": "/settings_dependencies/extend_m/requires/0",
+      "kind": "str",
+      "value": "regenerate_service_cables"
+    },
+    {
+      "path": "/settings_dependencies/extend_m/requires/1",
+      "kind": "str",
+      "value": "override_house_numbers"
+    },
+    {
+      "path": "/settings_dependencies/extend_m/stage",
+      "kind": "int",
+      "value": 3
+    },
+    {
+      "path": "/settings_dependencies/extend_m/reason",
+      "kind": "str",
+      "value": "Extending service cables changes their geometry and potentially pole-customer assignments. Requires regeneration and renumbering."
+    },
+    {
+      "path": "/settings_dependencies/extend_m/active_when",
+      "kind": "str",
+      "value": "> 0"
+    },
+    {
+      "path": "/settings_dependencies/validate_network/stage",
+      "kind": "int",
+      "value": 9
+    },
+    {
+      "path": "/settings_dependencies/validate_network/reason",
+      "kind": "str",
+      "value": "Runs after all modifications. No dependencies — it only reads the final state."
+    },
+    {
+      "path": "/settings_dependencies/delete_strange_cols/stage",
+      "kind": "int",
+      "value": 10
+    },
+    {
+      "path": "/settings_dependencies/delete_strange_cols/reason",
+      "kind": "str",
+      "value": "Final cleanup step. Drops columns not in layer schema. No dependencies."
+    },
+    {
+      "path": "/settings_dependencies/spacing_m/stage",
+      "kind": "int",
+      "value": 1
+    },
+    {
+      "path": "/settings_dependencies/spacing_m/reason",
+      "kind": "str",
+      "value": "Default pole spacing used in Pass 1 (build_lv_networks). Overridden per-cable when spacing_per_cable_size is enabled."
+    },
+    {
+      "path": "/settings_dependencies/override_lv_topology/stage",
+      "kind": "int",
+      "value": 1
+    },
+    {
+      "path": "/settings_dependencies/override_lv_topology/reason",
+      "kind": "str",
+      "value": "Retrace LV line topology algorithmically. When false, keeps original uploaded line grouping. Independent of pole calculations."
+    },
+    {
+      "path": "/settings_dependencies/override_cable_sizes/stage",
+      "kind": "int",
+      "value": 1
+    },
+    {
+      "path": "/settings_dependencies/override_cable_sizes/reason",
+      "kind": "str",
+      "value": "Controls whether cable sizes are recalculated from cumulative load or kept from upload."
+    },
+    {
+      "path": "/settings_dependencies/break_suspensions/requires/0",
+      "kind": "str",
+      "value": "override_assemblies"
+    },
+    {
+      "path": "/settings_dependencies/break_suspensions/reveals/0",
+      "kind": "str",
+      "value": "max_consecutive_suspensions"
+    },
+    {
+      "path": "/settings_dependencies/break_suspensions/stage",
+      "kind": "int",
+      "value": 4
+    },
+    {
+      "path": "/settings_dependencies/break_suspensions/reason",
+      "kind": "str",
+      "value": "Modifies assembly_type column. Requires override_assemblies to be active."
+    },
+    {
+      "path": "/settings_dependencies/max_consecutive_suspensions/requires/0",
+      "kind": "str",
+      "value": "break_suspensions"
+    },
+    {
+      "path": "/settings_dependencies/max_consecutive_suspensions/stage",
+      "kind": "int",
+      "value": 4
+    },
+    {
+      "path": "/settings_dependencies/max_consecutive_suspensions/reason",
+      "kind": "str",
+      "value": "Only meaningful when break_suspensions is enabled."
+    },
+    {
+      "path": "/settings_dependencies/earthing_interval/requires/0",
+      "kind": "str",
+      "value": "override_earthing"
+    },
+    {
+      "path": "/settings_dependencies/earthing_interval/stage",
+      "kind": "int",
+      "value": 7
+    },
+    {
+      "path": "/settings_dependencies/earthing_interval/reason",
+      "kind": "str",
+      "value": "Controls earthing spacing. Used inside evenly_distribute_ones(). Requires override_earthing."
+    },
+    {
+      "path": "/settings_dependencies/material_type/stage",
+      "kind": "int",
+      "value": 0
+    },
+    {
+      "path": "/settings_dependencies/material_type/reason",
+      "kind": "str",
+      "value": "Pole material. Independent — does not affect any calculation, only labels."
+    },
+    {
+      "path": "/settings_dependencies/default_category/stage",
+      "kind": "int",
+      "value": 0
+    },
+    {
+      "path": "/settings_dependencies/default_category/reason",
+      "kind": "str",
+      "value": "Fallback customer category. Applied during data cleaning before network building. Independent."
+    },
+    {
+      "path": "/settings_dependencies/max_service_length/stage",
+      "kind": "int",
+      "value": 0
+    },
+    {
+      "path": "/settings_dependencies/max_service_length/reason",
+      "kind": "str",
+      "value": "Max service drop length. Applied during customer-to-pole assignment. Independent."
+    },
+    {
+      "path": "/settings_dependencies/keep_lv_lines_length/stage",
+      "kind": "int",
+      "value": 3
+    },
+    {
+      "path": "/settings_dependencies/keep_lv_lines_length/reason",
+      "kind": "str",
+      "value": "Preserve supplied LV line lengths during sketch/draft export. Independent."
+    },
+    {
+      "path": "/settings_dependencies/earthing_on_pole_with_house/stage",
+      "kind": "int",
+      "value": 7
+    },
+    {
+      "path": "/settings_dependencies/earthing_on_pole_with_house/reason",
+      "kind": "str",
+      "value": "Controls earthing preference strategy. Used inside assign_earthing(). Independent toggle."
+    },
+    {
+      "path": "/settings_dependencies/_cascade_groups/_comment",
+      "kind": "str",
+      "value": "Dependency chains — disabling any link requires disabling everything above it in the chain."
+    },
+    {
+      "path": "/settings_dependencies/_cascade_groups/pole_calculation/0",
+      "kind": "str",
+      "value": "spacing_per_cable_size"
+    },
+    {
+      "path": "/settings_dependencies/_cascade_groups/pole_calculation/1",
+      "kind": "str",
+      "value": "override_assemblies"
+    },
+    {
+      "path": "/settings_dependencies/_cascade_groups/pole_calculation/2",
+      "kind": "str",
+      "value": "break_suspensions"
+    },
+    {
+      "path": "/settings_dependencies/_cascade_groups/pole_calculation/3",
+      "kind": "str",
+      "value": "override_structures"
+    },
+    {
+      "path": "/settings_dependencies/_cascade_groups/pole_calculation/4",
+      "kind": "str",
+      "value": "override_stays"
+    },
+    {
+      "path": "/settings_dependencies/_cascade_groups/pole_calculation/5",
+      "kind": "str",
+      "value": "override_numbers"
+    },
+    {
+      "path": "/settings_dependencies/_cascade_groups/pole_calculation/6",
+      "kind": "str",
+      "value": "override_earthing"
+    },
+    {
+      "path": "/settings_dependencies/_cascade_groups/customer_connection/0",
+      "kind": "str",
+      "value": "extend_m"
+    },
+    {
+      "path": "/settings_dependencies/_cascade_groups/customer_connection/1",
+      "kind": "str",
+      "value": "regenerate_service_cables"
+    },
+    {
+      "path": "/settings_dependencies/_cascade_groups/customer_connection/2",
+      "kind": "str",
+      "value": "override_house_numbers"
+    },
+    {
+      "path": "/settings_dependencies/_execution_order/0/stage",
+      "kind": "int",
+      "value": 0
+    },
+    {
+      "path": "/settings_dependencies/_execution_order/0/settings/0",
+      "kind": "str",
+      "value": "material_type"
+    },
+    {
+      "path": "/settings_dependencies/_execution_order/0/settings/1",
+      "kind": "str",
+      "value": "default_category"
+    },
+    {
+      "path": "/settings_dependencies/_execution_order/0/settings/2",
+      "kind": "str",
+      "value": "max_service_length"
+    },
+    {
+      "path": "/settings_dependencies/_execution_order/0/settings/3",
+      "kind": "str",
+      "value": "connect_unconnected_customers"
+    },
+    {
+      "path": "/settings_dependencies/_execution_order/0/phase",
+      "kind": "str",
+      "value": "Data cleaning"
+    },
+    {
+      "path": "/settings_dependencies/_execution_order/1/stage",
+      "kind": "int",
+      "value": 1
+    },
+    {
+      "path": "/settings_dependencies/_execution_order/1/settings/0",
+      "kind": "str",
+      "value": "spacing_m"
+    },
+    {
+      "path": "/settings_dependencies/_execution_order/1/settings/1",
+      "kind": "str",
+      "value": "override_lv_topology"
+    },
+    {
+      "path": "/settings_dependencies/_execution_order/1/phase",
+      "kind": "str",
+      "value": "Pass 1: build_lv_networks"
+    },
+    {
+      "path": "/settings_dependencies/_execution_order/2/stage",
+      "kind": "int",
+      "value": 2
+    },
+    {
+      "path": "/settings_dependencies/_execution_order/2/settings/0",
+      "kind": "str",
+      "value": "spacing_per_cable_size"
+    },
+    {
+      "path": "/settings_dependencies/_execution_order/2/settings/1",
+      "kind": "str",
+      "value": "divide_spans_per_cable_size_equally"
+    },
+    {
+      "path": "/settings_dependencies/_execution_order/2/phase",
+      "kind": "str",
+      "value": "Pass 2: redistribute_poles_per_cable_size"
+    },
+    {
+      "path": "/settings_dependencies/_execution_order/3/stage",
+      "kind": "int",
+      "value": 3
+    },
+    {
+      "path": "/settings_dependencies/_execution_order/3/settings/0",
+      "kind": "str",
+      "value": "regenerate_service_cables"
+    },
+    {
+      "path": "/settings_dependencies/_execution_order/3/settings/1",
+      "kind": "str",
+      "value": "extend_m"
+    },
+    {
+      "path": "/settings_dependencies/_execution_order/3/settings/2",
+      "kind": "str",
+      "value": "keep_lv_lines_length"
+    },
+    {
+      "path": "/settings_dependencies/_execution_order/3/phase",
+      "kind": "str",
+      "value": "Geometry regeneration"
+    },
+    {
+      "path": "/settings_dependencies/_execution_order/4/stage",
+      "kind": "int",
+      "value": 4
+    },
+    {
+      "path": "/settings_dependencies/_execution_order/4/settings/0",
+      "kind": "str",
+      "value": "override_assemblies"
+    },
+    {
+      "path": "/settings_dependencies/_execution_order/4/settings/1",
+      "kind": "str",
+      "value": "break_suspensions"
+    },
+    {
+      "path": "/settings_dependencies/_execution_order/4/settings/2",
+      "kind": "str",
+      "value": "max_consecutive_suspensions"
+    },
+    {
+      "path": "/settings_dependencies/_execution_order/4/phase",
+      "kind": "str",
+      "value": "Assembly calculation"
+    },
+    {
+      "path": "/settings_dependencies/_execution_order/5/stage",
+      "kind": "int",
+      "value": 5
+    },
+    {
+      "path": "/settings_dependencies/_execution_order/5/settings/0",
+      "kind": "str",
+      "value": "override_structures"
+    },
+    {
+      "path": "/settings_dependencies/_execution_order/5/settings/1",
+      "kind": "str",
+      "value": "override_stays"
+    },
+    {
+      "path": "/settings_dependencies/_execution_order/5/phase",
+      "kind": "str",
+      "value": "Structure + stay derivation"
+    },
+    {
+      "path": "/settings_dependencies/_execution_order/6/stage",
+      "kind": "int",
+      "value": 6
+    },
+    {
+      "path": "/settings_dependencies/_execution_order/6/settings/0",
+      "kind": "str",
+      "value": "override_numbers"
+    },
+    {
+      "path": "/settings_dependencies/_execution_order/6/phase",
+      "kind": "str",
+      "value": "Pole renumbering"
+    },
+    {
+      "path": "/settings_dependencies/_execution_order/7/stage",
+      "kind": "int",
+      "value": 7
+    },
+    {
+      "path": "/settings_dependencies/_execution_order/7/settings/0",
+      "kind": "str",
+      "value": "override_earthing"
+    },
+    {
+      "path": "/settings_dependencies/_execution_order/7/settings/1",
+      "kind": "str",
+      "value": "earthing_on_pole_with_house"
+    },
+    {
+      "path": "/settings_dependencies/_execution_order/7/settings/2",
+      "kind": "str",
+      "value": "earthing_interval"
+    },
+    {
+      "path": "/settings_dependencies/_execution_order/7/phase",
+      "kind": "str",
+      "value": "Earthing distribution"
+    },
+    {
+      "path": "/settings_dependencies/_execution_order/8/stage",
+      "kind": "int",
+      "value": 8
+    },
+    {
+      "path": "/settings_dependencies/_execution_order/8/settings/0",
+      "kind": "str",
+      "value": "override_house_numbers"
+    },
+    {
+      "path": "/settings_dependencies/_execution_order/8/phase",
+      "kind": "str",
+      "value": "Customer renumbering"
+    },
+    {
+      "path": "/settings_dependencies/_execution_order/9/stage",
+      "kind": "int",
+      "value": 9
+    },
+    {
+      "path": "/settings_dependencies/_execution_order/9/settings/0",
+      "kind": "str",
+      "value": "validate_network"
+    },
+    {
+      "path": "/settings_dependencies/_execution_order/9/phase",
+      "kind": "str",
+      "value": "Topology validation"
+    },
+    {
+      "path": "/settings_dependencies/_execution_order/10/stage",
+      "kind": "int",
+      "value": 10
+    },
+    {
+      "path": "/settings_dependencies/_execution_order/10/settings/0",
+      "kind": "str",
+      "value": "delete_strange_cols"
+    },
+    {
+      "path": "/settings_dependencies/_execution_order/10/phase",
+      "kind": "str",
+      "value": "Column cleanup"
+    },
+    {
+      "path": "/settings_templates/_comment",
+      "kind": "str",
+      "value": "Named workflow presets. Each template overrides defaults.transformer. Empty overrides = use base defaults as-is. Dot-path keys match defaults.transformer structure."
+    },
+    {
+      "path": "/settings_templates/drafting/display_name",
+      "kind": "str",
+      "value": "Full Draft"
+    },
+    {
+      "path": "/settings_templates/drafting/description",
+      "kind": "str",
+      "value": "Design from scratch. All calculations enabled."
+    },
+    {
+      "path": "/settings_templates/drafting/icon",
+      "kind": "str",
+      "value": "drafting_compass"
+    },
+    {
+      "path": "/settings_templates/as_built/display_name",
+      "kind": "str",
+      "value": "As-Built Import"
+    },
+    {
+      "path": "/settings_templates/as_built/description",
+      "kind": "str",
+      "value": "Import existing network. Preserve uploaded data, clean + validate only."
+    },
+    {
+      "path": "/settings_templates/as_built/icon",
+      "kind": "str",
+      "value": "upload_file"
+    },
+    {
+      "path": "/settings_templates/as_built/overrides/poles.spacing_per_cable_size",
+      "kind": "bool",
+      "value": false
+    },
+    {
+      "path": "/settings_templates/as_built/overrides/poles.override_assemblies",
+      "kind": "bool",
+      "value": false
+    },
+    {
+      "path": "/settings_templates/as_built/overrides/poles.override_structures",
+      "kind": "bool",
+      "value": false
+    },
+    {
+      "path": "/settings_templates/as_built/overrides/poles.override_stays",
+      "kind": "bool",
+      "value": false
+    },
+    {
+      "path": "/settings_templates/as_built/overrides/poles.override_earthing",
+      "kind": "bool",
+      "value": false
+    },
+    {
+      "path": "/settings_templates/as_built/overrides/poles.override_numbers",
+      "kind": "bool",
+      "value": false
+    },
+    {
+      "path": "/settings_templates/as_built/overrides/poles.override_lv_topology",
+      "kind": "bool",
+      "value": false
+    },
+    {
+      "path": "/settings_templates/as_built/overrides/poles.break_suspensions",
+      "kind": "bool",
+      "value": false
+    },
+    {
+      "path": "/settings_templates/as_built/overrides/spans.regenerate_spans",
+      "kind": "bool",
+      "value": false
+    },
+    {
+      "path": "/settings_templates/as_built/overrides/service_cables.regenerate_service_cables",
+      "kind": "bool",
+      "value": false
+    },
+    {
+      "path": "/settings_templates/as_built/overrides/service_cables.extend_m",
+      "kind": "int",
+      "value": 0
+    },
+    {
+      "path": "/settings_templates/as_built/overrides/customers.override_house_numbers",
+      "kind": "bool",
+      "value": false
+    },
+    {
+      "path": "/settings_templates/as_built/overrides/validate_network",
+      "kind": "bool",
+      "value": true
+    },
+    {
+      "path": "/settings_templates/report/display_name",
+      "kind": "str",
+      "value": "Report Only"
+    },
+    {
+      "path": "/settings_templates/report/description",
+      "kind": "str",
+      "value": "Read-only validation and export. No modifications."
+    },
+    {
+      "path": "/settings_templates/report/icon",
+      "kind": "str",
+      "value": "description"
+    },
+    {
+      "path": "/settings_templates/report/overrides/poles.spacing_per_cable_size",
+      "kind": "bool",
+      "value": false
+    },
+    {
+      "path": "/settings_templates/report/overrides/poles.override_assemblies",
+      "kind": "bool",
+      "value": false
+    },
+    {
+      "path": "/settings_templates/report/overrides/poles.override_structures",
+      "kind": "bool",
+      "value": false
+    },
+    {
+      "path": "/settings_templates/report/overrides/poles.override_stays",
+      "kind": "bool",
+      "value": false
+    },
+    {
+      "path": "/settings_templates/report/overrides/poles.override_earthing",
+      "kind": "bool",
+      "value": false
+    },
+    {
+      "path": "/settings_templates/report/overrides/poles.override_numbers",
+      "kind": "bool",
+      "value": false
+    },
+    {
+      "path": "/settings_templates/report/overrides/poles.override_lv_topology",
+      "kind": "bool",
+      "value": false
+    },
+    {
+      "path": "/settings_templates/report/overrides/poles.break_suspensions",
+      "kind": "bool",
+      "value": false
+    },
+    {
+      "path": "/settings_templates/report/overrides/spans.regenerate_spans",
+      "kind": "bool",
+      "value": false
+    },
+    {
+      "path": "/settings_templates/report/overrides/service_cables.regenerate_service_cables",
+      "kind": "bool",
+      "value": false
+    },
+    {
+      "path": "/settings_templates/report/overrides/service_cables.extend_m",
+      "kind": "int",
+      "value": 0
+    },
+    {
+      "path": "/settings_templates/report/overrides/customers.override_house_numbers",
+      "kind": "bool",
+      "value": false
+    },
+    {
+      "path": "/settings_templates/report/overrides/validate_network",
+      "kind": "bool",
+      "value": true
+    }
+  ]
+}

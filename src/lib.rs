@@ -1573,8 +1573,18 @@ pub fn transform_style_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValu
     style_authoring::transform_style(input).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
 }
 
+pub mod style_governance;
+pub mod style_history;
 pub mod style_label;
+pub mod style_multiscale;
 pub mod style_plan;
+pub mod style_resolution;
+
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = styleResolve)]
+pub fn style_resolve_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
+    style_resolution::evaluate(input).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
+}
 
 #[cfg(feature = "wasm")]
 #[wasm_bindgen::prelude::wasm_bindgen(js_name = stylePlan)]
@@ -1601,6 +1611,8 @@ pub fn field_domain_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> 
 }
 
 pub mod report_formats;
+pub mod report_messages;
+pub mod report_migrations;
 
 pub mod design_versions;
 pub mod design_versions_headless;

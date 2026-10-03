@@ -148,6 +148,9 @@ pub fn identity() -> sync::Identity {
 /// One local publication of `bytes`, produced by [`BUILD_MANIFEST`].
 pub fn local_row(bytes: &[u8]) -> LocalRow {
     let outputs = vec![LocalOutput {
+        filename: Some("tx_1.xlsx".into()),
+        paper_size: None,
+        presentation: None,
         output_id: "xlsx".into(),
         format: "xlsx".into(),
         content_type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet".into(),

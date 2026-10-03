@@ -17,7 +17,7 @@
 //! named omission.
 
 use super::preview::Refusal;
-use super::{Layout, PrintContextLayer, PrintContextSource, PrintCorridor, PrintStyle};
+use super::{Layout, PrintContextLayer, PrintContextSource, PrintCorridor};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -71,10 +71,10 @@ pub const DERIVED_BUFFER_M: f64 = 200.;
 pub fn default_corridor() -> PrintCorridor {
     PrintCorridor {
         distance_m: 6.,
-        color: "#957197".into(),
-        width_mm: 0.15,
-        opacity: 0.3,
-        dash_mm: vec![2., 1.],
+        color: None,
+        width_mm: None,
+        opacity: None,
+        dash_mm: None,
     }
 }
 
@@ -111,174 +111,66 @@ pub fn derived_layers() -> Vec<PrintContextLayer> {
     ]
 }
 
-#[allow(clippy::too_many_arguments)] // one literal per print style, read like the table it was
-fn style(
-    stroke: &str,
-    width_mm: f64,
-    stroke_opacity: f64,
-    fill: &str,
-    fill_opacity: f64,
-    casing: &str,
-    casing_mm: f64,
-    dash_mm: &[f64],
-    radius_mm: f64,
-    label_field: &str,
-    label_pt: f64,
-) -> PrintStyle {
-    PrintStyle {
-        hatch: None,
-        stroke: stroke.into(),
-        width_mm,
-        stroke_opacity,
-        fill: fill.into(),
-        fill_opacity,
-        casing: casing.into(),
-        casing_mm,
-        dash_mm: dash_mm.to_vec(),
-        radius_mm,
-        label_field: label_field.into(),
-        label_pt,
-        color_field: String::new(),
-        colors: BTreeMap::new(),
-        width_field: String::new(),
-        widths: BTreeMap::new(),
+/// Semantic identity of a held context representation; the API resolver alone
+/// chooses the governed document and revision. Acquisition defaults contain no ink.
+pub fn style_key(
+    entity_class: &str,
+    source_kind: &str,
+    role: &str,
+) -> crate::style_resolution::Key {
+    crate::style_resolution::Key {
+        entity_class: entity_class.into(),
+        source_kind: source_kind.into(),
+        target: crate::style_resolution::Target::Print,
+        role: role.into(),
+        ink: Default::default(),
     }
 }
 
-/// The physical styles a derived source's layers print with when the
-/// template has authored none of its own. Keyed by the expanded layer id.
-pub fn fallback_styles() -> BTreeMap<String, PrintStyle> {
-    BTreeMap::from([
-        (
-            "dsgrid_mv_lines".into(),
-            style(
-                "#b0006d",
-                0.42,
-                0.94,
-                "#ffffff",
-                0.,
-                "#ffffff",
-                0.32,
-                &[6., 1.4, 1.2, 1.4],
-                0.7,
-                "model_label",
-                6.,
-            ),
-        ),
-        (
-            "dsgrid_mv_structures".into(),
-            style(
-                "#7a004c",
-                0.2,
-                1.,
-                "#b0006d",
-                0.78,
-                "#ffffff",
-                0.2,
-                &[],
-                0.9,
-                "label",
-                5.5,
-            ),
-        ),
-        (
-            "dsgrid_mv_angle_points".into(),
-            style(
-                "#7a004c",
-                0.18,
-                1.,
-                "#ffffff",
-                1.,
-                "#ffffff",
-                0.15,
-                &[],
-                0.65,
-                "number",
-                5.5,
-            ),
-        ),
-        (
-            "dsgrid_mv_prohibited_zones".into(),
-            PrintStyle {
-                color_field: "category".into(),
-                colors: BTreeMap::from([
-                    ("road".into(), "#dc2626".into()),
-                    ("wetland".into(), "#0891b2".into()),
-                    ("river".into(), "#2563eb".into()),
-                    ("other".into(), "#b45309".into()),
-                ]),
-                hatch: Some(super::PrintHatch {
-                    color: "#8b8174".into(),
-                    width_mm: 0.08,
-                    spacing_mm: 2.4,
-                    angle_deg: 45.,
-                    match_field: String::new(),
-                    match_values: Vec::new(),
-                }),
-                ..style(
-                    "#8c5b27",
-                    0.24,
-                    0.85,
-                    "#efd6aa",
-                    0.18,
-                    "",
-                    0.,
-                    &[1.5, 0.8],
-                    0.5,
-                    "label",
-                    5.5,
-                )
-            },
-        ),
-        (
-            "buildings_context".into(),
-            style(
-                "#4b5563",
-                0.16,
-                0.72,
-                "#d6d3d1",
-                0.34,
-                "",
-                0.,
-                &[],
-                0.8,
-                "",
-                6.,
-            ),
-        ),
-        (
-            "contours_intermediate".into(),
-            style(
-                "#8b7355",
-                0.13,
-                0.48,
-                "#ffffff",
-                0.,
-                "",
-                0.,
-                &[],
-                0.5,
-                "",
-                6.,
-            ),
-        ),
-        (
-            "contours_index".into(),
-            style(
-                "#6f5539",
-                0.28,
-                0.68,
-                "#ffffff",
-                0.,
-                "#ffffff",
-                0.25,
-                &[],
-                0.5,
-                "contour_label",
-                6.,
-            ),
-        ),
-    ])
+pub fn derived_style_keys() -> BTreeMap<String, crate::style_resolution::Key> {
+    let mut keys = BTreeMap::new();
+    for layer in derived_layers() {
+        for id in expanded_layer_ids(&layer) {
+            let key = match layer.source {
+                PrintContextSource::ProjectDsgridMv { .. } => {
+                    style_key(&id, "project_model", "mv_context")
+                }
+                _ => style_key(&id, "derived_geojson", "context"),
+            };
+            keys.insert(id, key);
+        }
+    }
+    keys
+}
+
+/// Retain explicit authored pens/keys; new choices are semantic keys, never pens.
+pub fn bind_style_keys(layout: &mut Layout, layer: &PrintContextLayer) {
+    for id in expanded_layer_ids(layer) {
+        if layout.styles.contains_key(&id)
+            || layout.style_refs.contains_key(&id)
+            || layout.style_keys.contains_key(&id)
+        {
+            continue;
+        }
+        let key = match &layer.source {
+            PrintContextSource::ProjectDsgridMv { .. } => {
+                style_key(&id, "project_model", "mv_context")
+            }
+            PrintContextSource::Catalog { layer, .. } => {
+                style_key(layer, "cold_existing", "context")
+            }
+            PrintContextSource::LocalLayer { .. } | PrintContextSource::Survey { .. } => {
+                style_key(&id, "live_geojson", "context")
+            }
+            PrintContextSource::GoogleOpenBuildings { .. } => {
+                style_key("buildings_context", "derived_geojson", "context")
+            }
+            PrintContextSource::ElevationContours { .. } => {
+                style_key(&id, "derived_geojson", "context")
+            }
+        };
+        layout.style_keys.insert(id, key);
+    }
 }
 
 /// The print layer ids one context source expands into. A source that
@@ -288,10 +180,16 @@ pub fn expanded_layer_ids(layer: &PrintContextLayer) -> Vec<String> {
         PrintContextSource::ElevationContours { .. } => {
             vec!["contours_intermediate".into(), "contours_index".into()]
         }
-        PrintContextSource::ProjectDsgridMv { .. } => super::map::MV_PRINT_LAYER_IDS
-            .iter()
-            .map(|id| (*id).to_owned())
-            .collect(),
+        PrintContextSource::ProjectDsgridMv { ref corridor, .. } => {
+            let mut ids = super::map::MV_PRINT_LAYER_IDS
+                .iter()
+                .map(|id| (*id).to_owned())
+                .collect::<Vec<_>>();
+            if corridor.is_some() {
+                ids.push("dsgrid_mv_corridor".into());
+            }
+            ids
+        }
         _ => vec![layer.id.clone()],
     }
 }
@@ -406,18 +304,9 @@ pub fn catalog(resources: &[CatalogResource]) -> Result<Vec<CatalogRow>, String>
         .collect()
 }
 
-fn seed_styles(layout: &mut Layout, layer: &PrintContextLayer) {
-    let fallbacks = fallback_styles();
-    for id in expanded_layer_ids(layer) {
-        if let Some(fallback) = fallbacks.get(&id) {
-            layout.styles.entry(id).or_insert_with(|| fallback.clone());
-        }
-    }
-}
-
 /// The selection a new project template starts with: every default-on
-/// catalogue dataset, then the derived sources, with fallback styles seeded
-/// wherever the template has authored none. Existing styles are kept.
+/// catalogue dataset, then the derived sources, with governed semantic keys bound
+/// wherever the template has authored none. Existing choices are kept.
 pub fn default_selection(
     mut layout: Layout,
     resources: &[CatalogResource],
@@ -430,7 +319,7 @@ pub fn default_selection(
         .collect();
     context_layers.extend(derived_layers());
     for layer in &context_layers {
-        seed_styles(&mut layout, layer);
+        bind_style_keys(&mut layout, layer);
     }
     layout.context_layers = context_layers;
     super::validate(&layout)?;
@@ -440,7 +329,7 @@ pub fn default_selection(
 /// Switch one context layer on or off. Enabling a catalogue layer needs its
 /// dataset held or fetchable — unless it is already selected, in which case
 /// the operator may always switch it off and on again without losing it.
-/// Enabling a derived source seeds the fallback styles of the layers it
+/// Enabling a derived source binds governed keys for the layers it
 /// prints as. Enabling also shows those layers: an explicit `visible: false`
 /// the layout carried is cleared, because switching a source on means the
 /// operator wants to see it — otherwise it is acquired and never drawn.
@@ -460,7 +349,7 @@ pub fn toggle(
     }
     layout.context_layers.retain(|row| row.id != layer.id);
     if enabled {
-        seed_styles(&mut layout, &layer);
+        bind_style_keys(&mut layout, &layer);
         for id in expanded_layer_ids(&layer) {
             if let Some(style) = layout.style_overrides.get_mut(&id) {
                 if style.visible == Some(false) {
@@ -643,7 +532,7 @@ pub fn omission_refusal(layer: &PrintContextLayer, reason: &str) -> Refusal {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::printing::default_layout;
+    use crate::printing::{default_layout, PrintStyle};
 
     fn resource(
         layer: &str,
@@ -679,19 +568,20 @@ mod tests {
     }
 
     #[test]
-    fn every_expanded_layer_of_a_derived_source_has_a_fallback_style() {
-        let fallbacks = fallback_styles();
+    fn every_expanded_layer_of_a_derived_source_has_an_exact_key_without_pens() {
+        let keys = derived_style_keys();
         for layer in derived_layers() {
             for id in expanded_layer_ids(&layer) {
-                assert!(fallbacks.contains_key(&id), "{id}");
+                assert!(keys.contains_key(&id), "{id}");
+                keys[&id].validate().unwrap();
+                assert_eq!(keys[&id].target, crate::style_resolution::Target::Print);
             }
         }
-        assert_eq!(fallbacks.len(), 7);
-        assert_eq!(
-            fallbacks["dsgrid_mv_lines"].dash_mm,
-            vec![6., 1.4, 1.2, 1.4]
-        );
-        assert_eq!(fallbacks["contours_index"].label_field, "contour_label");
+        assert_eq!(keys.len(), 8);
+        assert_eq!(keys["dsgrid_mv_lines"].source_kind, "project_model");
+        assert_eq!(keys["contours_index"].source_kind, "derived_geojson");
+        let value = serde_json::to_value(default_corridor()).unwrap();
+        assert_eq!(value, serde_json::json!({"distance_m":6.}));
     }
 
     #[test]
@@ -792,8 +682,8 @@ mod tests {
             "authored styles are kept"
         );
         assert_eq!(
-            out.styles["dsgrid_mv_lines"].stroke, "#b0006d",
-            "missing styles are seeded"
+            out.style_keys["dsgrid_mv_lines"].source_kind, "project_model",
+            "missing choices are governed keys"
         );
     }
 
@@ -860,14 +750,19 @@ mod tests {
     }
 
     #[test]
-    fn enabling_a_derived_source_seeds_its_expanded_styles_once() {
+    fn enabling_a_derived_source_binds_its_expanded_style_keys_once() {
         let contours = derived_layers().remove(2);
         let out = toggle(default_layout(), contours.clone(), true, None).unwrap();
-        assert!(out.styles.contains_key("contours_intermediate"));
-        assert!(out.styles.contains_key("contours_index"));
+        assert!(out.styles.is_empty());
+        for id in ["contours_intermediate", "contours_index"] {
+            assert_eq!(
+                out.style_keys[id],
+                style_key(id, "derived_geojson", "context")
+            );
+        }
         let again = toggle(out.clone(), contours, true, None).unwrap();
         assert_eq!(again.context_layers.len(), 1);
-        assert_eq!(again.styles.len(), out.styles.len());
+        assert_eq!(again.style_keys, out.style_keys);
     }
 
     fn collection() -> Value {
@@ -899,10 +794,10 @@ mod tests {
                 buffer_m: 150.5,
                 corridor: Some(super::super::PrintCorridor {
                     distance_m: 20.,
-                    color: "#ff0000".into(),
-                    width_mm: 0.3,
-                    opacity: 0.5,
-                    dash_mm: vec![],
+                    color: Some("#ff0000".into()),
+                    width_mm: Some(0.3),
+                    opacity: Some(0.5),
+                    dash_mm: Some(vec![]),
                 }),
             },
         };

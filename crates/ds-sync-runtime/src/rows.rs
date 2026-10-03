@@ -9,7 +9,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use ds_command_kernel::sync;
 use ds_command_kernel::sync_store as store;
 use serde::Serialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 /// The plan-and-receipts envelope this runtime answers with.
 pub const SCHEMA: &str = "ds.sync-run/v1";
@@ -68,6 +68,9 @@ impl LocalRow {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct LocalOutput {
+    pub filename: Option<String>,
+    pub paper_size: Option<String>,
+    pub presentation: Option<serde_json::Value>,
     pub output_id: String,
     pub format: String,
     pub content_type: String,
@@ -269,7 +272,11 @@ impl SyncRun {
             self.receipts.len(),
             if self.receipts.len() == 1 { "" } else { "s" },
             self.reclaimed.batches,
-            if self.reclaimed.batches == 1 { "" } else { "es" },
+            if self.reclaimed.batches == 1 {
+                ""
+            } else {
+                "es"
+            },
         ))
     }
 }
@@ -438,13 +445,23 @@ pub fn open_declaration(project: &str, row: &LocalRow) -> Value {
         "outputs": row
             .outputs
             .iter()
-            .map(|output| json!({
-                "output_id": output.output_id,
-                "format": output.format,
-                "content_type": output.content_type,
-                "sha256": output.sha256,
-                "size_bytes": output.size_bytes,
-            }))
+            .map(|output| {
+                let mut declaration = json!({
+                    "output_id": output.output_id,
+                    "format": output.format,
+                    "content_type": output.content_type,
+                    "sha256": output.sha256,
+                    "size_bytes": output.size_bytes,
+                });
+                for (key, value) in [
+                    ("filename", output.filename.as_ref().map(|v| json!(v))),
+                    ("paper_size", output.paper_size.as_ref().map(|v| json!(v))),
+                    ("presentation", output.presentation.clone()),
+                ] {
+                    if let Some(value) = value { declaration[key] = value; }
+                }
+                declaration
+            })
             .collect::<Vec<_>>(),
     })
 }
@@ -491,6 +508,9 @@ pub fn store_row(project: &str, row: &LocalRow, now: u64) -> store::ArtifactRow 
             .outputs
             .iter()
             .map(|output| store::ArtifactOutput {
+                filename: output.filename.clone(),
+                paper_size: output.paper_size.clone(),
+                presentation: output.presentation.clone(),
                 output_id: output.output_id.clone(),
                 format: output.format.clone(),
                 content_type: output.content_type.clone(),
@@ -531,6 +551,9 @@ pub fn local_row_from_store(row: &store::ArtifactRow) -> LocalRow {
             .outputs
             .iter()
             .map(|output| LocalOutput {
+                filename: output.filename.clone(),
+                paper_size: output.paper_size.clone(),
+                presentation: output.presentation.clone(),
                 output_id: output.output_id.clone(),
                 format: output.format.clone(),
                 content_type: output.content_type.clone(),
@@ -620,5 +643,26 @@ pub fn receipt_row(project: &str, receipt: &Receipt, now: u64) -> store::Receipt
         head_counter: receipt.head_revision,
         committed_bytes: receipt.bytes.or((transferred > 0).then_some(transferred)),
         at_ms: now,
+    }
+}
+
+#[cfg(test)]
+mod printing_metadata_tests {
+    use super::*;
+    #[test]
+    fn durable_report_open_keeps_native_filename_paper_and_presentation() {
+        let mut row = crate::fakes::local_row(b"sealed print bytes");
+        row.outputs[0].filename = Some("Tx_1.governed.pdf".into());
+        row.outputs[0].format = "pdf__governed".into();
+        row.outputs[0].content_type = "application/pdf".into();
+        row.outputs[0].paper_size = Some("A0".into());
+        row.outputs[0].presentation = Some(json!({"layout_id":"governed","layout_name":"Governed","paper_name":"A0","orientation":"landscape","page_mm":[1189,841]}));
+        let stored = store_row("project-1", &row, 1);
+        let restored = local_row_from_store(&stored);
+        assert_eq!(restored.outputs, row.outputs);
+        let open = open_declaration("project-1", &restored);
+        assert_eq!(open["outputs"][0]["filename"], "Tx_1.governed.pdf");
+        assert_eq!(open["outputs"][0]["paper_size"], "A0");
+        assert_eq!(open["outputs"][0]["presentation"], row.outputs[0].presentation.clone().unwrap());
     }
 }

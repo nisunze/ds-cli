@@ -16,7 +16,7 @@
 
 use crate::sync::{Identity, Trigger};
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
 pub const SCHEMA: &str = "ds.sync-store/v1";
@@ -77,6 +77,12 @@ impl ArtifactState {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ArtifactOutput {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub filename: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub paper_size: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub presentation: Option<serde_json::Value>,
     pub output_id: String,
     #[serde(default)]
     pub format: String,
@@ -1117,6 +1123,9 @@ mod tests {
             client_publish_id: key.into(),
             acknowledged_work_id: None,
             outputs: vec![ArtifactOutput {
+                filename: None,
+                paper_size: None,
+                presentation: None,
                 output_id: "xlsx".into(),
                 format: "xlsx".into(),
                 content_type: "application/octet-stream".into(),
@@ -1321,10 +1330,12 @@ mod tests {
                 1,
                 "attempt remains audit evidence"
             );
-            assert!(!transition
-                .changes
-                .iter()
-                .any(|change| matches!(change, RowChange::UpsertHead(_))));
+            assert!(
+                !transition
+                    .changes
+                    .iter()
+                    .any(|change| matches!(change, RowChange::UpsertHead(_)))
+            );
             assert!(transition.plan_trigger.is_none());
         }
         let transition = apply(&request(
@@ -1460,15 +1471,17 @@ mod tests {
         ))
         .unwrap();
         assert_eq!(renew_dead.refusals[0].code, "lease_expired");
-        assert!(apply(&request(
-            Snapshot::default(),
-            Event::LeaseTake {
-                scope: scope(),
-                worker_id: "w1".into(),
-                ttl_ms: LEASE_TTL_MAX_MS + 1
-            }
-        ))
-        .is_err());
+        assert!(
+            apply(&request(
+                Snapshot::default(),
+                Event::LeaseTake {
+                    scope: scope(),
+                    worker_id: "w1".into(),
+                    ttl_ms: LEASE_TTL_MAX_MS + 1
+                }
+            ))
+            .is_err()
+        );
     }
 
     #[test]

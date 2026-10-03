@@ -74,6 +74,9 @@ pub struct SealRequest<'a> {
 /// sealed at completion and a row adopted later are the same row.
 pub fn row_of(request: &SealRequest<'_>) -> Result<LocalRow, String> {
     let outputs = vec![LocalOutput {
+        filename: None,
+        paper_size: None,
+        presentation: None,
         output_id: OUTPUT_ID.into(),
         format: "json".into(),
         content_type: "application/json".into(),

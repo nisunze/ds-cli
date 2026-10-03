@@ -1,6 +1,6 @@
 //! Published artifact declarations and canonical names shared by every client.
 //! The host transports responses; it never invents formats or drops layout metadata.
-use crate::printing::{validate_artifact_presentation, ArtifactPresentation};
+use crate::printing::{ArtifactPresentation, validate_artifact_presentation};
 use crate::report_export::exact_lower_sha256;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
@@ -8,6 +8,9 @@ use std::collections::{BTreeMap, BTreeSet};
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 pub struct Declaration {
     pub output_id: String,
+    /// Exact native report receipt name; older report declarations require migration.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub filename: Option<String>,
     pub format: String,
     pub content_type: String,
     pub sha256: String,
@@ -239,13 +242,23 @@ fn mime(format: &str) -> Option<&'static str> {
     })
 }
 pub fn validate(engine: &str, output: &Declaration) -> Result<(), String> {
-    let content_type = mime(&output.format).or_else(|| {
-        (engine == "network_reporter")
-            .then(|| crate::report_formats::output(&output.format).ok())
-            .flatten()
+    let content_type = if engine == "network_reporter" {
+        crate::report_formats::output(&output.format)
+            .ok()
             .map(|value| value.content_type)
-    });
-    if !id(&output.output_id)
+    } else {
+        mime(&output.format)
+    };
+    if (engine == "network_reporter"
+        && !output.filename.as_deref().is_some_and(|name| {
+            !name.is_empty()
+                && name.len() <= 255
+                && !name.contains(['/', '\\'])
+                && !name.chars().any(char::is_control)
+                && name != "."
+                && name != ".."
+        }))
+        || !id(&output.output_id)
         || content_type != Some(output.content_type.as_str())
         || output.sha256.len() != 64
         || !output
@@ -281,32 +294,11 @@ pub fn filename(engine: &str, operation: &str, output: &Declaration) -> String {
     } else {
         &output.output_id
     };
-    if engine == "network_reporter"
-        && crate::report_formats::named_print_output(&output.format).is_some()
-    {
-        // The print-format owner already owns the layout suffix and media type.
-        return format!(
-            "{stem}{}",
-            crate::report_formats::output(&output.format)
-                .expect("validated format")
-                .suffix
-        );
+    if engine == "network_reporter" {
+        return crate::report_formats::report_filename(stem, &output.format)
+            .expect("validated report format");
     }
-    if engine == "network_reporter" && output.format == "geojsonseq" {
-        return format!("{stem}_geojsonl.zip");
-    }
-    if engine == "network_reporter" && output.format == "voltage_drop_pdf" {
-        return crate::report_formats::voltage_drop_pdf_filename(stem);
-    }
-    let extension = match output.format.as_str() {
-        "pdf_a0" => "a0.pdf",
-        "pdf_a3" => "a3.pdf",
-        "shp" => "shp.zip",
-        "geojsonzip" => "geojson.zip",
-        "geojsonseq" => "geojsonl.zip",
-        value => value,
-    };
-    format!("{stem}.{extension}")
+    format!("{stem}.{}", output.format)
 }
 pub fn evaluate(input: &[u8]) -> Result<String, String> {
     if input.is_empty() || input.len() > 512 * 1024 {
@@ -329,7 +321,11 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
         if !ids.insert(&output.output_id) {
             return Err("Duplicate artifact output identity.".into());
         }
-        file_names.push(filename(&request.engine, &request.operation, output));
+        let canonical = filename(&request.engine, &request.operation, output);
+        if request.engine == "network_reporter" && output.filename.as_deref() != Some(&canonical) {
+            return Err("Native report filename differs from the kernel naming contract.".into());
+        }
+        file_names.push(canonical);
     }
     if let Some(download) = &request.download {
         validate(&request.engine, &download.output)?;
@@ -392,7 +388,7 @@ mod tests {
     }
 
     fn reporter_head() -> serde_json::Value {
-        let output = |id: &str, mime: &str| json!({"output_id":id, "format":id, "content_type":mime, "sha256":"b".repeat(64), "size_bytes":7});
+        let output = |id: &str, mime: &str| json!({"filename":crate::report_formats::report_filename("agasharu",id).unwrap(), "output_id":id, "format":id, "content_type":mime, "sha256":"b".repeat(64), "size_bytes":7});
         json!({"work_id":"work_next", "engine":"network_reporter", "engine_version":"ds-network-reporter@0.2.0",
             "engine_build_manifest_sha256":"e".repeat(64), "operation":"export-agasharu", "variant":"default",
             "input_base_fingerprint":"a".repeat(64), "head_revision":2, "updated_at":"2026-09-18T01:00:00Z",
@@ -428,11 +424,12 @@ mod tests {
         prior["output_origins"]["xlsx"] =
             json!({"work_id":"work_prior", "input_base_fingerprint":"f".repeat(64)});
         let head = decode_head(&serde_json::to_vec(&prior).unwrap()).unwrap();
-        assert!(head
-            .output_origin("xlsx")
-            .unwrap()
-            .engine_build_manifest_sha256
-            .is_none());
+        assert!(
+            head.output_origin("xlsx")
+                .unwrap()
+                .engine_build_manifest_sha256
+                .is_none()
+        );
     }
 
     #[test]
@@ -451,14 +448,18 @@ mod tests {
         assert_eq!(wire, legacy, "an older head projects exactly as before");
         let head = decode_head(projected.as_bytes()).unwrap();
         assert!(head.output_origins.is_none());
-        assert!(["xlsx", "gpkg"]
-            .iter()
-            .all(|id| head.output_origin(id).is_none()));
+        assert!(
+            ["xlsx", "gpkg"]
+                .iter()
+                .all(|id| head.output_origin(id).is_none())
+        );
         legacy["output_origins"] = json!(null);
-        assert!(decode_head(&serde_json::to_vec(&legacy).unwrap())
-            .unwrap()
-            .output_origin("xlsx")
-            .is_none());
+        assert!(
+            decode_head(&serde_json::to_vec(&legacy).unwrap())
+                .unwrap()
+                .output_origin("xlsx")
+                .is_none()
+        );
     }
 
     #[test]
@@ -526,14 +527,14 @@ mod tests {
     }
     #[test]
     fn named_prints_keep_metadata_and_canonical_names() {
-        for (format, mime, suffix) in [
+        for (format, mime, _suffix) in [
             ("pdf", "application/pdf", "pdf"),
             ("png", "image/png", "png"),
             ("jpeg", "image/jpeg", "jpg"),
         ] {
-            let output = json!({"output_id":format!("{format}__huye"),"format":format!("{format}__huye"),"content_type":mime,"sha256":"b".repeat(64),"size_bytes":123,
+            let output = json!({"filename":crate::report_formats::report_filename("agasharu", &format!("{format}__huye")).unwrap(), "output_id":format!("{format}__huye"),"format":format!("{format}__huye"),"content_type":mime,"sha256":"b".repeat(64),"size_bytes":123,
                 "paper_size":"A0","presentation":{"layout_id":"huye","layout_name":"Huye","paper_name":"A0","orientation":"landscape","page_mm":[1189,841]}});
-            let mut input = json!({"engine":"network_reporter","operation":"export-agasharu","outputs":[output.clone()],"download":{"output":output,"file_name":format!("agasharu.huye.{suffix}")}});
+            let mut input = json!({"engine":"network_reporter","operation":"export-agasharu","outputs":[output.clone()],"download":{"output":output,"file_name":crate::report_formats::report_filename("agasharu", &format!("{format}__huye")).unwrap()}});
             let result: serde_json::Value =
                 serde_json::from_str(&evaluate(&serde_json::to_vec(&input).unwrap()).unwrap())
                     .unwrap();
@@ -542,21 +543,25 @@ mod tests {
                 "landscape"
             );
             input["download"]["output"]["presentation"]["layout_name"] = json!("Changed");
-            assert!(evaluate(&serde_json::to_vec(&input).unwrap())
-                .unwrap_err()
-                .contains("download projection"));
+            assert!(
+                evaluate(&serde_json::to_vec(&input).unwrap())
+                    .unwrap_err()
+                    .contains("download projection")
+            );
         }
     }
     #[test]
     fn refuses_duplicate_identity_invalid_layout_and_filename() {
-        let output = json!({"output_id":"pdf__huye","format":"pdf__huye","content_type":"application/pdf","sha256":"b".repeat(64),"size_bytes":123});
+        let output = json!({"filename":"Agasharu.huye.pdf","output_id":"pdf__huye","format":"pdf__huye","content_type":"application/pdf","sha256":"b".repeat(64),"size_bytes":123});
         let mut input = json!({"engine":"network_reporter","operation":"export-agasharu","outputs":[output.clone(),output.clone()]});
         assert!(evaluate(&serde_json::to_vec(&input).unwrap()).is_err());
         input["outputs"] = json!([output.clone()]);
         input["download"] = json!({"output":output,"file_name":"../agasharu.pdf"});
-        assert!(evaluate(&serde_json::to_vec(&input).unwrap())
-            .unwrap_err()
-            .contains("file_name"));
+        assert!(
+            evaluate(&serde_json::to_vec(&input).unwrap())
+                .unwrap_err()
+                .contains("file_name")
+        );
         input["outputs"][0]["paper_size"] = json!("A0");
         input["outputs"][0]["presentation"] = json!({"layout_id":"other","layout_name":"Wrong","paper_name":"A0","orientation":"landscape","page_mm":[1189,841]});
         assert!(evaluate(&serde_json::to_vec(&input).unwrap()).is_err());

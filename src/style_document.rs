@@ -175,6 +175,9 @@ pub fn validate_publish_payload(payload: &Value) -> Result<(), String> {
                 .is_some_and(|fields| fields.iter().all(Value::is_string)),
             "field_values" => value.is_object(),
             "create_only" => value.is_boolean(),
+            "expected_style_sha256" => value.as_str().is_some_and(|digest| {
+                digest.len() == 64 && digest.bytes().all(|c| c.is_ascii_hexdigit())
+            }),
             other => return Err(format!("unknown style payload field {other}")),
         };
         if !acceptable {

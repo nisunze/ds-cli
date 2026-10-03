@@ -296,7 +296,7 @@ mod tests {
             outputs.push(PublicationOutput {
                 output_id: (*id).into(),
                 locator,
-                filename: format!("tx_1{}", metadata.suffix),
+                filename: ds_command_kernel::report_formats::report_filename("tx_1", &metadata.format).unwrap(),
                 format: metadata.format,
                 content_type: metadata.content_type.into(),
                 sha256,
@@ -367,6 +367,9 @@ mod tests {
                 .outputs
                 .iter()
                 .map(|output| ArtifactOutput {
+                    filename: Some(output.filename.clone()),
+                    paper_size: output.paper_size.clone(),
+                    presentation: output.presentation.as_ref().map(|p| serde_json::json!(p)),
                     output_id: output.output_id.clone(),
                     format: output.format.clone(),
                     content_type: output.content_type.clone(),
@@ -406,11 +409,13 @@ mod tests {
         assert_eq!(view["published_output_count"], 0);
         assert_eq!(view["active_client_publish_id"], recent.client_publish_id);
         assert!(view["generated_at_ms"].is_null());
-        assert!(view["outputs"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .all(|r| r["generated_at_ms"].is_null()));
+        assert!(
+            view["outputs"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|r| r["generated_at_ms"].is_null())
+        );
         assert!(snapshot.sync_artifacts[0].acknowledged_work_id.is_none());
         assert_eq!(
             std::fs::read(
@@ -501,17 +506,19 @@ mod tests {
         )
         .unwrap();
         assert!(historical.sync_artifacts[0].acknowledged_work_id.is_none());
-        assert!(store
-            .apply(
-                &fence,
-                3,
-                Event::ActionReceipt {
-                    receipt: acknowledgement
-                }
-            )
-            .unwrap()
-            .refusals
-            .is_empty());
+        assert!(
+            store
+                .apply(
+                    &fence,
+                    3,
+                    Event::ActionReceipt {
+                        receipt: acknowledgement
+                    }
+                )
+                .unwrap()
+                .refusals
+                .is_empty()
+        );
         drop(store);
         let stored = ds_sync_store::Store::open_read_only(&database)
             .unwrap()
@@ -553,6 +560,7 @@ mod tests {
                     .iter()
                     .map(|output| Declaration {
                         output_id: output.output_id.clone(),
+                        filename: Some(output.filename.clone()),
                         format: output.format.clone(),
                         content_type: output.content_type.clone(),
                         sha256: output.sha256.clone(),
@@ -591,8 +599,7 @@ mod tests {
             origin.work_id = "other-work".into();
         }
         assert_eq!(
-            serde_json::to_value(report::inventory::project(&snapshot).unwrap()).unwrap()
-                ["published_output_count"],
+            serde_json::to_value(report::inventory::project(&snapshot).unwrap()).unwrap()["published_output_count"],
             0
         );
         // Full native declaration validation also fences the ACK itself.
@@ -602,8 +609,7 @@ mod tests {
             read_snapshot(&artifact_root, "owner-1", "project-1", "tx_1", &unpinned).unwrap();
         assert!(snapshot.sync_artifacts[0].acknowledged_work_id.is_none());
         assert_eq!(
-            serde_json::to_value(report::inventory::project(&snapshot).unwrap()).unwrap()
-                ["published_output_count"],
+            serde_json::to_value(report::inventory::project(&snapshot).unwrap()).unwrap()["published_output_count"],
             0
         );
         let mut wrong_engine = stored.clone();
@@ -697,8 +703,8 @@ mod tests {
         let snapshot =
             read_snapshot(&fixture.0, "owner-1", "project-1", "tx_1", &[stored]).unwrap();
         assert_eq!(
-            serde_json::to_value(report::inventory::project(&snapshot).unwrap()).unwrap()
-                ["outputs"][0]["publication_phase"],
+            serde_json::to_value(report::inventory::project(&snapshot).unwrap()).unwrap()["outputs"]
+                [0]["publication_phase"],
             json!("conflicted")
         );
     }
@@ -718,22 +724,26 @@ mod tests {
         };
         let database = fixture.0.join("store.sqlite");
         let mut store = ds_sync_store::Store::open(&database).unwrap();
-        assert!(store
-            .apply(&fence, 1, Event::LocalProduced { row: row(&old) })
-            .unwrap()
-            .refusals
-            .is_empty());
+        assert!(
+            store
+                .apply(&fence, 1, Event::LocalProduced { row: row(&old) })
+                .unwrap()
+                .refusals
+                .is_empty()
+        );
         let first = store.snapshot(&fence, &scope).unwrap().artifacts;
         let recent = commit(
             &artifact_root,
             'b',
             &["xlsx", "geojson", "pdf__a3l", "pdf__a0l"],
         );
-        assert!(store
-            .apply(&fence, 2, Event::LocalProduced { row: row(&recent) })
-            .unwrap()
-            .refusals
-            .is_empty());
+        assert!(
+            store
+                .apply(&fence, 2, Event::LocalProduced { row: row(&recent) })
+                .unwrap()
+                .refusals
+                .is_empty()
+        );
         drop(store);
         let current = ds_sync_store::Store::open_read_only(&database)
             .unwrap()
@@ -752,9 +762,11 @@ mod tests {
         let view = serde_json::to_value(report::inventory::project(&snapshot).unwrap()).unwrap();
         let outputs = view["outputs"].as_array().unwrap();
         assert_eq!(outputs.len(), 6);
-        assert!(outputs
-            .iter()
-            .all(|output| output["publication_phase"] == "queued"));
+        assert!(
+            outputs
+                .iter()
+                .all(|output| output["publication_phase"] == "queued")
+        );
         for output in outputs {
             let prior = matches!(output["output_id"].as_str().unwrap(), "shp" | "kmz");
             assert_eq!(

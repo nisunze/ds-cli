@@ -22,7 +22,7 @@ fn refused(mut input: Value) {
 fn cloud(input: &Value) -> Value {
     let set = &input["snapshot"]["local_sets"][0];
     let outputs = set["artifacts"].as_array().unwrap().iter().map(|artifact| json!({
-        "output_id":artifact["outputId"], "format":artifact["format"], "content_type":artifact["contentType"],
+        "filename":ds_command_kernel::report_formats::report_filename(set["transformer"].as_str().unwrap(),artifact["format"].as_str().unwrap()).unwrap(), "output_id":artifact["outputId"], "format":artifact["format"], "content_type":artifact["contentType"],
         "sha256":artifact["sha256"], "size_bytes":artifact["sizeBytes"],
         "paper_size":artifact.get("paperSize"),"presentation":artifact.get("presentation")
     })).collect::<Vec<_>>();

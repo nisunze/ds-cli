@@ -6,7 +6,7 @@ pub mod failure;
 mod tests;
 mod transition;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 #[derive(Debug, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
@@ -131,6 +131,7 @@ fn declaration(value: &Value) -> Value {
     let mut result = json!({});
     for key in [
         "output_id",
+        "filename",
         "format",
         "content_type",
         "sha256",
@@ -211,6 +212,21 @@ fn opening(row: &mut Value) -> Result<Effect> {
                 .map_err(|_| failed("Publication output declaration is incomplete."))?;
         crate::compute_artifact_inventory::validate(text(row, "engine"), &declaration)
             .map_err(failed)?;
+        if text(row, "engine") == "network_reporter"
+            && declaration.filename.as_deref()
+                != Some(
+                    crate::compute_artifact_inventory::filename(
+                        text(row, "engine"),
+                        text(row, "operation"),
+                        &declaration,
+                    )
+                    .as_str(),
+                )
+        {
+            return Err(failed(
+                "Native report filename differs from the kernel naming contract.",
+            ));
+        }
     }
     row["phase"] = json!("opening");
     let mut request = json!({});
