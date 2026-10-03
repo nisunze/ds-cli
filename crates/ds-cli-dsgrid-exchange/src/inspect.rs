@@ -136,6 +136,8 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
                 "members": candidate.member_count,
                 "version_evidence": candidate.version_evidence,
                 "units_evidence": candidate.units_evidence,
+                "pls_export_context": candidate.pls_export_context,
+                "pls_export_refusal": candidate.pls_export_refusal,
                 "counts": candidate.counts,
                 "gis_layers": candidate.gis_layers,
             })
@@ -187,6 +189,30 @@ pub fn render(data: &Value) -> String {
             if let Some(evidence) = source[key].as_str() {
                 out.push_str(&format!("  {:<28} {key}: {evidence}\n", ""));
             }
+        }
+        if let Some(member) = source["pls_export_context"]["source_member"].as_str() {
+            out.push_str(&format!(
+                "  {:<28} native source: {member} PLS-CADD {} / DON {} ({})\n",
+                "",
+                source["pls_export_context"]["source_program_version"]
+                    .as_str()
+                    .unwrap_or("undeclared"),
+                source["pls_export_context"]["source_don_version"]
+                    .as_str()
+                    .unwrap_or("undeclared"),
+                source["pls_export_context"]["source_member_digest"]
+                    .as_str()
+                    .unwrap_or(""),
+            ));
+        }
+        if let Some(detail) = source["pls_export_refusal"]["detail"].as_str() {
+            out.push_str(&format!(
+                "  {:<28} native export refused: {detail}; remedy: {}\n",
+                "",
+                source["pls_export_refusal"]["remedy"]
+                    .as_str()
+                    .unwrap_or("")
+            ));
         }
         for layer in source["gis_layers"].as_array().into_iter().flatten() {
             out.push_str(&format!(
