@@ -1121,6 +1121,11 @@ pub fn engine_request(plan: &ExportPlan, staged: &StagedInputs<'_>) -> Result<Va
     request.insert("transformer".into(), json!(plan.transformer));
     request.insert("out_dir".into(), json!(staged.out_dir));
     request.insert("country".into(), json!(plan.country));
+    if let Some(recipe) = &plan.local_print_recipe {
+        if recipe.preview.is_some() {
+            request.insert("local_print_recipe".into(), json!(recipe));
+        }
+    }
     if let Some((path, digest)) = staged.admin_bounds {
         request.insert("admin_bounds_asset".into(), json!(path));
         request.insert("admin_bounds_sha256".into(), json!(digest));

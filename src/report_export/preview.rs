@@ -107,6 +107,28 @@ pub(super) fn plan_outputs(
     Ok(outputs)
 }
 
+/// Admit the engine transport of a local preview without passing its SVG
+/// through the delivery-only output normalizer. The staged policy, exact
+/// requested format and pinned layout must describe the same one page.
+pub fn engine_outputs(
+    sheets: &Value,
+    formats: &[String],
+    provenance: &proof::Provenance,
+) -> Result<Vec<report_formats::Output>, String> {
+    if !exact_lower_sha256(&provenance.source_sheets_sha256) {
+        return Err("An authoring preview requires its source receipt digest".into());
+    }
+    let outputs = plan_outputs(sheets, None, provenance)?;
+    if outputs
+        .iter()
+        .map(|output| &output.format)
+        .ne(formats.iter())
+    {
+        return Err("An authoring preview request differs from its exact page selection".into());
+    }
+    Ok(outputs)
+}
+
 /// The receipt for one draft layout as the shared preview page.
 pub fn with_layout(source: &InputReceipt, layout: &Layout) -> Result<Preview, String> {
     source.validate()?;
@@ -233,6 +255,17 @@ mod tests {
         assert_eq!(plan[0].output_id, "svg__draft-a3");
         assert_eq!(plan[0].content_type, "image/svg+xml");
         assert_eq!(plan[0].suffix, ".draft-a3.svg");
+        assert_eq!(
+            engine_outputs(&sheets, &[preview.output_id.clone()], recipe).unwrap(),
+            plan
+        );
+        assert!(engine_outputs(&sheets, &["xlsx".into()], recipe).is_err());
+        let mut changed = recipe.clone();
+        changed.source_sheets_sha256 = "A".repeat(64);
+        assert!(
+            engine_outputs(&sheets, &[preview.output_id.clone()], &changed)
+                .is_err_and(|error| error.contains("source receipt digest"))
+        );
         // A delivery planner cannot claim this caller-authored SVG list is an
         // authoring preview: delivery still includes the saved analysis.
         let policy = report_formats::plan(&sheets, false).unwrap();
@@ -431,6 +464,10 @@ mod tests {
         assert_eq!(
             engine_request(&plan, &inputs).unwrap()["formats"],
             json!([format!("svg__{}", layout.id)])
+        );
+        assert_eq!(
+            engine_request(&plan, &inputs).unwrap()["local_print_recipe"],
+            json!(preview.receipt.local_print_recipe)
         );
         assert_eq!(
             publication_facts(
