@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::BTreeMap;
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct PrintScaling {
     pub reference_paper: String,
@@ -13,7 +13,7 @@ pub struct PrintScaling {
     pub factors: BTreeMap<String, f64>,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum PrintUnits {
     CssPx,
