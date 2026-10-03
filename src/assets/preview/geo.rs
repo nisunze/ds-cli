@@ -159,6 +159,8 @@ fn shapefile(bytes: &[u8], request: &PreviewRequest) -> Result<PreviewDoc, Strin
 fn handed_to_ds_io(request: &PreviewRequest) -> Result<PreviewDoc, String> {
     let mut doc = PreviewDoc::new(request.format);
     doc.notes.push(handoff_note(request.format));
+    doc.notes
+        .push("KML styling and embedded icons are preserved when opened as a map layer.".into());
     doc.blocks.push(Block::Geo {
         decoder: DS_IO.to_string(),
         member: request.member.clone(),
