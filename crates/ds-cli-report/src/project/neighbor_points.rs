@@ -17,33 +17,51 @@ pub(super) const LAYER: &str = "neighbor_transformers";
 pub(super) fn selected(
     receipt: &ds_command_kernel::report_export::InputReceipt,
     held_setups: &[Value],
+    selection: &ds_command_kernel::report_formats::DesignOutputSelection,
 ) -> Result<bool, String> {
     let sheets = receipt.sheets()?;
     let setups = sheets["printing_setups"]
         .as_array()
         .map_or(held_setups, Vec::as_slice);
-    Ok(setups.iter().any(|setup| {
-        setup["layout"]["style_refs"][LAYER]
-            .as_str()
-            .is_some_and(|reference| !reference.is_empty())
-    }))
+    Ok(setups
+        .iter()
+        .filter(|setup| selected_setup(setup, selection))
+        .any(|setup| {
+            setup["layout"]["style_refs"][LAYER]
+                .as_str()
+                .is_some_and(|reference| !reference.is_empty())
+        }))
 }
 
 pub(super) fn networks_selected(
     receipt: &ds_command_kernel::report_export::InputReceipt,
     held_setups: &[Value],
+    selection: &ds_command_kernel::report_formats::DesignOutputSelection,
 ) -> Result<bool, String> {
     let sheets = receipt.sheets()?;
     let setups = sheets["printing_setups"]
         .as_array()
         .map_or(held_setups, Vec::as_slice);
-    setups.iter().try_fold(false, |selected, setup| {
-        let layout: ds_command_kernel::printing::Layout =
-            serde_json::from_value(setup["layout"].clone())
-                .map_err(|e| format!("invalid adjacent-network layout: {e}"))?;
-        ds_command_kernel::printing::validate(&layout)?;
-        Ok(selected || ds_command_kernel::printing::adjacent_networks::selected(&layout))
-    })
+    setups
+        .iter()
+        .filter(|setup| selected_setup(setup, selection))
+        .try_fold(false, |selected, setup| {
+            let layout: ds_command_kernel::printing::Layout =
+                serde_json::from_value(setup["layout"].clone())
+                    .map_err(|e| format!("invalid adjacent-network layout: {e}"))?;
+            ds_command_kernel::printing::validate(&layout)?;
+            Ok(selected || ds_command_kernel::printing::adjacent_networks::selected(&layout))
+        })
+}
+
+fn selected_setup(
+    setup: &Value,
+    selection: &ds_command_kernel::report_formats::DesignOutputSelection,
+) -> bool {
+    selection
+        .prints
+        .iter()
+        .any(|print| print.enabled && setup["id"].as_str() == Some(print.layout_id.as_str()))
 }
 
 /// The point catalogue has already acquired and verified every active room.
@@ -118,6 +136,7 @@ pub(super) fn attach_networks(
 pub(super) fn network_fields(
     receipt: &ds_command_kernel::report_export::InputReceipt,
     held_setups: &[Value],
+    selection: &ds_command_kernel::report_formats::DesignOutputSelection,
 ) -> Result<BTreeMap<String, std::collections::BTreeSet<String>>, String> {
     let sheets = receipt.sheets()?;
     let setups = sheets["printing_setups"]
@@ -125,6 +144,7 @@ pub(super) fn network_fields(
         .map_or(held_setups, Vec::as_slice);
     let layouts = setups
         .iter()
+        .filter(|setup| selected_setup(setup, selection))
         .map(|setup| serde_json::from_value(setup["layout"].clone()).map_err(|e| e.to_string()))
         .collect::<Result<Vec<_>, _>>()?;
     ds_command_kernel::printing::adjacent_networks::required_fields(

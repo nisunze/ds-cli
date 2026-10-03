@@ -7,7 +7,7 @@
 //! (country, the exact settings sheets, the reference snapshot), and each
 //! transformer's exact saved layers with their revision. The installed
 //! `ds-report` engine produces the artifacts locally — every geospatial and
-//! tabular output the project's policy names, and every named print output
+//! tabular output this run selects, and every explicitly named print output
 //! rendered from the project's saved printing setups — and `ds-report-host`
 //! stages, proves, places and receipts them. The decisions are the kernel's
 //! (`report_export`), the same ones the desktop shell applies, so a receipt
@@ -30,6 +30,7 @@
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::{OsStr, OsString};
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
@@ -119,7 +120,7 @@ const STAGING_DIRECTORY: &str = ".staging";
 const ENGINE_MISSING: Refusal = Refusal {
     code: "reporter_engine_missing",
     when: "`ds-report` is not installed next to `ds`",
-    remedy: "install the desktop or headless package, or set DS_REPORT_BIN",
+    remedy: "install the headless DS package, or set DS_REPORT_BIN to a built ds-report",
 };
 const CONTRACT_MISMATCH: Refusal = Refusal {
     code: "callee_contract_mismatch",
@@ -174,7 +175,7 @@ const IDENTITY_CHANGED: Refusal = Refusal {
 const ADMIN_BOUNDS: Refusal = Refusal {
     code: "admin_bounds_unavailable",
     when: "the Rwanda villages asset is not installed for the project's dataset snapshot",
-    remedy: "install it from the desktop's Geographic Data page, or pass --admin-bounds",
+    remedy: "install the governed Rwanda reference with ds workstation setup, or pass --admin-bounds",
 };
 const CONCURRENCY: Refusal = Refusal {
     code: "invalid_concurrency",
@@ -310,9 +311,9 @@ pub(super) const REFUSALS: &[Refusal] = &[
 pub static COMMAND: Command = Command {
     id: "report.project.export",
     path: &["report", "project", "export"],
-    contract: 1,
+    contract: 2,
     summary: "Export all transformer reports and maps headlessly in parallel.",
-    purpose: "Export reports/prints; reuse data; prints always regenerate. --dry-run cannot publish; --seed acquires context. Adjacent circuits preserve focus, quantities and voltage drop. Photos need grants.",
+    purpose: "Defaults: SHP/KMZ/XLSX/saved voltage-drop JSON; saved output sets are ignored. --selection supplies ds.design-output-selection/v1. Prints regenerate; data may reuse. Photos need grants.",
     chapter: Chapter::Reports,
     effect: Effect::LocalFileWrite,
     authority: Authority::HeadlessProject,
@@ -322,6 +323,11 @@ pub static COMMAND: Command = Command {
         OUT_DIR_ARG,
         CONCURRENCY_ARG,
         ADMIN_BOUNDS_ARG,
+        Arg::value(
+            "selection",
+            "<json-file>",
+            "Run selection; omitted uses defaults. Does not change project settings.",
+        ),
         Arg::repeated(
             "print-layout",
             "<json-file>",
@@ -566,7 +572,36 @@ fn concurrency_limit(inputs: &Inputs) -> Result<usize, Failure> {
 pub fn preflight(inputs: &Inputs) -> Result<(), Failure> {
     super::transformer_set(inputs)?;
     concurrency_limit(inputs)?;
+    run_output_selection(inputs)?;
     Ok(())
+}
+
+fn run_output_selection(inputs: &Inputs) -> Result<DesignOutputSelection, Failure> {
+    let explicit = inputs
+        .value("selection")
+        .map(|path| {
+            let mut bytes = Vec::new();
+            std::fs::File::open(path)
+                .and_then(|file| file.take(256 * 1024 + 1).read_to_end(&mut bytes))
+                .map_err(|e| Failure::invalid(INPUTS_INVALID.code, e.to_string()))?;
+            if bytes.len() > 256 * 1024 {
+                return Err(Failure::invalid(
+                    INPUTS_INVALID.code,
+                    "selection exceeds 256 KiB",
+                ));
+            }
+            serde_json::from_slice::<DesignOutputSelection>(&bytes)
+                .map_err(|e| Failure::invalid(INPUTS_INVALID.code, e.to_string()))
+        })
+        .transpose()?;
+    let defaults = explicit.is_none().then(|| {
+        ds_command_kernel::report_formats::DEFAULT_INDIVIDUAL
+            .iter()
+            .map(|s| (*s).to_owned())
+            .collect()
+    });
+    ds_command_kernel::report_formats::normalize_output_selection(explicit, defaults, None)
+        .map_err(|e| Failure::invalid(INPUTS_INVALID.code, e).remedy(INPUTS_INVALID.remedy))
 }
 
 fn require_same_context(
@@ -984,6 +1019,7 @@ fn preview_request(inputs: &Inputs, proofs: bool) -> Result<Option<PreviewReques
 }
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
+    let mut requested_outputs = run_output_selection(inputs)?;
     let requested = super::transformer_set(inputs)?;
     let lane = inputs.require("lane")?;
     let out_dir = PathBuf::from(inputs.require("out-dir")?);
@@ -1047,8 +1083,14 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     // receipt ds-brain mints beside the project configuration, and the
     // printing setups its output selection names: one set, read and held when
     // the service answers, this machine's held set when it cannot be reached.
-    let (held_inputs, inputs_receipt) =
-        project_inputs(lane, &project_id, &identity, &hold, &mut link)?;
+    let (held_inputs, inputs_receipt) = project_inputs(
+        lane,
+        &project_id,
+        &identity,
+        &hold,
+        &mut link,
+        &requested_outputs,
+    )?;
     let rows = super::hold::select(&held_inputs.rows, &requested);
     let project_receipt = json!({
         "lane": identity.lane(),
@@ -1108,6 +1150,18 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
                 serde_json::from_slice(&bytes)
                     .map_err(|e| Failure::invalid(INPUTS_INVALID.code, e.to_string()))?,
             );
+        }
+        if inputs.value("selection").is_none() {
+            requested_outputs.prints = layouts
+                .iter()
+                .map(|layout: &ds_command_kernel::printing::Layout| {
+                    ds_command_kernel::report_formats::NamedPrintSelection {
+                        layout_id: layout.id.clone(),
+                        enabled: true,
+                        formats: vec![ds_command_kernel::report_formats::PrintArtifactFormat::Pdf],
+                    }
+                })
+                .collect();
         }
         let proof = ds_command_kernel::report_export::proof::with_layouts(&receipt, &layouts)
             .map_err(|e| Failure::invalid(INPUTS_INVALID.code, e))?;
@@ -1171,16 +1225,22 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let (contexts, hidden_contexts) = if local_context.is_some() || preview_request.is_some() {
         (Vec::new(), Vec::new())
     } else {
-        selected_contexts(&receipt, &held_inputs.setups, seed)?
+        selected_contexts(&receipt, &held_inputs.setups, seed, &requested_outputs)?
     };
     let neighbor_points_selected = preview_request.is_none()
-        && super::neighbor_points::selected(&receipt, &held_inputs.setups).map_err(|error| {
+        && super::neighbor_points::selected(&receipt, &held_inputs.setups, &requested_outputs)
+            .map_err(|error| {
+                Failure::invalid(INPUTS_INVALID.code, error).remedy(INPUTS_INVALID.remedy)
+            })?;
+    let neighbor_networks_selected = preview_request.is_none()
+        && super::neighbor_points::networks_selected(
+            &receipt,
+            &held_inputs.setups,
+            &requested_outputs,
+        )
+        .map_err(|error| {
             Failure::invalid(INPUTS_INVALID.code, error).remedy(INPUTS_INVALID.remedy)
         })?;
-    let neighbor_networks_selected = preview_request.is_none()
-        && super::neighbor_points::networks_selected(&receipt, &held_inputs.setups).map_err(
-            |error| Failure::invalid(INPUTS_INVALID.code, error).remedy(INPUTS_INVALID.remedy),
-        )?;
     let neighbors_selected = neighbor_points_selected || neighbor_networks_selected;
     let mv_buffer = contexts
         .iter()
@@ -1367,9 +1427,10 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     };
     let (mut reuse_plans, mut unplanned, policy) = match (&engine_now, &status_rows) {
         (Some(engine), Some(rows)) => {
-            let policy = reuse::policy_outputs(&receipt).map_err(|error| {
-                Failure::invalid(INPUTS_INVALID.code, error).remedy(INPUTS_INVALID.remedy)
-            })?;
+            let policy =
+                reuse::policy_outputs(&receipt, Some(&requested_outputs)).map_err(|error| {
+                    Failure::invalid(INPUTS_INVALID.code, error).remedy(INPUTS_INVALID.remedy)
+                })?;
             let (plans, unplanned) = plan_reuse(
                 &names,
                 rows,
@@ -1474,9 +1535,10 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     // Only voltage-drop runs need the project-governed nature projection.
     // Keep it separate from the held/fetched room bytes; the report host first
     // verifies those exact bytes against their saved content digest.
-    let output_policy = reuse::policy_outputs(&receipt).map_err(|error| {
-        Failure::invalid(INPUTS_INVALID.code, error).remedy(INPUTS_INVALID.remedy)
-    })?;
+    let output_policy =
+        reuse::policy_outputs(&receipt, Some(&requested_outputs)).map_err(|error| {
+            Failure::invalid(INPUTS_INVALID.code, error).remedy(INPUTS_INVALID.remedy)
+        })?;
     let voltage_drop_selected = preview_request.is_none() && voltage_drop_selected(&output_policy);
     let transformer_natures = if voltage_drop_selected {
         if link.unreachable().is_some() {
@@ -1536,7 +1598,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         None
     };
     let neighbor_fields = if neighbor_networks_selected {
-        super::neighbor_points::network_fields(&receipt, &held_inputs.setups)
+        super::neighbor_points::network_fields(&receipt, &held_inputs.setups, &requested_outputs)
             .map_err(|e| Failure::invalid(INPUTS_INVALID.code, e))?
     } else {
         BTreeMap::new()
@@ -1759,7 +1821,11 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
                     .map(|nature| BTreeMap::from([(name.to_string(), nature.clone())]))
                     .unwrap_or_default()
             }),
-            selection,
+            selection: if preview_requested {
+                selection
+            } else {
+                Some(selection.unwrap_or_else(|| requested_outputs.clone()))
+            },
             print_context,
             sheet,
             survey,
@@ -2319,8 +2385,9 @@ fn project_inputs(
     identity: &ds_cli_auth::ProviderIdentity,
     hold: &super::hold::Hold,
     link: &mut super::hold::Link,
+    selection: &DesignOutputSelection,
 ) -> Result<(super::hold::Inputs, Value), Failure> {
-    if let Some(inputs) = read_inputs(lane, project, identity, link)? {
+    if let Some(inputs) = read_inputs(lane, project, identity, link, selection)? {
         let receipt = match hold.hold_inputs(&inputs) {
             Ok(()) => json!({"source": "service", "held": true}),
             Err(error) => json!({"source": "service", "held": false, "hold_error": error}),
@@ -2469,6 +2536,7 @@ fn read_inputs(
     project: &str,
     identity: &ds_cli_auth::ProviderIdentity,
     link: &mut super::hold::Link,
+    selection: &DesignOutputSelection,
 ) -> Result<Option<super::hold::Inputs>, Failure> {
     use ds_command_kernel::report_export::{INPUT_RECEIPT_MEMBER, INPUT_RECEIPT_REFUSAL_MEMBER};
     let Some(inventory) = link.read(|| {
@@ -2517,7 +2585,7 @@ fn read_inputs(
     let receipt = InputReceipt::from_config(&configuration).map_err(|error| {
         Failure::invalid("report_inputs_invalid", error).remedy(INPUTS_INVALID.remedy)
     })?;
-    let Some(setups) = named_printing_setups(lane, project, &receipt, link)? else {
+    let Some(setups) = named_printing_setups(lane, project, &receipt, link, selection)? else {
         return Ok(None);
     };
     Ok(Some(super::hold::Inputs {
@@ -2530,7 +2598,7 @@ fn read_inputs(
     }))
 }
 
-/// The printing setups the sealed output selection names, read exactly
+/// The printing setups this run selects, read exactly
 /// through the printing contract, the way `ds report project settings`
 /// completes its sheets, so the kernel decides over the same documents the
 /// engine prints with. The sealed sheets carry the export row but not the
@@ -2541,6 +2609,7 @@ fn named_printing_setups(
     project: &str,
     receipt: &InputReceipt,
     link: &mut super::hold::Link,
+    selection: &DesignOutputSelection,
 ) -> Result<Option<Vec<Value>>, Failure> {
     let invalid = |message: String| {
         Failure::invalid("report_inputs_invalid", message).remedy(INPUTS_INVALID.remedy)
@@ -2551,7 +2620,7 @@ fn named_printing_setups(
         return Ok(Some(Vec::new()));
     }
     let mut setups = Vec::new();
-    for id in ds_cli_report_named_setups(&sheets).map_err(invalid)? {
+    for id in ds_cli_report_named_setups(selection).map_err(invalid)? {
         let Some(setup) = link.read(|| {
             ds_cli_auth::printing(
                 lane,
@@ -2577,6 +2646,7 @@ fn selected_contexts(
     receipt: &InputReceipt,
     setups: &[Value],
     online: bool,
+    selection: &DesignOutputSelection,
 ) -> Result<
     (
         Vec<ds_command_kernel::printing::PrintContextLayer>,
@@ -2592,7 +2662,7 @@ fn selected_contexts(
     if sheets.get("printing_setups").is_none() {
         sheets["printing_setups"] = Value::Array(setups.to_vec());
     }
-    let request = json!({"command": "context_preparation", "sheets": sheets, "online": online});
+    let request = json!({"command": "context_preparation", "sheets": sheets, "online": online, "selection": selection});
     let bytes = serde_json::to_vec(&request).map_err(|error| invalid(error.to_string()))?;
     let answer: Value =
         serde_json::from_str(&ds_command_kernel::report::evaluate(&bytes).map_err(invalid)?)
@@ -2622,25 +2692,15 @@ fn saved_revision(name: &str, version: Option<u64>) -> Result<i64, Failure> {
         })
 }
 
-/// The printing setup ids the stored output selection names, read with the
-/// kernel's own readers under every stored shape.
-fn ds_cli_report_named_setups(sheets: &Value) -> Result<Vec<String>, String> {
-    use ds_command_kernel::report_formats::{
-        named_print_output, normalize, output_setting_index, stored_output_selection, string_list,
-    };
-    let Some(rows) = sheets["project_settings"].as_array() else {
-        return Ok(Vec::new());
-    };
-    let Some(index) = output_setting_index(rows) else {
-        return Ok(Vec::new());
-    };
-    let value = &rows[index]["value"];
-    let tokens = stored_output_selection(value)
-        .and_then(|selection| selection.tokens())
-        .unwrap_or_else(|_| string_list(value));
-    Ok(normalize(&tokens)
+/// Only the current run's explicit/default selection names printing inputs.
+fn ds_cli_report_named_setups(selection: &DesignOutputSelection) -> Result<Vec<String>, String> {
+    let tokens = selection.tokens()?;
+    Ok(tokens
         .iter()
-        .filter_map(|token| named_print_output(token).map(|(_, id)| id.to_owned()))
+        .filter_map(|token| {
+            ds_command_kernel::report_formats::named_print_output(token)
+                .map(|(_, id)| id.to_owned())
+        })
         .collect::<std::collections::BTreeSet<_>>()
         .into_iter()
         .collect())
@@ -3064,6 +3124,67 @@ pub fn render(data: &Value) -> String {
 #[cfg(test)]
 mod tests {
     #[test]
+    fn command_defaults_ignore_a_saved_print_selection_but_an_explicit_set_is_used() {
+        let inputs = ds_cli_contract::args::parse(
+            &super::COMMAND,
+            &[
+                "--project".into(),
+                "project-a".into(),
+                "--out-dir".into(),
+                "out".into(),
+                "--dry-run".into(),
+            ],
+        )
+        .unwrap();
+        let selection = super::run_output_selection(&inputs).unwrap();
+        let sheets = serde_json::json!({"project_settings":[{"parameter":"design_export_format","value":["pdf__absent_external_setup","gpkg"]}]});
+        let source = ds_command_kernel::report_export::InputReceipt {
+            local_print_recipe: None,
+            schema: 1,
+            country: "RW".into(),
+            sheets_json: sheets.to_string(),
+            sheets_sha256: ds_command_kernel::report_export::sha256_hex(
+                sheets.to_string().as_bytes(),
+            ),
+            reference_semantic_sha256: "a".repeat(64),
+        };
+        assert_eq!(
+            super::reuse::policy_outputs(&source, Some(&selection)).unwrap(),
+            ["shp", "kmz", "xlsx", "voltage_drop"]
+        );
+        assert!(super::reuse::policy_outputs(&source, None).is_err());
+
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("selection.json");
+        std::fs::write(
+            &path,
+            br#"{"schema":"ds.design-output-selection/v1","tabular":["xlsx"]}"#,
+        )
+        .unwrap();
+        let inputs = ds_cli_contract::args::parse(
+            &super::COMMAND,
+            &[
+                "--project".into(),
+                "project-a".into(),
+                "--out-dir".into(),
+                "out".into(),
+                "--selection".into(),
+                path.display().to_string(),
+                "--dry-run".into(),
+            ],
+        )
+        .unwrap();
+        let selection = super::run_output_selection(&inputs).unwrap();
+        assert_eq!(
+            super::reuse::policy_outputs(&source, Some(&selection)).unwrap(),
+            ["xlsx", "voltage_drop"]
+        );
+        assert!(super::preflight(&inputs).is_ok());
+        std::fs::write(&path, b"{\"output_root\":\"C:\\\\External\"}").unwrap();
+        assert!(super::preflight(&inputs).is_err());
+    }
+
+    #[test]
     fn transformer_nature_projection_is_required_only_for_voltage_drop_output() {
         assert!(!super::voltage_drop_selected(&[
             "shp".to_string(),
@@ -3266,19 +3387,37 @@ mod tests {
     }
 
     #[test]
-    fn raster_only_contexts_resolve_the_named_layout_once() {
-        for value in [
-            serde_json::json!(["png__detail", "jpeg__detail", "pdf__detail"]),
-            serde_json::json!({"schema":"ds.design-output-selection/v1","prints":[
-                {"layout_id":"detail","enabled":true,"formats":["png","jpeg"]}
-            ]}),
-        ] {
-            let sheets = serde_json::json!({"project_settings":[{"parameter":"design_export_format","value":value}]});
-            assert_eq!(
-                super::ds_cli_report_named_setups(&sheets).unwrap(),
-                vec!["detail"]
-            );
-        }
+    fn current_selection_resolves_only_its_named_layouts_once() {
+        let selection = ds_command_kernel::report_formats::normalize_output_selection(
+            None,
+            Some(vec![
+                "png__detail".into(),
+                "jpeg__detail".into(),
+                "pdf__detail".into(),
+            ]),
+            None,
+        )
+        .unwrap();
+        assert_eq!(
+            super::ds_cli_report_named_setups(&selection).unwrap(),
+            vec!["detail"]
+        );
+        let inputs = ds_cli_contract::args::parse(
+            &super::COMMAND,
+            &[
+                "--project".into(),
+                "project-a".into(),
+                "--out-dir".into(),
+                "out".into(),
+                "--dry-run".into(),
+            ],
+        )
+        .unwrap();
+        assert!(
+            super::ds_cli_report_named_setups(&super::run_output_selection(&inputs).unwrap())
+                .unwrap()
+                .is_empty()
+        );
     }
 
     /// Acceptance A: a publishing run whose link latched unreachable says,

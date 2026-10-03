@@ -12,9 +12,9 @@ use std::{
 pub static COMMAND: Command = Command {
     id: "report.project.map-inputs",
     path: &["report", "project", "map-inputs"],
-    contract: 1,
+    contract: 2,
     summary: "Prepare a district MV overview for headless PDF/PNG printing.",
-    purpose: "Read active LV transformers and exact current MV models with revisions, geometry and saved print styles. Bound emitted vectors with --focus-bounds or --area-bounds without straightening crossing lines. Apply an authored layout to held context and write a replayable report.layout.render request. No design write or publication. --seed acquires missing context; the receipt names any omission.",
+    purpose: "Read active LV and exact current MV models with provenance and print styles. Bound vectors without straightening crossing lines. Capture the authored layout, held context and API renderer policy in a replayable report.layout.render request. No design write or publication; omitted context is reported.",
     chapter: Chapter::Reports,
     effect: Effect::LocalFileWrite,
     authority: Authority::HeadlessProject,
@@ -159,6 +159,17 @@ pub fn run(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
         std::slice::from_ref(&layout),
     )?;
     let sheets = receipt.sheets().map_err(invalid)?;
+    let styles = ds_cli_auth::style_governance(
+        lane,
+        project,
+        &ds_command_kernel::style_governance::Command::Table,
+    )?;
+    let snapshot: ds_command_kernel::style_resolution::Snapshot =
+        serde_json::from_value(styles).map_err(invalid)?;
+    if snapshot.project_id != project {
+        return Err(invalid("renderer policy scope changed"));
+    }
+    let renderer_defaults = printing::renderer_defaults::resolve(&snapshot).map_err(invalid)?;
     printing::style_overrides::preflight(&layout, &sheets["printing_styles"]).map_err(invalid)?;
     let mut models = super::mv_context::load(lane, identity, project)?;
     if let Some(path) = i.value("mv-model") {
@@ -311,7 +322,7 @@ pub fn run(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
     } else {
         sources.vectors()
     };
-    let render = json!({"schema":"ds.print-layout-export/v1","render":{"layout":layout,"layers":render_layers,"extent":extent,"focus_extent":extent,"print_styles":sheets["printing_styles"],"symbol_assets":sheets.get("printing_symbol_assets").cloned().unwrap_or_else(||json!({})),"text":{"project":project,"transformer":layout.name}},"formats":["pdf","png"],"dpi":300,"out_dir":out.join("rendered")});
+    let render = json!({"schema":"ds.print-layout-export/v1","renderer_defaults":renderer_defaults,"render":{"renderer_defaults":renderer_defaults,"layout":layout,"layers":render_layers,"extent":extent,"focus_extent":extent,"print_styles":sheets["printing_styles"],"symbol_assets":sheets.get("printing_symbol_assets").cloned().unwrap_or_else(||json!({})),"text":{"project":project,"transformer":layout.name}},"formats":["pdf","png"],"dpi":300,"out_dir":out.join("rendered")});
     let path = out.join("render-request.json");
     let data = serde_json::to_vec(&render).map_err(invalid)?;
     std::fs::OpenOptions::new()

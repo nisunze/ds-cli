@@ -46,7 +46,7 @@ const LV_STANDARD_SUBCOMMAND: &str = "export-lv-standard";
 pub static COMMAND: Command = Command {
     id: "report.export",
     path: &["report", "export"],
-    contract: 3,
+    contract: 4,
     summary: "Export governed LV standard sets or local engineering reports.",
     purpose: "\
 Builds report artifacts with the installed reporter engine. Reads only local \
@@ -54,8 +54,8 @@ bytes and makes no network call of any kind. The engine writes a result \
 document describing every artifact and every blocker; this command returns \
 that document, so a refused export arrives as typed blockers rather than an \
 exit code and a file path. Use --request to supply the engine's full typed \
-request instead of the flags below; run `ds report tasks --task <name>` for \
-its schema. --task lv-standard requires the export_lv_standard JSON job: A0/A3 sheets, PNG before PDF and separate combined sets with six A0 opening pages. Governed defaults and overrides: report layout schema; details in the reference. --task voltage-drop requires --request from render_voltage_drop_result: it prints admitted calculated JSON or explicit reserved/incomplete/refused status to A4, without processing or inferring analysis. Governed identity supplies title blocks/logos. Report language comes from Network Template project_settings.report_locale (en/fr shipped; other locales require complete catalogue data). Missing language refuses; it is never inferred. PDF naming is owned by the kernel. Prints are regenerated; partial exports list failed_formats. A reporter without that task refuses; there is no export fallback.",
+request instead of the flags below; omitted transformer formats still use this command's defaults, never the saved project output set. Run `ds report tasks --task <name>` for \
+its schema. --task lv-standard requires the export_lv_standard A0/A3 JSON job; report layout schema describes its governed defaults and overrides. --task voltage-drop requires --request from render_voltage_drop_result: it prints admitted calculated JSON or explicit reserved/incomplete/refused status to A4, without processing or inferring analysis. Governed identity supplies title blocks/logos. Report language comes from Network Template project_settings.report_locale (en/fr shipped; other locales require complete catalogue data). Missing language refuses; it is never inferred. PDF naming is kernel-owned. Prints regenerate; partial exports list failed_formats. Missing tasks refuse.",
     chapter: Chapter::Reports,
     effect: Effect::LocalFileWrite,
     authority: Authority::None,
@@ -94,7 +94,7 @@ its schema. --task lv-standard requires the export_lv_standard JSON job: A0/A3 s
         Arg::repeated(
             "format",
             "<name>",
-            "Restrict to a subset of the policy's export formats.",
+            "Run formats; defaults: individual SHP/KMZ/XLSX/saved analysis, combined SHP/XLSX/GeoJSONSeq. Optional GPKG/Network Information is explicit. Saved sets are ignored.",
         ),
         Arg::value(
             "admin-bounds",
@@ -183,7 +183,7 @@ was given.",
         Refusal {
             code: "reporter_engine_missing",
             when: "`ds-report` is not installed next to `ds`",
-            remedy: "install the desktop, or set DS_REPORT_BIN to a built ds-report",
+            remedy: "install the headless DS package, or set DS_REPORT_BIN to a built ds-report",
         },
         Refusal {
             code: "conflicting_inputs",
@@ -209,6 +209,11 @@ was given.",
             code: "request_not_found",
             when: "--request does not name a readable file",
             remedy: "check the path, or build the request from the content flags",
+        },
+        Refusal {
+            code: "request_invalid",
+            when: "a transformer --request is not one bounded JSON object",
+            remedy: "supply the export_transformer_report request schema; maximum 64 MiB",
         },
         Refusal {
             code: "scratch_unwritable",
@@ -415,8 +420,8 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         None => (scratch_path("result"), false),
     };
 
-    // Likewise for the request document: a caller-supplied one is used as-is,
-    // and a constructed one is written to scratch and removed.
+    // A transformer request uses the same per-run defaults as the content
+    // flags. The original document is never rewritten.
     let (request_path, request_owned) = match supplied_request {
         Some(path) => {
             let path = PathBuf::from(path);
@@ -427,7 +432,25 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
                 )
                 .remedy("check the path, or build the request from the content flags"));
             }
-            (path, true)
+            if task == "transformer" {
+                use std::io::Read;
+                let mut bytes = Vec::new();
+                std::fs::File::open(&path)
+                    .and_then(|file| file.take(64 * 1024 * 1024 + 1).read_to_end(&mut bytes))
+                    .map_err(|e| Failure::invalid("request_invalid", e.to_string()))?;
+                if bytes.len() > 64 * 1024 * 1024 {
+                    return Err(Failure::invalid(
+                        "request_invalid",
+                        "request exceeds 64 MiB",
+                    ));
+                }
+                let request = transformer_request_defaults(&bytes)?;
+                let staged = scratch_path("request");
+                write_new(&staged, &serde_json::to_vec(&request).unwrap_or_default())?;
+                (staged, false)
+            } else {
+                (path, true)
+            }
         }
         None => {
             let request = build_request(task, inputs)?;
@@ -523,6 +546,21 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
 /// `ds-report task-schemas` from the installed engine and asserts every
 /// required field of each task is reachable from this command's flags. An
 /// unchecked hand copy drifts silently, which is worse than no copy.
+fn transformer_request_defaults(bytes: &[u8]) -> Result<Value, Failure> {
+    let mut request: Value = serde_json::from_slice(bytes)
+        .map_err(|e| Failure::invalid("request_invalid", e.to_string()))?;
+    let object = request
+        .as_object_mut()
+        .ok_or_else(|| Failure::invalid("request_invalid", "request must be a JSON object"))?;
+    if object.get("formats").is_none_or(Value::is_null) {
+        object.insert(
+            "formats".into(),
+            json!(ds_command_kernel::report_formats::DEFAULT_INDIVIDUAL),
+        );
+    }
+    Ok(request)
+}
+
 fn build_request(task: &str, inputs: &Inputs) -> Result<Value, Failure> {
     let mut request = Map::new();
 
@@ -607,7 +645,16 @@ fn build_request(task: &str, inputs: &Inputs) -> Result<Value, Failure> {
     }
 
     let formats = inputs.repeated("format");
-    if task == "transformer" && !formats.is_empty() {
+    if task == "transformer" {
+        request.insert(
+            "formats".into(),
+            if formats.is_empty() {
+                json!(ds_command_kernel::report_formats::DEFAULT_INDIVIDUAL)
+            } else {
+                json!(formats)
+            },
+        );
+    } else if !formats.is_empty() {
         request.insert("formats".into(), json!(formats));
     }
 
@@ -698,6 +745,21 @@ pub fn render(data: &Value) -> String {
 mod voltage_drop_tests {
     use super::*;
     use sha2::{Digest, Sha256};
+
+    #[test]
+    fn typed_request_uses_command_defaults_but_keeps_an_explicit_format_set() {
+        for bytes in [br#"{}"#.as_slice(), br#"{"formats":null}"#.as_slice()] {
+            assert_eq!(
+                transformer_request_defaults(bytes).unwrap()["formats"],
+                json!(ds_command_kernel::report_formats::DEFAULT_INDIVIDUAL)
+            );
+        }
+        assert_eq!(
+            transformer_request_defaults(br#"{"formats":["png__authored"]}"#).unwrap()["formats"],
+            json!(["png__authored"])
+        );
+        assert!(transformer_request_defaults(b"[]").is_err());
+    }
 
     #[test]
     fn pdf_receipt_must_prove_identity_exact_digest_bytes_and_actual_pages() {

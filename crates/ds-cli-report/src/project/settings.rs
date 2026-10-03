@@ -131,8 +131,8 @@ Read the named project's fresh, audience-fenced configuration through \
 ds-command-kernel. Resolve stored and legacy export settings into outputs, \
 paper, held printing setups, and input-receipt readiness. When unready, \
 return the same keyed refusal, reason and remedy as the GUI. This query \
-creates no report; automatic project touch may first publish queued local \
-reports and pull moved remote heads. No Desktop descriptor, URL, body or \
+creates no report and does not reconcile or publish queued local reports. \
+No Desktop descriptor, URL, body or \
 action override is accepted.",
     chapter: Chapter::Reports,
     effect: Effect::LocalAuthState,

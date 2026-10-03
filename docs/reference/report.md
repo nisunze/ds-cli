@@ -2,32 +2,23 @@
 
 Tier-4 reference. `ds report <command> --help` is the contract.
 
-## Project touch before a headless report command
+## Reconciliation and local observations
 
-On Linux, CLI and MCP report commands with an exact `--project` first run one
-Network Reporter scoped sync pass for that project. The kernel's `manual`
-trigger re-reads the remote heads on every command; the pass also publishes
-queued local reports and pulls moved heads. JSON answers carry
-`reconciliation` with the pass outcome, head-read time, pending counts and
-bounded receipts. A failed pass marks `reconciliation.state` as `held` with
-the last local head-read age. A read handler may still fetch its own remote
-source; `report publication list/show` have no held-data fallback and keep
-their normal refusal when that direct read also fails. Publication, combined
-reports and other project writes refuse as `report_reconciliation_required`
-before their handler runs.
+Linux report publication and project writes first run a scoped native sync
+pass for the explicit project. The pass may publish queued reports and pull
+changed heads. Its outcome appears as `reconciliation`; a failed pass blocks
+writes with `report_reconciliation_required`.
 
-For `report project scope|settings|archives` and `report publication list|show`,
-the requested operation reads project data, but its preceding automatic touch
-can deliver older queued reports and download changed heads. Those effects
-appear in `reconciliation`; the read command does not create a new report.
+`report project scope|settings|archives`, `report publication list|show` and
+`report project mv-setup resolve` read their own project sources without
+opening or draining the publication queue. The local observation paths of
+`report project export` (`--dry-run`, `--preview-layout`, `--print-layout`) and
+`report project map-inputs` also perform no automatic publication.
 
-The local proof paths of `report project export` (`--dry-run`,
-`--preview-layout`, `--print-layout`) and `report project map-inputs` keep
-their no-publication guarantee. They do not run the pass until the shared
-runtime offers a read-only reconciliation operation. On non-Linux hosts,
-project writes currently refuse with `desktop_touch_bridge_pending` in the
-reconciliation detail until the paired Desktop can perform the same scoped
-pass.
+Other hosts currently report `report_sync_runtime_unavailable` when a write
+needs this native reconciliation adapter. This is a runtime implementation
+gap, not evidence of an installed Desktop bridge or printer driver. Local
+observation exports remain available through the local reporter.
 
 ## Why this domain calls a binary instead of linking a crate
 
@@ -783,6 +774,19 @@ the verified path automatically. It is the door a local operator calls.
 Decisions and fingerprints come from
 `ds-command-kernel::report_export`; the shared native IO host is
 `ds-command-kernel/crates/ds-report-host`, and the engine is the installed `ds-report`.
+The command starts with SHP, KMZ, XLSX and saved voltage-drop JSON. A stored
+`design_export_format` row does not select this run, its printing inputs or
+neighboring-circuit acquisition. Supply `--selection <json-file>` for an
+explicit `ds.design-output-selection/v1` matrix. `--print-layout` names local
+PDF proofs; without `--selection`, those proof layouts are added to the
+command defaults. No project setting is changed. The local `report export
+--task transformer` door uses the same defaults, including when a full
+`--request` omits `formats`; an explicit format array is preserved.
+Both local input encodings use that current run selection; a saved output set
+cannot veto it. `report export --task combined` always includes SHP, XLSX and
+GeoJSONSeq. Optional GPKG or Network Information requires explicit `--format`
+or the typed request's `formats`; it is never selected by saved settings.
+
 Desktop now uses the kernel's fingerprints, while its existing sidecar and
 publication pipeline still perform the desktop IO. Full IO unification is
 pending.
@@ -1100,8 +1104,9 @@ or forbidden overrides return keyed actionable refusals. Desktop re-resolves
 the same command/receipt before preview or print and refuses stale receipts.
 MCP exposes the same declared commands.
 
-`report.plan-profile-config` contract 3 accepts `ds.grid-plan-profile-print/v2`
-with `project_id`, `scene_path`, `plan_path` and fresh `output_root`. Omitted
+`report.plan-profile-config` contract 4 accepts `ds.grid-plan-profile-print/v3`
+with `project_id`, `scene_path` and `plan_path`. Supply a fresh absolute `--out`
+directory for each run; a saved `output_root` is refused. Omitted
 `variants` chooses one `booklet`; an explicit list accepts 1..8 entries
 containing only a safe `name`. Optional geometry inputs are
 `sample_pages`, `side_profiles_path`, `notes_path`, `model_crs`,
@@ -1233,9 +1238,9 @@ deduplication before a workbook is issued.
 
 `ds report publication list|show` reads the current compute-artifact heads
 directly under the native account and an explicit project. That requested
-read does not pair a Desktop or download output bytes. Its preceding automatic
-project touch opens the local sync store and may publish older queued reports
-or download changed heads, as described above.
+read does not pair a Desktop, download output bytes or reconcile queued
+publications. Reconciliation runs only at an explicit publication or mutation
+boundary, as described above.
 The list is paged and includes all engines. A head contains the current
 revision, input fingerprint, each output's digest and byte count, and
 per-output origins where the service recorded them. The shared kernel validates

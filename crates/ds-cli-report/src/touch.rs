@@ -28,22 +28,39 @@ pub fn project(lane: &str, project: &str, state_dir: Option<&str>) -> Touch {
     #[cfg(not(target_os = "linux"))]
     {
         let _ = state_dir;
-        return Touch {
-            current: false,
-            receipt: json!({
-                "schema": "ds.report-touch/v1",
-                "project": project,
-                "lane": lane,
-                "engine": "network_reporter",
-                "state": "not_checked",
-                "reason": "desktop_touch_bridge_pending",
-                "detail": "this host needs the paired Desktop's project-scoped sync bridge",
-            }),
-        };
+        return unsupported_host(lane, project);
     }
     #[cfg(target_os = "linux")]
     {
         project_native(lane, project, state_dir)
+    }
+}
+
+#[cfg(any(not(target_os = "linux"), test))]
+fn unsupported_host(lane: &str, project: &str) -> Touch {
+    Touch {
+        current: false,
+        receipt: json!({
+            "schema": "ds.report-touch/v1",
+            "project": project,
+            "lane": lane,
+            "engine": "network_reporter",
+            "state": "not_checked",
+            "reason": "report_sync_runtime_unavailable",
+            "detail": "this build does not implement native report reconciliation on this operating system; use --dry-run for local observation exports or a supported headless Server for publication",
+        }),
+    }
+}
+
+#[cfg(test)]
+mod host_tests {
+    #[test]
+    fn unsupported_host_names_the_missing_runtime_without_inventing_a_desktop() {
+        let result = super::unsupported_host("stable", "project-a");
+        assert!(!result.current);
+        assert_eq!(result.receipt["project"], "project-a");
+        assert_eq!(result.receipt["reason"], "report_sync_runtime_unavailable");
+        assert!(!result.receipt.to_string().contains("Desktop"));
     }
 }
 

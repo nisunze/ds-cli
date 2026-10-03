@@ -54,7 +54,7 @@ pub static DS_REPORT: External = External {
     name: "ds-report",
     env_override: "DS_REPORT_BIN",
     owner: "ds-network-reporter",
-    remedy: "install the DS GridDesign desktop, or set DS_REPORT_BIN to a built ds-report",
+    remedy: "install the headless DS package, or set DS_REPORT_BIN to a built ds-report",
     missing_code: "reporter_engine_missing",
 };
 

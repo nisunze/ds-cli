@@ -67,7 +67,7 @@ pub const SETTINGS_OP: BridgeOp = BridgeOp {
 pub static SETTINGS_COMMAND: Command = Command {
  id: "desktop.printing.settings", path: &["desktop", "printing", "settings"], contract: 1,
  summary: "Read project print settings, selected outputs and template papers.",
- purpose: "Read the saved design output selection for one exact project through Brain and the shared Rust report planner. Returns the authored setting, effective outputs and selected template paper metadata; never guesses from filenames, changes settings, runs an export, or switches the GUI map. Start here before printing. Use report layout list/get to inspect templates natively, printing prepare to save an authorized selection, then read settings again and use printing export for a transformer. Same printing MCP profile.",
+ purpose: "Read the saved design output selection for one exact project through Brain and the shared Rust report planner. Returns the authored setting, effective outputs and selected template paper metadata; never guesses from filenames, changes settings, runs an export, or switches the GUI map. Use report layout list/get to inspect templates natively. This read does not choose outputs for printing export: supply its explicit --selection matrix to print selected papers; otherwise the documented data defaults apply. Same printing MCP profile.",
  chapter: Chapter::Reports, effect: Effect::ReadOnly, authority: Authority::DesktopUser, execution: Execution::Sync,
  args: &[Arg::value("project", "<exact-id>", "Exact project whose saved printing output settings should be read; no GUI project switch.").required(), DESCRIPTOR_ARG],
  output: "Exact project, selection source, authored setting, planned outputs, selected template papers and receipt SHA-256. No design features or credentials.", examples: &[],
@@ -163,9 +163,9 @@ pub static TRANSFORMERS_COMMAND: Command = Command {
 pub static EXPORT_COMMAND: Command = Command {
     id: "desktop.printing.export",
     path: &["desktop", "printing", "export"],
-    contract: 2,
+    contract: 3,
     summary: "Export selected formats for one or more held transformers.",
-    purpose: "Runs the desktop-native Network Reporter for one explicit project and transformer. Repeat --transformer for a batch. Optional --selection reads a ds.design-output-selection/v1 matrix for this local run, leaving project settings unchanged. Selected canonical outputs are overwritten; unselected artifacts keep their producing provenance. Missing selected map context is acquired automatically when online; offline execution uses held data. Local artifacts are queued through the ordinary report publication outbox.",
+    purpose: "Runs the desktop-native Network Reporter for one explicit project and transformer. Repeat --transformer for a batch. Defaults: SHP/KMZ/XLSX/saved voltage-drop JSON; saved output sets are ignored. --selection supplies a run matrix without changing settings. Selected canonical outputs are overwritten; unselected artifacts keep their producing provenance. Missing selected map context is acquired automatically when online; offline execution uses held data. Local artifacts are queued through the ordinary report publication outbox.",
     chapter: Chapter::Reports,
     effect: Effect::ArtifactWrite,
     authority: Authority::DesktopUser,
@@ -326,6 +326,19 @@ pub fn export(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     if let Some(path) = inputs.value("selection") {
         arguments["selection"] =
             read_request(path, "provide a ds.design-output-selection/v1 JSON matrix")?;
+    } else if transformers != ["combined_transformer"] {
+        let defaults = ds_command_kernel::report_formats::DEFAULT_INDIVIDUAL
+            .iter()
+            .map(|s| (*s).to_owned())
+            .collect();
+        let selection = ds_command_kernel::report_formats::normalize_output_selection(
+            None,
+            Some(defaults),
+            None,
+        )
+        .map_err(invalid_read)?;
+        arguments["selection"] =
+            serde_json::to_value(selection).map_err(|e| invalid_read(e.to_string()))?;
     }
     let descriptor = ops::paired(inputs.value("desktop-descriptor"))?;
     ops::invoke(

@@ -109,9 +109,12 @@ fn text(value: &Value, key: &str) -> Result<Option<String>, String> {
 
 /// The output ids a full run of this project's policy produces, in the
 /// policy's order: what a run asks for when nothing is reused.
-pub fn policy_outputs(receipt: &InputReceipt) -> Result<Vec<String>, String> {
+pub fn policy_outputs(
+    receipt: &InputReceipt,
+    selection: Option<&DesignOutputSelection>,
+) -> Result<Vec<String>, String> {
     Ok(
-        report_formats::selected_plan(&receipt.sheets()?, false, None)?
+        report_formats::selected_plan(&receipt.sheets()?, false, selection)?
             .into_iter()
             .map(|output| output.output_id)
             .collect(),

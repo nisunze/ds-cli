@@ -3635,7 +3635,9 @@ fn report_project_touch(id: &str, inputs: &Inputs) -> bool {
     // A local proof promises no publication queue. The existing scoped pass
     // can upload older rows, so these modes wait for a read-only reconcile
     // hook instead of silently breaking that promise.
-    if id == "report.project.map-inputs"
+    if report_held_read(id)
+        || id == "report.project.mv-setup.resolve"
+        || id == "report.project.map-inputs"
         || (id == "report.project.export"
             && (inputs.switch("dry-run")
                 || inputs.value("preview-layout").is_some()
@@ -3773,9 +3775,14 @@ mod report_touch_tests {
     }
 
     #[test]
-    fn publishing_and_reading_touch_the_exact_project_but_local_proofs_do_not_publish() {
+    fn publication_touches_the_exact_project_but_reads_and_local_proofs_do_not_publish() {
         let scope = inputs(&ds_cli_report::project::scope::COMMAND, &["--project", "p"]);
-        assert!(report_project_touch("report.project.scope", &scope));
+        assert!(!report_project_touch("report.project.scope", &scope));
+        assert!(!report_project_touch("report.project.settings", &scope));
+        assert!(!report_project_touch(
+            "report.project.mv-setup.resolve",
+            &scope
+        ));
         assert!(report_held_read("report.project.scope"));
 
         let publish = inputs(

@@ -34,7 +34,7 @@ and the first thing to compare when two machines disagree.",
         Refusal {
             code: "reporter_engine_missing",
             when: "`ds-report` is not installed next to `ds`",
-            remedy: "install the desktop, or set DS_REPORT_BIN to a built ds-report",
+            remedy: "install the headless DS package, or set DS_REPORT_BIN to a built ds-report",
         },
         Refusal {
             code: "callee_contract_mismatch",

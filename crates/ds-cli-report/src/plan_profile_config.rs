@@ -20,9 +20,9 @@ use crate::{DS_REPORT, EXPORT_TIMEOUT};
 pub static COMMAND: Command = Command {
     id: "report.plan-profile-config",
     path: &["report", "plan-profile-config"],
-    contract: 3,
+    contract: 4,
     summary: "Print an atomic standard MV booklet from project JSON.",
-    purpose: "Bind same-revision geometry and held approved assets to the project canonical MV setup, then render named publication destinations. All printing furniture inherits the exact adopted revision and fixed version/date; V1 transient settings are refused. Discover the V2 configuration with report plan-profile-config schema. The complete job commits one fresh output directory only after every booklet, preview and receipt succeeds.",
+    purpose: "Bind same-revision geometry and held approved assets to the project canonical MV setup, then render into the explicit --out directory. The reusable configuration contains no output destination. All printing furniture inherits the exact adopted revision and fixed version/date. Discover the V3 configuration with report plan-profile-config schema. The complete job commits one fresh output directory only after every booklet, preview and receipt succeeds.",
     chapter: Chapter::Reports,
     effect: Effect::LocalFileWrite,
     authority: Authority::HeadlessProject,
@@ -38,13 +38,19 @@ pub static COMMAND: Command = Command {
         Arg::value(
             "config",
             "<file.json>",
-            "Absolute path to a ds.grid-plan-profile-print/v2 JSON configuration.",
+            "Absolute path to a ds.grid-plan-profile-print/v3 JSON configuration.",
+        )
+        .required(),
+        Arg::value(
+            "out",
+            "<directory>",
+            "Fresh absolute output directory for this run; never stored in the configuration.",
         )
         .required(),
     ],
     output: "One atomic receipt with configuration SHA-256, exact model revision, ordered PNG previews, layout-plan digest and PDF digest for every booklet. Failure leaves the destination absent.",
     examples: &[Example {
-        command: "ds report plan-profile-config --project gisagara --config /project/prints/plan-profile.json --output json",
+        command: "ds report plan-profile-config --project gisagara --config /project/prints/plan-profile.json --out /project/prints/observation --output json",
         note: "Render every named variant from one pinned configuration; see docs/reference/report.md for the schema.",
         runnable: false,
     }],
@@ -66,7 +72,7 @@ pub static COMMAND: Command = Command {
             Refusal {
                 code: "output_exists",
                 when: "the output root already exists",
-                remedy: "choose a fresh output_root in the configuration",
+                remedy: "pass a fresh --out directory",
             },
             Refusal {
                 code: "output_create_failed",
@@ -104,9 +110,9 @@ pub static COMMAND: Command = Command {
 pub static SCHEMA: Command = Command {
     id: "report.plan-profile-config.schema",
     path: &["report", "plan-profile-config", "schema"],
-    contract: 3,
+    contract: 4,
     summary: "Describe the JSON plan/profile print configuration.",
-    purpose: "Return versioned geometry/asset/destination fields, the exact staking workbook Description binding schema, and a complete minimal example inheriting the canonical project printing setup. This is local discovery and does not render a sheet.",
+    purpose: "Return versioned geometry/asset fields and the per-run destination rule, the exact staking workbook Description binding schema, and a complete minimal example inheriting the canonical project printing setup. This is local discovery and does not render a sheet.",
     chapter: Chapter::Reports,
     effect: Effect::Discovery,
     authority: Authority::None,
@@ -139,15 +145,15 @@ pub fn schema_run(_inputs: &Inputs, _context: &Context) -> Result<Value, Failure
 }
 
 fn schema_document() -> Value {
-    json!({"schema":"ds.grid-plan-profile-print/v2",
-        "required":["schema","project_id","scene_path","plan_path","output_root"],
+    json!({"schema":"ds.grid-plan-profile-print/v3",
+        "required":["schema","project_id","scene_path","plan_path"],
         "optional":["preview_only","variants","sample_pages","side_profiles_path","notes_path","structure_descriptions_path","model_crs","context_page_files","model_fields","publication_assets"],
         "alignment_context":ds_command_kernel::printing::mv_context::schema(),
         "structure_description_binding":ds_command_kernel::printing::structure_descriptions::schema(),
         "override_rule":"Declarative changes belong in the existing revision-fenced project layout (mv.settings, pages and ordinary title furniture), validated by report.layout.schema; this job refuses transient settings. The mv_standardize layout intent canonizes approved cover/naming with standard index/key-plan/notes and A3 defaults.",
         "settings_rule":"All text, logos, layout, scales, fonts, ink and fixed version/date inherit the project's canonical adopted MV setup. This configuration only binds geometry, held approved assets and destinations. V1 transient settings are refused.",
-        "path_rule":"Relative paths resolve beside the configuration; output_root must be fresh.",
-        "example":{"schema":"ds.grid-plan-profile-print/v2","project_id":"project-id","scene_path":"sources/profile-scene.json","plan_path":"sources/plan.json","output_root":"publication-output"}
+        "path_rule":"Source paths resolve beside the configuration. The destination is a fresh absolute --out directory supplied for each run; stored output_root is refused.",
+        "example":{"schema":"ds.grid-plan-profile-print/v3","project_id":"project-id","scene_path":"sources/profile-scene.json","plan_path":"sources/plan.json"}
     })
 }
 
@@ -166,7 +172,6 @@ struct PrintConfig {
     project_id: String,
     scene_path: PathBuf,
     plan_path: PathBuf,
-    output_root: PathBuf,
     #[serde(default)]
     preview_only: bool,
     #[serde(default)]
@@ -216,8 +221,13 @@ fn resolve(base: &Path, path: &Path) -> PathBuf {
     }
 }
 
-fn validate(config: &PrintConfig, project: &str, base: &Path) -> Result<PathBuf, Failure> {
-    if config.schema != "ds.grid-plan-profile-print/v2" || config.project_id != project {
+fn validate(
+    config: &PrintConfig,
+    project: &str,
+    base: &Path,
+    output_root: &Path,
+) -> Result<PathBuf, Failure> {
+    if config.schema != "ds.grid-plan-profile-print/v3" || config.project_id != project {
         return Err(Failure::invalid(
             "print_config_invalid",
             "schema or project_id does not match the requested print",
@@ -262,14 +272,19 @@ fn validate(config: &PrintConfig, project: &str, base: &Path) -> Result<PathBuf,
             ));
         }
     }
-    let output_root = resolve(base, &config.output_root);
+    if !output_root.is_absolute() {
+        return Err(Failure::invalid(
+            "print_config_invalid",
+            "--out must be an absolute directory",
+        ));
+    }
     if output_root.symlink_metadata().is_ok() {
         return Err(Failure::invalid(
             "output_exists",
-            "output_root already exists; print variants require a fresh destination",
+            "--out already exists; print variants require a fresh destination",
         ));
     }
-    Ok(output_root)
+    Ok(output_root.to_owned())
 }
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
@@ -285,7 +300,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         .map_err(|e| Failure::invalid("print_config_invalid", e.to_string()))?;
     let config = decode_config(&bytes)?;
     let base = config_path.parent().expect("absolute file has parent");
-    let output_root = validate(&config, project, base)?;
+    let output_root = validate(&config, project, base, Path::new(inputs.require("out")?))?;
     let (resolved, style_resolution, renderer_defaults) =
         crate::project::mv_setup::resolve_project_print(
             inputs.require("lane")?,
@@ -503,12 +518,11 @@ mod tests {
         std::fs::write(source.path().join("scene.json"), "{}").unwrap();
         std::fs::write(source.path().join("plan.json"), "{}").unwrap();
         let make = |names: &[&str]| PrintConfig {
-            schema: "ds.grid-plan-profile-print/v2".into(),
+            schema: "ds.grid-plan-profile-print/v3".into(),
             preview_only: false,
             project_id: "p".into(),
             scene_path: "scene.json".into(),
             plan_path: "plan.json".into(),
-            output_root: "out".into(),
             side_profiles_path: None,
             notes_path: None,
             structure_descriptions_path: None,
@@ -524,21 +538,22 @@ mod tests {
                 })
                 .collect(),
         };
-        assert!(validate(&make(&["color", "mono"]), "p", source.path()).is_ok());
+        let out = source.path().join("out");
+        assert!(validate(&make(&["color", "mono"]), "p", source.path(), &out).is_ok());
         assert_eq!(
-            validate(&make(&["../escape"]), "p", source.path())
+            validate(&make(&["../escape"]), "p", source.path(), &out)
                 .unwrap_err()
                 .code(),
             "print_config_invalid"
         );
         assert_eq!(
-            validate(&make(&["color", "color"]), "p", source.path())
+            validate(&make(&["color", "color"]), "p", source.path(), &out)
                 .unwrap_err()
                 .code(),
             "print_config_invalid"
         );
         assert_eq!(
-            validate(&make(&["color"]), "other", source.path())
+            validate(&make(&["color"]), "other", source.path(), &out)
                 .unwrap_err()
                 .code(),
             "print_config_invalid"
@@ -549,8 +564,15 @@ mod tests {
     fn discovery_example_parses_as_the_live_configuration() {
         let example = schema_document()["example"].clone();
         let config: PrintConfig = serde_json::from_value(example).unwrap();
-        assert_eq!(config.schema, "ds.grid-plan-profile-print/v2");
+        assert_eq!(config.schema, "ds.grid-plan-profile-print/v3");
         assert_eq!(config.variants.len(), 1);
         assert_eq!(config.variants[0].name, "booklet");
+    }
+
+    #[test]
+    fn reusable_config_refuses_a_saved_destination() {
+        let mut example = schema_document()["example"].clone();
+        example["output_root"] = json!("C:\\External\\prints");
+        assert!(decode_config(&serde_json::to_vec(&example).unwrap()).is_err());
     }
 }
