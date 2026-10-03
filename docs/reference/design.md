@@ -93,6 +93,17 @@ is only a bounded count/digest receipt. This command neither reads nor updates
 Desktop, map, IndexedDB, project, or saved transformer state. Importing or
 saving the result is a separate governed operation.
 
+Each processed job's receipt includes `preservation`: effective settings,
+approved feature count, and per-layer/per-field source-to-result change counts.
+Zero means checked and unchanged; `@added`, `@missing` and `@ambiguous` count
+unmatched identities. The Rust owner refuses a job with
+`error_code=lv_approved_preservation_refused` if approved identities, exact
+geometry or protected authored cells would change. That job returns the counts
+in `protected_changes` and no processed layers; independent siblings complete.
+Inspect and repair the named source problem or explicitly revise the approved
+design, then reprocess. Publication validates the receipt and preservation
+against the exact input/result. Receipt-less older results require a new run.
+
 `ds design lv project-save` completes that handoff through the normal project
 save authority. It accepts the successful export/process JSON receipts and
 their exact configured input/result files, validates the selected job through
