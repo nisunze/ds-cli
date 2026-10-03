@@ -163,6 +163,12 @@ returns one exact document and revision through the shared kernel resolver.
 Changing the source or role changes the authority; an unknown combination
 refuses by name. Hosts never construct a style id from a layer name.
 
+Authored purpose groups use that same held tuple authority. Their declaration
+and the separate printing-layout boundary live in the kernel's
+[style purpose contract](../../../ds-command-kernel/docs/contracts/style-purpose-index.md).
+Discover the read through `ds capabilities style.purpose.index`; no production
+document adoption is implied by the availability of this command.
+
 `style catalogue manifest` reads the versioned declarative standard set.
 `style catalogue seed plan --project <id>` names missing documents and preserves
 authored heads. Apply only the reviewed `manifest_revision` and `plan_sha256`

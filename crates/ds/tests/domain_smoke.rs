@@ -45,6 +45,44 @@ fn discoverable(command: &Value) -> bool {
 }
 
 #[test]
+fn style_purposes_are_a_named_read_and_preserve_native_auth_refusals() {
+    let described = native_ds(&["capabilities", "style.purpose.index", "--output", "json"]);
+    assert_eq!(described.code, 0, "{}", described.envelope);
+    let command = &described.envelope["data"]["command"];
+    assert_eq!(command["authority"], "headless_project");
+    assert_eq!(command["effect"], "local_auth_state");
+    assert!(
+        command["purpose"]
+            .as_str()
+            .unwrap()
+            .contains("separate Templates authority")
+    );
+    assert!(
+        command["refusals"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|refusal| refusal["code"] == "style_purpose_line_type_missing")
+    );
+    let result = native_ds(&[
+        "style",
+        "purpose",
+        "index",
+        "--project",
+        "named-project",
+        "--target",
+        "print",
+        "--lane",
+        "canary",
+        "--output",
+        "json",
+    ]);
+    assert_ne!(result.code, 0);
+    assert_eq!(result.envelope["error"]["code"], "headless_signed_out");
+    assert!(result.envelope["data"].is_null());
+}
+
+#[test]
 fn saved_lv_analysis_read_is_discoverable_and_refuses_existing_output_before_auth() {
     let described = native_ds(&[
         "capabilities",
@@ -13204,9 +13242,9 @@ fn ds_style_asks_no_host_question_and_refuses_without_a_window() {
             "`{id}` does not name the project it reads or writes"
         );
         if flags.contains(&"target") {
-            assert_eq!(
-                id, "style.resolve",
-                "only governed screen/print resolution declares a semantic target"
+            assert!(
+                matches!(id.as_str(), "style.resolve" | "style.purpose.index"),
+                "only governed resolution or purposes declare a semantic target"
             );
         }
         for windowed in ["host", "desktop-descriptor"] {
