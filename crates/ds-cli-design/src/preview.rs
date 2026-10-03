@@ -63,12 +63,10 @@ pub const CAPABILITY_ARG: Arg = Arg::repeated(
 
 pub const FORMAT_ARG: Arg = Arg::repeated(
     "format",
-    "<xlsx|shp|kmz|gpkg|pdf|png|zip|geojsonl>",
+    "<format>",
     "Keep only artifacts of this format; repeat to combine.",
 )
-.choices(&[
-    "xlsx", "shp", "kmz", "gpkg", "pdf", "png", "zip", "geojsonl",
-]);
+.choices(ds_command_kernel::report_formats::DOWNLOAD_FORMATS);
 
 pub const MIRROR_ARG: Arg = Arg::switch(
     "combined-mirror",
