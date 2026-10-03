@@ -34,7 +34,7 @@ const COLLISIONS_ROW: &str = "collisions";
 pub static COMMAND: Command = Command {
     id: "design.collisions",
     path: &["design", "collisions"],
-    contract: 1,
+    contract: 2,
     summary: "Read collision counts and rank overlapping transformer regions.",
     purpose: "\
 Reads the project-wide collisions document the report owner writes. The count \
@@ -178,15 +178,29 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             )
             .remedy("refresh collision detection before reading regions"));
         }
-        output["summary"] = ds_command_kernel::collisions::summarize(
-            &features,
-            true,
-            document.is_some(),
-            None,
-            limit,
-        );
+        output["summary"] = region_summary(&features, document.is_some(), limit)?;
     }
     Ok(output)
+}
+
+/// The saved project document is admitted once into the shared native layer.
+/// Ranking, phase and completeness are the registry runner's decisions.
+fn region_summary(features: &[Value], computed: bool, limit: usize) -> Result<Value, Failure> {
+    let layer = ds_network::vector::Layer {
+        features: features
+            .iter()
+            .map(ds_geo::layer::Feature::import_geojson)
+            .collect(),
+    };
+    ds_network::vector::run(
+        "collisions",
+        json!({"source":{"layer_id":"collisions"},"parameters":{"loaded":true,"computed":computed},"output":{"limit":limit}}),
+        std::sync::Arc::new(layer),
+        None,
+        ds_network::vector::RunOptions::default(),
+    ).map(|answer| answer.metadata["report"].clone()).map_err(|error| {
+        Failure::unavailable("collision_regions_unreadable", error.message).remedy(error.remedy)
+    })
 }
 
 /// The project-wide rows that are documents rather than transformers.
@@ -232,6 +246,20 @@ pub fn render(data: &Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ranked_regions_use_the_shared_registry_and_disclose_withheld_evidence() {
+        let features = [
+            json!({"type":"Feature","id":"low","properties":{"coverage_pct":10},"geometry":null}),
+            json!({"type":"Feature","id":"high","properties":{"coverage_pct":80},"geometry":null}),
+        ];
+        let summary = region_summary(&features, true, 1).unwrap();
+        assert_eq!(summary["regions"][0]["id"], "high");
+        assert_eq!(summary["regions"][0]["feature_index"], 1);
+        assert_eq!(summary["total"], 2);
+        assert_eq!(summary["more"], true);
+        assert!(summary["regions"][0].get("geometry").is_none());
+    }
 
     /// The keys are the kernel's; this pins that the command reads them from
     /// there rather than restating the fold.

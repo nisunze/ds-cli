@@ -1,0 +1,137 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$comment": "Generated from ds-network vector workflow describe; Rust validation also checks graph references, descriptor types, conditions and execution bounds.",
+  "type": "object",
+  "required": [
+    "schema",
+    "name",
+    "steps",
+    "outputs"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {
+      "const": "ds.vector-workflow/v1"
+    },
+    "name": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "enum": [
+              "layer",
+              "number",
+              "string",
+              "bool",
+              "enum"
+            ]
+          },
+          "description": {
+            "type": "string"
+          },
+          "default": {},
+          "values": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "many": {
+            "type": "boolean",
+            "default": false
+          },
+          "integer": {
+            "type": "boolean",
+            "default": false
+          },
+          "unit": {
+            "type": "string"
+          },
+          "geometry": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "fields": {
+            "type": "object"
+          }
+        }
+      }
+    },
+    "steps": {
+      "type": "array",
+      "maxItems": 64,
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "tool",
+          "request"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "tool": {
+            "type": "string"
+          },
+          "request": {
+            "type": "object"
+          },
+          "when": {},
+          "for_each": {
+            "type": "object",
+            "required": [
+              "kind",
+              "over"
+            ],
+            "properties": {
+              "kind": {
+                "enum": [
+                  "features",
+                  "groups",
+                  "layers"
+                ]
+              },
+              "over": {},
+              "group_by": {
+                "type": "string"
+              },
+              "chunk_size": {
+                "type": "integer",
+                "default": 1,
+                "minimum": 1,
+                "maximum": 64
+              }
+            }
+          }
+        }
+      }
+    },
+    "outputs": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": [
+          "$ref"
+        ],
+        "properties": {
+          "$ref": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

@@ -54,6 +54,8 @@ serde_json = { workspace = true }
 windows-sys = { workspace = true }
 
 [dev-dependencies]
+# Vector CLI fixtures compare receipts and Arrow exports with their Rust owner.
+ds-network = { path = "../../../ds-network/crates/ds-network" }
 tempfile = "3"
 # tests/gateway_operations.rs proves the CLI and the desktop select the same
 # reviewed gateway operations. The binary reaches the core through

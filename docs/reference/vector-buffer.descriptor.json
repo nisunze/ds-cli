@@ -1,0 +1,440 @@
+{
+  "id": "geoprocessing::Buffer",
+  "version": "ds.vector-tool/v1",
+  "name": "Buffer",
+  "category": "geoprocessing",
+  "category_name": "Geoprocessing",
+  "command": "buffer",
+  "summary": "Buffer each feature by a fixed distance into a polygon zone.",
+  "description": "Zone of a fixed distance around each feature.",
+  "status": "available",
+  "input_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "source": {
+        "type": "object",
+        "additionalProperties": false,
+        "anyOf": [
+          {
+            "required": [
+              "layer_id"
+            ]
+          },
+          {
+            "required": [
+              "file"
+            ]
+          },
+          {
+            "required": [
+              "layer"
+            ]
+          },
+          {
+            "required": [
+              "geojson"
+            ]
+          }
+        ],
+        "properties": {
+          "layer_id": {
+            "type": "string",
+            "description": "Reference to an admitted typed/IPC layer; hosts resolve it before running."
+          },
+          "file": {
+            "type": "string",
+            "description": "Host-owned input file reference. Read GeoJSON/KML or Arrow IPC at the import boundary."
+          },
+          "name": {
+            "type": "string",
+            "default": "Source"
+          },
+          "layer": {
+            "type": "object",
+            "description": "Typed layer reference for workflow chaining; features stay in the layer store.",
+            "x-value-kind": "layer",
+            "x-geometry-types": [
+              "Point",
+              "MultiPoint",
+              "LineString",
+              "MultiLineString",
+              "Polygon",
+              "MultiPolygon"
+            ]
+          },
+          "geojson": {
+            "type": "object",
+            "description": "Inline GeoJSON import at the native file boundary only; WASM runners receive IPC, never this value.",
+            "x-value-kind": "layer",
+            "x-geometry-types": [
+              "Point",
+              "MultiPoint",
+              "LineString",
+              "MultiLineString",
+              "Polygon",
+              "MultiPolygon"
+            ]
+          }
+        }
+      },
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "radius_m": {
+            "type": "number",
+            "default": 25.0,
+            "minimum": 0.01,
+            "maximum": 100000.0,
+            "unit": "m",
+            "x-refusal": "vector_distance_out_of_range"
+          },
+          "segments": {
+            "type": "integer",
+            "default": 8,
+            "minimum": 1,
+            "maximum": 64,
+            "x-refusal": "vector_distance_out_of_range"
+          }
+        },
+        "default": {}
+      },
+      "output": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "default": 500,
+            "minimum": 1,
+            "maximum": 20000,
+            "x-refusal": "vector_limit_out_of_range"
+          },
+          "projection": {
+            "type": "string",
+            "enum": [
+              "inline",
+              "complete"
+            ],
+            "default": "inline"
+          },
+          "name": {
+            "type": "string",
+            "default": ""
+          }
+        },
+        "default": {}
+      }
+    },
+    "default": {},
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "required": [
+      "source"
+    ]
+  },
+  "output_schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "x-output-kind": "new_layer",
+    "x-fields": [
+      {
+        "name": "source_index",
+        "type": "integer",
+        "unit": "index",
+        "nullable": false
+      },
+      {
+        "name": "source_id",
+        "type": "string",
+        "unit": "",
+        "nullable": true
+      },
+      {
+        "name": "source_kind",
+        "type": "string",
+        "unit": "",
+        "nullable": false
+      },
+      {
+        "name": "buffer_radius_m",
+        "type": "number",
+        "unit": "m",
+        "nullable": false
+      }
+    ],
+    "properties": {
+      "tool_id": {
+        "type": "string"
+      },
+      "dry_run": {
+        "type": "boolean"
+      },
+      "source_features": {
+        "type": "integer"
+      },
+      "produced": {
+        "type": "integer"
+      },
+      "processed": {
+        "type": "integer"
+      },
+      "fields_added": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": [
+            "name",
+            "type",
+            "unit"
+          ],
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "string",
+                "number",
+                "integer",
+                "boolean"
+              ]
+            },
+            "unit": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "output_layer": {
+        "type": "object",
+        "required": [
+          "name",
+          "geometry_type",
+          "fields"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "geometry_type": {
+            "type": "string",
+            "enum": [
+              "Point",
+              "LineString",
+              "Polygon"
+            ]
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "text",
+                    "number",
+                    "integer",
+                    "boolean"
+                  ]
+                }
+              }
+            }
+          },
+          "render_mode": {
+            "type": "string",
+            "enum": [
+              "geojson",
+              "vector_tiles"
+            ],
+            "description": "Rust selects bounded GeoJSON rendering or the existing vector-tile file pipeline."
+          }
+        }
+      },
+      "result": {
+        "type": "null",
+        "description": "Feature data is delivered separately as typed Rust/Arrow IPC."
+      },
+      "preview": {
+        "type": "object",
+        "properties": {
+          "counts": {
+            "type": "object",
+            "properties": {
+              "source_features": {
+                "type": "integer"
+              },
+              "processed": {
+                "type": "integer",
+                "unit": "count"
+              },
+              "produced": {
+                "type": "integer",
+                "unit": "count"
+              }
+            }
+          },
+          "fields_added": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "sample": {
+            "type": "array",
+            "maxItems": 5
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "totals": {
+        "type": "object"
+      },
+      "report": {
+        "type": "null"
+      }
+    },
+    "x-layer-geometry": [
+      "Polygon",
+      "MultiPolygon"
+    ],
+    "x-data-plane": {
+      "native": "ds_geo::layer::Layer",
+      "wasm": "Arrow IPC",
+      "id_column": "__ds_feature_id",
+      "geometry_column": "__ds_geometry_wkb",
+      "geometry_encoding": "WKB XY",
+      "fields": {
+        "source_index": {
+          "type": "integer",
+          "unit": "index"
+        },
+        "source_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "unit": ""
+        },
+        "source_kind": {
+          "type": "string",
+          "unit": ""
+        },
+        "buffer_radius_m": {
+          "type": "number",
+          "unit": "m"
+        }
+      },
+      "samples": "preview.sample only"
+    }
+  },
+  "examples": [
+    {
+      "summary": "Portable request; copy directly to --request.",
+      "request": {
+        "source": {
+          "name": "Example",
+          "geojson": {
+            "type": "FeatureCollection",
+            "features": [
+              {
+                "type": "Feature",
+                "id": "line-1",
+                "properties": {},
+                "geometry": {
+                  "type": "LineString",
+                  "coordinates": [
+                    [
+                      30.0,
+                      -2.0
+                    ],
+                    [
+                      30.001,
+                      -2.0
+                    ]
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        "parameters": {
+          "radius_m": 25.0,
+          "segments": 8
+        },
+        "output": {
+          "limit": 500,
+          "projection": "inline",
+          "name": ""
+        }
+      }
+    }
+  ],
+  "refusals": [
+    {
+      "code": "vector_tool_unknown",
+      "when": "No descriptor has this id or command.",
+      "remedy": "List ds data vector describe."
+    },
+    {
+      "code": "vector_tool_roadmap",
+      "when": "The shape is agreed but no runner is shipped.",
+      "remedy": "Inspect the schema; choose an available tool."
+    },
+    {
+      "code": "vector_request_invalid",
+      "when": "The JSON does not match the schema or parameter relationships.",
+      "remedy": "Use the descriptor's types, enums, ranges and required fields."
+    },
+    {
+      "code": "vector_document_malformed",
+      "when": "GeoJSON, KML or Arrow IPC is malformed or unsupported.",
+      "remedy": "Import a supported layer file; inspect its format and geometry."
+    },
+    {
+      "code": "vector_document_empty",
+      "when": "The source has no features.",
+      "remedy": "Supply a nonempty source."
+    },
+    {
+      "code": "vector_no_eligible_feature",
+      "when": "No geometry is eligible.",
+      "remedy": "Use measure to inspect geometry types."
+    },
+    {
+      "code": "vector_distance_out_of_range",
+      "when": "An engine distance is out of range.",
+      "remedy": "Use the schema's distance range."
+    },
+    {
+      "code": "vector_limit_out_of_range",
+      "when": "A limit is out of range.",
+      "remedy": "Use 1 through 20000."
+    },
+    {
+      "code": "vector_external_data_required",
+      "when": "Requested terrain readings are missing or do not match returned points.",
+      "remedy": "Acquire elevations and supply elevations_m in point order, using null for missing readings."
+    },
+    {
+      "code": "vector_data_bound_exceeded",
+      "when": "Input or projected output exceeds the 32 MiB/20000-feature bound.",
+      "remedy": "Split the source into bounded chunks or increase spacing."
+    },
+    {
+      "code": "vector_engine_empty",
+      "when": "The buffer engine produced nothing.",
+      "remedy": "Check WGS84 coordinates and radius."
+    }
+  ]
+}
