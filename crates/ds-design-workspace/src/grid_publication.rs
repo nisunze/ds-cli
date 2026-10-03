@@ -1,7 +1,7 @@
 //! Validate the exact package with Network before admitting native publication.
 //! Source revision and engine metadata are derived here, never trusted from UI.
 use ds_command_kernel::grid_publication::{
-    Approval, CompositionSource, Intent, MigrationSource, MAX_MODEL_BYTES,
+    Approval, CompositionSource, Intent, MAX_MODEL_BYTES, MigrationSource,
 };
 use ds_grid_engine::GridSession;
 use serde::{Deserialize, Serialize};
@@ -65,7 +65,7 @@ pub fn prepare(request: &Request, bytes: &[u8]) -> Result<Intent, String> {
         (None, Some(_)) => {
             return Err(
                 "publish_expected_head_required: review and name the exact current head".into(),
-            )
+            );
         }
     };
     if request.model_id.is_some() && expected.is_empty() {
@@ -140,5 +140,25 @@ pub fn prepare(request: &Request, bytes: &[u8]) -> Result<Intent, String> {
         };
         format!("{code}{hint}")
     })?;
+    Ok(intent)
+}
+
+/// Linked graphs capture an explicit destination ID even for a new part.
+/// Source validation and governance still use the ordinary publication owner.
+pub fn prepare_linked(
+    request: &Request,
+    bytes: &[u8],
+    model_id: &str,
+    expected_head: &str,
+) -> Result<Intent, String> {
+    let mut captured = request.clone();
+    captured.model_id = (!expected_head.is_empty()).then(|| model_id.to_owned());
+    captured.expected_head_revision_id =
+        (!expected_head.is_empty()).then(|| expected_head.to_owned());
+    let mut intent = prepare(&captured, bytes)?;
+    intent.model_id = model_id.to_owned();
+    intent
+        .plan(&request.project, bytes)
+        .map_err(str::to_owned)?;
     Ok(intent)
 }
