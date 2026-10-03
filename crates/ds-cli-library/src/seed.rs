@@ -4,8 +4,8 @@ use ds_cli_contract::spec::{
 };
 use ds_cli_contract::{Context, Failure, Inputs};
 use ds_grid_exchange::{
-    StandardsCapacityBasisDeclaration, StandardsLibrarySeedOptions, plan_standards_library_seed,
-    portable_backup_seed_members,
+    StandardsCapacityBasisDeclaration, StandardsCapacityGenerationDeclaration,
+    StandardsLibrarySeedOptions, plan_standards_library_seed, portable_backup_seed_members,
 };
 use ds_io::{
     PlsCaddAvailableStructureSpottingEdit, pls_cadd_parse_available_structure_list,
@@ -19,9 +19,9 @@ use std::path::{Path, PathBuf};
 pub static COMMAND: Command = Command {
     id: "library.seed",
     path: &["library", "seed"],
-    contract: 2,
+    contract: 3,
     summary: "Seed an immutable as-built, new-design or custom parallel library.",
-    purpose: "Discovers explicit local roots or backups, classifies members by native headers, keeps exact pinned PLS-CADD assets in pls-cadd/, ingests only the characterized PLS-CADD-to-DS-Grid projection into dsgrid/, and atomically promotes library/<id>/<version>. Reviewed capacity-basis declarations name each exact native digest, its weight-span definition and engineering citation once in the reusable library. They change no strength, verification or load-case applicability. It never publishes, overwrites, opens PLS-CADD or converts DS Grid assets to PLS-CADD.",
+    purpose: "Discovers explicit local roots or backups, classifies members by native headers, keeps exact pinned PLS-CADD assets in pls-cadd/, ingests only the characterized PLS-CADD-to-DS-Grid projection into dsgrid/, and atomically promotes library/<id>/<version>. Reviewed capacity-basis declarations state the weight-span definition. Optional generation declarations validate and pin LIC, generating CRI and native-run provenance. Operative native capacity cases bind by the selected project CRI ordinal. Native strength bytes and verification stay unchanged. It never publishes, overwrites, opens PLS-CADD or converts DS Grid assets to PLS-CADD.",
     chapter: Chapter::PlsCadd,
     effect: Effect::ArtifactWrite,
     authority: Authority::None,
@@ -66,6 +66,11 @@ pub static COMMAND: Command = Command {
             "Bounded JSON array of {source_sha256, weight_span_basis, authority}. Each exact native source digest declares its imported capacity basis once. No capacity, case applicability or verification is inferred; without a declaration the basis stays undeclared.",
         ),
         Arg::value(
+            "capacity-generation-declarations",
+            "<json-path>",
+            "Optional reviewed generation provenance: exact native, LIC, generating CRI and run digests, source conditions and wind signs. Check-time capacity bindings use the selected project CRI ordinals.",
+        ),
+        Arg::value(
             "spotting-price-rules",
             "<json-path>",
             "Versioned price-factor rule. Derives the native STR and its DS Grid catalog together; the source is unchanged.",
@@ -78,6 +83,11 @@ pub static COMMAND: Command = Command {
         runnable: false,
     }],
     refusals: &[
+        Refusal {
+            code: "capacity_generation_declarations_invalid",
+            when: "the generation declaration file exceeds 1 MiB or is not a typed complete array",
+            remedy: "provide exact native, LIC, CRI and native-run digests and reviewed bindings for every generating condition",
+        },
         Refusal {
             code: "capacity_basis_declarations_invalid",
             when: "the declaration file exceeds 1 MiB or is not a typed declaration array",
@@ -165,7 +175,7 @@ pub static COMMAND: Command = Command {
         },
     ],
     reference: Some("docs/reference/library.md"),
-    search: &["capacity basis", "weight span", "canonical capacity", "engineering citation"],
+    search: &["capacity basis", "weight span", "canonical capacity", "engineering citation", "strength curves", "LIC", "generation bindings"],
     requires: Requires::Server,
     availability: || Availability::Available,
 };
@@ -437,6 +447,30 @@ pub fn run(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
             )?
         }
     };
+    let capacity_generation_declarations = match inputs.value("capacity-generation-declarations") {
+        None => Vec::new(),
+        Some(path) => {
+            let metadata = fs::metadata(path).map_err(|error| {
+                Failure::invalid(
+                    "capacity_generation_declarations_invalid",
+                    error.to_string(),
+                )
+            })?;
+            if metadata.len() > 1024 * 1024 {
+                return Err(Failure::invalid(
+                    "capacity_generation_declarations_invalid",
+                    "declaration file exceeds 1 MiB",
+                ));
+            }
+            serde_json::from_slice::<Vec<StandardsCapacityGenerationDeclaration>>(&read(path)?)
+                .map_err(|error| {
+                    Failure::invalid(
+                        "capacity_generation_declarations_invalid",
+                        error.to_string(),
+                    )
+                })?
+        }
+    };
     let options = StandardsLibrarySeedOptions {
         library_id: inputs.require("library-id")?.to_string(),
         version: inputs.require("library-version")?.to_string(),
@@ -452,6 +486,7 @@ pub fn run(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
         source_provenance: inputs.require("provenance")?.to_string(),
         compatibility,
         capacity_basis_declarations,
+        capacity_generation_declarations,
     };
     let plan = plan_standards_library_seed(schema, &source_members, &options)
         .map_err(|error| engine_failure("library_seed_failed", error))?;
