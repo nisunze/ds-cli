@@ -173,6 +173,20 @@ pub fn resolve(snapshot: &Snapshot, key: &Key) -> Result<Binding, Refusal> {
             ),
         ));
     }
+    Ok(admit_binding(binding, key)?.clone())
+}
+
+/// Admit an already-selected, held API reply through the same authority and
+/// content checks as `resolve`. This never selects a different document or
+/// invents a resolution snapshot for a legacy captured consumer request.
+pub fn admit_binding<'a>(binding: &'a Binding, key: &Key) -> Result<&'a Binding, Refusal> {
+    key.validate()?;
+    if binding.key != *key {
+        return Err(refused(
+            "style_resolution_key_mismatch",
+            format!("the held document does not declare {}", key.name()),
+        ));
+    }
     if !bounded(&binding.style_ref, 500)
         || !bounded(&binding.scope, 500)
         || !digest(&binding.revision_id)
@@ -185,6 +199,23 @@ pub fn resolve(snapshot: &Snapshot, key: &Key) -> Result<Binding, Refusal> {
             "style_resolution_invalid",
             format!("{} has incomplete document authority", key.name()),
         ));
+    }
+    if binding.document["metadata"]
+        .get("physical_print_style")
+        .is_some()
+    {
+        if key.target != Target::Print {
+            return Err(refused(
+                "style_resolution_invalid",
+                "physical_print_style requires a print target",
+            ));
+        }
+        crate::printing::style_overrides::physical_style(&binding.document).map_err(|error| {
+            refused(
+                "style_resolution_invalid",
+                format!("{} ({}) is invalid: {error}", key.name(), binding.style_ref),
+            )
+        })?;
     }
     crate::style_validation::validate(&binding.document).map_err(|error| {
         refused(
@@ -202,7 +233,7 @@ pub fn resolve(snapshot: &Snapshot, key: &Key) -> Result<Binding, Refusal> {
             ),
         ));
     }
-    Ok(binding.clone())
+    Ok(binding)
 }
 
 pub fn validate_snapshot(snapshot: &Snapshot) -> Result<(), Refusal> {
@@ -507,6 +538,64 @@ mod tests {
             missing_style_refs: Vec::new(),
             bindings,
         }
+    }
+    #[test]
+    fn held_reply_admission_shares_resolver_authority_without_a_second_choice() {
+        let table = snapshot();
+        let held = &table.bindings[0];
+        assert_eq!(
+            serde_json::to_value(admit_binding(held, &held.key).unwrap()).unwrap(),
+            serde_json::to_value(held).unwrap()
+        );
+        assert_eq!(
+            serde_json::to_value(resolve(&table, &held.key).unwrap()).unwrap(),
+            serde_json::to_value(held).unwrap()
+        );
+        let mut wrong_key = held.key.clone();
+        wrong_key.source_kind = "another-source".into();
+        assert_eq!(
+            admit_binding(held, &wrong_key).unwrap_err().code,
+            "style_resolution_key_mismatch"
+        );
+        let mut changed = held.clone();
+        changed.document["paint"]["line-width"] = json!(99);
+        assert_eq!(
+            admit_binding(&changed, &held.key).unwrap_err().code,
+            "style_resolution_revision_mismatch"
+        );
+        changed = held.clone();
+        changed.revision_id.clear();
+        assert_eq!(
+            admit_binding(&changed, &held.key).unwrap_err().code,
+            "style_resolution_invalid"
+        );
+    }
+    #[test]
+    fn held_physical_style_uses_the_closed_print_owner() {
+        let baselines: Value = serde_json::from_str(include_str!(
+            "../tests/fixtures/governed-physical-print-baselines.json"
+        ))
+        .unwrap();
+        let document = baselines["documents"][0]["document"].clone();
+        let mut binding = snapshot().bindings.remove(3);
+        binding.document = document;
+        binding.content_sha256 = crate::style_plan::style_digest(&binding.document);
+        admit_binding(&binding, &binding.key).unwrap();
+        binding.key.target = Target::Screen;
+        assert_eq!(
+            admit_binding(&binding, &binding.key).unwrap_err().code,
+            "style_resolution_invalid"
+        );
+        binding.key.target = Target::Print;
+        binding.document["metadata"]["physical_print_style"]
+            .as_object_mut()
+            .unwrap()
+            .remove("stroke_opacity");
+        binding.content_sha256 = crate::style_plan::style_digest(&binding.document);
+        assert_eq!(
+            admit_binding(&binding, &binding.key).unwrap_err().code,
+            "style_resolution_invalid"
+        );
     }
     #[test]
     fn entity_sources_and_paper_roles_have_independent_authority() {
