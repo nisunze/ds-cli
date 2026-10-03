@@ -7,6 +7,80 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 
+#[derive(Deserialize)]
+struct CapturedResult<'a> {
+    #[serde(borrow)]
+    output: CapturedOutput<'a>,
+}
+#[derive(Deserialize)]
+struct CapturedOutput<'a> {
+    #[serde(borrow)]
+    voltage_drop: Option<&'a serde_json::value::RawValue>,
+}
+
+/// Read the producer's retained member without serializing it again. Admission
+/// hashes the captured final layers/settings; it never runs network processing.
+fn saved_voltage_drop(bytes: &[u8], result: &Value, transformer: &str) -> Result<Vec<u8>> {
+    let captured: CapturedResult<'_> = serde_json::from_slice(bytes)?;
+    let raw = captured.output.voltage_drop.ok_or_else(|| {
+        invalid("voltage_drop_result_missing: captured run has no saved producer analysis")
+    })?;
+    if raw.get().len() > 64 * 1024 * 1024 {
+        return Err(invalid(
+            "voltage_drop_result_invalid: saved analysis exceeds 64 MiB",
+        ));
+    }
+    let analysis: ds_network::network::voltage_drop::VoltageDropAnalysis =
+        serde_json::from_str(raw.get()).map_err(|error| {
+            invalid(format!(
+                "voltage_drop_result_invalid: saved analysis: {error}"
+            ))
+        })?;
+    if result["schema"] != "ds.design.process-result/v1"
+        || result["transformer"] != transformer
+        || analysis.schema != ds_network::network::voltage_drop::VOLTAGE_DROP_ANALYSIS_SCHEMA_V1
+        || [
+            &analysis.inputs_digest,
+            &analysis.analysis_inputs_digest,
+            &analysis.processed_digest,
+        ]
+        .iter()
+        .any(|digest| digest.len() != 64 || !digest.bytes().all(|byte| byte.is_ascii_hexdigit()))
+    {
+        return Err(invalid("voltage_drop_result_invalid: saved result identity, schema or binding digests are invalid"));
+    }
+    let layers = result["output"]["gdfs"]
+        .as_object()
+        .ok_or_else(|| invalid("voltage_drop_result_invalid: saved result has no final layers"))?;
+    let settings =
+        serde_json::from_value(result["output"]["settings_used"].clone()).map_err(|error| {
+            invalid(format!(
+                "voltage_drop_result_invalid: saved settings: {error}"
+            ))
+        })?;
+    if !analysis.matches_processed_layers(layers, &settings) {
+        return Err(invalid("voltage_drop_result_stale: saved analysis does not bind the captured final layers/settings"));
+    }
+    let tr = result["output"]["gdfs"]["tr"]["features"]
+        .as_array()
+        .filter(|features| features.len() == 1)
+        .ok_or_else(|| invalid("voltage_drop_result_invalid: saved layers need one transformer"))?;
+    if tr[0]["properties"]
+        .get("transfo")
+        .is_some_and(|name| name != transformer)
+    {
+        return Err(invalid(
+            "voltage_drop_result_invalid: saved transformer differs from the report identity",
+        ));
+    }
+    if tr[0]["properties"]["vd_summary"] != analysis.summary {
+        return Err(invalid(
+            "voltage_drop_result_stale: saved transformer summary differs from producer analysis",
+        ));
+    }
+    Ok(raw.get().as_bytes().to_vec())
+}
+
 #[derive(Serialize, Deserialize, Debug)]
 pub struct RunReceipt {
     pub run_id: String,
@@ -209,6 +283,8 @@ impl Workspace {
         }
         let (bytes, sha) = self.result(id, transformer)?;
         let result: Value = serde_json::from_slice(&bytes)?;
+        let analysis = saved_voltage_drop(&bytes, &result, transformer)?;
+        let analysis_sha = format!("{:x}", Sha256::digest(&analysis));
         let layers = result["output"]["gdfs"]
             .as_object()
             .ok_or_else(|| invalid("failed job cannot produce reports"))?;
@@ -230,6 +306,7 @@ impl Workspace {
                 "network-config.json",
                 serde_json::to_vec(&snapshot.network_config)?,
             ),
+            ("voltage-drop.json", analysis),
         ];
         let mut hashes = BTreeMap::new();
         for (name, bytes) in files {
@@ -237,7 +314,9 @@ impl Workspace {
             hashes.insert(name, format!("{:x}", Sha256::digest(&bytes)));
         }
         let receipt = json!({"schema":"ds.design.report-inputs/v1","run_id":id,"transformer":transformer,
-            "input_revision":revision,"result_sha256":sha,"files":hashes,"input_shape":"plain_local"});
+            "input_revision":revision,"result_sha256":sha,"files":hashes,"input_shape":"plain_local",
+            "layers_sha256":design::digest(layers).map_err(invalid)?,
+            "voltage_drop_result":{"path":out.join("voltage-drop.json"),"sha256":analysis_sha}});
         write_new(
             &stage.path().join("manifest.json"),
             &serde_json::to_vec(&receipt)?,
@@ -261,8 +340,14 @@ impl Workspace {
                 "only a completed matching report can be queued; inspect partial blockers",
             ));
         }
-        let (result, result_sha) = self.result(id, transformer)?;
-        let result: Value = serde_json::from_slice(&result)?;
+        let (result_bytes, result_sha) = self.result(id, transformer)?;
+        let result: Value = serde_json::from_slice(&result_bytes)?;
+        let analysis = saved_voltage_drop(&result_bytes, &result, transformer)?;
+        if read_file(&root.join("voltage-drop.json"), 64 * 1024 * 1024)? != analysis {
+            return Err(invalid(
+                "voltage_drop_result_stale: report analysis changed after capture",
+            ));
+        }
         let revision = result["input_revision"]
             .as_str()
             .ok_or_else(|| invalid("missing input revision"))?;
@@ -278,12 +363,20 @@ impl Workspace {
             ),
         ] {
             let bytes = read_file(&root.join(name), 256 * 1024 * 1024)?;
-            let actual: Value = serde_json::from_slice(&bytes)?;
-            if design::digest(&actual).map_err(invalid)?
-                != design::digest(&expected).map_err(invalid)?
-            {
+            if bytes != serde_json::to_vec(&expected)? {
                 return Err(invalid("report input changed after capture"));
             }
+        }
+        let requested: Vec<String> = serde_json::from_value(report["formats_requested"].clone())
+            .map_err(|_| invalid("report has no exact requested formats"))?;
+        let expected = ds_command_kernel::report_formats::normalize(&requested);
+        let expected: std::collections::BTreeSet<_> = expected.iter().map(String::as_str).collect();
+        let requested_set: std::collections::BTreeSet<_> =
+            requested.iter().map(String::as_str).collect();
+        if requested.len() != requested_set.len() || requested_set != expected {
+            return Err(invalid(
+                "report selection must include the mandatory saved voltage-drop JSON",
+            ));
         }
         let root = fs::canonicalize(root.join("artifacts"))?;
         let artifacts = report["artifacts"]
@@ -295,12 +388,29 @@ impl Workspace {
         let mut files = Vec::new();
         let mut total = 0;
         let mut names = std::collections::BTreeSet::new();
+        let mut formats = std::collections::BTreeSet::new();
         let mut records = Vec::new();
         for artifact in artifacts {
+            let format = artifact["format"]
+                .as_str()
+                .ok_or_else(|| invalid("artifact format missing"))?;
+            if !expected.contains(format) || !formats.insert(format) {
+                return Err(invalid(
+                    "report has an unrequested or duplicate artifact format",
+                ));
+            }
             let filename = artifact["filename"]
                 .as_str()
                 .ok_or_else(|| invalid("artifact filename missing"))?;
             design::identifier(filename).map_err(invalid)?;
+            if ds_command_kernel::report_formats::report_filename(transformer, format)
+                .map_err(invalid)?
+                != filename
+            {
+                return Err(invalid(
+                    "artifact filename differs from its transformer and format",
+                ));
+            }
             if !names.insert(filename) {
                 return Err(invalid("duplicate report artifact filename"));
             }
@@ -319,8 +429,16 @@ impl Workspace {
             if artifact["sha256"] != sha || artifact["bytes"].as_u64() != Some(bytes.len() as u64) {
                 return Err(invalid("report artifact digest or size mismatch"));
             }
+            if format == ds_command_kernel::report_formats::MANDATORY_INDIVIDUAL_OUTPUT
+                && bytes != analysis
+            {
+                return Err(invalid("voltage_drop_result_stale: delivered JSON differs from the saved producer source"));
+            }
             files.push((sha, bytes));
             records.push(json!({"filename":filename,"format":artifact["format"],"bytes":artifact["bytes"],"sha256":artifact["sha256"]}));
+        }
+        if formats != expected {
+            return Err(invalid("completed report is missing a requested artifact or mandatory saved voltage-drop JSON"));
         }
         let manifest = json!({"schema":"ds.design.delivery/v1","run_id":id,"transformer":transformer,"input_revision":revision,
             "result_sha256":result_sha,"country":report["country"],"formats_requested":report["formats_requested"],"artifacts":records});
@@ -426,4 +544,194 @@ fn process_job(root: &Path, id: &str, name: &str, revision: &str) -> Result<()> 
     }
     tx.commit()?;
     Ok(())
+}
+
+#[cfg(test)]
+mod report_source_tests {
+    use super::*;
+
+    fn captured() -> (tempfile::TempDir, Workspace, Value) {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("workspace");
+        Workspace::init(&root, "test-project").unwrap();
+        let mut workspace = Workspace::open(&root).unwrap();
+        let snapshot = json!({"schema":"ds.design.snapshot/v1","transformer":"T1","crs":"EPSG:4326",
+            "layers":{"tr":{"type":"FeatureCollection","features":[{"type":"Feature","id":"tr","geometry":{"type":"Point","coordinates":[30.0,-2.0]},"properties":{"name":"T1","names":"T1"}}]},
+                "lv_lines":{"type":"FeatureCollection","features":[{"type":"Feature","id":"line","geometry":{"type":"LineString","coordinates":[[30.0,-2.0],[30.0004,-2.0]]},"properties":{}}]}},
+            "settings":{},"network_config":{"sheets":{}},"sources":[],"include_design_customers":true});
+        workspace
+            .write(&serde_json::to_vec(&snapshot).unwrap(), None, "create")
+            .unwrap();
+        workspace.prepare_run("run", &["T1".into()]).unwrap();
+        assert_eq!(workspace.process("run", 1).unwrap().completed, 1);
+        let (bytes, _) = workspace.result("run", "T1").unwrap();
+        let result = serde_json::from_slice(&bytes).unwrap();
+        (temp, workspace, result)
+    }
+
+    // A synthetic retained transport fixture, including historical/damaged
+    // variants. No test repair or export reruns the producer.
+    fn store(workspace: &Workspace, bytes: &[u8]) {
+        workspace
+            .db
+            .execute(
+                "UPDATE jobs SET result=?1,result_sha256=?2 WHERE run='run' AND transformer='T1'",
+                params![bytes, format!("{:x}", Sha256::digest(bytes))],
+            )
+            .unwrap();
+    }
+
+    #[test]
+    fn report_capture_keeps_exact_saved_json_member_and_final_layer_pin() {
+        let (temp, workspace, result) = captured();
+        let bytes = serde_json::to_vec_pretty(&result).unwrap();
+        store(&workspace, &bytes);
+        let raw: CapturedResult<'_> = serde_json::from_slice(&bytes).unwrap();
+        let source = raw.output.voltage_drop.unwrap().get().as_bytes();
+        assert!(source.contains(&b'\n'));
+        let before = workspace.outbox(0, 100).unwrap();
+        let out = temp.path().join("report");
+        let receipt = workspace.report_inputs("run", "T1", &out).unwrap();
+        assert_eq!(fs::read(out.join("voltage-drop.json")).unwrap(), source);
+        assert_eq!(
+            receipt["voltage_drop_result"]["sha256"],
+            format!("{:x}", Sha256::digest(source))
+        );
+        assert_eq!(
+            receipt["files"]["voltage-drop.json"],
+            receipt["voltage_drop_result"]["sha256"]
+        );
+        assert_eq!(
+            receipt["layers_sha256"],
+            design::digest(&result["output"]["gdfs"]).unwrap()
+        );
+        assert_eq!(workspace.result("run", "T1").unwrap().0, bytes);
+        assert_eq!(workspace.outbox(0, 100).unwrap(), before);
+    }
+
+    #[test]
+    fn missing_invalid_and_stale_saved_analysis_refuse_before_staging() {
+        let (temp, workspace, original) = captured();
+        let before = workspace.outbox(0, 100).unwrap();
+        for (case, code) in [
+            ("missing", "voltage_drop_result_missing"),
+            ("null", "voltage_drop_result_missing"),
+            ("schema", "voltage_drop_result_invalid"),
+            ("state", "voltage_drop_result_invalid"),
+            ("identity", "voltage_drop_result_invalid"),
+            ("digest", "voltage_drop_result_stale"),
+            ("layers", "voltage_drop_result_stale"),
+        ] {
+            let mut result = original.clone();
+            match case {
+                "missing" => {
+                    result["output"]
+                        .as_object_mut()
+                        .unwrap()
+                        .remove("voltage_drop");
+                }
+                "null" => result["output"]["voltage_drop"] = Value::Null,
+                "schema" => result["output"]["voltage_drop"]["schema"] = json!("unknown"),
+                "state" => result["output"]["voltage_drop"]["status"] = json!("held"),
+                "identity" => result["transformer"] = json!("T2"),
+                "digest" => {
+                    result["output"]["voltage_drop"]["processed_digest"] = json!("0".repeat(64))
+                }
+                "layers" => {
+                    result["output"]["gdfs"]["tr"]["features"][0]["geometry"]["coordinates"] =
+                        json!([30.1, -2.0])
+                }
+                _ => unreachable!(),
+            }
+            let bytes = serde_json::to_vec(&result).unwrap();
+            store(&workspace, &bytes);
+            let out = temp.path().join(case);
+            let error = workspace.report_inputs("run", "T1", &out).unwrap_err();
+            assert!(error.to_string().starts_with(code), "{case}: {error}");
+            assert!(!out.exists(), "{case}");
+            assert_eq!(workspace.result("run", "T1").unwrap().0, bytes);
+            assert_eq!(workspace.outbox(0, 100).unwrap(), before);
+        }
+    }
+
+    fn artifact(root: &Path, format: &str, bytes: &[u8]) -> Value {
+        let filename = ds_command_kernel::report_formats::report_filename("T1", format).unwrap();
+        let path = root.join("artifacts").join(&filename);
+        fs::write(&path, bytes).unwrap();
+        json!({"format":format,"filename":filename,"path":path,"bytes":bytes.len(),"sha256":format!("{:x}",Sha256::digest(bytes))})
+    }
+
+    #[test]
+    fn delivery_requires_complete_selection_and_exact_saved_json_before_outbox() {
+        let (temp, mut workspace, _) = captured();
+        let root = temp.path().join("report");
+        workspace.report_inputs("run", "T1", &root).unwrap();
+        fs::create_dir(root.join("artifacts")).unwrap();
+        let source = fs::read(root.join("voltage-drop.json")).unwrap();
+        let layers = fs::read(root.join("transformer.json")).unwrap();
+        let report = json!({"transformer":"T1","status":"completed","country":"Test",
+            "formats_requested":["xlsx","voltage_drop"],
+            "artifacts":[artifact(&root,"xlsx",b"test workbook bytes"),artifact(&root,"voltage_drop",&source)]});
+        let before = workspace.outbox(0, 100).unwrap();
+        for case in [
+            "no_mandatory_selection",
+            "missing_artifact",
+            "duplicate",
+            "extra",
+            "identity",
+            "source_artifact",
+            "source_input",
+            "layers",
+            "digest",
+        ] {
+            let mut bad = report.clone();
+            match case {
+                "no_mandatory_selection" => bad["formats_requested"] = json!(["xlsx"]),
+                "missing_artifact" => {
+                    bad["artifacts"].as_array_mut().unwrap().pop();
+                }
+                "duplicate" => {
+                    let duplicate = bad["artifacts"][0].clone();
+                    bad["artifacts"].as_array_mut().unwrap().push(duplicate);
+                }
+                "extra" => bad["artifacts"]
+                    .as_array_mut()
+                    .unwrap()
+                    .push(artifact(&root, "geojson", b"extra")),
+                "identity" => bad["transformer"] = json!("T2"),
+                "source_artifact" => {
+                    let mut altered = source.clone();
+                    altered.push(b'\n');
+                    bad["artifacts"][1] = artifact(&root, "voltage_drop", &altered);
+                }
+                "source_input" => fs::write(root.join("voltage-drop.json"), b"{}").unwrap(),
+                "layers" => fs::write(root.join("transformer.json"), b"{}").unwrap(),
+                "digest" => bad["artifacts"][0]["sha256"] = json!("0".repeat(64)),
+                _ => unreachable!(),
+            }
+            assert!(
+                workspace.retain_report("run", "T1", &root, &bad).is_err(),
+                "{case}"
+            );
+            assert_eq!(workspace.outbox(0, 100).unwrap(), before, "{case}");
+            fs::write(root.join("voltage-drop.json"), &source).unwrap();
+            fs::write(root.join("transformer.json"), &layers).unwrap();
+            artifact(&root, "voltage_drop", &source);
+        }
+        assert_eq!(
+            workspace
+                .retain_report("run", "T1", &root, &report)
+                .unwrap()["artifact_count"],
+            2
+        );
+        let after = workspace.outbox(0, 100).unwrap();
+        assert_eq!(
+            after["rows"].as_array().unwrap().len(),
+            before["rows"].as_array().unwrap().len() + 1
+        );
+        workspace
+            .retain_report("run", "T1", &root, &report)
+            .unwrap();
+        assert_eq!(workspace.outbox(0, 100).unwrap(), after);
+    }
 }
