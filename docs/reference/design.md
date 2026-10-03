@@ -1260,6 +1260,10 @@ carries the ones it found:
   now_ms}` → `dispatch` / `wait` with `wait_ms` / `idle`, plus
   `waiting_not_executing`, which a host renders instead of a running spinner.
 
+The answer carries `mode {mode, reason_key}`, `trigger {schedule, reason_key}`,
+`differential_scope {scope, feeders, reason_key, selected_count, frozen_count}` and
+`cadence {decision, wait_ms?, reason_key, waiting_not_executing}` for the sections present.
+
 `now_ms` is an input, never a clock the kernel reads, so the same document
 always plans the same way; `--now-ms` overrides the cadence section's own value.
 The timer, the change accumulator and the engine latch stay with
