@@ -74,9 +74,12 @@ impl Messages {
                 "report_catalogue_incomplete: {locale}: every reference message needs a translation"
             ));
         }
+        let placeholder = regex::Regex::new(r"\{[a-zA-Z_][a-zA-Z_0-9]*\}").unwrap();
         let placeholders = |text: &str| -> Vec<String> {
-            let re = regex::Regex::new(r"\{[a-zA-Z_][a-zA-Z_0-9]*\}").unwrap();
-            let mut tokens: Vec<_> = re.find_iter(text).map(|m| m.as_str().to_owned()).collect();
+            let mut tokens: Vec<_> = placeholder
+                .find_iter(text)
+                .map(|m| m.as_str().to_owned())
+                .collect();
             tokens.sort();
             tokens
         };
