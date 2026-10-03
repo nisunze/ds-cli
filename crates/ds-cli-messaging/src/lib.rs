@@ -176,7 +176,7 @@ pub static CONFIG: Command = Command {
     }],
     refusals: &REFUSALS,
     reference: None,
-    search: &["messaging", "chat", "thread", "notification", "inbox"],
+    search: &["chat", "thread", "notification", "inbox"],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
@@ -199,7 +199,7 @@ pub static PEOPLE: Command = Command {
     }],
     refusals: &REFUSALS,
     reference: None,
-    search: &["messaging", "chat", "thread", "notification", "inbox"],
+    search: &["chat", "thread", "notification", "inbox"],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
@@ -222,7 +222,7 @@ pub static CONVERSATIONS: Command = Command {
     }],
     refusals: &REFUSALS,
     reference: None,
-    search: &["messaging", "chat", "thread", "notification", "inbox"],
+    search: &["chat", "thread", "notification", "inbox"],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
@@ -245,7 +245,7 @@ pub static PROJECT: Command = Command {
     }],
     refusals: &REFUSALS,
     reference: None,
-    search: &["messaging", "chat", "thread", "notification", "inbox"],
+    search: &["chat", "thread", "notification", "inbox"],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
@@ -268,7 +268,7 @@ pub static DIRECT: Command = Command {
     }],
     refusals: &REFUSALS,
     reference: None,
-    search: &["messaging", "chat", "thread", "notification", "inbox"],
+    search: &["chat", "thread", "notification", "inbox"],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
@@ -291,7 +291,7 @@ pub static PERSONAL: Command = Command {
     }],
     refusals: &REFUSALS,
     reference: None,
-    search: &["messaging", "chat", "thread", "notification", "inbox"],
+    search: &["chat", "thread", "inbox"],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
@@ -314,7 +314,7 @@ pub static READ: Command = Command {
     }],
     refusals: &REFUSALS,
     reference: None,
-    search: &["messaging", "chat", "thread", "notification", "inbox"],
+    search: &["chat", "notification", "inbox"],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
@@ -337,7 +337,7 @@ pub static SEND: Command = Command {
     }],
     refusals: &REFUSALS,
     reference: None,
-    search: &["messaging", "chat", "thread", "notification", "inbox"],
+    search: &["chat", "thread", "notification", "inbox"],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
@@ -360,7 +360,7 @@ pub static REPLY: Command = Command {
     }],
     refusals: &REFUSALS,
     reference: None,
-    search: &["messaging", "chat", "thread", "notification", "inbox"],
+    search: &["chat", "thread", "notification", "inbox"],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
@@ -383,7 +383,7 @@ pub static MARK_READ: Command = Command {
     }],
     refusals: &REFUSALS,
     reference: None,
-    search: &["messaging", "chat", "thread", "notification", "inbox"],
+    search: &["chat", "thread", "notification", "inbox"],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
@@ -406,7 +406,7 @@ pub static NOTIFICATIONS: Command = Command {
     }],
     refusals: &REFUSALS,
     reference: None,
-    search: &["messaging", "chat", "thread", "notification", "inbox"],
+    search: &["chat", "thread", "notification", "inbox"],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
@@ -429,7 +429,7 @@ pub static ACK: Command = Command {
     }],
     refusals: &REFUSALS,
     reference: None,
-    search: &["messaging", "chat", "thread", "notification", "inbox"],
+    search: &["chat", "thread", "notification", "inbox"],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };

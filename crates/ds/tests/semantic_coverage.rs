@@ -13,6 +13,19 @@ use std::process::Command;
 use serde_json::Value;
 
 const EXPECTED: &[(&str, &str, &str)] = &[
+    // Messaging is account-wide; brain checks canonical membership per request.
+    ("messaging.acknowledge", "global_write", "headless_user"),
+    ("messaging.config", "read_only", "headless_user"),
+    ("messaging.conversations", "read_only", "headless_user"),
+    ("messaging.direct", "global_write", "headless_user"),
+    ("messaging.mark-read", "global_write", "headless_user"),
+    ("messaging.notifications", "read_only", "headless_user"),
+    ("messaging.people", "read_only", "headless_user"),
+    ("messaging.personal", "read_only", "headless_user"),
+    ("messaging.project", "read_only", "headless_user"),
+    ("messaging.read", "read_only", "headless_user"),
+    ("messaging.reply", "global_write", "headless_user"),
+    ("messaging.send", "global_write", "headless_user"),
     ("data.vector.workflow.describe", "read_only", "none"),
     ("data.vector.workflow.validate", "read_only", "none"),
     ("data.vector.workflow.run", "local_file_write", "none"),

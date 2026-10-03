@@ -146,9 +146,9 @@ fn receipt(transformer: &str, from: &str, to: &str, result: &Value) -> Result<Va
     if !consistency["tolerance_m"]
         .as_f64()
         .is_some_and(|v| v.is_finite() && v >= 0.0)
-        || !consistency["findings"]
+        || consistency["findings"]
             .as_array()
-            .is_some_and(|rows| rows.len() <= 10)
+            .is_none_or(|rows| rows.len() > 10)
         || serde_json::to_vec(consistency).map_or(true, |v| v.len() > 16_384)
     {
         return Err(shared::unreadable(

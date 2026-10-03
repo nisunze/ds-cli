@@ -21,7 +21,7 @@ pub static COMMAND: Command = Command {
     path: &["design", "lv", "process"],
     contract: 3,
     summary: "Process transformer batches headlessly in parallel from local files.",
-    purpose: "Reprocess LV transformers headlessly in parallel from their layers, intended settings and network configuration. Supply one ds.fast-lv.request/v1 with 1..=32 jobs and at most 100,000 aggregate features. design.lv.project-export --project-config includes current material seeds with owner-default settings. Each job may carry differential intent: selected_feeders, or auto_process with captured changed_features; the same Rust LV owner decides scope for web, map and native runs. Native Rayon preserves input order. Full processed layers go to --out; retain this JSON receipt for design.lv.project-save to publish selected results. Printing and report publication follow separately.",
+    purpose: "Process one ds.fast-lv.request/v1 batch: 1..=32 jobs, at most 100,000 features, with intended settings and configuration. Optional differential intent selects feeders or captured edits through the shared Rust LV owner. Results retain input order. Full layers go to --out; keep the receipt for design.lv.project-save. See the reference for schemas and preservation rules.",
     chapter: Chapter::Design,
     effect: Effect::LocalFileWrite,
     authority: Authority::None,
@@ -40,7 +40,7 @@ pub static COMMAND: Command = Command {
         )
         .required(),
     ],
-    output: "`out`, input/result SHA-256 digests, byte count, engine version, native execution environment, Rayon worker count, job/success/failure counts, and input-ordered per-job status, error_code and preservation receipt (effective settings and per-field change counts). A job whose approved inputs would change returns lv_approved_preservation_refused and no processed layers. Full layers and diagnostics go to `out`.",
+    output: "Input/result SHA-256, output path and bytes, engine/runtime, worker count and ordered job statuses with preservation counts. A refused approved job has no layers. Full layers and diagnostics go to --out.",
     examples: &[Example {
         command: "ds design lv process --input ./fast-lv-request.json --out ./fast-lv-result.json --output json",
         note: "Run the closed local batch without a Desktop session or project identity.",

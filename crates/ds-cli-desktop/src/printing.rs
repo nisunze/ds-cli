@@ -304,14 +304,11 @@ pub fn export(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     for transformer in transformers {
         if transformer.is_empty()
             || transformer.len() > 121
-            || !transformer.bytes().enumerate().all(|(index, byte)| {
-                byte.is_ascii_lowercase()
-                    || byte.is_ascii_digit()
-                    || byte == b'_'
-                    || (index == 0 && byte == b'_')
-            })
-            || (!transformer.as_bytes()[0].is_ascii_lowercase()
-                && !(transformer.starts_with('_')
+            || !transformer
+                .bytes()
+                .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_')
+            || !(transformer.as_bytes()[0].is_ascii_lowercase()
+                || (transformer.starts_with('_')
                     && transformer
                         .as_bytes()
                         .get(1)

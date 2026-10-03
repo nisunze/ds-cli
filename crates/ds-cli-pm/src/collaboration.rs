@@ -150,9 +150,9 @@ fn unreadable() -> Failure {
 }
 fn validate_projects(result: &Value, status: &str, limit: i64) -> Result<(), Failure> {
     if result["status"].as_str() != Some(status)
-        || !result["next_cursor"]
+        || result["next_cursor"]
             .as_str()
-            .is_some_and(|value| value.len() <= 256)
+            .is_none_or(|value| value.len() > 256)
         || !result["projects"].as_array().is_some_and(|rows| {
             rows.len() <= limit as usize
                 && rows.iter().all(|row| {
@@ -218,9 +218,9 @@ pub fn comments(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     .into_result();
     if result["project_id"].as_str() != Some(project)
         || result["task_id"].as_str() != Some(task)
-        || !result["comments"]
+        || result["comments"]
             .as_array()
-            .is_some_and(|rows| rows.len() <= limit as usize)
+            .is_none_or(|rows| rows.len() > limit as usize)
         || !result["truncated_by_collection"]["pm_comments"].is_boolean()
     {
         return Err(unreadable());

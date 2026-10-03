@@ -152,7 +152,7 @@ pub fn run(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
     };
     let personal = i.switch("personal");
     let project = i.value("project").unwrap_or("");
-    if personal == !project.is_empty() {
+    if personal != project.is_empty() {
         return Err(invalid(if personal {
             "--personal takes no --project"
         } else {
