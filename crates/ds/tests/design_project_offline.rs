@@ -18,7 +18,7 @@ fn path(p: &Path) -> &str {
 }
 
 #[test]
-#[ignore = "requires built ds-report; the engine integration gate runs this explicitly"]
+#[ignore = "requires built ds-report and reporter printing fixtures; the engine integration gate runs this explicitly"]
 fn full_offline_flow_keeps_pinned_results_and_print_bytes_without_desktop() {
     let root = std::env::temp_dir().join(format!("ds-design-offline-{}", std::process::id()));
     std::fs::create_dir(&root).unwrap();
@@ -34,11 +34,25 @@ fn full_offline_flow_keeps_pinned_results_and_print_bytes_without_desktop() {
         "offline-test",
     ]);
     assert_eq!(init["publication"], "local_only");
+    let printing_config = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../ds-network-reporter/examples/printing/network-config.a0-a3.example.json");
+    let mut network_config: Value =
+        serde_json::from_slice(&std::fs::read(printing_config).unwrap()).unwrap();
+    let print_format = "pdf__a3-landscape-aderm-lv";
+    // Capture the owner's governed locale, layout, renderer and styles.
+    // Legacy pdf_a3 cannot replace a governed print selection.
+    let settings = network_config["sheets"]["project_settings"]
+        .as_array_mut()
+        .unwrap();
+    settings
+        .iter_mut()
+        .find(|row| row["parameter"] == "design_export_formats")
+        .unwrap()["value"] = json!(["xlsx", print_format]);
     let input = root.join("snapshot.json");
     std::fs::write(&input,serde_json::to_vec(&json!({"schema":"ds.design.snapshot/v1","transformer":"T1","crs":"EPSG:4326",
         "layers":{"tr":{"type":"FeatureCollection","features":[{"type":"Feature","id":"tr","geometry":{"type":"Point","coordinates":[30.0,-2.0]},"properties":{"name":"T1","names":"T1"}}]},
         "lv_lines":{"type":"FeatureCollection","features":[{"type":"Feature","id":"line","geometry":{"type":"LineString","coordinates":[[30.0,-2.0],[30.0004,-2.0]]},"properties":{}}]}},
-        "settings":{},"network_config":{"sheets":{"project_settings":[{"parameter":"design_export_format","value":["xlsx","pdf_a3"]}]}},"sources":[],"include_design_customers":true})).unwrap()).unwrap();
+        "settings":{},"network_config":network_config,"sources":[],"include_design_customers":true})).unwrap()).unwrap();
     let written = call(&[
         "design",
         "project",
@@ -148,12 +162,15 @@ fn full_offline_flow_keeps_pinned_results_and_print_bytes_without_desktop() {
         "--format",
         "xlsx",
         "--format",
-        "pdf_a3",
+        print_format,
     ]);
     assert_eq!(report["report"]["status"], "completed", "{report:#}");
     assert_eq!(report["delivery"]["artifact_count"], 2);
     let artifacts = report["report"]["artifacts"].as_array().unwrap();
-    let pdf = artifacts.iter().find(|a| a["format"] == "pdf_a3").unwrap();
+    let pdf = artifacts
+        .iter()
+        .find(|a| a["format"] == print_format)
+        .unwrap();
     let bytes = std::fs::read(pdf["path"].as_str().unwrap()).unwrap();
     assert!(bytes.starts_with(b"%PDF-"));
     assert!(bytes.len() > 1000);
