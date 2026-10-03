@@ -99,6 +99,7 @@ fn discard_artifact_from_root(root: &Path, locator: &str, digest: &str) -> Resul
         Ok(Instant::now() + Duration::from_secs(60))
     })
 }
+#[cfg(unix)]
 fn list_local_artifacts_from_root(
     root: &Path,
     owner: &str,
@@ -611,6 +612,9 @@ fn receipt_reader_rejects_oversized_files_before_parsing() {
     receipt
         .write_all(&vec![b'x'; (MAX_RECEIPT_BYTES + 1) as usize])
         .unwrap();
+    // Finished publication bytes must be closed before the confined reader
+    // denies writes; an open writer is a different Windows refusal.
+    drop(receipt);
 
     assert!(read_artifact_from_root(&root, &locator, 1024)
         .expect_err("oversized receipt must fail")
