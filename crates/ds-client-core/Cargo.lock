@@ -303,7 +303,7 @@ dependencies = [
 name = "ds-canvas-lite"
 version = "0.1.0"
 dependencies = [
- "rstar",
+ "ds-geo-lite",
  "serde",
 ]
 
@@ -342,6 +342,7 @@ dependencies = [
  "csv",
  "ds-canvas-lite",
  "ds-geo-lite",
+ "ds-kml",
  "ds-solar-contracts",
  "image",
  "imagesize",
@@ -362,10 +363,8 @@ dependencies = [
 name = "ds-geo"
 version = "0.1.0"
 dependencies = [
- "ds-geo-ops",
- "geo",
+ "ds-geo-lite",
  "regex",
- "rstar",
  "serde",
  "serde_json",
 ]
@@ -375,16 +374,9 @@ name = "ds-geo-lite"
 version = "0.1.0"
 dependencies = [
  "geo",
+ "rstar",
  "serde",
  "serde_json",
-]
-
-[[package]]
-name = "ds-geo-ops"
-version = "0.1.0"
-dependencies = [
- "ds-geo-lite",
- "rstar",
 ]
 
 [[package]]
@@ -400,6 +392,7 @@ dependencies = [
 name = "ds-grid-model"
 version = "0.1.0"
 dependencies = [
+ "ds-geo-lite",
  "schemars",
  "serde",
  "serde_json",
@@ -417,15 +410,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "ds-kml"
+version = "0.1.0"
+dependencies = [
+ "percent-encoding",
+ "quick-xml 0.41.0",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
 name = "ds-network"
 version = "0.1.0"
 dependencies = [
  "ds-cleaning",
  "ds-geo",
+ "ds-geo-lite",
  "ds-graph",
  "ds-profile",
  "rayon",
- "rstar",
  "serde",
  "serde_json",
  "sha2",
@@ -446,6 +449,7 @@ dependencies = [
 name = "ds-profile"
 version = "0.1.0"
 dependencies = [
+ "ds-geo-lite",
  "ds-grid-physics",
  "serde",
  "serde_json",
