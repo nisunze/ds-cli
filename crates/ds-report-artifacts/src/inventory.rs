@@ -296,7 +296,7 @@ mod tests {
             outputs.push(PublicationOutput {
                 output_id: (*id).into(),
                 locator,
-                filename: format!("tx_1{}", metadata.suffix),
+                filename: ds_command_kernel::report_formats::report_filename("tx_1", &metadata.format).unwrap(),
                 format: metadata.format,
                 content_type: metadata.content_type.into(),
                 sha256,
