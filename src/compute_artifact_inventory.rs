@@ -239,12 +239,13 @@ fn mime(format: &str) -> Option<&'static str> {
     })
 }
 pub fn validate(engine: &str, output: &Declaration) -> Result<(), String> {
-    let content_type = mime(&output.format).or_else(|| {
-        (engine == "network_reporter")
-            .then(|| crate::report_formats::output(&output.format).ok())
-            .flatten()
+    let content_type = if engine == "network_reporter" {
+        crate::report_formats::output(&output.format)
+            .ok()
             .map(|value| value.content_type)
-    });
+    } else {
+        mime(&output.format)
+    };
     if !id(&output.output_id)
         || content_type != Some(output.content_type.as_str())
         || output.sha256.len() != 64
@@ -281,32 +282,11 @@ pub fn filename(engine: &str, operation: &str, output: &Declaration) -> String {
     } else {
         &output.output_id
     };
-    if engine == "network_reporter"
-        && crate::report_formats::named_print_output(&output.format).is_some()
-    {
-        // The print-format owner already owns the layout suffix and media type.
-        return format!(
-            "{stem}{}",
-            crate::report_formats::output(&output.format)
-                .expect("validated format")
-                .suffix
-        );
+    if engine == "network_reporter" {
+        return crate::report_formats::report_filename(stem, &output.format)
+            .expect("validated report format");
     }
-    if engine == "network_reporter" && output.format == "geojsonseq" {
-        return format!("{stem}_geojsonl.zip");
-    }
-    if engine == "network_reporter" && output.format == "voltage_drop_pdf" {
-        return crate::report_formats::voltage_drop_pdf_filename(stem);
-    }
-    let extension = match output.format.as_str() {
-        "pdf_a0" => "a0.pdf",
-        "pdf_a3" => "a3.pdf",
-        "shp" => "shp.zip",
-        "geojsonzip" => "geojson.zip",
-        "geojsonseq" => "geojsonl.zip",
-        value => value,
-    };
-    format!("{stem}.{extension}")
+    format!("{stem}.{}", output.format)
 }
 pub fn evaluate(input: &[u8]) -> Result<String, String> {
     if input.is_empty() || input.len() > 512 * 1024 {
@@ -526,14 +506,14 @@ mod tests {
     }
     #[test]
     fn named_prints_keep_metadata_and_canonical_names() {
-        for (format, mime, suffix) in [
+        for (format, mime, _suffix) in [
             ("pdf", "application/pdf", "pdf"),
             ("png", "image/png", "png"),
             ("jpeg", "image/jpeg", "jpg"),
         ] {
             let output = json!({"output_id":format!("{format}__huye"),"format":format!("{format}__huye"),"content_type":mime,"sha256":"b".repeat(64),"size_bytes":123,
                 "paper_size":"A0","presentation":{"layout_id":"huye","layout_name":"Huye","paper_name":"A0","orientation":"landscape","page_mm":[1189,841]}});
-            let mut input = json!({"engine":"network_reporter","operation":"export-agasharu","outputs":[output.clone()],"download":{"output":output,"file_name":format!("agasharu.huye.{suffix}")}});
+            let mut input = json!({"engine":"network_reporter","operation":"export-agasharu","outputs":[output.clone()],"download":{"output":output,"file_name":crate::report_formats::report_filename("agasharu", &format!("{format}__huye")).unwrap()}});
             let result: serde_json::Value =
                 serde_json::from_str(&evaluate(&serde_json::to_vec(&input).unwrap()).unwrap())
                     .unwrap();

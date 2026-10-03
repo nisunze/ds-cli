@@ -1,6 +1,7 @@
 //! Print-layout authority shared by CLI, Canvas2D preview and vector delivery.
 //! Flat page elements in physical millimetres; no tile, HTML or remote-image IO.
 pub mod adjacent_networks;
+pub mod attribution;
 pub mod context;
 pub mod custom;
 pub mod diagnostics;
@@ -22,9 +23,11 @@ pub mod pens;
 pub mod placement;
 pub mod preview;
 pub mod project_sources;
+pub mod resolved_styles;
 pub mod session;
 pub mod sheet_margin;
 pub mod sheet_status;
+pub mod standards;
 pub mod structure_descriptions;
 pub mod style_overrides;
 pub mod table_columns;
@@ -49,6 +52,12 @@ pub const MAX_INPUT_BYTES: usize = 32 * 1024 * 1024;
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct Layout {
+    /// Governed attribution typography; content is mandatory on standard pages.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub attribution: Option<attribution::Style>,
+    /// Physical colour or monochrome pens, shared by preview and delivery.
+    #[serde(default, skip_serializing_if = "standards::InkMode::is_colour")]
+    pub ink_mode: standards::InkMode,
     /// MV publication furniture in the existing shared printing library.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mv: Option<Box<mv::Template>>,
@@ -113,6 +122,10 @@ pub struct Layout {
     /// element's text. Keys are identifiers; values at most 2000 bytes.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub title_block: BTreeMap<String, String>,
+    /// Scoped patches saved with this layout's optimistic project revision.
+    /// Hosts apply only the exact focused engineering identity.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub transformer_overrides: BTreeMap<String, overrides::PrintOverride>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
 #[serde(deny_unknown_fields)]
@@ -187,6 +200,8 @@ impl PrintPenScale {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Default)]
 #[serde(deny_unknown_fields)]
 pub struct PrintLabelOverride {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display: Option<names::LabelDisplay>,
     pub visible: Option<bool>,
     /// Paint placed labels below all map geometry, for background reference layers.
     pub below_geometry: Option<bool>,
@@ -884,7 +899,37 @@ fn no_stroke_or_bounded(value: f64, low: f64, high: f64) -> bool {
     value == 0. || bounded(value, low, high)
 }
 pub fn validate(layout: &Layout) -> Result<(), String> {
-    adjacent_networks::validate_selection(layout)?;
+    validate_with_semantic_layers(layout, &BTreeSet::new())
+}
+/// Governed standard documents declare resolver layer keys before refs exist.
+/// This validates their document controls without selecting a style document.
+pub(super) fn validate_with_semantic_layers(
+    layout: &Layout,
+    semantic_layers: &BTreeSet<String>,
+) -> Result<(), String> {
+    if semantic_layers.iter().any(|id| !identifier(id)) {
+        return Err("invalid semantic print layer key".into());
+    }
+    if let Some(style) = &layout.attribution {
+        style.validate()?;
+    }
+    if !layout.transformer_overrides.is_empty() {
+        let mut base = layout.clone();
+        base.transformer_overrides.clear();
+        let layouts = BTreeMap::from([(base.id.clone(), base)]);
+        let overrides = layout
+            .transformer_overrides
+            .iter()
+            .map(|(name, patch)| {
+                (
+                    name.clone(),
+                    BTreeMap::from([(layout.id.clone(), patch.clone())]),
+                )
+            })
+            .collect();
+        overrides::validate_inventory(&overrides, &layouts)?;
+    }
+
     if let Some(mv) = &layout.mv {
         mv::validate_template(layout, mv).map_err(|e| e.to_string())?;
     }
@@ -1095,7 +1140,7 @@ pub fn validate(layout: &Layout) -> Result<(), String> {
         _ => {
             return Err(
                 "a geographic sheet must have exactly one map frame; front matter has none".into(),
-            )
+            );
         }
     }
     if let Some(composition) = &layout.composition {
@@ -1215,7 +1260,7 @@ pub fn validate(layout: &Layout) -> Result<(), String> {
     if layout.style_overrides.len() > 100
         || layout.style_overrides.iter().any(|(id, o)| {
             !identifier(id)
-                || !layout.style_refs.contains_key(id)
+                || (!layout.style_refs.contains_key(id) && !semantic_layers.contains(id))
                 || o.color.as_ref().is_some_and(|c| !color(c))
                 || o.size.is_some_and(|v| !bounded(v, 0., 100.))
                 || o.scale_weight
@@ -1411,6 +1456,8 @@ pub fn default_layout() -> Layout {
         opacity: opaque(),
     };
     complete(Layout {
+        attribution: None,
+        ink_mode: standards::InkMode::Colour,
         mv: None,
         composition: None,
         transformer_bounds: None,
@@ -1422,6 +1469,7 @@ pub fn default_layout() -> Layout {
         style_overrides: BTreeMap::new(),
         focus: None,
         title_block: BTreeMap::new(),
+        transformer_overrides: BTreeMap::new(),
         schema: SCHEMA.into(),
         id: "network-map".into(),
         name: "Network map · A3 landscape".into(),
@@ -1719,6 +1767,26 @@ pub fn named_layout(
 #[derive(Deserialize, JsonSchema)]
 #[serde(tag = "op", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Command {
+    SetTransformerOverride {
+        layout: Layout,
+        transformer: String,
+        #[serde(default)]
+        patch: Option<overrides::PrintOverride>,
+    },
+    StandardRegistry,
+    ConsumeResolvedStyles {
+        capture: Value,
+        keys: BTreeMap<String, Value>,
+        project: String,
+    },
+    StandardLayout {
+        templates: standards::Templates,
+        kind: standards::Kind,
+        role: standards::PageRole,
+        identity: standards::Identity,
+        #[serde(default)]
+        overrides: Option<standards::Overrides>,
+    },
     /// Native and WASM hosts pass measured occupied furniture after layout.
     AssessFurniture {
         page_mm: [f64; 2],
@@ -2179,6 +2247,34 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
     let command: Command =
         serde_json::from_slice(input).map_err(|e| format!("invalid printing request: {e}"))?;
     let value = match command {
+        Command::SetTransformerOverride {
+            mut layout,
+            transformer,
+            patch,
+        } => {
+            if let Some(patch) = patch {
+                layout.transformer_overrides.insert(transformer, patch);
+            } else {
+                layout.transformer_overrides.remove(&transformer);
+            }
+            validate(&layout)?;
+            json!({"layout":layout})
+        }
+        Command::StandardRegistry => standards::registry(),
+        Command::ConsumeResolvedStyles {
+            capture,
+            keys,
+            project,
+        } => resolved_styles::consume(&capture, &keys, &project)?,
+        Command::StandardLayout {
+            templates,
+            kind,
+            role,
+            identity,
+            overrides,
+        } => {
+            json!({"layout":standards::layout(&templates, kind, role, &identity, overrides.as_ref())?})
+        }
         Command::TableColumns {
             layout,
             element_id,
