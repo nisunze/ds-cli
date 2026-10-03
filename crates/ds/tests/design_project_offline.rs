@@ -48,6 +48,18 @@ fn full_offline_flow_keeps_pinned_results_and_print_bytes_without_desktop() {
         .iter_mut()
         .find(|row| row["parameter"] == "design_export_formats")
         .unwrap()["value"] = json!(["xlsx", print_format]);
+    let setup = network_config["sheets"]["printing_setups"]
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .find(|setup| setup["id"] == "a3-landscape-aderm-lv")
+        .unwrap();
+    // The native calculation also exposes spans; bind their captured LV-line
+    // style explicitly rather than asking the renderer to invent one.
+    setup["layout"]["style_refs"]["spans"] = setup["layout"]["style_refs"]["lv_lines"].clone();
+    setup["revision"] = json!(ds_command_kernel::report_export::sha256_hex(
+        &serde_json::to_vec(&setup["layout"]).unwrap()
+    ));
     let input = root.join("snapshot.json");
     std::fs::write(&input,serde_json::to_vec(&json!({"schema":"ds.design.snapshot/v1","transformer":"T1","crs":"EPSG:4326",
         "layers":{"tr":{"type":"FeatureCollection","features":[{"type":"Feature","id":"tr","geometry":{"type":"Point","coordinates":[30.0,-2.0]},"properties":{"name":"T1","names":"T1"}}]},
