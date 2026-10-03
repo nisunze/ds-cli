@@ -744,7 +744,6 @@ const EXPECTED: &[(&str, &str, &str)] = &[
         "read_only",
         "headless_user",
     ),
-    ("library.global.write", "global_write", "headless_user"),
     (
         "library.global.fork-example",
         "global_write",

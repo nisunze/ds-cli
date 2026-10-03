@@ -301,7 +301,6 @@ struct BatchCommand {
     command_id: String,
     command: GridCommand,
     #[serde(default)]
-    #[serde(alias = "comment_ref")]
     review_ref: Option<String>,
 }
 

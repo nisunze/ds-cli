@@ -90,7 +90,6 @@ Columns: **Typed tool** is the leaf under `--exposure commands` and in any profi
 | `library.open` | `library_open` | `ds_pls_cadd` | read_only | y/n/y | — | — | tool |
 | `library.catalog` | `library_catalog` | `ds_pls_cadd` | read_only | y/n/y | — | — | tool |
 | `library.global.read` | `library_global_read` | `ds_pls_cadd` | read_only | y/n/y | — | — | tool |
-| `library.global.write` | `library_global_write` | `ds_pls_cadd` | global_write | n/y/n | required | — | tool |
 | `library.global.fork-example` | `library_global_fork-example` | `ds_pls_cadd` | global_write | n/y/n | required | — | tool |
 | `library.global.upload` | `library_global_upload` | `ds_pls_cadd` | global_write | n/y/n | required | — | tool |
 | `library.global.publish-library` | `library_global_publish-library` | `ds_pls_cadd` | global_write | n/y/n | required | — | tool |
