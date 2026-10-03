@@ -1,6 +1,7 @@
 //! Real CLI -> Rust workspace -> native network -> local report/PDF owners.
 use serde_json::{Value, json};
-use std::{path::Path, process::Command};
+use sha2::{Digest, Sha256};
+use std::{collections::BTreeMap, path::Path, process::Command};
 
 fn call(args: &[&str]) -> Value {
     let output = Command::new(env!("CARGO_BIN_EXE_ds"))
@@ -15,6 +16,13 @@ fn call(args: &[&str]) -> Value {
 }
 fn path(p: &Path) -> &str {
     p.to_str().unwrap()
+}
+fn saved_member(bytes: &[u8]) -> Vec<u8> {
+    let result: BTreeMap<String, Box<serde_json::value::RawValue>> =
+        serde_json::from_slice(bytes).unwrap();
+    let output: BTreeMap<String, Box<serde_json::value::RawValue>> =
+        serde_json::from_str(result["output"].get()).unwrap();
+    output["voltage_drop"].get().as_bytes().to_vec()
 }
 
 #[test]
@@ -149,7 +157,9 @@ fn full_offline_flow_keeps_pinned_results_and_print_bytes_without_desktop() {
         "--out",
         path(&result),
     ]);
-    let result: Value = serde_json::from_slice(&std::fs::read(result).unwrap()).unwrap();
+    let result_bytes = std::fs::read(result).unwrap();
+    let source_bytes = saved_member(&result_bytes);
+    let result: Value = serde_json::from_slice(&result_bytes).unwrap();
     assert_eq!(result["input_revision"], revision);
     assert!(
         result["output"]["gdfs"]["lv_poles"]["features"]
@@ -177,8 +187,50 @@ fn full_offline_flow_keeps_pinned_results_and_print_bytes_without_desktop() {
         print_format,
     ]);
     assert_eq!(report["report"]["status"], "completed", "{report:#}");
-    assert_eq!(report["delivery"]["artifact_count"], 2);
+    assert_eq!(report["delivery"]["artifact_count"], 3);
+    assert_eq!(
+        report["report"]["formats_requested"],
+        json!(["xlsx", "voltage_drop", print_format])
+    );
     let artifacts = report["report"]["artifacts"].as_array().unwrap();
+    let source = artifacts
+        .iter()
+        .find(|a| a["format"] == "voltage_drop")
+        .unwrap();
+    assert_eq!(
+        std::fs::read(source["path"].as_str().unwrap()).unwrap(),
+        source_bytes
+    );
+    assert_eq!(
+        std::fs::read(report_root.join("voltage-drop.json")).unwrap(),
+        source_bytes
+    );
+    assert_eq!(
+        source["sha256"],
+        format!("{:x}", Sha256::digest(&source_bytes))
+    );
+    let captured: Value =
+        serde_json::from_slice(&std::fs::read(report_root.join("manifest.json")).unwrap()).unwrap();
+    assert_eq!(captured["voltage_drop_result"]["sha256"], source["sha256"]);
+    assert_eq!(
+        captured["layers_sha256"],
+        ds_command_kernel::design::digest(&result["output"]["gdfs"]).unwrap()
+    );
+    let after_report = root.join("result-after-report.json");
+    call(&[
+        "design",
+        "project",
+        "result",
+        "--workspace",
+        workspace,
+        "--run-id",
+        "r1",
+        "--transformer",
+        "T1",
+        "--out",
+        path(&after_report),
+    ]);
+    assert_eq!(std::fs::read(after_report).unwrap(), result_bytes);
     let pdf = artifacts
         .iter()
         .find(|a| a["format"] == print_format)
@@ -195,6 +247,90 @@ fn full_offline_flow_keeps_pinned_results_and_print_bytes_without_desktop() {
         call(&["design", "project", "status", "--workspace", workspace])["pending_publications"],
         5
     );
+    // Historical/damaged saved-result fixtures live only in this test's own
+    // workspace. The actual CLI must refuse them before rendering/staging;
+    // it must not repair them by running the producer again.
+    for (case, code) in [
+        ("missing", "voltage_drop_result_missing"),
+        ("invalid", "voltage_drop_result_invalid"),
+        ("stale", "voltage_drop_result_stale"),
+    ] {
+        let mut damaged = result.clone();
+        match case {
+            "missing" => {
+                damaged["output"]
+                    .as_object_mut()
+                    .unwrap()
+                    .remove("voltage_drop");
+            }
+            "invalid" => damaged["output"]["voltage_drop"]["schema"] = json!("unknown"),
+            "stale" => {
+                damaged["output"]["voltage_drop"]["processed_digest"] = json!("0".repeat(64))
+            }
+            _ => unreachable!(),
+        }
+        let bytes = serde_json::to_vec(&damaged).unwrap();
+        let db = rusqlite::Connection::open(Path::new(workspace).join("design.sqlite")).unwrap();
+        db.execute(
+            "UPDATE jobs SET result=?1,result_sha256=?2 WHERE run='r1' AND transformer='T1'",
+            rusqlite::params![bytes, format!("{:x}", Sha256::digest(&bytes))],
+        )
+        .unwrap();
+        drop(db);
+        let refused_root = root.join(format!("report-{case}"));
+        let output = Command::new(env!("CARGO_BIN_EXE_ds"))
+            .args([
+                "design",
+                "project",
+                "report",
+                "--workspace",
+                workspace,
+                "--run-id",
+                "r1",
+                "--transformer",
+                "T1",
+                "--out-dir",
+                path(&refused_root),
+                "--country",
+                "Test",
+                "--format",
+                "xlsx",
+                "--output",
+                "json",
+            ])
+            .output()
+            .unwrap();
+        let refused: Value = serde_json::from_slice(&output.stdout).unwrap();
+        assert!(!output.status.success(), "{refused}");
+        assert_eq!(refused["error"]["code"], code, "{refused}");
+        assert!(!refused_root.exists());
+        assert_eq!(
+            call(&["design", "project", "outbox", "--workspace", workspace]),
+            pending
+        );
+        let retained = root.join(format!("result-{case}.json"));
+        call(&[
+            "design",
+            "project",
+            "result",
+            "--workspace",
+            workspace,
+            "--run-id",
+            "r1",
+            "--transformer",
+            "T1",
+            "--out",
+            path(&retained),
+        ]);
+        assert_eq!(std::fs::read(retained).unwrap(), bytes);
+    }
+    let db = rusqlite::Connection::open(Path::new(workspace).join("design.sqlite")).unwrap();
+    db.execute(
+        "UPDATE jobs SET result=?1,result_sha256=?2 WHERE run='r1' AND transformer='T1'",
+        rusqlite::params![result_bytes, format!("{:x}", Sha256::digest(&result_bytes))],
+    )
+    .unwrap();
+    drop(db);
     let cancelled = call(&[
         "design",
         "project",

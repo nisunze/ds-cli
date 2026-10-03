@@ -83,6 +83,9 @@ zip = { workspace = true }
 ds-solar-contracts = { workspace = true }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
+# Offline report negative controls use only their own synthetic workspace to
+# emulate historical/damaged saved results; they never touch native auth state.
+rusqlite = { version = "0.32", features = ["bundled"] }
 
 [build-dependencies]
 ds-cli-contract = { workspace = true }
