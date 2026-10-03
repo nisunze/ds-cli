@@ -55,7 +55,7 @@ document describing every artifact and every blocker; this command returns \
 that document, so a refused export arrives as typed blockers rather than an \
 exit code and a file path. Use --request to supply the engine's full typed \
 request instead of the flags below; omitted transformer formats still use this command's defaults, never the saved project output set. Run `ds report tasks --task <name>` for \
-its schema. --task lv-standard requires the export_lv_standard A0/A3 JSON job; report layout schema describes its governed defaults and overrides. --task voltage-drop requires --request from render_voltage_drop_result: it prints admitted calculated JSON or explicit reserved/incomplete/refused status to A4, without processing or inferring analysis. Governed identity supplies title blocks/logos. Report language comes from Network Template project_settings.report_locale (en/fr shipped; other locales require complete catalogue data). Missing language refuses; it is never inferred. PDF naming is kernel-owned. Prints regenerate; partial exports list failed_formats. Missing tasks refuse.",
+its schema. --task lv-standard requires the export_lv_standard A0/A3 JSON job; report layout schema describes its governed defaults and overrides. --task voltage-drop requires --request from render_voltage_drop_result: it prints admitted calculated JSON or explicit reserved/incomplete/refused status to A4, without processing or inferring analysis. Governed identity supplies title blocks/logos. Report language defaults from captured project locale and governed country configuration; report_locale overrides it. Combined requests resolve their country's captured reference binding to the installed digest-pinned asset. PDF naming is kernel-owned. Prints regenerate; partial exports list failed_formats. Missing tasks refuse.",
     chapter: Chapter::Reports,
     effect: Effect::LocalFileWrite,
     authority: Authority::None,
@@ -140,6 +140,11 @@ was given.",
         },
     ],
     refusals: &[
+        Refusal {
+            code: "combined_missing_admin_bounds_asset",
+            when: "the governed combined reference binding cannot resolve to verified installed bytes",
+            remedy: "capture the governed country reference binding in network_config and install its exact reference asset",
+        },
         Refusal {
             code: "report_locale_missing",
             when: "the reporter refuses this presentation contract",
@@ -432,7 +437,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
                 )
                 .remedy("check the path, or build the request from the content flags"));
             }
-            if task == "transformer" {
+            if matches!(task, "transformer" | "combined") {
                 use std::io::Read;
                 let mut bytes = Vec::new();
                 std::fs::File::open(&path)
@@ -444,7 +449,13 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
                         "request exceeds 64 MiB",
                     ));
                 }
-                let request = transformer_request_defaults(&bytes)?;
+                let mut request = if task == "transformer" {
+                    transformer_request_defaults(&bytes)?
+                } else {
+                    serde_json::from_slice(&bytes)
+                        .map_err(|e| Failure::invalid("request_invalid", e.to_string()))?
+                };
+                complete_reference(task, &mut request)?;
                 let staged = scratch_path("request");
                 write_new(&staged, &serde_json::to_vec(&request).unwrap_or_default())?;
                 (staged, false)
@@ -453,7 +464,8 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             }
         }
         None => {
-            let request = build_request(task, inputs)?;
+            let mut request = build_request(task, inputs)?;
+            complete_reference(task, &mut request)?;
             let path = scratch_path("request");
             write_new(&path, &serde_json::to_vec(&request).unwrap_or_default())?;
             (path, false)
@@ -537,6 +549,15 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         }),
         "result_path": caller_owned.then(|| result_path.display().to_string()),
     })))
+}
+
+fn complete_reference(task: &str, request: &mut Value) -> Result<(), Failure> {
+    if task == "combined" {
+        ds_report_host::complete_combined_reference(request).map_err(|error|
+            Failure::unavailable("combined_missing_admin_bounds_asset", error)
+                .remedy("capture the governed country reference binding and install its exact reference asset"))?;
+    }
+    Ok(())
 }
 
 /// Translate the declared flags into the engine's typed request.

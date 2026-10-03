@@ -35,7 +35,7 @@ pub static RESOLVE: Command = Command {
     path: &["report", "project", "mv-setup", "resolve"],
     contract: 1,
     summary: "Resolve canonical MV setup for one model's allowed title differences.",
-    purpose: "Read the named project's adopted printing revision and canonical selection through the existing configuration and printing library. The kernel resolves all approved project furniture and fixed version/date, accepting only model identity/title fields the template permits. The receipt is the same input Desktop and ds-report consume. This resolves documents only: actual geometry and held approved PDF assets must still be validated by the local reporter before output.",
+    purpose: "Read the named project's adopted printing revision when selected; otherwise resolve the exact approved global MV template pinned by governed printing defaults. The kernel resolves all approved project furniture and fixed version/date, accepting only model identity/title fields the template permits. The receipt is the same input Desktop and ds-report consume. This resolves documents only: actual geometry and held approved PDF assets must still be validated by the local reporter before output.",
     chapter: Chapter::Reports,
     effect: Effect::LocalAuthState,
     authority: Authority::HeadlessProject,
@@ -54,7 +54,7 @@ pub static RESOLVE: Command = Command {
             "Explicit model drawing title, only when permitted by the adopted template.",
         ),
     ],
-    output: "Exact resolved setup, approved text/settings/page order, adopted lineage and canonical receipt SHA-256; rendering readiness is not asserted.",
+    output: "Exact resolved setup, approved text/settings/page order, project or global lineage and canonical receipt SHA-256; rendering readiness is not asserted.",
     examples: &[],
     refusals: &super::joined::<{ super::NATIVE_READ_REFUSALS.len() + 1 }>(&[
         super::NATIVE_READ_REFUSALS,
@@ -100,13 +100,26 @@ pub(crate) fn resolve_project(
     fields: BTreeMap<ModelField, String>,
 ) -> Result<Resolved, Failure> {
     let configuration = ds_cli_auth::feeder_configuration_for_project(lane, project)?.into_result();
-    let sheets = super::settings::sheets_with_printing_catalogue(
-        lane,
-        project,
-        &configuration.document["sheets"],
-        None,
-    )?;
+    let sheets = printing_inputs(lane, project, &configuration.document["sheets"])?;
     mv::resolve(&sheets, project, fields).map_err(failure)
+}
+
+fn printing_inputs(lane: &str, project: &str, sheets: &Value) -> Result<Value, Failure> {
+    if !mv::uses_global_default(sheets) {
+        return super::settings::sheets_with_printing_catalogue(lane, project, sheets, None);
+    }
+    let selection = mv::effective_selection(sheets).map_err(failure)?;
+    let setup = ds_cli_auth::printing(
+        lane,
+        true,
+        None,
+        &ds_cli_auth::PrintingRequest::Get {
+            id: selection.layout_id,
+        },
+    )?;
+    let mut sheets = sheets.clone();
+    sheets["global_printing_setups"] = json!([setup]);
+    Ok(sheets)
 }
 /// Resolver acquisition seam for print-styles integration. The authorized
 /// project API materializes this exact binding; the CLI never searches a
@@ -117,12 +130,7 @@ pub(crate) fn resolve_project_print(
     fields: BTreeMap<ModelField, String>,
 ) -> Result<(Resolved, Value, Value), Failure> {
     let configuration = ds_cli_auth::feeder_configuration_for_project(lane, project)?.into_result();
-    let sheets = super::settings::sheets_with_printing_catalogue(
-        lane,
-        project,
-        &configuration.document["sheets"],
-        None,
-    )?;
+    let sheets = printing_inputs(lane, project, &configuration.document["sheets"])?;
     let setup = mv::resolve(&sheets, project, fields).map_err(failure)?;
     let table = ds_cli_auth::style_governance(
         lane,
