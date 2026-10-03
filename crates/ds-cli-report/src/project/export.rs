@@ -306,7 +306,14 @@ pub(super) const REFUSALS: &[Refusal] = &[
     ds_cli_auth::DATA_DISTRIBUTION_UNAVAILABLE_REFUSAL,
     super::hold::INPUTS_NOT_HELD,
     super::hold::ROOM_NOT_HELD,
+    PINNED_ROOM_INVALID,
 ];
+
+pub(super) const PINNED_ROOM_INVALID: Refusal = Refusal {
+    code: "pinned_room_invalid",
+    when: "a --pin-room file is unreadable, repeats or names a transformer this batch does not print, or its saved content digest does not match its layers",
+    remedy: "pin the exact held room a delivery receipt names: its transformer, revision and content digest",
+};
 
 pub static COMMAND: Command = Command {
     id: "report.project.export",
@@ -342,6 +349,11 @@ pub static COMMAND: Command = Command {
             "context-vectors",
             "<dir>",
             "Verified data.city-vectors map context for this batch.",
+        ),
+        Arg::repeated(
+            "pin-room",
+            "<room.json>",
+            "Print one exact saved revision from a held room file instead of the head; its content digest must match its layers and is receipted.",
         ),
         SEED_ARG,
         DRY_RUN_ARG,
@@ -1018,6 +1030,44 @@ fn preview_request(inputs: &Inputs, proofs: bool) -> Result<Option<PreviewReques
     Ok(Some(PreviewRequest { layout }))
 }
 
+/// The exact saved revisions a batch pins, by transformer: each held room
+/// file names one transformer this batch prints, at most once, and its saved
+/// content digest must be the digest of its layers, so a delivery prints
+/// again from exactly the bytes its receipt names.
+fn pinned_rooms(
+    paths: &[String],
+    names: &[String],
+) -> Result<BTreeMap<String, (ds_project_data::room_hold::Room, String)>, Failure> {
+    let refuse = |message: String| {
+        Failure::invalid(PINNED_ROOM_INVALID.code, message).remedy(PINNED_ROOM_INVALID.remedy)
+    };
+    let mut pins = BTreeMap::new();
+    for path in paths {
+        let bytes = std::fs::read(path).map_err(|e| refuse(format!("{path}: {e}")))?;
+        let room: ds_project_data::room_hold::Room = serde_json::from_slice(&bytes)
+            .map_err(|e| refuse(format!("{path} is not a held room: {e}")))?;
+        let digest = ds_command_kernel::report_export::jcs::layers_content_digest(&room.layers)
+            .map_err(|e| refuse(format!("{path}: {e}")))?;
+        if room.content_digest.as_deref() != Some(digest.as_str()) || room.version.is_none() {
+            return Err(refuse(format!(
+                "{path}: the saved revision and content digest of {} do not match its layers",
+                room.transformer
+            )));
+        }
+        if !names.contains(&room.transformer) {
+            return Err(refuse(format!(
+                "{path} pins {}, which this batch does not print",
+                room.transformer
+            )));
+        }
+        let sha = ds_command_kernel::report_export::sha256_hex(&bytes);
+        if pins.insert(room.transformer.clone(), (room, sha)).is_some() {
+            return Err(refuse(format!("{path} pins a transformer twice")));
+        }
+    }
+    Ok(pins)
+}
+
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let mut requested_outputs = run_output_selection(inputs)?;
     let requested = super::transformer_set(inputs)?;
@@ -1618,6 +1668,17 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     }
 
     let staging = out_dir.join(STAGING_DIRECTORY);
+    let pins = pinned_rooms(inputs.repeated("pin-room"), &plan.names)?;
+    if !pins.is_empty() {
+        output["pinned_rooms"] = json!(
+            pins.values()
+                .map(|(room, sha)| json!({
+                    "transformer": room.transformer, "version": room.version,
+                    "content_digest": room.content_digest, "room_file_sha256": sha,
+                }))
+                .collect::<Vec<_>>()
+        );
+    }
     let rooms = RefCell::new(super::hold::Rooms::plan(hold, &plan.names, heads)?);
     let link = RefCell::new(link);
     // One transformer's room as this command admits it: an active saved
@@ -1643,6 +1704,10 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
                 )
                 .remedy(NOT_ACTIVE.remedy));
             }
+        }
+        if let Some((room, _)) = pins.get(name) {
+            let version = saved_revision(name, room.version.and_then(|v| u64::try_from(v).ok()))?;
+            return Ok((room.clone(), version));
         }
         // A weak link blinks; the link asks a room fetch refused by an outage
         // again under the shared curve before the row is written off.
@@ -3123,6 +3188,45 @@ pub fn render(data: &Value) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_pinned_room_must_be_one_exact_saved_revision_of_this_batch() {
+        let temp = tempfile::tempdir().unwrap();
+        let layers: BTreeMap<String, Value> = BTreeMap::from([(
+            "tr".to_owned(),
+            json!({"type":"FeatureCollection","features":[{"type":"Feature","properties":{"name":"kibungo"},"geometry":{"type":"Point","coordinates":[29.7,-2.6]}}]}),
+        )]);
+        let digest = ds_command_kernel::report_export::jcs::layers_content_digest(&layers).unwrap();
+        let write = |name: &str, room: &ds_project_data::room_hold::Room| {
+            let path = temp.path().join(name);
+            std::fs::write(&path, serde_json::to_vec(room).unwrap()).unwrap();
+            path.to_string_lossy().into_owned()
+        };
+        let room = ds_project_data::room_hold::Room {
+            transformer: "kibungo".into(),
+            version: Some(2),
+            content_digest: Some(digest.clone()),
+            layers: layers.clone(),
+        };
+        let names = vec!["kibungo".to_owned()];
+        let good = write("good.json", &room);
+        let pins = pinned_rooms(std::slice::from_ref(&good), &names).unwrap();
+        assert_eq!(pins["kibungo"].0.version, Some(2));
+        assert_eq!(pins["kibungo"].1.len(), 64);
+        let mut drifted = room.clone();
+        drifted.content_digest = Some("0".repeat(64));
+        let drifted = write("drifted.json", &drifted);
+        let refused = |paths: &[String]| pinned_rooms(paths, &names).unwrap_err().code().to_owned();
+        assert_eq!(refused(&[drifted]), PINNED_ROOM_INVALID.code);
+        assert_eq!(
+            refused(&[good.clone(), good.clone()]),
+            PINNED_ROOM_INVALID.code
+        );
+        let mut other = room;
+        other.transformer = "ruhuha".into();
+        let other = write("other.json", &other);
+        assert_eq!(refused(&[other]), PINNED_ROOM_INVALID.code);
+    }
+
     #[test]
     fn command_defaults_ignore_a_saved_print_selection_but_an_explicit_set_is_used() {
         let inputs = ds_cli_contract::args::parse(
