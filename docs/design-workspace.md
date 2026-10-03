@@ -66,8 +66,11 @@ Failed jobs retain diagnostics. Results never overwrite newer authored edits.
 The workspace creates a fresh report-input directory from a completed run:
 plain local layers, captured configuration, the exact saved producer
 voltage-drop JSON member and a digest manifest. Its SHA and final-layer pin
-travel together. Missing, invalid or stale analysis refuses before staging;
-reporting never calculates a missing result or reprocesses approved geometry.
+travel together. A missing source or invalid envelope, identity, digest or
+final-layer/settings binding refuses before staging. The reporter still owns
+deep saved-run content and presentation admission; its blockers prevent
+complete retention. Reporting never calculates a missing result or reprocesses
+approved geometry.
 The CLI
 calls the existing typed `ds-report export-transformer-report` boundary.
 Country and formats are explicit; every individual selection includes the
