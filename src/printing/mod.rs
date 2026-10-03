@@ -226,6 +226,10 @@ pub struct PrintLabelOverride {
     pub halo_mm: Option<f64>,
     pub allow_overlap: Option<bool>,
     pub priority: Option<f64>,
+    /// Print this feature property as the label instead of the governed
+    /// text-field, e.g. the key number a map index assigns.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub field: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
@@ -1034,6 +1038,7 @@ pub fn validate_label_override(label: &PrintLabelOverride) -> Result<(), String>
         || label.priority.is_some_and(|v| !bounded(v, -1000., 1000.))
         || label.color.as_ref().is_some_and(|c| !color(c))
         || label.halo_color.as_ref().is_some_and(|c| !color(c))
+        || label.field.as_ref().is_some_and(|f| !identifier(f))
     {
         return Err("invalid physical label override".into());
     }
@@ -3065,6 +3070,25 @@ mod tests {
         assert_eq!(reply["plan"]["status"], "migrate");
         assert_eq!(reply["layout"]["style_keys"]["lv_lines"]["role"], "focused");
         assert_eq!(reply["layout"]["style_refs"], json!({}));
+    }
+    #[test]
+    fn a_label_may_print_one_named_feature_property() {
+        let mut layout = default_layout();
+        layout
+            .style_refs
+            .insert("tr".into(), "master/tr_print".into());
+        let mut change = PrintStyleOverride {
+            label: Some(PrintLabelOverride {
+                field: Some("key_number".into()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        layout.style_overrides.insert("tr".into(), change.clone());
+        validate(&layout).unwrap();
+        change.label.as_mut().unwrap().field = Some("key number".into());
+        layout.style_overrides.insert("tr".into(), change);
+        assert!(validate(&layout).is_err());
     }
     #[test]
     fn table_numbering_is_declared_on_a_bound_layer_with_identifier_keys() {
