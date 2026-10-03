@@ -45,6 +45,9 @@ fn row(op: &str, key: &str) -> ArtifactRow {
         client_publish_id: key.into(),
         acknowledged_work_id: None,
         outputs: vec![ArtifactOutput {
+            filename: None,
+            paper_size: None,
+            presentation: None,
             output_id: "xlsx".into(),
             format: "xlsx".into(),
             content_type: "application/x".into(),

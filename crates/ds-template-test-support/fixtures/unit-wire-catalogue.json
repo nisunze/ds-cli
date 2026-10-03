@@ -1,0 +1,7 @@
+[
+  {"clean_name":"3 x 25 + 54.6mm² ABC","electrical_params":{"cross_section_mm2":17}},
+  {"clean_name":"3 x 35 + 54.6mm² ABC","electrical_params":{"cross_section_mm2":43}},
+  {"clean_name":"3 x 50 + 54.6mm² ABC","electrical_params":{"cross_section_mm2":89}},
+  {"clean_name":"3 x 70 + 54.6mm² ABC","electrical_params":{"cross_section_mm2":113}},
+  {"clean_name":"3 x 95 + 54.6mm² ABC","electrical_params":{"cross_section_mm2":307}}
+]

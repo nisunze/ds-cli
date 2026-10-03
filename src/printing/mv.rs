@@ -14,6 +14,44 @@ pub const SETTING: &str = "mv_printing_setup";
 pub const SELECTION_SCHEMA: &str = "ds.mv-print-selection/v1";
 pub const STANDARD: &str = "mv-a3-plan-profile/v1";
 
+/// The publication's requested ink is one dimension of the kernel/API key.
+pub fn paper_style_key(settings: &SheetSettings) -> crate::style_resolution::Key {
+    crate::style_resolution::Key {
+        entity_class: "mv_booklet".into(),
+        source_kind: "project_model".into(),
+        target: crate::style_resolution::Target::Print,
+        role: "project".into(),
+        ink: match settings.ink_mode {
+            super::mv_settings::InkMode::Monochrome => crate::style_resolution::Ink::Monochrome,
+            super::mv_settings::InkMode::ReferenceAccents => crate::style_resolution::Ink::Colour,
+        },
+    }
+}
+
+/// Resolve paper and companion policy through the same project-fenced selector.
+/// The semantic paper key belongs to the publication family, never to a host.
+pub fn resolve_print_bindings(
+    setup: &Resolved,
+    snapshot: &crate::style_resolution::Snapshot,
+) -> Result<
+    (
+        crate::style_resolution::Binding,
+        crate::style_resolution::Binding,
+    ),
+    String,
+> {
+    if snapshot.project_id != setup.project_id {
+        return Err("project_context_changed: MV style table belongs to another project".into());
+    }
+    let key = paper_style_key(&setup.settings);
+    let paper =
+        crate::style_resolution::resolve(snapshot, &key).map_err(|error| error.to_string())?;
+    let renderer = crate::style_resolution::resolve(snapshot, &super::renderer_defaults::key())
+        .map_err(|error| error.to_string())?;
+    super::renderer_defaults::admit(&renderer)?;
+    Ok((paper, renderer))
+}
+
 /// Canonize approved front matter in the existing layout library. Adoption
 /// remains the library owner's revision-fenced copy; this is a pure authoring
 /// intent, not a parallel registry or a publication.

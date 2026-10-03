@@ -1,6 +1,6 @@
 use super::*;
 fn row() -> Value {
-    json!({"kind":"compute_artifact","id":"row","owner_uid":"owner","project_id":"project","client_run_id":"run","engine":"network_reporter","operation":"export-agasharu","variant":"default","engine_version":format!("ds-network-reporter@0.2.1+{}","a".repeat(40)),"engine_build_manifest_sha256":"c".repeat(64),"input_base_fingerprint":"b".repeat(64),"batch_id":"d".repeat(64),"client_publish_id":"publish-11111111-1111-4111-8111-111111111111","status":"pending","phase":"pending","attempts":0,"outputs":[{"output_id":"pdf__huye","format":"pdf__huye","content_type":"application/pdf","local_path":"native-private","expected_sha256":"e".repeat(64),"expected_size_bytes":123,"sha256":"","size_bytes":0,"state":"preparing","paper_size":"A0","presentation":{"layout_id":"huye","layout_name":"Huye","paper_name":"A0","orientation":"landscape","page_mm":[1189,841]}}]})
+    json!({"kind":"compute_artifact","id":"row","owner_uid":"owner","project_id":"project","client_run_id":"run","engine":"network_reporter","operation":"export-agasharu","variant":"default","engine_version":format!("ds-network-reporter@0.2.1+{}","a".repeat(40)),"engine_build_manifest_sha256":"c".repeat(64),"input_base_fingerprint":"b".repeat(64),"batch_id":"d".repeat(64),"client_publish_id":"publish-11111111-1111-4111-8111-111111111111","status":"pending","phase":"pending","attempts":0,"outputs":[{"filename":"Agasharu.huye.pdf","output_id":"pdf__huye","format":"pdf__huye","content_type":"application/pdf","local_path":"native-private","expected_sha256":"e".repeat(64),"expected_size_bytes":123,"sha256":"","size_bytes":0,"state":"preparing","paper_size":"A0","presentation":{"layout_id":"huye","layout_name":"Huye","paper_name":"A0","orientation":"landscape","page_mm":[1189,841]}}]})
 }
 fn step(row: Value, event: Event) -> Reply {
     apply(Request {
@@ -104,19 +104,8 @@ fn restart_at_each_persisted_boundary_keeps_bytes_and_work_identity() {
 fn refuses_changed_bytes_outputs_work_identity_owner_and_terminal_replay() {
     let mut wrong = row();
     wrong["owner_uid"] = json!("other");
-    assert!(apply(Request {
-        owner: "owner".into(),
-        now: 100,
-        row: wrong,
-        event: Event::Start,
-        reopens: 0,
-        lease_id: "worker-a".into(),
-    })
-    .is_err());
-    for state in ["synced", "conflict", "failed"] {
-        let mut wrong = row();
-        wrong["status"] = json!(state);
-        assert!(apply(Request {
+    assert!(
+        apply(Request {
             owner: "owner".into(),
             now: 100,
             row: wrong,
@@ -124,7 +113,22 @@ fn refuses_changed_bytes_outputs_work_identity_owner_and_terminal_replay() {
             reopens: 0,
             lease_id: "worker-a".into(),
         })
-        .is_err());
+        .is_err()
+    );
+    for state in ["synced", "conflict", "failed"] {
+        let mut wrong = row();
+        wrong["status"] = json!(state);
+        assert!(
+            apply(Request {
+                owner: "owner".into(),
+                now: 100,
+                row: wrong,
+                event: Event::Start,
+                reopens: 0,
+                lease_id: "worker-a".into(),
+            })
+            .is_err()
+        );
     }
     let ready = step(row(), Event::Start);
     let changed = apply(Request {
@@ -143,29 +147,33 @@ fn refuses_changed_bytes_outputs_work_identity_owner_and_terminal_replay() {
     .unwrap_err();
     assert_eq!(changed.status, "conflict");
     let ready = prepared();
-    assert!(apply(Request {
-        owner: "owner".into(),
-        now: 100,
-        row: ready.row.clone(),
-        event: Event::Opened {
-            response: json!({"work_id":"work","head_revision":0,"outputs":[]})
-        },
-        reopens: 0,
-        lease_id: "worker-a".into(),
-    })
-    .is_err());
+    assert!(
+        apply(Request {
+            owner: "owner".into(),
+            now: 100,
+            row: ready.row.clone(),
+            event: Event::Opened {
+                response: json!({"work_id":"work","head_revision":0,"outputs":[]})
+            },
+            reopens: 0,
+            lease_id: "worker-a".into(),
+        })
+        .is_err()
+    );
     let pending = opened(ready.row);
-    assert!(apply(Request {
-        owner: "owner".into(),
-        now: 100,
-        row: pending.row,
-        event: Event::Finalized {
-            response: json!({"state":"published","work_id":"work","head_revision":2})
-        },
-        reopens: 0,
-        lease_id: "worker-a".into(),
-    })
-    .is_err());
+    assert!(
+        apply(Request {
+            owner: "owner".into(),
+            now: 100,
+            row: pending.row,
+            event: Event::Finalized {
+                response: json!({"state":"published","work_id":"work","head_revision":2})
+            },
+            reopens: 0,
+            lease_id: "worker-a".into(),
+        })
+        .is_err()
+    );
 }
 #[test]
 fn expired_session_reopens_same_run_only_once_per_attempt() {

@@ -6,17 +6,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum PageRole {
-    Cover,
-    Naming,
-    SheetIndex,
-    KeyPlan,
-    LegendNotes,
-    PlanProfile,
-    Context,
-}
+pub use super::page_role::PageRole;
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
 #[serde(deny_unknown_fields)]

@@ -155,3 +155,69 @@ fn standard_refuses_missing_parties_and_retains_optional_context_on_reapplicatio
         serde_json::to_value(mv::standardize(layout).unwrap()).unwrap();
     assert!(mv::resolve(&input, "project_a", BTreeMap::new()).is_err());
 }
+
+#[test]
+fn mv_acquisition_resolves_paper_and_policy_from_one_project_table() {
+    use ds_command_kernel::{
+        style_plan,
+        style_resolution::{self, Binding, Key, Snapshot},
+    };
+    let mut setup = mv::resolve(&approved_input(), "project_a", BTreeMap::new()).unwrap();
+    setup.settings.ink_mode = printing::mv_settings::InkMode::ReferenceAccents;
+    let paper_key = mv::paper_style_key(&setup.settings);
+    let binding = |key: Key, name: &str, document: serde_json::Value| Binding {
+        key,
+        style_ref: name.into(),
+        revision_id: "b".repeat(64),
+        content_sha256: style_plan::style_digest(&document),
+        scope: "global".into(),
+        presentation_tier: None,
+        document,
+    };
+    let paper = binding(
+        paper_key,
+        "fixture/mv_print",
+        json!({"type":"line","paint":{"line-color":"#123456","line-width":1}}),
+    );
+    let renderer = binding(
+        printing::renderer_defaults::key(),
+        "fixture/renderer_print",
+        json!({
+            "type":"line","paint":{},"metadata":{"print_renderer_defaults":serde_json::from_str::<serde_json::Value>(include_str!("fixtures/governed-renderer-defaults.json")).unwrap()}
+        }),
+    );
+    let mut table: Snapshot = serde_json::from_value(json!({
+        "schema":style_resolution::SCHEMA,"project_id":"project_a","revision_id":"a".repeat(64),
+        "bindings":[paper,renderer]
+    }))
+    .unwrap();
+    let selected = mv::resolve_print_bindings(&setup, &table).unwrap();
+    assert_eq!(selected.0.style_ref, "fixture/mv_print");
+    assert_eq!(selected.1.style_ref, "fixture/renderer_print");
+    let mut mono_setup = setup.clone();
+    mono_setup.settings.ink_mode = printing::mv_settings::InkMode::Monochrome;
+    assert!(mv::resolve_print_bindings(&mono_setup, &table)
+        .unwrap_err()
+        .contains("style_resolution_unknown"));
+    let mut monochrome = selected.0.clone();
+    monochrome.key = mv::paper_style_key(&mono_setup.settings);
+    monochrome.style_ref = "fixture/mv_monochrome".into();
+    table.bindings.push(monochrome);
+    assert_eq!(
+        mv::resolve_print_bindings(&mono_setup, &table)
+            .unwrap()
+            .0
+            .style_ref,
+        "fixture/mv_monochrome"
+    );
+    table.bindings.pop();
+    table.project_id = "other_project".into();
+    assert!(mv::resolve_print_bindings(&setup, &table)
+        .unwrap_err()
+        .starts_with("project_context_changed:"));
+    table.project_id = "project_a".into();
+    table.bindings.pop();
+    assert!(mv::resolve_print_bindings(&setup, &table)
+        .unwrap_err()
+        .contains("style_resolution_unknown"));
+}

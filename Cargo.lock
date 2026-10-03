@@ -272,6 +272,7 @@ dependencies = [
  "ds-geo-lite",
  "ds-kml",
  "ds-solar-contracts",
+ "ds-template-test-support",
  "image",
  "imagesize",
  "quick-xml 0.41.0",
@@ -344,6 +345,17 @@ dependencies = [
  "serde_json",
  "tempfile",
  "thiserror",
+]
+
+[[package]]
+name = "ds-template-test-support"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "serde",
+ "serde_json",
+ "sha2",
+ "syn 2.0.119",
 ]
 
 [[package]]

@@ -27,7 +27,7 @@ pub fn refusal_code(message: &str) -> Option<&'static str> {
             .find(|code| line.starts_with(&format!("{code}:")))
     })
 }
-pub const DEFAULT_CATALOGUE: &str = include_str!("../assets/report-messages.json");
+pub const DEFAULT_CATALOGUE: &str = include_str!("../data/report-messages.json");
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Catalogue {

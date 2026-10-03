@@ -1,0 +1,397 @@
+{
+  "project_settings": [
+    {
+      "parameter": "lv_poles_rule_set",
+      "value": "rule_fixture"
+    },
+    {
+      "parameter": "power_factor",
+      "value": 0.91
+    },
+    {
+      "parameter": "cos_phi",
+      "value": 0.91
+    },
+    {
+      "parameter": "minimum_tr_size",
+      "value": 37
+    },
+    {
+      "parameter": "minimum_cable_size",
+      "value": "3 x 17 fixture"
+    },
+    {
+      "parameter": "max_cable_size",
+      "value": "3 x 89 fixture"
+    },
+    {
+      "parameter": "simultaneity_factor_tr",
+      "value": 0.73
+    },
+    {
+      "parameter": "simultaneity_factor_cables",
+      "value": 0.81
+    },
+    {
+      "parameter": "sc_real_length",
+      "value": "x"
+    },
+    {
+      "parameter": "max_service_length",
+      "value": 110
+    },
+    {
+      "parameter": "pole_spacing",
+      "value": 43
+    },
+    {
+      "parameter": "default_category",
+      "value": "Habitation fixture"
+    },
+    {
+      "parameter": "vd_design_year",
+      "value": 0
+    },
+    {
+      "parameter": "vd_outlook_years",
+      "value": [
+        0
+      ]
+    },
+    {
+      "parameter": "vd_staged_plan",
+      "value": false
+    },
+    {
+      "parameter": "vd_growth_factor",
+      "value": 1
+    },
+    {
+      "parameter": "vd_reinforce",
+      "value": false
+    }
+  ],
+  "lv_poles_rules": {
+    "rule_fixture": {
+      "table": [
+        {
+          "position": "terminal",
+          "priority": 1,
+          "assembly_type": "Attache fixture β",
+          "struct_type": "Support fixture β",
+          "stay": 1,
+          "earthing": 1
+        },
+        {
+          "position": "any",
+          "priority": 2,
+          "assembly_type": "Attache fixture α",
+          "struct_type": "Support fixture α",
+          "stay": 0,
+          "earthing": 0
+        }
+      ],
+      "service_length_bands": [
+        {
+          "meter_type": "Single Phase",
+          "max_length_m": 33,
+          "minimum_cross_section_mm2": 4
+        },
+        {
+          "meter_type": "Single Phase",
+          "max_length_m": 91,
+          "minimum_cross_section_mm2": 11
+        }
+      ],
+      "voltage_drop": {
+        "standard": "Norme fixture Ω",
+        "clause": "Article fixture ζ",
+        "utility": "Réseau fixture",
+        "criterion": "Critère fixture",
+        "confirmed": true,
+        "nominal_phase_voltage_v": 237,
+        "nominal_line_voltage_v": 411,
+        "voltage_limit_pct": 8.7,
+        "resistance_factor": 1.13,
+        "years_to_saturation": 4,
+        "growth_years": 0,
+        "diversity": "Diversité fixture",
+        "calculate_by_nature": {
+          "new_transformer": true
+        }
+      },
+      "transformer_sizing": {
+        "standard": "Norme puissance fixture",
+        "minimum_kva": 37,
+        "maximum_kva": 613
+      }
+    }
+  },
+  "cust_category": [
+    {
+      "clean_name": "Habitation fixture",
+      "peak_power_w": 173,
+      "initial_power_w": 173,
+      "misspelled_names": [
+        "cat_alias_0"
+      ]
+    },
+    {
+      "clean_name": "Atelier fixture",
+      "peak_power_w": 613,
+      "initial_power_w": 613,
+      "misspelled_names": [
+        "cat_alias_1"
+      ]
+    },
+    {
+      "clean_name": "Collectivité fixture",
+      "peak_power_w": 1711,
+      "initial_power_w": 1711,
+      "misspelled_names": [
+        "cat_alias_2"
+      ]
+    }
+  ],
+  "cust_meter_type": [
+    {
+      "clean_name": "Single Phase",
+      "phase_count": 1
+    },
+    {
+      "clean_name": "Three Phase",
+      "phase_count": 3
+    }
+  ],
+  "lv_poles_struct_type": [
+    {
+      "clean_name": "Support fixture α",
+      "default_material": "Matériau fixture",
+      "pole_class": "Class fixture 0"
+    },
+    {
+      "clean_name": "Support fixture β",
+      "default_material": "Matériau fixture",
+      "pole_class": "Class fixture 1"
+    }
+  ],
+  "lv_poles_assembly": [
+    {
+      "clean_name": "Attache fixture α",
+      "feature_code": "Attache-code fixture 0",
+      "number": 1
+    },
+    {
+      "clean_name": "Attache fixture β",
+      "feature_code": "Attache-code fixture 1",
+      "number": 1
+    }
+  ],
+  "lv_lines": [
+    {
+      "clean_name": "3 x 17 fixture",
+      "cross_section_mm2": 17,
+      "phase_count": 3,
+      "max_kva": 34,
+      "max_span_m": 43,
+      "electrical_params": {
+        "r_ohm_per_km": 1.63,
+        "x_ohm_per_km": 0.087,
+        "neutral_r_ohm_per_km": 0.67,
+        "neutral_x_ohm_per_km": 0.087,
+        "cross_section_mm2": 17,
+        "phase_count": 3,
+        "core_count": 4,
+        "rated_current_a": 68,
+        "price_per_m": 1.7,
+        "currency": "Monnaie fixture"
+      }
+    },
+    {
+      "clean_name": "3 x 43 fixture",
+      "cross_section_mm2": 43,
+      "phase_count": 3,
+      "max_kva": 86,
+      "max_span_m": 43,
+      "electrical_params": {
+        "r_ohm_per_km": 0.71,
+        "x_ohm_per_km": 0.087,
+        "neutral_r_ohm_per_km": 0.67,
+        "neutral_x_ohm_per_km": 0.087,
+        "cross_section_mm2": 43,
+        "phase_count": 3,
+        "core_count": 4,
+        "rated_current_a": 172,
+        "price_per_m": 4.3,
+        "currency": "Monnaie fixture"
+      }
+    },
+    {
+      "clean_name": "3 x 89 fixture",
+      "cross_section_mm2": 89,
+      "phase_count": 3,
+      "max_kva": 178,
+      "max_span_m": 43,
+      "electrical_params": {
+        "r_ohm_per_km": 0.33,
+        "x_ohm_per_km": 0.087,
+        "neutral_r_ohm_per_km": 0.67,
+        "neutral_x_ohm_per_km": 0.087,
+        "cross_section_mm2": 89,
+        "phase_count": 3,
+        "core_count": 4,
+        "rated_current_a": 356,
+        "price_per_m": 8.9,
+        "currency": "Monnaie fixture"
+      }
+    }
+  ],
+  "service_cable_sizes": [
+    {
+      "service_cable_size": "2 x 4 fixture",
+      "cross_section_mm2": 4,
+      "phase_count": 1,
+      "core_count": 2,
+      "meter_type": "Single Phase",
+      "peak_power_w": 300,
+      "electrical_params": {
+        "r_ohm_per_km": 4.4,
+        "x_ohm_per_km": 0.071,
+        "cross_section_mm2": 4,
+        "phase_count": 1,
+        "core_count": 2,
+        "rated_current_a": 12,
+        "price_per_m": 0.2,
+        "currency": "Monnaie fixture"
+      }
+    },
+    {
+      "service_cable_size": "2 x 11 fixture",
+      "cross_section_mm2": 11,
+      "phase_count": 1,
+      "core_count": 2,
+      "meter_type": "Single Phase",
+      "peak_power_w": 800,
+      "electrical_params": {
+        "r_ohm_per_km": 1.7,
+        "x_ohm_per_km": 0.071,
+        "cross_section_mm2": 11,
+        "phase_count": 1,
+        "core_count": 2,
+        "rated_current_a": 33,
+        "price_per_m": 0.55,
+        "currency": "Monnaie fixture"
+      }
+    },
+    {
+      "service_cable_size": "4 x 13 fixture",
+      "cross_section_mm2": 13,
+      "phase_count": 3,
+      "core_count": 4,
+      "meter_type": "Three Phase",
+      "peak_power_w": 3000,
+      "electrical_params": {
+        "r_ohm_per_km": 1.4,
+        "x_ohm_per_km": 0.071,
+        "cross_section_mm2": 13,
+        "phase_count": 3,
+        "core_count": 4,
+        "rated_current_a": 39,
+        "price_per_m": 0.65,
+        "currency": "Monnaie fixture"
+      }
+    }
+  ],
+  "transfo_sizes": [
+    {
+      "transfo_sizes": 37,
+      "lv_circuit_breaker_amp": 61,
+      "standard_cables_size_transfo_to_db": "3 x 43 fixture",
+      "lv_cable_sizes_bundles": "3 x 43 fixture",
+      "mv_fuze_30_kv_amp": 1.0,
+      "mv_fuze_15_kv_amp": 2.176470588235294,
+      "electrical_params": {
+        "vn_hv_kv": 30,
+        "vn_lv_kv": 0.411,
+        "vector_group": "Dyn fixture",
+        "vk_percent": 4.7,
+        "vkr_percent": 1.3
+      }
+    },
+    {
+      "transfo_sizes": 113,
+      "lv_circuit_breaker_amp": 187,
+      "standard_cables_size_transfo_to_db": "3 x 43 fixture",
+      "lv_cable_sizes_bundles": "3 x 43 fixture",
+      "mv_fuze_30_kv_amp": 3.054054054054054,
+      "mv_fuze_15_kv_amp": 6.647058823529412,
+      "electrical_params": {
+        "vn_hv_kv": 30,
+        "vn_lv_kv": 0.411,
+        "vector_group": "Dyn fixture",
+        "vk_percent": 4.7,
+        "vkr_percent": 1.3
+      }
+    },
+    {
+      "transfo_sizes": 307,
+      "lv_circuit_breaker_amp": 509,
+      "standard_cables_size_transfo_to_db": "3 x 43 fixture",
+      "lv_cable_sizes_bundles": "3 x 43 fixture",
+      "mv_fuze_30_kv_amp": 8.297297297297296,
+      "mv_fuze_15_kv_amp": 18.058823529411764,
+      "electrical_params": {
+        "vn_hv_kv": 30,
+        "vn_lv_kv": 0.411,
+        "vector_group": "Dyn fixture",
+        "vk_percent": 4.7,
+        "vkr_percent": 1.3
+      }
+    },
+    {
+      "transfo_sizes": 613,
+      "lv_circuit_breaker_amp": 1019,
+      "standard_cables_size_transfo_to_db": "3 x 43 fixture",
+      "lv_cable_sizes_bundles": "3 x 43 fixture",
+      "mv_fuze_30_kv_amp": 16.56756756756757,
+      "mv_fuze_15_kv_amp": 36.05882352941177,
+      "electrical_params": {
+        "vn_hv_kv": 30,
+        "vn_lv_kv": 0.411,
+        "vector_group": "Dyn fixture",
+        "vk_percent": 4.7,
+        "vkr_percent": 1.3
+      }
+    }
+  ],
+  "growth_forecast_tr": [
+    {
+      "year": 0,
+      "growth_rate": 1
+    }
+  ],
+  "growth_forecast_abc": [
+    {
+      "year": 0,
+      "growth_rate": 1
+    }
+  ],
+  "label_sets": [
+    {
+      "clean_name": "Etiquettes fixture",
+      "pole_prefix": "Poteau fixture",
+      "line_prefix": "Départ fixture",
+      "customer_prefix": "Abonné fixture"
+    }
+  ],
+  "load_profiles": [
+    {
+      "clean_name": "Profil fixture",
+      "values": [
+        0.5,
+        0.8,
+        1
+      ]
+    }
+  ]
+}

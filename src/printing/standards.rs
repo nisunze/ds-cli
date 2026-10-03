@@ -19,18 +19,7 @@ pub const FRONT_ROLES: [PageRole; 6] = [
 pub use crate::style_resolution::Ink as InkMode;
 
 /// Generic page roles can also be used by MV booklets and custom atlases.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum PageRole {
-    Cover,
-    KeyMap,
-    SheetIndex,
-    Legend,
-    GeneralNotes,
-    Revisions,
-    Network,
-    Schedule,
-}
+pub use super::page_role::PageRole;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]

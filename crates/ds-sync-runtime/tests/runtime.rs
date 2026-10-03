@@ -153,6 +153,9 @@ impl Gateway for CredentialDoor {
 fn solar_row() -> LocalRow {
     let bytes = b"sealed report input";
     let output = LocalOutput {
+        filename: None,
+        paper_size: None,
+        presentation: None,
         output_id: "report-input".into(),
         format: "json".into(),
         content_type: "application/json".into(),

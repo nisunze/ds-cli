@@ -13,7 +13,7 @@ publish = false
 # dependencies said. It carries its own [workspace] table at an unchanged path.
 # See docs/contracts/ds-portable-geometry.md §4.
 [workspace]
-members = ["crates/ds-kml", "crates/ds-geo-lite", "crates/ds-canvas-lite", "crates/ds-sync-store"]
+members = ["crates/ds-template-test-support", "crates/ds-kml", "crates/ds-geo-lite", "crates/ds-canvas-lite", "crates/ds-sync-store"]
 resolver = "2"
 
 [lib]
@@ -51,6 +51,7 @@ image = { version = "0.25.10", default-features = false, features = ["jpeg", "pn
 time = { version = "=0.3.47", features = ["formatting", "parsing"] }
 
 [dev-dependencies]
+ds-template-test-support = { path = "crates/ds-template-test-support" }
 wasm-bindgen-test = "0.3"
 
 [package.metadata.wasm-pack.profile.release]

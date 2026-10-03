@@ -19,12 +19,13 @@ pub mod mv_settings;
 pub mod names;
 pub mod network_fit;
 pub mod overrides;
+pub mod page_role;
 pub mod pens;
 pub mod placement;
 pub mod preview;
 pub mod project_sources;
-pub mod resolved_styles;
 pub mod renderer_defaults;
+pub mod resolved_styles;
 pub mod session;
 pub mod sheet_margin;
 pub mod sheet_status;
@@ -1312,7 +1313,9 @@ pub(super) fn validate_with_semantic_layers(
     if layout.style_overrides.len() > 100
         || layout.style_overrides.iter().any(|(id, o)| {
             !identifier(id)
-                || (!layout.style_refs.contains_key(id) && !layout.style_keys.contains_key(id) && !semantic_layers.contains(id))
+                || (!layout.style_refs.contains_key(id)
+                    && !layout.style_keys.contains_key(id)
+                    && !semantic_layers.contains(id))
                 || o.color.as_ref().is_some_and(|c| !color(c))
                 || o.size.is_some_and(|v| !bounded(v, 0., 100.))
                 || o.scale_weight
