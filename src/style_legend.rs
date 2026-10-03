@@ -70,6 +70,42 @@ pub fn categories(expression: &Value) -> (Option<String>, Option<String>, Vec<Ca
 struct Scope {
     present_values: BTreeMap<String, Vec<String>>,
     labels: BTreeMap<String, BTreeMap<String, String>>,
+    /// Mounted (source, source-layer) datasets represented by this drawer card.
+    /// An absent field is unknown; an empty value list is known empty.
+    datasets: Option<Vec<DatasetScope>>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct DatasetScope {
+    present_values: BTreeMap<String, Vec<String>>,
+}
+
+impl Scope {
+    fn present(&self, field: &str) -> Option<BTreeSet<String>> {
+        if let Some(datasets) = &self.datasets {
+            if datasets.is_empty() {
+                return None;
+            }
+            // Never borrow another source's values from a shared style editor.
+            // A grouped card can prune only when every dataset knows the field.
+            let mut values = BTreeSet::new();
+            for dataset in datasets {
+                values.extend(
+                    dataset
+                        .present_values
+                        .get(field)?
+                        .iter()
+                        .map(|s| compact(s)),
+                );
+            }
+            Some(values)
+        } else {
+            self.present_values
+                .get(field)
+                .map(|v| v.iter().map(|s| compact(s)).collect())
+        }
+    }
 }
 
 #[derive(Deserialize)]
@@ -153,11 +189,12 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
             entries.push(BTreeMap::new());
             index
         });
-        let present = request
-            .scope
-            .present_values
-            .get(field)
-            .map(|v| v.iter().map(|s| compact(s)).collect::<BTreeSet<_>>());
+        let present = request.scope.present(field);
+        // A dataset legend cannot advertise unobserved domain arms when
+        // its statistics are absent. Other dimensions can still be shown.
+        if request.scope.datasets.is_some() && present.is_none() {
+            continue;
+        }
         if present.is_some() {
             dimensions[index]["presenceScoped"] = json!(true);
         }
@@ -222,6 +259,38 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn dataset_preview(datasets: Value) -> Value {
+        let request = json!({"style":{"type":"circle", "paint":{
+            "circle-color":["match", ["get", "struct_type"], "S100", "red", "S300", "green", "S400", "blue", "black"]
+        }}, "scope":{"presentValues":{"struct_type":["S400"]}, "datasets":datasets}});
+        serde_json::from_str(&evaluate(&serde_json::to_vec(&request).unwrap()).unwrap()).unwrap()
+    }
+    #[test]
+    fn dataset_scope_overrides_shared_editor_and_unions_only_card_datasets() {
+        let single = dataset_preview(json!([{"presentValues":{"struct_type":["S100","S300"]}}]));
+        assert_eq!(
+            single["dimensions"][0]["entries"],
+            json!([
+                {"value":"S100","color":"red"}, {"value":"S300","color":"green"}
+            ])
+        );
+        let grouped = dataset_preview(json!([
+            {"presentValues":{"struct_type":["S100"]}},
+            {"presentValues":{"struct_type":["S300"]}}
+        ]));
+        assert_eq!(single, grouped);
+    }
+    #[test]
+    fn unknown_and_empty_dataset_presence_are_distinct() {
+        assert_eq!(
+            dataset_preview(json!([{"presentValues":{"struct_type":[]}}])),
+            Value::Null
+        );
+        let unknown = dataset_preview(json!([
+            {"presentValues":{"struct_type":["S100"]}}, {"presentValues":{}}
+        ]));
+        assert_eq!(unknown, Value::Null);
+    }
     #[test]
     fn grouped_labels_are_shared_by_screen_and_print() {
         let expression = json!([

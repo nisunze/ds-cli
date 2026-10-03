@@ -110,6 +110,16 @@ hosts parse cannot carry them.
 
 ## 5. What TypeScript still holds, and why
 
+`style_legend::evaluate` accepts the renderer's card scope as
+`datasets: [{ presentValues: { field: [value, ...] } }, ...]`. These are observed
+tile values for the exact `(source, source-layer)` datasets represented by the
+card, separate from the style editor's project-wide `presentValues`. The kernel
+unions represented dataset values and applies domain display labels. A missing
+field in any dataset means unknown; an explicit empty array means known empty.
+Unknown dataset dimensions are omitted rather than filled from the authored
+style's domain. The screen requests up to the shared 48-row bound. Native and
+WASM tests cover individual sources, grouped unions, unknown and empty values.
+
 | Left in TypeScript | Why it is presentation or a binding |
 |---|---|
 | `api/styles.ts` transport helpers | the browser adapter performs the declared operation and hands the parsed answer to the kernel |

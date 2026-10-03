@@ -1018,6 +1018,8 @@ pub fn map_performance_profile(budget: Option<&Value>, hint: &ResourceHint) -> V
         "label": label,
         "description": description,
         "maxTileCacheSize": number_value(round_tile_cache_size(tile_cache * scale)),
+        "tileLodLevels": number_value(budget + 1.0),
+        "tileLodRatio": number_value((round_tile_cache_size(tile_cache * scale) / 48.0).clamp(1.0, 6.0)),
         "cleanupDelayMs": cleanup_delay_ms,
         "refreshExpiredTiles": refresh_expired_tiles,
         "resourceLabel": resource_label,
@@ -1889,6 +1891,10 @@ mod tests {
         let high = profile(json!(5), none.clone());
         assert_eq!(low["maxTileCacheSize"], json!(48));
         assert_eq!(high["maxTileCacheSize"], json!(384));
+        assert_eq!(low["tileLodLevels"], json!(2));
+        assert_eq!(low["tileLodRatio"], json!(1));
+        assert_eq!(high["tileLodLevels"], json!(6));
+        assert_eq!(high["tileLodRatio"], json!(6));
         assert_eq!(low["cleanupDelayMs"], json!(120));
         assert_eq!(high["cleanupDelayMs"], json!(1000));
         assert_eq!(low["refreshExpiredTiles"], json!(false));
@@ -1906,6 +1912,7 @@ mod tests {
 
         let constrained = profile(json!(1), json!({"device_memory_gb": 2}));
         assert_eq!(constrained["maxTileCacheSize"], json!(32));
+        assert_eq!(constrained["tileLodRatio"], json!(1));
         assert_eq!(
             constrained["resourceLabel"],
             json!("Constrained browser estimate")
