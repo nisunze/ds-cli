@@ -1005,7 +1005,9 @@ pub fn normalize(values: &[String]) -> Vec<String> {
     }
     let mut ordered: Vec<_> = INDIVIDUAL
         .iter()
-        .filter(|format| **format == MANDATORY_INDIVIDUAL_OUTPUT || selected.iter().any(|v| v == **format))
+        .filter(|format| {
+            **format == MANDATORY_INDIVIDUAL_OUTPUT || selected.iter().any(|v| v == **format)
+        })
         .map(|s| s.to_string())
         .collect();
     let named: std::collections::BTreeSet<_> = selected

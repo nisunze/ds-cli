@@ -260,13 +260,11 @@ static RUN_COUNTER: AtomicU64 = AtomicU64::new(0);
 /// and a counter. It names scratch space and a receipt, never a secret.
 pub fn random_run_id() -> String {
     let mut bytes = [0_u8; 16];
-    let mut filled = false;
     #[cfg(unix)]
-    {
-        if let Ok(mut source) = File::open("/dev/urandom") {
-            filled = source.read_exact(&mut bytes).is_ok();
-        }
-    }
+    let filled =
+        File::open("/dev/urandom").is_ok_and(|mut source| source.read_exact(&mut bytes).is_ok());
+    #[cfg(not(unix))]
+    let filled = false;
     if !filled {
         let mut hasher = Sha256::new();
         hasher.update(now_ms().to_be_bytes());
@@ -309,7 +307,9 @@ pub(crate) fn create_staging_root(path: &Path) -> Result<(), HostFailure> {
 }
 
 fn create_private_dir(path: &Path) -> Result<(), HostFailure> {
-    let mut builder = fs::DirBuilder::new();
+    let builder = fs::DirBuilder::new();
+    #[cfg(unix)]
+    let mut builder = builder;
     #[cfg(unix)]
     {
         use std::os::unix::fs::DirBuilderExt;
@@ -1353,6 +1353,7 @@ pub(crate) mod tests {
                 let filename = match format {
                     "shp" => format!("{transformer}.shp.zip"),
                     "xlsx" => format!("{transformer}.xlsx"),
+                    "voltage_drop" => format!("{transformer}.voltage-drop.json"),
                     other => panic!("{other}"),
                 };
                 let bytes = format!("{transformer}:{format}:bytes").into_bytes();
@@ -1437,7 +1438,7 @@ pub(crate) mod tests {
             &inputs("tx_a"),
         )
         .unwrap();
-        assert_eq!(outcome.artifacts.len(), 2);
+        assert_eq!(outcome.artifacts.len(), 3);
         assert!(out.join("tx_a").join("tx_a.shp.zip").is_file());
         assert!(out.join("tx_a").join("tx_a.xlsx").is_file());
         assert_eq!(
@@ -1471,7 +1472,15 @@ pub(crate) mod tests {
             .map(|e| e.unwrap().file_name().into_string().unwrap())
             .collect();
         names.sort();
-        assert_eq!(names, ["report-run.json", "tx_a.shp.zip", "tx_a.xlsx"]);
+        assert_eq!(
+            names,
+            [
+                "report-run.json",
+                "tx_a.shp.zip",
+                "tx_a.voltage-drop.json",
+                "tx_a.xlsx"
+            ]
+        );
         // A second run for the same transformer refuses to overwrite.
         let again = run_transformer_report(
             &engine,
@@ -1510,14 +1519,17 @@ pub(crate) mod tests {
 
         // What built is on disk, verified, beside its receipt — and nothing
         // else is: no half-written xlsx, no undeclared file.
-        assert_eq!(outcome.artifacts.len(), 1);
+        assert_eq!(outcome.artifacts.len(), 2);
         assert_eq!(outcome.artifacts[0].format, "shp");
         let mut names: Vec<_> = fs::read_dir(&outcome.artifact_dir)
             .unwrap()
             .map(|entry| entry.unwrap().file_name().into_string().unwrap())
             .collect();
         names.sort();
-        assert_eq!(names, ["report-run.json", "tx_a.shp.zip"]);
+        assert_eq!(
+            names,
+            ["report-run.json", "tx_a.shp.zip", "tx_a.voltage-drop.json"]
+        );
 
         // What did not build is named, with the layout knob that decides it.
         assert_eq!(outcome.failed.len(), 1);
@@ -1577,7 +1589,7 @@ pub(crate) mod tests {
         assert_eq!(batch.receipt["failed"], 0);
         assert_eq!(batch.receipt["partial_formats"], 1);
         assert_eq!(batch.receipt["results"][0]["status"], "ok");
-        assert_eq!(batch.receipt["results"][0]["artifacts"], 1);
+        assert_eq!(batch.receipt["results"][0]["artifacts"], 2);
         assert_eq!(
             batch.receipt["results"][0]["failed_formats"][0]["output_id"],
             "xlsx"
@@ -1601,7 +1613,7 @@ pub(crate) mod tests {
             },
         )
         .unwrap();
-        assert_eq!(outcome.artifacts.len(), 2);
+        assert_eq!(outcome.artifacts.len(), 3);
         assert_eq!(
             engine.media_grant_seen.lock().unwrap().as_deref(),
             Some(&grant[..])
@@ -1613,7 +1625,15 @@ pub(crate) mod tests {
             .map(|e| e.unwrap().file_name().into_string().unwrap())
             .collect();
         names.sort();
-        assert_eq!(names, ["report-run.json", "tx_a.shp.zip", "tx_a.xlsx"]);
+        assert_eq!(
+            names,
+            [
+                "report-run.json",
+                "tx_a.shp.zip",
+                "tx_a.voltage-drop.json",
+                "tx_a.xlsx"
+            ]
+        );
         // The plain wrapper names no grant.
         run_transformer_report(
             &engine,
@@ -1735,7 +1755,10 @@ pub(crate) mod tests {
                 .unwrap(),
             &json!({"held_fill_in": "fill_in"})
         );
-        assert_eq!(run.receipt["formats_requested"], json!(["shp", "xlsx"]));
+        assert_eq!(
+            run.receipt["formats_requested"],
+            json!(["shp", "xlsx", "voltage_drop"])
+        );
         assert_eq!(run.receipt["content_digest_verified"], true);
     }
 
