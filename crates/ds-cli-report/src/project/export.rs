@@ -320,7 +320,7 @@ pub static COMMAND: Command = Command {
     path: &["report", "project", "export"],
     contract: 2,
     summary: "Export all transformer reports and maps headlessly in parallel.",
-    purpose: "Defaults: SHP/KMZ/XLSX/saved voltage-drop JSON; saved output sets are ignored. --selection supplies ds.design-output-selection/v1. Prints regenerate; data may reuse. Photos need grants.",
+    purpose: "Defaults: SHP/KMZ/XLSX/saved voltage-drop JSON. Prints regenerate; data may reuse.",
     chapter: Chapter::Reports,
     effect: Effect::LocalFileWrite,
     authority: Authority::HeadlessProject,
@@ -333,7 +333,7 @@ pub static COMMAND: Command = Command {
         Arg::value(
             "selection",
             "<json-file>",
-            "Run selection; omitted uses defaults. Does not change project settings.",
+            "ds.design-output-selection/v1; omitted uses defaults, ignoring saved sets.",
         ),
         Arg::repeated(
             "print-layout",
