@@ -3791,7 +3791,11 @@ mod tests {
                 .iter()
                 .any(|arg| arg.name == "server-state-dir")
         );
-        assert!(COMMAND.purpose.contains("Prints regenerate; data may reuse"));
+        assert!(
+            COMMAND
+                .purpose
+                .contains("Prints regenerate; data may reuse")
+        );
     }
 
     #[test]
