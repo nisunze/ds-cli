@@ -728,6 +728,62 @@ pub fn render_measure(data: &Value) -> String {
     out
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Every member must expose the words an outsider reaches for through
+    /// its name, summary or declared search terms.
+    const FAMILY_TERMS: &[&str] = &["geoprocessing", "gis", "geometry", "spatial"];
+
+    /// The family's shared vocabulary has to actually be on every command, or
+    /// an outsider's search finds three of the four.
+    #[test]
+    fn every_command_exposes_the_familys_shared_vocabulary() {
+        for command in [
+            &BUFFER_COMMAND,
+            &SAMPLE_COMMAND,
+            &INTERSECT_COMMAND,
+            &MEASURE_COMMAND,
+            &DESCRIBE_COMMAND,
+            &OUTLIERS_COMMAND,
+            &RANDOM_COMMAND,
+            &COLLISIONS_COMMAND,
+        ] {
+            for term in FAMILY_TERMS {
+                let named = command
+                    .id
+                    .split(|c: char| !c.is_ascii_alphanumeric())
+                    .chain(command.summary.split(|c: char| !c.is_ascii_alphanumeric()))
+                    .any(|word| word.eq_ignore_ascii_case(term));
+                assert!(
+                    named || command.search.contains(term),
+                    "`{}` is not findable with `{term}`",
+                    command.id
+                );
+            }
+        }
+    }
+
+    /// This family exists to be reachable without a window. If one of them
+    /// ever declares otherwise, the whole point of the slice is gone.
+    #[test]
+    fn nothing_in_this_family_needs_a_window() {
+        for command in [
+            &BUFFER_COMMAND,
+            &SAMPLE_COMMAND,
+            &INTERSECT_COMMAND,
+            &MEASURE_COMMAND,
+            &DESCRIBE_COMMAND,
+            &OUTLIERS_COMMAND,
+            &RANDOM_COMMAND,
+            &COLLISIONS_COMMAND,
+        ] {
+            assert_eq!(command.requires, Requires::Server, "{}", command.id);
+        }
+    }
+}
+
 pub static DESCRIBE_COMMAND: Command = Command {
     id: "data.vector.describe",
     path: &["data", "vector", "describe"],
