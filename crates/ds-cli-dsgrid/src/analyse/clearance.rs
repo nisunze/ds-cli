@@ -196,6 +196,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let report = opened
         .session
         .clearance_report(&ClearanceReportOptions {
+            analysis_case_ids: Vec::new(),
             alignment_ids,
             case,
             criterion_set_id,
