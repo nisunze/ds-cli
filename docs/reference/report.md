@@ -1285,3 +1285,12 @@ the native project authority. Name the project with `--project` and supply its s
 locator and SHA-256 from the current print receipt, then confirm with `--yes`.
 A replaced print is refused. The operation retains stored bytes and other
 outputs. Archive standalone custom maps through their Assets lifecycle.
+
+Report locale comes from the existing Network Template `project_settings` row
+`report_locale`. English and French ship in the one kernel message catalogue;
+a third locale needs complete catalogue data. Missing language refuses by name.
+Capture the existing project configuration with LV standard/A4 requests; do not
+choose language from country or the UI. See the [owner contract](../../../ds-command-kernel/docs/printing.md#report-language-and-artifact-names)
+and [dry-run-first backfills](../../../ds-command-kernel/migrations/report-locale-and-artifact-names.md).
+No migration is performed by export. Report filenames and stored-name validation
+use the kernel rule; PDF title casing preserves the protected delivery.

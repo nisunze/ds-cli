@@ -28,6 +28,10 @@ case "$1" in
    test "$4" = --result
    test ! -e "$5"
    cmp "$3" "$TEST_REQUEST"
+   if test "$TEST_MODE" = locale_missing; then
+      printf '%s' 'ds-report: report_locale_missing: project_settings missing' >&2
+      exit 17
+   fi
    if test "$TEST_MODE" = refused; then
       printf '%s' 'voltage_drop_pdf_input_invalid: missing calculated analysis' >&2
       exit 17
@@ -207,4 +211,12 @@ fn project_run_discovers_missing_task_or_browser_before_any_effect() {
         assert!(!directory.exists());
         assert_eq!(h.calls(), "task-schemas\n");
     }
+}
+
+#[test]
+fn missing_project_report_locale_is_a_named_refusal() {
+    let harness = Harness::new();
+    let (result, status) = harness.run(&[], "locale_missing", true);
+    assert_ne!(status, 0);
+    assert_eq!(result["error"]["code"], "report_locale_missing");
 }

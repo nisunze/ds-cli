@@ -21,13 +21,12 @@ Map delivery: `printing-maps`.
 For MV plan/profile sets, read [booklet workflow](references/mv-plan-profile-booklet.md)
 before setup or batching.
 
-For voltage-drop A4, choose `voltage_drop_pdf`. Discover the workstation Chromium configuration and verification contracts
-before headless rendering. Use the declared project export route, then verify
-online publication before web preview or delivery. See `ds-lv-voltage-drop`
-for calculation and remediation. Distinguish saved voltage-drop analysis JSON from the A4 report PDF in the live
-output catalogue. Verify the installed build's declared outputs and actual
-artifacts before claiming delivery; a successful PDF render is not a complete
-engineering verdict or online publication.
+For voltage-drop A4, discover Chromium verification and the project export route.
+Verify publication before web delivery. Use `ds-lv-voltage-drop` for calculations;
+distinguish saved analysis JSON, rendered PDF and an engineering verdict.
+
+Report language comes from the Network Template. Missing locale or a stored-name
+mismatch requires a reviewed backfill; see [standard sets](references/lv-standard.md).
 
 ## Establish the assignment and host
 

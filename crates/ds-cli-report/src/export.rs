@@ -55,7 +55,7 @@ document describing every artifact and every blocker; this command returns \
 that document, so a refused export arrives as typed blockers rather than an \
 exit code and a file path. Use --request to supply the engine's full typed \
 request instead of the flags below; run `ds report tasks --task <name>` for \
-its schema. --task lv-standard requires the export_lv_standard JSON job: A0/A3 sheets, PNG before PDF and separate combined sets with six A0 opening pages. Governed defaults and overrides: report layout schema; details in the reference. --task voltage-drop requires --request from render_voltage_drop_result: it prints admitted calculated JSON or explicit reserved/incomplete/refused status to A4, without processing or inferring analysis. Governed identity supplies title blocks/logos. Prints are regenerated; partial exports list failed_formats. A reporter without that task refuses; there is no export fallback.",
+its schema. --task lv-standard requires the export_lv_standard JSON job: A0/A3 sheets, PNG before PDF and separate combined sets with six A0 opening pages. Governed defaults and overrides: report layout schema; details in the reference. --task voltage-drop requires --request from render_voltage_drop_result: it prints admitted calculated JSON or explicit reserved/incomplete/refused status to A4, without processing or inferring analysis. Governed identity supplies title blocks/logos. Report language comes from Network Template project_settings.report_locale (en/fr shipped; other locales require complete catalogue data). Missing language refuses; it is never inferred. PDF naming is owned by the kernel. Prints are regenerated; partial exports list failed_formats. A reporter without that task refuses; there is no export fallback.",
     chapter: Chapter::Reports,
     effect: Effect::LocalFileWrite,
     authority: Authority::None,
@@ -140,6 +140,41 @@ was given.",
         },
     ],
     refusals: &[
+        Refusal {
+            code: "report_locale_missing",
+            when: "the reporter refuses this presentation contract",
+            remedy: "set report_locale in the existing Network Template project_settings sheet; backfill dry run first",
+        },
+        Refusal {
+            code: "report_locale_invalid",
+            when: "the reporter refuses this presentation contract",
+            remedy: "use one exact nonempty report locale key in project_settings",
+        },
+        Refusal {
+            code: "report_locale_unsupported",
+            when: "the reporter refuses this presentation contract",
+            remedy: "supply the complete locale in the one report message catalogue",
+        },
+        Refusal {
+            code: "report_catalogue_invalid",
+            when: "the reporter refuses this presentation contract",
+            remedy: "supply ds.report-messages/v1 with an English reference locale",
+        },
+        Refusal {
+            code: "report_catalogue_incomplete",
+            when: "the reporter refuses this presentation contract",
+            remedy: "complete every message and preserve named placeholders",
+        },
+        Refusal {
+            code: "report_message_missing",
+            when: "the reporter refuses this presentation contract",
+            remedy: "add the message to every locale in the catalogue",
+        },
+        Refusal {
+            code: "report_header_alias_invalid",
+            when: "the reporter refuses this presentation contract",
+            remedy: "fix ambiguous cleaned_header/misspelled_header mappings in the Network Template",
+        },
         Refusal {
             code: "unknown_task",
             when: "the installed reporter does not publish the selected voltage-drop or LV standard task",
@@ -427,6 +462,9 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let Some(mut document) = document else {
         // No document at all means the engine failed before doing any work —
         // a bad request, a missing input file, an unusable output directory.
+        if let Some(code) = ds_command_kernel::report_messages::refusal_code(&completed.stderr) {
+            return Err(Failure::invalid(code, "Report locale or catalogue refused").remedy("Use project_settings.report_locale and a complete report catalogue; inspect the named refusal").detail(json!({"engine":completed.stderr})));
+        }
         return Err(DS_REPORT.failure_from(&completed, subcommand));
     };
 

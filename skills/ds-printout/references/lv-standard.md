@@ -29,3 +29,9 @@ by name. Colour/monochrome uses the API-captured ink variant. Preserve the
 baseline/branch raster diff table and thumbnails beside the repeatability proof.
 For A4 identity, printing_document carries the governed HTML/status layout and
 its revision/digest; rendering changes no saved engineering verdict.
+
+Report language belongs to the project's existing Network Template. Use its served
+report locale and discover the live task's catalogue refusals. English and French
+ship; additional locales use complete catalogue data. A missing setting requires
+a reviewed dry-run-first backfill. Kernel filenames are authoritative; migrate
+stored spelling mismatches instead of adding an alternate lookup.
