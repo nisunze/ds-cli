@@ -899,3 +899,40 @@ for every explicit source kind present, plus MV context, buildings, contours,
 roads and rivers. Colour and monochrome require API-selected governed variants;
 the resolver owner must extend its owning contract if ink is not yet a captured
 dimension. Physical scaling and labels remain in the resolved documents.
+
+## Report language and artifact names
+
+The existing Network Template `project_settings` sheet owns `report_locale`.
+Firestore groups it under `parameters.project_settings`; the project `/config`
+projection flattens the same rows. Exactly one explicit catalogue key is required.
+No country, operator UI language or absent-value default selects a report language.
+The dry-run-first [backfill](../migrations/report-locale-and-artifact-names.md)
+adds a reviewed value to existing projects and the Network Template; it is not run
+as part of rendering.
+
+`report_messages` owns `ds.report-messages/v1`, whose one default catalogue is
+[assets/report-messages.json](../assets/report-messages.json). Each locale supplies
+exactly the English reference key set, nonempty values and identical named
+placeholders. `en` and `fr` ship; another locale is a document change. A project
+may supply the same complete document in its served Network Template config.
+`report_messages::Messages` validates it. Named refusals are
+`report_locale_missing`, `report_locale_invalid`, `report_locale_unsupported`,
+`report_catalogue_invalid`, `report_catalogue_incomplete`, `report_message_missing`
+and `report_header_alias_invalid`.
+
+The template's existing header-mapping sheets (`customers_header`, `lv_lines_header`,
+`lv_poles_header`, `service_cables_header`, `transformer`) use `cleaned_header` and
+`misspelled_header`. `template_headers` reads flat/grouped API forms and builds
+one canonical-field/alias map; `header_alias` is the sole consumer function.
+Ambiguous project aliases refuse. Canonical nonempty data wins over an alias.
+Catalogue headers preserve the former governed compatibility aliases centrally.
+
+`report_formats::report_filename(stem, format)` owns every report filename.
+PDF stems use the protected word-boundary title casing (`Run_Ruhuha.a0.pdf`);
+exchange and raster stems preserve exact identifiers (`run_ruhuha.xlsx`).
+Individual voltage-drop PDF stems retain the established human spacing.
+Named layout suffixes and media types come from `report_formats::output`.
+`report::Command::ArtifactFilename` exposes the same rule to WASM/web. Artifact
+inventory, project-control downloads, reporter exports, local readers and web
+promotion consume that rule. An inconsistent stored name needs the reviewed
+backfill; readers never probe a second spelling.
