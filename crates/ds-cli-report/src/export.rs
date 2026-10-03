@@ -463,7 +463,19 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         // No document at all means the engine failed before doing any work —
         // a bad request, a missing input file, an unusable output directory.
         if let Some(code) = ds_command_kernel::report_messages::refusal_code(&completed.stderr) {
-            return Err(Failure::invalid(code, "Report locale or catalogue refused").remedy("Use project_settings.report_locale and a complete report catalogue; inspect the named refusal").detail(json!({"engine":completed.stderr})));
+            let failure = match code {
+                "report_locale_missing"
+                | "report_locale_invalid"
+                | "report_locale_unsupported"
+                | "report_catalogue_invalid"
+                | "report_catalogue_incomplete"
+                | "report_message_missing"
+                | "report_header_alias_invalid" => {
+                    Failure::invalid(code, "Report locale or catalogue refused")
+                }
+                _ => Failure::invalid("engine_refused", "Reporter refused the request"),
+            };
+            return Err(failure.remedy("Use project_settings.report_locale and a complete report catalogue; inspect the named refusal").detail(json!({"engine":completed.stderr})));
         }
         return Err(DS_REPORT.failure_from(&completed, subcommand));
     };
