@@ -61,8 +61,6 @@ pub const INDEX_SCHEMA: &str = "ds.assets.index/v1";
 pub const TREE_SCHEMA: &str = "ds.assets.tree/v1";
 /// `index_status` when the answer is the index.
 pub const INDEX_SERVED: &str = "served";
-/// Status used by ds-cli's catalogue projections when they have no shared index.
-pub const INDEX_UNAVAILABLE: &str = "unavailable";
 /// The sources the shared index never holds (assets-index §2), with the
 /// root each feeds: they exist only on a Desktop or Server, which projects
 /// them and merges them under the index it read. Pinned to the kernel's own
