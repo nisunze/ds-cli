@@ -1,6 +1,7 @@
 //! Print-layout authority shared by CLI, Canvas2D preview and vector delivery.
 //! Flat page elements in physical millimetres; no tile, HTML or remote-image IO.
 pub mod adjacent_networks;
+pub mod attribution;
 pub mod context;
 pub mod custom;
 pub mod diagnostics;
@@ -11,6 +12,9 @@ pub mod inventory;
 pub mod lifecycle;
 pub mod map;
 pub mod mv;
+pub mod mv_booklet;
+pub mod mv_context;
+pub mod mv_placement;
 pub mod mv_settings;
 pub mod names;
 pub mod network_fit;
@@ -46,6 +50,9 @@ pub const MAX_INPUT_BYTES: usize = 32 * 1024 * 1024;
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct Layout {
+    /// Governed attribution typography held by the printing document.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub attribution: Option<attribution::Style>,
     /// MV publication furniture in the existing shared printing library.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mv: Option<Box<mv::Template>>,
@@ -128,6 +135,9 @@ pub struct TransformerBounds {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Default)]
 #[serde(deny_unknown_fields)]
 pub struct PrintStyleOverride {
+    /// Explicit physical dash lengths; governed documents supply the default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dash_mm: Option<Vec<f64>>,
     pub visible: Option<bool>,
     pub color: Option<String>,
     pub size: Option<f64>,
@@ -307,10 +317,18 @@ pub enum PrintContextSource {
 pub struct PrintCorridor {
     /// Distance on each side of the route, in ground metres.
     pub distance_m: f64,
-    pub color: String,
-    pub width_mm: f64,
-    pub opacity: f64,
-    pub dash_mm: Vec<f64>,
+    /// Explicit legacy authored override; omission inherits the governed pen.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color: Option<String>,
+    /// Explicit legacy authored override; omission inherits the governed pen.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub width_mm: Option<f64>,
+    /// Explicit legacy authored override; omission inherits the governed pen.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub opacity: Option<f64>,
+    /// Explicit legacy authored override; omission inherits the governed pen.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dash_mm: Option<Vec<f64>>,
 }
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema, PartialEq)]
 #[serde(rename_all = "snake_case")]
@@ -884,7 +902,51 @@ fn bounded(value: f64, low: f64, high: f64) -> bool {
 fn no_stroke_or_bounded(value: f64, low: f64, high: f64) -> bool {
     value == 0. || bounded(value, low, high)
 }
+/// One closed physical pen contract, shared by layouts and governed style documents.
+pub fn validate_physical_style(id: &str, style: &PrintStyle) -> Result<(), String> {
+    if let Some(hatch) = &style.hatch {
+        hatch.validate()?;
+    }
+    if !identifier(id)
+        || !color(&style.stroke)
+        || !color(&style.fill)
+        || (!style.casing.is_empty() && !color(&style.casing))
+        || !no_stroke_or_bounded(style.width_mm, 0.05, 10.)
+        || !bounded(style.stroke_opacity, 0., 1.)
+        || !bounded(style.fill_opacity, 0., 1.)
+        || !bounded(style.casing_mm, 0., 10.)
+        || !bounded(style.radius_mm, 0.1, 20.)
+        || !bounded(style.label_pt, 4., 40.)
+        || style.dash_mm.len() > 8
+        || style.dash_mm.iter().any(|v| !bounded(*v, 0.1, 100.))
+        || style.colors.len() > 50
+        || style.widths.len() > 50
+        || style.colors.values().any(|c| !color(c))
+        || style
+            .widths
+            .values()
+            .any(|v| !no_stroke_or_bounded(*v, 0.05, 10.))
+    {
+        return Err(format!("invalid print style {id}"));
+    }
+    if [&style.color_field, &style.width_field, &style.label_field]
+        .iter()
+        .any(|f| f.len() > 120)
+        || style
+            .colors
+            .keys()
+            .chain(style.widths.keys())
+            .any(|v| v.len() > 200)
+    {
+        return Err("style field or category is too long".into());
+    }
+    Ok(())
+}
+
 pub fn validate(layout: &Layout) -> Result<(), String> {
+    if let Some(style) = &layout.attribution {
+        style.validate()?;
+    }
     adjacent_networks::validate_selection(layout)?;
     if let Some(mv) = &layout.mv {
         mv::validate_template(layout, mv).map_err(|e| e.to_string())?;
@@ -1158,42 +1220,7 @@ pub fn validate(layout: &Layout) -> Result<(), String> {
         }
     }
     for (id, style) in &layout.styles {
-        if let Some(hatch) = &style.hatch {
-            hatch.validate()?;
-        }
-        if !identifier(id)
-            || !color(&style.stroke)
-            || !color(&style.fill)
-            || (!style.casing.is_empty() && !color(&style.casing))
-            || !no_stroke_or_bounded(style.width_mm, 0.05, 10.)
-            || !bounded(style.stroke_opacity, 0., 1.)
-            || !bounded(style.fill_opacity, 0., 1.)
-            || !bounded(style.casing_mm, 0., 10.)
-            || !bounded(style.radius_mm, 0.1, 20.)
-            || !bounded(style.label_pt, 4., 40.)
-            || style.dash_mm.len() > 8
-            || style.dash_mm.iter().any(|v| !bounded(*v, 0.1, 100.))
-            || style.colors.len() > 50
-            || style.widths.len() > 50
-            || style.colors.values().any(|c| !color(c))
-            || style
-                .widths
-                .values()
-                .any(|v| !no_stroke_or_bounded(*v, 0.05, 10.))
-        {
-            return Err(format!("invalid print style {id}"));
-        }
-        if [&style.color_field, &style.width_field, &style.label_field]
-            .iter()
-            .any(|f| f.len() > 120)
-            || style
-                .colors
-                .keys()
-                .chain(style.widths.keys())
-                .any(|v| v.len() > 200)
-        {
-            return Err("style field or category is too long".into());
-        }
+        validate_physical_style(id, style)?;
     }
     if layout.title_block.len() > 64
         || layout
@@ -1227,13 +1254,16 @@ pub fn validate(layout: &Layout) -> Result<(), String> {
     if layout.style_overrides.len() > 100
         || layout.style_overrides.iter().any(|(id, o)| {
             !identifier(id)
-                || !layout.style_refs.contains_key(id)
+                || (!layout.style_refs.contains_key(id) && !layout.style_keys.contains_key(id))
                 || o.color.as_ref().is_some_and(|c| !color(c))
                 || o.size.is_some_and(|v| !bounded(v, 0., 100.))
                 || o.scale_weight
                     .as_ref()
                     .is_some_and(|p| o.size.is_none() || p.factor(p.reference_denominator).is_err())
                 || o.opacity.is_some_and(|v| !bounded(v, 0., 1.))
+                || o.dash_mm
+                    .as_ref()
+                    .is_some_and(|v| v.len() > 8 || v.iter().any(|n| !bounded(*n, 0.1, 100.)))
                 || o.label.as_ref().is_some_and(|l| {
                     l.size_pt.is_some_and(|v| !bounded(v, 1., 60.))
                         || l.halo_mm.is_some_and(|v| !bounded(v, 0., 5.))
@@ -1340,11 +1370,14 @@ pub fn validate(layout: &Layout) -> Result<(), String> {
                 }
                 if let Some(corridor) = corridor {
                     if !bounded(corridor.distance_m, 0.1, 1_000.)
-                        || !bounded(corridor.width_mm, 0.01, 5.)
-                        || !bounded(corridor.opacity, 0., 1.)
-                        || !color(&corridor.color)
-                        || corridor.dash_mm.len() > 8
-                        || corridor.dash_mm.iter().any(|v| !bounded(*v, 0.1, 100.))
+                        || corridor.width_mm.is_some_and(|v| !bounded(v, 0.01, 5.))
+                        || corridor.opacity.is_some_and(|v| !bounded(v, 0., 1.))
+                        || corridor.color.as_ref().is_some_and(|v| !color(v))
+                        || corridor.dash_mm.as_ref().is_some_and(|v| v.len() > 8)
+                        || corridor
+                            .dash_mm
+                            .as_ref()
+                            .is_some_and(|v| v.iter().any(|n| !bounded(*n, 0.1, 100.)))
                     {
                         return Err("invalid project DS Grid MV corridor parameters".into());
                     }
@@ -1394,6 +1427,38 @@ fn refuse_map_features(layout: &Layout) -> Result<(), String> {
 /// A layout printed as a geographic sheet: valid, with its one map frame.
 /// Hosts that always project (custom-area and district MV maps) admit no
 /// front matter.
+/// Resolve every declared print choice once through the shared Kernel resolver.
+pub fn resolve_style_documents(
+    mut layout: Layout,
+    resolution: &crate::style_resolution::Snapshot,
+) -> Result<(Layout, Value), String> {
+    if layout.style_keys.is_empty() && !layout.style_refs.is_empty() {
+        return Err("style_resolution_required: migrate the governed printing template to exact style_keys through the API".into());
+    }
+    let captured = crate::style_resolution::prepare_print(resolution, &layout.style_keys)
+        .map_err(|e| e.to_string())?;
+    for (layer, reference) in captured["style_refs"].as_object().unwrap() {
+        layout.styles.remove(layer);
+        layout
+            .style_refs
+            .insert(layer.clone(), reference.as_str().unwrap().into());
+        let document = &captured["print_styles"][reference.as_str().unwrap()];
+        style_overrides::physical_style(document)?;
+        if document["metadata"].get("scale_weight").is_some() {
+            let authored = layout
+                .style_overrides
+                .get(layer)
+                .cloned()
+                .unwrap_or_default();
+            let inherited = style_overrides::inherit_scale_policy(document, &authored)
+                .map_err(|e| format!("layer {layer}: {e}"))?;
+            layout.style_overrides.insert(layer.clone(), inherited);
+        }
+    }
+    validate(&layout)?;
+    Ok((layout, captured))
+}
+
 pub fn validate_geographic(layout: &Layout) -> Result<(), String> {
     validate(layout)?;
     if !layout.elements.iter().any(|e| e.kind == ElementKind::Map) {
@@ -1423,6 +1488,7 @@ pub fn default_layout() -> Layout {
         opacity: opaque(),
     };
     complete(Layout {
+        attribution: None,
         mv: None,
         composition: None,
         transformer_bounds: None,
@@ -2364,7 +2430,7 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
         Command::ContextDefaults {} => json!({
             "derived": context::derived_layers(),
             "corridor_default": context::default_corridor(),
-            "fallback_styles": context::fallback_styles(),
+            "style_keys": context::derived_style_keys(),
             "excluded_catalog_layers": context::DEFAULT_CATALOG_EXCLUSIONS,
         }),
         Command::ContextCatalog { resources } => json!({"rows": context::catalog(&resources)?}),
@@ -2685,34 +2751,10 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
             style_keys,
         } => {
             let mut layout = upgrade(layout)?;
-            let keys = if style_keys.is_empty() {
-                &layout.style_keys
-            } else {
-                &style_keys
-            };
-            if keys.is_empty() && !layout.style_refs.is_empty() {
-                return Err("style_resolution_required: migrate the governed printing template to exact style_keys through the API".into());
+            if !style_keys.is_empty() {
+                layout.style_keys = style_keys;
             }
-            let captured = crate::style_resolution::prepare_print(&resolution, keys)
-                .map_err(|error| error.to_string())?;
-            for (layer, reference) in captured["style_refs"].as_object().unwrap() {
-                layout.styles.remove(layer);
-                layout
-                    .style_refs
-                    .insert(layer.clone(), reference.as_str().unwrap().into());
-                let document = &captured["print_styles"][reference.as_str().unwrap()];
-                if document["metadata"].get("scale_weight").is_some() {
-                    let authored = layout
-                        .style_overrides
-                        .get(layer)
-                        .cloned()
-                        .unwrap_or_default();
-                    let inherited = style_overrides::inherit_scale_policy(document, &authored)
-                        .map_err(|reason| format!("layer {layer}: {reason}"))?;
-                    layout.style_overrides.insert(layer.clone(), inherited);
-                }
-            }
-            validate(&layout)?;
+            let (layout, captured) = resolve_style_documents(layout, &resolution)?;
             json!({"layout":layout,"capture":captured})
         }
         Command::SetContextLayers {
@@ -3132,8 +3174,8 @@ mod tests {
             serde_json::from_str(&evaluate(br#"{"op":"context_defaults"}"#).unwrap()).unwrap();
         assert_eq!(defaults["derived"].as_array().unwrap().len(), 3);
         assert_eq!(
-            defaults["fallback_styles"]["contours_index"]["label_field"],
-            "contour_label"
+            defaults["style_keys"]["contours_index"]["entity_class"],
+            "contours_index"
         );
         assert_eq!(defaults["excluded_catalog_layers"][0], "rwanda_upi_parcels");
         let rows: serde_json::Value = serde_json::from_str(
@@ -3163,7 +3205,7 @@ mod tests {
                 .len(),
             4
         );
-        assert!(selected["layout"]["styles"]["dsgrid_mv_lines"].is_object());
+        assert!(selected["layout"]["style_keys"]["dsgrid_mv_lines"].is_object());
         assert!(evaluate(
             format!(
                 r#"{{"op":"context_toggle","layout":{layout},"layer":{{"id":"wetlands","label":"Wetlands","source":{{"kind":"catalog","country":"Rwanda","layer":"wetlands"}}}},"enabled":true,"resource":{{"layer":"wetlands","label":"Wetlands","country":"Rwanda"}}}}"#
@@ -3808,45 +3850,6 @@ mod tests {
     }
 
     #[test]
-    fn the_district_map_plan_suppresses_village_strokes_without_refusing_itself() {
-        let mut layout = default_layout();
-        layout.styles.insert(
-            "village_boundaries".into(),
-            PrintStyle {
-                width_mm: 0.6,
-                stroke_opacity: 0.75,
-                casing_mm: 0.4,
-                casing: "#ffffff".into(),
-                dash_mm: vec![2., 2.],
-                label_field: "village".into(),
-                ..Default::default()
-            },
-        );
-        for (id, style) in &mut layout.styles {
-            if id.contains("village") {
-                style.width_mm = 0.;
-                style.stroke_opacity = 0.;
-                style.dash_mm.clear();
-                style.casing_mm = 0.;
-                style.widths.clear();
-            }
-        }
-        // The same suppression `printing::map` applies before it validates the
-        // plan it just built. It used to write a width `validate` refused.
-        validate(&layout).expect("suppressed village strokes must still validate");
-        let village = &layout.styles["village_boundaries"];
-        assert_eq!(village.width_mm, 0.);
-        assert_eq!(village.stroke_opacity, 0.);
-        assert!(village.dash_mm.is_empty());
-        assert_eq!(village.casing_mm, 0.);
-        assert_eq!(village.label_field, "village");
-    }
-}
-
-#[cfg(test)]
-mod polygon_hatch_tests {
-    use super::*;
-    #[test]
     fn phase_selector_and_physical_hatch_bounds_are_explicit() {
         let mut hatch = PrintHatch {
             color: "#996633".into(),
@@ -3869,5 +3872,26 @@ mod polygon_hatch_tests {
             buffer_m: 10.,
         });
         assert!(validate(&layout).is_err());
+    }
+    #[test]
+    fn attribution_is_one_closed_layout_field_and_validated_by_every_reader() {
+        let mut document = serde_json::to_value(default_layout()).unwrap();
+        document["attribution"] = json!({"font_pt":7.,"color":"#595959","svg_font_family":"DejaVu Sans","pdf_font_family":"Helvetica","right_inset_pt":146.,"baseline_pt":7.});
+        let layout: Layout = serde_json::from_value(document.clone()).unwrap();
+        validate(&layout).unwrap();
+        let canonical = serde_json::to_value(upgrade(layout).unwrap()).unwrap();
+        assert_eq!(canonical["attribution"], document["attribution"]);
+        let schema = layout_schema();
+        assert!(schema["properties"]["attribution"].is_object());
+        document["attribution"]["font_pts"] = json!(8.);
+        assert!(serde_json::from_value::<Layout>(document.clone()).is_err());
+        document["attribution"]
+            .as_object_mut()
+            .unwrap()
+            .remove("font_pts");
+        document["attribution"]["font_pt"] = json!(0.);
+        assert!(validate(&serde_json::from_value(document).unwrap())
+            .unwrap_err()
+            .contains("print_attribution_invalid"));
     }
 }

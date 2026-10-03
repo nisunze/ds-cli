@@ -19,6 +19,9 @@ pub struct Request {
     pub dpi: u16,
     #[serde(default)]
     pub layout: Option<Layout>,
+    /// Held project-scoped API table; required when the plan binds style keys.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub style_resolution: Option<crate::style_resolution::Snapshot>,
 }
 #[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, JsonSchema, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
@@ -203,23 +206,22 @@ pub fn plan(r: &Request, boundaries: Vec<Boundary>, sheets: &Value) -> Result<Va
         if let Some(base) = base {
             l.styles = base.styles.clone();
             l.style_refs = base.style_refs.clone();
+            l.style_keys = base.style_keys.clone();
+            l.attribution = base.attribution.clone();
             l.context_layers = base.context_layers.clone();
             l.layer_order = base.layer_order.clone();
             l.style_overrides = base.style_overrides.clone();
         }
-        l.styles.insert(
-            "print_area".into(),
-            PrintStyle {
-                stroke: "#536B50".into(),
-                width_mm: 0.45,
-                fill_opacity: 0.,
-                label_field: "name".into(),
-                label_pt: 12.,
-                ..Default::default()
-            },
-        );
+        if !l.styles.contains_key("print_area")
+            && !l.style_refs.contains_key("print_area")
+            && !l.style_keys.contains_key("print_area")
+        {
+            l.style_keys.insert(
+                "print_area".into(),
+                super::context::style_key("print_area", "dataset_geojson", "focused"),
+            );
+        }
         l.layer_order.push("print_area".into());
-        l.style_refs.remove("print_area");
         l
     };
     layout.id = r.id.clone();
@@ -243,33 +245,64 @@ pub fn plan(r: &Request, boundaries: Vec<Boundary>, sheets: &Value) -> Result<Va
             .context_layers
             .push(super::context::derived_layers().remove(0));
     }
-    // Direct project model capture supplies these layers once. Keep their
-    // authored corridor in the render layout, but exclude duplicate acquisition.
-    for (id, style) in super::context::fallback_styles() {
-        if MV_PRINT_LAYER_IDS.contains(&id.as_str()) {
-            layout.styles.entry(id).or_insert(style);
+    // Identity comes from the declared sources; ink comes from their exact API keys.
+    for layer in layout.context_layers.clone() {
+        super::context::bind_style_keys(&mut layout, &layer);
+    }
+    // MV overview boundaries use their own label-only document. Plan/profile
+    // context roles and explicit authored appearances remain independent.
+    if r.family == "mv-map" {
+        for key in layout.style_keys.values_mut() {
+            if matches!(
+                key.entity_class.as_str(),
+                "village_boundaries" | "rwanda_villages"
+            ) {
+                key.role = "mv_map_context".into();
+            }
         }
+        for layer in &layout.context_layers {
+            if let PrintContextSource::Catalog { layer: class, .. } = &layer.source {
+                if matches!(class.as_str(), "village_boundaries" | "rwanda_villages")
+                    && !layout.style_keys.contains_key(&layer.id)
+                {
+                    return Err(format!("style_resolution_required: MV map layer {} needs declared class/source key for mv_map_context", layer.id));
+                }
+            }
+        }
+    }
+    let mut held_styles = sheets["printing_styles"].clone();
+    let mut style_capture = Value::Null;
+    if !layout.style_keys.is_empty() {
+        let from_sheets = sheets
+            .get("style_resolution")
+            .filter(|v| !v.is_null())
+            .map(|v| serde_json::from_value::<crate::style_resolution::Snapshot>(v.clone()))
+            .transpose()
+            .map_err(|e| format!("style_resolution_invalid: {e}"))?;
+        let resolution = r.style_resolution.as_ref().or(from_sheets.as_ref()).ok_or(
+            "style_resolution_required: map plan requires the project API style-resolution table",
+        )?;
+        if resolution.project_id != r.project {
+            return Err(
+                "project_context_changed: map style table belongs to another project".into(),
+            );
+        }
+        let (resolved, capture) = super::resolve_style_documents(layout, resolution)?;
+        layout = resolved;
+        if !held_styles.is_object() {
+            held_styles = json!({});
+        }
+        for (reference, document) in capture["print_styles"].as_object().unwrap() {
+            held_styles[reference] = document.clone();
+        }
+        style_capture = capture;
     }
     let mut context_layout = layout.clone();
     context_layout
         .context_layers
         .retain(|c| !matches!(c.source, PrintContextSource::ProjectDsgridMv { .. }));
-    // Village names may remain useful; boundary strokes do not. Zero width is
-    // the label-only state `validate` accepts, so suppress every way the
-    // stroke could still reach the page — width, opacity, dash and casing —
-    // rather than leaving a dash pattern or a casing to print on its own.
-    for (id, style) in &mut layout.styles {
-        if id.contains("village") {
-            style.width_mm = 0.;
-            style.stroke_opacity = 0.;
-            style.dash_mm.clear();
-            style.casing_mm = 0.;
-            style.widths.clear();
-        }
-    }
-
     validate(&layout)?;
-    super::style_overrides::preflight(&layout, &sheets["printing_styles"])?;
+    super::style_overrides::preflight(&layout, &held_styles)?;
     let frame = layout
         .elements
         .iter()
@@ -306,7 +339,7 @@ pub fn plan(r: &Request, boundaries: Vec<Boundary>, sheets: &Value) -> Result<Va
         })
         .collect::<Result<Vec<_>, String>>()?;
     Ok(
-        json!({"request":r,"layout":layout,"context_layout":context_layout,"pages":pages,"design_layers":if r.family == "mv-map" {json!(["tr"])} else {Value::Null},"filename":format!("{}.{}-landscape.pdf",r.id,if r.paper==Paper::A0 {"a0"} else {"a3"}),"family":r.family}),
+        json!({"request":r,"layout":layout,"context_layout":context_layout,"style_capture":style_capture,"printing_styles":held_styles,"pages":pages,"design_layers":if r.family == "mv-map" {json!(["tr"])} else {Value::Null},"filename":format!("{}.{}-landscape.pdf",r.id,if r.paper==Paper::A0 {"a0"} else {"a3"}),"family":r.family}),
     )
 }
 
@@ -554,6 +587,45 @@ mod tests {
             geometry: json!({"type":"Polygon","coordinates":[[[x,-2.],[x+0.1,-2.],[x+0.1,-1.9],[x,-1.9],[x,-2.]]]}),
         }
     }
+    fn test_resolution() -> crate::style_resolution::Snapshot {
+        let held: Value = serde_json::from_str(include_str!(
+            "../../tests/fixtures/governed-physical-print-baselines.json"
+        ))
+        .unwrap();
+        let mut bindings = held["documents"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|row| {
+                let document = row["document"].clone();
+                crate::style_resolution::Binding {
+                    key: serde_json::from_value(row["key"].clone()).unwrap(),
+                    style_ref: row["style_ref"].as_str().unwrap().into(),
+                    revision_id: crate::style_plan::style_digest(&document),
+                    content_sha256: crate::style_plan::style_digest(&document),
+                    scope: "catalogue".into(),
+                    document,
+                    presentation_tier: None,
+                }
+            })
+            .collect::<Vec<_>>();
+        let mut area = bindings
+            .iter()
+            .find(|b| b.key.entity_class == "print_area")
+            .unwrap()
+            .clone();
+        area.key.role = "project".into();
+        bindings.push(area);
+        crate::style_resolution::Snapshot {
+            schema: crate::style_resolution::SCHEMA.into(),
+            project_id: "project".into(),
+            revision_id: "a".repeat(64),
+            seed_version: None,
+            style_presets: None,
+            missing_style_refs: vec![],
+            bindings,
+        }
+    }
     fn request(family: &str, codes: &[&str]) -> Request {
         Request {
             project: "project".into(),
@@ -564,6 +636,7 @@ mod tests {
             page_mode: PageMode::default(),
             dpi: default_dpi(),
             layout: None,
+            style_resolution: Some(test_resolution()),
         }
     }
     #[test]
@@ -721,7 +794,7 @@ mod tests {
             .context_layers
             .iter()
             .all(|c| !matches!(c.source, PrintContextSource::ProjectDsgridMv { .. })));
-        assert!(p["layout"]["styles"]["dsgrid_mv_angle_points"].is_object());
+        assert!(p["layout"]["style_keys"]["dsgrid_mv_angle_points"].is_object());
     }
     #[test]
     fn dpi_defaults_and_roundtrips_without_changing_output_identity() {
@@ -731,7 +804,8 @@ mod tests {
         assert_eq!(r.dpi, 300);
         for dpi in [72, 150, 300, 600, 1200] {
             raw["dpi"] = json!(dpi);
-            let r: Request = serde_json::from_value(raw.clone()).unwrap();
+            let mut r: Request = serde_json::from_value(raw.clone()).unwrap();
+            r.style_resolution = Some(test_resolution());
             let p = plan(&r, vec![boundary("24", "district", 29.)], &json!({})).unwrap();
             assert_eq!(p["request"]["dpi"], dpi);
             assert_eq!(p["filename"], "map.a3-landscape.pdf");

@@ -68,3 +68,22 @@ The print merge gate renders the standard fixture set on the baseline and this
 branch, compares every page raster, and records thumbnails and each difference's
 feedback id or owner rule. An unexplained difference is a regression, not an
 accepted default change.
+
+## Derived paper representations
+
+`derived_geojson` is the source kind for retained derived buildings and elevation
+contours. It is distinct from an installed cold dataset. Expanded DS Grid model
+classes and their render-only corridor use `project_model/print/mv_context`.
+The focused prohibited-zone callout representation uses `focused`; its label
+suppression is in its independent document. MV district-map village names use
+`mv_map_context`, leaving plan/profile `mv_context` bindings unchanged.
+The print-area boundary has explicit `dataset_geojson/print/focused` and `project`
+keys. No consumer chooses a document by a style-ref or layer-name substring.
+
+A physical starter document owns its complete pen in
+`metadata.physical_print_style`, decoded through the single closed Kernel
+`printing::PrintStyle`. All physical fields are explicit; incomplete objects,
+unknown fields and parallel paint/layout/label/boundary/d3 policy are refused.
+Its paper factors use the existing shared physical scaling contract. This
+representation preserves the original physical context pens without introducing
+another CSS conversion or renderer-specific pen factory.

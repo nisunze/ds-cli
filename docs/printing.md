@@ -914,3 +914,27 @@ base-size override for this optical policy; otherwise preparation refuses by
 layer instead of flattening authored widths. Fonts and table typography remain
 exact fields in the selected governed printing layout; map labels, halos, casing
 and dash patterns remain exact fields in its resolved style documents.
+
+## Governed attribution and context pen consumption
+
+`Layout.attribution` is an optional closed `printing::attribution::Style` in the
+same Kernel-owned Layout read by validation, native Reporter, CLI and WASM.
+The standard authored LV set supplies it: governed font, ink and placement are
+kept in the printing document. SVG and accessible PDF text carry the same held
+policy and one mandatory licensing caption. Absence preserves the legacy
+non-standard stamp path; readers never relax Layout unknown-field admission.
+
+New context selections bind semantic `style_keys`, including the expanded model
+corridor. Acquisition defaults contain geometry parameters only. The map planner
+requires a held project-scoped API style-resolution table in its typed request
+or captured sheets, calls `resolve_style_documents` once, and returns the sealed
+style capture and exact print documents alongside the layout. Hosts forward
+these documents to rendering unchanged. An absent table or unmigrated village
+choice is a named refusal. The planner never writes derived pens or mutates
+village strokes; independent `mv_map_context` documents own that appearance.
+
+Legacy corridor colour, width, opacity and dash fields remain optional explicit
+authored overrides for readable stored layouts. Omitted fields inherit the
+resolved corridor document. They are converted mechanically into declarative
+`PrintStyleOverride`, including physical `dash_mm`, never into inline generated
+pens. Geometry distance and retained-source coverage remain source parameters.

@@ -524,9 +524,14 @@ mod tests {
     #[test]
     fn configured_context_preserves_primary_pens_and_focus_camera() {
         let mut layout = super::super::default_layout();
-        let foreground = super::super::context::fallback_styles()
-            .remove("dsgrid_mv_lines")
-            .unwrap();
+        let baseline: serde_json::Value = serde_json::from_str(include_str!(
+            "../../tests/fixtures/governed-physical-print-baselines.json"
+        ))
+        .unwrap();
+        let foreground =
+            super::super::style_overrides::physical_style(&baseline["documents"][0]["document"])
+                .unwrap()
+                .unwrap();
         layout.styles.insert("lv_lines".into(), foreground.clone());
         for (source, _) in LAYERS {
             layout
