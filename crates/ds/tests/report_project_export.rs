@@ -71,9 +71,11 @@ fn the_descriptor_is_a_headless_project_fenced_local_file_write() {
             "out-dir",
             "concurrency",
             "admin-bounds",
+            "selection",
             "print-layout",
             "preview-layout",
             "context-vectors",
+            "pin-room",
             "seed",
             // Acceptance B: publication is not optional, so there is no
             // `--publish`. A dry run is the one way to produce nothing

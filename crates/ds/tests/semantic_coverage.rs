@@ -875,6 +875,9 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     // output root on this machine and publishes nothing.
     ("pls.structure-translate", "local_file_write", "none"),
     ("pls.backup-create", "artifact_write", "none"),
+    // Recovery reads one digest-pinned local backup and may write one exact
+    // member into a fresh local file; it reaches no project or native host.
+    ("pls.backup-extract", "local_file_write", "none"),
     ("pls.compare-don", "discovery", "none"),
     ("pls.delivery-verify", "discovery", "none"),
     ("pls.deviation-labels", "local_file_write", "none"),
