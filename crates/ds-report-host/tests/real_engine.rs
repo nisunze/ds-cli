@@ -25,6 +25,9 @@ use ds_report_host::{
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
+const A0_OUTPUT: &str = "pdf__a0-landscape-huye-cjic-review";
+const A3_OUTPUT: &str = "pdf__a3-landscape-aderm-lv";
+
 struct ProcessEngine {
     binary: PathBuf,
 }
@@ -81,6 +84,29 @@ fn receipt_from_example(config: &Path) -> InputReceipt {
     }
 }
 
+fn preview_draft(receipt: &InputReceipt) -> ds_command_kernel::printing::Layout {
+    let sheets: Value = serde_json::from_str(&receipt.sheets_json).unwrap();
+    let capture = sheets["printing_setups"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|setup| setup["id"] == "a3-landscape-aderm-lv")
+        .unwrap();
+    let mut draft = ds_command_kernel::printing::default_layout();
+    draft.id = "preview-draft".into();
+    draft.name = "Preview draft".into();
+    // A manual draft still needs the held, governed physical styles.
+    draft.style_refs = serde_json::from_value(capture["layout"]["style_refs"].clone()).unwrap();
+    // This fixture holds one room; adjacent bindings would request other rooms.
+    draft.style_refs.retain(|layer, _| {
+        matches!(
+            layer.as_str(),
+            "tr" | "lv_lines" | "lv_poles" | "customers" | "service_cables" | "tapping_poles"
+        )
+    });
+    draft
+}
+
 fn room(path: &Path, name: &str) -> TransformerReportInputs {
     let document: Value = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
     let layers: BTreeMap<String, Value> = document["layers"]
@@ -134,7 +160,10 @@ fn the_installed_engine_produces_prints_and_data_the_host_proves_and_places() {
         .iter()
         .map(|artifact| artifact.format.as_str())
         .collect();
-    assert_eq!(formats, ["shp", "kmz", "xlsx", "gpkg", "pdf_a0", "pdf_a3"]);
+    assert_eq!(
+        formats,
+        ["shp", "kmz", "xlsx", "gpkg", A0_OUTPUT, A3_OUTPUT]
+    );
     for artifact in &outcome.artifacts {
         let path = outcome.artifact_dir.join(&artifact.filename);
         let bytes = std::fs::read(&path).unwrap();
@@ -165,7 +194,7 @@ fn the_installed_engine_produces_prints_and_data_the_host_proves_and_places() {
     // a cloud publication merely by placing these local bytes.
     let build_info = engine.build_info().unwrap();
     let version = build_info["engine_version"].as_str().unwrap();
-    let expected = if version.starts_with("local-dev:") {
+    let expected = if version == ds_command_kernel::report::DEVELOPMENT_ENGINE {
         "local_only"
     } else {
         "pending"
@@ -205,10 +234,13 @@ fn the_installed_engine_produces_prints_and_data_the_host_proves_and_places() {
         .and_then(|run| {
             run.artifacts
                 .iter()
-                .find(|artifact| artifact.format == "pdf_a3")
+                .find(|artifact| artifact.format == A3_OUTPUT)
         })
         .expect("tr_example_b's A3 was delivered");
-    assert!(a3.filename.ends_with(".a3.pdf"), "{}", a3.filename);
+    assert_eq!(
+        a3.filename,
+        ds_command_kernel::report_formats::report_filename("tr_example_b", A3_OUTPUT).unwrap()
+    );
     assert!(batch_out.join("tr_example_b").join(&a3.filename).is_file());
     assert!(batch_out.join("report-batch.json").is_file());
 }
@@ -267,7 +299,7 @@ fn a_survey_policy_delivers_the_print_and_names_every_omitted_form() {
     assert!(outcome.runs[0]
         .artifacts
         .iter()
-        .any(|artifact| artifact.format == "pdf_a3"));
+        .any(|artifact| artifact.format == A3_OUTPUT));
 }
 
 /// A held survey form reaches the delivered geographic outputs through the
@@ -328,11 +360,11 @@ fn a_held_survey_form_is_appended_with_its_photo_links_and_the_rest_named() {
         form: "field_notes".into(),
         reason: SURVEY_LAYER_NOT_HELD_REASON.into(),
     }];
-    let grant = serde_json::to_vec(&serde_json::json!({
+    let grant = serde_json::to_vec(&serde_json::json!({"grants":[{
         "resolver_origin": "https://api.example.com", "bucket": "photos",
         "prefix": "projects/example-project/", "token": "payload.mac",
         "expires_at": "2027-03-24T00:00:00Z",
-    }))
+    }]}))
     .unwrap();
     let temp = tempfile::tempdir().unwrap();
     let staging = temp.path().join("staging");
@@ -407,9 +439,7 @@ fn a_preview_page_is_the_engines_svg_over_the_synthetic_room() {
         media_grant: None,
         sheet: None,
     };
-    let mut draft = ds_command_kernel::printing::default_layout();
-    draft.id = "preview-draft".into();
-    draft.name = "Preview draft".into();
+    let draft = preview_draft(&receipt);
     let page = transformer_page(
         &engine,
         &PreviewSettings {
@@ -460,9 +490,7 @@ fn the_command_execution_answers_the_same_page_over_the_synthetic_room() {
     let temp = tempfile::tempdir().unwrap();
     let staging = temp.path().join("staging");
     let inputs = room(&examples.join("rooms/tr_example_a.json"), "tr_example_a");
-    let mut draft = ds_command_kernel::printing::default_layout();
-    draft.id = "preview-draft".into();
-    draft.name = "Preview draft".into();
+    let draft = preview_draft(&receipt);
     // The default layout names no context, so the held context is empty and
     // no holdings root is needed: the page is the engine's SVG.
     let page = execute(
