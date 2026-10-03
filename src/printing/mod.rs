@@ -1933,6 +1933,14 @@ pub fn named_layout(
 #[derive(Deserialize, JsonSchema)]
 #[serde(tag = "op", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Command {
+    /// Plan the explicit migration of one stored layout's legacy style_refs
+    /// to exact style_keys against the governed API resolution table. The
+    /// reply names every finding; a migrated layout is returned only when
+    /// all refs map exactly. Nothing is saved.
+    MigrateStyleKeys {
+        layout: Layout,
+        resolution: crate::style_resolution::Snapshot,
+    },
     SetTransformerOverride {
         layout: Layout,
         transformer: String,
@@ -2421,6 +2429,11 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
     let command: Command =
         serde_json::from_slice(input).map_err(|e| format!("invalid printing request: {e}"))?;
     let value = match command {
+        Command::MigrateStyleKeys { layout, resolution } => {
+            let plan = style_migration::plan(&layout, &resolution)?;
+            let migrated = plan.layout.clone();
+            json!({"plan":plan,"layout":migrated})
+        }
         Command::SetTransformerOverride {
             mut layout,
             transformer,
@@ -3003,6 +3016,28 @@ pub fn command_schema() -> serde_json::Value {
 mod tests {
     use super::*;
 
+    #[test]
+    fn migrate_style_keys_is_one_evaluated_print_intent() {
+        let mut layout = default_layout();
+        layout
+            .style_refs
+            .insert("lv_lines".into(), "master/lv_lines_print".into());
+        let document = json!({"type":"line","paint":{"line-width":0.6,"line-color":"#64748B"}});
+        let resolution = json!({
+            "schema": crate::style_resolution::SCHEMA, "project_id": "fixture",
+            "revision_id": "b".repeat(64),
+            "bindings": [{"key": context::style_key("lv_lines", "saved_design", "focused"),
+                "style_ref": "master/lv_lines_print", "revision_id": "a".repeat(64),
+                "content_sha256": crate::style_plan::style_digest(&document),
+                "scope": "global", "document": document}]
+        });
+        let input = json!({"op":"migrate_style_keys","layout":layout,"resolution":resolution});
+        let reply: Value =
+            serde_json::from_str(&evaluate(&serde_json::to_vec(&input).unwrap()).unwrap()).unwrap();
+        assert_eq!(reply["plan"]["status"], "migrate");
+        assert_eq!(reply["layout"]["style_keys"]["lv_lines"]["role"], "focused");
+        assert_eq!(reply["layout"]["style_refs"], json!({}));
+    }
     #[test]
     fn text_style_is_bounded_to_bundled_faces_and_omitted_when_unset() {
         let mut layout = default_layout();
