@@ -580,6 +580,11 @@ static PLS_ENTRIES: &[Entry] = &[
         render: ds_cli_pls::backup_create::render,
     },
     Entry {
+        command: &ds_cli_pls::backup_extract::COMMAND,
+        handler: ds_cli_pls::backup_extract::run,
+        render: ds_cli_pls::backup_extract::render,
+    },
+    Entry {
         command: &ds_cli_pls::pole_capacity::COMMAND,
         handler: ds_cli_pls::pole_capacity::run,
         render: ds_cli_pls::pole_capacity::render,
