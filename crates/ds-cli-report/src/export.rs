@@ -463,15 +463,22 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         // No document at all means the engine failed before doing any work —
         // a bad request, a missing input file, an unusable output directory.
         if let Some(code) = ds_command_kernel::report_messages::refusal_code(&completed.stderr) {
+            let sentence = "Report locale or catalogue refused";
             let failure = match code {
-                "report_locale_missing"
-                | "report_locale_invalid"
-                | "report_locale_unsupported"
-                | "report_catalogue_invalid"
-                | "report_catalogue_incomplete"
-                | "report_message_missing"
-                | "report_header_alias_invalid" => {
-                    Failure::invalid(code, "Report locale or catalogue refused")
+                "report_locale_missing" => Failure::invalid("report_locale_missing", sentence),
+                "report_locale_invalid" => Failure::invalid("report_locale_invalid", sentence),
+                "report_locale_unsupported" => {
+                    Failure::invalid("report_locale_unsupported", sentence)
+                }
+                "report_catalogue_invalid" => {
+                    Failure::invalid("report_catalogue_invalid", sentence)
+                }
+                "report_catalogue_incomplete" => {
+                    Failure::invalid("report_catalogue_incomplete", sentence)
+                }
+                "report_message_missing" => Failure::invalid("report_message_missing", sentence),
+                "report_header_alias_invalid" => {
+                    Failure::invalid("report_header_alias_invalid", sentence)
                 }
                 _ => Failure::invalid("engine_refused", "Reporter refused the request"),
             };
