@@ -32,6 +32,26 @@ try {
     $entry = $zip.CreateEntry('link'); $entry.ExternalAttributes = -1577058304
     $zip.Dispose()
     Assert-Refused { Expand-ServerArchive $symlinkZip (Join-Path $taskRoot 'symlink') }
+    # A corrupted length must not consume disk beyond the admitted budget.
+    $forged = Join-Path $taskRoot 'forged-length.zip'
+    $zip = [IO.Compression.ZipFile]::Open($forged, [IO.Compression.ZipArchiveMode]::Create)
+    $entry = $zip.CreateEntry('bounded.bin', [IO.Compression.CompressionLevel]::NoCompression)
+    $stream = $entry.Open(); $bytes = [byte[]]::new(131072)
+    try { $stream.Write($bytes, 0, $bytes.Length) } finally { $stream.Dispose(); $zip.Dispose() }
+    $bytes = [IO.File]::ReadAllBytes($forged)
+    [Array]::Copy([BitConverter]::GetBytes([uint32]1), 0, $bytes, 22, 4)
+    $central = -1
+    for ($index = 0; $index -lt $bytes.Length - 4; $index++) {
+        if ([BitConverter]::ToUInt32($bytes, $index) -eq 0x02014b50) { $central = $index; break }
+    }
+    if ($central -lt 0) { throw 'Forged fixture has no central directory.' }
+    [Array]::Copy([BitConverter]::GetBytes([uint32]1), 0, $bytes, $central + 24, 4)
+    [IO.File]::WriteAllBytes($forged, $bytes)
+    $destination = Join-Path $taskRoot 'forged-length'
+    Assert-Refused { Expand-ServerArchive $forged $destination }
+    if ((Get-Item -LiteralPath (Join-Path $destination 'bounded.bin')).Length -gt 1) { throw 'Malformed archive exceeded its admitted write budget.' }
+    $script:passed++
+
     $safe = New-TestZip 'safe.zip' @('normal/bytes.txt')
     $extracted = Join-Path $taskRoot 'safe'
     Expand-ServerArchive $safe $extracted

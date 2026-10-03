@@ -74,8 +74,20 @@ function Expand-ServerArchive([string]$Archive, [string]$Destination) {
             if ($entry.FullName.EndsWith('/')) { [IO.Directory]::CreateDirectory($target) | Out-Null; continue }
             [IO.Directory]::CreateDirectory((Split-Path $target -Parent)) | Out-Null
             $output = [IO.File]::Open($target, [IO.FileMode]::CreateNew)
-            $input = $entry.Open()
-            try { $input.CopyTo($output) } finally { $input.Dispose(); $output.Dispose() }
+            $memberSource = $entry.Open()
+            try {
+                # Enforce the validated byte budget while writing, even if the
+                # ZIP's central directory lies about its decompressed length.
+                $buffer = [byte[]]::new(65536)
+                $remaining = [long]$entry.Length
+                while ($remaining -gt 0) {
+                    $read = $memberSource.Read($buffer, 0, [int][Math]::Min($buffer.Length, $remaining))
+                    if ($read -eq 0) { throw 'Archive member ended before its declared length.' }
+                    $output.Write($buffer, 0, $read)
+                    $remaining -= $read
+                }
+                if ($memberSource.ReadByte() -ne -1) { throw 'Archive member expanded beyond its declared length.' }
+            } finally { $memberSource.Dispose(); $output.Dispose() }
             if ((Get-Item -LiteralPath $target).Length -ne $entry.Length) { throw 'Extracted length differs.' }
         }
     } finally { $zip.Dispose() }
