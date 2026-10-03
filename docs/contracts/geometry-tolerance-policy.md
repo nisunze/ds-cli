@@ -88,3 +88,16 @@ behavior. The traversal does not choose a projection or invent a bbox update.
   order while closing the emitted ring.
 - Cartesian path measurement streams its coordinate mapper once per source
   vertex, retaining the original forward summation and arithmetic mode.
+
+`line_corridor::averaged_normal` retains the LV/MV flat-end construction and
+forward ring order. LV uses a 1e-9 metre leg cutoff and 1e-9 dimensionless join
+norm cutoff; MV uses exact zero for both. Degenerate legs use +X and cancelling
+join directions use the next leg. These named compatibility options preserve
+existing coordinates; changing their thresholds requires a rule and regression.
+The independent `line_corridor` feature adds no dependencies and does not enable
+Grid's rounded-corridor implementation.
+
+Borrowed-pole segment projection keeps squared-sum arithmetic and the named
+`POLE_SOURCE_SEGMENT_MIN_SQUARED_LENGTH_M2` threshold (`f64::EPSILON` square
+metres). Such short legs project to their first endpoint. The source's local
+frame, retained-pole reach and eligibility decisions remain consumer rules.
