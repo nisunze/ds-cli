@@ -16,18 +16,7 @@ pub const FRONT_ROLES: [PageRole; 6] = [
     PageRole::Revisions,
 ];
 
-#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum InkMode {
-    #[default]
-    Colour,
-    Monochrome,
-}
-impl InkMode {
-    pub fn is_colour(&self) -> bool {
-        *self == Self::Colour
-    }
-}
+pub use crate::style_resolution::Ink as InkMode;
 
 /// Generic page roles can also be used by MV booklets and custom atlases.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]

@@ -2,12 +2,197 @@
 use super::{Layout, PrintStyleOverride};
 use serde_json::{json, Value};
 
+/// Read a governed physical pen through the one closed Kernel owner type.
+/// This is document consumption, never style choice. Missing fields are refused
+/// even where legacy Layout pens have serialization defaults.
+pub fn physical_style(document: &Value) -> Result<Option<super::PrintStyle>, String> {
+    let Some(value) = document["metadata"].get("physical_print_style") else {
+        return Ok(None);
+    };
+    if document["paint"].as_object().is_some_and(|p| !p.is_empty())
+        || document["layout"]
+            .as_object()
+            .is_some_and(|p| !p.is_empty())
+        || ["label", "boundary", "d3"]
+            .iter()
+            .any(|key| document.get(key).is_some())
+    {
+        return Err("physical_print_style is the sole pen authority; parallel paint/layout/label/boundary/d3 is refused".into());
+    }
+    if crate::print_scaling::scaling_from_style(document)?
+        .is_some_and(|p| p.units != crate::print_scaling::PrintUnits::Physical)
+    {
+        return Err("physical_print_style scaling uses physical units".into());
+    }
+    let object = value
+        .as_object()
+        .ok_or("physical_print_style must be a complete object")?;
+    for field in [
+        "stroke",
+        "width_mm",
+        "stroke_opacity",
+        "fill",
+        "fill_opacity",
+        "casing",
+        "casing_mm",
+        "dash_mm",
+        "radius_mm",
+        "label_field",
+        "label_pt",
+        "color_field",
+        "colors",
+        "width_field",
+        "widths",
+    ] {
+        if !object.contains_key(field) {
+            return Err(format!("physical_print_style requires {field}"));
+        }
+    }
+    let style: super::PrintStyle = serde_json::from_value(value.clone())
+        .map_err(|e| format!("physical_print_style invalid: {e}"))?;
+    super::validate_physical_style("governed", &style)?;
+    physical_label_override(document)?;
+    Ok(Some(style))
+}
+
+pub fn physical_label_override(
+    document: &Value,
+) -> Result<Option<super::PrintLabelOverride>, String> {
+    let Some(value) = document["metadata"].get("physical_label_override") else {
+        return Ok(None);
+    };
+    let label: super::PrintLabelOverride = serde_json::from_value(value.clone())
+        .map_err(|e| format!("physical_label_override invalid: {e}"))?;
+    super::validate_label_override(&label)?;
+    Ok(Some(label))
+}
+
+/// Mechanically apply the document's shared paper factors to physical values.
+pub fn physical_style_at_paper(
+    document: &Value,
+    paper: &str,
+) -> Result<Option<super::PrintStyle>, String> {
+    let Some(mut style) = physical_style(document)? else {
+        return Ok(None);
+    };
+    let factor = crate::print_scaling::scaling_from_style(document)?
+        .map(|p| p.factor(paper))
+        .transpose()?
+        .unwrap_or(1.);
+    style.width_mm *= factor;
+    style.casing_mm *= factor;
+    style.radius_mm *= factor;
+    style.label_pt *= factor;
+    for value in &mut style.dash_mm {
+        *value *= factor;
+    }
+    for value in style.widths.values_mut() {
+        *value *= factor;
+    }
+    if let Some(hatch) = &mut style.hatch {
+        hatch.width_mm *= factor;
+        hatch.spacing_mm *= factor;
+    }
+    super::validate_physical_style("governed", &style)?;
+    Ok(Some(style))
+}
+
+fn apply_physical(
+    document: &Value,
+    change: &PrintStyleOverride,
+    mut pen: super::PrintStyle,
+) -> Result<Value, String> {
+    if change == &PrintStyleOverride::default() {
+        return Ok(document.clone());
+    }
+    let kind = document["type"]
+        .as_str()
+        .ok_or("physical print document type required")?;
+    if let Some(color) = &change.color {
+        pen.stroke = color.clone();
+        pen.colors.clear();
+        pen.color_field.clear();
+        if matches!(kind, "circle" | "symbol" | "fill") {
+            pen.fill = color.clone();
+        }
+        if change.color_scope == super::PrintColorScope::BodyAndBoundary && !pen.casing.is_empty() {
+            pen.casing = color.clone();
+        }
+    }
+    if !change.palette.is_empty() {
+        let field = change.field.as_ref().unwrap_or(&pen.color_field);
+        if field.is_empty() {
+            return Err("categorical physical overrides require a declared category field".into());
+        }
+        pen.color_field = field.clone();
+        pen.colors.extend(change.palette.clone());
+        if let Some(fallback) = &change.palette_fallback {
+            pen.stroke = fallback.clone();
+        }
+    }
+    if let Some(size) = change.size {
+        match kind {
+            // A physical polygon pen owns its outline width explicitly.
+            "line" | "fill" => pen.width_mm = size,
+            "circle" | "symbol" => pen.radius_mm = size,
+            _ => return Err("fill layers have no base size; use polygon boundary controls".into()),
+        }
+    }
+    if !change.size_by_value.is_empty() {
+        pen.width_field = change
+            .field
+            .clone()
+            .ok_or("categorical sizes require a field")?;
+        pen.widths.extend(change.size_by_value.clone());
+    }
+    if let Some(opacity) = change.opacity {
+        pen.stroke_opacity = opacity;
+        if matches!(kind, "circle" | "symbol" | "fill") {
+            pen.fill_opacity = opacity;
+        }
+    }
+    if let Some(dash) = &change.dash_mm {
+        pen.dash_mm = dash.clone();
+    }
+    if let Some(label) = &change.label {
+        if label.visible == Some(false) {
+            pen.label_field.clear();
+        }
+        if let Some(size) = label.size_pt {
+            pen.label_pt = size;
+        }
+        super::validate_label_override(label)?;
+    }
+    if change.visible == Some(false) {
+        pen.width_mm = 0.;
+        pen.stroke_opacity = 0.;
+        pen.fill_opacity = 0.;
+        pen.casing_mm = 0.;
+        pen.hatch = None;
+        pen.label_field.clear();
+    }
+    super::validate_physical_style("governed", &pen)?;
+    let mut out = document.clone();
+    out["metadata"]["physical_print_style"] =
+        serde_json::to_value(&pen).map_err(|e| e.to_string())?;
+    // Retain complete physical fields even where Layout serialization omits an identity opacity.
+    out["metadata"]["physical_print_style"]["stroke_opacity"] = json!(pen.stroke_opacity);
+    out["metadata"]["physical_print_style"]["fill_opacity"] = json!(pen.fill_opacity);
+    if let Some(label) = &change.label {
+        out["metadata"]["physical_label_override"] = json!(label);
+    }
+    Ok(out)
+}
+
 pub fn apply(document: &Value, change: &PrintStyleOverride, paper: &str) -> Result<Value, String> {
     if let Some(policy) = &change.scale_weight {
         policy.factor(policy.reference_denominator)?;
         if document["type"] != "line" || change.size.is_none() {
             return Err("scale_weight requires a line style and an explicit base size".into());
         }
+    }
+    if let Some(pen) = physical_style(document)? {
+        return apply_physical(document, change, pen);
     }
     let mut style = document.clone();
     if let Some(visible) = change.visible {
@@ -95,6 +280,33 @@ pub fn apply(document: &Value, change: &PrintStyleOverride, paper: &str) -> Resu
     if let Some(value) = change.opacity {
         style["paint"][opacity] = json!(value);
     }
+    if let Some(dash) = &change.dash_mm {
+        if style["type"] != "line" {
+            return Err("dash override requires a line document".into());
+        }
+        let width = style["paint"]["line-width"]
+            .as_f64()
+            .filter(|v| *v > 0.)
+            .ok_or("dash override requires a scalar positive line width")?;
+        let scaling = crate::print_scaling::scaling_from_style(document)?;
+        let factor = scaling
+            .as_ref()
+            .map(|p| p.factor(paper))
+            .transpose()?
+            .unwrap_or(1.);
+        let unit = if scaling
+            .as_ref()
+            .is_some_and(|p| p.units == crate::print_scaling::PrintUnits::CssPx)
+        {
+            25.4 / 96.
+        } else {
+            1.
+        };
+        style["paint"]["line-dasharray"] = json!(dash
+            .iter()
+            .map(|n| n / (width * unit * factor))
+            .collect::<Vec<_>>());
+    }
     if change.color_scope == super::PrintColorScope::BodyAndBoundary
         && style["boundary"].is_object()
     {
@@ -105,7 +317,9 @@ pub fn apply(document: &Value, change: &PrintStyleOverride, paper: &str) -> Resu
             "fill" => ("fill-color", "fill-opacity"),
             "symbol" => ("icon-color", "icon-opacity"),
             _ => {
-                return Err("boundary recolouring needs a supported governed geometry style".into())
+                return Err(
+                    "boundary recolouring needs a supported governed geometry style".into(),
+                );
             }
         };
         if change.color.is_some() || !change.palette.is_empty() {
@@ -257,6 +471,37 @@ pub fn usable(
     }
 }
 
+/// Capture the governed document's optical policy into the same declarative
+/// override used by map strokes and legend samples. Explicit template policy
+/// wins; no geometry, style identity or pen value is selected here.
+pub fn inherit_scale_policy(
+    document: &Value,
+    change: &PrintStyleOverride,
+) -> Result<PrintStyleOverride, String> {
+    let Some(value) = document["metadata"].get("scale_weight") else {
+        return Ok(change.clone());
+    };
+    let policy: super::PrintPenScale = serde_json::from_value(value.clone())
+        .map_err(|e| format!("invalid governed scale_weight: {e}"))?;
+    policy.factor(policy.reference_denominator)?;
+    if change.scale_weight.is_some() {
+        return Ok(change.clone());
+    }
+    if document["type"] != "line" {
+        return Err("governed scale_weight requires a line document".into());
+    }
+    let mut resolved = change.clone();
+    resolved.size = resolved
+        .size
+        .or_else(|| document["paint"]["line-width"].as_f64())
+        .or_else(|| document["metadata"]["physical_print_style"]["width_mm"].as_f64());
+    if resolved.size.is_none() {
+        return Err("governed scale_weight needs a scalar line-width or an explicit declarative base-size override; categorical or zoom width expressions are preserved".into());
+    }
+    resolved.scale_weight = Some(policy);
+    Ok(resolved)
+}
+
 /// Resolve once at the fitted/explicit map scale, shared by map strokes and legend samples.
 pub fn at_scale(
     change: &PrintStyleOverride,
@@ -296,6 +541,70 @@ pub fn preflight(layout: &Layout, documents: &Value) -> Result<(), String> {
 mod tests {
     use super::*;
     #[test]
+    fn governed_physical_pens_preserve_exact_baselines_and_refuse_partial_or_parallel_policy() {
+        let held: Value = serde_json::from_str(include_str!(
+            "../../tests/fixtures/governed-physical-print-baselines.json"
+        ))
+        .unwrap();
+        for row in held["documents"].as_array().unwrap() {
+            let document = &row["document"];
+            let pen = physical_style(document).unwrap().unwrap();
+            assert_eq!(
+                physical_style_at_paper(document, "A0").unwrap().unwrap(),
+                pen
+            );
+            assert_eq!(
+                apply(document, &PrintStyleOverride::default(), "A3").unwrap()["metadata"]
+                    ["physical_print_style"],
+                document["metadata"]["physical_print_style"]
+            );
+            let mut partial = document.clone();
+            partial["metadata"]["physical_print_style"]
+                .as_object_mut()
+                .unwrap()
+                .remove("fill_opacity");
+            assert!(physical_style(&partial)
+                .unwrap_err()
+                .contains("fill_opacity"));
+            let mut parallel = document.clone();
+            parallel["paint"]["line-width"] = json!(2.);
+            assert!(physical_style(&parallel)
+                .unwrap_err()
+                .contains("sole pen authority"));
+            let mut unknown = document.clone();
+            unknown["metadata"]["physical_print_style"]["colour"] = json!("#123456");
+            assert!(physical_style(&unknown).is_err());
+        }
+        let corridor = held["documents"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|r| r["key"]["entity_class"] == "dsgrid_mv_corridor")
+            .unwrap();
+        let changed = apply(
+            &corridor["document"],
+            &serde_json::from_value(
+                json!({"color":"#123456","size":0.7,"opacity":0.6,"dash_mm":[3.,2.]}),
+            )
+            .unwrap(),
+            "A3",
+        )
+        .unwrap();
+        let pen = physical_style(&changed).unwrap().unwrap();
+        assert_eq!(
+            (pen.stroke.as_str(), pen.width_mm, pen.stroke_opacity),
+            ("#123456", 0.7, 0.6)
+        );
+        assert_eq!(pen.dash_mm, vec![3., 2.]);
+        let change: PrintStyleOverride = serde_json::from_value(json!({"label":{"color":"#123456","halo_color":"#ffffff","halo_mm":0.4,"priority":8,"offset_mm":[1.,2.],"allow_overlap":false,"below_geometry":true}})).unwrap();
+        let labelled = apply(&corridor["document"], &change, "A3").unwrap();
+        assert_eq!(physical_label_override(&labelled).unwrap(), change.label);
+        assert!(physical_label_override(&corridor["document"])
+            .unwrap()
+            .is_none());
+    }
+
+    #[test]
     fn optical_line_weight_scales_by_square_root_and_stops_at_legibility_bounds() {
         let change:PrintStyleOverride=serde_json::from_value(json!({"size":2.,"field":"class","size_by_value":{"primary":4.},"scale_weight":{"reference_denominator":10000.,"min_factor":0.7,"max_factor":1.5}})).unwrap();
         let distant = at_scale(&change, 40000.).unwrap();
@@ -304,6 +613,29 @@ mod tests {
         assert!(distant.scale_weight.is_none());
         assert_eq!(at_scale(&change, 2500.).unwrap().size, Some(3.));
         assert!(apply(&json!({"type":"circle","paint":{}}), &change, "print_a3").is_err());
+    }
+    #[test]
+    fn governed_scale_policy_reaches_shared_stroke_and_legend_path() {
+        let document = json!({"type":"line","paint":{"line-width":2.5,"line-color":"#123456"},"metadata":{"scale_weight":{"reference_denominator":10000.,"min_factor":0.7,"max_factor":1.5}}});
+        let inherited = inherit_scale_policy(&document, &PrintStyleOverride::default()).unwrap();
+        let distant = at_scale(&inherited, 40000.).unwrap();
+        assert_eq!(
+            apply(&document, &distant, "A3").unwrap()["paint"]["line-width"],
+            1.75
+        );
+        assert_eq!(document["paint"]["line-width"], 2.5);
+        let explicit:PrintStyleOverride=serde_json::from_value(json!({"size":4.,"scale_weight":{"reference_denominator":10000.,"min_factor":1.,"max_factor":1.}})).unwrap();
+        assert_eq!(
+            inherit_scale_policy(&document, &explicit).unwrap(),
+            explicit
+        );
+        let mut categorical = document.clone();
+        categorical["paint"]["line-width"] = json!(["match", ["get", "cable"], "a", 2, 1]);
+        assert!(
+            inherit_scale_policy(&categorical, &PrintStyleOverride::default())
+                .unwrap_err()
+                .contains("scalar")
+        );
     }
     #[test]
     fn hiding_absent_labels_is_a_no_op_but_authoring_needs_a_definition() {

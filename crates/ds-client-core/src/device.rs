@@ -1979,6 +1979,40 @@ impl DeviceApiAuthorization<'_> {
             apply,
         )
     }
+    pub fn style_history<T: AuthorizedTransport>(
+        &self,
+        transport: &mut T,
+        ds_project: &str,
+        command: &ds_command_kernel::style_history::Command,
+        now: u64,
+    ) -> Result<serde_json::Value, ClientError> {
+        crate::authorized::validate_tiles(ds_project)?;
+        self.ensure_active(now)?;
+        crate::styles::history(
+            self.profile,
+            transport,
+            self.authority(),
+            ds_project,
+            command,
+        )
+    }
+    pub fn style_governance<T: AuthorizedTransport>(
+        &self,
+        transport: &mut T,
+        ds_project: &str,
+        command: &ds_command_kernel::style_governance::Command,
+        now: u64,
+    ) -> Result<serde_json::Value, ClientError> {
+        crate::authorized::validate_tiles(ds_project)?;
+        self.ensure_active(now)?;
+        crate::styles::governance(
+            self.profile,
+            transport,
+            self.authority(),
+            ds_project,
+            command,
+        )
+    }
     pub fn tile_status<T: AuthorizedTransport>(
         &self,
         transport: &mut T,

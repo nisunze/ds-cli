@@ -7,6 +7,15 @@ optional geometry does not require a reserved colour palette or label override.
 
 # Printing document authority
 
+The 2026-10-02 style-resolution ruling supersedes any older instruction below
+that constructs a style id, borrows a source sibling, or selects reserved pens
+in code. See [governed style resolution](style-resolution.md): templates declare
+the entity/source/target/role key, the shared kernel resolves the API snapshot,
+and the renderer consumes the exact document and revision. Focused LV, adjacent
+LV context and LV inside MV sheets keep independent governed documents. Pen
+scaling, typography and emphasis remain editable database documents. The
+before/after fixture raster comparison protects existing output.
+
 `printing::Layout` is a closed `ds.print-layout/v2` document. Page dimensions and
 frames use millimetres; typography uses points. It persists paper size and
 orientation and contains one named, clipped print viewport,
@@ -137,7 +146,7 @@ the CLI skills and delivery instructions defer to.
 | Main content | the LV network; geography is subordinate | the MV route, structures and profile conductors |
 | LV palette | categorical engineering palette: lines by cable size, poles by structure type, existing and new apart; every drawn category named in the legend | one bluish family graded by importance (new LV design darker; customers and existing LV lighter), quieter than the red MV pens; no categorical palette |
 | Furniture | pole and customer schedules, Network Information, categorical legend | no LV schedules; MV structure labels and staking facts |
-| Pen authority | `Layout.style_overrides` (template pens) over the governed `_print` documents | the reserved context pens of the MV context print capture (`ds-network-reporter` `docs/plan-profile-printing.md`) |
+| Pen authority | declarative `Layout.style_overrides` over the exact resolved focused documents | independent documents resolved for `role: mv_context`, held by exact revision in the MV context print capture |
 
 - An instruction scoped to one mode never changes the other. "Uniform bluish,
   even customers" is an MV context instruction and never recolours a
@@ -178,11 +187,29 @@ colour and opacity to an existing outline/casing without changing its width,
 icon, coordinates or line pattern. The default `body` preserves legacy pens.
 The renderer and legend use the same resolved style document.
 
+`resolve_styles` accepts a captured `ds.style-resolution/v1` API table and
+an exact `style_keys` map, invokes the sole kernel resolver, and returns the
+updated layout plus held `print_styles`, `style_revisions` and the resolution
+revision. A renderer consumes that held capture without another catalogue read.
+There is no inferred style id or source-kind fallback.
+The resolver key optionally declares `ink: "colour" | "monochrome"` for
+paper. Omitted ink and explicit colour are the same key; omission retains the
+original four-dimensional wire representation and document digests. Monochrome
+is an independent governed document binding, never renderer recolouring.
+Unknown ink combinations are refused by name; monochrome on screen is invalid.
+The standard LV consumer's singular classes (for example `lv_line`, `customer`
+and `lv_transformer`) are explicit seed declarations alongside existing layer
+classes, across the declared source kinds and focused/context/project roles.
+The governed `Layout.style_keys` declares those choices per layer. The operation
+uses it when the request omits `style_keys`; a legacy template must acquire its
+exact keys through an API document migration. A host never reverses an old
+style ref to guess source kind or print role.
+
 `set_adjacent_networks` atomically binds all five neighbouring roles to their
-governed print references. Empty `style_refs` selects the role-specific
-`print_context/print_context_existing_new_v1_<role>_print` seeds;
-an explicit map must name exactly `tr`, `lv_lines`, `service_cables`, `customers`
-and `lv_poles`. Its optional closed `ds.adjacent-print-hierarchy/v1` policy
+API-resolved print references. Empty `style_refs` refuses with
+`style_resolution_required`; a map must name exactly `tr`, `lv_lines`,
+`service_cables`, `customers` and `lv_poles`. Its optional closed
+`ds.adjacent-print-hierarchy/v1` policy
 contains proposed, existing and unclassified colours plus opacity. When absent,
 the named governed style owns those values; the kernel does not replace them
 with a hard-coded palette. Brain packages the versioned create-only starter
@@ -193,7 +220,9 @@ explicit project-local policy. No client-specific blue becomes global. Every
 render receipt pins the exact effective styles and source revisions.
 
 Context keeps the fields read by effective governed symbols and lifecycle pens.
-Customer/line/pole labels are hidden; transformer identities can remain labelled.
+Label visibility belongs to the resolved context documents: the standard
+customer/line/pole documents have no labels; transformer identities can remain
+labelled. Configuration and field projection no longer erase an authored label.
 It reads all active, checksum-verified saved rooms once and clips their exact
 geometry to the focused viewport, including edge-crossing circuits whose
 transformer is outside it. It does not widen the focused camera, alter topology
@@ -981,3 +1010,64 @@ Named layout suffixes and media types come from `report_formats::output`.
 inventory, project-control downloads, reporter exports, local readers and web
 promotion consume that rule. An inconsistent stored name needs the reviewed
 backfill; readers never probe a second spelling.
+
+### Governed paper scaling migration (2026-10-02)
+
+The renderer now honors every stored `metadata.print_scaling` factor exactly.
+The historical ISO-area table no longer triggers a code-side substitution to
+identity factors. The standard seed manifest records explicit exact-head
+migrations for installed legacy tables to the currently effective all-one
+factors. A fresh install receives those governed values. Existing installations
+must review and apply the versioned migration through the style API before
+releasing consumers; authored changes are never overwritten. Immutable source
+versions and backups retain the original tables. Baseline renders use the old
+read-only lane and original documents; branch renders use the migrated governed
+documents. The migration must preserve their page rasters.
+
+A line document may declare `metadata.scale_weight` with the same closed
+`reference_denominator`, `min_factor` and `max_factor` policy as a template
+override. `ResolveStyles` captures that policy and the document's scalar base
+pen into the shared map/legend override path. Explicit template policy wins.
+A categorical or zoom width expression requires an explicit declarative scalar
+base-size override for this optical policy; otherwise preparation refuses by
+layer instead of flattening authored widths. Fonts and table typography remain
+exact fields in the selected governed printing layout; map labels, halos, casing
+and dash patterns remain exact fields in its resolved style documents.
+
+## Governed attribution and context pen consumption
+
+`Layout.attribution` is an optional closed `printing::attribution::Style` in the
+same Kernel-owned Layout read by validation, native Reporter, CLI and WASM.
+The standard authored LV set supplies it: governed font, ink and placement are
+kept in the printing document. SVG and accessible PDF text carry the same held
+policy and one mandatory licensing caption. Absence preserves the legacy
+non-standard stamp path; readers never relax Layout unknown-field admission.
+
+New context selections bind semantic `style_keys`, including the expanded model
+corridor. Acquisition defaults contain geometry parameters only. The map planner
+requires a held project-scoped API style-resolution table in its typed request
+or captured sheets, calls `resolve_style_documents` once, and returns the sealed
+style capture and exact print documents alongside the layout. Hosts forward
+these documents to rendering unchanged. An absent table or unmigrated village
+choice is a named refusal. The planner never writes derived pens or mutates
+village strokes; independent `mv_map_context` documents own that appearance.
+
+Legacy corridor colour, width, opacity and dash fields remain optional explicit
+authored overrides for readable stored layouts. Omitted fields inherit the
+resolved corridor document. They are converted mechanically into declarative
+`PrintStyleOverride`, including physical `dash_mm`, never into inline generated
+pens. Geometry distance and retained-source coverage remain source parameters.
+
+### Governed renderer defaults
+
+A render holds the sole resolver's exact reply for `(print_renderer_defaults, dataset_geojson, print, project)` beside its authored page capture. Its complete `metadata.print_renderer_defaults` object is owned by `printing::renderer_defaults::Defaults`. The object supplies the initial physical interpretation, label ink/halo/collision placement, table border/header/warning/workbook fills, furniture stroke widths, measured font family and pre-attribution licensing typography. Unknown, missing and out-of-bounds fields refuse; parallel geometry or label policy refuses. Current registered measurement/conversion supports DejaVu Sans regular/bold/italic faces. Other families refuse until their matching metrics and embedded faces are registered.
+
+`ResolveStyles` carries the exact reply as `capture.renderer_defaults`; native preview admission carries it into `sheets.printing_renderer_defaults`. LV file exports and MV renders accept the same held Binding as `renderer_defaults`. It is companion API data: a renderer neither edits the original page capture nor looks up a mutable style head. The immutable policy reply participates in render/cache identity. Typography, colours and widths are configured through the governed document; physical conversions and placement geometry remain shared mechanics.
+
+`map_fonts` in the same closed renderer policy owns default map title (per A0/A3), legend, scale, project and footer point sizes, bounded to 4–48 pt. Existing defaults are seeded exactly. An explicitly authored Layout retains its font sizes. Nested legacy print `text-font` face labels retain their weight/italic interpretation; the actual measured and emitted family comes from the registered governed renderer font fields. This preserves current output without claiming that legacy Open Sans labels embed Open Sans font bytes.
+
+The same table policy declares its minimum composed font (1–48 pt), title/section/header bold choices, and the furniture policy declares legend row clearance and group width factors (0.5–5) plus group bold choice. The standard values retain current output exactly; renderers do not insert hidden typography constants.
+
+`Layout.ink_mode` uses the same closed `style_resolution::Ink` enum as the resolver keys (`colour` or `monochrome`). Omitted colour is serialized as before. It records the authored paper identity and does not recolour a page or choose a style: every pen still comes from its exact governed key/document. The standard monochrome captures are admitted unchanged. Map composition preserves this identity from an authored base Layout.
+
+`logo_dpi` in the same renderer policy is an integer from 72 through 1200. Its governed default is 300, matching the authored standard logo raster preparation. Physical millimetres and aspect-preserving resizing are renderer mechanics; a host does not choose its own raster resolution.

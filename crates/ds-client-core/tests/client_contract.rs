@@ -7651,6 +7651,8 @@ fn headless_style_plan_publishes_only_on_apply_and_checks_the_returned_target() 
     fixture["data"]["warnings"] = serde_json::json!(["catalog omission"]);
     let instruction = StyleInstruction::Appearance {
         icon_overlap: None,
+        halo_color: None,
+        halo_width: None,
         color: Some("#ff0000".into()),
         icon: None,
         size: None,
@@ -7723,6 +7725,8 @@ fn headless_style_publish_normalises_issue_warnings_and_refuses_a_foreign_receip
     fixture["data"]["style_editors"] = serde_json::json!([{"style_ref":"master/roads","style_target":"design","layer_name":"roads"}]);
     let instruction = StyleInstruction::Appearance {
         icon_overlap: None,
+        halo_color: None,
+        halo_width: None,
         color: Some("#00ff00".into()),
         icon: None,
         size: None,
@@ -7993,6 +7997,8 @@ fn headless_style_refusals_name_the_rule_that_refused_them() {
             "gt/roads",
             &StyleInstruction::Appearance {
                 icon_overlap: None,
+                halo_color: None,
+                halo_width: None,
                 color: None,
                 icon: None,
                 size: None,
@@ -8008,7 +8014,7 @@ fn headless_style_refusals_name_the_rule_that_refused_them() {
         (
             0,
             Some("style_refused".into()),
-            Some("choose colour, icon, size or icon overlap".into())
+            Some("choose colour, icon, size, icon overlap or halo".into())
         )
     );
     assert_eq!(posted(&transport), before);
@@ -13594,4 +13600,147 @@ fn survey_delete_captures_project_and_stops_after_a_partially_acknowledged_plan(
     assert_eq!(state.survey_delete_bodies[0]["expected_version"], 2);
     assert_eq!(state.survey_delete_bodies[1]["expected_version"], 4);
     assert_eq!(state.survey_delete_bodies[1]["idempotency_key"], "review:1");
+}
+
+#[test]
+fn headless_print_history_carries_explicit_project_and_exact_revision_fence() {
+    use ds_command_kernel::style_history::Command;
+    let transport = FixtureTransport::with_sign_in(SIGN_IN);
+    let mut client = signed_in(transport.clone(), MemoryStore::default());
+    let reference = "gt/rivers_print".to_owned();
+    let revision = "a".repeat(64);
+    let head = "b".repeat(64);
+    push_styles(
+        &transport,
+        serde_json::json!({"success":true,"data":{"style_ref":reference,"head_revision":head,"revisions":[{"revision_id":revision,"author":"owner","created_at":"2026-10-02T00:00:00Z"}]}}),
+    );
+    let listed = client
+        .style_history(
+            "project_a",
+            &Command::List {
+                reference: reference.clone(),
+            },
+            NOW + 1,
+        )
+        .unwrap();
+    assert_eq!(listed["head_revision"], head);
+    push_styles(
+        &transport,
+        serde_json::json!({"success":true,"data":{"style_ref":reference,"head_revision":"c".repeat(64),"restored_from":revision,"updated":true,"style_data":{"type":"line","paint":{"line-color":"#FFFFFF"}}}}),
+    );
+    let restored = client
+        .style_history(
+            "project_b",
+            &Command::Restore {
+                reference: reference.clone(),
+                revision: revision.clone(),
+                expected_head: head.clone(),
+            },
+            NOW + 1,
+        )
+        .unwrap();
+    assert_eq!(restored["restored_from"], revision);
+    let calls = transport.calls();
+    assert!(calls.iter().any(|call| call.starts_with("styles ")
+        && call.contains("list_versions")
+        && call.contains("project_a")));
+    assert!(calls.iter().any(|call| call.starts_with("styles ")
+        && call.contains("restore_version")
+        && call.contains("project_b")
+        && call.contains(&head)));
+    push_styles(
+        &transport,
+        serde_json::json!({"success":true,"data":{"style_ref":"gt/other_print","revision":{"revision_id":revision},"style_data":{"type":"line"}}}),
+    );
+    assert!(client
+        .style_history(
+            "project_a",
+            &Command::Read {
+                reference,
+                revision
+            },
+            NOW + 1
+        )
+        .is_err());
+}
+
+#[test]
+fn headless_style_governance_captures_exact_projects_and_seed_review_fences() {
+    use ds_command_kernel::{
+        style_governance::Command,
+        style_resolution::{Binding, Key, Snapshot, Target},
+    };
+    let transport = FixtureTransport::with_sign_in(SIGN_IN);
+    let mut client = signed_in(transport.clone(), MemoryStore::default());
+    let document =
+        serde_json::json!({"type":"line","paint":{"line-width":0.6,"line-color":"#64748B"}});
+    let table = Snapshot {
+        schema: "ds.style-resolution/v1".into(),
+        project_id: "project_a".into(),
+        revision_id: "a".repeat(64),
+        seed_version: Some("fixture/v1".into()),
+        style_presets: None,
+        missing_style_refs: Vec::new(),
+        bindings: vec![Binding {
+            key: Key {
+                entity_class: "lv_line".into(),
+                source_kind: "saved_design".into(),
+                target: Target::Print,
+                role: "focused".into(),
+                ink: Default::default(),
+            },
+            style_ref: "fixture/focused_print".into(),
+            revision_id: "b".repeat(64),
+            content_sha256: ds_command_kernel::style_plan::style_digest(&document),
+            scope: "global".into(),
+            document,
+            presentation_tier: None,
+        }],
+    };
+    push_styles(&transport, serde_json::json!({"success":true,"data":table}));
+    let result = client
+        .style_governance("project_a", &Command::Table, NOW + 1)
+        .unwrap();
+    assert_eq!(result["bindings"][0]["style_ref"], "fixture/focused_print");
+    push_styles(&transport, serde_json::json!({"success":true,"data":table}));
+    assert!(client
+        .style_governance("project_b", &Command::Table, NOW + 1)
+        .is_err());
+    let calls = transport.calls();
+    assert!(calls.iter().any(|c| c.starts_with("styles ")
+        && c.contains("get_style_table")
+        && c.contains("project_a")));
+    assert!(calls.iter().any(|c| c.starts_with("styles ")
+        && c.contains("get_style_table")
+        && c.contains("project_b")));
+    let before = transport.calls().len();
+    assert!(client
+        .style_governance(
+            "project_a",
+            &Command::Seed {
+                expected_manifest_revision: "bad".into(),
+                expected_plan_sha256: "c".repeat(64)
+            },
+            NOW + 1
+        )
+        .is_err());
+    assert_eq!(transport.calls().len(), before);
+    push_styles(
+        &transport,
+        serde_json::json!({"success":true,"data":{"manifest_id":"fixture/v1","manifest_revision":"b".repeat(64),"plan_sha256":"c".repeat(64),"creates":[],"preserves":[],"incompatible":[],"apply_allowed":true,"applied":true,"created":[],"preserved":[]}}),
+    );
+    client
+        .style_governance(
+            "project_b",
+            &Command::Seed {
+                expected_manifest_revision: "b".repeat(64),
+                expected_plan_sha256: "c".repeat(64),
+            },
+            NOW + 1,
+        )
+        .unwrap();
+    assert!(transport.calls().iter().any(|c| c.starts_with("styles ")
+        && c.contains("seed_manifest")
+        && c.contains("project_b")
+        && c.contains(&"c".repeat(64))));
 }

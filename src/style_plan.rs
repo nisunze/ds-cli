@@ -3,9 +3,18 @@ use crate::style_authoring::*;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum StyleInstruction {
+    /// Reviewed JSON replay, fenced against the catalogue's current digest.
+    Guarded {
+        expected_digest: String,
+        instruction: Box<StyleInstruction>,
+    },
+    /// Opt-in standardized screen contrast; exact ref supplies the scope.
+    Preset {
+        name: String,
+    },
     /// Persist one backend-declared print-context source style exactly once.
     /// The backend snapshot owns its palette, schema and save routing.
     Seed,
@@ -19,6 +28,30 @@ pub enum StyleInstruction {
         size: Option<f64>,
         #[serde(skip_serializing_if = "Option::is_none")]
         icon_overlap: Option<bool>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        halo_color: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        halo_width: Option<f64>,
+    },
+    Categorical {
+        channel: String,
+        field: String,
+        field_type: Option<String>,
+        values: Vec<crate::style_multiscale::CategoryValue>,
+        other: String,
+        #[serde(default)]
+        merge: bool,
+    },
+    ColorRange {
+        field: String,
+        stops: Vec<crate::style_multiscale::ColorStop>,
+    },
+    Zoom {
+        channel: String,
+        base: Value,
+        stops: Vec<crate::style_multiscale::ZoomStop>,
+        #[serde(default = "step_interpolation")]
+        interpolation: String,
     },
     /// Point a style's governed label at one exact declared data field. The
     /// backend-provided label model supplies defaults only when the style has
@@ -44,14 +77,17 @@ pub enum StyleInstruction {
         change: CartographyChange,
     },
 }
-#[derive(Debug, Clone, Deserialize, Serialize)]
+fn step_interpolation() -> String {
+    "step".into()
+}
+#[derive(Debug, Clone, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct DimensionValue {
     pub value: String,
     pub amount: Option<f64>,
     pub color: Option<String>,
 }
-#[derive(Debug, Clone, Deserialize, Serialize, Default)]
+#[derive(Debug, Clone, Deserialize, Serialize, Default, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CartographyChange {
     pub visible: Option<bool>,
@@ -83,6 +119,10 @@ pub struct StylePlan {
     pub document: Value,
     pub receipt: Value,
     pub payload: Value,
+}
+pub fn instruction_schema() -> Value {
+    serde_json::to_value(schemars::schema_for!(StyleInstruction))
+        .expect("compiled instruction schema")
 }
 
 /// Shared native/WASM request boundary. The host acquires the authenticated
@@ -143,13 +183,18 @@ pub fn style_catalog_request(input: &[u8]) -> Result<String, String> {
 
 fn field(value: &Value) -> Option<String> {
     let expr = value.as_array()?;
-    if expr.first()?.as_str()? != "match" {
-        return None;
-    }
-    let lookup = expr.get(1)?.as_array()?;
+    let input = match expr.first()?.as_str()? {
+        "match" => expr.get(1)?,
+        "interpolate" => expr.get(2)?,
+        _ => return None,
+    };
+    lookup_field(input)
+}
+fn lookup_field(input: &Value) -> Option<String> {
+    let lookup = input.as_array()?;
     match lookup.first()?.as_str()? {
         "get" => Some(lookup.get(1)?.as_str()?.trim().into()),
-        "coalesce" => Some(lookup.get(1)?.get(1)?.as_str()?.trim().into()),
+        "coalesce" | "to-number" => lookup_field(lookup.get(1)?),
         _ => None,
     }
 }
@@ -215,12 +260,21 @@ pub fn print_variant_exists(snapshot: &Value, reference: &str) -> Option<String>
 const PRINT_SUFFIX: &str = "_print";
 
 fn style_editor<'a>(snapshot: &'a Value, reference: &str) -> Result<&'a Value, String> {
+    for (retired, canonical) in [
+        ("master/mv_lines_pls_vt", "master/mv_lines_vt"),
+        ("master/mv_spans_pls_vt", "master/mv_spans_vt"),
+        ("master/staking_table_pls_vt", "master/mv_structures_vt"),
+    ] {
+        if reference == retired {
+            return Err(format!("retired_design_style: {retired} is retired; use {canonical} after one-way layer migration and regenerate design tiles"));
+        }
+    }
     snapshot["style_editors"]
         .as_array()
         .and_then(|rows| rows.iter().find(|r| r["style_ref"] == reference))
         .ok_or_else(|| "backend style editor is unavailable for this ref".into())
 }
-fn icon_names(snapshot: &Value) -> Vec<String> {
+pub(crate) fn icon_names(snapshot: &Value) -> Vec<String> {
     let catalog = &snapshot["symbol_catalog"];
     let mut names = Vec::new();
     for name in catalog["built_ins"].as_array().into_iter().flatten() {
@@ -289,7 +343,7 @@ fn dash_table(snapshot: &Value) -> Map<String, Value> {
     }
     result
 }
-fn describe_casing(style: &Value) -> Value {
+pub(crate) fn describe_casing(style: &Value) -> Value {
     if style["type"] != "line" || !style["boundary"].is_object() {
         return Value::Null;
     }
@@ -648,6 +702,9 @@ pub fn style_save_payload(
     }
     let mut payload = json!({"style_ref":reference,"style_data":document});
     if let Some(editor) = editor {
+        if let Some(digest) = editor["content_sha256"].as_str() {
+            payload["expected_style_sha256"] = json!(digest);
+        }
         for key in [
             "style_target",
             "slug",
@@ -711,6 +768,33 @@ pub fn plan_style_edit(
         .filter(|v| v.is_object())
         .ok_or("no backend document for this style ref")?;
     let kind = style["type"].as_str().ok_or("missing style type")?;
+    if let StyleInstruction::Guarded {
+        expected_digest,
+        instruction,
+    } = instruction
+    {
+        if matches!(
+            instruction.as_ref(),
+            StyleInstruction::Guarded { .. }
+                | StyleInstruction::Seed
+                | StyleInstruction::PrintVariant
+        ) {
+            return Err("guard one edit; create-only and nested guards are refused".into());
+        }
+        let actual = editor["content_sha256"].as_str().map(str::to_owned).ok_or(
+            "the catalogue has no storage digest; update the style service before guarded replay",
+        )?;
+        if expected_digest.len() != 64
+            || !expected_digest.bytes().all(|c| c.is_ascii_hexdigit())
+            || *expected_digest != actual
+        {
+            return Err(format!("style_digest_conflict: reviewed digest {expected_digest} differs from current {actual}"));
+        }
+        let mut plan = plan_style_edit(snapshot, reference, instruction)?;
+        plan.payload["expected_style_sha256"] = json!(actual);
+        plan.receipt["baseDigest"] = json!(actual);
+        return Ok(plan);
+    }
 
     if matches!(instruction, StyleInstruction::Seed) {
         if editor["style_target"] != "print_context" {
@@ -798,14 +882,26 @@ pub fn plan_style_edit(
     // `describe_style` is where it is reported.
     let mut receipt = json!({"project":snapshot["project_id"],"ref":reference,"type":kind,"published":false,"dryRun":true});
     match instruction {
+        StyleInstruction::Preset { name } => {
+            crate::style_multiscale::preset(&mut next, snapshot, editor, reference, name)?;
+            receipt["preset"] = json!({"name":name,"scope":reference,"version":1});
+        }
         StyleInstruction::Appearance {
             color,
             icon,
             size,
             icon_overlap,
+            halo_color,
+            halo_width,
         } => {
-            if color.is_none() && icon.is_none() && size.is_none() && icon_overlap.is_none() {
-                return Err("choose colour, icon, size or icon overlap".into());
+            if color.is_none()
+                && icon.is_none()
+                && size.is_none()
+                && icon_overlap.is_none()
+                && halo_color.is_none()
+                && halo_width.is_none()
+            {
+                return Err("choose colour, icon, size, icon overlap or halo".into());
             }
             let mut change = json!({});
             if let Some(color) = color {
@@ -849,11 +945,64 @@ pub fn plan_style_edit(
                 change["icon_overlap"] = json!(overlap);
             }
             next = apply_appearance(next, &change)?;
+            if halo_color.is_some() || halo_width.is_some() {
+                crate::style_multiscale::halo(
+                    &mut next,
+                    snapshot,
+                    halo_color.as_deref(),
+                    *halo_width,
+                )?;
+            }
             receipt["requested"] = json!({"color":color,"icon":icon,"size":size});
+            if halo_color.is_some() {
+                receipt["requested"]["halo_color"] = json!(halo_color);
+            }
+            if halo_width.is_some() {
+                receipt["requested"]["halo_width"] = json!(halo_width);
+            }
             if let Some(overlap) = icon_overlap {
                 receipt["requested"]["icon_overlap"] = json!(overlap);
             }
             receipt["baseSizeUpdatedAsFallback"] = json!(size_is_second);
+        }
+        StyleInstruction::Categorical {
+            channel,
+            field,
+            field_type,
+            values,
+            other,
+            merge,
+        } => {
+            receipt["categorical"] = crate::style_multiscale::categorical(
+                &mut next,
+                snapshot,
+                editor,
+                channel,
+                field,
+                field_type.as_deref(),
+                values,
+                other,
+                *merge,
+            )?;
+        }
+        StyleInstruction::ColorRange { field, stops } => {
+            receipt["colorRange"] =
+                crate::style_multiscale::color_range(&mut next, editor, field, stops)?;
+        }
+        StyleInstruction::Zoom {
+            channel,
+            base,
+            stops,
+            interpolation,
+        } => {
+            receipt["zoom"] = crate::style_multiscale::zoom(
+                &mut next,
+                snapshot,
+                channel,
+                base,
+                stops,
+                interpolation,
+            )?;
         }
         StyleInstruction::Label {
             field: requested_field,
@@ -910,9 +1059,6 @@ pub fn plan_style_edit(
                 || values.len() > 50
             {
                 return Err("dimension needs a bounded field and 1..50 values".into());
-            }
-            if primary_style_field(style).as_deref() == Some(requested_field) {
-                return Err("field already drives primary colour; choose a second field".into());
             }
             if editor["available_fields"]
                 .as_array()
@@ -1060,8 +1206,19 @@ pub fn plan_style_edit(
             receipt["changed"] = json!(["cartography"]);
             receipt["requested"] = json!(change);
         }
-        StyleInstruction::Seed | StyleInstruction::PrintVariant => {
+        StyleInstruction::Seed
+        | StyleInstruction::PrintVariant
+        | StyleInstruction::Guarded { .. } => {
             unreachable!("handled before guided edits")
+        }
+    }
+    if kind == "line"
+        && next["paint"]["line-width"] != style["paint"]["line-width"]
+        && next["boundary"] == style["boundary"]
+    {
+        let casing = describe_casing(style);
+        if let (Some(color), Some(width)) = (casing["color"].as_str(), casing["width"].as_f64()) {
+            next = apply_casing(next, color, width)?;
         }
     }
     normalize_json_numbers(&mut next);
@@ -1073,6 +1230,31 @@ pub fn plan_style_edit(
         receipt,
         payload,
     })
+}
+/// Canonical authored JSON digest; catalogue-provided digests take precedence
+/// where a seeded document and its stored head have separate provenance.
+pub fn style_digest(document: &Value) -> String {
+    use sha2::{Digest, Sha256};
+    fn canonical(value: &Value) -> Value {
+        match value {
+            Value::Object(object) => Value::Object(
+                object
+                    .iter()
+                    .map(|(k, v)| (k.clone(), canonical(v)))
+                    .collect::<std::collections::BTreeMap<_, _>>()
+                    .into_iter()
+                    .collect(),
+            ),
+            Value::Array(values) => Value::Array(values.iter().map(canonical).collect()),
+            _ => value.clone(),
+        }
+    }
+    let mut document = document.clone();
+    normalize_json_numbers(&mut document);
+    format!(
+        "{:x}",
+        Sha256::digest(serde_json::to_vec(&canonical(&document)).expect("JSON style"))
+    )
 }
 
 /// Bounded headless description of one style, plus what its layer's fields
@@ -1174,7 +1356,7 @@ pub fn describe_style(
     );
     let report = |key: &str| observed.map_or_else(|| json!({}), |value| value[key].clone());
     Ok(
-        json!({"project":snapshot["project_id"],"ref":reference,"type":kind,"target":editor["style_target"],"document":document,"fields":fields,"fieldValues":values,"channels":channels,"propertySchema":snapshot["style_properties"][kind],"labelSchema":snapshot["label_editor"],"icons":icon_names(snapshot).into_iter().take(200).collect::<Vec<_>>(),"fieldDomains":editor["field_domains"],"second":second,"cartography":{"lineType":current_line_type(document, &dash_table(snapshot)),"casing":describe_casing(document)},"colorField":primary_style_field(document),"observed":observation,"fieldTypes":report("types"),"fieldTypeSource":report("typeSource"),"fieldTypeConflicts":report("typeConflicts"),"fieldCounts":report("counts"),"fieldMatchLabels":report("matchLabels"),"fieldProvenance":report("provenance"),"more":more}),
+        json!({"project":snapshot["project_id"],"ref":reference,"type":kind,"target":editor["style_target"],"document":document,"fields":fields,"fieldValues":values,"channels":channels,"propertySchema":snapshot["style_properties"][kind],"labelSchema":snapshot["label_editor"],"icons":icon_names(snapshot).into_iter().take(200).collect::<Vec<_>>(),"fieldDomains":editor["field_domains"],"second":second,"cartography":{"lineType":current_line_type(document, &dash_table(snapshot)),"casing":describe_casing(document)},"colorField":primary_style_field(document),"instructions":crate::style_multiscale::vocabulary(kind,document,snapshot),"digestAuthority":if editor["content_sha256"].is_string(){"storage"}else{"effective"},"contentSha256":editor["content_sha256"].as_str().map(str::to_owned).unwrap_or_else(||style_digest(document)),"observed":observation,"fieldTypes":report("types"),"fieldTypeSource":report("typeSource"),"fieldTypeConflicts":report("typeConflicts"),"fieldCounts":report("counts"),"fieldMatchLabels":report("matchLabels"),"fieldProvenance":report("provenance"),"more":more}),
     )
 }
 pub fn list_styles(snapshot: &Value, query: Option<&str>, limit: usize) -> Result<Value, String> {
@@ -1790,6 +1972,8 @@ mod tests {
         );
         let edit = StyleInstruction::Appearance {
             icon_overlap: None,
+            halo_color: None,
+            halo_width: None,
             color: None,
             icon: None,
             size: Some(6.),
@@ -1806,6 +1990,8 @@ mod tests {
             "master/poles",
             &StyleInstruction::Appearance {
                 icon_overlap: None,
+                halo_color: None,
+                halo_width: None,
                 color: None,
                 icon: None,
                 size: Some(100.)

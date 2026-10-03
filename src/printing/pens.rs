@@ -208,9 +208,48 @@ pub fn pens(layout: &Layout, documents: &[PenDocument]) -> Result<Vec<Pen>, Stri
     for (layer_id, style_ref) in &layout.style_refs {
         let document = held.get(style_ref.as_str()).copied();
         let kind = document.and_then(|d| d["type"].as_str()).map(str::to_owned);
-        let (base, categorical, category_field, categories) = match (document, kind.as_deref()) {
-            (Some(document), Some(kind)) => document_values(document, kind),
-            _ => (PenValues::default(), false, None, Vec::new()),
+        let physical = document
+            .map(super::style_overrides::physical_style)
+            .transpose()?
+            .flatten();
+        let (base, categorical, category_field, categories) = if let Some(pen) = &physical {
+            let point_or_fill = matches!(kind.as_deref(), Some("circle" | "symbol" | "fill"));
+            (
+                PenValues {
+                    color: Some(if point_or_fill && pen.colors.is_empty() {
+                        pen.fill.clone()
+                    } else {
+                        pen.stroke.clone()
+                    }),
+                    size: Some(if matches!(kind.as_deref(), Some("circle" | "symbol")) {
+                        pen.radius_mm
+                    } else {
+                        pen.width_mm
+                    }),
+                    opacity: Some(if point_or_fill {
+                        pen.fill_opacity
+                    } else {
+                        pen.stroke_opacity
+                    }),
+                    visible: !pen.label_field.is_empty()
+                        || (pen.width_mm > 0. && pen.stroke_opacity > 0.)
+                        || (point_or_fill && pen.fill_opacity > 0.),
+                },
+                !pen.colors.is_empty(),
+                (!pen.color_field.is_empty()).then(|| pen.color_field.clone()),
+                pen.colors
+                    .iter()
+                    .map(|(value, color)| PenCategory {
+                        value: value.clone(),
+                        color: color.clone(),
+                    })
+                    .collect(),
+            )
+        } else {
+            match (document, kind.as_deref()) {
+                (Some(document), Some(kind)) => document_values(document, kind),
+                _ => (PenValues::default(), false, None, Vec::new()),
+            }
         };
         let override_ = layout.style_overrides.get(layer_id).cloned();
         let effective = match &override_ {
@@ -222,16 +261,20 @@ pub fn pens(layout: &Layout, documents: &[PenDocument]) -> Result<Vec<Pen>, Stri
                 visible: change.visible.unwrap_or(base.visible),
             },
         };
-        let labelled = document.is_some_and(|d| d["label"].is_object());
+        let labelled = physical.as_ref().map_or_else(
+            || document.is_some_and(|d| d["label"].is_object()),
+            |pen| !pen.label_field.is_empty(),
+        );
         let label_visible = override_
             .as_ref()
             .and_then(|o| o.label.as_ref())
             .and_then(|l| l.visible)
             .unwrap_or_else(|| {
                 labelled
-                    && document.is_some_and(|d| {
-                        d["label"]["layout"]["visibility"].as_str() != Some("none")
-                    })
+                    && (physical.is_some()
+                        || document.is_some_and(|d| {
+                            d["label"]["layout"]["visibility"].as_str() != Some("none")
+                        }))
             });
         rows.push(Pen {
             layer_id: layer_id.clone(),
@@ -378,6 +421,60 @@ pub fn set_override(
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn governed_physical_pens_show_their_exact_body_outline_and_label_controls() {
+        let fixtures: Value = serde_json::from_str(include_str!(
+            "../../tests/fixtures/governed-physical-print-baselines.json"
+        ))
+        .unwrap();
+        for fixture in fixtures["documents"].as_array().unwrap() {
+            let document = fixture["document"].clone();
+            let physical = super::super::style_overrides::physical_style(&document)
+                .unwrap()
+                .unwrap();
+            let mut layout = super::super::default_layout();
+            layout.style_refs.insert(
+                "held_layer".into(),
+                fixture["style_ref"].as_str().unwrap().into(),
+            );
+            let row = pens(
+                &layout,
+                &[PenDocument {
+                    style_ref: fixture["style_ref"].as_str().unwrap().into(),
+                    document,
+                }],
+            )
+            .unwrap()
+            .remove(0);
+            assert_eq!(
+                row.base.size,
+                Some(
+                    if matches!(row.geometry.as_deref(), Some("circle" | "symbol")) {
+                        physical.radius_mm
+                    } else {
+                        physical.width_mm
+                    }
+                )
+            );
+            assert_eq!(row.labelled, !physical.label_field.is_empty());
+            assert_eq!(
+                row.category_field,
+                (!physical.color_field.is_empty()).then(|| physical.color_field.clone())
+            );
+            let changed = edit(layout, "held_layer", PenProperty::Size, &json!(0.7)).unwrap();
+            let changed_row = pens(
+                &changed,
+                &[PenDocument {
+                    style_ref: fixture["style_ref"].as_str().unwrap().into(),
+                    document: fixture["document"].clone(),
+                }],
+            )
+            .unwrap()
+            .remove(0);
+            assert_eq!(changed_row.effective.size, Some(0.7));
+        }
+    }
 
     fn layout() -> Layout {
         let mut layout = super::super::default_layout();
