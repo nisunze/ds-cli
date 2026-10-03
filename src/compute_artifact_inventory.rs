@@ -239,12 +239,13 @@ fn mime(format: &str) -> Option<&'static str> {
     })
 }
 pub fn validate(engine: &str, output: &Declaration) -> Result<(), String> {
-    let content_type = mime(&output.format).or_else(|| {
-        (engine == "network_reporter")
-            .then(|| crate::report_formats::output(&output.format).ok())
-            .flatten()
+    let content_type = if engine == "network_reporter" {
+        crate::report_formats::output(&output.format)
+            .ok()
             .map(|value| value.content_type)
-    });
+    } else {
+        mime(&output.format)
+    };
     if !id(&output.output_id)
         || content_type != Some(output.content_type.as_str())
         || output.sha256.len() != 64
@@ -282,11 +283,7 @@ pub fn filename(engine: &str, operation: &str, output: &Declaration) -> String {
         &output.output_id
     };
     if engine == "network_reporter" {
-        let token = match output.format.as_str() {
-            "geojsonzip" => "geojson",
-            value => value,
-        };
-        return crate::report_formats::report_filename(stem, token)
+        return crate::report_formats::report_filename(stem, &output.format)
             .expect("validated report format");
     }
     format!("{stem}.{}", output.format)

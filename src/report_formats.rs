@@ -719,6 +719,11 @@ pub struct Output {
 }
 
 pub fn output(format: &str) -> Result<Output, String> {
+    let format = if format == "geojsonzip" {
+        "geojson"
+    } else {
+        format
+    };
     if let Some((kind, id)) = named_print_output(format) {
         let (content_type, suffix) = match kind {
             PrintArtifactFormat::Pdf => ("application/pdf", format!(".{id}.pdf")),
@@ -897,6 +902,39 @@ pub fn artifact_kind(filename: &str) -> &'static str {
         "zip"
     } else {
         "other"
+    }
+}
+
+/// Technical file format for archive members and report filters. Historical
+/// archive spellings are classified once here; this never probes another path.
+pub fn artifact_file_format(filename: &str) -> String {
+    let name = artifact_filename(&filename.replace('\\', "/")).to_ascii_lowercase();
+    if name.ends_with(".shp.zip") || name.ends_with("_shp.zip") {
+        "shp".into()
+    } else if name.ends_with("_geojsonl.zip") || name.ends_with(".geojsonl.zip") {
+        "geojsonl".into()
+    } else {
+        name.rsplit('.').next().unwrap_or("").to_owned()
+    }
+}
+pub fn artifact_paper(filename: &str) -> Option<String> {
+    let name = artifact_filename(filename).to_ascii_lowercase();
+    ["a0", "a1", "a2", "a3", "a4"]
+        .into_iter()
+        .find(|paper| {
+            name.split(|c: char| !c.is_ascii_alphanumeric())
+                .any(|token| token == *paper)
+        })
+        .map(str::to_owned)
+}
+pub fn artifact_matches_format(filename: &str, format: &str) -> bool {
+    let name = artifact_filename(filename).to_ascii_lowercase();
+    match format {
+        "zip" => name.ends_with(".zip"),
+        "xlsx" | "gpkg" | "kmz" | "shp" | "pdf" | "png" | "geojsonl" => {
+            artifact_file_format(&name) == format
+        }
+        _ => false,
     }
 }
 
