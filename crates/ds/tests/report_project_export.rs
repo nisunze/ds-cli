@@ -131,7 +131,7 @@ fn the_descriptor_is_a_headless_project_fenced_local_file_write() {
         command["purpose"]
             .as_str()
             .expect("purpose")
-            .contains("prints always regenerate")
+            .contains("Prints regenerate; data may reuse")
     );
     assert!(!command["confirmation_required"].as_bool().unwrap_or(false));
 }
