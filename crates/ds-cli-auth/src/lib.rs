@@ -7466,11 +7466,11 @@ mod tests {
             .transformer_context
             .push_back(ds_client_core::TransportResponse::new(
                 200,
-                serde_json::to_vec(&json!({
+                serde_json::to_vec(&json!({"success": true, "data": {
                     "total": 1, "found_count": 0, "failed_count": 1,
                     "results": [{"transformer_name": "t1", "ok": false,
                                  "error_code": "TRANSFORMER_READ_FAILED"}],
-                }))
+                }}))
                 .unwrap(),
             ));
         let mut device = linked_device(transport, NOW);

@@ -46,8 +46,8 @@ pub static COMMAND: Command = Command {
     ],
     output: "One ds.survey-delete-cascade/v1 plan: intents, deleted, cascaded_edges, scope held_rows, authorized false and remote_atomic false. At most 500 targets; all validation succeeds or no plan is returned.",
     examples: &[Example {
-        command: "ds survey entries delete-plan --project demo --form nodes --doc-id n --document held.json --idempotency-key review-1 --now 2026-10-02T00:00:00Z --output json",
-        note: "Preview supplied rows only; this does not delete anything.",
+        command: "ds survey entries delete-plan --project demo --form <form-slug> --doc-id n --document held.json --idempotency-key review-1 --now 2026-10-02T00:00:00Z --output json",
+        note: "Preview supplied rows only; this does not delete anything. The exact slug comes from `ds survey forms list`.",
         runnable: false,
     }],
     refusals: &[
@@ -64,10 +64,9 @@ pub static COMMAND: Command = Command {
     ],
     reference: Some("docs/reference/survey.md"),
     search: &[
-        "delete",
         "cascade",
         "connected edges",
-        "remove surveyed node",
+        "remove node",
     ],
     requires: Requires::Server,
     availability: || ds_cli_contract::spec::Availability::Available,

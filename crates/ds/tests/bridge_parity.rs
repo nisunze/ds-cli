@@ -2117,18 +2117,13 @@ fn the_descriptor_and_session_this_client_reads_are_the_shells_own() {
          the kernel takes the directory the file was read from"
     );
 
-    // Both spellings of where a descriptor lives. The registry directory is
-    // where every live instance publishes; the legacy file is the one an older
-    // `ds` is the only reader of, and dropping it would unpair those builds.
-    for path in [
-        ds_cli_desktop::discover::DESCRIPTOR_DIR,
-        ds_cli_desktop::discover::DESCRIPTOR_FILE,
-    ] {
-        assert!(
-            app.transport.contains(&format!("\"{path}\"")),
-            "the shell no longer writes `{path}`, which discovery enumerates"
-        );
-    }
+    // The registry directory is where every live instance publishes; the shell
+    // writes nothing else (the per-profile legacy file is retired).
+    let path = ds_cli_desktop::discover::DESCRIPTOR_DIR;
+    assert!(
+        app.transport.contains(&format!("\"{path}\"")),
+        "the shell no longer writes `{path}`, which discovery enumerates"
+    );
 
     let session = item(&app.transport, "struct SessionView {").expect("a session view");
     let window = item(&app.transport, "struct WindowView {").expect("a window view");

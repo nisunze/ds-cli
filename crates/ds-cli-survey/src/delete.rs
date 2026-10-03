@@ -57,15 +57,15 @@ pub static COMMAND: Command = Command {
     ],
     output: "Bounded acknowledgement only: lane, exact project, targets, receipts, complete, held_rows scope and remote_atomic false. Stops on failure; error detail retains confirmed receipts, failed index and status. Acknowledged absent/deleted no-ops remain distinct from a new delete. BigQuery unconfirmed. No request payload, credential or replay key is returned.",
     examples: &[Example {
-        command: "ds survey entries delete --project demo --form poles --doc-id n --document held.json --idempotency-key reviewed-1 --now 2026-10-02T00:00:00Z --yes --output json",
-        note: "Replay exactly the reviewed held-row plan; individual remote deletes are not a transaction.",
+        command: "ds survey entries delete --project demo --form <form-slug> --doc-id n --document held.json --idempotency-key reviewed-1 --now 2026-10-02T00:00:00Z --yes --output json",
+        note: "Replay exactly the reviewed held-row plan; individual remote deletes are not a transaction. The exact slug comes from `ds survey forms list`.",
         runnable: false,
     }],
     refusals: REFUSALS,
     reference: Some("docs/reference/survey.md"),
     search: &[
         "delete entry",
-        "remove surveyed node",
+        "remove node",
         "cascade",
         "connected edges",
         "delete pole",
