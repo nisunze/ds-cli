@@ -141,26 +141,34 @@ fn probe_headless_providers(
 ) -> Result<Option<(ProviderIdentity, Option<String>)>, Failure> {
     let lane = Lane::parse(lane_token)?;
     let profile = profile::load(lane)?;
-    let refresh = NativeRefreshStore::probe(&profile)?
-        .map(|context| {
-            let identity = ProviderIdentity::new(
-                context.lane(),
-                context.credential_audience_sha256(),
-                context.uid(),
-            )?;
-            let project = match selection {
-                Selection::Compared => {
-                    ProjectContextLease::probe_selected(&profile, context.uid())?
-                }
-                Selection::Unread => None,
-            };
-            Ok::<_, Failure>((identity, project))
-        })
-        .transpose()?;
+    let refresh = match selection {
+        Selection::Compared => NativeRefreshStore::probe(&profile),
+        Selection::Unread => NativeRefreshStore::probe_read_only(&profile),
+    }
+    .map_err(|error| {
+        let message = format!(
+            "native Firebase identity observation refused: {}",
+            error.message()
+        );
+        error.with_message(message)
+    })?
+    .map(|context| {
+        let identity = ProviderIdentity::new(
+            context.lane(),
+            context.credential_audience_sha256(),
+            context.uid(),
+        )?;
+        let project = match selection {
+            Selection::Compared => ProjectContextLease::probe_selected(&profile, context.uid())?,
+            Selection::Unread => None,
+        };
+        Ok::<_, Failure>((identity, project))
+    })
+    .transpose()?;
     let device = match selection {
         Selection::Compared => device::probe_identity(lane)?,
         Selection::Unread => {
-            device::probe_identity_without_selection(lane)?.map(|identity| (identity, None))
+            device::probe_identity_read_only(lane)?.map(|identity| (identity, None))
         }
     };
     match (refresh, device) {
@@ -191,9 +199,9 @@ pub fn runtime_credential_binding(lane_value: &str) -> Result<String, Failure> {
         Some(device) => format!("ds_device:{}:{}", device.device_id(), device.fingerprint()),
         None => {
             let profile = profile::load(lane)?;
-            let context = NativeRefreshStore::probe(&profile)?.ok_or_else(|| {
+            let context = NativeRefreshStore::probe_read_only(&profile)?.ok_or_else(|| {
                 Failure::conflict("headless_signed_out", "the server has no native identity")
-                    .remedy("sign in under the server's Linux account")
+                    .remedy("sign in under the server's operating-system account")
             })?;
             format!("firebase:{}", context.credential_instance_sha256())
         }
@@ -270,7 +278,7 @@ pub fn headless_principal(lane_value: &str) -> Result<HeadlessPrincipal, Failure
     // here, so it is not read here.
     let identity = probe_headless_identity_for_named_project(lane.token())?.ok_or_else(|| {
         Failure::conflict("headless_signed_out", "the server has no native identity")
-            .remedy("sign in under the server's Linux account")
+            .remedy("sign in under the server's operating-system account")
     })?;
     let profile = profile::load(lane)?;
     let install_id = ds_edge_authority::load_or_create_install_id(

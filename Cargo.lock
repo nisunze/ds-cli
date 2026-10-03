@@ -1025,6 +1025,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.10.9",
+ "tempfile",
  "ureq",
  "url",
  "windows-sys 0.61.2",
@@ -1287,6 +1288,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "tower",
+ "windows-sys 0.61.2",
  "zip",
 ]
 
@@ -1472,6 +1474,7 @@ dependencies = [
  "sha2 0.10.9",
  "tempfile",
  "tokio",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

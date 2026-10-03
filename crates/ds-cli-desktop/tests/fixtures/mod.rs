@@ -86,11 +86,17 @@ fn unique(what: &str) -> PathBuf {
     ))
 }
 
-/// This machine's app-data root for the run of one test: a fresh temporary
-/// directory that `ds` will read as `XDG_DATA_HOME`.
+#[cfg(windows)]
+const DATA_ROOT_ENV: &str = "APPDATA";
+#[cfg(not(windows))]
+const DATA_ROOT_ENV: &str = "XDG_DATA_HOME";
+
+/// A fresh registry under APPDATA on Windows or XDG_DATA_HOME on Linux.
+/// Discovery cannot reach the operator's running Desktop.
 pub struct Machine {
     root: PathBuf,
     _guard: MutexGuard<'static, ()>,
+    previous_data_root: Option<std::ffi::OsString>,
 }
 
 impl Machine {
@@ -105,14 +111,16 @@ impl Machine {
         // SAFETY: `machine()` is held for the lifetime of this value, so this
         // is the only test thread running; the fixture listener threads read
         // no environment. Restored on drop.
+        let previous_data_root = std::env::var_os(DATA_ROOT_ENV);
         unsafe {
-            std::env::set_var("XDG_DATA_HOME", &root);
+            std::env::set_var(DATA_ROOT_ENV, &root);
             std::env::remove_var(discover::DESCRIPTOR_ENV);
             std::env::remove_var(ops::TARGET_ENV);
         }
         Self {
             root,
             _guard: guard,
+            previous_data_root,
         }
     }
 
@@ -177,7 +185,10 @@ impl Drop for Machine {
     fn drop(&mut self) {
         // SAFETY: as in `new` — the machine lock is still held here.
         unsafe {
-            std::env::remove_var("XDG_DATA_HOME");
+            match &self.previous_data_root {
+                Some(value) => std::env::set_var(DATA_ROOT_ENV, value),
+                None => std::env::remove_var(DATA_ROOT_ENV),
+            }
         }
         let _ = std::fs::remove_dir_all(&self.root);
     }
@@ -878,7 +889,7 @@ pub fn ds_executable() -> PathBuf {
 pub fn run_ds(executable: &Path, machine: &Machine, args: &[&str]) -> Value {
     let output = std::process::Command::new(executable)
         .args(args)
-        .env("XDG_DATA_HOME", machine.root())
+        .env(DATA_ROOT_ENV, machine.root())
         .env_remove(discover::DESCRIPTOR_ENV)
         .env_remove(ops::TARGET_ENV)
         .output()

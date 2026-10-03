@@ -218,7 +218,9 @@ fn now_ms() -> u64 {
 
 /// Write one bundle into a fresh directory.
 fn write_bundle(root: &Path, prepared: &survey_photo::Prepared) -> Result<(), Failure> {
-    let mut builder = fs::DirBuilder::new();
+    let builder = fs::DirBuilder::new();
+    #[cfg(unix)]
+    let mut builder = builder;
     #[cfg(unix)]
     {
         use std::os::unix::fs::DirBuilderExt;
@@ -574,7 +576,9 @@ pub fn rotate_local(inputs: &Inputs, _context: &Context) -> Result<Value, Failur
     let image = survey_photo::rotate_local(&bytes, degrees).map_err(|_| {
         invalid("Image is malformed, unsupported, oversized or has an invalid angle")
     })?;
-    let mut builder = fs::DirBuilder::new();
+    let builder = fs::DirBuilder::new();
+    #[cfg(unix)]
+    let mut builder = builder;
     #[cfg(unix)]
     {
         use std::os::unix::fs::DirBuilderExt;

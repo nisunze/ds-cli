@@ -607,7 +607,7 @@ impl NativeSyncSession {
                 arch: &self.arch,
                 app_version: &self.app_version,
                 channel: self.lane.token(),
-                os_version: "linux native-server",
+                os_version: native_os_version(),
                 webview_version: "native-server",
                 addition_name: &addition.name,
                 addition_version: &addition.version,
@@ -621,7 +621,7 @@ impl NativeSyncSession {
                     arch: &self.arch,
                     app_version: &self.app_version,
                     channel: self.lane.token(),
-                    os_version: "linux native-server",
+                    os_version: native_os_version(),
                     webview_version: "native-server",
                 })
             }
@@ -753,11 +753,20 @@ fn classify_solar_error(error: ClientError) -> SolarPublicationError {
         _ => SolarPublicationError::Retryable(detail),
     }
 }
+fn native_os_version() -> &'static str {
+    if cfg!(windows) {
+        "windows native-server"
+    } else {
+        "linux native-server"
+    }
+}
 fn native_device() -> Result<&'static str, String> {
     if cfg!(target_os = "linux") {
         Ok("linux")
+    } else if cfg!(windows) {
+        Ok("windows")
     } else {
-        Err("native Sync Center server requires Linux".into())
+        Err("native Sync Center server requires Linux or Windows".into())
     }
 }
 fn native_arch() -> Result<&'static str, String> {
