@@ -39,19 +39,23 @@ every member match the byte length, digest, row count and schema fingerprint \
 the manifest attests to? Second, is the authored model sound by its own rules \
 — no duplicate ids, no dangling references? A package can pass the first and \
 fail the second, and the two are fixed in completely different ways, so they \
-are reported apart.",
+are reported apart. Nonblocking owner advisories remain visible on valid models \
+so inconsistent cable mechanics can be reviewed and repaired.",
     chapter: Chapter::GridModel,
     effect: Effect::Discovery,
     authority: Authority::None,
     execution: Execution::Sync,
     args: &[
         Arg::value("model", "<path>", "The .dsgrid package to verify.").required(),
-        Arg::value("limit", "<n>", "Cap the listed issues.").default(package::DEFAULT_LIMIT),
+        Arg::value("limit", "<n>", "Cap each issue and advisory list.")
+            .default(package::DEFAULT_LIMIT),
     ],
     output: "\
 `container` and `model`, each with its own verdict. Model issues carry a stable \
 code, the table and entity concerned, and a message. `more.truncated` reports \
-any issues withheld by --limit.",
+any findings withheld by --limit. `model.advisories` carries nonblocking owner \
+diagnostics with stable codes; `advisory_count` counts the complete list. \
+Advisories do not change `model.valid`.",
     examples: &[Example {
         command: "ds dsgrid validate --model ./model.dsgrid --output json",
         note: "Exit 0 whether or not issues were found; read .data.model.valid.",
@@ -144,6 +148,20 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
 
     let total = issues.len();
     let (shown, withheld) = package::take(issues, limit);
+    let advisory_count = report.advisories.len();
+    let advisories = report
+        .advisories
+        .iter()
+        .map(|issue| {
+            json!({
+                "code": issue.code.as_str(),
+                "table": issue.table.map(package::table_token),
+                "entity": issue.entity,
+                "message": issue.message,
+            })
+        })
+        .collect();
+    let (advisories, advisory_withheld) = package::take(advisories, limit);
 
     let mut answer = json!({
         "path": raw_path,
@@ -161,13 +179,21 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             "valid": total == 0,
             "issue_count": total,
             "issues": shown,
+            "advisory_count": advisory_count,
+            "advisories": advisories,
         },
     });
 
-    if withheld > 0 {
-        answer["more"] = json!({
-            "truncated": [{ "field": "model.issues", "withheld": withheld, "limit": limit }],
-        });
+    let truncated: Vec<Value> = [
+        ("model.issues", withheld),
+        ("model.advisories", advisory_withheld),
+    ]
+    .into_iter()
+    .filter(|(_, count)| *count > 0)
+    .map(|(field, withheld)| json!({"field": field, "withheld": withheld, "limit": limit}))
+    .collect();
+    if !truncated.is_empty() {
+        answer["more"] = json!({ "truncated": truncated });
     }
 
     Ok(answer)
@@ -190,12 +216,23 @@ pub fn render(data: &Value) -> String {
     );
 
     if model["valid"].as_bool().unwrap_or(false) {
-        out.push_str("           valid — no issues\n");
-        return out;
+        out.push_str("           valid — no blocking issues\n");
+    } else {
+        out.push_str(&format!("           {} issue(s)\n", model["issue_count"]));
     }
-
-    out.push_str(&format!("           {} issue(s)\n\n", model["issue_count"]));
-    for issue in model["issues"].as_array().into_iter().flatten() {
+    if model["advisory_count"]
+        .as_u64()
+        .is_some_and(|count| count > 0)
+    {
+        out.push_str(&format!(
+            "           {} advisory finding(s)\n",
+            model["advisory_count"]
+        ));
+    }
+    for issue in ["issues", "advisories"]
+        .into_iter()
+        .flat_map(|field| model[field].as_array().into_iter().flatten())
+    {
         out.push_str(&format!(
             "  {:<24} {}\n",
             issue["code"].as_str().unwrap_or(""),
@@ -205,14 +242,115 @@ pub fn render(data: &Value) -> String {
             out.push_str(&format!("  {:<24}   {entity}\n", ""));
         }
     }
-    if let Some(truncated) = data["more"]["truncated"]
-        .as_array()
-        .and_then(|list| list.first())
-    {
+    for truncated in data["more"]["truncated"].as_array().into_iter().flatten() {
         out.push_str(&format!(
-            "\n  … {} more withheld by --limit\n",
-            truncated["withheld"]
+            "\n  … {} more in {} withheld by --limit\n",
+            truncated["withheld"],
+            truncated["field"].as_str().unwrap_or("")
         ));
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_valid_model_still_renders_its_modulus_advisory_and_truncation() {
+        let data = json!({
+            "container": {"verified": true, "members": 64},
+            "model": {
+                "id": "model", "revision": 0, "valid": true, "issue_count": 0,
+                "issues": [], "advisory_count": 2,
+                "advisories": [{
+                    "code": "CABLE_MODULUS_DISAGREEMENT", "entity": "cb-opgw",
+                    "message": "nominal 68.9474 GPa differs from strand final 97.3 GPa"
+                }]
+            },
+            "more": {"truncated": [{"field": "model.advisories", "withheld": 1, "limit": 1}]}
+        });
+        let text = render(&data);
+        assert!(text.contains("valid"));
+        assert!(text.contains("CABLE_MODULUS_DISAGREEMENT"));
+        assert!(text.contains("cb-opgw"));
+        assert!(text.contains("97.3 GPa"));
+        assert!(text.contains("model.advisories"));
+        assert!(text.contains("1 more"));
+    }
+
+    #[test]
+    fn package_validation_exposes_bounded_owner_advisories_without_invalidating_it() {
+        use ds_grid_exchange::package::{PackOptions, unpack};
+        let mut package = unpack(include_bytes!(
+            "../../../../ds-network/fixtures/pls-public/humble-pole/humble-pole.dsgrid"
+        ))
+        .unwrap();
+        for cable in &mut package.snapshot.cables {
+            cable.nominal_elastic_modulus_pa = Some(1.0);
+        }
+        ds_grid_engine::recompute_stored_geometry(&mut package.snapshot);
+        let expected = validate_snapshot(&package.snapshot);
+        assert!(expected.is_valid(), "{:?}", expected.issues);
+        assert!(
+            expected
+                .advisories
+                .iter()
+                .filter(|a| a.code.as_str() == "CABLE_MODULUS_DISAGREEMENT")
+                .count()
+                >= 2
+        );
+        let (artifacts, _) = ds_grid_exchange::dsgrid::emit(
+            &package.snapshot,
+            &PackOptions {
+                presentation: package.manifest.model.presentation,
+                model_id: package.manifest.model.model_id,
+                model_revision: package.manifest.model.model_revision,
+                coordinate_system: package.manifest.model.coordinate_system,
+                library_pins: package.manifest.model.library_pins,
+                library_needs: package.manifest.model.library_needs,
+                assets: package.assets,
+                exchange_bindings: package.exchange_bindings,
+            },
+        )
+        .unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("modulus.dsgrid");
+        std::fs::write(&path, &artifacts.artifacts[0].bytes).unwrap();
+        let inputs = ds_cli_contract::args::parse(
+            &COMMAND,
+            &[
+                "--model".into(),
+                path.to_str().unwrap().into(),
+                "--limit".into(),
+                "1".into(),
+            ],
+        )
+        .unwrap();
+        let data = run(
+            &inputs,
+            &Context {
+                confirmed: false,
+                output: ds_cli_contract::Output::resolve(
+                    ds_cli_contract::Format::Json,
+                    false,
+                    true,
+                ),
+            },
+        )
+        .unwrap();
+        assert_eq!(data["model"]["valid"], true);
+        assert_eq!(data["model"]["issue_count"], 0);
+        assert_eq!(data["model"]["advisory_count"], expected.advisories.len());
+        assert_eq!(data["model"]["advisories"].as_array().unwrap().len(), 1);
+        assert_eq!(
+            data["model"]["advisories"][0]["code"],
+            "CABLE_MODULUS_DISAGREEMENT"
+        );
+        assert_eq!(data["more"]["truncated"][0]["field"], "model.advisories");
+        assert_eq!(
+            data["more"]["truncated"][0]["withheld"],
+            expected.advisories.len() - 1
+        );
+    }
 }
