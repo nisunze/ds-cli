@@ -19,7 +19,7 @@ use super::artifact::{RESULT, ensure_absent, sha256, write_new};
 pub static COMMAND: Command = Command {
     id: "design.lv.process",
     path: &["design", "lv", "process"],
-    contract: 2,
+    contract: 3,
     summary: "Process transformer batches headlessly in parallel from local files.",
     purpose: "Reprocess LV transformers headlessly in parallel from their layers, intended settings and network configuration. Supply one ds.fast-lv.request/v1 with 1..=32 jobs and at most 100,000 aggregate features. design.lv.project-export --project-config includes current material seeds with owner-default settings. Each job may carry differential intent: selected_feeders, or auto_process with captured changed_features; the same Rust LV owner decides scope for web, map and native runs. Native Rayon preserves input order. Full processed layers go to --out; retain this JSON receipt for design.lv.project-save to publish selected results. Printing and report publication follow separately.",
     chapter: Chapter::Design,
@@ -40,13 +40,18 @@ pub static COMMAND: Command = Command {
         )
         .required(),
     ],
-    output: "`out`, input/result SHA-256 digests, byte count, engine version, native execution environment, Rayon worker count, job/success/failure counts, and one input-ordered name/status row per job. Processed layers and per-job diagnostics are written only to `out`.",
+    output: "`out`, input/result SHA-256 digests, byte count, engine version, native execution environment, Rayon worker count, job/success/failure counts, and input-ordered per-job status, error_code and preservation receipt (effective settings and per-field change counts). A job whose approved inputs would change returns lv_approved_preservation_refused and no processed layers. Full layers and diagnostics go to `out`.",
     examples: &[Example {
         command: "ds design lv process --input ./fast-lv-request.json --out ./fast-lv-result.json --output json",
         note: "Run the closed local batch without a Desktop session or project identity.",
         runnable: false,
     }],
     refusals: &[
+        Refusal {
+            code: "lv_approved_preservation_refused",
+            when: "a job would lose, ambiguously match, or alter approved identities, geometry or protected authored cells; the failed job has no output",
+            remedy: "inspect the job preservation receipt; repair ambiguous/missing source identities or explicitly revise the approved design before rerunning",
+        },
         Refusal {
             code: "fast_lv_source_not_found",
             when: "--input is absent, not a regular file, or cannot be read",
@@ -119,6 +124,8 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             json!({
                 "transformer_name": job.transformer_name,
                 "ok": job.ok,
+                "error_code": job.error_code,
+                "preservation": job.preservation,
             })
         })
         .collect::<Vec<_>>();
@@ -241,5 +248,57 @@ mod tests {
         assert!(text.contains("1 succeeded, 1 failed"));
         assert!(!text.contains("T1"));
         assert!(!text.contains("gdfs"));
+    }
+
+    #[test]
+    fn local_batch_receipt_exposes_preservation_and_typed_refusal_without_layers() {
+        let dir = tempfile::tempdir().unwrap();
+        let input_path = dir.path().join("request.json");
+        let output_path = dir.path().join("result.json");
+        let mut source: Value = serde_json::from_slice(include_bytes!(
+            "../../../../../ds-command-kernel/crates/ds-client-core/tests/fixtures/native-lv-save-request.json"
+        )).unwrap();
+        source["jobs"][0]["gdfs"]["lv_poles"]["features"] = json!([{
+            "type":"Feature", "id":"approved-missing-pole", "geometry":null,
+            "properties":{"drafting_status":"approved", "struct_type":"manual"}
+        }]);
+        std::fs::write(&input_path, serde_json::to_vec(&source).unwrap()).unwrap();
+        let parsed = ds_cli_contract::parse(
+            &COMMAND,
+            &[
+                "--input".into(),
+                input_path.to_string_lossy().into_owned(),
+                "--out".into(),
+                output_path.to_string_lossy().into_owned(),
+            ],
+        )
+        .unwrap();
+        let receipt = run(
+            &parsed,
+            &Context {
+                confirmed: false,
+                output: ds_cli_contract::Output::resolve(
+                    ds_cli_contract::Format::Json,
+                    false,
+                    true,
+                ),
+            },
+        )
+        .unwrap();
+        assert_eq!(receipt["failed"], 1);
+        let row = &receipt["results"][0];
+        assert_eq!(row["error_code"], "lv_approved_preservation_refused");
+        assert_eq!(
+            row["preservation"]["protected_changes"]["lv_poles"]["@missing"],
+            1
+        );
+        assert_eq!(
+            row["preservation"]["effective_settings"]["calculate_voltage_drop"],
+            true
+        );
+        assert!(row.get("output").is_none());
+        let result: Value = serde_json::from_slice(&std::fs::read(output_path).unwrap()).unwrap();
+        assert_eq!(result["jobs"][0]["preservation"], row["preservation"]);
+        assert!(result["jobs"][0].get("output").is_none());
     }
 }
