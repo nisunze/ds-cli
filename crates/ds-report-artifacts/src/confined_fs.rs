@@ -367,7 +367,7 @@ fn boot_marker() -> Option<String> {
     }
 }
 
-/// The holder's start time in boot-relative ticks, where it is readable.
+/// The holder's start time in platform ticks, where it is readable.
 ///
 /// This is the half of the pair that survives pid reuse: a pid that is live
 /// but started at a different instant is not the process that took the lock.
@@ -381,7 +381,31 @@ fn process_started_at(pid: u32) -> Option<u64> {
         let tail = body.rsplit_once(')')?.1;
         tail.split_whitespace().nth(19)?.parse::<u64>().ok()
     }
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(windows)]
+    {
+        use windows_sys::Win32::Foundation::{CloseHandle, FILETIME};
+        use windows_sys::Win32::System::Threading::{
+            GetProcessTimes, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
+        };
+        // SAFETY: query-only access; a failed observation cannot establish death.
+        let process = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid) };
+        if process.is_null() {
+            return None;
+        }
+        let empty = FILETIME {
+            dwLowDateTime: 0,
+            dwHighDateTime: 0,
+        };
+        let (mut created, mut exited, mut kernel, mut user) = (empty, empty, empty, empty);
+        // SAFETY: live handle and four writable initialized FILETIME structures.
+        let queried =
+            unsafe { GetProcessTimes(process, &mut created, &mut exited, &mut kernel, &mut user) }
+                != 0;
+        unsafe { CloseHandle(process) };
+        queried
+            .then_some((u64::from(created.dwHighDateTime) << 32) | u64::from(created.dwLowDateTime))
+    }
+    #[cfg(not(any(target_os = "linux", windows)))]
     {
         let _ = pid;
         None
@@ -390,10 +414,9 @@ fn process_started_at(pid: u32) -> Option<u64> {
 
 /// Whether a pid names a running process, where the platform can be asked.
 ///
-/// `None` is "cannot say" and is never treated as death. On Windows the
-/// authoritative answer is the marker itself: the operating system closes a
-/// dead holder's handle, so a marker that can be opened exclusively had no
-/// live holder.
+/// `None` is "cannot say" and is never treated as death. Windows uses
+/// query-only process access; access denial retains the holder's claim.
+/// The exclusive marker handle separately prevents concurrent writers.
 fn process_is_live(pid: u32) -> Option<bool> {
     #[cfg(unix)]
     {
@@ -413,10 +436,60 @@ fn process_is_live(pid: u32) -> Option<bool> {
             _ => None,
         }
     }
-    #[cfg(not(unix))]
+    #[cfg(windows)]
+    {
+        use windows_sys::Win32::Foundation::{
+            CloseHandle, GetLastError, ERROR_INVALID_PARAMETER, STILL_ACTIVE,
+        };
+        use windows_sys::Win32::System::Threading::{
+            GetExitCodeProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
+        };
+        // SAFETY: query-only access. Only an absent pid proves death;
+        // access denial or a failed query leaves liveness unknown.
+        let process = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid) };
+        if process.is_null() {
+            return (unsafe { GetLastError() } == ERROR_INVALID_PARAMETER).then_some(false);
+        }
+        let mut code = 0;
+        let queried = unsafe { GetExitCodeProcess(process, &mut code) } != 0;
+        unsafe { CloseHandle(process) };
+        queried.then_some(code == STILL_ACTIVE as u32)
+    }
+    #[cfg(not(any(unix, windows)))]
     {
         let _ = pid;
         None
+    }
+}
+
+#[cfg(all(test, windows))]
+mod windows_process_liveness_tests {
+    use super::*;
+
+    #[test]
+    fn a_live_owner_is_retained_and_its_start_time_distinguishes_pid_reuse() {
+        let mut owner = LockOwner::here(now_ms());
+        let started = owner
+            .process_started_at
+            .expect("Windows records process creation time");
+        assert!(started > 0);
+        assert_eq!(owner.liveness(), HolderLiveness::Live);
+        owner.process_started_at = Some(started - 1);
+        assert_eq!(
+            owner.liveness(),
+            HolderLiveness::Gone("the recorded process exited and its pid was reused")
+        );
+    }
+
+    #[test]
+    fn a_pid_that_cannot_name_a_windows_process_is_provably_gone() {
+        let mut owner = LockOwner::here(now_ms());
+        owner.pid = u32::MAX;
+        owner.process_started_at = None;
+        assert_eq!(
+            owner.liveness(),
+            HolderLiveness::Gone("the recorded process has exited")
+        );
     }
 }
 
@@ -1046,13 +1119,16 @@ fn open_regular_file_platform(
 
     const FILE_SHARE_READ: u32 = 0x0000_0001;
     const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x0020_0000;
+    const FILE_FLAG_BACKUP_SEMANTICS: u32 = 0x0200_0000;
     let path = parent.path().join(name);
     let mut options = OpenOptions::new();
     let file = options
         .read(true)
         // Deny delete and writes for the full receipt/hash read.
         .share_mode(FILE_SHARE_READ)
-        .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT)
+        // Open directory handles too, so the held metadata check can return
+        // the same non-regular-file refusal as Unix before any byte read.
+        .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS)
         .open(&path)
         .map_err(|error| format!("could not open {label} in held directory: {error}"))?;
     verify_open_file_at(parent, name, &file, label)?;

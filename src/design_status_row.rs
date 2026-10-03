@@ -1585,7 +1585,10 @@ mod tests {
             ("", false, false),
         ] {
             let row = json!({"computed":{"write_blocked":blocked,"write_block_code":code}});
-            assert_eq!(governance(row.as_object().unwrap(), false).entry_blocked, expected);
+            assert_eq!(
+                governance(row.as_object().unwrap(), false).entry_blocked,
+                expected
+            );
         }
         assert!(!governance(json!({}).as_object().unwrap(), true).entry_blocked);
     }

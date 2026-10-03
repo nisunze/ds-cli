@@ -3046,12 +3046,13 @@ mod tests {
             None,
         )
         .unwrap();
-        let staging = PathBuf::from("/tmp/run");
+        let staging = std::env::temp_dir().join("ds-report-engine-request-test");
+        let admin_asset = staging.join("assets").join("asset.dsab");
         let staged = StagedInputs {
             transformer_document: &staging.join("transformer.json"),
             network_config: &staging.join("config.json"),
             out_dir: &staging.join("out"),
-            admin_bounds: Some((Path::new("/assets/asset.dsab"), &"d".repeat(64))),
+            admin_bounds: Some((&admin_asset, &"d".repeat(64))),
             media_grant: None,
             print_context: None,
             sheet: None,
@@ -3062,13 +3063,13 @@ mod tests {
         assert_eq!(
             request,
             json!({
-                "transformer_document": "/tmp/run/transformer.json",
-                "network_config": "/tmp/run/config.json",
+                "transformer_document": staging.join("transformer.json"),
+                "network_config": staging.join("config.json"),
                 "input_shape": "plain_local",
                 "transformer": "tx_a",
-                "out_dir": "/tmp/run/out",
+                "out_dir": staging.join("out"),
                 "country": "Rwanda",
-                "admin_bounds_asset": "/assets/asset.dsab",
+                "admin_bounds_asset": admin_asset,
                 "admin_bounds_sha256": "d".repeat(64),
                 "formats": ["shp", "xlsx", "voltage_drop"],
             })
