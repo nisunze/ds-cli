@@ -521,6 +521,8 @@ of the seven available tools, their typed input/output ports, the workflow
 schema, resource bounds, conditions and eight runnable examples. Roadmap tools
 are excluded from this compact catalogue; full descriptors remain available
 through `vector describe`. `--example 1` returns one complete JSON model.
+The generated document schema is [vector-workflow.schema.json](vector-workflow.schema.json);
+Rust validation adds graph, descriptor type and execution-bound checks.
 
 A `ds.vector-workflow/v1` document has `name`, optional `description`, typed
 `inputs`, `steps` and named `outputs`. Model inputs use `layer`, `number`,
