@@ -979,7 +979,7 @@ dependencies = [
 name = "ds-canvas-lite"
 version = "0.1.0"
 dependencies = [
- "rstar",
+ "ds-geo-lite",
  "serde",
 ]
 
@@ -1423,6 +1423,7 @@ dependencies = [
  "arrow-array",
  "arrow-ipc",
  "arrow-schema",
+ "ds-geo-lite",
  "ds-io",
  "parquet",
  "serde",
@@ -1523,10 +1524,8 @@ dependencies = [
  "arrow-array",
  "arrow-ipc",
  "arrow-schema",
- "ds-geo-ops",
- "geo",
+ "ds-geo-lite",
  "regex",
- "rstar",
  "serde",
  "serde_json",
 ]
@@ -1536,6 +1535,7 @@ name = "ds-geo-lite"
 version = "0.1.0"
 dependencies = [
  "geo",
+ "rstar",
  "serde",
  "serde_json",
 ]
@@ -1545,7 +1545,6 @@ name = "ds-geo-ops"
 version = "0.1.0"
 dependencies = [
  "ds-geo-lite",
- "rstar",
 ]
 
 [[package]]
@@ -1561,11 +1560,11 @@ dependencies = [
 name = "ds-grid-engine"
 version = "0.1.0"
 dependencies = [
+ "ds-geo-lite",
  "ds-graph",
  "ds-grid-model",
  "ds-grid-physics",
  "ds-profile",
- "geo",
  "regex",
  "schemars",
  "serde",
@@ -1580,6 +1579,7 @@ version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
  "ds-geo",
+ "ds-geo-lite",
  "ds-grid-engine",
  "ds-grid-model",
  "ds-io",
@@ -1594,6 +1594,7 @@ dependencies = [
 name = "ds-grid-model"
 version = "0.1.0"
 dependencies = [
+ "ds-geo-lite",
  "polars-arrow",
  "schemars",
  "serde",
@@ -1697,7 +1698,6 @@ dependencies = [
  "ds-io",
  "ds-profile",
  "rayon",
- "rstar",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -1719,6 +1719,7 @@ dependencies = [
 name = "ds-profile"
 version = "0.1.0"
 dependencies = [
+ "ds-geo-lite",
  "ds-grid-physics",
  "serde",
  "serde_json",
