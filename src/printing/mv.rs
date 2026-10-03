@@ -12,6 +12,103 @@ use std::collections::{BTreeMap, BTreeSet};
 
 pub const SETTING: &str = "mv_printing_setup";
 pub const SELECTION_SCHEMA: &str = "ds.mv-print-selection/v1";
+pub const STANDARD: &str = "mv-a3-plan-profile/v1";
+
+/// Canonize approved front matter in the existing layout library. Adoption
+/// remains the library owner's revision-fenced copy; this is a pure authoring
+/// intent, not a parallel registry or a publication.
+pub fn standardize(mut layout: Layout) -> Result<Layout, String> {
+    use super::mv_booklet::PageRole;
+    use super::mv_settings::*;
+    let template = layout.mv.as_mut().ok_or(
+        "mv_print_standard_invalid: an approved MV layout with cover and naming is required",
+    )?;
+    if template.pages.len() < 2
+        || template.pages[..2]
+            .iter()
+            .any(|page| matches!(page, Page::PlanProfile | Page::Generated { .. }))
+    {
+        return Err(
+            "mv_print_standard_invalid: preserve the approved cover and naming pages first".into(),
+        );
+    }
+    let mut pages = template.pages[..2].to_vec();
+    pages.extend([
+        Page::Generated {
+            role: PageRole::SheetIndex,
+        },
+        Page::Generated {
+            role: PageRole::KeyPlan,
+        },
+        Page::Generated {
+            role: PageRole::LegendNotes,
+        },
+        Page::PlanProfile,
+    ]);
+    // Existing optional context documents retain their approved bytes and
+    // order after the standard drawing slot. Reapplying the intent is stable.
+    pages.extend(
+        template
+            .pages
+            .iter()
+            .skip(2)
+            .filter(|page| !matches!(page, Page::PlanProfile | Page::Generated { .. }))
+            .cloned(),
+    );
+    template.pages = pages;
+    for key in [
+        "contract_title",
+        "formal_client",
+        "formal_employer",
+        "formal_consultant",
+        "formal_contractor",
+        "external_version",
+        "issue_date",
+    ] {
+        if !template
+            .required_text
+            .iter()
+            .any(|existing| existing == key)
+        {
+            template.required_text.push(key.into());
+        }
+    }
+    let settings = &mut template.settings;
+    settings.format = SheetFormat::Advanced;
+    settings.ink_mode = InkMode::ReferenceAccents;
+    settings.horizontal_scale = Some(1500);
+    settings.vertical_scale = Some(500);
+    settings.plan_scale = Some(1500);
+    settings.panel_order = PanelOrder::ProfileTop;
+    settings.structure_label_orientation = StructureLabelOrientation::Vertical;
+    settings.structure_label_rows = vec![
+        vec![StructureLabelField::EngineeringNumber],
+        vec![
+            StructureLabelField::EngineeringName,
+            StructureLabelField::Comment1,
+            StructureLabelField::Comment2,
+            StructureLabelField::Comment3,
+        ],
+        vec![StructureLabelField::StructureDescription],
+    ];
+    settings.special_clearance_hair_anchor = Some(SpecialClearanceHairAnchor::GroundOffsetGuide);
+    settings.show_feature_codes = Some(false);
+    settings.show_clearance_thresholds = Some(true);
+    settings.show_attachment_points = Some(true);
+    settings.show_span_labels = Some(true);
+    settings.show_profile_grid = true;
+    settings.show_obstacle_sticks = false;
+    settings.show_profile_continuations = true;
+    settings.profile_elevation_breaks = true;
+    settings.break_support_context = BreakSupportContext::Once;
+    settings.long_axis_plot = true;
+    settings.plan_angle_policy = PlanAnglePolicy::PreserveIfFit;
+    settings.angle_gap_mm = 7.;
+    settings.minimum_angle_deg = 0.;
+    settings.plan_buffer_m = 6.;
+    super::validate(&layout)?;
+    Ok(layout)
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
 #[serde(deny_unknown_fields)]
@@ -66,6 +163,10 @@ pub enum Page {
         bindings: Vec<ModelPageBinding>,
     },
     PlanProfile,
+    /// Standard computed front matter uses the held model and final sheet plan.
+    Generated {
+        role: super::mv_booklet::PageRole,
+    },
 }
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
 #[serde(deny_unknown_fields)]
@@ -293,6 +394,17 @@ pub fn validate_template(layout: &Layout, template: &Template) -> Result<(), Ref
                 }
             }
             Page::PlanProfile => {}
+            Page::Generated { role } => {
+                if !matches!(
+                    role,
+                    super::mv_booklet::PageRole::SheetIndex
+                        | super::mv_booklet::PageRole::KeyPlan
+                        | super::mv_booklet::PageRole::LegendNotes
+                ) || !ids.insert(format!("generated_{role:?}"))
+                {
+                    return Err(refuse("mv_print_template_invalid", "pages.generated", "Generate each sheet_index, key_plan or legend_notes once; cover and naming remain approved layouts or pinned artifacts."));
+                }
+            }
         }
     }
     let allowed: BTreeSet<_> = template.allowed_model_fields.iter().collect();
