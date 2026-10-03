@@ -19,7 +19,9 @@ Invoke-DsEntry $ResultPath 'check' {
     $ini = Join-Path $env:APPDATA 'PLS\PLS_CADD.INI'
     $iniFound = Test-Path -LiteralPath $ini -PathType Leaf
     $iniLines = @()
-    if ($iniFound) { $iniLines = @(Get-Content -LiteralPath $ini | Where-Object { $_ -match '(?i)wizard|classic|ribbon|interface' } | Select-Object -First 40) }
+    # Windows PowerShell 5.1 serializes Get-Content's provider properties too.
+    # Preserve evidence bytes as plain strings rather than a filesystem graph.
+    if ($iniFound) { $iniLines = @(Get-Content -LiteralPath $ini | Where-Object { $_ -match '(?i)wizard|classic|ribbon|interface' } | Select-Object -First 40 | ForEach-Object { [string] $_ }) }
     $word = $null -ne [Type]::GetTypeFromProgID('Word.Application')
     $running = @(Get-Process -Name 'pls_cadd64' -ErrorAction SilentlyContinue | ForEach-Object { $_.Id })
     $powershell = $PSVersionTable.PSVersion

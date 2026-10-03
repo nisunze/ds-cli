@@ -646,7 +646,9 @@ mod replacement_tests {
 
     #[test]
     fn backup_requires_declared_crs_before_reading_source() {
-        let flags = inputs(&pinned_flags("/missing.bak"));
+        let temp = tempfile::tempdir().expect("native absolute test root");
+        let path = temp.path().join("missing.bak");
+        let flags = inputs(&pinned_flags(path.to_str().expect("UTF-8 test path")));
         let error = run(&flags, &context()).unwrap_err();
         assert_eq!(error.code(), "backup_crs_required");
     }

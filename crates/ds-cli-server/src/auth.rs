@@ -65,7 +65,7 @@ pub trait OwnerCredential: Send + Sync + 'static {
     fn refresh(&self) -> Result<(), String>;
 }
 
-/// The production credential: this Linux user's protected native state for
+/// The production credential: this operating-system user's protected native state for
 /// one lane.
 pub struct NativeCredential {
     lane: String,
@@ -135,7 +135,7 @@ pub fn owner_fence(lane: &str) -> Result<String, String> {
     }
 }
 
-const SIGNED_OUT: &str = "this machine holds no native credential for this lane; sign in under the server's Linux account";
+const SIGNED_OUT: &str = "this machine holds no native credential for this lane; sign in under the server's operating-system account";
 const OWNER_CHANGED: &str = "server identity changed; old jobs are fenced";
 const CREDENTIAL_CHANGED: &str = "server credential changed; restart the host explicitly to resume retained work under the new login";
 

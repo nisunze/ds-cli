@@ -31,6 +31,8 @@ fn headless(args: &[&str], engine: Option<&str>) -> Value {
         .env("NO_COLOR", "1")
         .env("DS_NATIVE_CLIENT_PROFILE_BUNDLE", &bundle)
         .env("DS_CONFIG_HOME", config.path())
+        .env("APPDATA", config.path())
+        .env("XDG_STATE_HOME", config.path())
         .env(
             "DS_DESKTOP_DESCRIPTOR",
             config.path().join("no-desktop.json"),
@@ -138,6 +140,9 @@ fn the_descriptor_is_a_headless_project_fenced_local_file_write() {
 fn local_refusals_are_decided_before_any_credential_is_restored() {
     let out = tempfile::tempdir().expect("out dir");
     let out_dir = out.path().to_str().expect("utf-8");
+    // Only engine-path existence is needed: invalid inputs and the empty
+    // native identity must refuse before an engine can be executed. The
+    // built test CLI is a portable existing file, unlike /bin/true.
     // The bound on resident engines is the kernel's, checked first.
     for bad in ["0", "65", "two"] {
         assert_eq!(
@@ -153,7 +158,7 @@ fn local_refusals_are_decided_before_any_credential_is_restored() {
                     "--output",
                     "json"
                 ],
-                Some("/bin/true"),
+                Some(env!("CARGO_BIN_EXE_ds")),
             )),
             "invalid_concurrency",
             "--concurrency {bad}"
@@ -174,14 +179,14 @@ fn local_refusals_are_decided_before_any_credential_is_restored() {
                 "--output",
                 "json"
             ],
-            Some("/bin/true"),
+            Some(env!("CARGO_BIN_EXE_ds")),
         )),
         "reserved_transformer_identity"
     );
     // The output directory is required by the parser.
     let missing = headless(
         &["report", "project", "export", "--output", "json"],
-        Some("/bin/true"),
+        Some(env!("CARGO_BIN_EXE_ds")),
     );
     assert_ne!(code(&missing), "", "{missing}");
     assert_ne!(code(&missing), "headless_signed_out");
@@ -213,7 +218,7 @@ fn local_refusals_are_decided_before_any_credential_is_restored() {
         ];
         args.extend(acquisition.iter().copied());
         args.extend(["--output", "json"]);
-        let envelope = headless(&args, Some("/bin/true"));
+        let envelope = headless(&args, Some(env!("CARGO_BIN_EXE_ds")));
         assert_eq!(code(&envelope), "report_inputs_invalid", "{acquisition:?}");
         assert!(
             envelope["error"]["message"]
@@ -243,7 +248,7 @@ fn local_refusals_are_decided_before_any_credential_is_restored() {
                 "--output",
                 "json"
             ],
-            Some("/bin/true"),
+            Some(env!("CARGO_BIN_EXE_ds")),
         )),
         "headless_signed_out"
     );

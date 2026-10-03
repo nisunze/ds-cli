@@ -4,12 +4,12 @@
 //! `run_reports` pass. `Manual` is the kernel's always-read trigger: each
 //! command gets its own remote-head observation, with no freshness timer.
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", windows))]
 use std::path::Path;
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", windows))]
 use ds_command_kernel::sync_store::Scope;
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", windows))]
 use ds_sync_runtime::Trigger;
 use serde_json::{Value, json};
 
@@ -25,10 +25,10 @@ pub struct Touch {
 /// running Server; the SQLite store and project lease remain the same ones a
 /// running Server uses. No second queue or publication protocol is created.
 pub fn project(lane: &str, project: &str, state_dir: Option<&str>) -> Touch {
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(not(any(target_os = "linux", windows)))]
     {
         let _ = state_dir;
-        return Touch {
+        Touch {
             current: false,
             receipt: json!({
                 "schema": "ds.report-touch/v1",
@@ -39,15 +39,15 @@ pub fn project(lane: &str, project: &str, state_dir: Option<&str>) -> Touch {
                 "reason": "desktop_touch_bridge_pending",
                 "detail": "this host needs the paired Desktop's project-scoped sync bridge",
             }),
-        };
+        }
     }
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", windows))]
     {
         project_native(lane, project, state_dir)
     }
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", windows))]
 fn project_native(lane: &str, project: &str, state_dir: Option<&str>) -> Touch {
     let state = ds_compute_runtime::server_state_directory(lane, state_dir.map(Path::new));
     let held_before = state
@@ -167,7 +167,7 @@ fn project_native(lane: &str, project: &str, state_dir: Option<&str>) -> Touch {
     }
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", windows))]
 fn read_block(state: &Path, lane: &str, project: &str) -> Option<Value> {
     let fence = crate::outbox::fence(lane).ok()?;
     let store = ds_sync_store::Store::open_read_only(&state.join("store.sqlite")).ok()??;
@@ -183,7 +183,7 @@ fn read_block(state: &Path, lane: &str, project: &str) -> Option<Value> {
     }))
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", windows))]
 fn pass_failed(pass: &ds_cli_server::server_reports::Pass) -> bool {
     pass.receipts.iter().any(|receipt| {
         matches!(receipt.outcome.as_str(), "failed" | "credential_refused")
@@ -191,7 +191,7 @@ fn pass_failed(pass: &ds_cli_server::server_reports::Pass) -> bool {
     })
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", windows))]
 fn pass_current(
     lease_blocked: bool,
     pass: &ds_cli_server::server_reports::Pass,
@@ -209,7 +209,7 @@ fn pass_current(
         && head_read_at_ms.is_some()
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", windows))]
 fn read_at(state: &Path, lane: &str, project: &str) -> Option<u64> {
     let fence = crate::outbox::fence(lane).ok()?;
     let store = ds_sync_store::Store::open_read_only(&state.join("store.sqlite")).ok()??;
@@ -223,7 +223,7 @@ fn read_at(state: &Path, lane: &str, project: &str) -> Option<u64> {
         .ok()?
 }
 
-#[cfg(all(test, target_os = "linux"))]
+#[cfg(all(test, any(target_os = "linux", windows)))]
 mod tests {
     use super::*;
     use ds_sync_runtime::{Receipt, Reclaimed, kernel_sync::Summary};

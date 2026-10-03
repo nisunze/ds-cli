@@ -332,9 +332,32 @@ fn abandoned_holder(
 
 /// Whether a pid runs on this machine; `None` where that cannot be asked.
 fn process_running(pid: u32) -> Option<bool> {
-    if cfg!(target_os = "linux") {
+    #[cfg(target_os = "linux")]
+    {
         Some(Path::new(&format!("/proc/{pid}")).exists())
-    } else {
+    }
+    #[cfg(windows)]
+    {
+        use windows_sys::Win32::Foundation::{
+            CloseHandle, ERROR_INVALID_PARAMETER, GetLastError, STILL_ACTIVE,
+        };
+        use windows_sys::Win32::System::Threading::{
+            GetExitCodeProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
+        };
+        // SAFETY: query-only access to the named process. Access denial is
+        // unknown, never evidence that another worker's lease is abandoned.
+        let process = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid) };
+        if process.is_null() {
+            return (unsafe { GetLastError() } == ERROR_INVALID_PARAMETER).then_some(false);
+        }
+        let mut code = 0;
+        let queried = unsafe { GetExitCodeProcess(process, &mut code) } != 0;
+        unsafe { CloseHandle(process) };
+        queried.then_some(code == STILL_ACTIVE as u32)
+    }
+    #[cfg(not(any(target_os = "linux", windows)))]
+    {
+        let _ = pid;
         None
     }
 }
@@ -422,6 +445,13 @@ mod tests {
         assert_eq!(super::holder_pid("install-a", "install-a#cred#42#x"), None);
     }
     use super::*;
+
+    #[cfg(windows)]
+    #[test]
+    fn native_windows_process_observation_keeps_a_live_worker_and_names_an_absent_one() {
+        assert_eq!(process_running(std::process::id()), Some(true));
+        assert_eq!(process_running(u32::MAX), Some(false));
+    }
 
     #[test]
     fn sync_accepts_matching_owner_digests_and_compares_user_ids_separately() {

@@ -63,11 +63,7 @@ pub static COMMAND: Command = Command {
         },
     ],
     reference: Some("docs/reference/survey.md"),
-    search: &[
-        "cascade",
-        "connected edges",
-        "remove node",
-    ],
+    search: &["cascade", "connected edges", "remove node"],
     requires: Requires::Server,
     availability: || ds_cli_contract::spec::Availability::Available,
 };

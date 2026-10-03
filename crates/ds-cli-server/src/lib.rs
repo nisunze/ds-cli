@@ -91,8 +91,8 @@ const NARROWING_PROJECT: Arg = Arg::value(
 
 const PLATFORM: Refusal = Refusal {
     code: "server_platform_unsupported",
-    when: "the native server is requested outside Linux",
-    remedy: "run these commands on a Linux machine",
+    when: "the native server is requested outside Linux or Windows",
+    remedy: "run these commands on a Linux or Windows machine",
 };
 const REFUSED: Refusal = Refusal {
     code: "server_refused",
@@ -307,13 +307,13 @@ const fn command(
         search: &[],
         requires: Requires::Server,
         availability: || {
-            if cfg!(target_os = "linux") {
+            if cfg!(any(target_os = "linux", windows)) {
                 Availability::Available
             } else {
                 Availability::unavailable(
                     "server_platform_unsupported",
-                    "the native server currently requires Linux",
-                    "run these commands on a Linux machine",
+                    "the native server requires Linux or Windows",
+                    "run these commands on a Linux or Windows machine",
                 )
             }
         },
@@ -359,11 +359,11 @@ pub fn engine(_: &Inputs, _: &Context) -> Result<Value, Failure> {
 pub static SERVE: Command = Command {
     id: "server.serve",
     path: &["server", "serve"],
-    // 2: `--listen` is gone. The host answers only on `<state>/server.sock`,
-    // so which Server a caller reaches is which `--state-dir` it names.
+    // 2: `--listen` is gone. The host address is derived from its state
+    // directory: a Unix socket on Linux, a local named pipe on Windows.
     contract: 2,
     summary: "Host durable parallel compute for every project this account reaches.",
-    purpose: "Host the shared Rust compute runtime under this Linux user's native account: the desktop's own core, without the desktop. No project is selected or captured here and no directory is fetched: callers name the project per request, the Server records it and runs what its owner hands it, and the gateway enforces entitlement at publication and sync -- so one host serves several projects at once, needs no ds auth project use to start, and runs with no upstream. One owner per Server; many users are many machines. --workers bounds the whole host; --per-project bounds what one project may hold while another has work queued. Control is an owner-only socket in the state directory. This process runs in the foreground until it stops.",
+    purpose: "Host the shared Rust compute runtime under this OS user's native account, without Desktop. Callers name each project; the host retains that context and the gateway checks entitlement at publication and sync. No saved project selection or upstream connection is needed to start. One host serves one account and several projects. --workers bounds total work; --per-project bounds a project's share while others are queued. Control uses an account-restricted Unix socket on Linux or named pipe on Windows, derived from the state directory. The host runs in the foreground until stopped.",
     chapter: Chapter::Design,
     effect: Effect::LocalFileWrite,
     authority: Authority::HeadlessUser,
@@ -385,7 +385,7 @@ pub static SERVE: Command = Command {
     output: "The worker and per-project limits the host ran under, once it stops. No credential is printed.",
     examples: &[Example {
         command: "ds server serve --lane stable",
-        note: "Run after native login under the same Linux user. No project need be selected: callers name theirs.",
+        note: "Run after native login under the same operating-system account. No project need be selected: callers name theirs.",
         runnable: false,
     }],
     refusals: SERVE_REFUSALS,
@@ -393,13 +393,13 @@ pub static SERVE: Command = Command {
     search: &[],
     requires: Requires::Server,
     availability: || {
-        if cfg!(target_os = "linux") {
+        if cfg!(any(target_os = "linux", windows)) {
             Availability::Available
         } else {
             Availability::unavailable(
                 "server_platform_unsupported",
-                "the native server currently requires Linux",
-                "run these commands on a Linux machine",
+                "the native server requires Linux or Windows",
+                "run these commands on a Linux or Windows machine",
             )
         }
     },
@@ -1073,7 +1073,7 @@ pub fn serve(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     let app = host::App {
         database,
         connection,
-        os_uid: transport::own_uid(),
+        os_account: transport::own_account(),
         layers: layer_host,
         auth: layer_auth,
         requests: Arc::new(host::Door::new(request_permits(workers))),

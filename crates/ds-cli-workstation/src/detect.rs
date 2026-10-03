@@ -615,10 +615,10 @@ mod tests {
             }
         }
         let found = playwright_headless_shell(&root).unwrap();
-        assert!(
-            found
-                .to_string_lossy()
-                .contains("chromium_headless_shell-100/")
+        assert_eq!(
+            found,
+            root.join("chromium_headless_shell-100")
+                .join("chrome-headless-shell-linux64/chrome-headless-shell")
         );
         std::fs::remove_dir_all(root).unwrap();
     }
