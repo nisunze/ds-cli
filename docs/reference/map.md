@@ -715,4 +715,12 @@ CLI compilation alone does not prove installed or paired support. The existing
 bridge parity gate continues to require that binder's allowlist, executor and
 typed argument contract.
 
+The lasso `--filter` is a closed `ProfileTableFilterQuery` (at most 64 KiB):
+`{filters?:[{column,op,value?,value2?,values?}],stats_columns?:[]}`. Lists default to `[]`; up to 64 filters
+are ANDed and up to 8 distinct `stats_columns` are allowed. Column and stats names are non-blank, at most 200
+bytes, without edge whitespace or control characters. Strings are at most 4096 bytes; `value2` is nullable.
+Operators: `contains`, `equals`, `not_equals`, `starts_with`, `ends_with`, `gt`, `gte`, `lt`, `lte`, `between`,
+`is_empty`, `not_empty`, and the membership operators `in`, `in_exact`, `not_in`, `token_any`, `token_all`,
+which take `values` (at most 256 strings; tokens are semicolon-separated). Unknown or duplicate keys are refused.
+
 These commands do not author structure-label fields. Use `ds dsgrid profile labels show|set` for the portable model Profile label policy. Fixed-paper sheet Profile and sheet Plan composition are separate from these commands.

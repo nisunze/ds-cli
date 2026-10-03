@@ -792,6 +792,13 @@ impl<T: ds_client_core::Transport> DeviceSession<T> {
     ) -> Result<SurveyEntriesChanges, ClientError> {
         fixed_device_call!(self, survey_entries_changes, project, request)
     }
+    pub fn survey_delete(
+        &mut self,
+        project: &str,
+        request: &ds_client_core::SurveyDeleteRequest,
+    ) -> Result<serde_json::Value, ClientError> {
+        fixed_device_call!(self, survey_delete, project, request)
+    }
     pub fn survey_entry_create(
         &mut self,
         project: &str,
@@ -1232,10 +1239,6 @@ fn summary_json(value: &DeviceSummary) -> Value {
 
 fn lane(inputs: &Inputs) -> Result<Lane, Failure> {
     Lane::parse(inputs.value("lane").unwrap_or("stable"))
-}
-
-pub fn lane_from_token(value: &str) -> Result<Lane, Failure> {
-    Lane::parse(value)
 }
 
 fn exact_request_id(request: &str, stored: &str) -> Result<(), Failure> {

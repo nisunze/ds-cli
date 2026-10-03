@@ -32,13 +32,7 @@ pub static COMMAND: Command = Command {
     path: &["dsgrid", "describe"],
     contract: 1,
     summary: "List the grid engine's commands, operations, projections and types.",
-    purpose: "\
-Reads the descriptor catalog published by the engine compiled into this binary \
-— every journaled command, every read operation, every projection, with its \
-parameters and effect class. By default it lists identifiers and effects only; \
-name one with --id for its complete descriptor. The full catalog is large, \
-which is why it is never printed whole. --kind types --id <type> gives a \
-parameter row's exact shape as JSON Schema: fields, required, enum values.",
+    purpose: "Read the compiled engine's catalog. Omit --id for an index; name one entry for parameters, effects and bounded derived type_schemas (fields, required marks, enum tokens, units). more_type_schemas names deferred shapes. Use --kind types --id <type> for fully documented JSON Schema.",
     chapter: Chapter::GridModel,
     effect: Effect::Discovery,
     authority: Authority::None,
@@ -49,10 +43,7 @@ parameter row's exact shape as JSON Schema: fields, required, enum values.",
             .choices(KINDS),
         Arg::value("id", "<id>", "Return this one entry's full descriptor."),
     ],
-    output: "\
-The engine version, the catalog kind, and one line per entry: its id and \
-effect class. With --id, that entry's complete descriptor including its \
-parameter list; for a type, its JSON Schema.",
+    output: "Engine version and catalog index; with --id, one descriptor and its derived type_schemas. Deferred shapes appear in more_type_schemas. Types return fully documented JSON Schema.",
     examples: &[
         Example {
             command: "ds dsgrid describe --output json",
@@ -301,7 +292,14 @@ fn render_type(descriptor: &Value) -> String {
             } else {
                 " "
             };
-            out.push_str(&format!("  {mark} {:<34} {}\n", name, schema_type(field)));
+            let unit = field["unit"]
+                .as_str()
+                .map(|unit| format!(" [{unit}]"))
+                .unwrap_or_default();
+            out.push_str(&format!(
+                "  {mark} {name:<34} {}{unit}\n",
+                schema_type(field)
+            ));
         }
         out.push_str("\n  * required\n");
     } else {
@@ -365,6 +363,23 @@ pub fn render(data: &Value) -> String {
                 ));
             }
             out.push_str("\n  * required\n");
+            for param in params {
+                if let Some(schemas) = param["type_schemas"].as_object() {
+                    for (name, schema) in schemas {
+                        out.push_str(&render_type(&json!({"id":name,"schema":schema})));
+                    }
+                }
+                for name in param["more_type_schemas"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .filter_map(Value::as_str)
+                {
+                    out.push_str(&format!(
+                        "\nmore: ds dsgrid describe --kind types --id {name}\n"
+                    ));
+                }
+            }
         }
         return out;
     }

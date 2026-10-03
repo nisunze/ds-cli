@@ -787,13 +787,13 @@ pub static PROJECT_LIST_COMMAND: Command = Command {
     path: &["auth", "project", "list"],
     contract: 1,
     chapter: Chapter::Project,
-    summary: "List fresh visible projects across all lifecycle buckets.",
+    summary: "List visible projects with expiry and lifecycle notices.",
     purpose: "Restores the native user and fetches active, archived, and testing projects through the one closed gateway route. A returned ID is visibility, not authority.",
     effect: Effect::LocalAuthState,
     authority: Authority::HeadlessUser,
     execution: Execution::Sync,
     args: &[LANE, LIST_LIMIT],
-    output: "Fresh visible project identities, names, roles, and lifecycle states; `elevated` says the list came by governance elevation, and a roleless row then reads `elevated`.",
+    output: "Fresh visible project identities, names, roles, lifecycle states and expiry projections (notice, chip, support contacts); `elevated` says the list came by governance elevation, and a roleless row then reads `elevated`.",
     examples: &[Example {
         command: "ds auth project list",
         note: "Reads all three lifecycle buckets.",
@@ -801,7 +801,7 @@ pub static PROJECT_LIST_COMMAND: Command = Command {
     }],
     refusals: PROJECT_LIST_REFUSALS,
     reference: Some("docs/reference/auth.md"),
-    search: &[],
+    search: &["expiration", "support contact"],
     requires: Requires::Server,
     availability: native_availability,
 };
@@ -1661,42 +1661,11 @@ fn saved_analysis_pins(
     metadata: Option<&Value>,
     version: Option<u64>,
     content_digest: Option<&str>,
-) -> Result<Option<(u64, String, String)>, Failure> {
-    let invalid = || {
-        Failure::failed(
-            "auth_response_unreadable",
-            "saved analysis metadata has invalid or oversized snapshot pins",
-        )
-        .remedy("Update ds and report the authoritative saved-analysis receipt; never infer missing pins or truncate its JSON.")
-    };
-    let Some(metadata) = metadata else {
-        return Ok(None);
-    };
-    match metadata["state"].as_str() {
-        Some("stale" | "missing" | "needs_reprocess") => return Ok(None),
-        Some("ready") => {}
-        _ => return Err(invalid()),
-    }
-    let version = version.filter(|v| *v > 0).ok_or_else(invalid)?;
-    let digest = content_digest.ok_or_else(invalid)?;
-    let sha = metadata["analysis_sha256"].as_str().ok_or_else(invalid)?;
-    let is_sha = |s: &str| {
-        s.len() == 64
-            && s.bytes()
-                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
-    };
-    let bytes = metadata["json_bytes"].as_u64().ok_or_else(invalid)?;
-    if metadata["schema"] != "ds.lv-voltage-drop.analysis/v1"
-        || metadata["method"] != "ds-lv-vd/1"
-        || metadata["content_digest"] != digest
-        || !is_sha(digest)
-        || !is_sha(sha)
-        || bytes == 0
-        || bytes > ds_client_core::TRANSFORMER_ANALYSIS_RESPONSE_LIMIT as u64
-    {
-        return Err(invalid());
-    }
-    Ok(Some((version, digest.to_owned(), sha.to_owned())))
+) -> Result<Option<ds_client_core::SavedLvAnalysisPins>, Failure> {
+    ds_client_core::saved_lv_analysis_pins(metadata, version, content_digest).map_err(|error| {
+        Failure::failed("auth_response_unreadable", error.to_string())
+            .remedy("Update ds and report the authoritative saved-analysis receipt; never infer missing pins or truncate its JSON.")
+    })
 }
 
 #[cfg(test)]
@@ -1704,7 +1673,7 @@ mod saved_analysis_read_tests {
     use super::*;
 
     fn receipt() -> Value {
-        json!({"state":"ready", "schema":"ds.lv-voltage-drop.analysis/v1", "method":"ds-lv-vd/1",
+        json!({"state":"ready", "schema":ds_client_core::SAVED_LV_ANALYSIS_SCHEMA, "method":ds_client_core::SAVED_LV_ANALYSIS_METHOD,
             "content_digest":"a".repeat(64), "analysis_sha256":"b".repeat(64), "json_bytes":123})
     }
 
@@ -2325,7 +2294,9 @@ fn verify_restored_layer_identity(
 /// what gets through this door is what becomes a preference key and a request
 /// path. One rule, one answer, at every door, so this asks for it.
 fn bounded_named_project(value: &str) -> Result<String, Failure> {
-    if !ds_command_kernel::execution_context::valid_project(value) {
+    if ds_client_core::validate_project_id(value).is_err()
+        || !ds_command_kernel::execution_context::valid_project(value)
+    {
         return Err(Failure::invalid(
             "context_corrupt",
             format!(
@@ -3605,6 +3576,20 @@ pub fn survey_entries_changes(
 }
 
 /// Create one governed Survey entry in the caller's explicit project.
+/// Execute the kernel's closed held-row deletion plan; no selection is read.
+pub fn survey_delete(
+    lane: &str,
+    project: &str,
+    request: &ds_client_core::SurveyDeleteRequest,
+) -> Result<HeadlessNamedProject<serde_json::Value>, Failure> {
+    headless_named_project(
+        lane,
+        project,
+        |device, project| device.survey_delete(project, request),
+        |client, project| client.survey_delete(project, request, now()),
+    )
+}
+
 pub fn survey_entry_create(
     lane_value: &str,
     project: &str,
@@ -4545,6 +4530,7 @@ fn project_json(project: &Project, elevated: bool) -> Value {
         "display_name": project.display_name(),
         "role": presented_role(project.role(), elevated),
         "status": project_status(project.status()),
+        "lifecycle": project.lifecycle((now() * 1000) as i64),
     })
 }
 
@@ -4602,6 +4588,30 @@ fn map_project_report_service_code(
     refusal: Option<&ds_client_core::ServiceRefusal>,
 ) -> Failure {
     match code {
+        ProjectReportServiceCode::CombinedInputsNotCurrent
+        | ProjectReportServiceCode::CombinedInputsPublicationPending => {
+            let pending = code == ProjectReportServiceCode::CombinedInputsPublicationPending;
+            let rooms = refusal.and_then(|refusal| refusal.detail_text("missing_rooms"));
+            let count = refusal
+                .and_then(|refusal| refusal.detail_integer("missing_individual_artifact_count"));
+            let mut message = if pending {
+                "Combined inputs are pending publication; no archive was published.".to_owned()
+            } else {
+                "Combined inputs are not current; no archive was published.".to_owned()
+            };
+            if let Some(rooms) = rooms {
+                message.push_str(&format!(" Rooms (name:cause): {rooms}"));
+            }
+            let failure = if pending {
+                Failure::conflict("combined_inputs_publication_pending", message)
+            } else {
+                Failure::conflict("combined_inputs_not_current", message)
+            };
+            failure
+                .remedy(if pending { "run `ds report outbox drain`, then retry this command" } else { "generate current individual reports for the named rooms, then retry this command" })
+                .next(if pending { "ds report outbox drain" } else { "ds report project scope" })
+                .detail(serde_json::json!({"missing_rooms": rooms, "missing_individual_artifact_count": count}))
+        }
         ProjectReportServiceCode::NoIndividualArtifacts => {
             // The route names each room and its closed cause; a room the
             // reporter could not build (killed for memory, unreachable) reads as
@@ -4767,7 +4777,7 @@ fn map_service_refusal(
                 "service_message": refusal.message(),
             }))
             .remedy("list published versions and choose one exact version_id that exists")
-            .next("ds design version list --transformer <name> --output json"),
+            .next("ds design version list --project <project-id> --kind lv_transformer --object <name> --output json"),
         Some("print_layout_invalid") => Failure::invalid("print_layout_invalid", message)
             .remedy(
                 "correct the layout against ds report layout schema; if the refused field is \
@@ -6160,6 +6170,60 @@ mod tests {
     use super::*;
 
     #[test]
+    fn owner_readiness_refusal_crosses_the_cli_boundary_without_a_locator() {
+        use crate::test_support::{FixtureTransport, NOW, SIGN_IN, signed_in};
+        for (code, cause) in [
+            ("combined_inputs_not_current", "report_stale"),
+            (
+                "combined_inputs_publication_pending",
+                "report_publication_pending",
+            ),
+            ("combined_inputs_not_current", ""),
+        ] {
+            let transport = FixtureTransport::with_sign_in(SIGN_IN);
+            let causes = if cause.is_empty() {
+                vec![]
+            } else {
+                vec![serde_json::json!({"transformer":"tx_b", "code":cause, "detail":"PRIVATE"})]
+            };
+            transport
+                .lock()
+                .project_reports
+                .push_back(ds_client_core::TransportResponse::new(
+                    409,
+                    serde_json::to_vec(&serde_json::json!({"status":"refused", "code":code,
+                    "missing_individual_artifact_count":causes.len(),
+                    "missing_individual_artifact_causes":causes}))
+                    .unwrap(),
+                ));
+            let mut client = signed_in(transport.clone());
+            let request = CompoundedReportRequest::new(
+                ds_client_core::TransformerSet::new(vec!["tx_a".into(), "tx_b".into()]).unwrap(),
+                ds_client_core::ReportFileLevel::Transformer,
+                false,
+                false,
+            );
+            let failure = map_client(
+                client
+                    .compounded_report("project", &request, NOW)
+                    .unwrap_err(),
+            );
+            assert_eq!(failure.code(), code);
+            if !cause.is_empty() {
+                assert!(failure.message().contains("tx_b"));
+            }
+            assert!(failure.message().contains("no archive was published"));
+            let detail = failure.detail_value().unwrap();
+            assert!(detail.get("published").is_none());
+            assert!(!detail.to_string().contains("PRIVATE"));
+            let script = transport.lock();
+            assert_eq!(script.report_bodies.len(), 1);
+            assert_eq!(script.report_bodies[0]["eds_project_id"], "project");
+            assert_eq!(script.report_bodies[0]["action"], "download_transfo");
+        }
+    }
+
+    #[test]
     fn restored_layer_identity_requires_exact_uid_audience_and_project() {
         let fence = LayerScopeFence {
             uid: "u1".into(),
@@ -7402,11 +7466,11 @@ mod tests {
             .transformer_context
             .push_back(ds_client_core::TransportResponse::new(
                 200,
-                serde_json::to_vec(&json!({
+                serde_json::to_vec(&json!({"success": true, "data": {
                     "total": 1, "found_count": 0, "failed_count": 1,
                     "results": [{"transformer_name": "t1", "ok": false,
                                  "error_code": "TRANSFORMER_READ_FAILED"}],
-                }))
+                }}))
                 .unwrap(),
             ));
         let mut device = linked_device(transport, NOW);

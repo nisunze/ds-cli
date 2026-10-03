@@ -14,106 +14,143 @@ use ds_cli_desktop::ops::BridgeOp;
 /// The sibling desktop source. It is intentionally a source-level parity
 /// check: the desktop is not a Rust build dependency, but a missing operation
 /// must fail CI rather than be discovered by an operator after deployment.
-fn ds_web() -> Option<PathBuf> {
+fn ds_web() -> PathBuf {
     let root = match std::env::var_os("DS_WEB_DIR") {
         Some(explicit) => PathBuf::from(explicit),
         None => PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../ds-web"),
     };
-    let root = root.canonicalize().unwrap_or(root);
-    root.is_dir().then_some(root)
+    assert!(
+        root.is_dir(),
+        "bridge parity requires the ds-web checkout at {}; set DS_WEB_DIR to the current checkout",
+        root.display()
+    );
+    root.canonicalize().expect("canonicalize ds-web checkout")
 }
 
-fn skip(reason: &str) {
-    let looked_in = match std::env::var_os("DS_WEB_DIR") {
-        Some(explicit) => PathBuf::from(explicit),
-        None => PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../ds-web"),
-    };
-    eprintln!(
-        "SKIPPED: {reason}\n  This check proves ds map sends only operations the \
-         paired desktop CLI bridge owns.\n  Looked in: {}\n  Set DS_WEB_DIR to \
-         the ds-web checkout to run it.",
-        looked_in.display()
-    );
+/// Load only the inputs a check inspects. A removed unrelated adapter must not
+/// mask that check's result; a missing required input always fails by path.
+struct Source {
+    path: PathBuf,
+    text: std::sync::OnceLock<String>,
+}
+
+impl std::ops::Deref for Source {
+    type Target = str;
+
+    fn deref(&self) -> &str {
+        self.text.get_or_init(|| {
+            let source = std::fs::read_to_string(&self.path).unwrap_or_else(|error| {
+                panic!(
+                    "bridge parity cannot read required source {}: {error}",
+                    self.path.display()
+                )
+            });
+            assert!(
+                !source.trim().is_empty(),
+                "bridge parity source is empty: {}",
+                self.path.display()
+            );
+            if self.path.ends_with("src/lib/desktop/cli-bridge.ts") {
+                assert!(
+                    source.contains("export async function executeCliOperation(")
+                        && source.contains("switch (operation) {"),
+                    "bridge parity dispatcher pattern is absent in {}",
+                    self.path.display()
+                );
+            }
+            source
+        })
+    }
+}
+
+fn source(root: &std::path::Path, leaf: &str) -> Source {
+    Source {
+        path: root.join(leaf),
+        text: std::sync::OnceLock::new(),
+    }
 }
 
 struct App {
-    transport: String,
-    frontend: String,
-    project: String,
-    map: String,
-    map_working_set: String,
-    map_layers: String,
-    map_profile: String,
-    map_grid_lasso: String,
-    survey: String,
-    design: String,
-    design_collaboration: String,
-    data: String,
-    project_data: String,
-    cli_errors: String,
-    materialize: String,
-    analysis: String,
-    dsgrid: String,
-    dsgrid_contract: String,
-    style_fill_pattern: String,
-    style_line_type: String,
-    sync_center: String,
-    feedback_submit: String,
-    solar_seed_client: String,
-    solar_seed_pure: String,
-    solar_seed_adapter: String,
-    solar_portfolio_run: String,
-    solar_batch_adapter: String,
-    solar_portfolio_receipt: String,
-    reliability_page: String,
+    transport: Source,
+    frontend: Source,
+    project: Source,
+    map: Source,
+    map_working_set: Source,
+    map_layers: Source,
+    map_profile: Source,
+    map_grid_lasso: Source,
+    survey: Source,
+    design: Source,
+    design_collaboration: Source,
+    data: Source,
+    project_data: Source,
+    cli_errors: Source,
+    materialize: Source,
+    analysis: Source,
+    dsgrid: Source,
+    dsgrid_contract: Source,
+    style_fill_pattern: Source,
+    style_kernel: Source,
+    style_renderer: Source,
+    sync_center: Source,
+    feedback_submit: Source,
+    solar_seed_client: Source,
+    solar_seed_pure: Source,
+    solar_seed_adapter: Source,
+    solar_portfolio_run: Source,
+    solar_batch_adapter: Source,
+    solar_portfolio_receipt: Source,
+    reliability_page: Source,
 }
 
-fn app() -> Option<App> {
-    let root = ds_web()?;
-    let read = |leaf: &str| std::fs::read_to_string(root.join(leaf)).ok();
-    Some(App {
-        transport: read("src-tauri/src/cli_bridge.rs")?,
-        frontend: read("src/lib/desktop/cli-bridge.ts")?,
-        project: read("src/lib/desktop/cli-project.ts")?,
-        map: read("src/lib/desktop/cli-map.ts")?,
-        map_working_set: read("src/lib/desktop/cli-map-working-set.ts")?,
-        map_layers: read("src/lib/desktop/cli-map-layers.ts")?,
-        map_profile: read("src/lib/desktop/cli-map-profile.ts")?,
-        map_grid_lasso: read("src/lib/grid/lasso-request.ts")?,
-        survey: read("src/lib/desktop/cli-survey.ts")?,
-        design: read("src/lib/desktop/cli-map-design.ts")?,
-        design_collaboration: read("src/lib/desktop/cli-design.ts")?,
-        data: read("src/lib/desktop/cli-data.ts")?,
-        project_data: read("src/lib/desktop/cli-project-data.ts")?,
-        cli_errors: read("src/lib/desktop/cli-errors.ts")?,
-        materialize: read("src/lib/search-place/materialize.ts")?,
-        analysis: read("src/lib/analysis/outliers.ts")?,
-        dsgrid: read("src/lib/desktop/cli-dsgrid.ts")?,
-        dsgrid_contract: read("docs/dsgrid-local-model-and-project-publication-contract.md")?,
-        style_fill_pattern: read("src/lib/styles/fill-pattern.ts")?,
-        style_line_type: read("src/lib/styles/line-type.ts")?,
-        sync_center: read("src/lib/desktop/cli-sync-center.ts")?,
-        feedback_submit: read("src/lib/feedback/submit.ts")?,
-        solar_seed_client: read("src/lib/api/solar-seed.ts")?,
-        solar_seed_pure: read("src/lib/solar/seed.ts")?,
-        solar_seed_adapter: read("src/lib/desktop/cli-solar-seed.ts")?,
-        solar_batch_adapter: read("src/lib/desktop/cli-solar-portfolio-batch.ts")?,
-        solar_portfolio_run: read("src/lib/solar/native-batch.ts")?,
-        reliability_page: read("src/routes/sre/+page.svelte")?,
-        solar_portfolio_receipt: read("src/lib/solar/native-portfolio-batches.ts")?,
-    })
+fn app() -> App {
+    let root = ds_web();
+    let read = |leaf: &str| source(&root, leaf);
+    App {
+        transport: read("src-tauri/src/cli_bridge.rs"),
+        frontend: read("src/lib/desktop/cli-bridge.ts"),
+        project: read("src/lib/desktop/cli-project.ts"),
+        map: read("src/lib/desktop/cli-map.ts"),
+        map_working_set: read("src/lib/desktop/cli-map-working-set.ts"),
+        map_layers: read("src/lib/desktop/cli-map-layers.ts"),
+        map_profile: read("src/lib/desktop/cli-map-profile.ts"),
+        map_grid_lasso: read("src/lib/grid/lasso-request.ts"),
+        survey: read("src/lib/desktop/cli-survey.ts"),
+        design: read("src/lib/desktop/cli-map-design.ts"),
+        design_collaboration: read("src/lib/desktop/cli-design.ts"),
+        data: read("src/lib/desktop/cli-data.ts"),
+        project_data: read("src/lib/desktop/cli-project-data.ts"),
+        cli_errors: read("src/lib/desktop/cli-errors.ts"),
+        materialize: read("src/lib/search-place/materialize.ts"),
+        analysis: read("src/lib/analysis/outliers.ts"),
+        dsgrid: read("src/lib/desktop/cli-dsgrid.ts"),
+        dsgrid_contract: read("docs/dsgrid-local-model-and-project-publication-contract.md"),
+        style_fill_pattern: read("src/lib/styles/fill-pattern.ts"),
+        style_kernel: read("src/lib/styles/kernel.ts"),
+        style_renderer: read("src/lib/api/styles.ts"),
+        sync_center: read("src/lib/desktop/cli-sync-center.ts"),
+        feedback_submit: read("src/lib/feedback/submit.ts"),
+        solar_seed_client: read("src/lib/api/solar-seed.ts"),
+        solar_seed_pure: read("src/lib/solar/seed.ts"),
+        solar_seed_adapter: read("src/lib/desktop/cli-solar-seed.ts"),
+        solar_batch_adapter: read("src/lib/desktop/cli-solar-portfolio-batch.ts"),
+        solar_portfolio_run: read("src/lib/solar/native-batch.ts"),
+        reliability_page: read("src/routes/sre/+page.svelte"),
+        solar_portfolio_receipt: read("src/lib/solar/native-portfolio-batches.ts"),
+    }
 }
 
 #[test]
 fn every_sync_center_command_has_one_closed_operation_owner() {
-    let Some(app) = app() else {
-        skip("the ds-web sibling repository is not on disk");
-        return;
-    };
+    let app = app();
     let allowlist = between(
         &app.transport,
         "pub const CLI_OPERATIONS: &[&str] = &[",
         "];",
+    );
+    assert!(
+        !ds_cli_desktop::sync::BRIDGE_OPS.is_empty(),
+        "ds_cli_desktop::sync::BRIDGE_OPS must declare operations for this parity check"
     );
     for operation in ds_cli_desktop::sync::BRIDGE_OPS {
         assert_eq!(
@@ -166,11 +203,68 @@ fn switch_case_matcher_accepts_both_quotes_without_prefix_matches() {
 }
 
 fn between<'a>(source: &'a str, open: &str, close: &str) -> &'a str {
-    let Some(start) = source.find(open) else {
-        return "";
-    };
+    let start = source
+        .find(open)
+        .unwrap_or_else(|| panic!("bridge parity required opening pattern {open:?} is absent"));
     let rest = &source[start + open.len()..];
-    &rest[..rest.find(close).unwrap_or(rest.len())]
+    let end = rest.find(close).unwrap_or_else(|| {
+        panic!("bridge parity required closing pattern {close:?} after {open:?} is absent")
+    });
+    let slice = &rest[..end];
+    assert!(
+        !slice.trim().is_empty(),
+        "bridge parity required section {open:?} is empty"
+    );
+    slice
+}
+
+#[test]
+fn missing_or_empty_sections_fail_instead_of_passing_negative_checks() {
+    for source in ["unrelated", "BEGIN unclosed", "BEGIN END", "BEGIN   END"] {
+        let failure = std::panic::catch_unwind(|| between(source, "BEGIN", "END"));
+        assert!(
+            failure.is_err(),
+            "missing or empty section passed: {source:?}"
+        );
+    }
+    assert_eq!(between("BEGIN value END", "BEGIN", "END"), " value ");
+}
+
+#[test]
+fn missing_or_unclosed_operation_contracts_fail_even_for_zero_arguments() {
+    for source in [
+        "'other': [],",
+        "'operation': [",
+        "'operation': ['argument'",
+        "'operation': ['argument', 'other': [] ,",
+    ] {
+        assert!(std::panic::catch_unwind(|| operation_contract(source, "operation")).is_err());
+    }
+    assert!(quoted_contract_items(operation_contract("'operation': [],", "operation")).is_empty());
+    assert!(std::panic::catch_unwind(|| quoted_contract_items("'unclosed")).is_err());
+}
+
+#[test]
+fn missing_empty_or_unrecognizable_sources_fail_by_path() {
+    let root = tempfile::tempdir().expect("parity source fixture");
+    let leaf = "src/lib/desktop/cli-bridge.ts";
+    let path = root.path().join(leaf);
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    for contents in [None, Some(""), Some("// dispatcher removed")] {
+        if let Some(contents) = contents {
+            std::fs::write(&path, contents).unwrap();
+        }
+        let input = source(root.path(), leaf);
+        let failure =
+            std::panic::catch_unwind(|| input.len()).expect_err("missing evidence must fail");
+        let message = failure.downcast_ref::<String>().expect("path diagnostic");
+        assert!(message.contains(path.to_string_lossy().as_ref()));
+    }
+    // Loading a valid required input never reads an unrelated missing input.
+    std::fs::write(root.path().join("required.ts"), "required source").unwrap();
+    let required = source(root.path(), "required.ts");
+    let _unrelated = source(root.path(), "absent.ts");
+    assert_eq!(&*required, "required source");
 }
 
 fn operation_contract<'a>(source: &'a str, operation: &str) -> &'a str {
@@ -187,11 +281,18 @@ fn operation_contract<'a>(source: &'a str, operation: &str) -> &'a str {
     } else if source.contains(&double) {
         double
     } else {
-        return "";
+        panic!("bridge parity typed argument contract for `{operation}` is absent");
     };
     let start = source.find(&marker).expect("marker checked above");
     let rest = &source[start + marker.len()..];
-    &rest[..rest.find("],").unwrap_or(rest.len())]
+    let end = rest.find(']').unwrap_or_else(|| {
+        panic!("bridge parity typed argument contract for `{operation}` has no closing pattern")
+    });
+    assert!(
+        rest[end..].starts_with("],") && !rest[..end].contains('['),
+        "bridge parity typed argument contract for `{operation}` is not a closed argument array"
+    );
+    &rest[..end]
 }
 
 fn has_operation_contract(source: &str, operation: &str) -> bool {
@@ -209,9 +310,9 @@ fn quoted_contract_items(contract: &str) -> BTreeSet<String> {
         .find(|(_, character)| *character == '\'' || *character == '"')
     {
         let after = &rest[start + quote.len_utf8()..];
-        let Some(end) = after.find(quote) else {
-            break;
-        };
+        let end = after
+            .find(quote)
+            .expect("bridge parity argument contract has an unclosed quote");
         values.insert(after[..end].to_string());
         rest = &after[end + quote.len_utf8()..];
     }
@@ -245,10 +346,7 @@ fn projects_field(slice: &str, field: &str) -> bool {
 
 #[test]
 fn every_project_context_command_has_one_closed_operation_owner() {
-    let Some(app) = app() else {
-        skip("the ds-web sibling repository is not on disk");
-        return;
-    };
+    let app = app();
     let allowlist = between(
         &app.transport,
         "pub const CLI_OPERATIONS: &[&str] = &[",
@@ -258,6 +356,10 @@ fn every_project_context_command_has_one_closed_operation_owner() {
         !allowlist.trim().is_empty(),
         "ds-web no longer exposed the CLI_OPERATIONS allowlist at the pinned marker; \
          refusing an empty string would make this negative messaging-door check vacuous"
+    );
+    assert!(
+        !ds_cli_desktop::project::BRIDGE_OPS.is_empty(),
+        "ds_cli_desktop::project::BRIDGE_OPS must declare operations for this parity check"
     );
     for operation in ds_cli_desktop::project::BRIDGE_OPS {
         assert_eq!(
@@ -290,13 +392,10 @@ fn every_project_context_command_has_one_closed_operation_owner() {
 
 #[test]
 fn printing_operations_have_one_closed_application_owner() {
-    let Some(root) = ds_web() else {
-        skip("the ds-web sibling repository is not on disk");
-        return;
-    };
-    let transport = std::fs::read_to_string(root.join("src-tauri/src/cli_bridge.rs")).unwrap();
-    let frontend = std::fs::read_to_string(root.join("src/lib/desktop/cli-bridge.ts")).unwrap();
-    let source = std::fs::read_to_string(root.join("src/lib/printing/prepare.ts")).unwrap();
+    let root = ds_web();
+    let transport = source(&root, "src-tauri/src/cli_bridge.rs");
+    let frontend = source(&root, "src/lib/desktop/cli-bridge.ts");
+    let source = source(&root, "src/lib/printing/prepare.ts");
     let allowlist = between(&transport, "pub const CLI_OPERATIONS: &[&str] = &[", "];");
     for op in [
         &ds_cli_desktop::printing::TRANSFORMERS_OP,
@@ -337,10 +436,7 @@ fn printing_operations_have_one_closed_application_owner() {
 
 #[test]
 fn every_map_command_has_one_closed_operation_owner() {
-    let Some(app) = app() else {
-        skip("the ds-web sibling repository is not on disk");
-        return;
-    };
+    let app = app();
 
     let mut seen = BTreeSet::new();
     let allowlist = between(
@@ -351,6 +447,10 @@ fn every_map_command_has_one_closed_operation_owner() {
     assert!(
         !allowlist.is_empty(),
         "the desktop CLI operation allowlist is absent"
+    );
+    assert!(
+        !ds_cli_map::BRIDGE_OPS.is_empty(),
+        "ds_cli_map::BRIDGE_OPS must declare operations for this parity check"
     );
     for operation in ds_cli_map::BRIDGE_OPS {
         assert!(
@@ -372,56 +472,111 @@ fn every_map_command_has_one_closed_operation_owner() {
             operation.operation
         );
 
-        let owners = [
-            &app.map,
-            &app.map_layers,
-            &app.map_profile,
-            &app.map_grid_lasso,
-            &app.survey,
-        ]
-        .into_iter()
-        .filter(|source| has_operation_contract(source, operation.operation))
-        .collect::<Vec<_>>();
-        assert_eq!(
-            owners.len(),
-            1,
-            "`{}` must have exactly one typed map adapter owner",
-            operation.operation
-        );
-        let contract = operation_contract(owners[0], operation.operation);
-        assert!(
-            operation.arguments.is_empty() || !contract.is_empty(),
-            "`{}` has no typed map-adapter argument contract",
-            operation.operation
-        );
-        for argument in operation.arguments {
-            let mut parts = argument.split('.');
-            let top = parts.next().expect("declared argument is non-empty");
-            assert!(
-                contract.contains(&format!("'{top}'")),
-                "ds map sends `{argument}` to `{}`, but its typed adapter does not accept `{top}`",
+        if operation.operation == ds_cli_map::SURVEY_WORKING_AREA_DOWNLOAD.operation {
+            assert_survey_download_arguments(&app, operation);
+        } else {
+            let owners = [
+                &app.map,
+                &app.map_layers,
+                &app.map_profile,
+                &app.map_grid_lasso,
+                &app.survey,
+            ]
+            .into_iter()
+            .filter(|source| has_operation_contract(source, operation.operation))
+            .collect::<Vec<_>>();
+            assert_eq!(
+                owners.len(),
+                1,
+                "`{}` must have exactly one typed map adapter owner",
                 operation.operation
             );
-            for nested in parts {
+            let contract = operation_contract(owners[0], operation.operation);
+            assert!(
+                operation.arguments.is_empty() || !contract.is_empty(),
+                "`{}` has no typed map-adapter argument contract",
+                operation.operation
+            );
+            for argument in operation.arguments {
+                let mut parts = argument.split('.');
+                let top = parts.next().expect("declared argument is non-empty");
                 assert!(
-                    app.map.contains(&format!("'{nested}'"))
-                        || app.map_layers.contains(&format!("'{nested}'"))
-                        || app.map_profile.contains(&format!("'{nested}'"))
-                        || app.survey.contains(&format!("'{nested}'")),
-                    "ds map sends `{argument}` to `{}`, but the adapter does not validate `{nested}`",
+                    contract.contains(&format!("'{top}'")),
+                    "ds map sends `{argument}` to `{}`, but its typed adapter does not accept `{top}`",
                     operation.operation
                 );
+                for nested in parts {
+                    assert!(
+                        app.map.contains(&format!("'{nested}'"))
+                            || app.map_layers.contains(&format!("'{nested}'"))
+                            || app.map_profile.contains(&format!("'{nested}'"))
+                            || app.survey.contains(&format!("'{nested}'")),
+                        "ds map sends `{argument}` to `{}`, but the adapter does not validate `{nested}`",
+                        operation.operation
+                    );
+                }
             }
         }
     }
 }
 
+/// Survey admission moved into the shared kernel; the web forwards the same
+/// closed arguments rather than maintaining a second TypeScript key list.
+fn assert_survey_download_arguments(app: &App, operation: &BridgeOp) {
+    assert_eq!(operation.arguments, &["entireProject"]);
+    assert!(
+        app.survey.contains(&format!(
+            "const operation = '{}' as const;",
+            operation.operation
+        )),
+        "the survey adapter must name the declared download operation"
+    );
+    assert!(app.survey.contains("surveyEvaluate({ operation: 'bridge', mode: 'download_admit', command: operation, args, uid, project: projectId })"),
+        "the survey adapter must forward arguments and captured authority to kernel admission");
+    assert!(
+        app.frontend
+            .contains("return downloadCliWorkingAreaSurvey(args);"),
+        "the download executor must forward the bridge arguments to the survey adapter"
+    );
+    assert!(
+        app.style_kernel.contains("loaded.surveyEvaluate(bytes)"),
+        "the web survey binding must execute the shared kernel"
+    );
+    let admit = |args| {
+        ds_command_kernel::survey::survey_evaluate(
+            &serde_json::to_vec(&serde_json::json!({
+                "operation": "bridge", "mode": "download_admit", "command": operation.operation,
+                "args": args, "uid": "parity-user", "project": "parity-project",
+            }))
+            .unwrap(),
+        )
+    };
+    assert_eq!(
+        admit(serde_json::json!({"entireProject": true}))
+            .expect("the kernel accepts the CLI's complete request"),
+        serde_json::Value::Null
+    );
+    for args in [
+        serde_json::json!({}),
+        serde_json::json!({"entireProject": false}),
+    ] {
+        let error = admit(args).expect_err("unscoped survey download must fail");
+        assert!(
+            error.contains("entireProject must be true"),
+            "unexpected admission refusal: {error}"
+        );
+    }
+    let error = admit(serde_json::json!({"entireProject": true, "extra": true}))
+        .expect_err("the kernel must reject undeclared argument keys");
+    assert!(
+        error.contains("does not accept extra"),
+        "unexpected argument refusal: {error}"
+    );
+}
+
 #[test]
 fn design_open_has_one_exact_argument_and_keeps_typed_safety_refusals() {
-    let Some(app) = app() else {
-        skip("the ds-web sibling repository is not on disk");
-        return;
-    };
+    let app = app();
     let operation = ds_cli_map::DESIGN_OPEN.operation;
     let accepted = quoted_contract_items(operation_contract(&app.map, operation));
     let declared = ds_cli_map::DESIGN_OPEN
@@ -457,10 +612,7 @@ fn design_open_has_one_exact_argument_and_keeps_typed_safety_refusals() {
 
 #[test]
 fn design_version_history_has_closed_operations_and_exact_arguments() {
-    let Some(app) = app() else {
-        skip("the ds-web sibling repository is not on disk");
-        return;
-    };
+    let app = app();
     for (operation, expected) in [
         (
             &ds_cli_map::DESIGN_VERSION_PLAY,
@@ -484,10 +636,7 @@ fn design_version_history_has_closed_operations_and_exact_arguments() {
 
 #[test]
 fn every_survey_control_plane_command_has_one_api_only_owner_and_exact_arguments() {
-    let Some(app) = app() else {
-        skip("the ds-web sibling repository is not on disk");
-        return;
-    };
+    let app = app();
 
     // The survey control plane no longer has a paired door. Survey semantics
     // moved into the kernel and the desktop deleted its three typed control
@@ -536,14 +685,15 @@ fn every_survey_control_plane_command_has_one_api_only_owner_and_exact_arguments
 
 #[test]
 fn every_solar_command_has_one_closed_operation_owner_and_exact_arguments() {
-    let Some(app) = app() else {
-        skip("the ds-web sibling repository is not on disk");
-        return;
-    };
+    let app = app();
     let allowlist = between(
         &app.transport,
         "pub const CLI_OPERATIONS: &[&str] = &[",
         "];",
+    );
+    assert!(
+        !ds_cli_solar::paired::BRIDGE_OPS.is_empty(),
+        "ds_cli_solar::paired::BRIDGE_OPS must declare operations for this parity check"
     );
     for operation in ds_cli_solar::paired::BRIDGE_OPS {
         assert_eq!(
@@ -562,7 +712,10 @@ fn every_solar_command_has_one_closed_operation_owner_and_exact_arguments() {
         // typed adapter rather than inside the dispatcher, because it needs no
         // run, workspace or native engine — so its keys are checked as an exact
         // set against that declared contract, not by grepping the dispatcher.
-        if has_operation_contract(&app.solar_seed_adapter, operation.operation) {
+        if seeding_operations()
+            .iter()
+            .any(|seed| seed.operation == operation.operation)
+        {
             let accepted = quoted_contract_items(operation_contract(
                 &app.solar_seed_adapter,
                 operation.operation,
@@ -635,10 +788,7 @@ fn every_solar_command_has_one_closed_operation_owner_and_exact_arguments() {
 /// derives.
 #[test]
 fn solar_seeding_sends_the_same_governed_request_and_reads_the_same_refusals_as_the_card() {
-    let Some(app) = app() else {
-        skip("the ds-web sibling repository is not on disk");
-        return;
-    };
+    let app = app();
 
     // One request builder on each side, and they must agree on every key. The
     // CLI declares all of them except `root`: the destination is the paired
@@ -777,10 +927,7 @@ fn seeding_operations() -> [&'static BridgeOp; 2] {
 /// than a second backend path.
 #[test]
 fn the_solar_seeding_door_is_landed_and_owned_by_one_typed_adapter() {
-    let Some(app) = app() else {
-        skip("the ds-web sibling repository is not on disk");
-        return;
-    };
+    let app = app();
     let allowlist = between(
         &app.transport,
         "pub const CLI_OPERATIONS: &[&str] = &[",
@@ -900,16 +1047,13 @@ fn the_solar_seeding_door_is_landed_and_owned_by_one_typed_adapter() {
 /// report the explanation as a violation.
 fn seed_adapter_code(app: &App) -> String {
     let mut code = String::with_capacity(app.solar_seed_adapter.len());
-    let mut rest = app.solar_seed_adapter.as_str();
+    let mut rest: &str = &app.solar_seed_adapter;
     while let Some(open) = rest.find("/*") {
         code.push_str(&rest[..open]);
         let after = &rest[open + 2..];
         match after.find("*/") {
             Some(close) => rest = &after[close + 2..],
-            None => {
-                rest = "";
-                break;
-            }
+            None => panic!("bridge parity seeding adapter has an unclosed block comment"),
         }
     }
     code.push_str(rest);
@@ -937,13 +1081,11 @@ fn seed_adapter_code(app: &App) -> String {
 /// What has to agree is therefore the receipt field `ds` hand-copies, the bound
 /// the application puts on it, the order that keeps the run successful, and the
 /// "never queued" word both surfaces print. The application's own CLI
-/// projection does not forward the field yet; the directional guard below
-/// pins the spelling `ds` reads for when it does.
+/// projection forwards the field; the guard below pins the spelling `ds`
+/// reads and requires the projection to retain it.
 #[test]
 fn a_failed_portfolio_publication_stays_a_sync_lane_fact_on_a_succeeded_receipt() {
-    let Some(app) = app() else {
-        return skip("ds-web checkout not found");
-    };
+    let app = app();
 
     assert!(
         app.solar_portfolio_receipt
@@ -999,9 +1141,8 @@ fn a_failed_portfolio_publication_stays_a_sync_lane_fact_on_a_succeeded_receipt(
         ds_cli_solar::paired_run::PUBLICATION_NOT_QUEUED
     );
 
-    // The hand copy rests on one convention: this projection renames every
-    // receipt field it forwards to snake_case. Prove the convention, then hold
-    // the field to it if and when the projection carries it.
+    // The projection renames receipt fields to snake_case, including the
+    // publication failure. Every field the client reads must stay present.
     let projection = between(&app.frontend, "portfolio: {", "};");
     for (owner, wire) in [
         ("portfolio.sourceRunId", "source_run_id"),
@@ -1013,14 +1154,12 @@ fn a_failed_portfolio_publication_stays_a_sync_lane_fact_on_a_succeeded_receipt(
              ds reads is derived from that convention"
         );
     }
-    if app.frontend.contains("publicationError") {
-        assert!(
-            projects_field(projection, ds_cli_solar::paired_run::PUBLICATION_ERROR_KEY),
-            "the projection carries the receipt's publication failure under a key ds does \
-             not read; ds reads `{}`",
-            ds_cli_solar::paired_run::PUBLICATION_ERROR_KEY
-        );
-    }
+    assert!(
+        projects_field(projection, ds_cli_solar::paired_run::PUBLICATION_ERROR_KEY)
+            && projection.contains("portfolio.publicationError"),
+        "the portfolio projection must forward the receipt's publication failure as `{}`",
+        ds_cli_solar::paired_run::PUBLICATION_ERROR_KEY
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -1067,10 +1206,7 @@ const DSGRID_PROJECT_OPERATIONS: &[&str] = &["dsgrid.model.publish", "dsgrid.pro
 
 #[test]
 fn every_dsgrid_model_command_has_one_closed_operation_owner_and_exact_arguments() {
-    let Some(app) = app() else {
-        skip("the ds-web sibling repository is not on disk");
-        return;
-    };
+    let app = app();
     let allowlist = between(
         &app.transport,
         "pub const CLI_OPERATIONS: &[&str] = &[",
@@ -1082,6 +1218,10 @@ fn every_dsgrid_model_command_has_one_closed_operation_owner_and_exact_arguments
     );
 
     let mut seen = BTreeSet::new();
+    assert!(
+        !ds_cli_dsgrid::model::BRIDGE_OPS.is_empty(),
+        "ds_cli_dsgrid::model::BRIDGE_OPS must declare operations for this parity check"
+    );
     for operation in ds_cli_dsgrid::model::BRIDGE_OPS {
         assert!(
             seen.insert(operation.operation),
@@ -1145,10 +1285,7 @@ fn the_dsgrid_project_operations_still_name_the_applications_own_project() {
     // what is left: the one operation that DOES read the application's project
     // is the only one the door admits, and it carries no project of its own —
     // the application's selected project is the destination.
-    let Some(app) = app() else {
-        skip("the ds-web sibling repository is not on disk");
-        return;
-    };
+    let app = app();
     for operation in DSGRID_PROJECT_OPERATIONS {
         assert_eq!(
             switch_case_count(&app.frontend, operation),
@@ -1166,10 +1303,7 @@ fn the_dsgrid_project_operations_still_name_the_applications_own_project() {
 
 #[test]
 fn dsgrid_publication_refuses_rename_coupling_exactly_as_the_desktop_does() {
-    let Some(app) = app() else {
-        skip("the ds-web sibling repository is not on disk");
-        return;
-    };
+    let app = app();
     // Publishing a revision must not quietly become a metadata edit. ds-web
     // refuses `name` against an existing project model; `ds` refuses it
     // earlier, by name, so the round trip is never spent.
@@ -1204,10 +1338,7 @@ fn dsgrid_publication_refuses_rename_coupling_exactly_as_the_desktop_does() {
 
 #[test]
 fn dsgrid_bounds_and_typed_refusal_markers_match_the_desktop_owner() {
-    let Some(app) = app() else {
-        skip("the ds-web sibling repository is not on disk");
-        return;
-    };
+    let app = app();
     // The list bound this used to hold in step belonged to `dsgrid.model.list`,
     // which no longer crosses this door: `ds dsgrid model list` pages its own
     // catalogue, so the two sides have no shared bound left to drift.
@@ -1246,10 +1377,7 @@ fn dsgrid_bounds_and_typed_refusal_markers_match_the_desktop_owner() {
 
 #[test]
 fn the_dsgrid_bridge_admits_no_conversion_verb_no_revision_activation_and_no_bytes() {
-    let Some(app) = app() else {
-        skip("the ds-web sibling repository is not on disk");
-        return;
-    };
+    let app = app();
     let allowlist = between(
         &app.transport,
         "pub const CLI_OPERATIONS: &[&str] = &[",
@@ -1336,10 +1464,7 @@ fn the_admin_hierarchy_no_longer_travels_through_the_window() {
     // refused on any machine without a window — including the server where an
     // agent reads a hierarchy. Since 2026-09-18 both reads call the same
     // `/api/v1/admin/rwanda` through `ds-client-core::admin_bounds`.
-    let Some(app) = app() else {
-        skip("the ds-web sibling repository is not on disk");
-        return;
-    };
+    let app = app();
     let allowlist = between(
         &app.transport,
         "pub const CLI_OPERATIONS: &[&str] = &[",
@@ -1363,7 +1488,6 @@ fn the_admin_hierarchy_no_longer_travels_through_the_window() {
     }
     assert!(
         !ds_web()
-            .expect("the checkout was found above")
             .join("src/lib/search-place/cli-boundary.ts")
             .exists(),
         "the CLI boundary adapter outlived its last caller"
@@ -1388,10 +1512,7 @@ fn the_combined_report_archive_no_longer_travels_through_the_window() {
             .any(|operation| operation.operation == retired),
         "`ds map` declares {retired} again; Compounded Report archives are `ds report project compounded` only"
     );
-    let Some(app) = app() else {
-        skip("the ds-web sibling repository is not on disk");
-        return;
-    };
+    let app = app();
     let allowlist = between(
         &app.transport,
         "pub const CLI_OPERATIONS: &[&str] = &[",
@@ -1415,10 +1536,7 @@ fn the_combined_report_archive_no_longer_travels_through_the_window() {
 
 #[test]
 fn the_data_domain_sends_only_operations_the_desktop_owns() {
-    let Some(app) = app() else {
-        skip("the ds-web sibling repository is not on disk");
-        return;
-    };
+    let app = app();
     let allowlist = between(
         &app.transport,
         "pub const CLI_OPERATIONS: &[&str] = &[",
@@ -1427,6 +1545,10 @@ fn the_data_domain_sends_only_operations_the_desktop_owns() {
     // What is left is local compute this application's own components serve:
     // the Rwanda DEM engine and the project's pinned boundary asset.
     assert_eq!(ds_cli_data::BRIDGE_OPS.len(), 4);
+    assert!(
+        !ds_cli_data::BRIDGE_OPS.is_empty(),
+        "ds_cli_data::BRIDGE_OPS must declare operations for this parity check"
+    );
     for operation in ds_cli_data::BRIDGE_OPS {
         assert_eq!(
             count(allowlist, &format!("\"{}\"", operation.operation)),
@@ -1485,10 +1607,7 @@ fn platform_reliability_no_longer_travels_through_the_window() {
     // desktop's two operations are retired, its adapter is deleted, and the
     // crate no longer depends on `ds-cli-desktop` (`lens_core_boundary.rs`
     // holds that).
-    let Some(app) = app() else {
-        skip("the ds-web sibling repository is not on disk");
-        return;
-    };
+    let app = app();
     let allowlist = between(
         &app.transport,
         "pub const CLI_OPERATIONS: &[&str] = &[",
@@ -1508,10 +1627,7 @@ fn platform_reliability_no_longer_travels_through_the_window() {
         );
     }
     assert!(
-        !ds_web()
-            .expect("the checkout was found above")
-            .join("src/lib/desktop/cli-sre.ts")
-            .exists(),
+        !ds_web().join("src/lib/desktop/cli-sre.ts").exists(),
         "the paired SRE adapter outlived its last caller"
     );
     // The Reliability page itself is untouched: a person at a window still
@@ -1533,10 +1649,7 @@ fn the_governed_style_documents_no_longer_travel_through_the_window() {
     // Since 2026-09-18 there is one route. `ds-cli-style` does not depend on
     // `ds-cli-desktop` (`lens_core_boundary.rs` holds that), the desktop's
     // nine operations are retired, and the adapter is deleted.
-    let Some(app) = app() else {
-        skip("the ds-web sibling repository is not on disk");
-        return;
-    };
+    let app = app();
     let allowlist = between(
         &app.transport,
         "pub const CLI_OPERATIONS: &[&str] = &[",
@@ -1569,10 +1682,7 @@ fn the_governed_style_documents_no_longer_travel_through_the_window() {
             "{retired} still has a frontend handler"
         );
     }
-    let Some(root) = ds_web() else {
-        skip("the ds-web sibling repository is not on disk");
-        return;
-    };
+    let root = ds_web();
     assert!(
         !root.join("src/lib/desktop/cli-style.ts").exists(),
         "the style adapter outlived its last caller"
@@ -1586,10 +1696,7 @@ fn style_cartography_offers_only_the_vocabulary_the_renderer_paints() {
     // size — into a governed document that the map then has to paint. A name
     // ds offers and the renderer does not know is a published style nothing
     // draws, and neither the kernel nor the gateway would notice.
-    let Some(app) = app() else {
-        skip("the ds-web sibling repository is not on disk");
-        return;
-    };
+    let app = app();
 
     // MapLibre repeats a pattern image by tiling it, so a tile size that is
     // not a power of two seams at every edge. `ds` refuses the others at the
@@ -1614,17 +1721,58 @@ fn style_cartography_offers_only_the_vocabulary_the_renderer_paints() {
         .arg("fill-pattern")
         .expect("--fill-pattern is declared")
         .choices;
-    for name in fill_patterns.iter().chain(["directional"].iter()) {
-        let named = [&app.style_fill_pattern, &app.style_line_type]
+    assert!(
+        !fill_patterns.is_empty(),
+        "ds style must declare fill-pattern choices"
+    );
+    let renderer_patterns = quoted_contract_items(between(
+        &app.style_fill_pattern,
+        "export const FILL_PATTERN_KINDS = [",
+        "] as const",
+    ));
+    assert_eq!(
+        renderer_patterns,
+        fill_patterns
             .iter()
-            .any(|source| {
-                source.contains(&format!("'{name}'")) || source.contains(&format!("\"{name}\""))
-            });
-        assert!(
-            named,
-            "ds style cartography offers `{name}`, but the renderer does not name it"
-        );
-    }
+            .filter(|name| **name != "solid")
+            .map(|name| (*name).to_owned())
+            .collect::<BTreeSet<_>>(),
+        "CLI hatch choices must equal the renderer's pattern vocabulary"
+    );
+    assert!(
+        fill_patterns.contains(&"solid"),
+        "CLI must expose solid to clear hatching"
+    );
+    let cleared = ds_command_kernel::style_authoring::apply_pattern(
+        serde_json::json!({"type": "fill", "metadata": {"fill_pattern": "dots"}}),
+        None,
+    )
+    .expect("the shared kernel clears hatching for solid");
+    assert!(cleared["metadata"].get("fill_pattern").is_none());
+    // Line authoring moved to the shared kernel. Prove the web binding and the
+    // actual native transform rather than pinning the deleted TS implementation.
+    assert!(
+        app.style_kernel.contains("loaded.transformStyle("),
+        "the web must bind line authoring to the shared kernel transform"
+    );
+    let styled = ds_command_kernel::style_authoring::apply_line_type(
+        serde_json::json!({"type": "line", "paint": {}, "metadata": {}}),
+        "directional",
+        &serde_json::Map::new(),
+        &serde_json::Map::new(),
+    )
+    .expect("the shared kernel authors directional lines");
+    assert_eq!(styled["metadata"]["line_marker"], "arrow");
+    let marker_renderer = between(
+        &app.style_renderer,
+        "export function directionalMarkerStyle(",
+        "export function",
+    );
+    assert!(
+        marker_renderer.contains("style.metadata?.line_marker !== 'arrow'")
+            && marker_renderer.contains("'text-field': '>'"),
+        "the renderer must consume the kernel's arrow marker and paint a direction glyph"
+    );
 }
 
 #[test]
@@ -1638,11 +1786,8 @@ fn the_global_reference_publications_no_longer_travel_through_the_window() {
     // Since 2026-09-18 the four actions travel on the same `/api/v1/tiles`
     // route through `ds-client-core::global_tiles`, and `ds-cli-tile` does not
     // depend on `ds-cli-desktop` at all (`lens_core_boundary.rs` holds that).
-    let Some(root) = ds_web() else {
-        skip("the ds-web sibling repository is not on disk");
-        return;
-    };
-    let transport = std::fs::read_to_string(root.join("src-tauri/src/cli_bridge.rs")).unwrap();
+    let root = ds_web();
+    let transport = source(&root, "src-tauri/src/cli_bridge.rs");
     let allowlist = between(&transport, "pub const CLI_OPERATIONS: &[&str] = &[", "];");
     assert!(
         !allowlist.is_empty(),
@@ -1679,10 +1824,7 @@ fn the_shared_backlog_no_longer_travels_through_the_window() {
     // Since 2026-09-18 there is one route. The crate does not depend on
     // `ds-cli-desktop` (`lens_core_boundary.rs` holds that), the desktop's
     // three operations are retired, and the adapter is deleted.
-    let Some(app) = app() else {
-        skip("the ds-web sibling repository is not on disk");
-        return;
-    };
+    let app = app();
     let allowlist = between(
         &app.transport,
         "pub const CLI_OPERATIONS: &[&str] = &[",
@@ -1696,11 +1838,14 @@ fn the_shared_backlog_no_longer_travels_through_the_window() {
              no longer sends it"
         );
     }
-    // The application's own reporting path is untouched: a person filing from
-    // the window still reaches the same endpoint.
+    // The window retains human feedback; agent submissions belong to the
+    // native client and must not be restored as a window-owned path.
     assert!(
-        app.feedback_submit.contains("reporter_kind: 'agent'"),
-        "the application's own feedback submission lost its reporter kind"
+        app.feedback_submit.contains("reporter_kind: 'human'")
+            && app
+                .feedback_submit
+                .contains("export async function submitHumanFeedback("),
+        "the application's human feedback submission lost its typed reporter kind or executor"
     );
 }
 
@@ -1721,10 +1866,7 @@ fn the_global_catalog_no_longer_travels_through_the_window() {
     //
     // The desktop's own catalogue adapter stays: the Library screen uses it.
     // Only the CLI's door is gone.
-    let Some(app) = app() else {
-        skip("the ds-web sibling repository is not on disk");
-        return;
-    };
+    let app = app();
     let allowlist = between(
         &app.transport,
         "pub const CLI_OPERATIONS: &[&str] = &[",
@@ -1756,10 +1898,7 @@ fn the_global_catalog_no_longer_travels_through_the_window() {
 
 #[test]
 fn map_bounds_and_session_projection_match_the_desktop_owner() {
-    let Some(app) = app() else {
-        skip("the ds-web sibling repository is not on disk");
-        return;
-    };
+    let app = app();
 
     assert!(
         app.map.contains(&format!(
@@ -1783,9 +1922,8 @@ fn map_bounds_and_session_projection_match_the_desktop_owner() {
         "the desktop must enforce the same design sample bound as ds map"
     );
 
-    let root = ds_web().expect("checked above");
-    let create = std::fs::read_to_string(root.join("src/lib/design/create-from-selection.ts"))
-        .expect("create-from-selection.ts is readable");
+    let root = ds_web();
+    let create = source(&root, "src/lib/design/create-from-selection.ts");
     assert!(
         create.contains(&format!(
             "MAX_CREATE_FROM_SELECTION = {}",
@@ -1816,10 +1954,7 @@ fn map_bounds_and_session_projection_match_the_desktop_owner() {
 
 #[test]
 fn map_working_set_stays_a_closed_projection_of_the_desktop_owner() {
-    let Some(app) = app() else {
-        skip("the ds-web sibling repository is not on disk");
-        return;
-    };
+    let app = app();
 
     assert!(
         app.map.contains("return applyCliWorkingSet(args"),
@@ -1873,10 +2008,7 @@ fn grouped(value: usize) -> String {
 
 #[test]
 fn analysis_ids_and_typed_refusals_stay_owned_by_the_desktop() {
-    let Some(app) = app() else {
-        skip("the ds-web sibling repository is not on disk");
-        return;
-    };
+    let app = app();
 
     let prefix = ds_cli_map::ANALYSIS_SKETCH_PREFIX.trim_end_matches(':');
     assert!(
@@ -1900,10 +2032,7 @@ fn analysis_ids_and_typed_refusals_stay_owned_by_the_desktop() {
 
 #[test]
 fn retired_automation_bridge_is_not_a_map_fallback() {
-    let Some(app) = app() else {
-        skip("the ds-web sibling repository is not on disk");
-        return;
-    };
+    let app = app();
 
     for source in [
         &app.transport,
@@ -1955,10 +2084,7 @@ fn item<'a>(source: &'a str, opening: &str) -> Option<&'a str> {
 /// project. Neither side can rename one alone.
 #[test]
 fn the_descriptor_and_session_this_client_reads_are_the_shells_own() {
-    let Some(app) = app() else {
-        skip("the ds-web sibling repository is not on disk");
-        return;
-    };
+    let app = app();
 
     let descriptor = item(&app.transport, "struct Descriptor<'a> {")
         .expect("the shell publishes a descriptor struct");
@@ -1991,18 +2117,13 @@ fn the_descriptor_and_session_this_client_reads_are_the_shells_own() {
          the kernel takes the directory the file was read from"
     );
 
-    // Both spellings of where a descriptor lives. The registry directory is
-    // where every live instance publishes; the legacy file is the one an older
-    // `ds` is the only reader of, and dropping it would unpair those builds.
-    for path in [
-        ds_cli_desktop::discover::DESCRIPTOR_DIR,
-        ds_cli_desktop::discover::DESCRIPTOR_FILE,
-    ] {
-        assert!(
-            app.transport.contains(&format!("\"{path}\"")),
-            "the shell no longer writes `{path}`, which discovery enumerates"
-        );
-    }
+    // The registry directory is where every live instance publishes; the shell
+    // writes nothing else (the per-profile legacy file is retired).
+    let path = ds_cli_desktop::discover::DESCRIPTOR_DIR;
+    assert!(
+        app.transport.contains(&format!("\"{path}\"")),
+        "the shell no longer writes `{path}`, which discovery enumerates"
+    );
 
     let session = item(&app.transport, "struct SessionView {").expect("a session view");
     let window = item(&app.transport, "struct WindowView {").expect("a window view");
@@ -2095,10 +2216,7 @@ fn the_descriptor_and_session_this_client_reads_are_the_shells_own() {
 /// every call to an older desktop fail at the door.
 #[test]
 fn the_invocation_fence_is_still_the_five_fields_the_shell_verifies() {
-    let Some(app) = app() else {
-        skip("the ds-web sibling repository is not on disk");
-        return;
-    };
+    let app = app();
     let fence = item(&app.transport, "struct IdentityFence {").expect("the shell's fence");
     let declared: Vec<&str> = fence
         .lines()

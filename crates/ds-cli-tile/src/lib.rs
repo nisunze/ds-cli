@@ -77,11 +77,6 @@ pub const READ_TIMEOUT: Duration = Duration::from_secs(60);
 // Refusals this domain adds to the shared pairing set
 // ---------------------------------------------------------------------------
 
-pub const TILE_REFUSED: Refusal = Refusal {
-    code: "desktop_refused",
-    when: "an unknown tile type or tile id, a blocked preflight, or ds-brain declined the run",
-    remedy: "read `ds tile status` and `ds tile preflight`; detail.detail carries the application's message",
-};
 pub const CONFIRMATION_REQUIRED: Refusal = Refusal {
     code: "confirmation_required",
     when: "--yes was not given for a command that starts a run or changes the tile catalogue",
@@ -348,11 +343,6 @@ pub const LANE_ARG: Arg = Arg::value(
 )
 .default("stable")
 .choices(&["stable", "canary"]);
-
-/// The `type` flag, or `null` when the command accepts its absence.
-pub fn type_argument(inputs: &ds_cli_contract::Inputs) -> Value {
-    inputs.value("type").map_or(Value::Null, |t| json!(t))
-}
 
 pub fn tile_type(value: &str) -> TileType {
     match value {

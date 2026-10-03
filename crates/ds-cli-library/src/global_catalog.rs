@@ -37,25 +37,10 @@ const READ_ACTION: Arg = Arg {
     ],
     summary: "Read-only exact catalog discovery action.",
 };
-const WRITE_ACTION: Arg = Arg {
-    name: "action",
-    kind: ArgKind::Value,
-    value: "<action>",
-    required: true,
-    default: None,
-    choices: &[
-        "upload",
-        "library-publish",
-        "example-publish",
-        "library-lifecycle",
-        "example-lifecycle",
-    ],
-    summary: "Confirmation-required governed catalog write action.",
-};
 const PAYLOAD: Arg = Arg::value(
     "payload",
     "<json>",
-    "Typed action body JSON (library, example, lifecycle, or fork fields).",
+    "Typed read selection or fork request body JSON.",
 );
 const PATH: Arg = Arg::value("path", "<path>", "Local artifact path for upload only.");
 const PURPOSE: Arg = Arg::value(
@@ -130,16 +115,11 @@ const fn with_native<const OWN: usize, const TOTAL: usize>(
 
 const READ_SET: [Refusal; 18] = with_native::<2, 18>([PAYLOAD_REFUSAL, ACTION_REFUSAL]);
 const READ_REFUSALS: &[Refusal] = &READ_SET;
-const WRITE_SET: [Refusal; 21] = with_native::<5, 21>([
-    PAYLOAD_REFUSAL,
-    ACTION_REFUSAL,
-    ARTIFACT_REFUSAL,
-    UPLOAD_REFUSAL,
-    PREPARED_REFUSAL,
-]);
-const WRITE_REFUSALS: &[Refusal] = &WRITE_SET;
 const FORK_SET: [Refusal; 17] = with_native::<1, 17>([PAYLOAD_REFUSAL]);
 const FORK_REFUSALS: &[Refusal] = &FORK_SET;
+const UPLOAD_SET: [Refusal; 18] = with_native::<2, 18>([ARTIFACT_REFUSAL, UPLOAD_REFUSAL]);
+const PUBLISH_SET: [Refusal; 19] =
+    with_native::<3, 19>([ARTIFACT_REFUSAL, UPLOAD_REFUSAL, PREPARED_REFUSAL]);
 const REFUSALS: &[Refusal] = NATIVE;
 
 const LANE: Arg = Arg::value("lane", "<stable|canary>", "Native authentication lane.")
@@ -195,29 +175,6 @@ pub static READ_COMMAND: Command = Command {
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
-pub static WRITE_COMMAND: Command = Command {
-    id: "library.global.write",
-    path: &["library", "global", "write"],
-    contract: 1,
-    summary: "Legacy payload route for governed global catalog writes.",
-    purpose: "Confirmation-required publisher action. Upload session URIs are never emitted.",
-    chapter: Chapter::PlsCadd,
-    effect: Effect::GlobalWrite,
-    authority: Authority::HeadlessUser,
-    execution: Execution::Sync,
-    args: &[WRITE_ACTION, PAYLOAD, PATH, PURPOSE, VISIBILITY, LANE],
-    output: "Artifact pin, immutable published record, or fenced lifecycle receipt.",
-    examples: &[Example {
-        command: "ds library global write --action library-lifecycle --payload '{\"library_id\":\"rw-pls-cadd-structures\",\"expected_head_release_id\":\"2026.08\",\"lifecycle\":\"archived\"}' --yes --output json",
-        note: "Archive the current library head with an optimistic head fence; immutable releases remain readable.",
-        runnable: false,
-    }],
-    refusals: WRITE_REFUSALS,
-    reference: Some("docs/reference/library.md"),
-    search: &[],
-    requires: Requires::Server,
-    availability: ds_cli_auth::native_availability,
-};
 pub static FORK_COMMAND: Command = Command {
     id: "library.global.fork-example",
     path: &["library", "global", "fork-example"],
@@ -244,21 +201,26 @@ pub static FORK_COMMAND: Command = Command {
 pub static UPLOAD_COMMAND: Command = Command {
     id: "library.global.upload",
     path: &["library", "global", "upload"],
-    contract: 1,
+    contract: 2,
     summary: "Upload one typed global catalogue artifact from a local file.",
     purpose: "Publisher-only, map-independent content-addressed upload. It returns an immutable artifact pin and never exposes the resumable session URI, publishes a release, or evaluates a native model.",
     chapter: Chapter::PlsCadd,
     effect: Effect::GlobalWrite,
     authority: Authority::HeadlessUser,
     execution: Execution::Sync,
-    args: &[PATH, PURPOSE, VISIBILITY, LANE],
+    args: &[
+        PATH.required(),
+        PURPOSE.required(),
+        VISIBILITY.required(),
+        LANE,
+    ],
     output: "One canonical digest, object and byte-length artifact pin.",
     examples: &[Example {
         command: "ds library global upload --path ./pls-cadd/criteria.cri --purpose library_asset --visibility organization --yes --output json",
         note: "Upload one opaque library asset; it is not a solver approval.",
         runnable: false,
     }],
-    refusals: REFUSALS,
+    refusals: &UPLOAD_SET,
     reference: Some("docs/reference/library.md"),
     search: &[],
     requires: Requires::Server,
@@ -269,7 +231,7 @@ pub static PUBLISH_LIBRARY_COMMAND: Command = Command {
     path: &["library", "global", "publish-library"],
     contract: 1,
     summary: "Create or advance a governed global library from a prepared directory.",
-    purpose: "Publisher-only, map-independent publication. The paired desktop reads library.json and its explicitly named files, uploads manifest, validation evidence and typed assets under closed purposes, then publishes one immutable release. It never overwrites a release or approves a native solver result.",
+    purpose: "Publisher-only, map-independent publication. The native client reads library.json and its explicitly named files, uploads manifest, validation evidence and typed assets under closed purposes, then publishes one immutable release. It never overwrites a release or approves a native solver result.",
     chapter: Chapter::PlsCadd,
     effect: Effect::GlobalWrite,
     authority: Authority::HeadlessUser,
@@ -281,7 +243,7 @@ pub static PUBLISH_LIBRARY_COMMAND: Command = Command {
         note: "Publish the typed library.json preparation directory without a raw API JSON argument.",
         runnable: false,
     }],
-    refusals: REFUSALS,
+    refusals: &PUBLISH_SET,
     reference: Some("docs/reference/library.md"),
     search: &[],
     requires: Requires::Server,
@@ -304,7 +266,7 @@ pub static PUBLISH_EXAMPLE_COMMAND: Command = Command {
         note: "Publish the typed example.json preparation directory without a raw API JSON argument.",
         runnable: false,
     }],
-    refusals: REFUSALS,
+    refusals: &PUBLISH_SET,
     reference: Some("docs/reference/library.md"),
     search: &[],
     requires: Requires::Server,
@@ -448,38 +410,6 @@ pub fn run_read(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
         other => return Err(unknown_action(other)),
     };
     catalog(inputs, command)
-}
-
-pub fn run_write(inputs: &Inputs, context: &Context) -> Result<Value, Failure> {
-    let action = inputs.require("action")?;
-    match action {
-        "upload" => run_upload(inputs, context),
-        "library-publish" => catalog(
-            inputs,
-            Catalog::PublishLibraryRelease {
-                library: payload_object(inputs)?,
-            },
-        ),
-        "example-publish" => catalog(
-            inputs,
-            Catalog::PublishExampleRevision {
-                example: payload_object(inputs)?,
-            },
-        ),
-        "library-lifecycle" => catalog(
-            inputs,
-            Catalog::SetLibraryLifecycle {
-                lifecycle: payload_object(inputs)?,
-            },
-        ),
-        "example-lifecycle" => catalog(
-            inputs,
-            Catalog::SetExampleLifecycle {
-                lifecycle: payload_object(inputs)?,
-            },
-        ),
-        other => Err(unknown_action(other)),
-    }
 }
 
 /// Fork one exact governed example revision into a project model.
@@ -861,18 +791,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn read_and_publisher_actions_are_disjoint() {
-        let read = READ_COMMAND.args[0].choices;
-        let write = WRITE_COMMAND.args[0].choices;
-
-        assert!(read.iter().all(|action| !write.contains(action)));
-        assert!(read.contains(&"library-list"));
-        assert!(!read.contains(&"library-publish"));
-        assert!(write.contains(&"library-publish"));
-        assert!(!write.contains(&"library-list"));
-    }
-
-    #[test]
     fn exact_project_fork_has_no_action_multiplexer() {
         assert_eq!(FORK_COMMAND.id, "library.global.fork-example");
         assert!(FORK_COMMAND.args.iter().all(|arg| arg.name != "action"));
@@ -898,7 +816,6 @@ mod tests {
     fn every_global_catalog_command_is_a_native_user_command() {
         for command in [
             &READ_COMMAND,
-            &WRITE_COMMAND,
             &FORK_COMMAND,
             &UPLOAD_COMMAND,
             &PUBLISH_LIBRARY_COMMAND,
@@ -947,8 +864,9 @@ mod tests {
     fn every_composed_set_ends_with_the_native_refusals() {
         for (set, own) in [
             (READ_REFUSALS, 2usize),
-            (WRITE_REFUSALS, 5),
             (FORK_REFUSALS, 1),
+            (UPLOAD_SET.as_slice(), 2),
+            (PUBLISH_SET.as_slice(), 3),
         ] {
             assert_eq!(set.len(), own + NATIVE_COUNT);
             for (index, refusal) in NATIVE.iter().enumerate() {

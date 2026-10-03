@@ -730,14 +730,14 @@ fn require_verified_save(
                 && rows[0]["transformer_name"] == transformer
                 && rows[0]["verified"] == true
                 && rows[0]["error_code"].is_null()
-                && rows[0]["version"].as_u64().is_some_and(|v| v > 0)
-                && ["content_digest", "analysis_sha256"].iter().all(|key| {
-                    rows[0][key].as_str().is_some_and(|s| {
-                        s.len() == 64
-                            && s.bytes()
-                                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+                && rows[0]["version"]
+                    .as_u64()
+                    .zip(rows[0]["content_digest"].as_str())
+                    .zip(rows[0]["analysis_sha256"].as_str())
+                    .is_some_and(|((version, digest), sha)| {
+                        ds_client_core::validate_saved_lv_analysis_pins(version, digest, sha)
+                            .is_ok()
                     })
-                })
         });
     if !verified {
         return Err(Failure::failed(

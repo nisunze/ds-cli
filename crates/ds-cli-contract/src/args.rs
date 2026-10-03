@@ -117,9 +117,6 @@ pub fn parse(command: &Command, tokens: &[String]) -> Result<Inputs, Failure> {
         };
 
         let Some(arg) = command.arg(name) else {
-            if name == WINDOW_PATH_FLAG && command.requires == crate::spec::Requires::Server {
-                return Err(requires_window_retired(command));
-            }
             return Err(unknown_flag(command, name));
         };
 
@@ -245,35 +242,6 @@ fn choice_refusal_code(command: &Command, arg_name: &str) -> &'static str {
     };
     code.filter(|code| command.refusals.iter().any(|refusal| refusal.code == *code))
         .unwrap_or("invalid_choice")
-}
-
-/// The one flag that ever selected the paired-window transport.
-///
-/// A command that runs on the Server no longer declares it, so a caller who
-/// learned the flag from an older release is told the window path is retired
-/// — by name, with the remedy — rather than being sent to guess at a typo.
-pub const WINDOW_PATH_FLAG: &str = "desktop-descriptor";
-
-/// The refusal a Server command answers to the retired window path.
-///
-/// Documented once in the output contract like every parser code, because it
-/// applies to every `Requires::Server` command equally.
-pub const REQUIRES_WINDOW_RETIRED: Refusal = Refusal {
-    code: "requires_window_retired",
-    when: "`--desktop-descriptor` was passed to a command that runs headless on the Server",
-    remedy: "drop `--desktop-descriptor`; the command needs no paired window and runs under the signed-in native credential",
-};
-
-fn requires_window_retired(command: &Command) -> Failure {
-    Failure::invalid(
-        REQUIRES_WINDOW_RETIRED.code,
-        format!(
-            "`ds {}` runs headless on the Server; the paired-window path `--{WINDOW_PATH_FLAG}` is retired",
-            command.path.join(" ")
-        ),
-    )
-    .remedy(REQUIRES_WINDOW_RETIRED.remedy)
-    .next(format!("ds {} --help", command.path.join(" ")))
 }
 
 fn unknown_flag(command: &Command, name: &str) -> Failure {
@@ -413,22 +381,6 @@ mod tests {
         parts.iter().map(|part| (*part).to_string()).collect()
     }
 
-    /// A caller who learned `--desktop-descriptor` from a release where this
-    /// command still needed a window is told the path is retired, by name —
-    /// not sent hunting for a typo of a flag the command never had.
-    #[test]
-    fn the_retired_window_path_is_refused_by_name_on_a_server_command() {
-        let refused = parse(
-            &WITH_OPERAND,
-            &tokens(&["x", "--desktop-descriptor", "/tmp/d.json"]),
-        )
-        .expect_err("refused");
-        assert_eq!(refused.code(), "requires_window_retired");
-        // Any other unknown flag keeps the parser's ordinary answer.
-        let unknown = parse(&WITH_OPERAND, &tokens(&["x", "--desktop", "1"])).expect_err("refused");
-        assert_eq!(unknown.code(), "unknown_flag");
-    }
-
     #[test]
     fn a_sentinel_turns_a_flag_looking_token_into_the_operand() {
         let inputs = parse(&WITH_OPERAND, &tokens(&["--", "--yes"])).expect("parsed");
@@ -509,5 +461,67 @@ mod suggestion_tests {
             nearest("transfomer", ["transformer"].into_iter()),
             Some("transformer")
         );
+    }
+}
+
+/// Parse `west,south,east,north`, applying the same bounds the application
+/// applies, so a wrong box is a local refusal rather than a round trip.
+pub fn bbox(raw: &str) -> Result<[f64; 4], Failure> {
+    let parts: Vec<&str> = raw.split(',').map(str::trim).collect();
+    let refuse = |message: &str| {
+        Failure::invalid("invalid_bbox", message.to_string())
+            .remedy("pass --bbox west,south,east,north in degrees")
+            .detail(json!({ "given": raw }))
+    };
+    if parts.len() != 4 {
+        return Err(refuse("--bbox takes four comma-separated degrees"));
+    }
+    let mut values = [0f64; 4];
+    for (slot, part) in values.iter_mut().zip(&parts) {
+        *slot = part
+            .parse::<f64>()
+            .ok()
+            .filter(|value| value.is_finite())
+            .ok_or_else(|| refuse("--bbox values must be finite numbers"))?;
+    }
+    let [west, south, east, north] = values;
+    if !(-180.0..=180.0).contains(&west) || !(-180.0..=180.0).contains(&east) {
+        return Err(refuse("--bbox longitudes must be within -180..180"));
+    }
+    if !(-90.0..=90.0).contains(&south) || !(-90.0..=90.0).contains(&north) {
+        return Err(refuse("--bbox latitudes must be within -90..90"));
+    }
+    if west >= east || south >= north {
+        return Err(refuse("--bbox needs west below east and south below north"));
+    }
+    Ok(values)
+}
+
+#[cfg(test)]
+mod bbox_tests {
+    #[test]
+    fn shared_bbox_admission_is_trimmed_finite_ordered_wgs84() {
+        assert_eq!(
+            super::bbox(" -180, -90,180, 90 ").unwrap(),
+            [-180., -90., 180., 90.]
+        );
+        for raw in [
+            "1,2,3",
+            "1,2,3,4,5",
+            "NaN,2,3,4",
+            "1,2,inf,4",
+            "181,0,182,1",
+            "0,-91,1,1",
+            "0,0,0,1",
+            "0,1,1,0",
+            "a,b,c,d",
+            "",
+        ] {
+            assert_eq!(
+                super::bbox(raw).unwrap_err().code(),
+                "invalid_bbox",
+                "{raw}"
+            );
+        }
     }
 }

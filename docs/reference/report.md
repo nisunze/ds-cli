@@ -1049,6 +1049,17 @@ and passes a `publication_assets` map of only the resolved asset ids to held
 absolute paths. The reporter validates every digest and retains original
 components unchanged alongside the assembled booklet.
 
+`report plan-profile --alignment <id>` selects exact `alignment_id` band IDs
+from the held `--scene`; repeat the flag for multiple bands (1..256 IDs).
+Omitting it prints every band. Unknown or malformed IDs return
+`alignment_selection_invalid` before the project setup is read. Native engine
+selection preserves original scene order, stationing, revision, shared axis and
+engineering evidence, including solved cross-alignment spans touching the
+selected bands. It stages a private projection and leaves the source scene and
+plan unchanged. The receipt's `alignment_selection` pins the original scene
+SHA-256 and selected IDs; the reporter's scene digest pins the staged geometry.
+The same selection still requires the project's adopted publication setup.
+
 `report.plan-profile` contract 2 requires the named project's canonical setup
 and paired scene/plan projections from one unchanged model revision. Only
 `--model-identity` / `--model-title` fields explicitly allowed by the template

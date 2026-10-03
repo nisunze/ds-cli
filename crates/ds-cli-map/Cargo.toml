@@ -22,6 +22,7 @@ ds-cli-server = { workspace = true }
 ds-command-kernel = { workspace = true }
 serde_json = { workspace = true }
 serde = { workspace = true }
+ds-geo-lite = { workspace = true }
 ds-geo = { workspace = true }
 ds-layer-store = { path = "../../../ds-command-kernel/crates/ds-layer-store" }
 ds-layer-ops.workspace = true

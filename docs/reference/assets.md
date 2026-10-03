@@ -52,7 +52,7 @@ The ID is an address to authorize, never proof of authority. The local-only
 `assets.backup.plan` needs no project or credential. No command needs a window: until
 2026-09-20 nine of them relayed through the paired desktop (`requires:
 window`); that path is retired, `--desktop-descriptor` is no longer an input,
-and a caller that still passes it is told `requires_window_retired`.
+and a caller that still passes it is told `unknown_flag`.
 
 City maps are members of the general **tag-group-map** representation class.
 The map index groups existing producer asset identities by exact tag definition
@@ -297,7 +297,7 @@ catalogue's.
 | `asset_not_geographic` | `promote` named an asset that is not `geo` and no geo member; only a geographic asset or member promotes |
 | `invalid_payload` / `malformed_descriptor` / `local_layer_refused` | the prepared local layer store's own refusals on `promote`, in the words `ds map local` uses |
 | `assets_unreadable` | the catalogue answered a shape this build cannot fold; report it with the project id |
-| `requires_window_retired` | `--desktop-descriptor` was passed; drop it |
+| `unknown_flag` | `--desktop-descriptor` was passed; drop it |
 
 `--since 01-09-2026` is refused here rather than at the catalogue on purpose: a
 transposed day and month is the commonest filter mistake there is, and

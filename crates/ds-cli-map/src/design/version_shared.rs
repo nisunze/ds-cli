@@ -69,7 +69,7 @@ pub fn classify_failure(failure: Failure) -> Failure {
             "version_not_found",
             "the exact transformer version does not exist",
         )
-        .remedy("run `ds design version list --project <project-id> --transformer <name>` and pass an exact playable v<number>"),
+        .remedy("run `ds design version list --project <project-id> --kind lv_transformer --object <name>` and pass an exact playable v<number>"),
         Some("playback_unavailable") => Failure::invalid(
             "playback_unavailable",
             "the retained version has metadata but no immutable playback snapshot",

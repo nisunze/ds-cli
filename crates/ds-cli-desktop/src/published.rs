@@ -107,7 +107,7 @@ fn bounded(value: &str, max: usize) -> Result<String, Failure> {
     Ok(value.into())
 }
 pub fn run(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
-    let project = bounded(inputs.require("project")?, 128)?;
+    let project = crate::project_id(inputs.require("project")?, "sync_invalid_input")?;
     let operation = bounded(inputs.require("operation")?, 138)?;
     let variant = bounded(inputs.value("variant").unwrap_or("default"), 128)?;
     let engine = inputs.value("engine").unwrap_or("network_reporter");

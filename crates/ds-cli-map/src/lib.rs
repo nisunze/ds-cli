@@ -150,26 +150,6 @@ pub const LAYER_REMOVE: BridgeOp = BridgeOp {
     operation: "map.temporary_layer.remove",
     arguments: &["layerId"],
 };
-pub const LAYERS_LIST: BridgeOp = BridgeOp {
-    operation: "map.layers.list",
-    arguments: &["scope", "refresh", "limit"],
-};
-pub const LAYERS_REORDER: BridgeOp = BridgeOp {
-    operation: "map.layers.reorder",
-    arguments: &["orders", "apply"],
-};
-pub const REMOTE_LAYER_ADD: BridgeOp = BridgeOp {
-    operation: "map.remote_layer.add",
-    arguments: &["name", "kind", "url", "tileSize", "attribution", "visible"],
-};
-pub const REMOTE_LAYER_REMOVE: BridgeOp = BridgeOp {
-    operation: "map.remote_layer.remove",
-    arguments: &["layerId"],
-};
-pub const REMOTE_LAYER_VISIBILITY: BridgeOp = BridgeOp {
-    operation: "map.remote_layer.visibility",
-    arguments: &["layerId", "visible"],
-};
 pub const ZOOM_TO: BridgeOp = BridgeOp {
     operation: "map.zoom_to",
     arguments: &["bbox", "layerId", "padding"],
@@ -552,6 +532,7 @@ pub const EVIDENCE_HEIGHT: &str = "height";
 
 /// The whole receipt, in the order it is written. Seven keys, fixed: a
 /// screenshot is evidence only if what is written beside it does not vary.
+#[cfg(test)]
 pub const EVIDENCE_RECEIPT_KEYS: &[&str] = &[
     "path",
     "bytes",
@@ -568,7 +549,6 @@ pub const EVIDENCE_RECEIPT_KEYS: &[&str] = &[
 
 /// Adding, removing or moving is a redraw. Anything slower is a hung webview.
 pub const UI_TIMEOUT: Duration = Duration::from_secs(60);
-pub const API_TIMEOUT: Duration = Duration::from_secs(2 * 60);
 /// A capture has to wait for tiles, labels and the panel to settle before the
 /// frame is worth keeping, then write and digest a PNG. Longer than a redraw,
 /// far shorter than a vector tool.
@@ -713,12 +693,17 @@ pub fn load_features(raw: &str, flag: &str, max: usize) -> Result<Supplied, Fail
     }
 
     let mut kinds = BTreeSet::new();
-    let mut bounds: Option<[f64; 4]> = None;
+    let bounds = if value.is_array() {
+        ds_geo_lite::viewport::geojson_bounds(
+            &json!({"type":"FeatureCollection", "features":value}),
+        )
+    } else {
+        ds_geo_lite::viewport::geojson_bounds(&value)
+    };
     for feature in &features {
         if let Some(kind) = feature["geometry"]["type"].as_str() {
             kinds.insert(kind.to_string());
         }
-        extend_bounds(&mut bounds, &feature["geometry"]["coordinates"]);
     }
 
     Ok(Supplied {
@@ -762,37 +747,6 @@ pub fn kinds_of(supplied: &Supplied) -> Vec<String> {
     supplied.kinds.iter().cloned().collect()
 }
 
-/// Walk a nested GeoJSON coordinate array, widening `bounds`.
-///
-/// This is arithmetic over the caller's own input, not geometry: it derives
-/// no length, no area and no projection, and asks no engine anything. It
-/// exists so `map draw --zoom` can move the map to what it just drew without
-/// the caller computing an extent by hand.
-fn extend_bounds(bounds: &mut Option<[f64; 4]>, node: &Value) {
-    let Some(items) = node.as_array() else { return };
-    if let (Some(x), Some(y)) = (
-        items.first().and_then(Value::as_f64),
-        items.get(1).and_then(Value::as_f64),
-    ) {
-        if !x.is_finite() || !y.is_finite() {
-            return;
-        }
-        match bounds {
-            Some(box_) => {
-                box_[0] = box_[0].min(x);
-                box_[1] = box_[1].min(y);
-                box_[2] = box_[2].max(x);
-                box_[3] = box_[3].max(y);
-            }
-            None => *bounds = Some([x, y, x, y]),
-        }
-        return;
-    }
-    for item in items {
-        extend_bounds(bounds, item);
-    }
-}
-
 // ---------------------------------------------------------------------------
 // Flag shapes shared across the domain
 // ---------------------------------------------------------------------------
@@ -808,38 +762,7 @@ pub const INVALID_PAIR: Refusal = Refusal {
     remedy: "write it as --<flag> name=value",
 };
 
-/// Parse `west,south,east,north`, applying the same bounds the application
-/// applies, so a wrong box is a local refusal rather than a round trip.
-pub fn bbox(raw: &str) -> Result<[f64; 4], Failure> {
-    let parts: Vec<&str> = raw.split(',').map(str::trim).collect();
-    let refuse = |message: &str| {
-        Failure::invalid("invalid_bbox", message.to_string())
-            .remedy(INVALID_BBOX.remedy)
-            .detail(json!({ "given": raw }))
-    };
-    if parts.len() != 4 {
-        return Err(refuse("--bbox takes four comma-separated degrees"));
-    }
-    let mut values = [0f64; 4];
-    for (slot, part) in values.iter_mut().zip(&parts) {
-        *slot = part
-            .parse::<f64>()
-            .ok()
-            .filter(|value| value.is_finite())
-            .ok_or_else(|| refuse("--bbox values must be finite numbers"))?;
-    }
-    let [west, south, east, north] = values;
-    if !(-180.0..=180.0).contains(&west) || !(-180.0..=180.0).contains(&east) {
-        return Err(refuse("--bbox longitudes must be within -180..180"));
-    }
-    if !(-90.0..=90.0).contains(&south) || !(-90.0..=90.0).contains(&north) {
-        return Err(refuse("--bbox latitudes must be within -90..90"));
-    }
-    if west >= east || south >= north {
-        return Err(refuse("--bbox needs west below east and south below north"));
-    }
-    Ok(values)
-}
+pub use ds_cli_contract::args::bbox;
 
 /// A number flag, held to the bound stated in its own summary.
 pub fn number(raw: &str, flag: &str, min: f64, max: f64) -> Result<f64, Failure> {
@@ -954,6 +877,21 @@ mod tests {
             assert_eq!(supplied.features.len(), 1);
             assert_eq!(kinds_of(supplied), vec!["LineString".to_string()]);
         }
+    }
+
+    #[test]
+    fn zoom_extent_reads_geometry_collections_and_excludes_non_wgs84_pairs() {
+        let supplied = load(
+            "ds-map-extent-collection.geojson",
+            r#"{
+            "type":"Feature","properties":{},"geometry":{"type":"GeometryCollection","geometries":[
+                {"type":"Point","coordinates":[30,-2,800]},
+                {"type":"LineString","coordinates":[[31,-1],[500000,4700000],[-181,-2]]}
+            ]}}
+        "#,
+        )
+        .unwrap();
+        assert_eq!(supplied.bbox, Some([30., -2., 31., -1.]));
     }
 
     #[test]

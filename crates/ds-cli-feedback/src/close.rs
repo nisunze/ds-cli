@@ -136,7 +136,7 @@ mod tests {
             .iter()
             .find(|arg| arg.name == "status")
             .expect("status flag");
-        assert_eq!(status.choices, crate::CLOSED_STATUSES);
+        assert_eq!(status.choices, ["resolved", "wont_fix"]);
         assert_eq!(status.default, Some("resolved"));
     }
 

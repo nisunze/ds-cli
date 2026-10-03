@@ -265,10 +265,7 @@ impl NativeSyncSession {
         selected_project: String,
         credential_binding: String,
     ) -> Result<Self, String> {
-        if selected_project.is_empty()
-            || selected_project.len() > 200
-            || selected_project.chars().any(char::is_control)
-        {
+        if ds_client_core::validate_project_id(&selected_project).is_err() {
             return Err("native Sync Center selected project is invalid".into());
         }
         let authority_dir =
@@ -318,19 +315,6 @@ impl NativeSyncSession {
 
     pub fn install_id(&self) -> &str {
         &self.install_id
-    }
-
-    /// Register the exact release whose prepared executor will use this
-    /// session. A release is not guessed from a connection secret or an env
-    /// default; the Solar runtime supplies its sealed engine identity.
-    pub fn register_engine(&self, addition: NativeEngineAddition) -> Result<(), String> {
-        validate_addition(&addition)?;
-        let mut state = self
-            .state
-            .lock()
-            .map_err(|_| "native Sync Center session is unavailable")?;
-        state.addition = Some(addition);
-        self.heartbeat_locked(&mut state)
     }
 
     /// Solar's publication pump needs the same registration heartbeat, but it

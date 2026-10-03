@@ -32,7 +32,6 @@ pub static DOMAIN: Domain = Domain {
         &catalog::COMMAND,
         &global_catalog::READ_COMMAND,
         &global_member::COMMAND,
-        &global_catalog::WRITE_COMMAND,
         &global_catalog::FORK_COMMAND,
         &global_catalog::UPLOAD_COMMAND,
         &global_catalog::PUBLISH_LIBRARY_COMMAND,

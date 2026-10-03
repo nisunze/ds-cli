@@ -18,7 +18,6 @@ ds-layer-store = { path = "../../../ds-command-kernel/crates/ds-layer-store" }
 base64.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-sha2.workspace = true
 libc.workspace = true
 getrandom = "0.2"
 axum = "0.7"

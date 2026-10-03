@@ -189,17 +189,3 @@ pub fn link_json(link: Option<&PlsSourceLink>) -> Value {
         }),
     }
 }
-
-/// One human line for a link: `DON 57 · CRI 94 · FEA 15 …` after the path.
-pub fn link_line(link: &PlsSourceLink) -> String {
-    let versions = link
-        .member_versions
-        .iter()
-        .map(|(family, version)| format!("{family} {version}"))
-        .collect::<Vec<_>>()
-        .join(" · ");
-    format!(
-        "  linked     {}\n             PLS-CADD {} · {} members · {}\n             {}\n",
-        link.path, link.pls_version, link.member_count, versions, link.digest
-    )
-}

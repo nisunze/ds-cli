@@ -95,6 +95,7 @@ ds-cli-server = { path = "crates/ds-cli-server" }
 ds-client-core = { path = "../ds-command-kernel/crates/ds-client-core" }
 ds-edge-authority = { path = "../ds-command-kernel/crates/ds-edge-authority" }
 ds-sync-runtime = { path = "../ds-command-kernel/crates/ds-sync-runtime" }
+ds-geo-lite = { path = "../ds-command-kernel/crates/ds-geo-lite" }
 ds-geo = { path = "../ds-network/crates/ds-geo" }
 ds-cli-desktop = { path = "crates/ds-cli-desktop" }
 ds-cli-design = { path = "crates/ds-cli-design" }

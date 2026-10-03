@@ -2101,7 +2101,8 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
             // create-from-template and the three working-area form leaves
             // (read, choose, forget which forms the map loads); the photo
             // leaves moved to survey-media.
-            "survey-projects" => 24,
+            // The two cascade leaves join the existing entry workflow.
+            "survey-projects" => 26,
             // Held survey photos (list, read), the one rotation and its
             // publication, and the offline file rotation, plus bootstrap.
             "survey-media" => 10,
@@ -3302,7 +3303,8 @@ fn member_form_grants_project_survey_mcp_matches_cli_confirmation() {
     let tools = response(&responses, 1)["result"]["tools"]
         .as_array()
         .unwrap();
-    assert!(tools.len() <= 24);
+    // Cascade preview and delete add two leaves to this existing profile.
+    assert!(tools.len() <= 26);
     for verb in ["read", "plan", "apply"] {
         let name = format!("survey_member-grant_{verb}");
         let tool = tools
@@ -3395,4 +3397,29 @@ fn vector_workflow_stdio_matches_cli_discovery_validation_execution_and_failure(
         response(&messages, 4)["result"]["structuredContent"]["error"]["detail"]["error"]["step_id"],
         "measure"
     );
+}
+
+#[test]
+fn mcp_grid_describe_preserves_inline_authoring_schemas() {
+    let ids = [
+        "create_route_node",
+        "create_structure",
+        "author_terrain_source",
+        "create_tension_section_set_path",
+    ];
+    let requests: Vec<Value> = ids.iter().enumerate().map(|(index, id)| json!({
+        "jsonrpc":"2.0", "id":index + 1, "method":"tools/call", "params":{
+            "name":ds_cli_mcp::surface::chapter_tool_name(Chapter::GridModel),
+            "arguments":{"operation":"invoke","command":"dsgrid.describe","arguments":{"kind":"commands","id":id}}
+        }
+    })).collect();
+    let (responses, _) = mcp(&["--exposure", "chapters"], &requests);
+    for (index, id) in ids.iter().enumerate() {
+        let result = &response(&responses, (index + 1) as i64)["result"];
+        let direct = cli(&[
+            "dsgrid", "describe", "--kind", "commands", "--id", id, "--output", "json",
+        ]);
+        assert_eq!(result["structuredContent"], direct);
+        assert!(result.to_string().len() < ds_cli_mcp::surface::MAX_RESULT_BYTES);
+    }
 }

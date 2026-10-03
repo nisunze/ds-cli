@@ -323,7 +323,7 @@ pub static APPLY_COMMAND: Command = Command {
 fn base(inputs: &Inputs) -> Result<Map<String, Value>, Failure> {
     Ok(Map::from_iter([(
         "project".into(),
-        json!(crate::text(inputs.require("project")?, "project", 160)?),
+        json!(crate::project_id(inputs.require("project")?)?),
     )]))
 }
 

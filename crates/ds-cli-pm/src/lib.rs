@@ -52,7 +52,7 @@
 //! inside the application.
 //!
 //! **A window path.** `--desktop-descriptor` is not an input of any `ds pm`
-//! command; a caller that still passes it is told `requires_window_retired`
+//! command; a caller that still passes it is told `unknown_flag`
 //! by the parser, with the remedy of dropping the flag.
 
 pub mod collaboration;
@@ -366,8 +366,6 @@ pub const fn correspondence_refusals<const TOTAL: usize>(own: &[Refusal]) -> [Re
     }
     out
 }
-/// `READ_BASE` + [`CORRESPONDENCE_BASE`].
-pub const CORRESPONDENCE_READ: usize = 16 + 5;
 
 /// One correspondence action through the door, its refusal classified for
 /// this domain.

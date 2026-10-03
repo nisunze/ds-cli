@@ -720,7 +720,7 @@ fn published_read_checks_selectors_and_never_falls_back_to_local_files() {
         "sync",
         "published",
         "--project",
-        &"p".repeat(129),
+        &"p".repeat(201),
         "--operation",
         "export-agasharu",
         "--output",
@@ -6409,7 +6409,10 @@ fn design_collisions_reads_the_project_document_and_starts_nothing() {
         .collect::<BTreeSet<_>>();
     // The lane and the project, named on every call: the saved selection is
     // never read.
-    assert_eq!(inputs, BTreeSet::from(["lane", "project"]));
+    assert_eq!(
+        inputs,
+        BTreeSet::from(["lane", "project", "regions", "limit"])
+    );
 
     // A call that names no project is refused locally, never answered for a
     // selection.
@@ -6766,7 +6769,7 @@ fn design_version_status_uses_an_explicit_project_without_desktop_context() {
             .iter()
             .map(|input| input["name"].as_str().unwrap())
             .collect::<BTreeSet<_>>(),
-        BTreeSet::from(["project", "kind", "object", "transformer", "lane"])
+        BTreeSet::from(["project", "kind", "object", "lane"])
     );
     assert_eq!(
         native_refusal(&[
@@ -6784,7 +6787,7 @@ fn design_version_status_uses_an_explicit_project_without_desktop_context() {
             "--output",
             "json"
         ]),
-        "invalid_input"
+        "unknown_flag"
     );
 }
 
@@ -6812,7 +6815,6 @@ fn design_version_begin_is_a_confirmed_headless_project_write() {
             "idempotency-key",
             "lane",
             "reason",
-            "transformer",
             "project",
             "kind",
             "object",
@@ -6827,7 +6829,9 @@ fn design_version_begin_is_a_confirmed_headless_project_write() {
         "begin",
         "--project",
         "p-1",
-        "--transformer",
+        "--kind",
+        "lv_transformer",
+        "--object",
         "tx_a",
         "--reason",
         "Issued for construction",
@@ -6846,7 +6850,9 @@ fn design_version_begin_is_a_confirmed_headless_project_write() {
             "design",
             "version",
             "begin",
-            "--transformer",
+            "--kind",
+            "lv_transformer",
+            "--object",
             "tx_a",
             "--reason",
             "Issued for construction",
@@ -6884,7 +6890,6 @@ fn design_version_restore_is_a_confirmed_headless_project_write() {
             "idempotency-key",
             "lane",
             "reason",
-            "transformer",
             "version",
             "project",
             "kind",
@@ -6897,7 +6902,9 @@ fn design_version_restore_is_a_confirmed_headless_project_write() {
         "restore",
         "--project",
         "p-1",
-        "--transformer",
+        "--kind",
+        "lv_transformer",
+        "--object",
         "tx_a",
         "--version",
         "v1",
@@ -10382,8 +10389,8 @@ fn design_collaboration_is_a_complete_headless_project_surface() {
         ]);
         assert_eq!(
             native_refusal(&argv),
-            "requires_window_retired",
-            "`ds {}` must refuse the retired window path by name",
+            "unknown_flag",
+            "`ds {}` must refuse undeclared inputs before authentication",
             args.join(" ")
         );
     }
@@ -11664,8 +11671,7 @@ fn a_well_formed_pm_call_ends_at_the_native_credential_and_never_at_a_window() {
             args.join(" ")
         );
     }
-    // A caller who learned the window path from an older release is told it
-    // is retired, by name — before any credential is consulted.
+    // Undeclared flags fail before any credential is consulted.
     for args in &calls {
         let mut argv = args.clone();
         argv.extend([
@@ -11676,8 +11682,8 @@ fn a_well_formed_pm_call_ends_at_the_native_credential_and_never_at_a_window() {
         ]);
         assert_eq!(
             native_pm_refusal(&argv),
-            "requires_window_retired",
-            "`ds {}` must refuse the retired window path by name",
+            "unknown_flag",
+            "`ds {}` must refuse undeclared inputs before authentication",
             args.join(" ")
         );
     }
@@ -12442,8 +12448,7 @@ fn a_well_formed_assets_call_ends_at_the_native_credential_and_never_at_a_window
             args.join(" ")
         );
     }
-    // A caller who learned the window path from an older release is told it
-    // is retired, by name — before any credential is consulted.
+    // Undeclared flags fail before any credential is consulted.
     for args in &calls {
         let mut argv = args.clone();
         argv.extend(["--project", "test_project"]);
@@ -12455,8 +12460,8 @@ fn a_well_formed_assets_call_ends_at_the_native_credential_and_never_at_a_window
         ]);
         assert_eq!(
             native_refusal(&argv),
-            "requires_window_retired",
-            "`ds {}` must refuse the retired window path by name",
+            "unknown_flag",
+            "`ds {}` must refuse undeclared inputs before authentication",
             args.join(" ")
         );
     }
@@ -18352,4 +18357,157 @@ fn vector_workflow_exports_only_named_results_and_retains_failed_step_evidence()
     ]);
     assert_eq!(rejected.envelope["error"]["code"], "vector_tool_roadmap");
     assert_eq!(rejected.envelope["error"]["detail"]["step_id"], "measure");
+}
+
+#[test]
+fn dsgrid_command_descriptors_inline_the_four_authoring_shapes() {
+    let mut authored = Vec::new();
+    for (id, param, ty, field) in [
+        ("create_route_node", "row", "RouteNodeRow", "role"),
+        ("create_structure", "row", "StructureRow", "orientation_rad"),
+        (
+            "author_terrain_source",
+            "row",
+            "TerrainSourceRow",
+            "vertical_datum",
+        ),
+        (
+            "create_tension_section_set_path",
+            "members",
+            "TensionSectionSetMember",
+            "slot",
+        ),
+    ] {
+        let data = ok(&[
+            "dsgrid", "describe", "--kind", "commands", "--id", id, "--output", "json",
+        ]);
+        let param = data["descriptor"]["params"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|p| p["name"] == param)
+            .unwrap();
+        assert!(param["type_schemas"][ty]["properties"][field].is_object());
+        assert!(
+            data.to_string().len() < 32 * 1024,
+            "selected authoring descriptor stays bounded"
+        );
+        if matches!(id, "create_route_node" | "author_terrain_source") {
+            let schema = &param["type_schemas"][ty];
+            let row = from_published_shape(
+                schema,
+                &schema["$defs"],
+                &json!({
+                    "id":format!("schema-smoke-{id}"), "provider":"field_survey",
+                }),
+            );
+            authored.push(json!({"command_id":format!("smoke-{id}"),
+                "command":{"command_kind":id,"row":row}}));
+        }
+    }
+    // The inline row shapes alone suffice to author valid native mutations.
+    let model = common::fixture();
+    let head = ok(&["dsgrid", "validate", "--model", &model, "--output", "json"])["model"]["authored_revision"].clone();
+    let dir = tempfile::tempdir().unwrap();
+    let batch = dir.path().join("commands.json");
+    let output = dir.path().join("authored.dsgrid");
+    std::fs::write(
+        &batch,
+        serde_json::to_vec(&json!({"expected_revision":head,"commands":authored})).unwrap(),
+    )
+    .unwrap();
+    let applied = ok(&[
+        "dsgrid",
+        "apply-batch",
+        "--model",
+        &model,
+        "--batch",
+        batch.to_str().unwrap(),
+        "--out",
+        output.to_str().unwrap(),
+        "--output",
+        "json",
+    ]);
+    assert_eq!(applied["operations"]["create_route_node"], 1);
+    assert_eq!(applied["operations"]["author_terrain_source"], 1);
+    let validated = ok(&[
+        "dsgrid",
+        "validate",
+        "--model",
+        output.to_str().unwrap(),
+        "--output",
+        "json",
+    ]);
+    assert_eq!(validated["model"]["valid"], true);
+    assert_ne!(validated["model"]["authored_revision"], head);
+}
+
+#[test]
+fn survey_delete_preview_runs_the_real_kernel_and_admits_no_write() {
+    let root = temp_root("survey-delete-preview");
+    std::fs::create_dir_all(&root).unwrap();
+    let path = root.join("held.json");
+    std::fs::write(&path, r#"{"rows":[{"form_slug":"edges","feature":{"id":"e","geometry":{"type":"LineString"},"properties":{"connectivity":{"precedent":"n"}}}}]}"#).unwrap();
+    let reply = ok(&[
+        "survey",
+        "entries",
+        "delete-plan",
+        "--project",
+        "p",
+        "--form",
+        "nodes",
+        "--doc-id",
+        "n",
+        "--document",
+        path.to_str().unwrap(),
+        "--idempotency-key",
+        "review",
+        "--now",
+        "2026-10-02T00:00:00Z",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(reply["deleted"], 2);
+    assert_eq!(reply["cascaded_edges"], 1);
+    assert_eq!(reply["authorized"], false);
+    assert_eq!(reply["intents"][1]["payload"]["doc_id"], "e");
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn survey_delete_declares_native_effect_and_honors_packaged_availability() {
+    let descriptor = ok(&["capabilities", "survey.entries.delete", "--output", "json"]);
+    assert_eq!(descriptor["command"]["effect"], "global_write");
+    assert_eq!(descriptor["command"]["authority"], "headless_project");
+    let root = temp_root("survey-delete-invalid");
+    std::fs::create_dir_all(&root).unwrap();
+    let path = root.join("held.json");
+    std::fs::write(&path, r#"{"rows":[]}"#).unwrap();
+    let reply = ds(&[
+        "survey",
+        "entries",
+        "delete",
+        "--project",
+        "p",
+        "--form",
+        "poles",
+        "--doc-id",
+        "n",
+        "--document",
+        path.to_str().unwrap(),
+        "--idempotency-key",
+        "review",
+        "--now",
+        "invalid-clock",
+        "--yes",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(
+        reply.envelope["error"]["code"],
+        if descriptor["command"]["availability"] == "unavailable" {
+            descriptor["command"]["unavailable"]["code"].as_str().unwrap()
+        } else { "survey_delete_plan_invalid" }
+    );
+    std::fs::remove_dir_all(root).unwrap();
 }

@@ -281,7 +281,7 @@ pub fn create(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let mut args = Map::from_iter([
         (
             "project".into(),
-            json!(crate::text(inputs.require("project")?, "project", 160)?),
+            json!(crate::project_id(inputs.require("project")?)?),
         ),
         (
             "name".into(),
@@ -299,7 +299,7 @@ pub fn apply(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let args = Map::from_iter([
         (
             "project".into(),
-            json!(crate::text(inputs.require("project")?, "project", 160)?),
+            json!(crate::project_id(inputs.require("project")?)?),
         ),
         (
             "template".into(),
@@ -339,7 +339,9 @@ pub fn create_project(inputs: &Inputs, _context: &Context) -> Result<Value, Fail
             )?),
         ),
     ]);
-    crate::optional_text(inputs, "project-id", "projectId", 160, &mut args)?;
+    if let Some(project) = inputs.value("project-id") {
+        args.insert("projectId".into(), json!(crate::project_id(project)?));
+    }
     crate::invoke(inputs, CREATE_PROJECT, args)
 }
 

@@ -143,17 +143,6 @@ impl IndexedBundle {
     }
 }
 
-/// Locate one unambiguous release-matched packaged bundle without consulting
-/// or requiring any user-level agent skills directory, verified against its
-/// receipt. This is [`verdict`] reduced to its bundle; a caller that needs
-/// the reason or remedy reads the verdict itself.
-pub fn indexed_bundle(expected_cli_sha: &str) -> Result<IndexedBundle, String> {
-    let verdict = verdict(expected_cli_sha);
-    verdict
-        .bundle
-        .ok_or_else(|| verdict.reason.unwrap_or_else(|| verdict.status.to_string()))
-}
-
 /// The one answer about the packaged bundle.
 #[derive(Clone, Debug)]
 pub struct BundleVerdict {

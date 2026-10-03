@@ -619,3 +619,9 @@ renderer turns small results into GeoJSON. Rust selects vector-tile delivery
 for large results; the web sends file bytes through the existing upload and tiling pipeline. `vector_data_bound_exceeded` names
 an input or projected output beyond 32 MiB/20000 rows; split the layer or
 increase spacing. Binary import may also refuse `vector_document_malformed`.
+
+KML and KMZ conversion retains shared and inline styles, normal StyleMap entries,
+archive-local style references, and embedded icons. The resulting GeoParquet
+contains the layer style document under `ds:style_document`; feature properties
+retain `kml_style_id`, decoded components and data-driven colours. Invalid styles
+are reported in `kml_style_error` by placemark name while geometry is retained.

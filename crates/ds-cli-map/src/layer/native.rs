@@ -266,32 +266,6 @@ pub const NATIVE_WRITE_REFUSALS: &[Refusal] = &[
     LAYER_STATE_STALE,
 ];
 
-pub const NATIVE_VISIBILITY_REFUSALS: &[Refusal] = &[
-    NATIVE_PROFILE,
-    NATIVE_PROFILE_DIGEST,
-    NATIVE_PROFILE_UNSAFE,
-    HEADLESS_SIGNED_OUT,
-    HEADLESS_NO_PROJECT,
-    PROJECT_CONTEXT_STALE,
-    NATIVE_STATE_UNSAFE,
-    NATIVE_STATE_UNAVAILABLE,
-    NATIVE_STATE_PROTECTION,
-    NATIVE_STATE_ROOT,
-    NATIVE_STATE_CONFLICT,
-    NATIVE_CLEANUP,
-    AUTH_CONTEXT_MISMATCH,
-    AUTH_INPUT,
-    AUTH_REJECTED,
-    AUTH_REVOKED,
-    AUTH_IDENTITY_MISMATCH,
-    AUTH_TRANSIENT,
-    AUTH_UNREADABLE,
-    UNKNOWN_LAYER,
-    LAYER_STATE_REFUSED,
-    LAYER_STATE_STALE,
-    super::LOCAL_STORE_REFUSAL,
-];
-
 // ── the four operations that take a host ────────────────────────────────
 //
 // `ds map layer list|show|hide|reorder` are one operation each, executed on

@@ -623,3 +623,11 @@ ds dsgrid profile labels set --model ./design.dsgrid --fields number,type,commen
 The optional affix file is a JSON array such as `[{"field":"number","prefix":"P","suffix":" "},{"field":"type","prefix":"(","suffix":")"}]`. The empty separator concatenates nonempty fields; `\n` selects a new line. Rust composes the resulting text and marks missing numbers `UNNUMBERED`; the canvas only paints it. `show` reports the effective policy without opening the model Profile.
 
 `set` writes a new model revision and preserves the engineering snapshot and package bindings. It never replaces the source package. Later engineering edits preserve this policy. Sheet Profile and sheet Plan are fixed-paper outputs with separate page composition; neither inherits this interactive setting.
+
+Command descriptors include `params[].type_schemas`: compact, self-contained
+JSON Schemas derived from Rust row types, with required fields, nullable or
+optional fields, exact enum tokens and SI field units. For example,
+`ds dsgrid describe --kind commands --id create_route_node --output json`
+includes `RouteNodeRow` fields and `RouteNodeRole` values. Inline schemas are
+bounded to 24 KiB per command; `more_type_schemas` explicitly names deferred
+types. Read `--kind types --id <type>` for their fully documented schemas.

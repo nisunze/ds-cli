@@ -152,12 +152,8 @@ fn kind(inputs: &Inputs) -> Result<Kind, Failure> {
 
 fn canonical_project(inputs: &Inputs, flag: &str) -> Result<String, Failure> {
     let project = inputs.require(flag)?;
-    let canonical = !project.is_empty()
-        && project.len() <= 160
-        && project.trim() == project
-        && project
-            .chars()
-            .all(|character| character.is_ascii_alphanumeric() || matches!(character, '_' | '-'));
+    let canonical = ds_client_core::validate_project_id(project).is_ok()
+        && ds_command_kernel::execution_context::valid_project(project);
     if !canonical {
         return Err(Failure::invalid(
             "invalid_project",

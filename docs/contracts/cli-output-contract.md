@@ -105,7 +105,6 @@ repeated in every `REFUSALS` section: `unknown_flag`, `missing_value`,
 
 | Code | When | Remedy |
 |---|---|---|
-| `requires_window_retired` | `--desktop-descriptor` was passed to a command whose `requires` is `server` — the paired-window path an older release offered for it is retired | drop `--desktop-descriptor`; the command runs headless under the signed-in native credential (`ds auth status`) |
 
 `requires: window` remains only on `desktop.*` and on the map commands that
 drive a viewport; every other command answers on a bare Server and on the

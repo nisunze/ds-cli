@@ -622,9 +622,7 @@ material-propagation report action) that `ds auth` runs under the restored
 native user against the project named by `--project` (the saved selection
 is never read) for `--lane stable|canary`. `ds` sends a request and receives an outcome. It never holds
 a window, never receives a credential it did not mint, and answers the same
-on the Server and on the desktop. A caller who learned `--desktop-descriptor`
-from an older release is refused by name, `requires_window_retired`, before
-any credential is consulted.
+on the Server and on the desktop. Undeclared flags are refused before any credential is consulted.
 
 **Saved selections** `ds design selection list|read|save|archive|assign`
 reach ds-brain the same way. Nothing about the authority changed: ds-brain
@@ -936,6 +934,12 @@ different state from a check that found nothing. `state` is the key an operator
 reads the answer under, `pairs` is the count when one is recorded, and
 `transformers` is how many ordinary transformers a detection run would cover.
 
+`--regions --limit <1-50>` reads bounded saved-region evidence through the
+shared ds-network vector registry. `summary.regions` uses `feature_index`
+references without geometry; `summary.total` counts the complete inventory and
+`summary.more` discloses withheld regions. Contract 2 adds the registry's phase
+copy and replaces the former kernel summary owner.
+
 This command starts nothing and writes nothing. Detection itself is a separate
 governed action.
 
@@ -1042,7 +1046,6 @@ belongs to the governance surface, not to a headless command.
 | `design_attachment_refused` | the attachment owner refused identity, a version pin or digest, a storage grant or a pointer fence; the cause is nested |
 | `invalid_number` | `--limit` or `--expected-version` is not a whole number in its stated bound |
 | `design_route_unavailable` | this lane's API Gateway does not publish the known-columns route |
-| `requires_window_retired` | `--desktop-descriptor` was given to a command that runs headless now |
 | `invalid_value_list` | a comma-separated flag was given but carries no values |
 | `too_many_values` | a list flag carries more entries than the record accepts |
 | `missing_comment_target` | neither `--thread` nor a complete `--kind`/`--object`/`--title` |
@@ -1155,8 +1158,7 @@ flat download list. `source_uploads` counts those inputs and how many have a
 URL. The fetch itself stays with the caller.
 
 `ds design version status --project <id> --kind <kind> --object <id>` reads
-that object's exact server head. The LV `--transformer <name>` spelling remains
-supported. For MV, source_revision identifies the immutable content, while
+that object's exact server head. For MV, source_revision identifies the immutable content, while
 published_version is the governance ordinal; manifest_model_revision is the
 native package's separate nonnegative lineage counter. Status never inspects
 an unsaved room or guesses whether its local contents need publication.

@@ -8,6 +8,8 @@
 
 pub mod changes;
 pub mod create;
+pub mod delete;
+pub mod delete_plan;
 pub mod entries;
 pub mod forms;
 pub mod import;
@@ -65,6 +67,8 @@ pub static DOMAIN: Domain = Domain {
         &local::STATUS_COMMAND,
         &changes::COMMAND,
         &create::COMMAND,
+        &delete_plan::COMMAND,
+        &delete::COMMAND,
         &import::COMMAND,
         &migrate::plan::COMMAND,
         &migrate::apply::COMMAND,
@@ -114,6 +118,13 @@ pub const MISSING_REQUIRED: Refusal = Refusal {
     when: "the selected lifecycle action requires an action-specific argument",
     remedy: "read the command contract and provide the argument required by that action",
 };
+
+pub fn project_id(value: &str) -> Result<&str, Failure> {
+    ds_client_core::validate_project_id(value).map_err(|error| {
+        Failure::invalid(INVALID_TEXT.code, error.to_string()).remedy(INVALID_TEXT.remedy)
+    })?;
+    Ok(value)
+}
 
 pub fn text<'a>(value: &'a str, flag: &str, max: usize) -> Result<&'a str, Failure> {
     if value.is_empty() || value.trim() != value || value.chars().count() > max {
@@ -239,5 +250,18 @@ mod availability_tests {
             import::COMMAND.availability,
             expected
         ));
+    }
+}
+
+#[cfg(test)]
+mod project_id_tests {
+    #[test]
+    fn project_ids_follow_native_character_bound() {
+        for value in ["p".repeat(161), "é".repeat(200)] {
+            assert_eq!(super::project_id(&value).unwrap(), value);
+        }
+        for value in ["p".repeat(201), "p\nq".into(), " p".into()] {
+            assert!(super::project_id(&value).is_err());
+        }
     }
 }
