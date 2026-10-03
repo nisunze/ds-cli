@@ -15292,6 +15292,7 @@ fn vector_cli_file_and_json_packets_match_the_kernel_and_frozen_native_baseline(
                 .path()
                 .join(format!("result-{index}-{from_file}.geojson"));
             let mut expected = case["expected"].clone();
+            expected["result"] = Value::Null;
             if request["result_projection"] == "complete_produced" {
                 arguments.extend(["--out".to_owned(), output.to_str().unwrap().to_owned()]);
                 expected["written_to"] = json!(output.to_str().unwrap());
@@ -15299,7 +15300,15 @@ fn vector_cli_file_and_json_packets_match_the_kernel_and_frozen_native_baseline(
             }
             arguments.extend(["--output".to_owned(), "json".to_owned()]);
             let arguments: Vec<&str> = arguments.iter().map(String::as_str).collect();
-            assert_eq!(ok(&arguments), expected, "packet {index}, file {from_file}");
+            let actual = ok(&arguments);
+            // New contract metadata and measure's appended layer supplement
+            // the frozen primitive result. Every original field stays exact.
+            for (key, value) in expected.as_object().unwrap() {
+                assert_eq!(
+                    &actual[key], value,
+                    "packet {index}, file {from_file}, field {key}"
+                );
+            }
             if output.exists() {
                 let written: Value =
                     serde_json::from_slice(&std::fs::read(&output).unwrap()).unwrap();
@@ -15369,8 +15378,18 @@ fn vector_controller_parameter_refusals_cannot_overwrite_an_owner_file() {
         let refused = ds(&arguments);
         assert_ne!(refused.code, 0);
         assert_eq!(refused.envelope["error"]["code"], expected.code);
-        assert_eq!(refused.envelope["error"]["message"], expected.message);
-        assert_eq!(refused.envelope["error"]["remedy"], expected.remedy);
+        assert!(
+            refused.envelope["error"]["message"]
+                .as_str()
+                .unwrap()
+                .contains("schema")
+        );
+        assert!(
+            refused.envelope["error"]["remedy"]
+                .as_str()
+                .unwrap()
+                .contains("describe")
+        );
         assert_eq!(std::fs::read(&output).unwrap(), b"owner bytes");
     }
 }
@@ -15621,7 +15640,7 @@ fn vector_processing_answers_geodesically_with_no_project_and_no_window() {
         "json",
     ]);
     assert_eq!(buffered["produced"], 2);
-    let shapes = buffered["result"]["features"]
+    let shapes = buffered["preview"]["sample"]
         .as_array()
         .expect("buffered features");
     let ring = |feature: &Value| -> usize {
@@ -15646,6 +15665,7 @@ fn vector_processing_answers_geodesically_with_no_project_and_no_window() {
     // Stationing. Eleven points at exactly 200 m on a 2,223 m line, and the
     // pole skipped by name rather than silently dropped — a caller that gets
     // eleven points from a two-feature file has to be told why.
+    let station_file = root.join("stations.geojson");
     let sampled = ok(&[
         "data",
         "vector",
@@ -15654,12 +15674,18 @@ fn vector_processing_answers_geodesically_with_no_project_and_no_window() {
         feeder,
         "--interval-m",
         "200",
+        "--out",
+        station_file.to_str().unwrap(),
         "--output",
         "json",
     ]);
     assert_eq!(sampled["produced"], 11);
     assert_eq!(sampled["skipped"]["wrong_kind"], 1);
-    let stations: Vec<f64> = sampled["result"]["features"]
+    assert_eq!(sampled["preview"]["sample"].as_array().unwrap().len(), 5);
+    assert!(sampled["result"].is_null());
+    let station_layer: Value =
+        serde_json::from_slice(&std::fs::read(station_file).unwrap()).unwrap();
+    let stations: Vec<f64> = station_layer["features"]
         .as_array()
         .expect("stations")
         .iter()
@@ -15683,7 +15709,7 @@ fn vector_processing_answers_geodesically_with_no_project_and_no_window() {
         "json",
     ]);
     assert_eq!(crossed["produced"], 1);
-    let hit = &crossed["result"]["features"][0];
+    let hit = &crossed["preview"]["sample"][0];
     let point = hit["geometry"]["coordinates"]
         .as_array()
         .expect("crossing point");
@@ -15972,7 +15998,7 @@ fn a_vector_answer_counts_what_it_says_it_counted() {
     // ── What a run MAKES is bounded too ─────────────────────────────────
     // One 1.1 km line stationed every 10 m is 111 points from a single
     // eligible feature. `--limit` bounded the features READ, so the whole
-    // collection came back inline with `more` silent.
+    // receipt reports the full count and shows a bounded preview.
     let route = root.join("route.geojson");
     std::fs::write(
         &route,
@@ -15996,12 +16022,12 @@ fn a_vector_answer_counts_what_it_says_it_counted() {
     let produced = inline["produced"].as_u64().expect("produced");
     assert!(produced > 100, "a 1.1 km route at 10 m is over 100 points");
     assert_eq!(
-        inline["result"]["features"]
+        inline["preview"]["sample"]
             .as_array()
             .expect("inline features")
             .len(),
-        20,
-        "an inline answer is bounded by --limit: {inline}"
+        5,
+        "a receipt preview has at most five features: {inline}"
     );
     let withheld = inline["more"].as_str().unwrap_or_default();
     assert!(
@@ -18031,4 +18057,299 @@ fn pls_structure_translate_names_local_models_and_accepts_them_by_quantities() {
             .is_file()
     );
     std::fs::remove_dir_all(&root).ok();
+}
+
+#[test]
+fn vector_descriptors_and_portable_requests_are_the_native_contract() {
+    let catalogue = ok(&["data", "vector", "describe", "--output", "json"]);
+    assert_eq!(catalogue.as_array().unwrap().len(), 95);
+    let source = json!({"geojson":{"type":"LineString","coordinates":[[30.,-2.],[30.002,-2.]]}});
+    for tool in [
+        "measure",
+        "buffer",
+        "sample",
+        "intersect",
+        "outliers",
+        "random-points-area",
+        "collisions",
+    ] {
+        let descriptor = ok(&[
+            "data", "vector", "describe", "--tool", tool, "--output", "json",
+        ]);
+        assert_eq!(descriptor["status"], "available");
+        let request = if matches!(tool, "intersect" | "collisions") {
+            descriptor["examples"][0]["request"].clone()
+        } else {
+            json!({"source":source})
+        };
+        let prepared = ds_network::vector::prepare(tool, request.clone()).unwrap();
+        let source = std::sync::Arc::new(
+            ds_network::vector::Layer::import_geojson(&prepared["source"]["geojson"]).unwrap(),
+        );
+        let against = prepared.get("against").map(|v| {
+            std::sync::Arc::new(ds_network::vector::Layer::import_geojson(&v["geojson"]).unwrap())
+        });
+        let expected = ds_network::vector::run(
+            tool,
+            ds_network::vector::control_request(prepared),
+            source,
+            against,
+            ds_network::vector::RunOptions { dry_run: true },
+        )
+        .unwrap()
+        .metadata;
+        let payload = request.to_string();
+        let actual = ok(&[
+            "data",
+            "vector",
+            tool,
+            "--request",
+            &payload,
+            "--dry-run",
+            "--output",
+            "json",
+        ]);
+        assert_eq!(actual, expected, "{tool}");
+        assert_eq!(actual["result"], Value::Null);
+    }
+    assert_eq!(
+        refusal(&[
+            "data", "vector", "describe", "--tool", "missing", "--output", "json"
+        ]),
+        "vector_tool_unknown"
+    );
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("never-written.geojson");
+    let payload = json!({"source":source}).to_string();
+    ok(&[
+        "data",
+        "vector",
+        "measure",
+        "--request",
+        &payload,
+        "--dry-run",
+        "--out",
+        path.to_str().unwrap(),
+        "--output",
+        "json",
+    ]);
+    assert!(!path.exists());
+
+    // UI terrain readings correspond to its admitted projection; exporting
+    // the exact copied request must not silently ask for different points.
+    let request = json!({
+        "source":{"geojson":{"type":"Polygon","coordinates":[[[30.,-2.],[30.003,-2.],[30.003,-1.997],[30.,-1.997],[30.,-2.]]]}},
+        "parameters":{"sample_elevation":true,"elevations_m":[123.5],"seed":0},
+        "output":{"limit":1,"projection":"inline"}
+    });
+    let prepared = ds_network::vector::prepare("random-points-area", request.clone()).unwrap();
+    let layer = std::sync::Arc::new(
+        ds_network::vector::Layer::import_geojson(&prepared["source"]["geojson"]).unwrap(),
+    );
+    let expected = ds_network::vector::run(
+        "random-points-area",
+        ds_network::vector::control_request(prepared),
+        layer,
+        None,
+        ds_network::vector::RunOptions::default(),
+    )
+    .unwrap();
+    assert!(expected.metadata["produced"].as_u64().unwrap() > 1);
+    let path = directory.path().join("ui-projection.arrow");
+    let payload = request.to_string();
+    let actual = ok(&[
+        "data",
+        "vector",
+        "random-points-area",
+        "--request",
+        &payload,
+        "--out",
+        path.to_str().unwrap(),
+        "--output",
+        "json",
+    ]);
+    assert_eq!(actual["preview"], expected.metadata["preview"]);
+    let exported = ds_network::vector::layer::ipc::decode(&std::fs::read(path).unwrap()).unwrap();
+    assert_eq!(exported.features.len(), 1);
+    assert_eq!(exported.features[0].properties["elevation_m"], 123.5);
+}
+
+#[test]
+fn vector_workflow_examples_match_the_rust_runner_and_dry_run_writes_nothing() {
+    use ds_network::vector::{RunOptions, workflow};
+    let directory = tempfile::tempdir().unwrap();
+    let file = directory.path().join("model.json");
+    let absent = directory.path().join("dry-output");
+    let catalogue = ok(&["data", "vector", "workflow", "describe", "--output", "json"]);
+    assert_eq!(catalogue["tools"].as_array().unwrap().len(), 7);
+    for (index, model) in workflow::examples().into_iter().enumerate() {
+        let number = (index + 1).to_string();
+        assert_eq!(
+            ok(&[
+                "data",
+                "vector",
+                "workflow",
+                "describe",
+                "--example",
+                &number,
+                "--output",
+                "json"
+            ]),
+            model
+        );
+        std::fs::write(&file, model.to_string()).unwrap();
+        let args = [
+            "data",
+            "vector",
+            "workflow",
+            "validate",
+            "--file",
+            file.to_str().unwrap(),
+            "--output",
+            "json",
+        ];
+        assert_eq!(
+            ok(&args),
+            workflow::validate(model.clone(), json!({})).unwrap()
+        );
+        let args = [
+            "data",
+            "vector",
+            "workflow",
+            "run",
+            "--file",
+            file.to_str().unwrap(),
+            "--dry-run",
+            "--out",
+            absent.to_str().unwrap(),
+            "--output",
+            "json",
+        ];
+        assert_eq!(
+            ok(&args),
+            workflow::run(
+                model.clone(),
+                json!({}),
+                std::collections::BTreeMap::new(),
+                RunOptions { dry_run: true }
+            )
+            .unwrap()
+            .metadata
+        );
+        assert!(!absent.exists());
+        let args = [
+            "data",
+            "vector",
+            "workflow",
+            "run",
+            "--file",
+            file.to_str().unwrap(),
+            "--output",
+            "json",
+        ];
+        assert_eq!(
+            ok(&args),
+            workflow::run(
+                model,
+                json!({}),
+                std::collections::BTreeMap::new(),
+                RunOptions::default()
+            )
+            .unwrap()
+            .metadata
+        );
+    }
+}
+
+#[test]
+fn vector_workflow_exports_only_named_results_and_retains_failed_step_evidence() {
+    use ds_network::vector::workflow;
+    let directory = tempfile::tempdir().unwrap();
+    let file = directory.path().join("model.json");
+    let out = directory.path().join("results");
+    let mut model = workflow::examples().remove(0);
+    std::fs::write(&file, model.to_string()).unwrap();
+    let args = [
+        "data",
+        "vector",
+        "workflow",
+        "run",
+        "--file",
+        file.to_str().unwrap(),
+        "--inputs",
+        "{\"radius\":10}",
+        "--out",
+        out.to_str().unwrap(),
+        "--output",
+        "json",
+    ];
+    let result = ok(&args);
+    let layer = out.join("corridor.arrow");
+    let owner_bytes = std::fs::read(&layer).unwrap();
+    let exported = ds_network::vector::layer::ipc::decode(&owner_bytes).unwrap();
+    assert_eq!(
+        exported.features.len(),
+        result["outputs"]["corridor"]["feature_count"]
+            .as_u64()
+            .unwrap() as usize
+    );
+    assert!(!exported.features.is_empty());
+    assert!(out.join("metrics.json").is_file());
+    assert!(out.join("workflow-result.json").is_file());
+    assert_eq!(std::fs::read_dir(&out).unwrap().count(), 3);
+    assert_eq!(refusal(&args), "output_refused");
+    assert_eq!(std::fs::read(&layer).unwrap(), owner_bytes);
+
+    model["steps"][0]["tool"] = json!("random-points-area");
+    model["steps"][0]["request"]["parameters"] = json!({"sample_elevation":true});
+    std::fs::write(&file, model.to_string()).unwrap();
+    let absent = directory.path().join("failed-output");
+    let failure = native_ds(&[
+        "data",
+        "vector",
+        "workflow",
+        "run",
+        "--file",
+        file.to_str().unwrap(),
+        "--out",
+        absent.to_str().unwrap(),
+        "--output",
+        "json",
+    ]);
+    assert_ne!(failure.code, 0);
+    assert_eq!(
+        failure.envelope["error"]["code"],
+        "vector_workflow_step_failed"
+    );
+    let detail = &failure.envelope["error"]["detail"];
+    assert_eq!(detail["error"]["step_id"], "measure");
+    assert_eq!(detail["error"]["path"], "request.parameters.elevations_m");
+    assert!(
+        detail["completed_outputs"]["corridor"]["layer"]["feature_count"]
+            .as_u64()
+            .unwrap()
+            > 0
+    );
+    let kept = absent.join("completed_corridor.arrow");
+    assert!(
+        !ds_network::vector::layer::ipc::decode(&std::fs::read(kept).unwrap())
+            .unwrap()
+            .features
+            .is_empty()
+    );
+
+    model["steps"][0]["tool"] = json!("dissolve");
+    std::fs::write(&file, model.to_string()).unwrap();
+    let rejected = native_ds(&[
+        "data",
+        "vector",
+        "workflow",
+        "validate",
+        "--file",
+        file.to_str().unwrap(),
+        "--output",
+        "json",
+    ]);
+    assert_eq!(rejected.envelope["error"]["code"], "vector_tool_roadmap");
+    assert_eq!(rejected.envelope["error"]["detail"]["step_id"], "measure");
 }

@@ -1893,6 +1893,41 @@ static DATA_ENTRIES: &[Entry] = &[
     // command that answers "what is in this file" — the question every
     // refusal below it would otherwise leave a caller guessing at.
     Entry {
+        command: &ds_cli_data::vector_workflow::DESCRIBE_COMMAND,
+        handler: ds_cli_data::vector_workflow::run_describe,
+        render: ds_cli_data::vector_workflow::render,
+    },
+    Entry {
+        command: &ds_cli_data::vector_workflow::VALIDATE_COMMAND,
+        handler: ds_cli_data::vector_workflow::run_validate,
+        render: ds_cli_data::vector_workflow::render,
+    },
+    Entry {
+        command: &ds_cli_data::vector_workflow::RUN_COMMAND,
+        handler: ds_cli_data::vector_workflow::run_workflow,
+        render: ds_cli_data::vector_workflow::render,
+    },
+    Entry {
+        command: &ds_cli_data::vector::DESCRIBE_COMMAND,
+        handler: ds_cli_data::vector::run_describe,
+        render: ds_cli_data::vector::render_describe,
+    },
+    Entry {
+        command: &ds_cli_data::vector::COLLISIONS_COMMAND,
+        handler: ds_cli_data::vector::run_collisions,
+        render: ds_cli_data::vector::render_collisions,
+    },
+    Entry {
+        command: &ds_cli_data::vector::OUTLIERS_COMMAND,
+        handler: ds_cli_data::vector::run_outliers,
+        render: ds_cli_data::vector::render_outliers,
+    },
+    Entry {
+        command: &ds_cli_data::vector::RANDOM_COMMAND,
+        handler: ds_cli_data::vector::run_random,
+        render: ds_cli_data::vector::render_random,
+    },
+    Entry {
         command: &ds_cli_data::vector::MEASURE_COMMAND,
         handler: ds_cli_data::vector::run_measure,
         render: ds_cli_data::vector::render_measure,

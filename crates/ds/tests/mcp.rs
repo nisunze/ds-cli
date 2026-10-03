@@ -77,7 +77,7 @@ fn datasets_vector_tools_accept_json_text_and_match_native_cli_answers() {
                 "--output",
                 "json"
             ])["data"]["command"]["contract"],
-            2
+            4
         );
     }
     for (id, operation, extra) in [
@@ -105,6 +105,92 @@ fn datasets_vector_tools_accept_json_text_and_match_native_cli_answers() {
             code
         );
         assert_eq!(response(&messages, id)["result"]["isError"], true);
+    }
+}
+
+#[test]
+fn vector_request_descriptors_and_previews_match_mcp_and_cli() {
+    let request_for = |tool: &str| {
+        let source =
+            json!({"geojson":{"type":"LineString","coordinates":[[30.,-2.],[30.002,-2.]]}});
+        match tool {
+            "intersect" => json!({"source":source,"against":{"geojson":{"type":"LineString","coordinates":[[30.001,-2.001],[30.001,-1.999]]}}}),
+            "collisions" => json!({"source":{"geojson":{"type":"Feature","geometry":{"type":"Polygon","coordinates":[[[30.,-2.],[30.001,-2.],[30.001,-1.999],[30.,-2.]]]},"properties":{"collision_id":"region-1","tr_count":2,"coverage_pct":75}}}}),
+            _ => json!({"source":source}),
+        }.to_string()
+    };
+    let mut calls = vec![
+        json!({"jsonrpc":"2.0","id":0,"method":"tools/list"}),
+        json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"data_vector_describe","arguments":{"tool":"sample"}}}),
+    ];
+    for (i, tool) in [
+        "measure",
+        "buffer",
+        "sample",
+        "intersect",
+        "outliers",
+        "random-points-area",
+        "collisions",
+    ]
+    .iter()
+    .enumerate()
+    {
+        let request = request_for(tool);
+        calls.push(json!({"jsonrpc":"2.0","id":i+2,"method":"tools/call","params":{"name":format!("data_vector_{tool}"),"arguments":{"request":request,"dry-run":true}}}));
+    }
+    let (messages, _) = mcp(&["--exposure", "commands", "--profile", "vector"], &calls);
+    let tools = response(&messages, 0)["result"]["tools"]
+        .as_array()
+        .unwrap();
+    assert_eq!(tools.len(), 13); // eleven vector leaves plus two bootstrap tools
+    for command in [
+        "describe",
+        "buffer",
+        "measure",
+        "sample",
+        "intersect",
+        "outliers",
+        "random-points-area",
+        "collisions",
+    ] {
+        assert!(
+            tools
+                .iter()
+                .any(|t| t["name"] == format!("data_vector_{command}"))
+        );
+    }
+    assert_eq!(
+        response(&messages, 1)["result"]["structuredContent"],
+        cli_envelope(&[
+            "data", "vector", "describe", "--tool", "sample", "--output", "json"
+        ])
+    );
+    for (i, tool) in [
+        "measure",
+        "buffer",
+        "sample",
+        "intersect",
+        "outliers",
+        "random-points-area",
+        "collisions",
+    ]
+    .iter()
+    .enumerate()
+    {
+        let request = request_for(tool);
+        assert_eq!(
+            response(&messages, (i + 2) as i64)["result"]["structuredContent"],
+            cli_envelope(&[
+                "data",
+                "vector",
+                tool,
+                "--request",
+                &request,
+                "--dry-run",
+                "--output",
+                "json"
+            ])
+        );
     }
 }
 
@@ -3256,5 +3342,57 @@ fn member_form_grants_project_survey_mcp_matches_cli_confirmation() {
                 "--output=json"
             ]
         )
+    );
+}
+
+#[test]
+fn vector_workflow_stdio_matches_cli_discovery_validation_execution_and_failure() {
+    let directory = tempfile::tempdir().unwrap();
+    let file = directory.path().join("model.json");
+    let bad = directory.path().join("failed.json");
+    let model = ds_network::vector::workflow::examples().remove(0);
+    fs::write(&file, model.to_string()).unwrap();
+    let mut failed = model.clone();
+    failed["steps"][0]["tool"] = json!("random-points-area");
+    failed["steps"][0]["request"]["parameters"] = json!({"sample_elevation":true});
+    fs::write(&bad, failed.to_string()).unwrap();
+    let calls = [
+        json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"data_vector_workflow_describe","arguments":{}}}),
+        json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"data_vector_workflow_validate","arguments":{"file":file,"inputs":"{\"radius\":10}"}}}),
+        json!({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"data_vector_workflow_run","arguments":{"file":file,"inputs":"{\"radius\":10}","dry-run":true}}}),
+        json!({"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"data_vector_workflow_run","arguments":{"file":bad}}}),
+    ];
+    let (messages, _) = mcp(&["--exposure", "commands", "--profile", "vector"], &calls);
+    for (id, operation, source, extra) in [
+        (1, "describe", None, vec![]),
+        (
+            2,
+            "validate",
+            Some(&file),
+            vec!["--inputs", "{\"radius\":10}"],
+        ),
+        (
+            3,
+            "run",
+            Some(&file),
+            vec!["--inputs", "{\"radius\":10}", "--dry-run"],
+        ),
+        (4, "run", Some(&bad), vec![]),
+    ] {
+        let mut args = vec!["data", "vector", "workflow", operation];
+        if let Some(path) = source {
+            args.extend(["--file", path.to_str().unwrap()]);
+        }
+        args.extend(extra);
+        args.extend(["--output", "json"]);
+        assert_eq!(
+            response(&messages, id)["result"]["structuredContent"],
+            cli_envelope(&args)
+        );
+        assert_eq!(response(&messages, id)["result"]["isError"], id == 4);
+    }
+    assert_eq!(
+        response(&messages, 4)["result"]["structuredContent"]["error"]["detail"]["error"]["step_id"],
+        "measure"
     );
 }

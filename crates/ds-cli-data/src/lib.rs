@@ -24,6 +24,7 @@ pub mod point_cloud;
 pub mod project_cache;
 pub mod spatial;
 pub mod vector;
+pub mod vector_workflow;
 
 pub static DOMAIN: Domain = Domain {
     id: "data",
@@ -51,6 +52,13 @@ pub static DOMAIN: Domain = Domain {
         &vector::BUFFER_COMMAND,
         &vector::SAMPLE_COMMAND,
         &vector::INTERSECT_COMMAND,
+        &vector::DESCRIBE_COMMAND,
+        &vector::OUTLIERS_COMMAND,
+        &vector::RANDOM_COMMAND,
+        &vector::COLLISIONS_COMMAND,
+        &vector_workflow::DESCRIBE_COMMAND,
+        &vector_workflow::VALIDATE_COMMAND,
+        &vector_workflow::RUN_COMMAND,
     ],
 };
 

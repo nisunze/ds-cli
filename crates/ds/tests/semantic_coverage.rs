@@ -13,6 +13,13 @@ use std::process::Command;
 use serde_json::Value;
 
 const EXPECTED: &[(&str, &str, &str)] = &[
+    ("data.vector.workflow.describe", "read_only", "none"),
+    ("data.vector.workflow.validate", "read_only", "none"),
+    ("data.vector.workflow.run", "local_file_write", "none"),
+    ("data.vector.collisions", "read_only", "none"),
+    ("data.vector.describe", "read_only", "none"),
+    ("data.vector.outliers", "local_file_write", "none"),
+    ("data.vector.random-points-area", "local_file_write", "none"),
     // Exact effect and authority reviewed from the integrated CLI descriptors.
     ("assets.versions", "read_only", "headless_project"),
     (
@@ -283,7 +290,7 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     // geodesic engine on this machine and write a local file, with no
     // project, no window and no network — which is what made them the right
     // answer to an outside agent who has none of those.
-    ("data.vector.measure", "read_only", "none"),
+    ("data.vector.measure", "local_file_write", "none"),
     ("data.vector.buffer", "local_file_write", "none"),
     ("data.vector.sample", "local_file_write", "none"),
     ("data.vector.intersect", "local_file_write", "none"),

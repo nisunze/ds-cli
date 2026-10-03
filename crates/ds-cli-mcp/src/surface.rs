@@ -68,6 +68,7 @@ pub const PROFILE_IDS: &[&str] = &[
     "auth-context",
     "admin-bounds",
     "datasets",
+    "vector",
     "grid",
     "grid-native",
     "grid-corrections",
@@ -134,6 +135,7 @@ pub enum Profile {
     AuthContext,
     AdminBounds,
     Datasets,
+    Vector,
     Installations,
     Grid,
     GridNative,
@@ -179,6 +181,7 @@ impl Profile {
             "auth-context" => Some(Self::AuthContext),
             "admin-bounds" => Some(Self::AdminBounds),
             "datasets" => Some(Self::Datasets),
+            "vector" => Some(Self::Vector),
             "installations" => Some(Self::Installations),
             "grid" => Some(Self::Grid),
             "grid-native" => Some(Self::GridNative),
@@ -225,6 +228,7 @@ impl Profile {
             Self::AuthContext => "auth-context",
             Self::AdminBounds => "admin-bounds",
             Self::Datasets => "datasets",
+            Self::Vector => "vector",
             Self::Installations => "installations",
             Self::Grid => "grid",
             Self::GridNative => "grid-native",
@@ -412,6 +416,7 @@ impl Profile {
             Self::AuthContext => AUTH_CONTEXT_COMMANDS.contains(&tool.id.as_str()),
             Self::AdminBounds => ADMIN_BOUNDS_COMMANDS.contains(&tool.id.as_str()),
             Self::Datasets => DATASET_COMMANDS.contains(&tool.id.as_str()),
+            Self::Vector => VECTOR_COMMANDS.contains(&tool.id.as_str()),
             Self::Installations => INSTALLATION_COMMANDS.contains(&tool.id.as_str()),
             Self::GridNative => {
                 tool.authority == ds_cli_contract::spec::Authority::None
@@ -554,6 +559,7 @@ impl Profile {
             Self::AuthContext => AUTH_CONTEXT_COMMANDS,
             Self::AdminBounds => ADMIN_BOUNDS_COMMANDS,
             Self::Datasets => DATASET_COMMANDS,
+            Self::Vector => VECTOR_COMMANDS,
             Self::Installations => INSTALLATION_COMMANDS,
             Self::Printing => PRINTING_COMMANDS,
             Self::PrintingMaps => PRINTING_MAP_COMMANDS,
@@ -597,6 +603,7 @@ impl Profile {
     pub fn includes_chapter(self, chapter: Chapter) -> bool {
         match self {
             Self::AuthContext => chapter == Chapter::Project,
+            Self::Vector => chapter == Chapter::Data,
             Self::AdminBounds => chapter == Chapter::Data,
             Self::Datasets => matches!(
                 chapter,
@@ -677,6 +684,22 @@ const ADMIN_BOUNDS_COMMANDS: &[&str] = &[
     "data.admin-bounds.list",
     "data.admin-bounds.read",
     "data.admin-bounds.attach",
+];
+
+// Portable vector JSON is one bounded workflow; keep the established dataset
+// profile within its existing budget while retaining its four geometry leaves.
+const VECTOR_COMMANDS: &[&str] = &[
+    "data.vector.workflow.describe",
+    "data.vector.workflow.validate",
+    "data.vector.workflow.run",
+    "data.vector.describe",
+    "data.vector.buffer",
+    "data.vector.measure",
+    "data.vector.sample",
+    "data.vector.intersect",
+    "data.vector.outliers",
+    "data.vector.random-points-area",
+    "data.vector.collisions",
 ];
 
 // One geospatial question can start in a held project layer or a governed

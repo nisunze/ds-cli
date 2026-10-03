@@ -31,6 +31,10 @@ mod common;
 /// Codes a caller cannot reach, with why.
 const NOT_A_REFUSAL: &[(&str, &str)] = &[
     (
+        "vector_workflow_refusal_undeclared",
+        "raised only if the shared Rust workflow owner grows a code absent from the closed mapping in ds-cli-data/src/vector_workflow.rs; the named match arms are all declared by the workflow commands, and this fallback reports an implementation contract defect",
+    ),
+    (
         "survey_hold_needs_cloud",
         "the offline first pass of `survey entries read` hands this to its own \
          caller when the kernel asks for the cloud; the read then restores the \

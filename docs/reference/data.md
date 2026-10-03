@@ -24,8 +24,9 @@ inspect → (choose the sheet, layer, or coordinate columns) → convert
 ## Native local vector processing
 
 `data vector measure`, `buffer`, `sample` and `intersect` call the same compiled
-Rust operations used by the map. They accept WGS84 GeoJSON from a local file
-or inline JSON text and return JSON receipts with GeoJSON results. Read each
+Rust operations used by the map. They import GeoJSON, KML or Arrow files
+and return JSON receipts with bounded previews. --out exports layer data as
+GeoJSON or Arrow IPC. Read each
 live descriptor for its mutually exclusive inputs and bounds. MCP inline
 documents are strings containing JSON text, not object arguments; all four
 tools are in the `datasets` profile or the broad `ds_data` chapter. Sampling
@@ -455,3 +456,164 @@ server owned.
 per cell and no attributes — so it stays a Cloud-Optimized GeoTIFF read by byte
 range or from the verified full Desktop component. `elevation attach` samples
 that surface into a new point artifact; it does not rewrite the DEM.
+
+
+### Shared vector request contract
+
+`ds data vector describe --tool sample --output json` publishes the Rust-owned
+input/output JSON Schemas, defaults, worked request examples, availability and
+named refusals. Omit `--tool` to list all 94 catalogue descriptors plus the
+collision report reader, including roadmap.
+The UI reads the same descriptors through ds-network-wasm.
+A full generated Buffer descriptor is in [vector-buffer.descriptor.json](vector-buffer.descriptor.json).
+
+Every available command (`measure`, `buffer`, `sample`, `intersect`, `outliers`,
+`random-points-area`, `collisions`) accepts `--request <json-text>` as an alternative to its
+source and parameter flags. MCP's vector profile and data router project
+these same command arguments; request is serialized JSON text there too.
+A portable control request names an Arrow/GeoJSON/KML file in `source.file`,
+with optional `source.layer_id` and `source.name` provenance. Intersect also needs
+`against`. Native inline GeoJSON is an explicit import-file boundary; the
+WASM runner receives binary IPC only. Download the web pane's content-named
+Arrow inputs beside the copied request.
+`parameters` follows the selected descriptor; `output` has `limit` (500 by
+default, 1..20000), `projection` (`inline` or `complete`) and optional `name`.
+The kernel applies omitted defaults. `--request` cannot mix with source,
+parameter or limit flags (`vector_input_choice_invalid`). Delivery flags
+`--out` and `--overwrite` are allowed. With explicit `--request`, exports retain
+its Rust-normalized projection and point order. Flag-style `--out` asks for the
+complete produced output, while input admission stays bounded.
+
+`--dry-run` executes the same computation and returns preview counts, fields,
+at most five sample features and warnings. It writes nothing, including when
+`--out` is present. A result limit never claims to restore withheld source
+features; read `more` and preview warnings.
+
+Measure now also returns a derived layer with `length_m`, `area_m2` and
+`vertices`, preserving source properties and ids; existing fields with these
+names are replaced in the derived copy. The report and whole-document totals
+remain available. Sample uses full precision `distance_m`, `source_id` and
+zero-based `part_index`; its default `include_ends` is false. Buffer defaults to
+25 metres and 8 arc segments. Intersect means line crossing points, not polygon
+intersection. Random-area sampling defaults to 50/100 metre spacing, a
+25 metre buffer for non-polygons and reproducible seed 0; spacing is per area.
+Terrain enrichment remains the existing host service workflow. Outlier metrics
+use the existing engine's metre projection for recognized geographic input
+(and source units otherwise), with the 3.5 score threshold.
+
+`vector_request_invalid` names unknown JSON fields, wrong types, enums, ranges,
+missing sources, inverted spacing or all outlier detectors disabled. Follow
+the published schema. `vector_tool_unknown` means no such descriptor exists;
+list describe. `vector_tool_roadmap` means the proposed schema exists but the
+runner is not shipped; choose status `available`. Existing document, eligibility,
+distance, limit and engine refusals retain their codes; parameter remedies now point to the descriptor.
+
+`ds data vector collisions` reads the existing reporter region layer as portable GeoJSON; it does not trigger detection. Its schema includes `loaded`, `computed` and nullable `last_read_computed`. Empty computed collections mean zero; a missing document and a held prior answer remain distinct. This is an additional report contract alongside the 94 geometry catalogue entries.
+
+For random points, optional `sample_elevation: true` requires `elevations_m` in returned point order, with `null` for unavailable terrain. The web acquires terrain, resolves the input pane and then calls the same Rust runner. Copy that resolved JSON to reproduce the exact enriched layer natively. Missing or mismatched readings refuse as `vector_external_data_required`.
+
+Use `ds mcp serve --exposure commands --profile vector` for descriptor discovery and all available vector commands. The existing datasets profile keeps its original four geometry primitives.
+
+### Vector workflows
+
+`ds data vector workflow describe --output json` returns a compact catalogue
+of the seven available tools, their typed input/output ports, the workflow
+schema, resource bounds, conditions and eight runnable examples. Roadmap tools
+are excluded from this compact catalogue; full descriptors remain available
+through `vector describe`. `--example 1` returns one complete JSON model.
+
+A `ds.vector-workflow/v1` document has `name`, optional `description`, typed
+`inputs`, `steps` and named `outputs`. Model inputs use `layer`, `number`,
+`string`, `bool` or `enum`; they may have descriptions and defaults. Enum inputs
+use `values`; number inputs may declare `unit` and `integer: true`. Layer inputs
+may declare `geometry` kinds and field name/type pairs. `many: true` declares a
+layer array. Supply input bindings with `--inputs <json-text>`.
+For a local layer, bind `{"route":{"file":"lv-lines.arrow"}}` (GeoJSON and
+KML files work too). File paths resolve relative to the workflow file. Raw
+GeoJSON is an import at the file edge; `path` is not a layer-reference key.
+
+Each step has a unique plain `id`, a descriptor `tool` id (command aliases also
+resolve), and the same `request` object used by standalone tools. Anywhere in
+that request, a single-member `{"$ref":"inputs.mv"}` object may replace a
+literal. Step references use `steps.<id>.outputs.<port>`; ports are `layer`,
+`report`, `preview`, `counts` and `fields_added`. Declared report/count fields
+and numeric array indices can be referenced further, for example
+`steps.metrics.outputs.report.totals.length_m`. Named model outputs are single
+references; only exported outputs are written to disk.
+To export appended geometry fields, reference the measure step's `outputs.layer`;
+`outputs.report` exports the measurement report instead.
+
+`ds data vector workflow validate --file model.json --output json` checks ids,
+all references, graph cycles, types, geometry kinds, units, known parameter
+constraints, conditions and iterator shapes. It returns topological order,
+dependencies, typed step outputs and unbound required parameters. `run` requires
+all inputs to be bound. Constraints on computed values are checked again when
+the actual request resolves. Errors include `step_id`, JSON `path` and `remedy`.
+
+Optional `when` accepts a boolean, a boolean reference, or an object with `op`.
+`exists` and `non_empty` use `value`; `eq`, `ne`, `gt`, `gte`, `lt`, `lte` use
+`left` and `right`; `all` and `any` use `conditions`; `not` uses `value`.
+Conditions short-circuit. A false condition skips its step and yields null
+layer/report ports; guard consumers of those ports with their own preconditions.
+
+Optional `for_each` has `kind: features|groups|layers` and `over` (a reference or
+literal). Feature iteration has `chunk_size` (1..64, default 1). Group iteration
+requires `group_by`; layer iteration requires a layer array. Requests can refer
+to `iterator.layer`, `iterator.index` and `iterator.key`. Layers are merged in
+deterministic order with `workflow_iteration` and `workflow_key` fields;
+iteration reports remain an array. Intermediate layers stay in bounded memory.
+
+`ds data vector workflow run --file model.json --dry-run --output json` computes
+each admitted intermediate so downstream counts stay accurate, returning a
+preview per step and up to five features per public layer. It creates no files
+or folders, even with `--out`. Actual execution uses the same native/WASM runner.
+`--out <directory>` exports named layers as Arrow IPC, other outputs as JSON, and
+`workflow-result.json` as a provenance receipt. Existing output files refuse;
+there is no overwrite switch. Without `--out`, named layer references and bounded
+previews are returned in the receipt; feature data is never returned inline.
+On the first execution failure, CLI/MCP refuse with
+`vector_workflow_step_failed`; `error.detail` keeps the completed outputs and
+the underlying step error. With `--out`, completed layers survive as
+`completed_<step>.arrow`, with a failure receipt.
+
+Each output records the tool id/version, canonical SHA-256 request digest,
+input/parameter digests and output digest. Fixed seeds and ordered execution
+make repeated requests deterministic. The runner bounds documents and bindings
+to 8 MiB each, retained typed data to 32 MiB, layers to 20,000 features, models to
+64 steps and iterators to 128 chunks/groups/layers. Conservative output estimates
+refuse excessive generators before kernel execution. This is a bounded inline
+runner with lazy feature chunks; split larger data into multiple models. No intermediate files survive.
+
+The eight embedded models are MV corridor buffer then measure; LV line points,
+point buffers and measure; line crossing points then measure; seeded area points
+then measure; outlier setbacks with a condition; points grouped by transformer;
+chunked line sampling; and buffers over multiple layers. All run against embedded
+fixtures in native and WASM tests. Building-within/count, nearest-building,
+dissolve and split-line recipes still need their roadmap tools; discovery never
+claims those algorithms are shipped.
+
+Workflow refusals are `vector_workflow_invalid` (fix schema/bindings),
+`vector_workflow_reference_invalid` (fix a named input/producer/port),
+`vector_workflow_type_mismatch` (match geometry, scalar type or units),
+`vector_workflow_cycle` (remove a back edge),
+`vector_workflow_bound_exceeded` (increase spacing/chunk size or split the model),
+`vector_tool_unknown` (choose a known id), `vector_tool_roadmap` (choose an
+available tool), and `vector_workflow_step_failed` (inspect the underlying step
+refusal and retained outputs). File reads can also return `source_unreadable`;
+exports use the existing `output_refused` contract. Literal parameter admission
+can retain `vector_request_invalid`, `vector_distance_out_of_range` and
+`vector_limit_out_of_range` from the tool descriptor.
+
+MCP exposes `data_vector_workflow_describe`, `data_vector_workflow_validate` and
+`data_vector_workflow_run` in the bounded `vector` profile and through the data
+chapter router. Their arguments and envelopes match the CLI. WASM exports
+`vector_workflow_describe`, `vector_workflow_validate`,
+`vector_workflow_validate_ipc` and `vector_workflow_run_ipc`; workflows have no human UI yet.
+
+Feature data stays in typed Rust layers between steps and crosses WASM as
+Arrow IPC. Tool execution returns receipts; `--out file.arrow` exports IPC and
+`--out file.geojson` uses the explicit file writer. Only the web's MapLibre
+renderer turns small results into GeoJSON. Rust selects vector-tile delivery
+for large results; the web sends file bytes through the existing upload and tiling pipeline. `vector_data_bound_exceeded` names
+an input or projected output beyond 32 MiB/20000 rows; split the layer or
+increase spacing. Binary import may also refuse `vector_document_malformed`.

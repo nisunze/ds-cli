@@ -1,6 +1,6 @@
 //! `ds data vector …` — geographic vector processing, headless.
 //!
-//! The typed `ds-command-kernel::vector_ops` controller owns the complete
+//! The `ds-network::vector` descriptor and runner own the complete
 //! processing packet shared with WASM: admission, algorithms and result
 //! projection. This surface resolves declared file/JSON-text inputs, parses
 //! CLI scalar spelling and writes requested local output without rebuilding
@@ -19,7 +19,7 @@ use ds_cli_contract::spec::{
     Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
-use ds_command_kernel::vector_ops::{self, ResultProjection, VectorRefusal, VectorRequest};
+use ds_network::vector::{self, Refusal as VectorRefusal, RunOptions};
 use serde_json::{Value, json};
 
 // ── Shared declarations ────────────────────────────────────────────────
@@ -31,7 +31,7 @@ const SOURCE: Arg = Arg {
     required: false,
     default: None,
     choices: &[],
-    summary: "Local GeoJSON path; supply exactly one of source or source-json.",
+    summary: "Local GeoJSON, KML or Arrow path; choose source or source-json.",
 };
 
 const SOURCE_JSON: Arg = Arg::value(
@@ -43,7 +43,7 @@ const SOURCE_JSON: Arg = Arg::value(
 const OUT: Arg = Arg::value(
     "out",
     "<path>",
-    "Write the result here as GeoJSON. Omitted, the result comes back inline.",
+    "Write GeoJSON or Arrow IPC here; omitted, return a bounded receipt.",
 );
 
 const OVERWRITE: Arg = Arg::switch("overwrite", "Replace --out if it already exists.");
@@ -51,15 +51,15 @@ const OVERWRITE: Arg = Arg::switch("overwrite", "Replace --out if it already exi
 const LIMIT: Arg = Arg::value(
     "limit",
     "<1..20000>",
-    "Cap the features read and the features returned inline; `more` states what that withheld.",
+    "Bound source/output features; receipts include counts and a small sample.",
 );
 
 /// Refusals the whole family shares. Each one is the kernel's verdict, so the
 /// code a caller branches on is the same one the Server and the desktop give.
 pub const DOCUMENT_MALFORMED: Refusal = Refusal {
     code: "vector_document_malformed",
-    when: "The --source file is not GeoJSON this reader recognises.",
-    remedy: "Pass a FeatureCollection, a Feature, or a bare geometry object.",
+    when: "The source is not supported GeoJSON, KML or Arrow IPC.",
+    remedy: "Use a supported layer file; inspect its format and geometry.",
 };
 pub const DOCUMENT_EMPTY: Refusal = Refusal {
     code: "vector_document_empty",
@@ -111,6 +111,11 @@ fn refuse(refusal: VectorRefusal) -> Failure {
     let remedy = refusal.remedy;
     let message = refusal.message;
     match refusal.code {
+        "vector_data_bound_exceeded" => Failure::invalid(DATA_BOUND_EXCEEDED.code, message),
+        "vector_external_data_required" => Failure::invalid(EXTERNAL_DATA_REQUIRED.code, message),
+        "vector_request_invalid" => Failure::invalid(REQUEST_INVALID.code, message),
+        "vector_tool_unknown" => Failure::invalid(TOOL_UNKNOWN.code, message),
+        "vector_tool_roadmap" => Failure::invalid(TOOL_ROADMAP.code, message),
         "vector_document_malformed" => Failure::invalid(DOCUMENT_MALFORMED.code, message),
         "vector_document_empty" => Failure::invalid(DOCUMENT_EMPTY.code, message),
         "vector_no_eligible_feature" => Failure::invalid(NO_ELIGIBLE_FEATURE.code, message),
@@ -146,78 +151,210 @@ fn read_document(inputs: &Inputs, arg: &str) -> Result<Value, Failure> {
             )));
         }
     };
-    parsed.map_err(|error| {
+    let document = parsed.map_err(|error| {
         Failure::invalid(
             DOCUMENT_MALFORMED.code,
             format!("Could not parse --{arg} document: {error}"),
         )
         .remedy(DOCUMENT_MALFORMED.remedy)
-    })
-}
-
-fn requested_limit(inputs: &Inputs) -> Result<Option<usize>, Failure> {
-    Ok(match inputs.value("limit") {
-        None => None,
-        Some(raw) => Some(raw.parse::<usize>().map_err(|_| {
-            Failure::invalid(
-                "vector_limit_out_of_range",
-                format!("--limit `{raw}` is not a whole number."),
-            )
-            .remedy("Pass a limit between 1 and 20000, or omit it for 500.")
-        })?),
-    })
-}
-
-fn requested_distance(inputs: &Inputs, name: &'static str) -> Result<f64, Failure> {
-    let raw = inputs.value(name).ok_or_else(|| {
-        Failure::invalid(
-            "vector_distance_out_of_range",
-            format!("--{name} is required."),
-        )
-        .remedy("Pass a distance inside the range this command's help states.")
     })?;
-    raw.parse::<f64>().map_err(|_| {
-        Failure::invalid(
-            "vector_distance_out_of_range",
-            format!("--{name} `{raw}` is not a number of metres."),
-        )
-        .remedy("Pass a plain number of metres, e.g. 25.")
-    })
+    vector::Layer::import_geojson(&document).map_err(|error| {
+        Failure::invalid(DOCUMENT_MALFORMED.code, error).remedy(DOCUMENT_MALFORMED.remedy)
+    })?;
+    Ok(document)
 }
 
-/// The host chooses a file or inline projection; the kernel owns the bound.
-fn result_projection(inputs: &Inputs) -> ResultProjection {
-    if inputs.value("out").is_some() {
-        ResultProjection::CompleteProduced
-    } else {
-        ResultProjection::Inline
+fn flag_source(inputs: &Inputs, arg: &str) -> Result<Value, Failure> {
+    if let (Some(path), None) = (inputs.value(arg), inputs.value(&format!("{arg}-json"))) {
+        return Ok(json!({"file":path}));
     }
+    Ok(json!({"geojson":read_document(inputs,arg)?}))
+}
+pub(crate) fn read_layer_reference(
+    reference: &Value,
+) -> Result<std::sync::Arc<vector::Layer>, Failure> {
+    let layer = if let Some(path) = reference["file"].as_str() {
+        use std::io::Read;
+        let file = std::fs::File::open(path).map_err(|e| {
+            Failure::invalid(crate::UNREADABLE.code, e.to_string())
+                .remedy("Check the referenced layer file is readable.")
+        })?;
+        let mut bytes = Vec::new();
+        file.take(vector::layer::ipc::MAX_BYTES as u64 + 1)
+            .read_to_end(&mut bytes)
+            .map_err(|e| {
+                Failure::invalid(crate::UNREADABLE.code, e.to_string())
+                    .remedy("Read a local layer file.")
+            })?;
+        vector::import_layer_file(path, &bytes).map_err(refuse)?
+    } else if let Some(value) = reference.get("geojson") {
+        vector::Layer::import_geojson(value).map_err(|e| {
+            refuse(VectorRefusal {
+                code: "vector_document_malformed",
+                message: e,
+                remedy: DOCUMENT_MALFORMED.remedy.into(),
+            })
+        })?
+    } else {
+        return Err(Failure::invalid(REQUEST_INVALID.code,"Native layer references need a file; export the UI input IPC beside the copied request.").remedy("Set source.file/against.file to a local .arrow, .geojson or .kml path."));
+    };
+    Ok(std::sync::Arc::new(layer))
 }
 
-/// Execute one typed controller packet, then perform only the declared file IO.
-/// The returned GeoJSON, all its properties and the engineering envelope stay
-/// the kernel's; delivery changes only `written_to` and the inline `result`.
-fn produce(inputs: &Inputs, request: VectorRequest) -> Result<Value, Failure> {
-    let mut answer = vector_ops::execute(&request).map_err(refuse)?;
+const REQUEST: Arg = Arg::value(
+    "request",
+    "<json-text>",
+    "Exact descriptor request JSON; alternative to source and parameter flags.",
+);
+const DRY_RUN: Arg = Arg::switch(
+    "dry-run",
+    "Return counts, fields, warnings and at most five sample features; write nothing.",
+);
+pub const DATA_BOUND_EXCEEDED: Refusal = Refusal {
+    code: "vector_data_bound_exceeded",
+    when: "Typed input or projected output exceeds 32 MiB or 20000 rows.",
+    remedy: "Split the layer into bounded chunks, or increase spacing.",
+};
+pub const EXTERNAL_DATA_REQUIRED: Refusal = Refusal {
+    code: "vector_external_data_required",
+    when: "Requested terrain readings are absent or do not match returned points.",
+    remedy: "Acquire elevations and provide elevations_m in point order, using null for unavailable readings.",
+};
+pub const REQUEST_INVALID: Refusal = Refusal {
+    code: "vector_request_invalid",
+    when: "The request violates the tool schema or parameter relationships.",
+    remedy: "Read ds data vector describe --tool <id> and follow its input_schema.",
+};
+pub const TOOL_UNKNOWN: Refusal = Refusal {
+    code: "vector_tool_unknown",
+    when: "No descriptor has the requested id or command.",
+    remedy: "List ds data vector describe and choose an id.",
+};
+pub const TOOL_ROADMAP: Refusal = Refusal {
+    code: "vector_tool_roadmap",
+    when: "The tool has a schema but no executable runner.",
+    remedy: "Choose a descriptor with status available.",
+};
+
+fn execute_tool(id: &str, inputs: &Inputs) -> Result<Value, Failure> {
+    let parameter_flags = [
+        "radius-m",
+        "segments",
+        "interval-m",
+        "threshold",
+        "min-features",
+        "spatial-isolation",
+        "size-outliers",
+        "extent-outliers",
+        "min-spacing-m",
+        "max-spacing-m",
+        "buffer-distance-m",
+        "seed",
+        "loaded",
+        "computed",
+        "last-read-computed",
+    ];
+    let mut request = if let Some(text) = inputs.value("request") {
+        if ["source", "source-json", "against", "against-json", "limit"]
+            .iter()
+            .chain(parameter_flags.iter())
+            .any(|k| inputs.value(k).is_some())
+            || inputs.switch("include-ends")
+        {
+            return Err(Failure::invalid(
+                INPUT_CHOICE_INVALID.code,
+                "Use --request or source/parameter flags, not both.",
+            )
+            .remedy("Keep --request with --dry-run, --out and --overwrite only."));
+        }
+        serde_json::from_str::<Value>(text).map_err(|e| {
+            Failure::invalid(REQUEST_INVALID.code, e.to_string())
+                .remedy("Supply one JSON object matching input_schema.")
+        })?
+    } else {
+        let mut value = json!({"source":flag_source(inputs,"source")?,"parameters":{},"output":{}});
+        if id == "intersect" {
+            value["against"] = flag_source(inputs, "against")?;
+        }
+        for flag in parameter_flags {
+            if let Some(text) = inputs.value(flag) {
+                let scalar = serde_json::from_str::<Value>(text)
+                    .or_else(|error| text.parse::<f64>().map(|n| json!(n)).map_err(|_| error))
+                    .map_err(|_| {
+                        Failure::invalid(
+                            REQUEST_INVALID.code,
+                            format!("--{flag} needs a number or boolean."),
+                        )
+                        .remedy("Use the descriptor's parameter types.")
+                    })?;
+                value["parameters"][flag.replace('-', "_")] = scalar;
+            }
+        }
+        if inputs.switch("include-ends") {
+            value["parameters"]["include_ends"] = json!(true);
+        }
+        if let Some(text) = inputs.value("limit") {
+            value["output"]["limit"] = json!(text.parse::<usize>().map_err(|_| {
+                Failure::invalid(LIMIT_OUT_OF_RANGE.code, "Limit needs an integer.")
+                    .remedy("Use 1 through 20000.")
+            })?);
+        }
+        value
+    };
+    // Flag-style exports retain complete delivery. An explicit JSON request
+    // keeps its exact projection, including terrain readings in that point order.
+    if inputs.value("request").is_none() && inputs.value("out").is_some() && request.is_object() {
+        if request.get("output").is_none() {
+            request["output"] = json!({});
+        }
+        if request["output"].is_object() {
+            request["output"]["projection"] = json!("complete");
+        }
+    }
+    let dry_run = inputs.switch("dry-run");
+    let request = vector::prepare(id, request).map_err(refuse)?;
+    let source = read_layer_reference(&request["source"])?;
+    let against = request
+        .get("against")
+        .map(read_layer_reference)
+        .transpose()?;
+    let result = vector::run(
+        id,
+        vector::control_request(request),
+        source,
+        against,
+        RunOptions { dry_run },
+    )
+    .map_err(refuse)?;
+    let mut answer = result.metadata;
+    if dry_run {
+        return Ok(answer);
+    }
     let Some(path) = inputs.value("out") else {
         return Ok(answer);
     };
     if std::path::Path::new(path).exists() && !inputs.switch("overwrite") {
-        return Err(
-            Failure::invalid("output_refused", format!("{path} already exists."))
-                .remedy("Choose another --out path, or pass --overwrite to replace it."),
-        );
-    }
-    let bytes = serde_json::to_vec(&answer["result"]).map_err(|error| {
-        Failure::invalid(
-            "output_refused",
-            format!("Could not encode the result: {error}"),
+        return Err(Failure::invalid(
+            crate::OUTPUT_REFUSED.code,
+            format!("{path} already exists."),
         )
-        .remedy("Choose another --out path, or pass --overwrite to replace it.")
-    })?;
-    std::fs::write(path, bytes).map_err(|error| {
-        Failure::invalid("output_refused", format!("Could not write {path}: {error}"))
-            .remedy("Choose another --out path, or pass --overwrite to replace it.")
+        .remedy("Choose another --out path or pass --overwrite."));
+    }
+    let bytes = if let Some(layer) = result.layer {
+        if path.ends_with(".arrow") || path.ends_with(".ipc") {
+            vector::layer::ipc::encode(&layer).map_err(|e| {
+                Failure::invalid(crate::OUTPUT_REFUSED.code, e)
+                    .remedy("Choose a writable Arrow output path.")
+            })?
+        } else {
+            serde_json::to_vec(&layer.export_geojson()).expect("GeoJSON export")
+        }
+    } else {
+        serde_json::to_vec(&answer["report"]).expect("report export")
+    };
+    std::fs::write(path, bytes).map_err(|e| {
+        Failure::invalid(crate::OUTPUT_REFUSED.code, e.to_string())
+            .remedy("Check the destination is writable.")
     })?;
     answer["written_to"] = json!(path);
     answer["result"] = Value::Null;
@@ -238,7 +375,7 @@ fn render_produced(data: &Value, noun: &str) -> String {
     }
     match data["written_to"].as_str() {
         Some(path) => out.push_str(&format!("  written  {path}\n")),
-        None => out.push_str("  inline   pass --out <path> to write a file\n"),
+        None => out.push_str("  export   pass --out <path> to write layer data\n"),
     }
     if let Some(note) = data["note"].as_str() {
         out.push_str(&format!("  note     {note}\n"));
@@ -254,43 +391,52 @@ fn render_produced(data: &Value, noun: &str) -> String {
 pub static BUFFER_COMMAND: Command = Command {
     id: "data.vector.buffer",
     path: &["data", "vector", "buffer"],
-    contract: 2,
-    summary: "Buffer each feature by a fixed distance into a polygon zone.",
+    contract: 4,
+    summary: vector::BUFFER_SUMMARY,
     purpose: "\
 Grows a zone of --radius-m metres around every point, line and polygon in a \
 GeoJSON document and returns it as polygons. Runs the same geodesic buffer \
 the map's tools run, on this machine, with no project and no window. Each \
-output keeps its source feature's properties and gains `buffer_radius_m`, so \
+output names its source feature and gains `buffer_radius_m`, so \
 a corridor, a setback or a service area stays traceable to what produced it.",
     chapter: Chapter::Data,
     effect: Effect::LocalFileWrite,
     authority: Authority::None,
     execution: Execution::Sync,
     args: &[
+        REQUEST,
+        DRY_RUN,
         SOURCE,
         SOURCE_JSON,
-        Arg::value("radius-m", "<0.01..100000>", "Buffer distance in metres.").required(),
+        Arg::value(
+            "radius-m",
+            "<0.01..100000>",
+            "Buffer distance in metres; Rust defaults to 25.",
+        ),
         Arg::value(
             "segments",
             "<1..64>",
             "Arc segments per quarter turn; a circle has four times this many vertices.",
-        )
-        .default("8"),
+        ),
         OUT,
         OVERWRITE,
         LIMIT,
     ],
     output: "\
 `produced`, `processed`, `source_features`, `skipped` counted by reason, and \
-either `written_to` or an inline `result` FeatureCollection of polygons. \
-`more` states what the limit withheld: eligible features not read, and zones \
-made but not returned inline. `--out` writes every one of them.",
+a bounded preview and `output_layer` schema. `result` is null; feature data \
+exports only through --out as GeoJSON or Arrow IPC. `more` states what the \
+source/output limit withheld. --dry-run writes nothing.",
     examples: &[Example {
         command: "ds data vector buffer --source ./poles.geojson --radius-m 30 --out ./zone.geojson",
         note: "A 30 m zone around every pole, written as GeoJSON.",
         runnable: false,
     }],
     refusals: &[
+        REQUEST_INVALID,
+        DATA_BOUND_EXCEEDED,
+        TOOL_UNKNOWN,
+        TOOL_ROADMAP,
         crate::UNREADABLE,
         DOCUMENT_MALFORMED,
         DOCUMENT_EMPTY,
@@ -319,30 +465,7 @@ made but not returned inline. `--out` writes every one of them.",
 };
 
 pub fn run_buffer(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
-    let limit = requested_limit(inputs)?;
-    let radius_m = requested_distance(inputs, "radius-m")?;
-    let segments = inputs
-        .value("segments")
-        .unwrap_or("8")
-        .parse::<u32>()
-        .map_err(|_| {
-            Failure::invalid(
-                "vector_distance_out_of_range",
-                "--segments must be a whole number from 1 to 64.",
-            )
-            .remedy("Pass a whole number of arc segments from 1 to 64, or omit it for 8.")
-        })?;
-    produce(
-        inputs,
-        VectorRequest::Buffer {
-            schema: vector_ops::SCHEMA.into(),
-            source: read_document(inputs, "source")?,
-            radius_m,
-            segments,
-            limit,
-            result_projection: result_projection(inputs),
-        },
-    )
+    execute_tool("buffer", inputs)
 }
 
 pub fn render_buffer(data: &Value) -> String {
@@ -354,8 +477,8 @@ pub fn render_buffer(data: &Value) -> String {
 pub static SAMPLE_COMMAND: Command = Command {
     id: "data.vector.sample",
     path: &["data", "vector", "sample"],
-    contract: 2,
-    summary: "Place points along each line at a fixed interval.",
+    contract: 4,
+    summary: vector::SAMPLE_SUMMARY,
     purpose: "\
 Walks every line in a GeoJSON document and drops a point every --interval-m \
 metres, carrying each point's cumulative distance from the start of its line. \
@@ -367,9 +490,15 @@ rather than silently dropped.",
     authority: Authority::None,
     execution: Execution::Sync,
     args: &[
+        REQUEST,
+        DRY_RUN,
         SOURCE,
         SOURCE_JSON,
-        Arg::value("interval-m", "<0.01..1000000>", "Spacing in metres.").required(),
+        Arg::value(
+            "interval-m",
+            "<0.01..1000000>",
+            "Spacing in metres; Rust defaults to 100.",
+        ),
         Arg::switch("include-ends", "Also place a point at each line end."),
         OUT,
         OVERWRITE,
@@ -377,16 +506,19 @@ rather than silently dropped.",
     ],
     output: "\
 `produced`, `processed`, `source_features`, `skipped` counted by reason, and \
-either `written_to` or an inline `result` FeatureCollection of points, each \
-carrying `distance_m` along its source line. `more` states what was withheld, \
-including points made but not returned inline — `--out` writes every one of \
-them; `note` says why a run that worked placed no point.",
+a bounded preview and `output_layer` schema. Exported points carry full \
+precision `distance_m` and zero-based `part_index`. `result` is null; --out \
+writes GeoJSON or Arrow IPC. `more` states the bounds; `note` explains zero points.",
     examples: &[Example {
         command: "ds data vector sample --source ./route.geojson --interval-m 25 --output json",
         note: "A pole position every 25 m along a route.",
         runnable: false,
     }],
     refusals: &[
+        REQUEST_INVALID,
+        DATA_BOUND_EXCEEDED,
+        TOOL_UNKNOWN,
+        TOOL_ROADMAP,
         crate::UNREADABLE,
         DOCUMENT_MALFORMED,
         DOCUMENT_EMPTY,
@@ -413,19 +545,7 @@ them; `note` says why a run that worked placed no point.",
 };
 
 pub fn run_sample(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
-    let limit = requested_limit(inputs)?;
-    let interval_m = requested_distance(inputs, "interval-m")?;
-    produce(
-        inputs,
-        VectorRequest::Sample {
-            schema: vector_ops::SCHEMA.into(),
-            source: read_document(inputs, "source")?,
-            interval_m,
-            include_ends: inputs.switch("include-ends"),
-            limit,
-            result_projection: result_projection(inputs),
-        },
-    )
+    execute_tool("sample", inputs)
 }
 
 pub fn render_sample(data: &Value) -> String {
@@ -437,8 +557,8 @@ pub fn render_sample(data: &Value) -> String {
 pub static INTERSECT_COMMAND: Command = Command {
     id: "data.vector.intersect",
     path: &["data", "vector", "intersect"],
-    contract: 2,
-    summary: "Find the points where two line documents cross.",
+    contract: 4,
+    summary: vector::INTERSECT_SUMMARY,
     purpose: "\
 Compares every line in --source against every line in --against and returns a \
 point for each crossing, naming the two features that produced it. This is \
@@ -450,6 +570,8 @@ or window. Returns crossing points, not polygon clipping or overlap geometry.",
     authority: Authority::None,
     execution: Execution::Sync,
     args: &[
+        REQUEST,
+        DRY_RUN,
         SOURCE,
         SOURCE_JSON,
         Arg::value(
@@ -468,16 +590,19 @@ or window. Returns crossing points, not polygon clipping or overlap geometry.",
     ],
     output: "\
 `produced`, `processed`, `source_features`, `against_features`, `skipped` \
-counted by reason, and either `written_to` or an inline `result` \
-FeatureCollection of crossing points. `more` states what was withheld from \
-either document and what was found but not returned inline — `--out` writes \
-every crossing; `note` says so when nothing crosses, which is an answer.",
+counted by reason, with a bounded preview and output schema. `result` is \
+null; --out exports crossing points as GeoJSON or Arrow IPC. `more` states \
+what source/output bounds withheld; `note` explains a successful zero-crossing answer.",
     examples: &[Example {
         command: "ds data vector intersect --source ./mv.geojson --against ./roads.geojson",
         note: "Every road crossing on an MV network.",
         runnable: false,
     }],
     refusals: &[
+        REQUEST_INVALID,
+        DATA_BOUND_EXCEEDED,
+        TOOL_UNKNOWN,
+        TOOL_ROADMAP,
         crate::UNREADABLE,
         DOCUMENT_MALFORMED,
         DOCUMENT_EMPTY,
@@ -495,6 +620,7 @@ every crossing; `note` says so when nothing crosses, which is an answer.",
         "overlay",
         "crossing",
         "intersection",
+        "line intersections",
         "topology",
     ],
     requires: Requires::Server,
@@ -502,17 +628,7 @@ every crossing; `note` says so when nothing crosses, which is an answer.",
 };
 
 pub fn run_intersect(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
-    let limit = requested_limit(inputs)?;
-    produce(
-        inputs,
-        VectorRequest::Intersect {
-            schema: vector_ops::SCHEMA.into(),
-            source: read_document(inputs, "source")?,
-            against: read_document(inputs, "against")?,
-            limit,
-            result_projection: result_projection(inputs),
-        },
-    )
+    execute_tool("intersect", inputs)
 }
 
 pub fn render_intersect(data: &Value) -> String {
@@ -524,8 +640,8 @@ pub fn render_intersect(data: &Value) -> String {
 pub static MEASURE_COMMAND: Command = Command {
     id: "data.vector.measure",
     path: &["data", "vector", "measure"],
-    contract: 2,
-    summary: "Length, area and vertex counts for every feature in a document.",
+    contract: 4,
+    summary: vector::MEASURE_SUMMARY,
     purpose: "\
 Reports what a GeoJSON document actually contains: each feature's geometry \
 class, vertex count, geodesic length in metres for a line and spherical area \
@@ -534,28 +650,33 @@ document came from somewhere else — it names the geometry classes the rest of 
 this family will accept or skip, so an unexpected refusal never has to be \
 guessed at.",
     chapter: Chapter::Data,
-    effect: Effect::ReadOnly,
+    effect: Effect::LocalFileWrite,
     authority: Authority::None,
     execution: Execution::Sync,
-    args: &[SOURCE, SOURCE_JSON, LIMIT],
+    args: &[SOURCE, SOURCE_JSON, LIMIT, REQUEST, DRY_RUN, OUT, OVERWRITE],
     output: "\
 `totals` (features, by geometry class, length_m, area_m2, vertices) counted \
 over the WHOLE document, and a `features` array — bounded by --limit, which \
 `more` then says so — carrying each feature's index, id, kind, parts, holes, \
 vertices, length_m and area_m2. A polygon's area_m2 is its outer ring less \
-its holes.",
+its holes. --out exports a derived GeoJSON or Arrow layer with length_m, area_m2 and vertices; result is null.",
     examples: &[Example {
         command: "ds data vector measure --source ./network.geojson --output json",
         note: "Total line length and what geometry classes the file holds.",
         runnable: false,
     }],
     refusals: &[
+        REQUEST_INVALID,
+        DATA_BOUND_EXCEEDED,
+        TOOL_UNKNOWN,
+        TOOL_ROADMAP,
         crate::UNREADABLE,
         DOCUMENT_MALFORMED,
         DOCUMENT_EMPTY,
         INPUT_CHOICE_INVALID,
         NO_ELIGIBLE_FEATURE,
         LIMIT_OUT_OF_RANGE,
+        crate::OUTPUT_REFUSED,
     ],
     reference: Some("docs/reference/data.md"),
     search: &[
@@ -568,19 +689,16 @@ its holes.",
         "st_length",
         "st_area",
         "statistics",
+        "add geometry attributes",
+        "measure",
+        "vertices",
     ],
     requires: Requires::Server,
     availability: crate::available,
 };
 
 pub fn run_measure(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
-    let limit = requested_limit(inputs)?;
-    vector_ops::execute(&VectorRequest::Measure {
-        schema: vector_ops::SCHEMA.into(),
-        source: read_document(inputs, "source")?,
-        limit,
-    })
-    .map_err(refuse)
+    execute_tool("measure", inputs)
 }
 
 pub fn render_measure(data: &Value) -> String {
@@ -631,6 +749,10 @@ mod tests {
             &SAMPLE_COMMAND,
             &INTERSECT_COMMAND,
             &MEASURE_COMMAND,
+            &DESCRIBE_COMMAND,
+            &OUTLIERS_COMMAND,
+            &RANDOM_COMMAND,
+            &COLLISIONS_COMMAND,
         ] {
             for term in FAMILY_TERMS {
                 assert!(
@@ -651,8 +773,299 @@ mod tests {
             &SAMPLE_COMMAND,
             &INTERSECT_COMMAND,
             &MEASURE_COMMAND,
+            &DESCRIBE_COMMAND,
+            &OUTLIERS_COMMAND,
+            &RANDOM_COMMAND,
+            &COLLISIONS_COMMAND,
         ] {
             assert_eq!(command.requires, Requires::Server, "{}", command.id);
         }
     }
+}
+
+pub static DESCRIBE_COMMAND: Command = Command {
+    id: "data.vector.describe",
+    path: &["data", "vector", "describe"],
+    contract: 1,
+    summary: "Read vector tool schemas, examples, defaults and availability.",
+    purpose: "Inspect the Rust-owned vector tool contracts before constructing --request JSON. With --tool, return one complete descriptor. Without it, return the catalogue including roadmap shapes. Requests name Arrow, GeoJSON or KML input files with optional layer provenance; no project, login or Desktop is needed.",
+    chapter: Chapter::Data,
+    effect: Effect::ReadOnly,
+    authority: Authority::None,
+    execution: Execution::Sync,
+    args: &[Arg::value(
+        "tool",
+        "<id>",
+        "Stable descriptor id or vector command; omitted lists the catalogue.",
+    )],
+    output: "One descriptor or all descriptors: id, category, summary, status, input_schema, output_schema, worked request examples and named refusals.",
+    examples: &[Example {
+        command: "ds data vector describe --tool sample --output json",
+        note: "Learn the exact portable UI/CLI/MCP request shape.",
+        runnable: true,
+    }],
+    refusals: &[TOOL_UNKNOWN],
+    reference: Some("docs/reference/data.md"),
+    search: &[
+        "geoprocessing",
+        "gis",
+        "spatial",
+        "vector",
+        "schema",
+        "json",
+        "forms",
+        "catalogue",
+        "roadmap",
+        "geometry",
+    ],
+    requires: Requires::Server,
+    availability: crate::available,
+};
+pub fn run_describe(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
+    vector::describe(inputs.value("tool")).map_err(refuse)
+}
+pub fn render_describe(data: &Value) -> String {
+    format!(
+        "{}\n",
+        serde_json::to_string_pretty(data).unwrap_or_default()
+    )
+}
+
+pub static OUTLIERS_COMMAND: Command = Command {
+    id: "data.vector.outliers",
+    path: &["data", "vector", "outliers"],
+    contract: 1,
+    summary: vector::OUTLIERS_SUMMARY,
+    purpose: "Find spatial isolation and size or extent outliers with the existing Rust robust-statistics engine. Coordinate metrics remain in source degrees. Use --request for the exact UI shape, or the source and parameter flags. --dry-run returns bounded evidence without writing an output.",
+    chapter: Chapter::Data,
+    effect: Effect::LocalFileWrite,
+    authority: Authority::None,
+    execution: Execution::Sync,
+    args: &[
+        SOURCE,
+        SOURCE_JSON,
+        REQUEST,
+        DRY_RUN,
+        LIMIT,
+        OUT,
+        OVERWRITE,
+        Arg::value(
+            "threshold",
+            "<1..20>",
+            "Robust score threshold; Rust defaults to 3.5.",
+        ),
+        Arg::value(
+            "min-features",
+            "<3..100>",
+            "Minimum analyzable group; Rust defaults to 5.",
+        ),
+        Arg::value(
+            "spatial-isolation",
+            "<true|false>",
+            "Detect isolated geometry; defaults to true.",
+        ),
+        Arg::value(
+            "size-outliers",
+            "<true|false>",
+            "Detect unusual size; defaults to true.",
+        ),
+        Arg::value(
+            "extent-outliers",
+            "<true|false>",
+            "Detect unusual extent; defaults to true.",
+        ),
+    ],
+    output: "Robust statistics report, derived-layer schema and preview with counts, fields, up to five sample features and warnings. Source and output bounds are explicit in more.",
+    examples: &[Example {
+        command: "ds data vector outliers --source ./points.geojson --dry-run --output json",
+        note: "Inspect findings before writing a layer.",
+        runnable: false,
+    }],
+    refusals: &[
+        crate::UNREADABLE,
+        crate::OUTPUT_REFUSED,
+        DOCUMENT_MALFORMED,
+        DOCUMENT_EMPTY,
+        INPUT_CHOICE_INVALID,
+        NO_ELIGIBLE_FEATURE,
+        LIMIT_OUT_OF_RANGE,
+        REQUEST_INVALID,
+        DATA_BOUND_EXCEEDED,
+        TOOL_UNKNOWN,
+        TOOL_ROADMAP,
+    ],
+    reference: Some("docs/reference/data.md"),
+    search: &[
+        "geoprocessing",
+        "spatial",
+        "vector",
+        "gis",
+        "geometry",
+        "outlier",
+        "isolation",
+        "statistics",
+    ],
+    requires: Requires::Server,
+    availability: crate::available,
+};
+pub fn run_outliers(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
+    execute_tool("outliers", inputs)
+}
+pub fn render_outliers(data: &Value) -> String {
+    render_produced(data, "outlier")
+}
+
+pub static RANDOM_COMMAND: Command = Command {
+    id: "data.vector.random-points-area",
+    path: &["data", "vector", "random-points-area"],
+    contract: 1,
+    summary: vector::RANDOM_SUMMARY,
+    purpose: "Generate points in polygons with holes or buffered point/line corridors using the existing Rust spacing sampler. Seed 0 is the reproducible default. Spacing is enforced within each area. Terrain enrichment is a separate host workflow. --request accepts the UI JSON; --dry-run previews without writing a file.",
+    chapter: Chapter::Data,
+    effect: Effect::LocalFileWrite,
+    authority: Authority::None,
+    execution: Execution::Sync,
+    args: &[
+        SOURCE,
+        SOURCE_JSON,
+        REQUEST,
+        DRY_RUN,
+        LIMIT,
+        OUT,
+        OVERWRITE,
+        Arg::value(
+            "min-spacing-m",
+            "<0.01..1000000>",
+            "Minimum point spacing per area in metres; defaults to 50.",
+        ),
+        Arg::value(
+            "max-spacing-m",
+            "<0.01..1000000>",
+            "Density spacing in metres, at least the minimum; defaults to 100.",
+        ),
+        Arg::value(
+            "buffer-distance-m",
+            "<0..1000000>",
+            "Metres around points/lines; defaults to 25; polygons need none.",
+        ),
+        Arg::value(
+            "seed",
+            "<number>",
+            "Reproducible nonnegative seed; defaults to 0.",
+        ),
+    ],
+    output: "Point-layer schema with source_feature_id, source_layer and one-based point_index; area and buffer counts, bounded preview and explicit more when input/output is withheld.",
+    examples: &[Example {
+        command: "ds data vector random-points-area --source ./boundary.geojson --seed 42 --out ./points.geojson",
+        note: "Repeat the exact scatter with the same seed.",
+        runnable: false,
+    }],
+    refusals: &[
+        crate::UNREADABLE,
+        crate::OUTPUT_REFUSED,
+        DOCUMENT_MALFORMED,
+        DOCUMENT_EMPTY,
+        INPUT_CHOICE_INVALID,
+        NO_ELIGIBLE_FEATURE,
+        LIMIT_OUT_OF_RANGE,
+        EXTERNAL_DATA_REQUIRED,
+        DISTANCE_OUT_OF_RANGE,
+        REQUEST_INVALID,
+        DATA_BOUND_EXCEEDED,
+        TOOL_UNKNOWN,
+        TOOL_ROADMAP,
+    ],
+    reference: Some("docs/reference/data.md"),
+    search: &[
+        "geoprocessing",
+        "spatial",
+        "vector",
+        "gis",
+        "geometry",
+        "random",
+        "sampling",
+        "points",
+        "polygon",
+        "corridor",
+    ],
+    requires: Requires::Server,
+    availability: crate::available,
+};
+pub fn run_random(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
+    execute_tool("random-points-area", inputs)
+}
+pub fn render_random(data: &Value) -> String {
+    render_produced(data, "point")
+}
+
+pub static COLLISIONS_COMMAND: Command = Command {
+    id: "data.vector.collisions",
+    path: &["data", "vector", "collisions"],
+    contract: 1,
+    summary: vector::COLLISIONS_SUMMARY,
+    purpose: "Read existing reporter collision-region GeoJSON without recomputing overlaps. Rust ranks the reporter evidence and distinguishes never-computed, zero, found and held answers. Detection remains the authenticated project reporter operation. --request is the same JSON as the project panel; --dry-run bounds the region sample and writes nothing.",
+    chapter: Chapter::Data,
+    effect: Effect::ReadOnly,
+    authority: Authority::None,
+    execution: Execution::Sync,
+    args: &[
+        SOURCE,
+        SOURCE_JSON,
+        REQUEST,
+        DRY_RUN,
+        LIMIT,
+        Arg::value(
+            "loaded",
+            "<true|false>",
+            "Whether a report has been read; defaults to true.",
+        ),
+        Arg::value(
+            "computed",
+            "<true|false>",
+            "Whether a computed document exists; defaults to true.",
+        ),
+        Arg::value(
+            "last-read-computed",
+            "<true|false|null>",
+            "Most recent read witness; defaults to null.",
+        ),
+    ],
+    output: "Collision report with phase, counts, ranked regions, reporter evidence and freshness; dry-run exposes at most five regions. Empty collections are authoritative zero when computed is true.",
+    examples: &[Example {
+        command: "ds data vector collisions --source ./collisions.geojson --dry-run --output json",
+        note: "Read reporter evidence without triggering detection.",
+        runnable: false,
+    }],
+    refusals: &[
+        crate::UNREADABLE,
+        DOCUMENT_MALFORMED,
+        INPUT_CHOICE_INVALID,
+        LIMIT_OUT_OF_RANGE,
+        REQUEST_INVALID,
+        DATA_BOUND_EXCEEDED,
+        TOOL_UNKNOWN,
+        TOOL_ROADMAP,
+    ],
+    reference: Some("docs/reference/data.md"),
+    search: &[
+        "geoprocessing",
+        "gis",
+        "geometry",
+        "spatial",
+        "vector",
+        "collisions",
+        "overlap",
+        "report",
+        "regions",
+        "held",
+        "evidence",
+    ],
+    requires: Requires::Server,
+    availability: crate::available,
+};
+pub fn run_collisions(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
+    execute_tool("collisions", inputs)
+}
+pub fn render_collisions(data: &Value) -> String {
+    serde_json::to_string_pretty(data).unwrap_or_default()
 }

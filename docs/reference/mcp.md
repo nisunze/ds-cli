@@ -43,13 +43,22 @@ same chapter with `operation: "invoke"` and descriptor-conforming `arguments`.
 Unknown and wrong-chapter ids never become argv; the refusal names the correct
 router when one exists.
 
-Specialized profiles publish conventional typed leaf tools for one workflow:
+Specialized profiles publish conventional typed leaf tools for one workflow.
+`vector` publishes descriptor discovery and all seven available vector runners,
+using the same `--request` JSON and dry-run previews as the web. The established
+`datasets` profile retains its four geometry primitives and its existing budget:
+
+```sh
+ds mcp serve --exposure commands --profile vector
+```
+
+For example:
 
 ```text
 ds mcp serve --exposure commands --profile pls
 ```
 
-Profiles include `auth-context`, `datasets`, `grid`, `grid-native`, `grid-corrections`, `pls`, `pls-desktop`, `pls-library`, `library-governance`, `survey`,
+Profiles include `auth-context`, `datasets`, `vector`, `grid`, `grid-native`, `grid-corrections`, `pls`, `pls-desktop`, `pls-library`, `library-governance`, `survey`,
 `form-factory`, `survey-projects`, `survey-media`, `survey-migration`, `design-edit`, `design-run`, `map`, `printing-maps`, `layers`,
 `tiling`, `project`, `project-task-operations`, `correspondence`, `solar-input`, `solar-application`, `solar-run`, `solar-dashboard`, `solar-delivery`,
 `solar-portfolio-batch`, `solar-migration`, `design-migration`,
@@ -58,7 +67,10 @@ task workflow; `project-task-operations` owns typed task geometry and
 admission steps. Task creation stays in both profiles. `datasets` groups
 catalog discovery, held-layer GeoJSON, planned
 BigQuery geography, model-line export, local-layer registration and sector
-workbook delivery. `printing` owns report production and output selection;
+workbook delivery. `vector` provides portable descriptor discovery, seven Rust
+vector tools and workflow describe/validate/run (eleven leaves plus two
+bootstrap tools); it needs no project or Desktop. The datasets profile retains
+its existing four vector primitives. `printing` owns report production and output selection;
 `printing-maps` owns map composition and publication. Each headless read names
 its authorized project.
 `correspondence` owns the parties, the records and threads and the
