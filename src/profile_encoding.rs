@@ -146,6 +146,20 @@ mod tests {
             )
             .unwrap()
         );
+        let guide = &rows
+            .iter()
+            .find(|row| row.option == DisplayOption::ClearanceLine)
+            .unwrap()
+            .encoding;
+        let witness = clearance_violation_encoding(&document).unwrap();
+        assert_eq!(guide.width_px, 0.4 * 96.0 / 25.4);
+        assert_eq!(guide.dash_px, vec![2.0 * 96.0 / 25.4, 96.0 / 25.4]);
+        assert_eq!(guide.label_color, "#fb7185");
+        assert_eq!(guide.font, "11px monospace");
+        assert_eq!(witness.width_px, 0.5 * 96.0 / 25.4);
+        assert!(witness.dash_px.is_empty());
+        assert_eq!(witness.label_color, "#a78bfa");
+        assert_eq!(witness.font, "bold 12px monospace");
         let encodings: std::collections::BTreeSet<_> = rows
             .iter()
             .map(|row| {
