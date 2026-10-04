@@ -325,10 +325,10 @@ mod tests {
                 elevated
             );
         }
-        assert!(
-            serde_json::from_str::<ProjectPayload>(r#"{"success":true,"data":{"projects":[]}}"#)
-                .is_err()
-        );
+        assert!(serde_json::from_str::<ProjectPayload>(
+            r#"{"success":true,"data":{"projects":[]}}"#
+        )
+        .is_err());
     }
 
     #[test]
@@ -486,11 +486,9 @@ mod project_crs_tests {
         assert!(project.project_params().is_null());
         assert_eq!(project.legacy_project_crs_shape()["mode_is_string"], true);
         assert!(directory.exact("other").is_none());
-        assert!(
-            !project
-                .legacy_project_crs_shape()
-                .to_string()
-                .contains("south")
-        );
+        assert!(!project
+            .legacy_project_crs_shape()
+            .to_string()
+            .contains("south"));
     }
 }
