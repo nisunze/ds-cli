@@ -41,14 +41,14 @@ pub fn project(
     if state.visibility[&O::TerrainOrdinates] {
         for band in &scene.bands {
             for terrain in &band.terrain_points {
-                let mut foot = terrain.point.clone();
+                let mut foot = terrain.point;
                 foot.scene_y = scene.plot_bounds.max_y;
                 out.push(Primitive {
                     option: O::TerrainOrdinates,
                     encoding: pen(O::TerrainOrdinates),
-                    points: vec![terrain.point.clone(), foot],
+                    points: vec![terrain.point, foot],
                     labels: vec![Label {
-                        point: terrain.point.clone(),
+                        point: terrain.point,
                         text: format!("{:.1} m", terrain.point.elevation_m),
                         offset_px: [4.0, 14.0],
                     }],
@@ -76,7 +76,7 @@ pub fn project(
         let wire = lanes(G::LowestWireDrop);
         for span in &scene.conductor_spans {
             if let Some(label) = &span.span_label {
-                let mut point = label.point.clone();
+                let mut point = label.point;
                 let a = ground.y(point.scene_x);
                 let b = wire.y(point.scene_x);
                 if a.is_some() || b.is_some() {
@@ -105,9 +105,9 @@ pub fn project(
                         encoding: pen(O::SectionLabels),
                         points: vec![],
                         labels: vec![Label {
-                            point: label.point.clone(),
+                            point: label.point,
                             text: section_label(
-                                &span.section_id.to_string(),
+                                &span.section_id,
                                 scene
                                     .evidence
                                     .section_basis
@@ -164,7 +164,7 @@ pub fn project(
                         encoding: pen(option),
                         points: vec![],
                         labels: vec![Label {
-                            point: structure.top.as_ref().unwrap_or(&structure.ground).clone(),
+                            point: *structure.top.as_ref().unwrap_or(&structure.ground),
                             text,
                             offset_px: [6.0, offset],
                         }],
@@ -181,7 +181,7 @@ pub fn project(
                         encoding: pen(O::StructureLabels),
                         points: vec![],
                         labels: vec![Label {
-                            point: structure.top.as_ref().unwrap_or(&structure.ground).clone(),
+                            point: *structure.top.as_ref().unwrap_or(&structure.ground),
                             text,
                             offset_px: [6.0, offset],
                         }],

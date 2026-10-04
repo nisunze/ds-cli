@@ -29,12 +29,12 @@ pub struct ProjectRequest {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(tag = "operation", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Request {
-    Project(ProjectRequest),
+    Project(Box<ProjectRequest>),
     CaseLayer(CaseRequest),
 }
 impl From<ProjectRequest> for Request {
     fn from(value: ProjectRequest) -> Self {
-        Self::Project(value)
+        Self::Project(Box::new(value))
     }
 }
 #[derive(Debug, Clone, Deserialize)]
@@ -81,7 +81,7 @@ pub struct Runtime {
 impl Runtime {
     pub fn execute(&mut self, request: impl Into<Request>) -> Result<Value, String> {
         match request.into() {
-            Request::Project(request) => self.project(request),
+            Request::Project(request) => self.project(*request),
             Request::CaseLayer(request) => self.case_layer(request),
         }
     }

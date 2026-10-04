@@ -18,8 +18,8 @@ impl Lanes {
         for points in segments {
             for pair in points.windows(2) {
                 edges.push(Edge {
-                    a: pair[0].clone(),
-                    b: pair[1].clone(),
+                    a: pair[0],
+                    b: pair[1],
                     order: edges.len(),
                     min: pair[0].scene_x.min(pair[1].scene_x),
                     max: pair[0].scene_x.max(pair[1].scene_x),
