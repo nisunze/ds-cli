@@ -263,6 +263,26 @@ pub(crate) fn governance<T: crate::AuthorizedTransport>(
         return Err(bad());
     }
     let response: Value = serde_json::from_slice(&response.body).map_err(|_| bad())?;
-    ds_command_kernel::style_governance::admit(&request, &response)
-        .map_err(|e| governance_refused(&e))
+    let admitted = ds_command_kernel::style_governance::admit(&request, &response)
+        .map_err(|e| governance_refused(&e))?;
+    if matches!(
+        command,
+        ds_command_kernel::style_governance::Command::PlanA4
+            | ds_command_kernel::style_governance::Command::CreateA4 { .. }
+    ) {
+        let plan = if matches!(
+            command,
+            ds_command_kernel::style_governance::Command::CreateA4 { .. }
+        ) {
+            &admitted["plan"]
+        } else {
+            &admitted
+        };
+        if plan["principal"] != authority.email {
+            return Err(governance_refused(
+                "project_context_changed: A4 plan belongs to another captured principal",
+            ));
+        }
+    }
+    Ok(admitted)
 }

@@ -13744,3 +13744,62 @@ fn headless_style_governance_captures_exact_projects_and_seed_review_fences() {
         && c.contains("project_b")
         && c.contains(&"c".repeat(64))));
 }
+
+#[test]
+fn fixed_a4_seed_uses_the_existing_native_styles_route_and_rejects_another_principal() {
+    use ds_command_kernel::style_governance::Command;
+    let transport = FixtureTransport::with_sign_in(SIGN_IN);
+    let mut client = signed_in(transport.clone(), MemoryStore::default());
+    let definition = serde_json::json!({"schema":"ds.print-a4-default/v1","html_sha256":"a".repeat(64),"content_sha256":"b".repeat(64),"status_layout":{"paper":{"size":"A4","orientation":"portrait"}},"logo_slots":["governed-logo-0","governed-logo-1","governed-logo-2","governed-logo-3","governed-logo-4","governed-logo-5"]});
+    let mut plan = serde_json::json!({"schema":"ds.print-a4-seed-plan/v1","project_id":"project_a","principal":"user@example.com","document_path":"eds_apps/ds_griddesign/printing_a4_documents/voltage-drop-a4-v1","definition_sha256":ds_command_kernel::style_plan::style_digest(&definition),"content_sha256":"b".repeat(64),"html_sha256":"a".repeat(64),"definition":definition,"existing_state":"missing","creates":1,"preserves":0,"apply_allowed":true,"plan_sha256":""});
+    plan["plan_sha256"] = serde_json::json!(ds_command_kernel::style_plan::style_digest(&plan));
+    push_styles(&transport, serde_json::json!({"success":true,"data":plan}));
+    let admitted = client
+        .style_governance("project_a", &Command::PlanA4, NOW + 1)
+        .unwrap();
+    assert_eq!(admitted["creates"], 1);
+    let create = Command::CreateA4 {
+        expected_definition_sha256: plan["definition_sha256"].as_str().unwrap().into(),
+        expected_plan_sha256: plan["plan_sha256"].as_str().unwrap().into(),
+    };
+    push_styles(
+        &transport,
+        serde_json::json!({"success":true,"data":{"schema":"ds.print-a4-seed-result/v1","plan":plan,"applied":true,"created":true,"preserved":false}}),
+    );
+    assert_eq!(
+        client
+            .style_governance("project_a", &create, NOW + 1)
+            .unwrap()["created"],
+        true
+    );
+    assert!(transport
+        .calls()
+        .iter()
+        .any(|call| call.starts_with("styles ")
+            && call.contains("create_printing_a4")
+            && call.contains("project_a")
+            && call.contains(plan["plan_sha256"].as_str().unwrap())));
+    let before = transport.calls().len();
+    assert!(client
+        .style_governance(
+            "project_a",
+            &Command::CreateA4 {
+                expected_definition_sha256: "bad".into(),
+                expected_plan_sha256: "c".repeat(64)
+            },
+            NOW + 1
+        )
+        .is_err());
+    assert_eq!(transport.calls().len(), before);
+    push_styles(&transport, serde_json::json!({"success":true,"data":plan}));
+    assert!(client
+        .style_governance("project_b", &Command::PlanA4, NOW + 1)
+        .is_err());
+    plan["principal"] = serde_json::json!("another@example.com");
+    plan["plan_sha256"] = serde_json::json!("");
+    plan["plan_sha256"] = serde_json::json!(ds_command_kernel::style_plan::style_digest(&plan));
+    push_styles(&transport, serde_json::json!({"success":true,"data":plan}));
+    assert!(client
+        .style_governance("project_a", &Command::PlanA4, NOW + 1)
+        .is_err());
+}
