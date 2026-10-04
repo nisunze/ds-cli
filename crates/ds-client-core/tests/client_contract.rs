@@ -24,6 +24,7 @@ use serde_json::json;
 use sha2::Digest;
 
 const NOW: u64 = 1_900_000_000;
+mod linked_grid_contract;
 const SIGN_IN: &[u8] = include_bytes!("fixtures/firebase-sign-in.json");
 const REFRESH: &[u8] = include_bytes!("fixtures/firebase-refresh.json");
 const REVOKED: &[u8] = include_bytes!("fixtures/firebase-revoked.json");

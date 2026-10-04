@@ -803,8 +803,10 @@
             "does not re-enter this operation. `get_export_artifact` and",
             "`get_backup_artifact` sign one digest-verified read; `bump_version`,",
             "`update_model` and `set_approval` are head-fenced governance writes",
-            "with no upload. A Server that predates an action refuses it and the",
-            "client reports that by name."
+            "with no upload. `publish_linked` commits one linked generation (every",
+            "participant version, the graph generation and its fences) atomically;",
+            "`get_linked_generation` reads one immutable generation vector. A Server",
+            "that predates an action refuses it and the client reports that by name."
           ],
           "transport": "json",
           "authority": "gateway",
@@ -826,7 +828,9 @@
             "set_approval",
             "delete_model",
             "restore_model",
-            "publish_export"
+            "publish_export",
+            "publish_linked",
+            "get_linked_generation"
           ],
           "lane_header": false,
           "idempotency": "unsafe",

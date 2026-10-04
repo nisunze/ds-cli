@@ -20,7 +20,7 @@ pub const MAX_BYTES: usize = 256 * 1024 * 1024;
 /// claims no ordinal.
 pub const MAX_POSITION_PAGES: usize = 20;
 /// Every action this owner sends. The gateway registry must allow each.
-pub const ACTIONS: [&str; 16] = [
+pub const ACTIONS: [&str; 18] = [
     "list_models",
     "get_model",
     "list_versions",
@@ -37,13 +37,25 @@ pub const ACTIONS: [&str; 16] = [
     "delete_model",
     "restore_model",
     "publish_export",
+    "publish_linked",
+    "get_linked_generation",
 ];
 /// The refusal code for an action or field a Server predates.
 pub const SERVER_ACTION_UNSUPPORTED: &str = "server_action_unsupported";
 pub mod exports;
 pub mod governance;
+pub mod linked_publication;
 pub mod publication;
 pub enum Command {
+    PublishLinked {
+        intent: Box<linked_publication::LinkedIntent>,
+        participants: Vec<linked_publication::Participant>,
+        checkpoint: Vec<u8>,
+    },
+    LinkedGeneration {
+        graph: String,
+        generation: u64,
+    },
     List {
         limit: u16,
         cursor: Option<String>,
@@ -250,6 +262,16 @@ impl Command {
                 .plan(project, bytes)
                 .map(|_| ())
                 .map_err(|message| ClientError::new(ErrorKind::InvalidInput, message)),
+            Self::PublishLinked {
+                intent,
+                participants,
+                checkpoint,
+            } => intent.plan(project, participants, checkpoint).map(|_| ()),
+            Self::LinkedGeneration { graph, generation }
+                if id(graph) && *generation <= i64::MAX as u64 =>
+            {
+                Ok(())
+            }
             Self::Show { model } if id(model) => Ok(()),
             Self::ShowVersion { model, revision }
             | Self::Position { model, revision }
@@ -600,6 +622,31 @@ pub(crate) fn run<T: AuthorizedTransport>(
 ) -> Result<Receipt, ClientError> {
     command.validate(project)?;
     match command {
+        Command::PublishLinked {
+            intent,
+            participants,
+            checkpoint,
+        } => {
+            return linked_publication::run(
+                profile,
+                transport,
+                authority,
+                project,
+                intent,
+                participants,
+                checkpoint,
+            );
+        }
+        Command::LinkedGeneration { graph, generation } => {
+            return linked_publication::read(
+                profile,
+                transport,
+                authority,
+                project,
+                graph,
+                *generation,
+            );
+        }
         Command::Publish { intent, bytes } => {
             return publication::run(profile, transport, authority, project, intent, bytes)
         }
