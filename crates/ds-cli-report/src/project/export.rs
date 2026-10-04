@@ -1182,6 +1182,8 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let receipt = InputReceipt::from_config(&held_inputs.configuration).map_err(|error| {
         Failure::invalid("report_inputs_invalid", error).remedy(INPUTS_INVALID.remedy)
     })?;
+    // Original server authority remains provenance even for an explicit local proof.
+    let server_sheets_sha256 = receipt.sheets_sha256.clone();
     let receipt = if proof_paths.is_empty() {
         receipt
     } else {
@@ -1218,6 +1220,48 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         let proof = ds_command_kernel::report_export::proof::with_layouts(&receipt, &layouts)
             .map_err(|e| Failure::invalid(INPUTS_INVALID.code, e))?;
         complete_proof_print_styles(lane, &project_id, proof, &layouts)?
+    };
+    // Only the sanctioned kernel local-proof boundary may capture a different
+    // effective authored layout. A normal delivery retains its original held capsule.
+    let printing_style_capture = if receipt.local_print_recipe.is_some() {
+        let current = ds_cli_auth::headless_identity_for_named_project(lane)?;
+        require_same_context(&identity, &project_id, &current, &project_id)
+            .map_err(host_failure)?;
+        let table = ds_cli_auth::style_governance(
+            lane,
+            &project_id,
+            &ds_command_kernel::style_governance::Command::Table,
+        )?;
+        let current = ds_cli_auth::headless_identity_for_named_project(lane)?;
+        require_same_context(&identity, &project_id, &current, &project_id)
+            .map_err(host_failure)?;
+        let snapshot = serde_json::from_value(table).map_err(|e| {
+            Failure::invalid(
+                INPUTS_INVALID.code,
+                format!("local proof style source: {e}"),
+            )
+        })?;
+        let sheets = receipt
+            .sheets()
+            .map_err(|e| Failure::invalid(INPUTS_INVALID.code, e))?;
+        let layouts =
+            effective_capture_layouts(&sheets, &held_inputs.setups, &rows, &requested_outputs)
+                .map_err(|e| Failure::invalid(INPUTS_INVALID.code, e))?;
+        Some(
+            ds_command_kernel::printing::style_capture::Capture::new(
+                &snapshot,
+                &project_id,
+                lane,
+                identity.uid(),
+                identity.credential_audience_sha256(),
+                &server_sheets_sha256,
+                &sheets,
+                &layouts,
+            )
+            .map_err(|e| Failure::invalid(INPUTS_INVALID.code, e))?,
+        )
+    } else {
+        held_inputs.printing_style_capture.clone()
     };
     if let Some(request) = &preview_request {
         // A draft may bind styles the sealed receipt never carried; the
@@ -1865,7 +1909,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         } else {
             print_context
         };
-        let print_context = if let Some(capture) = &held_inputs.printing_style_capture {
+        let print_context = if let Some(capture) = &printing_style_capture {
             Some(ds_report_host::bind_print_styles(
                 print_context,
                 capture,
@@ -1876,7 +1920,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
                 &receipt
                     .sheets()
                     .map_err(|e| HostFailure::new(INPUTS_INVALID.code, e))?,
-                &receipt.sheets_sha256,
+                &server_sheets_sha256,
             )?)
         } else {
             print_context
@@ -3346,6 +3390,87 @@ pub fn render(data: &Value) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn explicit_local_proof_capture_keeps_original_server_receipt_and_admits_only_its_draft() {
+        use ds_command_kernel::{printing, report_export, style_resolution};
+        let fixture: Value = serde_json::from_str(include_str!(
+            "../../../../../ds-command-kernel/tests/fixtures/printing-source-bindings.json"
+        ))
+        .unwrap();
+        let snapshot = style_resolution::Snapshot {
+            schema: style_resolution::SCHEMA.into(),
+            project_id: "project-a".into(),
+            revision_id: "b".repeat(64),
+            seed_version: None,
+            style_presets: None,
+            missing_style_refs: vec![],
+            bindings: serde_json::from_value(fixture["bindings"].clone()).unwrap(),
+        };
+        let mut original = printing::default_layout();
+        original.id = "detail".into();
+        let sheets = json!({"printing_setups":[{"id":"detail","revision":"a".repeat(64),"layout":original}],"project_settings":[{"parameter":"report_locale","value":"en"}]});
+        let source = report_export::InputReceipt {
+            schema: 1,
+            country: "RW".into(),
+            reference_semantic_sha256: "a".repeat(64),
+            sheets_json: sheets.to_string(),
+            sheets_sha256: report_export::sha256_hex(sheets.to_string().as_bytes()),
+            local_print_recipe: None,
+        };
+        let mut draft = original.clone();
+        draft.name = "Explicit review draft".into();
+        let proof = report_export::proof::with_layouts(&source, &[draft.clone()]).unwrap();
+        assert_ne!(proof.sheets_sha256, source.sheets_sha256);
+        assert_eq!(
+            proof
+                .local_print_recipe
+                .as_ref()
+                .unwrap()
+                .source_sheets_sha256,
+            source.sheets_sha256
+        );
+        let capture = printing::style_capture::Capture::new(
+            &snapshot,
+            "project-a",
+            "stable",
+            "user-a",
+            &"a".repeat(64),
+            &source.sheets_sha256,
+            &proof.sheets().unwrap(),
+            &[draft.clone()],
+        )
+        .unwrap();
+        assert!(capture.for_layout(&draft).is_ok());
+        assert!(capture.for_layout(&original).is_err());
+        assert_eq!(capture.server_sheets_sha256, source.sheets_sha256);
+        assert!(
+            ds_report_host::bind_print_styles(
+                None,
+                &capture,
+                "project-a",
+                "stable",
+                "user-a",
+                &"a".repeat(64),
+                &proof.sheets().unwrap(),
+                &source.sheets_sha256
+            )
+            .is_ok()
+        );
+        assert!(
+            ds_report_host::bind_print_styles(
+                None,
+                &capture,
+                "project-a",
+                "stable",
+                "user-a",
+                &"a".repeat(64),
+                &proof.sheets().unwrap(),
+                &proof.sheets_sha256
+            )
+            .is_err()
+        );
+        assert_eq!(source.sheets().unwrap(), sheets);
+    }
     #[test]
     fn held_style_capture_uses_final_override_precedence_and_selected_layouts_only() {
         let selection = ds_command_kernel::report_formats::normalize_output_selection(
