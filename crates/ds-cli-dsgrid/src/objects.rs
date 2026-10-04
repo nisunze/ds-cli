@@ -189,7 +189,8 @@ mod tests {
     fn the_fixture_indexes_its_structures_and_alignment_in_wgs84_with_the_engine_s_chainage() {
         let index = index("package", &fixture(), Some("humble".into())).expect("indexes");
         assert_eq!(index.r#ref, "package");
-        assert_eq!(index.model_id, "pls-import-fnv1a64:81e10012");
+        // The schema-4 re-emit (ds-network 5b86e73e) moved the fixture's identity.
+        assert_eq!(index.model_id, "pls-import-fnv1a64:fc2cb1fa");
         assert_eq!(index.model_revision, 0);
         assert_eq!(index.crs, "EPSG:32735");
         assert_eq!(index.display_name.as_deref(), Some("humble"));
