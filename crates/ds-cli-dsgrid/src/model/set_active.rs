@@ -29,14 +29,14 @@ const MODEL_ARG: Arg = Arg {
 pub static COMMAND: Command = Command {
     id: "dsgrid.model.set-active",
     path: &["dsgrid", "model", "set-active"],
-    contract: 1,
+    contract: 2,
     summary: "Open one of this machine's working copies as the active one.",
     purpose: "\
 Makes one working copy the one an editing session starts from on this \
 machine. Idempotent: naming the copy that is already open reports \
 `changed: false` and touches nothing, so a retry after a lost answer is safe. \
 This is local state and reaches no project; it is not a claim about any \
-project catalogue revision.",
+project catalogue revision. Old packages are prepared through the one external format migration before activation: exact original bytes and migration receipt are preserved locally, the saved working package is strict-current, and the local catalogue write is digest-fenced. No project publication or authored package revision bump occurs.",
     chapter: Chapter::GridModel,
     effect: Effect::LocalFileWrite,
     authority: Authority::None,
@@ -44,7 +44,7 @@ project catalogue revision.",
     args: &[MODEL_ARG, workspace::LANE_ARG, workspace::ACCOUNT_ARG],
     output: "\
 `status` (`active` or `unchanged`), `active_model`, `changed`, the model's \
-`name` and `revision`, and `previous_active_model` when it moved.",
+`name` and `revision`, and `previous_active_model` when it moved. `format_migration` names original/current SHA, saved original/current packages and preservation receipt; null when already current.",
     examples: &[Example {
         command: "ds dsgrid model set-active --model gm-local-7 --output json",
         note: "Read .data.changed; false means it was already the active model.",
@@ -59,7 +59,9 @@ project catalogue revision.",
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let id = inputs.require("model")?.trim().to_owned();
-    let outcome = workspace::execute(inputs, Op::SetActive { id: id.clone() }, None)?;
+    let located = workspace::locate(inputs, &id)?;
+    let migration = workspace::prepare_open(&located)?;
+    let outcome = workspace::execute_in(&located.scope, Op::SetActive { id: id.clone() }, None)?;
     let opened = outcome
         .model
         .as_ref()
@@ -68,6 +70,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         "status": if outcome.active_changed { "active" } else { "unchanged" },
         "active_model": outcome.catalogue.active,
         "changed": outcome.active_changed,
+        "format_migration": migration,
         "model": workspace::row(opened, outcome.catalogue.active.as_deref()),
     }))
 }

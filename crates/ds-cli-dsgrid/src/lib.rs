@@ -49,6 +49,7 @@ pub mod model;
 pub mod mutation;
 pub mod objects;
 pub mod package;
+pub mod package_migrate;
 pub mod preview_receipt;
 pub mod profile;
 pub mod project;
@@ -67,6 +68,7 @@ pub static DOMAIN: Domain = Domain {
     summary: "Canonical .dsgrid models: inspect, validate, revise, publish.",
     commands: &[
         &backup::COMMAND,
+        &package_migrate::COMMAND,
         &project::LIST,
         &project::SHOW,
         &project::VERSIONS,
