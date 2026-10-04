@@ -104,7 +104,7 @@ fn section_usage_label_reads_current_solver_basis_and_native_selector_controls_i
             "../../../../ds-brain/internal/services/profile_display_style.v1.json"
         ))
         .unwrap(),
-        patch: Default::default(),
+        patch: serde_json::from_value(json!({"visibility":{"section_labels":true}})).unwrap(),
         analyze: false,
     };
     let mut runtime = Runtime::default();
