@@ -79,7 +79,8 @@ use serde_json::json;
 pub use ds_cli_contract::args::{INVALID_NUMBER, integer, plural};
 pub use ds_cli_desktop::ops::{
     AMBIGUOUS, DESCRIPTOR_ARG, NOT_PAIRED, PAIRING_REJECTED, PROJECT_NOT_OPEN, REFUSED, SIGNED_OUT,
-    UNREACHABLE, UNREADABLE, UNSUPPORTED, classify_signed_out, invoke, paired, paired_availability,
+    TARGET_ARG, UNREACHABLE, UNREADABLE, UNSUPPORTED, classify_signed_out, invoke, paired,
+    paired_availability,
 };
 
 // ---------------------------------------------------------------------------

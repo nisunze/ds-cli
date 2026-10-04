@@ -59,6 +59,7 @@ pub static COMMAND: Command = Command {
         Arg::repeated("family", "<family>", "Repeat distinct scene families; default: held visible families supported in this space. Plan lacks attachment-point geometry; terrain_points = native ground points.").choices(FAMILIES),
         Arg::value("filter", "<json>", "Closed ProfileTableFilterQuery <=64 KiB: {filters?:[{column,op,value?,value2?,values?}],stats_columns?:[]}; <=64 AND filters, <=8 stats names, strings <=4096 bytes, values <=256. Operators and name rules: docs/reference/map.md (grid lasso filter)."),
         Arg::value("mode", "<replace|add|remove|intersect>", "Combine native hits with the current selection.").choices(&["replace", "add", "remove", "intersect"]).default("replace"),
+        crate::TARGET_ARG,
         crate::DESCRIPTOR_ARG,
     ],
     output: "Exact window receipt: held model/revision, native identities/primary focus. Empty hits succeed; CLI computes nothing.",

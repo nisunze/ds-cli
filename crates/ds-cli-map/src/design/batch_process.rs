@@ -7,7 +7,7 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
-use crate::DESCRIPTOR_ARG;
+use crate::{DESCRIPTOR_ARG, TARGET_ARG};
 
 const TRANSFORMER_ARG: Arg = Arg {
     name: "transformer",
@@ -53,7 +53,13 @@ is uploaded until a separate save command is confirmed.",
     effect: Effect::LocalUi,
     authority: Authority::Project,
     execution: Execution::Sync,
-    args: &[TRANSFORMER_ARG, SETTING_ARG, PARALLEL_ARG, DESCRIPTOR_ARG],
+    args: &[
+        TRANSFORMER_ARG,
+        SETTING_ARG,
+        PARALLEL_ARG,
+        TARGET_ARG,
+        DESCRIPTOR_ARG,
+    ],
     output: "\
 Requested parallelism and per-transformer success, warning, or error rows, plus \
 total/succeeded/failed counts. Successful rows report staged=true and \

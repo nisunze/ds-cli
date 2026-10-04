@@ -9,11 +9,6 @@ use ds_command_kernel::solar_batch::{MAX_BYTES, Request};
 use serde_json::{Value, json};
 use std::{fs::File, io::Read, time::Duration};
 
-const DESCRIPTOR: Arg = Arg::value(
-    "desktop-descriptor",
-    "<path>",
-    "Select one paired DS session.",
-);
 static REFUSALS: &[Refusal] = &[
     Refusal {
         code: "invalid_portfolio_batch",
@@ -53,7 +48,8 @@ pub static START_COMMAND: Command = Command {
             "Complete ds-solar.portfolio-batch/v1 request, at most 1 MiB.",
         )
         .required(),
-        DESCRIPTOR,
+        ds_cli_desktop::ops::TARGET_ARG,
+        ds_cli_desktop::ops::DESCRIPTOR_ARG,
     ],
     output: "Durable run_id, exact request, per-portfolio run ids and current kernel state.",
     examples: &[Example {
@@ -79,7 +75,8 @@ pub static STATUS_COMMAND: Command = Command {
     execution: Execution::Sync,
     args: &[
         Arg::value("run-id", "<id>", "Exact batch_id from the submission.").required(),
-        DESCRIPTOR,
+        ds_cli_desktop::ops::TARGET_ARG,
+        ds_cli_desktop::ops::DESCRIPTOR_ARG,
     ],
     output: "Kernel batch state with complete/cancelled flags and each row's terminal outcome.",
     examples: &[Example {
@@ -105,7 +102,8 @@ pub static CANCEL_COMMAND: Command = Command {
     execution: Execution::Sync,
     args: &[
         Arg::value("run-id", "<id>", "Exact batch_id to cancel.").required(),
-        DESCRIPTOR,
+        ds_cli_desktop::ops::TARGET_ARG,
+        ds_cli_desktop::ops::DESCRIPTOR_ARG,
     ],
     output: "Current kernel state; poll until complete to observe settled outcomes.",
     examples: &[Example {

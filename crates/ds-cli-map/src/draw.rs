@@ -19,7 +19,7 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
-use crate::{DESCRIPTOR_ARG, MAX_LAYER_FEATURES};
+use crate::{DESCRIPTOR_ARG, MAX_LAYER_FEATURES, TARGET_ARG};
 
 /// The geometry types a temporary layer can hold, as the application spells
 /// them. One layer holds one type — a mixed file is two layers.
@@ -47,6 +47,7 @@ move the map to what was just drawn.",
             .choices(GEOMETRIES),
         Arg::value("features", "<path>", "GeoJSON file to draw.").required(),
         Arg::switch("zoom", "Move the map to the drawn layer's extent."),
+        TARGET_ARG,
         DESCRIPTOR_ARG,
     ],
     output: "\

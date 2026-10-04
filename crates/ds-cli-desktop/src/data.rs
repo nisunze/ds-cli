@@ -1,6 +1,6 @@
 //! Governed Rwanda geographic data distribution through the paired Desktop.
 use crate::discover::Descriptor;
-use crate::ops::{self, BridgeOp, DESCRIPTOR_ARG};
+use crate::ops::{self, BridgeOp, DESCRIPTOR_ARG, TARGET_ARG};
 use ds_cli_contract::{
     Context, Failure, Inputs,
     spec::{Arg, ArgKind, Authority, Chapter, Command, Effect, Execution, Refusal, Requires},
@@ -110,7 +110,7 @@ pub static STATUS_COMMAND: Command = Command {
     effect: Effect::ReadOnly,
     authority: Authority::DesktopUser,
     execution: Execution::Sync,
-    args: &[RESOURCE_ARG, DESCRIPTOR_ARG],
+    args: &[RESOURCE_ARG, TARGET_ARG, DESCRIPTOR_ARG],
     output: "Project, dataset counts, aggregate sizes, this volume's free, reserved and spendable bytes, and per dataset its publication state, install state and whether the disk reserve is what keeps it off this computer.",
     examples: &[],
     refusals: REFUSALS,
@@ -130,7 +130,7 @@ pub static CATALOG_COMMAND: Command = Command {
     effect: Effect::GlobalWrite,
     authority: Authority::DesktopUser,
     execution: Execution::Sync,
-    args: &[DESCRIPTOR_ARG],
+    args: &[TARGET_ARG, DESCRIPTOR_ARG],
     output: "The complete governed catalog and exact source, transfer and expanded sizes after reconciliation.",
     examples: &[],
     refusals: REFUSALS,
@@ -150,7 +150,7 @@ pub static PUBLISH_COMMAND: Command = Command {
     effect: Effect::GlobalWrite,
     authority: Authority::DesktopUser,
     execution: Execution::Sync,
-    args: &[REQUIRED_RESOURCE_ARG, DESCRIPTOR_ARG],
+    args: &[REQUIRED_RESOURCE_ARG, TARGET_ARG, DESCRIPTOR_ARG],
     output: "Dataset identity, feature count, compressed transfer bytes and expanded desktop bytes.",
     examples: &[],
     refusals: REFUSALS,
@@ -170,7 +170,7 @@ pub static INSTALL_COMMAND: Command = Command {
     effect: Effect::LocalFileWrite,
     authority: Authority::DesktopUser,
     execution: Execution::Sync,
-    args: &[RESOURCE_ARG, MAX_DOWNLOAD_ARG, DESCRIPTOR_ARG],
+    args: &[RESOURCE_ARG, MAX_DOWNLOAD_ARG, TARGET_ARG, DESCRIPTOR_ARG],
     output: "What was installed, what was already held, what was skipped and why, the volume before and after, and the catalog receipt with compressed transfer, expanded payload, spatial index and total disk sizes.",
     examples: &[],
     refusals: REFUSALS,
@@ -198,7 +198,7 @@ pub static STORAGE_COMMAND: Command = Command {
     effect: Effect::LocalFileWrite,
     authority: Authority::DesktopUser,
     execution: Execution::Sync,
-    args: &[STORAGE_PATH_ARG, DESCRIPTOR_ARG],
+    args: &[STORAGE_PATH_ARG, TARGET_ARG, DESCRIPTOR_ARG],
     output: "Resolved owned root, available and total filesystem bytes, and whether the recommended root is active.",
     examples: &[],
     refusals: REFUSALS,
@@ -218,7 +218,7 @@ pub static REMOVE_COMMAND: Command = Command {
     effect: Effect::LocalFileWrite,
     authority: Authority::DesktopUser,
     execution: Execution::Sync,
-    args: &[RESOURCE_ARG, DESCRIPTOR_ARG],
+    args: &[RESOURCE_ARG, TARGET_ARG, DESCRIPTOR_ARG],
     output: "The refreshed catalog receipt and exact remaining local disk use.",
     examples: &[],
     refusals: REFUSALS,

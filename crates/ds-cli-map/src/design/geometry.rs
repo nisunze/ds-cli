@@ -13,8 +13,8 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
-use crate::DESCRIPTOR_ARG;
 use crate::design::TRANSFORMER_ARG;
+use crate::{DESCRIPTOR_ARG, TARGET_ARG};
 
 const GEOMETRY_ID_ARG: Arg = Arg {
     name: "id",
@@ -59,6 +59,7 @@ that matches more than one feature is refused, never guessed. Coordinates are \
             "dry-run",
             "Validate the addressing and geometry; stage nothing.",
         ),
+        TARGET_ARG,
         DESCRIPTOR_ARG,
     ],
     output: "\

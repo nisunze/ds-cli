@@ -935,41 +935,20 @@ fn every_refusal_this_proof_asserts_is_a_code_the_kernel_publishes() {
     }
 }
 
-/// **The one sub-claim of acceptance 4 this slice does not yet meet.**
-///
-/// On a machine where `ds` has no native profile of its own — nothing has told
-/// it who is running it, which is a supported configuration and the whole
-/// reason `discover::adopted_requirement` exists — dispatch scopes NO headless
-/// observation (`registry::scope_headless_identity` maps the target *inside*
-/// the identity, and there is no identity to put it in). The host `--target` is
-/// dropped with it — `DS_TARGET` too, since it is that flag's default and is
-/// read in the same place — so a paired command that explicitly names a dead
-/// instance routes to whichever live one is compatible instead of refusing.
-/// Measured through the built executable, against one live fixture instance:
-///
-/// ```text
-/// $ ds desktop project list --target desktop:dddd…dddd --output json
-/// {"status":"ok","data":{…,"servedBy":"aaaa…aaaa"}}          exit 0
-/// $ ds desktop status       --target desktop:dddd…dddd --output json
-/// {"status":"error","error":{"code":"desktop_target_not_live",…}}   exit 2
-/// ```
-///
-/// `desktop status` is right because it reads its own declared flag
-/// (`ops::declared_target`); every command that takes the host from the scoped
-/// observation is wrong. `--desktop-descriptor` is unaffected: it is passed to
-/// the handler as an argument and never rides the observation.
+/// A machine where `ds` has no native profile of its own — nothing has told it
+/// who is running it, which is a supported configuration and the whole reason
+/// `discover::adopted_requirement` exists — has no headless observation to scope
+/// either. The host `--target` (and `DS_TARGET`, its default) is therefore
+/// scoped by dispatch on its own, beside the identity and never inside it
+/// (`ops::scope_target`), so a paired command that explicitly names a dead
+/// instance refuses instead of routing to whichever live one is compatible.
 ///
 /// The contract is explicit — "An explicitly targeted dead or mismatched
-/// instance refuses; it never falls through to another instance" — so this test
-/// states the requirement rather than the behaviour, and is ignored until the
-/// target is carried independently of the observation. The fix is in the CLI's
-/// dispatch (`crates/ds/src/registry.rs::scope_headless_identity` with
-/// `ds-cli-desktop::ops`), not in this crate's resolution: `bridge::paired_on`
-/// already refuses correctly for every target it is actually given, which every
-/// other test in this file proves.
+/// instance refuses; it never falls through to another instance".
+/// `--desktop-descriptor` is unaffected: it is passed to the handler as an
+/// argument and never rides the scoped target.
 #[test]
-#[ignore = "GAP: dispatch drops --target when no native profile is configured; fix in ds/src/registry.rs::scope_headless_identity, then un-ignore"]
-fn ignored_until_dispatch_carries_a_target_with_no_native_profile_a_dead_instance_still_refuses() {
+fn with_no_native_profile_a_dead_instance_still_refuses() {
     let machine = Machine::new();
     let alpha = Bridge::start(ALPHA, Some("project-a"), SHARED_NAME);
     machine.publish(&alpha);

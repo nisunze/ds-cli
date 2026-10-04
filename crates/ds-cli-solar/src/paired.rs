@@ -138,7 +138,7 @@ pub static REFUSALS: &[Refusal] = &[
     Refusal {
         code: "desktop_ambiguous",
         when: "more than one DS GridDesign session is running",
-        remedy: "name one with --desktop-descriptor <path>",
+        remedy: "name one with --target desktop:<instance_id>",
     },
     Refusal {
         code: "desktop_unreachable",
@@ -214,7 +214,7 @@ pub static START_REFUSALS: &[Refusal] = &[
     Refusal {
         code: "desktop_ambiguous",
         when: "more than one DS GridDesign session is running",
-        remedy: "name one with --desktop-descriptor <path>",
+        remedy: "name one with --target desktop:<instance_id>",
     },
     Refusal {
         code: "desktop_unreachable",

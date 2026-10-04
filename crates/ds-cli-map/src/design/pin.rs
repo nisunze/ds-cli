@@ -15,7 +15,7 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
-use crate::DESCRIPTOR_ARG;
+use crate::{DESCRIPTOR_ARG, TARGET_ARG};
 
 const TRANSFORMERS_ARG: Arg = Arg {
     name: "transformer",
@@ -57,7 +57,13 @@ pub static COMMAND: Command = Command {
     effect: Effect::LocalUi,
     authority: Authority::Project,
     execution: Execution::Sync,
-    args: &[TRANSFORMERS_ARG, SELECTION_ARG, MODE_ARG, DESCRIPTOR_ARG],
+    args: &[
+        TRANSFORMERS_ARG,
+        SELECTION_ARG,
+        MODE_ARG,
+        TARGET_ARG,
+        DESCRIPTOR_ARG,
+    ],
     output: "\
 Project, applied mode and resulting pinned names/count; on selection load, \
 missing project members. Working set is view state: staged=false, \

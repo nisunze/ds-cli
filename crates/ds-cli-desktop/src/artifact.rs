@@ -42,12 +42,6 @@ const OUTPUT_ARG: Arg = Arg::value(
     "Exact outputId returned by desktop printing export or artifact read.",
 )
 .required();
-const DESCRIPTOR_ARG: Arg = Arg::value(
-    "desktop-descriptor",
-    "<path>",
-    "Use this bridge descriptor instead of discovering one.",
-);
-
 const REFUSALS: &[Refusal] = &[
     ops::NOT_PAIRED,
     ops::AMBIGUOUS,
@@ -79,7 +73,13 @@ pub static READ_COMMAND: Command = Command {
     effect: Effect::ReadOnly,
     authority: Authority::DesktopUser,
     execution: Execution::Sync,
-    args: &[PROJECT_ARG, TRANSFORMER_ARG, OUTPUT_ARG, DESCRIPTOR_ARG],
+    args: &[
+        PROJECT_ARG,
+        TRANSFORMER_ARG,
+        OUTPUT_ARG,
+        ops::TARGET_ARG,
+        ops::DESCRIPTOR_ARG,
+    ],
     output: "Exact project, transformer, output id, filename, format, recorded layout/paper/orientation/dimensions when available, content type, byte count, SHA-256 and opaque locator with verified=true.",
     examples: &[Example {
         command: "ds desktop printing artifact read --project survey_test --transformer agasharu --output-id pdf__a3 --output json",
@@ -108,7 +108,8 @@ pub static COPY_COMMAND: Command = Command {
         TRANSFORMER_ARG,
         OUTPUT_ARG,
         Arg::value("out", "<file>", "New destination file; never overwritten.").required(),
-        DESCRIPTOR_ARG,
+        ops::TARGET_ARG,
+        ops::DESCRIPTOR_ARG,
     ],
     output: "Destination plus the exact project, transformer, output id, filename, recorded layout/paper/orientation/dimensions when available, content type, byte count and SHA-256 copied.",
     examples: &[Example {

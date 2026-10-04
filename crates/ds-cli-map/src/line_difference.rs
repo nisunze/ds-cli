@@ -11,7 +11,7 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
-use crate::DESCRIPTOR_ARG;
+use crate::{DESCRIPTOR_ARG, TARGET_ARG};
 
 pub static COMMAND: Command = Command {
     id: "map.line-difference",
@@ -44,6 +44,7 @@ one new local layer. No project design data is changed.",
             "Snap remaining endpoints to the base within this distance; 0..25.",
         )
         .default("1"),
+        TARGET_ARG,
         DESCRIPTOR_ARG,
     ],
     output: "The result layer id and feature count plus source, covered, and difference lengths and healed endpoint count.",

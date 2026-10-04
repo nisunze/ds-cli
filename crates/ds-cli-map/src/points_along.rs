@@ -17,7 +17,7 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
-use crate::{BOOL_CHOICES, DESCRIPTOR_ARG};
+use crate::{BOOL_CHOICES, DESCRIPTOR_ARG, TARGET_ARG};
 
 /// The application's own defaults, as its tool dock opens with them.
 const DEFAULT_INTERVAL: &str = "100";
@@ -54,6 +54,7 @@ this session drew.",
         )
         .default(DEFAULT_INCLUDE_ENDS)
         .choices(BOOL_CHOICES),
+        TARGET_ARG,
         DESCRIPTOR_ARG,
     ],
     output: "\

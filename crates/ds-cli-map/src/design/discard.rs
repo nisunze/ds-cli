@@ -7,8 +7,8 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
-use crate::DESCRIPTOR_ARG;
 use crate::design::TRANSFORMER_ARG;
+use crate::{DESCRIPTOR_ARG, TARGET_ARG};
 
 pub static COMMAND: Command = Command {
     id: "map.design.discard",
@@ -20,7 +20,7 @@ pub static COMMAND: Command = Command {
     effect: Effect::LocalUi,
     authority: Authority::Project,
     execution: Execution::Sync,
-    args: &[TRANSFORMER_ARG, DESCRIPTOR_ARG],
+    args: &[TRANSFORMER_ARG, TARGET_ARG, DESCRIPTOR_ARG],
     output: "Whether unsaved work was discarded, the restored cloud version, and the restored layer and feature counts.",
     examples: &[Example {
         command: "ds map design discard --transformer T-1042 --output json",

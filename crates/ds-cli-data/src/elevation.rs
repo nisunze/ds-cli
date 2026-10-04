@@ -9,9 +9,9 @@ use ds_cli_contract::spec::{
 };
 use ds_cli_contract::{Context, Inputs};
 use ds_cli_desktop::ops::{
-    AMBIGUOUS, BridgeOp, DESCRIPTOR_ARG, NOT_PAIRED, PAIRING_REJECTED, REFUSED, UNREACHABLE,
-    UNREADABLE as DESKTOP_UNREADABLE, UNSUPPORTED as DESKTOP_UNSUPPORTED, invoke, paired,
-    paired_availability,
+    AMBIGUOUS, BridgeOp, DESCRIPTOR_ARG, NOT_PAIRED, PAIRING_REJECTED, REFUSED, TARGET_ARG,
+    UNREACHABLE, UNREADABLE as DESKTOP_UNREADABLE, UNSUPPORTED as DESKTOP_UNSUPPORTED, invoke,
+    paired, paired_availability,
 };
 use serde_json::{Map, Value, json};
 
@@ -134,6 +134,7 @@ pub static COMMAND: Command = Command {
         SEPARATOR_ARG,
         COMMON_COLUMN_ARG,
         FALLBACK_ARG,
+        TARGET_ARG,
         DESCRIPTOR_ARG,
     ],
     output: "A native receipt with source/output paths and digest, point and coverage counts, DEM access mode, fallback evidence, and per-layer statistics.",

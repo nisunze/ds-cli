@@ -13,7 +13,7 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
-use crate::DESCRIPTOR_ARG;
+use crate::{DESCRIPTOR_ARG, TARGET_ARG};
 
 /// The application's own default padding, in pixels.
 const DEFAULT_PADDING: &str = "48";
@@ -45,6 +45,7 @@ cross the CLI boundary. Give exactly one target.",
             "Pixels of margin around the box; 0..240.",
         )
         .default(DEFAULT_PADDING),
+        TARGET_ARG,
         DESCRIPTOR_ARG,
     ],
     output: "The bounding box the map was moved to, the optional local layer id, and the padding applied.",

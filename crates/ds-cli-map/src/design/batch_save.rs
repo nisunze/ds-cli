@@ -7,7 +7,7 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
-use crate::DESCRIPTOR_ARG;
+use crate::{DESCRIPTOR_ARG, TARGET_ARG};
 
 const TRANSFORMER_ARG: Arg = Arg {
     name: "transformer",
@@ -42,7 +42,7 @@ cancel unrelated saves. This durable project write always requires --yes.",
     effect: Effect::ArtifactWrite,
     authority: Authority::Project,
     execution: Execution::Sync,
-    args: &[TRANSFORMER_ARG, PARALLEL_ARG, DESCRIPTOR_ARG],
+    args: &[TRANSFORMER_ARG, PARALLEL_ARG, TARGET_ARG, DESCRIPTOR_ARG],
     output: "\
 Per-transformer saved/persisted state, design version, concurrency generation, or error, plus total, succeeded, \
 failed, and requested parallelism.",

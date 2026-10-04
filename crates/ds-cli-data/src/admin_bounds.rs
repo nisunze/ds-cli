@@ -21,8 +21,8 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use ds_cli_desktop::ops::{
     AMBIGUOUS, BridgeOp, DESCRIPTOR_ARG, NOT_PAIRED, PAIRING_REJECTED, PROJECT_NOT_OPEN, REFUSED,
-    SIGNED_OUT, UNREACHABLE, UNREADABLE as DESKTOP_UNREADABLE, UNSUPPORTED as DESKTOP_UNSUPPORTED,
-    classify_signed_out, invoke, paired, paired_availability,
+    SIGNED_OUT, TARGET_ARG, UNREACHABLE, UNREADABLE as DESKTOP_UNREADABLE,
+    UNSUPPORTED as DESKTOP_UNSUPPORTED, classify_signed_out, invoke, paired, paired_availability,
 };
 use ds_client_core::admin_bounds::{Answer, Command as Read, Country, Level};
 use serde_json::{Map, Value, json};
@@ -166,6 +166,7 @@ pub static COMMAND: Command = Command {
         OUT_ARG,
         LONGITUDE_ARG,
         LATITUDE_ARG,
+        TARGET_ARG,
         DESCRIPTOR_ARG,
     ],
     output: "The project, output path, matched/outside counts, output digest, reference digest, and attached columns.",

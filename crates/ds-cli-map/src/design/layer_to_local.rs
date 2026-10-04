@@ -7,8 +7,8 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
-use crate::DESCRIPTOR_ARG;
 use crate::design::TRANSFORMER_ARG;
+use crate::{DESCRIPTOR_ARG, TARGET_ARG};
 
 pub static COMMAND: Command = Command {
     id: "map.design.layer-to-local",
@@ -28,6 +28,7 @@ receipt, never raw design features. The project design is not changed.",
         TRANSFORMER_ARG,
         Arg::value("layer", "<name>", "Exact design layer name, e.g. lv_lines.").required(),
         Arg::value("name", "<text>", "Name of the new local layer.").required(),
+        TARGET_ARG,
         DESCRIPTOR_ARG,
     ],
     output: "The local layer id, geometry-independent feature count, source transformer and layer, and persisted=false.",

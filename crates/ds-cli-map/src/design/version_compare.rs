@@ -9,7 +9,7 @@ use serde_json::{Value, json};
 
 use super::TRANSFORMER_ARG;
 use super::version_shared as shared;
-use crate::DESCRIPTOR_ARG;
+use crate::{DESCRIPTOR_ARG, TARGET_ARG};
 
 const FROM_ARG: Arg = Arg::value(
     "from",
@@ -34,7 +34,13 @@ pub static COMMAND: Command = Command {
     effect: Effect::LocalUi,
     authority: Authority::Project,
     execution: Execution::Sync,
-    args: &[TRANSFORMER_ARG, FROM_ARG, TO_ARG, DESCRIPTOR_ARG],
+    args: &[
+        TRANSFORMER_ARG,
+        FROM_ARG,
+        TO_ARG,
+        TARGET_ARG,
+        DESCRIPTOR_ARG,
+    ],
     output: "Project and transformer; pinned left/right descriptors; observation time; exact aggregate and per-layer change counts; bounded consistency findings; retained comparison room identity; truncation; dialog readiness; staged=false and persisted=false.",
     examples: &[Example {
         command: "ds map design version compare --transformer agasharu --from v1 --to head --output json",

@@ -11,7 +11,8 @@ use serde_json::{Map, Value, json};
 use crate::model::{
     ABSOLUTE_PATH_REQUIRED, AMBIGUOUS, DESCRIPTOR_ARG, LOCAL_MODEL_NOT_FOUND, MODEL_ARG,
     MODEL_KINDS, MODEL_TOO_LARGE, NOT_PAIRED, PAIRING_REJECTED, PROJECT_NOT_OPEN, PUBLISH_TIMEOUT,
-    REFUSED, SIGNED_OUT, UNREACHABLE, UNREADABLE, UNSUPPORTED, UNSUPPORTED_MODEL_SOURCE,
+    REFUSED, SIGNED_OUT, TARGET_ARG, UNREACHABLE, UNREADABLE, UNSUPPORTED,
+    UNSUPPORTED_MODEL_SOURCE,
 };
 
 const PATH_ARG: Arg = Arg {
@@ -315,8 +316,8 @@ const SOURCE_ARGS: [Arg; 14] = [
     ds_cli_contract::spec::LANE.summary("Native publication deployment lane."),
     ATTACH_ARG,
 ];
-const ARG_COUNT: usize = SOURCE_ARGS.len() + GOVERNANCE_ARGS.len() + 1;
-/// Source, then governance, then the paired descriptor: one declaration.
+const ARG_COUNT: usize = SOURCE_ARGS.len() + GOVERNANCE_ARGS.len() + 2;
+/// Source, then governance, then the paired host and descriptor: one declaration.
 const fn publication_args() -> [Arg; ARG_COUNT] {
     let mut all = [DESCRIPTOR_ARG; ARG_COUNT];
     let mut i = 0;
@@ -329,6 +330,8 @@ const fn publication_args() -> [Arg; ARG_COUNT] {
         all[i + g] = GOVERNANCE_ARGS[g];
         g += 1;
     }
+    all[ARG_COUNT - 2] = TARGET_ARG;
+    all[ARG_COUNT - 1] = DESCRIPTOR_ARG;
     all
 }
 const ARGS: [Arg; ARG_COUNT] = publication_args();

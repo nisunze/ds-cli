@@ -15,8 +15,8 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
-use crate::DESCRIPTOR_ARG;
 use crate::design::TRANSFORMER_ARG;
+use crate::{DESCRIPTOR_ARG, TARGET_ARG};
 
 const REQUEST: Arg = Arg::value(
     "request",
@@ -43,6 +43,7 @@ pub static COMMAND: Command = Command {
         REQUEST,
         Arg::value("limit", "<n>", "Report at most this many warnings; 0..50.")
             .default(DEFAULT_LIMIT),
+        TARGET_ARG,
         DESCRIPTOR_ARG,
     ],
     output: "\

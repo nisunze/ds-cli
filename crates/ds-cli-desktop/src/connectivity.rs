@@ -1,6 +1,6 @@
 //! Same device-local offline command as Settings. No alternate policy in CLI,
 //! and no reach beyond the application: headless `ds` keeps its own network.
-use crate::ops::{self, BridgeOp, DESCRIPTOR_ARG};
+use crate::ops::{self, BridgeOp, DESCRIPTOR_ARG, TARGET_ARG};
 use ds_cli_contract::{
     Context, Failure, Inputs,
     spec::{Arg, Authority, Chapter, Command, Effect, Execution, Refusal, Requires},
@@ -69,7 +69,7 @@ pub static STATUS: Command = command(
     &["desktop", "offline", "status"],
     "Inspect the paired application's offline test switch.",
     Effect::ReadOnly,
-    &[DESCRIPTOR_ARG],
+    &[TARGET_ARG, DESCRIPTOR_ARG],
 );
 pub static SET: Command = command(
     "desktop.offline.set",
@@ -80,6 +80,7 @@ pub static SET: Command = command(
         Arg::value("enabled", "<true|false>", "Enable isolation or reconnect.")
             .choices(&["true", "false"])
             .required(),
+        TARGET_ARG,
         DESCRIPTOR_ARG,
     ],
 );

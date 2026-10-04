@@ -1,5 +1,5 @@
 //! Prepare the paired application's project printing workflow; Brain owns saves.
-use crate::ops::{self, BridgeOp, DESCRIPTOR_ARG};
+use crate::ops::{self, BridgeOp, DESCRIPTOR_ARG, TARGET_ARG};
 use ds_cli_contract::{
     Context, Failure, Inputs,
     spec::{Arg, ArgKind, Authority, Chapter, Command, Effect, Execution, Refusal, Requires},
@@ -32,6 +32,7 @@ pub static SEED_CONTEXT_COMMAND: Command = Command {
             "One exact project transformer name.",
         )
         .required(),
+        TARGET_ARG,
         DESCRIPTOR_ARG,
     ],
     output: "Project, transformer, complete, named warnings and actual cached feature counts per layer.",
@@ -69,7 +70,7 @@ pub static SETTINGS_COMMAND: Command = Command {
  summary: "Read project print settings, selected outputs and template papers.",
  purpose: "Read the saved design output selection for one exact project through Brain and the shared Rust report planner. Returns the authored setting, effective outputs and selected template paper metadata; never guesses from filenames, changes settings, runs an export, or switches the GUI map. Use report layout list/get to inspect templates natively. This read does not choose outputs for printing export: supply its explicit --selection matrix to print selected papers; otherwise the documented data defaults apply. Same printing MCP profile.",
  chapter: Chapter::Reports, effect: Effect::ReadOnly, authority: Authority::DesktopUser, execution: Execution::Sync,
- args: &[Arg::value("project", "<exact-id>", "Exact project whose saved printing output settings should be read; no GUI project switch.").required(), DESCRIPTOR_ARG],
+ args: &[Arg::value("project", "<exact-id>", "Exact project whose saved printing output settings should be read; no GUI project switch.").required(), TARGET_ARG, DESCRIPTOR_ARG],
  output: "Exact project, selection source, authored setting, planned outputs, selected template papers and receipt SHA-256. No design features or credentials.", examples: &[],
  refusals: &[ops::NOT_PAIRED,ops::AMBIGUOUS,ops::UNREACHABLE,ops::PAIRING_REJECTED,ops::REFUSED,ops::UNSUPPORTED,ops::UNREADABLE,ops::SIGNED_OUT,PRINTING_READ_INVALID],
  reference: Some("docs/reference/desktop.printing.md"), search: &[], requires: Requires::Window, availability: ops::paired_availability,
@@ -138,6 +139,7 @@ pub static TRANSFORMERS_COMMAND: Command = Command {
             "Return at most this many transformers; 1..500.",
         )
         .default("100"),
+        TARGET_ARG,
         DESCRIPTOR_ARG,
     ],
     output: "Explicit project, total printable transformer count, bounded name/kind/cache/version rows, and omitted count.",
@@ -185,6 +187,7 @@ pub static EXPORT_COMMAND: Command = Command {
         .required(),
         Arg::value("selection", "<json-file>", "Local ds.design-output-selection/v1 matrix. Only selected outputs are regenerated; no project settings are saved."),
         FORCE_ARG,
+        TARGET_ARG,
         DESCRIPTOR_ARG,
     ],
     output: "For one transformer: explicit project and transformer, artifact count, exact filenames/formats/sizes/SHA-256/locators and recorded layout/paper/orientation/dimensions, context warnings and cached layer feature counts, and publication state. A batch returns per-transformer receipts and a failed count.",
@@ -227,6 +230,7 @@ pub static PREPARE_COMMAND: Command = Command {
             "Exact project, authored layout, expectedRevision, versioned output selection, optional transformer views/transformer-keyed overrides; null removes this layout's exception. <=800 KB.",
         )
         .required(),
+        TARGET_ARG,
         DESCRIPTOR_ARG,
     ],
     output: "Resolved project, saved setup id/name/revision, selected output matrix and ready=true; no raw design features or credentials.",

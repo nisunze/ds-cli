@@ -64,6 +64,12 @@ no difference at all: one command id, the same arguments, the same answer,
 whichever host runs it. `DS_TARGET` is a **default** for the flag, never an
 override of it — a command that named a host has named it.
 
+Every command that needs a paired desktop accepts `--target`, so the flag a
+`desktop_ambiguous` refusal names is always one the command takes. The one
+exception is `ds map ui open`, whose `--target` names the panel to open; it
+selects an instance by `--desktop-descriptor` alone and its refusals say so.
+`crates/ds/tests/mcp.rs` holds this line.
+
 `--desktop-descriptor <path>` (and `DS_DESKTOP_DESCRIPTOR`) is a different
 question and stays: it names one descriptor **file**, is used verbatim, and is
 what the desktop's own `cl` terminal pins so a shell it opened keeps talking to

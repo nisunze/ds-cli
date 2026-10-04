@@ -13,7 +13,7 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
-use crate::DESCRIPTOR_ARG;
+use crate::{DESCRIPTOR_ARG, TARGET_ARG};
 
 pub static COMMAND: Command = Command {
     id: "map.remove",
@@ -32,6 +32,7 @@ cannot erase someone else's work. Takes the `layer` id that `ds map view` and \
     execution: Execution::Sync,
     args: &[
         Arg::value("layer", "<id>", "The `layer` id from `ds map view`.").required(),
+        TARGET_ARG,
         DESCRIPTOR_ARG,
     ],
     output: "The layer id, that it was removed, and `persisted: false`.",

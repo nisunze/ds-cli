@@ -29,6 +29,7 @@ use crate::discover::Descriptor;
 
 thread_local! {
     static HEADLESS_IDENTITY: RefCell<Option<HeadlessIdentity>> = const { RefCell::new(None) };
+    static SCOPED_TARGET: RefCell<Option<String>> = const { RefCell::new(None) };
 }
 
 /// One non-secret protected-provider observation scoped by registry dispatch.
@@ -42,11 +43,6 @@ pub struct HeadlessIdentity {
     /// DesktopUser proves user identity only; Project additionally narrows
     /// which live instance may serve the work — it never moves a live map.
     pub command_authority: Authority,
-    /// The host this invocation named: `desktop`, `desktop:<instance_id>` or
-    /// `server`, exactly as `--target` (or `DS_TARGET`) spelled it. Carried
-    /// beside the identity because dispatch is the one place that has both the
-    /// command's declared inputs and the seam that will use them.
-    pub target: Option<String>,
 }
 
 pub struct HeadlessIdentityGuard(Option<HeadlessIdentity>);
@@ -54,6 +50,25 @@ pub struct HeadlessIdentityGuard(Option<HeadlessIdentity>);
 pub fn scope_headless_identity(identity: Option<HeadlessIdentity>) -> HeadlessIdentityGuard {
     let previous = HEADLESS_IDENTITY.replace(identity);
     HeadlessIdentityGuard(previous)
+}
+
+/// Scope the host one invocation named: `desktop`, `desktop:<instance_id>` or
+/// `server`, exactly as `--target` (or `DS_TARGET`) spelled it. Dispatch is the
+/// one place that has both the command's declared inputs and the seam that will
+/// use them. It is scoped on its own, never inside the identity: a machine with
+/// no native profile has no identity, and the host a caller named must still
+/// be honoured there instead of routing to whichever instance is compatible.
+pub fn scope_target(target: Option<String>) -> TargetGuard {
+    let previous = SCOPED_TARGET.replace(target);
+    TargetGuard(previous)
+}
+
+pub struct TargetGuard(Option<String>);
+
+impl Drop for TargetGuard {
+    fn drop(&mut self) {
+        SCOPED_TARGET.replace(self.0.take());
+    }
 }
 
 impl Drop for HeadlessIdentityGuard {
@@ -95,7 +110,7 @@ pub fn paired(explicit: Option<&str>) -> Result<Descriptor, Failure> {
 /// never acquires one, and a `--target` that means something else in its own
 /// domain is never read as a host.
 pub fn scoped_target() -> Option<String> {
-    HEADLESS_IDENTITY.with(|headless| headless.borrow().as_ref().and_then(|h| h.target.clone()))
+    SCOPED_TARGET.with(|target| target.borrow().clone())
 }
 
 /// The session default for [`TARGET_ARG`], where that flag is declared. A
@@ -557,7 +572,7 @@ pub fn classify_signed_out(failure: Failure) -> Failure {
 pub const TARGET_ARG: Arg = Arg::value(
     "target",
     "<desktop|desktop:instance|server>",
-    "Which host executes this operation; the desktop is the default, and DS_TARGET sets it for a session.",
+    "Host to run on (default desktop); DS_TARGET sets a session default.",
 );
 
 /// The session default for [`TARGET_ARG`]. A default for the flag, never an
@@ -657,7 +672,7 @@ pub const DESCRIPTOR_ARG: Arg = Arg {
     required: false,
     default: None,
     choices: &[],
-    summary: "Use this bridge descriptor instead of discovering one; DS_DESKTOP_DESCRIPTOR sets the same default.",
+    summary: "Use this bridge descriptor file; DS_DESKTOP_DESCRIPTOR sets a default.",
 };
 
 #[cfg(test)]
@@ -863,7 +878,6 @@ mod tests {
             credential_audience_sha256: "a".repeat(64),
             project: Some("project-1".to_owned()),
             command_authority: Authority::Project,
-            target: None,
         };
         {
             let _guard = scope_headless_identity(Some(identity.clone()));
@@ -881,7 +895,6 @@ mod tests {
             credential_audience_sha256: "a".repeat(64),
             project: None,
             command_authority: Authority::Project,
-            target: None,
         };
         let mut fence = bridge::IdentityFence::from_session(&json!({
             "uid": "uid-1", "lane": "stable",
@@ -922,7 +935,6 @@ mod tests {
             credential_audience_sha256: "a".repeat(64),
             project: Some("unrelated-cli-project".to_owned()),
             command_authority: Authority::DesktopUser,
-            target: None,
         };
         for operation in ["data.admin_bounds.list", "data.admin_bounds.read"] {
             invocation_route(operation, Some(&user_reference), &fence, Some(INSTANCE))
@@ -982,7 +994,6 @@ mod tests {
             credential_audience_sha256: "a".repeat(64),
             project: Some("cli-project".into()),
             command_authority: Authority::Project,
-            target: None,
         };
         let showing = json!({ "uid": "uid-1", "lane": "stable",
             "credential_audience_sha256": "a".repeat(64),
@@ -1027,7 +1038,6 @@ mod tests {
             credential_audience_sha256: "a".repeat(64),
             project: Some("cli-project".into()),
             command_authority: Authority::DesktopUser,
-            target: Some(format!("desktop:{INSTANCE}")),
         };
         let showing = json!({ "uid": "uid-1", "lane": "stable",
             "credential_audience_sha256": "a".repeat(64),

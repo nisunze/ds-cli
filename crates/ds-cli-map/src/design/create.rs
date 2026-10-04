@@ -21,7 +21,7 @@ use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
 use crate::design::TRANSFORMER_ARG;
-use crate::{DESCRIPTOR_ARG, MAX_CREATE_FEATURES};
+use crate::{DESCRIPTOR_ARG, MAX_CREATE_FEATURES, TARGET_ARG};
 
 const CARRY_ARG: Arg = Arg {
     name: "carry-property",
@@ -76,6 +76,7 @@ rather than guessed. With one, it stages the features into the local room.",
         CARRY_ARG,
         SET_ARG,
         Arg::switch("dry-run", "Report what would be created; stage nothing."),
+        TARGET_ARG,
         DESCRIPTOR_ARG,
     ],
     output: "\

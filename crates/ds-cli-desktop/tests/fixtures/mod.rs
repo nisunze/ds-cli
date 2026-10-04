@@ -683,7 +683,6 @@ impl Invocation {
                 credential_audience_sha256: AUDIENCE.to_owned(),
                 project: None,
                 command_authority: Authority::DesktopUser,
-                target: None,
             }),
         }
     }
@@ -715,7 +714,8 @@ impl Invocation {
     ) -> Result<Value, Failure> {
         let owned: Vec<String> = tokens.iter().map(|token| (*token).to_owned()).collect();
         let inputs = parse(command, &owned)?;
-        let _scope = ops::scope_headless_identity(self.scoped(command, &inputs));
+        let _scope = ops::scope_headless_identity(self.scoped(command));
+        let _target = ops::scope_target(Self::named_host(command, &inputs));
         handler(&inputs, &Self::context())
     }
 
@@ -727,11 +727,8 @@ impl Invocation {
         op: &BridgeOp,
         arguments: Value,
     ) -> Result<Value, Failure> {
-        let mut identity = self.identity.clone();
-        if let Some(identity) = identity.as_mut() {
-            identity.target = target.map(str::to_owned);
-        }
-        let _scope = ops::scope_headless_identity(identity);
+        let _scope = ops::scope_headless_identity(self.identity.clone());
+        let _target = ops::scope_target(target.map(str::to_owned));
         let found = ds_cli_desktop::bridge::paired(None)?;
         ops::invoke(&found.descriptor, op, arguments, Duration::from_secs(10))
     }
@@ -745,11 +742,8 @@ impl Invocation {
         op: &BridgeOp,
         arguments: Value,
     ) -> Result<Value, Failure> {
-        let mut identity = self.identity.clone();
-        if let Some(identity) = identity.as_mut() {
-            identity.target = target.map(str::to_owned);
-        }
-        let _scope = ops::scope_headless_identity(identity);
+        let _scope = ops::scope_headless_identity(self.identity.clone());
+        let _target = ops::scope_target(target.map(str::to_owned));
         let found = ds_cli_desktop::bridge::paired(descriptor.to_str())?;
         ops::invoke(&found.descriptor, op, arguments, Duration::from_secs(10))
     }
@@ -757,11 +751,8 @@ impl Invocation {
     /// Resolution alone, for the claims that are about where an operation would
     /// have gone — and that must therefore reach no instance at all.
     pub fn resolve(&self, target: Option<&str>) -> Result<String, Failure> {
-        let mut identity = self.identity.clone();
-        if let Some(identity) = identity.as_mut() {
-            identity.target = target.map(str::to_owned);
-        }
-        let _scope = ops::scope_headless_identity(identity);
+        let _scope = ops::scope_headless_identity(self.identity.clone());
+        let _target = ops::scope_target(target.map(str::to_owned));
         ds_cli_desktop::bridge::paired(None).map(|found| found.descriptor.instance_id.clone())
     }
 
@@ -771,19 +762,22 @@ impl Invocation {
         ops::scoped_requirement()
     }
 
-    fn scoped(&self, command: &Command, inputs: &Inputs) -> Option<HeadlessIdentity> {
+    fn scoped(&self, command: &Command) -> Option<HeadlessIdentity> {
         let mut identity = self.identity.clone()?;
         identity.command_authority = command.authority;
-        // `registry::host_target`, verbatim: only a `--target` declared with the
-        // host's own placeholder names a runtime, and `DS_TARGET` is that flag's
-        // session default.
-        identity.target = command
+        Some(identity)
+    }
+
+    /// `registry::host_target`, verbatim: only a `--target` declared with the
+    /// host's own placeholder names a runtime, and `DS_TARGET` is that flag's
+    /// session default. Scoped whether or not there is an identity.
+    fn named_host(command: &Command, inputs: &Inputs) -> Option<String> {
+        command
             .arg(ops::TARGET_ARG.name)
             .filter(|arg| arg.value == ops::TARGET_ARG.value)
             .and_then(|arg| inputs.value(arg.name))
             .map(str::to_owned)
-            .or_else(ops::env_target);
-        Some(identity)
+            .or_else(ops::env_target)
     }
 
     fn context() -> Context {

@@ -19,8 +19,8 @@ use ds_cli_desktop::ops::BridgeOp;
 use serde_json::{Value, json};
 
 use crate::model::{
-    AMBIGUOUS, DESCRIPTOR_ARG, LOCAL_TIMEOUT, NOT_PAIRED, PAIRING_REJECTED, REFUSED, UNREACHABLE,
-    UNREADABLE, UNSUPPORTED, paired_availability, workspace,
+    AMBIGUOUS, DESCRIPTOR_ARG, LOCAL_TIMEOUT, NOT_PAIRED, PAIRING_REJECTED, REFUSED, TARGET_ARG,
+    UNREACHABLE, UNREADABLE, UNSUPPORTED, paired_availability, workspace,
 };
 
 /// What the application is asked: open these package bytes (by path, never
@@ -165,6 +165,7 @@ added to the application's catalogue. Optional --checkpoint-out captures its exa
         REPLACE_TEMPORARY_MODELS_ARG,
         workspace::ACCOUNT_ARG,
         workspace::LANE_ARG,
+        TARGET_ARG,
         DESCRIPTOR_ARG,
     ],
     output: "The copy, package path, live revision, alignment and session state; optional checkpoint receipt names the exact captured revision and persisted file path, SHA-256 and byte length. With --replace-temporary-models, temporary_models_removed reports group and model counts.",

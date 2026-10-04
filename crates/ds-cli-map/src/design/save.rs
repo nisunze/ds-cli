@@ -20,8 +20,8 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
-use crate::DESCRIPTOR_ARG;
 use crate::design::TRANSFORMER_ARG;
+use crate::{DESCRIPTOR_ARG, TARGET_ARG};
 
 /// What the application says when the project moved on under the room.
 /// Matched against its own message; `tests/bridge_parity.rs` holds it to the
@@ -44,7 +44,7 @@ and re-apply rather than retry.",
     effect: Effect::ArtifactWrite,
     authority: Authority::Project,
     execution: Execution::Sync,
-    args: &[TRANSFORMER_ARG, DESCRIPTOR_ARG],
+    args: &[TRANSFORMER_ARG, TARGET_ARG, DESCRIPTOR_ARG],
     output: "\
 The transformer, its project, whether it saved, and — when it did not — the \
 reason. `persisted` is true only on a save that actually happened.",

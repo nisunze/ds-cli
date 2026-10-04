@@ -10,7 +10,7 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
-use crate::DESCRIPTOR_ARG;
+use crate::{DESCRIPTOR_ARG, TARGET_ARG};
 
 const DESKTOP_REFUSED: Refusal = Refusal {
     code: "desktop_refused",
@@ -37,7 +37,7 @@ pub mod download {
         effect: Effect::LocalUi,
         authority: Authority::Project,
         execution: Execution::Sync,
-        args: &[ENTIRE_PROJECT_ARG, DESCRIPTOR_ARG],
+        args: &[ENTIRE_PROJECT_ARG, TARGET_ARG, DESCRIPTOR_ARG],
         output: "The active project, applied full-project Working Area, form count, and bounded before/after/materialized cache counts. No survey row is returned.",
         examples: &[Example {
             command: "ds map survey download --entire-project --output json",

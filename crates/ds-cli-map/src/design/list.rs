@@ -13,7 +13,7 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
-use crate::DESCRIPTOR_ARG;
+use crate::{DESCRIPTOR_ARG, TARGET_ARG};
 
 const LIMIT_ARG: Arg = Arg {
     name: "limit",
@@ -39,7 +39,7 @@ command needs a transformer name from here.",
     effect: Effect::ReadOnly,
     authority: Authority::Project,
     execution: Execution::Sync,
-    args: &[LIMIT_ARG, DESCRIPTOR_ARG],
+    args: &[LIMIT_ARG, TARGET_ARG, DESCRIPTOR_ARG],
     output: "\
 The project, the total transformer count, and up to --limit rows of `name`, \
 `processStatus`, `reportStatus`, and `locallyDirty` — true when staged local \

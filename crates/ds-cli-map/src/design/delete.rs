@@ -16,8 +16,8 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
-use crate::DESCRIPTOR_ARG;
 use crate::design::{BBOX_ARG, ID_ARG, LAYER_ARG, TRANSFORMER_ARG, WHERE_ARG};
+use crate::{DESCRIPTOR_ARG, TARGET_ARG};
 
 pub static COMMAND: Command = Command {
     id: "map.design.delete",
@@ -43,6 +43,7 @@ default sweep. Use --dry-run to count what would go first.",
             "dry-run",
             "Report what would be removed; stage nothing.",
         ),
+        TARGET_ARG,
         DESCRIPTOR_ARG,
     ],
     output: "\

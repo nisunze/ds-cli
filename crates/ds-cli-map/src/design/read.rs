@@ -19,8 +19,8 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
-use crate::DESCRIPTOR_ARG;
 use crate::design::TRANSFORMER_ARG;
+use crate::{DESCRIPTOR_ARG, TARGET_ARG};
 
 /// Enough distinct values to see the shape of a governance field. A property
 /// with more distinct values than this is an identifier, not a state.
@@ -58,6 +58,7 @@ rows are actually in before staging a change to them.",
             "Report at most this many property values; 1..200.",
         )
         .default(DEFAULT_LIMIT),
+        TARGET_ARG,
         DESCRIPTOR_ARG,
     ],
     output: "\

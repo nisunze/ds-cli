@@ -45,7 +45,7 @@ pub mod capture {
     use ds_cli_contract::{Context, Inputs};
     use serde_json::{Value, json};
 
-    use crate::DESCRIPTOR_ARG;
+    use crate::{DESCRIPTOR_ARG, TARGET_ARG};
 
     /// What the frame covers. `map` is the canvas alone, which is what a
     /// cartography or design step wants; `app` is the whole application
@@ -101,6 +101,7 @@ zoom`, `ds map ui open` and the design commands, then capture it.",
                 "replace",
                 "Overwrite --out if it already exists; needs --yes as well.",
             ),
+            TARGET_ARG,
             DESCRIPTOR_ARG,
         ],
         output: "path, bytes, sha256, dimensions, scope, view and ui — the whole receipt, and nothing else.",

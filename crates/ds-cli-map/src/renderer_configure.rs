@@ -8,7 +8,7 @@ use ds_cli_contract::{Context, Inputs};
 use ds_command_kernel::map_active_view::{self, REQUEST_SCHEMA};
 use serde_json::{Value, json};
 
-use crate::DESCRIPTOR_ARG;
+use crate::{DESCRIPTOR_ARG, TARGET_ARG};
 
 pub static COMMAND: Command = Command {
     id: "map.renderer.configure",
@@ -29,6 +29,7 @@ pub static COMMAND: Command = Command {
             "<aws-terrain|google>",
             "Required only for 3d mode.",
         ),
+        TARGET_ARG,
         DESCRIPTOR_ARG,
     ],
     output: "The active renderer mode and, for 3D, the exact provider selected.",

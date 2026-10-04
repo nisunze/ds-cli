@@ -1,5 +1,5 @@
 //! Read the existing shared publication through the paired application's owner.
-use crate::ops::{self, BridgeOp, DESCRIPTOR_ARG};
+use crate::ops::{self, BridgeOp, DESCRIPTOR_ARG, TARGET_ARG};
 use ds_cli_contract::{
     Context, Failure, Inputs,
     spec::{Arg, ArgKind, Authority, Chapter, Command, Effect, Execution, Refusal, Requires},
@@ -86,6 +86,7 @@ pub static COMMAND: Command = Command {
             "<output-id>",
             "Verify this published output's downloaded bytes; omit to inspect the head only.",
         ),
+        TARGET_ARG,
         DESCRIPTOR_ARG,
     ],
     output: "Shared head and at most 100 declared outputs. With output-id: canonical filename, immutable output metadata, verified SHA-256 and byte count; verified means a real shared download passed integrity checks.",

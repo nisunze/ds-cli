@@ -7,7 +7,7 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
-use crate::DESCRIPTOR_ARG;
+use crate::{DESCRIPTOR_ARG, TARGET_ARG};
 
 const PATH_ARG: Arg = Arg {
     name: "path",
@@ -52,7 +52,13 @@ cleaning counts. It never applies, stages, copies, or uploads the source.",
     effect: Effect::ReadOnly,
     authority: Authority::Project,
     execution: Execution::Sync,
-    args: &[PATH_ARG, NETWORK_ARG, PARALLEL_ARG, DESCRIPTOR_ARG],
+    args: &[
+        PATH_ARG,
+        NETWORK_ARG,
+        PARALLEL_ARG,
+        TARGET_ARG,
+        DESCRIPTOR_ARG,
+    ],
     output: "\
 Per-file success or failure and the network vocabulary; successful files carry \
 up to 100 layers and 200 columns per layer, suggested canonical headers, cleaning \

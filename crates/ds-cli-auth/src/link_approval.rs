@@ -20,7 +20,7 @@ use ds_cli_contract::spec::{
     Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Failure, Inputs};
-use ds_cli_desktop::ops::{self, BridgeOp, DESCRIPTOR_ARG};
+use ds_cli_desktop::ops::{self, BridgeOp, DESCRIPTOR_ARG, TARGET_ARG};
 use ds_client_core::{
     Client, ClientError, DeviceApprovalDecision, DeviceApprovalRequest, DeviceApprovalServiceCode,
     ErrorKind, RefreshTokenStore, Transport,
@@ -105,7 +105,13 @@ pub static COMMAND: Command = Command {
     effect: Effect::GlobalWrite,
     authority: Authority::HeadlessUser,
     execution: Execution::Sync,
-    args: &[REQUEST_ID, DEVICE_FINGERPRINT, LANE, DESCRIPTOR_ARG],
+    args: &[
+        REQUEST_ID,
+        DEVICE_FINGERPRINT,
+        LANE,
+        TARGET_ARG,
+        DESCRIPTOR_ARG,
+    ],
     output: "Bounded public receipt: request/decision, device name/platform/fingerprint, scopes, lane/profile/catalog binding, times; no credential/private key/proof/token.",
     examples: &[Example {
         command: "ds auth link approve --request req_01 --device-fingerprint sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef --lane stable --yes --output json",

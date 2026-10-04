@@ -3631,6 +3631,9 @@ pub fn dispatch(entry: &Entry, tokens: &[String], context: &Context) -> Result<V
     // snapshots the current map session, and sends the atomic fence beside
     // domain arguments. Pure backend commands remain Desktop-independent.
     let _headless_identity = scope_headless_identity(entry.command, &inputs)?;
+    // The host the caller named rides beside the identity, not inside it: a
+    // machine with no native profile has no identity and must still honour it.
+    let _host = ds_cli_desktop::ops::scope_target(host_target(entry.command, &inputs));
 
     // A report command's explicit project is a touch of that project's
     // publication domain. The scoped kernel pass reads its remote heads on
@@ -3761,11 +3764,6 @@ fn scope_headless_identity(
             credential_audience_sha256: identity.credential_audience_sha256().to_owned(),
             project,
             command_authority: authority,
-            // The host this invocation named. Dispatch is the one place that
-            // holds both the command's declared inputs and the seam that will
-            // route on them, so the target rides with the identity rather than
-            // being re-read from a flag the shared seam cannot see.
-            target: host_target(command, inputs),
         },
     );
     Ok(ds_cli_desktop::ops::scope_headless_identity(observed))

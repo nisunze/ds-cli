@@ -1712,7 +1712,7 @@ fn map_design_open_is_projected_by_catalog_chapter_and_typed_profile() {
             .keys()
             .map(String::as_str)
             .collect::<BTreeSet<_>>(),
-        BTreeSet::from(["desktop-descriptor", "transformer"])
+        BTreeSet::from(["desktop-descriptor", "target", "transformer"])
     );
 
     // The typed leaf reaches this command without VS Code or another UI host
@@ -1897,7 +1897,13 @@ fn map_working_set_projects_one_closed_typed_mcp_tool() {
             .keys()
             .map(String::as_str)
             .collect::<BTreeSet<_>>(),
-        BTreeSet::from(["desktop-descriptor", "mode", "selection", "transformer"])
+        BTreeSet::from([
+            "desktop-descriptor",
+            "mode",
+            "selection",
+            "target",
+            "transformer"
+        ])
     );
     assert_eq!(
         tool["inputSchema"]["properties"]["mode"]["enum"],
@@ -2840,6 +2846,85 @@ fn the_host_is_one_flag_and_the_other_targets_are_a_closed_set() {
         hosts.iter().any(|id| id == "desktop.status"),
         "the host flag is published by the commands that route on it: {hosts:?}"
     );
+}
+
+/// One targeting contract for every paired command (feedback 641143eb).
+///
+/// `desktop_ambiguous` tells a caller to name an instance with
+/// `--target desktop:<instance_id>`, so every command that can raise it must
+/// accept that flag; and a refusal that names `--desktop-descriptor` must name
+/// it only where the command declares it. `map.ui.open` is the one closed
+/// exception: its `--target` names a panel, so it selects an instance by
+/// descriptor alone and says so in its own refusals.
+#[test]
+fn every_paired_command_accepts_the_flag_its_ambiguity_refusal_names() {
+    const DESCRIPTOR_ONLY: &[&str] = &["map.ui.open"];
+    const HOST_PLACEHOLDER: &str = "<desktop|desktop:instance|server>";
+
+    let index = cli(&["capabilities", "--output", "json"]);
+    let mut checked = 0usize;
+    let mut broken = Vec::new();
+    for domain in index["data"]["domains"].as_array().expect("domains") {
+        let id = domain["id"].as_str().expect("domain id");
+        for command in cli(&["capabilities", id, "--output", "json"])["data"]["commands"]
+            .as_array()
+            .expect("commands")
+        {
+            let command = cli(&[
+                "capabilities",
+                command["id"].as_str().expect("command id"),
+                "--output",
+                "json",
+            ]);
+            let command = &command["data"]["command"];
+            let id = command["id"].as_str().expect("command id");
+            let inputs = command["inputs"].as_array().expect("inputs");
+            let has_descriptor = inputs.iter().any(|i| i["name"] == "desktop-descriptor");
+            let has_host = inputs
+                .iter()
+                .any(|i| i["name"] == "target" && i["value"] == HOST_PLACEHOLDER);
+            let descriptor_only = DESCRIPTOR_ONLY.contains(&id);
+
+            if has_descriptor && !has_host && !descriptor_only {
+                broken.push(format!(
+                    "`{id}` selects an instance by --desktop-descriptor but does not \
+                     accept --target desktop:<instance_id>"
+                ));
+            }
+            if descriptor_only {
+                assert!(
+                    has_descriptor && !has_host,
+                    "`{id}` is listed as descriptor-only but declares the host flag"
+                );
+            }
+            for refusal in command["refusals"].as_array().expect("refusals") {
+                if refusal["code"] != "desktop_ambiguous" {
+                    continue;
+                }
+                checked += 1;
+                let remedy = refusal["remedy"].as_str().unwrap_or("");
+                if remedy.contains("--target desktop:") && !has_host {
+                    broken.push(format!(
+                        "`{id}` documents desktop_ambiguous with a remedy naming --target, \
+                         which it does not accept: {remedy}"
+                    ));
+                }
+                if remedy.contains("--desktop-descriptor") && !has_descriptor {
+                    broken.push(format!(
+                        "`{id}` documents desktop_ambiguous with a remedy naming \
+                         --desktop-descriptor, which it does not accept: {remedy}"
+                    ));
+                }
+                if !remedy.contains("--target") && !remedy.contains("--desktop-descriptor") {
+                    broken.push(format!(
+                        "`{id}` documents desktop_ambiguous without naming a flag: {remedy}"
+                    ));
+                }
+            }
+        }
+    }
+    assert!(checked > 20, "only {checked} commands document the refusal");
+    assert!(broken.is_empty(), "{}", broken.join("\n"));
 }
 
 /// The live registry, walked tier by tier: every command id with its domain.

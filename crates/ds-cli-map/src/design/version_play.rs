@@ -9,7 +9,7 @@ use serde_json::{Value, json};
 
 use super::TRANSFORMER_ARG;
 use super::version_shared as shared;
-use crate::DESCRIPTOR_ARG;
+use crate::{DESCRIPTOR_ARG, TARGET_ARG};
 
 const VERSION_ARG: Arg = Arg::value(
     "version",
@@ -28,7 +28,7 @@ pub static COMMAND: Command = Command {
     effect: Effect::LocalUi,
     authority: Authority::Project,
     execution: Execution::Sync,
-    args: &[TRANSFORMER_ARG, VERSION_ARG, DESCRIPTOR_ARG],
+    args: &[TRANSFORMER_ARG, VERSION_ARG, TARGET_ARG, DESCRIPTOR_ARG],
     output: "A bounded playback receipt: project, transformer, exact version, version_playback context, whether it changed, map readiness, read_only=true, feature count, staged=false, and persisted=false.",
     examples: &[Example {
         command: "ds map design version play --transformer agasharu --version v2 --output json",

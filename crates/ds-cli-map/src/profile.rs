@@ -6,7 +6,7 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
-use crate::DESCRIPTOR_ARG;
+use crate::{DESCRIPTOR_ARG, TARGET_ARG};
 
 const PROFILE_CLOSED: Refusal = Refusal {
     code: "profile_closed",
@@ -69,7 +69,7 @@ pub static VIEW: Command = Command {
     effect: Effect::ReadOnly,
     authority: Authority::DesktopPairing,
     execution: Execution::Sync,
-    args: &[DESCRIPTOR_ARG],
+    args: &[TARGET_ARG, DESCRIPTOR_ARG],
     output: "Profile occupant, model_id and revision (null without an open model), scale, visibility, height_px, viewport, edit_mode and selection. review contains the bounded native command projection: up to 256 cases with value/label/disabled, selected_case_index, display_case, marker_count and explicit case/label truncation. display contains native state and governed rows; analysis contains the bounded native command receipt. scene_loaded reports a revision-current scene. Selection includes entity_ids, primary, kind and structures [{id,number}].",
     examples: &[Example {
         command: "ds map profile view --output json",
@@ -96,7 +96,7 @@ pub static SET: Command = Command {
     path: &["map", "profile", "set"],
     contract: 4,
     summary: "Set the paired Profile's visual state through typed CLI inputs.",
-    purpose: "Updates paired Profile display; omitted values stay unchanged. Rust validates display-case, visibility and scale against an open model; viewport and dock height may be staged before opening. Review boxes and usage labels default on. Fit, rebuild and analyze are explicit. Analyze runs native structure, section and clearance checks at the held revision using the complete model-bound case envelope. Missing inputs block Profile and Issues. Weather changes only the curve, never the engineering envelope. No model or project data is changed.",
+    purpose: "Updates the paired Profile display; omitted values stay. Rust validates display-case, visibility and scale against an open model; viewport and dock height may be staged first. Review boxes and usage labels default on. Fit, rebuild and analyze are explicit. Analyze runs native structure, section and clearance checks at the held revision with the model-bound case envelope; missing inputs block Profile and Issues. Weather changes only the curve, not the engineering envelope. No project data changes.",
     chapter: Chapter::MapPresentation,
     effect: Effect::LocalUi,
     authority: Authority::DesktopPairing,
@@ -144,6 +144,7 @@ pub static SET: Command = Command {
             "Fit, rebuild, or run native checks with blockers in Profile and Issues.",
         )
         .choices(&["fit", "rebuild", "analyze"]),
+        TARGET_ARG,
         DESCRIPTOR_ARG,
     ],
     output: "The resulting exact visual state from the paired Profile, including height_px (dock height in pixels), with the applied patch and optional action. Analyze also returns ran:true and the bounded native analysis receipt; full evidence stays in Profile and Issues.",
@@ -221,6 +222,7 @@ pub static SELECT: Command = Command {
         )
         .choices(&["replace", "add", "remove", "intersect"])
         .default("replace"),
+        TARGET_ARG,
         DESCRIPTOR_ARG,
     ],
     output: "The paired Desktop's native selection receipt with the held model and revision, selected entity IDs and primary focus. The range follows the native scene's family order; no range is calculated by the CLI.",

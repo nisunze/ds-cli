@@ -56,7 +56,7 @@ pub static START_COMMAND: Command = Command {
     path: &["solar", "run", "start"],
     contract: 4,
     summary: "Start an explicit paired city or Solar portfolio run.",
-    purpose: "Starts the paired application's local native Solar lifecycle after city inputs have been prepared. A city run names one or more prepared contexts. A portfolio run names one governed portfolio, pins the exact ordered membership returned by portfolio list, and chooses only how representative graphs use that membership: first member, round-robin, or one exact member. Currency, project horizon and discount rate remain governed prepared-input facts. A single portfolio is adapted to the shared kernel batch command with French APD defaults; use solar portfolio batch start --request for explicit batch settings. City concurrency flags do not apply to portfolios. It returns a run id immediately, while the desktop retains ownership of the selected project, cached inputs and output workspace.",
+    purpose: "Starts a local native Solar run in the paired application once city inputs are prepared. A city run names one or more prepared contexts. A portfolio run names one governed portfolio, pins the exact ordered membership returned by portfolio list, and chooses only how representative graphs use that membership: first member, round-robin, or one exact member. Currency, project horizon and discount rate remain governed prepared-input facts. A single portfolio is adapted to the shared kernel batch command with French APD defaults; use solar portfolio batch start --request for explicit batch settings. City concurrency flags do not apply to portfolios. It returns a run id immediately; the desktop keeps the project, cached inputs and outputs.",
     chapter: Chapter::Solar,
     effect: Effect::LocalFileWrite,
     authority: Authority::DesktopUser,
@@ -89,11 +89,8 @@ pub static START_COMMAND: Command = Command {
             "Cities to calculate concurrently, from 1 through 32.",
         ),
         Arg::switch("serial", "Force strictly serial calculation."),
-        Arg::value(
-            "desktop-descriptor",
-            "<path>",
-            "Use this bridge descriptor instead of discovering one.",
-        ),
+        ds_cli_desktop::ops::TARGET_ARG,
+        ds_cli_desktop::ops::DESCRIPTOR_ARG,
     ],
     output: "A paired local run receipt with `run_id`, selected contexts and placement. The calculation continues after this command returns; read it with the lifecycle commands rather than treating a launch receipt as a completed result.",
     examples: &[
@@ -132,11 +129,8 @@ pub static PROGRESS_COMMAND: Command = Command {
     execution: Execution::Sync,
     args: &[
         Arg::value("run-id", "<id>", "Run id returned by solar run start.").required(),
-        Arg::value(
-            "desktop-descriptor",
-            "<path>",
-            "Use this bridge descriptor instead of discovering one.",
-        ),
+        ds_cli_desktop::ops::TARGET_ARG,
+        ds_cli_desktop::ops::DESCRIPTOR_ARG,
     ],
     output: "The paired application's bounded progress receipt for the requested run.",
     examples: &[Example {
@@ -163,11 +157,8 @@ pub static RESULT_COMMAND: Command = Command {
     execution: Execution::Sync,
     args: &[
         Arg::value("run-id", "<id>", "Run id returned by solar run start.").required(),
-        Arg::value(
-            "desktop-descriptor",
-            "<path>",
-            "Use this bridge descriptor instead of discovering one.",
-        ),
+        ds_cli_desktop::ops::TARGET_ARG,
+        ds_cli_desktop::ops::DESCRIPTOR_ARG,
     ],
     output: "The paired application's bounded public result receipt for the requested run. A portfolio run that sealed its result but could not queue its governed publication stays `succeeded` and carries `publication` with the state, the application's reason and the remedy; that intent never reached the outbox, so `solar sync status` has no row for it. No `publication` means the application stated nothing about one.",
     examples: &[Example {
@@ -194,11 +185,8 @@ pub static CANCEL_COMMAND: Command = Command {
     execution: Execution::Sync,
     args: &[
         Arg::value("run-id", "<id>", "Run id returned by solar run start.").required(),
-        Arg::value(
-            "desktop-descriptor",
-            "<path>",
-            "Use this bridge descriptor instead of discovering one.",
-        ),
+        ds_cli_desktop::ops::TARGET_ARG,
+        ds_cli_desktop::ops::DESCRIPTOR_ARG,
     ],
     output: "The paired application's cancellation receipt for the requested run.",
     examples: &[Example {
@@ -231,11 +219,8 @@ pub static READ_COMMAND: Command = Command {
             "<field>",
             "Semantic result field to include. Repeat for several fields.",
         ),
-        Arg::value(
-            "desktop-descriptor",
-            "<path>",
-            "Use this bridge descriptor instead of discovering one.",
-        ),
+        ds_cli_desktop::ops::TARGET_ARG,
+        ds_cli_desktop::ops::DESCRIPTOR_ARG,
     ],
     output: "A bounded result projection with its run id, city context and digest.",
     examples: &[Example {

@@ -582,9 +582,9 @@ pub fn ensure_desktop(tool: &Tool, arguments: &Value, executable: &PathBuf) -> R
         .get("desktop-descriptor")
         .and_then(Value::as_str)
         .map(str::to_owned);
-    let target = arguments
-        .get("target")
-        .and_then(Value::as_str)
+    let target = declares_host_flag(&tool.descriptor)
+        .then(|| arguments.get("target").and_then(Value::as_str))
+        .flatten()
         .map(str::to_owned);
     // A caller that named a runtime has named it. `--target desktop` names the
     // host and not an instance, so it is not a naming for this purpose; an
@@ -605,6 +605,23 @@ pub fn ensure_desktop(tool: &Tool, arguments: &Value, executable: &PathBuf) -> R
         &mut wait,
     )
     .map_err(|failure| declared_desktop_guidance(tool, failure))
+}
+
+/// Whether a command descriptor's `target` input names a host (`desktop`,
+/// `desktop:<instance_id>`, `server`). A few commands use the word for
+/// something in their own domain — `map.ui.open` names a panel — and that value
+/// must never be read as an instance to pair with.
+fn declares_host_flag(descriptor: &Value) -> bool {
+    descriptor["inputs"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .any(|input| {
+            input["name"] == "target"
+                && input["value"]
+                    .as_str()
+                    .is_some_and(|value| value.starts_with("<desktop|"))
+        })
 }
 
 /// The gate reports the command's own published remedy rather than inventing
@@ -1976,6 +1993,18 @@ mod tests {
         let tool = tool_from_descriptor(&descriptor).expect("tool");
         let error = argv_for_call(&tool, &json!({ "confirm": true })).unwrap_err();
         assert!(error.contains("does not declare `confirm`"), "{error}");
+    }
+
+    #[test]
+    fn only_a_target_with_the_host_grammar_is_read_as_an_instance() {
+        let host =
+            json!({"inputs": [{"name": "target", "value": "<desktop|desktop:instance|server>"}]});
+        let panel = json!({"inputs": [{"name": "target", "value": "<panel>"}]});
+        let none = json!({"inputs": [{"name": "ref", "value": "<ref>"}]});
+        assert!(declares_host_flag(&host));
+        // `map.ui.open --target attribute-table` names a panel, never a window.
+        assert!(!declares_host_flag(&panel));
+        assert!(!declares_host_flag(&none));
     }
 
     #[test]

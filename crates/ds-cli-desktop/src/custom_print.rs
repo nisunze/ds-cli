@@ -1,5 +1,5 @@
 //! Exact selected-sector area preparation. All cartographic decisions are kernel-owned.
-use crate::ops::{self, BridgeOp, DESCRIPTOR_ARG};
+use crate::ops::{self, BridgeOp, DESCRIPTOR_ARG, TARGET_ARG};
 use ds_cli_contract::{
     Context, Failure, Inputs,
     spec::{Arg, Authority, Chapter, Command, Effect, Execution, Refusal, Requires},
@@ -49,6 +49,7 @@ pub static AREA_COMMAND: Command = Command {
             "geometry",
             "Include full area and sector GeoJSON, bounded to 50,000 coordinates; otherwise return identity and bounds only.",
         ),
+        TARGET_ARG,
         DESCRIPTOR_ARG,
     ],
     output: "Project/map identity, sorted sector codes and names, exact area SHA-256, bounds, connected=true, publication=local_only and geometry_included. --geometry includes full MultiPolygon and sector FeatureCollection, without dissolving their shared edges.",
@@ -98,7 +99,7 @@ pub static EXPORT_COMMAND: Command = Command {
     summary:"Capture and retain district or sector PDFs through paired Desktop.",
     purpose:"Administrative-code planning, not held-map capture. map.print.schema discovers fields; headless ds.print-layout-export/v1 renders via report.layout.render. Matching signed-in Desktop captures all project MV sources and selected geography. Kernel owns exact scope, paper and canonical output identity. Native Reporter renders custom-area, district pages or combined overview PDF. Project Control retains local artifacts/source warnings, replacing only selected paper. Reference: retention/publication/local-only rendering.",
     chapter:Chapter::Reports,effect:Effect::ArtifactWrite,authority:Authority::DesktopUser,execution:Execution::Sync,
-    args:&[Arg::value("request","<json-file>","JSON: project, id, family (custom-map|mv-map), codes (sector|district), paper (A3|A0), optional page_mode (default per-area; combined = one MV overview), authored layout, DPI (default 300; 72–1200).").required(),DESCRIPTOR_ARG],
+    args:&[Arg::value("request","<json-file>","JSON: project, id, family (custom-map|mv-map), codes (sector|district), paper (A3|A0), optional page_mode (default per-area; combined = one MV overview), authored layout, DPI (default 300; 72–1200).").required(),TARGET_ARG, DESCRIPTOR_ARG],
     output:"Canonical filename, verified path/SHA-256/bytes/page count, source inventory, local preview reference and warnings; incomplete inputs stay warned.",
     examples:&[],refusals:&[ops::NOT_PAIRED,ops::AMBIGUOUS,ops::UNREACHABLE,ops::PAIRING_REJECTED,ops::REFUSED,ops::UNSUPPORTED,ops::UNREADABLE,ops::SIGNED_OUT,INVALID],
     reference:Some("docs/reference/desktop.printing.md"),search: &[], requires: Requires::Window, availability:ops::paired_availability,
@@ -116,6 +117,7 @@ pub static LIST_COMMAND: Command = Command {
     args: &[
         Arg::value("project", "<id>", "Exact active project.").required(),
         Arg::value("limit", "<count>", "Maximum returned printouts, 1..200.").default("50"),
+        TARGET_ARG,
         DESCRIPTOR_ARG,
     ],
     output: "Project and retained PDF receipts with source warnings and local preview references.",
@@ -214,6 +216,7 @@ pub static ATTACH_COMMAND: Command = Command {
             "Exact current filename returned by map list.",
         )
         .required(),
+        TARGET_ARG,
         DESCRIPTOR_ARG,
     ],
     output: "Current canonical PDF receipt with publication state attached or pending and its error. Pending means publication has not completed.",

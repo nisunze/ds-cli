@@ -25,9 +25,9 @@ use ds_cli_contract::spec::{
 };
 use ds_cli_contract::{Context, Inputs};
 use ds_cli_desktop::ops::{
-    AMBIGUOUS, BridgeOp, DESCRIPTOR_ARG, NOT_PAIRED, PAIRING_REJECTED, REFUSED, UNREACHABLE,
-    UNREADABLE as DESKTOP_UNREADABLE, UNSUPPORTED as DESKTOP_UNSUPPORTED, invoke, paired,
-    paired_availability,
+    AMBIGUOUS, BridgeOp, DESCRIPTOR_ARG, NOT_PAIRED, PAIRING_REJECTED, REFUSED, TARGET_ARG,
+    UNREACHABLE, UNREADABLE as DESKTOP_UNREADABLE, UNSUPPORTED as DESKTOP_UNSUPPORTED, invoke,
+    paired, paired_availability,
 };
 use serde_json::{Map, Value, json};
 
@@ -171,6 +171,7 @@ pub static PLAN_COMMAND: Command = Command {
         SEED_ARG,
         COUNT_ARG,
         DENSITY_ARG,
+        TARGET_ARG,
         DESCRIPTOR_ARG,
     ],
     output: "Exact total and per-area point counts, each area's surface in km², whether the count is admissible in the cloud lane, and whether the full local Rwanda DEM is required.",
@@ -211,7 +212,7 @@ pub static EXTRACT_COMMAND: Command = Command {
     path: &["data", "elevation", "extract"],
     contract: 1,
     summary: "Extract an elevation point cloud from an area on Desktop.",
-    purpose: "Generates points across an area, attaches Rwanda DEM elevation locally, and writes a new GeoJSON with a CSV beside it. Different from `ds data elevation attach`, which enriches points the caller already has: this one produces them. Generation is deterministic and every source area attribute is preserved. Jobs above 4,000 points install or verify the full local DEM once, then retry. Nothing reaches DS Cloud Run and no map need be open.",
+    purpose: "Generates points across an area, attaches Rwanda DEM elevation, and writes a GeoJSON with a CSV beside it. Unlike `ds data elevation attach`, which enriches points the caller already has, this produces them. Generation is deterministic and keeps all source area attributes. Jobs over 4,000 points install or verify the full local DEM once, then retry. Nothing reaches DS Cloud Run; no map need be open.",
     chapter: Chapter::Data,
     effect: Effect::LocalFileWrite,
     authority: Authority::DesktopPairing,
@@ -226,6 +227,7 @@ pub static EXTRACT_COMMAND: Command = Command {
         COUNT_ARG,
         DENSITY_ARG,
         FALLBACK_ARG,
+        TARGET_ARG,
         DESCRIPTOR_ARG,
     ],
     output: "A native receipt: both written paths and digests, point and coverage counts, DEM access mode, per-area statistics, and any displaced source attribute.",

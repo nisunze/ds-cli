@@ -31,6 +31,29 @@ pub mod open {
 
     use crate::DESCRIPTOR_ARG;
 
+    /// This command's `--target` names the panel, so it cannot also name the
+    /// host: the one command in the paired family that selects an instance by
+    /// descriptor alone. Its routing refusals say so rather than recommending a
+    /// flag the parser reads as a panel.
+    const AMBIGUOUS: Refusal = Refusal {
+        code: "desktop_ambiguous",
+        when: "two or more live DS GridDesign instances can serve this",
+        remedy: "run `ds desktop list`, then pass one instance's descriptor path with --desktop-descriptor <path>; --target names the panel here, never the host",
+    };
+    const NOT_PAIRED: Refusal = Refusal {
+        code: "desktop_not_paired",
+        when: "no DS GridDesign session is running on this machine",
+        remedy: "start DS GridDesign and run `ds desktop list`; use --desktop-descriptor <path> to select one instance",
+    };
+
+    fn paired(explicit: Option<&str>) -> Result<ds_cli_desktop::discover::Descriptor, Failure> {
+        crate::paired(explicit).map_err(|failure| match failure.code() {
+            "desktop_ambiguous" => failure.remedy(AMBIGUOUS.remedy),
+            "desktop_not_paired" => failure.remedy(NOT_PAIRED.remedy),
+            _ => failure,
+        })
+    }
+
     /// The panels the application publishes to the CLI. A closed set, because
     /// the alternative to a closed set is a selector. Held to the adapter's own
     /// `UI_TARGETS` by `tests/bridge_parity.rs`.
@@ -99,8 +122,8 @@ Navigate with `ds map zoom`; edit with `ds map design set`.",
             },
         ],
         refusals: &[
-            crate::NOT_PAIRED,
-            crate::AMBIGUOUS,
+            NOT_PAIRED,
+            AMBIGUOUS,
             crate::UNREACHABLE,
             crate::PAIRING_REJECTED,
             Refusal {
@@ -121,7 +144,7 @@ Navigate with `ds map zoom`; edit with `ds map design set`.",
         let target = inputs.require("target")?;
         let reference = semantic_ref(inputs.require("ref")?)?;
 
-        let descriptor = crate::paired(inputs.value("desktop-descriptor"))?;
+        let descriptor = paired(inputs.value("desktop-descriptor"))?;
         let opened = crate::invoke(
             &descriptor,
             &crate::UI_OPEN,

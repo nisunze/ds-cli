@@ -69,7 +69,7 @@ static EXPORT_REFUSALS: &[Refusal] = &[
     Refusal {
         code: "desktop_ambiguous",
         when: "more than one DS GridDesign session is running",
-        remedy: "name one with --desktop-descriptor <path>",
+        remedy: "name one with --target desktop:<instance_id>",
     },
     Refusal {
         code: "desktop_unreachable",
@@ -129,11 +129,8 @@ pub static REPORT_EXPORT_COMMAND: Command = Command {
             "New Markdown file to create; never overwritten.",
         )
         .required(),
-        Arg::value(
-            "desktop-descriptor",
-            "<path>",
-            "Use this bridge descriptor instead of discovering one.",
-        ),
+        ds_cli_desktop::ops::TARGET_ARG,
+        ds_cli_desktop::ops::DESCRIPTOR_ARG,
     ],
     output: "The created Markdown destination, native name, exact byte count/content digest, batch id/digest and source run/city/variant.",
     examples: &[
@@ -176,11 +173,8 @@ pub static REPORT_BUNDLE_COMMAND: Command = Command {
         .choices(REPORT_VARIANTS),
         Arg::value("out", "<file.zip>", "New ZIP file to create; never overwritten.")
             .required(),
-        Arg::value(
-            "desktop-descriptor",
-            "<path>",
-            "Use this bridge descriptor instead of discovering one.",
-        ),
+        ds_cli_desktop::ops::TARGET_ARG,
+        ds_cli_desktop::ops::DESCRIPTOR_ARG,
     ],
     output: "The created prompt-bundle ZIP, exact byte count/content digest, batch id/digest and source run/city/variant.",
     examples: &[Example {
@@ -219,11 +213,8 @@ pub static PORTFOLIO_EXPORT_COMMAND: Command = Command {
             "New JSON (result) or Markdown (report) file to create; never overwritten.",
         )
         .required(),
-        Arg::value(
-            "desktop-descriptor",
-            "<path>",
-            "Use this bridge descriptor instead of discovering one.",
-        ),
+        ds_cli_desktop::ops::TARGET_ARG,
+        ds_cli_desktop::ops::DESCRIPTOR_ARG,
     ],
     output: "The created portfolio destination, native name, exact byte count/content digest, batch id/digest and source run/artifact.",
     examples: &[

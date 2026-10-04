@@ -7,7 +7,7 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
-use crate::DESCRIPTOR_ARG;
+use crate::{DESCRIPTOR_ARG, TARGET_ARG};
 
 const SOURCE_ARG: Arg = Arg {
     name: "source",
@@ -52,7 +52,13 @@ staged locally and remain dirty; nothing is uploaded until a separate save is co
     effect: Effect::LocalUi,
     authority: Authority::Project,
     execution: Execution::Sync,
-    args: &[SOURCE_ARG, PARALLEL_ARG, REPLACE_LOCAL_ARG, DESCRIPTOR_ARG],
+    args: &[
+        SOURCE_ARG,
+        PARALLEL_ARG,
+        REPLACE_LOCAL_ARG,
+        TARGET_ARG,
+        DESCRIPTOR_ARG,
+    ],
     output: "\
 Per-source success or failure with cleaned layer and feature counts, plus \
 total/succeeded/failed counts. Successful rows report staged=true and persisted=false.",

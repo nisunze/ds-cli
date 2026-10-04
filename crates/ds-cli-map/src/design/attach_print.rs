@@ -8,7 +8,7 @@ use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 use std::{io::Read, path::Path};
 
-use crate::DESCRIPTOR_ARG;
+use crate::{DESCRIPTOR_ARG, TARGET_ARG};
 
 const SCOPES: &[&str] = &["transformer", "combined", "mv"];
 const MAP_FAMILIES: &[&str] = &["lv-atlas", "mv-map", "custom-map"];
@@ -85,6 +85,7 @@ transformer's files and combined atlas/joined pages at archive root.",
             "Exact ds_project for the native --scope mv publication; the saved selection is never read.",
         ),
         crate::layer::native::LANE_ARG,
+        TARGET_ARG,
         DESCRIPTOR_ARG,
     ],
     output: "Project, target, filename, SHA-256, durable artifact reference, map family, layout, paper size, orientation, and page role.",

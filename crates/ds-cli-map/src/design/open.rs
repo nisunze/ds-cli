@@ -12,8 +12,8 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
-use crate::DESCRIPTOR_ARG;
 use crate::design::TRANSFORMER_ARG;
+use crate::{DESCRIPTOR_ARG, TARGET_ARG};
 
 pub static COMMAND: Command = Command {
     id: "map.design.open",
@@ -25,7 +25,7 @@ pub static COMMAND: Command = Command {
     effect: Effect::LocalUi,
     authority: Authority::Project,
     execution: Execution::Sync,
-    args: &[TRANSFORMER_ARG, DESCRIPTOR_ARG],
+    args: &[TRANSFORMER_ARG, TARGET_ARG, DESCRIPTOR_ARG],
     output: "A bounded context receipt: project, transformer, context type, previous context, whether it changed, editor and map readiness, dirty state, and explicit staged=false and persisted=false mutation facts.",
     examples: &[Example {
         command: "ds map design open --transformer agasharu --output json",

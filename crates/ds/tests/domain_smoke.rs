@@ -938,7 +938,7 @@ fn printing_context_seeding_is_bound_to_one_visible_desktop_project() {
         .collect::<BTreeSet<_>>();
     assert_eq!(
         inputs,
-        BTreeSet::from(["desktop-descriptor", "transformer"])
+        BTreeSet::from(["desktop-descriptor", "target", "transformer"])
     );
     assert!(
         !inputs.contains("project"),
@@ -997,6 +997,7 @@ fn printing_artifact_access_is_exact_project_owned_and_copy_only_creates_a_new_f
             "out",
             "output-id",
             "project",
+            "target",
             "transformer"
         ])
     );
@@ -1016,7 +1017,7 @@ fn desktop_sync_exposes_path_free_status_and_guards_exact_row_retry() {
         .collect::<BTreeSet<_>>();
     assert_eq!(
         inputs,
-        BTreeSet::from(["desktop-descriptor", "limit", "project"])
+        BTreeSet::from(["desktop-descriptor", "limit", "project", "target"])
     );
 
     let run = native_ds(&[
@@ -4714,6 +4715,7 @@ fn grid_lasso_sends_one_declared_query_and_returns_the_exact_window_receipt() {
             "family",
             "filter",
             "mode",
+            "target",
             "desktop-descriptor"
         ])
     );
@@ -4893,6 +4895,114 @@ fn two_live_instances_refuse_without_an_explicit_target() {
         elsewhere.envelope["error"]["code"], "target_host_unsupported",
         "{}",
         elsewhere.stdout
+    );
+}
+
+/// Feedback 641143eb: `desktop_ambiguous` tells the caller to name an instance
+/// with `--target desktop:<instance_id>`, and the design commands used to
+/// refuse that flag as unknown. Every one of them takes it now, the named
+/// instance alone receives the work, and `--desktop-descriptor` still works.
+#[test]
+fn the_design_commands_take_the_target_their_ambiguity_refusal_names() {
+    let mut machine = Machine::new("design-target");
+    machine.live(INSTANCE_ONE, "project-a");
+    machine.live(INSTANCE_TWO, "project-b");
+    let descriptor_one = machine
+        .root
+        .join("rw.datasolutions.desktop.canary")
+        .join("cli-bridge.d")
+        .join(format!("{INSTANCE_ONE}.json"));
+
+    let commands: [&[&str]; 4] = [
+        &["map", "design", "read", "--transformer", "T-1042"],
+        &[
+            "map",
+            "design",
+            "select",
+            "--transformer",
+            "T-1042",
+            "--layer",
+            "lv_lines",
+        ],
+        &[
+            "map",
+            "design",
+            "set",
+            "--transformer",
+            "T-1042",
+            "--layer",
+            "lv_lines",
+            "--id",
+            "f1",
+            "--set",
+            "phase=A",
+        ],
+        &["map", "design", "save", "--transformer", "T-1042", "--yes"],
+    ];
+    let target_two = format!("desktop:{INSTANCE_TWO}");
+    for command in commands {
+        let name = command[..3].join(" ");
+
+        // Nothing names an instance: refused, and the remedy names a flag this
+        // very command accepts.
+        let mut args = command.to_vec();
+        args.extend(["--output", "json"]);
+        let refused = machine.ds(&args);
+        assert_eq!(
+            refused.envelope["error"]["code"], "desktop_ambiguous",
+            "{name}: {}",
+            refused.stdout
+        );
+        let remedy = refused.envelope["error"]["remedy"]
+            .as_str()
+            .expect("remedy");
+        assert!(
+            remedy.contains("--target desktop:<instance_id>"),
+            "{name}: {remedy}"
+        );
+
+        // The flag the refusal named is accepted, and routes to that instance.
+        let before = machine.instance_by(INSTANCE_TWO).operations().len();
+        let mut args = command.to_vec();
+        args.extend(["--target", &target_two, "--output", "json"]);
+        let routed = machine.ds(&args);
+        assert_ne!(
+            routed.envelope["error"]["code"], "unknown_flag",
+            "{name}: {}",
+            routed.stdout
+        );
+        assert!(
+            machine.instance_by(INSTANCE_TWO).operations().len() > before,
+            "{name} did not reach the named instance: {}",
+            routed.stdout
+        );
+    }
+    assert!(
+        machine.instance_by(INSTANCE_ONE).operations().is_empty(),
+        "the instance nobody named must receive nothing"
+    );
+
+    // The descriptor file keeps working, and it reaches the instance it names.
+    let descriptor = descriptor_one.to_string_lossy().into_owned();
+    let by_file = machine.ds(&[
+        "map",
+        "design",
+        "read",
+        "--transformer",
+        "T-1042",
+        "--desktop-descriptor",
+        &descriptor,
+        "--output",
+        "json",
+    ]);
+    assert_ne!(
+        by_file.envelope["error"]["code"], "desktop_ambiguous",
+        "{}",
+        by_file.stdout
+    );
+    assert!(
+        !machine.instance_by(INSTANCE_ONE).operations().is_empty(),
+        "--desktop-descriptor must still reach the instance whose file it names"
     );
 }
 
@@ -5585,7 +5695,7 @@ fn map_evidence_capture_declares_a_fixed_receipt_and_no_way_to_record() {
         .collect();
     assert_eq!(
         inputs,
-        ["out", "scope", "replace", "desktop-descriptor"]
+        ["out", "scope", "replace", "target", "desktop-descriptor"]
             .into_iter()
             .collect::<BTreeSet<_>>(),
         "a flag appeared on the capture contract; a recorder would arrive as one"
@@ -7761,7 +7871,7 @@ fn map_design_open_is_the_one_discoverable_visible_context_entry() {
             .iter()
             .map(|input| input["name"].as_str().unwrap())
             .collect::<Vec<_>>(),
-        ["transformer", "desktop-descriptor"]
+        ["transformer", "target", "desktop-descriptor"]
     );
     assert_eq!(inputs[0]["required"], true);
     let refusals = command["refusals"]
@@ -7845,12 +7955,12 @@ fn map_design_version_history_is_discoverable_and_governed() {
         (
             "map.design.version.play",
             "local_ui",
-            vec!["transformer", "version", "desktop-descriptor"],
+            vec!["transformer", "version", "target", "desktop-descriptor"],
         ),
         (
             "map.design.version.compare",
             "local_ui",
-            vec!["transformer", "from", "to", "desktop-descriptor"],
+            vec!["transformer", "from", "to", "target", "desktop-descriptor"],
         ),
     ];
     for (id, effect, inputs) in expected {

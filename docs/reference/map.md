@@ -572,7 +572,7 @@ state:
 | Code | Means |
 |---|---|
 | `desktop_not_paired` | no session on this machine |
-| `desktop_ambiguous` | Stable, Canary and dev running together — name one with `--desktop-descriptor` |
+| `desktop_ambiguous` | Stable, Canary and dev running together — name one with `--target desktop:<instance_id>` (`ds desktop list`), or a descriptor file with `--desktop-descriptor` |
 | `desktop_unreachable` | the descriptor is stale, or the app did not answer in time |
 | `pairing_rejected` | the descriptor's secret was refused; restart the app |
 | `desktop_refused` | the app answered and declined; `detail.detail` is its message |

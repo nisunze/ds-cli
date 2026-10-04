@@ -25,44 +25,9 @@ static REFUSALS: &[Refusal] = &[
         remedy: "review the exact portfolio inputs, then repeat with --yes",
     },
     Refusal {
-        code: "desktop_not_paired",
-        when: "no DS GridDesign session is running on this machine",
-        remedy: "start DS GridDesign, sign in, and retry",
-    },
-    Refusal {
-        code: "desktop_ambiguous",
-        when: "more than one DS GridDesign session is running",
-        remedy: "name one with --desktop-descriptor <path>",
-    },
-    Refusal {
-        code: "desktop_unreachable",
-        when: "the bridge descriptor names a session that does not answer",
-        remedy: "restart DS GridDesign and retry",
-    },
-    Refusal {
-        code: "desktop_unreadable",
-        when: "the paired session's reply could not be read",
-        remedy: "restart DS GridDesign and retry",
-    },
-    Refusal {
-        code: "desktop_operation_unsupported",
-        when: "this DS GridDesign build does not offer the named Solar operation",
-        remedy: "update DS GridDesign and ds to matching releases",
-    },
-    Refusal {
-        code: "desktop_refused",
-        when: "the active project rejected the mutation, including a stale membership revision",
-        remedy: "list portfolios again, reconcile the current membership, and retry",
-    },
-    Refusal {
         code: "desktop_contract_mismatch",
         when: "the paired session returned a mutation receipt outside this command contract",
         remedy: "update DS GridDesign and ds to matching releases",
-    },
-    Refusal {
-        code: "pairing_rejected",
-        when: "the descriptor's pairing secret is stale",
-        remedy: "restart DS GridDesign to publish a fresh descriptor",
     },
 ];
 

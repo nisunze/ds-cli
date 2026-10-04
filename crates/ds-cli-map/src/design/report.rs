@@ -13,8 +13,8 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
-use crate::DESCRIPTOR_ARG;
 use crate::design::TRANSFORMER_ARG;
+use crate::{DESCRIPTOR_ARG, TARGET_ARG};
 
 const FORCE_ARG: Arg = Arg {
     name: "force",
@@ -42,7 +42,7 @@ Installed compute consumes no shared cloud resources and passes no cloud force g
     effect: Effect::ArtifactWrite,
     authority: Authority::Project,
     execution: Execution::Sync,
-    args: &[TRANSFORMER_ARG, FORCE_ARG, DESCRIPTOR_ARG],
+    args: &[TRANSFORMER_ARG, FORCE_ARG, TARGET_ARG, DESCRIPTOR_ARG],
     output: "\
 Whether the export regenerated or was already fresh, the artifact count, and \
 per artifact: outputId, filename, contentType, sizeBytes, sha256, locator. \

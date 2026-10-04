@@ -54,11 +54,8 @@ accepts no URL, credential, cache path, project id or filesystem root.",
             "<tag>",
             "Requested document language, for example fr or en.",
         ),
-        Arg::value(
-            "desktop-descriptor",
-            "<path>",
-            "Use this bridge descriptor instead of discovering one.",
-        ),
+        ds_cli_desktop::ops::TARGET_ARG,
+        ds_cli_desktop::ops::DESCRIPTOR_ARG,
     ],
     output: "\
 The paired application's bounded preparation receipt: selected contexts, their \

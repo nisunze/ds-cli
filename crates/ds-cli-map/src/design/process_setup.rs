@@ -7,7 +7,7 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
-use crate::DESCRIPTOR_ARG;
+use crate::{DESCRIPTOR_ARG, TARGET_ARG};
 
 const SURVEY_LAYER_ARG: Arg = Arg {
     name: "survey-layer",
@@ -130,7 +130,7 @@ pub static COMMAND: Command = Command {
 No configuration flags: project preset, selected customer sources, available \
 Point layers and effective processor parameters. Sources/--preset/typed \
 --setting overrides save the application's project-scoped setup. Semantic \
-layer keys only; IndexedDB addresses/processor wiring stay in DS GridDesign. \
+layer keys only; IndexedDB wiring stays in DS GridDesign. \
 No design/cloud data changes.",
     chapter: Chapter::Design,
     effect: Effect::LocalUi,
@@ -158,6 +158,7 @@ No design/cloud data changes.",
             "Report at most this many available layers per source kind; 1..200.",
         )
         .default(DEFAULT_LIMIT),
+        TARGET_ARG,
         DESCRIPTOR_ARG,
     ],
     output: "The selected preset, effective typed processor settings, bounded customer-source inventories, and a bounded inspection of cached rule-set and assembly references.",

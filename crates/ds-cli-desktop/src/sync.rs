@@ -1,7 +1,7 @@
 //! Account-owned compute publication status and exact-row recovery through the
 //! paired application's Sync Center owner.
 use crate::discover::Descriptor;
-use crate::ops::{self, BridgeOp, DESCRIPTOR_ARG};
+use crate::ops::{self, BridgeOp, DESCRIPTOR_ARG, TARGET_ARG};
 use ds_cli_contract::{
     Context, Failure, Inputs,
     spec::{Arg, ArgKind, Authority, Chapter, Command, Effect, Execution, Refusal, Requires},
@@ -116,7 +116,7 @@ pub static STATUS_COMMAND: Command = Command {
     effect: Effect::ReadOnly,
     authority: Authority::DesktopUser,
     execution: Execution::Sync,
-    args: &[PROJECT_ARG, LIMIT_ARG, DESCRIPTOR_ARG],
+    args: &[PROJECT_ARG, LIMIT_ARG, TARGET_ARG, DESCRIPTOR_ARG],
     output: "Optional project filter, queue summary, total/more and bounded path-free publication rows with exact producer identities and retry guidance.",
     examples: &[],
     refusals: REFUSALS,
@@ -136,7 +136,7 @@ pub static RETRY_COMMAND: Command = Command {
     effect: Effect::GlobalWrite,
     authority: Authority::DesktopUser,
     execution: Execution::Sync,
-    args: &[REQUIRED_PROJECT_ARG, ROW_ARG, DESCRIPTOR_ARG],
+    args: &[REQUIRED_PROJECT_ARG, ROW_ARG, TARGET_ARG, DESCRIPTOR_ARG],
     output: "The exact requeued receipt and the current post-drain row when retained; an explicit unknown-status note is returned if the row was removed.",
     examples: &[],
     refusals: REFUSALS,
@@ -156,7 +156,7 @@ pub static SANITIZE_PREVIEW_COMMAND: Command = Command {
     effect: Effect::ReadOnly,
     authority: Authority::DesktopUser,
     execution: Execution::Sync,
-    args: &[REQUIRED_PROJECT_ARG, LIMIT_ARG, DESCRIPTOR_ARG],
+    args: &[REQUIRED_PROJECT_ARG, LIMIT_ARG, TARGET_ARG, DESCRIPTOR_ARG],
     output: "Digest for the complete queue snapshot, total/more, action counts and bounded decisions. No rows or files change.",
     examples: &[],
     refusals: REFUSALS,
@@ -184,6 +184,7 @@ pub static SANITIZE_APPLY_COMMAND: Command = Command {
             "Exact complete preview digest; refuses any changed queue.",
         )
         .required(),
+        TARGET_ARG,
         DESCRIPTOR_ARG,
     ],
     output: "Applied decision counts and bounded rows. Recovery is queued, not reported as published; archived rows and bytes remain in history.",

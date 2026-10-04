@@ -18,7 +18,7 @@ use ds_cli_contract::{Context, Inputs};
 use ds_cli_desktop::bridge;
 use serde_json::{Value, json};
 
-use crate::{ANALYSIS_SKETCH_PREFIX, DESCRIPTOR_ARG};
+use crate::{ANALYSIS_SKETCH_PREFIX, DESCRIPTOR_ARG, TARGET_ARG};
 
 /// The cheapest useful answer. A working map carries a handful of temporary
 /// layers; the application publishes up to two hundred, and printing all of
@@ -44,6 +44,7 @@ this domain acts on something this one names.",
     args: &[
         Arg::value("limit", "<n>", "Report at most this many layers; 1..200.")
             .default(DEFAULT_LIMIT),
+        TARGET_ARG,
         DESCRIPTOR_ARG,
     ],
     output: "\

@@ -15,7 +15,7 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
-use crate::{BOOL_CHOICES, DESCRIPTOR_ARG};
+use crate::{BOOL_CHOICES, DESCRIPTOR_ARG, TARGET_ARG};
 
 /// The application's own defaults, as its tool dock opens with them.
 const DEFAULT_MIN_SPACING: &str = "50";
@@ -69,6 +69,7 @@ map as a new layer. Polygons are their own area; point and line layers need \
         .default("false")
         .choices(BOOL_CHOICES),
         Arg::value("seed", "<n>", "Fix the sample so the run repeats."),
+        TARGET_ARG,
         DESCRIPTOR_ARG,
     ],
     output: "\

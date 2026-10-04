@@ -8,7 +8,7 @@ use ds_cli_contract::{Context, Inputs};
 use ds_command_kernel::map_active_view::{self, REQUEST_SCHEMA};
 use serde_json::{Value, json};
 
-use crate::DESCRIPTOR_ARG;
+use crate::{DESCRIPTOR_ARG, TARGET_ARG};
 
 pub static COMMAND: Command = Command {
     id: "map.camera.set",
@@ -25,6 +25,7 @@ pub static COMMAND: Command = Command {
         Arg::value("zoom", "<level>", "Map zoom, 0..24.").required(),
         Arg::value("pitch", "<degrees>", "Camera pitch, 0..85.").required(),
         Arg::value("bearing", "<degrees>", "Camera bearing, -360..360.").required(),
+        TARGET_ARG,
         DESCRIPTOR_ARG,
     ],
     output: "The exact camera applied and the active renderer mode/provider that received it.",

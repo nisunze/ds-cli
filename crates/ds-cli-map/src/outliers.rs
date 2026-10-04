@@ -21,7 +21,7 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
-use crate::{BOOL_CHOICES, DESCRIPTOR_ARG};
+use crate::{BOOL_CHOICES, DESCRIPTOR_ARG, TARGET_ARG};
 
 /// The application's own defaults, as its tool dock opens with them.
 const DEFAULT_THRESHOLD: &str = "3.5";
@@ -87,6 +87,7 @@ the full scored collection is never returned — it is on the map instead.",
         .choices(BOOL_CHOICES),
         Arg::value("limit", "<n>", "Return at most this many findings; 0..200.")
             .default(DEFAULT_LIMIT),
+        TARGET_ARG,
         DESCRIPTOR_ARG,
     ],
     output: "\

@@ -19,8 +19,8 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
-use crate::DESCRIPTOR_ARG;
 use crate::design::{BBOX_ARG, ID_ARG, LAYER_ARG, TRANSFORMER_ARG, WHERE_ARG};
+use crate::{DESCRIPTOR_ARG, TARGET_ARG};
 
 const SET_ARG: Arg = Arg {
     name: "set",
@@ -75,6 +75,7 @@ unambiguous key:=JSON-scalar form. Use --dry-run to count first.",
         BBOX_ARG,
         ID_ARG,
         Arg::switch("dry-run", "Report what would change; stage nothing."),
+        TARGET_ARG,
         DESCRIPTOR_ARG,
     ],
     output: "\
