@@ -136,12 +136,15 @@ mod tests {
         assert!(rows[0].checked);
         assert_eq!(rows.len(), 16);
         assert_ne!(
-            clearance_violation_encoding(&document).unwrap().color,
-            rows.iter()
-                .find(|r| r.option == DisplayOption::ClearanceLine)
-                .unwrap()
-                .encoding
-                .color
+            serde_json::to_value(clearance_violation_encoding(&document).unwrap()).unwrap(),
+            serde_json::to_value(
+                &rows
+                    .iter()
+                    .find(|r| r.option == DisplayOption::ClearanceLine)
+                    .unwrap()
+                    .encoding
+            )
+            .unwrap()
         );
         let encodings: std::collections::BTreeSet<_> = rows
             .iter()
