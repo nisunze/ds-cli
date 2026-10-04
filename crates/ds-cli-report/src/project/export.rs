@@ -1876,6 +1876,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
                 &receipt
                     .sheets()
                     .map_err(|e| HostFailure::new(INPUTS_INVALID.code, e))?,
+                &receipt.sheets_sha256,
             )?)
         } else {
             print_context
@@ -3345,6 +3346,66 @@ pub fn render(data: &Value) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn held_style_capture_uses_final_override_precedence_and_selected_layouts_only() {
+        let selection = ds_command_kernel::report_formats::normalize_output_selection(
+            None,
+            Some(vec!["pdf__detail".into()]),
+            None,
+        )
+        .unwrap();
+        let mut layout = ds_command_kernel::printing::default_layout();
+        layout.id = "detail".into();
+        let title = layout
+            .elements
+            .iter()
+            .find(|e| e.kind == ds_command_kernel::printing::ElementKind::Text)
+            .unwrap()
+            .id
+            .clone();
+        layout.transformer_overrides =
+            serde_json::from_value(json!({"focus":{"elements":{title.clone():{"font_pt":11.0}}}}))
+                .unwrap();
+        let mut other = layout.clone();
+        other.id = "unselected".into();
+        let sheets = json!({"printing_setups":[{"id":"detail","layout":layout},{"id":"unselected","layout":other}],"printing_overrides":{"focus":{"detail":{"elements":{title.clone():{"font_pt":13.0}}}}}});
+        let rows = vec![
+            super::super::hold::Row {
+                name: "focus".into(),
+                kind: "transformer".into(),
+                state: "active".into(),
+                retired: false,
+                reason: None,
+            },
+            super::super::hold::Row {
+                name: "retired".into(),
+                kind: "transformer".into(),
+                state: "retired".into(),
+                retired: true,
+                reason: None,
+            },
+        ];
+        let captured = super::effective_capture_layouts(&sheets, &[], &rows, &selection).unwrap();
+        assert_eq!(captured.len(), 2);
+        assert!(captured.iter().all(|l| l.id == "detail"));
+        let effective = ds_command_kernel::printing::overrides::effective(
+            &layout,
+            "focus",
+            &serde_json::from_value(sheets["printing_overrides"].clone()).unwrap(),
+        )
+        .unwrap();
+        assert!(captured.contains(&effective));
+        assert_eq!(
+            effective
+                .elements
+                .iter()
+                .find(|e| e.id == title)
+                .unwrap()
+                .font_pt,
+            13.0
+        );
+        assert!(!captured.iter().any(|l| l.id == "unselected"));
+    }
     #[test]
     fn a_pinned_room_must_be_one_exact_saved_revision_of_this_batch() {
         let temp = tempfile::tempdir().unwrap();
