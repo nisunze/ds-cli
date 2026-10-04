@@ -639,3 +639,20 @@ optional fields, exact enum tokens and SI field units. For example,
 includes `RouteNodeRow` fields and `RouteNodeRole` values. Inline schemas are
 bounded to 24 KiB per command; `more_type_schemas` explicitly names deferred
 types. Read `--kind types --id <type>` for their fully documented schemas.
+
+## Explicit package format migration
+
+`ds dsgrid package migrate` verifies a historical package and produces a current-format local package through `ds_grid_exchange::package_migration::migrate_with_resources`. The normal reader accepts current schema only; this explicit boundary retains the original bytes.
+
+The one external migration verifies exact historical source schema, safe membership, every member digest, counts and content fingerprints before transforming named typed fields. Authored revision, voltages, engineering values, qualification, existing native assets and attachment/history bytes remain unchanged. Explicit SHA-pinned supplemental resources may restore only absent embedded bytes already exactly named by original resource facts; no automatic lookup or execution qualification occurs. Original derived geometry pins may move only after historical input verification and actual current engine recomputation with exact physical-row equality, preserving original computed members as history. Dry-run emits the exact source/output SHA and preservation receipt without writing. --yes writes a new local directory containing model.dsgrid and migration.receipt.json; the source is never overwritten. No project publication or version bump occurs. Old artifacts cannot read migrated production heads; retain the current-format artifact floor and use a governed expected-head publication of migrated prior engineering facts for restoration.
+
+Source/output SHA, original/current schema, strict output verification, exact transformations and preserved metadata; source_modified=false, published=false. Successful materialization returns model.dsgrid and migration.receipt.json. Receipt written last commits the local directory; directories without a receipt are incomplete and never opened.
+
+Read the source SHA from its captured receipt. With `--supplemental-resources`, also supply `--expected-supplemental-sha256`; each supplement must retain its explicit extraction receipt and exactly match the resource facts in the original package.
+
+```bash
+ds dsgrid package migrate --path /disk/original.dsgrid --expected-source-sha256 <captured-sha256> --dry-run --output json
+ds dsgrid package migrate --path /disk/original.dsgrid --expected-source-sha256 <captured-sha256> --out /disk/reviewed-current-package --yes --output json
+```
+
+The output directory must be new, absolute and writable. Confirmation applies only to local materialization; project publication requires its separate governed expected-head boundary.

@@ -17,7 +17,7 @@ pub static COMMAND: Command = Command {
     path: &["dsgrid", "package", "migrate"],
     contract: 2,
     summary: "Verify one old package and save its lossless current-format migration.",
-    purpose: "The one external migration verifies exact historical source schema, safe membership, every member digest, counts and content fingerprints before transforming named typed fields. Authored revision, voltages, engineering values, qualification, existing native assets and attachment/history bytes remain unchanged. Explicit SHA-pinned supplemental resources may restore only absent embedded bytes already exactly named by original resource facts; no automatic lookup or execution qualification occurs. Original derived geometry pins may move only after historical input verification and actual current engine recomputation with exact physical-row equality, preserving original computed members as history. Dry-run emits the exact source/output SHA and preservation receipt without writing. --yes writes a new local directory containing model.dsgrid and migration.receipt.json; the source is never overwritten. No project publication or version bump occurs. Old artifacts cannot read migrated production heads; retain the current-format artifact floor and use a governed expected-head publication of migrated prior engineering facts for restoration.",
+    purpose: "Verify historical schema, members and digests, then convert named fields without changing authored engineering facts or revision. SHA-pinned supplements restore only declared missing bytes; derived pins move only after current-engine recomputation preserves exact physical rows. Dry-run returns a receipt; --yes writes model.dsgrid and migration.receipt.json to a fresh directory. The source and project remain unchanged. See the reference for preservation and current-schema restoration.",
     chapter: Chapter::GridModel,
     effect: Effect::LocalFileWrite,
     authority: Authority::None,
@@ -59,7 +59,7 @@ pub static COMMAND: Command = Command {
             "Materialize the validated package and receipt locally.",
         ),
     ],
-    output: "Source/output SHA, original/current schema, strict output verification, exact transformations and preserved metadata; source_modified=false, published=false. Successful materialization returns model.dsgrid and migration.receipt.json. Receipt written last commits the local directory; directories without a receipt are incomplete and never opened.",
+    output: "Source/output SHA, schemas, strict verification, transformations and preservation receipt; source_modified=false, published=false. Output is model.dsgrid plus the last-written migration.receipt.json; incomplete directories are refused.",
     examples: &[],
     refusals: &[
         Refusal {
@@ -88,8 +88,8 @@ pub static COMMAND: Command = Command {
             remedy: "use --dry-run first, then --yes for the reviewed local output",
         },
     ],
-    reference: None,
-    search: &["schema", "autoheal", "migration"],
+    reference: Some("docs/reference/dsgrid.md"),
+    search: &["schema", "autoheal"],
     requires: Requires::Server,
     availability: || Availability::Available,
 };
