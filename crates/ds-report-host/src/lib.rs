@@ -157,6 +157,67 @@ pub struct PrintContextBytes {
     pub omitted: Vec<String>,
 }
 
+/// Bind an admitted style capture to the exact held context, preserving the
+/// server's original input receipt and every held vector/source byte.
+pub fn bind_print_styles(
+    context: Option<PrintContextBytes>,
+    capture: &ds_command_kernel::printing::style_capture::Capture,
+    project: &str,
+    lane: &str,
+    principal: &str,
+    audience: &str,
+    sheets: &Value,
+) -> Result<PrintContextBytes, HostFailure> {
+    capture
+        .validate_scope(project, lane, principal, audience, sheets)
+        .map_err(|e| HostFailure::new("print_style_capture_context_mismatch", e))?;
+    let mut document = if let Some(held) = &context {
+        if format!("{:x}", Sha256::digest(&held.bytes)) != held.sha256 {
+            return Err(HostFailure::new(
+                "print_context_invalid",
+                "held context changed before style capture",
+            ));
+        }
+        let value: Value = serde_json::from_slice(&held.bytes)
+            .map_err(|e| HostFailure::new("print_context_invalid", e.to_string()))?;
+        if value["schema"] != "ds.print-context/v1" || !value["layers"].is_object() {
+            return Err(HostFailure::new(
+                "print_context_invalid",
+                "style capture requires exact print-context/v1 layers",
+            ));
+        }
+        value
+    } else {
+        json!({"schema":"ds.print-context/v1","layers":{},"sources":[],"coverage":null})
+    };
+    let value = serde_json::to_value(capture)
+        .map_err(|e| HostFailure::new("print_style_capture_invalid", e.to_string()))?;
+    if document
+        .get("printing_style_capture")
+        .is_some_and(|old| old != &value)
+    {
+        return Err(HostFailure::new(
+            "print_style_capture_stale",
+            "held context already carries another style source",
+        ));
+    }
+    document["printing_style_capture"] = value;
+    let bytes = serde_json::to_vec(&document)
+        .map_err(|e| HostFailure::new("print_context_invalid", e.to_string()))?;
+    Ok(PrintContextBytes {
+        sha256: format!("{:x}", Sha256::digest(&bytes)),
+        bytes,
+        layers: context
+            .as_ref()
+            .map(|c| c.layers.clone())
+            .unwrap_or_default(),
+        omitted: context
+            .as_ref()
+            .map(|c| c.omitted.clone())
+            .unwrap_or_default(),
+    })
+}
+
 /// Bind authenticated project metadata to exact held context bytes. The host
 /// supplies and checks identity; this operation never reads a credential or
 /// changes the server-issued configuration receipt.
@@ -2155,5 +2216,90 @@ mod project_crs_context_tests {
             .unwrap()
             .layers
             .is_empty());
+    }
+}
+
+#[cfg(test)]
+mod style_context_capture_tests {
+    use super::*;
+    #[test]
+    fn additive_style_binding_preserves_sources_and_refuses_scope_or_byte_changes() {
+        use ds_command_kernel::{printing, style_resolution};
+        let fixture: Value = serde_json::from_str(include_str!(
+            "../../../tests/fixtures/printing-source-bindings.json"
+        ))
+        .unwrap();
+        let snapshot = style_resolution::Snapshot {
+            schema: style_resolution::SCHEMA.into(),
+            project_id: "project-a".into(),
+            revision_id: "b".repeat(64),
+            seed_version: None,
+            style_presets: None,
+            missing_style_refs: vec![],
+            bindings: serde_json::from_value(fixture["bindings"].clone()).unwrap(),
+        };
+        let sheets = json!({"project_settings":[]});
+        let capture = printing::style_capture::Capture::new(
+            &snapshot,
+            "project-a",
+            "stable",
+            "user-a",
+            &"a".repeat(64),
+            &"c".repeat(64),
+            &sheets,
+            &[printing::default_layout()],
+        )
+        .unwrap();
+        let original = json!({"schema":"ds.print-context/v1","layers":{"roads":{"type":"FeatureCollection","features":[]}},"sources":[{"digest":"original"}],"coverage":{"held":true}});
+        let bytes = serde_json::to_vec(&original).unwrap();
+        let held = PrintContextBytes {
+            sha256: format!("{:x}", Sha256::digest(&bytes)),
+            bytes,
+            layers: vec!["roads".into()],
+            omitted: vec!["absent".into()],
+        };
+        let bound = bind_print_styles(
+            Some(held.clone()),
+            &capture,
+            "project-a",
+            "stable",
+            "user-a",
+            &"a".repeat(64),
+            &sheets,
+        )
+        .unwrap();
+        let value: Value = serde_json::from_slice(&bound.bytes).unwrap();
+        for key in ["layers", "sources", "coverage"] {
+            assert_eq!(value[key], original[key]);
+        }
+        assert_ne!(bound.sha256, held.sha256);
+        assert_eq!(bound.layers, held.layers);
+        assert_eq!(bound.omitted, held.omitted);
+        assert_eq!(
+            value["printing_style_capture"]["server_sheets_sha256"],
+            "c".repeat(64)
+        );
+        assert!(bind_print_styles(
+            Some(held.clone()),
+            &capture,
+            "project-b",
+            "stable",
+            "user-a",
+            &"a".repeat(64),
+            &sheets
+        )
+        .is_err());
+        let mut corrupted = held;
+        corrupted.bytes.push(b' ');
+        assert!(bind_print_styles(
+            Some(corrupted),
+            &capture,
+            "project-a",
+            "stable",
+            "user-a",
+            &"a".repeat(64),
+            &sheets
+        )
+        .is_err());
     }
 }

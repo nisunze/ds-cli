@@ -344,3 +344,22 @@ mod scoped_tests {
         assert_eq!(restored, layout);
     }
 }
+
+/// The shared effective-layout precedence used by capture and final rendering.
+pub fn effective(
+    layout: &Layout,
+    transformer: &str,
+    project: &TransformerOverrides,
+) -> Result<Layout, String> {
+    let mut result = layout.clone();
+    if let Some(patch) = layout.transformer_overrides.get(transformer) {
+        result = apply(&result, patch)?;
+    }
+    if let Some(patch) = project
+        .get(transformer)
+        .and_then(|layouts| layouts.get(&layout.id))
+    {
+        result = apply(&result, patch)?;
+    }
+    Ok(result)
+}

@@ -1,0 +1,160 @@
+{
+  "source": "Exact read-only style.resolve responses for Gisagara; only public style documents, no account/feature/subscriber data.",
+  "bindings": [
+    {
+      "key": {
+        "entity_class": "print_renderer_defaults",
+        "source_kind": "dataset_geojson",
+        "target": "print",
+        "role": "project"
+      },
+      "style_ref": "print_context/renderer_defaults_print",
+      "revision_id": "d7187c36da1ece3530a5dfd73c14a6724dd916a333e0e69c25e1739fc8a02626",
+      "content_sha256": "49cc7b506f8f72a77cbf51db95274dc2df6be6aa6695f601e71b6d2365def69c",
+      "scope": "global",
+      "document": {
+        "layout": {},
+        "metadata": {
+          "geometry_type": "line",
+          "print_renderer_defaults": {
+            "base_style": {
+              "casing": "",
+              "casing_mm": 0,
+              "color_field": "",
+              "colors": {},
+              "dash_mm": [],
+              "fill": "#ffffff",
+              "fill_opacity": 1,
+              "label_field": "",
+              "label_pt": 8,
+              "radius_mm": 1.2,
+              "stroke": "#253747",
+              "stroke_opacity": 1,
+              "width_field": "",
+              "width_mm": 0.35,
+              "widths": {}
+            },
+            "converter_font_family": "DejaVu Sans",
+            "furniture": {
+              "fill_outline_mm": 0.2,
+              "legend_frame_mm": 0.15,
+              "legend_group_bold": true,
+              "legend_group_font_width_factor": 1.08,
+              "legend_row_font_factor": 1.7,
+              "map_frame_mm": 0.25,
+              "north_arrow_mm": 0.35,
+              "page_border_mm": 0.5,
+              "paper_fill": "#ffffff",
+              "rectangle_mm": 0.25,
+              "scale_bar_halo_mm": 0.6,
+              "scale_bar_stroke_mm": 0.18,
+              "text_line_height": 1.35
+            },
+            "label": {
+              "allow_overlap": false,
+              "along_line": false,
+              "anchors": [
+                "bottom-left",
+                "top-left",
+                "bottom-right",
+                "top-right"
+              ],
+              "bold": false,
+              "color": "#18212b",
+              "halo": "#ffffff",
+              "halo_mm": 0.3,
+              "italic": false,
+              "keep_upright": true,
+              "line_height": 1.2,
+              "max_width_em": 10,
+              "offset_mm": [
+                0,
+                0
+              ],
+              "padding_mm": 0.5,
+              "radial_mm": 1,
+              "sort_key": 0,
+              "spacing_mm": 0
+            },
+            "legacy_attribution": {
+              "baseline_pt": 7,
+              "font_pt": 7,
+              "gray": 0.35,
+              "min_x_pt": 5,
+              "pdf_font_family": "Helvetica",
+              "right_inset_pt": 146
+            },
+            "logo_dpi": 300,
+            "map_fonts": {
+              "footer_pt": 8,
+              "legend_pt": 9,
+              "project_pt": 8,
+              "scale_pt": 8,
+              "title_a0_pt": 28,
+              "title_a3_pt": 18
+            },
+            "svg_font_family": "DejaVu Sans",
+            "table": {
+              "border_width_mm": 0.15,
+              "header_bold": true,
+              "info_header_fill": "#BDBDBD",
+              "info_section_fill": "#DFCFBE",
+              "info_title_fill": "#F3F3F3",
+              "min_font_pt": 4,
+              "omission_fill": "#fff3cd",
+              "omission_text": "#704900",
+              "plain_header_fill": "#edf1f4",
+              "schedule_band_fill": "#F8F8F8",
+              "schedule_title_fill": "#D3D3D3",
+              "section_bold": true,
+              "styled_header_font_factor": 1.08,
+              "styled_title_bold": true
+            }
+          }
+        },
+        "paint": {},
+        "type": "line"
+      }
+    },
+    {
+      "key": {
+        "entity_class": "dsgrid_mv_corridor",
+        "source_kind": "project_model",
+        "target": "print",
+        "role": "mv_context"
+      },
+      "style_ref": "print_context/dsgrid_mv_corridor_print",
+      "revision_id": "91b0f5dc5ace6996e721baee6b63525ff11399f99d907c187fcf4770ed724368",
+      "content_sha256": "18c876d5b0c94689b9eb9ab560a39a8e36a2d88006d43ffe773424c7ea624379",
+      "scope": "global",
+      "document": {
+        "layout": {},
+        "metadata": {
+          "geometry_type": "polygon",
+          "physical_print_style": {
+            "casing": "",
+            "casing_mm": 0,
+            "color_field": "",
+            "colors": {},
+            "dash_mm": [
+              2,
+              1
+            ],
+            "fill": "#ffffff",
+            "fill_opacity": 0,
+            "label_field": "",
+            "label_pt": 8,
+            "radius_mm": 1.2,
+            "stroke": "#957197",
+            "stroke_opacity": 0.3,
+            "width_field": "",
+            "width_mm": 0.15,
+            "widths": {}
+          }
+        },
+        "paint": {},
+        "type": "fill"
+      }
+    }
+  ]
+}

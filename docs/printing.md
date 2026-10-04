@@ -1094,3 +1094,15 @@ The same table policy declares its minimum composed font (1–48 pt), title/sect
 `Layout.ink_mode` uses the same closed `style_resolution::Ink` enum as the resolver keys (`colour` or `monochrome`). Omitted colour is serialized as before. It records the authored paper identity and does not recolour a page or choose a style: every pen still comes from its exact governed key/document. The standard monochrome captures are admitted unchanged. Map composition preserves this identity from an authored base Layout.
 
 `logo_dpi` in the same renderer policy is an integer from 72 through 1200. Its governed default is 300, matching the authored standard logo raster preparation. Physical millimetres and aspect-preserving resizing are renderer mechanics; a host does not choose its own raster resolution.
+
+The native report host may add `ds.print-style-context/v1` to its exact-byte
+`ds.print-context/v1` capture. This supplies missing selected context bindings
+and the governed renderer policy through the existing Styles resolver. It never
+changes the server-issued sheets JSON or its digest. Account, lane, credential
+audience, project, semantic sheets digest and each final effective layout digest
+are fenced. Capture and rendering share transformer-then-project override
+precedence. The renderer admits exact document/revision digests and materializes
+only the declared captured keys; it performs no catalogue lookup or fallback.
+An existing different held document, changed configuration, or changed effective
+layout refuses with a named stale/source error. Local preview receipt overlays
+remain a separate API and cannot rewrite a normal delivery receipt.

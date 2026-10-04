@@ -13,6 +13,7 @@ pub mod inventory;
 pub mod lifecycle;
 pub mod map;
 pub mod map_policy;
+pub mod style_capture;
 pub mod mv;
 pub mod mv_booklet;
 pub mod mv_context;
