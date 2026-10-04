@@ -157,6 +157,25 @@ pub fn bind_style_keys(layout: &mut Layout, layer: &PrintContextLayer) {
     }
 }
 
+/// Governed choices absent from the selected layout for the layers its context
+/// sources expand into. Hosts resolve these keys through the existing style
+/// authority before capturing their documents; this inventory never chooses ink.
+/// The authored layout, including inline pens, references, keys and legacy
+/// corridor overrides, stays unchanged.
+pub fn missing_context_style_keys(
+    layout: &Layout,
+) -> BTreeMap<String, crate::style_resolution::Key> {
+    let mut selected = layout.clone();
+    for layer in &layout.context_layers {
+        bind_style_keys(&mut selected, layer);
+    }
+    selected
+        .style_keys
+        .into_iter()
+        .filter(|(id, _)| !layout.style_keys.contains_key(id))
+        .collect()
+}
+
 /// The one semantic key a context source declares for each print layer id it
 /// expands into. New bindings and the legacy-ref migration share it.
 pub fn context_style_key(layer: &PrintContextLayer, id: &str) -> crate::style_resolution::Key {
@@ -763,6 +782,99 @@ mod tests {
         let again = toggle(out.clone(), contours, true, None).unwrap();
         assert_eq!(again.context_layers.len(), 1);
         assert_eq!(again.style_keys, out.style_keys);
+    }
+
+    #[test]
+    fn legacy_selected_context_inventory_preserves_authored_choices_and_corridor_appearance() {
+        let mut layout = default_layout();
+        let mut mv = derived_layers().remove(0);
+        mv.source = PrintContextSource::ProjectDsgridMv {
+            buffer_m: DERIVED_BUFFER_M,
+            corridor: Some(PrintCorridor {
+                distance_m: 6.,
+                color: Some("#957197".into()),
+                width_mm: Some(0.15),
+                opacity: Some(0.3),
+                dash_mm: Some(vec![2., 1.]),
+            }),
+        };
+        layout.context_layers = vec![mv];
+        // Existing MV roles already carry their governed authored references.
+        for id in super::super::map::MV_PRINT_LAYER_IDS {
+            layout
+                .style_refs
+                .insert(id.into(), format!("print_context/{id}_print"));
+        }
+        for (id, binding) in [("roads", 0), ("rivers", 1), ("places", 2)] {
+            layout.context_layers.push(PrintContextLayer {
+                id: id.into(),
+                label: id.into(),
+                source: PrintContextSource::Catalog {
+                    country: "Rwanda".into(),
+                    layer: id.into(),
+                },
+            });
+            match binding {
+                0 => {
+                    layout.styles.insert(id.into(), PrintStyle::default());
+                }
+                1 => {
+                    layout
+                        .style_refs
+                        .insert(id.into(), "gt/rivers_print".into());
+                }
+                _ => {
+                    layout
+                        .style_keys
+                        .insert(id.into(), style_key(id, "cold_existing", "context"));
+                }
+            }
+        }
+        layout.style_overrides.insert(
+            "dsgrid_mv_corridor".into(),
+            super::super::PrintStyleOverride {
+                opacity: Some(0.3),
+                ..Default::default()
+            },
+        );
+        let before = serde_json::to_vec(&layout).unwrap();
+        let missing = missing_context_style_keys(&layout);
+        assert_eq!(missing.len(), 1);
+        assert_eq!(
+            missing["dsgrid_mv_corridor"],
+            style_key("dsgrid_mv_corridor", "project_model", "mv_context")
+        );
+        assert_eq!(
+            serde_json::to_vec(&layout).unwrap(),
+            before,
+            "inventory never mutates the authored layout"
+        );
+        let mut materialized = layout.clone();
+        materialized.style_keys.extend(missing);
+        assert!(missing_context_style_keys(&materialized).is_empty());
+        assert_eq!(materialized.context_layers, layout.context_layers);
+        assert_eq!(materialized.style_overrides, layout.style_overrides);
+        assert_eq!(materialized.styles, layout.styles);
+        assert_eq!(materialized.style_refs, layout.style_refs);
+    }
+
+    #[test]
+    fn context_inventory_requires_a_selected_source_and_only_its_expansion() {
+        let mut layout = default_layout();
+        assert!(missing_context_style_keys(&layout).is_empty());
+        let mut mv = derived_layers().remove(0);
+        mv.source = PrintContextSource::ProjectDsgridMv {
+            buffer_m: DERIVED_BUFFER_M,
+            corridor: None,
+        };
+        layout.context_layers = vec![mv];
+        let missing = missing_context_style_keys(&layout);
+        assert_eq!(missing.len(), super::super::map::MV_PRINT_LAYER_IDS.len());
+        assert!(!missing.contains_key("dsgrid_mv_corridor"));
+        assert!(!missing.contains_key("contours_index"));
+        for id in super::super::map::MV_PRINT_LAYER_IDS {
+            assert_eq!(missing[id], style_key(id, "project_model", "mv_context"));
+        }
     }
 
     fn collection() -> Value {
