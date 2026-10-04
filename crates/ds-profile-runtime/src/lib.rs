@@ -128,6 +128,11 @@ impl Runtime {
         let bytes = if request.cached_only {
             None
         } else {
+            let mut scene = held
+                .review
+                .held_scene()
+                .ok_or("profile_case_base_unavailable: scene is missing")?
+                .clone();
             let layer = held
                 .review
                 .case_layer(
@@ -137,11 +142,6 @@ impl Runtime {
                     request.select,
                 )
                 .map_err(|e| format!("profile_case_unavailable: {e}"))?;
-            let mut scene = held
-                .review
-                .held_scene()
-                .ok_or("profile_case_base_unavailable: scene is missing")?
-                .clone();
             layer.apply_to_scene(&mut scene);
             case_primitives = Some(
                 decorations::project(&scene, &state, &held.rows, &held.label_policy)
