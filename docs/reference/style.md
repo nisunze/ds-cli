@@ -98,6 +98,17 @@ with a first stop at zoom 0. Flat halos use `appearance --halo-color '#FFFFFF'
 --halo-width 0.9` without a category field. These screen controls preserve
 independent print documents.
 
+`ds style purpose index --project <id> --target print --ink colour` reads
+authored purpose groups and exact immutable role bindings. Select a returned
+id with `ds style purpose plan --project <id> --purpose <id> --ink colour`.
+The plan captures separate governed `printing_standard` pages under the same
+native identity and explicit project, compares every authored revision and
+content pin, and delegates style capture to the existing exact tuple resolver.
+It returns the admitted page bodies and style captures a print consumer needs.
+No default, style or template is created or adopted, and no geometry, output
+or publication is produced. Missing declarations and unadopted pages refuse;
+printing still requires exact saved design and held geographic inputs.
+
 `ds style instruction schema --output json` returns the compiled JSON Schema
 without login. Save one instruction to a file, then `instruction plan --project
 <id> --ref <ref> --file <file>` and `instruction set ... --yes`. Pass

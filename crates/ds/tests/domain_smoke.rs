@@ -80,6 +80,29 @@ fn style_purposes_are_a_named_read_and_preserve_native_auth_refusals() {
     assert_ne!(result.code, 0);
     assert_eq!(result.envelope["error"]["code"], "headless_signed_out");
     assert!(result.envelope["data"].is_null());
+
+    let planned = native_ds(&["capabilities", "style.purpose.plan", "--output", "json"]);
+    assert_eq!(planned.code, 0, "{}", planned.envelope);
+    let command = &planned.envelope["data"]["command"];
+    assert_eq!(command["authority"], "headless_project");
+    assert_eq!(command["effect"], "local_auth_state");
+    assert_eq!(command["requires"], "server");
+    let refused = native_ds(&[
+        "style",
+        "purpose",
+        "plan",
+        "--project",
+        "named-project",
+        "--purpose",
+        "transformer_a0",
+        "--lane",
+        "canary",
+        "--output",
+        "json",
+    ]);
+    assert_ne!(refused.code, 0);
+    assert_eq!(refused.envelope["error"]["code"], "headless_signed_out");
+    assert!(refused.envelope["data"].is_null());
 }
 
 #[test]

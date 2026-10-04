@@ -71,6 +71,36 @@ const ALL_PROJECTS: Arg = Arg::switch(
 const LIMIT: Arg = Arg::value("limit", "<1..200>", "Bounded inventory page size.").default("100");
 const PURPOSE_REFUSALS: &[Refusal] = &[
     Refusal {
+        code: "style_purpose_not_composition",
+        when: "the selected purpose declares style editing rather than printing pages",
+        remedy: "select a print_composition purpose returned by style purpose index",
+    },
+    Refusal {
+        code: "style_purpose_layout_revision_mismatch",
+        when: "a captured Templates document differs from the purpose's revision or content pins",
+        remedy: "review the exact authored purpose and printing revision together; never substitute a newer head",
+    },
+    Refusal {
+        code: "print_template_invalid",
+        when: "the separate Templates capture has an invalid scope, paper or page body",
+        remedy: "repair the governed printing capture; a style binding does not authorize a layout body",
+    },
+    Refusal {
+        code: "print_template_missing",
+        when: "the Templates capture lacks a required purpose page role",
+        remedy: "capture the exact governed document declared by the purpose",
+    },
+    Refusal {
+        code: "print_template_ambiguous",
+        when: "the Templates capture repeats the same template and page role",
+        remedy: "repair the duplicate printing capture rather than choosing its first body",
+    },
+    Refusal {
+        code: "print_template_revision_mismatch",
+        when: "a captured printing body differs from its own content pin",
+        remedy: "read a fresh authorized printing capture and verify its immutable bytes",
+    },
+    Refusal {
         code: "style_purpose_missing",
         when: "held governed documents declare no purpose for the exact target and ink",
         remedy: "have the style owner author versioned purpose declarations; reads never invent or seed them",
@@ -328,6 +358,95 @@ pub mod purpose_index {
                 failure
             }
         })
+    }
+    pub fn render(data: &Value) -> String {
+        format!(
+            "{}\n",
+            serde_json::to_string_pretty(data).unwrap_or_default()
+        )
+    }
+}
+
+pub mod purpose_plan {
+    use super::*;
+    pub static COMMAND: Command = Command {
+        id: "style.purpose.plan",
+        path: &["style", "purpose", "plan"],
+        contract: 1,
+        summary: "Plan a print purpose from exact styles and held printing pages.",
+        purpose: "Capture the explicit project's governed Styles table and separate printing_standard Templates under the same native account, credential audience and lane. The kernel admits every required role and page, verifies the authored revision/content/paper pins, and returns actual printing bodies with existing resolver captures. Missing declarations or pages refuse. Geometry acquisition and rendering remain the report owner's next step; this plan seeds nothing, changes no defaults and queues no publication.",
+        chapter: Chapter::MapPresentation,
+        effect: Effect::LocalAuthState,
+        authority: Authority::HeadlessProject,
+        execution: Execution::Sync,
+        args: &[
+            PROJECT_ARG,
+            Arg::value(
+                "purpose",
+                "<authored-id>",
+                "Exact print purpose id returned by style purpose index.",
+            )
+            .required(),
+            INK,
+            LANE_ARG,
+        ],
+        output: "ds.style-purpose-plan/v1: exact purpose, Templates/table revisions, admitted page bodies and style captures; no geometry, artifacts or publication; bounded to 32 MiB.",
+        examples: &[],
+        refusals: &PURPOSE_ALL,
+        reference: Some("docs/reference/style.md"),
+        search: &["purpose", "transformer on A0", "composition"],
+        requires: Requires::Server,
+        availability: ds_cli_auth::native_availability,
+    };
+
+    pub fn run(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
+        let lane = inputs.require("lane")?;
+        let project = inputs.require("project")?;
+        let styles = ds_cli_auth::style_governance_receipt(lane, project, &Operation::Table)
+            .map_err(named)?;
+        let config = ds_cli_auth::feeder_configuration_for_project(lane, project)?;
+        if styles.identity() != config.identity()
+            || styles.project_id() != project
+            || config.project_id() != project
+            || styles.lane() != config.lane()
+            || ds_cli_auth::headless_identity_for_named_project(lane)? != *styles.identity()
+        {
+            return Err(Failure::conflict(
+                "project_context_changed",
+                "native identity or explicit project changed during composition capture",
+            ));
+        }
+        let receipt =
+            ds_command_kernel::report_export::InputReceipt::from_config(&config.result().document)
+                .map_err(|error| Failure::invalid("style_purpose_invalid", error))?;
+        let sheets = receipt
+            .sheets()
+            .map_err(|error| Failure::invalid("style_purpose_invalid", error))?;
+        let templates =
+            serde_json::from_value(sheets["printing_standard"].clone()).map_err(|error| {
+                Failure::invalid(
+                    "print_template_invalid",
+                    format!("separate Templates capture: {error}"),
+                )
+            })?;
+        let snapshot = serde_json::from_value(styles.result().clone())
+            .map_err(|error| Failure::invalid("style_resolution_invalid", error.to_string()))?;
+        let mut result = ds_command_kernel::style_purpose::plan(
+            project,
+            &snapshot,
+            inputs.require("purpose")?,
+            if inputs.require("ink")? == "monochrome" {
+                ds_command_kernel::style_resolution::Ink::Monochrome
+            } else {
+                ds_command_kernel::style_resolution::Ink::Colour
+            },
+            &templates,
+        )
+        .map_err(|error| Failure::invalid(error.code, error.message))?;
+        result["lane"] = json!(styles.lane());
+        result["report_input_source"] =
+            json!({"schema":receipt.schema,"sheets_sha256":receipt.sheets_sha256});
+        Ok(result)
     }
     pub fn render(data: &Value) -> String {
         format!(

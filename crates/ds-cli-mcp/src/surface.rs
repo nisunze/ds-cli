@@ -767,6 +767,8 @@ const STYLE_COMMANDS: &[&str] = &[
     "style.instruction.schema",
     "style.resolve",
     "style.resolution.table",
+    "style.purpose.index",
+    "style.purpose.plan",
     "style.catalogue.manifest",
     "style.catalogue.seed.plan",
     "style.catalogue.seed.apply",

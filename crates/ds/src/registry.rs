@@ -1779,6 +1779,11 @@ static STYLE_ENTRIES: &[Entry] = &[
         render: ds_cli_style::governance::purpose_index::render,
     },
     Entry {
+        command: &ds_cli_style::governance::purpose_plan::COMMAND,
+        handler: ds_cli_style::governance::purpose_plan::run,
+        render: ds_cli_style::governance::purpose_plan::render,
+    },
+    Entry {
         command: &ds_cli_style::governance::manifest::COMMAND,
         handler: ds_cli_style::governance::manifest::run,
         render: ds_cli_style::governance::manifest::render,

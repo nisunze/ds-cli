@@ -2115,7 +2115,10 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
             // Eleven existing guided leaves, eleven new authoring leaves and
             // nine resolver/catalogue leaves. Mirrors the explicitly closed
             // STYLE_COMMANDS profile, including both bootstrap tools.
-            "styles" => 33,
+            // Owner transformer-on-A0 workflow: style.purpose.index and
+            // style.purpose.plan join this exact catalogue (+2), not the
+            // broad map router; every other style leaf remains explicit.
+            "styles" => 35,
             // Sixteen layer leaves plus bootstrap: the layer drawer's profile
             // also carries this machine's prepared local layer catalogue,
             // which is the same "one host's own layers" workflow as the local

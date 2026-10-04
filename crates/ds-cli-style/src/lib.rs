@@ -45,6 +45,7 @@ pub static DOMAIN: Domain = Domain {
         &governance::resolve::COMMAND,
         &governance::table::COMMAND,
         &governance::purpose_index::COMMAND,
+        &governance::purpose_plan::COMMAND,
         &governance::manifest::COMMAND,
         &governance::seed_plan::COMMAND,
         &governance::seed_apply::COMMAND,
