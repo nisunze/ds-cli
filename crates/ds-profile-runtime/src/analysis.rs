@@ -1,0 +1,109 @@
+use ds_grid_engine::{DefaultAnalysisRequest, GridSession};
+use serde_json::{json, Value};
+use std::collections::BTreeMap;
+/// Each explicit invocation calls all three owners, including on incomplete models.
+/// Refusals become typed blocker evidence; successful independent legs survive.
+pub fn analyze(
+    session: &GridSession,
+    display_case: &ds_grid_engine::profile_display_case::ProfileDisplayCase,
+    scene: Option<&ds_grid_engine::ProfileAtlasScene>,
+    projection_error: Option<&str>,
+) -> Value {
+    let revision = session.current_revision();
+    let mut blockers = Vec::new();
+    if let Some(message) = projection_error {
+        blockers.push(json!({"kind":"profile_projection", "message":message}));
+    }
+    let report = match session.analyze_model_defaults(&DefaultAnalysisRequest {
+        expected_revision: revision.revision_id.clone(),
+        expected_engineering_input_root: revision.roots.engineering_input_root.clone(),
+        max_rows: 2000,
+    }) {
+        Ok(report) => {
+            for row in &report.demand_unavailable.rows {
+                blockers.push(json!({"kind":"section_demand", "entity_id":row.tension_section_id, "message":row.reason}));
+            }
+            if let Some(reason) = &report.clearance_unavailable {
+                blockers.push(
+                    json!({"kind":"clearance", "message":reason.message, "refusal":reason.refusal}),
+                );
+            }
+            json!({"status":"ok", "report":report})
+        }
+        Err(reason) => {
+            blockers.push(
+                json!({"kind":"model_inputs", "message":reason.to_string(), "refusal":reason}),
+            );
+            json!({"status":"unavailable", "refusal":reason})
+        }
+    };
+    let issues = match session.engineering_issue_layer(
+        &ds_grid_engine::engineering_issue_layer::EngineeringIssueLayerRequest {
+            derive_structure_screening: true,
+            structure_screening: scene.and_then(|scene| scene.engineering.usage_request.clone()),
+            clearance: ds_grid_engine::clearance_report::ClearanceReportOptions {
+                analysis_case_ids: match display_case {
+                    ds_grid_engine::profile_display_case::ProfileDisplayCase::AnalysisCase {
+                        analysis_case_id,
+                    } => vec![analysis_case_id.clone()],
+                    _ => vec![],
+                },
+                ..Default::default()
+            },
+            max_features_per_kind: 2000,
+            ..Default::default()
+        },
+    ) {
+        Ok(layer) => {
+            if let Some(reason) = &layer.clearance_unavailable {
+                blockers.push(
+                    json!({"kind":"clearance", "message":reason.message, "refusal":reason.refusal}),
+                );
+            }
+            if let Some(reason) = &layer.structure_screening_unavailable {
+                blockers.push(json!({"kind":"structure_usage", "message":format!("{:?}", reason), "refusal":reason}));
+            }
+            Some(layer)
+        }
+        Err(reason) => {
+            blockers.push(json!({"kind":"issues", "message":reason.to_string()}));
+            None
+        }
+    };
+    // The native scene evaluates section stringing and clearance independently of
+    // default-analysis admission; review details retain exact case and source status.
+    if let Some(scene) = scene {
+        for marker in &scene.engineering.markers {
+            if serde_json::to_value(marker.status).unwrap() == "unknown" {
+                for message in &marker.details {
+                    blockers.push(
+                    json!({"kind":marker.kind, "entity_id":marker.entity_id, "message":message}),
+                );
+                }
+            }
+        }
+        for message in &scene.engineering.limitations {
+            blockers.push(json!({"kind":"review", "message":message}));
+        }
+    }
+    let mut seen = std::collections::BTreeSet::new();
+    blockers.retain(|value| seen.insert(value.to_string()));
+    let mut blocker_kinds = BTreeMap::<String, usize>::new();
+    for blocker in &blockers {
+        *blocker_kinds
+            .entry(blocker["kind"].as_str().unwrap().into())
+            .or_default() += 1;
+    }
+    let blocker_count = blockers.len();
+    blockers.truncate(2000);
+    let status = if blockers.is_empty() {
+        "qualified"
+    } else if report["status"] == "ok" {
+        "partial"
+    } else {
+        "unknown"
+    };
+    json!({"model_revision":revision.revision_id, "engineering_input_root":revision.roots.engineering_input_root,
+        "display_case":display_case, "status":status, "report":report, "issues":issues,
+        "blockers":blockers, "blocker_count":blocker_count, "blocker_kinds":blocker_kinds, "blockers_truncated":blocker_count > blockers.len(), "section_checks":scene.map(|scene| &scene.evidence), "marker_count":scene.map_or(0, |scene| scene.engineering.markers.len()), "empty_model":session.snapshot().structures.is_empty()})
+}

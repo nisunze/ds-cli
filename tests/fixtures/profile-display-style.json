@@ -1,0 +1,183 @@
+{
+  "type": "line",
+  "paint": {
+    "line-color": "#a78bfa",
+    "line-width": 1.9
+  },
+  "layout": {
+    "line-cap": "round",
+    "line-join": "round"
+  },
+  "metadata": {
+    "geometry_type": "line",
+    "profile_pens": {
+      "review": {
+        "color": "#a78bfa",
+        "width_mm": 0.5,
+        "dash_mm": [],
+        "label_color": "#a78bfa",
+        "label_size_pt": 9,
+        "label_bold": true
+      },
+      "grid": {
+        "color": "#475569",
+        "width_mm": 0.15,
+        "dash_mm": [],
+        "label_color": "#94A3B8",
+        "label_size_pt": 8.25,
+        "label_bold": false
+      },
+      "ground": {
+        "color": "#22c55e",
+        "width_mm": 0.45,
+        "dash_mm": [],
+        "label_color": "#22c55e",
+        "label_size_pt": 8.25,
+        "label_bold": false
+      },
+      "side_profiles": {
+        "color": "#2dd4bf",
+        "width_mm": 0.3,
+        "dash_mm": [
+          1,
+          0.8
+        ],
+        "label_color": "#2dd4bf",
+        "label_size_pt": 8.25,
+        "label_bold": false
+      },
+      "clearance_line": {
+        "color": "#fb7185",
+        "width_mm": 0.4,
+        "dash_mm": [
+          2,
+          1
+        ],
+        "label_color": "#fb7185",
+        "label_size_pt": 8.25,
+        "label_bold": false
+      },
+      "terrain_points": {
+        "color": "#fbbf24",
+        "width_mm": 0.55,
+        "dash_mm": [],
+        "label_color": "#fbbf24",
+        "label_size_pt": 8.25,
+        "label_bold": false
+      },
+      "terrain_ordinates": {
+        "color": "#94a3b8",
+        "width_mm": 0.2,
+        "dash_mm": [
+          0.25,
+          1
+        ],
+        "label_color": "#94a3b8",
+        "label_size_pt": 8.25,
+        "label_bold": false
+      },
+      "structures": {
+        "color": "#e2e8f0",
+        "width_mm": 0.6,
+        "dash_mm": [],
+        "label_color": "#e2e8f0",
+        "label_size_pt": 8.25,
+        "label_bold": false
+      },
+      "wire": {
+        "color": "#38bdf8",
+        "width_mm": 0.42,
+        "dash_mm": [],
+        "label_color": "#38bdf8",
+        "label_size_pt": 8.25,
+        "label_bold": false
+      },
+      "section_labels": {
+        "color": "#c084fc",
+        "width_mm": 0.33,
+        "dash_mm": [],
+        "label_color": "#c084fc",
+        "label_size_pt": 8.25,
+        "label_bold": false
+      },
+      "span_distances": {
+        "color": "#fcd34d",
+        "width_mm": 0.24,
+        "dash_mm": [],
+        "label_color": "#fcd34d",
+        "label_size_pt": 8.25,
+        "label_bold": false
+      },
+      "structure_labels": {
+        "color": "#f8fafc",
+        "width_mm": 0.27,
+        "dash_mm": [],
+        "label_color": "#f8fafc",
+        "label_size_pt": 8.25,
+        "label_bold": true
+      },
+      "structure_numbers": {
+        "color": "#67e8f9",
+        "width_mm": 0.28,
+        "dash_mm": [],
+        "label_color": "#67e8f9",
+        "label_size_pt": 8.25,
+        "label_bold": true
+      },
+      "structure_names": {
+        "color": "#a5b4fc",
+        "width_mm": 0.29,
+        "dash_mm": [],
+        "label_color": "#a5b4fc",
+        "label_size_pt": 9,
+        "label_bold": false
+      },
+      "structure_comments": {
+        "color": "#cbd5e1",
+        "width_mm": 0.26,
+        "dash_mm": [],
+        "label_color": "#cbd5e1",
+        "label_size_pt": 8.25,
+        "label_bold": false
+      },
+      "embedded": {
+        "color": "#64748b",
+        "width_mm": 0.22,
+        "dash_mm": [
+          0.8,
+          0.8
+        ],
+        "label_color": "#64748b",
+        "label_size_pt": 8.25,
+        "label_bold": false
+      },
+      "clearance_violations": {
+        "color": "#fb7185",
+        "width_mm": 0.5,
+        "dash_mm": [],
+        "label_color": "#a78bfa",
+        "label_size_pt": 9,
+        "label_bold": true
+      }
+    },
+    "profile_review_status_colors": {
+      "pass": "#34d399",
+      "fail": "#fb7185",
+      "unknown": "#fbbf24"
+    },
+    "profile_review_box_ink": "#0f172a"
+  },
+  "label": {
+    "paint": {
+      "text-color": "#a78bfa"
+    },
+    "layout": {
+      "text-field": [
+        "get",
+        "label"
+      ],
+      "text-size": 12
+    },
+    "type": "symbol"
+  }
+}
