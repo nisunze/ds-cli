@@ -58,7 +58,8 @@ Runs one native read, solve or proposal on a verified .dsgrid package without \
 journaling. Results retain exact source/revision pins and truncation receipts. \
 Discover structure usage and Analyze/Issues through dsgrid describe; missing \
 screening inputs remain blocking findings with exact affected counts. Profile \
-indices require the default project_profile_atlas revision and axis pin.",
+indices require the default project_profile_atlas revision and axis pin. \
+project_profile_atlas returns attachment boxes, usage labels and native summaries.",
     chapter: Chapter::GridModel,
     effect: Effect::ReadOnly,
     authority: Authority::None,
@@ -190,6 +191,8 @@ path can check it; its request's max_reported_rejections bounds its rows.",
         "structure screening",
         "screening inputs",
         "capacity handshake",
+        "profile review",
+        "attachment boxes",
     ],
     requires: Requires::Server,
     availability: available,

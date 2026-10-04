@@ -120,7 +120,7 @@ pub static SET: Command = Command {
         Arg::value(
             "visibility",
             "<json-object>",
-            "JSON booleans: review, ground, side_profiles, clearance_line, terrain_points, terrain_ordinates, grid, structures, wire, section_labels, span_distances, structure_labels, structure_numbers, structure_names, structure_comments, embedded. Review starts on; omitted keys retain the native state.",
+            "JSON booleans: review, ground, side_profiles, clearance_line, terrain_points, terrain_ordinates, grid, structures, wire, section_labels, span_distances, structure_labels, structure_numbers, structure_names, structure_comments, embedded, offset_embedment_height, route_deviation.",
         ),
         Arg::value(
             "height-px",
@@ -519,10 +519,10 @@ mod tests {
     #[test]
     fn visibility_requires_exact_boolean_keys() {
         assert_eq!(
-            parse_visibility(r#"{"ground":false,"wire":true}"#)
+            parse_visibility(r#"{"ground":false,"wire":true,"route_deviation":false,"offset_embedment_height":true}"#)
                 .unwrap()
                 .len(),
-            2
+            4
         );
         assert!(parse_visibility(r#"{"ground":"false"}"#).is_err());
         assert!(parse_visibility(r#"{"bogus":true}"#).is_err());
