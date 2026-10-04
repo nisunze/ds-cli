@@ -54,12 +54,17 @@ pub static COMMAND: Command = Command {
         note: "Render every named variant from one pinned configuration; see docs/reference/report.md for the schema.",
         runnable: false,
     }],
-    refusals: &crate::project::joined::<{ crate::project::NATIVE_READ_REFUSALS.len() + 11 }>(&[
+    refusals: &crate::project::joined::<{ crate::project::NATIVE_READ_REFUSALS.len() + 12 }>(&[
         crate::project::NATIVE_READ_REFUSALS,
         &[
             crate::project::mv_setup::REFUSAL,
             crate::project::mv_setup::STYLE_REFUSAL,
             crate::project::mv_setup::PROJECT_CRS_CONTEXT_REFUSAL,
+            Refusal {
+                code: "mv_print_legacy_request_refused",
+                when: "the configuration supplies transient printing furniture or a V1 schema",
+                remedy: "adopt the approved global layout into the project and select its exact revision with report project mv-setup set; use report plan-profile-config schema for the current geometry/asset configuration",
+            },
             Refusal {
                 code: "print_config_invalid",
                 when: "the JSON is unreadable, ambiguous, unsafe, or names the wrong project",
@@ -210,6 +215,19 @@ fn standard_variant() -> Vec<PrintVariant> {
 fn decode_config(bytes: &[u8]) -> Result<PrintConfig, Failure> {
     let value: Value = serde_json::from_slice(bytes)
         .map_err(|e| Failure::invalid("print_config_invalid", e.to_string()))?;
+    if value["schema"] == "ds.grid-plan-profile-print/v1"
+        || value.get("settings").is_some()
+        || value.get("logo_files").is_some()
+        || value["variants"]
+            .as_array()
+            .is_some_and(|items| items.iter().any(|item| item.get("ink_mode").is_some()))
+    {
+        return Err(Failure::invalid(
+            "mv_print_legacy_request_refused",
+            "Transient text, logos and presentation cannot issue an approved MV booklet.",
+        )
+        .remedy("Adopt the approved global printing layout through report layout copy, approve project fields and select its exact revision with report project mv-setup set. Use report plan-profile-config schema for the current geometry and held asset configuration."));
+    }
     serde_json::from_value(value)
         .map_err(|e| Failure::invalid("print_config_invalid", e.to_string()))
 }
@@ -557,6 +575,36 @@ mod tests {
         );
         assert_eq!(
             validate(&make(&["color"]), "other", source.path(), &out)
+                .unwrap_err()
+                .code(),
+            "print_config_invalid"
+        );
+    }
+
+    #[test]
+    fn transient_furniture_has_a_keyed_adoption_remedy_and_never_falls_back() {
+        for (field, payload) in [
+            ("settings", json!({"project_title":"UNAPPROVED TITLE"})),
+            ("logo_files", json!([])),
+            (
+                "variants",
+                json!([{"name":"booklet","ink_mode":"monochrome"}]),
+            ),
+            ("schema", json!("ds.grid-plan-profile-print/v1")),
+        ] {
+            let mut value = schema_document()["example"].clone();
+            value[field] = payload;
+            let refused = decode_config(&serde_json::to_vec(&value).unwrap()).unwrap_err();
+            assert_eq!(refused.code(), "mv_print_legacy_request_refused", "{field}");
+            let remedy = refused.remedy_text().unwrap();
+            assert!(remedy.contains("mv-setup set"), "{field}");
+            assert!(remedy.contains("plan-profile-config schema"), "{field}");
+            assert!(COMMAND.refusals.iter().any(|r| r.code == refused.code()));
+        }
+        let mut value = schema_document()["example"].clone();
+        value["unrecognized"] = json!(true);
+        assert_eq!(
+            decode_config(&serde_json::to_vec(&value).unwrap())
                 .unwrap_err()
                 .code(),
             "print_config_invalid"
