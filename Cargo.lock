@@ -961,6 +961,7 @@ dependencies = [
  "ds-report-artifacts",
  "ds-solar-contracts",
  "ds-sync-store",
+ "rusqlite",
  "serde_json",
  "sha2 0.10.9",
  "tempfile",

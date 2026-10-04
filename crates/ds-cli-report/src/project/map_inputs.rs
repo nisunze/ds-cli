@@ -330,6 +330,33 @@ pub fn run(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
     }
     context.omitted.extend(boundary_context.omitted);
     context.warnings.extend(boundary_context.warnings);
+    let admin_reference = if layout
+        .elements
+        .iter()
+        .any(|element| element.text.contains("{admin_subtitle}"))
+    {
+        let points=network["tr"]["features"].as_array().filter(|features|features.len()==1)
+            .ok_or_else(||invalid("print_admin_subtitle_unavailable: one exact focused transformer Point is required; an overview cannot guess its administrative identity"))?;
+        let root = ds_report_host::shared_root().map_err(invalid)?;
+        let path =
+            ds_report_host::installed_admin_bounds_path(&root, &receipt.reference_semantic_sha256);
+        let asset =
+            ds_report_host::verify_admin_bounds_asset(&path, &receipt.reference_semantic_sha256)
+                .map_err(|error| invalid(error.message))?;
+        Some(
+            printing::admin_reference::Capture::new(
+                printing::admin_reference::Asset {
+                    country: receipt.country.clone(),
+                    path: asset.path,
+                    sha256: asset.sha256,
+                },
+                &points[0],
+            )
+            .map_err(invalid)?,
+        )
+    } else {
+        None
+    };
     std::fs::create_dir_all(&out).map_err(invalid)?;
     let out = out.canonicalize().map_err(invalid)?;
     let render_layers = if let Some([w, s, e, n]) = focus_bounds.or(area_bounds) {
@@ -340,7 +367,7 @@ pub fn run(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
     } else {
         sources.vectors()
     };
-    let render = json!({"schema":"ds.print-layout-export/v1","renderer_defaults":renderer_defaults,"render":{"project_crs":project_crs,"report_config":sheets,"renderer_defaults":renderer_defaults,"layout":layout,"layers":render_layers,"extent":extent,"focus_extent":extent,"print_styles":sheets["printing_styles"],"symbol_assets":sheets.get("printing_symbol_assets").cloned().unwrap_or_else(||json!({})),"text":{"project":project,"transformer":layout.name}},"formats":["pdf","png"],"dpi":300,"out_dir":out.join("rendered")});
+    let render = json!({"schema":"ds.print-layout-export/v1","renderer_defaults":renderer_defaults,"render":{"admin_reference":admin_reference,"project_crs":project_crs,"report_config":sheets,"renderer_defaults":renderer_defaults,"layout":layout,"layers":render_layers,"extent":extent,"focus_extent":extent,"print_styles":sheets["printing_styles"],"symbol_assets":sheets.get("printing_symbol_assets").cloned().unwrap_or_else(||json!({})),"text":{"project":project,"transformer":layout.name}},"formats":["pdf","png"],"dpi":300,"out_dir":out.join("rendered")});
     let path = out.join("render-request.json");
     let data = serde_json::to_vec(&render).map_err(invalid)?;
     std::fs::OpenOptions::new()

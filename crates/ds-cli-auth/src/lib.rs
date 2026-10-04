@@ -2089,13 +2089,22 @@ pub fn style_governance(
     project: &str,
     command: &ds_command_kernel::style_governance::Command,
 ) -> Result<Value, Failure> {
-    let named = headless_named_project(
+    style_governance_receipt(lane, project, command).map(HeadlessNamedProject::into_result)
+}
+
+/// Preserve the native identity when a purpose joins Styles and separately
+/// governed printing documents. The named-project transport remains the owner.
+pub fn style_governance_receipt(
+    lane: &str,
+    project: &str,
+    command: &ds_command_kernel::style_governance::Command,
+) -> Result<HeadlessNamedProject<Value>, Failure> {
+    headless_named_project(
         lane,
         project,
         |device, project| device.style_governance(project, command),
         |client, project| client.style_governance(project, command, now()),
-    )?;
-    Ok(named.result)
+    )
 }
 
 /// One governed action on the GLOBAL reference publications.

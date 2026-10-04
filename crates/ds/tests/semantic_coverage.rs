@@ -1229,6 +1229,12 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("style.instruction.schema", "read_only", "none"),
     ("style.resolve", "local_auth_state", "headless_project"),
     (
+        "style.purpose.index",
+        "local_auth_state",
+        "headless_project",
+    ),
+    ("style.purpose.plan", "local_auth_state", "headless_project"),
+    (
         "style.resolution.table",
         "local_auth_state",
         "headless_project",

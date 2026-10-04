@@ -69,6 +69,73 @@ const ALL_PROJECTS: Arg = Arg::switch(
     "Inventory all project scopes and unselected styling templates; the API additionally requires platform.admin.",
 );
 const LIMIT: Arg = Arg::value("limit", "<1..200>", "Bounded inventory page size.").default("100");
+const PURPOSE_REFUSALS: &[Refusal] = &[
+    Refusal {
+        code: "style_purpose_not_composition",
+        when: "the selected purpose declares style editing rather than printing pages",
+        remedy: "select a print_composition purpose returned by style purpose index",
+    },
+    Refusal {
+        code: "style_purpose_layout_revision_mismatch",
+        when: "a captured Templates document differs from the purpose's revision or content pins",
+        remedy: "review the exact authored purpose and printing revision together; never substitute a newer head",
+    },
+    Refusal {
+        code: "print_template_invalid",
+        when: "the separate Templates capture has an invalid scope, paper or page body",
+        remedy: "repair the governed printing capture; a style binding does not authorize a layout body",
+    },
+    Refusal {
+        code: "print_template_missing",
+        when: "the Templates capture lacks a required purpose page role",
+        remedy: "capture the exact governed document declared by the purpose",
+    },
+    Refusal {
+        code: "print_template_ambiguous",
+        when: "the Templates capture repeats the same template and page role",
+        remedy: "repair the duplicate printing capture rather than choosing its first body",
+    },
+    Refusal {
+        code: "print_template_revision_mismatch",
+        when: "a captured printing body differs from its own content pin",
+        remedy: "read a fresh authorized printing capture and verify its immutable bytes",
+    },
+    Refusal {
+        code: "style_purpose_missing",
+        when: "held governed documents declare no purpose for the exact target and ink",
+        remedy: "have the style owner author versioned purpose declarations; reads never invent or seed them",
+    },
+    Refusal {
+        code: "style_purpose_invalid",
+        when: "a purpose declaration, role, target, layout reference or bound is invalid",
+        remedy: "repair the named declaration in its governed source document",
+    },
+    Refusal {
+        code: "style_purpose_ambiguous",
+        when: "more than one held document declares the same purpose for the target and ink",
+        remedy: "resolve the duplicate through the governed document owner",
+    },
+    Refusal {
+        code: "style_purpose_role_missing",
+        when: "a required purpose role has no explicit declaration",
+        remedy: "author every required role and exact tuple; do not substitute a neighbouring source or role",
+    },
+    Refusal {
+        code: "style_purpose_line_type_missing",
+        when: "a line role lacks an explicit linetype constraint or its held document lacks line-dasharray",
+        remedy: "have the style owner declare the role's exact linetype; no default pattern is inferred",
+    },
+    Refusal {
+        code: "style_purpose_constraint_mismatch",
+        when: "the held role document differs from its authored linetype constraint",
+        remedy: "reconcile the governed purpose and role documents before composing",
+    },
+    Refusal {
+        code: "style_purpose_layout_capture_required",
+        when: "the purpose requires printing roles whose separate Templates capture was not supplied",
+        remedy: "capture and admit the exact printing Templates through the print composition owner before preview or delivery",
+    },
+];
 pub const REFUSALS: &[Refusal] = &[
     Refusal {
         code: "project_context_changed",
@@ -226,6 +293,168 @@ command!(
     &[PROJECT_ARG, LANE_ARG],
     "ds.style-resolution/v1 snapshot with captured project, revision and all exact bindings."
 );
+const fn purpose_refusals() -> [Refusal; ALL.len() + PURPOSE_REFUSALS.len()] {
+    let mut result = [ALL[0]; ALL.len() + PURPOSE_REFUSALS.len()];
+    let mut i = 0;
+    while i < ALL.len() {
+        result[i] = ALL[i];
+        i += 1;
+    }
+    let mut j = 0;
+    while j < PURPOSE_REFUSALS.len() {
+        result[i + j] = PURPOSE_REFUSALS[j];
+        j += 1;
+    }
+    result
+}
+const PURPOSE_ALL: [Refusal; ALL.len() + PURPOSE_REFUSALS.len()] = purpose_refusals();
+pub mod purpose_index {
+    use super::*;
+    pub static COMMAND: Command = Command {
+        id: "style.purpose.index",
+        path: &["style", "purpose", "index"],
+        contract: 1,
+        summary: "Read authored purpose groups and their exact held style roles.",
+        purpose: "Read metadata.style_purposes from the named project's immutable governed style documents. Rust resolves every required exact tuple and authored linetype constraint, preserving target, ink, source kind, role and revision. Missing declarations, roles or constraints refuse; no adjacent style or default is inferred. Required printing layout references remain separate Templates authority and return explicit capture-required blockers; this style table alone never admits layout bodies. No seed, adoption, preview or production write occurs.",
+        chapter: Chapter::MapPresentation,
+        effect: Effect::LocalAuthState,
+        authority: Authority::HeadlessProject,
+        execution: Execution::Sync,
+        args: &[PROJECT_ARG, TARGET, INK, LANE_ARG],
+        output: "ds.style-purpose-index/v1: captured project/table revision, authored groups and roles with exact held bindings, separate required layout references, composition_ready and explicit layout capture blockers; at most 64 groups and 32 MiB.",
+        examples: &[],
+        refusals: &PURPOSE_ALL,
+        reference: Some("docs/reference/style.md"),
+        search: &["purpose", "transformer sheet", "adjacent circuit"],
+        requires: Requires::Server,
+        availability: ds_cli_auth::native_availability,
+    };
+    pub fn run(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
+        let snapshot = serde_json::from_value(invoke(inputs, Operation::Table)?)
+            .map_err(|error| Failure::invalid("style_resolution_invalid", error.to_string()))?;
+        ds_command_kernel::style_purpose::index(
+            inputs.require("project")?,
+            &snapshot,
+            if inputs.require("target")? == "print" {
+                ds_command_kernel::style_resolution::Target::Print
+            } else {
+                ds_command_kernel::style_resolution::Target::Screen
+            },
+            if inputs.require("ink")? == "monochrome" {
+                ds_command_kernel::style_resolution::Ink::Monochrome
+            } else {
+                ds_command_kernel::style_resolution::Ink::Colour
+            },
+        )
+        .map_err(|error| {
+            let remedy = PURPOSE_ALL
+                .iter()
+                .find(|refusal| refusal.code == error.code)
+                .map(|refusal| refusal.remedy);
+            let failure = Failure::invalid(error.code, error.message);
+            if let Some(remedy) = remedy {
+                failure.remedy(remedy)
+            } else {
+                failure
+            }
+        })
+    }
+    pub fn render(data: &Value) -> String {
+        format!(
+            "{}\n",
+            serde_json::to_string_pretty(data).unwrap_or_default()
+        )
+    }
+}
+
+pub mod purpose_plan {
+    use super::*;
+    pub static COMMAND: Command = Command {
+        id: "style.purpose.plan",
+        path: &["style", "purpose", "plan"],
+        contract: 1,
+        summary: "Plan a print purpose from exact styles and held printing pages.",
+        purpose: "Capture the explicit project's governed Styles table and separate printing_standard Templates under the same native account, credential audience and lane. The kernel admits every required role and page, verifies the authored revision/content/paper pins, and returns actual printing bodies with existing resolver captures. Missing declarations or pages refuse. Geometry acquisition and rendering remain the report owner's next step; this plan seeds nothing, changes no defaults and queues no publication.",
+        chapter: Chapter::MapPresentation,
+        effect: Effect::LocalAuthState,
+        authority: Authority::HeadlessProject,
+        execution: Execution::Sync,
+        args: &[
+            PROJECT_ARG,
+            Arg::value(
+                "purpose",
+                "<authored-id>",
+                "Exact print purpose id returned by style purpose index.",
+            )
+            .required(),
+            INK,
+            LANE_ARG,
+        ],
+        output: "ds.style-purpose-plan/v1: exact purpose, Templates/table revisions, admitted page bodies and style captures; no geometry, artifacts or publication; bounded to 32 MiB.",
+        examples: &[],
+        refusals: &PURPOSE_ALL,
+        reference: Some("docs/reference/style.md"),
+        search: &["purpose", "transformer on A0", "composition"],
+        requires: Requires::Server,
+        availability: ds_cli_auth::native_availability,
+    };
+
+    pub fn run(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
+        let lane = inputs.require("lane")?;
+        let project = inputs.require("project")?;
+        let styles = ds_cli_auth::style_governance_receipt(lane, project, &Operation::Table)
+            .map_err(named)?;
+        let config = ds_cli_auth::feeder_configuration_for_project(lane, project)?;
+        if styles.identity() != config.identity()
+            || styles.project_id() != project
+            || config.project_id() != project
+            || styles.lane() != config.lane()
+            || ds_cli_auth::headless_identity_for_named_project(lane)? != *styles.identity()
+        {
+            return Err(Failure::conflict(
+                "project_context_changed",
+                "native identity or explicit project changed during composition capture",
+            ));
+        }
+        let receipt =
+            ds_command_kernel::report_export::InputReceipt::from_config(&config.result().document)
+                .map_err(|error| Failure::invalid("style_purpose_invalid", error))?;
+        let sheets = receipt
+            .sheets()
+            .map_err(|error| Failure::invalid("style_purpose_invalid", error))?;
+        let templates =
+            serde_json::from_value(sheets["printing_standard"].clone()).map_err(|error| {
+                Failure::invalid(
+                    "print_template_invalid",
+                    format!("separate Templates capture: {error}"),
+                )
+            })?;
+        let snapshot = serde_json::from_value(styles.result().clone())
+            .map_err(|error| Failure::invalid("style_resolution_invalid", error.to_string()))?;
+        let mut result = ds_command_kernel::style_purpose::plan(
+            project,
+            &snapshot,
+            inputs.require("purpose")?,
+            if inputs.require("ink")? == "monochrome" {
+                ds_command_kernel::style_resolution::Ink::Monochrome
+            } else {
+                ds_command_kernel::style_resolution::Ink::Colour
+            },
+            &templates,
+        )
+        .map_err(|error| Failure::invalid(error.code, error.message))?;
+        result["lane"] = json!(styles.lane());
+        result["report_input_source"] =
+            json!({"schema":receipt.schema,"sheets_sha256":receipt.sheets_sha256});
+        Ok(result)
+    }
+    pub fn render(data: &Value) -> String {
+        format!(
+            "{}\n",
+            serde_json::to_string_pretty(data).unwrap_or_default()
+        )
+    }
+}
 command!(
     manifest,
     "style.catalogue.manifest",

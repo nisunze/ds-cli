@@ -117,11 +117,17 @@ additional rows. No acknowledgement is exposed before governed reconciliation.
 ## Local reports and printable PDFs
 
 ```bash
-ds design project report --workspace ./design-work --run-id draft-1 --transformer T1 --out-dir ./delivery-1 --country Rwanda --format xlsx --format pdf_a3 --admin-bounds ./rwanda.dsab --admin-bounds-sha256 <verified-sha256>
+ds design project report --workspace ./design-work --run-id draft-1 --transformer T1 --out-dir ./delivery-1 --country Rwanda --format xlsx --format pdf__<captured-layout-id> --admin-bounds ./rwanda.dsab --admin-bounds-sha256 <verified-sha256>
 ```
 
-The reporter consumes the completed run and its captured configuration.
-`pdf_a0`/`pdf_a3` produce vector PDFs without a map. Completed report bytes are
-verified, retained locally and queued. Physical printer spooling is outside
-this command. Missing references/media are explicit reporter blockers; partial
-exports are not queued as complete. Choose a fresh output directory on retry.
+The reporter consumes the completed run, its captured configuration and exact
+saved producer analysis. Every selection also delivers voltage-drop JSON;
+missing sources and invalid envelope/identity/digest bindings refuse before
+staging and never trigger a calculation. The reporter admits deeper saved-run
+content and presentation before complete retention. Use a named print layout held in the captured
+configuration, with its governed layout, styles and renderer documents.
+Completed report bytes are verified against the complete selected set and the
+saved JSON source, retained locally and queued. Physical printer spooling is
+outside this command. Missing references/media are explicit reporter blockers;
+partial exports are not queued as complete. Choose a fresh output directory
+on retry.

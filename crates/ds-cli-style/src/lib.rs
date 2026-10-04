@@ -44,6 +44,8 @@ pub static DOMAIN: Domain = Domain {
         &read::COMMAND,
         &governance::resolve::COMMAND,
         &governance::table::COMMAND,
+        &governance::purpose_index::COMMAND,
+        &governance::purpose_plan::COMMAND,
         &governance::manifest::COMMAND,
         &governance::seed_plan::COMMAND,
         &governance::seed_apply::COMMAND,
@@ -270,7 +272,10 @@ mod tests {
                 );
             }
             if let Some(target) = command.arg("target") {
-                assert_eq!(command.id, "style.resolve");
+                assert!(matches!(
+                    command.id,
+                    "style.resolve" | "style.purpose.index"
+                ));
                 assert_eq!(target.choices, ["screen", "print"]);
                 assert!(target.required);
             }

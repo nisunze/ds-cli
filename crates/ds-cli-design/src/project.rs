@@ -76,6 +76,21 @@ const fn command(
                 when: "the report owner is missing or rejects the local report request",
                 remedy: "inspect the nested reporter refusal, install the matching reporter and supply its required local references",
             },
+            Refusal {
+                code: "voltage_drop_result_missing",
+                when: "the captured run has no authentic saved producer analysis",
+                remedy: "use a captured run containing its saved LV voltage-drop analysis; reporting cannot reconstruct it",
+            },
+            Refusal {
+                code: "voltage_drop_result_invalid",
+                when: "the retained analysis schema, identity, settings or binding digests are invalid",
+                remedy: "supply the intact captured producer result; do not synthesize analysis from report summaries",
+            },
+            Refusal {
+                code: "voltage_drop_result_stale",
+                when: "the saved analysis or delivered JSON differs from its captured final layers or source bytes",
+                remedy: "report from the intact immutable captured result; never reprocess approved geometry during reporting",
+            },
         ],
         reference: Some("docs/reference/design-project.md"),
         search: &[],
@@ -258,7 +273,7 @@ pub static OUTBOX: Command = command(
 pub static REPORT: Command = command(
     "design.project.report",
     &["design", "project", "report"],
-    "Produce offline reports and printable PDFs from a captured run.",
+    "Produce offline reports with the mandatory saved voltage-drop JSON.",
     &[
         WORKSPACE,
         RUN_ID,
@@ -278,7 +293,7 @@ pub static REPORT: Command = command(
         Arg::repeated(
             "format",
             "<name>",
-            "Explicit reporter formats, including pdf_a0 or pdf_a3.",
+            "Explicit data or governed pdf__<layout-id> formats; saved voltage-drop JSON is always included.",
         ),
         Arg::value("admin-bounds", "<file>", "Local admin-bounds asset."),
         Arg::value(
@@ -433,41 +448,47 @@ pub fn report(i: &Inputs, c: &Context) -> Result<Value, Failure> {
     if i.repeated("format").is_empty() {
         return Err(Failure::invalid(
             "design_workspace_invalid",
-            "name at least one --format, including pdf_a0 or pdf_a3 for printing",
+            "name at least one --format; print layouts use pdf__<layout-id> from the captured configuration",
         ));
     }
-    w.report_inputs(i.require("run-id")?, i.require("transformer")?, root)
-        .map_err(map_error)?;
-    let mut args = vec![
+    let captured = w
+        .report_inputs(i.require("run-id")?, i.require("transformer")?, root)
+        .map_err(report_input_error)?;
+    let mut request = json!({
+        "input_shape":"plain_local",
+        "transformer":i.require("transformer")?,
+        "transformer_document":root.join("transformer.json"),
+        "network_config":root.join("network-config.json"),
+        "voltage_drop_result":captured["voltage_drop_result"],
+        "out_dir":root.join("artifacts"),
+        "country":i.require("country")?,
+        "formats":ds_command_kernel::report_formats::normalize(i.repeated("format")),
+    });
+    for (key, field) in [
+        ("admin-bounds", "admin_bounds_asset"),
+        ("admin-bounds-sha256", "admin_bounds_sha256"),
+    ] {
+        if let Some(value) = i.value(key) {
+            request[field] = json!(value);
+        }
+    }
+    let request_path = root.join("report-request.json");
+    ds_design_workspace::write_new(
+        &request_path,
+        &serde_json::to_vec(&request)
+            .map_err(|error| map_error(Error::Invalid(error.to_string())))?,
+    )
+    .map_err(map_error)?;
+    let args = vec![
         "--task".into(),
         "transformer".into(),
-        "--input-shape".into(),
-        "plain_local".into(),
-        "--transformer".into(),
-        i.require("transformer")?.into(),
-        "--transformer-document".into(),
-        root.join("transformer.json").to_string_lossy().into_owned(),
-        "--network-config".into(),
-        root.join("network-config.json")
-            .to_string_lossy()
-            .into_owned(),
-        "--out-dir".into(),
-        root.join("artifacts").to_string_lossy().into_owned(),
+        "--request".into(),
+        request_path.to_string_lossy().into_owned(),
         "--result".into(),
         root.join("report-result.json")
             .to_string_lossy()
             .into_owned(),
-        "--country".into(),
-        i.require("country")?.into(),
     ];
-    for format in i.repeated("format") {
-        args.extend(["--format".into(), format.clone()]);
-    }
-    for key in ["admin-bounds", "admin-bounds-sha256"] {
-        if let Some(value) = i.value(key) {
-            args.extend([format!("--{key}"), value.into()]);
-        }
-    }
     let inputs = ds_cli_contract::args::parse(&ds_cli_report::export::COMMAND, &args)
         .map_err(report_error)?;
     let report = ds_cli_report::export::run(&inputs, c).map_err(report_error)?;
@@ -481,8 +502,23 @@ pub fn report(i: &Inputs, c: &Context) -> Result<Value, Failure> {
             root,
             &report,
         )
-        .map_err(map_error)?;
+        .map_err(report_input_error)?;
     Ok(json!({"report":report,"delivery":retained}))
+}
+fn report_input_error(error: Error) -> Failure {
+    if let Error::Invalid(message) = &error {
+        let code = message.split(':').next().unwrap_or("");
+        if matches!(
+            code,
+            "voltage_drop_result_missing"
+                | "voltage_drop_result_invalid"
+                | "voltage_drop_result_stale"
+        ) {
+            return Failure::failed(code, message)
+                .remedy("Use the intact saved producer analysis from this immutable run; reporting cannot calculate or reconstruct it.");
+        }
+    }
+    map_error(error)
 }
 fn report_error(e: Failure) -> Failure {
     Failure::failed("design_workspace_report", e.to_string())

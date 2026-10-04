@@ -98,6 +98,17 @@ with a first stop at zoom 0. Flat halos use `appearance --halo-color '#FFFFFF'
 --halo-width 0.9` without a category field. These screen controls preserve
 independent print documents.
 
+`ds style purpose index --project <id> --target print --ink colour` reads
+authored purpose groups and exact immutable role bindings. Select a returned
+id with `ds style purpose plan --project <id> --purpose <id> --ink colour`.
+The plan captures separate governed `printing_standard` pages under the same
+native identity and explicit project, compares every authored revision and
+content pin, and delegates style capture to the existing exact tuple resolver.
+It returns the admitted page bodies and style captures a print consumer needs.
+No default, style or template is created or adopted, and no geometry, output
+or publication is produced. Missing declarations and unadopted pages refuse;
+printing still requires exact saved design and held geographic inputs.
+
 `ds style instruction schema --output json` returns the compiled JSON Schema
 without login. Save one instruction to a file, then `instruction plan --project
 <id> --ref <ref> --file <file>` and `instruction set ... --yes`. Pass
@@ -162,6 +173,12 @@ Style choice has four independent dimensions. `style resolution table --project
 returns one exact document and revision through the shared kernel resolver.
 Changing the source or role changes the authority; an unknown combination
 refuses by name. Hosts never construct a style id from a layer name.
+
+Authored purpose groups use that same held tuple authority. Their declaration
+and the separate printing-layout boundary live in the kernel's
+[style purpose contract](../../../ds-command-kernel/docs/contracts/style-purpose-index.md).
+Discover the read through `ds capabilities style.purpose.index`; no production
+document adoption is implied by the availability of this command.
 
 `style catalogue manifest` reads the versioned declarative standard set.
 `style catalogue seed plan --project <id>` names missing documents and preserves
