@@ -401,6 +401,142 @@ fn availability() -> Availability {
 /// from the host crate.
 struct CliEngine;
 
+/// Exact saved analysis admitted for one room; no producer work occurs here.
+#[derive(Debug, Clone)]
+enum BatchAnalysis {
+    Ready { document: Vec<u8>, sha256: String },
+    Missing,
+    Stale,
+}
+
+fn fenced_batch_analysis(
+    room: &ds_project_data::room_hold::Room,
+    transformer: &str,
+    version: Option<u64>,
+    content_digest: Option<&str>,
+    metadata: Option<&Value>,
+    document: Option<&[u8]>,
+) -> Result<BatchAnalysis, HostFailure> {
+    if transformer != room.transformer {
+        return Err(HostFailure::new(
+            INPUTS_INVALID.code,
+            "saved analysis belongs to another transformer",
+        ));
+    }
+    if version.and_then(|v| i64::try_from(v).ok()) != room.version
+        || content_digest != room.content_digest.as_deref()
+    {
+        return Ok(BatchAnalysis::Stale);
+    }
+    match document {
+        Some(document) => {
+            let sha256 = ds_command_kernel::report_export::sha256_hex(document);
+            if metadata.and_then(|m| m["analysis_sha256"].as_str()) != Some(sha256.as_str()) {
+                return Err(HostFailure::new(
+                    INPUTS_INVALID.code,
+                    "saved analysis bytes differ from the native read pin",
+                ));
+            }
+            Ok(BatchAnalysis::Ready {
+                document: document.to_vec(),
+                sha256,
+            })
+        }
+        None if metadata
+            .is_some_and(|m| matches!(m["state"].as_str(), Some("stale" | "needs_reprocess"))) =>
+        {
+            Ok(BatchAnalysis::Stale)
+        }
+        None => Ok(BatchAnalysis::Missing),
+    }
+}
+
+fn batch_analysis_refusal(failure: &Failure) -> Option<BatchAnalysis> {
+    let detail = failure.detail_value()?;
+    if detail["http_status"] != 409 {
+        return None;
+    }
+    match detail["service_code"].as_str()? {
+        "TRANSFORMER_ANALYSIS_MISSING" => Some(BatchAnalysis::Missing),
+        "TRANSFORMER_ANALYSIS_STALE" => Some(BatchAnalysis::Stale),
+        _ => None,
+    }
+}
+
+/// Adds the CLI-owned saved-analysis input at the existing engine boundary.
+/// The host owns the room, request and scratch lifetime; its siblings stay read-only.
+struct SavedAnalysisEngine<'a> {
+    analyses: &'a std::sync::Mutex<BTreeMap<String, BatchAnalysis>>,
+    delegate: &'a dyn ReportEngine,
+    report_format: &'static str,
+}
+
+fn stage_batch_analysis(
+    request_path: &Path,
+    analysis: &BatchAnalysis,
+    report_format: &str,
+) -> Result<(), HostFailure> {
+    let invalid = |error: String| HostFailure::new(INPUTS_INVALID.code, error);
+    let mut request: Value =
+        serde_json::from_slice(&std::fs::read(request_path).map_err(|e| invalid(e.to_string()))?)
+            .map_err(|e| invalid(e.to_string()))?;
+    match analysis {
+        BatchAnalysis::Ready { document, sha256 } => {
+            if ds_command_kernel::report_export::sha256_hex(document) != *sha256 {
+                return Err(invalid("saved analysis bytes differ from their pin".into()));
+            }
+            let source = request_path.with_file_name("saved-voltage-drop-analysis.json");
+            let mut file = std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&source)
+                .map_err(|e| HostFailure::new(STAGING_FAILED.code, e.to_string()))?;
+            use std::io::Write;
+            file.write_all(document)
+                .map_err(|e| HostFailure::new(STAGING_FAILED.code, e.to_string()))?;
+            request["voltage_drop_result"] =
+                json!({"path":source, "sha256":sha256, "report_format":report_format});
+        }
+        BatchAnalysis::Missing => request["voltage_drop_refusal"] = json!("missing"),
+        BatchAnalysis::Stale => request["voltage_drop_refusal"] = json!("stale"),
+    }
+    std::fs::write(
+        request_path,
+        serde_json::to_vec(&request).map_err(|e| invalid(e.to_string()))?,
+    )
+    .map_err(|e| HostFailure::new(STAGING_FAILED.code, e.to_string()))
+}
+
+impl ReportEngine for SavedAnalysisEngine<'_> {
+    fn build_info(&self) -> Result<Value, HostFailure> {
+        self.delegate.build_info()
+    }
+
+    fn export_transformer_report(
+        &self,
+        request: &Path,
+        result: &Path,
+    ) -> Result<EngineExit, HostFailure> {
+        let document: Value = serde_json::from_slice(
+            &std::fs::read(request)
+                .map_err(|e| HostFailure::new(INPUTS_INVALID.code, e.to_string()))?,
+        )
+        .map_err(|e| HostFailure::new(INPUTS_INVALID.code, e.to_string()))?;
+        let name = document["transformer"].as_str().ok_or_else(|| {
+            HostFailure::new(INPUTS_INVALID.code, "report request lacks a transformer")
+        })?;
+        let analysis = self
+            .analyses
+            .lock()
+            .map_err(|_| HostFailure::new(INPUTS_INVALID.code, "saved analysis lock poisoned"))?
+            .remove(name);
+        if let Some(analysis) = analysis {
+            stage_batch_analysis(request, &analysis, self.report_format)?;
+        }
+        self.delegate.export_transformer_report(request, result)
+    }
+}
+
 fn bounded_summary(stderr: &str, stdout: &str) -> String {
     let source = if stderr.trim().is_empty() {
         stdout
@@ -1837,11 +1973,54 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     };
     // Subset runs whose room moved past the planned head: they ran in full.
     let mut room_moved: BTreeMap<String, i64> = BTreeMap::new();
+    let analyses = std::sync::Mutex::new(BTreeMap::new());
+    let engine = SavedAnalysisEngine {
+        analyses: &analyses,
+        delegate: &CliEngine,
+        report_format: requested_outputs.voltage_drop_report_format().token(),
+    };
     let fetch = |name: &str| -> Result<TransformerReportInputs, HostFailure> {
         let (room, server_version) = fetch_room(name).map_err(failure_to_host)?;
         let (selection, moved) = run_selection(reuse_plans.get(name), server_version);
         if moved {
             room_moved.insert(name.to_string(), server_version);
+        }
+        if voltage_drop_selected {
+            let analysis = link
+                .borrow_mut()
+                .read(|| {
+                    match ds_cli_auth::saved_transformer_analysis_for_project(lane, project, name) {
+                        Ok(saved) => {
+                            require_same_context(
+                                &identity,
+                                &project_id,
+                                saved.identity(),
+                                saved.project_id(),
+                            )
+                            .map_err(host_failure)?;
+                            let saved = saved.result();
+                            fenced_batch_analysis(
+                                &room,
+                                saved.snapshot.transformer_name(),
+                                saved.snapshot.metadata().version(),
+                                saved.snapshot.metadata().content_digest(),
+                                saved.snapshot.voltage_drop_metadata(),
+                                saved.document.as_deref(),
+                            )
+                            .map_err(host_failure)
+                        }
+                        Err(error) => match batch_analysis_refusal(&error) {
+                            Some(refusal) => Ok(refusal),
+                            None => Err(error),
+                        },
+                    }
+                })
+                .map_err(failure_to_host)?
+                .unwrap_or(BatchAnalysis::Missing);
+            analyses
+                .lock()
+                .map_err(|_| HostFailure::new(INPUTS_INVALID.code, "saved analysis lock poisoned"))?
+                .insert(name.to_string(), analysis);
         }
         let layers_value = serde_json::to_value(&room.layers)
             .map_err(|error| HostFailure::new(INPUTS_INVALID.code, error.to_string()))?;
@@ -1968,7 +2147,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             survey,
         })
     };
-    let outcome = run_batch(&CliEngine, &settings, &plan.names, fetch).map_err(host_failure)?;
+    let outcome = run_batch(&engine, &settings, &plan.names, fetch).map_err(host_failure)?;
     // Every run removed its own scratch; the empty staging root goes too.
     let _ = std::fs::remove_dir(&staging);
     if outcome.receipt["status"] == "failed" {
@@ -3629,6 +3808,168 @@ mod tests {
         assert!(super::preflight(&inputs).is_ok());
         std::fs::write(&path, b"{\"output_root\":\"C:\\\\External\"}").unwrap();
         assert!(super::preflight(&inputs).is_err());
+    }
+
+    #[test]
+    fn project_batch_stages_exact_saved_analysis_only_for_matching_room_pins() {
+        let room = ds_project_data::room_hold::Room {
+            transformer: "fill_in_kanto2".into(),
+            version: Some(3),
+            content_digest: Some("a".repeat(64)),
+            layers: BTreeMap::new(),
+        };
+        let document = b"{ \"schema\": \"ds.lv-voltage-drop.analysis/v1\", \"summary\": {} }\n";
+        let sha = ds_command_kernel::report_export::sha256_hex(document);
+        let metadata = json!({"state":"ready", "analysis_sha256":sha});
+        let admitted = fenced_batch_analysis(
+            &room,
+            &room.transformer,
+            Some(3),
+            room.content_digest.as_deref(),
+            Some(&metadata),
+            Some(document),
+        )
+        .unwrap();
+        let directory = tempfile::tempdir().unwrap();
+        let request = directory.path().join("request.json");
+        std::fs::write(
+            &request,
+            serde_json::to_vec(
+                &json!({"transformer":room.transformer,"formats":["xlsx","voltage_drop"]}),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        struct CapturingEngine;
+        impl ReportEngine for CapturingEngine {
+            fn build_info(&self) -> Result<Value, HostFailure> {
+                Ok(json!({}))
+            }
+            fn export_transformer_report(
+                &self,
+                request: &Path,
+                _: &Path,
+            ) -> Result<EngineExit, HostFailure> {
+                let request: Value =
+                    serde_json::from_slice(&std::fs::read(request).unwrap()).unwrap();
+                assert!(
+                    request["voltage_drop_result"].is_object(),
+                    "batch adapter dropped the saved analysis: {request}"
+                );
+                Ok(EngineExit {
+                    succeeded: true,
+                    summary: String::new(),
+                })
+            }
+        }
+        let analyses =
+            std::sync::Mutex::new(BTreeMap::from([(room.transformer.clone(), admitted)]));
+        let engine = SavedAnalysisEngine {
+            analyses: &analyses,
+            delegate: &CapturingEngine,
+            report_format: "brief",
+        };
+        engine
+            .export_transformer_report(&request, &directory.path().join("result.json"))
+            .unwrap();
+        assert!(
+            analyses.lock().unwrap().is_empty(),
+            "analysis is consumed once under this batch's transformer scope"
+        );
+        let staged: Value = serde_json::from_slice(&std::fs::read(&request).unwrap()).unwrap();
+        assert_eq!(
+            std::fs::read(staged["voltage_drop_result"]["path"].as_str().unwrap()).unwrap(),
+            document
+        );
+        assert_eq!(staged["voltage_drop_result"]["sha256"], sha);
+        assert_eq!(staged["voltage_drop_result"]["report_format"], "brief");
+        assert_eq!(staged["formats"], json!(["xlsx", "voltage_drop"]));
+
+        // Moved saved heads and different layer pins are never substituted for a held room.
+        for (version, digest) in [
+            (Some(4), room.content_digest.as_deref()),
+            (Some(3), Some("other")),
+        ] {
+            let stale = fenced_batch_analysis(
+                &room,
+                &room.transformer,
+                version,
+                digest,
+                Some(&metadata),
+                Some(document),
+            )
+            .unwrap();
+            assert!(matches!(stale, BatchAnalysis::Stale));
+        }
+        assert!(matches!(
+            fenced_batch_analysis(
+                &room,
+                &room.transformer,
+                Some(3),
+                room.content_digest.as_deref(),
+                None,
+                None
+            )
+            .unwrap(),
+            BatchAnalysis::Missing
+        ));
+        let stale = json!({"state":"stale"});
+        assert!(matches!(
+            fenced_batch_analysis(
+                &room,
+                &room.transformer,
+                Some(3),
+                room.content_digest.as_deref(),
+                Some(&stale),
+                None
+            )
+            .unwrap(),
+            BatchAnalysis::Stale
+        ));
+        let wrong = json!({"state":"ready","analysis_sha256":"b".repeat(64)});
+        assert!(
+            fenced_batch_analysis(
+                &room,
+                &room.transformer,
+                Some(3),
+                room.content_digest.as_deref(),
+                Some(&wrong),
+                Some(document)
+            )
+            .is_err()
+        );
+        for (analysis, code) in [
+            (BatchAnalysis::Missing, "missing"),
+            (BatchAnalysis::Stale, "stale"),
+        ] {
+            std::fs::write(&request, b"{}").unwrap();
+            stage_batch_analysis(&request, &analysis, "brief").unwrap();
+            let staged: Value = serde_json::from_slice(&std::fs::read(&request).unwrap()).unwrap();
+            assert_eq!(staged["voltage_drop_refusal"], code);
+            assert!(staged.get("voltage_drop_result").is_none());
+        }
+    }
+
+    #[test]
+    fn native_saved_analysis_refusals_remain_independent_formats_without_retry() {
+        for (code, missing) in [
+            ("TRANSFORMER_ANALYSIS_MISSING", true),
+            ("TRANSFORMER_ANALYSIS_STALE", false),
+        ] {
+            let failure = Failure::failed("auth_response_unreadable", "fenced read refused")
+                .detail(json!({"http_status":409,"service_code":code}));
+            let refusal = batch_analysis_refusal(&failure).unwrap();
+            assert_eq!(matches!(refusal, BatchAnalysis::Missing), missing);
+        }
+        for (status, code) in [
+            (403, "TRANSFORMER_ANALYSIS_STALE"),
+            (409, "TRANSFORMER_ANALYSIS_INVALID"),
+            (503, "TRANSFORMER_ANALYSIS_MISSING"),
+        ] {
+            let failure = Failure::failed("auth_response_unreadable", "read refused")
+                .detail(json!({"http_status":status,"service_code":code}));
+            assert!(batch_analysis_refusal(&failure).is_none());
+        }
     }
 
     #[test]
