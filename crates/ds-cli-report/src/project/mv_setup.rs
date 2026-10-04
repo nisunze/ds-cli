@@ -19,6 +19,11 @@ pub const STYLE_REFUSAL: Refusal = Refusal {
     when: "the project API has not supplied the governed MV paper binding",
     remedy: "integrate the print-styles resolver for (mv_booklet, project_model, print, project); adopt governed defaults through the API",
 };
+pub const PROJECT_CRS_CONTEXT_REFUSAL: Refusal = Refusal {
+    code: "print_project_crs_context_mismatch",
+    when: "the held project configuration and authenticated projection directory differ in project, lane, principal or credential audience",
+    remedy: "refresh both reads through the same native account and lane for the exact project, then retry",
+};
 pub static SET: Command = Command {
     id:"report.project.mv-setup.set", path:&["report","project","mv-setup","set"], contract:1,
     summary:"Select the project's one canonical MV printing revision.",
@@ -144,7 +149,8 @@ pub(crate) fn resolve_project_print(
         return Err(Failure::invalid(
             "print_project_crs_context_mismatch",
             "print project CRS/configuration context differs",
-        ));
+        )
+        .remedy(PROJECT_CRS_CONTEXT_REFUSAL.remedy));
     }
     let identity = scoped.identity();
     let project_crs = directory
@@ -252,6 +258,28 @@ mod tests {
         assert!(!RESOLVE.effect.needs_confirmation());
         assert!(SET.search.contains(&"front matter"));
         assert!(RESOLVE.search.contains(&"front matter"));
+    }
+    #[test]
+    fn only_print_acquisition_commands_declare_the_crs_context_fence() {
+        for command in [
+            &crate::plan_profile::COMMAND,
+            &crate::plan_profile_config::COMMAND,
+        ] {
+            let refusal = command
+                .refusals
+                .iter()
+                .find(|refusal| refusal.code == PROJECT_CRS_CONTEXT_REFUSAL.code)
+                .expect("the print resolver's context refusal must be discoverable");
+            assert_eq!(refusal.remedy, PROJECT_CRS_CONTEXT_REFUSAL.remedy);
+        }
+        for command in [&SET, &RESOLVE] {
+            assert!(
+                !command
+                    .refusals
+                    .iter()
+                    .any(|refusal| { refusal.code == PROJECT_CRS_CONTEXT_REFUSAL.code })
+            );
+        }
     }
     #[test]
     fn kernel_refusal_is_preserved_with_field_message_key_and_remedy() {

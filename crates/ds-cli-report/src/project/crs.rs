@@ -9,7 +9,7 @@ pub static COMMAND: Command = Command {
     id: "report.project.crs",
     path: &["report", "project", "crs"],
     contract: 1,
-    summary: "Capture the named project's existing projection authority for printing.",
+    summary: "Capture the named project's projection authority for printing.",
     purpose: "Read only the authenticated project directory and capture normalized ProjectParams with its exact project, lane, user, audience and source digest. Opens no report queue or outbox, touches no project, performs no automatic publication, and reads or mutates no printing template, configuration or seed. A capture records authority; rendering separately refuses projections that are not admitted metre coordinate systems.",
     chapter: Chapter::Reports,
     effect: Effect::LocalAuthState,

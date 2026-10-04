@@ -54,11 +54,12 @@ pub static COMMAND: Command = Command {
         note: "Render every named variant from one pinned configuration; see docs/reference/report.md for the schema.",
         runnable: false,
     }],
-    refusals: &crate::project::joined::<{ crate::project::NATIVE_READ_REFUSALS.len() + 10 }>(&[
+    refusals: &crate::project::joined::<{ crate::project::NATIVE_READ_REFUSALS.len() + 11 }>(&[
         crate::project::NATIVE_READ_REFUSALS,
         &[
             crate::project::mv_setup::REFUSAL,
             crate::project::mv_setup::STYLE_REFUSAL,
+            crate::project::mv_setup::PROJECT_CRS_CONTEXT_REFUSAL,
             Refusal {
                 code: "print_config_invalid",
                 when: "the JSON is unreadable, ambiguous, unsafe, or names the wrong project",

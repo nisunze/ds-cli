@@ -485,6 +485,7 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("design.comment.read", "read_only", "headless_project"),
     ("design.comment.redact", "global_write", "headless_project"),
     ("design.comment.resolve", "global_write", "headless_project"),
+    ("report.project.crs", "local_auth_state", "headless_project"),
     (
         "report.project.map-inputs",
         "local_file_write",
@@ -1251,6 +1252,16 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ),
     (
         "style.catalogue.seed.apply",
+        "global_write",
+        "headless_project",
+    ),
+    (
+        "style.catalogue.a4.plan",
+        "local_auth_state",
+        "headless_project",
+    ),
+    (
+        "style.catalogue.a4.create",
         "global_write",
         "headless_project",
     ),

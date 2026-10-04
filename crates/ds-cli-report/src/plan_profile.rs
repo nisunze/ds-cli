@@ -109,11 +109,12 @@ pub static COMMAND: Command = Command {
         note: "Render the adopted publication for one alignment from held engine projections.",
         runnable: false,
     }],
-    refusals: &crate::project::joined::<{ crate::project::NATIVE_READ_REFUSALS.len() + 11 }>(&[
+    refusals: &crate::project::joined::<{ crate::project::NATIVE_READ_REFUSALS.len() + 12 }>(&[
         crate::project::NATIVE_READ_REFUSALS,
         &[
             crate::project::mv_setup::REFUSAL,
             crate::project::mv_setup::STYLE_REFUSAL,
+            crate::project::mv_setup::PROJECT_CRS_CONTEXT_REFUSAL,
             Refusal {
                 code: "alignment_selection_invalid",
                 when: "selection names an unknown band, is unbounded or malformed, or its scene cannot be decoded",

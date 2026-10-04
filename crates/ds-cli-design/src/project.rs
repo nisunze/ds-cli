@@ -508,15 +508,18 @@ pub fn report(i: &Inputs, c: &Context) -> Result<Value, Failure> {
 fn report_input_error(error: Error) -> Failure {
     if let Error::Invalid(message) = &error {
         let code = message.split(':').next().unwrap_or("");
-        if matches!(
-            code,
-            "voltage_drop_result_missing"
-                | "voltage_drop_result_invalid"
-                | "voltage_drop_result_stale"
-        ) {
-            return Failure::failed(code, message)
-                .remedy("Use the intact saved producer analysis from this immutable run; reporting cannot calculate or reconstruct it.");
-        }
+        let failure = match code {
+            "voltage_drop_result_missing" => {
+                Failure::failed("voltage_drop_result_missing", message)
+            }
+            "voltage_drop_result_invalid" => {
+                Failure::failed("voltage_drop_result_invalid", message)
+            }
+            "voltage_drop_result_stale" => Failure::failed("voltage_drop_result_stale", message),
+            _ => return map_error(error),
+        };
+        return failure
+            .remedy("Use the intact saved producer analysis from this immutable run; reporting cannot calculate or reconstruct it.");
     }
     map_error(error)
 }
@@ -554,4 +557,38 @@ pub fn sources(i: &Inputs, _: &Context) -> Result<Value, Failure> {
     Ok(
         json!({"out":i.require("out")?,"scope":result["scope"],"sources":result["addresses"].as_array().map(Vec::len)}),
     )
+}
+
+#[cfg(test)]
+mod report_input_error_tests {
+    use super::*;
+
+    #[test]
+    fn saved_analysis_refusals_keep_exact_codes_and_unknown_codes_stay_invalid() {
+        for code in [
+            "voltage_drop_result_missing",
+            "voltage_drop_result_invalid",
+            "voltage_drop_result_stale",
+        ] {
+            let message = format!("{code}: actual saved producer diagnostic");
+            let failure = report_input_error(Error::Invalid(message.clone()));
+            assert_eq!(failure.code(), code);
+            assert_eq!(failure.message(), message);
+            assert!(
+                failure
+                    .remedy_text()
+                    .unwrap()
+                    .contains("cannot calculate or reconstruct")
+            );
+        }
+        for message in [
+            "voltage_drop_result_future: unknown",
+            " voltage_drop_result_missing: padded",
+        ] {
+            let failure = report_input_error(Error::Invalid(message.into()));
+            assert_eq!(failure.code(), "design_workspace_invalid");
+            assert_eq!(failure.message(), message);
+            assert!(failure.remedy_text().is_none());
+        }
+    }
 }

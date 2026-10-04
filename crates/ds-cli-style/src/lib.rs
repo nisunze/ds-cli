@@ -3,6 +3,7 @@
 //! The visual Style Center uses the same transformations through WASM.
 
 pub use native::{LANE_ARG, PROJECT_ARG};
+pub mod a4_seed;
 pub mod appearance;
 pub mod cartography;
 pub mod dimension;
@@ -49,6 +50,8 @@ pub static DOMAIN: Domain = Domain {
         &governance::manifest::COMMAND,
         &governance::seed_plan::COMMAND,
         &governance::seed_apply::COMMAND,
+        &a4_seed::plan::COMMAND,
+        &a4_seed::create::COMMAND,
         &governance::inventory::COMMAND,
         &governance::backup_create::COMMAND,
         &governance::backup_read::COMMAND,

@@ -240,7 +240,7 @@ fn named(failure: Failure) -> Failure {
     }
     crate::native::named(failure)
 }
-fn invoke(inputs: &Inputs, operation: Operation) -> Result<Value, Failure> {
+pub(crate) fn invoke(inputs: &Inputs, operation: Operation) -> Result<Value, Failure> {
     let request = ds_command_kernel::style_governance::Request {
         project: inputs.require("project")?.into(),
         command: operation,
@@ -272,7 +272,7 @@ const fn all_refusals() -> [Refusal; REFUSALS.len() + crate::native::PUBLISH_REF
     result
 }
 const ALL: [Refusal; REFUSALS.len() + crate::native::PUBLISH_REFUSALS.len()] = all_refusals();
-const fn command_refusals() -> &'static [Refusal] {
+pub(crate) const fn command_refusals() -> &'static [Refusal] {
     &ALL
 }
 command!(
@@ -325,7 +325,7 @@ pub mod purpose_index {
         examples: &[],
         refusals: &PURPOSE_ALL,
         reference: Some("docs/reference/style.md"),
-        search: &["purpose", "transformer sheet", "adjacent circuit"],
+        search: &["transformer sheet", "adjacent circuit"],
         requires: Requires::Server,
         availability: ds_cli_auth::native_availability,
     };
@@ -394,7 +394,7 @@ pub mod purpose_plan {
         examples: &[],
         refusals: &PURPOSE_ALL,
         reference: Some("docs/reference/style.md"),
-        search: &["purpose", "transformer on A0", "composition"],
+        search: &["transformer sheet", "composition"],
         requires: Requires::Server,
         availability: ds_cli_auth::native_availability,
     };
