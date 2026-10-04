@@ -168,7 +168,13 @@ pub const PROFILE_SET: BridgeOp = BridgeOp {
         "pan_x",
         "pan_y",
         "action",
+        "display_case",
+        "terrain",
     ],
+};
+pub const PROFILE_ANALYZE: BridgeOp = BridgeOp {
+    operation: "map.profile.analyze",
+    arguments: &[],
 };
 pub const PROFILE_SELECT: BridgeOp = BridgeOp {
     operation: "map.profile.select",
@@ -397,6 +403,7 @@ pub const BRIDGE_OPS: &[&BridgeOp] = &[
     &PROFILE_VIEW,
     &PROFILE_SET,
     &PROFILE_SELECT,
+    &PROFILE_ANALYZE,
     &GRID_LASSO,
     &RENDERER_CONFIGURE,
     &UI_OPEN,

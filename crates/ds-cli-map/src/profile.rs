@@ -1,6 +1,4 @@
-//! Paired Profile presentation controls. View settings can be staged before
-//! the Profile opens; fit/rebuild require an open surface. Model-authored label
-//! composition is owned by dsgrid profile labels, not this UI bridge.
+//! Paired native Profile display commands; viewport and window sizing are local UI.
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
     Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
@@ -10,24 +8,30 @@ use serde_json::{Map, Value, json};
 
 use crate::DESCRIPTOR_ARG;
 
-const VISIBILITY_KEYS: &[&str] = &[
-    "ground",
-    "side_profiles",
-    "clearance_line",
-    "terrain_points",
-    "terrain_ordinates",
-    "grid",
-    "structures",
-    "wire",
-    "section_labels",
-    "span_distances",
-    "structure_labels",
-];
-
 const PROFILE_CLOSED: Refusal = Refusal {
     code: "profile_closed",
-    when: "fit or rebuild has no open Profile, or selection has no open model Profile and scene",
+    when: "display, analysis, or selection has no open model Profile, or fit/rebuild has no open Profile",
     remedy: "open a model with ds dsgrid profile open, then retry",
+};
+const PROFILE_STYLES_UNAVAILABLE: Refusal = Refusal {
+    code: "profile_styles_unavailable",
+    when: "the API has no complete governed Profile pens or review colors",
+    remedy: "seed the global DS Grid profile style document, then refresh project map styles",
+};
+const PROFILE_STYLES_INVALID: Refusal = Refusal {
+    code: "profile_styles_invalid",
+    when: "a governed Profile pen or review color is outside its typed bounds",
+    remedy: "repair the global Profile style document through the style API",
+};
+const PROFILE_SCENE_UNAVAILABLE: Refusal = Refusal {
+    code: "profile_scene_unavailable",
+    when: "native profile projection cannot use this model package",
+    remedy: "inspect the native refusal and model diagnostics",
+};
+const PROFILE_PACKAGE_INVALID: Refusal = Refusal {
+    code: "profile_package_invalid",
+    when: "the held checkpoint is not a valid DS Grid package",
+    remedy: "inspect or reopen the working copy",
 };
 const INVALID_PROFILE_VIEW: Refusal = Refusal {
     code: "invalid_profile_view",
@@ -48,7 +52,7 @@ const PROFILE_SELECTION_STALE: Refusal = Refusal {
 pub static VIEW: Command = Command {
     id: "map.profile.view",
     path: &["map", "profile", "view"],
-    contract: 1,
+    contract: 2,
     summary: "Read the paired Profile's exact visual state.",
     purpose: "Reads the running Desktop's Profile occupant, dock height in pixels, viewport, selection and edit mode. Selection is transient UI context; the view and engineering model remain unchanged.",
     chapter: Chapter::MapPresentation,
@@ -56,7 +60,7 @@ pub static VIEW: Command = Command {
     authority: Authority::DesktopPairing,
     execution: Execution::Sync,
     args: &[DESCRIPTOR_ARG],
-    output: "Profile occupant, model_id and revision (null without an open model), legacy model, scale, visibility, height_px (dock height in pixels), viewport, edit_mode boolean and selection {entity_ids, primary, kind, structures:[{id,number}]}. IDs follow engine order within one family; mixed selections retain selected IDs. kind: none, structures, tension_sections, alignments, terrain_points, attachment_points or mixed. structures only for a structures selection; number is the displayed structure number or null if unknown.",
+    output: "Profile occupant, model_id and revision (null without an open model), scale, visibility, height_px, viewport, edit_mode and selection. review contains the bounded native command projection: up to 256 cases with value/label/disabled, selected_case_index, display_case, marker_count and explicit case/label truncation. display contains native state and governed rows; analysis contains the bounded native command receipt. scene_loaded reports a revision-current scene. Selection includes entity_ids, primary, kind and structures [{id,number}].",
     examples: &[Example {
         command: "ds map profile view --output json",
         note: "Read the live Profile's viewport, selection and edit mode before a scoped model command.",
@@ -80,14 +84,24 @@ pub static VIEW: Command = Command {
 pub static SET: Command = Command {
     id: "map.profile.set",
     path: &["map", "profile", "set"],
-    contract: 1,
+    contract: 3,
     summary: "Set the paired Profile's visual state through typed CLI inputs.",
-    purpose: "Patches only the named Profile display settings in the running Desktop, even before the Profile opens; omitted settings stay unchanged. The visibility object uses the documented concise keys and boolean values. Fit and rebuild are explicit actions, and the receipt returns the resulting live state including height_px (dock height in pixels). Read map profile view, set the dock height, then use map profile select with the returned model_id, revision and entity IDs. No engineering model is changed.",
+    purpose: "Patches only the named Profile display settings; omitted settings stay unchanged. Display-case selection requires an open model and Rust validates it before changing presentation. Visibility and scale require an open model and are owned by Rust; the desktop paints the resulting state. Viewport settings can be staged before opening. Review boxes and usage labels start enabled. Fit and rebuild are explicit actions. Read map profile view for native weather cases, model/revision and the resulting visual state. No engineering model is changed.",
     chapter: Chapter::MapPresentation,
     effect: Effect::LocalUi,
     authority: Authority::DesktopPairing,
     execution: Execution::Sync,
     args: &[
+        Arg::value(
+            "terrain",
+            "<json-object>",
+            "Complete native terrain settings: corridor_half_width_m, gap_tolerance_m, ground_clearance_offset_m, lowest_wire_drop_m. All finite 0..10000; gap tolerance must be positive. Omitted terrain retains native settings.",
+        ),
+        Arg::value(
+            "display-case",
+            "<json-object>",
+            "Native JSON: {\"mode\":\"greatest_sag\"}, {\"mode\":\"sag_reference\"}, or {\"mode\":\"analysis_case\",\"analysis_case_id\":\"<id>\"}. Read review.cases from map profile view; needs an open model.",
+        ),
         Arg::value(
             "vertical-exaggeration",
             "<ratio>",
@@ -96,7 +110,7 @@ pub static SET: Command = Command {
         Arg::value(
             "visibility",
             "<json-object>",
-            "JSON object with ground, wire, grid, structures and the other documented profile layer keys and boolean values.",
+            "JSON booleans: review, ground, side_profiles, clearance_line, terrain_points, terrain_ordinates, grid, structures, wire, section_labels, span_distances, structure_labels, structure_numbers, structure_names, structure_comments, embedded. Review starts on; omitted keys retain the native state.",
         ),
         Arg::value(
             "height-px",
@@ -135,6 +149,11 @@ pub static SET: Command = Command {
         crate::PAIRING_REJECTED,
         PROFILE_CLOSED,
         INVALID_PROFILE_VIEW,
+        PROFILE_STYLES_UNAVAILABLE,
+        PROFILE_STYLES_INVALID,
+        PROFILE_SCENE_UNAVAILABLE,
+        PROFILE_PACKAGE_INVALID,
+        PROFILE_SELECTION_STALE,
         crate::UNSUPPORTED,
         crate::UNREADABLE,
     ],
@@ -280,6 +299,28 @@ fn invalid_selection(message: impl Into<String>) -> Failure {
 
 fn patch_from_inputs(inputs: &Inputs) -> Result<Map<String, Value>, Failure> {
     let mut patch = Map::new();
+    if let Some(raw) = inputs.value("terrain") {
+        let value: Value = serde_json::from_str(raw)
+            .map_err(|_| invalid("terrain must be a complete native JSON object"))?;
+        serde_json::from_value::<ds_command_kernel::profile_display::TerrainSettings>(
+            value.clone(),
+        )
+        .map_err(|_| invalid("terrain must contain all four native numeric fields"))?;
+        patch.insert("terrain".into(), value);
+    }
+    if let Some(raw) = inputs.value("display-case") {
+        if raw.len() > 4096 {
+            return Err(invalid(
+                "display-case exceeds the bounded native request size",
+            ));
+        }
+        let value: Value = serde_json::from_str(raw)
+            .map_err(|_| invalid("display-case must be a native JSON object"))?;
+        if !value.is_object() {
+            return Err(invalid("display-case must be a native JSON object"));
+        }
+        patch.insert("display_case".to_owned(), value);
+    }
     if let Some(raw) = inputs.value("vertical-exaggeration") {
         patch.insert(
             "vertical_exaggeration".to_owned(),
@@ -334,7 +375,10 @@ fn parse_visibility(raw: &str) -> Result<Map<String, Value>, Failure> {
         return Err(invalid("visibility must name at least one setting"));
     }
     for (key, value) in object {
-        if !VISIBILITY_KEYS.contains(&key.as_str()) || !value.is_boolean() {
+        if serde_json::from_value::<ds_command_kernel::profile_display::DisplayOption>(json!(key))
+            .is_err()
+            || !value.is_boolean()
+        {
             return Err(invalid(
                 "visibility accepts only documented profile layer boolean settings",
             ));
@@ -357,6 +401,53 @@ fn invalid(message: impl Into<String>) -> Failure {
     Failure::invalid("invalid_profile_view", message.into())
 }
 
+pub static ANALYZE: Command = Command {
+    id: "map.profile.analyze",
+    path: &["map", "profile", "analyze"],
+    contract: 1,
+    summary: "Analyze the active Profile model and visualize results, unknowns and blockers.",
+    purpose: "Runs native structure usage, section checks and clearances on every invocation at the active model revision using the current model-bound case envelope. Weather selection changes the displayed curve and its section evidence; it never silently narrows the engineering envelope. Qualified and partial results, unknowns and typed blockers appear in the Profile and Issues. A missing criterion, case or capacity is result evidence, never a silent no-op. No engineering model or project data is changed.",
+    chapter: Chapter::MapPresentation,
+    effect: Effect::LocalUi,
+    authority: Authority::DesktopPairing,
+    execution: Execution::Sync,
+    args: &[DESCRIPTOR_ARG],
+    output: "ran:true, model_id, revision, display and analysis with status qualified|partial|unknown, report status, issue counts, review marker count and blockers by kind. Rust bounds command details to 200 blockers with 512-character message previews and explicit truncation; full evidence remains in Profile and Issues.",
+    examples: &[Example {
+        command: "ds map profile analyze --output json",
+        note: "Run analysis and open Issues for the active model, retaining missing-input evidence.",
+        runnable: false,
+    }],
+    refusals: &[
+        crate::NOT_PAIRED,
+        crate::AMBIGUOUS,
+        crate::UNREACHABLE,
+        crate::PAIRING_REJECTED,
+        PROFILE_CLOSED,
+        PROFILE_SELECTION_STALE,
+        PROFILE_STYLES_UNAVAILABLE,
+        PROFILE_STYLES_INVALID,
+        PROFILE_SCENE_UNAVAILABLE,
+        PROFILE_PACKAGE_INVALID,
+        crate::UNSUPPORTED,
+        crate::UNREADABLE,
+        crate::REFUSED,
+    ],
+    reference: Some("docs/reference/map.md"),
+    search: &["analysis", "usage", "clearance", "blockers"],
+    requires: Requires::Window,
+    availability: crate::paired_availability,
+};
+pub fn analyze(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
+    let descriptor = crate::paired(inputs.value("desktop-descriptor"))?;
+    crate::invoke(
+        &descriptor,
+        &crate::PROFILE_ANALYZE,
+        json!({}),
+        std::time::Duration::from_secs(300),
+    )
+}
+
 pub fn render(data: &Value) -> String {
     format!("profile visual state {}\n", data)
 }
@@ -368,6 +459,33 @@ pub fn render_selection(data: &Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn display_case_is_forwarded_verbatim_for_native_validation() {
+        let args = [
+            "--display-case",
+            r#"{"mode":"analysis_case","analysis_case_id":"cold"}"#,
+        ]
+        .map(str::to_owned);
+        let inputs = ds_cli_contract::args::parse(&SET, &args).unwrap();
+        let patch = Value::Object(patch_from_inputs(&inputs).unwrap());
+        assert_eq!(
+            patch,
+            json!({"display_case": {"mode":"analysis_case", "analysis_case_id":"cold"}})
+        );
+        assert_eq!(
+            ds_cli_desktop::ops::undeclared_key(&crate::PROFILE_SET, &patch),
+            None
+        );
+        for raw in ["[]", "null", "broken"] {
+            let args = ["--display-case".to_owned(), raw.to_owned()];
+            let inputs = ds_cli_contract::args::parse(&SET, &args).unwrap();
+            assert_eq!(
+                patch_from_inputs(&inputs).unwrap_err().code(),
+                "invalid_profile_view"
+            );
+        }
+    }
 
     #[test]
     fn height_parser_accepts_inclusive_bounds_and_fractional_pixels() {
@@ -430,6 +548,28 @@ mod tests {
         );
         assert!(parse_visibility(r#"{"ground":"false"}"#).is_err());
         assert!(parse_visibility(r#"{"bogus":true}"#).is_err());
+    }
+
+    #[test]
+    fn native_review_flags_and_complete_terrain_cross_the_bridge_without_defaults() {
+        let args = ["--visibility", r#"{"review":false,"terrain_ordinates":true,"structure_comments":false}"#,
+            "--terrain", r#"{"corridor_half_width_m":20,"gap_tolerance_m":80,"ground_clearance_offset_m":6,"lowest_wire_drop_m":2}"#].map(str::to_owned);
+        let inputs = ds_cli_contract::args::parse(&SET, &args).unwrap();
+        let patch = patch_from_inputs(&inputs).unwrap();
+        assert_eq!(
+            patch["visibility"],
+            json!({"review":false,"terrain_ordinates":true,"structure_comments":false})
+        );
+        assert_eq!(patch["terrain"]["lowest_wire_drop_m"], 2);
+        assert_eq!(patch.len(), 2);
+        let inputs =
+            ds_cli_contract::args::parse(&SET, &["--terrain".into(), "{}".into()]).unwrap();
+        assert_eq!(
+            patch_from_inputs(&inputs).unwrap_err().code(),
+            "invalid_profile_view"
+        );
+        assert_eq!(ANALYZE.path, ["map", "profile", "analyze"]);
+        assert_eq!(ANALYZE.effect, Effect::LocalUi);
     }
 
     #[test]

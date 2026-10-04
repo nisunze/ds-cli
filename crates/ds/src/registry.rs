@@ -1219,6 +1219,11 @@ static MAP_ENTRIES: &[Entry] = &[
         render: ds_cli_map::camera_set::render,
     },
     Entry {
+        command: &ds_cli_map::profile::ANALYZE,
+        handler: ds_cli_map::profile::analyze,
+        render: ds_cli_map::profile::render,
+    },
+    Entry {
         command: &ds_cli_map::profile::VIEW,
         handler: ds_cli_map::profile::view,
         render: ds_cli_map::profile::render,
