@@ -157,6 +157,67 @@ pub struct PrintContextBytes {
     pub omitted: Vec<String>,
 }
 
+/// Bind authenticated project metadata to exact held context bytes. The host
+/// supplies and checks identity; this operation never reads a credential or
+/// changes the server-issued configuration receipt.
+pub fn bind_project_crs(
+    context: Option<PrintContextBytes>,
+    capture: &ds_command_kernel::printing::project_crs::Capture,
+    project: &str,
+) -> Result<PrintContextBytes, HostFailure> {
+    capture
+        .validate_scope(
+            project,
+            &capture.lane,
+            &capture.principal,
+            &capture.credential_audience_sha256,
+            None,
+        )
+        .map_err(|e| HostFailure::new("print_project_crs_context_mismatch", e))?;
+    let mut document = if let Some(held) = &context {
+        if format!("{:x}", Sha256::digest(&held.bytes)) != held.sha256 {
+            return Err(HostFailure::new(
+                "print_context_invalid",
+                "held context bytes changed before CRS binding",
+            ));
+        }
+        let document: Value = serde_json::from_slice(&held.bytes)
+            .map_err(|e| HostFailure::new("print_context_invalid", e.to_string()))?;
+        if document["schema"] != "ds.print-context/v1" || !document["layers"].is_object() {
+            return Err(HostFailure::new(
+                "print_context_invalid",
+                "CRS binding requires ds.print-context/v1 layers",
+            ));
+        }
+        document
+    } else {
+        json!({"schema":"ds.print-context/v1","layers":{},"sources":[],"coverage":null})
+    };
+    let value = serde_json::to_value(capture)
+        .map_err(|e| HostFailure::new("print_project_crs_invalid", e.to_string()))?;
+    if document.get("project_crs").is_some_and(|old| old != &value) {
+        return Err(HostFailure::new(
+            "print_project_crs_stale",
+            "held context carries another project CRS capture",
+        ));
+    }
+    document["project_crs"] = value;
+    let bytes = serde_json::to_vec(&document)
+        .map_err(|e| HostFailure::new("print_context_invalid", e.to_string()))?;
+    Ok(PrintContextBytes {
+        sha256: format!("{:x}", Sha256::digest(&bytes)),
+        bytes,
+        layers: context
+            .as_ref()
+            .map(|c| c.layers.clone())
+            .unwrap_or_default(),
+        omitted: context
+            .as_ref()
+            .map(|c| c.omitted.clone())
+            .unwrap_or_default(),
+    })
+}
+
 /// One transformer's governed inputs, as the host fetched them.
 #[derive(Debug, Clone)]
 pub struct TransformerReportInputs {
@@ -2049,5 +2110,50 @@ pub(crate) mod tests {
         assert!(decisions::valid_run_id(&first));
         assert!(decisions::valid_run_id(&second));
         assert_ne!(first, second);
+    }
+}
+
+#[cfg(test)]
+mod project_crs_context_tests {
+    use super::*;
+    fn capture(project: &str) -> ds_command_kernel::printing::project_crs::Capture {
+        ds_command_kernel::printing::project_crs::Capture::new(
+            project,
+            "stable",
+            "fixture-user",
+            "fixture-audience",
+            json!({"crs":{"mode":"tm_rwanda"}}),
+        )
+        .unwrap()
+    }
+    #[test]
+    fn metadata_binding_preserves_context_and_fences_project_source_and_bytes() {
+        let original = json!({"schema":"ds.print-context/v1","layers":{"roads":{"type":"FeatureCollection","features":[]}},"sources":[{"revision":"held"}]});
+        let bytes = serde_json::to_vec(&original).unwrap();
+        let held = PrintContextBytes {
+            sha256: format!("{:x}", Sha256::digest(&bytes)),
+            bytes,
+            layers: vec!["roads".into()],
+            omitted: vec!["rivers".into()],
+        };
+        let bound = bind_project_crs(Some(held.clone()), &capture("p"), "p").unwrap();
+        let result: Value = serde_json::from_slice(&bound.bytes).unwrap();
+        assert_eq!(result["layers"], original["layers"]);
+        assert_eq!(result["sources"], original["sources"]);
+        assert_eq!(bound.layers, held.layers);
+        assert_eq!(bound.omitted, held.omitted);
+        assert_ne!(bound.sha256, held.sha256);
+        assert_eq!(format!("{:x}", Sha256::digest(&bound.bytes)), bound.sha256);
+        assert!(bind_project_crs(Some(held.clone()), &capture("q"), "p").is_err());
+        let mut tampered = held.clone();
+        tampered.bytes.push(b' ');
+        assert!(bind_project_crs(Some(tampered), &capture("p"), "p").is_err());
+        let mut stale = capture("p");
+        stale.project_params["crs"]["mode"] = json!("web_mercator");
+        assert!(bind_project_crs(Some(bound), &stale, "p").is_err());
+        assert!(bind_project_crs(None, &capture("p"), "p")
+            .unwrap()
+            .layers
+            .is_empty());
     }
 }

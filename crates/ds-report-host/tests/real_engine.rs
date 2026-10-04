@@ -444,6 +444,7 @@ fn a_preview_page_is_the_engines_svg_over_the_synthetic_room() {
         &engine,
         &PreviewSettings {
             project_id: "example-project",
+            project_crs: None,
             receipt: &receipt,
             admin_bounds: None,
             staging_root: &staging,
@@ -497,6 +498,7 @@ fn the_command_execution_answers_the_same_page_over_the_synthetic_room() {
         &engine,
         &PreviewSettings {
             project_id: "example-project",
+            project_crs: None,
             receipt: &receipt,
             admin_bounds: None,
             staging_root: &staging,

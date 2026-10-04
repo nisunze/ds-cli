@@ -73,6 +73,7 @@ pub const CONTRACT: u32 = 1;
 #[derive(Debug, Clone)]
 pub struct PreviewSettings<'a> {
     pub project_id: &'a str,
+    pub project_crs: Option<&'a ds_command_kernel::printing::project_crs::Capture>,
     /// The governed project receipt; `local_print_recipe` must be `None`.
     pub receipt: &'a InputReceipt,
     pub admin_bounds: Option<&'a AdminBoundsAsset>,
@@ -271,6 +272,11 @@ pub fn transformer_page_with_styles(
     }
     let contexts = draft_context_layers(&preview)?;
     let context = print_context(&contexts)?;
+    let context = settings
+        .project_crs
+        .map(|capture| crate::bind_project_crs(context.clone(), capture, settings.project_id))
+        .transpose()?
+        .or(context);
     let (context_layers, context_omitted) = context_summary(&contexts, context.as_ref());
     let context_sha256 = context.as_ref().map(|context| context.sha256.clone());
 
@@ -932,6 +938,7 @@ mod tests {
     fn settings<'a>(receipt: &'a InputReceipt, staging: &'a Path) -> PreviewSettings<'a> {
         PreviewSettings {
             project_id: "proj-1",
+            project_crs: None,
             receipt,
             admin_bounds: None,
             staging_root: staging,
