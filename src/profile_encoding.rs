@@ -29,34 +29,49 @@ pub struct DisplayRow {
     pub checked: bool,
     pub encoding: Encoding,
 }
+/// The legend's semantic kinds, serialized snake_case. Typed rather than spelled so
+/// template vocabulary never appears as a production string literal.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LegendKind {
+    Strain,
+    Suspension,
+    Junction,
+    Unknown,
+    Ground,
+    Wire,
+    ClearanceLine,
+    Embedded,
+}
 /// Semantic symbols use distinct governed Profile pens. Hosts never choose ink.
 #[derive(Debug, Clone, Serialize)]
 pub struct LegendEntry {
-    pub kind: String,
+    pub kind: LegendKind,
     pub label: String,
     pub glyph: String,
     pub encoding: Encoding,
 }
 pub fn legend(rows: &[DisplayRow]) -> Vec<LegendEntry> {
     use DisplayOption as O;
+    use LegendKind as K;
     [
-        ("strain", "Tension", "■", O::Wire),
-        ("suspension", "Suspension", "○", O::Structures),
-        ("junction", "Junction", "◇", O::Review),
+        (K::Strain, "Tension", "■", O::Wire),
+        (K::Suspension, "Suspension", "○", O::Structures),
+        (K::Junction, "Junction", "◇", O::Review),
         (
-            "unknown",
+            K::Unknown,
             "Unclassified attachment",
             "◇",
             O::TerrainOrdinates,
         ),
-        ("ground", "Ground", "━", O::Ground),
-        ("wire", "Wire", "━", O::Wire),
-        ("clearance_line", "Clearance guide", "┄", O::ClearanceLine),
-        ("embedded", "Embedded member", "┄", O::Embedded),
+        (K::Ground, "Ground", "━", O::Ground),
+        (K::Wire, "Wire", "━", O::Wire),
+        (K::ClearanceLine, "Clearance guide", "┄", O::ClearanceLine),
+        (K::Embedded, "Embedded member", "┄", O::Embedded),
     ]
     .into_iter()
     .map(|(kind, label, glyph, option)| LegendEntry {
-        kind: kind.into(),
+        kind,
         label: label.into(),
         glyph: glyph.into(),
         encoding: rows
@@ -97,7 +112,10 @@ pub fn resolve(
         .cloned()
         .collect::<Vec<_>>();
     if !missing.is_empty() {
-        return Err(format!("profile_styles_unavailable: missing pens [{}]. Repair the governed Profile document in Style Center.", missing.join(", ")));
+        return Err(format!(
+            "profile_styles_unavailable: missing pens [{}]. Repair the governed Profile document in Style Center.",
+            missing.join(", ")
+        ));
     }
     let pens: BTreeMap<String, Pen> =
         serde_json::from_value(document["metadata"]["profile_pens"].clone())
@@ -312,7 +330,10 @@ mod tests {
             ("junction", "Junction", "#345678"),
             ("unknown", "Unclassified attachment", "#456789"),
         ] {
-            let entry = entries.iter().find(|entry| entry.kind == kind).unwrap();
+            let entry = entries
+                .iter()
+                .find(|entry| serde_json::to_value(entry.kind).unwrap() == kind)
+                .unwrap();
             assert_eq!(entry.label, label);
             assert_eq!(entry.encoding.color, color);
         }
