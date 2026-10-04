@@ -75,14 +75,6 @@ fn model() -> GridModelSnapshot {
     }
     model
 }
-fn explicit(id: &str) -> ProfileAtlasOptions {
-    ProfileAtlasOptions {
-        display_case: ProfileDisplayCase::AnalysisCase {
-            analysis_case_id: AnalysisCaseId::new(id).unwrap(),
-        },
-        ..Default::default()
-    }
-}
 
 #[test]
 fn section_usage_label_reads_current_solver_basis_and_native_selector_controls_it() {

@@ -373,11 +373,15 @@ fn label_fields(state: &DisplayState) -> Vec<String> {
 }
 
 #[cfg(test)]
+#[path = "../../../../ds-network/crates/ds-grid-engine/tests/common/mod.rs"]
+mod common;
+
+#[cfg(test)]
 mod transactional_projection_tests {
     use super::*;
     use ds_grid_model::{EntityId, ModelCrs};
     fn request() -> ProjectRequest {
-        let session = GridSession::open(Default::default());
+        let session = GridSession::open(common::fixture());
         let (artifacts, _) = ds_grid_exchange::dsgrid::emit(
             session.snapshot(),
             &ds_grid_exchange::PackOptions {
@@ -415,7 +419,9 @@ mod transactional_projection_tests {
                 scope: original.scope.clone(),
                 expected_revision: original.expected_revision.clone(),
                 display_case:
-                    ds_grid_engine::profile_display_case::ProfileDisplayCase::SagReference,
+                    ds_grid_engine::profile_display_case::ProfileDisplayCase::AnalysisCase {
+                        analysis_case_id: common::fixture().analysis_cases[0].id.clone(),
+                    },
                 select: false,
                 cached_only: false,
                 sequence: 41,
@@ -426,7 +432,9 @@ mod transactional_projection_tests {
                 scope: original.scope.clone(),
                 expected_revision: original.expected_revision.clone(),
                 display_case:
-                    ds_grid_engine::profile_display_case::ProfileDisplayCase::SagReference,
+                    ds_grid_engine::profile_display_case::ProfileDisplayCase::AnalysisCase {
+                        analysis_case_id: common::fixture().analysis_cases[0].id.clone(),
+                    },
                 select: true,
                 cached_only: true,
                 sequence: 41,
@@ -469,7 +477,9 @@ mod transactional_projection_tests {
                 scope: original.scope.clone(),
                 expected_revision: original.expected_revision.clone(),
                 display_case:
-                    ds_grid_engine::profile_display_case::ProfileDisplayCase::SagReference,
+                    ds_grid_engine::profile_display_case::ProfileDisplayCase::AnalysisCase {
+                        analysis_case_id: common::fixture().analysis_cases[0].id.clone(),
+                    },
                 select: true,
                 cached_only: true,
                 sequence: 42,
@@ -482,7 +492,9 @@ mod transactional_projection_tests {
                 scope: original.scope,
                 expected_revision: original.expected_revision,
                 display_case:
-                    ds_grid_engine::profile_display_case::ProfileDisplayCase::SagReference,
+                    ds_grid_engine::profile_display_case::ProfileDisplayCase::AnalysisCase {
+                        analysis_case_id: common::fixture().analysis_cases[0].id.clone(),
+                    },
                 select: false,
                 cached_only: false,
                 sequence: 43,
