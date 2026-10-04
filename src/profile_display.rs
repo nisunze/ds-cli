@@ -21,9 +21,11 @@ pub enum DisplayOption {
     StructureNames,
     StructureComments,
     Embedded,
+    OffsetEmbedmentHeight,
+    RouteDeviation,
 }
 impl DisplayOption {
-    pub const ALL: [Self; 16] = [
+    pub const ALL: [Self; 18] = [
         Self::Review,
         Self::Grid,
         Self::Ground,
@@ -40,6 +42,8 @@ impl DisplayOption {
         Self::StructureNames,
         Self::StructureComments,
         Self::Embedded,
+        Self::OffsetEmbedmentHeight,
+        Self::RouteDeviation,
     ];
     pub fn label_key(self) -> &'static str {
         match self {
@@ -59,6 +63,8 @@ impl DisplayOption {
             Self::StructureNames => "gprof_label_type",
             Self::StructureComments => "gprof_display_comments",
             Self::Embedded => "gprof_display_embedded",
+            Self::RouteDeviation => "gprof_display_route_deviation",
+            Self::OffsetEmbedmentHeight => "gprof_display_offset_embedment_height",
         }
     }
 }
@@ -93,6 +99,8 @@ impl Default for DisplayState {
                                 | DisplayOption::TerrainOrdinates
                                 | DisplayOption::SectionLabels
                                 | DisplayOption::Embedded
+                                | DisplayOption::StructureComments
+                                | DisplayOption::RouteDeviation
                         ),
                     )
                 })

@@ -23,6 +23,7 @@ pub struct Label {
     pub point: ProfileAtlasPoint,
     pub text: String,
     pub offset_px: [f64; 2],
+    pub rotation_radians: f64,
 }
 pub fn project(
     scene: &ProfileAtlasScene,
@@ -38,6 +39,29 @@ pub fn project(
             .clone()
     };
     let mut out = Vec::new();
+    if state.visibility[&O::OffsetEmbedmentHeight] && state.visibility[&O::Structures] {
+        for structure in scene.bands.iter().flat_map(|band| &band.structures) {
+            let (points, text, encoding) = match structure.setting_depth_m {
+                Some(depth) => (
+                    vec![structure.ground.clone(), structure.base.clone()],
+                    format!("{depth:.1} m"),
+                    pen(O::OffsetEmbedmentHeight),
+                ),
+                None => (vec![], "◌".into(), pen(O::Embedded)),
+            };
+            out.push(Primitive {
+                option: O::OffsetEmbedmentHeight,
+                encoding,
+                points,
+                labels: vec![Label {
+                    point: structure.base.clone(),
+                    text,
+                    offset_px: [6.0, 0.0],
+                    rotation_radians: 0.0,
+                }],
+            });
+        }
+    }
     if state.visibility[&O::TerrainOrdinates] {
         for band in &scene.bands {
             for terrain in &band.terrain_points {
@@ -51,6 +75,7 @@ pub fn project(
                         point: terrain.point,
                         text: format!("{:.1} m", terrain.point.elevation_m),
                         offset_px: [4.0, 14.0],
+                        rotation_radians: 0.0,
                     }],
                 });
             }
@@ -90,6 +115,7 @@ pub fn project(
                         point,
                         text: label.text.clone(),
                         offset_px: [0.0, 0.0],
+                        rotation_radians: 0.0,
                     }],
                 });
             }
@@ -116,6 +142,7 @@ pub fn project(
                                     .and_then(|basis| basis.maximum_support_tension_rts_percent),
                             ),
                             offset_px: [0.0, 24.0],
+                            rotation_radians: 0.0,
                         }],
                     });
                 }
@@ -166,24 +193,26 @@ pub fn project(
                         labels: vec![Label {
                             point: *structure.top.as_ref().unwrap_or(&structure.ground),
                             text,
-                            offset_px: [6.0, offset],
+                            offset_px: [-offset - 6.0, -5.0],
+                            rotation_radians: -std::f64::consts::FRAC_PI_2,
                         }],
                     });
                     offset -= 15.0;
                 }
-                if structure.is_alignment_angle {
+                if state.visibility[&O::RouteDeviation] && structure.is_alignment_angle {
                     let text = structure
                         .angle_deviation_deg
                         .map(|value| format!("Dev {value:+.1}°"))
                         .unwrap_or_else(|| "Dev unresolved".into());
                     out.push(Primitive {
-                        option: O::StructureLabels,
-                        encoding: pen(O::StructureLabels),
+                        option: O::RouteDeviation,
+                        encoding: pen(O::RouteDeviation),
                         points: vec![],
                         labels: vec![Label {
                             point: *structure.top.as_ref().unwrap_or(&structure.ground),
                             text,
-                            offset_px: [6.0, offset],
+                            offset_px: [-offset - 6.0, -5.0],
+                            rotation_radians: -std::f64::consts::FRAC_PI_2,
                         }],
                     });
                 }
@@ -224,5 +253,110 @@ mod section_usage_tests {
             "TS-21 · Max support RTS 0.0%"
         );
         assert!(!section_label("TS-21", None).contains("G"));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn default_identity_is_vertical_with_equipment_and_deviation_only_on_request() {
+        let bytes = std::fs::read(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../../ds-network/fixtures/pls-public/humble-pole/humble-pole.dsgrid"
+        ))
+        .unwrap();
+        let (package, _) = ds_grid_exchange::dsgrid::ingest(&bytes).unwrap();
+        let mut scene = ds_grid_engine::GridSession::open(package.snapshot)
+            .profile_atlas_scene(Default::default())
+            .unwrap();
+        let structure = &mut scene.bands[0].structures[0];
+        structure.comment_1 = Some("TAP DOF E-LINK".into());
+        structure.is_alignment_angle = true;
+        structure.angle_deviation_deg = Some(-48.6);
+        let state = DisplayState::default();
+        assert!(!state.visibility[&O::StructureComments]);
+        assert!(!state.visibility[&O::RouteDeviation]);
+        let document = serde_json::from_str(include_str!(
+            "../../../tests/fixtures/profile-display-style.json"
+        ))
+        .unwrap();
+        let rows = ds_command_kernel::profile_encoding::resolve(&state, &document).unwrap();
+        let primitives = project(&scene, &state, &rows, &Default::default());
+        assert!(primitives
+            .iter()
+            .all(|p| p.option != O::StructureComments && p.option != O::RouteDeviation));
+        let identities = primitives
+            .iter()
+            .filter(|p| matches!(p.option, O::StructureNames | O::StructureNumbers))
+            .flat_map(|p| &p.labels)
+            .collect::<Vec<_>>();
+        assert!(!identities.is_empty());
+        assert!(identities
+            .iter()
+            .all(|label| label.rotation_radians == -std::f64::consts::FRAC_PI_2));
+        let mut shown = state;
+        shown.visibility.insert(O::StructureComments, true);
+        shown.visibility.insert(O::RouteDeviation, true);
+        let primitives = project(&scene, &shown, &rows, &Default::default());
+        assert!(primitives.iter().any(|p| p.option == O::StructureComments
+            && p.labels.iter().any(|l| l.text.contains("TAP DOF E-LINK"))));
+        assert!(primitives
+            .iter()
+            .any(|p| p.option == O::RouteDeviation && p.labels[0].text == "Dev -48.6°"));
+    }
+    #[test]
+    fn offset_embedment_uses_the_canonical_foot_labels_declared_depth_and_marks_unknown_neutrally()
+    {
+        let bytes = std::fs::read(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../../ds-network/fixtures/pls-public/humble-pole/humble-pole.dsgrid"
+        ))
+        .unwrap();
+        let (package, _) = ds_grid_exchange::dsgrid::ingest(&bytes).unwrap();
+        let mut scene = ds_grid_engine::GridSession::open(package.snapshot)
+            .profile_atlas_scene(Default::default())
+            .unwrap();
+        let structure = &mut scene.bands[0].structures[0];
+        structure.setting_depth_m = Some(2.0);
+        structure.base.elevation_m = structure.ground.elevation_m - 2.0;
+        structure.base.scene_y = structure.ground.scene_y + 10.0;
+        let ground = structure.ground.clone();
+        let foot = structure.base.clone();
+        let state = DisplayState::default();
+        assert!(state.visibility[&O::OffsetEmbedmentHeight]);
+        let document = serde_json::from_str(include_str!(
+            "../../../tests/fixtures/profile-display-style.json"
+        ))
+        .unwrap();
+        let rows = ds_command_kernel::profile_encoding::resolve(&state, &document).unwrap();
+        let primitives = project(&scene, &state, &rows, &Default::default());
+        let dimension = primitives
+            .iter()
+            .find(|primitive| primitive.option == O::OffsetEmbedmentHeight)
+            .unwrap();
+        assert_eq!(dimension.points, vec![ground, foot]);
+        assert_eq!(dimension.labels[0].text, "2.0 m");
+        scene.bands[0].structures[0].setting_depth_m = None;
+        let unknown = project(&scene, &state, &rows, &Default::default());
+        let dimension = unknown
+            .iter()
+            .find(|primitive| primitive.option == O::OffsetEmbedmentHeight)
+            .unwrap();
+        assert!(dimension.points.is_empty());
+        assert_eq!(dimension.labels[0].text, "◌");
+        assert_eq!(
+            dimension.encoding.color,
+            rows.iter()
+                .find(|row| row.option == O::Embedded)
+                .unwrap()
+                .encoding
+                .color
+        );
+        let mut hidden = state;
+        hidden.visibility.insert(O::OffsetEmbedmentHeight, false);
+        assert!(project(&scene, &hidden, &rows, &Default::default())
+            .iter()
+            .all(|primitive| primitive.option != O::OffsetEmbedmentHeight));
     }
 }

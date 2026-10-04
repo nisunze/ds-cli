@@ -65,6 +65,7 @@ struct HeldView {
 pub struct Projection {
     pub state: DisplayState,
     pub rows: Vec<DisplayRow>,
+    pub legend: Vec<ds_command_kernel::profile_encoding::LegendEntry>,
     pub label_fields: Vec<String>,
     pub scene_options: ProfileAtlasOptions,
     pub primitives: Vec<decorations::Primitive>,
@@ -130,7 +131,7 @@ impl Runtime {
         } else {
             let mut scene = held
                 .review
-                .held_scene()
+                .base_scene()
                 .ok_or("profile_case_base_unavailable: scene is missing")?
                 .clone();
             let layer = held
@@ -159,16 +160,23 @@ impl Runtime {
         };
         let scene = held
             .review
-            .held_scene()
+            .base_scene()
             .ok_or("profile_case_base_unavailable: scene is missing")?;
-        let command_view = command_view::project(
+        let layer = held
+            .review
+            .prepared_layer(&request.display_case)
+            .ok_or("profile_case_base_unavailable: requested layer is missing")?;
+        let mut command_view = command_view::project(
             &state,
             Some(&held.rows),
             Some(scene),
             self.analyses.get(&request.scope),
         );
+        command_view["review"]["display_case"] =
+            serde_json::to_value(&layer.display_case.requested).map_err(|e| e.to_string())?;
+        command_view["review"]["selected_case_index"] = json!(layer.selected_case_index);
         let receipt = json!({"model_revision":request.expected_revision,"display_case":request.display_case,
-            "axis_pin_digest":scene.axis_pin.digest,"bytes":bytes,"case_primitives":case_primitives,"display_state":state,"command_view":command_view});
+            "axis_pin_digest":layer.axis_pin.digest,"bytes":bytes,"case_primitives":case_primitives,"display_state":state,"command_view":command_view});
         if request.select {
             held.last_weather_sequence = request.sequence;
             self.views.insert(request.scope, state);
@@ -333,6 +341,7 @@ impl Runtime {
         scene["display"] = serde_json::to_value(Projection {
             label_fields: label_fields(&state),
             state: state.clone(),
+            legend: ds_command_kernel::profile_encoding::legend(&rows),
             rows,
             scene_options,
             primitives,
@@ -473,9 +482,16 @@ mod transactional_projection_tests {
             .unwrap();
         let before = runtime.held[&original.scope]
             .review
-            .held_scene()
+            .base_scene()
             .unwrap()
             .clone();
+        let before_layer = serde_json::to_value(
+            runtime.held[&original.scope]
+                .review
+                .selected_layer()
+                .unwrap(),
+        )
+        .unwrap();
         runtime
             .held
             .get_mut(&original.scope)
@@ -499,8 +515,12 @@ mod transactional_projection_tests {
             .expect("refusal must retain previous checkpoint");
         assert_eq!(held.last_weather_sequence, 41);
         assert_eq!(
-            serde_json::to_value(held.review.held_scene().unwrap()).unwrap(),
+            serde_json::to_value(held.review.base_scene().unwrap()).unwrap(),
             serde_json::to_value(before).unwrap()
+        );
+        assert_eq!(
+            serde_json::to_value(held.review.selected_layer().unwrap()).unwrap(),
+            before_layer
         );
         runtime.views.insert(original.scope.clone(), admitted_state);
         let after = runtime

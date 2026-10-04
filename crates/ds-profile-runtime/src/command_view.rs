@@ -52,7 +52,7 @@ pub fn project(
             "clearance_features_truncated":source["issues"]["clearance_features_truncated"], "structure_features_truncated":source["issues"]["structure_features_truncated"]});
         result
     });
-    json!({"display":rows.map(|rows| json!({"state":state, "rows":rows})), "review":review, "analysis":analysis})
+    json!({"display":rows.map(|rows| json!({"state":state, "rows":rows,"legend":ds_command_kernel::profile_encoding::legend(rows)})), "review":review, "analysis":analysis})
 }
 
 #[cfg(test)]

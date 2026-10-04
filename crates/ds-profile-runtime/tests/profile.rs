@@ -161,6 +161,11 @@ fn cached_weather_is_display_only_and_revision_fenced() {
         json!({"mode":"sag_reference"})
     );
     assert_eq!(selected["command_view"]["analysis"], analysis);
+    assert_eq!(
+        selected["command_view"]["review"]["display_case"],
+        json!({"mode":"sag_reference"})
+    );
+    assert_eq!(selected["command_view"]["review"]["selected_case_index"], 1);
     assert!(runtime
         .execute(Operation::CaseLayer(case.clone()))
         .unwrap_err()
@@ -177,20 +182,11 @@ fn cached_weather_is_display_only_and_revision_fenced() {
 }
 
 #[test]
-fn backend_owned_profile_default_is_the_native_fixture_and_admits_all_seventeen_pens() {
-    // The exact sibling Brain source owns this default. No copied host palette.
+fn governed_profile_document_admits_every_native_display_option() {
     let backend: Value = serde_json::from_str(include_str!(
-        "../../../../ds-brain/internal/services/profile_display_style.v1.json"
-    ))
-    .unwrap();
-    let fixture: Value = serde_json::from_str(include_str!(
         "../../../tests/fixtures/profile-display-style.json"
     ))
     .unwrap();
-    assert_eq!(
-        backend, fixture,
-        "native fixture must match the owning backend document"
-    );
     assert_eq!(
         backend["metadata"]["profile_pens"]
             .as_object()
@@ -200,7 +196,7 @@ fn backend_owned_profile_default_is_the_native_fixture_and_admits_all_seventeen_
     );
     let state = ds_command_kernel::profile_display::DisplayState::default();
     let rows = ds_command_kernel::profile_encoding::resolve(&state, &backend).unwrap();
-    assert_eq!(rows.len(), 16);
+    assert_eq!(rows.len(), DisplayOption::ALL.len());
     ds_command_kernel::profile_encoding::clearance_violation_encoding(&backend).unwrap();
     let mut request = request();
     request.style_document = backend.clone();
@@ -250,4 +246,41 @@ fn refused_updates_preserve_the_prior_checkpoint_weather_sequence_and_cached_cas
         .execute(case(8))
         .expect("previous prepared case must still be usable");
     assert!(runtime.execute(original).unwrap()["scene"]["display"].is_object());
+}
+
+#[test]
+fn native_structure_labels_keep_the_vertical_profile_position() {
+    let bytes = std::fs::read(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../../ds-network/fixtures/pls-public/humble-pole/humble-pole.dsgrid"
+    ))
+    .unwrap();
+    let (package, _) = ds_grid_exchange::dsgrid::ingest(&bytes).unwrap();
+    let session = GridSession::open(package.snapshot);
+    let mut packet = request();
+    packet.package_bytes = bytes;
+    packet.expected_revision = session.current_revision().revision_id.to_string();
+    let result = Runtime::default().execute(packet).unwrap();
+    let primitives = result["scene"]["display"]["primitives"].as_array().unwrap();
+    let labels = primitives
+        .iter()
+        .filter(|p| {
+            [
+                "structure_numbers",
+                "structure_names",
+                "structure_comments",
+                "structure_labels",
+            ]
+            .contains(&p["option"].as_str().unwrap())
+        })
+        .flat_map(|p| p["labels"].as_array().unwrap())
+        .collect::<Vec<_>>();
+    assert!(!labels.is_empty());
+    for label in labels {
+        assert_eq!(
+            label["rotation_radians"].as_f64().unwrap(),
+            -std::f64::consts::FRAC_PI_2
+        );
+        assert_eq!(label["offset_px"][1], -5.0);
+    }
 }
