@@ -93,12 +93,16 @@ impl Default for DisplayState {
                 .map(|option| {
                     (
                         option,
+                        // Owner, 2026-10-03: the Profile opens on PLS-CADD-style attachment
+                        // boxes, structure numbers and one usage label per structure. Type names,
+                        // comments and route deviation stay one Labels choice away.
                         !matches!(
                             option,
                             DisplayOption::SideProfiles
                                 | DisplayOption::TerrainOrdinates
                                 | DisplayOption::SectionLabels
                                 | DisplayOption::Embedded
+                                | DisplayOption::StructureNames
                                 | DisplayOption::StructureComments
                                 | DisplayOption::RouteDeviation
                         ),
@@ -201,6 +205,34 @@ impl DisplayState {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn default_profile_shows_review_boxes_usage_and_numbers_without_type_names() {
+        let state = DisplayState::default();
+        for shown in [
+            DisplayOption::Review,
+            DisplayOption::Structures,
+            DisplayOption::Wire,
+            DisplayOption::Ground,
+            DisplayOption::StructureLabels,
+            DisplayOption::StructureNumbers,
+        ] {
+            assert!(state.visibility[&shown], "{shown:?} must be on by default");
+        }
+        for hidden in [
+            DisplayOption::StructureNames,
+            DisplayOption::StructureComments,
+            DisplayOption::RouteDeviation,
+        ] {
+            assert!(
+                !state.visibility[&hidden],
+                "{hidden:?} must be on request only"
+            );
+        }
+        // Still one Labels choice away.
+        let patch: DisplayPatch =
+            serde_json::from_str(r#"{"visibility":{"structure_names":true}}"#).unwrap();
+        assert!(state.patched(&patch).unwrap().visibility[&DisplayOption::StructureNames]);
+    }
     #[test]
     fn review_is_on_and_patches_are_atomic_and_strict() {
         let state = DisplayState::default();

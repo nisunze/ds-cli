@@ -260,19 +260,29 @@ fn native_structure_labels_keep_the_vertical_profile_position() {
     let mut packet = request();
     packet.package_bytes = bytes;
     packet.expected_revision = session.current_revision().revision_id.to_string();
-    let result = Runtime::default().execute(packet).unwrap();
+    let mut runtime = Runtime::default();
+    let identity = |p: &&Value| {
+        [
+            "structure_numbers",
+            "structure_names",
+            "structure_comments",
+            "structure_labels",
+        ]
+        .contains(&p["option"].as_str().unwrap())
+    };
+    let option = |p: &Value, name: &str| p["option"].as_str() == Some(name);
+    // Owner, 2026-10-03: the Profile opens with numbers only; type names are requested.
+    let opened = runtime.execute(packet.clone()).unwrap();
+    let opened = opened["scene"]["display"]["primitives"].as_array().unwrap();
+    assert!(opened.iter().any(|p| option(p, "structure_numbers")));
+    assert!(!opened.iter().any(|p| option(p, "structure_names")));
+    packet.patch = serde_json::from_str(r#"{"visibility":{"structure_names":true}}"#).unwrap();
+    let result = runtime.execute(packet).unwrap();
     let primitives = result["scene"]["display"]["primitives"].as_array().unwrap();
+    assert!(primitives.iter().any(|p| option(p, "structure_names")));
     let labels = primitives
         .iter()
-        .filter(|p| {
-            [
-                "structure_numbers",
-                "structure_names",
-                "structure_comments",
-                "structure_labels",
-            ]
-            .contains(&p["option"].as_str().unwrap())
-        })
+        .filter(identity)
         .flat_map(|p| p["labels"].as_array().unwrap())
         .collect::<Vec<_>>();
     assert!(!labels.is_empty());

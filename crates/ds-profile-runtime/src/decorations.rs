@@ -260,7 +260,7 @@ mod section_usage_tests {
 mod tests {
     use super::*;
     #[test]
-    fn default_identity_is_vertical_with_equipment_and_deviation_only_on_request() {
+    fn structure_text_is_vertical_and_only_on_request() {
         let bytes = std::fs::read(concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/../../../ds-network/fixtures/pls-public/humble-pole/humble-pole.dsgrid"
@@ -283,9 +283,16 @@ mod tests {
         .unwrap();
         let rows = ds_command_kernel::profile_encoding::resolve(&state, &document).unwrap();
         let primitives = project(&scene, &state, &rows, &Default::default());
-        assert!(primitives
-            .iter()
-            .all(|p| p.option != O::StructureComments && p.option != O::RouteDeviation));
+        // Owner, 2026-10-03: by default only the structure number is written per structure.
+        assert!(primitives.iter().all(|p| !matches!(
+            p.option,
+            O::StructureNames | O::StructureComments | O::RouteDeviation
+        )));
+        assert!(primitives.iter().any(|p| p.option == O::StructureNumbers));
+        let mut named = state.clone();
+        named.visibility.insert(O::StructureNames, true);
+        let primitives = project(&scene, &named, &rows, &Default::default());
+        assert!(primitives.iter().any(|p| p.option == O::StructureNames));
         let identities = primitives
             .iter()
             .filter(|p| matches!(p.option, O::StructureNames | O::StructureNumbers))
