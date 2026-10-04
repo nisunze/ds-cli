@@ -175,6 +175,9 @@ pub(crate) fn chromium_smoke(executable: &Path, platform: Platform) -> Result<Va
         )
         .map_err(|error| format!("smoke input could not be created: {}", error.kind()))?;
         let source_url = smoke_file_url(&source, platform)?;
+        let stderr_log = root.join("stderr.log");
+        let stderr = std::fs::File::create(&stderr_log)
+            .map_err(|error| format!("smoke log could not be created: {}", error.kind()))?;
         let mut command = ProcessCommand::new(executable);
         command.arg("--headless");
         if platform == Platform::Linux {
@@ -193,7 +196,7 @@ pub(crate) fn chromium_smoke(executable: &Path, platform: Platform) -> Result<Va
             .arg(source_url.as_str())
             .stdin(Stdio::null())
             .stdout(Stdio::null())
-            .stderr(Stdio::null())
+            .stderr(Stdio::from(stderr))
             .spawn()
             .map_err(|error| format!("headless Chromium could not start: {}", error.kind()))?;
         let deadline = Instant::now() + Duration::from_secs(30);
@@ -206,7 +209,11 @@ pub(crate) fn chromium_smoke(executable: &Path, platform: Platform) -> Result<Va
                 Ok(None) => {
                     let _ = child.kill();
                     let _ = child.wait();
-                    return Err("headless Chromium timed out after 30 seconds".to_string());
+                    return Err(with_stderr_tail(
+                        "headless Chromium timed out after 30 seconds".to_string(),
+                        &stderr_log,
+                        &root,
+                    ));
                 }
                 Err(error) => {
                     let _ = child.kill();
@@ -216,13 +223,20 @@ pub(crate) fn chromium_smoke(executable: &Path, platform: Platform) -> Result<Va
             }
         };
         if !status.success() {
-            return Err(format!(
-                "headless Chromium exited {}",
-                status.code().unwrap_or(-1)
+            return Err(with_stderr_tail(
+                format!("headless Chromium exited {}", status.code().unwrap_or(-1)),
+                &stderr_log,
+                &root,
             ));
         }
         let output_size = std::fs::metadata(&output)
-            .map_err(|error| format!("headless Chromium produced no PDF: {}", error.kind()))?
+            .map_err(|error| {
+                with_stderr_tail(
+                    format!("headless Chromium produced no PDF: {}", error.kind()),
+                    &stderr_log,
+                    &root,
+                )
+            })?
             .len();
         if output_size > 2 * 1024 * 1024 {
             return Err("headless Chromium smoke PDF exceeded the 2 MiB limit".to_string());
@@ -248,6 +262,80 @@ pub(crate) fn chromium_smoke(executable: &Path, platform: Platform) -> Result<Va
         (Err(reason), true) => Err(reason),
         (Err(reason), false) => Err(format!("{reason}; task-owned cleanup remained")),
     }
+}
+
+const STDERR_TAIL_BYTES: u64 = 2048;
+const STDERR_TAIL_CHARS: usize = 800;
+
+/// `reason` plus the bounded tail of the browser's own stderr, so a smoke that
+/// timed out or exited is diagnosable. The task directory is shown as `<task>`
+/// and any other absolute path is withheld.
+fn with_stderr_tail(reason: String, log: &Path, root: &Path) -> String {
+    let tail = read_tail(log, STDERR_TAIL_BYTES)
+        .map(|bytes| sanitize_stderr_tail(&bytes, root))
+        .unwrap_or_default();
+    if tail.is_empty() {
+        format!("{reason}; browser stderr was empty")
+    } else {
+        format!("{reason}; browser stderr tail: {tail}")
+    }
+}
+
+fn read_tail(path: &Path, max: u64) -> std::io::Result<Vec<u8>> {
+    use std::io::{Read, Seek, SeekFrom};
+    let mut file = std::fs::File::open(path)?;
+    let length = file.metadata()?.len();
+    file.seek(SeekFrom::Start(length.saturating_sub(max)))?;
+    let mut bytes = Vec::new();
+    file.take(max).read_to_end(&mut bytes)?;
+    Ok(bytes)
+}
+
+fn sanitize_stderr_tail(raw: &[u8], root: &Path) -> String {
+    let root_text = root.to_string_lossy().into_owned();
+    let root_slashed = root_text.replace('\\', "/");
+    let text = String::from_utf8_lossy(raw);
+    let mut lines = Vec::new();
+    for line in text.lines() {
+        let tokens = line
+            .split_whitespace()
+            .map(|token| {
+                let flat = token.replace('\\', "/");
+                if token.contains(&root_text) || flat.contains(&root_slashed) {
+                    "<task>".to_string()
+                } else if looks_like_absolute_path(token) {
+                    "<path>".to_string()
+                } else {
+                    token.chars().filter(|c| !c.is_control()).collect()
+                }
+            })
+            .collect::<Vec<_>>();
+        if !tokens.is_empty() {
+            lines.push(tokens.join(" "));
+        }
+    }
+    let joined = lines.join(" | ");
+    let count = joined.chars().count();
+    // The tail of the tail: the last lines are the closest to the failure.
+    joined
+        .chars()
+        .skip(count.saturating_sub(STDERR_TAIL_CHARS))
+        .collect::<String>()
+}
+
+fn looks_like_absolute_path(token: &str) -> bool {
+    let token = token.trim_start_matches(['"', '\'', '(', '[', '=']);
+    let bytes = token.as_bytes();
+    token.starts_with('/')
+        || token.starts_with("\\\\")
+        || token.starts_with("file:")
+        || (bytes.len() >= 3
+            && bytes[0].is_ascii_alphabetic()
+            && bytes[1] == b':'
+            && (bytes[2] == b'\\' || bytes[2] == b'/'))
+        || token
+            .split_once('=')
+            .is_some_and(|(_, value)| looks_like_absolute_path(value))
 }
 
 fn smoke_file_url(path: &Path, platform: Platform) -> Result<url::Url, String> {
@@ -398,6 +486,48 @@ mod tests {
         let result = verify_component(&component, Platform::Linux);
         assert_eq!(result["verified"], true, "{result}");
         assert_eq!(result["functional_smoke"]["cleanup"]["remaining"], false);
+    }
+
+    #[test]
+    fn stderr_tail_is_bounded_and_shows_only_task_paths() {
+        let root = Path::new(r"C:\Users\Op\AppData\Local\Temp\ds-smoke-1");
+        let raw = format!(
+            "{}\n[1004/1:ERROR:chrome\\browser\\x.cc:1] cannot open C:\\Users\\Op\\secret.txt\n\
+             [1004/1:ERROR:y.cc:2] --user-data-dir=C:\\Users\\Op\\AppData\\Local\\Temp\\ds-smoke-1\\profile locked\n",
+            "noise ".repeat(1000)
+        );
+        let tail = sanitize_stderr_tail(raw.as_bytes(), root);
+        assert!(tail.chars().count() <= STDERR_TAIL_CHARS, "{}", tail.len());
+        assert!(tail.contains("cannot open <path>"), "{tail}");
+        assert!(tail.contains("<task> locked"), "{tail}");
+        assert!(
+            !tail.contains("secret.txt") && !tail.contains("Users"),
+            "{tail}"
+        );
+    }
+
+    #[test]
+    fn stderr_tail_reads_only_the_end_of_the_log_and_reports_empty() {
+        let dir = std::env::temp_dir().join(format!("ds-stderr-tail-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let log = dir.join("stderr.log");
+        std::fs::write(
+            &log,
+            [b"x".repeat(10_000), b"\nlast words\n".to_vec()].concat(),
+        )
+        .unwrap();
+        let detail = with_stderr_tail("boom".to_string(), &log, &dir);
+        assert!(
+            detail.starts_with("boom; browser stderr tail: "),
+            "{detail}"
+        );
+        assert!(detail.ends_with("last words"), "{detail}");
+        std::fs::write(&log, b"").unwrap();
+        assert_eq!(
+            with_stderr_tail("boom".to_string(), &log, &dir),
+            "boom; browser stderr was empty"
+        );
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]

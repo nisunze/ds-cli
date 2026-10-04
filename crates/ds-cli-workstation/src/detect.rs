@@ -338,11 +338,48 @@ fn conventional_locations(component: &str, platform: Platform) -> Vec<PathBuf> {
 
 pub fn version(path: &Path, component: &str) -> Result<String, String> {
     let args: &[&str] = match component {
+        "chromium" => return browser_identity(path),
         "libreoffice" => &["--headless", "--version"],
-        "git-bash" | "git" | "pandoc" | "tippecanoe" | "chromium" => &["--version"],
+        "git-bash" | "git" | "pandoc" | "tippecanoe" => &["--version"],
         "pmtiles" => &["version"],
         _ => return Err("this component has no executable version probe".to_string()),
     };
+    run_version_probe(path, args)
+}
+
+/// The one browser identity probe: configure, verify, status and an explicit
+/// `DS_VD_CHROME` selection all read it. Windows browsers are GUI-subsystem
+/// executables that print nothing for `--version`, so there the identity comes
+/// from the file's version resource and the executable is never run.
+#[cfg(windows)]
+fn browser_identity(path: &Path) -> Result<String, String> {
+    crate::windows_version::product_identity(path)
+}
+
+#[cfg(not(windows))]
+fn browser_identity(path: &Path) -> Result<String, String> {
+    run_version_probe(path, &["--version"])
+}
+
+/// `<ProductName> <ProductVersion>`, the shape [`chromium_version_is_supported`]
+/// reads. Which product names are acceptable is that check's decision, so a
+/// foreign executable gets the same refusal as on Linux.
+#[cfg_attr(not(windows), allow(dead_code))]
+pub(crate) fn compose_product_identity(name: &str, version: &str) -> Result<String, String> {
+    let name = name.trim();
+    let version = version.split_whitespace().next().unwrap_or("");
+    if name.is_empty() {
+        return Err("the executable's version resource has an empty ProductName".to_string());
+    }
+    if !version.starts_with(|c: char| c.is_ascii_digit())
+        || !version.chars().all(|c| c.is_ascii_digit() || c == '.')
+    {
+        return Err("the executable's version resource has no numeric ProductVersion".to_string());
+    }
+    Ok(format!("{name} {version}"))
+}
+
+fn run_version_probe(path: &Path, args: &[&str]) -> Result<String, String> {
     let mut child = ProcessCommand::new(path)
         .args(args)
         .stdin(Stdio::null())
@@ -392,10 +429,21 @@ pub fn version(path: &Path, component: &str) -> Result<String, String> {
     Ok(line.chars().take(300).collect())
 }
 
+/// A supported product name followed by a version that starts with a digit, so
+/// `Microsoft Edge WebView2 154.0` and similar siblings are not a browser.
 pub(crate) fn chromium_version_is_supported(version: &str) -> bool {
-    version.starts_with("Chromium ")
-        || version.starts_with("Google Chrome ")
-        || version.starts_with("Microsoft Edge ")
+    [
+        "Chromium ",
+        "Google Chrome for Testing ",
+        "Google Chrome ",
+        "Microsoft Edge ",
+    ]
+    .iter()
+    .any(|prefix| {
+        version
+            .strip_prefix(prefix)
+            .is_some_and(|rest| rest.starts_with(|c: char| c.is_ascii_digit()))
+    })
 }
 
 pub fn snapshot(component: &Component, platform: Platform, probe_version: bool) -> Value {
@@ -634,6 +682,55 @@ mod tests {
             assert!(chromium_version_is_supported(version), "{version}");
         }
         assert!(!chromium_version_is_supported("Firefox 153.0"));
+        assert!(!chromium_version_is_supported(
+            "Microsoft Edge WebView2 154.0.4258.53"
+        ));
+        assert!(!chromium_version_is_supported("Google Chrome"));
+    }
+
+    #[test]
+    fn windows_version_resource_maps_to_the_supported_variant_shape() {
+        for (name, version, expected) in [
+            (
+                "Microsoft Edge",
+                "154.0.4258.53",
+                "Microsoft Edge 154.0.4258.53",
+            ),
+            (
+                "Google Chrome",
+                " 154.0.7000.0 ",
+                "Google Chrome 154.0.7000.0",
+            ),
+            (
+                "Chromium",
+                "154.0.1.2 (Official Build)",
+                "Chromium 154.0.1.2",
+            ),
+            (
+                "Google Chrome for Testing",
+                "154.0.7000.0",
+                "Google Chrome for Testing 154.0.7000.0",
+            ),
+        ] {
+            let identity = compose_product_identity(name, version).unwrap();
+            assert_eq!(identity, expected);
+            assert!(chromium_version_is_supported(&identity), "{identity}");
+        }
+    }
+
+    #[test]
+    fn windows_version_resource_of_a_wrong_executable_is_refused() {
+        for (name, version) in [
+            ("Notepad", "10.0.19041.1"),
+            ("Microsoft Edge WebView2", "154.0.4258.53"),
+            ("Firefox", "153.0"),
+        ] {
+            let identity = compose_product_identity(name, version).unwrap();
+            assert!(!chromium_version_is_supported(&identity), "{identity}");
+        }
+        assert!(compose_product_identity("", "154.0.1.2").is_err());
+        assert!(compose_product_identity("Microsoft Edge", "").is_err());
+        assert!(compose_product_identity("Microsoft Edge", "latest").is_err());
     }
 
     #[test]

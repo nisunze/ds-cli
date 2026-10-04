@@ -13,6 +13,8 @@ pub mod plan;
 pub mod policy;
 pub mod status;
 pub mod verify;
+#[cfg(windows)]
+mod windows_version;
 
 use ds_cli_contract::spec::{Arg, ArgKind, Availability, Domain, Refusal};
 

@@ -18,3 +18,8 @@ serde_json = { workspace = true }
 sha2 = { workspace = true }
 ureq = { workspace = true }
 url = { workspace = true }
+
+# A GUI-subsystem Windows browser does not answer `--version` on stdout, so its
+# identity is read from the executable's own version resource.
+[target.'cfg(windows)'.dependencies]
+windows-sys = { workspace = true }

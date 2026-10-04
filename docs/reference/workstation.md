@@ -51,7 +51,7 @@ ds workstation configure --component chromium --target reporter --yes --output j
 ds workstation verify --component chromium --output json
 ```
 
-`configure` probes the browser's version, prints a task-owned HTML page to a
+`configure` identifies the browser, prints a task-owned HTML page to a
 real PDF with `--headless` and a private temporary profile, checks `%PDF-`,
 cleans up, and atomically stores its absolute path in the DS-owned
 `chromium/browser-selection.json`. The selection contains schema
@@ -61,7 +61,14 @@ second identical call is a no-op after the smoke. The report runner reads that
 selection automatically for later one-command exports. No visible browser
 window or per-report setup is required. The Linux smoke uses `--no-sandbox`
 for its local task-owned HTML because host AppArmor may disable Chromium's
-unprivileged user namespace. `install --component chromium` always refuses:
+unprivileged user namespace. On Windows `chrome.exe` and `msedge.exe` do not
+answer `--version`, so `configure`, `verify` and an explicit `DS_VD_CHROME` all
+identify the executable from its version resource (ProductName and
+ProductVersion, for example `Microsoft Edge 154.0.4258.53`) without running it;
+any other product name or a missing resource is refused. A smoke that times out
+or fails reports the bounded tail of the browser's stderr, with the task
+directory shown as `<task>` and every other absolute path withheld.
+`install --component chromium` always refuses:
 DS does not download or install browsers.
 
 Pandoc and Linux LibreOffice install from the platform's own signed package
