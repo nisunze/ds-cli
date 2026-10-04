@@ -85,6 +85,7 @@ pub fn buffer_line(pts_in: &[Coord], r: f64, quad_segs: u32) -> Vec<Coord> {
         pts.windows(2)
             .map(|p| capsule(p[0], p[1], r, quad_segs))
             .collect(),
+        snap_deg(r),
     )
 }
 
@@ -105,7 +106,12 @@ pub fn buffer_polygon(ring_in: &[Coord], r: f64, quad_segs: u32) -> Vec<Coord> {
         .map(|i| capsule(pts[i], pts[(i + 1) % pts.len()], r, quad_segs))
         .collect();
     pieces.push(pts);
-    exterior_union(pieces)
+    exterior_union(pieces, snap_deg(r))
+}
+
+/// Node coalescing tolerance in degrees for a buffer of radius `r` metres.
+fn snap_deg(r: f64) -> f64 {
+    (r / 111_320.0 * 1e-6).max(1e-12)
 }
 
 fn capsule(a: Coord, b: Coord, r: f64, quad_segs: u32) -> Vec<Coord> {
@@ -223,7 +229,7 @@ fn location(p: Coord, ring: &[Coord]) -> i8 {
 
 /// Dissolve a connected set of rings. All decisions are on the constructed
 /// coordinates; this is topology cleanup, not a projection of the input.
-fn exterior_union(mut pieces: Vec<Vec<Coord>>) -> Vec<Coord> {
+fn exterior_union(mut pieces: Vec<Vec<Coord>>, snap: f64) -> Vec<Coord> {
     // Put all pieces in the same longitude branch (including dateline routes).
     let origin = pieces[0][0].lng;
     for ring in &mut pieces {
@@ -330,17 +336,21 @@ fn exterior_union(mut pieces: Vec<Vec<Coord>>) -> Vec<Coord> {
     let mut nodes = Vec::<Coord>::new();
     let mut node_bins = std::collections::BTreeMap::<(i64, i64), Vec<usize>>::new();
     let mut boundary = std::collections::BTreeSet::new();
-    // Only coalesce roundoff from computing the same intersection along
-    // different edges (about 0.1 micrometre), below input deduplication tolerance.
+    // Coalesce one point computed twice: an intersection along two edges, or a
+    // joint offset built by both neighbouring capsules. On a straight multi-span
+    // section the two capsules reach the shared offset through bearings that
+    // differ only by roundoff, about 2e-13 of the radius; left apart, the
+    // boundary breaks and the ring comes back empty. `snap` is far above that
+    // noise and far below the arc vertex spacing (about a fifth of the radius).
     let mut intern = |p: Coord| {
-        const EPS: f64 = 1e-12;
-        let key = ((p.lng / EPS).floor() as i64, (p.lat / EPS).floor() as i64);
+        let eps = snap;
+        let key = ((p.lng / eps).floor() as i64, (p.lat / eps).floor() as i64);
         for x in key.0 - 1..=key.0 + 1 {
             for y in key.1 - 1..=key.1 + 1 {
                 if let Some(ids) = node_bins.get(&(x, y)) {
                     for &id in ids {
-                        if (nodes[id].lng - p.lng).abs() <= EPS
-                            && (nodes[id].lat - p.lat).abs() <= EPS
+                        if (nodes[id].lng - p.lng).abs() <= eps
+                            && (nodes[id].lat - p.lat).abs() <= eps
                         {
                             return id;
                         }
@@ -786,5 +796,34 @@ mod tests {
             max_lng > route_max_lng,
             "the end cap extends past the route"
         );
+    }
+
+    // Gisagara M3 tension section (three spans on one straight line, as exported
+    // by `ds dsgrid-exchange convert`): its 2 m buffer came back empty because the
+    // joint offsets built by the two neighbouring capsules differed by roundoff.
+    #[test]
+    fn a_straight_multi_span_section_keeps_its_buffer() {
+        let section = [
+            Coord::new(29.814310244341684, -2.609957170764343),
+            Coord::new(29.814550356843622, -2.6100127785853275),
+            Coord::new(29.81487938110083, -2.610088977438698),
+            Coord::new(29.815184275010516, -2.6101595878296404),
+        ];
+        assert_simple(&buffer_line(&section, 2.0, 8));
+    }
+
+    // Collinear spans of uneven length carry roundoff micro-turns at every joint.
+    // Every radius the vector command admits must still trace a closed ring.
+    #[test]
+    fn straight_spans_keep_their_buffer_at_every_radius() {
+        let mut line = vec![Coord::new(29.8256716, -2.6722028)];
+        for length in [60.63, 64.95, 59.95, 54.96, 54.96, 64.95, 59.95, 64.79] {
+            line.push(destination(*line.last().unwrap(), 62.281, length));
+        }
+        for r in [0.01, 0.5, 2.0, 25.0, 1_000.0] {
+            let ring = buffer_line(&line, r, 8);
+            assert!(!ring.is_empty(), "radius {r} m produced no ring");
+            assert_simple(&ring);
+        }
     }
 }
