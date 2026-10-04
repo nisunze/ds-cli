@@ -180,6 +180,8 @@ pub(super) fn select(rows: &[Row], requested: &TransformerSet) -> Vec<Row> {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct Inputs {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project_crs: Option<ds_command_kernel::printing::project_crs::Capture>,
     /// The whole project's lifecycle inventory.
     pub rows: Vec<Row>,
     /// The project configuration's Network Reporter receipt members.
@@ -840,6 +842,7 @@ mod tests {
                 .contains(DEVICE_AUTH_TRANSIENT_REFUSAL.code)
         );
         let inputs = Inputs {
+            project_crs: None,
             rows: vec![Row {
                 name: "t1".into(),
                 kind: "transformer".into(),

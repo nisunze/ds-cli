@@ -151,6 +151,24 @@ pub fn run(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
     if config.identity() != identity || config.project_id() != project {
         return Err(invalid("configuration scope changed"));
     }
+    let directory = ds_cli_auth::project_directory(lane)?;
+    if directory.identity() != identity {
+        return Err(invalid("project CRS discovery scope changed"));
+    }
+    let project_crs = directory
+        .project_params(project)
+        .filter(|params| params["crs"].is_object())
+        .map(|params| {
+            printing::project_crs::Capture::new(
+                project,
+                lane,
+                identity.uid(),
+                identity.credential_audience_sha256(),
+                params.clone(),
+            )
+        })
+        .transpose()
+        .map_err(invalid)?;
     let receipt = InputReceipt::from_config(&config.result().document).map_err(invalid)?;
     let receipt = super::export::complete_proof_print_styles(
         lane,
@@ -322,7 +340,7 @@ pub fn run(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
     } else {
         sources.vectors()
     };
-    let render = json!({"schema":"ds.print-layout-export/v1","renderer_defaults":renderer_defaults,"render":{"renderer_defaults":renderer_defaults,"layout":layout,"layers":render_layers,"extent":extent,"focus_extent":extent,"print_styles":sheets["printing_styles"],"symbol_assets":sheets.get("printing_symbol_assets").cloned().unwrap_or_else(||json!({})),"text":{"project":project,"transformer":layout.name}},"formats":["pdf","png"],"dpi":300,"out_dir":out.join("rendered")});
+    let render = json!({"schema":"ds.print-layout-export/v1","renderer_defaults":renderer_defaults,"render":{"project_crs":project_crs,"report_config":sheets,"renderer_defaults":renderer_defaults,"layout":layout,"layers":render_layers,"extent":extent,"focus_extent":extent,"print_styles":sheets["printing_styles"],"symbol_assets":sheets.get("printing_symbol_assets").cloned().unwrap_or_else(||json!({})),"text":{"project":project,"transformer":layout.name}},"formats":["pdf","png"],"dpi":300,"out_dir":out.join("rendered")});
     let path = out.join("render-request.json");
     let data = serde_json::to_vec(&render).map_err(invalid)?;
     std::fs::OpenOptions::new()

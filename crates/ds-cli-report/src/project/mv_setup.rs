@@ -128,8 +128,40 @@ pub(crate) fn resolve_project_print(
     lane: &str,
     project: &str,
     fields: BTreeMap<ModelField, String>,
-) -> Result<(Resolved, Value, Value), Failure> {
-    let configuration = ds_cli_auth::feeder_configuration_for_project(lane, project)?.into_result();
+) -> Result<
+    (
+        Resolved,
+        Value,
+        Value,
+        Value,
+        Option<ds_command_kernel::printing::project_crs::Capture>,
+    ),
+    Failure,
+> {
+    let scoped = ds_cli_auth::feeder_configuration_for_project(lane, project)?;
+    let directory = ds_cli_auth::project_directory(lane)?;
+    if scoped.project_id() != project || scoped.identity() != directory.identity() {
+        return Err(Failure::invalid(
+            "print_project_crs_context_mismatch",
+            "print project CRS/configuration context differs",
+        ));
+    }
+    let identity = scoped.identity();
+    let project_crs = directory
+        .project_params(project)
+        .filter(|params| params["crs"].is_object())
+        .map(|params| {
+            ds_command_kernel::printing::project_crs::Capture::new(
+                project,
+                lane,
+                identity.uid(),
+                identity.credential_audience_sha256(),
+                params.clone(),
+            )
+        })
+        .transpose()
+        .map_err(|e| Failure::invalid("print_project_crs_invalid", e))?;
+    let configuration = scoped.into_result();
     let sheets = printing_inputs(lane, project, &configuration.document["sheets"])?;
     let setup = mv::resolve(&sheets, project, fields).map_err(failure)?;
     let table = ds_cli_auth::style_governance(
@@ -144,7 +176,7 @@ pub(crate) fn resolve_project_print(
     let (paper, renderer) = mv::resolve_print_bindings(&setup, &snapshot).map_err(|error| {
         Failure::failed(STYLE_REFUSAL.code, error.to_string()).remedy(STYLE_REFUSAL.remedy)
     })?;
-    Ok((setup, json!(paper), json!(renderer)))
+    Ok((setup, json!(paper), json!(renderer), sheets, project_crs))
 }
 
 pub fn set(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {

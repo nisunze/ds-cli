@@ -27,7 +27,7 @@ const FILE: Arg = Arg::value("file", "<path>", "JSON sheet value, at most 16 MiB
 const PARAMETER: Arg = Arg::value(
     "parameter",
     "<name>",
-    "Existing parameter; kernel canonical name matching.",
+    "Existing parameter or governed map printing default.",
 )
 .required();
 const VALUE: Arg = Arg::value(
@@ -156,13 +156,17 @@ pub static DIFF: Command = command(
     Effect::LocalAuthState,
     &[crate::PROJECT_ARG, LANE, SHEET, FILE, LIMIT, OFFSET],
 );
-pub static SET: Command = command(
-    "design.config.set",
-    &["design", "config", "set"],
-    "Set one existing Settings parameter and verify readback.",
-    Effect::GlobalWrite,
-    &[crate::PROJECT_ARG, LANE, SHEET, PARAMETER, VALUE],
-);
+pub static SET: Command = Command {
+    purpose: "Set one project Settings parameter and verify readback through the signed-in native client. Governed map printing defaults can be authored before a row exists: keep_all_labels_at_high_density is false; print_metric_grid_enabled is true; print_metric_grid_interval_m is automatic (use automatic or positive metres). Every map print reads these settings. Automatic spacing uses its actual frame/scale and round 1/2/2.5/5 steps per decade for about 4–8 lines. Other parameters must already exist. Read/diff first; --yes saves only the named project.",
+    search: &["printing", "labels", "metric grid", "density"],
+    ..command(
+        "design.config.set",
+        &["design", "config", "set"],
+        "Set a project Settings parameter and verify readback.",
+        Effect::GlobalWrite,
+        &[crate::PROJECT_ARG, LANE, SHEET, PARAMETER, VALUE],
+    )
+};
 pub static SAVE: Command = command(
     "design.config.save",
     &["design", "config", "save"],

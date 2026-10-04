@@ -3015,6 +3015,7 @@ pub fn transformer_status_for_project(
 /// list` performs, exposed as a library answer so a caller that is about to
 /// visit many projects does not have to shell out to itself.
 pub struct HeadlessDirectory {
+    project_params: BTreeMap<String, Value>,
     identity: ProviderIdentity,
     lane: &'static str,
     elevated: bool,
@@ -3022,6 +3023,10 @@ pub struct HeadlessDirectory {
 }
 
 impl HeadlessDirectory {
+    /// One exact visible project's normalized parameters; never a saved project selection.
+    pub fn project_params(&self, project: &str) -> Option<&Value> {
+        self.project_params.get(project)
+    }
     pub const fn identity(&self) -> &ProviderIdentity {
         &self.identity
     }
@@ -3052,6 +3057,11 @@ pub fn project_directory(lane_value: &str) -> Result<HeadlessDirectory, Failure>
         )?;
         let directory = device.list_projects().map_err(map_client)?;
         return Ok(HeadlessDirectory {
+            project_params: directory
+                .projects()
+                .iter()
+                .map(|p| (p.ds_project().to_owned(), p.project_params().clone()))
+                .collect(),
             identity,
             lane: lane.token(),
             elevated: directory.elevated(),
@@ -3069,6 +3079,11 @@ pub fn project_directory(lane_value: &str) -> Result<HeadlessDirectory, Failure>
     )?;
     let directory = client.list_projects(now()).map_err(map_client)?;
     Ok(HeadlessDirectory {
+        project_params: directory
+            .projects()
+            .iter()
+            .map(|p| (p.ds_project().to_owned(), p.project_params().clone()))
+            .collect(),
         identity,
         lane: lane.token(),
         elevated: directory.elevated(),

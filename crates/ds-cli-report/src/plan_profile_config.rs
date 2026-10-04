@@ -301,7 +301,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let config = decode_config(&bytes)?;
     let base = config_path.parent().expect("absolute file has parent");
     let output_root = validate(&config, project, base, Path::new(inputs.require("out")?))?;
-    let (resolved, style_resolution, renderer_defaults) =
+    let (resolved, style_resolution, renderer_defaults, report_config, project_crs) =
         crate::project::mv_setup::resolve_project_print(
             inputs.require("lane")?,
             project,
@@ -320,6 +320,8 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     for variant in &config.variants {
         let out_dir = staging.path().join(&variant.name);
         let request = json!({
+            "project_crs":project_crs,
+            "report_config":report_config,
             "preview_only":config.preview_only,
             "project_id": config.project_id,
             "scene_path": resolve(base, &config.scene_path),

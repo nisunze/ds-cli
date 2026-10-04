@@ -1147,6 +1147,8 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         "project": {"ds_project": project_id, "project_name": null, "status": null},
     });
     let mut output = project_receipt.clone();
+    output["project_crs_capture"] = serde_json::to_value(&held_inputs.project_crs)
+        .map_err(|e| Failure::invalid("report_inputs_invalid", e.to_string()))?;
     let scope = super::scope_rows_json(&requested, &rows);
     let mut lifecycle: BTreeMap<String, String> = BTreeMap::new();
     let mut active = Vec::new();
@@ -1862,6 +1864,38 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         } else {
             print_context
         };
+        let print_context = if let Some(capture) = &held_inputs.project_crs {
+            let mut document = if let Some(context) = &print_context {
+                if ds_command_kernel::report_export::sha256_hex(&context.bytes) != context.sha256 {
+                    return Err(HostFailure::new(
+                        CONTEXT_INVALID.code,
+                        "print context changed before CRS capture",
+                    ));
+                }
+                serde_json::from_slice::<Value>(&context.bytes)
+                    .map_err(|e| HostFailure::new(CONTEXT_INVALID.code, e.to_string()))?
+            } else {
+                json!({"schema":"ds.print-context/v1","layers":{},"sources":[],"coverage":null})
+            };
+            document["project_crs"] = serde_json::to_value(capture)
+                .map_err(|e| HostFailure::new(CONTEXT_INVALID.code, e.to_string()))?;
+            let bytes = serde_json::to_vec(&document)
+                .map_err(|e| HostFailure::new(CONTEXT_INVALID.code, e.to_string()))?;
+            Some(ds_report_host::PrintContextBytes {
+                sha256: ds_command_kernel::report_export::sha256_hex(&bytes),
+                bytes,
+                layers: print_context
+                    .as_ref()
+                    .map(|c| c.layers.clone())
+                    .unwrap_or_default(),
+                omitted: print_context
+                    .as_ref()
+                    .map(|c| c.omitted.clone())
+                    .unwrap_or_default(),
+            })
+        } else {
+            print_context
+        };
         let sheet = sheet_positions.get(name).copied();
         let survey = if survey_forms.is_empty() {
             None
@@ -2461,6 +2495,19 @@ fn project_inputs(
     }
     let unreachable = link.unreachable().unwrap_or("unreachable").to_string();
     let inputs = hold.inputs(&unreachable)?;
+    if let Some(capture) = &inputs.project_crs {
+        capture
+            .validate_scope(
+                project,
+                lane,
+                identity.uid(),
+                identity.credential_audience_sha256(),
+                None,
+            )
+            .map_err(|e| {
+                Failure::invalid("report_inputs_invalid", e).remedy(INPUTS_INVALID.remedy)
+            })?;
+    }
     let receipt = json!({"source": "held", "read_at": inputs.read_at, "unreachable": unreachable});
     Ok((inputs, receipt))
 }
@@ -2653,7 +2700,26 @@ fn read_inputs(
     let Some(setups) = named_printing_setups(lane, project, &receipt, link, selection)? else {
         return Ok(None);
     };
+    let Some(directory) = link.read(|| ds_cli_auth::project_directory(lane))? else {
+        return Ok(None);
+    };
+    require_same_context(identity, project, directory.identity(), project).map_err(host_failure)?;
+    let project_crs = directory
+        .project_params(project)
+        .filter(|params| params["crs"].is_object())
+        .map(|params| {
+            ds_command_kernel::printing::project_crs::Capture::new(
+                project,
+                lane,
+                identity.uid(),
+                identity.credential_audience_sha256(),
+                params.clone(),
+            )
+        })
+        .transpose()
+        .map_err(|e| Failure::invalid("report_inputs_invalid", e).remedy(INPUTS_INVALID.remedy))?;
     Ok(Some(super::hold::Inputs {
+        project_crs,
         rows: super::hold::rows(inventory.result()),
         configuration,
         setups,
