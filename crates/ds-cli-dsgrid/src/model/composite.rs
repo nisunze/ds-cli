@@ -15,12 +15,12 @@ use std::collections::BTreeMap;
 pub const REQUEST: Arg = Arg::value(
     "request",
     "<request.json>",
-    "Typed split, link or reconciliation request; schemas come from ds dsgrid describe --linked-models.",
+    "Typed split, burst or derive request; schemas come from ds dsgrid describe --linked-models.",
 );
 pub const BUNDLE: Arg = Arg::value(
     "bundle",
     "<linked.dsgrid-links>",
-    "One exact local linked checkpoint; opens every digest-pinned package.",
+    "One exact local linked checkpoint; opens every digest-pinned package. Omitted on reconcile, the derive request names the submodels.",
 );
 pub const OUT: Arg = Arg::value(
     "out",
@@ -130,8 +130,8 @@ command!(
     "dsgrid.model.split",
     "split",
     Effect::GlobalWrite,
-    "Partition a model into linked owner parts with a digest proof.",
-    "Select canonical features, planar points in a polygon, or an exact scalar attribute through the engine's SplitRequest. The original policy explicitly retires its graph identity or retains it as one part. Reference ties are read-only mirrors. Plans by default; --apply writes one complete local checkpoint. --publication captures every explicit project binding and head fence; --apply then publishes one verified atomic generation, including optional retirement of the split original.",
+    "Partition a submodel into linked owner parts with a digest proof.",
+    "Select canonical features, planar points in a polygon, or an exact scalar attribute through the engine's SplitRequest. The combined model of the parts is automatic: its identity derives from the part identities and nobody creates, combines or deletes it. The original policy explicitly retires the original identity or retains it as one part. Reference ties are read-only mirrors. Plans by default; --apply writes one complete local checkpoint. --publication captures every explicit project binding and head fence; --apply then publishes one verified atomic generation, including optional retirement of the split original.",
     &[
         Arg::value(
             "package",
@@ -148,12 +148,12 @@ command!(
     "ds dsgrid model split --package /work/original.dsgrid --request /work/split.json --output json"
 );
 command!(
-    COMBINE,
-    "dsgrid.model.combine",
-    "combine",
+    RECONCILE,
+    "dsgrid.model.reconcile",
+    "reconcile",
     Effect::GlobalWrite,
-    "Build or refresh a composite from its linked owner parts.",
-    "With --request and no --bundle, build a new graph from exact source packages and explicit shared ownership. With --bundle, refresh through three-way reconciliation, preserving composite edits and refusing exact conflicts. --edited supplies immutable candidate participant packages. Plans by default; --apply commits one new local checkpoint.",
+    "Keep the automatic combined model in step with its submodels in one bounded burst.",
+    "The combined model is automatic: it is derived from its submodels and nobody creates, combines or deletes it. With --bundle, the burst request pins expected_generation and max_affected_features; edits are compared with the saved baseline, all owner/combined conflicts are named, span/corridor and section calculations are localized, and unavailable sag/clearance inputs are reported. Without --bundle, the derive request names 2..100 exact submodel packages and explicit owners for shared features, and derives generation zero of their combined model. Default is a dry run. --apply commits graph and every package together to a new local checkpoint; --publication additionally stages exact bytes and publishes one atomic project version vector.",
     &[
         BUNDLE,
         REQUEST.required(),
@@ -163,25 +163,7 @@ command!(
         PUBLICATION,
         LANE
     ],
-    "ds dsgrid model combine --bundle /work/linked.dsgrid-links --request /work/burst.json --edited part-a=/work/part-a.dsgrid --output json"
-);
-command!(
-    RECONCILE,
-    "dsgrid.model.reconcile",
-    "reconcile",
-    Effect::GlobalWrite,
-    "Propagate linked edits in one fenced, bounded burst.",
-    "Pins expected_generation and max_affected_features in the typed request. Compares edits with the saved baseline, names all owner/composite conflicts, localizes span/corridor and section calculations, and reports unavailable sag/clearance inputs. Default is a dry run. --apply commits graph and every package together to a new local checkpoint; --publication additionally stages exact bytes and publishes one atomic project version vector.",
-    &[
-        BUNDLE.required(),
-        REQUEST.required(),
-        EDIT,
-        OUT,
-        APPLY,
-        PUBLICATION,
-        LANE
-    ],
-    "ds dsgrid model reconcile --bundle /work/linked.dsgrid-links --request /work/burst.json --edited combined=/work/combined.dsgrid --apply --out /work/generation-2.dsgrid-links --output json"
+    "ds dsgrid model reconcile --bundle /work/linked.dsgrid-links --request /work/burst.json --edited north=/work/north.dsgrid --apply --out /work/generation-2.dsgrid-links --output json"
 );
 command!(
     STATUS,
@@ -276,7 +258,10 @@ pub fn split(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     finish(inputs, checkpoint, None, Some(&bytes))
 }
 
-pub fn link(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
+/// Derive generation zero of the automatic combined model from exact
+/// submodel packages. Nobody names the combined model: the engine derives
+/// its identity from the part identities.
+fn derive(inputs: &Inputs) -> Result<Value, Failure> {
     if !inputs.repeated("edited").is_empty() {
         return Err(Failure::invalid(
             "composite_invalid",
@@ -287,7 +272,7 @@ pub fn link(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     if !(2..=100).contains(&request.sources.len()) {
         return Err(Failure::invalid(
             "composite_invalid",
-            "link needs 2..100 sources",
+            "the derive request needs 2..100 submodel sources",
         ));
     }
     let mut packages = BTreeMap::new();
@@ -303,8 +288,7 @@ pub fn link(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         }
     }
     let checkpoint =
-        linked_models::link_packages(&request.composite, packages, &request.shared_owners)
-            .map_err(failure)?;
+        linked_models::link_packages(packages, &request.shared_owners).map_err(failure)?;
     finish(inputs, checkpoint, None, None)
 }
 
@@ -341,19 +325,14 @@ fn candidate(inputs: &Inputs) -> Result<LinkedCheckpoint, Failure> {
 }
 
 pub fn reconcile(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
+    if inputs.value("bundle").is_none() {
+        return derive(inputs);
+    }
     let checkpoint = candidate(inputs)?;
     let (checkpoint, report) =
         linked_models::reconcile_checkpoint(&checkpoint, &request::<ReconcileRequest>(inputs)?)
             .map_err(failure)?;
     finish(inputs, checkpoint, Some(report), None)
-}
-
-pub fn combine(inputs: &Inputs, context: &Context) -> Result<Value, Failure> {
-    if inputs.value("bundle").is_some() {
-        reconcile(inputs, context)
-    } else {
-        link(inputs, context)
-    }
 }
 
 pub fn status(inputs: &Inputs, context: &Context) -> Result<Value, Failure> {

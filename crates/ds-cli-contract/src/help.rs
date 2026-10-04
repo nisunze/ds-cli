@@ -16,7 +16,7 @@
 
 use std::fmt::Write as _;
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::spec::{Arg, ArgKind, Command, Domain, Effect};
 

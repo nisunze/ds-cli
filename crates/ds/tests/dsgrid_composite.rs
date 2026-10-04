@@ -81,7 +81,6 @@ fn all_linked_commands_plan_by_default_apply_atomically_and_name_conflicts() {
         &split_request,
         &SplitRequest {
             original: "cli-original".into(),
-            composite: "combined".into(),
             selected_part: "north".into(),
             remainder_part: "south".into(),
             selector: PartitionSelector::Attribute {
@@ -108,14 +107,19 @@ fn all_linked_commands_plan_by_default_apply_atomically_and_name_conflicts() {
     ]);
     assert_eq!(dry["status"], "dry_run");
     assert!(!bundle.exists());
+    // Nobody names the combined model: its identity derives from the parts.
+    let combined =
+        ds_grid_engine::composite::combined_identity(&std::collections::BTreeSet::from([
+            "north".to_string(),
+            "south".to_string(),
+        ]));
+    assert_eq!(dry["composite"], combined.as_str());
     let publication = root.join("publication.json");
-    write_json(
-        &publication,
-        &json!({"project":"project-1","graph_id":"graph-1","expected_generation":null,"model_kind":"general","participants":{
-      "combined":{"model_id":"project-combined","expected_head_revision_id":"","display_name":"Combined"},
+    let mut binding = json!({"project":"project-1","graph_id":"graph-1","expected_generation":null,"model_kind":"general","participants":{
       "north":{"model_id":"project-north","expected_head_revision_id":"","display_name":"North"},
-      "south":{"model_id":"project-south","expected_head_revision_id":"","display_name":"South"}},"retire":null,"reason":"Initial linked split"}),
-    );
+      "south":{"model_id":"project-south","expected_head_revision_id":"","display_name":"South"}},"retire":null,"reason":"Initial linked split"});
+    binding["participants"][combined.as_str()] = json!({"model_id":"project-combined","expected_head_revision_id":"","display_name":"Combined"});
+    write_json(&publication, &binding);
     let project_dry = ok(&[
         "dsgrid",
         "model",
@@ -221,10 +225,10 @@ fn all_linked_commands_plan_by_default_apply_atomically_and_name_conflicts() {
             new_owners: BTreeMap::new(),
         },
     );
-    let combined = ok(&[
+    let steady = ok(&[
         "dsgrid",
         "model",
-        "combine",
+        "reconcile",
         "--bundle",
         path(&bundle),
         "--request",
@@ -232,7 +236,8 @@ fn all_linked_commands_plan_by_default_apply_atomically_and_name_conflicts() {
         "--output",
         "json",
     ]);
-    assert_eq!(combined["counts"]["dirty"], 0);
+    assert_eq!(steady["counts"]["dirty"], 0);
+    assert_eq!(steady["generation"], 0);
     let checkpoint = linked_models::decode(&std::fs::read(&bundle).unwrap()).unwrap();
     let mut owner = checkpoint.packages["north"].clone();
     owner.snapshot.terrain_points[0].description = Some("owner change".into());
@@ -258,11 +263,11 @@ fn all_linked_commands_plan_by_default_apply_atomically_and_name_conflicts() {
     ]);
     assert_eq!(reconciled["generation"], 1);
     assert_eq!(reconciled["counts"]["dirty"], 1);
-    let mut composite = checkpoint.packages["combined"].clone();
+    let mut composite = checkpoint.packages[&combined].clone();
     composite.snapshot.terrain_points[0].description = Some("other change".into());
     let composite_path = root.join("composite.dsgrid");
     std::fs::write(&composite_path, repack(&composite)).unwrap();
-    let composite_arg = format!("combined={}", composite_path.display());
+    let composite_arg = format!("{combined}={}", composite_path.display());
     let (error, code) = common::json(&[
         "dsgrid",
         "model",
@@ -290,25 +295,78 @@ fn all_linked_commands_plan_by_default_apply_atomically_and_name_conflicts() {
         std::fs::write(&p, repack(&checkpoint.packages[id])).unwrap();
         sources.push(p);
     }
-    let link_request = root.join("link.json");
+    // Deriving the combined model again from the same two submodels is the
+    // same deterministic master: same identity, same canonical digest.
+    let derive_request = root.join("derive.json");
     write_json(
-        &link_request,
-        &json!({"composite":"linked-again","sources":sources,"shared_owners":{}}),
+        &derive_request,
+        &json!({"sources":sources,"shared_owners":{}}),
     );
-    let linked = ok(&[
+    let derived = ok(&[
+        "dsgrid",
+        "model",
+        "reconcile",
+        "--request",
+        path(&derive_request),
+        "--output",
+        "json",
+    ]);
+    assert_eq!(derived["status"], "dry_run");
+    assert_eq!(derived["features"], 2);
+    assert_eq!(derived["composite"], combined.as_str());
+    assert_eq!(derived["canonical_digest"], applied["canonical_digest"]);
+    // No user-facing create or combine: `model link` is the PLS-CADD
+    // provenance link only, and `model combine` does not exist.
+    let (refused, code) = common::json(&[
         "dsgrid",
         "model",
         "link",
         "--request",
-        path(&link_request),
+        path(&derive_request),
         "--output",
         "json",
     ]);
-    assert_eq!(linked["status"], "dry_run");
-    assert_eq!(linked["features"], 2);
+    assert_ne!(code, 0, "{refused}");
+    let (refused, code) = common::json(&[
+        "dsgrid",
+        "model",
+        "combine",
+        "--bundle",
+        path(&bundle),
+        "--request",
+        path(&burst),
+        "--output",
+        "json",
+    ]);
+    assert_ne!(code, 0, "{refused}");
+    // The combined model is never a PLS-CADD export unit.
+    let packages = linked_models::exact_packages(&std::fs::read(&bundle).unwrap()).unwrap();
+    let combined_package = root.join("combined.dsgrid");
+    std::fs::write(&combined_package, &packages[&combined]).unwrap();
+    let plan = ok(&[
+        "dsgrid-exchange",
+        "plan",
+        "--source",
+        path(&combined_package),
+        "--target",
+        "pls-bak",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(plan["executable"], false, "{plan}");
+    assert!(
+        plan["blockers"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|blocker| blocker
+                .as_str()
+                .is_some_and(|text| text.contains("PLS-CADD export refused"))),
+        "{plan}"
+    );
     let descriptor = ok(&["dsgrid", "describe", "--linked-models", "--output", "json"]);
     assert_eq!(descriptor, ds_grid_engine::composite::descriptors());
-    for verb in ["split", "combine", "link", "reconcile", "status"] {
+    for verb in ["split", "reconcile", "status"] {
         let d = ok(&[
             "capabilities",
             &format!("dsgrid.model.{verb}"),

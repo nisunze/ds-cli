@@ -741,7 +741,7 @@ impl Command {
     pub fn confirmation_required_for(&self, inputs: &crate::args::Inputs) -> bool {
         match self.confirmation_trigger() {
             Some("--apply") => {
-                return inputs.switch("apply") && inputs.value("publication").is_some()
+                return inputs.switch("apply") && inputs.value("publication").is_some();
             }
             Some("--write") => return inputs.switch("write"),
             _ => {}
@@ -1005,9 +1005,11 @@ mod tests {
             availability: available,
         };
         assert_eq!(VALUE.preview_switch(), None);
-        assert!(crate::help::command_json(&VALUE)
-            .get("preview_switch")
-            .is_none());
+        assert!(
+            crate::help::command_json(&VALUE)
+                .get("preview_switch")
+                .is_none()
+        );
         let gated = crate::parse(&VALUE, &["--dry-run".to_string(), "x".to_string()]).unwrap();
         assert!(VALUE.confirmation_required_for(&gated));
     }

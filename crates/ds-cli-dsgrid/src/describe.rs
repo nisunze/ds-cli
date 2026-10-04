@@ -44,7 +44,7 @@ pub static COMMAND: Command = Command {
         Arg::value("id", "<id>", "Return this one entry's full descriptor."),
         Arg::switch(
             "linked-models",
-            "Read the engine's linked split/link/reconcile request schemas and refusal vocabulary.",
+            "Read the engine's linked split/burst/derive request schemas, the automatic combined-model rule and the refusal vocabulary.",
         ),
         Arg::switch(
             "linked-publication",

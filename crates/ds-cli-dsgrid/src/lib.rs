@@ -113,7 +113,6 @@ pub static DOMAIN: Domain = Domain {
         &model::import_external::COMMAND,
         &model::link::COMMAND,
         &model::composite::SPLIT,
-        &model::composite::COMBINE,
         &model::composite::RECONCILE,
         &model::composite::STATUS,
         &model::unlink::COMMAND,

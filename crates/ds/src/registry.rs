@@ -358,11 +358,6 @@ static DSGRID_ENTRIES: &[Entry] = &[
         render: ds_cli_dsgrid::model::composite::render,
     },
     Entry {
-        command: &ds_cli_dsgrid::model::composite::COMBINE,
-        handler: ds_cli_dsgrid::model::composite::combine,
-        render: ds_cli_dsgrid::model::composite::render,
-    },
-    Entry {
         command: &ds_cli_dsgrid::model::composite::RECONCILE,
         handler: ds_cli_dsgrid::model::composite::reconcile,
         render: ds_cli_dsgrid::model::composite::render,

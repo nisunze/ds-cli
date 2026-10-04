@@ -32,7 +32,7 @@ const MODEL_ARG: Arg = Arg {
     name: "model",
     kind: ArgKind::Value,
     value: "<model-id>",
-    required: false,
+    required: true,
     default: None,
     choices: &[],
     summary: "The working copy to link, by the id `ds dsgrid model list` reports.",
@@ -42,25 +42,31 @@ const WORKSPACE_ARG: Arg = Arg {
     name: "workspace",
     kind: ArgKind::Value,
     value: "<folder>",
-    required: false,
+    required: true,
     default: None,
     choices: &[],
     summary: "The PLS-CADD workspace folder (the one holding the .don) this copy was converted from.",
 };
 
-const LINK_OWN: [Refusal; 5] = [
+/// The automatic combined model of linked submodels is never a PLS-CADD
+/// export unit, so it never gains a workspace to sync into.
+const COMBINED_MODEL_NOT_EXPORTABLE: Refusal = Refusal {
+    code: "combined_model_not_exportable",
+    when: "the working copy is the automatic combined model of linked submodels",
+    remedy: "link and sync each submodel; the combined model serves tiling and combined reports",
+};
+
+const LINK_OWN: [Refusal; 6] = [
     WORKSPACE_NOT_FOUND,
     WORKSPACE_NOT_THIS_PACKAGE,
     MODEL_NOT_FROM_PLS,
+    COMBINED_MODEL_NOT_EXPORTABLE,
     crate::folder::TOO_LARGE,
     crate::folder::UNREADABLE,
 ];
-const REFUSALS: &[Refusal;
-     LINK_OWN.len() + workspace::REFUSALS.len() + super::composite::REFUSALS.len()] = &refusals();
-const fn refusals()
--> [Refusal; LINK_OWN.len() + workspace::REFUSALS.len() + super::composite::REFUSALS.len()] {
-    let mut all = [WORKSPACE_NOT_FOUND;
-        LINK_OWN.len() + workspace::REFUSALS.len() + super::composite::REFUSALS.len()];
+const REFUSALS: &[Refusal; LINK_OWN.len() + workspace::REFUSALS.len()] = &refusals();
+const fn refusals() -> [Refusal; LINK_OWN.len() + workspace::REFUSALS.len()] {
+    let mut all = [WORKSPACE_NOT_FOUND; LINK_OWN.len() + workspace::REFUSALS.len()];
     let mut index = 0;
     while index < LINK_OWN.len() {
         all[index] = LINK_OWN[index];
@@ -71,22 +77,16 @@ const fn refusals()
         all[LINK_OWN.len() + shared] = workspace::REFUSALS[shared];
         shared += 1;
     }
-    let mut linked = 0;
-    while linked < super::composite::REFUSALS.len() {
-        all[LINK_OWN.len() + workspace::REFUSALS.len() + linked] =
-            super::composite::REFUSALS[linked];
-        linked += 1;
-    }
     all
 }
 
 pub static COMMAND: Command = Command {
     id: "dsgrid.model.link",
     path: &["dsgrid", "model", "link"],
-    contract: 2,
-    summary: "Link owner parts to a composite or a PLS-CADD source workspace.",
+    contract: 1,
+    summary: "Pin a working copy to the live PLS-CADD workspace it came from.",
     purpose: "\
-With --request, link exact .dsgrid parts into a composite using explicit shared ownership. The engine schemas are at ds dsgrid describe --linked-models. This mode plans by default; --apply --out commits one local linked checkpoint, and --publication also publishes one atomic project generation. It refuses mixed workspace and graph arguments. Without --request, --model, --workspace and --account name the explicit PLS-CADD source-workspace operation. Records on this machine's catalogue row which PLS-CADD workspace folder a \
+Records on this machine's catalogue row which PLS-CADD workspace folder a \
 working copy was converted from: the folder, the exchange digest of its \
 member tree (the digest `ds dsgrid-exchange inspect` prints), the PLS-CADD \
 program version and each native member family's version (DON 57, CRI 94, \
@@ -96,40 +96,25 @@ sync` writes DS edits back into that folder in place. Relinking replaces the \
 previous link. Nothing in the workspace is read for engineering and nothing \
 in it is written.",
     chapter: Chapter::GridModel,
-    effect: Effect::GlobalWrite,
-    authority: Authority::HeadlessProject,
+    effect: Effect::LocalFileWrite,
+    authority: Authority::None,
     execution: Execution::Sync,
     args: &[
         MODEL_ARG,
         WORKSPACE_ARG,
         workspace::LANE_ARG,
-        Arg::value(
-            "account",
-            "<uid>",
-            "Required for the PLS-CADD workspace mode; the working copy's DS account.",
-        ),
-        super::composite::REQUEST,
-        super::composite::OUT,
-        super::composite::APPLY,
-        super::composite::PUBLICATION,
+        workspace::ACCOUNT_ARG,
     ],
     output: "\
-Graph mode returns dry-run/apply status, canonical digest and exact candidate pins; --publication adds the atomic project request or verified receipt. Workspace mode returns `status: linked`, the `model` row with its `pls_source` {path, digest, \
+`status: linked`, the `model` row with its `pls_source` {path, digest, \
 pls_version, member_versions, member_count, linked_at}, `replaced` when a \
 previous link was overwritten, and a `streamed_volume` warning when the \
 folder is on a streamed or network drive.",
-    examples: &[
-        Example {
-            command: "ds dsgrid model link --request /work/link.json --output json",
-            note: "Dry run with explicit package sources and shared owners; add --apply --out <new-path> to commit.",
-            runnable: false,
-        },
-        Example {
-            command: "ds dsgrid model link --model local-5ff16cd0a3d6416b --workspace \"/srv/pls/Nyamagabe\" --account <uid> --output json",
-            note: "Then `ds dsgrid-exchange sync --model local-5ff16cd0a3d6416b --dry-run`.",
-            runnable: false,
-        },
-    ],
+    examples: &[Example {
+        command: "ds dsgrid model link --model local-5ff16cd0a3d6416b --workspace \"/srv/pls/Nyamagabe\" --account <uid> --output json",
+        note: "Then `ds dsgrid-exchange sync --model local-5ff16cd0a3d6416b --dry-run`.",
+        runnable: false,
+    }],
     refusals: REFUSALS,
     reference: Some("docs/reference/dsgrid.md"),
     search: &["pls-cadd", "provenance", "connect"],
@@ -137,39 +122,16 @@ folder is on a streamed or network drive.",
     availability: || Availability::Available,
 };
 
-pub fn run(inputs: &Inputs, context: &Context) -> Result<Value, Failure> {
-    if inputs.value("request").is_some() {
-        if ["model", "workspace", "account"]
-            .iter()
-            .any(|name| inputs.value(name).is_some())
-        {
-            return Err(Failure::invalid(
-                "composite_invalid",
-                "choose the linked graph or the PLS-CADD workspace mode explicitly",
-            ));
-        }
-        return super::composite::link(inputs, context);
-    }
-    if inputs.switch("apply")
-        || inputs.value("out").is_some()
-        || inputs.value("publication").is_some()
-    {
-        return Err(Failure::invalid(
-            "composite_invalid",
-            "--apply and --out require the linked graph --request mode",
-        ));
-    }
-    if ["model", "workspace", "account"]
-        .iter()
-        .any(|name| inputs.value(name).is_none())
-    {
-        return Err(Failure::invalid(
-            "composite_invalid",
-            "workspace mode requires --model, --workspace and --account; graph mode requires --request",
-        ));
-    }
+pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let id = inputs.require("model")?.trim().to_owned();
     let opened = pls_source::open(inputs, &id)?;
+    if let Some(refusal) = ds_grid_exchange::linked_models::pls_export_refusal(
+        opened.package.manifest.model.model_id.as_str(),
+        Some(&opened.package.snapshot),
+    ) {
+        return Err(Failure::invalid("combined_model_not_exportable", refusal)
+            .remedy(COMBINED_MODEL_NOT_EXPORTABLE.remedy));
+    }
     let source = pls_source::pls_source(&id, &opened.package)?;
     let workspace_read = pls_source::read_workspace(inputs.require("workspace")?)?;
     if workspace_read.digest != source.origin_digest {
