@@ -61,6 +61,24 @@ both admitted document pins to the authored required reference before
 delegating to the existing composition consumer. The style index does not
 clone those layout decisions or claim a reference proves its body.
 
+`style_purpose::plan` performs this separate admission for one named print
+purpose. It reuses the index and `Templates::document_by_id`, compares both
+document pins with the authored reference, and requires every template layer
+tuple to be one of the purpose's admitted roles. Every required role must
+occur on a captured page. Existing `style_resolution::prepare_print` supplies
+the exact captures consumed by `printing::resolved_styles`; no alternate
+resolver, linetype choice or layout body is generated.
+
+The native `style.purpose.plan` command captures Styles and the server-sealed
+configuration's `printing_standard` under the same explicit project, native
+account, credential audience and lane. Identity changes between these calls
+refuse. Its `ds.style-purpose-plan/v1` result contains the admitted page bodies,
+source table/Templates revisions, and resolver captures. `composition_ready`
+means those presentation inputs are admitted. It does not claim geographic
+coverage, saved engineering inputs, a preview or publication: geometry and
+artifacts are explicitly absent. Report acquisition and rendering retain their
+own existing guards. The style index alone remains capture-required.
+
 ## Bounds and proof
 
 The captured table and serialized result each have a 32 MiB bound. Across

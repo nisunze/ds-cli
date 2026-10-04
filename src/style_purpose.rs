@@ -10,6 +10,7 @@ use std::collections::BTreeSet;
 
 pub const DECLARATION_SCHEMA: &str = "ds.style-purposes/v1";
 pub const INDEX_SCHEMA: &str = "ds.style-purpose-index/v1";
+pub const PLAN_SCHEMA: &str = "ds.style-purpose-plan/v1";
 pub const MAX_GROUPS: usize = 64;
 pub const MAX_ROLES: usize = 64;
 pub const MAX_LAYOUTS: usize = 16;
@@ -342,6 +343,116 @@ pub fn declaration_schema() -> Value {
     schema
 }
 
+/// Admit a print purpose against separately captured Templates. This plan
+/// holds the exact page bodies and resolver captures an existing print
+/// consumer needs; it acquires no geometry and produces no artifact.
+pub fn plan(
+    project: &str,
+    snapshot: &Snapshot,
+    purpose_id: &str,
+    ink: Ink,
+    templates: &crate::printing::standards::Templates,
+) -> Result<Value, Refusal> {
+    if !bounded(purpose_id)
+        || serde_json::to_vec(templates)
+            .map_err(|error| invalid(error.to_string()))?
+            .len()
+            > crate::printing::MAX_INPUT_BYTES
+    {
+        return Err(invalid("purpose id or Templates capture exceeds its bound"));
+    }
+    let indexed = index(project, snapshot, Target::Print, ink)?;
+    let group = indexed["groups"]
+        .as_array()
+        .and_then(|groups| groups.iter().find(|group| group["id"] == purpose_id))
+        .ok_or_else(|| {
+            refusal(
+                "style_purpose_missing",
+                "the exact print purpose is not declared",
+            )
+        })?;
+    if group["kind"] != "print_composition" {
+        return Err(refusal(
+            "style_purpose_not_composition",
+            "the selected purpose is for style editing, not print composition",
+        ));
+    }
+    let references: Vec<LayoutReference> = serde_json::from_value(group["layouts"].clone())
+        .map_err(|error| invalid(error.to_string()))?;
+    let role_keys = group["roles"]
+        .as_array()
+        .expect("index admitted the role roster")
+        .iter()
+        .map(|role| serde_json::from_value::<Key>(role["binding"]["key"].clone()))
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| invalid(error.to_string()))?;
+    let mut pages = Vec::new();
+    let mut used_keys = Vec::new();
+    for reference in references {
+        let document = templates
+            .document_by_id(
+                &reference.template_id,
+                reference.role,
+                reference.paper,
+                project,
+            )
+            .map_err(|message| {
+                let code = message
+                    .split(':')
+                    .next()
+                    .unwrap_or("print_template_invalid");
+                refusal(code, message.clone())
+            })?;
+        if document.revision_id != reference.revision_id
+            || document.content_sha256 != reference.content_sha256
+        {
+            return Err(refusal(
+                "style_purpose_layout_revision_mismatch",
+                format!(
+                    "template {} differs from the authored purpose pins",
+                    reference.template_id
+                ),
+            ));
+        }
+        let mut keys = std::collections::BTreeMap::new();
+        for (layer, value) in &document.layer_keys {
+            let mut key: Key = serde_json::from_value(value.clone())
+                .map_err(|error| invalid(format!("template layer {layer}: {error}")))?;
+            key.ink = ink;
+            key.validate()?;
+            if key.target != Target::Print || !role_keys.contains(&key) {
+                return Err(refusal(
+                    "style_purpose_constraint_mismatch",
+                    format!("template layer {layer} is outside the purpose's exact role tuples"),
+                ));
+            }
+            used_keys.push(key.clone());
+            keys.insert(layer.clone(), key);
+        }
+        let mut capture = style_resolution::prepare_print(snapshot, &keys)?;
+        capture["keys"] = json!(keys);
+        pages.push(json!({"document":document,"style_capture":capture}));
+    }
+    if role_keys.iter().any(|key| !used_keys.contains(key)) {
+        return Err(refusal(
+            "style_purpose_role_missing",
+            "a required style role is not used by any captured printing page",
+        ));
+    }
+    let result = json!({"schema":PLAN_SCHEMA,"project_id":project,
+        "resolution_revision":snapshot.revision_id,"templates_revision":templates.revision_id,
+        "purpose":group,"pages":pages,"composition_ready":true,
+        "geometry_acquired":false,"artifacts_created":false,"publication_enqueued":false});
+    if serde_json::to_vec(&result)
+        .map_err(|error| invalid(error.to_string()))?
+        .len()
+        > crate::printing::MAX_INPUT_BYTES
+    {
+        return Err(invalid("composition plan exceeds 32 MiB"));
+    }
+    Ok(result)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -402,6 +513,139 @@ mod tests {
     }
     fn purpose(snapshot: &mut Snapshot) -> &mut Value {
         &mut snapshot.bindings[0].document["metadata"]["style_purposes"]["groups"][0]
+    }
+
+    fn composition_fixture() -> (Snapshot, crate::printing::standards::Templates) {
+        use crate::printing::standards::{TemplateDocument, Templates, TEMPLATE_SCHEMA};
+        let mut layout = crate::printing::default_layout();
+        layout.paper.size = Paper::A0;
+        layout.page_mm = [1189., 841.];
+        layout.attribution = Some(
+            serde_json::from_value(json!({
+                "font_pt":7,"color":"#595959","svg_font_family":"DejaVu Sans",
+                "pdf_font_family":"Helvetica","right_inset_pt":146,"baseline_pt":7
+            }))
+            .unwrap(),
+        );
+        let mut document = TemplateDocument {
+            template_id: "authored-transformer-a0".into(),
+            role: PageRole::Network,
+            revision_id: "c".repeat(64),
+            content_sha256: String::new(),
+            layout,
+            logo_slots: Vec::new(),
+            layer_keys: std::collections::BTreeMap::from([
+                ("lv_lines".into(), json!(key("focused"))),
+                ("neighbor_lv_lines".into(), json!(key("context"))),
+            ]),
+        };
+        document.content_sha256 = document.content_digest().unwrap();
+        let mut table = fixture();
+        purpose(&mut table)["layouts"][0]["content_sha256"] = json!(document.content_sha256);
+        refresh(&mut table);
+        (
+            table,
+            Templates {
+                schema: TEMPLATE_SCHEMA.into(),
+                project_id: "fixture".into(),
+                revision_id: "e".repeat(64),
+                documents: vec![document],
+            },
+        )
+    }
+
+    #[test]
+    fn composition_holds_actual_pages_and_existing_resolver_captures_without_mutation() {
+        let (table, templates) = composition_fixture();
+        let before = serde_json::to_vec(&(&table, &templates)).unwrap();
+        let result = plan("fixture", &table, "transformer_a0", Ink::Colour, &templates).unwrap();
+        assert_eq!(result["composition_ready"], true);
+        assert_eq!(result["geometry_acquired"], false);
+        assert_eq!(result["artifacts_created"], false);
+        assert_eq!(result["publication_enqueued"], false);
+        assert_eq!(
+            result["pages"][0]["document"],
+            json!(templates.documents[0])
+        );
+        let capture = &result["pages"][0]["style_capture"];
+        let keys = serde_json::from_value(capture["keys"].clone()).unwrap();
+        let consumed =
+            crate::printing::resolved_styles::consume(capture, &keys, "fixture").unwrap();
+        assert_eq!(consumed["style_refs"]["lv_lines"], "fixture/focused");
+        assert_eq!(
+            consumed["style_refs"]["neighbor_lv_lines"],
+            "fixture/context"
+        );
+        assert_eq!(before, serde_json::to_vec(&(&table, &templates)).unwrap());
+        assert_eq!(
+            read(&table).unwrap()["groups"][0]["composition_ready"],
+            false
+        );
+    }
+
+    #[test]
+    fn composition_refuses_wrong_project_missing_body_role_paper_and_authored_pins() {
+        let (table, templates) = composition_fixture();
+        let run = |held: &crate::printing::standards::Templates| {
+            plan("fixture", &table, "transformer_a0", Ink::Colour, held)
+                .unwrap_err()
+                .code
+        };
+        let mut changed = templates.clone();
+        changed.project_id = "other".into();
+        assert_eq!(run(&changed), "print_template_invalid");
+        let mut changed = templates.clone();
+        changed.documents.clear();
+        assert_eq!(run(&changed), "print_template_missing");
+        let mut changed = templates.clone();
+        changed.documents.push(changed.documents[0].clone());
+        assert_eq!(run(&changed), "print_template_ambiguous");
+        let mut changed = templates.clone();
+        changed.documents[0].role = PageRole::Schedule;
+        assert_eq!(run(&changed), "print_template_missing");
+        let mut changed = templates.clone();
+        changed.documents[0].revision_id = "f".repeat(64);
+        assert_eq!(run(&changed), "style_purpose_layout_revision_mismatch");
+        let mut changed = templates.clone();
+        changed.documents[0].layout.paper.size = Paper::A3;
+        changed.documents[0].content_sha256 = changed.documents[0].content_digest().unwrap();
+        assert_eq!(run(&changed), "print_template_invalid");
+        let mut changed = templates.clone();
+        changed.documents[0].layout.name = "tampered".into();
+        assert_eq!(run(&changed), "print_template_revision_mismatch");
+    }
+
+    #[test]
+    fn composition_requires_every_purpose_tuple_and_rejects_unreviewed_template_tuples() {
+        let (mut table, mut templates) = composition_fixture();
+        templates.documents[0]
+            .layer_keys
+            .remove("neighbor_lv_lines");
+        templates.documents[0].content_sha256 = templates.documents[0].content_digest().unwrap();
+        purpose(&mut table)["layouts"][0]["content_sha256"] =
+            json!(templates.documents[0].content_sha256);
+        refresh(&mut table);
+        assert_eq!(
+            plan("fixture", &table, "transformer_a0", Ink::Colour, &templates)
+                .unwrap_err()
+                .code,
+            "style_purpose_role_missing"
+        );
+        let (mut table, mut templates) = composition_fixture();
+        templates.documents[0]
+            .layer_keys
+            .get_mut("neighbor_lv_lines")
+            .unwrap()["source_kind"] = json!("live_geojson");
+        templates.documents[0].content_sha256 = templates.documents[0].content_digest().unwrap();
+        purpose(&mut table)["layouts"][0]["content_sha256"] =
+            json!(templates.documents[0].content_sha256);
+        refresh(&mut table);
+        assert_eq!(
+            plan("fixture", &table, "transformer_a0", Ink::Colour, &templates)
+                .unwrap_err()
+                .code,
+            "style_purpose_constraint_mismatch"
+        );
     }
 
     #[test]
