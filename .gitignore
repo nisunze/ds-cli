@@ -22,3 +22,6 @@ crates/ds-sync-runtime/target/
 
 # Local scratch, never committed
 _discardable/
+
+# Native Profile host crate owns a detached workspace.
+crates/ds-profile-runtime/target/

@@ -22,6 +22,7 @@ kernel_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 manifests=(
 	"crates/ds-design-workspace/Cargo.toml"
 	"crates/ds-compute-runtime/Cargo.toml"
+	"crates/ds-profile-runtime/Cargo.toml"
 	"crates/ds-report-artifacts/Cargo.toml"
 	# Server core crates moved here from ds-web on 2026-09-14: the server build
 	# (ds-cli) must compile with zero ds-web source, so the crates it links live
@@ -40,6 +41,7 @@ manifests=(
 needs_network=(
 	"crates/ds-design-workspace/Cargo.toml"
 	"crates/ds-compute-runtime/Cargo.toml"
+	"crates/ds-profile-runtime/Cargo.toml"
 	"crates/ds-project-data/Cargo.toml"
 )
 
