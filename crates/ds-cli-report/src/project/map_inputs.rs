@@ -367,7 +367,23 @@ pub fn run(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
     } else {
         sources.vectors()
     };
-    let render = json!({"schema":"ds.print-layout-export/v1","renderer_defaults":renderer_defaults,"render":{"admin_reference":admin_reference,"project_crs":project_crs,"report_config":sheets,"renderer_defaults":renderer_defaults,"layout":layout,"layers":render_layers,"extent":extent,"focus_extent":extent,"print_styles":sheets["printing_styles"],"symbol_assets":sheets.get("printing_symbol_assets").cloned().unwrap_or_else(||json!({})),"text":{"project":project,"transformer":layout.name}},"formats":["pdf","png"],"dpi":300,"out_dir":out.join("rendered")});
+    let current = ds_cli_auth::headless_identity_for_named_project(lane)?;
+    if &current != identity {
+        return Err(invalid("authenticated style capture scope changed"));
+    }
+    let style_capture = ds_command_kernel::printing::style_capture::Capture::new(
+        &snapshot,
+        project,
+        lane,
+        identity.uid(),
+        identity.credential_audience_sha256(),
+        &receipt.sheets_sha256,
+        &sheets,
+        std::slice::from_ref(&layout),
+    )
+    .map_err(invalid)?;
+    let report_config = json!({"sheets":sheets,"printing_style_capture":style_capture});
+    let render = json!({"schema":"ds.print-layout-export/v1","renderer_defaults":renderer_defaults,"render":{"admin_reference":admin_reference,"project_crs":project_crs,"report_config":report_config,"renderer_defaults":renderer_defaults,"layout":layout,"layers":render_layers,"extent":extent,"focus_extent":extent,"print_styles":sheets["printing_styles"],"symbol_assets":sheets.get("printing_symbol_assets").cloned().unwrap_or_else(||json!({})),"text":{"project":project,"transformer":layout.name}},"formats":["pdf","png"],"dpi":300,"out_dir":out.join("rendered")});
     let path = out.join("render-request.json");
     let data = serde_json::to_vec(&render).map_err(invalid)?;
     std::fs::OpenOptions::new()

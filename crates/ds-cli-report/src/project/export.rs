@@ -1865,6 +1865,21 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         } else {
             print_context
         };
+        let print_context = if let Some(capture) = &held_inputs.printing_style_capture {
+            Some(ds_report_host::bind_print_styles(
+                print_context,
+                capture,
+                &project_id,
+                lane,
+                identity.uid(),
+                identity.credential_audience_sha256(),
+                &receipt
+                    .sheets()
+                    .map_err(|e| HostFailure::new(INPUTS_INVALID.code, e))?,
+            )?)
+        } else {
+            print_context
+        };
         let print_context = if let Some(capture) = &held_inputs.project_crs {
             Some(ds_report_host::bind_project_crs(
                 print_context,
@@ -2696,15 +2711,113 @@ fn read_inputs(
         })
         .transpose()
         .map_err(|e| Failure::invalid("report_inputs_invalid", e).remedy(INPUTS_INVALID.remedy))?;
+    let rows = super::hold::rows(inventory.result());
+    let source_sheets = receipt
+        .sheets()
+        .map_err(|e| Failure::invalid(INPUTS_INVALID.code, e))?;
+    let captured_layouts = effective_capture_layouts(&source_sheets, &setups, &rows, selection)
+        .map_err(|e| Failure::invalid(INPUTS_INVALID.code, e))?;
+    let printing_style_capture = if captured_layouts.is_empty() {
+        None
+    } else {
+        let current = ds_cli_auth::headless_identity_for_named_project(lane)?;
+        require_same_context(identity, project, &current, project).map_err(host_failure)?;
+        let Some(table) = link.read(|| {
+            ds_cli_auth::style_governance(
+                lane,
+                project,
+                &ds_command_kernel::style_governance::Command::Table,
+            )
+        })?
+        else {
+            return Ok(None);
+        };
+        let current = ds_cli_auth::headless_identity_for_named_project(lane)?;
+        require_same_context(identity, project, &current, project).map_err(host_failure)?;
+        let snapshot = serde_json::from_value(table).map_err(|e| {
+            Failure::invalid(INPUTS_INVALID.code, format!("print style source: {e}"))
+        })?;
+        Some(
+            ds_command_kernel::printing::style_capture::Capture::new(
+                &snapshot,
+                project,
+                lane,
+                identity.uid(),
+                identity.credential_audience_sha256(),
+                &receipt.sheets_sha256,
+                &source_sheets,
+                &captured_layouts,
+            )
+            .map_err(|e| Failure::invalid(INPUTS_INVALID.code, e))?,
+        )
+    };
     Ok(Some(super::hold::Inputs {
         project_crs,
-        rows: super::hold::rows(inventory.result()),
+        printing_style_capture,
+        rows,
         configuration,
         setups,
         read_at: ds_command_kernel::time::OffsetDateTime::now_utc()
             .format(&ds_command_kernel::time::format_description::well_known::Rfc3339)
             .unwrap_or_default(),
     }))
+}
+
+/// Capture and final rendering share the same effective override precedence.
+fn effective_capture_layouts(
+    sheets: &Value,
+    additional: &[Value],
+    rows: &[super::hold::Row],
+    selection: &DesignOutputSelection,
+) -> Result<Vec<ds_command_kernel::printing::Layout>, String> {
+    use ds_command_kernel::printing::{Layout, overrides};
+    let selected: BTreeSet<_> = ds_cli_report_named_setups(selection)?.into_iter().collect();
+    let settings = sheets["project_settings"]
+        .as_array()
+        .map(Vec::as_slice)
+        .unwrap_or(&[]);
+    let records: Vec<_> = settings
+        .iter()
+        .filter(|r| r["parameter"] == "printing_overrides")
+        .collect();
+    if records.len() > 1 {
+        return Err("print_style_capture_invalid: duplicate printing_overrides".into());
+    }
+    let patches = serde_json::from_value::<overrides::TransformerOverrides>(
+        sheets
+            .get("printing_overrides")
+            .cloned()
+            .or_else(|| records.first().map(|r| r["value"].clone()))
+            .unwrap_or_else(|| json!({})),
+    )
+    .map_err(|e| format!("print_style_capture_invalid: {e}"))?;
+    let setups = sheets["printing_setups"]
+        .as_array()
+        .map(Vec::as_slice)
+        .unwrap_or(additional);
+    let mut layouts = BTreeMap::new();
+    for setup in setups {
+        if !selected.contains(setup["id"].as_str().unwrap_or_default()) {
+            continue;
+        }
+        let layout: Layout = serde_json::from_value(setup["layout"].clone())
+            .map_err(|e| format!("print_style_capture_invalid: {e}"))?;
+        layouts.insert(
+            ds_command_kernel::printing::style_capture::layout_digest(&layout)?,
+            layout.clone(),
+        );
+        for row in rows
+            .iter()
+            .filter(|r| r.kind == "transformer" && r.state == "active")
+        {
+            let effective = overrides::effective(&layout, &row.name, &patches)?;
+            layouts.insert(
+                ds_command_kernel::printing::style_capture::layout_digest(&effective)?,
+                effective,
+            );
+        }
+    }
+    Ok(layouts.into_values().collect())
 }
 
 /// The printing setups this run selects, read exactly

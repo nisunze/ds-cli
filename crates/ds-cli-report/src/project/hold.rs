@@ -182,6 +182,8 @@ pub(super) fn select(rows: &[Row], requested: &TransformerSet) -> Vec<Row> {
 pub(super) struct Inputs {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub project_crs: Option<ds_command_kernel::printing::project_crs::Capture>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub printing_style_capture: Option<ds_command_kernel::printing::style_capture::Capture>,
     /// The whole project's lifecycle inventory.
     pub rows: Vec<Row>,
     /// The project configuration's Network Reporter receipt members.
@@ -843,6 +845,7 @@ mod tests {
         );
         let inputs = Inputs {
             project_crs: None,
+            printing_style_capture: None,
             rows: vec![Row {
                 name: "t1".into(),
                 kind: "transformer".into(),
