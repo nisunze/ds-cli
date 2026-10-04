@@ -729,11 +729,9 @@ mod tests {
         assert_eq!(legend.category_fields[alias], fields);
         assert_eq!(projected.last().unwrap().geojson, layers[0].geojson);
         assert_eq!(json!({"layout":layout,"layers":layers}), held);
-        assert!(
-            preserve_existing_lv(&effective, &projected)
-                .unwrap()
-                .is_none()
-        );
+        assert!(preserve_existing_lv(&effective, &projected)
+            .unwrap()
+            .is_none());
     }
 
     #[test]
