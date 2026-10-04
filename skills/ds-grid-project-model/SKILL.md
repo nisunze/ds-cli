@@ -24,7 +24,7 @@ descriptors. List the explicit project, following every `next_cursor` while
 follow that command's cursor too. Use `--include-deleted` only when retired
 models are relevant. Report the model name, ID, head revision, and actual
 version values separately; pin later downloads or prints to an exact revision.
-Both commands are in the `grid-local-model` MCP profile.
+Both are in the `grid-local-model` profile.
 
 Read the live descriptor before each command:
 
@@ -49,8 +49,8 @@ Publish separately with `ds dsgrid publish-version`. For a new project model, na
 
 Do not retry a moved-head conflict or change projects to force publication. Re-read the project model, review the new head, and ask for a fresh publication decision.
 
-Each publish is a revision of the model's current version; only `--bump-version` starts the next one (a submission). Put `--milestone`, `--approval submitted` and `--attach <delivered.bak>` on that revision, then mark it with `design version begin --kind mv_model --milestone <m> --expected-source <revision>`. Read history with `dsgrid project show|versions|compare`; `dsgrid project exports` holds immutable delivered files.
-
+Each publish is a revision of the model's current version; only `--bump-version` starts the next one (a submission). Put `--milestone`, `--approval submitted` and `--attach <delivered.bak>` on that revision, then mark it with `design version begin --kind mv_model --milestone <m> --expected-source <revision>`. Read history with `dsgrid project show|versions|compare`; `dsgrid project exports` holds immutable delivered files. Submission contents:
+[deliverables](../ds-project-work/references/mv-submission-deliverables.md).
 
 To import replacement content into an existing model, use one
 `ds dsgrid publish-version --path <incoming.dsgrid|incoming.bak>

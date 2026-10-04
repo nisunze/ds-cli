@@ -78,6 +78,13 @@ MV conductor lengths are not in the LV workbook either. Take them from the
 PLS-CADD section report or the design document the engineer supplies, and
 say which.
 
+## Delivering a staking table
+
+In an MV submission the staking table is delivered as an XLSX workbook only,
+never printed or exported to PDF; see
+[MV submission deliverables](../ds-project-work/references/mv-submission-deliverables.md)
+for the whole set and the dated-folder rule.
+
 ## Reconcile
 
 1. Normalise pole numbers on both sides (case, zero padding, `LV01/P003`

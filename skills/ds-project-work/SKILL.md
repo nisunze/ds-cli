@@ -75,7 +75,11 @@ guess from filenames, or create a task or note simply to answer a question.
    `pm.record.reply` against their real source asset, message or meeting note.
    Read `pm.party.list` and the record thread first. A submission or
    transmittal needs a document registered with `assets.classify`, then a
-   `pm.record.create` carrying that document and its real source. A review
+   `pm.record.create` carrying that document and its real source. An MV
+   model-change submission delivers the set in
+   [MV submission deliverables](references/mv-submission-deliverables.md):
+   staking is XLSX only, never printed, and a dated folder holds only
+   artifacts made for that change. A review
    response matrix file can be registered as a document asset; keep its exact
    document revision, asset ID and each actionable row or comment ID on the
    linked task or promoted design thread. Verify any matrix asset link by

@@ -135,12 +135,11 @@ complete print set.
 
 ## Submission outputs and separate palettes
 
-The canonical MV set includes the governed booklet, native PLS-CADD backup,
-and staking workbook. Staking remains XLSX and never becomes printed pages.
-The five native PLS reports are Structure Usage, Section Usage, Section
-Sag-Tension, Summary and Terrain Clearances, each RTF plus A4 PDF; use the
-live native report contract for an explicit paper or supplementary-report
-customization. These reports do not authorize PLS-CADD plan/profile printing.
+The booklet is one item of the canonical MV submission set; read
+[MV submission deliverables](../../ds-project-work/references/mv-submission-deliverables.md)
+for the rest. Staking remains XLSX and never becomes printed pages; this
+workflow prints only the booklet. The five native PLS reports do not authorize
+PLS-CADD plan/profile printing.
 
 Keep the main MV conductors and route pens from the approved project baseline.
 Subdue LV/customer/context colours in the MV plan independently of the LV

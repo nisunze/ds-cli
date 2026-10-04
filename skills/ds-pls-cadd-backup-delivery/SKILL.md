@@ -12,6 +12,10 @@ declared CRS and expected model counts as evidence. Never move or copy a live
 workspace to make Backup succeed; native Restore is a lifecycle operation, not
 an ordinary directory copy.
 
+The backup is one item of the MV submission set; read
+[MV submission deliverables](../ds-project-work/references/mv-submission-deliverables.md)
+for the rest (staking stays XLSX, a dated folder holds only today's artifacts).
+
 ## Create and prove the candidate
 
 Discover each live contract before invoking it:

@@ -14,7 +14,8 @@ Choose the deliverable before discovery: individual transformer sheets and
 MV booklets are different from combined LV plans/workbooks, a one-row-per-
 transformer voltage-drop overview, and staking/BOQ reconciliation. Read
 [delivery modes and source truth](references/delivery-modes.md) when the request
-mixes them. Staking is an XLSX submission, never printed booklet pages.
+mixes them. Staking is an XLSX submission, never printed booklet pages; the full MV set is
+[MV submission deliverables](../ds-project-work/references/mv-submission-deliverables.md).
 
 Map delivery: `printing-maps`.
 
