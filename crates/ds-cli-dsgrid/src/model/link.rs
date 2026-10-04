@@ -48,10 +48,19 @@ const WORKSPACE_ARG: Arg = Arg {
     summary: "The PLS-CADD workspace folder (the one holding the .don) this copy was converted from.",
 };
 
-const LINK_OWN: [Refusal; 5] = [
+/// The automatic combined model of linked submodels is never a PLS-CADD
+/// export unit, so it never gains a workspace to sync into.
+const COMBINED_MODEL_NOT_EXPORTABLE: Refusal = Refusal {
+    code: "combined_model_not_exportable",
+    when: "the working copy is the automatic combined model of linked submodels",
+    remedy: "link and sync each submodel; the combined model serves tiling and combined reports",
+};
+
+const LINK_OWN: [Refusal; 6] = [
     WORKSPACE_NOT_FOUND,
     WORKSPACE_NOT_THIS_PACKAGE,
     MODEL_NOT_FROM_PLS,
+    COMBINED_MODEL_NOT_EXPORTABLE,
     crate::folder::TOO_LARGE,
     crate::folder::UNREADABLE,
 ];
@@ -116,6 +125,13 @@ folder is on a streamed or network drive.",
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let id = inputs.require("model")?.trim().to_owned();
     let opened = pls_source::open(inputs, &id)?;
+    if let Some(refusal) = ds_grid_exchange::linked_models::pls_export_refusal(
+        opened.package.manifest.model.model_id.as_str(),
+        Some(&opened.package.snapshot),
+    ) {
+        return Err(Failure::invalid("combined_model_not_exportable", refusal)
+            .remedy(COMBINED_MODEL_NOT_EXPORTABLE.remedy));
+    }
     let source = pls_source::pls_source(&id, &opened.package)?;
     let workspace_read = pls_source::read_workspace(inputs.require("workspace")?)?;
     if workspace_read.digest != source.origin_digest {

@@ -404,7 +404,10 @@ impl Profile {
             // and pinned attachments to this same model workflow.
             // The integrated profile contains 55 lifecycle leaves and two
             // bootstrap tools; each leaf belongs to this model workflow.
-            Self::GridLocalModel => 57,
+            // Raised to 60 on 2026-10-04 for the automatic combined model:
+            // status, reconcile and split of a submodel sit beside the
+            // atomic publication of their linked generation.
+            Self::GridLocalModel => 60,
             // Seventeen geospatial leaves plus bootstrap: the same answer
             // can be kept as GeoJSON or converted to the analytical
             // GeoParquet format without switching MCP profiles.
@@ -885,6 +888,12 @@ const GRID_LOCAL_MODEL_COMMANDS: &[&str] = &[
     "design.attachment.versions",
     "design.attachment.set-latest",
     "design.attachment.retire",
+    // The automatic combined model (owner, 2026-10-04): status, reconcile
+    // and split of a submodel are model lifecycle beside the atomic
+    // publication of their linked generation, not broad `grid` routing.
+    "dsgrid.model.split",
+    "dsgrid.model.reconcile",
+    "dsgrid.model.status",
 ];
 
 /// The members of `grid-local-model` that the broad `grid` router leaves to
@@ -909,6 +918,9 @@ const GRID_LOCAL_MODEL_TYPED_EDITS: &[&str] = &[
     "dsgrid.alignment.gap.show",
     "dsgrid.alignment.gap.set",
     "dsgrid.model.unlink",
+    "dsgrid.model.split",
+    "dsgrid.model.reconcile",
+    "dsgrid.model.status",
 ];
 
 // Program contract 03: feature codes and clearance across the PLS-CADD

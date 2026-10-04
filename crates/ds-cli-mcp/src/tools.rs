@@ -228,6 +228,7 @@ pub fn tool_from_descriptor(command: &Value) -> Option<Tool> {
         .and_then(Value::as_bool)
         .unwrap_or(false);
     let declared_confirmation_trigger = optional_token(command, "confirmation_trigger")?;
+    let declared_confirmation_parameter = optional_token(command, "confirmation_parameter")?;
     let declared_preview_switch = optional_token(command, "preview_switch")?;
     let mut properties = Map::new();
     let mut required = Vec::new();
@@ -334,12 +335,27 @@ pub fn tool_from_descriptor(command: &Value) -> Option<Tool> {
             Some(declared_switch(trigger)?)
         }
     };
+    let confirmation_parameter = match declared_confirmation_parameter {
+        None => None,
+        Some(token) => {
+            let name = token.strip_prefix("--")?;
+            if confirmation_trigger.is_none()
+                || !inputs.iter().any(|i| i.name == name && i.kind == "value")
+            {
+                return None;
+            }
+            Some(name)
+        }
+    };
     let preview_switch = match declared_preview_switch {
         None => None,
         Some(preview) => Some(declared_switch(preview)?),
     };
     if confirmation_required {
         let description = match (&confirmation_trigger, &preview_switch) {
+            (Some(trigger), _) if confirmation_parameter.is_some() => format!(
+                "Required only when `{trigger}` is true and `{}` is supplied. Pass true only when the user's intent authorizes that exact project publication (maps to `--yes`).",confirmation_parameter.unwrap()
+            ),
             (Some(trigger), _) => format!(
                 "Required only when `{trigger}` is true. Pass true only when the user's intent authorizes exactly that effect and scope (maps to `--yes`)."
             ),
@@ -364,6 +380,7 @@ pub fn tool_from_descriptor(command: &Value) -> Option<Tool> {
         requires_window,
         confirmation_required,
         confirmation_trigger.as_deref(),
+        confirmation_parameter,
         preview_switch.as_deref(),
     );
     Some(Tool {
@@ -412,6 +429,7 @@ fn describe(
     requires_window: bool,
     confirmation_required: bool,
     confirmation_trigger: Option<&str>,
+    confirmation_parameter: Option<&str>,
     preview_switch: Option<&str>,
 ) -> String {
     let summary = command.get("summary").and_then(Value::as_str).unwrap_or("");
@@ -430,6 +448,9 @@ fn describe(
     ));
     if confirmation_required {
         match (confirmation_trigger, preview_switch) {
+            (Some(trigger), _) if confirmation_parameter.is_some() => description.push_str(&format!(
+                " Requires `{CONFIRM_PROPERTY}: true` only when `{trigger}` is true and `{}` is supplied.",confirmation_parameter.unwrap()
+            )),
             (Some(trigger), _) => description.push_str(&format!(
                 " Requires `{CONFIRM_PROPERTY}: true` only when `{trigger}` is true."
             )),
@@ -491,7 +512,21 @@ impl Tool {
             Some(_) => Err(format!("`{name}` must be a boolean")),
         };
         if let Some(trigger) = &self.confirmation_trigger {
-            return switch(trigger);
+            let active = switch(trigger)?;
+            if let Some(parameter) = self
+                .descriptor
+                .get("confirmation_parameter")
+                .and_then(Value::as_str)
+                .and_then(|p| p.strip_prefix("--"))
+            {
+                let supplied = match object.and_then(|o| o.get(parameter)) {
+                    None | Some(Value::Null) => false,
+                    Some(Value::String(_)) => true,
+                    Some(_) => return Err(format!("`{parameter}` must be a string")),
+                };
+                return Ok(active && supplied);
+            }
+            return Ok(active);
         }
         if let Some(preview) = &self.preview_switch
             && switch(preview)?
@@ -947,6 +982,12 @@ pub fn argv_for_call(tool: &Tool, arguments: &Value) -> Result<Vec<String>, Stri
     };
     if confirmed && !confirmation_required {
         return Err(match (&tool.confirmation_trigger, &tool.preview_switch) {
+            (Some(trigger), _) if tool.descriptor.get("confirmation_parameter").is_some() => {
+                format!(
+                    "`{CONFIRM_PROPERTY}` is accepted only when `--{trigger}` is true and {} is supplied for `{}`",
+                    tool.descriptor["confirmation_parameter"], tool.id
+                )
+            }
             (Some(trigger), _) => format!(
                 "`{CONFIRM_PROPERTY}` is accepted only when `--{trigger}` is true for `{}`",
                 tool.id
@@ -1850,6 +1891,38 @@ mod tests {
             misplaced.contains("only when `--write` is true"),
             "{misplaced}"
         );
+    }
+
+    #[test]
+    fn linked_publication_confirmation_matches_local_and_project_cli_paths() {
+        let mut descriptor = conditional_descriptor();
+        descriptor["effect"] = json!("global_write");
+        descriptor["confirmation_trigger"] = json!("--apply");
+        descriptor["confirmation_parameter"] = json!("--publication");
+        descriptor["inputs"] = json!([{"name":"apply","kind":"switch","required":false},{"name":"publication","kind":"value","required":false}]);
+        let tool = tool_from_descriptor(&descriptor).unwrap();
+        for (arguments, required) in [
+            (json!({}), false),
+            (json!({"publication":"binding.json"}), false),
+            (json!({"apply":true}), false),
+            (json!({"apply":true,"publication":"binding.json"}), true),
+        ] {
+            assert_eq!(
+                tool.confirmation_required_for(&arguments).unwrap(),
+                required
+            );
+            assert!(argv_for_call(&tool, &arguments).is_ok());
+        }
+        let argv = argv_for_call(
+            &tool,
+            &json!({"apply":true,"publication":"binding.json","confirm":true}),
+        )
+        .unwrap();
+        assert!(argv.iter().any(|a| a == "--yes"));
+        assert!(tool.description.contains("and `publication` is supplied"));
+        assert!(argv_for_call(&tool, &json!({"apply":true,"confirm":true})).is_err());
+        descriptor["confirmation_parameter"] = json!("--missing");
+        assert!(tool_from_descriptor(&descriptor).is_none());
     }
 
     #[test]

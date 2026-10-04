@@ -315,6 +315,10 @@ fn command_json_with_availability(
     if let Some(trigger) = command.confirmation_trigger() {
         descriptor["confirmation_trigger"] = json!(trigger);
     }
+    if let Some(parameter) = command.confirmation_parameter() {
+        descriptor["confirmation_parameter"] = json!(parameter);
+        descriptor["preview_by_default"] = json!(true);
+    }
     // The previewing path of a write: with this switch nothing is written
     // and `--yes` is not required, which is how an agent reads a proposal
     // before a person confirms it.
@@ -417,6 +421,9 @@ fn confirmation_usage(command: &Command) -> &'static str {
 /// bracketed `[--yes]` reads as *optional*, which is wrong: it is conditional.
 /// That one word is worth a row.
 fn confirmation_contract_line(command: &Command) -> &'static str {
+    if command.confirmation_parameter().is_some() {
+        return "  confirm    --yes  (required with --apply and --publication)\n";
+    }
     if command.confirmation_trigger().is_some() {
         return "  confirm    --yes  (required with --write)\n";
     }
