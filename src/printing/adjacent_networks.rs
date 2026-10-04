@@ -307,6 +307,11 @@ pub fn preserve_existing_lv(
                         legend.titles.insert(destination.clone(), title);
                     }
                 }
+                if legend.layers.is_empty() || legend.layers.contains(&destination) {
+                    if let Some(fields) = legend.category_fields.get(*source).cloned() {
+                        legend.category_fields.insert(destination.clone(), fields);
+                    }
+                }
             }
         }
     }
@@ -682,6 +687,53 @@ mod tests {
                 "{role}"
             );
         }
+    }
+
+    #[test]
+    fn existing_neighbor_legend_keeps_foreground_category_axes() {
+        let mut layout = super::super::default_layout();
+        layout
+            .style_refs
+            .insert("lv_poles".into(), "master/lv_poles_print".into());
+        layout
+            .style_refs
+            .insert("neighbor_lv_poles".into(), "context/lv_poles_print".into());
+        let legend = layout
+            .elements
+            .iter_mut()
+            .find_map(|element| element.legend.as_mut())
+            .unwrap();
+        legend.layers = vec!["lv_poles".into(), "neighbor_lv_poles".into()];
+        let fields = vec![
+            "struct_type".into(),
+            "material".into(),
+            "existing_status".into(),
+        ];
+        legend
+            .category_fields
+            .insert("lv_poles".into(), fields.clone());
+        let layers = vec![super::super::resolved_styles::VectorLayer {
+            id: "neighbor_lv_poles".into(),
+            label: "Neighbour poles".into(),
+            geojson: json!({"type":"FeatureCollection","features":[{"properties":{"existing_status":"existing","struct_type":"S140","material":"wooden"}}]}),
+        }];
+        let held = json!({"layout":layout,"layers":layers});
+        let (effective, projected) = preserve_existing_lv(&layout, &layers).unwrap().unwrap();
+        let alias = "neighbor_lv_poles-source-invariant-existing";
+        let legend = effective
+            .elements
+            .iter()
+            .find_map(|element| element.legend.as_ref())
+            .unwrap();
+        assert!(legend.layers.iter().any(|id| id == alias));
+        assert_eq!(legend.category_fields[alias], fields);
+        assert_eq!(projected.last().unwrap().geojson, layers[0].geojson);
+        assert_eq!(json!({"layout":layout,"layers":layers}), held);
+        assert!(
+            preserve_existing_lv(&effective, &projected)
+                .unwrap()
+                .is_none()
+        );
     }
 
     #[test]

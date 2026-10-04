@@ -566,6 +566,10 @@ pub struct LegendBinding {
     pub titles: BTreeMap<String, String>,
     #[serde(default = "yes")]
     pub categorical: bool,
+    /// Ordered source fields whose observed combinations each need a legend row.
+    /// Omitted keeps the historical primary-colour category inference.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub category_fields: BTreeMap<String, Vec<String>>,
     #[serde(default = "legend_row")]
     pub row_mm: f64,
 }
@@ -1321,6 +1325,28 @@ pub(super) fn validate_with_semantic_layers(
                     .titles
                     .iter()
                     .any(|(k, v)| k.len() > 160 || v.len() > 160)
+                || legend.category_fields.len() > 128
+                || legend.category_fields.iter().any(|(layer, fields)| {
+                    layer.is_empty()
+                        || layer.len() > 160
+                        || layer.trim() != layer
+                        || layer.chars().any(char::is_control)
+                        || fields.is_empty()
+                        || fields.len() > 3
+                        || fields.iter().any(|field| {
+                            field.is_empty()
+                                || field.len() > 120
+                                || field.trim() != field
+                                || field.chars().any(char::is_control)
+                        })
+                        || fields
+                            .iter()
+                            .collect::<std::collections::BTreeSet<_>>()
+                            .len()
+                            != fields.len()
+                        || (!legend.layers.is_empty() && !legend.layers.contains(layer))
+                })
+                || (!legend.categorical && !legend.category_fields.is_empty())
                 || !bounded(legend.row_mm, 3., 30.)
                 || !bounded(legend.indent_mm, 0., 20.)
             {
@@ -3086,6 +3112,62 @@ pub fn command_schema() -> serde_json::Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn legend_category_fields_are_explicit_bounded_and_legacy_omitted() {
+        let mut layout = default_layout();
+        let index = layout
+            .elements
+            .iter()
+            .position(|e| e.kind == ElementKind::Legend)
+            .unwrap();
+        let legacy = serde_json::to_value(layout.elements[index].legend.as_ref().unwrap()).unwrap();
+        assert!(legacy.get("category_fields").is_none());
+        let legend = layout.elements[index].legend.as_mut().unwrap();
+        legend.layers = vec!["lv_poles".into()];
+        legend.category_fields.insert(
+            "lv_poles".into(),
+            vec![
+                "struct_type".into(),
+                "material".into(),
+                "existing_status".into(),
+            ],
+        );
+        validate(&layout).unwrap();
+        for fields in [
+            vec![],
+            vec!["struct_type", "struct_type"],
+            vec![" struct_type"],
+            vec!["struct_type", "material", "existing_status", "other"],
+        ] {
+            let mut invalid = layout.clone();
+            invalid.elements[index]
+                .legend
+                .as_mut()
+                .unwrap()
+                .category_fields
+                .insert(
+                    "lv_poles".into(),
+                    fields.into_iter().map(str::to_owned).collect(),
+                );
+            assert!(validate(&invalid).is_err());
+        }
+        let mut unrelated = layout.clone();
+        unrelated.elements[index]
+            .legend
+            .as_mut()
+            .unwrap()
+            .category_fields
+            .insert("other".into(), vec!["struct_type".into()]);
+        assert!(validate(&unrelated).is_err());
+        let mut disabled = layout;
+        disabled.elements[index]
+            .legend
+            .as_mut()
+            .unwrap()
+            .categorical = false;
+        assert!(validate(&disabled).is_err());
+    }
 
     #[test]
     fn migrate_style_keys_is_one_evaluated_print_intent() {

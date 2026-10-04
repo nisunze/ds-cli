@@ -82,6 +82,7 @@ pub fn new_element(kind: ElementKind, id: String, asset: &str) -> Element {
             layers: Vec::new(),
             titles: Default::default(),
             categorical: true,
+            category_fields: Default::default(),
             row_mm: super::legend_row(),
         }),
         // A map element is only valid with its print viewport, so a new one

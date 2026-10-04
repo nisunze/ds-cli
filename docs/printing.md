@@ -287,6 +287,14 @@ categories change. Omitted alignment preserves the historical `right` anchor.
 Use `left` for a lower-left legend, remove its `flow`, and keep it out of
 `composition.movable` to retain the authored position.
 
+A categorical legend may author `category_fields` by logical layer: up to three
+ordered, distinct source fields per layer. Observed combinations each retain a
+row resolved through the same held style as the map. This separates type,
+material and lifecycle without inferring any engineering fact. Missing or empty
+values read as `Unspecified`; structured values refuse. Unmentioned layers keep
+their existing primary-colour category behavior. The empty setting is omitted
+and retains historical bytes. Category and total-row bounds remain unchanged.
+
 ## What a sheet layout optimises
 
 Sheet composition is an optimisation, not a set of placements. The objective is
