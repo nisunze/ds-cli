@@ -1,6 +1,7 @@
 //! Print-layout authority shared by CLI, Canvas2D preview and vector delivery.
 //! Flat page elements in physical millimetres; no tile, HTML or remote-image IO.
 pub mod adjacent_networks;
+pub mod admin_reference;
 pub mod attribution;
 pub mod context;
 pub mod custom;
