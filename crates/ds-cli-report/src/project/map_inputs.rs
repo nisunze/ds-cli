@@ -170,6 +170,7 @@ pub fn run(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
         .transpose()
         .map_err(invalid)?;
     let receipt = InputReceipt::from_config(&config.result().document).map_err(invalid)?;
+    let server_sheets_sha256 = receipt.sheets_sha256.clone();
     let receipt = super::export::complete_proof_print_styles(
         lane,
         project,
@@ -377,7 +378,7 @@ pub fn run(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
         lane,
         identity.uid(),
         identity.credential_audience_sha256(),
-        &receipt.sheets_sha256,
+        &server_sheets_sha256,
         &sheets,
         std::slice::from_ref(&layout),
     )
