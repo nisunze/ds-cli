@@ -4,9 +4,9 @@ use ds_cli_contract::spec::{
 };
 use ds_cli_contract::{Context, Failure, Inputs};
 use ds_grid_exchange::package_migration::{
-    MigrationOutput, SupplementalResource, migrate_with_resources,
+    migrate_with_resources, MigrationOutput, SupplementalResource,
 };
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::{
     io::{Read, Write},
@@ -210,7 +210,7 @@ mod tests {
         let blank =
             ds_grid_exchange::create_blank_model(&ds_grid_exchange::BlankModelRequest::default())
                 .unwrap();
-        migrate(&blank.bytes).unwrap()
+        ds_grid_exchange::package_migration::migrate(&blank.bytes).unwrap()
     }
     #[test]
     fn materialized_current_package_commits_receipt_and_refuses_overwrite() {
@@ -412,11 +412,9 @@ mod supplemental_input_tests {
     }
     #[test]
     fn paired_flags_and_actual_bounded_read_refuse() {
-        assert!(
-            load_supplemental(&inputs(vec![]), &"a".repeat(64))
-                .unwrap()
-                .is_empty()
-        );
+        assert!(load_supplemental(&inputs(vec![]), &"a".repeat(64))
+            .unwrap()
+            .is_empty());
         for extra in [
             vec!["--supplemental-resources".into(), "/unused.json".into()],
             vec!["--expected-supplemental-sha256".into(), "a".repeat(64)],
