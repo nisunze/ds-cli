@@ -3016,6 +3016,7 @@ pub fn transformer_status_for_project(
 /// list` performs, exposed as a library answer so a caller that is about to
 /// visit many projects does not have to shell out to itself.
 pub struct HeadlessDirectory {
+    legacy_project_crs_shapes: BTreeMap<String, Value>,
     project_params: BTreeMap<String, Value>,
     identity: ProviderIdentity,
     lane: &'static str,
@@ -3024,6 +3025,9 @@ pub struct HeadlessDirectory {
 }
 
 impl HeadlessDirectory {
+    pub fn legacy_project_crs_shape(&self, project: &str) -> Option<&Value> {
+        self.legacy_project_crs_shapes.get(project)
+    }
     /// One exact visible project's normalized parameters; never a saved project selection.
     pub fn project_params(&self, project: &str) -> Option<&Value> {
         self.project_params.get(project)
@@ -3058,6 +3062,11 @@ pub fn project_directory(lane_value: &str) -> Result<HeadlessDirectory, Failure>
         )?;
         let directory = device.list_projects().map_err(map_client)?;
         return Ok(HeadlessDirectory {
+            legacy_project_crs_shapes: directory
+                .projects()
+                .iter()
+                .map(|p| (p.ds_project().to_owned(), p.legacy_project_crs_shape()))
+                .collect(),
             project_params: directory
                 .projects()
                 .iter()
@@ -3080,6 +3089,11 @@ pub fn project_directory(lane_value: &str) -> Result<HeadlessDirectory, Failure>
     )?;
     let directory = client.list_projects(now()).map_err(map_client)?;
     Ok(HeadlessDirectory {
+        legacy_project_crs_shapes: directory
+            .projects()
+            .iter()
+            .map(|p| (p.ds_project().to_owned(), p.legacy_project_crs_shape()))
+            .collect(),
         project_params: directory
             .projects()
             .iter()

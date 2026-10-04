@@ -67,7 +67,15 @@ pub fn run(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
         identity.uid(),
         identity.credential_audience_sha256(),
         directory.project_params(project),
-    )?;
+    )
+    .map_err(|failure| {
+        let mut detail = failure.detail_value().cloned().unwrap_or_else(|| json!({}));
+        detail["legacy_crs_shape"] = directory
+            .legacy_project_crs_shape(project)
+            .cloned()
+            .unwrap_or(Value::Null);
+        failure.detail(detail)
+    })?;
     Ok(
         json!({"project": project, "lane": lane, "source_sha256": capture.source_sha256, "capture": capture}),
     )
