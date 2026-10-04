@@ -141,6 +141,29 @@ fn area2(ring: &[Coord]) -> f64 {
         .sum()
 }
 
+/// Sweep along latitude when the points extend further north-south.
+fn axis_is_lat(points: impl Iterator<Item = Coord>) -> bool {
+    let b = bounds_of(points);
+    b[3] - b[1] > b[2] - b[0]
+}
+
+/// `[min_lng, min_lat, max_lng, max_lat]` of a ring.
+fn bounds(ring: &[Coord]) -> [f64; 4] {
+    bounds_of(ring.iter().copied())
+}
+
+fn bounds_of(points: impl Iterator<Item = Coord>) -> [f64; 4] {
+    points.fold(
+        [
+            f64::INFINITY,
+            f64::INFINITY,
+            f64::NEG_INFINITY,
+            f64::NEG_INFINITY,
+        ],
+        |[x0, y0, x1, y1], p| [x0.min(p.lng), y0.min(p.lat), x1.max(p.lng), y1.max(p.lat)],
+    )
+}
+
 #[derive(Clone)]
 struct Edge {
     a: Coord,
@@ -226,13 +249,44 @@ fn exterior_union(mut pieces: Vec<Vec<Coord>>) -> Vec<Coord> {
             }
         }
     }
+    // Only edges whose extents overlap along the longer axis can meet. A sweep
+    // over that axis finds them in O(n log n + k) instead of testing all pairs
+    // (a 3,000-vertex route took over a minute); the candidates are then
+    // visited in the all-pairs (i, j) order, so every cut is pushed exactly as
+    // before and the output is unchanged.
+    let along_lat = axis_is_lat(edges.iter().flat_map(|e| [e.a, e.b]));
+    let span = |e: &Edge| {
+        let (p, q) = if along_lat {
+            (e.a.lat, e.b.lat)
+        } else {
+            (e.a.lng, e.b.lng)
+        };
+        (p.min(q), p.max(q))
+    };
+    let mut order: Vec<usize> = (0..edges.len()).collect();
+    order.sort_by(|&x, &y| {
+        span(&edges[x])
+            .0
+            .total_cmp(&span(&edges[y]).0)
+            .then(x.cmp(&y))
+    });
+    let mut pairs = Vec::new();
+    for (k, &x) in order.iter().enumerate() {
+        let end = span(&edges[x]).1;
+        for &y in &order[k + 1..] {
+            if span(&edges[y]).0 > end {
+                break;
+            }
+            if edges[x].piece != edges[y].piece {
+                pairs.push((x.min(y), x.max(y)));
+            }
+        }
+    }
+    pairs.sort_unstable();
     // Split both edges at the *same* coordinate, including collinear overlap
     // endpoints. Bounding-box pruning keeps distant segments out of this work.
-    for i in 0..edges.len() {
-        for j in i + 1..edges.len() {
-            if edges[i].piece == edges[j].piece {
-                continue;
-            }
+    for (i, j) in pairs {
+        {
             let (a, b, c, d) = (edges[i].a, edges[i].b, edges[j].a, edges[j].b);
             if a.lng.min(b.lng) > c.lng.max(d.lng)
                 || c.lng.min(d.lng) > a.lng.max(b.lng)
@@ -299,6 +353,20 @@ fn exterior_union(mut pieces: Vec<Vec<Coord>>) -> Vec<Coord> {
         node_bins.entry(key).or_default().push(id);
         id
     };
+    // A midpoint can be inside, or on the boundary of, a piece only within the
+    // piece's box; the margin covers the boundary predicate's roundoff. Pieces
+    // are windowed along the sweep axis, and the few unusually wide ones (the
+    // input polygon in `buffer_polygon`) are always checked.
+    const MARGIN: f64 = 1e-9;
+    let boxes: Vec<[f64; 4]> = pieces.iter().map(|ring| bounds(ring)).collect();
+    let low = |b: &[f64; 4]| if along_lat { b[1] } else { b[0] };
+    let extent = |b: &[f64; 4]| if along_lat { b[3] - b[1] } else { b[2] - b[0] };
+    let mut extents: Vec<f64> = boxes.iter().map(extent).collect();
+    extents.sort_by(f64::total_cmp);
+    let reach = extents[extents.len() * 99 / 100];
+    let (wide, mut windowed): (Vec<usize>, Vec<usize>) =
+        (0..pieces.len()).partition(|&id| extent(&boxes[id]) > reach);
+    windowed.sort_by(|&x, &y| low(&boxes[x]).total_cmp(&low(&boxes[y])).then(x.cmp(&y)));
     for edge in &mut edges {
         edge.cuts.sort_by(|a, b| a.0.total_cmp(&b.0));
         edge.cuts.dedup_by(|a, b| a.0 == b.0);
@@ -306,7 +374,21 @@ fn exterior_union(mut pieces: Vec<Vec<Coord>>) -> Vec<Coord> {
             let a = cut[0].1;
             let b = cut[1].1;
             let mid = Coord::new(a.lng + (b.lng - a.lng) * 0.5, a.lat + (b.lat - a.lat) * 0.5);
-            let covered = pieces.iter().enumerate().any(|(id, ring)| {
+            let s = if along_lat { mid.lat } else { mid.lng };
+            let first = windowed.partition_point(|&id| low(&boxes[id]) < s - reach - MARGIN);
+            let last = windowed.partition_point(|&id| low(&boxes[id]) <= s + MARGIN);
+            let candidates = windowed[first..last]
+                .iter()
+                .chain(&wide)
+                .copied()
+                .filter(|&id| {
+                    let [x0, y0, x1, y1] = boxes[id];
+                    mid.lng >= x0 - MARGIN
+                        && mid.lng <= x1 + MARGIN
+                        && mid.lat >= y0 - MARGIN
+                        && mid.lat <= y1 + MARGIN
+                });
+            let covered = candidates.map(|id| (id, &pieces[id])).any(|(id, ring)| {
                 if id == edge.piece {
                     return false;
                 }
@@ -685,5 +767,24 @@ mod tests {
     fn non_positive_radius_yields_nothing() {
         assert!(buffer_point(Coord::new(0.0, 0.0), 0.0, 8).is_empty());
         assert!(buffer_line(&[Coord::new(0.0, 0.0), Coord::new(1.0, 0.0)], -5.0, 8).is_empty());
+    }
+
+    // A whole route, not one bend: 200 alternating 25 m legs at a 2 m radius.
+    // The sweep visits only nearby capsules; every bend must still dissolve.
+    #[test]
+    fn a_long_zigzag_route_has_a_simple_boundary() {
+        let mut route = vec![Coord::new(29.8469, -2.6256)];
+        for leg in 0..200 {
+            let bearing = if leg % 2 == 0 { 60.0 } else { 120.0 };
+            route.push(destination(*route.last().unwrap(), bearing, 25.0));
+        }
+        let ring = buffer_line(&route, 2.0, 8);
+        assert_simple(&ring);
+        let (_, _, max_lng, _) = bbox(&ring);
+        let (_, _, route_max_lng, _) = bbox(&route);
+        assert!(
+            max_lng > route_max_lng,
+            "the end cap extends past the route"
+        );
     }
 }
