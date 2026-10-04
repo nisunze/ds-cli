@@ -416,6 +416,31 @@ mod transactional_projection_tests {
         }
     }
     #[test]
+    fn boxed_project_request_preserves_exact_native_wire_fields_and_package_bytes() {
+        let original = request();
+        let wire = serde_json::json!({
+            "operation": "project", "scope": original.scope,
+            "expected_revision": original.expected_revision,
+            "package_bytes": original.package_bytes, "options": original.options,
+            "style_document": original.style_document, "patch": original.patch,
+            "analyze": original.analyze
+        });
+        let bytes = serde_json::to_vec(&wire).unwrap();
+        let Request::Project(decoded) = serde_json::from_slice(&bytes).unwrap() else {
+            panic!("project wire decoded as case request");
+        };
+        assert_eq!(decoded.package_bytes, original.package_bytes);
+        assert_eq!(decoded.scope, original.scope);
+        assert_eq!(decoded.expected_revision, original.expected_revision);
+        assert_eq!(
+            serde_json::to_value(&decoded.options).unwrap(),
+            wire["options"]
+        );
+        assert_eq!(decoded.style_document, wire["style_document"]);
+        assert_eq!(serde_json::to_value(&decoded.patch).unwrap(), wire["patch"]);
+        assert_eq!(decoded.analyze, original.analyze);
+    }
+    #[test]
     fn refused_scene_projection_restores_owned_held_cache_without_cloning() {
         let mut runtime = Runtime::default();
         let original = request();

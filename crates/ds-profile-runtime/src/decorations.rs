@@ -107,7 +107,7 @@ pub fn project(
                         labels: vec![Label {
                             point: label.point,
                             text: section_label(
-                                &span.section_id,
+                                span.section_id.as_str(),
                                 scene
                                     .evidence
                                     .section_basis
