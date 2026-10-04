@@ -45,7 +45,8 @@ fn model() -> GridModelSnapshot {
             });
     }
     let template = model.analysis_cases[0].clone();
-    model.analysis_cases.clear();
+    // Keep the original criterion/capacity-bound cases; added display cases
+    // cannot invalidate the packaged model or change its engineering envelope.
     for (id, temperature, ice) in [("hot", 60., 0.), ("ice", 20., 0.06)] {
         let weather_id = WeatherStateId::new(format!("weather-{id}")).unwrap();
         model.weather_states.push(WeatherStateRow {
