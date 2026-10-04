@@ -241,6 +241,7 @@ both get the same answer because neither computes it.
 
 ```bash
 ds report project settings --project <exact-id> --output json                 # output policy and readiness
+ds report project crs --project <exact-id> --output json                      # existing projection authority only
 ds report project outputs set --project <exact-id> --selection outputs.json --yes
 ```
 
@@ -1374,3 +1375,18 @@ choose language from country or the UI. See the [owner contract](../../../ds-com
 and [dry-run-first backfills](../../../ds-command-kernel/migrations/report-locale-and-artifact-names.md).
 No migration is performed by export. Report filenames and stored-name validation
 use the kernel rule; PDF title casing preserves the protected delivery.
+
+
+### Project projection capture for map printing
+
+`ds report project crs --project <exact-id> --lane stable --output json` reads
+only the authenticated project directory. Its capsule binds normalized existing
+ProjectParams to the exact project, native user, lane, credential audience and
+source SHA-256. It does not open a report queue or outbox, touch the project,
+automatically publish reports, or read or mutate configuration, templates or
+seeds. A missing or malformed projection refuses; a captured projection is
+separately admitted by the renderer, which requires a known projected metre CRS
+when the governed metric grid is enabled. Capturing an automatic or unsupported
+projection does not authorize guessing one. Ordinary export and preview capture
+the same authority through this directory owner and bind it into the exact
+SHA-verified print context without changing the server configuration receipt.

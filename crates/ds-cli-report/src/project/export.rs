@@ -1750,6 +1750,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             &plan.names,
             &PreviewSettings {
                 project_id: &project_id,
+                project_crs: held_inputs.project_crs.as_ref(),
                 receipt: &receipt,
                 admin_bounds: admin_bounds.as_ref(),
                 staging_root: &staging,
@@ -1865,34 +1866,11 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             print_context
         };
         let print_context = if let Some(capture) = &held_inputs.project_crs {
-            let mut document = if let Some(context) = &print_context {
-                if ds_command_kernel::report_export::sha256_hex(&context.bytes) != context.sha256 {
-                    return Err(HostFailure::new(
-                        CONTEXT_INVALID.code,
-                        "print context changed before CRS capture",
-                    ));
-                }
-                serde_json::from_slice::<Value>(&context.bytes)
-                    .map_err(|e| HostFailure::new(CONTEXT_INVALID.code, e.to_string()))?
-            } else {
-                json!({"schema":"ds.print-context/v1","layers":{},"sources":[],"coverage":null})
-            };
-            document["project_crs"] = serde_json::to_value(capture)
-                .map_err(|e| HostFailure::new(CONTEXT_INVALID.code, e.to_string()))?;
-            let bytes = serde_json::to_vec(&document)
-                .map_err(|e| HostFailure::new(CONTEXT_INVALID.code, e.to_string()))?;
-            Some(ds_report_host::PrintContextBytes {
-                sha256: ds_command_kernel::report_export::sha256_hex(&bytes),
-                bytes,
-                layers: print_context
-                    .as_ref()
-                    .map(|c| c.layers.clone())
-                    .unwrap_or_default(),
-                omitted: print_context
-                    .as_ref()
-                    .map(|c| c.omitted.clone())
-                    .unwrap_or_default(),
-            })
+            Some(ds_report_host::bind_project_crs(
+                print_context,
+                capture,
+                &project_id,
+            )?)
         } else {
             print_context
         };

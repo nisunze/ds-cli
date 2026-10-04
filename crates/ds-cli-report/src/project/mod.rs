@@ -23,6 +23,7 @@
 pub mod archives;
 pub mod combined;
 pub mod compute;
+pub mod crs;
 pub mod export;
 pub mod grouping;
 pub mod hold;
