@@ -129,8 +129,8 @@ pub static REPORT_EXPORT_COMMAND: Command = Command {
             "New Markdown file to create; never overwritten.",
         )
         .required(),
-        ds_cli_desktop::ops::TARGET_ARG,
-        ds_cli_desktop::ops::DESCRIPTOR_ARG,
+        crate::paired::TARGET_ARG,
+        crate::paired::DESCRIPTOR_ARG,
     ],
     output: "The created Markdown destination, native name, exact byte count/content digest, batch id/digest and source run/city/variant.",
     examples: &[
@@ -173,8 +173,8 @@ pub static REPORT_BUNDLE_COMMAND: Command = Command {
         .choices(REPORT_VARIANTS),
         Arg::value("out", "<file.zip>", "New ZIP file to create; never overwritten.")
             .required(),
-        ds_cli_desktop::ops::TARGET_ARG,
-        ds_cli_desktop::ops::DESCRIPTOR_ARG,
+        crate::paired::TARGET_ARG,
+        crate::paired::DESCRIPTOR_ARG,
     ],
     output: "The created prompt-bundle ZIP, exact byte count/content digest, batch id/digest and source run/city/variant.",
     examples: &[Example {
@@ -213,8 +213,8 @@ pub static PORTFOLIO_EXPORT_COMMAND: Command = Command {
             "New JSON (result) or Markdown (report) file to create; never overwritten.",
         )
         .required(),
-        ds_cli_desktop::ops::TARGET_ARG,
-        ds_cli_desktop::ops::DESCRIPTOR_ARG,
+        crate::paired::TARGET_ARG,
+        crate::paired::DESCRIPTOR_ARG,
     ],
     output: "The created portfolio destination, native name, exact byte count/content digest, batch id/digest and source run/artifact.",
     examples: &[

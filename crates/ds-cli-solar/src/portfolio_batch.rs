@@ -48,8 +48,8 @@ pub static START_COMMAND: Command = Command {
             "Complete ds-solar.portfolio-batch/v1 request, at most 1 MiB.",
         )
         .required(),
-        ds_cli_desktop::ops::TARGET_ARG,
-        ds_cli_desktop::ops::DESCRIPTOR_ARG,
+        crate::paired::TARGET_ARG,
+        crate::paired::DESCRIPTOR_ARG,
     ],
     output: "Durable run_id, exact request, per-portfolio run ids and current kernel state.",
     examples: &[Example {
@@ -75,8 +75,8 @@ pub static STATUS_COMMAND: Command = Command {
     execution: Execution::Sync,
     args: &[
         Arg::value("run-id", "<id>", "Exact batch_id from the submission.").required(),
-        ds_cli_desktop::ops::TARGET_ARG,
-        ds_cli_desktop::ops::DESCRIPTOR_ARG,
+        crate::paired::TARGET_ARG,
+        crate::paired::DESCRIPTOR_ARG,
     ],
     output: "Kernel batch state with complete/cancelled flags and each row's terminal outcome.",
     examples: &[Example {
@@ -102,8 +102,8 @@ pub static CANCEL_COMMAND: Command = Command {
     execution: Execution::Sync,
     args: &[
         Arg::value("run-id", "<id>", "Exact batch_id to cancel.").required(),
-        ds_cli_desktop::ops::TARGET_ARG,
-        ds_cli_desktop::ops::DESCRIPTOR_ARG,
+        crate::paired::TARGET_ARG,
+        crate::paired::DESCRIPTOR_ARG,
     ],
     output: "Current kernel state; poll until complete to observe settled outcomes.",
     examples: &[Example {

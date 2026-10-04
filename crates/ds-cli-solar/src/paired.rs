@@ -12,6 +12,9 @@ use ds_cli_contract::Inputs;
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{Availability, Refusal};
 use ds_cli_desktop::ops::{self, BridgeOp};
+/// The paired host-targeting flags, declared once by the bridge and re-exported
+/// here so the Solar command files never name the bridge crate themselves.
+pub use ds_cli_desktop::ops::{DESCRIPTOR_ARG, TARGET_ARG};
 use serde_json::Value;
 
 pub const PORTFOLIO_BATCH_START_OP: BridgeOp = BridgeOp {

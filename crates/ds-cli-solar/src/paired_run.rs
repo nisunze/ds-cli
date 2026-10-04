@@ -89,8 +89,8 @@ pub static START_COMMAND: Command = Command {
             "Cities to calculate concurrently, from 1 through 32.",
         ),
         Arg::switch("serial", "Force strictly serial calculation."),
-        ds_cli_desktop::ops::TARGET_ARG,
-        ds_cli_desktop::ops::DESCRIPTOR_ARG,
+        crate::paired::TARGET_ARG,
+        crate::paired::DESCRIPTOR_ARG,
     ],
     output: "A paired local run receipt with `run_id`, selected contexts and placement. The calculation continues after this command returns; read it with the lifecycle commands rather than treating a launch receipt as a completed result.",
     examples: &[
@@ -129,8 +129,8 @@ pub static PROGRESS_COMMAND: Command = Command {
     execution: Execution::Sync,
     args: &[
         Arg::value("run-id", "<id>", "Run id returned by solar run start.").required(),
-        ds_cli_desktop::ops::TARGET_ARG,
-        ds_cli_desktop::ops::DESCRIPTOR_ARG,
+        crate::paired::TARGET_ARG,
+        crate::paired::DESCRIPTOR_ARG,
     ],
     output: "The paired application's bounded progress receipt for the requested run.",
     examples: &[Example {
@@ -157,8 +157,8 @@ pub static RESULT_COMMAND: Command = Command {
     execution: Execution::Sync,
     args: &[
         Arg::value("run-id", "<id>", "Run id returned by solar run start.").required(),
-        ds_cli_desktop::ops::TARGET_ARG,
-        ds_cli_desktop::ops::DESCRIPTOR_ARG,
+        crate::paired::TARGET_ARG,
+        crate::paired::DESCRIPTOR_ARG,
     ],
     output: "The paired application's bounded public result receipt for the requested run. A portfolio run that sealed its result but could not queue its governed publication stays `succeeded` and carries `publication` with the state, the application's reason and the remedy; that intent never reached the outbox, so `solar sync status` has no row for it. No `publication` means the application stated nothing about one.",
     examples: &[Example {
@@ -185,8 +185,8 @@ pub static CANCEL_COMMAND: Command = Command {
     execution: Execution::Sync,
     args: &[
         Arg::value("run-id", "<id>", "Run id returned by solar run start.").required(),
-        ds_cli_desktop::ops::TARGET_ARG,
-        ds_cli_desktop::ops::DESCRIPTOR_ARG,
+        crate::paired::TARGET_ARG,
+        crate::paired::DESCRIPTOR_ARG,
     ],
     output: "The paired application's cancellation receipt for the requested run.",
     examples: &[Example {
@@ -219,8 +219,8 @@ pub static READ_COMMAND: Command = Command {
             "<field>",
             "Semantic result field to include. Repeat for several fields.",
         ),
-        ds_cli_desktop::ops::TARGET_ARG,
-        ds_cli_desktop::ops::DESCRIPTOR_ARG,
+        crate::paired::TARGET_ARG,
+        crate::paired::DESCRIPTOR_ARG,
     ],
     output: "A bounded result projection with its run id, city context and digest.",
     examples: &[Example {

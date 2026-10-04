@@ -168,8 +168,8 @@ pub static SYNC_STATUS_COMMAND: Command = Command {
     execution: Execution::Sync,
     args: &[
         Arg::value("run-id", "<id>", "Optional native batch id to filter."),
-        ds_cli_desktop::ops::TARGET_ARG,
-        ds_cli_desktop::ops::DESCRIPTOR_ARG,
+        crate::paired::TARGET_ARG,
+        crate::paired::DESCRIPTOR_ARG,
     ],
     output: "Matching calculation/report publication rows and counts by state.",
     examples: &[Example {
@@ -263,8 +263,8 @@ pub static PORTFOLIO_READ_COMMAND: Command = Command {
             "<field>",
             "Semantic aggregate-result object key. Repeat to descend, up to eight keys.",
         ),
-        ds_cli_desktop::ops::TARGET_ARG,
-        ds_cli_desktop::ops::DESCRIPTOR_ARG,
+        crate::paired::TARGET_ARG,
+        crate::paired::DESCRIPTOR_ARG,
     ],
     output: "The v2/v3 schema, bounded engine identity, portfolio name/id/revision, run identity, ordered members, input/result/content/batch digests, assumptions, representative city or null round-robin marker, bounded v3 graph-member evidence, selected path/value, completeness and sealed byte count. Large arrays and strings are edge-sampled; complete=false identifies elision.",
     examples: &[
@@ -305,8 +305,8 @@ pub static FINAL_IMPORT_COMMAND: Command = Command {
             "UTF-8 Markdown final to import (maximum 2 MiB).",
         )
         .required(),
-        ds_cli_desktop::ops::TARGET_ARG,
-        ds_cli_desktop::ops::DESCRIPTOR_ARG,
+        crate::paired::TARGET_ARG,
+        crate::paired::DESCRIPTOR_ARG,
     ],
     output: "An imported or cancelled receipt naming the run and city. Import does not queue publication.",
     examples: &[Example {
@@ -334,8 +334,8 @@ pub static FINAL_SUBMIT_COMMAND: Command = Command {
     args: &[
         Arg::value("run-id", "<id>", "Completed native Solar batch id.").required(),
         Arg::value("city", "<id>", "Canonical city context in that batch.").required(),
-        ds_cli_desktop::ops::TARGET_ARG,
-        ds_cli_desktop::ops::DESCRIPTOR_ARG,
+        crate::paired::TARGET_ARG,
+        crate::paired::DESCRIPTOR_ARG,
     ],
     output: "A submitted or unchanged receipt naming the exact run and city.",
     examples: &[Example {

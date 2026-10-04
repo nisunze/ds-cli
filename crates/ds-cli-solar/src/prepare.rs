@@ -54,8 +54,8 @@ accepts no URL, credential, cache path, project id or filesystem root.",
             "<tag>",
             "Requested document language, for example fr or en.",
         ),
-        ds_cli_desktop::ops::TARGET_ARG,
-        ds_cli_desktop::ops::DESCRIPTOR_ARG,
+        crate::paired::TARGET_ARG,
+        crate::paired::DESCRIPTOR_ARG,
     ],
     output: "\
 The paired application's bounded preparation receipt: selected contexts, their \
