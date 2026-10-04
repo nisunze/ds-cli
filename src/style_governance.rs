@@ -10,6 +10,11 @@ pub enum Command {
     Table,
     Manifest,
     PlanSeed,
+    PlanA4,
+    CreateA4 {
+        expected_definition_sha256: String,
+        expected_plan_sha256: String,
+    },
     Seed {
         expected_manifest_revision: String,
         expected_plan_sha256: String,
@@ -63,6 +68,8 @@ impl Command {
             Self::Table => "get_style_table",
             Self::Manifest => "get_seed_manifest",
             Self::PlanSeed => "plan_seed_manifest",
+            Self::PlanA4 => "plan_printing_a4",
+            Self::CreateA4 { .. } => "create_printing_a4",
             Self::Seed { .. } => "seed_manifest",
             Self::Inventory { .. } => "inventory_styles",
             Self::Backup { .. } => "backup_inventory",
@@ -77,6 +84,16 @@ pub fn request_body(request: &Request) -> Result<Value, String> {
     }
     let mut data = json!({"project_id":request.project});
     match &request.command {
+        Command::CreateA4 {
+            expected_definition_sha256,
+            expected_plan_sha256,
+        } => {
+            if !digest(expected_definition_sha256) || !digest(expected_plan_sha256) {
+                return Err("style_governance_invalid: A4 create needs its reviewed definition and plan digests".into());
+            }
+            data["expected_definition_sha256"] = json!(expected_definition_sha256);
+            data["expected_plan_sha256"] = json!(expected_plan_sha256);
+        }
         Command::Seed {
             expected_manifest_revision,
             expected_plan_sha256,
@@ -157,6 +174,32 @@ pub fn admit(request: &Request, response: &Value) -> Result<Value, String> {
         }
     }
     match &request.command {
+        Command::PlanA4 => {
+            admit_a4_plan(request, data)?;
+        }
+        Command::CreateA4 {
+            expected_definition_sha256,
+            expected_plan_sha256,
+        } => {
+            if data.as_object().is_none_or(|object| object.len() != 5)
+                || data["schema"] != "ds.print-a4-seed-result/v1"
+                || data["applied"] != true
+            {
+                return Err("style_governance_invalid: incomplete fixed A4 create receipt".into());
+            }
+            let plan = admit_a4_plan(request, &data["plan"])?;
+            if !plan.apply_allowed
+                || plan.definition_sha256 != *expected_definition_sha256
+                || plan.plan_sha256 != *expected_plan_sha256
+                || data["created"] != (plan.creates == 1)
+                || data["preserved"] != (plan.preserves == 1)
+            {
+                return Err(
+                    "style_governance_invalid: A4 create differs from the reviewed source or plan"
+                        .into(),
+                );
+            }
+        }
         Command::Table => {
             let table: crate::style_resolution::Snapshot = serde_json::from_value(data.clone())
                 .map_err(|e| format!("style_resolution_invalid: {e}"))?;
@@ -281,6 +324,97 @@ pub fn admit(request: &Request, response: &Value) -> Result<Value, String> {
     }
     Ok(data.clone())
 }
+// This remains a fixed reference; neither host supplies an arbitrary path/body.
+const A4_DOCUMENT_PATH: &str = "eds_apps/ds_griddesign/printing_a4_documents/voltage-drop-a4-v1";
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct A4SeedPlan {
+    schema: String,
+    project_id: String,
+    principal: String,
+    document_path: String,
+    definition_sha256: String,
+    content_sha256: String,
+    html_sha256: String,
+    definition: Value,
+    existing_state: String,
+    #[serde(default)]
+    existing_sha256: String,
+    #[serde(default)]
+    existing_update_time: String,
+    creates: u8,
+    preserves: u8,
+    apply_allowed: bool,
+    plan_sha256: String,
+}
+fn admit_a4_plan(request: &Request, data: &Value) -> Result<A4SeedPlan, String> {
+    let plan: A4SeedPlan = serde_json::from_value(data.clone())
+        .map_err(|error| format!("style_governance_invalid: fixed A4 plan {error}"))?;
+    if plan.project_id != request.project {
+        return Err("project_context_changed: A4 plan belongs to another captured project".into());
+    }
+    let definition = &plan.definition;
+    let definition_valid = definition
+        .as_object()
+        .is_some_and(|object| object.len() == 5)
+        && definition["schema"] == "ds.print-a4-default/v1"
+        && definition["html_sha256"] == plan.html_sha256
+        && definition["content_sha256"] == plan.content_sha256
+        && definition["status_layout"].is_object()
+        && definition["logo_slots"]
+            == json!([
+                "governed-logo-0",
+                "governed-logo-1",
+                "governed-logo-2",
+                "governed-logo-3",
+                "governed-logo-4",
+                "governed-logo-5"
+            ]);
+    let state_valid = match plan.existing_state.as_str() {
+        "missing" => {
+            plan.existing_sha256.is_empty()
+                && plan.existing_update_time.is_empty()
+                && plan.creates == 1
+                && plan.preserves == 0
+                && plan.apply_allowed
+        }
+        "exact" => {
+            plan.existing_sha256 == plan.definition_sha256
+                && exact(&plan.existing_update_time, 64)
+                && plan.creates == 0
+                && plan.preserves == 1
+                && plan.apply_allowed
+        }
+        "conflict" => {
+            digest(&plan.existing_sha256)
+                && plan.existing_sha256 != plan.definition_sha256
+                && exact(&plan.existing_update_time, 64)
+                && plan.creates == 0
+                && plan.preserves == 0
+                && !plan.apply_allowed
+        }
+        _ => false,
+    };
+    let mut unhashed = data.clone();
+    unhashed["plan_sha256"] = json!("");
+    if plan.schema != "ds.print-a4-seed-plan/v1"
+        || plan.document_path != A4_DOCUMENT_PATH
+        || !exact(&plan.principal, 320)
+        || !definition_valid
+        || !state_valid
+        || !digest(&plan.html_sha256)
+        || !digest(&plan.content_sha256)
+        || !digest(&plan.definition_sha256)
+        || plan.definition_sha256 != crate::style_plan::style_digest(definition)
+        || plan.plan_sha256 != crate::style_plan::style_digest(&unhashed)
+    {
+        return Err(
+            "style_governance_invalid: fixed A4 scope, exact definition or plan digest differs"
+                .into(),
+        );
+    }
+    Ok(plan)
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -345,5 +479,78 @@ mod tests {
             .contains("project_context_changed"));
         receipt["data"]["deletion_executable"] = json!(true);
         assert!(admit(&request, &receipt).is_err());
+    }
+
+    fn a4_fixture_plan(project: &str) -> Value {
+        let definition = json!({"schema":"ds.print-a4-default/v1","html_sha256":"a".repeat(64),"content_sha256":"b".repeat(64),"status_layout":{"paper":{"size":"A4","orientation":"portrait"}},"logo_slots":["governed-logo-0","governed-logo-1","governed-logo-2","governed-logo-3","governed-logo-4","governed-logo-5"]});
+        let mut plan = json!({"schema":"ds.print-a4-seed-plan/v1","project_id":project,"principal":"user@example.com","document_path":A4_DOCUMENT_PATH,"definition_sha256":crate::style_plan::style_digest(&definition),"content_sha256":"b".repeat(64),"html_sha256":"a".repeat(64),"definition":definition,"existing_state":"missing","creates":1,"preserves":0,"apply_allowed":true,"plan_sha256":""});
+        plan["plan_sha256"] = json!(crate::style_plan::style_digest(&plan));
+        plan
+    }
+    #[test]
+    fn a4_seed_requires_exact_definition_scope_and_consistent_create_receipt() {
+        let plan = a4_fixture_plan("project_a");
+        let request = Request {
+            project: "project_a".into(),
+            command: Command::PlanA4,
+        };
+        let response = json!({"success":true,"data":plan});
+        assert!(admit(&request, &response).is_ok());
+        for mutation in ["project", "path", "body", "count", "state", "extra", "plan"] {
+            let mut bad = response.clone();
+            match mutation {
+                "project" => bad["data"]["project_id"] = json!("project_b"),
+                "path" => {
+                    bad["data"]["document_path"] =
+                        json!("eds_apps/ds_griddesign/printing_defaults/v1")
+                }
+                "body" => bad["data"]["definition"]["content_sha256"] = json!("c".repeat(64)),
+                "count" => bad["data"]["creates"] = json!(2),
+                "state" => bad["data"]["existing_state"] = json!("overwrite"),
+                "extra" => bad["data"]["default_pointer"] = json!("other"),
+                _ => bad["data"]["plan_sha256"] = json!("0".repeat(64)),
+            }
+            assert!(admit(&request, &bad).is_err(), "{mutation}");
+        }
+        let request = Request {
+            project: "project_a".into(),
+            command: Command::CreateA4 {
+                expected_definition_sha256: plan["definition_sha256"].as_str().unwrap().into(),
+                expected_plan_sha256: plan["plan_sha256"].as_str().unwrap().into(),
+            },
+        };
+        let body = request_body(&request).unwrap();
+        assert_eq!(body["action"], "create_printing_a4");
+        assert_eq!(body["data"].as_object().unwrap().len(), 3);
+        let mut response = json!({"success":true,"data":{"schema":"ds.print-a4-seed-result/v1","plan":plan,"applied":true,"created":true,"preserved":false}});
+        assert!(admit(&request, &response).is_ok());
+        response["data"]["created"] = json!(false);
+        assert!(admit(&request, &response).is_err());
+        let invalid = Request {
+            project: "project_a".into(),
+            command: Command::CreateA4 {
+                expected_definition_sha256: "bad".into(),
+                expected_plan_sha256: "b".repeat(64),
+            },
+        };
+        assert!(request_body(&invalid).is_err());
+    }
+    #[test]
+    #[ignore = "requires exact fresh Go isolated-emulator A4 seed-plan bytes; mandatory separate owning gate"]
+    fn genuine_go_a4_create_only_plan_has_the_same_native_digest_and_scope() {
+        let path = std::env::var("DS_A4_SEED_PLAN_INPUT")
+            .expect("fresh owning Go producer capture is required");
+        let plan: Value = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+        let request = Request {
+            project: "project_a".into(),
+            command: Command::PlanA4,
+        };
+        let admitted = admit(&request, &json!({"success":true,"data":plan})).unwrap();
+        assert_eq!(admitted["creates"], 1);
+        assert_eq!(admitted["preserves"], 0);
+        assert_eq!(
+            admitted["html_sha256"],
+            "6df34e11fb5e4b16654dcd7c7490e8d93487c08ca6a27227c80fda383303c78d"
+        );
     }
 }
