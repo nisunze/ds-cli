@@ -167,9 +167,153 @@ pub fn required_fields(
                 .entry(source.into())
                 .or_default()
                 .extend(crate::pinned_context::referenced_fields(&effective));
+            // Existing neighbours use this exact foreground document and all
+            // its overrides. Retain its categorical/size/label fields before
+            // native projection, including fields hidden by the context pen.
+            if source != "tr" {
+                if let Some(reference) = layout.style_refs.get(source) {
+                    let document = documents
+                        .get(reference)
+                        .filter(|doc| doc.is_object())
+                        .ok_or_else(|| {
+                            format!("invariant foreground print style {reference} is not held")
+                        })?;
+                    let effective = super::style_overrides::apply(
+                        document,
+                        &layout
+                            .style_overrides
+                            .get(source)
+                            .cloned()
+                            .unwrap_or_default(),
+                        layout.paper.expression_value(),
+                    )?;
+                    result
+                        .entry(source.into())
+                        .or_default()
+                        .extend(crate::pinned_context::referenced_fields(&effective));
+                }
+            }
+            if source == "lv_poles" {
+                result
+                    .entry(source.into())
+                    .or_default()
+                    .extend(["struct_type".into(), "material".into()]);
+            }
         }
     }
     Ok(result)
+}
+
+/// Split existing neighbouring LV from design context using the native
+/// producer's exact normalized lifecycle vocabulary. The effective page binds
+/// existing features to the foreground role's already-held governed reference
+/// and complete override; it never authors a pen or changes source features.
+/// This projection also admits old/raw renderer captures at the final boundary.
+pub fn preserve_existing_lv(
+    layout: &Layout,
+    layers: &[super::resolved_styles::VectorLayer],
+) -> Result<Option<(Layout, Vec<super::resolved_styles::VectorLayer>)>, String> {
+    const SUFFIX: &str = "-source-invariant-existing";
+    let ids = layers
+        .iter()
+        .map(|layer| layer.id.as_str())
+        .collect::<BTreeSet<_>>();
+    let mut output = None;
+    for layer in layers {
+        let base = layer.id.split("-source-").next().unwrap_or(&layer.id);
+        let Some((source, _)) = LAYERS[1..].iter().find(|(_, role)| *role == base) else {
+            continue;
+        };
+        let features = layer.geojson["features"].as_array().ok_or_else(|| {
+            format!(
+                "print_neighbor_lifecycle_invalid: {} has no feature collection",
+                layer.id
+            )
+        })?;
+        let mut existing = Vec::new();
+        let mut proposed = Vec::new();
+        for feature in features {
+            match feature["properties"]["existing_status"].as_str() {
+                Some("existing") => existing.push(feature.clone()),
+                Some("new") => proposed.push(feature.clone()),
+                _ => return Err(format!("print_neighbor_lifecycle_invalid: {} feature {} lacks normalized new/existing evidence; refresh its native room without guessing status", layer.id, feature.get("id").unwrap_or(&Value::Null))),
+            }
+        }
+        if existing.is_empty() {
+            continue;
+        }
+        let reference = layout.style_refs.get(*source)
+            .ok_or_else(|| format!("print_invariant_style_missing: {} needs the exact governed foreground {source} reference", layer.id))?;
+        let foreground_override = layout.style_overrides.get(*source);
+        if layer.id.ends_with(SUFFIX) {
+            if !proposed.is_empty()
+                || layout.style_refs.get(&layer.id) != Some(reference)
+                || layout.style_overrides.get(&layer.id) != foreground_override
+                || layout.style_keys.get(&layer.id) != layout.style_keys.get(*source)
+                || layout.styles.contains_key(&layer.id)
+            {
+                return Err(format!(
+                    "print_invariant_style_mismatch: {} differs from its exact foreground binding",
+                    layer.id
+                ));
+            }
+            continue;
+        }
+        let destination = format!("{}{SUFFIX}", layer.id);
+        if ids.contains(destination.as_str()) {
+            return Err(format!(
+                "print_invariant_style_mismatch: {destination} already exists in the held capture"
+            ));
+        }
+        let (effective, projected) =
+            output.get_or_insert_with(|| (layout.clone(), layers.to_vec()));
+        let old = projected
+            .iter_mut()
+            .find(|candidate| candidate.id == layer.id)
+            .ok_or("print_neighbor_lifecycle_invalid: effective layer disappeared")?;
+        old.geojson["features"] = json!(proposed);
+        let mut separate = layer.clone();
+        separate.id = destination.clone();
+        separate.geojson["features"] = json!(existing);
+        projected.push(separate);
+        effective.styles.remove(&destination);
+        effective
+            .style_refs
+            .insert(destination.clone(), reference.clone());
+        effective.style_overrides.remove(&destination);
+        if let Some(change) = foreground_override {
+            effective
+                .style_overrides
+                .insert(destination.clone(), change.clone());
+        }
+        effective.style_keys.remove(&destination);
+        if let Some(key) = layout.style_keys.get(*source) {
+            effective
+                .style_keys
+                .insert(destination.clone(), key.clone());
+        }
+        let index = effective
+            .layer_order
+            .iter()
+            .position(|id| id == &layer.id)
+            .map_or(effective.layer_order.len(), |index| index + 1);
+        effective.layer_order.insert(index, destination.clone());
+        for element in &mut effective.elements {
+            if let Some(legend) = &mut element.legend {
+                if legend.layers.contains(&layer.id) {
+                    let index = legend.layers.iter().position(|id| id == &layer.id).unwrap() + 1;
+                    legend.layers.insert(index, destination.clone());
+                    if let Some(title) = legend.titles.get(*source).cloned() {
+                        legend.titles.insert(destination.clone(), title);
+                    }
+                }
+            }
+        }
+    }
+    if let Some((effective, _)) = &output {
+        super::validate(effective)?;
+    }
+    Ok(output)
 }
 
 fn validate_lifecycle_pen(document: &Value) -> Result<(), String> {
@@ -377,6 +521,185 @@ mod tests {
                 ),
             ]),
         }
+    }
+    #[test]
+    fn existing_neighbour_lv_copies_every_foreground_binding_without_recolour_or_source_edit() {
+        let mut layout = super::super::default_layout();
+        let mut layers = Vec::new();
+        for (source, target) in &LAYERS[1..] {
+            layout
+                .style_refs
+                .insert((*source).into(), format!("master/{source}_print"));
+            layout
+                .style_refs
+                .insert((*target).into(), format!("context/{source}_print"));
+            let change =
+                serde_json::from_value(json!({"field":"category", "palette":{"wood":"#112233"},
+                "size":2.3, "dash_mm":[0.6,0.3], "opacity":0.9,
+                "label":{"visible":true,"size_pt":8,"color":"#445566","halo_mm":0.25}}))
+                .unwrap();
+            layout.style_overrides.insert((*source).into(), change);
+            layout.layer_order.insert(0, (*target).into());
+            layers.push(super::super::resolved_styles::VectorLayer {
+                id: (*target).into(), label: (*target).into(), geojson: json!({"type":"FeatureCollection","features":[
+                    {"id":"existing", "geometry":{"type":"Point","coordinates":[30,-2]},"properties":{"existing_status":"existing","category":"wood","struct_type":"S255","transfo":"other"}},
+                    {"id":"new", "geometry":{"type":"Point","coordinates":[30.001,-2]},"properties":{"existing_status":"new","category":"steel","struct_type":"S140","transfo":"other"}}
+                ]})
+            });
+        }
+        let held = json!({"layout":layout,"layers":layers});
+        let (effective, projected) = preserve_existing_lv(&layout, &layers).unwrap().unwrap();
+        for (source, target) in &LAYERS[1..] {
+            let alias = format!("{target}-source-invariant-existing");
+            assert_eq!(effective.style_refs[&alias], layout.style_refs[*source]);
+            assert_eq!(
+                effective.style_overrides[&alias],
+                layout.style_overrides[*source]
+            );
+            let context = projected.iter().find(|layer| layer.id == *target).unwrap();
+            let invariant = projected.iter().find(|layer| layer.id == alias).unwrap();
+            assert_eq!(
+                context.geojson["features"],
+                json!([layers
+                    .iter()
+                    .find(|layer| layer.id == *target)
+                    .unwrap()
+                    .geojson["features"][1]])
+            );
+            assert_eq!(
+                invariant.geojson["features"],
+                json!([layers
+                    .iter()
+                    .find(|layer| layer.id == *target)
+                    .unwrap()
+                    .geojson["features"][0]])
+            );
+            assert_eq!(
+                effective.layer_order.iter().position(|id| id == &alias),
+                effective
+                    .layer_order
+                    .iter()
+                    .position(|id| id == *target)
+                    .map(|index| index + 1)
+            );
+        }
+        assert_eq!(json!({"layout":layout,"layers":layers}), held);
+        assert!(
+            preserve_existing_lv(&effective, &projected)
+                .unwrap()
+                .is_none(),
+            "already-admitted projection is idempotent"
+        );
+        let mut tampered = effective.clone();
+        tampered
+            .style_overrides
+            .remove("neighbor_lv_lines-source-invariant-existing");
+        assert!(preserve_existing_lv(&tampered, &projected)
+            .unwrap_err()
+            .contains("print_invariant_style_mismatch"));
+        let mut unknown = layers.clone();
+        unknown[0].geojson["features"][0]["properties"]["existing_status"] = json!("Existing pole");
+        assert!(
+            preserve_existing_lv(&layout, &unknown)
+                .unwrap_err()
+                .contains("normalized new/existing"),
+            "printing does not repeat producer status normalization"
+        );
+        let mut missing = layout.clone();
+        missing.style_refs.remove("lv_lines");
+        assert!(preserve_existing_lv(&missing, &layers)
+            .unwrap_err()
+            .contains("print_invariant_style_missing"));
+        let mut collision = layers.clone();
+        let mut member = layers[0].clone();
+        member.id.push_str("-source-invariant-existing");
+        collision.push(member);
+        assert!(preserve_existing_lv(&layout, &collision)
+            .unwrap_err()
+            .contains("already exists"));
+    }
+
+    #[test]
+    fn mixed_source_partitions_keep_each_feature_once_and_status_in_every_native_role() {
+        let mut layout = super::super::default_layout();
+        layout
+            .style_refs
+            .insert("lv_lines".into(), "master/lv_lines_print".into());
+        let mut layers = Vec::new();
+        for suffix in ["0", "1"] {
+            let id = format!("neighbor_lv_lines-source-{suffix}");
+            layout
+                .style_refs
+                .insert(id.clone(), "context/lv_lines_print".into());
+            layout.layer_order.push(id.clone());
+            layers.push(super::super::resolved_styles::VectorLayer { id: id.clone(),label:id,
+                geojson:json!({"type":"FeatureCollection","features":[
+                    {"id":format!("existing-{suffix}"),"geometry":{"type":"Point","coordinates":[30,-2]},"properties":{"existing_status":"existing"}},
+                    {"id":format!("new-{suffix}"),"geometry":{"type":"Point","coordinates":[30.001,-2]},"properties":{"existing_status":"new"}}
+                ]}) });
+        }
+        let held = json!({"layout":layout,"layers":layers});
+        let (effective, projected) = preserve_existing_lv(&layout, &layers).unwrap().unwrap();
+        let ids = projected
+            .iter()
+            .flat_map(|layer| layer.geojson["features"].as_array().unwrap())
+            .map(|feature| feature["id"].as_str().unwrap())
+            .collect::<BTreeSet<_>>();
+        assert_eq!(
+            ids,
+            BTreeSet::from(["existing-0", "new-0", "existing-1", "new-1"])
+        );
+        assert_eq!(
+            projected
+                .iter()
+                .map(|layer| layer.geojson["features"].as_array().unwrap().len())
+                .sum::<usize>(),
+            4
+        );
+        for suffix in ["0", "1"] {
+            assert_eq!(
+                effective.style_refs
+                    [&format!("neighbor_lv_lines-source-{suffix}-source-invariant-existing")],
+                layout.style_refs["lv_lines"]
+            );
+        }
+        assert_eq!(json!({"layout":layout,"layers":layers}), held);
+        let mut other = room("other", -2.);
+        for (source, _) in LAYERS {
+            other.layers.entry(source.into()).or_insert_with(||json!({"type":"FeatureCollection","features":[{"geometry":{"type":"Point","coordinates":[30,-2]},"properties":{}}]}))["features"][0]["properties"]["existing_status"] = json!("existing");
+        }
+        let context = attach(
+            "focus",
+            &[room("focus", -2.), other],
+            None,
+            &BTreeMap::new(),
+        )
+        .unwrap()
+        .unwrap();
+        for (_, role) in LAYERS {
+            assert_eq!(
+                context["layers"][role]["features"][0]["properties"]["existing_status"], "existing",
+                "{role}"
+            );
+        }
+    }
+
+    #[test]
+    fn new_only_neighbours_and_mv_are_unchanged_by_existing_lv_projection() {
+        let layout = super::super::default_layout();
+        let layers = vec![
+            super::super::resolved_styles::VectorLayer {
+                id: "neighbor_lv_lines".into(),
+                label: "new design".into(),
+                geojson: json!({"features":[{"properties":{"existing_status":"new"}}]}),
+            },
+            super::super::resolved_styles::VectorLayer {
+                id: "dsgrid_mv_lines".into(),
+                label: "MV lifecycle owned separately".into(),
+                geojson: json!({"features":[{"properties":{}}]}),
+            },
+        ];
+        assert!(preserve_existing_lv(&layout, &layers).unwrap().is_none());
     }
     #[test]
     fn effective_context_can_omit_absent_roles_but_configuration_is_complete() {

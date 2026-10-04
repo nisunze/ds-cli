@@ -17,7 +17,7 @@ pub fn missing_type(layer: &str, feature: &Value) -> bool {
     design_pole_layer(layer)
         && feature["properties"]["struct_type"]
             .as_str()
-            .is_none_or(|value| value.trim().is_empty() || value.len() > 160)
+            .is_none_or(|value| value.trim().is_empty() || value.len() > 160 || value == "unknown")
 }
 
 #[cfg(test)]
@@ -46,12 +46,15 @@ mod tests {
             json!("  "),
             json!(140),
             json!({"type":"S140"}),
+            json!("unknown"),
         ] {
             pole["properties"]["struct_type"] = value;
             assert!(missing_type("lv_poles", &pole));
         }
-        pole["properties"]["struct_type"] = json!("S255");
-        assert!(!missing_type("lv_poles", &pole));
+        for category in ["S255", "S140", "S190", "400daN", "650daN"] {
+            pole["properties"]["struct_type"] = json!(category);
+            assert!(!missing_type("lv_poles", &pole), "authored type {category}");
+        }
         pole["properties"]
             .as_object_mut()
             .unwrap()
