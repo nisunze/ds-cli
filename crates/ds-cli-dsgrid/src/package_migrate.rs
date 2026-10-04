@@ -17,7 +17,7 @@ pub static COMMAND: Command = Command {
     path: &["dsgrid", "package", "migrate"],
     contract: 3,
     summary: "Verify one old package and save its lossless current-format migration.",
-    purpose: "Verify historical schema, members and digests, then convert named fields without changing authored engineering facts or revision. SHA-pinned supplements restore only declared missing bytes; derived pins move only after current-engine recomputation preserves exact physical rows. Dry-run returns a receipt; --yes writes model.dsgrid and migration.receipt.json to a fresh directory. The source and project remain unchanged. Opt-in successor verifies original/current/receipt pins and advances native revision by one without publication. See the reference for preservation and current-schema restoration.",
+    purpose: "Verify historical schema and digests, then migrate named fields without changing engineering facts or revision. Pinned supplements restore declared missing bytes; derived pins require verified recomputation. Dry-run returns a receipt; yes writes fresh local files. Opt-in successor verifies original/current/receipt pins and advances only native revision by one. No publication; original unchanged. See the reference for preservation and restoration.",
     chapter: Chapter::GridModel,
     effect: Effect::LocalFileWrite,
     authority: Authority::None,
