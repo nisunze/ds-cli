@@ -28,7 +28,22 @@ is not part of this document.
 `elements` is the canonical back-to-front sheet stack. The final element is
 front-most. `bring_to_front`, `send_to_back`, `move_above` and `move_below`
 change only this order. Map-layer ordering inside the print viewport is a
-separate reporter input.
+separate authored `layer_order` list. `set_layer_order` changes only that list,
+so administrative boundaries can be placed beneath the network without
+changing geometry, selected sources, pens or page furniture.
+
+Text elements may author an optional physical `text_style.halo` with a hex
+colour and outward width in millimetres. An omitted halo keeps the historical
+SVG and typography; project/purpose documents choose its appearance.
+
+Design LV pole roles require their saved `struct_type`. A missing, blank or
+non-text type is never inferred from material, numbering, colour or adjacent
+poles. The native renderer keeps the exact geometry, marks each visible
+untyped pole and prints a missing-type count, using the held renderer's
+diagnostic ink and footer font. The placed `print_pole_category_missing`
+warning names its design layer and source features. National reference poles
+with a different schema are not retyped by this check. A category diagnostic
+does not claim that a source repair or categorical style has been applied.
 
 `printing::evaluate` evaluates New, Validate, Edit (upsert one element),
 Remove, SetPaper, SetViewport and the four stack-order commands. Every result
@@ -271,6 +286,14 @@ The renderer measures the legend content and holds that edge as rows and
 categories change. Omitted alignment preserves the historical `right` anchor.
 Use `left` for a lower-left legend, remove its `flow`, and keep it out of
 `composition.movable` to retain the authored position.
+
+A categorical legend may author `category_fields` by logical layer: up to three
+ordered, distinct source fields per layer. Observed combinations each retain a
+row resolved through the same held style as the map. This separates type,
+material and lifecycle without inferring any engineering fact. Missing or empty
+values read as `Unspecified`; structured values refuse. Unmentioned layers keep
+their existing primary-colour category behavior. The empty setting is omitted
+and retains historical bytes. Category and total-row bounds remain unchanged.
 
 ## What a sheet layout optimises
 

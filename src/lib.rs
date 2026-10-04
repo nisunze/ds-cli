@@ -1578,6 +1578,7 @@ pub mod style_history;
 pub mod style_label;
 pub mod style_multiscale;
 pub mod style_plan;
+pub mod style_purpose;
 pub mod style_resolution;
 
 #[cfg(feature = "wasm")]

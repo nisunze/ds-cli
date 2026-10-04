@@ -64,21 +64,33 @@ Failed jobs retain diagnostics. Results never overwrite newer authored edits.
 ## Reports and printing
 
 The workspace creates a fresh report-input directory from a completed run:
-plain local layers, captured configuration and a digest manifest. The CLI
+plain local layers, captured configuration, the exact saved producer
+voltage-drop JSON member and a digest manifest. Its SHA and final-layer pin
+travel together. A missing source or invalid envelope, identity, digest or
+final-layer/settings binding refuses before staging. The reporter still owns
+deep saved-run content and presentation admission; its blockers prevent
+complete retention. Reporting never calculates a missing result or reprocesses
+approved geometry.
+The CLI
 calls the existing typed `ds-report export-transformer-report` boundary.
-Country and formats are explicit; the reporter requires usable nonempty
+Country and formats are explicit; every individual selection includes the
+kernel's mandatory saved voltage-drop JSON. The reporter requires usable nonempty
 configuration and, for Rwanda, its verified local admin reference. Unresolved
 media or unsupported requirements remain visible blockers.
 
-The production reporter supports `pdf_a0` and `pdf_a3` via its native vector
-renderer, without GCP or a map window. This is distinct from the experimental
+Print selections use `pdf__<layout-id>` from the captured governed printing
+configuration, with its layout, style and renderer documents. The native vector
+renderer needs neither GCP nor a map window. This is distinct from the experimental
 print-iteration task. Printing here means generating a printable PDF; physical
 printer selection/spooling remains an OS operation.
 
 Completed artifacts are read once, checked against the reporter's size and
 SHA-256, retained inside the workspace and queued transactionally. Artifact
 paths must lie directly in the expected output directory. Partial exports are
-not queued as complete. Failed exports can be retried into a new directory
+not queued as complete. A completed delivery must contain each requested
+format exactly once, including the mandatory JSON whose bytes must equal the
+captured producer member. Changed report inputs or omitted artifacts refuse
+before the outbox transaction. Failed exports can be retried into a new directory
 from the same immutable run; existing output is never overwritten.
 
 ## Pending reconciliation

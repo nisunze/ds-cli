@@ -1,6 +1,7 @@
 //! Print-layout authority shared by CLI, Canvas2D preview and vector delivery.
 //! Flat page elements in physical millimetres; no tile, HTML or remote-image IO.
 pub mod adjacent_networks;
+pub mod admin_reference;
 pub mod attribution;
 pub mod context;
 pub mod custom;
@@ -23,6 +24,7 @@ pub mod overrides;
 pub mod page_role;
 pub mod pens;
 pub mod placement;
+pub mod pole_categories;
 pub mod preview;
 pub mod project_crs;
 pub mod project_sources;
@@ -566,6 +568,10 @@ pub struct LegendBinding {
     pub titles: BTreeMap<String, String>,
     #[serde(default = "yes")]
     pub categorical: bool,
+    /// Ordered source fields whose observed combinations each need a legend row.
+    /// Omitted keeps the historical primary-colour category inference.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub category_fields: BTreeMap<String, Vec<String>>,
     #[serde(default = "legend_row")]
     pub row_mm: f64,
 }
@@ -758,6 +764,16 @@ pub struct TextStyle {
     /// Extra space after each letter, in em of the element's font size.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub tracking_em: f64,
+    /// Physical outward halo for authored title text. Omission preserves
+    /// historical typography; project/purpose documents own colour and width.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub halo: Option<TextHalo>,
+}
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct TextHalo {
+    pub color: String,
+    pub width_mm: f64,
 }
 fn is_sans(family: &FontFamily) -> bool {
     *family == FontFamily::Sans
@@ -772,6 +788,13 @@ impl TextStyle {
         }
         if self.family == FontFamily::Serif && self.italic {
             return Err("no bundled serif italic face; use sans italic or upright serif".into());
+        }
+        if self
+            .halo
+            .as_ref()
+            .is_some_and(|halo| !color(&halo.color) || !bounded(halo.width_mm, 0., 5.))
+        {
+            return Err("text halo requires a colour and finite width from 0 through 5 mm".into());
         }
         Ok(())
     }
@@ -1317,6 +1340,28 @@ pub(super) fn validate_with_semantic_layers(
                     .titles
                     .iter()
                     .any(|(k, v)| k.len() > 160 || v.len() > 160)
+                || legend.category_fields.len() > 128
+                || legend.category_fields.iter().any(|(layer, fields)| {
+                    layer.is_empty()
+                        || layer.len() > 160
+                        || layer.trim() != layer
+                        || layer.chars().any(char::is_control)
+                        || fields.is_empty()
+                        || fields.len() > 3
+                        || fields.iter().any(|field| {
+                            field.is_empty()
+                                || field.len() > 120
+                                || field.trim() != field
+                                || field.chars().any(char::is_control)
+                        })
+                        || fields
+                            .iter()
+                            .collect::<std::collections::BTreeSet<_>>()
+                            .len()
+                            != fields.len()
+                        || (!legend.layers.is_empty() && !legend.layers.contains(layer))
+                })
+                || (!legend.categorical && !legend.category_fields.is_empty())
                 || !bounded(legend.row_mm, 3., 30.)
                 || !bounded(legend.indent_mm, 0., 20.)
             {
@@ -2342,6 +2387,12 @@ pub enum Command {
         layout: Layout,
         context_layers: Vec<PrintContextLayer>,
     },
+    /// Author explicit back-to-front layer order without changing pens,
+    /// geometry, selected sources or furniture order.
+    SetLayerOrder {
+        layout: Layout,
+        layer_order: Vec<String>,
+    },
     BringToFront {
         layout: Layout,
         id: String,
@@ -3038,6 +3089,15 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
             validate(&layout)?;
             json!({"layout":layout})
         }
+        Command::SetLayerOrder {
+            layout,
+            layer_order,
+        } => {
+            let mut layout = upgrade(layout)?;
+            layout.layer_order = layer_order;
+            validate(&layout)?;
+            json!({"layout":layout})
+        }
         Command::BringToFront { layout, id } => {
             json!({"layout":move_to_edge(upgrade(layout)?, &id, true)?})
         }
@@ -3067,6 +3127,62 @@ pub fn command_schema() -> serde_json::Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn legend_category_fields_are_explicit_bounded_and_legacy_omitted() {
+        let mut layout = default_layout();
+        let index = layout
+            .elements
+            .iter()
+            .position(|e| e.kind == ElementKind::Legend)
+            .unwrap();
+        let legacy = serde_json::to_value(layout.elements[index].legend.as_ref().unwrap()).unwrap();
+        assert!(legacy.get("category_fields").is_none());
+        let legend = layout.elements[index].legend.as_mut().unwrap();
+        legend.layers = vec!["lv_poles".into()];
+        legend.category_fields.insert(
+            "lv_poles".into(),
+            vec![
+                "struct_type".into(),
+                "material".into(),
+                "existing_status".into(),
+            ],
+        );
+        validate(&layout).unwrap();
+        for fields in [
+            vec![],
+            vec!["struct_type", "struct_type"],
+            vec![" struct_type"],
+            vec!["struct_type", "material", "existing_status", "other"],
+        ] {
+            let mut invalid = layout.clone();
+            invalid.elements[index]
+                .legend
+                .as_mut()
+                .unwrap()
+                .category_fields
+                .insert(
+                    "lv_poles".into(),
+                    fields.into_iter().map(str::to_owned).collect(),
+                );
+            assert!(validate(&invalid).is_err());
+        }
+        let mut unrelated = layout.clone();
+        unrelated.elements[index]
+            .legend
+            .as_mut()
+            .unwrap()
+            .category_fields
+            .insert("other".into(), vec!["struct_type".into()]);
+        assert!(validate(&unrelated).is_err());
+        let mut disabled = layout;
+        disabled.elements[index]
+            .legend
+            .as_mut()
+            .unwrap()
+            .categorical = false;
+        assert!(validate(&disabled).is_err());
+    }
 
     #[test]
     fn migrate_style_keys_is_one_evaluated_print_intent() {
@@ -3152,6 +3268,7 @@ mod tests {
             bold: true,
             italic: false,
             tracking_em: 0.25,
+            ..Default::default()
         });
         validate(&layout).unwrap();
         let held = serde_json::to_value(&layout).unwrap();
@@ -3175,6 +3292,79 @@ mod tests {
             .unwrap();
         layout.elements[frame].text_style = Some(TextStyle::default());
         assert!(validate(&layout).unwrap_err().contains("not text"));
+    }
+    #[test]
+    fn title_halo_is_authored_in_physical_units_and_has_no_implicit_ink() {
+        let mut layout = default_layout();
+        let title = layout
+            .elements
+            .iter()
+            .position(|e| e.kind == ElementKind::Text)
+            .unwrap();
+        layout.elements[title].text_style = Some(TextStyle {
+            halo: Some(TextHalo {
+                color: "#EEF1F0".into(),
+                width_mm: 0.4,
+            }),
+            ..Default::default()
+        });
+        validate(&layout).unwrap();
+        let held = serde_json::to_value(&layout).unwrap();
+        assert_eq!(
+            held["elements"][title]["text_style"],
+            json!({"halo":{"color":"#EEF1F0","width_mm":0.4}})
+        );
+        assert_eq!(serde_json::from_value::<Layout>(held).unwrap(), layout);
+        for width_mm in [-0.1, 5.1, f64::NAN, f64::INFINITY] {
+            layout.elements[title]
+                .text_style
+                .as_mut()
+                .unwrap()
+                .halo
+                .as_mut()
+                .unwrap()
+                .width_mm = width_mm;
+            assert!(validate(&layout).unwrap_err().contains("text halo"));
+        }
+        layout.elements[title].text_style.as_mut().unwrap().halo = Some(TextHalo {
+            color: "url(#ink)".into(),
+            width_mm: 0.4,
+        });
+        assert!(validate(&layout).unwrap_err().contains("text halo"));
+    }
+    #[test]
+    fn layer_order_changes_only_the_authored_back_to_front_stack() {
+        let original = default_layout();
+        let stack = vec![
+            "sector".to_string(),
+            "hv_line".to_string(),
+            "lv_lines".to_string(),
+        ];
+        let reply: Value = serde_json::from_str(
+            &evaluate(
+                &serde_json::to_vec(&json!({
+                    "op":"set_layer_order", "layout":original, "layer_order":stack
+                }))
+                .unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        let result: Layout = serde_json::from_value(reply["layout"].clone()).unwrap();
+        let mut expected = original.clone();
+        expected.layer_order = stack;
+        assert_eq!(
+            result, expected,
+            "layer ordering must preserve geometry, sources, pens and furniture"
+        );
+        for stack in [vec!["sector", "sector"], vec!["../sector"], vec![""]] {
+            let request = serde_json::to_vec(
+                &json!({"op":"set_layer_order", "layout":original, "layer_order":stack}),
+            )
+            .unwrap();
+            assert!(evaluate(&request).is_err());
+        }
+        assert_eq!(original.layer_order, default_layout().layer_order);
     }
     #[test]
     fn layout_ink_identity_is_closed_and_preserves_authored_pens() {
