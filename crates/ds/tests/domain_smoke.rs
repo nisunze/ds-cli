@@ -162,35 +162,41 @@ fn lv_project_run_is_discoverable_and_print_preflight_has_no_project_effect() {
             .iter()
             .any(|input| input["name"] == "resume")
     );
-    let directory =
-        std::env::temp_dir().join(format!("ds-project-run-smoke-{}", std::process::id()));
+    // This fixture owns an absent reporter, independent of the installed
+    // browser or the admitted reporter used by other engine-parity tests.
+    let fixture = tempfile::tempdir().unwrap();
+    let directory = fixture.path().join("run");
+    let missing_reporter = fixture.path().join("missing-ds-report");
     assert!(!directory.exists());
-    let refused = native_ds(&[
-        "design",
-        "lv",
-        "project-run",
-        "--project",
-        "explicit-project",
-        "--transformer",
-        "T1",
-        "--out-dir",
-        directory.to_str().unwrap(),
-        "--print-a4",
-        "--yes",
-        "--output",
-        "json",
-    ]);
+    assert!(!missing_reporter.exists());
+    let refused = run_ds_with_reporter(
+        &[
+            "design",
+            "lv",
+            "project-run",
+            "--project",
+            "explicit-project",
+            "--transformer",
+            "T1",
+            "--out-dir",
+            directory.to_str().unwrap(),
+            "--print-a4",
+            "--yes",
+            "--output",
+            "json",
+        ],
+        true,
+        Some(&missing_reporter),
+    );
     assert_ne!(refused.code, 0);
-    assert!(
-        matches!(
-            refused.envelope["error"]["code"].as_str(),
-            Some("reporter_engine_missing" | "unknown_task" | "reporter_browser_missing")
-        ),
+    assert_eq!(
+        refused.envelope["error"]["code"], "reporter_engine_missing",
         "{}",
         refused.envelope
     );
     assert!(refused.envelope["data"].is_null());
     assert!(!directory.exists());
+    assert_eq!(std::fs::read_dir(fixture.path()).unwrap().count(), 0);
 }
 
 #[test]
@@ -680,6 +686,9 @@ fn pm_refusal(args: &[&str]) -> String {
     refusal(&named_pm_args(args))
 }
 fn run_ds(args: &[&str], native: bool) -> Run {
+    run_ds_with_reporter(args, native, None)
+}
+fn run_ds_with_reporter(args: &[&str], native: bool, reporter: Option<&std::path::Path>) -> Run {
     let config = temp_root("native-smoke-auth");
     // The development catalogue is the reviewed action vocabulary written out
     // literally, not a hashed release artefact: it carries no profile digest
@@ -699,6 +708,9 @@ fn run_ds(args: &[&str], native: bool) -> Run {
         command
             .env("DS_NATIVE_CLIENT_PROFILE_BUNDLE", &bundle)
             .env("DS_CONFIG_HOME", &config);
+    }
+    if let Some(reporter) = reporter {
+        command.env("DS_REPORT_BIN", reporter);
     }
     let output = command.output().expect("ds binary runs");
     let _ = std::fs::remove_dir_all(config);
