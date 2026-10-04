@@ -35,7 +35,7 @@ pub fn project(
     });
     let analysis = analysis.map(|source| {
         let mut result = json!({});
-        for key in ["model_revision", "engineering_input_root", "display_case", "status", "marker_count", "empty_model", "blocker_count", "blocker_kinds"] {
+        for key in ["model_revision", "engineering_input_root", "display_case", "engineering_case_scope", "status", "marker_count", "empty_model", "blocker_count", "blocker_kinds"] {
             result[key] = source[key].clone();
         }
         let blockers = source["blockers"].as_array().unwrap().iter().take(BLOCKER_LIMIT).map(|blocker| {

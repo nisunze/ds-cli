@@ -41,15 +41,9 @@ pub fn analyze(
         &ds_grid_engine::engineering_issue_layer::EngineeringIssueLayerRequest {
             derive_structure_screening: true,
             structure_screening: scene.and_then(|scene| scene.engineering.usage_request.clone()),
-            clearance: ds_grid_engine::clearance_report::ClearanceReportOptions {
-                analysis_case_ids: match display_case {
-                    ds_grid_engine::profile_display_case::ProfileDisplayCase::AnalysisCase {
-                        analysis_case_id,
-                    } => vec![analysis_case_id.clone()],
-                    _ => vec![],
-                },
-                ..Default::default()
-            },
+            // Analyze preserves the current model-bound case envelope. Display
+            // weather is presentation; it must not silently narrow engineering.
+            clearance: ds_grid_engine::clearance_report::ClearanceReportOptions::default(),
             max_features_per_kind: 2000,
             ..Default::default()
         },
@@ -104,6 +98,6 @@ pub fn analyze(
         "unknown"
     };
     json!({"model_revision":revision.revision_id, "engineering_input_root":revision.roots.engineering_input_root,
-        "display_case":display_case, "status":status, "report":report, "issues":issues,
+        "display_case":display_case, "engineering_case_scope":"model_bound_envelope", "status":status, "report":report, "issues":issues,
         "blockers":blockers, "blocker_count":blocker_count, "blocker_kinds":blocker_kinds, "blockers_truncated":blocker_count > blockers.len(), "section_checks":scene.map(|scene| &scene.evidence), "marker_count":scene.map_or(0, |scene| scene.engineering.markers.len()), "empty_model":session.snapshot().structures.is_empty()})
 }

@@ -66,6 +66,10 @@ fn display_is_native_atomic_and_isolated_and_unknowns_are_results() {
     for _ in 0..2 {
         let result = runtime.execute(one.clone()).unwrap();
         assert_eq!(result["ran"], true);
+        assert_eq!(
+            result["analysis"]["engineering_case_scope"],
+            "model_bound_envelope"
+        );
         assert_eq!(result["command_view"]["analysis"]["status"], "unknown");
         assert!(serde_json::to_vec(&result["command_view"]).unwrap().len() < 1024 * 1024);
         assert!(
@@ -111,6 +115,10 @@ fn analyze_runs_and_exposes_unknown_blockers_without_governed_styles() {
     input.analyze = true;
     let result = runtime.execute(input).unwrap();
     assert_eq!(result["ran"], true);
+    assert_eq!(
+        result["analysis"]["engineering_case_scope"],
+        "model_bound_envelope"
+    );
     assert_eq!(result["scene"], Value::Null);
     assert!(result["analysis"]["issues"].is_object());
     assert!(

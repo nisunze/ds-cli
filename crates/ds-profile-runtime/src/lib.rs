@@ -47,6 +47,12 @@ pub struct CaseRequest {
     pub cached_only: bool,
     pub sequence: u64,
 }
+impl From<CaseRequest> for Request {
+    fn from(value: CaseRequest) -> Self {
+        Self::CaseLayer(value)
+    }
+}
+
 struct HeldView {
     session: GridSession,
     review: ds_grid_engine::profile_engineering::ProfileReviewView,
