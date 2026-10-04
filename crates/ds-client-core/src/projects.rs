@@ -37,12 +37,18 @@ pub struct Project {
     status: ProjectStatus,
     lifecycle_facts: serde_json::Value,
     project_params: serde_json::Value,
+    legacy_project_crs: serde_json::Value,
 }
 
 impl Project {
     /// Exact server-normalized project properties, retained for project-fenced print CRS capture.
     pub fn project_params(&self) -> &serde_json::Value {
         &self.project_params
+    }
+    /// Shapes only from the same authenticated directory; never inferred authority.
+    pub fn legacy_project_crs_shape(&self) -> serde_json::Value {
+        let crs = &self.legacy_project_crs;
+        serde_json::json!({"present": !crs.is_null(), "is_object": crs.is_object(), "mode_is_string": crs.get("mode").is_some_and(serde_json::Value::is_string), "utm_zone_is_number": crs.get("utm_zone").is_some_and(serde_json::Value::is_number), "utm_hemisphere_is_string": crs.get("utm_hemisphere").is_some_and(serde_json::Value::is_string), "definition_is_string": crs.get("definition").is_some_and(serde_json::Value::is_string)})
     }
     pub fn lifecycle(&self, now_ms: i64) -> serde_json::Value {
         crate::project_properties::lifecycle_projection(&self.lifecycle_facts, now_ms)
@@ -153,15 +159,18 @@ impl ProjectDirectory {
                 let project_name = bounded_trimmed(row.project_name.unwrap_or_default(), 500)?;
                 let display_name = optional_bounded(row.display_name, 500)?;
                 let role = optional_bounded(row.role, 100)?;
-                if serde_json::to_vec(&row.project_params)
-                    .map_err(|_| unreadable())?
-                    .len()
-                    > 8192
-                {
-                    return Err(unreadable());
+                for metadata in [&row.project_params, &row.legacy_project_crs] {
+                    if serde_json::to_vec(metadata)
+                        .map_err(|_| unreadable())?
+                        .len()
+                        > 8192
+                    {
+                        return Err(unreadable());
+                    }
                 }
                 projects.push(Project {
                     project_params: row.project_params,
+                    legacy_project_crs: row.legacy_project_crs,
                     lifecycle_facts,
                     ds_project: id,
                     project_name,
@@ -210,6 +219,8 @@ impl ProjectPayload {
 pub(crate) struct WireProject {
     #[serde(default)]
     project_params: serde_json::Value,
+    #[serde(default, rename = "crs")]
+    legacy_project_crs: serde_json::Value,
     eds_project_id: String,
     #[serde(default)]
     id: Option<String>,
@@ -314,10 +325,10 @@ mod tests {
                 elevated
             );
         }
-        assert!(serde_json::from_str::<ProjectPayload>(
-            r#"{"success":true,"data":{"projects":[]}}"#
-        )
-        .is_err());
+        assert!(
+            serde_json::from_str::<ProjectPayload>(r#"{"success":true,"data":{"projects":[]}}"#)
+                .is_err()
+        );
     }
 
     #[test]
@@ -459,5 +470,27 @@ mod project_crs_tests {
         )])
         .unwrap();
         assert!(directory.projects()[0].project_params().is_null());
+    }
+    #[test]
+    fn legacy_directory_crs_is_diagnosed_without_normalizing_or_guessing() {
+        let wire = serde_json::from_value::<WireProject>(serde_json::json!({"eds_project_id":"p","crs":{"mode":"utm","utm_zone":35,"utm_hemisphere":"south"}})).unwrap();
+        let directory = ProjectDirectory::from_buckets(vec![(
+            ProjectStatus::Active,
+            WireBucket {
+                rows: vec![wire],
+                elevated: false,
+            },
+        )])
+        .unwrap();
+        let project = directory.exact("p").unwrap();
+        assert!(project.project_params().is_null());
+        assert_eq!(project.legacy_project_crs_shape()["mode_is_string"], true);
+        assert!(directory.exact("other").is_none());
+        assert!(
+            !project
+                .legacy_project_crs_shape()
+                .to_string()
+                .contains("south")
+        );
     }
 }
