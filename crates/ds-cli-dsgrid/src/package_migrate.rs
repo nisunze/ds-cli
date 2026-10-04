@@ -488,6 +488,7 @@ mod supplemental_input_tests {
             .unwrap_or_else(|| {
                 std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../out")
             });
+        std::fs::create_dir_all(&scratch).expect("create disk scratch parent");
         let scratch = std::fs::canonicalize(scratch).expect("existing disk scratch parent");
         assert!(
             scratch.is_absolute()

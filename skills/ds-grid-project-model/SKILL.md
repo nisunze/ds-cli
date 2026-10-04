@@ -10,8 +10,8 @@ metadata:
 
 Use the `ds` skill first. Keep three states distinct:
 
-- acquisition creates or imports a model in the paired application's local store;
-- active means one local model occupies Profile and editing;
+- acquisition creates or imports a native local working copy;
+- active selects the working copy; paired Profile presentation is separate;
 - publication registers one immutable revision in the selected project and does not change the active model.
 
 ## Discover a project's models and their versions
@@ -24,7 +24,7 @@ descriptors. List the explicit project, following every `next_cursor` while
 follow that command's cursor too. Use `--include-deleted` only when retired
 models are relevant. Report the model name, ID, head revision, and actual
 version values separately; pin later downloads or prints to an exact revision.
-Both leaves are in the `grid-local-model` MCP profile.
+Both commands are in the `grid-local-model` MCP profile.
 
 Read the live descriptor before each command:
 
@@ -41,9 +41,9 @@ Start with `ds dsgrid model list --output json`. Then choose exactly one local a
 - `ds dsgrid model create-local ... --output json` creates an empty model and normally makes it active.
 - `ds dsgrid model import-external --path <absolute.dsgrid> ... --output json` acquires a package without activating it.
 
-Use the returned opaque model id with `ds dsgrid model set-active --model <id> --output json` only when that model should occupy Profile. Repeating it for the active model is idempotent.
+Select the returned opaque id with `ds dsgrid model set-active --model <id> --output json`; repeating it is idempotent. Discover `dsgrid.profile.open` for paired presentation.
 
-Local list, create, import, and set-active require a paired application but no project. Never add or infer a project argument, inspect IndexedDB, send package bytes through the bridge, or treat local activity as project authority.
+Local list, create, import and set-active need no paired app or project. Profile presentation needs the app. Never infer a project, inspect IndexedDB, bridge package bytes, or treat local activity as project authority.
 
 Publish separately with `ds dsgrid publish-version`. For a new project model, name the local model plus the authored display name and declared kind. For an existing project model, name its generated id and the expected head when known; do not pass a new name. Add `--yes` only after the operator authorizes this exact project write. Require the receipt to report `status: published`, its immutable revision and digest, and `active_model_changed: false`. A failed local binding after publication does not undo the committed version.
 
@@ -99,10 +99,12 @@ Procedure, in this order:
 5. `ds dsgrid report structures …` again — the receipt is the evidence
    (`resulting_revision`, counts, the file digest).
 
-Never combine `--yes` with `--dry-run` or edit the package by hand. For
-`package_decode_failed`, re-convert the PLS-CADD source; older additive
-schemas still open (`head.prior_schema_members`). These edits are proposals
-until PLS-CADD confirms after `ds dsgrid-exchange sync`.
+Never combine `--yes` with `--dry-run` or hand-edit packages. The native reader
+accepts only the current schema. Retain older bytes and discover
+`dsgrid.package.migrate`: pin their SHA, review the dry run, then use `--yes`
+to write a new file. Validate and explicitly import it; never use an older
+reader. Edits remain proposals until PLS-CADD confirms after
+`ds dsgrid-exchange sync`.
 
 ## PLS-CADD sources
 
