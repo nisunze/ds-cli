@@ -1,14 +1,11 @@
 //! Geodesic buffer — a Minkowski-sum-with-disc around point / line / polygon
 //! geometry, returned as a single closed polygon ring (flat lng/lat).
 //!
-//! Construction is the classic "offset both sides, round caps + round joins"
-//! sweep, done in spherical space with `destination` (no projection step, no
-//! external geo crate — same model as the rest of geo-ops). Round joins are
-//! emitted only on the convex side of each turn; the concave side is left to
-//! self-overlap, which fills correctly under a non-zero winding rule. For the
-//! simple polylines this domain buffers (LV/MV spans, service cables) the
-//! ring is exact; for sharply self-overlapping inputs it is a valid filled
-//! region rather than a dissolved boundary.
+//! Segment capsules and vertex discs are constructed in spherical space with
+//! `destination`, without a projection or an optional geometry dependency.
+//! Their union is dissolved in output longitude/latitude coordinates: intersecting
+//! edges are split and covered edges removed before tracing the exterior CCW.
+//! As with the single-ring API for polygons, enclosed holes are not represented.
 
 use crate::primitives::bearing::initial as bearing;
 use crate::primitives::destination::destination;
@@ -20,18 +17,6 @@ const DEDUPE_EPS_M: f64 = 1e-6;
 
 fn step_deg(quad_segs: u32) -> f64 {
     90.0 / (quad_segs.max(MIN_QUAD_SEGS) as f64)
-}
-
-/// Normalize a bearing delta to (-180, 180]. Negative = left turn
-/// (counterclockwise), positive = right turn (clockwise).
-fn norm_delta(mut d: f64) -> f64 {
-    while d <= -180.0 {
-        d += 360.0;
-    }
-    while d > 180.0 {
-        d -= 360.0;
-    }
-    d
 }
 
 fn dedupe(pts: &[Coord]) -> Vec<Coord> {
@@ -61,9 +46,7 @@ fn arc(center: Coord, from_deg: f64, signed_sweep: f64, r: f64, step: f64) -> Ve
 
 fn close(mut ring: Vec<Coord>) -> Vec<Coord> {
     if let Some(&first) = ring.first() {
-        let needs_close = ring
-            .last()
-            .is_none_or(|&last| haversine(last, first) > DEDUPE_EPS_M);
+        let needs_close = ring.last().is_none_or(|&last| last != first);
         if needs_close {
             ring.push(first);
         }
@@ -86,8 +69,8 @@ pub fn buffer_point(center: Coord, r: f64, quad_segs: u32) -> Vec<Coord> {
     close(ring)
 }
 
-/// Corridor around an open polyline — offset both sides by `r`, round caps at
-/// the two ends, round joins on convex corners.
+/// Corridor around an open polyline, with round caps and round joins.
+/// Returns the counterclockwise exterior of the union of spherical capsules.
 pub fn buffer_line(pts_in: &[Coord], r: f64, quad_segs: u32) -> Vec<Coord> {
     if !r.is_finite() || r <= 0.0 {
         return Vec::new();
@@ -98,92 +81,306 @@ pub fn buffer_line(pts_in: &[Coord], r: f64, quad_segs: u32) -> Vec<Coord> {
             .first()
             .map_or_else(Vec::new, |&p| buffer_point(p, r, quad_segs));
     }
-    let st = step_deg(quad_segs);
-    let n = pts.len();
-    let b: Vec<f64> = (0..n - 1).map(|i| bearing(pts[i], pts[i + 1])).collect();
-    let mut ring: Vec<Coord> = Vec::new();
-
-    // Right side, forward (offset normal = bearing + 90°).
-    for i in 0..n - 1 {
-        ring.push(destination(pts[i], b[i] + 90.0, r));
-        ring.push(destination(pts[i + 1], b[i] + 90.0, r));
-        if i + 1 < n - 1 {
-            let delta = norm_delta(b[i + 1] - b[i]);
-            if delta < 0.0 {
-                // Left turn → right side is the convex (outer) side → round it.
-                ring.extend(arc(pts[i + 1], b[i] + 90.0, delta, r, st));
-            }
-        }
-    }
-    // End cap (bulge forward): (b_last + 90) sweep −180 → (b_last − 90).
-    ring.extend(arc(pts[n - 1], b[n - 2] + 90.0, -180.0, r, st));
-
-    // Left side, backward (offset normal = bearing − 90°).
-    for i in (0..n - 1).rev() {
-        ring.push(destination(pts[i + 1], b[i] - 90.0, r));
-        ring.push(destination(pts[i], b[i] - 90.0, r));
-        if i >= 1 {
-            let delta = norm_delta(b[i] - b[i - 1]);
-            if delta > 0.0 {
-                // Right turn → left side is convex → round it (sweeping back).
-                ring.extend(arc(pts[i], b[i] - 90.0, -delta, r, st));
-            }
-        }
-    }
-    // Start cap (bulge backward): (b0 − 90) sweep −180 → (b0 + 90).
-    ring.extend(arc(pts[0], b[0] - 90.0, -180.0, r, st));
-
-    close(ring)
+    exterior_union(
+        pts.windows(2)
+            .map(|p| capsule(p[0], p[1], r, quad_segs))
+            .collect(),
+    )
 }
 
-/// Outward buffer of a polygon's exterior ring — offset every edge outward by
-/// `r` with round joins on convex corners. Orientation is detected so the
-/// offset always grows the polygon (works for CW or CCW input). Holes are not
-/// modeled here; the caller buffers the outer ring.
+/// Outward buffer of a polygon exterior (either input orientation).
+/// Holes are not modeled by this single-exterior-ring API.
 pub fn buffer_polygon(ring_in: &[Coord], r: f64, quad_segs: u32) -> Vec<Coord> {
     if !r.is_finite() || r <= 0.0 {
         return Vec::new();
     }
     let mut pts = dedupe(ring_in);
-    // Drop the explicit closing vertex if present; we treat the ring cyclically.
-    if pts.len() >= 2 {
-        let first = pts[0];
-        if haversine(*pts.last().unwrap(), first) <= DEDUPE_EPS_M {
-            pts.pop();
-        }
+    if pts.len() > 1 && haversine(pts[0], *pts.last().unwrap()) <= DEDUPE_EPS_M {
+        pts.pop();
     }
-    let n = pts.len();
-    if n < 3 {
+    if pts.len() < 3 {
         return buffer_line(&pts, r, quad_segs);
     }
-    let st = step_deg(quad_segs);
+    let mut pieces: Vec<_> = (0..pts.len())
+        .map(|i| capsule(pts[i], pts[(i + 1) % pts.len()], r, quad_segs))
+        .collect();
+    pieces.push(pts);
+    exterior_union(pieces)
+}
 
-    // Shoelace sign (planar lng/lat is fine for orientation only).
-    let area2: f64 = (0..n)
-        .map(|i| {
-            let a = pts[i];
-            let b = pts[(i + 1) % n];
-            a.lng * b.lat - b.lng * a.lat
-        })
-        .sum();
-    let ccw = area2 > 0.0;
-    // Outward normal: CCW ring → interior on the left → outward is +90 (right);
-    // CW ring → outward is −90 (left).
-    let out_sign = if ccw { 90.0 } else { -90.0 };
+fn capsule(a: Coord, b: Coord, r: f64, quad_segs: u32) -> Vec<Coord> {
+    let start = bearing(a, b);
+    // Use the terminal bearing at b, rather than a's initial bearing, so the
+    // normals remain perpendicular to the great-circle segment at both ends.
+    let end = bearing(b, a) + 180.0;
+    let step = step_deg(quad_segs);
+    let mut ring = vec![
+        destination(a, start + 90.0, r),
+        destination(b, end + 90.0, r),
+    ];
+    ring.extend(arc(b, end + 90.0, -180.0, r, step));
+    ring.push(destination(b, end - 90.0, r));
+    ring.push(destination(a, start - 90.0, r));
+    ring.extend(arc(a, start - 90.0, -180.0, r, step));
+    ring
+}
 
-    let eb: Vec<f64> = (0..n).map(|i| bearing(pts[i], pts[(i + 1) % n])).collect();
-    let mut ring: Vec<Coord> = Vec::new();
-    for i in 0..n {
-        ring.push(destination(pts[i], eb[i] + out_sign, r));
-        ring.push(destination(pts[(i + 1) % n], eb[i] + out_sign, r));
-        let delta = norm_delta(eb[(i + 1) % n] - eb[i]);
-        // Convex (outer) corner: CCW turns left (delta<0), CW turns right (delta>0).
-        let convex = if ccw { delta < 0.0 } else { delta > 0.0 };
-        if convex {
-            ring.extend(arc(pts[(i + 1) % n], eb[i] + out_sign, delta, r, st));
+fn cross(a: Coord, b: Coord) -> f64 {
+    a.lng * b.lat - a.lat * b.lng
+}
+
+fn sub(a: Coord, b: Coord) -> Coord {
+    Coord::new(a.lng - b.lng, a.lat - b.lat)
+}
+
+fn area2(ring: &[Coord]) -> f64 {
+    // Translate before summing, avoiding cancellation at nonzero longitude.
+    let o = ring[0];
+    (0..ring.len())
+        .map(|i| cross(sub(ring[i], o), sub(ring[(i + 1) % ring.len()], o)))
+        .sum()
+}
+
+#[derive(Clone)]
+struct Edge {
+    a: Coord,
+    b: Coord,
+    piece: usize,
+    cuts: Vec<(f64, Coord)>,
+}
+
+fn parameter(p: Coord, a: Coord, b: Coord) -> f64 {
+    let d = sub(b, a);
+    if d.lng.abs() >= d.lat.abs() {
+        (p.lng - a.lng) / d.lng
+    } else {
+        (p.lat - a.lat) / d.lat
+    }
+}
+
+fn on_segment(p: Coord, a: Coord, b: Coord) -> bool {
+    let d = sub(b, a);
+    let v = sub(p, a);
+    // Subtracting longitude near 30 degrees carries absolute coordinate
+    // roundoff, even when the edge is only micrometres long.
+    let coord_error = 8.0
+        * f64::EPSILON
+        * p.lng
+            .abs()
+            .max(a.lng.abs())
+            .max(b.lng.abs())
+            .max(p.lat.abs())
+            .max(a.lat.abs())
+            .max(b.lat.abs())
+            .max(1.0);
+    let tolerance = coord_error * (d.lng.abs() + d.lat.abs());
+    let t = parameter(p, a, b);
+    let slack = coord_error / d.lng.abs().max(d.lat.abs());
+    cross(d, v).abs() <= tolerance && t >= -slack && t <= 1.0 + slack
+}
+
+// -1 outside, 0 on boundary, 1 inside. No geometric epsilon that could erase
+// narrow corridors: use the same straight-edge predicates as the output ring.
+fn location(p: Coord, ring: &[Coord]) -> i8 {
+    let mut inside = false;
+    for i in 0..ring.len() {
+        let a = ring[i];
+        let b = ring[(i + 1) % ring.len()];
+        if on_segment(p, a, b) {
+            return 0;
+        }
+        if (a.lat > p.lat) != (b.lat > p.lat)
+            && p.lng < a.lng + (p.lat - a.lat) * (b.lng - a.lng) / (b.lat - a.lat)
+        {
+            inside = !inside;
         }
     }
-    close(ring)
+    if inside { 1 } else { -1 }
+}
+
+/// Dissolve a connected set of rings. All decisions are on the constructed
+/// coordinates; this is topology cleanup, not a projection of the input.
+fn exterior_union(mut pieces: Vec<Vec<Coord>>) -> Vec<Coord> {
+    // Put all pieces in the same longitude branch (including dateline routes).
+    let origin = pieces[0][0].lng;
+    for ring in &mut pieces {
+        for p in ring.iter_mut() {
+            p.lng = origin + (p.lng - origin + 180.0).rem_euclid(360.0) - 180.0;
+        }
+        if area2(ring) < 0.0 {
+            ring.reverse();
+        }
+    }
+    let mut edges = Vec::new();
+    for (piece, ring) in pieces.iter().enumerate() {
+        for i in 0..ring.len() {
+            let a = ring[i];
+            let b = ring[(i + 1) % ring.len()];
+            if a != b {
+                edges.push(Edge {
+                    a,
+                    b,
+                    piece,
+                    cuts: vec![(0.0, a), (1.0, b)],
+                });
+            }
+        }
+    }
+    // Split both edges at the *same* coordinate, including collinear overlap
+    // endpoints. Bounding-box pruning keeps distant segments out of this work.
+    for i in 0..edges.len() {
+        for j in i + 1..edges.len() {
+            if edges[i].piece == edges[j].piece {
+                continue;
+            }
+            let (a, b, c, d) = (edges[i].a, edges[i].b, edges[j].a, edges[j].b);
+            if a.lng.min(b.lng) > c.lng.max(d.lng)
+                || c.lng.min(d.lng) > a.lng.max(b.lng)
+                || a.lat.min(b.lat) > c.lat.max(d.lat)
+                || c.lat.min(d.lat) > a.lat.max(b.lat)
+            {
+                continue;
+            }
+            let u = sub(b, a);
+            let v = sub(d, c);
+            let w = sub(c, a);
+            let den = cross(u, v);
+            if den != 0.0 {
+                let t = cross(w, v) / den;
+                let q = cross(w, u) / den;
+                if (0.0..=1.0).contains(&t) && (0.0..=1.0).contains(&q) {
+                    let p = if t == 0.0 {
+                        a
+                    } else if t == 1.0 {
+                        b
+                    } else if q == 0.0 {
+                        c
+                    } else if q == 1.0 {
+                        d
+                    } else {
+                        Coord::new(a.lng + t * u.lng, a.lat + t * u.lat)
+                    };
+                    edges[i].cuts.push((t, p));
+                    edges[j].cuts.push((q, p));
+                }
+            } else {
+                for p in [a, b, c, d] {
+                    if on_segment(p, a, b) && on_segment(p, c, d) {
+                        edges[i].cuts.push((parameter(p, a, b), p));
+                        edges[j].cuts.push((parameter(p, c, d), p));
+                    }
+                }
+            }
+        }
+    }
+    let mut nodes = Vec::<Coord>::new();
+    let mut node_bins = std::collections::BTreeMap::<(i64, i64), Vec<usize>>::new();
+    let mut boundary = std::collections::BTreeSet::new();
+    // Only coalesce roundoff from computing the same intersection along
+    // different edges (about 0.1 micrometre), below input deduplication tolerance.
+    let mut intern = |p: Coord| {
+        const EPS: f64 = 1e-12;
+        let key = ((p.lng / EPS).floor() as i64, (p.lat / EPS).floor() as i64);
+        for x in key.0 - 1..=key.0 + 1 {
+            for y in key.1 - 1..=key.1 + 1 {
+                if let Some(ids) = node_bins.get(&(x, y)) {
+                    for &id in ids {
+                        if (nodes[id].lng - p.lng).abs() <= EPS
+                            && (nodes[id].lat - p.lat).abs() <= EPS
+                        {
+                            return id;
+                        }
+                    }
+                }
+            }
+        }
+        let id = nodes.len();
+        nodes.push(p);
+        node_bins.entry(key).or_default().push(id);
+        id
+    };
+    for edge in &mut edges {
+        edge.cuts.sort_by(|a, b| a.0.total_cmp(&b.0));
+        edge.cuts.dedup_by(|a, b| a.0 == b.0);
+        for cut in edge.cuts.windows(2) {
+            let a = cut[0].1;
+            let b = cut[1].1;
+            let mid = Coord::new(a.lng + (b.lng - a.lng) * 0.5, a.lat + (b.lat - a.lat) * 0.5);
+            let covered = pieces.iter().enumerate().any(|(id, ring)| {
+                if id == edge.piece {
+                    return false;
+                }
+                match location(mid, ring) {
+                    1 => true,
+                    0 => {
+                        // Coincident boundaries: opposite direction is internal;
+                        // same direction is retained once, by source order.
+                        (0..ring.len()).any(|i| {
+                            let c = ring[i];
+                            let d = ring[(i + 1) % ring.len()];
+                            on_segment(mid, c, d)
+                                && (id < edge.piece || {
+                                    let u = sub(b, a);
+                                    let v = sub(d, c);
+                                    u.lng * v.lng + u.lat * v.lat < 0.0
+                                })
+                        })
+                    }
+                    _ => false,
+                }
+            });
+            if !covered {
+                let u = intern(a);
+                let v = intern(b);
+                if u != v {
+                    boundary.insert((u, v));
+                }
+            }
+        }
+    }
+    let mut outgoing = vec![Vec::new(); nodes.len()];
+    for &(a, b) in &boundary {
+        outgoing[a].push(b);
+    }
+    let mut result = Vec::new();
+    let mut largest = 0.0;
+    while let Some(&(start, next)) = boundary.first() {
+        let mut ids = vec![start];
+        let (mut prev, mut at) = (start, next);
+        while boundary.remove(&(prev, at)) {
+            if at == start {
+                break;
+            }
+            ids.push(at);
+            let back = sub(nodes[prev], nodes[at]);
+            let back_angle = back.lat.atan2(back.lng);
+            let next = outgoing[at]
+                .iter()
+                .copied()
+                .filter(|&b| boundary.contains(&(at, b)))
+                .min_by(|&a, &b| {
+                    let angle = |id| {
+                        let v = sub(nodes[id], nodes[at]);
+                        (back_angle - v.lat.atan2(v.lng)).rem_euclid(std::f64::consts::TAU)
+                    };
+                    angle(a).total_cmp(&angle(b)).then(a.cmp(&b))
+                });
+            let Some(next) = next else {
+                break;
+            };
+            prev = at;
+            at = next;
+        }
+        if at == start && ids.len() >= 3 {
+            let ring: Vec<_> = ids.into_iter().map(|i| nodes[i]).collect();
+            let area = area2(&ring);
+            if area > largest {
+                largest = area;
+                result = ring;
+            }
+        }
+    }
+    close(result)
 }
 
 #[cfg(test)]
@@ -207,6 +404,210 @@ mod tests {
 
     fn is_closed(ring: &[Coord]) -> bool {
         ring.len() >= 4 && haversine(ring[0], *ring.last().unwrap()) <= DEDUPE_EPS_M
+    }
+
+    // Exact inclusive segment predicate: no epsilon can hide a proper crossing,
+    // collinear overlap, or a nonadjacent vertex touching an edge.
+    fn intersects(a: Coord, b: Coord, c: Coord, d: Coord) -> bool {
+        let orient = |a, b, c| cross(sub(b, a), sub(c, a));
+        let between = |p: Coord, a: Coord, b: Coord| {
+            p.lng >= a.lng.min(b.lng)
+                && p.lng <= a.lng.max(b.lng)
+                && p.lat >= a.lat.min(b.lat)
+                && p.lat <= a.lat.max(b.lat)
+        };
+        let (u, v, w, z) = (
+            orient(a, b, c),
+            orient(a, b, d),
+            orient(c, d, a),
+            orient(c, d, b),
+        );
+        ((u > 0.0 && v < 0.0 || u < 0.0 && v > 0.0) && (w > 0.0 && z < 0.0 || w < 0.0 && z > 0.0))
+            || u == 0.0 && between(c, a, b)
+            || v == 0.0 && between(d, a, b)
+            || w == 0.0 && between(a, c, d)
+            || z == 0.0 && between(b, c, d)
+    }
+
+    fn assert_simple(ring: &[Coord]) {
+        assert!(is_closed(ring), "open or empty ring: {ring:?}");
+        assert_eq!(ring[0], *ring.last().unwrap(), "closure must be exact");
+        let n = ring.len() - 1;
+        for i in 0..n {
+            assert_ne!(ring[i], ring[i + 1], "zero length edge");
+            for j in i + 2..n {
+                if i == 0 && j == n - 1 {
+                    continue;
+                }
+                assert!(
+                    !intersects(ring[i], ring[i + 1], ring[j], ring[j + 1]),
+                    "crossing {i}/{j}"
+                );
+            }
+        }
+        assert!(area2(ring) > 0.0, "exterior must be CCW");
+    }
+
+    // Independent analytic Minkowski oracle: at each x, union the vertical
+    // intervals from exact endpoint discs and segment rectangles. Midpoint
+    // integration (12000 slices) measures area without using the buffer's joins
+    // or its dissolution algorithm, including nonlocal overlaps at large radii.
+    fn analytic_area(pts: &[Coord], r: f64, polygon: bool) -> f64 {
+        let (xmin, _, xmax, _) = bbox(pts);
+        let dx = (xmax - xmin + 2.0 * r) / 12000.0;
+        let mut area = 0.0;
+        for k in 0..12000 {
+            let x = xmin - r + (k as f64 + 0.5) * dx;
+            let mut intervals = Vec::<(f64, f64)>::new();
+            for p in pts {
+                if (x - p.lng).abs() < r {
+                    let h = (r * r - (x - p.lng).powi(2)).sqrt();
+                    intervals.push((p.lat - h, p.lat + h));
+                }
+            }
+            let edges = if polygon { pts.len() } else { pts.len() - 1 };
+            for i in 0..edges {
+                let a = pts[i];
+                let b = pts[(i + 1) % pts.len()];
+                let d = sub(b, a);
+                let len = d.lng.hypot(d.lat);
+                let offset = Coord::new(-r * d.lat / len, r * d.lng / len);
+                let rect = [
+                    Coord::new(a.lng + offset.lng, a.lat + offset.lat),
+                    Coord::new(b.lng + offset.lng, b.lat + offset.lat),
+                    Coord::new(b.lng - offset.lng, b.lat - offset.lat),
+                    Coord::new(a.lng - offset.lng, a.lat - offset.lat),
+                ];
+                let ys = vertical_slice(&rect, x);
+                if ys.len() >= 2 {
+                    intervals.push((ys[0], *ys.last().unwrap()));
+                }
+            }
+            if polygon {
+                let ys = vertical_slice(pts, x);
+                for pair in ys.chunks_exact(2) {
+                    intervals.push((pair[0], pair[1]));
+                }
+            }
+            intervals.sort_by(|a, b| a.0.total_cmp(&b.0));
+            let mut end = f64::NEG_INFINITY;
+            for (lo, hi) in intervals {
+                if hi > end {
+                    area += (hi - lo.max(end)) * dx;
+                    end = hi;
+                }
+            }
+        }
+        area
+    }
+
+    fn vertical_slice(ring: &[Coord], x: f64) -> Vec<f64> {
+        let mut ys = Vec::new();
+        for i in 0..ring.len() {
+            let a = ring[i];
+            let b = ring[(i + 1) % ring.len()];
+            if (a.lng > x) != (b.lng > x) {
+                ys.push(a.lat + (x - a.lng) * (b.lat - a.lat) / (b.lng - a.lng));
+            }
+        }
+        ys.sort_by(f64::total_cmp);
+        ys
+    }
+
+    fn prove_buffer(xy: &[(f64, f64)], polygon: bool) {
+        let scale = crate::types::EARTH_RADIUS_M * std::f64::consts::PI / 180.0;
+        let planar: Vec<_> = xy.iter().map(|&(x, y)| Coord::new(x, y)).collect();
+        let pts: Vec<_> = xy
+            .iter()
+            .map(|&(x, y)| Coord::new(30.0 + x / scale, y / scale))
+            .collect();
+        for r in [0.5, 2.0, 20.0, 100.0] {
+            let ring = if polygon {
+                buffer_polygon(&pts, r, 32)
+            } else {
+                buffer_line(&pts, r, 32)
+            };
+            assert_simple(&ring);
+            assert_eq!(
+                ring,
+                if polygon {
+                    buffer_polygon(&pts, r, 32)
+                } else {
+                    buffer_line(&pts, r, 32)
+                },
+                "deterministic output"
+            );
+            let meters: Vec<_> = ring
+                .iter()
+                .map(|p| Coord::new((p.lng - 30.0) * scale, p.lat * scale))
+                .collect();
+            let actual = area2(&meters) * 0.5;
+            let expected = analytic_area(&planar, r, polygon);
+            // 0.15% covers 32-quarter-segment chord error (<0.05%), numerical
+            // integration and spherical/planar differences at these <250m scales.
+            assert!(
+                (actual - expected).abs() / expected < 0.0015,
+                "r={r}: area {actual}, analytic {expected}"
+            );
+            let (a, b, c, d) = bbox(&meters);
+            let (e, f, g, h) = bbox(&planar);
+            // Arc tessellation misses extrema by at most r*(1-cos(pi/128)).
+            let tol = 0.001 * r + 0.0001;
+            for (got, want) in [(a, e - r), (b, f - r), (c, g + r), (d, h + r)] {
+                assert!(
+                    (got - want).abs() < tol,
+                    "r={r}: extent {got}, analytic {want}"
+                );
+            }
+            if polygon {
+                let mut reversed = pts.clone();
+                reversed.reverse();
+                let other = buffer_polygon(&reversed, r, 32);
+                assert_simple(&other);
+                assert!((area2(&other) / area2(&ring) - 1.0).abs() < 1e-8);
+            }
+        }
+    }
+
+    #[test]
+    fn obtuse_bend_has_simple_minkowski_boundary() {
+        prove_buffer(&[(0., 0.), (50., 0.), (93.301270189, 25.)], false);
+    }
+    #[test]
+    fn right_bend_has_simple_minkowski_boundary() {
+        prove_buffer(&[(0., 0.), (50., 0.), (50., 50.)], false);
+    }
+    #[test]
+    fn acute_bend_has_simple_minkowski_boundary() {
+        prove_buffer(&[(0., 0.), (50., 0.), (25., 43.301270189)], false);
+    }
+    #[test]
+    fn hairpin_has_simple_minkowski_boundary() {
+        prove_buffer(&[(0., 0.), (50., 0.), (0.759612349, 8.682408883)], false);
+        // Complete reversal exercises coincident capsule edges as well.
+        prove_buffer(&[(0., 0.), (50., 0.), (0., 0.)], false);
+    }
+    #[test]
+    fn short_legs_have_simple_minkowski_boundary() {
+        prove_buffer(&[(0., 0.), (50., 0.), (50., 1.), (100., 1.)], false);
+    }
+    #[test]
+    fn s_bend_has_simple_minkowski_boundary() {
+        prove_buffer(&[(0., 0.), (20., 0.), (20., 20.), (40., 20.)], false);
+    }
+    #[test]
+    fn concave_polygon_has_simple_minkowski_boundary() {
+        prove_buffer(
+            &[
+                (0., 0.),
+                (50., 0.),
+                (50., 20.),
+                (20., 20.),
+                (20., 50.),
+                (0., 50.),
+            ],
+            true,
+        );
     }
 
     #[test]
