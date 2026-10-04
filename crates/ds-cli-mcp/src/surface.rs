@@ -332,7 +332,10 @@ impl Profile {
             // selection, export with context) beside the paired leaves that
             // still need the desktop's own holdings. Map composition and
             // publication are a separate focused workflow.
-            Self::Printing => 26,
+            // Named printing additions: report.project.crs captures the map's
+            // authority; report.voltage-drop-combined assembles saved status
+            // pages. Both stay in this workflow, outside the bounded Grid router.
+            Self::Printing => 28,
             Self::PrintingMaps => 7,
             // The layer drawer's profile also carries this machine's prepared
             // local layer catalogue: seventeen leaves plus both bootstrap tools.
@@ -2496,6 +2499,8 @@ const PRINTING_COMMANDS: &[&str] = &[
     "report.project.mv-setup.resolve",
     "report.project.export",
     "report.project.map-inputs",
+    "report.project.crs",
+    "report.voltage-drop-combined",
     "desktop.printing.prepare",
     "desktop.printing.transformers",
     "desktop.printing.export",

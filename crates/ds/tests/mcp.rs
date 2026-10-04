@@ -2166,7 +2166,9 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
             // Twenty-six printing leaves plus bootstrap: city-vector input,
             // local rendering and standalone map delivery complete the headless
             // workflow beside the retained desktop-owned operations.
-            "printing" => 26,
+            // The two reviewed printing leaves capture project CRS and
+            // combine saved voltage-drop pages; Grid's own bound stays fixed.
+            "printing" => 28,
             "printing-maps" => 7,
             // Eleven existing guided leaves, eleven new authoring leaves and
             // nine resolver/catalogue leaves. Mirrors the explicitly closed
@@ -2229,6 +2231,10 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
     assert!(published["printing"].contains("report_layout_edit"));
     assert!(published["printing"].contains("report_transformers"));
     assert!(published["printing"].contains("report_plan"));
+    for leaf in ["report_project_crs", "report_voltage-drop-combined"] {
+        assert!(published["printing"].contains(leaf), "{leaf}");
+        assert!(!published["grid"].contains(leaf), "{leaf}");
+    }
     assert!(published["printing-maps"].contains("assets_map_publish"));
     assert!(published["printing"].contains("report_artifact_remove"));
     // The headless production loop is reachable through the printing profile.
