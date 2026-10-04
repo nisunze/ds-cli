@@ -136,18 +136,9 @@ pub fn decode(raw_path: &str, bytes: &[u8]) -> Result<GridPackage, Failure> {
             "package_decode_failed",
             format!("`{raw_path}` did not decode"),
         )
-        .remedy("the package is damaged or carries a table schema this build does not decode; re-convert it from its PLS-CADD workspace with `ds dsgrid-exchange convert`")
+        .remedy("the canonical reader accepts current schema only; retain the original and use `ds dsgrid package migrate --path <source> --expected-source-sha256 <capture> --dry-run`, then open the saved current package")
         .detail(json!({ "detail": error.to_string() }))
     })
-}
-
-/// The table members a package attests at a prior additive schema this build
-/// still decodes (`ds_grid_exchange::prior_schema_members`): `[]` for a
-/// package written by this build. Named on every read receipt so an engineer
-/// sees that a package predates a column (its values read as absent) and
-/// that the next write carries the current schema.
-pub fn prior_schema_members(manifest: &ds_grid_exchange::PackageManifest) -> Value {
-    json!(ds_grid_exchange::prior_schema_members(manifest))
 }
 
 /// The canonical serialized token for a table kind — taken from the model

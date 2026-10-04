@@ -44,6 +44,7 @@ fn fixture() -> GridModelSnapshot {
         survey_note: None,
         delivery_phase: None,
         global_station_gap_m: None,
+        sequence: None,
     });
     let leg = 100.0 / 2.0_f64.sqrt();
     for (id, x, y, role) in [
