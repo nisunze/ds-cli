@@ -3648,6 +3648,7 @@ fn report_project_touch(id: &str, inputs: &Inputs) -> bool {
     if report_held_read(id)
         || id == "report.project.mv-setup.resolve"
         || id == "report.project.map-inputs"
+        || id == "report.project.crs"
         || (id == "report.project.export"
             && (inputs.switch("dry-run")
                 || inputs.value("preview-layout").is_some()
@@ -3789,6 +3790,12 @@ mod report_touch_tests {
         let scope = inputs(&ds_cli_report::project::scope::COMMAND, &["--project", "p"]);
         assert!(!report_project_touch("report.project.scope", &scope));
         assert!(!report_project_touch("report.project.settings", &scope));
+        let crs = inputs(
+            &ds_cli_report::project::crs::COMMAND,
+            &["--project", "p", "--lane", "stable"],
+        );
+        assert!(!report_project_touch("report.project.crs", &crs));
+        assert!(!report_held_read("report.project.crs"));
         assert!(!report_project_touch(
             "report.project.mv-setup.resolve",
             &scope

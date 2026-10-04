@@ -532,6 +532,7 @@ mod tests {
     fn every_project_report_command_names_its_project() {
         for command in [
             &scope::COMMAND,
+            &crs::COMMAND,
             &combined::COMMAND,
             &compute::COMMAND,
             &archives::COMMAND,
