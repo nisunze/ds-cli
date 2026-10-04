@@ -20,8 +20,10 @@ use ds_cli_contract::spec::Refusal;
 use ds_command_kernel::local_models::Scope;
 use ds_command_kernel::task_geometry::{IndexedAlignment, IndexedStructure, ObjectIndex};
 use ds_geo::projection::GridModelCrs;
-use ds_grid_exchange::gis::{GisGeometry, GisProjectionOptions, ProjectionKind, project_model};
-use serde_json::json;
+use ds_grid_exchange::gis::{
+    GisFeature, GisGeometry, GisLayer, GisProjectionOptions, ProjectionKind, project_model,
+};
+use serde_json::{Value, json};
 
 use crate::package;
 
@@ -108,9 +110,31 @@ pub fn index_bytes(
     };
 
     let projection = project_model(&package.snapshot, &GisProjectionOptions::new(&declared));
+    let (structures, alignments) = index_layers(&projection.layers, to_wgs84)?;
+    Ok(ObjectIndex {
+        r#ref: r#ref.to_owned(),
+        model_id: package.manifest.model.model_id.as_str().to_owned(),
+        model_revision: package.manifest.model.model_revision,
+        fingerprint: package.manifest.model.snapshot_fingerprint.clone(),
+        crs: declared,
+        display_name,
+        structures,
+        alignments,
+    })
+}
+
+/// The structures and alignments of the engine's projection layers. Every
+/// projected property is optional in the model: a GIS-imported route skeleton
+/// carries structures with no engineering number, station or alignment, and an
+/// alignment need not be labelled, so an absent property is an absent value
+/// rather than a lookup that can fail.
+fn index_layers(
+    layers: &[GisLayer],
+    to_wgs84: impl Fn(f64, f64) -> Result<[f64; 2], Failure>,
+) -> Result<(Vec<IndexedStructure>, Vec<IndexedAlignment>), Failure> {
     let mut structures = Vec::new();
     let mut alignments = Vec::new();
-    for layer in &projection.layers {
+    for layer in layers {
         match layer.kind {
             ProjectionKind::Structure => {
                 for feature in &layer.features {
@@ -119,9 +143,9 @@ pub fn index_bytes(
                     };
                     structures.push(IndexedStructure {
                         id: feature.entity_id.clone(),
-                        number: feature.properties["struct_no"].as_str().map(str::to_owned),
-                        alignment: feature.properties["align_id"].as_str().map(str::to_owned),
-                        station_m: feature.properties["station_m"].as_f64(),
+                        number: text(feature, "struct_no"),
+                        alignment: text(feature, "align_id"),
+                        station_m: feature.properties.get("station_m").and_then(Value::as_f64),
                         position: to_wgs84(x, y)?,
                     });
                 }
@@ -144,10 +168,7 @@ pub fn index_bytes(
                     }
                     alignments.push(IndexedAlignment {
                         id: feature.entity_id.clone(),
-                        label: feature.properties["label"]
-                            .as_str()
-                            .unwrap_or(&feature.entity_id)
-                            .to_owned(),
+                        label: text(feature, "label").unwrap_or_else(|| feature.entity_id.clone()),
                         vertices,
                     });
                 }
@@ -155,16 +176,15 @@ pub fn index_bytes(
             _ => {}
         }
     }
-    Ok(ObjectIndex {
-        r#ref: r#ref.to_owned(),
-        model_id: package.manifest.model.model_id.as_str().to_owned(),
-        model_revision: package.manifest.model.model_revision,
-        fingerprint: package.manifest.model.snapshot_fingerprint.clone(),
-        crs: declared,
-        display_name,
-        structures,
-        alignments,
-    })
+    Ok((structures, alignments))
+}
+
+fn text(feature: &GisFeature, key: &str) -> Option<String> {
+    feature
+        .properties
+        .get(key)
+        .and_then(Value::as_str)
+        .map(str::to_owned)
 }
 
 #[cfg(test)]
@@ -237,6 +257,57 @@ mod tests {
         let json = serde_json::to_value(&index).unwrap();
         let back: ObjectIndex = serde_json::from_value(json).unwrap();
         assert_eq!(back, index);
+    }
+
+    fn layer(kind: ProjectionKind, geometry: GisGeometry, properties: Value) -> GisLayer {
+        let Value::Object(properties): Value = properties else {
+            unreachable!()
+        };
+        GisLayer {
+            name: "layer".into(),
+            kind,
+            source_table: ds_grid_model::snapshot::TableKind::Structures,
+            features: vec![GisFeature {
+                entity_id: "entity-1".into(),
+                kind,
+                geometry,
+                properties,
+            }],
+        }
+    }
+
+    #[test]
+    fn a_gis_imported_skeleton_without_numbers_stations_or_labels_indexes_without_panicking() {
+        // The projection omits `struct_no`, `station_m`, `align_id` and `label`
+        // when the model has none; the report fee42145 panicked on the lookup.
+        let layers = [
+            layer(
+                ProjectionKind::Structure,
+                GisGeometry::Point {
+                    x: 500_000.0,
+                    y: 4_705_000.0,
+                    z: None,
+                },
+                json!({"net_role": "support"}),
+            ),
+            layer(
+                ProjectionKind::Alignment,
+                GisGeometry::Line(vec![
+                    (500_000.0, 4_705_000.0, None),
+                    (500_300.0, 4_705_400.0, None),
+                ]),
+                json!({}),
+            ),
+        ];
+        let (structures, alignments) = index_layers(&layers, |x, y| Ok([x, y])).expect("indexes");
+        assert_eq!(structures.len(), 1);
+        assert_eq!(structures[0].number, None);
+        assert_eq!(structures[0].alignment, None);
+        assert_eq!(structures[0].station_m, None);
+        assert_eq!(alignments.len(), 1);
+        // An unlabelled alignment is named by its entity id, with the engine's chainage.
+        assert_eq!(alignments[0].label, "entity-1");
+        assert_eq!(alignments[0].vertices[1][2], 500.0);
     }
 
     #[test]
