@@ -1,7 +1,7 @@
 //! Validate the exact package with Network before admitting native publication.
 //! Source revision and engine metadata are derived here, never trusted from UI.
 use ds_command_kernel::grid_publication::{
-    Approval, CompositionSource, Intent, MAX_MODEL_BYTES, MigrationSource,
+    Approval, CompositionSource, Intent, MigrationSource, MAX_MODEL_BYTES,
 };
 use ds_grid_engine::GridSession;
 use serde::{Deserialize, Serialize};

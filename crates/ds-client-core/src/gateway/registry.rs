@@ -18,7 +18,7 @@ pub const SCHEMA_VERSION: &str = "ds-web.gateway-registry/v1";
 
 /// sha256 of the exact `routing/operations.json` bytes these rows came from.
 pub const DESCRIPTOR_SHA256: &str =
-    "f7f93f1d835c69022e3f66d38c067bd2850b5f0979d15c32fbf96d6ad420a767";
+    "139cd1eafc6f3af7e446fd7bc30562de8d2230637b971d578f3064a6f8561159";
 
 /// Every declared operation that has a gateway route, sorted by id.
 pub const OPERATIONS: &[GatewayOperation] = &[
@@ -570,6 +570,8 @@ pub const OPERATIONS: &[GatewayOperation] = &[
             "delete_model",
             "restore_model",
             "publish_export",
+            "publish_linked",
+            "get_linked_generation",
         ],
         transport: "json",
         authority: "gateway",

@@ -1,7 +1,7 @@
 //! One authenticated linked-generation commit through the existing publication
 //! path. Every package is planned before upload; no single-version commit loop.
 use super::*;
-use ds_command_kernel::grid_publication::{Artifact, Intent, Plan, identifier};
+use ds_command_kernel::grid_publication::{identifier, Artifact, Intent, Plan};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 

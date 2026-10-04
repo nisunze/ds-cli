@@ -1,7 +1,7 @@
 use super::*;
 use ds_client_core::grid_models::{
-    Command,
     linked_publication::{LinkedIntent, Participant},
+    Command,
 };
 use ds_command_kernel::grid_publication::Intent;
 
@@ -92,12 +92,10 @@ fn linked_grid_stages_all_bytes_then_commits_one_vector_and_reads_it_back() {
             .count(),
         1
     );
-    assert!(
-        !state
-            .grid_bodies
-            .iter()
-            .any(|b| b["action"] == "create_version")
-    );
+    assert!(!state
+        .grid_bodies
+        .iter()
+        .any(|b| b["action"] == "create_version"));
     let batch = state
         .grid_bodies
         .iter()
@@ -105,12 +103,10 @@ fn linked_grid_stages_all_bytes_then_commits_one_vector_and_reads_it_back() {
         .unwrap();
     for version in batch["linked"]["versions"].as_array().unwrap() {
         assert_eq!(version["project_id"], "p-1");
-        assert!(
-            version["expected_head_revision_id"]
-                .as_str()
-                .unwrap()
-                .starts_with("old-")
-        );
+        assert!(version["expected_head_revision_id"]
+            .as_str()
+            .unwrap()
+            .starts_with("old-"));
     }
     assert_eq!(
         state.grid_bodies.last().unwrap()["action"],
@@ -136,28 +132,24 @@ fn linked_grid_failed_staging_never_commits_or_replaces_a_head() {
             json!({"artifact":plan.versions[0].artifact,"already_exists":true}),
         ));
     }
-    assert!(
-        client
-            .grid_models(
-                "p-1",
-                &Command::PublishLinked {
-                    intent: Box::new(intent),
-                    participants,
-                    checkpoint
-                },
-                NOW + 1
-            )
-            .is_err()
-    );
-    assert!(
-        transport
-            .0
-            .lock()
-            .unwrap()
-            .grid_bodies
-            .iter()
-            .all(|b| b["action"] == "start_upload")
-    );
+    assert!(client
+        .grid_models(
+            "p-1",
+            &Command::PublishLinked {
+                intent: Box::new(intent),
+                participants,
+                checkpoint
+            },
+            NOW + 1
+        )
+        .is_err());
+    assert!(transport
+        .0
+        .lock()
+        .unwrap()
+        .grid_bodies
+        .iter()
+        .all(|b| b["action"] == "start_upload"));
 }
 
 #[test]
@@ -185,29 +177,25 @@ fn linked_grid_readback_cannot_replace_one_part_pin() {
         wrong["linked"]["versions"][1]["revision_id"] = json!("changed-part");
         state.grid_models.push_back(project_response(wrong));
     }
-    assert!(
-        client
-            .grid_models(
-                "p-1",
-                &Command::PublishLinked {
-                    intent: Box::new(intent),
-                    participants,
-                    checkpoint
-                },
-                NOW + 1
-            )
-            .is_err()
-    );
+    assert!(client
+        .grid_models(
+            "p-1",
+            &Command::PublishLinked {
+                intent: Box::new(intent),
+                participants,
+                checkpoint
+            },
+            NOW + 1
+        )
+        .is_err());
 }
 
 #[test]
 fn linked_grid_interleaved_projects_are_rejected_before_upload() {
     let (intent, participants, checkpoint) = input();
-    assert!(
-        intent
-            .plan("other-project", &participants, &checkpoint)
-            .is_err()
-    );
+    assert!(intent
+        .plan("other-project", &participants, &checkpoint)
+        .is_err());
     let mut wrong = participants;
     wrong[1].intent.project = "other-project".into();
     assert!(intent.plan("p-1", &wrong, &checkpoint).is_err());
