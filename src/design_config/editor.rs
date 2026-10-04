@@ -1047,6 +1047,10 @@ pub fn save_sheet(document: &Value, key: &str, value: &Value) -> Result<Value, &
             }
         }
     }
+    if key == "project_settings" {
+        crate::printing::map_policy::resolve(&json!({"project_settings":compact}))
+            .map_err(|_| "config_parameter_invalid")?;
+    }
     if serde_json::to_vec(&compact)
         .map_err(|_| "config_sheet_shape_invalid")?
         .len()
@@ -1080,11 +1084,38 @@ pub fn set_parameter(
         })
         .map(|(i, _)| i)
         .collect();
+    if indices.is_empty()
+        && key == "project_settings"
+        && crate::printing::map_policy::is_governed_parameter(&canonical)
+    {
+        let value = if canonical == crate::printing::map_policy::INTERVAL
+            && raw
+                .as_str()
+                .is_some_and(|s| matches!(s.trim(), "automatic" | "null"))
+        {
+            Value::Null
+        } else {
+            scalar(raw)
+        };
+        rows.push(json!({"parameter":canonical,"value":value}));
+        let saved = save_sheet(document, key, &json!(rows))?;
+        crate::printing::map_policy::resolve(&json!({"project_settings":saved}))
+            .map_err(|_| "config_parameter_invalid")?;
+        return Ok(saved);
+    }
     if indices.len() != 1 {
         return Err("config_parameter_unknown");
     }
     let model = member_model(document, key, "parameters", parameter);
-    let parsed = scalar(raw);
+    let parsed = if canonical == crate::printing::map_policy::INTERVAL
+        && raw
+            .as_str()
+            .is_some_and(|s| matches!(s.trim(), "automatic" | "null"))
+    {
+        Value::Null
+    } else {
+        scalar(raw)
+    };
     let raw = &parsed;
     let value = if matches!(
         canonical.as_str(),
@@ -1106,7 +1137,12 @@ pub fn set_parameter(
         }
     };
     rows[indices[0]]["value"] = value;
-    save_sheet(document, key, &json!(rows))
+    let saved = save_sheet(document, key, &json!(rows))?;
+    if key == "project_settings" {
+        crate::printing::map_policy::resolve(&json!({"project_settings":saved}))
+            .map_err(|_| "config_parameter_invalid")?;
+    }
+    Ok(saved)
 }
 
 /// The numeric/boolean grammar used by processor presets. Text Settings controls
@@ -1465,5 +1501,41 @@ mod design_data_path_tests {
         assert_eq!(result["path"], "mirrored");
         assert_eq!(result["source"], "legacy");
         assert_eq!(result["parameter"], "combined_source");
+    }
+}
+
+#[cfg(test)]
+mod governed_map_policy_tests {
+    use super::*;
+    #[test]
+    fn first_authored_map_setting_is_bounded_and_preserves_held_input() {
+        let original =
+            json!({"sheets":{"project_settings":[{"parameter":"report_locale","value":"fr"}]}});
+        let updated = set_parameter(
+            &original,
+            "project_settings",
+            "keep_all_labels_at_high_density",
+            &json!("true"),
+        )
+        .unwrap();
+        assert_eq!(
+            original["sheets"]["project_settings"]
+                .as_array()
+                .unwrap()
+                .len(),
+            1
+        );
+        assert!(
+            crate::printing::map_policy::resolve(&json!({"project_settings":updated}))
+                .unwrap()
+                .keep_all_labels_at_high_density
+        );
+        for (key, raw) in [
+            ("invented_print_setting", "true"),
+            ("print_metric_grid_interval_m", "0"),
+            ("print_metric_grid_enabled", "nonsense"),
+        ] {
+            assert!(set_parameter(&original, "project_settings", key, &json!(raw)).is_err());
+        }
     }
 }

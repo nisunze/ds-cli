@@ -1372,6 +1372,7 @@ pub fn inspect_project_settings(
     sheets: &Value,
     mode: Option<ReadinessMode>,
 ) -> Result<Value, String> {
+    let map_policy = crate::printing::map_policy::resolve(sheets)?;
     let mode = mode.unwrap_or_default();
     let refusal = serde_json::json!({
         "code":"printing_inputs_incomplete",
@@ -1392,7 +1393,7 @@ pub fn inspect_project_settings(
             return Ok(
                 serde_json::json!({"source":if setting.is_some(){"project_settings"}else{"report_defaults"},
             "setting":setting,"ready":false,"issues":[issue],"outputs":[],"papers":[],"refusal":refusal,
-            "voltage_drop_report":voltage_drop_report,"mv":crate::printing::mv::inspect(sheets, None)}),
+            "map_policy":map_policy,"voltage_drop_report":voltage_drop_report,"mv":crate::printing::mv::inspect(sheets, None)}),
             );
         }
     };
@@ -1404,7 +1405,7 @@ pub fn inspect_project_settings(
     Ok(
         serde_json::json!({"source":if setting.is_some(){"project_settings"}else{"report_defaults"},
         "setting":setting,"ready":true,"issues":[],"outputs":outputs,"papers":papers,"refusal":Value::Null,
-        "voltage_drop_report":voltage_drop_report,"mv":crate::printing::mv::inspect(sheets, None)}),
+        "map_policy":map_policy,"voltage_drop_report":voltage_drop_report,"mv":crate::printing::mv::inspect(sheets, None)}),
     )
 }
 

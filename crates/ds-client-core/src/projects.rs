@@ -36,9 +36,14 @@ pub struct Project {
     role: Option<String>,
     status: ProjectStatus,
     lifecycle_facts: serde_json::Value,
+    project_params: serde_json::Value,
 }
 
 impl Project {
+    /// Exact server-normalized project properties, retained for project-fenced print CRS capture.
+    pub fn project_params(&self) -> &serde_json::Value {
+        &self.project_params
+    }
     pub fn lifecycle(&self, now_ms: i64) -> serde_json::Value {
         crate::project_properties::lifecycle_projection(&self.lifecycle_facts, now_ms)
     }
@@ -148,7 +153,15 @@ impl ProjectDirectory {
                 let project_name = bounded_trimmed(row.project_name.unwrap_or_default(), 500)?;
                 let display_name = optional_bounded(row.display_name, 500)?;
                 let role = optional_bounded(row.role, 100)?;
+                if serde_json::to_vec(&row.project_params)
+                    .map_err(|_| unreadable())?
+                    .len()
+                    > 8192
+                {
+                    return Err(unreadable());
+                }
                 projects.push(Project {
+                    project_params: row.project_params,
                     lifecycle_facts,
                     ds_project: id,
                     project_name,
@@ -195,6 +208,8 @@ impl ProjectPayload {
 
 #[derive(Deserialize)]
 pub(crate) struct WireProject {
+    #[serde(default)]
+    project_params: serde_json::Value,
     eds_project_id: String,
     #[serde(default)]
     id: Option<String>,
@@ -409,5 +424,40 @@ mod lifecycle_tests {
         let result = directory.projects()[0].lifecycle(0);
         assert_eq!(result["supportEmail"], "help@example.com");
         assert_eq!(result["chip"]["tone"], "far");
+    }
+}
+
+#[cfg(test)]
+mod project_crs_tests {
+    use super::*;
+    #[test]
+    fn normalized_server_project_params_are_preserved_without_crs_inference() {
+        let params = serde_json::json!({"project_type":"new_build","crs":{"mode":"utm","utm_zone":35,"utm_hemisphere":"south","definition":""}});
+        let wire = serde_json::from_value::<WireProject>(
+            serde_json::json!({"eds_project_id":"p","project_params":params}),
+        )
+        .unwrap();
+        let directory = ProjectDirectory::from_buckets(vec![(
+            ProjectStatus::Active,
+            WireBucket {
+                rows: vec![wire],
+                elevated: false,
+            },
+        )])
+        .unwrap();
+        assert_eq!(directory.projects()[0].project_params(), &params);
+        let missing = serde_json::from_value::<WireProject>(
+            serde_json::json!({"eds_project_id":"q","country":"Rwanda"}),
+        )
+        .unwrap();
+        let directory = ProjectDirectory::from_buckets(vec![(
+            ProjectStatus::Active,
+            WireBucket {
+                rows: vec![missing],
+                elevated: false,
+            },
+        )])
+        .unwrap();
+        assert!(directory.projects()[0].project_params().is_null());
     }
 }

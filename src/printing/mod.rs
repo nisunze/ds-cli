@@ -11,6 +11,7 @@ pub mod held_context;
 pub mod inventory;
 pub mod lifecycle;
 pub mod map;
+pub mod map_policy;
 pub mod mv;
 pub mod mv_booklet;
 pub mod mv_context;
@@ -23,6 +24,7 @@ pub mod page_role;
 pub mod pens;
 pub mod placement;
 pub mod preview;
+pub mod project_crs;
 pub mod project_sources;
 pub mod renderer_defaults;
 pub mod resolved_styles;
@@ -627,6 +629,19 @@ pub struct Graticule {
     pub width_mm: f64,
     #[serde(default = "graticule_font")]
     pub font_pt: f64,
+}
+impl Default for Graticule {
+    fn default() -> Self {
+        Self {
+            crs: GraticuleCrs::TmRwanda,
+            interval: None,
+            lines: true,
+            labels: true,
+            color: graticule_color(),
+            width_mm: graticule_width(),
+            font_pt: graticule_font(),
+        }
+    }
 }
 fn graticule_color() -> String {
     "#6B7280".into()
