@@ -60,8 +60,9 @@ pub struct Intent {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub composition_sources: Vec<CompositionSource>,
     /// Typed provenance of converted source content. The catalog admits it on
-    /// a model's FIRST revision only; a later revision states its lineage in
-    /// `operation_summary` instead (see [`migration_summary`]).
+    /// a model's first revision, except the closed `current_package_format`
+    /// operation bound to the exact existing head and current native identity.
+    /// Other later conversions use `operation_summary` instead.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub migration_source: Option<MigrationSource>,
 }
@@ -123,9 +124,9 @@ pub fn sha256_hex(value: &str) -> bool {
 }
 
 /// The one-line lineage statement a later revision carries when typed
-/// `migration_source` is not admissible: the catalog accepts it only on a
-/// model's first revision, and the Server's own cross-project migration states
-/// lineage in text for the same reason. Bounded to one summary entry.
+/// `migration_source` is not admissible: first revisions and the closed
+/// `current_package_format` successor use typed provenance. Other later
+/// conversions use this bounded summary, including cross-project migration.
 pub fn migration_summary(source: &MigrationSource) -> String {
     let mut line = format!(
         "migration_source kind={} source_digest={} manifest_id={} reference=",
@@ -308,9 +309,19 @@ impl Intent {
             }
         }
         if let Some(source) = &self.migration_source {
-            if !self.expected_head_revision_id.is_empty()
+            let format_successor = source.kind == "current_package_format";
+            let source_identity_valid = if format_successor {
+                !self.expected_head_revision_id.is_empty()
+                    && source.reference == self.expected_head_revision_id
+                    && source.manifest_id == self.manifest_model_id
+                    && self.manifest_model_revision > 0
+                    && self.model_schema_version == "4"
+                    && !self.bump_version
+            } else {
+                self.expected_head_revision_id.is_empty() && catalog_identifier(&source.manifest_id)
+            };
+            if !source_identity_valid
                 || !catalog_identifier(&source.kind)
-                || !catalog_identifier(&source.manifest_id)
                 || source.reference.trim().is_empty()
                 || source.reference.len() > 2000
                 || source.reference.chars().any(char::is_control)
@@ -421,6 +432,54 @@ mod tests {
             display_name: None,
             reason: Some("Reviewed route".into()),
             ..Default::default()
+        }
+    }
+    #[test]
+    fn current_format_successor_uses_exact_head_and_native_identity() {
+        let mut current = intent("project_a");
+        current.manifest_model_id = "pls-import-fnv1a64:81e10012".into();
+        current.model_schema_version = "4".into();
+        current.migration_source = Some(MigrationSource {
+            kind: "current_package_format".into(),
+            reference: current.expected_head_revision_id.clone(),
+            source_digest: "b".repeat(64),
+            manifest_id: current.manifest_model_id.clone(),
+        });
+        let plan = current.clone().plan("project_a", b"native model").unwrap();
+        assert_eq!(
+            plan.version_request()["version"]["migration_source"]["manifest_id"],
+            "pls-import-fnv1a64:81e10012"
+        );
+        let mut controls = Vec::new();
+        let mut bad = current.clone();
+        bad.expected_head_revision_id.clear();
+        controls.push(bad);
+        let mut bad = current.clone();
+        bad.migration_source.as_mut().unwrap().reference = "other-head".into();
+        controls.push(bad);
+        let mut bad = current.clone();
+        bad.migration_source.as_mut().unwrap().manifest_id = "other-native".into();
+        controls.push(bad);
+        let mut bad = current.clone();
+        bad.manifest_model_revision = 0;
+        controls.push(bad);
+        let mut bad = current.clone();
+        bad.model_schema_version = "3".into();
+        controls.push(bad);
+        let mut bad = current.clone();
+        bad.bump_version = true;
+        controls.push(bad);
+        let mut bad = current.clone();
+        bad.migration_source.as_mut().unwrap().source_digest = "invalid".into();
+        controls.push(bad);
+        let mut bad = current;
+        bad.migration_source.as_mut().unwrap().kind = "pls_cadd_bak".into();
+        controls.push(bad);
+        for refused in controls {
+            assert_eq!(
+                refused.plan("project_a", b"native model").unwrap_err(),
+                "grid_publication_migration_invalid"
+            );
         }
     }
     #[test]
