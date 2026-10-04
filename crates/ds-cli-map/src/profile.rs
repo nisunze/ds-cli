@@ -28,6 +28,16 @@ const PROFILE_SCENE_UNAVAILABLE: Refusal = Refusal {
     when: "native profile projection cannot use this model package",
     remedy: "inspect the native refusal and model diagnostics",
 };
+const PROFILE_CASE_BASE_UNAVAILABLE: Refusal = Refusal {
+    code: "profile_case_base_unavailable",
+    when: "weather selection has no native base for the held Profile revision and display scale",
+    remedy: "draw the current Profile revision and scale, then choose its weather case",
+};
+const PROFILE_CASE_UNAVAILABLE: Refusal = Refusal {
+    code: "profile_case_unavailable",
+    when: "the selected weather case or its native labels are unavailable for this model",
+    remedy: "read map profile view and choose one of its enabled native cases",
+};
 const PROFILE_PACKAGE_INVALID: Refusal = Refusal {
     code: "profile_package_invalid",
     when: "the held checkpoint is not a valid DS Grid package",
@@ -152,6 +162,8 @@ pub static SET: Command = Command {
         PROFILE_STYLES_UNAVAILABLE,
         PROFILE_STYLES_INVALID,
         PROFILE_SCENE_UNAVAILABLE,
+        PROFILE_CASE_BASE_UNAVAILABLE,
+        PROFILE_CASE_UNAVAILABLE,
         PROFILE_PACKAGE_INVALID,
         PROFILE_SELECTION_STALE,
         crate::UNSUPPORTED,

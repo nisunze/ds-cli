@@ -45,11 +45,9 @@ pub static COMMAND: Command = Command {
     contract: 3,
     summary: "Open one of this machine's working copies as the active one.",
     purpose: "\
-Makes one working copy the one an editing session starts from on this \
-machine. Idempotent: naming the copy that is already open reports \
-`changed: false` and touches nothing, so a retry after a lost answer is safe. \
-This is local state and reaches no project; it is not a claim about any \
-project catalogue revision. Old packages are prepared through the one external format migration before activation: exact original bytes and migration receipt are preserved locally, the saved working package is strict-current, and the local catalogue write is digest-fenced. No project publication or authored package revision bump occurs.",
+Selects the working copy an editing session starts from on this machine. \
+Idempotent: the active copy reports `changed: false` and stays unchanged. \
+Local state; no project authority. Older packages use the one external migration before activation. It preserves original bytes and receipt locally, saves strict-current bytes, and digest-fences the local catalogue. No project publication or authored revision bump.",
     chapter: Chapter::GridModel,
     effect: Effect::LocalFileWrite,
     authority: Authority::None,

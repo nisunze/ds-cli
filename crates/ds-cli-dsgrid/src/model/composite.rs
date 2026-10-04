@@ -120,7 +120,7 @@ macro_rules! command {
             effect: $effect, authority: Authority::HeadlessProject, execution: Execution::Sync,
             args: $args, output: "Dry-run/apply status, composite/parts, generation, canonical authored digest, affected counts and exact candidate digest. --publication adds the reviewable atomic project request; applying returns its verified immutable version vector. Source files are immutable.",
             examples: &[Example { command: $example, note: "Dry run by default; add --apply --out <new-path> to commit a local candidate.", runnable: false }],
-            refusals: REFUSALS, reference: None, search: &["composite", "submodels", "reconciliation", "split", "linked"], requires: Requires::Server,
+            refusals: REFUSALS, reference: None, search: &["composite", "submodels", "reconciliation"], requires: Requires::Server,
             availability: || Availability::Available,
         };
     }

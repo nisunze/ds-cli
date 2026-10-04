@@ -124,6 +124,7 @@ fn output_error(error: impl std::fmt::Display) -> Failure {
 }
 /// Reserve a fresh directory atomically. Package and receipt are staged/fsynced;
 /// the receipt is the last commit marker. A failed directory is never reused.
+#[cfg(test)]
 pub(crate) fn materialize(out: &Path, output: &MigrationOutput) -> Result<Value, Failure> {
     materialize_preserving_source(out, output, None)
 }

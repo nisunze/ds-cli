@@ -12,7 +12,7 @@ use std::path::Path;
 use ds_cli_contract::outcome::Failure;
 use ds_grid_exchange::dsgrid;
 use ds_grid_exchange::package::{GridPackage, PackageManifest, unpack};
-use serde_json::{Value, json};
+use serde_json::json;
 
 /// Refuse a file larger than this before reading it. A `.dsgrid` is a zip of
 /// compressed Arrow tables; a real one is megabytes. The bound exists so a
