@@ -1230,10 +1230,10 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("style.resolve", "local_auth_state", "headless_project"),
     (
         "style.purpose.index",
-        "style.purpose.plan",
         "local_auth_state",
         "headless_project",
     ),
+    ("style.purpose.plan", "local_auth_state", "headless_project"),
     (
         "style.resolution.table",
         "local_auth_state",
