@@ -167,10 +167,17 @@ pub fn bind_print_styles(
     principal: &str,
     audience: &str,
     sheets: &Value,
+    server_sheets_sha256: &str,
 ) -> Result<PrintContextBytes, HostFailure> {
     capture
         .validate_scope(project, lane, principal, audience, sheets)
         .map_err(|e| HostFailure::new("print_style_capture_context_mismatch", e))?;
+    if capture.server_sheets_sha256 != server_sheets_sha256 {
+        return Err(HostFailure::new(
+            "print_style_capture_stale",
+            "server-issued input receipt changed after style capture",
+        ));
+    }
     let mut document = if let Some(held) = &context {
         if format!("{:x}", Sha256::digest(&held.bytes)) != held.sha256 {
             return Err(HostFailure::new(
@@ -2266,6 +2273,7 @@ mod style_context_capture_tests {
             "user-a",
             &"a".repeat(64),
             &sheets,
+            &"c".repeat(64),
         )
         .unwrap();
         let value: Value = serde_json::from_slice(&bound.bytes).unwrap();
@@ -2286,7 +2294,19 @@ mod style_context_capture_tests {
             "stable",
             "user-a",
             &"a".repeat(64),
-            &sheets
+            &sheets,
+            &"c".repeat(64),
+        )
+        .is_err());
+        assert!(bind_print_styles(
+            Some(held.clone()),
+            &capture,
+            "project-a",
+            "stable",
+            "user-a",
+            &"a".repeat(64),
+            &sheets,
+            &"d".repeat(64)
         )
         .is_err());
         let mut corrupted = held;
@@ -2298,7 +2318,8 @@ mod style_context_capture_tests {
             "stable",
             "user-a",
             &"a".repeat(64),
-            &sheets
+            &sheets,
+            &"c".repeat(64),
         )
         .is_err());
     }

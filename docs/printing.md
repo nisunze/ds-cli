@@ -1106,3 +1106,10 @@ only the declared captured keys; it performs no catalogue lookup or fallback.
 An existing different held document, changed configuration, or changed effective
 layout refuses with a named stale/source error. Local preview receipt overlays
 remain a separate API and cannot rewrite a normal delivery receipt.
+
+The native host compares the capture against its authenticated project, lane, UID,
+credential audience and the unchanged server-issued `InputReceipt.sheets_sha256`
+before it binds the exact context SHA. The standalone renderer and task runner
+receive no credential authority: they admit held source/document bytes only and
+do not authenticate the capsule issuer. Admission precedes localization; its
+ephemeral render clone consumes the capsule while immutable inputs retain it.
