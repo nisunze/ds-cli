@@ -51,6 +51,7 @@ fn capture(
     let params = params.ok_or_else(|| Failure::invalid("print_project_crs_missing", "The authenticated directory supplies no projection authority for this exact project.").remedy("Connect the native account to the selected lane and verify access to the exact project."))?;
     Capture::new(project, lane, uid, audience, params.clone()).map_err(|error| {
         Failure::invalid("print_project_crs_invalid", error)
+            .detail(json!({"project_params_shape": if params.is_null() { "missing" } else if params.is_object() { "object" } else { "non_object" }, "crs_present": params.get("crs").is_some(), "crs_is_object": params.get("crs").is_some_and(Value::is_object), "mode_is_string": params.pointer("/crs/mode").is_some_and(Value::is_string)}))
             .remedy("Repair the project's existing ProjectParams projection authority.")
     })
 }
@@ -98,7 +99,7 @@ mod tests {
             )
             .is_err()
         );
-        let params = json!({"crs":{"mode":"utm", "zone":35, "hemisphere":"south"}});
+        let params = json!({"crs":{"mode":"utm", "utm_zone":35, "utm_hemisphere":"south"}});
         let actual = capture("project", "stable", "user", "audience", Some(&params)).unwrap();
         assert_eq!(actual.project_params, params);
         assert!(
