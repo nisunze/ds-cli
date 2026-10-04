@@ -1804,6 +1804,16 @@ static STYLE_ENTRIES: &[Entry] = &[
         render: ds_cli_style::governance::seed_apply::render,
     },
     Entry {
+        command: &ds_cli_style::a4_seed::plan::COMMAND,
+        handler: ds_cli_style::a4_seed::plan::run,
+        render: ds_cli_style::a4_seed::plan::render,
+    },
+    Entry {
+        command: &ds_cli_style::a4_seed::create::COMMAND,
+        handler: ds_cli_style::a4_seed::create::run,
+        render: ds_cli_style::a4_seed::create::render,
+    },
+    Entry {
         command: &ds_cli_style::governance::inventory::COMMAND,
         handler: ds_cli_style::governance::inventory::run,
         render: ds_cli_style::governance::inventory::render,

@@ -1032,7 +1032,10 @@ mod tests {
             ("overlay", "data.vector.intersect"),
             ("line", "map.line-difference"),
             ("chainage", "data.vector.sample"),
-            ("crs", "data.convert"),
+            // An exact command-name hit owns project CRS discovery; the
+            // conversion qualifier still finds the local conversion door.
+            ("crs", "report.project.crs"),
+            ("convert crs", "data.convert"),
             ("shapefile", "data.convert"),
             ("length", "data.vector.measure"),
             // Holding the country's data is something an agent should reach

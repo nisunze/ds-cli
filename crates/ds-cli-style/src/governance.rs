@@ -325,7 +325,7 @@ pub mod purpose_index {
         examples: &[],
         refusals: &PURPOSE_ALL,
         reference: Some("docs/reference/style.md"),
-        search: &["purpose", "transformer sheet", "adjacent circuit"],
+        search: &["transformer sheet", "adjacent circuit"],
         requires: Requires::Server,
         availability: ds_cli_auth::native_availability,
     };
@@ -394,7 +394,7 @@ pub mod purpose_plan {
         examples: &[],
         refusals: &PURPOSE_ALL,
         reference: Some("docs/reference/style.md"),
-        search: &["purpose", "transformer on A0", "composition"],
+        search: &["transformer sheet", "composition"],
         requires: Requires::Server,
         availability: ds_cli_auth::native_availability,
     };

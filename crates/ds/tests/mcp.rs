@@ -1082,6 +1082,62 @@ fn codex_install_plans_writes_and_reports_the_restart_handoff_without_vscode() {
 }
 
 #[test]
+fn fixed_a4_seed_mcp_has_exact_fences_and_refuses_unconfirmed_creation() {
+    let (responses, _) = mcp(
+        &["--exposure", "commands", "--profile", "styles"],
+        &[
+            json!({"jsonrpc":"2.0","id":1,"method":"tools/list"}),
+            json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{
+                "name":"style_catalogue_a4_create","arguments":{
+                    "project":"project_a","expected-document":"a".repeat(64),
+                    "expected-plan":"b".repeat(64),"confirm":false
+                }
+            }}),
+        ],
+    );
+    let tools = response(&responses, 1)["result"]["tools"]
+        .as_array()
+        .unwrap();
+    for (name, id, required) in [
+        (
+            "style_catalogue_a4_plan",
+            "style.catalogue.a4.plan",
+            json!(["project"]),
+        ),
+        (
+            "style_catalogue_a4_create",
+            "style.catalogue.a4.create",
+            json!(["project", "expected-document", "expected-plan"]),
+        ),
+    ] {
+        let matching = tools
+            .iter()
+            .filter(|tool| tool["name"] == name)
+            .collect::<Vec<_>>();
+        assert_eq!(matching.len(), 1, "{name}");
+        let tool = matching[0];
+        assert_eq!(tool["title"], id);
+        assert_eq!(tool["inputSchema"]["required"], required);
+        assert_eq!(tool["inputSchema"]["additionalProperties"], false);
+        let properties = tool["inputSchema"]["properties"].as_object().unwrap();
+        for forbidden in ["path", "body", "manifest", "yes"] {
+            assert!(!properties.contains_key(forbidden), "{id}: {forbidden}");
+        }
+        let descriptor = cli(&["capabilities", id, "--output", "json"]);
+        assert_eq!(
+            descriptor["data"]["command"]["authority"],
+            "headless_project"
+        );
+        assert_eq!(descriptor["data"]["command"]["requires"], "server");
+    }
+    let refused = &response(&responses, 2)["result"]["structuredContent"];
+    assert_eq!(refused["command"], "style.catalogue.a4.create");
+    assert_eq!(refused["status"], "error");
+    assert_eq!(refused["error"]["code"], "confirmation_required");
+    assert!(refused["data"].is_null());
+}
+
+#[test]
 fn by_command_profiles_still_partition_the_live_registry() {
     // F36: chapter membership is declared once, on the command. Split
     // profiles are not — they hand-list command ids, and an id nobody added
@@ -2645,6 +2701,9 @@ fn the_host_is_one_flag_and_the_other_targets_are_a_closed_set() {
         // The resolver's screen/print cartographic target is a dimension of
         // the governed style key; execution still uses the native server.
         "style.resolve",
+        // The authored-purpose index uses the same screen/print style
+        // dimension; it does not select the machine that executes it.
+        "style.purpose.index",
     ];
     const HOST_PLACEHOLDER: &str = "<desktop|desktop:instance|server>";
     /// `ds mcp install --host` names an MCP host *program* — Claude Code,

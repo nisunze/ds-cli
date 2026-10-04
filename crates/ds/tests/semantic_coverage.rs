@@ -485,6 +485,7 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("design.comment.read", "read_only", "headless_project"),
     ("design.comment.redact", "global_write", "headless_project"),
     ("design.comment.resolve", "global_write", "headless_project"),
+    ("report.project.crs", "local_auth_state", "headless_project"),
     (
         "report.project.map-inputs",
         "local_file_write",

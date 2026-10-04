@@ -29,7 +29,7 @@ macro_rules! command {
                 effect: Effect::$effect, authority: Authority::HeadlessProject, execution: Execution::Sync,
                 args: $args, output: "Fixed A4 definition/body/source digests, exact project/principal, destination state, create/preserve counts and plan SHA; create returns applied with its unchanged reviewed plan.",
                 examples: &[], refusals: crate::governance::command_refusals(),
-                reference: Some("docs/reference/style.md"), search: &["voltage-drop", "A4", "status", "template"],
+                reference: Some("docs/reference/style.md"), search: &["status", "template"],
                 requires: ds_cli_contract::spec::Requires::Server, availability: ds_cli_auth::native_availability,
             };
             pub fn run(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
