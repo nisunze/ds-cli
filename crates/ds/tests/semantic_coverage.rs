@@ -1255,6 +1255,16 @@ const EXPECTED: &[(&str, &str, &str)] = &[
         "headless_project",
     ),
     (
+        "style.catalogue.a4.plan",
+        "local_auth_state",
+        "headless_project",
+    ),
+    (
+        "style.catalogue.a4.create",
+        "global_write",
+        "headless_project",
+    ),
+    (
         "style.catalogue.inventory",
         "local_auth_state",
         "headless_project",

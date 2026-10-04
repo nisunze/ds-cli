@@ -18625,3 +18625,45 @@ fn style_instruction_schema_covers_primary_scale_and_guarded_replay() {
             .any(|input| input["name"] == "stop" && input["kind"] == "repeated")
     );
 }
+
+#[test]
+fn fixed_a4_seed_is_discoverable_and_refuses_unconfirmed_publication() {
+    for (id, effect) in [
+        ("style.catalogue.a4.plan", "local_auth_state"),
+        ("style.catalogue.a4.create", "global_write"),
+    ] {
+        let described = native_ds(&["capabilities", id, "--output", "json"]);
+        assert_eq!(described.code, 0, "{}", described.envelope);
+        let command = &described.envelope["data"]["command"];
+        assert_eq!(command["effect"], effect);
+        assert_eq!(command["authority"], "headless_project");
+        assert_eq!(command["requires"], "server");
+        assert!(command["purpose"].as_str().unwrap().contains(
+            "No style, binding, layout, manifest head or printing-defaults pointer is changed"
+        ));
+        assert!(
+            !command["inputs"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|arg| ["path", "body", "manifest"].contains(&arg["name"].as_str().unwrap()))
+        );
+    }
+    let digest = "a".repeat(64);
+    let refused = native_ds(&[
+        "style",
+        "catalogue",
+        "a4",
+        "create",
+        "--project",
+        "project_a",
+        "--expected-document",
+        &digest,
+        "--expected-plan",
+        &digest,
+        "--output",
+        "json",
+    ]);
+    assert_ne!(refused.code, 0);
+    assert_eq!(refused.envelope["error"]["code"], "confirmation_required");
+}

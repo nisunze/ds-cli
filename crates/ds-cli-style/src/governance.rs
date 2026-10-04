@@ -240,7 +240,7 @@ fn named(failure: Failure) -> Failure {
     }
     crate::native::named(failure)
 }
-fn invoke(inputs: &Inputs, operation: Operation) -> Result<Value, Failure> {
+pub(crate) fn invoke(inputs: &Inputs, operation: Operation) -> Result<Value, Failure> {
     let request = ds_command_kernel::style_governance::Request {
         project: inputs.require("project")?.into(),
         command: operation,
@@ -272,7 +272,7 @@ const fn all_refusals() -> [Refusal; REFUSALS.len() + crate::native::PUBLISH_REF
     result
 }
 const ALL: [Refusal; REFUSALS.len() + crate::native::PUBLISH_REFUSALS.len()] = all_refusals();
-const fn command_refusals() -> &'static [Refusal] {
+pub(crate) const fn command_refusals() -> &'static [Refusal] {
     &ALL
 }
 command!(

@@ -2118,7 +2118,8 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
             // Owner transformer-on-A0 workflow: style.purpose.index and
             // style.purpose.plan join this exact catalogue (+2), not the
             // broad map router; every other style leaf remains explicit.
-            "styles" => 35,
+            // Fixed A4 plan/create add exactly two named, reviewed leaves (+2).
+            "styles" => 37,
             // Sixteen layer leaves plus bootstrap: the layer drawer's profile
             // also carries this machine's prepared local layer catalogue,
             // which is the same "one host's own layers" workflow as the local
@@ -2347,6 +2348,8 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
         "style_catalogue_manifest",
         "style_catalogue_seed_plan",
         "style_catalogue_seed_apply",
+        "style_catalogue_a4_plan",
+        "style_catalogue_a4_create",
         "style_catalogue_inventory",
         "style_catalogue_backup_create",
         "style_catalogue_backup_read",

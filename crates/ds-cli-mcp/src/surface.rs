@@ -772,6 +772,8 @@ const STYLE_COMMANDS: &[&str] = &[
     "style.catalogue.manifest",
     "style.catalogue.seed.plan",
     "style.catalogue.seed.apply",
+    "style.catalogue.a4.plan",
+    "style.catalogue.a4.create",
     "style.catalogue.inventory",
     "style.catalogue.backup.create",
     "style.catalogue.backup.read",
