@@ -28,7 +28,22 @@ is not part of this document.
 `elements` is the canonical back-to-front sheet stack. The final element is
 front-most. `bring_to_front`, `send_to_back`, `move_above` and `move_below`
 change only this order. Map-layer ordering inside the print viewport is a
-separate reporter input.
+separate authored `layer_order` list. `set_layer_order` changes only that list,
+so administrative boundaries can be placed beneath the network without
+changing geometry, selected sources, pens or page furniture.
+
+Text elements may author an optional physical `text_style.halo` with a hex
+colour and outward width in millimetres. An omitted halo keeps the historical
+SVG and typography; project/purpose documents choose its appearance.
+
+Design LV pole roles require their saved `struct_type`. A missing, blank or
+non-text type is never inferred from material, numbering, colour or adjacent
+poles. The native renderer keeps the exact geometry, marks each visible
+untyped pole and prints a missing-type count, using the held renderer's
+diagnostic ink and footer font. The placed `print_pole_category_missing`
+warning names its design layer and source features. National reference poles
+with a different schema are not retyped by this check. A category diagnostic
+does not claim that a source repair or categorical style has been applied.
 
 `printing::evaluate` evaluates New, Validate, Edit (upsert one element),
 Remove, SetPaper, SetViewport and the four stack-order commands. Every result

@@ -2026,6 +2026,16 @@ pub fn valid_print_warning(warning: &PrintWarning, transformer: &str, formats: &
                 && warning.omitted_rows == 0
                 && warning.total_rows == 0
         }
+        // A drawn design pole lacks its authored type. The renderer keeps
+        // its exact geometry, flags the visible pole and names the layer;
+        // no omitted table row or inferred category stands behind it.
+        "print_pole_category_missing" => {
+            placed
+                && crate::printing::identifier(&warning.element_id)
+                && crate::printing::pole_categories::design_pole_layer(&warning.element_id)
+                && warning.omitted_rows == 0
+                && warning.total_rows == 0
+        }
         // Cable consistency findings (report_consistency::lv_cables):
         // one row per pole whose saved cable label disagrees with its
         // LV line, mirrored on the workbook's Engineering Review
@@ -4122,6 +4132,42 @@ mod tests {
                 message: "finding".into(),
             };
             assert!(valid_print_warning(&warning, "tx_a", &formats), "{code}");
+        }
+    }
+
+    #[test]
+    fn pole_category_warning_requires_its_exact_print_placement_and_design_role() {
+        let format = "pdf__detail".to_string();
+        let formats = vec![format.clone()];
+        let warning = PrintWarning {
+            code: crate::printing::pole_categories::WARNING_CODE.into(),
+            transformer: "tx_a".into(),
+            output_id: format,
+            layout_id: "detail".into(),
+            element_id: "lv_poles".into(),
+            total_rows: 0,
+            omitted_rows: 0,
+            message: "1 visible pole lacks struct_type; category unverified".into(),
+        };
+        assert!(valid_print_warning(&warning, "tx_a", &formats));
+        for field in [
+            "transformer",
+            "output_id",
+            "layout_id",
+            "element_id",
+            "total_rows",
+            "omitted_rows",
+        ] {
+            let mut value = serde_json::to_value(&warning).unwrap();
+            value[field] = if field.ends_with("rows") {
+                json!(1)
+            } else {
+                json!("unrelated")
+            };
+            assert!(
+                !valid_print_warning(&serde_json::from_value(value).unwrap(), "tx_a", &formats),
+                "{field}"
+            );
         }
     }
 
