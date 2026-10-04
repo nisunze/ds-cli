@@ -2049,6 +2049,76 @@ fn chapter_routing_refuses_escape_and_confirmation_misuse() {
 }
 
 #[test]
+fn local_model_scoped_routers_reach_every_allowed_verb_and_preserve_refusals() {
+    use ds_cli_mcp::surface::{Profile, chapter_tool_name};
+    let mut calls = vec![
+        json!({"jsonrpc":"2.0", "id":1, "method":"tools/call", "params":{"name":"ds_catalog", "arguments":{"chapter":"grid-model"}}}),
+        json!({"jsonrpc":"2.0", "id":2, "method":"tools/call", "params":{"name":"ds_catalog", "arguments":{"chapter":"design"}}}),
+    ];
+    let allowed = Profile::GridLocalModel.command_ids();
+    for (index, id) in allowed.iter().enumerate() {
+        let descriptor = cli(&["capabilities", id, "--output", "json"]);
+        let chapter = ds_cli_contract::spec::Chapter::from_token(
+            descriptor["data"]["command"]["chapter"].as_str().unwrap(),
+        )
+        .unwrap();
+        calls.push(json!({"jsonrpc":"2.0", "id":index+10, "method":"tools/call", "params":{"name":chapter_tool_name(chapter), "arguments":{"operation":"describe", "command":id}}}));
+    }
+    calls.extend([
+        json!({"jsonrpc":"2.0", "id":1000, "method":"tools/call", "params":{"name":"ds_grid_model", "arguments":{"operation":"invoke", "command":"dsgrid.inspect", "arguments":{}}}}),
+        json!({"jsonrpc":"2.0", "id":1001, "method":"tools/call", "params":{"name":"ds_design", "arguments":{"operation":"invoke", "command":"dsgrid.model.list", "arguments":{}}}}),
+        json!({"jsonrpc":"2.0", "id":1002, "method":"tools/call", "params":{"name":"ds_grid_model", "arguments":{"operation":"invoke", "command":"dsgrid.model.status", "arguments":{"undeclared-privilege":true}}}}),
+        json!({"jsonrpc":"2.0", "id":1003, "method":"tools/call", "params":{"name":"ds_grid_model", "arguments":{"operation":"invoke", "command":"dsgrid.project.retire", "arguments":{"project":"not-authority", "model":"m", "expected-head":"rev", "expected-digest":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "reason":"unconfirmed control"}}}}),
+        json!({"jsonrpc":"2.0", "id":1004, "method":"tools/call", "params":{"name":"dsgrid_model_list", "arguments":{}}}),
+        json!({"jsonrpc":"2.0", "id":1005, "method":"tools/call", "params":{"name":"ds_grid_model", "arguments":{"operation":"invoke", "command":"dsgrid.model.list", "arguments":{"account":"scope-only", "lane":"stable", "project":"not-authority"}}}}),
+    ]);
+    let (messages, _) = mcp(
+        &["--exposure", "commands", "--profile", "grid-local-model"],
+        &calls,
+    );
+    let discovered: BTreeSet<_> = [1, 2]
+        .into_iter()
+        .flat_map(|id| {
+            response(&messages, id)["result"]["structuredContent"]["commands"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|row| row["id"].as_str().unwrap().to_owned())
+                .collect::<Vec<_>>()
+        })
+        .collect();
+    assert_eq!(
+        discovered,
+        allowed.iter().map(|id| id.to_string()).collect()
+    );
+    assert_eq!(
+        allowed.len(),
+        58,
+        "review every added lifecycle verb; do not hide it from disclosure"
+    );
+    for (index, id) in allowed.iter().enumerate() {
+        assert_eq!(
+            response(&messages, index as i64 + 10)["result"]["structuredContent"],
+            cli(&["capabilities", id, "--output", "json"]),
+            "{id} changed its canonical descriptor"
+        );
+    }
+    for id in [1000, 1001, 1004] {
+        assert_eq!(response(&messages, id)["error"]["code"], -32602);
+    }
+    for id in [1002, 1005] {
+        assert_eq!(
+            response(&messages, id)["result"]["structuredContent"]["error"]["code"],
+            "mcp_arguments_invalid"
+        );
+    }
+    assert_eq!(
+        response(&messages, 1003)["result"]["structuredContent"]["error"]["code"],
+        "confirmation_required"
+    );
+}
+
+#[test]
 fn every_specialized_profile_is_bounded_and_catalogued() {
     let mut published = BTreeMap::<&str, BTreeSet<String>>::new();
     for profile in [
@@ -2304,27 +2374,14 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
     assert!(!published["project"].contains("pm_task_geometry_set"));
     assert!(published["project"].contains("pm_task_create"));
     assert!(!published["grid-corrections"].contains("dsgrid_apply-batch"));
-    assert!(
-        published["grid-local-model"].contains("dsgrid_model_list")
-            && published["grid-local-model"].contains("dsgrid_model_show")
-            && published["grid-local-model"].contains("dsgrid_model_link")
-            && published["grid-local-model"].contains("dsgrid_model_create-local")
-            && published["grid-local-model"].contains("dsgrid_model_import-external")
-            && published["grid-local-model"].contains("dsgrid_model_set-active")
-            && published["grid-local-model"].contains("dsgrid_model_prepare-project")
-            && published["grid-local-model"].contains("dsgrid_project_list")
-            && published["grid-local-model"].contains("dsgrid_project_versions")
-            && published["grid-local-model"].contains("dsgrid_project_geojson")
-            && published["grid-local-model"].contains("dsgrid_publish-version")
-            && published["grid-local-model"].contains("dsgrid_asset_extract")
-            && published["grid-local-model"].contains("dsgrid_asset_attach")
-            && published["grid-local-model"].contains("dsgrid_project_asset_extract"),
-        "the grid-local-model profile must project the complete model and project-cache lifecycle"
+    assert_eq!(
+        published["grid-local-model"],
+        BTreeSet::from(["ds_grid_model".to_owned(), "ds_design".to_owned(),]),
+        "the complete local lifecycle loads contracts through its scoped routers"
     );
     // Package assets live with the version lifecycle alone: neither the broad
     // `grid` router nor the file-in/file-out `grid-native` one carries them.
     for leaf in ["dsgrid_asset_list", "dsgrid_project_asset_list"] {
-        assert!(published["grid-local-model"].contains(leaf));
         assert!(!published["grid"].contains(leaf), "{leaf} widened `grid`");
         assert!(
             !published["grid-native"].contains(leaf),

@@ -1,12 +1,12 @@
-//! Explicit format migration; no authored revision advance or project write.
+//! Explicit format migration and opt-in native lineage successor; no project write.
 use ds_cli_contract::spec::{
     Arg, Authority, Availability, Chapter, Command, Effect, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Failure, Inputs};
 use ds_grid_exchange::package_migration::{
-    migrate_with_resources, MigrationOutput, SupplementalResource,
+    MigrationOutput, SupplementalResource, migrate_with_resources,
 };
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::{
     io::{Read, Write},
@@ -15,14 +15,38 @@ use std::{
 pub static COMMAND: Command = Command {
     id: "dsgrid.package.migrate",
     path: &["dsgrid", "package", "migrate"],
-    contract: 2,
+    contract: 3,
     summary: "Verify one old package and save its lossless current-format migration.",
-    purpose: "Verify historical schema, members and digests, then convert named fields without changing authored engineering facts or revision. SHA-pinned supplements restore only declared missing bytes; derived pins move only after current-engine recomputation preserves exact physical rows. Dry-run returns a receipt; --yes writes model.dsgrid and migration.receipt.json to a fresh directory. The source and project remain unchanged. See the reference for preservation and current-schema restoration.",
+    purpose: "Verify historical schema, members and digests, then convert named fields without changing authored engineering facts or revision. SHA-pinned supplements restore only declared missing bytes; derived pins move only after current-engine recomputation preserves exact physical rows. Dry-run returns a receipt; --yes writes model.dsgrid and migration.receipt.json to a fresh directory. The source and project remain unchanged. Opt-in successor verifies original/current/receipt pins and advances native revision by one without publication. See the reference for preservation and current-schema restoration.",
     chapter: Chapter::GridModel,
     effect: Effect::LocalFileWrite,
     authority: Authority::None,
     execution: Execution::Sync,
     args: &[
+        Arg::switch(
+            "successor",
+            "Create an explicit format-migration successor, preserving facts and advancing native revision by one. Requires all four successor input pins.",
+        ),
+        Arg::value(
+            "current-path",
+            "<file>",
+            "Strict-current output of the independently reproducible original migration.",
+        ),
+        Arg::value(
+            "expected-current-sha256",
+            "<hex>",
+            "Exact current package SHA-256; required with successor.",
+        ),
+        Arg::value(
+            "migration-receipt",
+            "<file>",
+            "Exact original migration receipt; required with successor.",
+        ),
+        Arg::value(
+            "expected-migration-receipt-sha256",
+            "<hex>",
+            "Exact receipt SHA-256; required with successor.",
+        ),
         Arg::value(
             "supplemental-resources",
             "<json-file>",
@@ -177,6 +201,7 @@ pub fn run(inputs: &Inputs, context: &Context) -> Result<Value, Failure> {
             "choose dry-run or yes",
         ));
     }
+    let successor = successor_inputs(inputs)?;
     let source_path = inputs.require("path")?;
     let bytes = crate::package::read_bytes(source_path)?;
     let digest = format!("{:x}", Sha256::digest(&bytes));
@@ -188,17 +213,75 @@ pub fn run(inputs: &Inputs, context: &Context) -> Result<Value, Failure> {
         .detail(json!({"actual_source_sha256":digest})));
     }
     let supplemental = load_supplemental(inputs, &digest)?;
-    let output = migrate_with_resources(&bytes, &supplemental)
-        .map_err(|error| Failure::invalid("package_migration_invalid", error.to_string()))?;
+    let output = if let Some((current_path, current_sha, receipt_path, receipt_sha)) = successor {
+        let current = crate::package::read_bytes(current_path)?;
+        let receipt = bounded_supplemental_file(Path::new(receipt_path), 16 * 1024 * 1024)?;
+        ds_grid_exchange::package_migration::migrate_successor(
+            &bytes,
+            &supplemental,
+            &digest,
+            &current,
+            current_sha,
+            &receipt,
+            receipt_sha,
+        )
+    } else {
+        migrate_with_resources(&bytes, &supplemental)
+    }
+    .map_err(|error| Failure::invalid("package_migration_invalid", error.to_string()))?;
     let files = if dry {
         Value::Null
     } else {
-        materialize(Path::new(inputs.require("out")?), &output)?
+        materialize_preserving_source(
+            Path::new(inputs.require("out")?),
+            &output,
+            if successor.is_some() {
+                Some(&bytes)
+            } else {
+                None
+            },
+        )?
     };
     Ok(
         json!({"dry_run":dry,"source_path":source_path,"source_modified":false,"published":false,"receipt":output.receipt,"files":files}),
     )
 }
+fn successor_inputs<'a>(
+    inputs: &'a Inputs,
+) -> Result<Option<(&'a str, &'a str, &'a str, &'a str)>, Failure> {
+    let names = [
+        "current-path",
+        "expected-current-sha256",
+        "migration-receipt",
+        "expected-migration-receipt-sha256",
+    ];
+    let supplied = names
+        .iter()
+        .filter(|name| inputs.value(name).is_some())
+        .count();
+    if inputs.switch("successor") {
+        if supplied != names.len() {
+            return Err(Failure::invalid(
+                "package_migration_invalid",
+                "successor requires current package and migration receipt with both exact SHA pins",
+            ));
+        }
+        Ok(Some((
+            inputs.require(names[0])?,
+            inputs.require(names[1])?,
+            inputs.require(names[2])?,
+            inputs.require(names[3])?,
+        )))
+    } else if supplied != 0 {
+        Err(Failure::invalid(
+            "package_migration_invalid",
+            "successor input pins require --successor",
+        ))
+    } else {
+        Ok(None)
+    }
+}
+
 pub fn render(value: &Value) -> String {
     format!("{value}\n")
 }
@@ -371,20 +454,84 @@ mod supplemental_input_tests {
         tokens.extend(extra);
         ds_cli_contract::parse(&COMMAND, &tokens).unwrap()
     }
+    #[test]
+    fn successor_flags_are_complete_and_opt_in_before_file_reads() {
+        assert!(successor_inputs(&inputs(vec![])).unwrap().is_none());
+        assert!(successor_inputs(&inputs(vec!["--successor".into()])).is_err());
+        let flags = vec![
+            "--current-path",
+            "current.dsgrid",
+            "--expected-current-sha256",
+            "current-sha",
+            "--migration-receipt",
+            "receipt.json",
+            "--expected-migration-receipt-sha256",
+            "receipt-sha",
+        ];
+        assert!(successor_inputs(&inputs(flags.iter().map(|v| (*v).into()).collect())).is_err());
+        let mut complete = vec!["--successor".into()];
+        complete.extend(flags.iter().map(|v| (*v).into()));
+        assert_eq!(
+            successor_inputs(&inputs(complete)).unwrap(),
+            Some((
+                "current.dsgrid",
+                "current-sha",
+                "receipt.json",
+                "receipt-sha"
+            ))
+        );
+    }
+
     fn controls_dir() -> std::path::PathBuf {
-        let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../../out/package-migrate-input-controls")
-            .join(format!(
-                "{}-{}",
-                std::process::id(),
-                std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap()
-                    .as_nanos()
-            ));
+        let scratch = std::env::var_os("TMPDIR")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| {
+                std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../out")
+            });
+        let scratch = std::fs::canonicalize(scratch).expect("existing disk scratch parent");
+        assert!(
+            scratch.is_absolute()
+                && !scratch.starts_with("/tmp")
+                && !scratch.starts_with("/dev/shm"),
+            "migration controls require disk TMPDIR"
+        );
+        let path = scratch.join("package-migrate-input-controls").join(format!(
+            "{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
         std::fs::create_dir_all(&path).unwrap();
         std::fs::canonicalize(path).unwrap()
     }
+    #[test]
+    fn source_archive_is_exact_and_receipt_commits_only_after_valid_readback() {
+        let root = controls_dir();
+        let blank =
+            ds_grid_exchange::create_blank_model(&ds_grid_exchange::BlankModelRequest::default())
+                .unwrap();
+        let output = ds_grid_exchange::package_migration::migrate(&blank.bytes).unwrap();
+        let good = root.join("source-archived");
+        materialize_preserving_source(&good, &output, Some(&blank.bytes)).unwrap();
+        assert_eq!(
+            std::fs::read(good.join("original.dsgrid")).unwrap(),
+            blank.bytes
+        );
+        assert_eq!(
+            std::fs::read(good.join("model.dsgrid")).unwrap(),
+            output.bytes
+        );
+        assert!(good.join("migration.receipt.json").is_file());
+        assert!(materialize_preserving_source(&good, &output, Some(&blank.bytes)).is_err());
+        let bad = root.join("wrong-original");
+        assert!(materialize_preserving_source(&bad, &output, Some(b"different original")).is_err());
+        assert!(!bad.join("migration.receipt.json").exists());
+        assert!(!bad.join("model.dsgrid").exists());
+        assert!(!bad.join("original.dsgrid").exists());
+    }
+
     fn fixture() -> (std::path::PathBuf, std::path::PathBuf, Value) {
         let out = controls_dir();
         let native = out.join("source.012");
@@ -412,9 +559,11 @@ mod supplemental_input_tests {
     }
     #[test]
     fn paired_flags_and_actual_bounded_read_refuse() {
-        assert!(load_supplemental(&inputs(vec![]), &"a".repeat(64))
-            .unwrap()
-            .is_empty());
+        assert!(
+            load_supplemental(&inputs(vec![]), &"a".repeat(64))
+                .unwrap()
+                .is_empty()
+        );
         for extra in [
             vec!["--supplemental-resources".into(), "/unused.json".into()],
             vec!["--expected-supplemental-sha256".into(), "a".repeat(64)],

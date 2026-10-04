@@ -7489,6 +7489,127 @@ fn design_activities_capture_is_deliberate_sequential_and_honest_about_its_gaps(
 }
 
 #[test]
+fn explicit_package_migration_keeps_source_and_revision_and_refuses_wrong_digest() {
+    use sha2::{Digest, Sha256};
+    let root = temp_root("explicit-package-migration");
+    std::fs::create_dir_all(&root).unwrap();
+    let source = root.join("source.dsgrid");
+    let source_path = source.display().to_string();
+    let created = ok(&[
+        "dsgrid",
+        "create",
+        "--out",
+        &source_path,
+        "--model-id",
+        "migration-smoke",
+        "--output",
+        "json",
+    ]);
+    let bytes = std::fs::read(&source).unwrap();
+    let digest = format!("{:x}", Sha256::digest(&bytes));
+    let result = ok(&[
+        "dsgrid",
+        "package",
+        "migrate",
+        "--path",
+        &source_path,
+        "--expected-source-sha256",
+        &digest,
+        "--dry-run",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(result["source_modified"], false);
+    assert_eq!(result["published"], false);
+    assert_eq!(result["files"], Value::Null);
+    assert_eq!(result["receipt"]["already_current"], true);
+    assert_eq!(result["receipt"]["source_sha256"], digest);
+    assert_eq!(result["receipt"]["output_sha256"], digest);
+    assert_eq!(
+        result["receipt"]["source_schema_version"],
+        result["receipt"]["target_schema_version"]
+    );
+    assert!(created["authored_revision"].is_string());
+    assert_eq!(std::fs::read(&source).unwrap(), bytes);
+    assert!(created["artifact"]["sha256"].is_string());
+    assert_eq!(
+        refusal(&[
+            "dsgrid",
+            "package",
+            "migrate",
+            "--path",
+            &source_path,
+            "--expected-source-sha256",
+            &"0".repeat(64),
+            "--dry-run",
+            "--output",
+            "json"
+        ]),
+        "package_migration_source_conflict"
+    );
+    assert_eq!(std::fs::read(&source).unwrap(), bytes);
+    assert_eq!(
+        refusal(&[
+            "dsgrid",
+            "package",
+            "migrate",
+            "--path",
+            &source_path,
+            "--expected-source-sha256",
+            &digest,
+            "--output",
+            "json"
+        ]),
+        "package_migration_confirmation"
+    );
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn profile_analysis_is_an_explicit_native_set_action_without_an_extra_window_command() {
+    let descriptor = ok(&["capabilities", "map.profile.set", "--output", "json"]);
+    assert_eq!(descriptor["command"]["effect"], "local_ui");
+    assert_eq!(descriptor["command"]["authority"], "desktop_pairing");
+    let action = descriptor["command"]["inputs"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|arg| arg["name"] == "action")
+        .unwrap();
+    assert_eq!(
+        action["choices"],
+        serde_json::json!(["fit", "rebuild", "analyze"])
+    );
+    assert_eq!(
+        refusal(&[
+            "map",
+            "profile",
+            "set",
+            "--action",
+            "compute-arbitrary",
+            "--output",
+            "json"
+        ]),
+        "invalid_choice"
+    );
+    let descriptor = ok(&[
+        "capabilities",
+        "dsgrid.model.set-active",
+        "--output",
+        "json",
+    ]);
+    for code in ["local_model_draft_pending", "local_model_revision_conflict"] {
+        assert!(
+            descriptor["command"]["refusals"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|row| row["code"] == code)
+        );
+    }
+}
+
+#[test]
 fn every_map_command_is_reachable_without_the_desktop_installed() {
     // Availability here is deliberately unconditional: dispatch checks it
     // before parsing, so a gate would make `--desktop-descriptor` — the flag

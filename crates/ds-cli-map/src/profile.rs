@@ -84,9 +84,9 @@ pub static VIEW: Command = Command {
 pub static SET: Command = Command {
     id: "map.profile.set",
     path: &["map", "profile", "set"],
-    contract: 3,
+    contract: 4,
     summary: "Set the paired Profile's visual state through typed CLI inputs.",
-    purpose: "Patches only the named Profile display settings; omitted settings stay unchanged. Display-case selection requires an open model and Rust validates it before changing presentation. Visibility and scale require an open model and are owned by Rust; the desktop paints the resulting state. Viewport settings can be staged before opening. Review boxes and usage labels start enabled. Fit and rebuild are explicit actions. Read map profile view for native weather cases, model/revision and the resulting visual state. No engineering model is changed.",
+    purpose: "Changes only paired Profile presentation; omitted settings remain unchanged. Rust validates display-case, visibility and scale against an open model; viewport and dock height may be staged before opening. Review boxes and usage labels start enabled. Fit, rebuild and analyze are explicit actions. Analyze runs native structure, section and clearance checks at the held revision using the complete model-bound case envelope. Missing inputs remain blockers in Profile and Issues. Weather changes the displayed curve, never the engineering envelope. No model or project data is changed.",
     chapter: Chapter::MapPresentation,
     effect: Effect::LocalUi,
     authority: Authority::DesktopPairing,
@@ -130,13 +130,13 @@ pub static SET: Command = Command {
         ),
         Arg::value(
             "action",
-            "<fit|rebuild>",
-            "Fit the complete Profile or rebuild its projected scene.",
+            "<fit|rebuild|analyze>",
+            "Fit, rebuild, or run native checks with blockers in Profile and Issues.",
         )
-        .choices(&["fit", "rebuild"]),
+        .choices(&["fit", "rebuild", "analyze"]),
         DESCRIPTOR_ARG,
     ],
-    output: "The resulting exact visual state from the paired Profile, including height_px (dock height in pixels), with the applied patch and optional action.",
+    output: "The resulting exact visual state from the paired Profile, including height_px (dock height in pixels), with the applied patch and optional action. Analyze also returns ran:true and the bounded native analysis receipt; full evidence stays in Profile and Issues.",
     examples: &[Example {
         command: "ds map profile set --height-px 480 --vertical-exaggeration 5 --visibility '{\"ground\":true,\"wire\":false}' --action fit --output json",
         note: "After map profile view, set dock height, scale and visibility, then fit; use map profile select with the view receipt's model_id, revision and entity IDs.",
@@ -156,9 +156,18 @@ pub static SET: Command = Command {
         PROFILE_SELECTION_STALE,
         crate::UNSUPPORTED,
         crate::UNREADABLE,
+        crate::REFUSED,
     ],
     reference: Some("docs/reference/map.md"),
-    search: &["labels", "fit", "rebuild", "visibility"],
+    search: &[
+        "labels",
+        "fit",
+        "rebuild",
+        "visibility",
+        "usage",
+        "clearance",
+        "blockers",
+    ],
     requires: Requires::Window,
     availability: crate::paired_availability,
 };
@@ -249,7 +258,11 @@ pub fn set(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         &descriptor,
         &crate::PROFILE_SET,
         Value::Object(patch),
-        crate::UI_TIMEOUT,
+        if inputs.value("action") == Some("analyze") {
+            std::time::Duration::from_secs(300)
+        } else {
+            crate::UI_TIMEOUT
+        },
     )
 }
 
@@ -354,8 +367,8 @@ fn patch_from_inputs(inputs: &Inputs) -> Result<Map<String, Value>, Failure> {
         }
     }
     if let Some(action) = inputs.value("action") {
-        if !matches!(action, "fit" | "rebuild") {
-            return Err(invalid("action must be fit or rebuild"));
+        if !matches!(action, "fit" | "rebuild" | "analyze") {
+            return Err(invalid("action must be fit, rebuild or analyze"));
         }
         patch.insert("action".to_owned(), json!(action));
     }
@@ -399,53 +412,6 @@ fn bounded(raw: &str, field: &str, min: f64, max: f64) -> Result<f64, Failure> {
 
 fn invalid(message: impl Into<String>) -> Failure {
     Failure::invalid("invalid_profile_view", message.into())
-}
-
-pub static ANALYZE: Command = Command {
-    id: "map.profile.analyze",
-    path: &["map", "profile", "analyze"],
-    contract: 1,
-    summary: "Analyze the active Profile model and visualize results, unknowns and blockers.",
-    purpose: "Runs native structure usage, section checks and clearances on every invocation at the active model revision using the current model-bound case envelope. Weather selection changes the displayed curve and its section evidence; it never silently narrows the engineering envelope. Qualified and partial results, unknowns and typed blockers appear in the Profile and Issues. A missing criterion, case or capacity is result evidence, never a silent no-op. No engineering model or project data is changed.",
-    chapter: Chapter::MapPresentation,
-    effect: Effect::LocalUi,
-    authority: Authority::DesktopPairing,
-    execution: Execution::Sync,
-    args: &[DESCRIPTOR_ARG],
-    output: "ran:true, model_id, revision, display and analysis with status qualified|partial|unknown, report status, issue counts, review marker count and blockers by kind. Rust bounds command details to 200 blockers with 512-character message previews and explicit truncation; full evidence remains in Profile and Issues.",
-    examples: &[Example {
-        command: "ds map profile analyze --output json",
-        note: "Run analysis and open Issues for the active model, retaining missing-input evidence.",
-        runnable: false,
-    }],
-    refusals: &[
-        crate::NOT_PAIRED,
-        crate::AMBIGUOUS,
-        crate::UNREACHABLE,
-        crate::PAIRING_REJECTED,
-        PROFILE_CLOSED,
-        PROFILE_SELECTION_STALE,
-        PROFILE_STYLES_UNAVAILABLE,
-        PROFILE_STYLES_INVALID,
-        PROFILE_SCENE_UNAVAILABLE,
-        PROFILE_PACKAGE_INVALID,
-        crate::UNSUPPORTED,
-        crate::UNREADABLE,
-        crate::REFUSED,
-    ],
-    reference: Some("docs/reference/map.md"),
-    search: &["analysis", "usage", "clearance", "blockers"],
-    requires: Requires::Window,
-    availability: crate::paired_availability,
-};
-pub fn analyze(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
-    let descriptor = crate::paired(inputs.value("desktop-descriptor"))?;
-    crate::invoke(
-        &descriptor,
-        &crate::PROFILE_ANALYZE,
-        json!({}),
-        std::time::Duration::from_secs(300),
-    )
 }
 
 pub fn render(data: &Value) -> String {
@@ -568,8 +534,20 @@ mod tests {
             patch_from_inputs(&inputs).unwrap_err().code(),
             "invalid_profile_view"
         );
-        assert_eq!(ANALYZE.path, ["map", "profile", "analyze"]);
-        assert_eq!(ANALYZE.effect, Effect::LocalUi);
+        let analyze =
+            ds_cli_contract::args::parse(&SET, &["--action".into(), "analyze".into()]).unwrap();
+        let patch = Value::Object(patch_from_inputs(&analyze).unwrap());
+        assert_eq!(patch, json!({"action": "analyze"}));
+        assert_eq!(
+            ds_cli_desktop::ops::undeclared_key(&crate::PROFILE_SET, &patch),
+            None
+        );
+        assert_eq!(SET.effect, Effect::LocalUi);
+        assert_eq!(SET.authority, Authority::DesktopPairing);
+        assert!(
+            ds_cli_contract::args::parse(&SET, &["--action".into(), "compute-arbitrary".into()])
+                .is_err()
+        );
     }
 
     #[test]

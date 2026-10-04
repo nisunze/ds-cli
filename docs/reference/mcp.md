@@ -43,7 +43,7 @@ same chapter with `operation: "invoke"` and descriptor-conforming `arguments`.
 Unknown and wrong-chapter ids never become argv; the refusal names the correct
 router when one exists.
 
-Specialized profiles publish conventional typed leaf tools for one workflow.
+Specialized profiles publish conventional typed leaf tools for one workflow. The larger `grid-local-model` lifecycle instead publishes four tools: `ds_catalog`, `ds_diagnostics`, `ds_grid_model` and `ds_design`. Its exact command allowlist is unchanged; discover one command and load its canonical contract with `operation=describe` before `operation=invoke`. The routers reject commands outside that allowlist even when they share a chapter.
 `vector` publishes descriptor discovery and all seven available vector runners,
 using the same `--request` JSON and dry-run previews as the web. The established
 `datasets` profile retains its four geometry primitives and its existing budget:
@@ -93,7 +93,7 @@ Combined Report deliverable. Room materialization uses the paired visible
 project because the application owns the cache, but never opens a map or edit
 context; headless project commands name their project in each request. MCP has
 no active project of its own. Each profile includes `ds_catalog`,
-`ds_diagnostics`, and a bounded leaf set. `survey-migration` deliberately
+`ds_diagnostics`, and a bounded leaf set or the scoped routers above. `survey-migration` deliberately
 contains only the governed import leaf in addition to those bootstrap tools.
 Migration is per domain, never one cross-domain surface: `survey-migration`,
 `design-migration` (`design.migrate.plan|apply`, transformers and DS Grid

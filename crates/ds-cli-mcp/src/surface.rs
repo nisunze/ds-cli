@@ -404,10 +404,10 @@ impl Profile {
             // and pinned attachments to this same model workflow.
             // The integrated profile contains 55 lifecycle leaves and two
             // bootstrap tools; each leaf belongs to this model workflow.
-            // Raised to 60 on 2026-10-04 for the automatic combined model:
-            // status, reconcile and split of a submodel sit beside the
-            // atomic publication of their linked generation.
-            Self::GridLocalModel => 60,
+            // Combined-model verbs remain in the exact lifecycle allowlist.
+            // This profile loads their contracts lazily through two scoped
+            // chapter routers instead of widening its 57-tool ceiling.
+            Self::GridLocalModel => 57,
             // Seventeen geospatial leaves plus bootstrap: the same answer
             // can be kept as GeoJSON or converted to the analytical
             // GeoParquet format without switching MCP profiles.
@@ -425,6 +425,15 @@ impl Profile {
             // authoring and governance workflow (31 leaves plus bootstrap).
             Self::Styles => STYLE_COMMANDS.len() + 2,
             _ => 16,
+        }
+    }
+
+    /// Only this large lifecycle profile uses scoped chapter disclosure.
+    /// The command allowlist below remains its complete authority boundary.
+    fn router_chapters(self) -> &'static [Chapter] {
+        match self {
+            Self::GridLocalModel => &[Chapter::GridModel, Chapter::Design],
+            _ => &[],
         }
     }
 
@@ -1348,13 +1357,18 @@ impl Surface {
         }
         if let Some(profile) = profile {
             commands.retain(|tool| profile.includes(tool));
-            if commands.len() + 2 > profile.tool_limit() {
+            let published = if profile.router_chapters().is_empty() {
+                commands.len() + 2
+            } else {
+                profile.router_chapters().len() + 2
+            };
+            if published > profile.tool_limit() {
                 return Err(Failure::failed(
                     "mcp_profile_too_broad",
                     format!(
                         "profile `{}` would publish {} tools including `ds_catalog` and `ds_diagnostics`",
                         profile.token(),
-                        commands.len() + 2
+                        published
                     ),
                 )
                 .remedy("split the profile by operator workflow before publishing it"));
@@ -1395,7 +1409,13 @@ impl Surface {
     pub fn published_count(&self) -> usize {
         match (self.exposure, self.profile) {
             (Exposure::Chapters, None) => ROUTED_CHAPTERS.len() + 2,
-            (Exposure::Commands, Some(_)) => self.commands.len() + 2,
+            (Exposure::Commands, Some(profile)) => {
+                if profile.router_chapters().is_empty() {
+                    self.commands.len() + 2
+                } else {
+                    profile.router_chapters().len() + 2
+                }
+            }
             (Exposure::Commands, None) => self.commands.len() + 1,
             (Exposure::Chapters, Some(_)) => 0,
         }
@@ -1404,6 +1424,10 @@ impl Surface {
     pub fn instructions(&self) -> String {
         let instructions = match (self.exposure, self.profile) {
             (Exposure::Chapters, None) => "Use ds_catalog for bounded discovery, call the selected chapter with operation=describe, then operation=invoke. The canonical command descriptor governs arguments, authority, effect, confirmation and refusals; branch on the returned DS envelope.".to_string(),
+            (Exposure::Commands, Some(profile)) if !profile.router_chapters().is_empty() => format!(
+                "This is the scoped `{}` lifecycle profile. Use ds_catalog for bounded discovery, then the returned chapter router with operation=describe or operation=invoke and the exact command id. Only this profile's allowlisted commands are reachable. Pass confirm=true only when declared and authorized for that effect and scope; branch on the DS envelope.",
+                profile.token()
+            ),
             (Exposure::Commands, Some(profile)) => format!(
                 "This is the typed `{}` profile. Use ds_catalog for bounded discovery, then call the advertised command tool directly. Pass confirm=true only when the command declares it and the user's intent authorizes that exact effect and scope. Branch on the returned DS envelope.",
                 profile.token()
@@ -1426,6 +1450,17 @@ impl Surface {
                         .map(|chapter| self.chapter_tool_json(*chapter)),
                 )
                 .collect(),
+            (Exposure::Commands, Some(profile)) if !profile.router_chapters().is_empty() => {
+                std::iter::once(catalog_tool_json())
+                    .chain(std::iter::once(diagnostics_tool_json()))
+                    .chain(
+                        profile
+                            .router_chapters()
+                            .iter()
+                            .map(|chapter| self.chapter_tool_json(*chapter)),
+                    )
+                    .collect()
+            }
             (Exposure::Commands, Some(_)) => std::iter::once(catalog_tool_json())
                 .chain(std::iter::once(diagnostics_tool_json()))
                 .chain(self.commands.iter().map(leaf_tool_json))
@@ -1493,6 +1528,22 @@ impl Surface {
         }
         match self.exposure {
             Exposure::Commands => {
+                if let Some(profile) = self
+                    .profile
+                    .filter(|profile| !profile.router_chapters().is_empty())
+                {
+                    let Some(chapter) = profile
+                        .router_chapters()
+                        .iter()
+                        .copied()
+                        .find(|chapter| chapter_tool_name(*chapter) == name)
+                    else {
+                        return Err((-32602, format!("unknown tool: {name}")));
+                    };
+                    // call_chapter resolves only self.commands: same-chapter
+                    // commands outside the profile never inherit access.
+                    return self.call_chapter(chapter, arguments, executable, tick);
+                }
                 let Some(tool) = self.commands.iter().find(|tool| tool.name == name) else {
                     return Err((-32602, format!("unknown tool: {name}")));
                 };
@@ -2807,6 +2858,64 @@ mod tests {
         );
         let error = Surface::new(Exposure::Chapters, Some(Profile::Pls), tools).unwrap_err();
         assert_eq!(error.code(), "mcp_profile_exposure_invalid");
+    }
+
+    #[test]
+    fn local_model_profile_is_four_scoped_tools_with_exact_catalogue_fences() {
+        let surface = Surface::new(
+            Exposure::Commands,
+            Some(Profile::GridLocalModel),
+            vec![
+                tool("dsgrid.model.list", Chapter::GridModel, false),
+                tool("dsgrid.model.split", Chapter::GridModel, false),
+                tool("design.version.list", Chapter::Design, false),
+                tool("dsgrid.inspect", Chapter::GridModel, false),
+                tool("design.lv.process", Chapter::Design, true),
+            ],
+        )
+        .unwrap();
+        let names: Vec<_> = surface
+            .tool_list()
+            .iter()
+            .map(|tool| tool["name"].as_str().unwrap().to_owned())
+            .collect();
+        assert_eq!(
+            names,
+            ["ds_catalog", "ds_diagnostics", "ds_grid_model", "ds_design"]
+        );
+        assert_eq!(surface.published_count(), 4);
+        let executable = PathBuf::from("unused-catalogue-does-not-spawn");
+        for (command, router) in [
+            ("dsgrid.model.split", "ds_grid_model"),
+            ("design.version.list", "ds_design"),
+        ] {
+            let result = surface
+                .call("ds_catalog", &json!({"command": command}), &executable)
+                .unwrap();
+            assert_eq!(result["structuredContent"]["next"]["tool"], router);
+        }
+        for command in ["dsgrid.inspect", "design.lv.process"] {
+            assert!(
+                surface
+                    .call("ds_catalog", &json!({"command": command}), &executable)
+                    .is_err()
+            );
+            assert!(
+                surface
+                    .call(
+                        "ds_grid_model",
+                        &json!({"operation":"invoke", "command":command}),
+                        &executable
+                    )
+                    .is_err()
+            );
+        }
+        assert!(
+            surface
+                .call("dsgrid_model_split", &json!({}), &executable)
+                .is_err()
+        );
+        assert!(surface.call("ds_reports", &json!({}), &executable).is_err());
     }
 
     #[test]

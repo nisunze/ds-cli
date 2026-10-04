@@ -61,6 +61,17 @@ pub const STORE_UNAVAILABLE: Refusal = Refusal {
     remedy: "check the local data directory; DS_LAYER_HOME may name an absolute shared directory",
 };
 
+pub const DRAFT_PENDING: Refusal = Refusal {
+    code: "local_model_draft_pending",
+    when: "an old-format working copy has a pending draft that cannot be incidentally rebased during activation",
+    remedy: "resolve the local draft through its owning workflow before activating the old-format copy",
+};
+pub const REVISION_CONFLICT: Refusal = Refusal {
+    code: "local_model_revision_conflict",
+    when: "the local catalogue digest differs from the exact package being activated",
+    remedy: "read the working copy again and resolve its catalogue/package mismatch before activation",
+};
+
 /// Every refusal these commands can return: the kernel's closed vocabulary
 /// plus this host's one IO failure. Composed, so a new kernel refusal is
 /// documented the moment it exists.
@@ -357,7 +368,8 @@ fn prepare_open_at(
         return Err(Failure::invalid(
             "local_model_revision_conflict",
             "local catalogue digest and package disagree",
-        ));
+        )
+        .remedy(REVISION_CONFLICT.remedy));
     }
     let output = ds_grid_exchange::package_migration::migrate(&source).map_err(|error| {
         Failure::invalid("package_migration_invalid", error.to_string()).remedy(
@@ -373,7 +385,8 @@ fn prepare_open_at(
         return Err(Failure::invalid(
             "local_model_draft_pending",
             "resolve the local draft before format migration",
-        ));
+        )
+        .remedy(DRAFT_PENDING.remedy));
     }
     let identity = identity(&output.bytes)?;
     if identity.model_revision != located.row.model_revision {

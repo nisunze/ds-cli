@@ -656,3 +656,19 @@ ds dsgrid package migrate --path /disk/original.dsgrid --expected-source-sha256 
 ```
 
 The output directory must be new, absolute and writable. Confirmation applies only to local materialization; project publication requires its separate governed expected-head boundary.
+
+### Explicit format migration successor
+
+Opt-in `dsgrid package migrate --successor` additionally requires
+`--current-path`, `--expected-current-sha256`, `--migration-receipt`, and
+`--expected-migration-receipt-sha256`, alongside the original source path/SHA.
+It independently repeats the governed external migration and checks exact
+current bytes and the original receipt. The existing import-as-version owner
+then advances only the native manifest revision by one, preserving native
+model identity, decoded facts, assets and bindings. Original schema migration
+preservation controls above remain in force; this mode is not a legacy reader.
+Materialization archives `original.dsgrid` and commits the receipt last after
+fsync and exact readback. Its receipt records migration and lineage identities.
+Dry-run does not write. Neither mode publishes or establishes server-owned
+project-head lineage; publication requires a separate authorized expected-head
+operation.

@@ -52,6 +52,7 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("dsgrid.asset.detach", "local_file_write", "none"),
     ("dsgrid.asset.extract", "local_file_write", "none"),
     ("dsgrid.asset.list", "read_only", "none"),
+    ("dsgrid.package.migrate", "local_file_write", "none"),
     (
         "dsgrid.project.geojson",
         "local_file_write",

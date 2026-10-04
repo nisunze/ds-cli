@@ -26,10 +26,23 @@ const MODEL_ARG: Arg = Arg {
     summary: "The working copy to open, by the id `ds dsgrid model list` reports.",
 };
 
+const REFUSALS: &[ds_cli_contract::spec::Refusal; workspace::REFUSALS.len() + 2] = &refusals();
+const fn refusals() -> [ds_cli_contract::spec::Refusal; workspace::REFUSALS.len() + 2] {
+    let mut all = [workspace::DRAFT_PENDING; workspace::REFUSALS.len() + 2];
+    let mut index = 0;
+    while index < workspace::REFUSALS.len() {
+        all[index] = workspace::REFUSALS[index];
+        index += 1;
+    }
+    all[index] = workspace::DRAFT_PENDING;
+    all[index + 1] = workspace::REVISION_CONFLICT;
+    all
+}
+
 pub static COMMAND: Command = Command {
     id: "dsgrid.model.set-active",
     path: &["dsgrid", "model", "set-active"],
-    contract: 2,
+    contract: 3,
     summary: "Open one of this machine's working copies as the active one.",
     purpose: "\
 Makes one working copy the one an editing session starts from on this \
@@ -50,7 +63,7 @@ project catalogue revision. Old packages are prepared through the one external f
         note: "Read .data.changed; false means it was already the active model.",
         runnable: false,
     }],
-    refusals: workspace::REFUSALS,
+    refusals: REFUSALS,
     reference: Some("docs/reference/dsgrid.md"),
     search: &[],
     requires: Requires::Server,
