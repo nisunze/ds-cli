@@ -53,6 +53,8 @@ pub use artifact::{validate_artifact_presentation, ArtifactPresentation};
 pub const SCHEMA: &str = "ds.print-layout/v2";
 pub const LEGACY_SCHEMA: &str = "ds.print-layout/v1";
 pub const MAX_LAYOUT_BYTES: usize = 750_000;
+/// Bounded front-matter diagrams can hold the reviewed 275-element naming page.
+pub const MAX_LAYOUT_ELEMENTS: usize = 400;
 pub const MAX_INPUT_BYTES: usize = 32 * 1024 * 1024;
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
 #[serde(deny_unknown_fields)]
@@ -1109,11 +1111,13 @@ pub(super) fn validate_with_semantic_layers(
     if serde_json::to_vec(layout).map_err(|e| e.to_string())?.len() > MAX_LAYOUT_BYTES {
         return Err("print layout exceeds 750 KB including logos".into());
     }
-    if layout.page_mm.iter().any(|v| !bounded(*v, 50., 2000.))
-        || layout.elements.is_empty()
-        || layout.elements.len() > 200
-    {
-        return Err("invalid page dimensions or element count".into());
+    if layout.page_mm.iter().any(|v| !bounded(*v, 50., 2000.)) {
+        return Err("invalid page dimensions".into());
+    }
+    if layout.elements.is_empty() || layout.elements.len() > MAX_LAYOUT_ELEMENTS {
+        return Err(format!(
+            "print layout needs 1..{MAX_LAYOUT_ELEMENTS} page elements"
+        ));
     }
     let resolved_page = layout.paper.page_mm()?;
     if resolved_page
