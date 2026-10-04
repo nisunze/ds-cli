@@ -3,21 +3,36 @@ use ds_cli_contract::spec::{
     Arg, Authority, Availability, Chapter, Command, Effect, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Failure, Inputs};
-use ds_grid_exchange::package_migration::{MigrationOutput, migrate};
+use ds_grid_exchange::package_migration::{
+    MigrationOutput, SupplementalResource, migrate_with_resources,
+};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
-use std::{io::Write, path::Path};
+use std::{
+    io::{Read, Write},
+    path::Path,
+};
 pub static COMMAND: Command = Command {
     id: "dsgrid.package.migrate",
     path: &["dsgrid", "package", "migrate"],
-    contract: 1,
+    contract: 2,
     summary: "Verify one old package and save its lossless current-format migration.",
-    purpose: "The one external migration verifies exact historical source schema, safe membership, every member digest, counts and content fingerprints before transforming named typed fields. Authored revision, voltages, engineering values, qualification, native assets and attachment/history bytes remain unchanged. Dry-run emits the exact source/output SHA and preservation receipt without writing. --yes writes a new local directory containing model.dsgrid and migration.receipt.json; the source is never overwritten. No project publication or version bump occurs. Old artifacts cannot read migrated production heads; retain the current-format artifact floor and use a governed expected-head publication of migrated prior engineering facts for restoration.",
+    purpose: "The one external migration verifies exact historical source schema, safe membership, every member digest, counts and content fingerprints before transforming named typed fields. Authored revision, voltages, engineering values, qualification, existing native assets and attachment/history bytes remain unchanged. Explicit SHA-pinned supplemental resources may restore only absent embedded bytes already exactly named by original resource facts; no automatic lookup or execution qualification occurs. Original derived geometry pins may move only after historical input verification and actual current engine recomputation with exact physical-row equality, preserving original computed members as history. Dry-run emits the exact source/output SHA and preservation receipt without writing. --yes writes a new local directory containing model.dsgrid and migration.receipt.json; the source is never overwritten. No project publication or version bump occurs. Old artifacts cannot read migrated production heads; retain the current-format artifact floor and use a governed expected-head publication of migrated prior engineering facts for restoration.",
     chapter: Chapter::GridModel,
     effect: Effect::LocalFileWrite,
     authority: Authority::None,
     execution: Execution::Sync,
     args: &[
+        Arg::value(
+            "supplemental-resources",
+            "<json-file>",
+            "Optional explicit missing-resource input manifest; no automatic lookup. Requires its exact SHA pin. Source receipt describes declared provenance, never native qualification.",
+        ),
+        Arg::value(
+            "expected-supplemental-sha256",
+            "<hex>",
+            "Required with supplemental-resources; exact manifest SHA-256.",
+        ),
         Arg::value(
             "path",
             "<file>",
@@ -47,6 +62,11 @@ pub static COMMAND: Command = Command {
     output: "Source/output SHA, original/current schema, strict output verification, exact transformations and preserved metadata; source_modified=false, published=false. Successful materialization returns model.dsgrid and migration.receipt.json. Receipt written last commits the local directory; directories without a receipt are incomplete and never opened.",
     examples: &[],
     refusals: &[
+        Refusal {
+            code: "package_migration_supplemental_invalid",
+            when: "supplemental manifest/source/receipt/byte pins, bounds or original resource facts differ",
+            remedy: "supply explicit exact DS-extracted bytes and retained receipt; never substitute resource rows or a library head",
+        },
         Refusal {
             code: "package_migration_invalid",
             when: "unknown source version/schema, malformed table, missing/tampered member, discarded facts, or strict output validation fails",
@@ -167,7 +187,8 @@ pub fn run(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
         )
         .detail(json!({"actual_source_sha256":digest})));
     }
-    let output = migrate(&bytes)
+    let supplemental = load_supplemental(inputs, &digest)?;
+    let output = migrate_with_resources(&bytes, &supplemental)
         .map_err(|error| Failure::invalid("package_migration_invalid", error.to_string()))?;
     let files = if dry {
         Value::Null
@@ -219,5 +240,215 @@ mod tests {
         assert!(materialize(&out, &output).is_err());
         assert_eq!(std::fs::read(out.join("keep")).unwrap(), b"original bytes");
         assert!(!out.join("migration.receipt.json").exists());
+    }
+}
+
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SupplementalManifest {
+    schema: String,
+    source_package_sha256: String,
+    resources: Vec<SupplementalRecord>,
+}
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SupplementalRecord {
+    resource_id: ds_grid_model::ResourceId,
+    invariant_leaf: String,
+    path: String,
+    expected_sha256: String,
+    byte_len: u64,
+    source_package_sha256: String,
+    extraction_receipt_path: String,
+    extraction_receipt_sha256: String,
+}
+fn supplemental_error(message: impl std::fmt::Display) -> Failure {
+    Failure::invalid(
+        "package_migration_supplemental_invalid",
+        message.to_string(),
+    )
+}
+fn load_supplemental(
+    inputs: &Inputs,
+    source_sha: &str,
+) -> Result<Vec<SupplementalResource>, Failure> {
+    let path = inputs.value("supplemental-resources");
+    let pin = inputs.value("expected-supplemental-sha256");
+    let (Some(path), Some(pin)) = (path, pin) else {
+        if path.is_some() || pin.is_some() {
+            return Err(supplemental_error(
+                "supply supplemental manifest and exact digest together",
+            ));
+        }
+        return Ok(Vec::new());
+    };
+    let raw = bounded_supplemental_file(Path::new(path), 1024 * 1024)?;
+    if format!("{:x}", Sha256::digest(&raw)) != pin {
+        return Err(supplemental_error("supplemental manifest digest differs"));
+    }
+    let manifest: SupplementalManifest =
+        serde_json::from_slice(&raw).map_err(supplemental_error)?;
+    if manifest.schema != "ds.grid.package-migration-supplemental-resources/v1"
+        || manifest.source_package_sha256 != source_sha
+        || manifest.resources.is_empty()
+        || manifest.resources.len() > 64
+    {
+        return Err(supplemental_error(
+            "supplemental manifest version/source/count differs",
+        ));
+    }
+    let mut result = Vec::new();
+    for record in manifest.resources {
+        let bytes = bounded_supplemental_file(Path::new(&record.path), 64 * 1024 * 1024)?;
+        if bytes.len() as u64 != record.byte_len {
+            return Err(supplemental_error("supplemental byte count differs"));
+        }
+        let receipt =
+            bounded_supplemental_file(Path::new(&record.extraction_receipt_path), 1024 * 1024)?;
+        if format!("{:x}", Sha256::digest(&receipt)) != record.extraction_receipt_sha256 {
+            return Err(supplemental_error("extraction receipt digest differs"));
+        }
+        let witness: Value = serde_json::from_slice(&receipt).map_err(supplemental_error)?;
+        if witness["command"] != "dsgrid.asset.extract"
+            || witness["status"] != "ok"
+            || witness["data"]["package_sha256"] != record.source_package_sha256
+            || witness["data"]["sha256"] != record.expected_sha256
+            || witness["data"]["byte_len"] != record.byte_len
+            || witness["data"]["leaf"] != record.invariant_leaf
+            || witness["data"]["verified"] != true
+        {
+            return Err(supplemental_error(
+                "declared extraction receipt disagrees with supplied byte/source identities",
+            ));
+        }
+        // A JSON witness is retained provenance, never execution authority.
+        // The external migration independently rehashes against the original
+        // resource row and leaves all qualification/capacity facts unchanged.
+        result.push(SupplementalResource {
+            resource_id: record.resource_id,
+            invariant_leaf: record.invariant_leaf,
+            expected_sha256: record.expected_sha256,
+            bytes,
+            source_package_sha256: record.source_package_sha256,
+            extraction_receipt_sha256: record.extraction_receipt_sha256,
+        });
+    }
+    Ok(result)
+}
+fn bounded_supplemental_file(path: &Path, limit: u64) -> Result<Vec<u8>, Failure> {
+    if !path.is_absolute() {
+        return Err(supplemental_error("supplemental paths must be absolute"));
+    }
+    let metadata = std::fs::metadata(path).map_err(supplemental_error)?;
+    if !metadata.is_file() || metadata.len() > limit {
+        return Err(supplemental_error(
+            "supplemental file exceeds bound or is not regular",
+        ));
+    }
+    let mut bytes = Vec::new();
+    std::fs::File::open(path)
+        .map_err(supplemental_error)?
+        .take(limit + 1)
+        .read_to_end(&mut bytes)
+        .map_err(supplemental_error)?;
+    if bytes.len() as u64 > limit {
+        return Err(supplemental_error("supplemental file grew beyond bound"));
+    }
+    Ok(bytes)
+}
+
+#[cfg(test)]
+mod supplemental_input_tests {
+    use super::*;
+    fn inputs(extra: Vec<String>) -> Inputs {
+        let mut tokens = vec![
+            "--path".into(),
+            "unused.dsgrid".into(),
+            "--expected-source-sha256".into(),
+            "a".repeat(64),
+            "--dry-run".into(),
+        ];
+        tokens.extend(extra);
+        ds_cli_contract::parse(&COMMAND, &tokens).unwrap()
+    }
+    fn controls_dir() -> std::path::PathBuf {
+        let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../out/package-migrate-input-controls")
+            .join(format!(
+                "{}-{}",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos()
+            ));
+        std::fs::create_dir_all(&path).unwrap();
+        std::fs::canonicalize(path).unwrap()
+    }
+    fn fixture() -> (std::path::PathBuf, std::path::PathBuf, Value) {
+        let out = controls_dir();
+        let native = out.join("source.012");
+        let bytes = b"exact immutable input bytes";
+        std::fs::write(&native, bytes).unwrap();
+        let digest = format!("{:x}", Sha256::digest(bytes));
+        // This is an input-parser witness, not native execution evidence. The
+        // migration separately compares bytes to immutable original row facts.
+        let receipt = out.join("extraction.receipt.json");
+        let witness = json!({"command":"dsgrid.asset.extract","status":"ok","data":{"package_sha256":"b".repeat(64),"sha256":digest,"byte_len":bytes.len(),"leaf":"source.012","verified":true}});
+        let raw = serde_json::to_vec(&witness).unwrap();
+        std::fs::write(&receipt, &raw).unwrap();
+        let manifest = json!({"schema":"ds.grid.package-migration-supplemental-resources/v1","source_package_sha256":"a".repeat(64),"resources":[{"resource_id":"original-resource","invariant_leaf":"source.012","path":native,"expected_sha256":digest,"byte_len":bytes.len(),"source_package_sha256":"b".repeat(64),"extraction_receipt_path":receipt,"extraction_receipt_sha256":format!("{:x}",Sha256::digest(&raw))}]});
+        (out.join("supplemental.json"), receipt, manifest)
+    }
+    fn manifest_inputs(path: &Path, manifest: &Value) -> Inputs {
+        let bytes = serde_json::to_vec(manifest).unwrap();
+        std::fs::write(path, &bytes).unwrap();
+        inputs(vec![
+            "--supplemental-resources".into(),
+            path.to_str().unwrap().into(),
+            "--expected-supplemental-sha256".into(),
+            format!("{:x}", Sha256::digest(&bytes)),
+        ])
+    }
+    #[test]
+    fn paired_flags_and_actual_bounded_read_refuse() {
+        assert!(
+            load_supplemental(&inputs(vec![]), &"a".repeat(64))
+                .unwrap()
+                .is_empty()
+        );
+        for extra in [
+            vec!["--supplemental-resources".into(), "/unused.json".into()],
+            vec!["--expected-supplemental-sha256".into(), "a".repeat(64)],
+        ] {
+            assert!(load_supplemental(&inputs(extra), &"a".repeat(64)).is_err());
+        }
+        let file = controls_dir().join("bounded.bin");
+        std::fs::write(&file, b"12345").unwrap();
+        assert!(bounded_supplemental_file(&file, 4).is_err());
+        assert_eq!(bounded_supplemental_file(&file, 5).unwrap(), b"12345");
+    }
+    #[test]
+    fn exact_input_parser_positive_source_manifest_receipt_pin_negatives() {
+        let (path, receipt, mut manifest) = fixture();
+        let parsed = manifest_inputs(&path, &manifest);
+        assert_eq!(
+            load_supplemental(&parsed, &"a".repeat(64)).unwrap().len(),
+            1
+        );
+        assert!(load_supplemental(&parsed, &"c".repeat(64)).is_err());
+        let stale = inputs(vec![
+            "--supplemental-resources".into(),
+            path.to_str().unwrap().into(),
+            "--expected-supplemental-sha256".into(),
+            "0".repeat(64),
+        ]);
+        assert!(load_supplemental(&stale, &"a".repeat(64)).is_err());
+        std::fs::write(&receipt, b"changed receipt").unwrap();
+        assert!(load_supplemental(&parsed, &"a".repeat(64)).is_err());
+        let (path, _, good) = fixture();
+        manifest = good;
+        manifest["resources"][0]["source_package_sha256"] = "c".repeat(64).into();
+        assert!(load_supplemental(&manifest_inputs(&path, &manifest), &"a".repeat(64)).is_err());
     }
 }
