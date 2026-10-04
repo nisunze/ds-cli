@@ -152,7 +152,7 @@ command!(
     "dsgrid.model.reconcile",
     "reconcile",
     Effect::GlobalWrite,
-    "Keep the automatic combined model in step with its submodels in one bounded burst.",
+    "Keep the automatic combined model in step in one bounded burst.",
     "The combined model is automatic: it is derived from its submodels and nobody creates, combines or deletes it. With --bundle, the burst request pins expected_generation and max_affected_features; edits are compared with the saved baseline, all owner/combined conflicts are named, span/corridor and section calculations are localized, and unavailable sag/clearance inputs are reported. Without --bundle, the derive request names 2..100 exact submodel packages and explicit owners for shared features, and derives generation zero of their combined model. Default is a dry run. --apply commits graph and every package together to a new local checkpoint; --publication additionally stages exact bytes and publishes one atomic project version vector.",
     &[
         BUNDLE,

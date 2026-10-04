@@ -705,6 +705,12 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("dsgrid.model.list", "read_only", "none"),
     ("dsgrid.model.forget", "local_file_write", "none"),
     ("dsgrid.model.show", "read_only", "none"),
+    // The automatic combined model (owner, 2026-10-04): plans by default,
+    // writes a local checkpoint with --apply --out, and publishes one atomic
+    // project generation only with --publication --apply --yes.
+    ("dsgrid.model.split", "global_write", "headless_project"),
+    ("dsgrid.model.reconcile", "global_write", "headless_project"),
+    ("dsgrid.model.status", "read_only", "headless_project"),
     (
         "dsgrid.model.prepare-project",
         "local_file_write",
