@@ -117,6 +117,7 @@ pub static DOMAIN: Domain = Domain {
         &model::composite::SPLIT,
         &model::composite::RECONCILE,
         &model::composite::STATUS,
+        &model::composite::EXTRACT,
         &model::unlink::COMMAND,
         &model::set_active::COMMAND,
         &model::forget::COMMAND,

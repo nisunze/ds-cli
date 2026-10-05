@@ -2902,9 +2902,12 @@ fn no_dsgrid_model_command_can_carry_model_content() {
     // 2026-10-04 (the automatic combined model): they take package, request
     // and checkpoint paths, and a checkpoint pins every package by digest
     // and byte count; no bytes cross them.
+    // Fourteen since `dsgrid.model.extract` joined on 2026-10-04: it takes a
+    // checkpoint path, a package identity and an output path, and writes the
+    // exact attested member bytes; no bytes cross it.
     assert_eq!(
-        checked, 13,
-        "the DS Grid model family must be thirteen commands; this check would \
+        checked, 14,
+        "the DS Grid model family must be fourteen commands; this check would \
          otherwise silently stop covering one"
     );
 }

@@ -905,6 +905,7 @@ const GRID_LOCAL_MODEL_COMMANDS: &[&str] = &[
     "dsgrid.model.split",
     "dsgrid.model.reconcile",
     "dsgrid.model.status",
+    "dsgrid.model.extract",
 ];
 
 /// The members of `grid-local-model` that the broad `grid` router leaves to
@@ -932,6 +933,7 @@ const GRID_LOCAL_MODEL_TYPED_EDITS: &[&str] = &[
     "dsgrid.model.split",
     "dsgrid.model.reconcile",
     "dsgrid.model.status",
+    "dsgrid.model.extract",
 ];
 
 // Program contract 03: feature codes and clearance across the PLS-CADD

@@ -373,6 +373,11 @@ static DSGRID_ENTRIES: &[Entry] = &[
         render: ds_cli_dsgrid::model::composite::render,
     },
     Entry {
+        command: &ds_cli_dsgrid::model::composite::EXTRACT,
+        handler: ds_cli_dsgrid::model::composite::extract,
+        render: ds_cli_dsgrid::model::composite::render,
+    },
+    Entry {
         command: &ds_cli_dsgrid::model::unlink::COMMAND,
         handler: ds_cli_dsgrid::model::unlink::run,
         render: ds_cli_dsgrid::model::unlink::render,

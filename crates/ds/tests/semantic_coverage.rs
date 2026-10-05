@@ -713,6 +713,8 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("dsgrid.model.split", "global_write", "headless_project"),
     ("dsgrid.model.reconcile", "global_write", "headless_project"),
     ("dsgrid.model.status", "read_only", "headless_project"),
+    // Writes one exact participant package of a local checkpoint to a new path.
+    ("dsgrid.model.extract", "local_file_write", "none"),
     (
         "dsgrid.model.prepare-project",
         "local_file_write",

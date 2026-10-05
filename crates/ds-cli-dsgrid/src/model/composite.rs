@@ -196,6 +196,44 @@ command!(
     "ds dsgrid model status --bundle /work/linked.dsgrid-links --output json"
 );
 
+pub static EXTRACT: Command = Command {
+    id: "dsgrid.model.extract",
+    path: &["dsgrid", "model", "extract"],
+    contract: 1,
+    summary: "Write one participant's exact package from a linked checkpoint.",
+    purpose: "Verifies the whole local checkpoint, then writes the exact attested .dsgrid bytes of one participant (a submodel or the automatic combined model) to a new path, byte-identical to the member the checkpoint pins. Nothing is repacked or published; an existing --out is refused. The combined model serves tiling and combined reports; its PLS-CADD export still refuses.",
+    chapter: Chapter::GridModel,
+    effect: Effect::LocalFileWrite,
+    authority: Authority::None,
+    execution: Execution::Sync,
+    args: &[
+        BUNDLE.required(),
+        Arg::value(
+            "model",
+            "<package-identity>",
+            "Exact participant package identity, as status lists it.",
+        )
+        .required(),
+        Arg::value(
+            "out",
+            "<new.dsgrid>",
+            "A new package path; an existing file is refused.",
+        )
+        .required(),
+    ],
+    output: "status, model, role, out, package_sha256, byte_length and manifest_revision of the written package.",
+    examples: &[Example {
+        command: "ds dsgrid model extract --bundle /work/linked.dsgrid-links --model north --out /work/north.dsgrid --output json",
+        note: "Extract one submodel package to edit, then stage it with reconcile --edited.",
+        runnable: false,
+    }],
+    refusals: REFUSALS,
+    reference: None,
+    search: &["composite", "submodels", "linked", "extract", "participant"],
+    requires: Requires::Server,
+    availability: || Availability::Available,
+};
+
 fn failure(error: LinkedError) -> Failure {
     match error {
         LinkedError::Engine(error) => {
@@ -412,6 +450,30 @@ pub fn status(inputs: &Inputs, context: &Context) -> Result<Value, Failure> {
     Ok(result)
 }
 
+pub fn extract(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
+    let bytes = read(
+        inputs.require("bundle")?,
+        linked_models::MAX_LINKED_BYTES as u64,
+    )?;
+    let checkpoint = linked_models::decode(&bytes).map_err(failure)?;
+    let model = inputs.require("model")?;
+    let package = checkpoint.source_packages().get(model).ok_or_else(|| {
+        Failure::invalid(
+            "composite_invalid",
+            format!("{model} is not a participant of this checkpoint"),
+        )
+        .remedy("name a package identity that `ds dsgrid model status` lists")
+    })?;
+    let out = std::path::Path::new(inputs.require("out")?);
+    write_new(out, package)?;
+    let graph = &checkpoint.state.graph;
+    Ok(json!({"status": "extracted", "model": model,
+        "role": if model == graph.composite { "combined" } else { "part" },
+        "generation": graph.generation, "out": out,
+        "package_sha256": format!("{:x}", Sha256::digest(package)), "byte_length": package.len(),
+        "manifest_revision": checkpoint.packages[model].manifest.model.model_revision}))
+}
+
 /// Graph facts every linked command reports.
 fn summary(checkpoint: &LinkedCheckpoint, report: Option<&BatchReport>) -> Value {
     const SHOWN_CHANGES: usize = 500;
@@ -565,6 +627,14 @@ pub fn render(data: &Value) -> String {
             participant["manifest_revision"],
             participant["package_sha256"].as_str().unwrap_or("?")
         ));
+    }
+    if data["status"] == "extracted" {
+        text = format!(
+            "extracted {} ({}) to {}",
+            data["model"].as_str().unwrap_or("?"),
+            data["role"].as_str().unwrap_or("?"),
+            data["out"].as_str().unwrap_or("?")
+        );
     }
     text
 }

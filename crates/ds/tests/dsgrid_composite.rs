@@ -347,6 +347,40 @@ fn all_linked_commands_plan_by_default_apply_atomically_and_name_conflicts() {
     assert_eq!(written("north"), "new_revision");
     assert_eq!(written(&combined), "new_revision");
     assert_eq!(written("south"), "in_step");
+    // Extract writes one participant's exact attested bytes, never repacked.
+    let extracted_path = root.join("extracted-south.dsgrid");
+    let extracted = ok(&[
+        "dsgrid",
+        "model",
+        "extract",
+        "--bundle",
+        path(&next),
+        "--model",
+        "south",
+        "--out",
+        path(&extracted_path),
+        "--output",
+        "json",
+    ]);
+    assert_eq!(extracted["role"], "part");
+    let south =
+        linked_models::exact_packages(&std::fs::read(&next).unwrap()).unwrap()["south"].clone();
+    assert_eq!(std::fs::read(&extracted_path).unwrap(), south);
+    let (again, code) = common::json(&[
+        "dsgrid",
+        "model",
+        "extract",
+        "--bundle",
+        path(&next),
+        "--model",
+        "south",
+        "--out",
+        path(&extracted_path),
+        "--output",
+        "json",
+    ]);
+    assert_ne!(code, 0);
+    assert_eq!(again["error"]["code"], "linked_output_exists");
     let mut composite = checkpoint.packages[&combined].clone();
     composite.snapshot.terrain_points[0].description = Some("other change".into());
     let composite_path = root.join("composite.dsgrid");
@@ -494,7 +528,7 @@ fn all_linked_commands_plan_by_default_apply_atomically_and_name_conflicts() {
     );
     let descriptor = ok(&["dsgrid", "describe", "--linked-models", "--output", "json"]);
     assert_eq!(descriptor, ds_grid_engine::composite::descriptors());
-    for verb in ["split", "reconcile", "status"] {
+    for verb in ["split", "reconcile", "status", "extract"] {
         let d = ok(&[
             "capabilities",
             &format!("dsgrid.model.{verb}"),
