@@ -109,17 +109,16 @@ impl Default for DisplayState {
                 .map(|option| {
                     (
                         option,
-                        // Owner, 2026-10-03: the Profile opens on PLS-CADD-style attachment
-                        // boxes, structure numbers and one usage label per structure. Type names,
-                        // comments and route deviation stay one Labels choice away.
+                        // Owner, 2026-10-05: structure names and comments are
+                        // visible by default alongside numbers and attachment
+                        // boxes. Keep operational warning prose in inspection
+                        // popups; never hide identifying labels to reduce it.
                         !matches!(
                             option,
                             DisplayOption::SideProfiles
                                 | DisplayOption::TerrainOrdinates
                                 | DisplayOption::SectionLabels
                                 | DisplayOption::Embedded
-                                | DisplayOption::StructureNames
-                                | DisplayOption::StructureComments
                                 | DisplayOption::RouteDeviation
                         ),
                     )
@@ -250,7 +249,7 @@ impl DisplayState {
 mod tests {
     use super::*;
     #[test]
-    fn default_profile_shows_review_boxes_usage_and_numbers_without_type_names() {
+    fn default_profile_shows_structure_names_comments_and_review_markers() {
         let state = DisplayState::default();
         for shown in [
             DisplayOption::Review,
@@ -259,6 +258,8 @@ mod tests {
             DisplayOption::Ground,
             DisplayOption::StructureLabels,
             DisplayOption::StructureNumbers,
+            DisplayOption::StructureNames,
+            DisplayOption::StructureComments,
             // Owner, 2026-10-05: structure usage, attachment boxes and the section bitmap
             // are settings of their own, on by default.
             DisplayOption::StructureUsage,
@@ -267,20 +268,18 @@ mod tests {
         ] {
             assert!(state.visibility[&shown], "{shown:?} must be on by default");
         }
-        for hidden in [
-            DisplayOption::StructureNames,
-            DisplayOption::StructureComments,
-            DisplayOption::RouteDeviation,
-        ] {
+        for hidden in [DisplayOption::RouteDeviation] {
             assert!(
                 !state.visibility[&hidden],
                 "{hidden:?} must be on request only"
             );
         }
-        // Still one Labels choice away.
+        // Both identifying labels remain adjustable after opening Profile.
         let patch: DisplayPatch =
-            serde_json::from_str(r#"{"visibility":{"structure_names":true}}"#).unwrap();
-        assert!(state.patched(&patch).unwrap().visibility[&DisplayOption::StructureNames]);
+            serde_json::from_str(r#"{"visibility":{"structure_names":false,"structure_comments":false}}"#).unwrap();
+        let hidden = state.patched(&patch).unwrap();
+        assert!(!hidden.visibility[&DisplayOption::StructureNames]);
+        assert!(!hidden.visibility[&DisplayOption::StructureComments]);
     }
     #[test]
     fn cable_colours_patch_one_cable_at_a_time_and_reset_with_null() {
