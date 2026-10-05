@@ -292,6 +292,7 @@ impl Fixture {
             client_publish_id: format!("publish-123e4567-e89b-42d3-a456-42661417400{batch}"),
             outputs,
             printing_preview: None,
+            local_print_recipe: None,
         };
         PendingPublicationCommit::stage(&pending, &receipt)
             .unwrap()
