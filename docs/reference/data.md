@@ -135,6 +135,10 @@ coarser-sampling remedy. Source-area attributes and provenance remain on every
 generated point; any conflicting generated field is reported as a preserved
 rename in the receipt.
 
+## `terrain describe` and `terrain sample`
+
+`data terrain sample` creates representative terrain samples from one explicit source: the governed Rwanda TIFF or a declared survey CSV surface. Discover `data terrain describe` first, then supply its strict native request file. Rust evaluates a two-dimensional surface at actual route XY, retains genuine terrain changes, removes points only within the requested discrete baseline error, and enforces adjustable density limits tightened by supplied engineering intervals or weight spans. Seeded longitudinal randomness changes sampling positions, never survey observations or terrain heights. Side profiles are off by default; explicit signed offsets select their widths and side observation randomness stays separate from nominal profile cuts. Output samples are derived/interpolated and retain settings, methods, input digests and source coverage; no model edit, source mixing, offset or datum adjustment. Raster resolution, sampling spacing, source uncertainty and simplification error are distinct. Missing surface readings remain gaps; unsupported authored breaklines are refused. Results cannot certify continuous unsampled terrain or missing engineering context.
+
 ## `inspect`
 
 Reports what the source actually holds, so `convert` consumes a fact rather

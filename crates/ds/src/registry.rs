@@ -813,6 +813,16 @@ static REPORT_ENTRIES: &[Entry] = &[
         render: ds_cli_report::standard::render,
     },
     Entry {
+        command: &ds_cli_report::style_keys::PLAN,
+        handler: ds_cli_report::style_keys::plan,
+        render: ds_cli_report::style_keys::render,
+    },
+    Entry {
+        command: &ds_cli_report::style_keys::APPLY,
+        handler: ds_cli_report::style_keys::apply,
+        render: ds_cli_report::style_keys::render,
+    },
+    Entry {
         command: &ds_cli_report::engine::COMMAND,
         handler: ds_cli_report::engine::run,
         render: ds_cli_report::engine::render,

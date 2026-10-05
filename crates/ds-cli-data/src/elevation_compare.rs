@@ -64,7 +64,7 @@ pub static COMMAND: Command = Command {
             required: false,
             default: Some("wgs84_lonlat"),
             choices: &[],
-            summary: "wgs84_lonlat, nix_itrf2005, or a characterized model CRS such as EPSG:32735. Coordinates are transformed by the native owner.",
+            summary: "wgs84_lonlat, nix_itrf2005, or a characterized model CRS such as EPSG:32735.",
         },
         Arg::switch(
             "nearest-only",
@@ -111,12 +111,12 @@ pub static COMMAND: Command = Command {
         Refusal {
             code: "elevation_provider_failed",
             when: "A bounded public source transport or tile decoder fails",
-            remedy: "Check connectivity to the documented public providers; retry the unchanged request after a transient failure.",
+            remedy: "Check connectivity to the public providers and retry the unchanged request.",
         },
         Refusal {
             code: "elevation_integrity_failed",
             when: "Published metadata or TIFF byte-range identity fails verification",
-            remedy: "Keep the refusal evidence and verify the published Rwanda resource before retrying; never substitute an unverified source.",
+            remedy: "Verify the published Rwanda resource before retrying; never substitute an unverified source.",
         },
     ],
     reference: Some("docs/reference/data.md"),

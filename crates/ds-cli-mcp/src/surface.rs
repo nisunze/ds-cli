@@ -413,7 +413,9 @@ impl Profile {
             // GeoParquet format without switching MCP profiles.
             // Complete the local vector workflow beside buffer: measurement,
             // line sampling and crossings add three leaves, plus bootstrap.
-            Self::Datasets => 22,
+            // Native terrain sampling (describe + sample) prepares model ground
+            // from the same governed sources: two more leaves, same workflow.
+            Self::Datasets => 24,
             // The file-in/file-out engine workflow: sixteen leaves plus both
             // bootstrap tools. `dsgrid replace-structure` belongs beside
             // `import-structure`; `dsgrid.backup.preview` inspects the native

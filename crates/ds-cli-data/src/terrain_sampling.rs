@@ -39,7 +39,7 @@ pub static SAMPLE: Command = Command {
     path: &["data", "terrain", "sample"],
     contract: 1,
     summary: "Sample terrain adaptively along a route with optional side profiles.",
-    purpose: "Create representative terrain samples from one explicit source: governed Rwanda TIFF or a declared survey CSV surface. First discover data.terrain.describe, then supply its strict native request file. Rust evaluates a two-dimensional surface at actual route XY, retains genuine terrain changes, removes points only within the requested discrete baseline error, and enforces adjustable density limits tightened by supplied engineering intervals or weight spans. Seeded longitudinal randomness changes sampling positions, never survey observations or terrain heights. Side profiles are off by default; explicit signed offsets select their widths and side observation randomness stays separate from nominal profile cuts. Output samples are derived/interpolated and retain settings, methods, input digests and source coverage; no model edit, source mixing, offset or datum adjustment. Raster resolution, sampling spacing, source uncertainty and simplification error are distinct. Missing surface readings remain gaps; unsupported authored breaklines are refused. Results cannot certify continuous unsampled terrain or missing engineering context.",
+    purpose: "Create representative terrain samples from one explicit source (governed Rwanda TIFF or a declared survey CSV surface) along the actual route, keeping genuine terrain changes within the requested error and density limits. Discover data.terrain.describe first and supply its strict request file. Samples are derived evidence: no model edit, source mixing or datum adjustment; gaps stay gaps.",
     chapter: Chapter::Data,
     effect: Effect::LocalFileWrite,
     authority: Authority::None,
@@ -53,11 +53,11 @@ pub static SAMPLE: Command = Command {
         Arg::value(
             "out",
             "<new-directory>",
-            "Fresh directory for native sampled points, profiles and receipts; existing destinations are refused.",
+            "Fresh directory for samples, profiles and receipts.",
         ).required(),
         Arg::switch(
             "dry-run",
-            "Validate inputs and the query plan without provider acquisition, surface queries or output creation.",
+            "Validate inputs and the query plan; acquire, query and write nothing.",
         ),
     ],
     output: "Bounded native receipt: selected source and input digests, exact settings/seed, route/profile/sample counts, coverage gaps, discrete error and engineering density evidence, and authored file paths/digests. Complete sample arrays are in files, not the CLI envelope. Generated samples never claim to be measured observations.",
@@ -77,12 +77,12 @@ pub static SAMPLE: Command = Command {
         Refusal {
             code: "terrain_request_invalid",
             when: "The native request, route, CRS or settings are malformed or exceed algorithm limits",
-            remedy: "Read data terrain describe and supply finite supported coordinates and bounded settings matching its strict schema.",
+            remedy: "Match the strict schema from data terrain describe.",
         },
         Refusal {
             code: "terrain_input_too_large",
             when: "An input file exceeds its byte or point admission bound",
-            remedy: "Split the route or survey into bounded local jobs using the limits returned by data terrain describe.",
+            remedy: "Split into bounded jobs within the data terrain describe limits.",
         },
         Refusal {
             code: "terrain_output_exists",
@@ -97,27 +97,27 @@ pub static SAMPLE: Command = Command {
         Refusal {
             code: "terrain_source_invalid",
             when: "Survey coordinates or source declarations cannot form an admitted surface",
-            remedy: "Supply correctly declared survey XYZ in one CRS, resolve conflicting duplicate heights and choose a supported local surface extent.",
+            remedy: "Declare survey XYZ in one CRS, resolve duplicate heights and choose a supported extent.",
         },
         Refusal {
             code: "terrain_surface_failed",
             when: "A surface query cannot complete its bounded interpolation",
-            remedy: "Read the native surface reason and reduce the query batch or repair the declared input surface.",
+            remedy: "Reduce the query batch or repair the declared surface.",
         },
         Refusal {
             code: "terrain_sampling_failed",
             when: "The native sampler or export cannot establish its requested result",
-            remedy: "Keep the native refusal and input identities; review density/error limits through data terrain describe.",
+            remedy: "Review density/error limits with data terrain describe.",
         },
         Refusal {
             code: "terrain_breaklines_unsupported",
             when: "The request supplies authored breaklines requiring constrained triangulation",
-            remedy: "Use a surface owner that supports the authored constraints; do not omit breaklines to force an unconstrained answer.",
+            remedy: "Use a surface owner that supports breaklines; never drop them.",
         },
         Refusal {
             code: "terrain_provider_failed",
             when: "A fixed public Rwanda acquisition transport fails",
-            remedy: "Check connectivity to the published Rwanda resource and retry the unchanged job after a transient failure.",
+            remedy: "Check connectivity and retry the unchanged job.",
         },
         Refusal {
             code: "terrain_integrity_failed",

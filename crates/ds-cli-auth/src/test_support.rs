@@ -49,6 +49,10 @@ pub(crate) struct Scripted {
     /// empty. Each request body it was sent is kept beside the calls.
     pub printing_standard: VecDeque<TransportResponse>,
     pub printing_standard_bodies: Vec<serde_json::Value>,
+    /// Scripted answers for the printing template migration; Unreachable
+    /// when empty. Each request body it was sent is kept beside the calls.
+    pub print_style_keys: VecDeque<TransportResponse>,
+    pub print_style_keys_bodies: Vec<serde_json::Value>,
     pub grid_catalog: VecDeque<TransportResponse>,
     pub grid_catalog_bodies: Vec<serde_json::Value>,
     /// Scripted answers for the transformer context route; Unreachable when
@@ -256,6 +260,28 @@ impl Transport for FixtureTransport {
         script.printing_standard_bodies.push(body);
         script
             .printing_standard
+            .pop_front()
+            .ok_or(TransportError::Unreachable)
+    }
+
+    fn print_style_keys(
+        &mut self,
+        call: ds_client_core::PrintStyleKeysCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        assert_eq!(
+            (call.method(), call.path()),
+            ("POST", "/api/v1/printing/style_keys")
+        );
+        let body = serde_json::from_slice(call.body().as_bytes()).unwrap();
+        let mut script = self.lock();
+        script.calls.push(format!(
+            "print_style_keys {} {}",
+            call.bearer_token(),
+            call.device_id().unwrap_or("user")
+        ));
+        script.print_style_keys_bodies.push(body);
+        script
+            .print_style_keys
             .pop_front()
             .ok_or(TransportError::Unreachable)
     }

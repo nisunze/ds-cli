@@ -77,7 +77,7 @@ const MODE_ARG: Arg = Arg {
     required: true,
     default: None,
     choices: &["grid", "seeded_random"],
-    summary: "Regular lattice at an explicit spacing, or reproducible pseudo-random placement.",
+    summary: "A lattice at --spacing-m, or seeded random placement.",
 };
 const SPACING_ARG: Arg = Arg::value(
     "spacing-m",
@@ -115,7 +115,7 @@ const AREA_REQUIRED: Refusal = Refusal {
 };
 const SAMPLING_INCOMPLETE: Refusal = Refusal {
     code: "sampling_incomplete",
-    when: "the sampling choice is under-specified: grid without --spacing-m, seeded_random without --seed, or neither/both of --count and --density-per-km2",
+    when: "grid lacks --spacing-m, seeded_random lacks --seed, or not exactly one of --count and --density-per-km2",
     remedy: "state the sampling choice in full; it is never inferred, because a guessed density is a result nobody asked for",
 };
 const ABSOLUTE_PATH_REQUIRED: Refusal = Refusal {

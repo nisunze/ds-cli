@@ -91,7 +91,7 @@ pub(crate) const FALLBACK_ARG: Arg = Arg {
     required: false,
     default: Some("none"),
     choices: &["none"],
-    summary: "Compatibility flag: only none. Rwanda coverage holes stay explicit; another provider is never substituted.",
+    summary: "Only none: Rwanda coverage holes stay explicit.",
 };
 
 const ABSOLUTE_PATH_REQUIRED: Refusal = Refusal {

@@ -57,13 +57,9 @@ pub static CAPABILITIES: Command = Command {
     contract: 1,
     summary: "Discover commands as JSON, one tier at a time.",
     purpose: "\
-The machine face of help. With no selector it lists domains. With a domain it \
-lists that domain's commands. With a command id it returns that one command's \
-complete descriptor. Use --search to find a command by words, then ask for the \
-descriptor of the one you chose — search returns ids and summaries only, so \
-finding a command costs almost nothing. Use --requires to ask the other \
-question — where a command can run at all — across every domain, or inside \
-one of them.",
+The machine face of help: no selector lists domains, a domain lists its \
+commands, a command id returns its complete descriptor. --search finds ids and \
+summaries by words; --requires answers where a command can run at all.",
     chapter: Chapter::Catalog,
     effect: Effect::Discovery,
     authority: Authority::None,
@@ -94,10 +90,11 @@ one of them.",
         .choices(&["tools"]),
     ],
     output: "\
-A `tier` field naming what came back — `domains`, `commands`, `command`, \
-`search` or `requires` — and the matching payload. Descriptors carry effect, \
-authority, requires, availability, inputs, refusals and examples. The \
-`requires` tier adds the total and the per-domain counts. Explicit --export tools returns the complete declared tools catalogue with MCP argument schemas and authored CLI examples; availability is deferred and no command is executed.",
+A `tier` field (`domains`, `commands`, `command`, `search` or `requires`) \
+and its payload. Descriptors carry effect, authority, requires, availability, \
+inputs, refusals and examples; `requires` adds totals per domain. --export \
+tools returns every declared tool with MCP argument schemas and CLI examples, \
+executing nothing.",
     examples: &[
         Example {
             command: "ds capabilities --export tools --output json",

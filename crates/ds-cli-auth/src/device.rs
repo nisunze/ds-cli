@@ -840,6 +840,13 @@ impl<T: ds_client_core::Transport> DeviceSession<T> {
     ) -> Result<serde_json::Value, ClientError> {
         fixed_device_call!(self, printing_standard, request)
     }
+    pub fn print_style_keys(
+        &mut self,
+        project: &str,
+        request: &ds_client_core::PrintStyleKeysRequest,
+    ) -> Result<serde_json::Value, ClientError> {
+        fixed_device_call!(self, print_style_keys, project, request)
+    }
     pub fn layer_config(
         &mut self,
         project: &str,

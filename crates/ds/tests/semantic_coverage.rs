@@ -275,6 +275,11 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     // plan is a map-independent preview; extraction writes only local files
     // through the paired Desktop's governed Rwanda DEM component.
     ("data.elevation.plan", "read_only", "desktop_pairing"),
+    // Native terrain tools run offline on local files: compare and sample write
+    // their declared outputs; describe only reads.
+    ("data.elevation.compare", "local_file_write", "none"),
+    ("data.terrain.describe", "read_only", "none"),
+    ("data.terrain.sample", "local_file_write", "none"),
     ("data.project-cache.status", "read_only", "headless_project"),
     (
         "data.project-cache.seed",
@@ -927,6 +932,9 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     // Governed global documents: a restored user, no project, read-only.
     ("report.standard.list", "local_auth_state", "headless_user"),
     ("report.standard.get", "local_auth_state", "headless_user"),
+    // Printing template style-key migration: plan reads, apply is a reviewed global write.
+    ("report.layout.style-keys.plan", "local_auth_state", "headless_user"),
+    ("report.layout.style-keys.apply", "global_write", "headless_user"),
     ("report.layout.create", "global_write", "headless_user"),
     ("report.layout.update", "global_write", "headless_user"),
     ("report.layout.save", "global_write", "headless_user"),

@@ -56,7 +56,7 @@ fn datasets_vector_tools_accept_json_text_and_match_native_cli_answers() {
     let tools = response(&messages, 1)["result"]["tools"]
         .as_array()
         .unwrap();
-    assert_eq!(tools.len(), 22);
+    assert_eq!(tools.len(), 24); // + data.terrain.describe and data.terrain.sample
     for operation in ["measure", "buffer", "sample", "intersect"] {
         let name = format!("data_vector_{operation}");
         let tool = tools.iter().find(|tool| tool["name"] == name).unwrap();
@@ -2099,7 +2099,7 @@ fn local_model_scoped_routers_reach_every_allowed_verb_and_preserve_refusals() {
     );
     assert_eq!(
         allowed.len(),
-        58,
+        59, // dsgrid.model.extract (813c35ca): the linked-checkpoint extract verb
         "review every added lifecycle verb; do not hide it from disclosure"
     );
     for (index, id) in allowed.iter().enumerate() {

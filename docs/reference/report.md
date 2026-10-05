@@ -567,6 +567,21 @@ A1–A5. `{"op":"rename","layout":{...},"name":"New name"}` preserves identity;
 new identity. Shared saves still require an expected revision and explicit
 confirmation. Rendering a held layout does not mutate its shared template.
 
+### Template style-key migration
+
+A printing template that still names its pens through legacy `style_refs` refuses
+every preview with `style_resolution_required`. `report.layout.style-keys.plan`
+asks ds-command-kernel to decide each template of one library (the global library
+without `--project`, a project library with it, or `--all-projects` for a census):
+every layer takes the one governed project-role print key that prints the
+document it prints today; anything else is a named finding listing the governed
+candidates, and that template stays unchanged. Settle a finding only by choosing a
+listed key in `--choices`; a choice that prints another document is reported as a
+document change. Plans write nothing. `report.layout.style-keys.apply` writes
+exactly the reviewed `plan_sha256` and keeps every replaced template; a moved
+library, setup, catalogue or Kernel decision refuses as
+`print_style_keys_plan_changed`.
+
 ## Context layers
 
 `ds report layout context` answers what the Printing setup page's context
