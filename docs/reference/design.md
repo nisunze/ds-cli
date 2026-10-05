@@ -96,12 +96,13 @@ saving the result is a separate governed operation.
 Each processed job's receipt includes `preservation`: effective settings,
 approved feature count, and per-layer/per-field source-to-result change counts.
 Zero means checked and unchanged; `@added`, `@missing` and `@ambiguous` count
-unmatched identities. The Rust owner refuses a job with
-`error_code=lv_approved_preservation_refused` if approved identities, exact
-geometry or protected authored cells would change. That job returns the counts
-in `protected_changes` and no processed layers; independent siblings complete.
-Inspect and repair the named source problem or explicitly revise the approved
-design, then reprocess. Publication validates the receipt and preservation
+unmatched identities. Approval freezes what may be redrawn, never what may be
+calculated. If approved identities, exact geometry or protected authored cells
+would change, the job keeps the network exactly as supplied, still runs the
+power flow and returns its voltage-drop analysis. An `approved_network_kept`
+warning names the withheld drafting by layer and field count; independent
+siblings complete. To apply that drafting, revise the approved design, then
+reprocess. Publication validates the receipt and preservation
 against the exact input/result. Receipt-less older results require a new run.
 
 `ds design lv project-save` completes that handoff through the normal project

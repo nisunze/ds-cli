@@ -40,18 +40,13 @@ pub static COMMAND: Command = Command {
         )
         .required(),
     ],
-    output: "Input/result SHA-256, output path and bytes, engine/runtime, worker count and ordered job statuses with preservation counts. A refused approved job has no layers. Full layers and diagnostics go to --out.",
+    output: "Input/result SHA-256, output path and bytes, engine/runtime, worker count and ordered job statuses with preservation counts. A job that would change approved rows keeps them exactly as supplied, still returns its voltage-drop analysis, and names the withheld drafting in an approved_network_kept warning. Full layers and diagnostics go to --out.",
     examples: &[Example {
         command: "ds design lv process --input ./fast-lv-request.json --out ./fast-lv-result.json --output json",
         note: "Run the closed local batch without a Desktop session or project identity.",
         runnable: false,
     }],
     refusals: &[
-        Refusal {
-            code: "lv_approved_preservation_refused",
-            when: "a job would lose, ambiguously match, or alter approved identities, geometry or protected authored cells; the failed job has no output",
-            remedy: "inspect the job preservation receipt; repair ambiguous/missing source identities or explicitly revise the approved design before rerunning",
-        },
         Refusal {
             code: "fast_lv_source_not_found",
             when: "--input is absent, not a regular file, or cannot be read",
@@ -251,7 +246,7 @@ mod tests {
     }
 
     #[test]
-    fn local_batch_receipt_exposes_preservation_and_typed_refusal_without_layers() {
+    fn approved_rows_a_job_would_change_are_kept_and_the_analysis_still_returns() {
         let dir = tempfile::tempdir().unwrap();
         let input_path = dir.path().join("request.json");
         let output_path = dir.path().join("result.json");
@@ -285,20 +280,23 @@ mod tests {
             },
         )
         .unwrap();
-        assert_eq!(receipt["failed"], 1);
+        assert_eq!(receipt["failed"], 0);
         let row = &receipt["results"][0];
-        assert_eq!(row["error_code"], "lv_approved_preservation_refused");
-        assert_eq!(
-            row["preservation"]["protected_changes"]["lv_poles"]["@missing"],
-            1
-        );
+        assert!(row["error_code"].is_null());
         assert_eq!(
             row["preservation"]["effective_settings"]["calculate_voltage_drop"],
             true
         );
-        assert!(row.get("output").is_none());
         let result: Value = serde_json::from_slice(&std::fs::read(output_path).unwrap()).unwrap();
         assert_eq!(result["jobs"][0]["preservation"], row["preservation"]);
-        assert!(result["jobs"][0].get("output").is_none());
+        let output = &result["jobs"][0]["output"];
+        let pole = &output["gdfs"]["lv_poles"]["features"][0];
+        assert_eq!(pole["id"], "approved-missing-pole");
+        assert_eq!(pole["properties"]["struct_type"], "manual");
+        assert!(output["voltage_drop"]["status"].is_string());
+        assert!(output["warnings"].as_array().unwrap().iter().any(|warning| {
+            warning["code"] == "approved_network_kept"
+                && warning["message"].as_str().unwrap().contains("lv_poles: @missing 1")
+        }));
     }
 }
