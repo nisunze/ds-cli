@@ -513,8 +513,7 @@ mod tests {
             None => run_project(&inputs),
         };
         outcome
-            .err()
-            .expect("refused before the engine")
+            .expect_err("refused before the engine")
             .code()
             .to_owned()
     }
