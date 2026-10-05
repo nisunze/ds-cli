@@ -85,6 +85,54 @@ pub fn saved_a4_for_project(
     })
 }
 
+/// Exact entities transported by the signed-in browser, admitted by the same
+/// native decoders and saved-source checks as the restored-session CLI path.
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SavedA4Responses {
+    pub snapshot: ds_client_core::printing_capture::Response,
+    pub config: ds_client_core::printing_capture::Response,
+    pub document: ds_client_core::printing_capture::Response,
+    pub styles: ds_client_core::printing_capture::Response,
+    pub analysis: ds_client_core::printing_capture::Response,
+}
+pub fn admit_saved_a4_responses(
+    project: &str,
+    transformer: &str,
+    location: &Location,
+    responses: SavedA4Responses,
+) -> Result<SavedA4Capture, Failure> {
+    use ds_client_core::printing_capture;
+    let snapshot = printing_capture::snapshot(project, transformer, responses.snapshot)
+        .map_err(|e| invalid(e.to_string()))?;
+    let pins = ds_client_core::saved_lv_analysis_pins(
+        snapshot.voltage_drop_metadata(),
+        snapshot.metadata().version(),
+        snapshot.metadata().content_digest(),
+    )
+    .map_err(|e| invalid(e.to_string()))?
+    .ok_or_else(|| {
+        Failure::conflict(
+            "lv_analysis_missing",
+            "The saved head has no current saved analysis.",
+        )
+    })?;
+    let raw = RawCapture {
+        snapshot,
+        config: printing_capture::configuration(responses.config)
+            .map_err(|e| invalid(e.to_string()))?,
+        document: printing_capture::document(project, responses.document)
+            .map_err(|e| invalid(e.to_string()))?,
+        styles: printing_capture::style_table(project, responses.styles)
+            .map_err(|e| invalid(e.to_string()))?,
+        analysis: Some(
+            printing_capture::analysis(responses.analysis, &pins.2)
+                .map_err(|e| invalid(e.to_string()))?,
+        ),
+    };
+    admit(project, transformer, location, raw)
+}
+
 fn invalid(message: impl Into<String>) -> Failure {
     Failure::conflict("report_inputs_invalid", message)
         .remedy("Refresh the same project's templates and saved analyses; no report-time recomputation is performed.")
@@ -174,7 +222,7 @@ fn admit(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_support::{FixtureTransport, NOW, SIGN_IN, signed_in};
+    use crate::test_support::{signed_in, FixtureTransport, NOW, SIGN_IN};
     use serde_json::json;
 
     fn fixture() -> (Location, RawCapture) {
@@ -224,6 +272,83 @@ mod tests {
                 analysis: Some(analysis),
             },
         )
+    }
+
+    fn browser_responses(raw: RawCapture) -> SavedA4Responses {
+        use ds_client_core::printing_capture::Response;
+        let response = |value: Value| Response {
+            status: 200,
+            bytes: serde_json::to_vec(&value).unwrap(),
+            content_type: Some("application/json".into()),
+            analysis_sha256: None,
+            cache_control: None,
+        };
+        let snapshot = response(
+            json!({"success":true,"data":{"total":1,"found_count":1,"failed_count":0,"results":[{"transformer_name":raw.snapshot.transformer_name(),"ok":true,"data":{"layers":raw.snapshot.layers(),"metadata":{"version":raw.snapshot.metadata().version(),"content_digest":raw.snapshot.metadata().content_digest()},"voltage_drop_metadata":raw.snapshot.voltage_drop_metadata()}}]}}),
+        );
+        let analysis = Response {
+            status: 200,
+            bytes: raw.analysis.unwrap(),
+            content_type: Some("application/json".into()),
+            analysis_sha256: raw.snapshot.voltage_drop_metadata().unwrap()["analysis_sha256"]
+                .as_str()
+                .map(str::to_owned),
+            cache_control: Some("no-store".into()),
+        };
+        SavedA4Responses {
+            snapshot,
+            config: response(json!({"success":true,"data":raw.config.document})),
+            document: response(json!({"success":true,"data":raw.document})),
+            styles: response(json!({"success":true,"data":raw.styles})),
+            analysis,
+        }
+    }
+
+    #[test]
+    fn browser_held_entities_use_native_read_plans_and_identical_admission() {
+        let (location, raw) = fixture();
+        let responses = browser_responses(raw);
+        let plan = ds_client_core::printing_capture::plan("project", "T1").unwrap();
+        assert_eq!(plan.snapshot.body["fields"], "saved");
+        assert_eq!(plan.config.path, "/config/project");
+        assert_eq!(plan.config.method, "GET");
+        assert_eq!(plan.document.body["scope"], "project");
+        assert_eq!(plan.styles.body["action"], "get_style_table");
+        let held = ds_client_core::printing_capture::Response {
+            status: responses.snapshot.status,
+            bytes: responses.snapshot.bytes.clone(),
+            content_type: None,
+            analysis_sha256: None,
+            cache_control: None,
+        };
+        let last = ds_client_core::printing_capture::analysis_plan("project", "T1", held).unwrap();
+        assert_eq!(last.body["analysis_version"], 2);
+        assert_eq!(
+            last.body["analysis_sha256"],
+            responses.analysis.analysis_sha256.as_deref().unwrap()
+        );
+        let expected = responses.analysis.bytes.clone();
+        let admitted = admit_saved_a4_responses("project", "T1", &location, responses).unwrap();
+        assert_eq!(admitted.analysis, expected);
+        assert_eq!(admitted.version, 2);
+    }
+
+    #[test]
+    fn browser_held_crossed_receipts_and_raw_headers_refuse() {
+        for case in 0..5 {
+            let (location, raw) = fixture();
+            let mut responses = browser_responses(raw);
+            match case {
+                0 => responses.analysis.analysis_sha256 = Some("f".repeat(64)),
+                1 => responses.analysis.cache_control = None,
+                2 => responses.document.bytes = serde_json::to_vec(&json!({"success":true,"data":{"scope":"project","project_id":"other"}})).unwrap(),
+                _ => responses.snapshot.bytes = serde_json::to_vec(&json!({"success":true,"data":{"total":1,"found_count":0,"failed_count":1,"results":[{"transformer_name":"other","ok":false}]}})).unwrap(),
+            }
+            assert!(
+                admit_saved_a4_responses("project", "T1", &location, responses).is_err(),
+                "case {case}"
+            );
+        }
     }
 
     #[test]

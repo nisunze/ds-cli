@@ -21,7 +21,7 @@ pub mod sync;
 mod test_support;
 mod transport;
 
-pub use saved_a4::{SavedA4Capture, saved_a4_for_project};
+pub use saved_a4::{SavedA4Capture, SavedA4Responses, saved_a4_for_project, admit_saved_a4_responses};
 
 pub use account::{
     APPROVAL_INSTRUCTIONS, SIGNED_OUT_NEXT, SIGNED_OUT_REFUSAL, SIGNED_OUT_REMEDY, signed_out_next,
