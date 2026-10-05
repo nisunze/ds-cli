@@ -997,6 +997,27 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
             request,
         )
     }
+    /// Read the governed global standard and A4 printing documents.
+    pub fn printing_standard(
+        &mut self,
+        request: &crate::PrintingStandardRequest,
+        now_epoch_seconds: u64,
+    ) -> Result<serde_json::Value, ClientError> {
+        request.validate()?;
+        self.ensure_fresh_session(now_epoch_seconds)?;
+        let session = self.session.as_ref().ok_or_else(signed_out)?;
+        crate::printing_standard::read(
+            &self.profile,
+            &mut self.transport,
+            crate::authorized::Authority {
+                bearer_token: &session.id_token,
+                uid: &session.stored.uid,
+                email: &session.stored.email,
+                device_id: None,
+            },
+            request,
+        )
+    }
     pub fn layer_config(
         &mut self,
         ds_project: &str,

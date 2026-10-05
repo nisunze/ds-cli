@@ -218,6 +218,12 @@ pub use printing::{
 };
 pub use transport::PrintingCall;
 
+pub mod printing_standard;
+pub use printing_standard::{
+    PrintingStandardCall, PrintingStandardKind, PrintingStandardRequest,
+    PRINTING_STANDARD_CATALOG_SCHEMA, PRINTING_STANDARD_PATH, PRINTING_STANDARD_RESPONSE_LIMIT,
+};
+
 pub mod data_distribution;
 pub use data_distribution::{
     download_bundle, normalize_upi, BundleDownloadReceipt, BundleSink, ContourParameters,

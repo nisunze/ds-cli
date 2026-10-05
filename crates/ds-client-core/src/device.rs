@@ -1489,6 +1489,17 @@ impl DeviceApiAuthorization<'_> {
             request,
         )
     }
+    /// Read the governed global standard and A4 printing documents.
+    pub fn printing_standard<T: AuthorizedTransport>(
+        &self,
+        transport: &mut T,
+        request: &crate::PrintingStandardRequest,
+        now: u64,
+    ) -> Result<serde_json::Value, ClientError> {
+        request.validate()?;
+        self.ensure_active(now)?;
+        crate::printing_standard::read(self.profile, transport, self.authority(), request)
+    }
     pub fn layer_config<T: AuthorizedTransport>(
         &self,
         transport: &mut T,

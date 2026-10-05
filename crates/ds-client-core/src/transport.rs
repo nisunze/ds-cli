@@ -3294,6 +3294,12 @@ pub trait Transport {
     fn printing(&mut self, _call: PrintingCall<'_>) -> Result<TransportResponse, TransportError> {
         Err(TransportError::Unreachable)
     }
+    fn printing_standard(
+        &mut self,
+        _call: crate::PrintingStandardCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        Err(TransportError::Unreachable)
+    }
     fn design_selections(
         &mut self,
         _call: DesignSelectionsCall<'_>,
@@ -3629,6 +3635,12 @@ pub trait AuthorizedTransport {
     fn printing(&mut self, _call: PrintingCall<'_>) -> Result<TransportResponse, TransportError> {
         Err(TransportError::Unreachable)
     }
+    fn printing_standard(
+        &mut self,
+        _call: crate::PrintingStandardCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        Err(TransportError::Unreachable)
+    }
     fn design_selections(
         &mut self,
         _call: DesignSelectionsCall<'_>,
@@ -3962,6 +3974,12 @@ impl<T: Transport> AuthorizedTransport for T {
     }
     fn printing(&mut self, call: PrintingCall<'_>) -> Result<TransportResponse, TransportError> {
         Transport::printing(self, call)
+    }
+    fn printing_standard(
+        &mut self,
+        call: crate::PrintingStandardCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        Transport::printing_standard(self, call)
     }
     fn layers(&mut self, call: LayersCall<'_>) -> Result<TransportResponse, TransportError> {
         Transport::layers(self, call)
