@@ -13,8 +13,8 @@ pub static COMMAND: Command = Command {
     id: "report.project.map-inputs",
     path: &["report", "project", "map-inputs"],
     contract: 2,
-    summary: "Prepare a district MV overview for headless PDF/PNG printing.",
-    purpose: "Read active LV and exact current MV models with provenance and print styles. Bound vectors without straightening crossing lines. Capture the authored layout, held context and API renderer policy in a replayable report.layout.render request. No design write or publication; omitted context is reported.",
+    summary: "Capture governed project maps for headless printing.",
+    purpose: "Read the selected active LV transformers and exact current MV models with provenance and print styles. Omitting --transformer includes all active transformers. Bound vectors without straightening crossing lines. Capture the authored layout, held context and API renderer policy in a replayable report.layout.render request. No design write or publication; omitted context is reported.",
     chapter: Chapter::Reports,
     effect: Effect::LocalFileWrite,
     authority: Authority::HeadlessProject,
@@ -26,6 +26,7 @@ pub static COMMAND: Command = Command {
             "Exact project id; saved active-project selection is ignored.",
         )
         .required(),
+        super::TRANSFORMER_ARG,
         Arg::value(
             "mv-model",
             "<absolute.dsgrid>",
@@ -142,7 +143,7 @@ pub fn run(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
         ));
     }
     let lane = i.require("lane")?;
-    let requested = ds_cli_auth::TransformerSet::default();
+    let requested = super::transformer_set(i)?;
     let inventory =
         ds_cli_auth::transformer_inventory_for_project(lane, i.require("project")?, &requested)?;
     let identity = inventory.identity();
@@ -171,13 +172,6 @@ pub fn run(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
         .map_err(invalid)?;
     let receipt = InputReceipt::from_config(&config.result().document).map_err(invalid)?;
     let server_sheets_sha256 = receipt.sheets_sha256.clone();
-    let receipt = super::export::complete_proof_print_styles(
-        lane,
-        project,
-        receipt,
-        std::slice::from_ref(&layout),
-    )?;
-    let sheets = receipt.sheets().map_err(invalid)?;
     let styles = ds_cli_auth::style_governance(
         lane,
         project,
@@ -188,6 +182,17 @@ pub fn run(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
     if snapshot.project_id != project {
         return Err(invalid("renderer policy scope changed"));
     }
+    // Project templates persist semantic keys after migration. Resolve their
+    // exact API documents before the ref-based physical-pen preflight, just
+    // as the interactive and report renderers do.
+    let (layout, _) = printing::resolve_style_documents(layout, &snapshot).map_err(invalid)?;
+    let receipt = super::export::complete_proof_print_styles(
+        lane,
+        project,
+        receipt,
+        std::slice::from_ref(&layout),
+    )?;
+    let sheets = receipt.sheets().map_err(invalid)?;
     let renderer_defaults = printing::renderer_defaults::resolve(&snapshot).map_err(invalid)?;
     printing::style_overrides::preflight(&layout, &sheets["printing_styles"]).map_err(invalid)?;
     let mut models = super::mv_context::load(lane, identity, project)?;

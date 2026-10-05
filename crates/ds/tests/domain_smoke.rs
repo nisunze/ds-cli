@@ -18991,3 +18991,26 @@ fn print_binding_is_discoverable_and_refuses_invalid_or_unconfirmed_effects() {
     ]);
     assert_eq!(refused.envelope["error"]["code"], "confirmation_required");
 }
+
+#[test]
+fn retained_print_previews_are_explicit_and_opening_does_not_render() {
+    for id in ["report.preview.read", "report.preview.refresh"] {
+        let described = native_ds(&["capabilities", id, "--output", "json"]);
+        assert_eq!(described.code, 0, "{}", described.envelope);
+        let command = &described.envelope["data"]["command"];
+        assert_eq!(command["effect"], "artifact_write");
+        assert_eq!(command["authority"], "headless_project");
+        let purpose = command["purpose"].as_str().unwrap();
+        if id == "report.preview.read" {
+            assert!(purpose.contains("does not capture current inputs, render, or wake the publication queue"));
+        } else {
+            assert!(purpose.contains("Every explicit refresh has a fresh run identity, including unchanged inputs"));
+        }
+    }
+    for action in ["read", "refresh"] {
+        let refused = native_ds(&["report", "preview", action, "--project", "project_a", "--transformer", "gashariki", "--out", "/absolute/fresh-preview.pdf", "--output", "json"]);
+        assert_eq!(refused.envelope["error"]["code"], "confirmation_required");
+    }
+    let refused = native_ds(&["report", "preview", "read", "--project", "project_a", "--transformer", "UPPERCASE", "--out", "/absolute/fresh-preview.pdf", "--yes", "--output", "json"]);
+    assert_eq!(refused.envelope["error"]["code"], "preview_inputs_invalid");
+}

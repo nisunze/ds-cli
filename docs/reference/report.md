@@ -1206,7 +1206,10 @@ WGS84 route bounds.
 
 `report.project.map-inputs --project <id>` captures the named project's active LV
 lines, poles, service cables, customers and transformers, plus complete promoted
-MV geometry, through native fenced reads. Add
+MV geometry, through native fenced reads. Repeat `--transformer <name>` to limit
+the captured LV rooms; omitting it includes every active transformer. Project
+templates with semantic `style_keys` resolve through the exact API style table
+before physical-pen preflight. Add
 `--mv-model <absolute.dsgrid>` for one local draft. An authored layout selects
 geographic context; any governed `_print` refs absent from the selected setups'
 sealed style sheet are completed from the same style catalogue as local layout

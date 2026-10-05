@@ -13,6 +13,7 @@ pub mod link_approval;
 mod profile;
 mod project_template;
 mod saved_a4;
+mod saved_preview_read;
 mod state;
 #[cfg(windows)]
 mod state_windows;
@@ -21,7 +22,11 @@ pub mod sync;
 mod test_support;
 mod transport;
 
-pub use saved_a4::{SavedA4Capture, SavedA4Responses, saved_a4_for_project, admit_saved_a4_responses};
+pub use saved_a4::{
+    SavedA4Capture, SavedA4Responses, admit_saved_a4_responses, saved_a4_for_project,
+    saved_owned_a4_for_project,
+};
+pub use saved_preview_read::retained_a4_for_project;
 
 pub use account::{
     APPROVAL_INSTRUCTIONS, SIGNED_OUT_NEXT, SIGNED_OUT_REFUSAL, SIGNED_OUT_REMEDY, signed_out_next,

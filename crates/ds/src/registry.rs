@@ -908,6 +908,16 @@ static REPORT_ENTRIES: &[Entry] = &[
         render: ds_cli_report::publication::render,
     },
     Entry {
+        command: &ds_cli_report::retained_preview::READ,
+        handler: ds_cli_report::retained_preview::read,
+        render: ds_cli_report::retained_preview::render,
+    },
+    Entry {
+        command: &ds_cli_report::retained_preview::REFRESH,
+        handler: ds_cli_report::retained_preview::refresh,
+        render: ds_cli_report::retained_preview::render,
+    },
+    Entry {
         command: &ds_cli_report::project::compute::COMMAND,
         handler: ds_cli_report::project::compute::run,
         render: ds_cli_report::project::compute::render,
@@ -1862,6 +1872,16 @@ static STYLE_ENTRIES: &[Entry] = &[
         command: &ds_cli_style::a4_seed::create::COMMAND,
         handler: ds_cli_style::a4_seed::create::run,
         render: ds_cli_style::a4_seed::create::render,
+    },
+    Entry {
+        command: &ds_cli_style::a4_migration::plan::COMMAND,
+        handler: ds_cli_style::a4_migration::plan::run,
+        render: ds_cli_style::a4_migration::plan::render,
+    },
+    Entry {
+        command: &ds_cli_style::a4_migration::apply::COMMAND,
+        handler: ds_cli_style::a4_migration::apply::run,
+        render: ds_cli_style::a4_migration::apply::render,
     },
     Entry {
         command: &ds_cli_style::governance::inventory::COMMAND,
@@ -3700,6 +3720,9 @@ pub fn dispatch(entry: &Entry, tokens: &[String], context: &Context) -> Result<V
         "report.project.export" => ds_cli_report::project::export::preflight(&inputs)?,
         "report.project.outputs.set" => ds_cli_report::project::settings::preflight_set(&inputs)?,
         "report.project.publish" => ds_cli_report::project::publish::preflight(&inputs)?,
+        "report.preview.read" | "report.preview.refresh" => {
+            ds_cli_report::retained_preview::preflight(&inputs)?
+        }
         _ => {}
     }
     let touch = if report_project_touch(entry.command.id, &inputs) {

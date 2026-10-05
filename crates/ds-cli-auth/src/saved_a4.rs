@@ -14,6 +14,10 @@ use sha2::{Digest, Sha256};
 use crate::HeadlessProjectReport;
 
 pub struct SavedA4Capture {
+    pub location: Location,
+    /// Genuine server receipt, or its explicit refusal; pure rendering does
+    /// not synthesize publication provenance when a receipt is unavailable.
+    pub input_receipt: Result<ds_command_kernel::report_export::InputReceipt, String>,
     pub analysis: Vec<u8>,
     pub analysis_sha256: String,
     pub version: u64,
@@ -50,6 +54,57 @@ pub fn saved_a4_for_project(
             ));
         }
     }
+    let held = capture_raw(lane, project, transformer)?;
+    let capture = admit(project, transformer, location, held.result)?;
+    Ok(HeadlessProjectReport {
+        identity: held.identity,
+        user_email: held.user_email,
+        lane: held.lane,
+        project_id: held.project_id,
+        project_name: held.project_name,
+        project_status: held.project_status,
+        result: capture,
+    })
+}
+
+/// Refresh captures the current owned document in the SAME native session,
+/// rather than reading a location separately and restoring another session.
+pub fn saved_owned_a4_for_project(
+    lane: &str,
+    project: &str,
+    transformer: &str,
+) -> Result<HeadlessProjectReport<SavedA4Capture>, Failure> {
+    let held = capture_raw(lane, project, transformer)?;
+    let text = |field: &str| {
+        held.result.document[field]
+            .as_str()
+            .map(str::to_owned)
+            .ok_or_else(|| invalid(format!("The owned A4 response has no {field}.")))
+    };
+    let location = Location::GovernedHtml {
+        project_id: project.into(),
+        id: "voltage-drop-a4-v1".into(),
+        revision_id: text("revision_id")?,
+        content_sha256: text("content_sha256")?,
+        html_sha256: text("html_sha256")?,
+    };
+    let capture = admit(project, transformer, &location, held.result)?;
+    Ok(HeadlessProjectReport {
+        identity: held.identity,
+        user_email: held.user_email,
+        lane: held.lane,
+        project_id: held.project_id,
+        project_name: held.project_name,
+        project_status: held.project_status,
+        result: capture,
+    })
+}
+
+fn capture_raw(
+    lane: &str,
+    project: &str,
+    transformer: &str,
+) -> Result<HeadlessProjectReport<RawCapture>, Failure> {
     let request = PrintingStandardRequest::Get {
         kind: PrintingStandardKind::A4,
         id: "voltage-drop-a4-v1".into(),
@@ -67,22 +122,12 @@ pub fn saved_a4_for_project(
             Ok(RawCapture { snapshot, config, document, styles, analysis })
         }};
     }
-    let held = crate::headless_named_report(
+    crate::headless_named_report(
         lane,
         project,
         |device, project| capture!(device, project),
         |client, project| capture!(client, project, crate::now()),
-    )?;
-    let capture = admit(project, transformer, location, held.result)?;
-    Ok(HeadlessProjectReport {
-        identity: held.identity,
-        user_email: held.user_email,
-        lane: held.lane,
-        project_id: held.project_id,
-        project_name: held.project_name,
-        project_status: held.project_status,
-        result: capture,
-    })
+    )
 }
 
 /// Exact entities transported by the signed-in browser, admitted by the same
@@ -208,6 +253,10 @@ fn admit(
             .token()
             .into();
     Ok(SavedA4Capture {
+        location: location.clone(),
+        input_receipt: ds_command_kernel::report_export::InputReceipt::from_config(
+            &held.config.document,
+        ),
         analysis,
         analysis_sha256,
         version,
@@ -222,7 +271,7 @@ fn admit(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_support::{signed_in, FixtureTransport, NOW, SIGN_IN};
+    use crate::test_support::{FixtureTransport, NOW, SIGN_IN, signed_in};
     use serde_json::json;
 
     fn fixture() -> (Location, RawCapture) {
@@ -358,10 +407,28 @@ mod tests {
         let capture = admit("project", "T1", &location, raw).unwrap();
         assert_eq!(capture.analysis, exact);
         assert_eq!(capture.version, 2);
+        assert!(capture.input_receipt.is_err());
         assert_eq!(
             capture.network_config["printing_a4"]["project_id"],
             "project"
         );
+    }
+
+    #[test]
+    fn publication_retains_the_genuine_server_receipt_without_hashing_raw_config() {
+        let (location, mut raw) = fixture();
+        let sheets = r#"{ "project_settings" : [] }"#;
+        let receipt = ds_command_kernel::report_export::InputReceipt {
+            local_print_recipe: None,
+            schema: 1,
+            country: "Rwanda".into(),
+            sheets_json: sheets.into(),
+            sheets_sha256: format!("{:x}", Sha256::digest(sheets.as_bytes())),
+            reference_semantic_sha256: "a".repeat(64),
+        };
+        raw.config.document["network_reporter_input_receipt"] = json!(receipt);
+        let capture = admit("project", "T1", &location, raw).unwrap();
+        assert_eq!(capture.input_receipt.unwrap(), receipt);
     }
 
     #[test]

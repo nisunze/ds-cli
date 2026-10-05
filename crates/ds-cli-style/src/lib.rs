@@ -4,6 +4,7 @@
 
 pub use native::{LANE_ARG, PROJECT_ARG};
 pub mod a4_seed;
+pub mod a4_migration;
 pub mod binding;
 pub mod appearance;
 pub mod cartography;
@@ -53,6 +54,8 @@ pub static DOMAIN: Domain = Domain {
         &governance::seed_apply::COMMAND,
         &a4_seed::plan::COMMAND,
         &a4_seed::create::COMMAND,
+        &a4_migration::plan::COMMAND,
+        &a4_migration::apply::COMMAND,
         &binding::plan::COMMAND,
         &binding::create::COMMAND,
         &governance::inventory::COMMAND,

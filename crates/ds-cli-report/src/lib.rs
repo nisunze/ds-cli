@@ -38,6 +38,7 @@ pub mod plan_profile_config;
 pub mod planning;
 pub mod project;
 pub mod publication;
+pub mod retained_preview;
 pub mod spatial_workbook;
 pub mod standard;
 pub mod style_keys;
@@ -109,6 +110,8 @@ pub static DOMAIN: Domain = Domain {
         &outbox::DRAIN,
         &publication::LIST,
         &publication::SHOW,
+        &retained_preview::READ,
+        &retained_preview::REFRESH,
         &project::scope::COMMAND,
         &project::combined::COMMAND,
         &project::compute::COMMAND,

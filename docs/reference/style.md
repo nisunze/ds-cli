@@ -5,6 +5,13 @@ It requires a native sign-in and `--project <exact-id>` on every call (the saved
 involved. Use `--lane stable|canary` to choose the deployment. Catalogue reads and
 publication need the backend to be reachable.
 
+`ds style catalogue a4 migration plan --project <id>` reviews the recognized
+approved A4 baseline against the current approved template. Apply with
+`migration apply --expected-document <definition_sha256> --expected-plan
+<plan_sha256> --yes`. The API fences the project, principal and original head,
+and atomically retains the original definition and HTML before advancing the
+project head. Unknown authored documents refuse; create remains create-only.
+
 `ds style catalogue binding plan --project <id> --entity-class <exact-class>
 --source-kind <exact-kind> --role <exact-role> --ink colour|monochrome --ref
 <existing-print-ref>` reviews one print tuple binding to an existing `_print`

@@ -217,7 +217,7 @@ pub fn publication_heads_for_project(
         .map_err(publication_read_error)
 }
 
-fn publication_read_error(error: GatewayError) -> ds_cli_contract::Failure {
+pub(crate) fn publication_read_error(error: GatewayError) -> ds_cli_contract::Failure {
     use ds_cli_contract::Failure;
 
     let detail = json!({

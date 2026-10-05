@@ -958,6 +958,8 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("report.layout.delete", "global_write", "headless_user"),
     ("report.layout.copy", "global_write", "headless_user"),
     ("report.export", "local_file_write", "none"),
+    ("report.preview.read", "artifact_write", "headless_project"),
+    ("report.preview.refresh", "artifact_write", "headless_project"),
     ("report.tasks", "discovery", "none"),
     // The publication queue's own surface. `status` is a credential-free
     // local read — that is the point: the machines where a stopped queue goes
@@ -1299,6 +1301,16 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ),
     (
         "style.catalogue.a4.create",
+        "global_write",
+        "headless_project",
+    ),
+    (
+        "style.catalogue.a4.migration.plan",
+        "local_auth_state",
+        "headless_project",
+    ),
+    (
+        "style.catalogue.a4.migration.apply",
         "global_write",
         "headless_project",
     ),
