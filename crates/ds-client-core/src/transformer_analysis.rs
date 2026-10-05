@@ -8,7 +8,7 @@ use crate::{
     ClientProfile, ErrorKind, SecretRequestBody, ServiceRefusal, TransportError, TransportResponse,
     CORRELATION_HEADERS,
 };
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use std::io::Read;
 
@@ -127,27 +127,24 @@ impl TransformerAnalysisCall<'_> {
         self.authority.device_id
     }
     pub fn body(&self) -> SecretRequestBody {
-        #[derive(Serialize)]
-        struct Body<'a> {
-            action: &'static str,
-            eds_project_id: &'a str,
-            transformer_name: &'a str,
-            analysis_version: u64,
-            content_digest: &'a str,
-            analysis_sha256: &'a str,
-        }
-        SecretRequestBody::new(
-            serde_json::to_vec(&Body {
-                action: TRANSFORMER_ANALYSIS_ACTION,
-                eds_project_id: self.project,
-                transformer_name: self.transformer,
-                analysis_version: self.analysis_version,
-                content_digest: self.content_digest,
-                analysis_sha256: self.analysis_sha256,
-            })
-            .expect("fixed strings and an integer serialize"),
-        )
+        SecretRequestBody::new(request_body(
+            self.project,
+            self.transformer,
+            self.analysis_version,
+            self.content_digest,
+            self.analysis_sha256,
+        ))
     }
+}
+
+pub(crate) fn request_body(
+    project: &str,
+    transformer: &str,
+    version: u64,
+    digest: &str,
+    sha: &str,
+) -> Vec<u8> {
+    serde_json::to_vec(&serde_json::json!({"action":TRANSFORMER_ANALYSIS_ACTION,"eds_project_id":project,"transformer_name":transformer,"analysis_version":version,"content_digest":digest,"analysis_sha256":sha})).expect("closed saved analysis request")
 }
 
 /// Only this raw-body operation needs a bounded-reader refusal. Existing
@@ -263,7 +260,7 @@ fn unreadable(message: &'static str) -> ClientError {
     ClientError::new(ErrorKind::UnreadableResponse, message)
 }
 
-fn accept(
+pub(crate) fn accept(
     mut response: TransformerAnalysisResponse,
     requested_sha: &str,
 ) -> Result<Vec<u8>, ClientError> {

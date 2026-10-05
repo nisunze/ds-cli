@@ -101,6 +101,15 @@ struct TransformerMetadataWire {
     content_digest: Option<String>,
 }
 
+/// Fixed body shared by headless and browser-held saved-source transports.
+pub(crate) fn context_body(
+    project: &str,
+    transformer: &str,
+    fields: crate::TransformerContextProjection,
+) -> Vec<u8> {
+    serde_json::to_vec(&serde_json::json!({"action":crate::TRANSFORMER_CONTEXT_ACTION,"eds_project_id":project,"transformers":[transformer],"fields":fields.token()})).expect("closed context request")
+}
+
 pub(crate) fn validate_context_input(
     ds_project: &str,
     transformer: &str,

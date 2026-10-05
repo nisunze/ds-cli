@@ -52,7 +52,7 @@ impl PrintingStandardRequest {
             )),
         }
     }
-    fn body(&self, project: &str) -> Vec<u8> {
+    pub(crate) fn body(&self, project: &str) -> Vec<u8> {
         let mut body = serde_json::to_value(self).expect("closed governed printing read");
         body["scope"] = serde_json::json!("project");
         body["project_id"] = serde_json::json!(project);
@@ -134,7 +134,7 @@ pub(crate) fn read<T: AuthorizedTransport>(
     decode(response, project, request)
 }
 
-fn decode(
+pub(crate) fn decode(
     response: TransportResponse,
     project: &str,
     request: &PrintingStandardRequest,

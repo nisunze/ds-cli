@@ -2,6 +2,13 @@
 use crate::{ClientError, ErrorKind, TransportResponse};
 use serde_json::{json, Value};
 
+pub(crate) fn read_path(project: &str) -> String {
+    format!(
+        "/config/{}",
+        url::form_urlencoded::byte_serialize(project.as_bytes()).collect::<String>()
+    )
+}
+
 pub const MINIMUM: &str = "minimum_feeder_cable_size";
 pub const MAXIMUM: &str = "max_feeder_cable_size";
 

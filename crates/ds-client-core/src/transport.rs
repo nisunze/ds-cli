@@ -19,7 +19,7 @@ pub use crate::profile::{
     SOLAR_SNAPSHOT_ACTION, SOLAR_SNAPSHOT_METHOD, SOLAR_SNAPSHOT_PATH,
     SURVEY_ENTRIES_CHANGES_METHOD, SURVEY_ENTRIES_CHANGES_PATH, SURVEY_ENTRIES_SELECT_METHOD,
     SURVEY_ENTRIES_SELECT_PATH, SURVEY_ENTRY_CREATE_METHOD, SURVEY_ENTRY_CREATE_PATH,
-    SURVEY_QUERY_METHOD, SURVEY_QUERY_PATH, TILES_METHOD, TILES_PATH, TRANSFORMER_CONTEXT_ACTION,
+    SURVEY_QUERY_METHOD, SURVEY_QUERY_PATH, TILES_METHOD, TILES_PATH,
     TRANSFORMER_CONTEXT_FIELDS, TRANSFORMER_CONTEXT_METHOD, TRANSFORMER_CONTEXT_PATH,
 };
 pub use crate::profile::{PROJECT_REPORT_METHOD, PROJECT_REPORT_PATH};
@@ -388,22 +388,11 @@ impl TransformerContextCall<'_> {
     }
 
     pub fn body(&self) -> SecretRequestBody {
-        #[derive(Serialize)]
-        struct Body<'a> {
-            action: &'static str,
-            eds_project_id: &'a str,
-            transformers: [&'a str; 1],
-            fields: &'static str,
-        }
-        SecretRequestBody(
-            serde_json::to_vec(&Body {
-                action: TRANSFORMER_CONTEXT_ACTION,
-                eds_project_id: self.ds_project,
-                transformers: [self.transformer],
-                fields: self.fields.token(),
-            })
-            .expect("a struct containing only strings always serializes"),
-        )
+        SecretRequestBody(crate::transformers::context_body(
+            self.ds_project,
+            self.transformer,
+            self.fields,
+        ))
     }
 }
 
@@ -2848,10 +2837,7 @@ impl ProjectConfigurationCall<'_> {
         if self.settings.is_some() {
             "/report".into()
         } else {
-            format!(
-                "/config/{}",
-                url::form_urlencoded::byte_serialize(self.project.as_bytes()).collect::<String>()
-            )
+            crate::project_feeders::read_path(self.project)
         }
     }
     pub fn method(&self) -> &'static str {

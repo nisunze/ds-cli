@@ -219,6 +219,7 @@ pub use printing::{
 pub use transport::PrintingCall;
 
 pub mod printing_standard;
+pub mod printing_capture;
 pub use printing_standard::{
     PrintingStandardCall, PrintingStandardKind, PrintingStandardRequest,
     PRINTING_STANDARD_CATALOG_SCHEMA, PRINTING_STANDARD_PATH, PRINTING_STANDARD_RESPONSE_LIMIT,
