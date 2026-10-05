@@ -1737,16 +1737,8 @@ pub(crate) fn printing<T: AuthorizedTransport>(
     project: &str,
     request: &crate::PrintingRequest,
 ) -> Result<serde_json::Value, ClientError> {
-    if !project.is_empty() {
-        validate_tiles(project)?;
-    }
+    validate_tiles(project)?;
     request.validate_for(project)?;
-    if project.is_empty() && request.needs_project(true) {
-        return Err(ClientError::new(
-            crate::ErrorKind::InvalidInput,
-            "Selected project is required for printing",
-        ));
-    }
     let response = transport.printing(crate::PrintingCall {
         profile,
         ds_project: project,

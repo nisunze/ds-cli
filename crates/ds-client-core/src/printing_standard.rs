@@ -1,7 +1,6 @@
-//! Read-only governed global printing documents: the LV standard pages and the
-//! A4 report documents a project binds by reference. The shared printing
-//! library (`/api/v1/printing`) does not list them. The route is hard-coded
-//! here, outside the profile digest, like every route added after it.
+//! Project-owned governed printing documents outside the custom layout library.
+//! Every call captures one explicit project; neither the request nor transport
+//! can borrow the saved active project or fall back to global records.
 use crate::authorized::Authority;
 use crate::profile::ClientProfile;
 use crate::transport::{CallAuthority, SecretRequestBody, CORRELATION_HEADERS};
@@ -53,8 +52,11 @@ impl PrintingStandardRequest {
             )),
         }
     }
-    fn body(&self) -> Vec<u8> {
-        serde_json::to_vec(self).expect("closed governed printing read")
+    fn body(&self, project: &str) -> Vec<u8> {
+        let mut body = serde_json::to_value(self).expect("closed governed printing read");
+        body["scope"] = serde_json::json!("project");
+        body["project_id"] = serde_json::json!(project);
+        serde_json::to_vec(&body).expect("closed project printing read")
     }
 }
 
@@ -62,6 +64,7 @@ impl PrintingStandardRequest {
 pub struct PrintingStandardCall<'a> {
     pub(crate) profile: &'a ClientProfile,
     pub(crate) request: &'a PrintingStandardRequest,
+    pub(crate) project: &'a str,
     pub(crate) authority: CallAuthority<'a>,
 }
 
@@ -105,8 +108,11 @@ impl PrintingStandardCall<'_> {
     pub fn device_id(&self) -> Option<&str> {
         self.authority.device_id
     }
+    pub fn project_id(&self) -> &str {
+        self.project
+    }
     pub fn body(&self) -> SecretRequestBody {
-        SecretRequestBody::new(self.request.body())
+        SecretRequestBody::new(self.request.body(self.project))
     }
 }
 
@@ -114,19 +120,23 @@ pub(crate) fn read<T: AuthorizedTransport>(
     profile: &ClientProfile,
     transport: &mut T,
     authority: Authority<'_>,
+    project: &str,
     request: &PrintingStandardRequest,
 ) -> Result<Value, ClientError> {
+    crate::authorized::validate_tiles(project)?;
     request.validate()?;
     let response = transport.printing_standard(PrintingStandardCall {
         profile,
         request,
+        project,
         authority: authority.call(),
     })?;
-    decode(response, request)
+    decode(response, project, request)
 }
 
 fn decode(
     response: TransportResponse,
+    project: &str,
     request: &PrintingStandardRequest,
 ) -> Result<Value, ClientError> {
     if response.body.len() > PRINTING_STANDARD_RESPONSE_LIMIT {
@@ -147,6 +157,12 @@ fn decode(
         (status, parsed) => return Err(refusal(status, &parsed.unwrap_or(Value::Null))),
     };
     let data = &value["data"];
+    if data["scope"] != "project" || data["project_id"] != project {
+        return Err(ClientError::new(
+            ErrorKind::UnreadableResponse,
+            "Governed printing response differs from the captured project",
+        ));
+    }
     let readable = match request {
         PrintingStandardRequest::List {} => {
             data["schema"] == PRINTING_STANDARD_CATALOG_SCHEMA
@@ -159,7 +175,11 @@ fn decode(
                 })
         }
         PrintingStandardRequest::Get { kind, id } => {
-            data["kind"] == serde_json::json!(kind) && data["id"] == *id
+            data["kind"] == serde_json::json!(kind)
+                && data["id"] == *id
+                && (*kind != PrintingStandardKind::A4
+                    || data["document"]["schema"] == "ds.print-a4-document/v1"
+                        && data["document"]["project_id"] == project)
         }
     };
     if !readable {
@@ -228,12 +248,13 @@ mod tests {
             id: "voltage-drop-a4-v1".into(),
         };
         assert_eq!(
-            serde_json::from_slice::<Value>(&get.body()).unwrap(),
-            json!({"action":"get","kind":"a4","id":"voltage-drop-a4-v1"})
+            serde_json::from_slice::<Value>(&get.body("project_a")).unwrap(),
+            json!({"action":"get","scope":"project","project_id":"project_a","kind":"a4","id":"voltage-drop-a4-v1"})
         );
         assert_eq!(
-            serde_json::from_slice::<Value>(&PrintingStandardRequest::List {}.body()).unwrap(),
-            json!({"action":"list"})
+            serde_json::from_slice::<Value>(&PrintingStandardRequest::List {}.body("project_a"))
+                .unwrap(),
+            json!({"action":"list","scope":"project","project_id":"project_a"})
         );
         for id in ["", "../defaults", "a/b", "-lead", &"x".repeat(129)] {
             let request = PrintingStandardRequest::Get {
@@ -251,24 +272,30 @@ mod tests {
     #[test]
     fn answers_must_name_what_was_asked() {
         let list = PrintingStandardRequest::List {};
-        let catalog = json!({"success":true,"data":{"schema":PRINTING_STANDARD_CATALOG_SCHEMA,
+        let catalog = json!({"success":true,"data":{"scope":"project","project_id":"project_a","schema":PRINTING_STANDARD_CATALOG_SCHEMA,
             "documents":[{"kind":"a4","id":"voltage-drop-a4-v1","bound":true}]}});
         assert_eq!(
-            decode(response(200, catalog.clone()), &list).unwrap(),
+            decode(response(200, catalog.clone()), "project_a", &list).unwrap(),
             catalog["data"]
         );
+        for project in ["project_b", "", " project_a "] {
+            assert!(decode(response(200, catalog.clone()), project, &list).is_err());
+        }
+        let mut global = catalog.clone();
+        global["data"]["scope"] = json!("global");
+        assert!(decode(response(200, global), "project_a", &list).is_err());
         let mut wrong = catalog.clone();
         wrong["data"]["documents"][0]["kind"] = json!("layout");
-        assert!(decode(response(200, wrong), &list).is_err());
+        assert!(decode(response(200, wrong), "project_a", &list).is_err());
         let get = PrintingStandardRequest::Get {
             kind: PrintingStandardKind::Standard,
             id: "lv-transformer-a0-v1-network".into(),
         };
-        let other =
-            json!({"success":true,"data":{"kind":"standard","id":"lv-transformer-a3-v1-network"}});
-        assert!(decode(response(200, other), &get).is_err());
+        let other = json!({"success":true,"data":{"scope":"project","project_id":"project_a","kind":"standard","id":"lv-transformer-a3-v1-network"}});
+        assert!(decode(response(200, other), "project_a", &get).is_err());
         let missing = decode(
             response(404, json!({"success":false,"error":{"code":"print_standard_not_found","message":"Governed printing document not found"}})),
+            "project_a",
             &get,
         )
         .unwrap_err();
@@ -278,9 +305,23 @@ mod tests {
                 404,
                 json!({"code":404,"message":"The current request is not defined by this API."}),
             ),
+            "project_a",
             &get,
         )
         .unwrap_err();
         assert_eq!(unrouted.kind(), ErrorKind::RouteUnavailable);
+    }
+    #[test]
+    fn a4_body_cannot_borrow_another_projects_identity() {
+        let request = PrintingStandardRequest::Get {
+            kind: PrintingStandardKind::A4,
+            id: "voltage-drop-a4-v1".into(),
+        };
+        let body = json!({"success":true,"data":{"scope":"project","project_id":"project_a","kind":"a4","id":"voltage-drop-a4-v1","document":{"schema":"ds.print-a4-document/v1","project_id":"project_a"}}});
+        assert!(decode(response(200, body.clone()), "project_a", &request).is_ok());
+        let mut wrong = body.clone();
+        wrong["data"]["document"]["project_id"] = json!("project_b");
+        assert!(decode(response(200, wrong), "project_a", &request).is_err());
+        assert!(decode(response(200, body), "project_b", &request).is_err());
     }
 }

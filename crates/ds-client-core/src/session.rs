@@ -978,10 +978,8 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         request: &crate::PrintingRequest,
         now_epoch_seconds: u64,
     ) -> Result<serde_json::Value, ClientError> {
-        if !ds_project.is_empty() {
-            crate::authorized::validate_tiles(ds_project)?;
-        }
-        request.validate()?;
+        crate::authorized::validate_tiles(ds_project)?;
+        request.validate_for(ds_project)?;
         self.ensure_fresh_session(now_epoch_seconds)?;
         let session = self.session.as_ref().ok_or_else(signed_out)?;
         crate::authorized::printing(
@@ -997,12 +995,14 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
             request,
         )
     }
-    /// Read the governed global standard and A4 printing documents.
+    /// Read only the explicit project's governed standard and A4 documents.
     pub fn printing_standard(
         &mut self,
+        ds_project: &str,
         request: &crate::PrintingStandardRequest,
         now_epoch_seconds: u64,
     ) -> Result<serde_json::Value, ClientError> {
+        crate::authorized::validate_tiles(ds_project)?;
         request.validate()?;
         self.ensure_fresh_session(now_epoch_seconds)?;
         let session = self.session.as_ref().ok_or_else(signed_out)?;
@@ -1015,6 +1015,7 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
                 email: &session.stored.email,
                 device_id: None,
             },
+            ds_project,
             request,
         )
     }

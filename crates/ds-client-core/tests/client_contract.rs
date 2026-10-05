@@ -1405,6 +1405,28 @@ impl Transport for FixtureTransport {
         Ok(state.layers.pop_front().unwrap())
     }
 
+    fn printing_standard(
+        &mut self,
+        call: ds_client_core::PrintingStandardCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        assert_eq!(
+            (call.method(), call.path()),
+            ("POST", "/api/v1/printing/standard")
+        );
+        let body: serde_json::Value = serde_json::from_slice(call.body().as_bytes()).unwrap();
+        assert_eq!(body["scope"], "project");
+        assert_eq!(body["project_id"], call.project_id());
+        let mut state = self.0.lock().unwrap();
+        state.calls.push(format!(
+            "printing_standard project={} body={} email={} token={}",
+            call.project_id(),
+            body,
+            call.canonical_email(),
+            !call.bearer_token().is_empty()
+        ));
+        Ok(state.layers.pop_front().unwrap())
+    }
+
     fn design_versions(
         &mut self,
         call: ds_client_core::DesignVersionsCall<'_>,
@@ -8790,7 +8812,47 @@ fn solar_project_publish_upload_failure_retries_without_finalizing_and_rejects_s
 }
 
 #[test]
-fn printing_global_does_not_require_a_project_and_project_save_keeps_scope_and_revision() {
+fn governed_printing_reads_capture_each_project_and_refuse_crossed_receipts() {
+    use ds_client_core::PrintingStandardRequest;
+    let transport = FixtureTransport::with_sign_in(SIGN_IN);
+    for project in ["project_a", "project_b", "project_b"] {
+        push_layers(
+            &transport,
+            json!({"success":true,"data":{"schema":"ds.printing-standard-catalog/v1","scope":"project","project_id":project,"documents":[]}}),
+        );
+    }
+    let mut client = signed_in(transport.clone(), MemoryStore::default());
+    let request = PrintingStandardRequest::List {};
+    assert_eq!(
+        client
+            .printing_standard("project_a", &request, NOW + 1)
+            .unwrap()["project_id"],
+        "project_a"
+    );
+    assert_eq!(
+        client
+            .printing_standard("project_b", &request, NOW + 1)
+            .unwrap()["project_id"],
+        "project_b"
+    );
+    assert!(client
+        .printing_standard("project_a", &request, NOW + 1)
+        .is_err());
+    assert!(client.printing_standard("", &request, NOW + 1).is_err());
+    let calls = transport.calls();
+    let calls: Vec<_> = calls
+        .iter()
+        .filter(|call| call.starts_with("printing_standard "))
+        .collect();
+    assert_eq!(calls.len(), 3);
+    for (call, project) in calls.iter().zip(["project_a", "project_b", "project_a"]) {
+        assert!(call.contains(&format!("project={project}")));
+        assert!(call.contains("token=true"));
+    }
+}
+
+#[test]
+fn printing_refuses_global_before_transport_and_project_save_keeps_scope_and_revision() {
     use ds_client_core::PrintingRequest;
     let transport = FixtureTransport::with_sign_in(SIGN_IN);
     push_layers(
@@ -8803,8 +8865,31 @@ fn printing_global_does_not_require_a_project_and_project_save_keeps_scope_and_r
         serde_json::json!({"success":true,"data":{"id":layout.id,"layout":layout,"revision":"a".repeat(64)}}),
     );
     let mut client = signed_in(transport.clone(), MemoryStore::default());
-    client
+    assert!(client
         .printing("", &PrintingRequest::List {}, NOW + 1)
+        .is_err());
+    assert!(client
+        .printing(
+            "project_a",
+            &PrintingRequest::Copy {
+                source: ds_client_core::PrintingSource {
+                    scope: ds_client_core::PrintingScope::Global,
+                    project: None,
+                    id: "global_sample".into(),
+                    revision: "a".repeat(64),
+                },
+                destination: ds_client_core::PrintingDestination {
+                    scope: ds_client_core::PrintingScope::Project,
+                    id: "owned_sample".into(),
+                    name: None,
+                    expected_revision: String::new(),
+                },
+            },
+            NOW + 1
+        )
+        .is_err());
+    client
+        .printing("project_a", &PrintingRequest::List {}, NOW + 1)
         .unwrap();
     client
         .printing(
@@ -8823,8 +8908,8 @@ fn printing_global_does_not_require_a_project_and_project_save_keeps_scope_and_r
         .collect();
     assert_eq!(calls.len(), 2);
     assert!(calls[0].contains("path=/api/v1/printing"));
-    assert!(calls[0].contains("\"scope\":\"global\""));
-    assert!(!calls[0].contains("project_id"));
+    assert!(calls[0].contains("\"scope\":\"project\""));
+    assert!(calls[0].contains("\"project_id\":\"project_a\""));
     assert!(calls[1].contains("\"project_id\":\"project_a\""));
     assert!(calls[1].contains("\"expected_revision\":\"\""));
     let mut profile = profile_input(DeploymentLane::Stable);
@@ -8855,8 +8940,8 @@ fn printing_copy_pins_both_scopes_and_delete_pins_the_removed_revision() {
             "project_a",
             &PrintingRequest::Copy {
                 source: PrintingSource {
-                    scope: PrintingScope::Global,
-                    project: None,
+                    scope: PrintingScope::Project,
+                    project: Some("template_project".into()),
                     id: "shared_a0".into(),
                     revision,
                 },
@@ -8885,8 +8970,8 @@ fn printing_copy_pins_both_scopes_and_delete_pins_the_removed_revision() {
         .iter()
         .filter(|value| value.starts_with("printing "))
         .collect();
-    assert!(calls[0].contains("\"source\":{\"scope\":\"global\""));
-    assert!(!calls[0].contains("\"source\":{\"project_id\""));
+    assert!(calls[0].contains("\"source\":{\"scope\":\"project\""));
+    assert!(calls[0].contains("\"project_id\":\"template_project\""));
     assert!(calls[0].contains("\"expected_revision\":\"\""));
     assert!(calls[0].contains("\"project_id\":\"project_a\""));
     assert!(calls[1].contains("\"action\":\"delete\""));

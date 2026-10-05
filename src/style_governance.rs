@@ -325,7 +325,9 @@ pub fn admit(request: &Request, response: &Value) -> Result<Value, String> {
     Ok(data.clone())
 }
 // This remains a fixed reference; neither host supplies an arbitrary path/body.
-const A4_DOCUMENT_PATH: &str = "eds_apps/ds_griddesign/printing_a4_documents/voltage-drop-a4-v1";
+fn a4_document_path(project: &str) -> String {
+    format!("eds_project/{project}/printing_a4_documents/voltage-drop-a4-v1")
+}
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct A4SeedPlan {
@@ -398,7 +400,7 @@ fn admit_a4_plan(request: &Request, data: &Value) -> Result<A4SeedPlan, String> 
     let mut unhashed = data.clone();
     unhashed["plan_sha256"] = json!("");
     if plan.schema != "ds.print-a4-seed-plan/v1"
-        || plan.document_path != A4_DOCUMENT_PATH
+        || plan.document_path != a4_document_path(&request.project)
         || !exact(&plan.principal, 320)
         || !definition_valid
         || !state_valid
@@ -483,7 +485,7 @@ mod tests {
 
     fn a4_fixture_plan(project: &str) -> Value {
         let definition = json!({"schema":"ds.print-a4-default/v1","html_sha256":"a".repeat(64),"content_sha256":"b".repeat(64),"status_layout":{"paper":{"size":"A4","orientation":"portrait"}},"logo_slots":["governed-logo-0","governed-logo-1","governed-logo-2","governed-logo-3","governed-logo-4","governed-logo-5"]});
-        let mut plan = json!({"schema":"ds.print-a4-seed-plan/v1","project_id":project,"principal":"user@example.com","document_path":A4_DOCUMENT_PATH,"definition_sha256":crate::style_plan::style_digest(&definition),"content_sha256":"b".repeat(64),"html_sha256":"a".repeat(64),"definition":definition,"existing_state":"missing","creates":1,"preserves":0,"apply_allowed":true,"plan_sha256":""});
+        let mut plan = json!({"schema":"ds.print-a4-seed-plan/v1","project_id":project,"principal":"user@example.com","document_path":a4_document_path(project),"definition_sha256":crate::style_plan::style_digest(&definition),"content_sha256":"b".repeat(64),"html_sha256":"a".repeat(64),"definition":definition,"existing_state":"missing","creates":1,"preserves":0,"apply_allowed":true,"plan_sha256":""});
         plan["plan_sha256"] = json!(crate::style_plan::style_digest(&plan));
         plan
     }
@@ -496,7 +498,17 @@ mod tests {
         };
         let response = json!({"success":true,"data":plan});
         assert!(admit(&request, &response).is_ok());
-        for mutation in ["project", "path", "body", "count", "state", "extra", "plan"] {
+        for mutation in [
+            "project",
+            "path",
+            "other_project_path",
+            "global_path",
+            "body",
+            "count",
+            "state",
+            "extra",
+            "plan",
+        ] {
             let mut bad = response.clone();
             match mutation {
                 "project" => bad["data"]["project_id"] = json!("project_b"),
@@ -504,11 +516,22 @@ mod tests {
                     bad["data"]["document_path"] =
                         json!("eds_apps/ds_griddesign/printing_defaults/v1")
                 }
+                "other_project_path" => {
+                    bad["data"]["document_path"] = json!(a4_document_path("project_b"))
+                }
+                "global_path" => {
+                    bad["data"]["document_path"] =
+                        json!("eds_apps/ds_griddesign/printing_a4_documents/voltage-drop-a4-v1")
+                }
                 "body" => bad["data"]["definition"]["content_sha256"] = json!("c".repeat(64)),
                 "count" => bad["data"]["creates"] = json!(2),
                 "state" => bad["data"]["existing_state"] = json!("overwrite"),
                 "extra" => bad["data"]["default_pointer"] = json!("other"),
                 _ => bad["data"]["plan_sha256"] = json!("0".repeat(64)),
+            }
+            if matches!(mutation, "other_project_path" | "global_path") {
+                bad["data"]["plan_sha256"] = json!("");
+                bad["data"]["plan_sha256"] = json!(crate::style_plan::style_digest(&bad["data"]));
             }
             assert!(admit(&request, &bad).is_err(), "{mutation}");
         }
@@ -550,7 +573,7 @@ mod tests {
         assert_eq!(admitted["preserves"], 0);
         assert_eq!(
             admitted["html_sha256"],
-            "6df34e11fb5e4b16654dcd7c7490e8d93487c08ca6a27227c80fda383303c78d"
+            "f8475303b1fb7b2cf9c613cb51f5f8d6fc7b843805fda247c7d281911a94fc3d"
         );
     }
 }

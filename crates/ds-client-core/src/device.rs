@@ -1476,10 +1476,8 @@ impl DeviceApiAuthorization<'_> {
         request: &crate::PrintingRequest,
         now: u64,
     ) -> Result<serde_json::Value, ClientError> {
-        if !ds_project.is_empty() {
-            crate::authorized::validate_tiles(ds_project)?;
-        }
-        request.validate()?;
+        crate::authorized::validate_tiles(ds_project)?;
+        request.validate_for(ds_project)?;
         self.ensure_active(now)?;
         crate::authorized::printing(
             self.profile,
@@ -1489,16 +1487,24 @@ impl DeviceApiAuthorization<'_> {
             request,
         )
     }
-    /// Read the governed global standard and A4 printing documents.
+    /// Read only the explicit project's governed standard and A4 documents.
     pub fn printing_standard<T: AuthorizedTransport>(
         &self,
         transport: &mut T,
+        ds_project: &str,
         request: &crate::PrintingStandardRequest,
         now: u64,
     ) -> Result<serde_json::Value, ClientError> {
+        crate::authorized::validate_tiles(ds_project)?;
         request.validate()?;
         self.ensure_active(now)?;
-        crate::printing_standard::read(self.profile, transport, self.authority(), request)
+        crate::printing_standard::read(
+            self.profile,
+            transport,
+            self.authority(),
+            ds_project,
+            request,
+        )
     }
     /// Plan, census or apply the governed printing-template migration of one
     /// library (`ds_project` empty for the global one).

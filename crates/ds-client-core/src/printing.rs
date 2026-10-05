@@ -1,4 +1,4 @@
-//! Closed global/project print setup operations. Layout validation is shared.
+//! Closed project print setup operations; global remains historical lineage. Layout validation is shared.
 use crate::{ClientError, ErrorKind, ServiceRefusal};
 use ds_command_kernel::printing::{identifier, validate, Layout};
 use serde::{Deserialize, Serialize};
@@ -149,6 +149,20 @@ impl PrintingRequest {
     /// request writes; the same project is the ordinary same-library copy.
     pub fn validate_for(&self, project: &str) -> Result<(), ClientError> {
         self.validate()?;
+        crate::authorized::validate_tiles(project)?;
+        if let Self::Copy {
+            source,
+            destination,
+        } = self
+        {
+            if source.scope != PrintingScope::Project || destination.scope != PrintingScope::Project
+            {
+                return Err(ClientError::new(
+                    ErrorKind::InvalidInput,
+                    "Global printing runtime scope is retired; copy between named projects",
+                ));
+            }
+        }
         if let Self::Copy {
             source:
                 PrintingSource {
