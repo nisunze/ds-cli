@@ -113,10 +113,10 @@ pub static PLAN: Command = Command {
     search: &[
         "template",
         "template migration",
-        "style_resolution_required",
-        "legacy style refs",
-        "style keys",
-        "printing template preview",
+        "resolution required",
+        "style refs",
+        "legacy pens",
+        "template preview",
     ],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
@@ -153,7 +153,7 @@ pub static APPLY: Command = Command {
     }],
     refusals: REFUSALS,
     reference: Some("docs/reference/report.md"),
-    search: &["template", "template migration", "style_resolution_required"],
+    search: &["template migration", "resolution required"],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };

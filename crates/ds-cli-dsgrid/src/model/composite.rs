@@ -229,7 +229,7 @@ pub static EXTRACT: Command = Command {
     }],
     refusals: REFUSALS,
     reference: None,
-    search: &["composite", "submodels", "linked", "extract", "participant"],
+    search: &["composite", "submodels"],
     requires: Requires::Server,
     availability: || Availability::Available,
 };

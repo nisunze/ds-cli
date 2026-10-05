@@ -73,6 +73,11 @@ const COUPLING_OWNERS: &[(&str, &str)] = &[
         "the binary's one registration table, where every domain is named once",
     ),
     (
+        "crates/ds/src/native_catalog.rs",
+        "the binary's downloadable catalogue reuses the adapter's input projection, \
+         so flags, choices and confirmation have one schema implementation",
+    ),
+    (
         "crates/ds/src/meta.rs",
         "`ds diagnostics` reports the receipt-verified skill bundle shipped beside \
          this executable; the reader is called, and reads nothing back about a host",

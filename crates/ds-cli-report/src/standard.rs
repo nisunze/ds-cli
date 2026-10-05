@@ -42,7 +42,7 @@ pub static LIST: Command = Command {
         PRINT_STANDARD_ROUTE_UNAVAILABLE_REFUSAL,
     ],
     reference: Some("docs/reference/report.md"),
-    search: &["front matter", "voltage drop", "a4", "a0"],
+    search: &["front matter", "voltage drop", "a0"],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };

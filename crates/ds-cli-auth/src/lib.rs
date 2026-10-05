@@ -920,7 +920,7 @@ pub static PROJECT_CREATE_COMMAND: Command = Command {
         "new project",
         "add project",
         "register",
-        "start from template",
+        "from template",
         "copy project",
     ],
     requires: Requires::Server,
