@@ -66,11 +66,11 @@ pub const TZ_OFFSET_ARG: Arg = Arg::value(
 
 pub const BUCKET_ARG: Arg = Arg::value(
     "bucket",
-    "<active|archived|testing|all>",
+    "<bucket>",
     "Which lifecycle bucket of the project directory to consider.",
 )
 .default("active")
-.choices(&["active", "archived", "testing", "all"]);
+.choices(&["active", "archived", "testing", "template", "all"]);
 
 pub const PROJECT_ARG: Arg = Arg::repeated(
     "project",

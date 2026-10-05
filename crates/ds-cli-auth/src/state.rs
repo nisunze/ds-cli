@@ -14,8 +14,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use ds_cli_contract::Failure;
 use ds_client_core::{
-    ClientProfile, DeviceCredentialStore, Project, ProjectStatus, RefreshTokenStore, StoreError,
-    StoreKey, StoredAuthContext, probe_stored_refresh,
+    ClientProfile, DeviceCredentialStore, Project, RefreshTokenStore, StoreError, StoreKey,
+    StoredAuthContext, probe_stored_refresh,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -479,7 +479,7 @@ impl ProjectContext {
             project_name: project.project_name().to_owned(),
             display_name: project.display_name().map(str::to_owned),
             role: project.role().map(str::to_owned),
-            status: status_token(project.status()).to_owned(),
+            status: project.status().query_value().to_owned(),
         }
     }
 
@@ -735,14 +735,6 @@ pub(crate) fn availability() -> ds_cli_contract::spec::Availability {
             "the protected native state adapter cannot safely initialize for this user",
             "repair the current user's protected DS state root or reinstall this ds build",
         ),
-    }
-}
-
-fn status_token(status: ProjectStatus) -> &'static str {
-    match status {
-        ProjectStatus::Active => "active",
-        ProjectStatus::Archived => "archived",
-        ProjectStatus::Testing => "testing",
     }
 }
 

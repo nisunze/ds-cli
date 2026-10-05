@@ -536,6 +536,7 @@ fn admits(bucket: &str, status: Option<&str>) -> bool {
         "all" => true,
         "archived" => status == "archived",
         "testing" => status == "testing",
+        "template" => status == "template",
         _ => status.is_empty() || status == "active",
     }
 }
@@ -711,6 +712,8 @@ mod tests {
         assert!(!admits("active", Some("archived")));
         assert!(admits("archived", Some("archived")));
         assert!(admits("all", Some("testing")));
+        assert!(admits("template", Some("template")));
+        assert!(!admits("active", Some("template")));
     }
 
     /// Both ways this read can be silently wrong are published, so a caller

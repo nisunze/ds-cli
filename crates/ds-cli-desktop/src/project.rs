@@ -84,10 +84,10 @@ the CLI never invents an id from a display name.",
     args: &[
         Arg::value(
             "status",
-            "<active|testing|archived|all>",
+            "<active|testing|archived|template|all>",
             "Lifecycle bucket to list.",
         )
-        .choices(&["active", "testing", "archived", "all"])
+        .choices(&["active", "testing", "archived", "template", "all"])
         .default("all"),
         Arg::value(
             "query",

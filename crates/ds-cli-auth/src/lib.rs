@@ -11,6 +11,7 @@ pub mod device;
 pub mod grid_library_member;
 pub mod link_approval;
 mod profile;
+mod project_template;
 mod state;
 #[cfg(windows)]
 mod state_windows;
@@ -39,12 +40,11 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use ds_client_core::{
     Client, ClientError, ErrorKind, Project, ProjectDirectory, ProjectFormSettingsEditor,
-    ProjectFormsSnapshot, ProjectReportServiceCode, ProjectStatus, SolarSnapshot,
-    SurveyEntriesChanges, SurveyEntriesChangesRequest, SurveyEntriesChangesServiceCode,
-    SurveyEntriesSelectRequest, SurveyEntriesSelectServiceCode, SurveyEntriesSelection,
-    SurveyEntryCreateReceipt, SurveyEntryCreateRequest, SurveyEntryCreateServiceCode,
-    SurveyFormReadServiceCode, SurveyQueryRequest, SurveyQueryResult, SurveyQueryServiceCode,
-    TransformerContext,
+    ProjectFormsSnapshot, ProjectReportServiceCode, SolarSnapshot, SurveyEntriesChanges,
+    SurveyEntriesChangesRequest, SurveyEntriesChangesServiceCode, SurveyEntriesSelectRequest,
+    SurveyEntriesSelectServiceCode, SurveyEntriesSelection, SurveyEntryCreateReceipt,
+    SurveyEntryCreateRequest, SurveyEntryCreateServiceCode, SurveyFormReadServiceCode,
+    SurveyQueryRequest, SurveyQueryResult, SurveyQueryServiceCode, TransformerContext,
 };
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -394,6 +394,38 @@ const NETWORK_TEMPLATE: Arg = Arg::value(
     "Network template; ds-brain defaults to master.",
 );
 const STYLING_TEMPLATE: Arg = Arg::value("styling-template", "<id>", "Styling template id.");
+const FROM_TEMPLATE: Arg = Arg::value(
+    "from-template",
+    "<project-id>",
+    "Start from this template project: its settings, configuration, printing setups and designs.",
+);
+const DRY_RUN: Arg = Arg::switch("dry-run", "Plan the creation and write nothing.");
+const TEMPLATE_STATE: Arg = Arg::value(
+    "template",
+    "<on|off>",
+    "Mark the project template (on), or take it back (off).",
+)
+.choices(&["on", "off"]);
+const TEMPLATE_NOT_VISIBLE_REFUSAL: Refusal = Refusal {
+    code: "template_not_visible",
+    when: "--from-template names a project the caller's fresh directory does not list",
+    remedy: "run ds auth project list --output json and pass one exact ds_project of the template bucket",
+};
+const TEMPLATE_PLAN_REFUSED_REFUSAL: Refusal = Refusal {
+    code: "template_plan_refused",
+    when: "an apply was asked of a template plan that is not ready: the source is not in the template state, or a property is invalid",
+    remedy: "re-run with --dry-run and read plan.refusals; mark the source with ds auth project update --project <id> --template on --yes",
+};
+const TEMPLATE_INHERITED_REFUSAL: Refusal = Refusal {
+    code: "template_setting_inherited",
+    when: "--network-template or --styling-template was given with --from-template, which carries both",
+    remedy: "drop the flag; the template's own network and styling templates travel",
+};
+const TEMPLATE_FLAG_ALONE_REFUSAL: Refusal = Refusal {
+    code: "template_flag_alone",
+    when: "--template was combined with a property flag",
+    remedy: "change the template state and the properties in two calls",
+};
 
 pub(crate) const PROFILE_REFUSAL: Refusal = Refusal {
     code: "native_profile_not_configured",
@@ -678,8 +710,12 @@ const PROJECT_CREATE_REFUSALS: &[Refusal] = &[
     IDENTITY_REFUSAL,
     TRANSIENT_REFUSAL,
     UNREADABLE_REFUSAL,
+    TEMPLATE_NOT_VISIBLE_REFUSAL,
+    TEMPLATE_PLAN_REFUSED_REFUSAL,
+    TEMPLATE_INHERITED_REFUSAL,
 ];
 const PROJECT_UPDATE_REFUSALS: &[Refusal] = &[
+    TEMPLATE_FLAG_ALONE_REFUSAL,
     PROFILE_REFUSAL,
     PROFILE_DIGEST_REFUSAL,
     PROFILE_UNSAFE_REFUSAL,
@@ -777,7 +813,7 @@ pub static PROJECT_LIST_COMMAND: Command = Command {
     contract: 1,
     chapter: Chapter::Project,
     summary: "List visible projects with expiry and lifecycle notices.",
-    purpose: "Restores the native user and fetches active, archived, and testing projects through the one closed gateway route. A returned ID is visibility, not authority.",
+    purpose: "Restores the native user and fetches the active, archived, testing and template buckets through the one closed gateway route. A returned ID is visibility, not authority.",
     effect: Effect::LocalAuthState,
     authority: Authority::HeadlessUser,
     execution: Execution::Sync,
@@ -785,12 +821,12 @@ pub static PROJECT_LIST_COMMAND: Command = Command {
     output: "Fresh visible project identities, names, roles, lifecycle states and expiry projections (notice, chip, support contacts); `elevated` says the list came by governance elevation, and a roleless row then reads `elevated`.",
     examples: &[Example {
         command: "ds auth project list",
-        note: "Reads all three lifecycle buckets.",
+        note: "Reads all four lifecycle buckets; a row's status is active, archived, testing or template.",
         runnable: false,
     }],
     refusals: PROJECT_LIST_REFUSALS,
     reference: Some("docs/reference/auth.md"),
-    search: &["expiration", "support contact"],
+    search: &["expiration", "support contact", "template projects"],
     requires: Requires::Server,
     availability: native_availability,
 };
@@ -848,8 +884,8 @@ pub static PROJECT_CREATE_COMMAND: Command = Command {
     path: &["auth", "project", "create"],
     contract: 1,
     chapter: Chapter::Project,
-    summary: "Create one project with its properties.",
-    purpose: "Creates a project on the lane under the signed-in account. The id slug is derived from the display name exactly as the Projects page derives it; every other property is optional and, when absent, is the server's default. Needs project.create. It selects nothing.",
+    summary: "Create one project, blank or from a template project.",
+    purpose: "Creates a project on the lane under the signed-in account. The id slug is derived from the display name exactly as the Projects page derives it; every other property is optional and, when absent, is the server's default. With --from-template it starts from a template project instead: ds-command-kernel plans the creation over the template's country, client, network and styling templates and settings, then copies every stored configuration sheet, every printing setup with its logos, every active transformer with the MV design document and every live DS Grid model through the existing doors; computed results, survey data, members, project records and Solar never travel. --dry-run returns the plan and writes nothing; a source outside the template state is planned but never applied. Needs project.create, then each door's own capability. It selects nothing.",
     effect: Effect::GlobalWrite,
     authority: Authority::HeadlessUser,
     execution: Execution::Sync,
@@ -861,17 +897,32 @@ pub static PROJECT_CREATE_COMMAND: Command = Command {
         LOCATION,
         NETWORK_TEMPLATE,
         STYLING_TEMPLATE,
+        FROM_TEMPLATE,
+        DRY_RUN,
         LANE,
     ],
-    output: "The project as created: id, slug, display name, template and the parameters the server defaulted.",
-    examples: &[Example {
-        command: "ds auth project create --display-name \"Gisagara LV\" --country Rwanda --client EDCL --yes",
-        note: "The id slug becomes gisagara_lv.",
-        runnable: false,
-    }],
+    output: "The project as created: id, slug, display name, template and the parameters the server defaulted. With --from-template: `plan` (the kernel's ds.project-template-plan/v1: ready, refusals, the creation payload, ordered steps, what stays behind and what never travels) and `applied` (null on --dry-run, else the new project and every sheet, setup and migration batch with its outcome, and `complete`).",
+    examples: &[
+        Example {
+            command: "ds auth project create --display-name \"Gisagara LV\" --country Rwanda --client EDCL --yes",
+            note: "The id slug becomes gisagara_lv.",
+            runnable: false,
+        },
+        Example {
+            command: "ds auth project create --display-name \"Nyaruguru LV\" --from-template czgmdwth_gisagara --dry-run --output json",
+            note: "Plans the project from the template; .data.plan.ready says whether it can be applied.",
+            runnable: false,
+        },
+    ],
     refusals: PROJECT_CREATE_REFUSALS,
     reference: Some("docs/reference/auth.md"),
-    search: &["new project", "add project", "register"],
+    search: &[
+        "new project",
+        "add project",
+        "register",
+        "start from template",
+        "copy project",
+    ],
     requires: Requires::Server,
     availability: native_availability,
 };
@@ -881,8 +932,8 @@ pub static PROJECT_UPDATE_COMMAND: Command = Command {
     path: &["auth", "project", "update"],
     contract: 1,
     chapter: Chapter::Project,
-    summary: "Edit one project's name, country, client, description or location.",
-    purpose: "Changes the named properties of the project given by id, and nothing else: an absent property is untouched. Needs project.properties.edit on that project (project admin). It edits the project it names, never the selected one.",
+    summary: "Edit one project's properties, or mark it template and back.",
+    purpose: "Changes the named properties of the project given by id, and nothing else: an absent property is untouched. Needs project.properties.edit on that project (project admin). --template on|off alone marks the project template or takes it back: a lifecycle-only update a project admin (project.template.mark) may make even on an archived project, and nothing else about the project changes; members keep reading and editing it. It edits the project it names, never the selected one.",
     effect: Effect::GlobalWrite,
     authority: Authority::HeadlessUser,
     execution: Execution::Sync,
@@ -893,14 +944,22 @@ pub static PROJECT_UPDATE_COMMAND: Command = Command {
         CLIENT,
         DESCRIPTION,
         LOCATION,
+        TEMPLATE_STATE,
         LANE,
     ],
     output: "The project id and how many fields changed.",
-    examples: &[Example {
-        command: "ds auth project update --project it_rwanda --display-name \"Integration test — Rwanda\" --country Rwanda --yes",
-        note: "Only the two named properties change.",
-        runnable: false,
-    }],
+    examples: &[
+        Example {
+            command: "ds auth project update --project it_rwanda --display-name \"Integration test — Rwanda\" --country Rwanda --yes",
+            note: "Only the two named properties change.",
+            runnable: false,
+        },
+        Example {
+            command: "ds auth project update --project czgmdwth_gisagara --template on --yes",
+            note: "The project moves to the template bucket and is offered to ds auth project create --from-template.",
+            runnable: false,
+        },
+    ],
     refusals: PROJECT_UPDATE_REFUSALS,
     reference: Some("docs/reference/auth.md"),
     search: &[
@@ -908,6 +967,7 @@ pub static PROJECT_UPDATE_COMMAND: Command = Command {
         "edit project",
         "project country",
         "project client",
+        "mark template",
     ],
     requires: Requires::Server,
     availability: native_availability,
@@ -4351,19 +4411,68 @@ fn properties(
 }
 
 pub fn run_project_create(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
+    let dry_run = inputs.switch("dry-run");
+    if let Some(template) = inputs.value("from-template") {
+        if inputs.value("network-template").is_some() || inputs.value("styling-template").is_some()
+        {
+            return Err(Failure::invalid(
+                TEMPLATE_INHERITED_REFUSAL.code,
+                "a template carries its own network and styling templates",
+            )
+            .remedy(TEMPLATE_INHERITED_REFUSAL.remedy));
+        }
+        let request = ds_command_kernel::project_template::Request {
+            display_name: inputs.require("display-name")?.to_owned(),
+            location: property(inputs, "location"),
+            description: property(inputs, "description"),
+            country: property(inputs, "country"),
+            client: property(inputs, "client"),
+        };
+        let lane = Lane::parse(inputs.require("lane")?)?;
+        let mut answer = project_template::run_for_lane(lane, template, request, dry_run)?;
+        answer["lane"] = json!(lane.token());
+        answer["action"] = json!("create");
+        return Ok(answer);
+    }
     let command = ds_client_core::project_properties::Command::Create {
         display_name: inputs.require("display-name")?.to_owned(),
         properties: properties(inputs, false),
         network_template: property(inputs, "network-template"),
         styling_template: property(inputs, "styling-template"),
     };
+    if dry_run {
+        // A blank creation's plan is its one request, validated and unsent.
+        command.validate().map_err(map_project_properties_client)?;
+        let request: Value = serde_json::from_slice(&command.body_bytes())
+            .map_err(|error| Failure::unavailable(UNREADABLE_REFUSAL.code, error.to_string()))?;
+        return Ok(
+            json!({ "lane": inputs.require("lane")?, "action": "create", "mode": "plan", "request": request }),
+        );
+    }
     project_properties(inputs.require("lane")?, &command)
 }
 
 pub fn run_project_update(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
-    let command = ds_client_core::project_properties::Command::Update {
-        project_id: inputs.require("project")?.to_owned(),
-        properties: properties(inputs, true),
+    let project_id = inputs.require("project")?.to_owned();
+    let properties = properties(inputs, true);
+    let command = match inputs.value("template") {
+        Some(state) => {
+            if properties != ds_client_core::project_properties::Properties::default() {
+                return Err(Failure::invalid(
+                    TEMPLATE_FLAG_ALONE_REFUSAL.code,
+                    "--template is a lifecycle flip and travels alone",
+                )
+                .remedy(TEMPLATE_FLAG_ALONE_REFUSAL.remedy));
+            }
+            ds_client_core::project_properties::Command::SetTemplate {
+                project_id,
+                template: state == "on",
+            }
+        }
+        None => ds_client_core::project_properties::Command::Update {
+            project_id,
+            properties,
+        },
     };
     project_properties(inputs.require("lane")?, &command)
 }
@@ -4449,6 +4558,20 @@ fn map_project_properties_client(error: ClientError) -> Failure {
 }
 
 pub fn render_project_properties(data: &Value) -> String {
+    if data.get("plan").is_some() {
+        return project_template::render(data);
+    }
+    if data["mode"] == "plan" {
+        return format!(
+            "would create  {}  ({}); dry run only, nothing was sent\n",
+            data["request"]["data"]["display_name"]
+                .as_str()
+                .unwrap_or(""),
+            data["request"]["data"]["project_name"]
+                .as_str()
+                .unwrap_or(""),
+        );
+    }
     match data["action"].as_str() {
         Some("create") => format!(
             "created  {}  {}  ({})\n",
@@ -4588,7 +4711,7 @@ fn project_json(project: &Project, elevated: bool) -> Value {
         "project_name": project.project_name(),
         "display_name": project.display_name(),
         "role": presented_role(project.role(), elevated),
-        "status": project_status(project.status()),
+        "status": project.status().query_value(),
         "lifecycle": project.lifecycle((now() * 1000) as i64),
     })
 }
@@ -4603,14 +4726,6 @@ fn presented_role(role: Option<&str>, elevated: bool) -> Value {
 
 fn context_json(context: &state::ProjectContext) -> Value {
     json!({ "ds_project": context.project_id(), "project_name": context.project_name(), "status": context.status() })
-}
-
-fn project_status(status: ProjectStatus) -> &'static str {
-    match status {
-        ProjectStatus::Active => "active",
-        ProjectStatus::Archived => "archived",
-        ProjectStatus::Testing => "testing",
-    }
 }
 
 fn parse_limit(value: &str) -> Result<usize, Failure> {
@@ -7327,10 +7442,12 @@ mod tests {
         transport.push_projects(&bucket("a", "active", "", true));
         transport.push_projects(&bucket("b", "archived", "owner", true));
         transport.push_projects(&bucket("c", "testing", "", true));
+        transport.push_projects(&bucket("d", "template", "", true));
         // One membership read with the same empty role.
         transport.push_projects(&bucket("a", "active", "", false));
         transport.push_projects(&bucket("b", "archived", "", false));
         transport.push_projects(&bucket("c", "testing", "", false));
+        transport.push_projects(&bucket("d", "template", "", false));
         let mut client = signed_in(transport);
 
         let elevated = client.list_projects(NOW + 1).unwrap();
@@ -7339,8 +7456,10 @@ mod tests {
         assert_eq!(answer["projects"][0]["role"], "elevated");
         assert_eq!(answer["projects"][1]["role"], "owner");
         assert_eq!(answer["returned"], 2);
-        assert_eq!(answer["total"], 3);
+        assert_eq!(answer["total"], 4);
         assert_eq!(answer["more"], true);
+        let all = directory_answer(Lane::Canary, &elevated, 10);
+        assert_eq!(all["projects"][3]["status"], "template");
         assert!(
             render_project_list(&answer).contains("a  active  elevated  a"),
             "{}",

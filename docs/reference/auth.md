@@ -133,8 +133,13 @@ for an existing destination or a write-through `MoveFileExW` for first
 creation, followed by opened-handle destination and parent validation. No
 plaintext stage is written.
 
-`auth project list` refreshes all Active, Archived, and Testing buckets and
-emits a bounded projection (`--limit`, default 100, maximum 1000). `auth
+`auth project list` refreshes all Active, Archived, Testing and Template
+buckets and emits a bounded projection (`--limit`, default 100, maximum 1000).
+The project state model is exactly `active | archived | testing | template`;
+a template is an ordinary project in the template state. A ds-brain that
+predates the template bucket answers it as active, and the directory refuses
+that read rather than relabelling rows, so the CLI needs the ds-brain release
+that serves four buckets. `auth
 project use` always fetches the complete fresh directory, requires one exact
 visible `ds_project`, then saves a context fenced by deployment lane, stable
 credential audience, Firebase UID, and canonical email. A project ID alone is
@@ -153,8 +158,39 @@ Projects page does, so the two hosts create the same document from the same
 name; country, client, description, location, network template and styling
 template ride when given and are the server's defaults when not. Update names
 the project by id and changes only the properties given. Neither selects a
-project, and neither touches lifecycle flags, project type, CRS, phases or
-components.
+project, and neither touches the archive, testing or expiration flags.
+
+`--template on|off` on `auth project update` is the one lifecycle flip in this
+family: it travels alone (`template_flag_alone` otherwise) as a lifecycle-only
+update, admitted on `project.template.mark` or `project.properties.edit`, and
+reachable on an archived project like every lifecycle-only update.
+
+`auth project create --from-template <project-id>` starts a project from a
+template project. `ds_command_kernel::project_template` decides the plan from
+fresh reads of the template (its directory row, configuration document,
+printing setups, transformer inventory and live DS Grid models); this command
+only runs it, through doors that already exist and authorize themselves:
+
+1. `create` with the operator's display name, location and description over
+   the template's country, client, network and styling templates, project
+   type and CRS, components, phases and lanes (`--country` / `--client`
+   override; `--network-template` / `--styling-template` are refused as
+   `template_setting_inherited`);
+2. `save_config` for every stored configuration sheet the save door admits;
+3. a printing copy from the template into the new project for every setup,
+   same id, each with the logos its layout holds (a setup the creation adopted
+   from the global seeds under the same id is replaced at its revision);
+4. the design migration of every active transformer with `mv_data`
+   (`kind: transformer`), then of every live DS Grid model (`kind: dsgrid`),
+   200 items a call, never overwriting.
+
+Computed results, survey forms and entries, members, project records and Solar
+city data never travel; the plan says so in `not_carried`, and what the
+template holds but leaves behind is keyed in `skipped`. `--dry-run` reads and
+plans and writes nothing. A template outside the template state is planned in
+full but refused on apply (`template_plan_refused`). An apply that fails after
+the creation still runs every remaining item and reports each outcome, with
+`complete: false`; finish it with the doors the receipt names.
 
 Firebase-backed status/project reads can rotate a durable refresh credential,
 while login/logout/project use can also clear or replace context. Device-link
