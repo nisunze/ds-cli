@@ -63,6 +63,11 @@ Local force does not require the Cloud Run force password.
 Outputs appear in the transformer's Report Files inventory and PDF preview.
 The CLI returns artifact evidence without downloading a ZIP.
 
+Add `--intent preview` to produce local-only review artifacts. Preview artifacts
+do not replace main outputs, enter the publication queue, or save project
+settings. Omit the flag for the ordinary main export. Preview accepts individual
+transformers, including a batch; `combined_transformer` requires a main export.
+
 For one A4 voltage-drop PDF without regenerating other formats, pass a local
 selection file containing
 `{"schema":"ds.design-output-selection/v1","geospatial":["voltage_drop_pdf"]}`

@@ -98,6 +98,7 @@ pub const EXPORT_OP: BridgeOp = BridgeOp {
         "transformers",
         "force",
         "selection",
+        "intent",
     ],
 };
 const FORCE_ARG: Arg = Arg {
@@ -114,6 +115,11 @@ const PRINTING_READ_INVALID: Refusal = Refusal {
     code: "printing_request_invalid",
     when: "the setup id or explicit project is invalid, or --project is combined with global scope",
     remedy: "use one exact bounded project id; named setups are read and published natively with `ds report layout list|get|save`",
+};
+const PRINTING_EXPORT_INVALID: Refusal = Refusal {
+    code: "printing_request_invalid",
+    when: "the explicit project or transformer is invalid, or preview intent selects combined_transformer",
+    remedy: "use canonical project/transformer names; preview individual transformers or omit --intent for the ordinary combined export",
 };
 
 pub static TRANSFORMERS_COMMAND: Command = Command {
@@ -165,9 +171,9 @@ pub static TRANSFORMERS_COMMAND: Command = Command {
 pub static EXPORT_COMMAND: Command = Command {
     id: "desktop.printing.export",
     path: &["desktop", "printing", "export"],
-    contract: 3,
+    contract: 4,
     summary: "Export selected formats for one or more held transformers.",
-    purpose: "Runs the desktop-native Network Reporter for one explicit project and transformer. Repeat --transformer for a batch. Defaults: SHP/KMZ/XLSX/saved voltage-drop JSON; saved output sets are ignored. --selection supplies a run matrix without changing settings. Selected canonical outputs are overwritten; unselected artifacts keep their producing provenance. Missing selected map context is acquired automatically when online; offline execution uses held data. Local artifacts are queued through the ordinary report publication outbox.",
+    purpose: "Runs the desktop-native Network Reporter for one explicit project and transformer. Repeat --transformer for a batch. Defaults: SHP/KMZ/XLSX/saved voltage-drop JSON; saved output sets are ignored. --selection supplies a run matrix without changing settings. Main exports overwrite selected canonical outputs and queue ordinary publication; unselected artifacts keep their provenance. --intent preview produces local-only review artifacts without replacing main outputs, publishing, or saving settings; combined_transformer cannot be previewed. Missing selected map context is acquired automatically when online; offline execution uses held data.",
     chapter: Chapter::Reports,
     effect: Effect::ArtifactWrite,
     authority: Authority::DesktopUser,
@@ -186,6 +192,7 @@ pub static EXPORT_COMMAND: Command = Command {
         )
         .required(),
         Arg::value("selection", "<json-file>", "Local ds.design-output-selection/v1 matrix. Only selected outputs are regenerated; no project settings are saved."),
+        Arg::value("intent", "<preview>", "Produce local-only review artifacts; omit for the ordinary main export.").choices(&["preview"]),
         FORCE_ARG,
         TARGET_ARG,
         DESCRIPTOR_ARG,
@@ -201,7 +208,7 @@ pub static EXPORT_COMMAND: Command = Command {
         ops::UNSUPPORTED,
         ops::UNREADABLE,
         ops::SIGNED_OUT,
-        PRINTING_READ_INVALID,
+        PRINTING_EXPORT_INVALID,
         Refusal {
             code: "confirmation_required",
             when: "--yes was not given for a command that writes report artifacts",
@@ -299,7 +306,7 @@ pub fn transformers(inputs: &Inputs, _context: &Context) -> Result<Value, Failur
     .map_err(ops::classify_signed_out)
 }
 
-pub fn export(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
+fn export_arguments(inputs: &Inputs) -> Result<Value, Failure> {
     let project = bounded_project(inputs.require("project")?)?;
     let transformers = inputs.repeated("transformer");
     if transformers.is_empty() || transformers.len() > 2000 {
@@ -321,7 +328,21 @@ pub fn export(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             return Err(invalid_read("invalid canonical transformer name"));
         }
     }
+    if inputs.value("intent") == Some("preview")
+        && transformers
+            .iter()
+            .any(|name| name == "combined_transformer")
+    {
+        return Err(Failure::invalid(
+            PRINTING_EXPORT_INVALID.code,
+            "combined_transformer does not support preview intent",
+        )
+        .remedy(PRINTING_EXPORT_INVALID.remedy));
+    }
     let mut arguments = json!({"project": project, "force": inputs.switch("force")});
+    if let Some(intent) = inputs.value("intent") {
+        arguments["intent"] = json!(intent);
+    }
     if transformers.len() == 1 {
         arguments["transformer"] = json!(transformers[0]);
     } else {
@@ -344,6 +365,11 @@ pub fn export(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         arguments["selection"] =
             serde_json::to_value(selection).map_err(|e| invalid_read(e.to_string()))?;
     }
+    Ok(arguments)
+}
+
+pub fn export(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
+    let arguments = export_arguments(inputs)?;
     let descriptor = ops::paired(inputs.value("desktop-descriptor"))?;
     ops::invoke(
         &descriptor,
@@ -397,7 +423,8 @@ mod tests {
                 "transformer",
                 "transformers",
                 "force",
-                "selection"
+                "selection",
+                "intent"
             ]
         );
     }
@@ -414,6 +441,90 @@ mod tests {
         assert_eq!(
             require_request_project(&json!({"project":"huye"}), "printing.prepare").unwrap(),
             "huye"
+        );
+    }
+
+    fn export_inputs(tokens: &[&str]) -> Result<Inputs, Failure> {
+        ds_cli_contract::args::parse(
+            &EXPORT_COMMAND,
+            &tokens
+                .iter()
+                .map(|token| (*token).to_owned())
+                .collect::<Vec<_>>(),
+        )
+    }
+
+    #[test]
+    fn ordinary_export_omits_intent_and_preserves_the_default_request() {
+        let inputs = export_inputs(&["--project", "huye", "--transformer", "agasharu"]).unwrap();
+        assert_eq!(
+            export_arguments(&inputs).unwrap(),
+            json!({
+                "project": "huye",
+                "transformer": "agasharu",
+                "force": false,
+                "selection": {
+                    "schema": "ds.design-output-selection/v1",
+                    "prints": [],
+                    "geospatial": ["shp", "kmz"],
+                    "tabular": ["xlsx", "voltage_drop"]
+                }
+            })
+        );
+    }
+
+    #[test]
+    fn preview_export_forwards_only_the_explicit_desktop_intent() {
+        let ordinary = export_inputs(&["--project", "huye", "--transformer", "agasharu"]).unwrap();
+        let preview = export_inputs(&[
+            "--project",
+            "huye",
+            "--transformer",
+            "agasharu",
+            "--intent",
+            "preview",
+        ])
+        .unwrap();
+        let mut expected = export_arguments(&ordinary).unwrap();
+        expected["intent"] = json!("preview");
+        let arguments = export_arguments(&preview).unwrap();
+        assert_eq!(arguments, expected);
+        assert!(arguments.get("localReview").is_none());
+    }
+
+    #[test]
+    fn invalid_or_combined_preview_is_refused_before_pairing() {
+        assert_eq!(
+            export_inputs(&[
+                "--project",
+                "huye",
+                "--transformer",
+                "agasharu",
+                "--intent",
+                "main",
+            ])
+            .unwrap_err()
+            .code(),
+            "invalid_choice"
+        );
+        let combined = export_inputs(&[
+            "--project",
+            "huye",
+            "--transformer",
+            "combined_transformer",
+            "--intent",
+            "preview",
+        ])
+        .unwrap();
+        assert_eq!(
+            export_arguments(&combined).unwrap_err().code(),
+            "printing_request_invalid"
+        );
+        let ordinary =
+            export_inputs(&["--project", "huye", "--transformer", "combined_transformer"]).unwrap();
+        assert_eq!(
+            export_arguments(&ordinary).unwrap(),
+            json!({"project":"huye","transformer":"combined_transformer","force":false})
         );
     }
 }
