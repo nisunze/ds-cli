@@ -62,6 +62,20 @@ contains `layout`; validation additionally returns
 export `printingCommand` call the same evaluator. `command_schema()` describes
 the closed intent grammar. The native renderer can validate the same Layout.
 
+`template_catalogue` accepts custom-layout row facts and, optionally, the exact
+project-scoped `report.standard.list` capture with its explicit `project_id`.
+Every projected entry has a tagged storage `location`: `layout` or
+`governed_html`. The bound `voltage-drop-a4-v1` document is organized under
+Voltage drop / Report by its governed A4 contract. It is an HTML document;
+its paper does not make it a canvas Layout. Unknown custom layouts remain
+Unclassified. Governed booklet documents retain their existing consumer.
+
+`read_governed_template` admits the exact `report.standard.get` response against
+the selected HTML location's captured project, revision, content and HTML pins.
+It returns the original governed HTML bytes. It neither injects example data
+nor renders a saved voltage-drop result; that projection belongs to the native
+reporter. A source view alone does not prove a populated preview or PDF.
+
 Spatial hit testing, snapping and retained camera sessions remain in ds-network;
 they are not command-kernel WASM exports. PDF/SVG formatting, GeoJSON projection
 and legend rendering belong to ds-network-reporter. Brain owns global/project

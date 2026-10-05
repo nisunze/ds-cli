@@ -2313,6 +2313,14 @@ pub enum Command {
     },
     TemplateCatalogue {
         rows: Vec<catalogue::Row>,
+        #[serde(default)]
+        project_id: Option<String>,
+        #[serde(default)]
+        governed: Option<Value>,
+    },
+    ReadGovernedTemplate {
+        location: catalogue::Location,
+        response: Value,
     },
     Duplicate {
         layout: Layout,
@@ -2880,8 +2888,11 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
             validate(&layout)?;
             json!({"layout":layout})
         }
-        Command::TemplateCatalogue { rows } => {
-            serde_json::to_value(catalogue::project(rows)?).map_err(|e| e.to_string())?
+        Command::TemplateCatalogue { rows, project_id, governed } => {
+            serde_json::to_value(catalogue::project(rows, project_id.as_deref(), governed)?).map_err(|e| e.to_string())?
+        }
+        Command::ReadGovernedTemplate { location, response } => {
+            serde_json::to_value(catalogue::read_governed(location, response)?).map_err(|e| e.to_string())?
         }
         Command::Duplicate { layout, id, name } => {
             let mut layout = upgrade(layout)?;
