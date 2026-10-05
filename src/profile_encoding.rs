@@ -155,9 +155,11 @@ fn pen_key(option: DisplayOption) -> String {
         DisplayOption::RouteDeviation => "structure_labels".into(),
         DisplayOption::OffsetEmbedmentHeight => "embedded".into(),
         // Review glyphs paint with native status colours; their switches share the review pen.
-        DisplayOption::StructureUsage | DisplayOption::SectionState | DisplayOption::SectionUsage => {
-            "review".into()
-        }
+        // The analysis report draws nothing of its own, so it needs no governed pen either.
+        DisplayOption::StructureUsage
+        | DisplayOption::SectionState
+        | DisplayOption::SectionUsage
+        | DisplayOption::Analysis => "review".into(),
         other => serde_json::to_value(other)
             .unwrap()
             .as_str()
@@ -349,11 +351,12 @@ mod tests {
         assert!(legend_with_cables(&rows, &[])
             .iter()
             .any(|entry| entry.kind == LegendKind::Wire));
-        // Usage switches are visibility only: they never need a pen of their own.
+        // Usage and analysis switches are visibility only: they never need a pen of their own.
         for option in [
             DisplayOption::StructureUsage,
             DisplayOption::SectionState,
             DisplayOption::SectionUsage,
+            DisplayOption::Analysis,
         ] {
             assert_eq!(pen_key(option), "review");
         }
@@ -401,8 +404,9 @@ mod tests {
                 )
             })
             .collect();
-        // Deviation, embedment height and the three usage switches share native pens.
-        assert_eq!(encodings.len(), rows.len() - 5);
+        // Deviation, embedment height, the three usage switches and the analysis report
+        // share native pens.
+        assert_eq!(encodings.len(), rows.len() - 6);
         let deviation = rows
             .iter()
             .find(|row| row.option == DisplayOption::RouteDeviation)

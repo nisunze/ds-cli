@@ -168,11 +168,16 @@ impl Runtime {
             .review
             .prepared_layer(&request.display_case)
             .ok_or("profile_case_base_unavailable: requested layer is missing")?;
+        // Only the held revision's analysis counts, so a weather switch after an edit
+        // never reports the previous revision's analysis as current.
         let mut command_view = command_view::project(
             &state,
             Some(&held.rows),
             Some(scene),
-            self.analyses.get(&request.scope),
+            self.analyses
+                .get(&request.scope)
+                .filter(|value| value["model_revision"] == request.expected_revision),
+            !held.session.snapshot().structures.is_empty(),
         );
         command_view["review"]["display_case"] =
             serde_json::to_value(&layer.display_case.requested).map_err(|e| e.to_string())?;
@@ -284,8 +289,13 @@ impl Runtime {
                 scene.as_ref().ok(),
                 Some(error),
             );
-            let command_view =
-                command_view::project(&state, None, scene.as_ref().ok(), Some(&analysis));
+            let command_view = command_view::project(
+                &state,
+                None,
+                scene.as_ref().ok(),
+                Some(&analysis),
+                !session.snapshot().structures.is_empty(),
+            );
             self.analyses
                 .insert(request.scope.clone(), analysis.clone());
             self.commit_view(&request.scope, state.clone());
@@ -322,8 +332,13 @@ impl Runtime {
                 .filter(|value| value["model_revision"] == request.expected_revision)
                 .cloned()
         };
-        let command_view =
-            command_view::project(&state, Some(&rows), Some(&scene), analysis.as_ref());
+        let command_view = command_view::project(
+            &state,
+            Some(&rows),
+            Some(&scene),
+            analysis.as_ref(),
+            !session.snapshot().structures.is_empty(),
+        );
         self.commit_view(&request.scope, state.clone());
         self.held.insert(
             request.scope.clone(),

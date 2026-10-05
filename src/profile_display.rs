@@ -29,9 +29,12 @@ pub enum DisplayOption {
     SectionState,
     /// The section usage bitmap: one box per wire of each attachment set.
     SectionUsage,
+    /// The analysis report. On, each held model revision is analyzed once without a
+    /// click (see `analysis_state`); off, Analyze stays an explicit action.
+    Analysis,
 }
 impl DisplayOption {
-    pub const ALL: [Self; 21] = [
+    pub const ALL: [Self; 22] = [
         Self::Review,
         Self::Grid,
         Self::Ground,
@@ -53,6 +56,7 @@ impl DisplayOption {
         Self::StructureUsage,
         Self::SectionState,
         Self::SectionUsage,
+        Self::Analysis,
     ];
     pub fn label_key(self) -> &'static str {
         match self {
@@ -77,6 +81,7 @@ impl DisplayOption {
             Self::StructureUsage => "gprof_display_structure_usage",
             Self::SectionState => "gprof_display_attachment_states",
             Self::SectionUsage => "gprof_display_section_usage",
+            Self::Analysis => "gprof_display_analysis",
         }
     }
 }
@@ -133,6 +138,34 @@ impl Default for DisplayState {
                 lowest_wire_drop_m: 0.0,
             },
             cable_colors: BTreeMap::new(),
+        }
+    }
+}
+/// Whether the held model revision still owes its default analysis. Hosts run the
+/// explicit Analyze action only while this reads `due`; they never decide it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AnalysisState {
+    /// The analysis switch is on and this revision has no analysis yet.
+    Due,
+    /// An analysis of exactly this revision is held, automatic or explicit.
+    Current,
+    /// The switch is off; Analyze stays explicit.
+    Off,
+    /// The model has no structures to analyze.
+    NotApplicable,
+}
+impl DisplayState {
+    /// Owner, 2026-10-05: the analysis report is on by default.
+    pub fn analysis_state(&self, revision_analyzed: bool, has_structures: bool) -> AnalysisState {
+        if revision_analyzed {
+            AnalysisState::Current
+        } else if !has_structures {
+            AnalysisState::NotApplicable
+        } else if self.visibility.get(&DisplayOption::Analysis) == Some(&false) {
+            AnalysisState::Off
+        } else {
+            AnalysisState::Due
         }
     }
 }
@@ -324,5 +357,44 @@ mod tests {
         assert!(serde_json::from_str::<DisplayPatch>(r#"{"showWire":false}"#).is_err());
         assert!(serde_json::from_str::<DisplayPatch>(r#"{"vertical_exaggeration":null}"#).is_err());
         assert!(serde_json::from_str::<DisplayPatch>(r#"{"terrain":null}"#).is_err());
+    }
+    #[test]
+    fn analysis_report_is_on_by_default_and_one_switch_turns_it_off() {
+        let state = DisplayState::default();
+        assert!(state.visibility[&DisplayOption::Analysis]);
+        assert_eq!(
+            serde_json::to_value(DisplayOption::Analysis).unwrap(),
+            "analysis"
+        );
+        // Due once per unanalyzed revision; a held analysis of that revision is current.
+        assert_eq!(state.analysis_state(false, true), AnalysisState::Due);
+        assert_eq!(state.analysis_state(true, true), AnalysisState::Current);
+        assert_eq!(
+            state.analysis_state(false, false),
+            AnalysisState::NotApplicable
+        );
+        let off: DisplayPatch =
+            serde_json::from_str(r#"{"visibility":{"analysis":false}}"#).unwrap();
+        let off = state.patched(&off).unwrap();
+        assert!(!off.visibility[&DisplayOption::Analysis]);
+        assert_eq!(off.analysis_state(false, true), AnalysisState::Off);
+        // An explicit Analyze still counts while the default is off.
+        assert_eq!(off.analysis_state(true, true), AnalysisState::Current);
+        // The switch is visibility only: nothing else in the display moves.
+        let mut other = off.clone();
+        other.visibility.insert(DisplayOption::Analysis, true);
+        assert_eq!(other, state);
+        let on: DisplayPatch = serde_json::from_str(r#"{"visibility":{"analysis":true}}"#).unwrap();
+        assert_eq!(
+            off.patched(&on).unwrap().analysis_state(false, true),
+            AnalysisState::Due
+        );
+        assert!(
+            serde_json::from_str::<DisplayPatch>(r#"{"visibility":{"analysis":"on"}}"#).is_err()
+        );
+        assert_eq!(
+            serde_json::to_value(AnalysisState::NotApplicable).unwrap(),
+            "not_applicable"
+        );
     }
 }

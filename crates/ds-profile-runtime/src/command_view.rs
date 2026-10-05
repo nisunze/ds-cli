@@ -11,12 +11,16 @@ fn text(value: &Value) -> Value {
         .map(|value| Value::String(value.chars().take(512).collect()))
         .unwrap_or(Value::Null)
 }
+/// `analysis` is the held analysis of exactly this revision, if any; `analysis_state`
+/// tells hosts whether the default analysis is still owed for it.
 pub fn project(
     state: &DisplayState,
     rows: Option<&[DisplayRow]>,
     scene: Option<&ProfileAtlasScene>,
     analysis: Option<&Value>,
+    has_structures: bool,
 ) -> Value {
+    let analysis_state = state.analysis_state(analysis.is_some(), has_structures);
     let review = scene.map(|scene| {
         let mut marker_counts = std::collections::BTreeMap::from([("pass".to_string(), 0usize), ("fail".to_string(), 0), ("unknown".to_string(), 0)]);
         for marker in &scene.engineering.markers {
@@ -52,7 +56,7 @@ pub fn project(
             "clearance_features_truncated":source["issues"]["clearance_features_truncated"], "structure_features_truncated":source["issues"]["structure_features_truncated"]});
         result
     });
-    json!({"display":rows.map(|rows| json!({"state":state, "rows":rows,"legend":ds_command_kernel::profile_encoding::legend(rows)})), "review":review, "analysis":analysis})
+    json!({"display":rows.map(|rows| json!({"state":state, "rows":rows,"legend":ds_command_kernel::profile_encoding::legend(rows)})), "review":review, "analysis":analysis, "analysis_state":analysis_state})
 }
 
 #[cfg(test)]
@@ -63,7 +67,8 @@ mod tests {
         let analysis = json!({"model_revision":"head", "status":"partial", "blocker_count":2603,
             "blocker_kinds":{"structure_usage":2603}, "blockers":(0..2000).map(|_| json!({"kind":"structure_usage", "message":"é".repeat(1024)})).collect::<Vec<_>>(),
             "report":{"status":"ok", "report":{"full_evidence":"not a command receipt"}}});
-        let view = project(&DisplayState::default(), None, None, Some(&analysis));
+        let view = project(&DisplayState::default(), None, None, Some(&analysis), true);
+        assert_eq!(view["analysis_state"], "current");
         assert_eq!(view["analysis"]["blockers"].as_array().unwrap().len(), 200);
         assert_eq!(view["analysis"]["blocker_count"], 2603);
         assert_eq!(view["analysis"]["blockers_truncated"], true);
