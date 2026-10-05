@@ -146,6 +146,69 @@ pub fn rows(root: &Path, scope: &Scope, held: &Manifest) -> Result<Vec<Value>, S
         .collect()
 }
 
+/// Capture selected survey geometry from this exact account and project's
+/// complete held forms. Media authorization is independent of map geometry.
+pub fn printing_layers(
+    root: &Path,
+    scope: &Scope,
+    contexts: &[ds_command_kernel::printing::PrintContextLayer],
+) -> Result<Vec<crate::held::HeldLayer>, crate::held::PreviewContextRefusal> {
+    use crate::held::PreviewContextRefusal;
+    use ds_command_kernel::printing::held_context::{admit, HeldCapture};
+    use ds_command_kernel::printing::PrintContextSource;
+    let invalid = |message: String| PreviewContextRefusal::Holdings(crate::Failure::Store(message));
+    let _lock = lock(root, scope).map_err(invalid)?;
+    contexts
+        .iter()
+        .map(|context| {
+            let PrintContextSource::Survey { form } = &context.source else {
+                return Err(invalid(format!(
+                    "{} is not a survey context source",
+                    context.id
+                )));
+            };
+            let held = manifest(root, scope, form)
+                .map_err(invalid)?
+                .ok_or_else(|| {
+                    invalid(format!(
+                        "survey {form} is not held for this account and project"
+                    ))
+                })?;
+            if held.schema != hold::SCHEMA
+                || held.project != scope.project
+                || held.form != *form
+                || !held.filter.is_whole_form()
+                || held.filter.fingerprint().map_err(invalid)? != held.filter_sha256
+            {
+                return Err(invalid(format!(
+                    "survey {form} does not hold this project's complete exact form"
+                )));
+            }
+            let features = rows(root, scope, &held).map_err(invalid)?;
+            let capture = HeldCapture {
+                context_id: context.id.clone(),
+                features: serde_json::json!({"type":"FeatureCollection","features":features}),
+                declared_count: held.rows,
+                render_mode: None,
+                source_project: Some(held.project.clone()),
+                features_loaded: true,
+            };
+            let collection = admit(&scope.project, &context.source, &capture)
+                .map_err(PreviewContextRefusal::Kernel)?;
+            Ok(crate::held::HeldLayer {
+                id: context.id.clone(),
+                collection,
+                source: serde_json::json!({
+                    "kind":"survey", "form":form, "source_project":held.project,
+                    "declared_count":held.rows, "rows_sha256":held.rows_sha256,
+                    "filter_sha256":held.filter_sha256, "cursor":held.cursor,
+                    "refreshed_at":held.refreshed_at,
+                }),
+            })
+        })
+        .collect()
+}
+
 /// Answer one read of one form: reuse, refresh or read it, as the kernel
 /// decides, then hold the result. `fetch` receives the whole `query_entries`
 /// request body and returns the route's NDJSON bytes.
@@ -327,6 +390,164 @@ mod tests {
     fn feature(id: &str, updated: &str, deleted: bool) -> Value {
         json!({"type":"Feature","geometry":{"type":"Point","coordinates":[29.5,-2.0]},
                "properties":{"id":id,"metadata":{"firestore_updated_at":updated,"is_deleted":deleted}}})
+    }
+
+    fn survey_print_layer(form: &str) -> ds_command_kernel::printing::PrintContextLayer {
+        ds_command_kernel::printing::PrintContextLayer {
+            id: "survey_existing_poles".into(),
+            label: "Surveyed existing poles".into(),
+            source: ds_command_kernel::printing::PrintContextSource::Survey { form: form.into() },
+        }
+    }
+
+    #[test]
+    fn printing_capture_keeps_complete_verified_geometry_and_exact_scope() {
+        let dir = tempfile::tempdir().unwrap();
+        let scope = Scope {
+            principal: "uid-1".into(),
+            project: "project-a".into(),
+        };
+        let form = "lv_poles_as_built";
+        let rows = vec![
+            feature("a", "2026-09-30T00:00:00Z", false),
+            feature("b", "2026-09-30T00:00:00Z", false),
+        ];
+        let saved = refresh(
+            dir.path(),
+            &scope,
+            form,
+            &Filter::default(),
+            Refresh::Full,
+            at("2026-09-30T00:00:00Z"),
+            |_| Ok::<_, String>(body(&rows)),
+        )
+        .unwrap();
+        let layer = survey_print_layer(form);
+        let captured = printing_layers(dir.path(), &scope, &[layer.clone()]).unwrap();
+        assert_eq!(captured.len(), 1);
+        assert_eq!(captured[0].collection["features"], serde_json::json!(rows));
+        assert_eq!(captured[0].source["declared_count"], 2);
+        assert_eq!(
+            captured[0].source["rows_sha256"],
+            saved.manifest.rows_sha256
+        );
+        assert_eq!(captured[0].source["source_project"], "project-a");
+        let network = serde_json::json!({"lv_poles":{"type":"FeatureCollection","features":[
+            {"type":"Feature","geometry":{"type":"Point","coordinates":[29.5,-2.0]},"properties":{}},
+            {"type":"Feature","geometry":{"type":"Point","coordinates":[29.51,-2.01]},"properties":{}}
+        ]}});
+        let context = crate::held::attach_layers(None, captured, "tx_1", &network, 0.0)
+            .unwrap()
+            .unwrap();
+        let document: Value = serde_json::from_slice(context.document.as_ref().unwrap()).unwrap();
+        assert_eq!(
+            document["layers"]["survey_existing_poles"]["features"],
+            serde_json::json!(rows)
+        );
+        assert_eq!(
+            document["sources"][0]["rows_sha256"],
+            saved.manifest.rows_sha256
+        );
+
+        for foreign in [
+            Scope {
+                principal: "uid-2".into(),
+                ..scope.clone()
+            },
+            Scope {
+                project: "project-b".into(),
+                ..scope.clone()
+            },
+        ] {
+            assert!(printing_layers(dir.path(), &foreign, &[layer.clone()]).is_err());
+        }
+        assert!(printing_layers(dir.path(), &scope, &[survey_print_layer("other_form")]).is_err());
+        let local = ds_command_kernel::printing::PrintContextLayer {
+            source: ds_command_kernel::printing::PrintContextSource::LocalLayer {
+                layer_id: "local-1".into(),
+            },
+            ..layer
+        };
+        assert!(printing_layers(dir.path(), &scope, &[local]).is_err());
+    }
+
+    #[test]
+    fn printing_capture_refuses_foreign_narrow_or_changed_manifests_and_digest() {
+        let dir = tempfile::tempdir().unwrap();
+        let scope = Scope {
+            principal: "uid-1".into(),
+            project: "project-a".into(),
+        };
+        let form = "lv_poles_as_built";
+        let saved = refresh(
+            dir.path(),
+            &scope,
+            form,
+            &Filter::default(),
+            Refresh::Full,
+            at("2026-09-30T00:00:00Z"),
+            |_| Ok::<_, String>(body(&[feature("a", "2026-09-30T00:00:00Z", false)])),
+        )
+        .unwrap();
+        let layer = survey_print_layer(form);
+        let path = form_dir(dir.path(), &scope, form).unwrap();
+        for changed in [
+            "schema",
+            "project",
+            "form",
+            "filter",
+            "filter_digest",
+            "count",
+        ] {
+            let mut manifest = saved.manifest.clone();
+            match changed {
+                "schema" => manifest.schema = "unknown".into(),
+                "project" => manifest.project = "project-b".into(),
+                "form" => manifest.form = "other_form".into(),
+                "filter" => manifest.filter.bbox = Some([29.0, -3.0, 30.0, -2.0]),
+                "filter_digest" => manifest.filter_sha256 = "a".repeat(64),
+                "count" => manifest.rows = 2,
+                _ => unreachable!(),
+            }
+            fs::write(path.join(MANIFEST), serde_json::to_vec(&manifest).unwrap()).unwrap();
+            assert!(
+                printing_layers(dir.path(), &scope, &[layer.clone()]).is_err(),
+                "{changed}"
+            );
+        }
+        fs::write(
+            path.join(MANIFEST),
+            serde_json::to_vec(&saved.manifest).unwrap(),
+        )
+        .unwrap();
+        fs::write(path.join(ROWS), b"{}\n").unwrap();
+        let refused = printing_layers(dir.path(), &scope, &[layer]).unwrap_err();
+        assert!(
+            matches!(refused, crate::held::PreviewContextRefusal::Holdings(crate::Failure::Store(ref message))
+            if message.contains("digest") || message.contains("manifest"))
+        );
+    }
+
+    #[test]
+    fn printing_capture_refuses_ready_but_empty_form_explicitly() {
+        let dir = tempfile::tempdir().unwrap();
+        let scope = Scope {
+            principal: "uid-1".into(),
+            project: "project-a".into(),
+        };
+        let form = "lv_poles_as_built";
+        refresh(
+            dir.path(),
+            &scope,
+            form,
+            &Filter::default(),
+            Refresh::Full,
+            at("2026-09-30T00:00:00Z"),
+            |_| Ok::<_, String>(body(&[])),
+        )
+        .unwrap();
+        let refused = printing_layers(dir.path(), &scope, &[survey_print_layer(form)]).unwrap_err();
+        assert_eq!(refused.code(), "print_context_survey_empty");
     }
 
     #[test]
