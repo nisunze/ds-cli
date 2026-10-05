@@ -1233,7 +1233,16 @@ pub fn selected_plan(
 #[derive(PartialEq, Eq)]
 enum OutputPurpose {
     Delivery,
+    LocalReview,
     AuthoringPreview,
+}
+
+pub(crate) fn selected_local_review_plan(
+    sheets: &Value,
+    is_combined: bool,
+    selection: Option<&DesignOutputSelection>,
+) -> Result<Vec<Output>, String> {
+    selected_plan_for_purpose(sheets, is_combined, selection, OutputPurpose::LocalReview)
 }
 
 /// Only the kernel's typed authoring-preview path enters here. Public format
@@ -1263,8 +1272,16 @@ fn selected_plan_for_purpose(
     selection: Option<&DesignOutputSelection>,
     purpose: OutputPurpose,
 ) -> Result<Vec<Output>, String> {
-    let Some(selection) = selection else {
-        return plan(sheets, is_combined);
+    let stored;
+    let selection = match selection {
+        Some(selection) => selection,
+        None if purpose == OutputPurpose::LocalReview => {
+            let row = project_output_setting(sheets)?
+                .ok_or("A local printing review requires a print output selection")?;
+            stored = stored_output_selection(&row["value"])?;
+            &stored
+        }
+        None => return plan(sheets, is_combined),
     };
     if is_combined {
         return Err("Local output overrides currently require individual transformers".into());
@@ -1314,10 +1331,13 @@ fn selected_plan_for_purpose(
         }
         outputs.push(output);
     }
-    // Local overrides choose optional artifacts, not whether the saved LV
-    // analysis accompanies them. Validate their authored tokens first so the
-    // mandatory artifact cannot make an empty or invalid override admissible.
-    if purpose == OutputPurpose::Delivery && !seen.contains(MANDATORY_INDIVIDUAL_OUTPUT) {
+    // Delivery always retains the saved LV analysis. A local review needs it
+    // only beside the A4 voltage-drop PDF; a map sheet is its selected print.
+    // Validate authored tokens first so a companion never admits an empty
+    // or invalid selection.
+    let needs_analysis = purpose == OutputPurpose::Delivery
+        || (purpose == OutputPurpose::LocalReview && seen.contains("voltage_drop_pdf"));
+    if needs_analysis && !seen.contains(MANDATORY_INDIVIDUAL_OUTPUT) {
         outputs.push(output(MANDATORY_INDIVIDUAL_OUTPUT)?);
     }
     if outputs.len() > 32 {

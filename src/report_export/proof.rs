@@ -70,12 +70,32 @@ pub fn local_review_formats(formats: &[String]) -> Result<(), String> {
         || formats.iter().any(|format| {
             format != "voltage_drop_pdf"
                 && !(format == "voltage_drop" && formats.iter().any(|f| f == "voltage_drop_pdf"))
-                && crate::report_formats::named_print_output(format).is_none()
+                && !crate::report_formats::named_print_output(format)
+                    .is_some_and(|(kind, _)| kind.deliverable())
         })
     {
         return Err("A local printing review only produces selected print files and their exact A4 analysis companion.".into());
     }
     Ok(())
+}
+
+/// Plan saved printing recipes for a local review, independently of delivery's
+/// mandatory analysis inventory. Only the selected A4 PDF adds its exact
+/// saved-analysis companion; draft SVG pages use the authoring-preview owner.
+pub fn local_review_plan(
+    sheets: &Value,
+    is_combined: bool,
+    selection: Option<&DesignOutputSelection>,
+) -> Result<Vec<crate::report_formats::Output>, String> {
+    let outputs =
+        crate::report_formats::selected_local_review_plan(sheets, is_combined, selection)?;
+    local_review_formats(
+        &outputs
+            .iter()
+            .map(|output| output.format.clone())
+            .collect::<Vec<_>>(),
+    )?;
+    Ok(outputs)
 }
 
 /// Mark an unchanged governed capture as local review. The renderer keeps the
@@ -112,9 +132,166 @@ mod tests {
     #[test]
     fn local_review_allows_only_print_files_and_the_actual_a4_companion() {
         assert!(local_review_formats(&["voltage_drop_pdf".into(), "voltage_drop".into()]).is_ok());
+        assert!(local_review_formats(&["pdf__saved-a0".into()]).is_ok());
         assert!(local_review_formats(&["voltage_drop".into()]).is_err());
         assert!(local_review_formats(&["voltage_drop_pdf".into(), "xlsx".into()]).is_err());
+        assert!(local_review_formats(&["svg__saved-a0".into()]).is_err());
         assert!(local_review_formats(&[]).is_err());
+    }
+
+    fn review_source() -> (InputReceipt, Vec<Layout>) {
+        let layouts = [
+            ("saved-a0", crate::printing::Paper::A0),
+            ("saved-a3", crate::printing::Paper::A3),
+        ]
+        .into_iter()
+        .map(|(id, paper)| {
+            crate::printing::named_layout(
+                Some(id.into()),
+                None,
+                paper,
+                crate::printing::Orientation::Landscape,
+            )
+            .unwrap()
+        })
+        .collect::<Vec<_>>();
+        let sheets = json!({
+            "printing_setups":layouts.iter().map(|layout| json!({
+                "id":layout.id,"revision":sha256_hex(&serde_json::to_vec(layout).unwrap()),"layout":layout
+            })).collect::<Vec<_>>(),
+            "project_settings":[{"parameter":"design_export_format","value":["xlsx"]}]
+        });
+        let sheets_json = sheets.to_string();
+        (
+            InputReceipt {
+                local_print_recipe: None,
+                schema: 1,
+                country: "Chad".into(),
+                sheets_sha256: sha256_hex(sheets_json.as_bytes()),
+                sheets_json,
+                reference_semantic_sha256: "a".repeat(64),
+            },
+            layouts,
+        )
+    }
+
+    fn review_selection(tokens: &[&str]) -> DesignOutputSelection {
+        crate::report_formats::normalize_output_selection(
+            None,
+            Some(tokens.iter().map(|token| (*token).into()).collect()),
+            None,
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn local_review_plans_a0_a3_a4_and_mixed_without_delivery_inventory() {
+        let (source, layouts) = review_source();
+        let sheets = source.sheets().unwrap();
+        let unchanged = source.clone();
+        let layers = BTreeMap::from([(
+            "lv_poles".into(),
+            json!({"type":"FeatureCollection","features":[{
+                "type":"Feature","properties":{"pole_number":"P1"},
+                "geometry":{"type":"Point","coordinates":[30.06,-1.94]}
+            }]}),
+        )]);
+        for (tokens, expected) in [
+            (vec!["pdf__saved-a0"], vec!["pdf__saved-a0"]),
+            (vec!["pdf__saved-a3"], vec!["pdf__saved-a3"]),
+            (
+                vec!["voltage_drop_pdf"],
+                vec!["voltage_drop", "voltage_drop_pdf"],
+            ),
+            (
+                vec!["pdf__saved-a0", "pdf__saved-a3", "voltage_drop_pdf"],
+                vec![
+                    "voltage_drop",
+                    "voltage_drop_pdf",
+                    "pdf__saved-a0",
+                    "pdf__saved-a3",
+                ],
+            ),
+        ] {
+            let selection = review_selection(&tokens);
+            let outputs = local_review_plan(&sheets, false, Some(&selection)).unwrap();
+            assert_eq!(
+                outputs
+                    .iter()
+                    .map(|output| output.format.as_str())
+                    .collect::<Vec<_>>(),
+                expected
+            );
+            let mut review = source.clone();
+            let selected_layouts = layouts
+                .iter()
+                .filter(|layout| tokens.contains(&format!("pdf__{}", layout.id).as_str()))
+                .cloned()
+                .collect::<Vec<_>>();
+            review.local_print_recipe = Some(local_review(&source, &selected_layouts).unwrap());
+            let plan =
+                plan_transformer_export("proj-1", &review, "tx_a", 7, &layers, Some(&selection))
+                    .unwrap();
+            assert_eq!(plan.outputs, outputs);
+            assert_eq!(plan.formats, expected);
+            assert_eq!(review.sheets_json, source.sheets_json);
+            assert_eq!(review.sheets_sha256, source.sheets_sha256);
+            let main =
+                plan_transformer_export("proj-1", &source, "tx_a", 7, &layers, Some(&selection))
+                    .unwrap();
+            assert_eq!(
+                main.formats
+                    .iter()
+                    .filter(|format| *format == "voltage_drop")
+                    .count(),
+                1,
+                "delivery keeps its mandatory analysis for {tokens:?}"
+            );
+            assert!(plan_transformer_export(
+                "proj-1",
+                &review,
+                "combined_transformer",
+                7,
+                &layers,
+                Some(&selection),
+            )
+            .is_err());
+        }
+        assert_eq!(source, unchanged);
+    }
+
+    #[test]
+    fn local_review_refuses_data_combined_draft_svg_and_unprepared_layouts() {
+        let (source, _) = review_source();
+        let mut sheets = source.sheets().unwrap();
+        for tokens in [
+            vec!["xlsx"],
+            vec!["shp"],
+            vec!["voltage_drop"],
+            vec!["pdf__saved-a0", "xlsx"],
+            vec!["pdf__missing"],
+        ] {
+            assert!(local_review_plan(&sheets, false, Some(&review_selection(&tokens))).is_err());
+        }
+        let selection = review_selection(&["pdf__saved-a0"]);
+        assert!(local_review_plan(&sheets, true, Some(&selection)).is_err());
+        assert!(
+            local_review_plan(&sheets, false, None).is_err(),
+            "saved data policy cannot become review"
+        );
+        sheets["project_settings"][0]["value"] = json!(["pdf__saved-a0"]);
+        assert_eq!(local_review_plan(&sheets, false, None).unwrap().len(), 1);
+        let mut draft = selection.clone();
+        draft.prints[0].formats = vec![crate::report_formats::PrintArtifactFormat::Svg];
+        assert!(local_review_plan(&sheets, false, Some(&draft)).is_err());
+        let mut placement = selection.clone();
+        placement.execution.insert(
+            "print".into(),
+            vec![crate::report_formats::Placement::Desktop],
+        );
+        assert!(local_review_plan(&sheets, false, Some(&placement)).is_err());
+        sheets["printing_setups"][0]["layout"]["page_mm"] = json!([1, 1]);
+        assert!(local_review_plan(&sheets, false, Some(&selection)).is_err());
     }
 
     #[test]
