@@ -102,11 +102,55 @@ pub fn buffer_polygon(ring_in: &[Coord], r: f64, quad_segs: u32) -> Vec<Coord> {
     if pts.len() < 3 {
         return buffer_line(&pts, r, quad_segs);
     }
+    if let Some(ring) = convex_offset(&pts, r, quad_segs) {
+        return ring;
+    }
     let mut pieces: Vec<_> = (0..pts.len())
         .map(|i| capsule(pts[i], pts[(i + 1) % pts.len()], r, quad_segs))
         .collect();
     pieces.push(pts);
     exterior_union(pieces, snap_deg(r))
+}
+
+/// The exterior of a convex polygon is its outward edge offsets joined by
+/// one arc per vertex. Neighbouring capsules would instead repeat the corner
+/// arc from two bearings that differ by roundoff, and the dissolve could not
+/// trace those near-coincident arcs: ordinary 450-650 m print extents came
+/// back empty. `None` leaves concave rings to the union.
+fn convex_offset(pts: &[Coord], r: f64, quad_segs: u32) -> Option<Vec<Coord>> {
+    let mut pts = pts.to_vec();
+    let area = area2(&pts);
+    if !area.is_finite() || area == 0.0 {
+        return None;
+    }
+    if area < 0.0 {
+        pts.reverse();
+    }
+    let n = pts.len();
+    let start = |i: usize| bearing(pts[i], pts[(i + 1) % n]);
+    let end = |i: usize| bearing(pts[(i + 1) % n], pts[i]) + 180.0;
+    // Counterclockwise, every corner turns left: the bearing decreases.
+    const COLLINEAR_DEG: f64 = 1e-9;
+    let turn = |i: usize| (start((i + 1) % n) - end(i) + 540.0).rem_euclid(360.0) - 180.0;
+    if (0..n).any(|i| turn(i) > COLLINEAR_DEG || turn(i) <= COLLINEAR_DEG - 180.0) {
+        return None;
+    }
+    let step = step_deg(quad_segs);
+    let mut ring = Vec::with_capacity(n * (quad_segs as usize + 2));
+    for i in 0..n {
+        let b = pts[(i + 1) % n];
+        ring.push(destination(pts[i], start(i) + 90.0, r));
+        ring.push(destination(b, end(i) + 90.0, r));
+        let sweep = turn(i);
+        if sweep < -COLLINEAR_DEG {
+            ring.extend(arc(b, end(i) + 90.0, sweep, r, step));
+        }
+    }
+    let mut ring = dedupe(&ring);
+    if ring.len() > 1 && haversine(ring[0], *ring.last().unwrap()) <= DEDUPE_EPS_M {
+        ring.pop();
+    }
+    (ring.len() >= 3).then(|| close(ring))
 }
 
 /// Node coalescing tolerance in degrees for a buffer of radius `r` metres.
@@ -700,6 +744,61 @@ mod tests {
             ],
             true,
         );
+    }
+
+    #[test]
+    fn convex_polygons_have_simple_minkowski_boundaries() {
+        prove_buffer(&[(0., 0.), (445., 0.), (445., 445.), (0., 445.)], true);
+        prove_buffer(&[(0., 0.), (630., 0.), (630., 420.), (0., 420.)], true);
+        prove_buffer(
+            &[(0., 0.), (120., 0.), (160., 70.), (60., 130.), (-20., 60.)],
+            true,
+        );
+    }
+
+    // LV print focus rectangles at Rwanda latitudes: the capsule dissolve
+    // returned no ring for these ordinary 450-650 m circuit extents, and the
+    // sheet refused with "print focus could not be buffered".
+    #[test]
+    fn print_extent_rectangles_keep_their_buffer() {
+        for (w, h) in [
+            (0.004, 0.004),
+            (0.0056636, 0.0056788),
+            (0.006, 0.006),
+            (0.006, 0.004),
+            (0.004, 0.006),
+            (0.001, 0.001),
+            (0.01, 0.01),
+        ] {
+            let (x, y) = (30.0, -2.0);
+            let rectangle = [
+                Coord::new(x - w / 2., y - h / 2.),
+                Coord::new(x + w / 2., y - h / 2.),
+                Coord::new(x + w / 2., y + h / 2.),
+                Coord::new(x - w / 2., y + h / 2.),
+                Coord::new(x - w / 2., y - h / 2.),
+            ];
+            for r in [0.5, 35.0, 100.0] {
+                let ring = buffer_polygon(&rectangle, r, 8);
+                assert_simple(&ring);
+                let (min_lng, min_lat, max_lng, max_lat) = bbox(&ring);
+                let grown = [
+                    haversine(Coord::new(x, y - h / 2.), Coord::new(x, min_lat)),
+                    haversine(Coord::new(x, y + h / 2.), Coord::new(x, max_lat)),
+                    haversine(Coord::new(x - w / 2., y), Coord::new(min_lng, y)),
+                    haversine(Coord::new(x + w / 2., y), Coord::new(max_lng, y)),
+                ];
+                for growth in grown {
+                    assert!(
+                        (growth - r).abs() < 0.01 * r + 0.01,
+                        "{w}x{h} r={r}: grew {growth}"
+                    );
+                }
+                let mut reversed = rectangle;
+                reversed.reverse();
+                assert_eq!(buffer_polygon(&reversed, r, 8).len(), ring.len());
+            }
+        }
     }
 
     #[test]
