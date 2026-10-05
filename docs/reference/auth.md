@@ -66,6 +66,23 @@ If packaging has not supplied both values, auth commands report
 `development: true` bundle with `DS_NATIVE_CLIENT_PROFILE_BUNDLE`; there are
 no per-field environment overrides.
 
+An ordinary debug executable may explicitly set `DS_NATIVE_LOCAL_GO=1` to send
+its closed Go API calls to the fixed `http://127.0.0.1:8080` listener. The
+selection is captured before profile loading and protected-state restoration;
+empty or absent means the packaged gateway. Other values, a release executable,
+or a messaging fixture build refuse with `native_profile_unsafe`. The exact
+packaged profile, credential, user, deployment lane, audience and project fences
+remain unchanged. Local requests disable proxies and redirects and never fall
+back to a gateway. Firebase authentication and signed storage requests retain
+their declared destinations. Solar reference requests refuse in local mode
+until their separate provider supports it.
+
+The local Go service still validates the real user and authorizes project
+membership. ADC grants only backend infrastructure access. A DS device session
+also requires that local Go holds the same configured device issuer, signing
+authority, lane and audience; missing or foreign authority remains a refusal,
+without choosing another account or falling through to Firebase.
+
 Catalog schema v10 retains the four exact transformer-context fields: `POST`,
 `/api/v1/data`, `get_transformers_data`, and the `context` projection. They are
 validated as exact bytes and do not create a generic request surface. Because

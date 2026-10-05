@@ -10,6 +10,7 @@ pub mod correspondence;
 pub mod device;
 pub mod grid_library_member;
 pub mod link_approval;
+mod local_go;
 mod profile;
 mod project_template;
 mod saved_a4;
@@ -452,8 +453,8 @@ const PROFILE_DIGEST_REFUSAL: Refusal = Refusal {
 };
 const PROFILE_UNSAFE_REFUSAL: Refusal = Refusal {
     code: "native_profile_unsafe",
-    when: "the packaged catalog is unsafe, oversized, or malformed",
-    remedy: "reinstall one complete ds release",
+    when: "the packaged catalog is unsafe or malformed, or the explicit local Go selection is invalid for this executable",
+    remedy: "unset DS_NATIVE_LOCAL_GO, or reinstall one complete ds release if the catalog is unsafe",
 };
 const STATE_UNAVAILABLE_REFUSAL: Refusal = Refusal {
     code: "native_state_unavailable",

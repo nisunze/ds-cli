@@ -1,4 +1,7 @@
 //! Fixed-origin ureq adapter for ds-client-core's closed calls.
+//! Explicit debug local Go routing leaves the protected profile unchanged.
+
+use crate::local_go;
 
 use std::io::{Read, Write};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -29,6 +32,15 @@ impl Transport for NativeTransport {
         call: ds_client_core::SolarReferenceCall<'_>,
     ) -> ds_solar_contracts::SolarResult<ds_solar_contracts::BundleBytes> {
         use ds_solar_io::provider::ReferenceBundleProvider;
+        if local_go::is_local().map_err(|_| {
+            ds_solar_contracts::SolarError::weather_unavailable(
+                "native local Go transport selection is invalid",
+            )
+        })? {
+            return Err(ds_solar_contracts::SolarError::weather_unavailable(
+                "Solar reference transport does not support local Go; no cloud fallback was attempted",
+            ));
+        }
         ds_solar_io::provider::HttpReferenceProvider::new(
             call.gateway_origin(),
             Some(call.bearer_token().to_owned()),
@@ -45,8 +57,13 @@ impl Transport for NativeTransport {
         let (request_id, action_id) = correlation_headers();
         let mut bearer = format!("Bearer {}", call.bearer_token());
         let body = call.body();
-        let url = format!("{}{}", call.gateway_origin(), call.path());
-        let result = ureq::post(url)
+        let url = format!(
+            "{}{}",
+            local_go::api_origin(call.gateway_origin())?,
+            call.path()
+        );
+        let result = local_go::api_agent()?
+            .post(url)
             .header("Accept", "application/json")
             .header("Content-Type", "application/json")
             .header("X-App-Id", call.client_id())
@@ -74,11 +91,15 @@ impl Transport for NativeTransport {
         let (request_id, action_id) = correlation_headers();
         let mut bearer = format!("Bearer {}", call.bearer_token());
         let body = call.body();
-        let url = format!("{}{}", call.gateway_origin(), call.path());
+        let url = format!(
+            "{}{}",
+            local_go::api_origin(call.gateway_origin())?,
+            call.path()
+        );
         let request = if call.method() == "GET" {
-            ureq::get(url).force_send_body()
+            local_go::api_agent()?.get(url).force_send_body()
         } else {
-            ureq::post(url)
+            local_go::api_agent()?.post(url)
         };
         let result = request
             .header("Accept", call.content_type())
@@ -108,11 +129,15 @@ impl Transport for NativeTransport {
         let (request_id, action_id) = correlation_headers();
         let mut bearer = format!("Bearer {}", call.bearer_token());
         let body = call.body();
-        let url = format!("{}{}", call.gateway_origin(), call.path());
+        let url = format!(
+            "{}{}",
+            local_go::api_origin(call.gateway_origin())?,
+            call.path()
+        );
         let request = match call.method() {
-            "GET" => ureq::get(url).force_send_body(),
-            "PATCH" => ureq::patch(url),
-            _ => ureq::post(url),
+            "GET" => local_go::api_agent()?.get(url).force_send_body(),
+            "PATCH" => local_go::api_agent()?.patch(url),
+            _ => local_go::api_agent()?.post(url),
         };
         let result = request
             .header("Accept", call.content_type())
@@ -178,7 +203,8 @@ impl Transport for NativeTransport {
         // call may supply one shared action id from the core instead.
         let (request_id, action_id) = correlation_headers();
         let mut bearer = format!("Bearer {}", call.bearer_token());
-        let result = ureq::get(call.url())
+        let result = local_go::api_agent()?
+            .get(local_go::api_url(call.gateway_origin(), &call.url())?)
             .header("Accept", call.content_type())
             .header("Content-Type", call.content_type())
             .header("X-App-Id", call.client_id())
@@ -210,7 +236,12 @@ impl Transport for NativeTransport {
         let (request_id, action_id) = correlation_headers();
         let bearer = Zeroizing::new(format!("Bearer {}", call.bearer_token()));
         let body = call.body();
-        let response = ureq::post(format!("{}{}", call.gateway_origin(), call.path()))
+        let response = local_go::api_agent()?
+            .post(format!(
+                "{}{}",
+                local_go::api_origin(call.gateway_origin())?,
+                call.path()
+            ))
             .header("Accept", call.content_type())
             .header("Content-Type", call.content_type())
             .header("X-App-Id", call.client_id())
@@ -241,8 +272,9 @@ impl Transport for NativeTransport {
         let (request_id, action_id) = correlation_headers();
         let mut bearer = format!("Bearer {}", call.bearer_token());
         let body = call.body();
-        let url = transformer_context_url(call.gateway_origin());
-        let result = ureq::post(url)
+        let url = transformer_context_url(local_go::api_origin(call.gateway_origin())?);
+        let result = local_go::api_agent()?
+            .post(url)
             .header("Accept", call.content_type())
             .header("Content-Type", call.content_type())
             .header("X-App-Id", call.client_id())
@@ -274,8 +306,9 @@ impl Transport for NativeTransport {
         let (request_id, action_id) = correlation_headers();
         let mut bearer = format!("Bearer {}", call.bearer_token());
         let body = call.body();
-        let url = project_forms_url(call.gateway_origin());
-        let result = ureq::post(url)
+        let url = project_forms_url(local_go::api_origin(call.gateway_origin())?);
+        let result = local_go::api_agent()?
+            .post(url)
             .header("Accept", call.content_type())
             .header("Content-Type", call.content_type())
             .header("X-App-Id", call.client_id())
@@ -307,8 +340,9 @@ impl Transport for NativeTransport {
         let (request_id, action_id) = correlation_headers();
         let mut bearer = format!("Bearer {}", call.bearer_token());
         let body = call.body();
-        let url = project_forms_url(call.gateway_origin());
-        let result = ureq::post(url)
+        let url = project_forms_url(local_go::api_origin(call.gateway_origin())?);
+        let result = local_go::api_agent()?
+            .post(url)
             .header("Accept", call.content_type())
             .header("Content-Type", call.content_type())
             .header("X-App-Id", call.client_id())
@@ -340,8 +374,9 @@ impl Transport for NativeTransport {
         let (request_id, action_id) = correlation_headers();
         let mut bearer = format!("Bearer {}", call.bearer_token());
         let body = call.body();
-        let url = solar_snapshot_url(call.gateway_origin());
-        let result = ureq::post(url)
+        let url = solar_snapshot_url(local_go::api_origin(call.gateway_origin())?);
+        let result = local_go::api_agent()?
+            .post(url)
             .header("Accept", call.content_type())
             .header("Content-Type", call.content_type())
             .header("X-App-Id", call.client_id())
@@ -373,8 +408,9 @@ impl Transport for NativeTransport {
         let (request_id, action_id) = correlation_headers();
         let mut bearer = format!("Bearer {}", call.bearer_token());
         let body = call.body();
-        let url = survey_query_url(call.gateway_origin());
-        let result = ureq::post(url)
+        let url = survey_query_url(local_go::api_origin(call.gateway_origin())?);
+        let result = local_go::api_agent()?
+            .post(url)
             .header("Accept", call.content_type())
             .header("Content-Type", call.content_type())
             .header("X-App-Id", call.client_id())
@@ -406,8 +442,9 @@ impl Transport for NativeTransport {
         let (request_id, action_id) = correlation_headers();
         let mut bearer = format!("Bearer {}", call.bearer_token());
         let body = call.body();
-        let url = survey_entries_select_url(call.gateway_origin());
-        let result = ureq::post(url)
+        let url = survey_entries_select_url(local_go::api_origin(call.gateway_origin())?);
+        let result = local_go::api_agent()?
+            .post(url)
             .header("Accept", call.content_type())
             .header("Content-Type", call.content_type())
             .header("X-App-Id", call.client_id())
@@ -439,8 +476,9 @@ impl Transport for NativeTransport {
         let (request_id, action_id) = correlation_headers();
         let mut bearer = format!("Bearer {}", call.bearer_token());
         let body = call.body();
-        let url = survey_entries_changes_url(call.gateway_origin());
-        let result = ureq::post(url)
+        let url = survey_entries_changes_url(local_go::api_origin(call.gateway_origin())?);
+        let result = local_go::api_agent()?
+            .post(url)
             .header("Accept", call.content_type())
             .header("Content-Type", call.content_type())
             .header("X-App-Id", call.client_id())
@@ -470,7 +508,12 @@ impl Transport for NativeTransport {
         let (request_id, action_id) = correlation_headers();
         let mut bearer = format!("Bearer {}", call.bearer_token());
         let body = call.body();
-        let result = ureq::put(format!("{}{}", call.gateway_origin(), call.path()))
+        let result = local_go::api_agent()?
+            .put(format!(
+                "{}{}",
+                local_go::api_origin(call.gateway_origin())?,
+                call.path()
+            ))
             .header("Accept", "application/json")
             .header("Content-Type", "application/json")
             .header("X-App-Id", call.client_id())
@@ -501,8 +544,9 @@ impl Transport for NativeTransport {
         let (request_id, action_id) = correlation_headers();
         let mut bearer = format!("Bearer {}", call.bearer_token());
         let body = call.body();
-        let url = survey_entry_create_url(call.gateway_origin());
-        let result = ureq::post(url)
+        let url = survey_entry_create_url(local_go::api_origin(call.gateway_origin())?);
+        let result = local_go::api_agent()?
+            .post(url)
             .header("Accept", call.content_type())
             .header("Content-Type", call.content_type())
             .header("X-App-Id", call.client_id())
@@ -554,10 +598,11 @@ impl Transport for NativeTransport {
         let body = call.body();
         let url = format!(
             "{}{}",
-            call.gateway_origin(),
+            local_go::api_origin(call.gateway_origin())?,
             ds_client_core::PROJECT_DATA_PATH
         );
-        let result = ureq::post(url)
+        let result = local_go::api_agent()?
+            .post(url)
             .header("Accept", call.content_type())
             .header("Content-Type", call.content_type())
             .header("X-App-Id", call.client_id())
@@ -588,7 +633,12 @@ impl Transport for NativeTransport {
         let (request_id, action_id) = correlation_headers();
         let mut bearer = format!("Bearer {}", call.bearer_token());
         let body = call.body();
-        let result = ureq::post(format!("{}{}", call.gateway_origin(), call.path()))
+        let result = local_go::api_agent()?
+            .post(format!(
+                "{}{}",
+                local_go::api_origin(call.gateway_origin())?,
+                call.path()
+            ))
             .header("Accept", call.content_type())
             .header("Content-Type", call.content_type())
             .header("X-App-Id", call.client_id())
@@ -623,7 +673,12 @@ impl Transport for NativeTransport {
         let (request_id, action_id) = correlation_headers();
         let mut bearer = format!("Bearer {}", call.bearer_token());
         let body = call.body();
-        let result = ureq::post(format!("{}{}", call.gateway_origin(), call.path()))
+        let result = local_go::api_agent()?
+            .post(format!(
+                "{}{}",
+                local_go::api_origin(call.gateway_origin())?,
+                call.path()
+            ))
             .header("Accept", call.content_type())
             .header("Content-Type", call.content_type())
             .header("X-App-Id", call.client_id())
@@ -699,7 +754,12 @@ impl Transport for NativeTransport {
         let (request_id, action_id) = correlation_headers();
         let mut bearer = format!("Bearer {}", call.bearer_token());
         let body = call.body();
-        let result = ureq::post(format!("{}{}", call.gateway_origin(), call.path()))
+        let result = local_go::api_agent()?
+            .post(format!(
+                "{}{}",
+                local_go::api_origin(call.gateway_origin())?,
+                call.path()
+            ))
             .header("Accept", call.content_type())
             .header("Content-Type", call.content_type())
             .header("X-App-Id", call.client_id())
@@ -728,11 +788,15 @@ impl Transport for NativeTransport {
         let (request_id, action_id) = correlation_headers();
         let mut bearer = format!("Bearer {}", call.bearer_token());
         let body = call.body();
-        let url = format!("{}{}", call.gateway_origin(), call.path());
+        let url = format!(
+            "{}{}",
+            local_go::api_origin(call.gateway_origin())?,
+            call.path()
+        );
         let request = if call.method() == "GET" {
-            ureq::get(url).force_send_body()
+            local_go::api_agent()?.get(url).force_send_body()
         } else {
-            ureq::post(url)
+            local_go::api_agent()?.post(url)
         };
         let result = request
             .header("Accept", call.content_type())
@@ -767,11 +831,15 @@ impl Transport for NativeTransport {
         let (request_id, action_id) = correlation_headers();
         let mut bearer = format!("Bearer {}", call.bearer_token());
         let body = call.body();
-        let url = format!("{}{}", call.gateway_origin(), call.path());
+        let url = format!(
+            "{}{}",
+            local_go::api_origin(call.gateway_origin())?,
+            call.path()
+        );
         let request = if call.method() == "GET" {
-            ureq::get(url).force_send_body()
+            local_go::api_agent()?.get(url).force_send_body()
         } else {
-            ureq::post(url)
+            local_go::api_agent()?.post(url)
         };
         let result = request
             .header("Accept", call.content_type())
@@ -806,11 +874,15 @@ impl Transport for NativeTransport {
         let (request_id, action_id) = correlation_headers();
         let mut bearer = format!("Bearer {}", call.bearer_token());
         let body = call.body();
-        let url = format!("{}{}", call.gateway_origin(), call.path());
+        let url = format!(
+            "{}{}",
+            local_go::api_origin(call.gateway_origin())?,
+            call.path()
+        );
         let request = if call.method() == "GET" {
-            ureq::get(url).force_send_body()
+            local_go::api_agent()?.get(url).force_send_body()
         } else {
-            ureq::post(url)
+            local_go::api_agent()?.post(url)
         };
         let result = request
             .header("Accept", call.content_type())
@@ -846,11 +918,15 @@ impl Transport for NativeTransport {
         let (request_id, action_id) = correlation_headers();
         let mut bearer = format!("Bearer {}", call.bearer_token());
         let body = call.body();
-        let url = format!("{}{}", call.gateway_origin(), call.path());
+        let url = format!(
+            "{}{}",
+            local_go::api_origin(call.gateway_origin())?,
+            call.path()
+        );
         let request = if call.method() == "GET" {
-            ureq::get(url).force_send_body()
+            local_go::api_agent()?.get(url).force_send_body()
         } else {
-            ureq::post(url)
+            local_go::api_agent()?.post(url)
         };
         let result = request
             .header("Accept", call.content_type())
@@ -886,11 +962,15 @@ impl Transport for NativeTransport {
         let (request_id, action_id) = correlation_headers();
         let mut bearer = format!("Bearer {}", call.bearer_token());
         let body = call.body();
-        let url = format!("{}{}", call.gateway_origin(), call.path());
+        let url = format!(
+            "{}{}",
+            local_go::api_origin(call.gateway_origin())?,
+            call.path()
+        );
         let request = if call.method() == "GET" {
-            ureq::get(url).force_send_body()
+            local_go::api_agent()?.get(url).force_send_body()
         } else {
-            ureq::post(url)
+            local_go::api_agent()?.post(url)
         };
         let result = request
             .header("Accept", call.content_type())
@@ -930,8 +1010,13 @@ impl Transport for NativeTransport {
         let (request_id, action_id) = correlation_headers();
         let mut bearer = format!("Bearer {}", call.bearer_token());
         let body = call.body();
-        let url = format!("{}{}", call.gateway_origin(), call.path());
-        let result = ureq::post(url)
+        let url = format!(
+            "{}{}",
+            local_go::api_origin(call.gateway_origin())?,
+            call.path()
+        );
+        let result = local_go::api_agent()?
+            .post(url)
             .header("Accept", call.content_type())
             .header("Content-Type", call.content_type())
             .header("X-App-Id", call.client_id())
@@ -961,11 +1046,15 @@ impl Transport for NativeTransport {
         let (request_id, action_id) = correlation_headers();
         let mut bearer = format!("Bearer {}", call.bearer_token());
         let body = call.body();
-        let url = format!("{}{}", call.gateway_origin(), call.path());
+        let url = format!(
+            "{}{}",
+            local_go::api_origin(call.gateway_origin())?,
+            call.path()
+        );
         let request = if call.method() == "GET" {
-            ureq::get(url).force_send_body()
+            local_go::api_agent()?.get(url).force_send_body()
         } else {
-            ureq::post(url)
+            local_go::api_agent()?.post(url)
         };
         let result = request
             .header("Accept", call.content_type())
@@ -1002,7 +1091,12 @@ impl Transport for NativeTransport {
         let (request_id, action_id) = correlation_headers();
         let mut bearer = format!("Bearer {}", call.bearer_token());
         let body = call.body();
-        let result = ureq::post(format!("{}{}", call.gateway_origin(), call.path()))
+        let result = local_go::api_agent()?
+            .post(format!(
+                "{}{}",
+                local_go::api_origin(call.gateway_origin())?,
+                call.path()
+            ))
             .header("Accept", call.content_type())
             .header("Content-Type", call.content_type())
             .header("X-App-Id", call.client_id())
@@ -1032,11 +1126,15 @@ impl Transport for NativeTransport {
         let (request_id, action_id) = correlation_headers();
         let mut bearer = format!("Bearer {}", call.bearer_token());
         let body = call.body();
-        let url = format!("{}{}", call.gateway_origin(), call.path());
+        let url = format!(
+            "{}{}",
+            local_go::api_origin(call.gateway_origin())?,
+            call.path()
+        );
         let request = if call.method() == "GET" {
-            ureq::get(url).force_send_body()
+            local_go::api_agent()?.get(url).force_send_body()
         } else {
-            ureq::post(url)
+            local_go::api_agent()?.post(url)
         };
         let result = request
             .header("Accept", call.content_type())
@@ -1072,11 +1170,15 @@ impl Transport for NativeTransport {
         let (request_id, action_id) = correlation_headers();
         let mut bearer = format!("Bearer {}", call.bearer_token());
         let body = call.body();
-        let url = format!("{}{}", call.gateway_origin(), call.path());
+        let url = format!(
+            "{}{}",
+            local_go::api_origin(call.gateway_origin())?,
+            call.path()
+        );
         let request = if call.method() == "GET" {
-            ureq::get(url).force_send_body()
+            local_go::api_agent()?.get(url).force_send_body()
         } else {
-            ureq::post(url)
+            local_go::api_agent()?.post(url)
         };
         let result = request
             .header("Accept", call.content_type())
@@ -1112,11 +1214,15 @@ impl Transport for NativeTransport {
         let (request_id, action_id) = correlation_headers();
         let mut bearer = format!("Bearer {}", call.bearer_token());
         let body = call.body();
-        let url = format!("{}{}", call.gateway_origin(), call.path());
+        let url = format!(
+            "{}{}",
+            local_go::api_origin(call.gateway_origin())?,
+            call.path()
+        );
         let request = if call.method() == "GET" {
-            ureq::get(url).force_send_body()
+            local_go::api_agent()?.get(url).force_send_body()
         } else {
-            ureq::post(url)
+            local_go::api_agent()?.post(url)
         };
         let result = request
             .header("Accept", call.content_type())
@@ -1153,7 +1259,12 @@ impl Transport for NativeTransport {
         let (request_id, action_id) = correlation_headers();
         let mut bearer = format!("Bearer {}", call.bearer_token());
         let body = call.body();
-        let result = ureq::post(format!("{}{}", call.gateway_origin(), call.path()))
+        let result = local_go::api_agent()?
+            .post(format!(
+                "{}{}",
+                local_go::api_origin(call.gateway_origin())?,
+                call.path()
+            ))
             .header("Accept", call.content_type())
             .header("Content-Type", call.content_type())
             .header("X-App-Id", call.client_id())
@@ -1184,7 +1295,12 @@ impl Transport for NativeTransport {
         let (request_id, action_id) = correlation_headers();
         let mut bearer = format!("Bearer {}", call.bearer_token());
         let body = call.body();
-        let result = ureq::post(format!("{}{}", call.gateway_origin(), call.path()))
+        let result = local_go::api_agent()?
+            .post(format!(
+                "{}{}",
+                local_go::api_origin(call.gateway_origin())?,
+                call.path()
+            ))
             .header("Accept", call.content_type())
             .header("Content-Type", call.content_type())
             .header("X-App-Id", call.client_id())
@@ -1217,8 +1333,9 @@ impl Transport for NativeTransport {
         #[cfg(ds_messaging_emulator)]
         let origin = crate::messaging::emulator_origin();
         #[cfg(not(ds_messaging_emulator))]
-        let origin = call.gateway_origin();
-        let result = ureq::post(format!("{}{}", origin, call.path()))
+        let origin = local_go::api_origin(call.gateway_origin())?;
+        let result = local_go::api_agent()?
+            .post(format!("{}{}", origin, call.path()))
             .header("Accept", call.content_type())
             .header("Content-Type", call.content_type())
             .header("X-App-Id", call.client_id())
@@ -1249,7 +1366,12 @@ impl Transport for NativeTransport {
         let (request_id, action_id) = correlation_headers();
         let mut bearer = format!("Bearer {}", call.bearer_token());
         let body = call.body();
-        let result = ureq::post(format!("{}{}", call.gateway_origin(), call.path()))
+        let result = local_go::api_agent()?
+            .post(format!(
+                "{}{}",
+                local_go::api_origin(call.gateway_origin())?,
+                call.path()
+            ))
             .header("Accept", call.content_type())
             .header("Content-Type", call.content_type())
             .header("X-App-Id", call.client_id())
@@ -1280,7 +1402,12 @@ impl Transport for NativeTransport {
         let (request_id, action_id) = correlation_headers();
         let mut bearer = format!("Bearer {}", call.bearer_token());
         let body = call.body();
-        let result = ureq::post(format!("{}{}", call.gateway_origin(), call.path()))
+        let result = local_go::api_agent()?
+            .post(format!(
+                "{}{}",
+                local_go::api_origin(call.gateway_origin())?,
+                call.path()
+            ))
             .header("Accept", call.content_type())
             .header("Content-Type", call.content_type())
             .header("X-App-Id", call.client_id())
@@ -1312,7 +1439,8 @@ impl Transport for NativeTransport {
         let mut bearer = format!("Bearer {}", call.bearer_token());
         // The whole request is the URL: the country is its path and the read is
         // its query, both built from closed tokens by the core.
-        let result = ureq::get(call.url())
+        let result = local_go::api_agent()?
+            .get(local_go::api_url(call.gateway_origin(), &call.url())?)
             .header("Accept", call.content_type())
             .header("Content-Type", call.content_type())
             .header("X-App-Id", call.client_id())
@@ -1344,7 +1472,8 @@ impl Transport for NativeTransport {
         let mut bearer = format!("Bearer {}", call.bearer_token());
         // The whole request is the path: reliability is global, so there is no
         // project, no query and no body to carry one.
-        let result = ureq::get(call.url())
+        let result = local_go::api_agent()?
+            .get(local_go::api_url(call.gateway_origin(), &call.url())?)
             .header("Accept", call.content_type())
             .header("Content-Type", call.content_type())
             .header("X-App-Id", call.client_id())
@@ -1379,7 +1508,12 @@ impl Transport for NativeTransport {
         // The route answers NDJSON: one row per line, closed by a summary. This
         // reads the whole bounded window and hands the bytes back; the line
         // grammar belongs to the core, not to a transport.
-        let result = ureq::post(format!("{}{}", call.gateway_origin(), call.path()))
+        let result = local_go::api_agent()?
+            .post(format!(
+                "{}{}",
+                local_go::api_origin(call.gateway_origin())?,
+                call.path()
+            ))
             .header("Accept", call.accept())
             .header("Content-Type", call.content_type())
             .header("X-App-Id", call.client_id())
@@ -1412,7 +1546,12 @@ impl Transport for NativeTransport {
         let body = call.body();
         // The map's own read: one GeoJSON feature per line, closed by a
         // summary. The core verifies the stream; this only bounds it.
-        let result = ureq::post(format!("{}{}", call.gateway_origin(), call.path()))
+        let result = local_go::api_agent()?
+            .post(format!(
+                "{}{}",
+                local_go::api_origin(call.gateway_origin())?,
+                call.path()
+            ))
             .header("Accept", call.accept())
             .header("Content-Type", call.content_type())
             .header("X-App-Id", call.client_id())
@@ -1443,7 +1582,12 @@ impl Transport for NativeTransport {
         let (request_id, action_id) = correlation_headers();
         let mut bearer = format!("Bearer {}", call.bearer_token());
         let body = call.body();
-        let result = ureq::post(format!("{}{}", call.gateway_origin(), call.path()))
+        let result = local_go::api_agent()?
+            .post(format!(
+                "{}{}",
+                local_go::api_origin(call.gateway_origin())?,
+                call.path()
+            ))
             .header("Accept", call.content_type())
             .header("Content-Type", call.content_type())
             .header("X-App-Id", call.client_id())
@@ -1495,11 +1639,15 @@ impl Transport for NativeTransport {
         let (request_id, action_id) = correlation_headers();
         let mut bearer = format!("Bearer {}", call.bearer_token());
         let body = call.body();
-        let url = format!("{}{}", call.gateway_origin(), call.path());
+        let url = format!(
+            "{}{}",
+            local_go::api_origin(call.gateway_origin())?,
+            call.path()
+        );
         let request = if call.method() == "GET" {
-            ureq::get(url).force_send_body()
+            local_go::api_agent()?.get(url).force_send_body()
         } else {
-            ureq::post(url)
+            local_go::api_agent()?.post(url)
         };
         let result = request
             .header("Accept", call.content_type())
@@ -1629,11 +1777,15 @@ impl Transport for NativeTransport {
         let (request_id, action_id) = correlation_headers();
         let mut bearer = format!("Bearer {}", call.bearer_token());
         let body = call.body();
-        let url = format!("{}{}", call.gateway_origin(), call.path());
+        let url = format!(
+            "{}{}",
+            local_go::api_origin(call.gateway_origin())?,
+            call.path()
+        );
         let request = if call.method() == "GET" {
-            ureq::get(url).force_send_body()
+            local_go::api_agent()?.get(url).force_send_body()
         } else {
-            ureq::post(url)
+            local_go::api_agent()?.post(url)
         };
         let result = request
             .header("Accept", call.content_type())
@@ -1669,11 +1821,15 @@ impl Transport for NativeTransport {
         let (request_id, action_id) = correlation_headers();
         let mut bearer = format!("Bearer {}", call.bearer_token());
         let body = call.body();
-        let url = format!("{}{}", call.gateway_origin(), call.path());
+        let url = format!(
+            "{}{}",
+            local_go::api_origin(call.gateway_origin())?,
+            call.path()
+        );
         let request = if call.method() == "GET" {
-            ureq::get(url).force_send_body()
+            local_go::api_agent()?.get(url).force_send_body()
         } else {
-            ureq::post(url)
+            local_go::api_agent()?.post(url)
         };
         let result = request
             .header("Accept", call.content_type())
@@ -1711,8 +1867,13 @@ impl Transport for NativeTransport {
         let (request_id, action_id) = correlation_headers();
         let mut bearer = format!("Bearer {}", call.bearer_token());
         let body = call.body();
-        let url = format!("{}{}", call.gateway_origin(), ds_client_core::STYLES_PATH);
-        let result = ureq::post(url)
+        let url = format!(
+            "{}{}",
+            local_go::api_origin(call.gateway_origin())?,
+            ds_client_core::STYLES_PATH
+        );
+        let result = local_go::api_agent()?
+            .post(url)
             .header("Accept", call.content_type())
             .header("Content-Type", call.content_type())
             .header("X-App-Id", call.client_id())
@@ -1744,8 +1905,13 @@ impl Transport for NativeTransport {
         let (request_id, action_id) = correlation_headers();
         let mut bearer = format!("Bearer {}", call.bearer_token());
         let body = call.body();
-        let url = format!("{}{}", call.gateway_origin(), ds_client_core::PRINTING_PATH);
-        let result = ureq::post(url)
+        let url = format!(
+            "{}{}",
+            local_go::api_origin(call.gateway_origin())?,
+            ds_client_core::PRINTING_PATH
+        );
+        let result = local_go::api_agent()?
+            .post(url)
             .header("Accept", call.content_type())
             .header("Content-Type", call.content_type())
             .header("X-App-Id", call.client_id())
@@ -1778,10 +1944,11 @@ impl Transport for NativeTransport {
         let body = call.body();
         let url = format!(
             "{}{}",
-            call.gateway_origin(),
+            local_go::api_origin(call.gateway_origin())?,
             ds_client_core::PRINTING_STANDARD_PATH
         );
-        let result = ureq::post(url)
+        let result = local_go::api_agent()?
+            .post(url)
             .header("Accept", call.content_type())
             .header("Content-Type", call.content_type())
             .header("X-App-Id", call.client_id())
@@ -1814,10 +1981,11 @@ impl Transport for NativeTransport {
         let body = call.body();
         let url = format!(
             "{}{}",
-            call.gateway_origin(),
+            local_go::api_origin(call.gateway_origin())?,
             ds_client_core::PRINT_STYLE_KEYS_PATH
         );
-        let result = ureq::post(url)
+        let result = local_go::api_agent()?
+            .post(url)
             .header("Accept", call.content_type())
             .header("Content-Type", call.content_type())
             .header("X-App-Id", call.client_id())
@@ -1849,8 +2017,9 @@ impl Transport for NativeTransport {
         let (request_id, action_id) = correlation_headers();
         let mut bearer = format!("Bearer {}", call.bearer_token());
         let body = call.body();
-        let url = data_distribution_url(call.gateway_origin());
-        let result = ureq::post(url)
+        let url = data_distribution_url(local_go::api_origin(call.gateway_origin())?);
+        let result = local_go::api_agent()?
+            .post(url)
             .header("Accept", call.content_type())
             .header("Content-Type", call.content_type())
             .header("X-App-Id", call.client_id())
@@ -1905,10 +2074,11 @@ impl Transport for NativeTransport {
         let body = call.body();
         let url = format!(
             "{}{}",
-            call.gateway_origin(),
+            local_go::api_origin(call.gateway_origin())?,
             ds_client_core::DESIGN_SELECTIONS_PATH
         );
-        let result = ureq::post(url)
+        let result = local_go::api_agent()?
+            .post(url)
             .header("Accept", call.content_type())
             .header("Content-Type", call.content_type())
             .header("X-App-Id", call.client_id())
@@ -1940,8 +2110,13 @@ impl Transport for NativeTransport {
         let (request_id, action_id) = correlation_headers();
         let mut bearer = format!("Bearer {}", call.bearer_token());
         let body = call.body();
-        let url = format!("{}{}", call.gateway_origin(), ds_client_core::LAYERS_PATH);
-        let result = ureq::post(url)
+        let url = format!(
+            "{}{}",
+            local_go::api_origin(call.gateway_origin())?,
+            ds_client_core::LAYERS_PATH
+        );
+        let result = local_go::api_agent()?
+            .post(url)
             .header("Accept", call.content_type())
             .header("Content-Type", call.content_type())
             .header("X-App-Id", call.client_id())
@@ -1970,8 +2145,9 @@ impl Transport for NativeTransport {
         let (request_id, action_id) = correlation_headers();
         let mut bearer = format!("Bearer {}", call.bearer_token());
         let body = call.body();
-        let url = tiles_url(call.gateway_origin());
-        let result = ureq::post(url)
+        let url = tiles_url(local_go::api_origin(call.gateway_origin())?);
+        let result = local_go::api_agent()?
+            .post(url)
             .header("Accept", call.content_type())
             .header("Content-Type", call.content_type())
             .header("X-App-Id", call.client_id())
@@ -2011,8 +2187,9 @@ impl NativeTransport {
         let (request_id, action_id) = correlation_headers();
         let mut bearer = format!("Bearer {}", call.bearer_token());
         let body = call.body();
-        let url = project_report_url(call.gateway_origin());
-        let mut request = ureq::post(url)
+        let url = project_report_url(local_go::api_origin(call.gateway_origin())?);
+        let mut request = local_go::api_agent()?
+            .post(url)
             .header("Accept", call.content_type())
             .header("Content-Type", call.content_type())
             .header("X-App-Id", call.client_id())

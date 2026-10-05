@@ -1558,8 +1558,9 @@ impl NativeDeviceTransport {
             crate::messaging::emulator_origin()
         };
         #[cfg(not(ds_messaging_emulator))]
-        let origin = self.origin.as_str();
-        let response = ureq::post(format!("{}{}", origin, path))
+        let origin = crate::local_go::api_origin(&self.origin)?;
+        let response = crate::local_go::api_agent()?
+            .post(format!("{}{}", origin, path))
             .header("Accept", "application/json")
             .header("Content-Type", "application/json")
             .header("X-App-Id", ds_client_core::NATIVE_CLIENT_ID)
@@ -1602,8 +1603,16 @@ impl DeviceTransport for NativeDeviceTransport {
         let path = call.path().map_err(|_| TransportError::Unreachable)?;
         let mut bearer = format!("Bearer {}", call.bearer_token());
         let request = match call.method() {
-            "GET" => ureq::get(format!("{}{}", self.origin, path)),
-            "DELETE" => ureq::delete(format!("{}{}", self.origin, path)),
+            "GET" => crate::local_go::api_agent()?.get(format!(
+                "{}{}",
+                crate::local_go::api_origin(&self.origin)?,
+                path
+            )),
+            "DELETE" => crate::local_go::api_agent()?.delete(format!(
+                "{}{}",
+                crate::local_go::api_origin(&self.origin)?,
+                path
+            )),
             _ => return Err(TransportError::Unreachable),
         };
         let result = request

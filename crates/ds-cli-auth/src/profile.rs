@@ -223,6 +223,7 @@ struct Provenance {
 }
 
 pub fn load(lane: Lane) -> Result<ClientProfile, Failure> {
+    crate::local_go::capture_for_profile()?;
     let (path, development, expected) = discovery()?;
     load_path(&path, lane, development, expected)
 }
@@ -231,6 +232,7 @@ pub fn load(lane: Lane) -> Result<ClientProfile, Failure> {
 /// host transport needs. Device binding uses the whole catalog digest; it is
 /// approval provenance, not a durable credential audience.
 pub fn load_device(lane: Lane) -> Result<(ClientProfile, String, String), Failure> {
+    crate::local_go::capture_for_profile()?;
     let (path, development, expected) = discovery()?;
     let metadata = fs::symlink_metadata(&path).map_err(|_| not_configured())?;
     if metadata.file_type().is_symlink()
@@ -258,6 +260,13 @@ pub fn load_device(lane: Lane) -> Result<(ClientProfile, String, String), Failur
 }
 
 pub fn availability() -> Availability {
+    if crate::local_go::capture_for_profile().is_err() {
+        return Availability::unavailable(
+            "native_profile_unsafe",
+            "the explicit native local Go transport selection is invalid for this executable",
+            "unset DS_NATIVE_LOCAL_GO, or use exactly 1 in an ordinary debug build",
+        );
+    }
     match (load(Lane::Stable), load(Lane::Canary)) {
         (Ok(_), Ok(_)) => Availability::Available,
         _ => Availability::unavailable(
