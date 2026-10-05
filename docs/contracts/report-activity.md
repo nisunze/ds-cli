@@ -27,6 +27,14 @@ local_regeneration. Required outputs come from the existing Rust format plan for
 captured project settings and selection; the host must not infer paper IDs from
 filenames. Hosted cloud freshness is unchanged.
 
+Local rendering may reuse the exact previously admitted transformer-nature
+projection and saved analysis held with the project inputs. These captures
+retain the user, lane, credential audience and original sheets digest; analysis
+also retains the saved room revision and content digest. Missing, altered or
+crossed captures refuse. A service-confirmed stale or missing analysis removes
+the retained copy. Publication still requires current governed tag reads and
+its existing source and authority fences.
+
 A configurable 30–900 second threshold (default 120) detects absence of generation
 phase progress while work remains. Sync traffic cannot reset this clock. The
 result identifies waiting active work, or the next queued transformer if no worker

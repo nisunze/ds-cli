@@ -16,6 +16,7 @@
 //! `input_base_fingerprint` and `room_content_sha256` the publication contract
 //! admits against.
 
+pub mod held;
 pub mod jcs;
 pub mod preview;
 pub mod proof;
