@@ -96,10 +96,11 @@ impl Capture {
                         "print_style_capture_stale: sealed key differs from selected layout".into(),
                     );
                 }
-                let mut document = sheets["printing_styles"][&selected.style_ref].clone();
-                let pin = document
-                    .as_object_mut()
-                    .and_then(|doc| doc.remove("_print_revision"))
+                let document = sheets["printing_styles"][&selected.style_ref].clone();
+                // The producer seals renderer documents and their immutable
+                // revision pins separately, inside the same exact receipt.
+                let pin = sheets["printing_style_revisions"]
+                    .get(&selected.style_ref)
                     .ok_or("print_style_capture_invalid: sealed style has no revision")?;
                 if pin["style_ref"] != selected.style_ref {
                     return Err(
@@ -322,9 +323,8 @@ mod tests {
         layout
             .style_keys
             .insert("actual_layer".into(), binding.key.clone());
-        let mut document = binding.document.clone();
-        document["_print_revision"] = json!({"style_ref":binding.style_ref,"revision_id":binding.revision_id,"content_sha256":binding.content_sha256,"ordinal":1});
-        let sheets = json!({"printing_style_bindings":{"manifest_id":"standard-style-set/v1","manifest_revision":"b".repeat(64),"setups":{layout.id.clone():{"actual_layer":{"key":binding.key,"style_ref":binding.style_ref}}}},"printing_styles":{binding.style_ref.clone():document},"printing_renderer_defaults":renderer});
+        let pin = json!({"style_ref":binding.style_ref,"revision_id":binding.revision_id,"content_sha256":binding.content_sha256,"ordinal":1});
+        let sheets = json!({"printing_style_bindings":{"manifest_id":"standard-style-set/v1","manifest_revision":"b".repeat(64),"setups":{layout.id.clone():{"actual_layer":{"key":binding.key,"style_ref":binding.style_ref}}}},"printing_styles":{binding.style_ref.clone():binding.document},"printing_style_revisions":{binding.style_ref.clone():pin},"printing_renderer_defaults":renderer});
         let receipt = |sheets: &Value| {
             let text = sheets.to_string();
             crate::report_export::InputReceipt {
@@ -365,7 +365,16 @@ mod tests {
         assert!(local
             .validate_scope("project-a", "stable", "user-a", &"a".repeat(64), &sheets)
             .is_err());
-        for field in ["key", "style", "revision", "manifest"] {
+        for field in [
+            "key",
+            "style",
+            "revision",
+            "revision_id",
+            "revision_ref",
+            "missing_revision",
+            "embedded_revision_only",
+            "manifest",
+        ] {
             let mut changed = sheets.clone();
             match field {
                 "key" => {
@@ -377,8 +386,26 @@ mod tests {
                         json!({"altered":true})
                 }
                 "revision" => {
-                    changed["printing_styles"][&binding.style_ref]["_print_revision"]
-                        ["content_sha256"] = json!("d".repeat(64))
+                    changed["printing_style_revisions"][&binding.style_ref]["content_sha256"] =
+                        json!("d".repeat(64))
+                }
+                "revision_id" => {
+                    changed["printing_style_revisions"][&binding.style_ref]["revision_id"] =
+                        json!("unsealed")
+                }
+                "revision_ref" => {
+                    changed["printing_style_revisions"][&binding.style_ref]["style_ref"] =
+                        json!("foreign/style_print")
+                }
+                "missing_revision" | "embedded_revision_only" => {
+                    changed["printing_style_revisions"]
+                        .as_object_mut()
+                        .unwrap()
+                        .remove(&binding.style_ref);
+                    if field == "embedded_revision_only" {
+                        changed["printing_styles"][&binding.style_ref]["_print_revision"] =
+                            pin.clone();
+                    }
                 }
                 _ => changed["printing_style_bindings"]["manifest_id"] = json!("foreign"),
             }
