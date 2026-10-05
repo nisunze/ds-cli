@@ -834,6 +834,12 @@ impl<T: ds_client_core::Transport> DeviceSession<T> {
     ) -> Result<serde_json::Value, ClientError> {
         fixed_device_call!(self, printing, project, request)
     }
+    pub fn printing_standard(
+        &mut self,
+        request: &ds_client_core::PrintingStandardRequest,
+    ) -> Result<serde_json::Value, ClientError> {
+        fixed_device_call!(self, printing_standard, request)
+    }
     pub fn layer_config(
         &mut self,
         project: &str,

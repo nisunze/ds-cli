@@ -45,6 +45,10 @@ pub(crate) struct Scripted {
     pub project_properties: VecDeque<TransportResponse>,
     /// Scripted answers for the design tag route; Unreachable when empty.
     pub design_tags: VecDeque<TransportResponse>,
+    /// Scripted answers for the governed printing read; Unreachable when
+    /// empty. Each request body it was sent is kept beside the calls.
+    pub printing_standard: VecDeque<TransportResponse>,
+    pub printing_standard_bodies: Vec<serde_json::Value>,
     pub grid_catalog: VecDeque<TransportResponse>,
     pub grid_catalog_bodies: Vec<serde_json::Value>,
     /// Scripted answers for the transformer context route; Unreachable when
@@ -230,6 +234,28 @@ impl Transport for FixtureTransport {
     ) -> Result<TransportResponse, TransportError> {
         self.lock()
             .design_tags
+            .pop_front()
+            .ok_or(TransportError::Unreachable)
+    }
+
+    fn printing_standard(
+        &mut self,
+        call: ds_client_core::PrintingStandardCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        assert_eq!(
+            (call.method(), call.path()),
+            ("POST", "/api/v1/printing/standard")
+        );
+        let body = serde_json::from_slice(call.body().as_bytes()).unwrap();
+        let mut script = self.lock();
+        script.calls.push(format!(
+            "printing_standard {} {}",
+            call.bearer_token(),
+            call.device_id().unwrap_or("user")
+        ));
+        script.printing_standard_bodies.push(body);
+        script
+            .printing_standard
             .pop_front()
             .ok_or(TransportError::Unreachable)
     }

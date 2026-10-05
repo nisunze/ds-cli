@@ -519,6 +519,16 @@ through command-kernel. It never changes an open desktop canvas.
 Both scope variants use the same protected native identity and accept no URL,
 token or project override. `--lane canary|stable` selects its credential lane.
 
+`report.standard.list` reads what that library does not list: the governed
+A0/A3 LV standard pages (`kind: standard`) and the A4 voltage-drop document
+(`kind: a4`) every project binds by reference, plus the bound defaults.
+`report.standard.get --kind standard|a4 --id <id>` returns one: a page's
+template, role, revision and print document, or the A4 definition with its
+HTML when the deployment holds that exact body. Both are read-only; the
+reviewed seed (`ds style catalogue seed`) owns every write. A lane whose
+gateway does not publish `POST /api/v1/printing/standard` refuses with
+`print_standard_route_unavailable`.
+
 Use `report.layout.create --scope global|project --request create.json --yes`
 with `{action:"create",layout}` for a new stable ID. Use
 `report.layout.update` with `{action:"update",layout,expected_revision}` for an

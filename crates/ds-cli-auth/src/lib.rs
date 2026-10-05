@@ -5661,6 +5661,159 @@ pub fn printing(
     client.printing("", request, now()).map_err(map_client)
 }
 
+pub use ds_client_core::{PrintingStandardKind, PrintingStandardRequest};
+pub const PRINT_STANDARD_REQUEST_INVALID_REFUSAL: Refusal = Refusal {
+    code: "print_standard_request_invalid",
+    when: "the id is not one governed document identifier, or ds-brain refused the read",
+    remedy: "pass --kind standard|a4 and one exact id from report.standard.list",
+};
+pub const PRINT_STANDARD_NOT_FOUND_REFUSAL: Refusal = Refusal {
+    code: "print_standard_not_found",
+    when: "no governed document of that kind has that id",
+    remedy: "list the governed documents with report.standard.list and pass one exact id",
+};
+pub const PRINT_STANDARD_INVALID_REFUSAL: Refusal = Refusal {
+    code: "print_standard_invalid",
+    when: "a stored governed document no longer matches its seeded shape",
+    remedy: "re-apply the reviewed seed with ds style catalogue seed; never hand-edit it",
+};
+pub const PRINT_STANDARD_ROUTE_UNAVAILABLE_REFUSAL: Refusal = Refusal {
+    code: "print_standard_route_unavailable",
+    when: "this lane's API Gateway does not publish the governed printing read",
+    remedy: "update ds; if it persists, the route is unpublished on this lane",
+};
+
+/// The governed standard and A4 printing documents are global: identity, no
+/// project, read-only.
+pub fn printing_standard(
+    lane_value: &str,
+    request: &PrintingStandardRequest,
+) -> Result<serde_json::Value, Failure> {
+    request.validate().map_err(map_printing_standard)?;
+    let lane = Lane::parse(lane_value)?;
+    let _ = probe_headless_identity(lane.token())?;
+    if let Some(mut device) = device::restore_session(lane)? {
+        return device
+            .printing_standard(request)
+            .map_err(map_printing_standard);
+    }
+    let profile = profile::load(lane)?;
+    let store = NativeRefreshStore::open()?;
+    let mut client = Client::new(profile, NativeTransport, store);
+    require_restore_before_context(&mut client)?;
+    client
+        .printing_standard(request, now())
+        .map_err(map_printing_standard)
+}
+
+/// The route's own refusals under the codes `ds report standard` documents;
+/// everything else keeps the shared native mapping.
+fn map_printing_standard(error: ClientError) -> Failure {
+    let refused = error
+        .service_refusal()
+        .and_then(|refusal| refusal.code())
+        .map(str::to_owned);
+    let message = error.to_string();
+    match (error.kind(), refused.as_deref()) {
+        (_, Some("print_standard_invalid")) => {
+            Failure::unavailable(PRINT_STANDARD_INVALID_REFUSAL.code, message)
+                .remedy(PRINT_STANDARD_INVALID_REFUSAL.remedy)
+        }
+        (ErrorKind::RouteUnavailable, _) => {
+            Failure::failed(PRINT_STANDARD_ROUTE_UNAVAILABLE_REFUSAL.code, message)
+                .remedy(PRINT_STANDARD_ROUTE_UNAVAILABLE_REFUSAL.remedy)
+        }
+        (ErrorKind::ResourceNotFound, _) => {
+            Failure::invalid(PRINT_STANDARD_NOT_FOUND_REFUSAL.code, message)
+                .remedy(PRINT_STANDARD_NOT_FOUND_REFUSAL.remedy)
+                .next("ds report standard list --output json")
+        }
+        (ErrorKind::InvalidInput, _) => {
+            Failure::invalid(PRINT_STANDARD_REQUEST_INVALID_REFUSAL.code, message)
+                .remedy(PRINT_STANDARD_REQUEST_INVALID_REFUSAL.remedy)
+        }
+        _ => map_client(error),
+    }
+}
+
+#[cfg(test)]
+mod printing_standard_tests {
+    use super::*;
+    use crate::test_support::{DEVICE_ACCESS_TOKEN, FixtureTransport, linked_device};
+    use ds_client_core::TransportResponse;
+
+    #[test]
+    fn governed_printing_reads_answer_or_refuse_by_name() {
+        let transport = FixtureTransport::default();
+        let catalog = json!({"success":true,"data":{"schema":"ds.printing-standard-catalog/v1",
+            "documents":[{"kind":"a4","id":"voltage-drop-a4-v1","bound":true}]}});
+        for (status, body) in [
+            (200, catalog.clone()),
+            (
+                404,
+                json!({"success":false,"error":{"code":"print_standard_not_found"}}),
+            ),
+            (
+                404,
+                json!({"code":404,"message":"The current request is not defined by this API."}),
+            ),
+            (
+                500,
+                json!({"success":false,"error":{"code":"print_standard_invalid"}}),
+            ),
+        ] {
+            transport
+                .lock()
+                .printing_standard
+                .push_back(TransportResponse::new(
+                    status,
+                    body.to_string().into_bytes(),
+                ));
+        }
+        let mut device = linked_device(transport.clone(), now());
+        assert_eq!(
+            device
+                .printing_standard(&PrintingStandardRequest::List {})
+                .unwrap(),
+            catalog["data"]
+        );
+        let get = PrintingStandardRequest::Get {
+            kind: PrintingStandardKind::Standard,
+            id: "lv-transformer-a0-v1-network".into(),
+        };
+        for code in [
+            "print_standard_not_found",
+            "print_standard_route_unavailable",
+            "print_standard_invalid",
+        ] {
+            let refused = map_printing_standard(device.printing_standard(&get).unwrap_err());
+            assert_eq!(refused.code(), code);
+        }
+        let traversal = PrintingStandardRequest::Get {
+            kind: PrintingStandardKind::A4,
+            id: "../printing_defaults".into(),
+        };
+        let refused = map_printing_standard(device.printing_standard(&traversal).unwrap_err());
+        assert_eq!(refused.code(), "print_standard_request_invalid");
+        let script = transport.lock();
+        let get_body =
+            json!({"action":"get","kind":"standard","id":"lv-transformer-a0-v1-network"});
+        assert_eq!(
+            script.printing_standard_bodies,
+            vec![
+                json!({"action":"list"}),
+                get_body.clone(),
+                get_body.clone(),
+                get_body
+            ]
+        );
+        assert_eq!(
+            script.calls,
+            vec![format!("printing_standard {DEVICE_ACCESS_TOKEN} device-1"); 4]
+        );
+    }
+}
+
 /// Publish one print artifact to the project the caller named; the saved
 /// selection is never read.
 pub fn report_artifact(

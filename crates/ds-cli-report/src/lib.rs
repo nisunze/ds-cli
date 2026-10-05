@@ -39,6 +39,7 @@ pub mod planning;
 pub mod project;
 pub mod publication;
 pub mod spatial_workbook;
+pub mod standard;
 pub mod tasks;
 pub mod touch;
 pub mod voltage_drop_combined;
@@ -89,6 +90,8 @@ pub static DOMAIN: Domain = Domain {
         &layout::SAVE,
         &layout::DELETE,
         &layout::COPY,
+        &standard::LIST,
+        &standard::GET,
         &engine::COMMAND,
         &tasks::COMMAND,
         &export::COMMAND,

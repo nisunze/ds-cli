@@ -924,6 +924,9 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("report.layout.render", "local_file_write", "none"),
     ("report.layout.list", "local_auth_state", "headless_user"),
     ("report.layout.get", "local_auth_state", "headless_user"),
+    // Governed global documents: a restored user, no project, read-only.
+    ("report.standard.list", "local_auth_state", "headless_user"),
+    ("report.standard.get", "local_auth_state", "headless_user"),
     ("report.layout.create", "global_write", "headless_user"),
     ("report.layout.update", "global_write", "headless_user"),
     ("report.layout.save", "global_write", "headless_user"),
