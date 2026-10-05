@@ -184,6 +184,10 @@ pub(super) struct Inputs {
     pub project_crs: Option<ds_command_kernel::printing::project_crs::Capture>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub printing_style_capture: Option<ds_command_kernel::printing::style_capture::Capture>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transformer_natures: Option<ds_command_kernel::report_export::held::TransformerNatures>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub saved_analyses: BTreeMap<String, ds_command_kernel::report_export::held::SavedAnalysis>,
     /// The whole project's lifecycle inventory.
     pub rows: Vec<Row>,
     /// The project configuration's Network Reporter receipt members.
@@ -195,6 +199,7 @@ pub(super) struct Inputs {
 }
 
 /// This machine's copy for one account and project.
+#[derive(Clone)]
 pub(super) struct Hold {
     root: PathBuf,
     scope: Scope,
@@ -846,6 +851,8 @@ mod tests {
         let inputs = Inputs {
             project_crs: None,
             printing_style_capture: None,
+            transformer_natures: None,
+            saved_analyses: BTreeMap::new(),
             rows: vec![Row {
                 name: "t1".into(),
                 kind: "transformer".into(),

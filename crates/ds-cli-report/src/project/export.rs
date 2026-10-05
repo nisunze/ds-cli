@@ -451,6 +451,61 @@ fn fenced_batch_analysis(
     }
 }
 
+fn retain_batch_analysis(
+    inputs: &mut super::hold::Inputs,
+    scope: &ds_command_kernel::report_export::held::Scope,
+    room: &ds_project_data::room_hold::Room,
+    analysis: &BatchAnalysis,
+) -> Result<(), HostFailure> {
+    if let BatchAnalysis::Ready { document, sha256 } = analysis {
+        let capture = ds_command_kernel::report_export::held::SavedAnalysis {
+            scope: scope.clone(),
+            transformer: room.transformer.clone(),
+            version: room.version.unwrap_or_default(),
+            content_digest: room.content_digest.clone().unwrap_or_default(),
+            document: String::from_utf8(document.clone())
+                .map_err(|e| HostFailure::new(INPUTS_INVALID.code, e.to_string()))?,
+            sha256: sha256.clone(),
+        };
+        capture
+            .validate(
+                scope,
+                &room.transformer,
+                capture.version,
+                &capture.content_digest,
+            )
+            .map_err(|e| HostFailure::new(INPUTS_INVALID.code, e))?;
+        inputs
+            .saved_analyses
+            .insert(room.transformer.clone(), capture);
+    } else {
+        // A service-confirmed missing/stale result invalidates the old copy.
+        inputs.saved_analyses.remove(&room.transformer);
+    }
+    Ok(())
+}
+fn held_batch_analysis(
+    inputs: &super::hold::Inputs,
+    scope: &ds_command_kernel::report_export::held::Scope,
+    room: &ds_project_data::room_hold::Room,
+) -> Result<BatchAnalysis, HostFailure> {
+    let Some(capture) = inputs.saved_analyses.get(&room.transformer) else {
+        return Ok(BatchAnalysis::Missing);
+    };
+    capture
+        .validate(
+            scope,
+            &room.transformer,
+            room.version.unwrap_or_default(),
+            room.content_digest.as_deref().unwrap_or_default(),
+        )
+        .map_err(|e| HostFailure::new(INPUTS_INVALID.code, e))?;
+    Ok(BatchAnalysis::Ready {
+        document: capture.document.as_bytes().to_vec(),
+        sha256: capture.sha256.clone(),
+    })
+}
+
 fn batch_analysis_refusal(failure: &Failure) -> Option<BatchAnalysis> {
     let detail = failure.detail_value()?;
     if detail["http_status"] != 409 {
@@ -1269,7 +1324,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     // receipt ds-brain mints beside the project configuration, and the
     // printing setups its output selection names: one set, read and held when
     // the service answers, this machine's held set when it cannot be reached.
-    let (held_inputs, inputs_receipt) = project_inputs(
+    let (mut held_inputs, inputs_receipt) = project_inputs(
         lane,
         &project_id,
         &identity,
@@ -1772,19 +1827,42 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             Failure::invalid(INPUTS_INVALID.code, error).remedy(INPUTS_INVALID.remedy)
         })?;
     let voltage_drop_selected = preview_request.is_none() && voltage_drop_selected(&output_policy);
+    let held_scope = ds_command_kernel::report_export::held::Scope {
+        project: project_id.clone(),
+        lane: lane.to_owned(),
+        principal: identity.uid().to_owned(),
+        credential_audience_sha256: identity.credential_audience_sha256().to_owned(),
+        sheets_sha256: server_sheets_sha256.clone(),
+    };
     let transformer_natures = if voltage_drop_selected {
-        if link.unreachable().is_some() {
-            return Err(transformer_nature_unavailable(
-                "the service was already confirmed unreachable before the tag projection",
-            ));
-        }
-        match project_transformer_natures(lane, &project_id, &identity, &names) {
-            Ok(natures) => Some(natures),
-            Err(failure) if failure.class() == ExitClass::Unavailable => {
-                return Err(transformer_nature_unavailable(failure.message()));
+        let service_capture = link.read(|| {
+            project_transformer_natures(lane, &project_id, &identity, &names, &held_scope)
+        })?;
+        let (capture, source) = match service_capture {
+            Some(capture) => {
+                held_inputs.transformer_natures = Some(capture.clone());
+                if let Err(error) = hold.hold_inputs(&held_inputs) {
+                    output["inputs_hold_warning"] = json!(error);
+                }
+                (Some(capture), "service")
             }
-            Err(failure) => return Err(failure),
-        }
+            None if !publish => (held_inputs.transformer_natures.clone(), "held"),
+            None => {
+                return Err(transformer_nature_unavailable(
+                    "publication requires the current governed tag projection",
+                ));
+            }
+        };
+        let capture = capture.ok_or_else(|| {
+            transformer_nature_unavailable(
+                "no matching governed transformer nature projection is held on this machine",
+            )
+        })?;
+        let natures = capture
+            .values(&held_scope, &names)
+            .map_err(|error| invalid_transformer_nature_projection(&error))?;
+        output["transformer_natures_source"] = json!(source);
+        Some(natures)
     } else {
         None
     };
@@ -1861,6 +1939,8 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
                 .collect::<Vec<_>>()
         );
     }
+    let analysis_hold = hold.clone();
+    let captured_inputs = RefCell::new(held_inputs.clone());
     let rooms = RefCell::new(super::hold::Rooms::plan(hold, &plan.names, heads)?);
     let link = RefCell::new(link);
     // One transformer's room as this command admits it: an active saved
@@ -2004,7 +2084,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             room_moved.insert(name.to_string(), server_version);
         }
         if voltage_drop_selected {
-            let analysis = link
+            let service_analysis = link
                 .borrow_mut()
                 .read(|| {
                     match ds_cli_auth::saved_transformer_analysis_for_project(lane, project, name) {
@@ -2033,8 +2113,19 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
                         },
                     }
                 })
-                .map_err(failure_to_host)?
-                .unwrap_or(BatchAnalysis::Missing);
+                .map_err(failure_to_host)?;
+            let analysis = match service_analysis {
+                Some(analysis) => {
+                    let mut retained = captured_inputs.borrow_mut();
+                    retain_batch_analysis(&mut retained, &held_scope, &room, &analysis)?;
+                    let _ = analysis_hold.hold_inputs(&retained);
+                    analysis
+                }
+                None if !publish => {
+                    held_batch_analysis(&captured_inputs.borrow(), &held_scope, &room)?
+                }
+                None => BatchAnalysis::Missing,
+            };
             analyses
                 .lock()
                 .map_err(|_| HostFailure::new(INPUTS_INVALID.code, "saved analysis lock poisoned"))?
@@ -2741,7 +2832,15 @@ fn project_inputs(
     link: &mut super::hold::Link,
     selection: &DesignOutputSelection,
 ) -> Result<(super::hold::Inputs, Value), Failure> {
-    if let Some(inputs) = read_inputs(lane, project, identity, link, selection)? {
+    if let Some(mut inputs) = read_inputs(lane, project, identity, link, selection)? {
+        // Retain previously admitted optional inputs only beside the unchanged
+        // server receipt; use still requires their authenticated/source fences.
+        if let Ok(previous) = hold.inputs("retaining optional held inputs") {
+            if previous.configuration == inputs.configuration {
+                inputs.transformer_natures = previous.transformer_natures;
+                inputs.saved_analyses = previous.saved_analyses;
+            }
+        }
         let receipt = match hold.hold_inputs(&inputs) {
             Ok(()) => json!({"source": "service", "held": true}),
             Err(error) => json!({"source": "service", "held": false, "hold_error": error}),
@@ -2775,7 +2874,8 @@ fn project_transformer_natures(
     project: &str,
     identity: &ds_cli_auth::ProviderIdentity,
     transformers: &[String],
-) -> Result<BTreeMap<String, String>, Failure> {
+    scope: &ds_command_kernel::report_export::held::Scope,
+) -> Result<ds_command_kernel::report_export::held::TransformerNatures, Failure> {
     let request = ds_cli_auth::DesignTagsCommand::Projection {
         transformers: transformers.to_vec(),
         definitions: vec!["transformer_nature".to_string()],
@@ -2783,7 +2883,12 @@ fn project_transformer_natures(
     let projection = match ds_cli_auth::design_tags(lane, project, &request) {
         Ok(projection) => projection,
         Err(failure) if failure.code() == ds_cli_auth::TAG_DEFINITION_UNKNOWN_REFUSAL.code => {
-            return Ok(BTreeMap::new());
+            return ds_command_kernel::report_export::held::TransformerNatures::new(
+                scope.clone(),
+                transformers,
+                None,
+            )
+            .map_err(|e| invalid_transformer_nature_projection(&e));
         }
         Err(failure) => return Err(failure),
     };
@@ -2799,79 +2904,26 @@ fn project_transformer_natures(
         .get("document")
         .and_then(Value::as_str)
         .ok_or_else(|| invalid_transformer_nature_projection("the projection has no document"))?;
-    transformer_natures_from_projection(document, project, transformers)
+    ds_command_kernel::report_export::held::TransformerNatures::new(
+        scope.clone(),
+        transformers,
+        Some(document),
+    )
+    .map_err(|e| invalid_transformer_nature_projection(&e))
 }
 
+#[cfg(test)]
 fn transformer_natures_from_projection(
     document: &str,
     project: &str,
     transformers: &[String],
 ) -> Result<BTreeMap<String, String>, Failure> {
-    let invalid = |reason: &str| invalid_transformer_nature_projection(reason);
-    let document: Value = serde_json::from_str(document)
-        .map_err(|error| invalid_transformer_nature_projection(&error.to_string()))?;
-    if document["schema_version"] != "ds-report.design-tags/v3"
-        || document["project_id"] != project
-        || document["selected_definition_ids"] != json!(["transformer_nature"])
-    {
-        return Err(invalid(
-            "the projection is for another schema, project, or definition",
-        ));
-    }
-    let group = document["groups"]
-        .as_array()
-        .and_then(|groups| {
-            groups
-                .iter()
-                .find(|group| group["definition_id"] == "transformer_nature")
-        })
-        .ok_or_else(|| invalid("the projection does not describe transformer_nature"))?;
-    if group["state"] != "active" || group["cardinality"] != "single" {
-        return Err(invalid(
-            "transformer_nature is not an active single-value definition",
-        ));
-    }
-    let allowed: BTreeSet<&str> = group["values"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .filter_map(|value| value["value"].as_str())
-        .collect();
-    if allowed.is_empty() {
-        return Err(invalid("transformer_nature has no allowed values"));
-    }
-    let requested: BTreeSet<&str> = transformers.iter().map(String::as_str).collect();
-    let mut natures = BTreeMap::new();
-    for assignment in document["assignments"].as_array().into_iter().flatten() {
-        if assignment["definition_id"] != "transformer_nature" {
-            continue;
-        }
-        let Some(name) = assignment["object"]["id"].as_str() else {
-            return Err(invalid("an assignment has no transformer id"));
-        };
-        if assignment["object"]["kind"] != "lv_transformer" || !requested.contains(name) {
-            return Err(invalid("an assignment is outside this transformer scope"));
-        }
-        let values = assignment["values"]
-            .as_array()
-            .ok_or_else(|| invalid("an assignment has no value list"))?;
-        if values.len() != 1 {
-            return Err(invalid("transformer_nature must have exactly one value"));
-        }
-        let nature = values[0]
-            .as_str()
-            .ok_or_else(|| invalid("an assignment value is not text"))?;
-        if !allowed.contains(nature)
-            || natures
-                .insert(name.to_string(), nature.to_string())
-                .is_some()
-        {
-            return Err(invalid(
-                "an assignment has an unknown value or is duplicated",
-            ));
-        }
-    }
-    Ok(natures)
+    ds_command_kernel::report_export::held::transformer_natures_from_projection(
+        document,
+        project,
+        transformers,
+    )
+    .map_err(|e| invalid_transformer_nature_projection(&e))
 }
 
 fn invalid_transformer_nature_projection(reason: &str) -> Failure {
@@ -3016,6 +3068,8 @@ fn read_inputs(
     Ok(Some(super::hold::Inputs {
         project_crs,
         printing_style_capture,
+        transformer_natures: None,
+        saved_analyses: BTreeMap::new(),
         rows,
         configuration,
         setups,
@@ -3607,6 +3661,54 @@ pub fn render(data: &Value) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn saved_analysis_is_retained_for_matching_offline_room_and_revoked_by_service_answer() {
+        let scope = ds_command_kernel::report_export::held::Scope {
+            project: "project_a".into(),
+            lane: "stable".into(),
+            principal: "owner_a".into(),
+            credential_audience_sha256: "a".repeat(64),
+            sheets_sha256: "b".repeat(64),
+        };
+        let room = ds_project_data::room_hold::Room {
+            transformer: "tx_a".into(),
+            version: Some(2),
+            content_digest: Some("c".repeat(64)),
+            layers: BTreeMap::new(),
+        };
+        let mut inputs = super::super::hold::Inputs {
+            project_crs: None,
+            printing_style_capture: None,
+            transformer_natures: None,
+            saved_analyses: BTreeMap::new(),
+            rows: Vec::new(),
+            configuration: json!({}),
+            setups: Vec::new(),
+            read_at: "held".into(),
+        };
+        let document = br#"{"actual_saved_result":true}"#.to_vec();
+        let analysis = BatchAnalysis::Ready {
+            sha256: ds_command_kernel::report_export::sha256_hex(&document),
+            document,
+        };
+        retain_batch_analysis(&mut inputs, &scope, &room, &analysis).unwrap();
+        assert!(matches!(
+            held_batch_analysis(&inputs, &scope, &room).unwrap(),
+            BatchAnalysis::Ready { .. }
+        ));
+        let mut changed = room.clone();
+        changed.version = Some(3);
+        assert!(held_batch_analysis(&inputs, &scope, &changed).is_err());
+        let mut foreign = scope.clone();
+        foreign.principal = "owner_b".into();
+        assert!(held_batch_analysis(&inputs, &foreign, &room).is_err());
+        retain_batch_analysis(&mut inputs, &scope, &room, &BatchAnalysis::Stale).unwrap();
+        assert!(matches!(
+            held_batch_analysis(&inputs, &scope, &room).unwrap(),
+            BatchAnalysis::Missing
+        ));
+    }
+
     #[test]
     fn explicit_local_proof_capture_keeps_original_server_receipt_and_admits_only_its_draft() {
         use ds_command_kernel::{printing, report_export, style_resolution};
