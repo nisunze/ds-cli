@@ -994,6 +994,7 @@ fn printing_artifact_access_is_exact_project_owned_and_copy_only_creates_a_new_f
         names,
         BTreeSet::from([
             "desktop-descriptor",
+            "intent",
             "out",
             "output-id",
             "project",
@@ -1001,6 +1002,17 @@ fn printing_artifact_access_is_exact_project_owned_and_copy_only_creates_a_new_f
             "transformer"
         ])
     );
+    for command in [&read["command"], &copy["command"]] {
+        let intent = command["inputs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|arg| arg["name"] == "intent")
+            .unwrap();
+        assert_eq!(intent["choices"], json!(["preview"]));
+        assert_eq!(intent["required"], false);
+        assert!(intent.get("default").is_none());
+    }
 }
 
 #[test]

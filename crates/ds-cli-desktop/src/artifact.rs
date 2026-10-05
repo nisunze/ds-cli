@@ -16,12 +16,19 @@ use crate::ops;
 
 const READ_OP: ops::BridgeOp = ops::BridgeOp {
     operation: "printing.artifact.read",
-    arguments: &["project", "transformer", "outputId"],
+    arguments: &["project", "transformer", "outputId", "intent"],
 };
 const COPY_OP: ops::BridgeOp = ops::BridgeOp {
     operation: "printing.artifact.copy",
-    arguments: &["project", "transformer", "outputId", "destination"],
+    arguments: &[
+        "project",
+        "transformer",
+        "outputId",
+        "destination",
+        "intent",
+    ],
 };
+pub const BRIDGE_OPS: &[ops::BridgeOp] = &[READ_OP, COPY_OP];
 const TIMEOUT: Duration = Duration::from_secs(120);
 
 const PROJECT_ARG: Arg = Arg::value(
@@ -42,6 +49,12 @@ const OUTPUT_ARG: Arg = Arg::value(
     "Exact outputId returned by desktop printing export or artifact read.",
 )
 .required();
+const INTENT_ARG: Arg = Arg::value(
+    "intent",
+    "<preview>",
+    "Read retained preview artifacts; omit for ordinary main outputs.",
+)
+.choices(&["preview"]);
 const REFUSALS: &[Refusal] = &[
     ops::NOT_PAIRED,
     ops::AMBIGUOUS,
@@ -66,9 +79,9 @@ const REFUSALS: &[Refusal] = &[
 pub static READ_COMMAND: Command = Command {
     id: "desktop.printing.artifact.read",
     path: &["desktop", "printing", "artifact", "read"],
-    contract: 1,
-    summary: "Verify one committed local print artifact and read its evidence.",
-    purpose: "Resolves one exact output through the signed-in owner's native committed report inventory, then reopens and verifies its complete bytes against the sealed receipt. The locator remains opaque and no map project is opened or switched.",
+    contract: 2,
+    summary: "Verify one retained local print artifact and read its evidence.",
+    purpose: "Resolves one exact output through the signed-in owner's native committed report inventory, then reopens and verifies its complete bytes against the sealed receipt. --intent preview selects retained local review artifacts; omission selects ordinary main outputs. The scopes never fall back to each other. The locator remains opaque and no map project is opened or switched.",
     chapter: Chapter::Reports,
     effect: Effect::ReadOnly,
     authority: Authority::DesktopUser,
@@ -77,6 +90,7 @@ pub static READ_COMMAND: Command = Command {
         PROJECT_ARG,
         TRANSFORMER_ARG,
         OUTPUT_ARG,
+        INTENT_ARG,
         ops::TARGET_ARG,
         ops::DESCRIPTOR_ARG,
     ],
@@ -96,9 +110,9 @@ pub static READ_COMMAND: Command = Command {
 pub static COPY_COMMAND: Command = Command {
     id: "desktop.printing.artifact.copy",
     path: &["desktop", "printing", "artifact", "copy"],
-    contract: 1,
+    contract: 2,
     summary: "Copy one verified local print artifact to a new file.",
-    purpose: "Resolves and receipt-verifies one exact owner/project/transformer output inside the paired desktop, then creates the explicit --out file once. It never derives a report cache path, overwrites an existing destination, opens a map or changes the GUI project.",
+    purpose: "Resolves and receipt-verifies one exact owner/project/transformer output inside the paired desktop, then creates the explicit --out file once. --intent preview selects retained local review artifacts; omission selects ordinary main outputs. The scopes never fall back to each other. It never derives a report cache path, overwrites an existing destination, opens a map or changes the GUI project.",
     chapter: Chapter::Reports,
     effect: Effect::LocalFileWrite,
     authority: Authority::DesktopUser,
@@ -107,6 +121,7 @@ pub static COPY_COMMAND: Command = Command {
         PROJECT_ARG,
         TRANSFORMER_ARG,
         OUTPUT_ARG,
+        INTENT_ARG,
         Arg::value("out", "<file>", "New destination file; never overwritten.").required(),
         ops::TARGET_ARG,
         ops::DESCRIPTOR_ARG,
@@ -160,11 +175,15 @@ fn bounded(value: &str, label: &str, max: usize) -> Result<String, Failure> {
 }
 
 fn selector(inputs: &Inputs) -> Result<Value, Failure> {
-    Ok(json!({
+    let mut selector = json!({
         "project": crate::project_id(inputs.require("project")?, "printing_artifact_invalid")?,
         "transformer": bounded(inputs.require("transformer")?, "transformer", 160)?,
         "outputId": bounded(inputs.require("output-id")?, "output-id", 160)?,
-    }))
+    });
+    if let Some(intent) = inputs.value("intent") {
+        selector["intent"] = json!(intent);
+    }
+    Ok(selector)
 }
 
 fn absolute_new_destination(raw: &str) -> Result<PathBuf, Failure> {
@@ -272,10 +291,19 @@ mod tests {
 
     #[test]
     fn bridge_contract_has_only_exact_selector_and_destination() {
-        assert_eq!(READ_OP.arguments, ["project", "transformer", "outputId"]);
+        assert_eq!(
+            READ_OP.arguments,
+            ["project", "transformer", "outputId", "intent"]
+        );
         assert_eq!(
             COPY_OP.arguments,
-            ["project", "transformer", "outputId", "destination"]
+            [
+                "project",
+                "transformer",
+                "outputId",
+                "destination",
+                "intent"
+            ]
         );
     }
 
@@ -284,5 +312,50 @@ mod tests {
         let temporary = tempfile::NamedTempFile::new().unwrap();
         let error = absolute_new_destination(temporary.path().to_str().unwrap()).unwrap_err();
         assert_eq!(error.code(), "printing_artifact_path_exists");
+    }
+
+    fn inputs(command: &Command, intent: Option<&str>) -> Result<Inputs, Failure> {
+        let mut tokens = vec![
+            "--project",
+            "survey_test",
+            "--transformer",
+            "agasharu",
+            "--output-id",
+            "pdf__a3",
+        ];
+        if command.id == COPY_COMMAND.id {
+            tokens.extend(["--out", "./agasharu-preview.pdf"]);
+        }
+        if let Some(intent) = intent {
+            tokens.extend(["--intent", intent]);
+        }
+        ds_cli_contract::args::parse(
+            command,
+            &tokens.into_iter().map(str::to_owned).collect::<Vec<_>>(),
+        )
+    }
+
+    #[test]
+    fn read_and_copy_preserve_main_selectors_and_forward_explicit_preview() {
+        let main = json!({"project":"survey_test","transformer":"agasharu","outputId":"pdf__a3"});
+        for command in [&READ_COMMAND, &COPY_COMMAND] {
+            assert_eq!(selector(&inputs(command, None).unwrap()).unwrap(), main);
+            let mut preview = main.clone();
+            preview["intent"] = json!("preview");
+            assert_eq!(
+                selector(&inputs(command, Some("preview")).unwrap()).unwrap(),
+                preview
+            );
+        }
+    }
+
+    #[test]
+    fn read_and_copy_refuse_unknown_intent_before_pairing() {
+        for command in [&READ_COMMAND, &COPY_COMMAND] {
+            assert_eq!(
+                inputs(command, Some("main")).unwrap_err().code(),
+                "invalid_choice"
+            );
+        }
     }
 }

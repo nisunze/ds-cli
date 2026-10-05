@@ -435,6 +435,30 @@ fn printing_operations_have_one_closed_application_owner() {
 }
 
 #[test]
+fn printing_artifact_operations_have_one_closed_application_owner() {
+    let root = ds_web();
+    let transport = source(&root, "src-tauri/src/cli_bridge.rs");
+    let frontend = source(&root, "src/lib/desktop/cli-bridge.ts");
+    let owner = source(&root, "src/lib/desktop/cli-reporter-artifact.ts");
+    let allowlist = between(&transport, "pub const CLI_OPERATIONS: &[&str] = &[", "];");
+    for operation in ds_cli_desktop::artifact::BRIDGE_OPS {
+        assert_eq!(count(allowlist, &format!("\"{}\"", operation.operation)), 1);
+        assert_eq!(switch_case_count(&frontend, operation.operation), 1);
+        let accepted = quoted_contract_items(operation_contract(&owner, operation.operation));
+        let declared = operation
+            .arguments
+            .iter()
+            .map(|key| (*key).to_owned())
+            .collect::<BTreeSet<_>>();
+        assert_eq!(
+            accepted, declared,
+            "{} artifact arguments drifted",
+            operation.operation
+        );
+    }
+}
+
+#[test]
 fn every_map_command_has_one_closed_operation_owner() {
     let app = app();
 

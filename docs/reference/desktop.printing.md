@@ -68,6 +68,12 @@ do not replace main outputs, enter the publication queue, or save project
 settings. Omit the flag for the ordinary main export. Preview accepts individual
 transformers, including a batch; `combined_transformer` requires a main export.
 
+To verify or copy a retained preview, add `--intent preview` to
+`ds desktop printing artifact read` or `ds desktop printing artifact copy`, using
+the export receipt's exact project, transformer and output id. Omit the flag to
+read main outputs. An unavailable preview does not fall back to a main output;
+copies still require a new destination and verify the sealed bytes.
+
 For one A4 voltage-drop PDF without regenerating other formats, pass a local
 selection file containing
 `{"schema":"ds.design-output-selection/v1","geospatial":["voltage_drop_pdf"]}`
