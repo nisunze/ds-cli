@@ -53,6 +53,20 @@ Explicit declarative overrides remain supported; code never substitutes an
 asset- or project-specific pen. Existing exact `Layout.style_refs` are legacy
 authored bindings; migration to semantic keys is an API document operation.
 
+`printing::style_migration::plan` decides that migration, one template at a
+time, against the governed catalogue (key → `style_ref` declarations). The
+catalogue keeps every installed paper original under the `project` role, so a
+legacy layer takes the one `(layer, source, print, project)` key that names the
+document the template prints today; the four reviewed legacy global-template
+migrations of 2026-10-02 are reproduced exactly. Anything else — no such key,
+a key naming another document, several keys — is a named finding that lists
+the governed candidates and blocks the whole template. Only an owner's explicit
+choice of one declared key settles a finding, and a choice that prints another
+document is reported as a document change. ds-brain holds the stored template
+and the catalogue, asks the Kernel through dispatch operation
+`print_style_keys.plan`, and persists only a `migrate` answer's layout, keeping
+the replaced revision.
+
 Screen ordering uses the API's declarative presentation tier. Casing remains
 beneath its primary line and labels remain its companions. Saved `user_order`
 remains authoritative. There is no style-id classification in a renderer.

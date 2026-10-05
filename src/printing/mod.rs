@@ -2032,12 +2032,15 @@ pub fn named_layout(
 #[serde(tag = "op", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Command {
     /// Plan the explicit migration of one stored layout's legacy style_refs
-    /// to exact style_keys against the governed API resolution table. The
-    /// reply names every finding; a migrated layout is returned only when
-    /// all refs map exactly. Nothing is saved.
+    /// to exact style_keys against the governed API resolution table (see
+    /// `style_migration`). The reply names every finding; a migrated layout
+    /// is returned only when all refs map exactly. Nothing is saved.
     MigrateStyleKeys {
         layout: Layout,
         resolution: crate::style_resolution::Snapshot,
+        /// Owner choices, layer id → exact governed key, for named findings.
+        #[serde(default)]
+        choices: BTreeMap<String, crate::style_resolution::Key>,
     },
     SetTransformerOverride {
         layout: Layout,
@@ -2533,10 +2536,18 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
     let command: Command =
         serde_json::from_slice(input).map_err(|e| format!("invalid printing request: {e}"))?;
     let value = match command {
-        Command::MigrateStyleKeys { layout, resolution } => {
-            let plan = style_migration::plan(&layout, &resolution)?;
-            let migrated = plan.layout.clone();
-            json!({"plan":plan,"layout":migrated})
+        Command::MigrateStyleKeys {
+            layout,
+            resolution,
+            choices,
+        } => {
+            crate::style_resolution::validate_snapshot(&resolution).map_err(|e| e.to_string())?;
+            let catalogue = style_migration::Catalogue::of(&resolution);
+            json!(style_migration::answer(style_migration::Request {
+                layout,
+                catalogue,
+                choices,
+            })?)
         }
         Command::SetTransformerOverride {
             mut layout,
@@ -3195,7 +3206,7 @@ mod tests {
         let resolution = json!({
             "schema": crate::style_resolution::SCHEMA, "project_id": "fixture",
             "revision_id": "b".repeat(64),
-            "bindings": [{"key": context::style_key("lv_lines", "saved_design", "focused"),
+            "bindings": [{"key": context::style_key("lv_lines", "saved_design", "project"),
                 "style_ref": "master/lv_lines_print", "revision_id": "a".repeat(64),
                 "content_sha256": crate::style_plan::style_digest(&document),
                 "scope": "global", "document": document}]
@@ -3204,7 +3215,7 @@ mod tests {
         let reply: Value =
             serde_json::from_str(&evaluate(&serde_json::to_vec(&input).unwrap()).unwrap()).unwrap();
         assert_eq!(reply["plan"]["status"], "migrate");
-        assert_eq!(reply["layout"]["style_keys"]["lv_lines"]["role"], "focused");
+        assert_eq!(reply["layout"]["style_keys"]["lv_lines"]["role"], "project");
         assert_eq!(reply["layout"]["style_refs"], json!({}));
     }
     #[test]
