@@ -214,8 +214,8 @@ const PUBLISH_ROOT: Refusal = Refusal {
 };
 const CONTEXT_UNSUPPORTED: Refusal = Refusal {
     code: "print_context_unsupported",
-    when: "a setup names a survey or local-layer context source (desktop-held; batch row)",
-    remedy: "print that setup from the desktop, or drop the source from the setup",
+    when: "a setup names a local-layer source with no complete headless capture (batch row)",
+    remedy: "provide the exact layer through its owning project source before headless printing",
 };
 const CONTEXT_INVALID: Refusal = Refusal {
     code: "print_context_invalid",
@@ -752,7 +752,7 @@ fn run_output_selection(inputs: &Inputs) -> Result<DesignOutputSelection, Failur
         .map_err(|e| Failure::invalid(INPUTS_INVALID.code, e).remedy(INPUTS_INVALID.remedy))
 }
 
-fn require_same_context(
+pub(super) fn require_same_context(
     expected_identity: &ds_cli_auth::ProviderIdentity,
     expected_project: &str,
     actual_identity: &ds_cli_auth::ProviderIdentity,
@@ -1949,6 +1949,28 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     }
 
     let survey_refresh = inputs.require("survey-refresh")?;
+    let survey_context = match holdings_root.as_deref() {
+        Some(root) => super::survey_context::load(
+            root,
+            lane,
+            &holdings_scope,
+            &identity,
+            &contexts,
+            survey_refresh,
+            &mut link.borrow_mut(),
+        )?,
+        None => Vec::new(),
+    };
+    let room_contexts: Vec<_> = contexts
+        .iter()
+        .filter(|context| {
+            !matches!(
+                context.source,
+                ds_command_kernel::printing::PrintContextSource::Survey { .. }
+            )
+        })
+        .cloned()
+        .collect();
     let (held_survey, survey_omitted, survey_grant) = survey_append_inputs(
         lane,
         &project_id,
@@ -2053,11 +2075,31 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
                         &holdings_scope,
                         name,
                         &layers_value,
-                        &contexts,
+                        &room_contexts,
                         &catalog,
                         mode,
                     )
                     .map_err(context_failure)?;
+                    // Survey has no configured extent buffer. Its complete
+                    // verified geometry follows the shared context/frame policy.
+                    let context = if survey_context.is_empty() {
+                        context
+                    } else {
+                        ds_project_data::held::attach_layers(
+                            Some(context),
+                            survey_context.clone(),
+                            name,
+                            &layers_value,
+                            0.0,
+                        )
+                        .map_err(context_failure)?
+                        .ok_or_else(|| {
+                            HostFailure::new(
+                                CONTEXT_INVALID.code,
+                                "selected survey context capture disappeared",
+                            )
+                        })?
+                    };
                     for warning in &context.warnings {
                         transformer_context_notes
                             .push(json!({"transformer": name, "note": warning}));
