@@ -24,6 +24,116 @@ use crate::{
     GridCatalogCall,
 };
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
+
+/// An exact legacy catalog artifact. Coordinates are required; a mutable head
+/// and a caller-supplied URL cannot select bytes for backup.
+pub enum ArtifactSelection {
+    LibraryManifest { library: String, release: String },
+    LibraryValidation { library: String, release: String },
+    ExampleModel { example: String, revision: String },
+}
+
+impl ArtifactSelection {
+    pub fn read_command(&self) -> Command {
+        match self {
+            Self::LibraryManifest { library, release }
+            | Self::LibraryValidation { library, release } => Command::GetLibrary {
+                library: library.clone(),
+                release: Some(release.clone()),
+            },
+            Self::ExampleModel { example, revision } => Command::GetExample {
+                example: example.clone(),
+                revision: Some(revision.clone()),
+            },
+        }
+    }
+
+    /// Consume only the signed delivery from the exact authorized read. The
+    /// transfer shares project models' fixed Storage host, no-redirect transport
+    /// and exact object/size/hash checks; no DS credential reaches Storage.
+    pub fn download<T: AuthorizedTransport>(
+        &self,
+        transport: &mut T,
+        data: &Value,
+        expected_digest: &str,
+    ) -> Result<crate::grid_models::Receipt, ClientError> {
+        self.read_command().validate()?;
+        if !sha256(expected_digest) {
+            return Err(ClientError::new(
+                ErrorKind::InvalidInput,
+                "expected digest must be 64 lowercase hexadecimal characters",
+            ));
+        }
+        let (artifact, url, mut receipt) = match self {
+            Self::LibraryManifest { library, release }
+            | Self::LibraryValidation { library, release } => {
+                if data["head"]["library_id"] != *library
+                    || data["release"]["library_id"] != *library
+                    || data["release"]["release_id"] != *release
+                {
+                    return Err(unreadable());
+                }
+                let (kind, artifact, url) = match self {
+                    Self::LibraryManifest { .. } => {
+                        ("library-manifest", "manifest", "manifest_download_url")
+                    }
+                    _ => (
+                        "library-validation",
+                        "validation_report",
+                        "validation_report_download_url",
+                    ),
+                };
+                (
+                    &data["release"][artifact],
+                    &data[url],
+                    json!({"kind":kind,"library_id":library,"release_id":release}),
+                )
+            }
+            Self::ExampleModel { example, revision } => {
+                if data["head"]["example_id"] != *example
+                    || data["revision"]["example_id"] != *example
+                    || data["revision"]["revision_id"] != *revision
+                {
+                    return Err(unreadable());
+                }
+                (
+                    &data["revision"]["model"],
+                    &data["model_download_url"],
+                    json!({"kind":"example-model","example_id":example,"revision_id":revision}),
+                )
+            }
+        };
+        let digest = artifact["digest"].as_str().ok_or_else(unreadable)?;
+        if digest != expected_digest {
+            return Err(unreadable());
+        }
+        let object = artifact["object"].as_str().ok_or_else(unreadable)?;
+        if object != format!("ds-grid/objects/sha256/{digest}") {
+            return Err(unreadable());
+        }
+        let size = artifact["byte_length"]
+            .as_u64()
+            .filter(|n| *n > 0 && *n <= 256 * 1024 * 1024)
+            .ok_or_else(unreadable)? as usize;
+        let url = url.as_str().ok_or_else(unreadable)?;
+        let call = crate::grid_models::locator(url, object, size)?;
+        let mut response = transport.grid_model_bytes(call)?;
+        if response.status != 200
+            || response.body.len() != size
+            || format!("{:x}", Sha256::digest(&response.body)) != digest
+        {
+            return Err(unreadable());
+        }
+        receipt["sha256"] = json!(digest);
+        receipt["bytes"] = json!(size);
+        receipt["verified"] = json!(true);
+        Ok(crate::grid_models::Receipt {
+            data: receipt,
+            bytes: Some(std::mem::take(&mut response.body)),
+        })
+    }
+}
 
 /// The largest governed catalog body this owner will send, matching the
 /// reviewed descriptor's response cap.
@@ -412,6 +522,184 @@ fn validate_member_response(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    struct ArtifactTransport {
+        body: Vec<u8>,
+        status: u16,
+        calls: usize,
+    }
+    macro_rules! no_other_call {
+        ($name:ident, $call:ident) => {
+            fn $name(
+                &mut self,
+                _: crate::$call<'_>,
+            ) -> Result<crate::TransportResponse, crate::TransportError> {
+                panic!("artifact export made an unrelated call")
+            }
+        };
+    }
+    impl AuthorizedTransport for ArtifactTransport {
+        no_other_call!(list_projects, ProjectListCall);
+        no_other_call!(transformer_context, TransformerContextCall);
+        no_other_call!(project_forms, ProjectFormsCall);
+        no_other_call!(project_form_editor, ProjectFormEditorCall);
+        no_other_call!(solar_snapshot, SolarSnapshotCall);
+        no_other_call!(survey_query, SurveyQueryCall);
+        no_other_call!(survey_entries_select, SurveyEntriesSelectCall);
+        no_other_call!(survey_entries_changes, SurveyEntriesChangesCall);
+        no_other_call!(survey_entry_create, SurveyEntryCreateCall);
+        no_other_call!(project_data, ProjectDataCall);
+        no_other_call!(upload_bytes, UploadBytesCall);
+        no_other_call!(survey_control, SurveyControlCall);
+        no_other_call!(styles, StylesCall);
+        no_other_call!(layers, LayersCall);
+        no_other_call!(tiles, TileCall);
+        no_other_call!(project_report, ProjectReportCall);
+        fn grid_model_bytes(
+            &mut self,
+            call: crate::grid_models::DownloadCall<'_>,
+        ) -> Result<crate::TransportResponse, crate::TransportError> {
+            self.calls += 1;
+            assert!(call.url().starts_with("https://storage.googleapis.com/"));
+            Ok(crate::TransportResponse {
+                status: self.status,
+                body: self.body.clone(),
+            })
+        }
+    }
+
+    fn artifact_fixture() -> (Value, String, Vec<u8>) {
+        let bytes = b"exact original native bytes\r\n".to_vec();
+        let digest = format!("{:x}", Sha256::digest(&bytes));
+        let object = format!("ds-grid/objects/sha256/{digest}");
+        let artifact = json!({"digest":digest,"object":object,"byte_length":bytes.len()});
+        let data = json!({"head":{"library_id":"library_1","example_id":"example_1"},
+            "release":{"library_id":"library_1","release_id":"release_1","manifest":artifact,"validation_report":artifact},
+            "revision":{"example_id":"example_1","revision_id":"revision_1","model":artifact},
+            "manifest_download_url":format!("https://storage.googleapis.com/bucket/{object}?signed=private"),
+            "validation_report_download_url":format!("https://storage.googleapis.com/bucket/{object}?signed=private"),
+            "model_download_url":format!("https://storage.googleapis.com/bucket/{object}?signed=private")});
+        (data, digest, bytes)
+    }
+
+    fn manifest_selection() -> ArtifactSelection {
+        ArtifactSelection::LibraryManifest {
+            library: "library_1".into(),
+            release: "release_1".into(),
+        }
+    }
+
+    #[test]
+    fn artifact_export_preserves_exact_bytes_and_excludes_delivery_credentials() {
+        let (data, digest, bytes) = artifact_fixture();
+        for selection in [
+            manifest_selection(),
+            ArtifactSelection::LibraryValidation {
+                library: "library_1".into(),
+                release: "release_1".into(),
+            },
+            ArtifactSelection::ExampleModel {
+                example: "example_1".into(),
+                revision: "revision_1".into(),
+            },
+        ] {
+            let mut transport = ArtifactTransport {
+                body: bytes.clone(),
+                status: 200,
+                calls: 0,
+            };
+            let receipt = selection.download(&mut transport, &data, &digest).unwrap();
+            assert_eq!(receipt.bytes.as_deref(), Some(bytes.as_slice()));
+            assert_eq!(receipt.data["sha256"], digest);
+            assert_eq!(receipt.data["bytes"], bytes.len());
+            assert_eq!(receipt.data["verified"], true);
+            assert!(!receipt.data.to_string().contains("signed"));
+            assert_eq!(transport.calls, 1);
+        }
+    }
+
+    #[test]
+    fn artifact_export_refuses_wrong_coordinates_digest_object_and_unsafe_locator_before_fetch() {
+        let (data, digest, bytes) = artifact_fixture();
+        let mut bad_cases = Vec::new();
+        for (pointer, value) in [
+            ("/release/library_id", json!("other")),
+            ("/release/release_id", json!("moved")),
+            ("/release/manifest/digest", json!("a".repeat(64))),
+            (
+                "/release/manifest/object",
+                json!("ds-grid/objects/sha256/other"),
+            ),
+            ("/release/manifest/byte_length", json!(0)),
+            (
+                "/release/manifest/byte_length",
+                json!(256_u64 * 1024 * 1024 + 1),
+            ),
+            (
+                "/manifest_download_url",
+                json!("https://example.com/native"),
+            ),
+            (
+                "/manifest_download_url",
+                json!("http://storage.googleapis.com/bucket/native"),
+            ),
+            (
+                "/manifest_download_url",
+                json!(format!(
+                    "https://storage.googleapis.com/bucket/ds-grid/objects/sha256/{}",
+                    "b".repeat(64)
+                )),
+            ),
+        ] {
+            let mut bad = data.clone();
+            *bad.pointer_mut(pointer).unwrap() = value;
+            bad_cases.push(bad);
+        }
+        for bad in bad_cases {
+            let mut transport = ArtifactTransport {
+                body: bytes.clone(),
+                status: 200,
+                calls: 0,
+            };
+            assert!(manifest_selection()
+                .download(&mut transport, &bad, &digest)
+                .is_err());
+            assert_eq!(transport.calls, 0);
+        }
+        let selection = ArtifactSelection::ExampleModel {
+            example: "example_1".into(),
+            revision: "other".into(),
+        };
+        let mut transport = ArtifactTransport {
+            body: bytes,
+            status: 200,
+            calls: 0,
+        };
+        assert!(selection.download(&mut transport, &data, &digest).is_err());
+        assert_eq!(transport.calls, 0);
+    }
+
+    #[test]
+    fn artifact_export_never_returns_incomplete_corrupt_or_redirected_bytes() {
+        let (data, digest, bytes) = artifact_fixture();
+        let mut corrupt = bytes.clone();
+        corrupt[0] ^= 1;
+        for (body, status) in [
+            (bytes[..bytes.len() - 1].to_vec(), 200),
+            (corrupt, 200),
+            (bytes, 302),
+        ] {
+            let mut transport = ArtifactTransport {
+                body,
+                status,
+                calls: 0,
+            };
+            assert!(manifest_selection()
+                .download(&mut transport, &data, &digest)
+                .is_err());
+            assert_eq!(transport.calls, 1);
+        }
+    }
 
     #[test]
     fn every_action_sends_only_the_key_its_backend_decoder_accepts() {
