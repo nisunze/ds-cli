@@ -784,9 +784,7 @@ mod tests {
                 "save uid_nyaruguru_lv cust_category [{\"category\":\"residential\"}]",
                 "save uid_nyaruguru_lv project_settings [{\"parameter\":\"feeder_max\",\"value\":\"8\"}]",
                 "printing list uid_nyaruguru_lv",
-                &format!(
-                    "printing copy czgmdwth_gisagara:a0-landscape-gisagara-cjic -> uid_nyaruguru_lv:a0-landscape-gisagara-cjic expecting \"\""
-                ),
+                "printing copy czgmdwth_gisagara:a0-landscape-gisagara-cjic -> uid_nyaruguru_lv:a0-landscape-gisagara-cjic expecting \"\"",
                 &format!(
                     "printing copy czgmdwth_gisagara:a3-landscape-gisagara-cjic -> uid_nyaruguru_lv:a3-landscape-gisagara-cjic expecting \"{SEED}\""
                 ),
