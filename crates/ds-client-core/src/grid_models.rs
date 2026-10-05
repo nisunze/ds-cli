@@ -5,14 +5,14 @@
 //! may carry immutable export records (derived files such as a delivered
 //! PLS-CADD `.bak`) pinned to its exact model digest.
 use crate::{
+    authorized::{classify_tile_error, Authority},
     AuthorizedTransport, ClientError, ClientProfile, ErrorKind, GridModelsCall, ServiceRefusal,
     TransportResponse,
-    authorized::{Authority, classify_tile_error},
 };
 use ds_command_kernel::grid_publication::{
-    APPROVAL_STATES, MAX_MILESTONE, catalog_identifier, sha256_hex,
+    catalog_identifier, sha256_hex, APPROVAL_STATES, MAX_MILESTONE,
 };
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 pub const MAX_BYTES: usize = 256 * 1024 * 1024;
 /// Catalog pages one revision-position walk may read (100 rows each). A
@@ -587,11 +587,7 @@ fn head_projection(row: &Value) -> Value {
     head
 }
 
-pub(crate) fn locator<'a>(
-    url: &'a str,
-    object: &str,
-    size: usize,
-) -> Result<DownloadCall<'a>, ClientError> {
+pub(crate) fn locator<'a>(url: &'a str, object: &str, size: usize) -> Result<DownloadCall<'a>, ClientError> {
     let u = url::Url::parse(url).map_err(|_| bad())?;
     if url.len() > 8192
         || u.scheme() != "https"
@@ -652,7 +648,7 @@ pub(crate) fn run<T: AuthorizedTransport>(
             );
         }
         Command::Publish { intent, bytes } => {
-            return publication::run(profile, transport, authority, project, intent, bytes);
+            return publication::run(profile, transport, authority, project, intent, bytes)
         }
         Command::Show { model } => {
             let data = request(
@@ -737,13 +733,13 @@ pub(crate) fn run<T: AuthorizedTransport>(
             });
         }
         Command::PublishExport { .. } | Command::DownloadExport { .. } => {
-            return exports::run(profile, transport, authority, project, command);
+            return exports::run(profile, transport, authority, project, command)
         }
         Command::BumpVersion { .. }
         | Command::UpdateModel { .. }
         | Command::SetApproval { .. }
         | Command::DownloadBackup { .. } => {
-            return governance::run(profile, transport, authority, project, command);
+            return governance::run(profile, transport, authority, project, command)
         }
         _ => {}
     }
@@ -1061,14 +1057,12 @@ mod tests {
             body("invalid project grid model: manifest_model_revision must advance beyond 4"),
         );
         let refused = refusal(&advance, "create_version", false);
-        assert!(
-            refused
-                .service_refusal()
-                .unwrap()
-                .message()
-                .unwrap()
-                .contains("must advance")
-        );
+        assert!(refused
+            .service_refusal()
+            .unwrap()
+            .message()
+            .unwrap()
+            .contains("must advance"));
         let missing = refusal(&TransportResponse::new(404, b"{}"), "get_model", false);
         assert_eq!(missing.kind(), ErrorKind::ResourceNotFound);
         assert_eq!(
@@ -1093,28 +1087,24 @@ mod tests {
         };
         assert!(publish("submission-2").validate("project").is_ok());
         assert!(publish("Submission 2").validate("project").is_err());
-        assert!(
-            Command::DownloadExport {
-                model: "model-1".into(),
-                revision: "rev-1".into(),
-                export: "submission-2".into(),
-                output: "../x".into(),
-            }
-            .validate("project")
-            .is_err()
-        );
+        assert!(Command::DownloadExport {
+            model: "model-1".into(),
+            revision: "rev-1".into(),
+            export: "submission-2".into(),
+            output: "../x".into(),
+        }
+        .validate("project")
+        .is_err());
     }
     #[test]
     fn storage_locator_cannot_redirect_credentials_or_substitute_objects() {
         let object = "ds-grid/objects/sha256/ab/model.dsgrid";
-        assert!(
-            locator(
-                &format!("https://storage.googleapis.com/bucket/{object}?X-Goog-Signature=issued"),
-                object,
-                12
-            )
-            .is_ok()
-        );
+        assert!(locator(
+            &format!("https://storage.googleapis.com/bucket/{object}?X-Goog-Signature=issued"),
+            object,
+            12
+        )
+        .is_ok());
         for url in [
             "http://storage.googleapis.com/bucket/x",
             "https://evil.example/x",
@@ -1123,61 +1113,49 @@ mod tests {
         ] {
             assert!(locator(url, object, 12).is_err());
         }
-        assert!(
-            Command::List {
-                limit: 101,
-                cursor: None,
-                include_deleted: true,
-            }
-            .validate("project")
-            .is_err()
-        );
-        assert!(
-            Command::Download {
-                model: "../x".into(),
-                revision: "r".into()
-            }
-            .validate("project")
-            .is_err()
-        );
-        assert!(
-            Command::Delete {
-                model: "model-1".into(),
-                expected_revision: "revision-1".into(),
-                expected_digest: "a".repeat(64),
-                reason: "Superseded by the reviewed model".into(),
-            }
-            .validate("project")
-            .is_ok()
-        );
-        assert!(
-            Command::Restore {
-                model: "model-1".into(),
-                expected_revision: "revision-1".into(),
-                expected_digest: "a".repeat(64),
-                reason: "Needed again".into(),
-            }
-            .validate("project")
-            .is_ok()
-        );
-        assert!(
-            Command::ListVersions {
-                model: "model-1".into(),
-                limit: 50,
-                cursor: None,
-            }
-            .validate("project")
-            .is_ok()
-        );
-        assert!(
-            Command::Delete {
-                model: "model-1".into(),
-                expected_revision: "revision-1".into(),
-                expected_digest: "a".repeat(64),
-                reason: " ".into(),
-            }
-            .validate("project")
-            .is_err()
-        );
+        assert!(Command::List {
+            limit: 101,
+            cursor: None,
+            include_deleted: true,
+        }
+        .validate("project")
+        .is_err());
+        assert!(Command::Download {
+            model: "../x".into(),
+            revision: "r".into()
+        }
+        .validate("project")
+        .is_err());
+        assert!(Command::Delete {
+            model: "model-1".into(),
+            expected_revision: "revision-1".into(),
+            expected_digest: "a".repeat(64),
+            reason: "Superseded by the reviewed model".into(),
+        }
+        .validate("project")
+        .is_ok());
+        assert!(Command::Restore {
+            model: "model-1".into(),
+            expected_revision: "revision-1".into(),
+            expected_digest: "a".repeat(64),
+            reason: "Needed again".into(),
+        }
+        .validate("project")
+        .is_ok());
+        assert!(Command::ListVersions {
+            model: "model-1".into(),
+            limit: 50,
+            cursor: None,
+        }
+        .validate("project")
+        .is_ok());
+        assert!(Command::Delete {
+            model: "model-1".into(),
+            expected_revision: "revision-1".into(),
+            expected_digest: "a".repeat(64),
+            reason: " ".into(),
+        }
+        .validate("project")
+        .is_err());
     }
 }
