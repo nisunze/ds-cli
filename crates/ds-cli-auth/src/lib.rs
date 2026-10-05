@@ -12,6 +12,7 @@ pub mod grid_library_member;
 pub mod link_approval;
 mod profile;
 mod project_template;
+mod saved_a4;
 mod state;
 #[cfg(windows)]
 mod state_windows;
@@ -19,6 +20,8 @@ pub mod sync;
 #[cfg(test)]
 mod test_support;
 mod transport;
+
+pub use saved_a4::{SavedA4Capture, saved_a4_for_project};
 
 pub use account::{
     APPROVAL_INSTRUCTIONS, SIGNED_OUT_NEXT, SIGNED_OUT_REFUSAL, SIGNED_OUT_REMEDY, signed_out_next,
