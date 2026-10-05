@@ -2101,7 +2101,8 @@ pub struct RunReceiptFacts<'a> {
     /// room (`print_context_document`), or `None` when the run printed
     /// without external context.
     pub print_context_sha256: Option<&'a str>,
-    /// The layer ids that document carried, in document order.
+    /// The layer ids that document carried, in document order. A context
+    /// carrying only governed project metadata, such as its CRS, has none.
     pub print_context_layers: &'a [String],
     /// The selected context ids the host could not supply on this run,
     /// each named so a receipt never reads as complete when it is not.
@@ -2150,9 +2151,6 @@ pub fn run_receipt(facts: &RunReceiptFacts<'_>) -> Result<Value, String> {
     match facts.print_context_sha256 {
         Some(digest) if !exact_lower_sha256(digest) => {
             return Err("Network Reporter print context digest is invalid".to_string());
-        }
-        Some(_) if facts.print_context_layers.is_empty() => {
-            return Err("Network Reporter print context digest names no layers".to_string());
         }
         None if !facts.print_context_layers.is_empty() => {
             return Err("Network Reporter print context layers have no digest".to_string());
@@ -3794,10 +3792,31 @@ mod tests {
         let bare = facts(None, &[], &omitted).unwrap();
         assert_eq!(bare["print_context_sha256"], Value::Null);
         assert_eq!(bare["print_context_omitted"], json!(["project_dsgrid_mv"]));
-        // A digest without layers, layers without a digest, a malformed
-        // digest, and an id that is not an identifier or is named twice.
-        assert!(facts(Some(&digest), &[], &[]).is_err());
+        // The native host also stages CRS-only context documents. Keep their
+        // exact document digest without claiming any external layers.
+        let project_crs = crate::printing::project_crs::Capture::new(
+            "proj-1",
+            "stable",
+            "fixture-user",
+            "fixture-audience",
+            json!({"crs": {"mode": "tm_rwanda"}}),
+        )
+        .unwrap();
+        let metadata = serde_json::to_vec(&json!({
+            "schema": "ds.print-context/v1",
+            "layers": {},
+            "project_crs": project_crs
+        }))
+        .unwrap();
+        let metadata_digest = sha256_hex(&metadata);
+        let metadata_receipt = facts(Some(&metadata_digest), &[], &[]).unwrap();
+        assert_eq!(metadata_receipt["print_context_sha256"], metadata_digest);
+        assert_eq!(metadata_receipt["print_context_layers"], json!([]));
+        assert_eq!(metadata_receipt["print_context_omitted"], json!([]));
+        // Layers without a digest, a malformed metadata or layer digest, and
+        // an id that is not an identifier or is named twice remain invalid.
         assert!(facts(None, &supplied, &[]).is_err());
+        assert!(facts(Some("abc"), &[], &[]).is_err());
         assert!(facts(Some("abc"), &supplied, &[]).is_err());
         assert!(facts(Some(&digest), &["roads x".to_string()], &[]).is_err());
         assert!(facts(Some(&digest), &supplied, &["roads".to_string()]).is_err());
