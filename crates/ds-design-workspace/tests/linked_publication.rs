@@ -49,3 +49,50 @@ fn linked_publication_captures_explicit_creation_and_existing_head_with_native_l
             .contains("model_invalid")
     );
 }
+
+#[test]
+fn the_combined_models_binding_and_publication_revision_are_derived() {
+    use ds_design_workspace::grid_publication::{
+        combined_model_id, publication_revision, COMBINED_DISPLAY_NAME, COMBINED_GRAPH_ID,
+    };
+    assert_eq!(COMBINED_GRAPH_ID, "combined");
+    assert_eq!(COMBINED_DISPLAY_NAME, "Combined model");
+    let parts = ["north".to_string(), "south".to_string()].into();
+    let identity = ds_grid_engine::composite::combined_identity(&parts);
+    let model_id = combined_model_id(&identity).unwrap();
+    assert_eq!(model_id, identity.replacen("combined.", "combined-", 1));
+    assert_eq!(
+        combined_model_id("combined.0123456789abcdef").unwrap(),
+        "combined-0123456789abcdef"
+    );
+    for refused in [
+        "north",
+        "combined-0123456789abcdef",
+        "combined.0123456789ABCDEF",
+        "combined.0123",
+    ] {
+        assert!(
+            combined_model_id(refused)
+                .unwrap_err()
+                .starts_with("combined_identity_invalid"),
+            "{refused}"
+        );
+    }
+    // The revision a later generation expects as the combined model's head is
+    // exactly the one publication assigns to the same package bytes.
+    let bytes = package();
+    let request = Request {
+        project: "project-1".into(),
+        model_kind: "general".into(),
+        display_name: Some(COMBINED_DISPLAY_NAME.into()),
+        ..Default::default()
+    };
+    let created = prepare_linked(&request, &bytes, &model_id, "").unwrap();
+    assert_eq!(
+        publication_revision(&bytes).unwrap(),
+        created.plan("project-1", &bytes).unwrap().revision_id
+    );
+    assert!(publication_revision(b"invalid package")
+        .unwrap_err()
+        .contains("model_invalid"));
+}

@@ -172,6 +172,22 @@ pub fn identifier(value: &str) -> bool {
         && value != ".."
 }
 
+/// The project revision ID of a package's engine source revision: every
+/// character outside the identifier alphabet becomes `-`.
+pub fn revision_identifier(source_revision_id: &str) -> Option<String> {
+    let revision_id: String = source_revision_id
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.') {
+                c
+            } else {
+                '-'
+            }
+        })
+        .collect();
+    identifier(&revision_id).then_some(revision_id)
+}
+
 impl Intent {
     pub fn plan(&self, project: &str, bytes: &[u8]) -> Result<Plan, &'static str> {
         if self.project != project || !identifier(project) || !identifier(&self.model_id) {
@@ -213,20 +229,8 @@ impl Intent {
             }
         }
         self.governance()?;
-        let revision_id: String = self
-            .source_revision_id
-            .chars()
-            .map(|c| {
-                if c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.') {
-                    c
-                } else {
-                    '-'
-                }
-            })
-            .collect();
-        if !identifier(&revision_id) {
-            return Err("grid_publication_revision_invalid");
-        }
+        let revision_id = revision_identifier(&self.source_revision_id)
+            .ok_or("grid_publication_revision_invalid")?;
         let digest = format!("{:x}", Sha256::digest(bytes));
         Ok(Plan {
             intent: self.clone(),
@@ -496,6 +500,32 @@ mod tests {
         assert_eq!(b.version_request()["project_id"], "project_b");
         assert!(intent("project_a").plan("project_b", b"first").is_err());
         assert_eq!(a.revision_id, "rev-new");
+    }
+    #[test]
+    fn revision_identifier_is_the_sanitizer_plan_applies() {
+        assert_eq!(revision_identifier("rev:new").as_deref(), Some("rev-new"));
+        assert_eq!(
+            revision_identifier("sha256:ab/cd ef").as_deref(),
+            Some("sha256-ab-cd-ef")
+        );
+        assert_eq!(
+            revision_identifier("rev_1.2-x").as_deref(),
+            Some("rev_1.2-x")
+        );
+        for refused in ["", "..", &"r".repeat(161)] {
+            assert_eq!(revision_identifier(refused), None, "{refused}");
+        }
+        let mut odd = intent("p");
+        odd.source_revision_id = "sha256:ab/cd ef".into();
+        assert_eq!(
+            odd.plan("p", b"model").unwrap().revision_id,
+            revision_identifier("sha256:ab/cd ef").unwrap()
+        );
+        odd.source_revision_id = "..".into();
+        assert_eq!(
+            odd.plan("p", b"model").unwrap_err(),
+            "grid_publication_revision_invalid"
+        );
     }
     #[test]
     fn readback_must_match_project_revision_kind_and_exact_bytes() {

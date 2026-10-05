@@ -1,7 +1,7 @@
 //! Validate the exact package with Network before admitting native publication.
 //! Source revision and engine metadata are derived here, never trusted from UI.
 use ds_command_kernel::grid_publication::{
-    Approval, CompositionSource, Intent, MigrationSource, MAX_MODEL_BYTES,
+    revision_identifier, Approval, CompositionSource, Intent, MigrationSource, MAX_MODEL_BYTES,
 };
 use ds_grid_engine::GridSession;
 use serde::{Deserialize, Serialize};
@@ -36,6 +36,32 @@ pub struct Request {
     pub composition_sources: Vec<CompositionSource>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub migration_source: Option<MigrationSource>,
+}
+
+/// A project holds one automatic combined model, in one linked graph. Its
+/// binding is derived, never authored: this graph ID, the model ID of
+/// [`combined_model_id`] and, when it is created, this display name.
+pub const COMBINED_GRAPH_ID: &str = "combined";
+pub const COMBINED_DISPLAY_NAME: &str = "Combined model";
+
+/// The project model ID of the engine's combined identity:
+/// `combined.<16 hex>` -> `combined-<16 hex>`.
+pub fn combined_model_id(identity: &str) -> Result<String, String> {
+    if !ds_grid_engine::composite::is_combined_identity(identity) {
+        return Err(format!(
+            "combined_identity_invalid: {identity} is not a derived combined-model identity"
+        ));
+    }
+    Ok(identity.replacen('.', "-", 1))
+}
+
+/// The project revision ID publication assigns to these exact package bytes.
+pub fn publication_revision(bytes: &[u8]) -> Result<String, String> {
+    let decoded =
+        ds_grid_exchange::package::unpack(bytes).map_err(|e| format!("model_invalid: {e}"))?;
+    let session = GridSession::open(decoded.snapshot);
+    revision_identifier(session.current_revision().revision_id.as_str())
+        .ok_or_else(|| "grid_publication_revision_invalid".to_owned())
 }
 
 pub fn prepare(request: &Request, bytes: &[u8]) -> Result<Intent, String> {
