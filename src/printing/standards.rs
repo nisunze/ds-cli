@@ -199,7 +199,7 @@ pub fn registry() -> Value {
         {"id":Kind::LvTransformerA0.id(),"kind":"lv_transformer_a0","paper":"A0"},
         {"id":Kind::LvTransformerA3.id(),"kind":"lv_transformer_a3","paper":"A3"},
         {"id":Kind::LvCombinedA0.id(),"kind":"lv_combined_a0","paper":"A0","front_matter_paper":"A0","front_roles":FRONT_ROLES},
-        {"id":Kind::LvCombinedA3.id(),"kind":"lv_combined_a3","paper":"A3","front_matter_paper":"A0","front_roles":FRONT_ROLES}],
+        {"id":Kind::LvCombinedA3.id(),"kind":"lv_combined_a3","paper":"A3","front_matter_paper":"A3","front_roles":FRONT_ROLES}],
         "defaults":{"ink_mode":"colour","preview":"PNG before PDF","attribution":attribution::CREDIT,
         "optional_context":"omit with diagnostics","adjacent_networks":"muted, no labels or schedule rows",
         "identity":"explicit issue date, project parties, contract, logos and model version",
@@ -244,12 +244,8 @@ impl Templates {
         role: PageRole,
         project: &str,
     ) -> Result<&TemplateDocument, String> {
-        let paper = if matches!(role, PageRole::Network | PageRole::Schedule) {
-            kind.paper()
-        } else {
-            Paper::A0
-        };
-        self.document_by_id(kind.id(), role, paper, project)
+        // Every page of a set, front matter included, is on the set's paper.
+        self.document_by_id(kind.id(), role, kind.paper(), project)
     }
     /// Generic consumer used by MV/booklet families with their own registry.
     pub fn document_by_id(
@@ -390,6 +386,51 @@ mod tests {
             .validate()
             .unwrap_err()
             .starts_with("print_logo_invalid:"));
+    }
+    #[test]
+    fn front_matter_is_on_the_paper_of_its_set() {
+        let document = |paper: Paper, page_mm: [f64; 2]| {
+            let mut layout = default_layout();
+            layout.style_refs.clear();
+            layout.styles.clear();
+            layout
+                .elements
+                .retain(|e| matches!(e.kind, ElementKind::Text | ElementKind::Rectangle));
+            layout.paper.size = paper;
+            layout.page_mm = page_mm;
+            layout.attribution = Some(
+                serde_json::from_value(json!({"font_pt":7,"color":"#595959",
+                    "svg_font_family":"DejaVu Sans","pdf_font_family":"Helvetica",
+                    "right_inset_pt":146,"baseline_pt":7}))
+                .unwrap(),
+            );
+            let mut document = TemplateDocument {
+                template_id: Kind::LvCombinedA3.id().into(),
+                role: PageRole::Cover,
+                revision_id: "c".repeat(64),
+                content_sha256: String::new(),
+                layout,
+                logo_slots: vec![],
+                layer_keys: BTreeMap::new(),
+            };
+            document.content_sha256 = document.content_digest().unwrap();
+            Templates {
+                schema: TEMPLATE_SCHEMA.into(),
+                project_id: "fixture".into(),
+                revision_id: "d".repeat(64),
+                documents: vec![document],
+            }
+        };
+        let a3 = document(Paper::A3, [420., 297.]);
+        a3.document(Kind::LvCombinedA3, PageRole::Cover, "fixture")
+            .unwrap();
+        let a0 = document(Paper::A0, [1189., 841.]);
+        assert!(a0
+            .document(Kind::LvCombinedA3, PageRole::Cover, "fixture")
+            .unwrap_err()
+            .contains("paper mismatch"));
+        assert_eq!(registry()["templates"][3]["front_matter_paper"], "A3");
+        assert_eq!(registry()["templates"][2]["front_matter_paper"], "A0");
     }
     #[test]
     fn declared_semantic_layers_admit_label_controls_before_style_resolution() {

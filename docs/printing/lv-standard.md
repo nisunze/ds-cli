@@ -2,8 +2,9 @@
 
 The registry names `lv-transformer-a0-v1`, `lv-transformer-a3-v1`,
 `lv-combined-a0-v1` and `lv-combined-a3-v1`. Each is a governed API document,
-not a code-built layout. A3 has an independent composition. Combined sets
-open with six A0 roles: cover, key map, index, legend, notes and revisions.
+not a code-built layout. A3 has an independent composition. Each combined set
+opens with six front-matter roles on its own paper (A0 for the A0 set, A3 for
+the A3 set): cover, key map, index, legend, notes and revisions.
 Canonical transformer order and numbered schedule continuations follow;
 standalone PDFs include their continuations. Workbook-owned projections
 retain all schedule fields. A smaller paper never silently drops columns.
