@@ -1500,6 +1500,25 @@ impl DeviceApiAuthorization<'_> {
         self.ensure_active(now)?;
         crate::printing_standard::read(self.profile, transport, self.authority(), request)
     }
+    /// Plan, census or apply the governed printing-template migration of one
+    /// library (`ds_project` empty for the global one).
+    pub fn print_style_keys<T: AuthorizedTransport>(
+        &self,
+        transport: &mut T,
+        ds_project: &str,
+        request: &crate::PrintStyleKeysRequest,
+        now: u64,
+    ) -> Result<serde_json::Value, ClientError> {
+        request.validate_for(ds_project)?;
+        self.ensure_active(now)?;
+        crate::printing_style_keys::call(
+            self.profile,
+            transport,
+            self.authority(),
+            ds_project,
+            request,
+        )
+    }
     pub fn layer_config<T: AuthorizedTransport>(
         &self,
         transport: &mut T,
