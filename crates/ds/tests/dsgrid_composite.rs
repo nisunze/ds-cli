@@ -114,12 +114,31 @@ fn all_linked_commands_plan_by_default_apply_atomically_and_name_conflicts() {
             "south".to_string(),
         ]));
     assert_eq!(dry["composite"], combined.as_str());
+    // Only submodels are bound: the combined model's binding is derived.
     let publication = root.join("publication.json");
-    let mut binding = json!({"project":"project-1","graph_id":"graph-1","expected_generation":null,"model_kind":"general","participants":{
+    let binding = json!({"project":"project-1","expected_generation":null,"model_kind":"general","participants":{
       "north":{"model_id":"project-north","expected_head_revision_id":"","display_name":"North"},
       "south":{"model_id":"project-south","expected_head_revision_id":"","display_name":"South"}},"retire":null,"reason":"Initial linked split"});
-    binding["participants"][combined.as_str()] = json!({"model_id":"project-combined","expected_head_revision_id":"","display_name":"Combined"});
     write_json(&publication, &binding);
+    let mut naming_combined = binding.clone();
+    naming_combined["participants"][combined.as_str()] = json!({"model_id":"project-combined","expected_head_revision_id":"","display_name":"Combined"});
+    let named = root.join("publication-naming-combined.json");
+    write_json(&named, &naming_combined);
+    let (refused, code) = common::json(&[
+        "dsgrid",
+        "model",
+        "split",
+        "--package",
+        path(&source),
+        "--request",
+        path(&split_request),
+        "--publication",
+        path(&named),
+        "--output",
+        "json",
+    ]);
+    assert_ne!(code, 0, "{refused}");
+    assert_eq!(refused["error"]["code"], "composite_publication_invalid");
     let project_dry = ok(&[
         "dsgrid",
         "model",
@@ -142,7 +161,23 @@ fn all_linked_commands_plan_by_default_apply_atomically_and_name_conflicts() {
         "publish_linked"
     );
     let linked_request = &project_dry["publication"]["request"]["linked"];
-    assert_eq!(linked_request["composite_model_id"], "project-combined");
+    let combined_model = combined.replacen('.', "-", 1);
+    assert_eq!(linked_request["graph_id"], "combined");
+    assert_eq!(
+        linked_request["composite_model_id"],
+        combined_model.as_str()
+    );
+    let derived = &project_dry["publication"]["bindings"][combined.as_str()];
+    assert_eq!(derived["derived"], true);
+    assert_eq!(derived["action"], "create");
+    assert!(
+        linked_request["versions"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|version| version["model_id"] == combined_model.as_str()
+                && version["display_name"] == "Combined model")
+    );
     assert_eq!(
         linked_request["part_model_ids"],
         json!(["project-north", "project-south"])
@@ -214,6 +249,14 @@ fn all_linked_commands_plan_by_default_apply_atomically_and_name_conflicts() {
     assert_eq!(status["generation"], 0);
     assert_eq!(status["features"], 2);
     assert_eq!(status["project_published"], false);
+    assert_eq!(status["candidate_sha256"], applied["candidate_sha256"]);
+    let heads = status["participants"].as_array().unwrap();
+    assert_eq!(heads.len(), 3);
+    assert!(
+        heads
+            .iter()
+            .all(|head| head["state"] == "in_step" && head["generation"] == 0)
+    );
     let burst = root.join("burst.json");
     write_json(
         &burst,
@@ -263,6 +306,47 @@ fn all_linked_commands_plan_by_default_apply_atomically_and_name_conflicts() {
     ]);
     assert_eq!(reconciled["generation"], 1);
     assert_eq!(reconciled["counts"]["dirty"], 1);
+    // The explicit diff names the adopted edit, its author and its fields.
+    assert_eq!(
+        reconciled["changes"]["features"]["terrain_points:[\"point-a\"]"],
+        json!({"change": "modified", "by": "north", "fields": ["description"]})
+    );
+    // A staged edit is ahead of the generation until the burst adopts it.
+    let pending = ok(&[
+        "dsgrid",
+        "model",
+        "status",
+        "--bundle",
+        path(&bundle),
+        "--edited",
+        &edit_arg,
+        "--output",
+        "json",
+    ]);
+    let state = |id: &str| {
+        pending["participants"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|head| head["id"] == id)
+            .unwrap()["state"]
+            .clone()
+    };
+    assert_eq!(state("north"), "ahead");
+    assert_eq!(state("south"), "in_step");
+    // The burst rewrote only the edited part and the combined model.
+    let written = |id: &str| {
+        reconciled["participants"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|head| head["id"] == id)
+            .unwrap()["state"]
+            .clone()
+    };
+    assert_eq!(written("north"), "new_revision");
+    assert_eq!(written(&combined), "new_revision");
+    assert_eq!(written("south"), "in_step");
     let mut composite = checkpoint.packages[&combined].clone();
     composite.snapshot.terrain_points[0].description = Some("other change".into());
     let composite_path = root.join("composite.dsgrid");
@@ -315,6 +399,50 @@ fn all_linked_commands_plan_by_default_apply_atomically_and_name_conflicts() {
     assert_eq!(derived["features"], 2);
     assert_eq!(derived["composite"], combined.as_str());
     assert_eq!(derived["canonical_digest"], applied["canonical_digest"]);
+    // Publishing a derived generation keeps every unchanged submodel's head:
+    // its package is its head's exact bytes, so no revision is written.
+    let bind = |heads: Value| {
+        json!({"project":"project-1","expected_generation":null,"model_kind":"general","participants":{
+            "north":{"model_id":"project-north","expected_head_revision_id":heads["north"],"display_name":null},
+            "south":{"model_id":"project-south","expected_head_revision_id":heads["south"],"display_name":null}},
+            "retire":null,"reason":"Derive the combined model"})
+    };
+    let captured = root.join("derive-publication-1.json");
+    write_json(
+        &captured,
+        &bind(json!({"north":"head-north","south":"head-south"})),
+    );
+    let planned = ok(&[
+        "dsgrid",
+        "model",
+        "reconcile",
+        "--request",
+        path(&derive_request),
+        "--publication",
+        path(&captured),
+        "--output",
+        "json",
+    ]);
+    let bindings = &planned["publication"]["bindings"];
+    assert_eq!(bindings["north"]["action"], "new_revision");
+    let heads = json!({"north": bindings["north"]["revision_id"], "south": bindings["south"]["revision_id"]});
+    let current = root.join("derive-publication-2.json");
+    write_json(&current, &bind(heads));
+    let kept = ok(&[
+        "dsgrid",
+        "model",
+        "reconcile",
+        "--request",
+        path(&derive_request),
+        "--publication",
+        path(&current),
+        "--output",
+        "json",
+    ]);
+    let bindings = &kept["publication"]["bindings"];
+    assert_eq!(bindings["north"]["action"], "keep");
+    assert_eq!(bindings["south"]["action"], "keep");
+    assert_eq!(bindings[combined.as_str()]["action"], "create");
     // No user-facing create or combine: `model link` is the PLS-CADD
     // provenance link only, and `model combine` does not exist.
     let (refused, code) = common::json(&[
@@ -390,4 +518,32 @@ fn every_engine_linked_refusal_is_declared_by_the_cli() {
                 .any(|refusal| code == refusal.code)
         );
     }
+}
+
+/// Pinned with the same rows in ds-grid-engine's composite suite: the CLI
+/// builds serde_json with `preserve_order`, and the canonical digest of a
+/// combined model must not depend on that.
+#[test]
+fn canonical_digest_is_the_engine_constant_in_this_host() {
+    let mut snapshot = GridModelSnapshot::default();
+    snapshot.alignments.push(
+        serde_json::from_value(
+            json!({"id": "al-host", "label": "Host", "global_station_gap_m": 100.0}),
+        )
+        .unwrap(),
+    );
+    snapshot.feature_codes.push(
+        serde_json::from_value(json!({"id": "fc-host", "code_token": "HOST", "name": "HOST",
+            "description": null, "namespace": null, "applies_to_points": true,
+            "applies_to_lines": false, "applies_to_polygons": false, "survey_form": null,
+            "plan_policy": {"visible": true, "color": null, "symbol": null, "point_radius_px": null, "line_width_px": null},
+            "profile_policy": {"visible": true, "color": null, "marker": null, "show_ordinate": true},
+            "label_policy": {"show_by_default": true, "source": "code_token", "min_zoom": null},
+            "superseded_by": null}))
+        .unwrap(),
+    );
+    assert_eq!(
+        ds_grid_engine::composite::canonical_digest(&snapshot).unwrap(),
+        "sha256:f7fd7576795eeda545f644901bb65ac44f3f38d8cfbc012192bf5fdc2b790e03"
+    );
 }
