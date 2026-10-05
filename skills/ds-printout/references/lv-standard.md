@@ -5,8 +5,9 @@ Discover `report.export` and its LV standard job through `report.tasks`.
 One declarative JSON job pins the exact roster, saved versions, held context,
 project parties, contract, logos/digests and issue identity. It produces
 independent A0/A3 transformer sheets and separate combined collections.
-Each collection opens with A0 cover, key map with every drawing reference,
-sheet index, legend, general notes and revisions, including the A3 collection.
+Each collection opens with front matter on its own paper (A0 for the A0 set,
+A3 for the A3 set): cover, key map with every drawing reference, sheet index,
+legend, general notes and revisions.
 PNG previews precede each PDF; inspect them before delivery.
 Dense schedules continue on numbered sheets, included in standalone PDFs,
 combined PDFs and the index; every source row remains accounted for.

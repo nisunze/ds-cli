@@ -92,8 +92,9 @@ ds report export --task lv-standard --request ./lv-job.json \
 ```
 
 The kernel registry names the independent A0/A3 transformer and combined
-templates. Each combined PDF starts with six A0 pages: cover, key map with
-drawing references, sheet index, legend, notes and revisions. The job pins
+templates. Each combined PDF starts with six front-matter pages on its own
+paper (A0 for the A0 set, A3 for the A3 set): cover, key map with drawing
+references, sheet index, legend, notes and revisions. The job pins
 project parties, contract, logos/digests, model version and issue identity.
 It supplies exact-version held layers and optional context. Focused circuits
 own schedules and labels; neighbours use muted unlabelled pens. Missing
