@@ -348,14 +348,8 @@ pub mod project_lifecycle;
 pub fn project_lifecycle_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
     project_lifecycle::evaluate(input).map_err(|e| wasm_bindgen::JsValue::from_str(&e))
 }
-/// Starting a project from a template: the one plan every host runs.
+/// Starting a project from a template: the one plan `ds` runs.
 pub mod project_template;
-
-#[cfg(feature = "wasm")]
-#[wasm_bindgen::prelude::wasm_bindgen(js_name = projectTemplatePlan)]
-pub fn project_template_plan_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
-    project_template::evaluate(input).map_err(|e| wasm_bindgen::JsValue::from_str(&e))
-}
 
 pub mod report;
 pub mod report_export;

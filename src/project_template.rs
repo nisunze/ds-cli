@@ -17,10 +17,9 @@
 //!    (`kind: dsgrid`), in batches of [`crate::design_migration::MAX_ITEMS`].
 //!
 //! This module decides that plan from facts a host has read, and nothing
-//! else: no IO, no clock, no credential. Every host (the `ds` CLI's
-//! `auth project create --from-template`, the Desktop's "Start from template")
-//! runs the plan it returns, so they cannot disagree about what a template
-//! carries.
+//! else: no IO, no clock, no credential. The one host that runs it is
+//! `ds auth project create --from-template`; the web's "Start from template"
+//! hands the operator that door rather than running the plan a second time.
 //!
 //! What never travels is stated, never silent ([`NOT_CARRIED`]): computed
 //! results regenerate, survey data is the new project's own, members are
@@ -34,9 +33,6 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 pub const SCHEMA: &str = "ds.project-template-plan/v1";
-/// The largest plan input a host may hand over: the template's whole
-/// configuration document dominates it (about 0.6 MB on a live project).
-pub const MAX_INPUT_BYTES: usize = 16 * 1024 * 1024;
 /// One design-migration request's bound, shared with the migration door.
 pub const MIGRATION_BATCH: usize = crate::design_migration::MAX_ITEMS;
 /// The listing bucket a template is held in.
@@ -523,16 +519,6 @@ pub fn plan(input: &Input) -> Plan {
     }
 }
 
-/// The JSON door: one [`Input`] document in, one [`Plan`] document out.
-pub fn evaluate(input: &[u8]) -> Result<String, String> {
-    if input.len() > MAX_INPUT_BYTES {
-        return Err("project_template_input_too_large".into());
-    }
-    let input: Input =
-        serde_json::from_slice(input).map_err(|_| "project_template_input_invalid".to_owned())?;
-    serde_json::to_string(&plan(&input)).map_err(|error| error.to_string())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -786,17 +772,14 @@ mod tests {
     }
 
     #[test]
-    fn the_json_door_is_closed_and_deterministic() {
-        let bytes = serde_json::to_vec(&input(TEMPLATE_STATE)).unwrap();
-        assert_eq!(evaluate(&bytes).unwrap(), evaluate(&bytes).unwrap());
-        let plan: Value = serde_json::from_str(&evaluate(&bytes).unwrap()).unwrap();
-        assert_eq!(plan["steps"][0]["door"], "create_project");
-        assert_eq!(plan["steps"][3]["kind"], "transformer");
-        let mut unknown: Value = serde_json::from_slice(&bytes).unwrap();
+    fn the_input_is_closed_and_the_plan_deterministic() {
+        let input = input(TEMPLATE_STATE);
+        assert_eq!(plan(&input), plan(&input));
+        let wire = serde_json::to_value(plan(&input)).unwrap();
+        assert_eq!(wire["steps"][0]["door"], "create_project");
+        assert_eq!(wire["steps"][3]["kind"], "transformer");
+        let mut unknown = serde_json::to_value(&input).unwrap();
         unknown["template"]["is_template"] = json!(true);
-        assert_eq!(
-            evaluate(&serde_json::to_vec(&unknown).unwrap()).unwrap_err(),
-            "project_template_input_invalid"
-        );
+        assert!(serde_json::from_value::<Input>(unknown).is_err());
     }
 }
