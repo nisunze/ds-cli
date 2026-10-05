@@ -1119,6 +1119,13 @@ these documents to rendering unchanged. An absent table or unmigrated village
 choice is a named refusal. The planner never writes derived pens or mutates
 village strokes; independent `mv_map_context` documents own that appearance.
 
+The existing style-key migration also completes missing keys declared by a
+stored layout's selected context sources. Each requires one exact catalogue
+declaration at the layout's authored ink; absent or ambiguous declarations block
+the whole migration. Existing keys, inline pens, context parameters and corridor
+overrides remain authored values. Its existing reviewed-plan and setup-revision
+fences apply, and the replaced layout remains retained.
+
 Legacy corridor colour, width, opacity and dash fields remain optional explicit
 authored overrides for readable stored layouts. Omitted fields inherit the
 resolved corridor document. They are converted mechanically into declarative

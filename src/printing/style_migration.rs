@@ -1,5 +1,6 @@
 //! One explicit migration from legacy `Layout.style_refs` to exact semantic
-//! `style_keys`, decided against the governed style catalogue.
+//! `style_keys`, including the keys its selected context sources declare,
+//! decided against the governed style catalogue.
 //!
 //! A legacy ref names the document a template prints with today. The governed
 //! catalogue keeps every installed paper original under the `project` role:
@@ -12,6 +13,9 @@
 //! other role, no second resolver. An owner settles a finding only by choosing
 //! one exact declared key for that layer; a choice that prints another
 //! document is reported as such.
+//! Missing context keys come from the source owner's existing expansion and
+//! require one exact catalogue declaration at the layout's ink. Authored
+//! keys, pens and context parameters are retained.
 use super::Layout;
 use crate::style_resolution::{self, Ink, Key, Snapshot, Target};
 use schemars::JsonSchema;
@@ -77,11 +81,11 @@ impl Catalogue {
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum Status {
-    /// No legacy ref remains; nothing to write.
+    /// No legacy ref or missing context key remains; nothing to write.
     Current,
-    /// Every legacy ref maps exactly; the migrated layout is ready to save.
+    /// Every legacy ref and missing context key maps exactly; ready to save.
     Migrate,
-    /// At least one legacy ref or choice has no exact governed key.
+    /// At least one legacy ref, context key or choice has no exact declaration.
     Blocked,
 }
 
@@ -120,7 +124,7 @@ pub struct Plan {
     pub catalogue_revision: String,
     /// Legacy refs the stored template carries.
     pub legacy_refs: usize,
-    /// Keys the migration adds for the layers that carried legacy refs.
+    /// Keys added for legacy refs and missing selected context declarations.
     pub style_keys: BTreeMap<String, Key>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub document_changes: Vec<DocumentChange>,
@@ -152,7 +156,7 @@ pub fn answer(request: Request) -> Result<Answer, String> {
 }
 
 /// Plan the migration of one stored layout. The layout is returned only when
-/// every legacy ref maps to an exact governed key.
+/// every legacy ref and missing context key has an exact declaration.
 pub fn plan(
     layout: Layout,
     catalogue: &Catalogue,
@@ -192,9 +196,6 @@ pub fn plan(
             ));
         }
     }
-    if layout.style_refs.is_empty() && plan.findings.is_empty() {
-        return Ok((plan, None));
-    }
     for (layer, reference) in &layout.style_refs {
         // An authored key already wins at print time; its stale ref is dropped.
         if layout.style_keys.contains_key(layer) {
@@ -221,10 +222,39 @@ pub fn plan(
             Err(finding) => plan.findings.push(finding),
         }
     }
+    for (layer, key) in super::context::missing_context_style_keys(&layout) {
+        let declared: Vec<Candidate> = print_bindings(catalogue, ink)
+            .filter(|binding| binding.key == key)
+            .collect();
+        match declared.as_slice() {
+            [_] => {
+                plan.style_keys.insert(layer, key);
+            }
+            others => plan.findings.push(Finding {
+                layer,
+                style_ref: String::new(),
+                code: if others.is_empty() {
+                    "style_key_undeclared"
+                } else {
+                    "style_key_ambiguous"
+                }
+                .into(),
+                message: format!(
+                    "the selected context {} is declared {} times at the layout's ink",
+                    key.name(),
+                    others.len()
+                ),
+                candidates: declared,
+            }),
+        }
+    }
     if !plan.findings.is_empty() {
         plan.status = Status::Blocked;
         plan.style_keys.clear();
         plan.document_changes.clear();
+        return Ok((plan, None));
+    }
+    if layout.style_refs.is_empty() && plan.style_keys.is_empty() {
         return Ok((plan, None));
     }
     let mut migrated = layout;
@@ -415,6 +445,248 @@ mod tests {
                 })
                 .collect(),
         }
+    }
+
+    fn reviewed_mv_context() -> Layout {
+        let mut layout = default_layout();
+        layout.context_layers = serde_json::from_value(json!([{
+            "id":"project_dsgrid_mv", "label":"Proposed MV · project DS Grid models",
+            "source":{"kind":"project_dsgrid_mv", "buffer_m":200,
+                "corridor":{"distance_m":6,"color":"#957197","width_mm":0.15,
+                    "opacity":0.3,"dash_mm":[2,1]}}
+        }]))
+        .unwrap();
+        for layer in ["dsgrid_mv_lines", "dsgrid_mv_structures"] {
+            layout
+                .style_keys
+                .insert(layer.into(), key(layer, "project_model", "project"));
+        }
+        layout
+    }
+
+    // The producer seals only persisted style_keys. The consumer also asks for
+    // the selected context source's expanded keys, which caused the real refusal.
+    fn sealed_keys_receipt(
+        layout: &Layout,
+        snapshot: &Snapshot,
+    ) -> crate::report_export::InputReceipt {
+        let held = style_resolution::prepare_print(snapshot, &layout.style_keys).unwrap();
+        let selected: BTreeMap<_, _> = layout
+            .style_keys
+            .iter()
+            .map(|(layer, key)| {
+                (
+                    layer.clone(),
+                    json!({"key":key,"style_ref":held["style_refs"][layer]}),
+                )
+            })
+            .collect();
+        let mut pins = held["style_revisions"].clone();
+        for (reference, pin) in pins.as_object_mut().unwrap() {
+            pin["style_ref"] = json!(reference);
+        }
+        let renderer = snapshot
+            .bindings
+            .iter()
+            .find(|binding| binding.key == crate::printing::renderer_defaults::key())
+            .unwrap();
+        let sheets = json!({
+            "printing_style_bindings":{"manifest_id":"standard-style-set/v1",
+                "manifest_revision":snapshot.revision_id,"setups":{layout.id.clone():selected}},
+            "printing_styles":held["print_styles"],"printing_style_revisions":pins,
+            "printing_renderer_defaults":renderer
+        })
+        .to_string();
+        crate::report_export::InputReceipt {
+            schema: 1,
+            country: "Rwanda".into(),
+            sheets_sha256: crate::report_export::sha256_hex(sheets.as_bytes()),
+            sheets_json: sheets,
+            reference_semantic_sha256: "c".repeat(64),
+            local_print_recipe: None,
+        }
+    }
+
+    #[test]
+    fn current_a0_a3_context_migration_completes_the_actual_sealed_capture() {
+        let catalogue = governed_catalogue();
+        let snapshot = table(&catalogue);
+        for id in [
+            "a0-landscape-huye-cjic-review",
+            "a3-landscape-rwanda-project-lv",
+        ] {
+            let mut original = reviewed_mv_context();
+            original.id = id.into();
+            let capture = |layout: &Layout| {
+                crate::printing::style_capture::Capture::from_sealed_receipt(
+                    &snapshot.project_id,
+                    "local",
+                    "owner",
+                    &"a".repeat(64),
+                    &sealed_keys_receipt(layout, &snapshot),
+                    &[layout.clone()],
+                )
+            };
+            assert!(capture(&original)
+                .unwrap_err()
+                .contains("dsgrid_mv_angle_points"));
+            let (plan, migrated) =
+                super::plan(original.clone(), &catalogue, &BTreeMap::new()).unwrap();
+            assert_eq!(plan.status, Status::Migrate, "{:?}", plan.findings);
+            assert_eq!(plan.legacy_refs, 0);
+            assert_eq!(
+                plan.style_keys
+                    .keys()
+                    .map(String::as_str)
+                    .collect::<Vec<_>>(),
+                [
+                    "dsgrid_mv_angle_points",
+                    "dsgrid_mv_corridor",
+                    "dsgrid_mv_prohibited_zones"
+                ]
+            );
+            assert!(plan.document_changes.is_empty());
+            let migrated = migrated.unwrap();
+            let held = capture(&migrated).unwrap().for_layout(&migrated).unwrap();
+            assert_eq!(held["style_refs"].as_object().unwrap().len(), 5);
+            assert_eq!(
+                held["style_refs"]["dsgrid_mv_corridor"],
+                "print_context/dsgrid_mv_corridor_print"
+            );
+            let mut restored = migrated.clone();
+            restored.style_keys = original.style_keys.clone();
+            assert_eq!(
+                serde_json::to_value(restored).unwrap(),
+                serde_json::to_value(original).unwrap()
+            );
+            assert!(crate::printing::context::missing_context_style_keys(&migrated).is_empty());
+            let (again, layout) = super::plan(migrated, &catalogue, &BTreeMap::new()).unwrap();
+            assert_eq!((again.status, layout.is_none()), (Status::Current, true));
+        }
+    }
+
+    #[test]
+    fn missing_ambiguous_and_near_context_declarations_block_without_partial_migration() {
+        let expected = key("dsgrid_mv_angle_points", "project_model", "mv_context");
+        for changed in [
+            "missing",
+            "duplicate",
+            "screen",
+            "wrong_ink",
+            "wrong_source",
+            "wrong_role",
+        ] {
+            let mut catalogue = governed_catalogue();
+            let index = catalogue
+                .bindings
+                .iter()
+                .position(|binding| binding.key == expected)
+                .unwrap();
+            match changed {
+                "missing" => {
+                    catalogue.bindings.remove(index);
+                }
+                "duplicate" => catalogue.bindings.push(catalogue.bindings[index].clone()),
+                "screen" => catalogue.bindings[index].key.target = Target::Screen,
+                "wrong_ink" => catalogue.bindings[index].key.ink = Ink::Monochrome,
+                "wrong_source" => catalogue.bindings[index].key.source_kind = "saved_design".into(),
+                "wrong_role" => catalogue.bindings[index].key.role = "project".into(),
+                _ => unreachable!(),
+            }
+            let mut layout = reviewed_mv_context();
+            layout
+                .style_refs
+                .insert("lv_lines".into(), "master/lv_lines_print".into());
+            let before = serde_json::to_value(&layout).unwrap();
+            let (plan, migrated) =
+                super::plan(layout.clone(), &catalogue, &BTreeMap::new()).unwrap();
+            assert_eq!(plan.status, Status::Blocked, "{changed}");
+            assert!(
+                migrated.is_none()
+                    && plan.style_keys.is_empty()
+                    && plan.document_changes.is_empty()
+            );
+            assert_eq!(plan.findings.len(), 1, "{changed}: {:?}", plan.findings);
+            assert_eq!(plan.findings[0].layer, "dsgrid_mv_angle_points");
+            assert_eq!(
+                plan.findings[0].code,
+                if changed == "duplicate" {
+                    "style_key_ambiguous"
+                } else {
+                    "style_key_undeclared"
+                }
+            );
+            assert_eq!(serde_json::to_value(layout).unwrap(), before);
+        }
+    }
+
+    #[test]
+    fn authored_context_keys_and_pens_are_retained_without_rebinding() {
+        let mut layout = reviewed_mv_context();
+        layout.styles.insert(
+            "dsgrid_mv_angle_points".into(),
+            serde_json::from_value(json!({"stroke":"#72502a","width_mm":0.3})).unwrap(),
+        );
+        layout.style_keys.insert(
+            "dsgrid_mv_prohibited_zones".into(),
+            key("dsgrid_mv_prohibited_zones", "project_model", "focused"),
+        );
+        let original = layout.clone();
+        let (plan, migrated) =
+            super::plan(layout, &governed_catalogue(), &BTreeMap::new()).unwrap();
+        assert_eq!(plan.status, Status::Migrate);
+        assert_eq!(
+            plan.style_keys.keys().collect::<Vec<_>>(),
+            ["dsgrid_mv_corridor"]
+        );
+        let mut migrated = migrated.unwrap();
+        migrated.style_keys = original.style_keys.clone();
+        assert_eq!(
+            serde_json::to_value(migrated).unwrap(),
+            serde_json::to_value(original).unwrap()
+        );
+    }
+
+    #[test]
+    fn context_migration_requires_the_authored_ink_and_stores_semantic_colour_keys() {
+        let mut layout = reviewed_mv_context();
+        layout.ink_mode = Ink::Monochrome;
+        let mut catalogue = governed_catalogue();
+        let (blocked, migrated) =
+            super::plan(layout.clone(), &catalogue, &BTreeMap::new()).unwrap();
+        assert_eq!(blocked.status, Status::Blocked);
+        assert_eq!(blocked.findings.len(), 3);
+        assert!(migrated.is_none());
+        for binding in &mut catalogue.bindings {
+            if binding.key.source_kind == "project_model" && binding.key.role == "mv_context" {
+                binding.key.ink = Ink::Monochrome;
+            }
+        }
+        let (plan, migrated) = super::plan(layout, &catalogue, &BTreeMap::new()).unwrap();
+        assert_eq!(plan.status, Status::Migrate);
+        assert!(plan.style_keys.values().all(|key| key.ink == Ink::Colour));
+        assert_eq!(migrated.unwrap().ink_mode, Ink::Monochrome);
+    }
+
+    #[test]
+    fn context_migration_does_not_add_a_corridor_the_layout_does_not_select() {
+        let mut layout = reviewed_mv_context();
+        if let crate::printing::PrintContextSource::ProjectDsgridMv { corridor, .. } =
+            &mut layout.context_layers[0].source
+        {
+            *corridor = None;
+        }
+        let mut catalogue = governed_catalogue();
+        catalogue
+            .bindings
+            .retain(|binding| binding.key.entity_class != "dsgrid_mv_corridor");
+        let (plan, migrated) = super::plan(layout, &catalogue, &BTreeMap::new()).unwrap();
+        assert_eq!(plan.status, Status::Migrate);
+        assert_eq!(plan.style_keys.len(), 2);
+        assert!(!migrated
+            .unwrap()
+            .style_keys
+            .contains_key("dsgrid_mv_corridor"));
     }
 
     #[test]
