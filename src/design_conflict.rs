@@ -25,7 +25,7 @@ use crate::design::{canonical_row_name, is_special_row};
 pub const SCHEMA: &str = "ds.design-conflict/v1";
 
 /// A whole project's rows travel in one `detect` call.
-const MAX_INPUT_BYTES: usize = 32 * 1024 * 1024;
+const MAX_INPUT_BYTES: usize = crate::design::MAX_STATUS_REGISTER_BYTES;
 
 // ── the vocabulary ──────────────────────────────────────────────────────
 

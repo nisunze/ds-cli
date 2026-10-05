@@ -59,7 +59,7 @@ pub const SCHEMA: &str = "ds.design-dashboard/v1";
 
 /// A whole project's status list travels in one call, as it does for health
 /// and row truth.
-const MAX_INPUT_BYTES: usize = 32 * 1024 * 1024;
+const MAX_INPUT_BYTES: usize = crate::design::MAX_STATUS_REGISTER_BYTES;
 const DAY_MS: i64 = 24 * 60 * 60 * 1000;
 /// The district chips are generous enough that nothing is truncated for a
 /// real project (Rwanda has 30 districts).

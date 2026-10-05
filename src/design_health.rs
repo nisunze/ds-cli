@@ -29,7 +29,7 @@ pub const SCHEMA: &str = "ds.design-health/v1";
 
 /// A whole project's status list travels in one call; ~900 rows of phase
 /// blobs, uploads and artifacts is the shape this has to admit.
-const MAX_INPUT_BYTES: usize = 32 * 1024 * 1024;
+const MAX_INPUT_BYTES: usize = crate::design::MAX_STATUS_REGISTER_BYTES;
 /// Backend text is quoted, so it is bounded before it is read at all.
 const MESSAGE_MAX_CHARS: usize = 512;
 /// The register previews at most this many `warning.details` entries.

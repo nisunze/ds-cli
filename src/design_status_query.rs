@@ -22,7 +22,7 @@ use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 pub const SCHEMA: &str = "ds.design-status-query/v1";
-const MAX_INPUT_BYTES: usize = 32 * 1024 * 1024;
+const MAX_INPUT_BYTES: usize = crate::design::MAX_STATUS_REGISTER_BYTES;
 /// The admin filter value that selects rows with no bounds at that level.
 pub const ADMIN_NONE_VALUE: &str = "__admin_bounds_none__";
 

@@ -732,7 +732,7 @@ struct BulkPlanInput {
 /// Which of the selected rows each bulk verb may target, and how many would
 /// be dispatched rather than skipped as already fresh.
 pub fn plan_project_control_bulk_action(input_json: &[u8]) -> Result<String, ProjectControlError> {
-    let input: BulkPlanInput = decode(input_json, "bulk-plan")?;
+    let input: BulkPlanInput = decode_register(input_json, "bulk-plan")?;
     if input.rows.len() > MAX_PROJECT_CONTROL_ROOMS {
         return Err(error("bulk-plan carries more rows than the register holds"));
     }
@@ -1108,7 +1108,7 @@ struct ArtifactDownloadInput {
 pub fn plan_project_control_artifact_download(
     input_json: &[u8],
 ) -> Result<String, ProjectControlError> {
-    let input: ArtifactDownloadInput = decode(input_json, "artifact-download")?;
+    let input: ArtifactDownloadInput = decode_register(input_json, "artifact-download")?;
     if input.rows.len() > MAX_PROJECT_CONTROL_ROOMS {
         return Err(error(
             "artifact-download carries more rows than the register holds",
@@ -1709,9 +1709,26 @@ fn decode<T: for<'de> Deserialize<'de>>(
     input_json: &[u8],
     label: &str,
 ) -> Result<T, ProjectControlError> {
-    if input_json.is_empty() || input_json.len() > MAX_PROJECT_CONTROL_INPUT_BYTES {
+    decode_within(input_json, label, MAX_PROJECT_CONTROL_INPUT_BYTES)
+}
+
+/// The bulk and download plans carry the register's own rows, so they accept
+/// exactly what the register accepts; the other inputs here are compact.
+fn decode_register<T: for<'de> Deserialize<'de>>(
+    input_json: &[u8],
+    label: &str,
+) -> Result<T, ProjectControlError> {
+    decode_within(input_json, label, crate::design::MAX_STATUS_REGISTER_BYTES)
+}
+
+fn decode_within<T: for<'de> Deserialize<'de>>(
+    input_json: &[u8],
+    label: &str,
+    max_bytes: usize,
+) -> Result<T, ProjectControlError> {
+    if input_json.is_empty() || input_json.len() > max_bytes {
         return Err(error(&format!(
-            "{label} input must be 1..={MAX_PROJECT_CONTROL_INPUT_BYTES} bytes"
+            "{label} input must be 1..={max_bytes} bytes"
         )));
     }
     serde_json::from_slice(input_json).map_err(|_| error(&format!("{label} input is invalid")))
@@ -1758,6 +1775,79 @@ mod tests {
         let error = plan_project_control_bulk_action(&serde_json::to_vec(&input).unwrap())
             .expect_err("the bound holds");
         assert!(error.to_string().contains("more rows"), "{error}");
+    }
+
+    /// A real project outgrew the old 2 MiB bound on these two plans while the
+    /// register query, health and dashboard read the same rows under the
+    /// register's own limit: ticking every row of 215 transformers failed the
+    /// Status page with `artifact-download input must be 1..=2097152 bytes`.
+    fn register_heavier_than_the_compact_bound() -> (Vec<Value>, Vec<String>) {
+        let note = "x".repeat(12 * 1024);
+        let names: Vec<String> = (0..215).map(|index| format!("tx_{index}")).collect();
+        let rows = names
+            .iter()
+            .map(|name| {
+                json!({
+                    "name": name,
+                    "process_metadata": { "status": "warning", "note": note },
+                    "report_metadata": { "status": "stale" },
+                    "computed": { "report_state": "success", "report_has_files": false },
+                })
+            })
+            .collect();
+        (rows, names)
+    }
+
+    #[test]
+    fn the_bulk_and_download_plans_accept_the_register_the_query_accepts() {
+        let (rows, names) = register_heavier_than_the_compact_bound();
+        let download = serde_json::to_vec(&json!({ "rows": rows, "selection": names })).unwrap();
+        assert!(download.len() > MAX_PROJECT_CONTROL_INPUT_BYTES);
+        let plan: Value =
+            serde_json::from_str(&plan_project_control_artifact_download(&download).unwrap())
+                .unwrap();
+        assert_eq!(plan["scope"].as_array().map(Vec::len), Some(215));
+
+        let bulk = serde_json::to_vec(&json!({
+            "action": "generate_reports",
+            "rows": rows,
+            "selection": names,
+            "capabilities": ["design.download", "reports.export"],
+        }))
+        .unwrap();
+        assert!(bulk.len() > MAX_PROJECT_CONTROL_INPUT_BYTES);
+        let plan: Value =
+            serde_json::from_str(&plan_project_control_bulk_action(&bulk).unwrap()).unwrap();
+        assert_eq!(plan["stale"], 215);
+    }
+
+    #[test]
+    fn the_bulk_and_download_plans_refuse_where_the_register_query_refuses() {
+        let limit = crate::design::MAX_STATUS_REGISTER_BYTES;
+        let oversized = vec![b' '; limit + 1];
+        for refusal in [
+            plan_project_control_artifact_download(&oversized).map(drop),
+            plan_project_control_bulk_action(&oversized).map(drop),
+        ] {
+            let error = refusal.expect_err("the register bound holds");
+            assert!(
+                error.to_string().contains(&format!("1..={limit} bytes")),
+                "{error}"
+            );
+        }
+        assert!(crate::design_status_query::evaluate(&oversized).is_err());
+    }
+
+    #[test]
+    fn compact_project_control_inputs_keep_their_own_bound() {
+        let oversized = vec![b' '; MAX_PROJECT_CONTROL_INPUT_BYTES + 1];
+        let error = plan_project_control_rooms(&oversized).expect_err("the compact bound holds");
+        assert!(
+            error
+                .to_string()
+                .contains(&format!("1..={MAX_PROJECT_CONTROL_INPUT_BYTES} bytes")),
+            "{error}"
+        );
     }
 
     #[test]

@@ -31,7 +31,7 @@ use crate::design_status_row::finite_ordinal;
 pub const SCHEMA: &str = "ds.design-version/v1";
 
 /// A whole project's rows travel in one `facts` call.
-const MAX_INPUT_BYTES: usize = 32 * 1024 * 1024;
+const MAX_INPUT_BYTES: usize = crate::design::MAX_STATUS_REGISTER_BYTES;
 
 /// The honest internal "never versioned" sentinel, never a fabricated v0.
 pub const UNVERSIONED: i64 = 0;

@@ -670,6 +670,13 @@ pub struct RowAllows {
     pub deletable: bool,
 }
 
+/// The largest status register any kernel input carrying it accepts: the
+/// project's `list_transformers_status` rows as the service sent them,
+/// special rows included. The register query, health, dashboard, version,
+/// conflict and the Project Control bulk and download plans all read these
+/// same rows, so they refuse at this one size and never at a smaller one.
+pub const MAX_STATUS_REGISTER_BYTES: usize = 32 * 1024 * 1024;
+
 /// The browser's `canonicalName` (`api/design.ts`) and the canonicalisation
 /// `project_control`/`report` already applied, which are the same rule: trim,
 /// lowercase, and every other byte becomes `_`.
