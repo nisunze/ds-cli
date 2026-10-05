@@ -1,0 +1,22 @@
+{
+  "data": {
+    "projects": [
+      {
+        "eds_project_id": "template-project",
+        "project_name": "template_project",
+        "display_name": "Template Project",
+        "role": "admin",
+        "lifecycle_state": "template",
+        "is_archived": false,
+        "is_testing": false,
+        "is_template": true,
+        "country": "Rwanda",
+        "client": "EDCL",
+        "network_template": "master",
+        "project_components": {"design": true, "solar": false}
+      }
+    ],
+    "elevated": false
+  },
+  "success": true
+}

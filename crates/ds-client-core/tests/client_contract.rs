@@ -31,6 +31,7 @@ const REVOKED: &[u8] = include_bytes!("fixtures/firebase-revoked.json");
 const ACTIVE: &[u8] = include_bytes!("fixtures/projects-active.json");
 const ARCHIVED: &[u8] = include_bytes!("fixtures/projects-archived.json");
 const TESTING: &[u8] = include_bytes!("fixtures/projects-testing.json");
+const TEMPLATE: &[u8] = include_bytes!("fixtures/projects-template.json");
 const STYLE_CATALOG_SNAPSHOT: &[u8] = include_bytes!("fixtures/style-catalog-snapshot.json");
 
 fn profile(lane: DeploymentLane) -> ClientProfile {
@@ -2197,11 +2198,12 @@ fn sign_in_binds_identity_and_persists_no_password_or_id_token() {
 }
 
 #[test]
-fn project_directory_uses_three_exact_queries_in_live_contract_order() {
+fn project_directory_uses_four_exact_queries_in_live_contract_order() {
     let transport = FixtureTransport::with_sign_in(SIGN_IN);
     transport.push_project(ACTIVE);
     transport.push_project(ARCHIVED);
     transport.push_project(TESTING);
+    transport.push_project(TEMPLATE);
     let store = MemoryStore::default();
     let mut client = signed_in(transport.clone(), store);
 
@@ -2216,19 +2218,26 @@ fn project_directory_uses_three_exact_queries_in_live_contract_order() {
             ("active-project", ProjectStatus::Active),
             ("archived-project", ProjectStatus::Archived),
             ("testing-project", ProjectStatus::Testing),
+            ("template-project", ProjectStatus::Template),
         ]
     );
+    // A template carries the settings a project made from it inherits.
+    let template = directory.exact("template-project").unwrap().settings();
+    assert_eq!(template.country.as_deref(), Some("Rwanda"));
+    assert_eq!(template.network_template.as_deref(), Some("master"));
+    assert_eq!(template.project_components["solar"], false);
     let calls = transport.calls();
     assert!(calls[1].contains("/api/v1/user/projects?status=active"));
     assert!(calls[2].contains("/api/v1/user/projects?status=archived"));
     assert!(calls[3].contains("/api/v1/user/projects?status=testing"));
+    assert!(calls[4].contains("/api/v1/user/projects?status=template"));
     assert!(calls[1].contains("api_key=true"));
     assert!(calls[1].contains("content_type=application/json"));
     assert!(calls[1].contains("authorization=true"));
     assert!(calls[1].contains("forwarded_authorization=true"));
     assert!(calls[1].contains("client_id=ds-native-client"));
     assert!(calls[1].contains("correlation=true"));
-    assert_eq!(transport.correlated_project_requests(), 3);
+    assert_eq!(transport.correlated_project_requests(), 4);
     assert!(!calls.join("\n").contains("public-gateway-key"));
     assert!(!calls.join("\n").contains("e30."));
 }
@@ -2400,15 +2409,17 @@ fn project_directory_carries_the_servers_elevation_verdict_and_refuses_a_split_o
     transport.push_project(&bucket("a", "active", true));
     transport.push_project(&bucket("b", "archived", true));
     transport.push_project(&bucket("c", "testing", true));
+    transport.push_project(&bucket("d", "template", true));
     // A second directory read whose buckets disagree.
     transport.push_project(&bucket("a", "active", true));
     transport.push_project(&bucket("b", "archived", false));
     transport.push_project(&bucket("c", "testing", true));
+    transport.push_project(&bucket("d", "template", true));
     let mut client = signed_in(transport.clone(), MemoryStore::default());
 
     let directory = client.list_projects(NOW + 1).unwrap();
     assert!(directory.elevated());
-    assert_eq!(directory.projects().len(), 3);
+    assert_eq!(directory.projects().len(), 4);
     assert_eq!(directory.exact("a").unwrap().role(), Some(""));
 
     let error = client.list_projects(NOW + 2).unwrap_err();
@@ -2423,7 +2434,28 @@ fn project_directory_carries_the_servers_elevation_verdict_and_refuses_a_split_o
     transport.push_project(ACTIVE);
     transport.push_project(ARCHIVED);
     transport.push_project(TESTING);
+    transport.push_project(TEMPLATE);
     assert!(!client.list_projects(NOW + 3).unwrap().elevated());
+}
+
+/// A ds-brain that predates the template state answers `?status=template`
+/// with its active bucket. Those rows say `lifecycle_state: "active"`, so the
+/// directory refuses the read rather than listing active projects twice or
+/// relabelling them templates.
+#[test]
+fn a_server_without_the_template_bucket_is_refused_not_relabelled() {
+    let transport = FixtureTransport::with_sign_in(SIGN_IN);
+    transport.push_project(ACTIVE);
+    transport.push_project(ARCHIVED);
+    transport.push_project(TESTING);
+    transport.push_project(ACTIVE);
+    let mut client = signed_in(transport.clone(), MemoryStore::default());
+    let error = client.list_projects(NOW + 1).unwrap_err();
+    assert_eq!(error.kind(), ErrorKind::UnreadableResponse);
+    assert_eq!(
+        error.to_string(),
+        "a project row disagreed with its requested lifecycle bucket"
+    );
 }
 
 #[test]
@@ -3034,6 +3066,7 @@ fn login_instance_survives_refresh_and_changes_even_for_same_account_relogin() {
     transport.push_project(ACTIVE);
     transport.push_project(ARCHIVED);
     transport.push_project(TESTING);
+    transport.push_project(TEMPLATE);
     let mut client = signed_in(transport, store.clone());
     let first = probe_stored_refresh(&store.value().unwrap(), &profile).unwrap();
     client.list_projects(NOW + 3_001).unwrap();
@@ -3085,6 +3118,7 @@ fn rotated_refresh_is_atomically_durable_before_project_reads() {
     transport.push_project(ACTIVE);
     transport.push_project(ARCHIVED);
     transport.push_project(TESTING);
+    transport.push_project(TEMPLATE);
     let store = MemoryStore::default();
     let mut client = signed_in(transport.clone(), store.clone());
 
@@ -3221,6 +3255,7 @@ fn duplicate_or_mislabelled_project_identity_is_refused() {
     transport.push_project(duplicate);
     transport.push_project(ARCHIVED);
     transport.push_project(TESTING);
+    transport.push_project(TEMPLATE);
     let mut client = signed_in(transport, MemoryStore::default());
     assert_eq!(
         client.list_projects(NOW + 1).unwrap_err().kind(),
@@ -3232,6 +3267,7 @@ fn duplicate_or_mislabelled_project_identity_is_refused() {
     transport.push_project(ACTIVE);
     transport.push_project(duplicate);
     transport.push_project(TESTING);
+    transport.push_project(TEMPLATE);
     let mut client = signed_in(transport, MemoryStore::default());
     assert_eq!(
         client.list_projects(NOW + 1).unwrap_err().kind(),
@@ -6385,6 +6421,7 @@ fn device_authorization_executes_every_existing_fixed_domain_operation() {
     fixture.push_project(ACTIVE);
     fixture.push_project(ARCHIVED);
     fixture.push_project(TESTING);
+    fixture.push_project(TEMPLATE);
     fixture.push_transformer_context(
         200,
         &serde_json::to_vec(&serde_json::json!({
@@ -6443,7 +6480,7 @@ fn device_authorization_executes_every_existing_fixed_domain_operation() {
             .unwrap()
             .projects()
             .len(),
-        3
+        4
     );
     assert_eq!(
         authorization
@@ -6568,6 +6605,7 @@ fn device_authorization_executes_every_existing_fixed_domain_operation() {
     assert_eq!(
         transport.seen,
         [
+            "project",
             "project",
             "project",
             "project",

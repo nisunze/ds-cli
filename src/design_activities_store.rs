@@ -272,6 +272,7 @@ pub enum Bucket {
     Active,
     Archived,
     Testing,
+    Template,
     All,
 }
 
@@ -286,6 +287,7 @@ impl Bucket {
             Bucket::Active => status.is_empty() || status == "active",
             Bucket::Archived => status == "archived",
             Bucket::Testing => status == "testing",
+            Bucket::Template => status == "template",
         }
     }
 }
@@ -1311,6 +1313,7 @@ mod tests {
             {"ds_project": "live", "status": "active"},
             {"ds_project": "shelved", "status": "archived"},
             {"ds_project": "trial", "status": "testing"},
+            {"ds_project": "seed", "status": "template"},
         ]);
         let names = |bucket: &str| -> Vec<String> {
             plan(json!({
@@ -1327,9 +1330,10 @@ mod tests {
         assert_eq!(names("active"), ["live", "plain"]);
         assert_eq!(names("archived"), ["shelved"]);
         assert_eq!(names("testing"), ["trial"]);
+        assert_eq!(names("template"), ["seed"]);
         // `all` is every project whose ledger can still move. An archived
         // project accepts no uploads, so it is reached only by name.
-        assert_eq!(names("all"), ["live", "plain", "trial"]);
+        assert_eq!(names("all"), ["live", "plain", "seed", "trial"]);
     }
 
     #[test]

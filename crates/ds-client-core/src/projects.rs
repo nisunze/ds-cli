@@ -4,11 +4,15 @@ use serde::Deserialize;
 
 use crate::{ClientError, ErrorKind};
 
+/// The project state model: `active | archived | testing | template`, one
+/// listing bucket each (ds-brain `docs/contracts/project-lifecycle.md`). A
+/// template is an ordinary project in the template state.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum ProjectStatus {
     Active,
     Archived,
     Testing,
+    Template,
 }
 
 impl ProjectStatus {
@@ -17,16 +21,46 @@ impl ProjectStatus {
             Self::Active => "active",
             Self::Archived => "archived",
             Self::Testing => "testing",
+            Self::Template => "template",
+        }
+    }
+
+    /// The bucket ds-brain derives from three independent flags: archive
+    /// dominates, then template, then testing.
+    pub const fn from_flags(is_archived: bool, is_testing: bool, is_template: bool) -> Self {
+        if is_archived {
+            Self::Archived
+        } else if is_template {
+            Self::Template
+        } else if is_testing {
+            Self::Testing
+        } else {
+            Self::Active
         }
     }
 }
 
 /// Canonical order from `src/lib/api/projects.ts`, pinned for deterministic calls/results.
-pub const PROJECT_STATUS_ORDER: [ProjectStatus; 3] = [
+pub const PROJECT_STATUS_ORDER: [ProjectStatus; 4] = [
     ProjectStatus::Active,
     ProjectStatus::Archived,
     ProjectStatus::Testing,
+    ProjectStatus::Template,
 ];
+
+/// The settings a project carries beside its identity, exactly as the
+/// authenticated directory listed them. They are read, never inferred: an
+/// absent setting is the server's default, which this crate does not restate.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ProjectSettings {
+    pub country: Option<String>,
+    pub client: Option<String>,
+    pub network_template: Option<String>,
+    pub styling_template_id: Option<String>,
+    pub project_components: serde_json::Value,
+    pub project_phases: serde_json::Value,
+    pub processing_lanes: serde_json::Value,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Project {
@@ -38,12 +72,17 @@ pub struct Project {
     lifecycle_facts: serde_json::Value,
     project_params: serde_json::Value,
     legacy_project_crs: serde_json::Value,
+    settings: ProjectSettings,
 }
 
 impl Project {
     /// Exact server-normalized project properties, retained for project-fenced print CRS capture.
     pub fn project_params(&self) -> &serde_json::Value {
         &self.project_params
+    }
+    /// The settings a project created from this one as a template inherits.
+    pub fn settings(&self) -> &ProjectSettings {
+        &self.settings
     }
     /// Shapes only from the same authenticated directory; never inferred authority.
     pub fn legacy_project_crs_shape(&self) -> serde_json::Value {
@@ -159,7 +198,13 @@ impl ProjectDirectory {
                 let project_name = bounded_trimmed(row.project_name.unwrap_or_default(), 500)?;
                 let display_name = optional_bounded(row.display_name, 500)?;
                 let role = optional_bounded(row.role, 100)?;
-                for metadata in [&row.project_params, &row.legacy_project_crs] {
+                for metadata in [
+                    &row.project_params,
+                    &row.legacy_project_crs,
+                    &row.project_components,
+                    &row.project_phases,
+                    &row.processing_lanes,
+                ] {
                     if serde_json::to_vec(metadata)
                         .map_err(|_| unreadable())?
                         .len()
@@ -168,9 +213,19 @@ impl ProjectDirectory {
                         return Err(unreadable());
                     }
                 }
+                let settings = ProjectSettings {
+                    country: optional_setting(row.country)?,
+                    client: optional_setting(row.client)?,
+                    network_template: optional_setting(row.network_template)?,
+                    styling_template_id: optional_setting(row.styling_template_id)?,
+                    project_components: row.project_components,
+                    project_phases: row.project_phases,
+                    processing_lanes: row.processing_lanes,
+                };
                 projects.push(Project {
                     project_params: row.project_params,
                     legacy_project_crs: row.legacy_project_crs,
+                    settings,
                     lifecycle_facts,
                     ds_project: id,
                     project_name,
@@ -237,6 +292,22 @@ pub(crate) struct WireProject {
     #[serde(default)]
     is_testing: Option<bool>,
     #[serde(default)]
+    is_template: Option<bool>,
+    #[serde(default)]
+    country: Option<String>,
+    #[serde(default)]
+    client: Option<String>,
+    #[serde(default)]
+    network_template: Option<String>,
+    #[serde(default)]
+    styling_template_id: Option<String>,
+    #[serde(default)]
+    project_components: serde_json::Value,
+    #[serde(default)]
+    project_phases: serde_json::Value,
+    #[serde(default)]
+    processing_lanes: serde_json::Value,
+    #[serde(default)]
     expires_at: Option<String>,
     #[serde(default)]
     expiration_reason: Option<String>,
@@ -263,17 +334,35 @@ impl WireProject {
         Ok(id.clone())
     }
 
+    /// A row's own facts must derive the bucket it was listed under. The
+    /// flags are independent and the bucket is decided by precedence
+    /// ([`ProjectStatus::from_flags`]), so a flag a row did not send is no
+    /// evidence, and a flag the precedence overrides may be true: an archived
+    /// testing fixture is listed under Archived, a testing project an admin
+    /// marked template under Template. A server that predates the template
+    /// bucket answers `?status=template` with its active bucket; its rows say
+    /// `lifecycle_state: "active"` and are refused here, never relabelled.
     fn validate_bucket(&self, status: ProjectStatus) -> Result<(), ClientError> {
+        use ProjectStatus::{Active, Archived, Template, Testing};
+        let template_disagrees = self.is_template.is_some_and(|value| match status {
+            Template => !value,
+            Active | Testing => value,
+            Archived => false,
+        });
+        let testing_disagrees = self.is_testing.is_some_and(|value| match status {
+            Testing => !value,
+            Active => value,
+            Archived | Template => false,
+        });
         if self
             .lifecycle_state
             .as_deref()
             .is_some_and(|value| value != status.query_value())
             || self
                 .is_archived
-                .is_some_and(|value| value != matches!(status, ProjectStatus::Archived))
-            || self
-                .is_testing
-                .is_some_and(|value| value != matches!(status, ProjectStatus::Testing))
+                .is_some_and(|value| value != matches!(status, Archived))
+            || template_disagrees
+            || testing_disagrees
         {
             return Err(ClientError::new(
                 ErrorKind::UnreadableResponse,
@@ -293,6 +382,18 @@ fn bounded_trimmed(value: String, max: usize) -> Result<String, ClientError> {
 
 fn optional_bounded(value: Option<String>, max: usize) -> Result<Option<String>, ClientError> {
     value.map(|value| bounded_trimmed(value, max)).transpose()
+}
+
+/// A project setting as an operator typed it: bounded and free of control
+/// characters, but its outer whitespace is the author's and is not a reason
+/// to refuse the whole directory. Whoever carries it trims it.
+fn optional_setting(value: Option<String>) -> Result<Option<String>, ClientError> {
+    match value {
+        Some(value) if value.chars().count() > 500 || value.chars().any(char::is_control) => {
+            Err(unreadable())
+        }
+        value => Ok(value),
+    }
 }
 
 fn unreadable() -> ClientError {
@@ -415,6 +516,120 @@ mod tests {
         );
 
         assert!(!ProjectDirectory::from_buckets(vec![]).unwrap().elevated());
+    }
+
+    fn wire(value: serde_json::Value) -> WireProject {
+        serde_json::from_value(value).expect("wire row")
+    }
+
+    fn bucket(status: ProjectStatus, row: WireProject) -> Result<ProjectDirectory, ClientError> {
+        ProjectDirectory::from_buckets(vec![(
+            status,
+            WireBucket {
+                rows: vec![row],
+                elevated: false,
+            },
+        )])
+    }
+
+    #[test]
+    fn the_state_model_is_four_buckets_derived_by_precedence() {
+        assert_eq!(
+            PROJECT_STATUS_ORDER.map(ProjectStatus::query_value),
+            ["active", "archived", "testing", "template"]
+        );
+        for (flags, status) in [
+            ((false, false, false), ProjectStatus::Active),
+            ((true, false, false), ProjectStatus::Archived),
+            ((false, true, false), ProjectStatus::Testing),
+            ((false, false, true), ProjectStatus::Template),
+            ((true, true, true), ProjectStatus::Archived),
+            ((false, true, true), ProjectStatus::Template),
+        ] {
+            assert_eq!(ProjectStatus::from_flags(flags.0, flags.1, flags.2), status);
+        }
+    }
+
+    /// A row may carry a flag the precedence overrides. An archived testing
+    /// fixture was refused here before the precedence was stated, which made
+    /// one such project fail the whole directory read.
+    #[test]
+    fn rows_whose_flags_derive_their_bucket_are_admitted() {
+        let template = bucket(
+            ProjectStatus::Template,
+            wire(serde_json::json!({"eds_project_id":"t","lifecycle_state":"template","is_archived":false,"is_testing":true,"is_template":true})),
+        )
+        .unwrap();
+        assert_eq!(
+            template.exact("t").unwrap().status(),
+            ProjectStatus::Template
+        );
+        bucket(
+            ProjectStatus::Archived,
+            wire(serde_json::json!({"eds_project_id":"a","lifecycle_state":"archived","is_archived":true,"is_testing":true,"is_template":true})),
+        )
+        .expect("an archived testing template is Archived");
+    }
+
+    #[test]
+    fn rows_whose_flags_contradict_their_bucket_are_refused() {
+        for (status, row) in [
+            // A template listed under Testing or Active.
+            (
+                ProjectStatus::Testing,
+                serde_json::json!({"eds_project_id":"x","is_testing":true,"is_template":true}),
+            ),
+            (
+                ProjectStatus::Active,
+                serde_json::json!({"eds_project_id":"x","is_template":true}),
+            ),
+            // A template-bucket row that is no template.
+            (
+                ProjectStatus::Template,
+                serde_json::json!({"eds_project_id":"x","is_template":false}),
+            ),
+            // A server that predates the template bucket answers it as active.
+            (
+                ProjectStatus::Template,
+                serde_json::json!({"eds_project_id":"x","lifecycle_state":"active","is_archived":false,"is_testing":false}),
+            ),
+        ] {
+            let error = bucket(status, wire(row)).unwrap_err();
+            assert_eq!(error.kind(), ErrorKind::UnreadableResponse);
+            assert_eq!(
+                error.to_string(),
+                "a project row disagreed with its requested lifecycle bucket"
+            );
+        }
+    }
+
+    #[test]
+    fn the_settings_a_template_carries_are_read_as_listed() {
+        let directory = bucket(
+            ProjectStatus::Template,
+            wire(serde_json::json!({
+                "eds_project_id":"czgmdwth_gisagara","lifecycle_state":"template","is_template":true,
+                "country":"Rwanda","client":"EDCL ","network_template":"master","styling_template_id":"",
+                "project_components":{"design":true,"solar":false},"project_phases":{"network":["I"]},
+                "processing_lanes":{"fast":true}
+            })),
+        )
+        .unwrap();
+        let settings = directory.exact("czgmdwth_gisagara").unwrap().settings();
+        assert_eq!(settings.country.as_deref(), Some("Rwanda"));
+        // The author's whitespace is kept; whoever carries it trims it.
+        assert_eq!(settings.client.as_deref(), Some("EDCL "));
+        assert_eq!(settings.network_template.as_deref(), Some("master"));
+        assert_eq!(settings.styling_template_id.as_deref(), Some(""));
+        assert_eq!(settings.project_components["solar"], false);
+        assert_eq!(settings.processing_lanes["fast"], true);
+        // A control character is still outside the closed contract.
+        let error = bucket(
+            ProjectStatus::Active,
+            wire(serde_json::json!({"eds_project_id":"p","client":"bad\u{0007}"})),
+        )
+        .unwrap_err();
+        assert_eq!(error.kind(), ErrorKind::UnreadableResponse);
     }
 }
 
