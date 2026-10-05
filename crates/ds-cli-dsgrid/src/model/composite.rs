@@ -369,16 +369,19 @@ pub fn status(inputs: &Inputs, context: &Context) -> Result<Value, Failure> {
         data["scope"] = json!("project_linked_generation");
         data["composite"] = data["composite_model_id"].clone();
         data["parts"] = data["part_model_ids"].clone();
+        // The immutable vector pins every participant's head at this generation.
         let composite = data["composite_model_id"].clone();
         data["participants"] = json!(
             data["versions"]
                 .as_array()
                 .into_iter()
                 .flatten()
-                .map(|pin| json!({"model_id": pin["model_id"],
+                .map(|pin| {
+                    json!({"model_id": pin["model_id"],
                     "role": if pin["model_id"] == composite { "combined" } else { "part" },
-                    "head_revision_id": pin["revision_id"], "package_sha256": pin["model"]["digest"],
-                    "generation": generation, "state": "in_step"}))
+                    "generation": generation, "head_revision_id": pin["revision_id"],
+                    "package_sha256": pin["model"]["digest"]})
+                })
                 .collect::<Vec<_>>()
         );
         return Ok(data);
