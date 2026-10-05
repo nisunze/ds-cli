@@ -146,6 +146,28 @@ pub struct ArtifactRow {
     pub transfer_state: Option<Value>,
 }
 
+impl ArtifactRow {
+    /// Equal report bytes are reusable only with the same captured inputs
+    /// and renderer build. Missing provenance cannot establish a match.
+    pub fn matches_normal_report_publication(
+        &self,
+        inventory_sha256: &str,
+        input_base_fingerprint: &str,
+        engine_release: &str,
+        engine_build_manifest_sha256: &str,
+    ) -> bool {
+        self.identity.engine == "network_reporter"
+            && self.identity.variant == "default"
+            && !input_base_fingerprint.is_empty()
+            && !engine_release.is_empty()
+            && !engine_build_manifest_sha256.is_empty()
+            && self.sha256 == inventory_sha256
+            && self.input_base_fingerprint.as_deref() == Some(input_base_fingerprint)
+            && self.engine_release == engine_release
+            && self.engine_build_manifest_sha256.as_deref() == Some(engine_build_manifest_sha256)
+    }
+}
+
 fn default_true() -> bool {
     true
 }
@@ -429,9 +451,24 @@ pub fn apply(request: &Request) -> Result<Transition, String> {
             if let Some(existing) = find_artifact(snapshot, &row.scope, &row.identity) {
                 let preview_refresh = row.identity.engine == "network_reporter"
                     && row.identity.variant == crate::printing::retained_preview::VARIANT;
-                if (!preview_refresh && existing.sha256 == row.sha256)
-                    || existing.replay_key == row.replay_key
+                let same_publication = if row.identity.engine == "network_reporter"
+                    && row.identity.variant == "default"
                 {
+                    row.input_base_fingerprint
+                        .as_deref()
+                        .zip(row.engine_build_manifest_sha256.as_deref())
+                        .is_some_and(|(inputs, build)| {
+                            existing.matches_normal_report_publication(
+                                &row.sha256,
+                                inputs,
+                                &row.engine_release,
+                                build,
+                            )
+                        })
+                } else {
+                    !preview_refresh && existing.sha256 == row.sha256
+                };
+                if same_publication || existing.replay_key == row.replay_key {
                     // The same publication, already recorded: whatever its
                     // state, it is not re-executed under a second key.
                     t.refuse(
@@ -1288,6 +1325,80 @@ mod tests {
         ))
         .unwrap();
         assert_eq!(retry.refusals[0].code, "already_recorded");
+    }
+
+    #[test]
+    fn normal_report_same_bytes_require_matching_input_and_renderer_provenance() {
+        let mut prior = held("export-tx_1", "k1");
+        prior.input_base_fingerprint = Some("b".repeat(64));
+        prior.engine_build_manifest_sha256 = Some("c".repeat(64));
+        prior.state = ArtifactState::Published;
+        let mut candidate = prior.clone();
+        candidate.replay_key = "k2".into();
+        candidate.client_publish_id = "k2".into();
+        let transition = |row| {
+            apply(&request(
+                Snapshot {
+                    artifacts: vec![prior.clone()],
+                    ..Default::default()
+                },
+                Event::LocalProduced { row },
+            ))
+            .unwrap()
+        };
+        let duplicate = transition(candidate.clone());
+        assert!(duplicate.changes.is_empty());
+        assert_eq!(duplicate.refusals[0].code, "already_recorded");
+
+        for changed in [
+            "inputs",
+            "engine",
+            "build",
+            "missing_inputs",
+            "missing_build",
+        ] {
+            let mut row = candidate.clone();
+            match changed {
+                "inputs" => row.input_base_fingerprint = Some("d".repeat(64)),
+                "engine" => row.engine_release = "new-release".into(),
+                "build" => row.engine_build_manifest_sha256 = Some("e".repeat(64)),
+                "missing_inputs" => row.input_base_fingerprint = None,
+                "missing_build" => row.engine_build_manifest_sha256 = None,
+                _ => unreachable!(),
+            }
+            let refreshed = transition(row);
+            assert!(
+                refreshed.refusals.is_empty(),
+                "{changed}: {:?}",
+                refreshed.refusals
+            );
+            let rows = artifacts(&refreshed);
+            assert_eq!(rows.len(), 1, "{changed}");
+            assert_eq!(rows[0].replay_key, "k2", "{changed}");
+            assert_eq!(rows[0].state, ArtifactState::Held, "{changed}");
+        }
+    }
+
+    #[test]
+    fn other_engine_equal_bytes_keep_existing_deduplication() {
+        let mut prior = held("export-city", "k1");
+        prior.identity.engine = "solar".into();
+        let mut candidate = prior.clone();
+        candidate.replay_key = "k2".into();
+        candidate.client_publish_id = "k2".into();
+        candidate.input_base_fingerprint = Some("b".repeat(64));
+        candidate.engine_release = "new-release".into();
+        candidate.engine_build_manifest_sha256 = Some("c".repeat(64));
+        let duplicate = apply(&request(
+            Snapshot {
+                artifacts: vec![prior],
+                ..Default::default()
+            },
+            Event::LocalProduced { row: candidate },
+        ))
+        .unwrap();
+        assert!(duplicate.changes.is_empty());
+        assert_eq!(duplicate.refusals[0].code, "already_recorded");
     }
 
     #[test]

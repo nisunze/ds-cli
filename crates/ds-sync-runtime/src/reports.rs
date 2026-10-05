@@ -428,7 +428,15 @@ fn seal_with_preview(
                     .into(),
             );
         }
-        if same_preview_run || (printing_preview.is_none() && previous.sha256 == inventory_sha256) {
+        if same_preview_run
+            || (printing_preview.is_none()
+                && previous.matches_normal_report_publication(
+                    &inventory_sha256,
+                    request.input_base_fingerprint,
+                    request.engine_version,
+                    request.engine_build_manifest_sha256,
+                ))
+        {
             return Ok(SealOutcome::AlreadyRecorded {
                 replay_key: previous.replay_key.clone(),
                 state: previous.state,
@@ -1057,8 +1065,8 @@ mod tests {
         );
     }
 
-    /// Invariant (2), at the seal: the same bytes sealed twice are one row,
-    /// and the second seal leaves no second batch on disk.
+    /// The same bytes and provenance sealed twice are one row, and the
+    /// second seal leaves no second batch on disk.
     #[test]
     fn invariant_2_the_same_bytes_sealed_twice_are_one_row_and_one_batch() {
         let dir = tempfile::tempdir().expect("temp");
@@ -1095,6 +1103,68 @@ mod tests {
             1,
             "no second batch was written for the same bytes"
         );
+    }
+
+    #[test]
+    fn normal_report_same_bytes_with_changed_provenance_seal_a_new_publication() {
+        for changed in ["inputs", "engine", "build"] {
+            let dir = tempfile::tempdir().expect("temp");
+            let root = dir.path().join("report-artifacts");
+            let store = crate::open_store(&dir.path().join("store.sqlite")).expect("store");
+            let deadline = Instant::now() + std::time::Duration::from_secs(30);
+            let guard = || Ok(());
+            let outputs = [staged(dir.path(), "tx_1.xlsx", b"same bytes")];
+            let first_request = seal_request(&outputs, &["xlsx"], deadline, &guard);
+            let SealOutcome::Sealed(first) =
+                seal(&store, &seal_fence(), &root, &first_request).expect("first seal")
+            else {
+                panic!("first seal")
+            };
+            let mut fresh_request = seal_request(&outputs, &["xlsx"], deadline, &guard);
+            fresh_request.client_run_id = "report-fedcba9876543210fedcba9876543210";
+            match changed {
+                "inputs" => {
+                    fresh_request.input_base_fingerprint =
+                        "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+                }
+                "engine" => {
+                    fresh_request.engine_version =
+                        "ds-network-reporter@0.1.0+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                }
+                "build" => {
+                    fresh_request.engine_build_manifest_sha256 =
+                        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                }
+                _ => unreachable!(),
+            }
+            let outcome = seal(&store, &seal_fence(), &root, &fresh_request)
+                .expect("changed provenance seal");
+            let SealOutcome::Sealed(fresh) = outcome else {
+                panic!("{changed} must seal its actual provenance: {outcome:?}")
+            };
+            assert_eq!(first.row.sha256, fresh.row.sha256, "{changed}");
+            assert_ne!(first.row.replay_key, fresh.row.replay_key, "{changed}");
+            assert_eq!(fresh.row.identity.variant, "default");
+            assert_eq!(
+                fresh.receipt.input_base_fingerprint,
+                fresh_request.input_base_fingerprint
+            );
+            assert_eq!(fresh.receipt.engine_version, fresh_request.engine_version);
+            assert_eq!(
+                fresh.receipt.engine_build_manifest_sha256,
+                fresh_request.engine_build_manifest_sha256
+            );
+            let rows = rows_in(&store, "project-a");
+            assert_eq!(rows.len(), 1);
+            assert_eq!(rows[0].replay_key, fresh.row.replay_key);
+            assert_eq!(rows[0].state, store::ArtifactState::Held);
+            let batches = inventory(&root, "project-a").unwrap();
+            assert_eq!(batches.len(), 1);
+            assert_eq!(
+                batches[0].client_publish_id,
+                fresh.receipt.client_publish_id
+            );
+        }
     }
 
     /// If the store cannot record the row, the seal is not acknowledged and
