@@ -70,7 +70,7 @@ pub static VIEW: Command = Command {
     authority: Authority::DesktopPairing,
     execution: Execution::Sync,
     args: &[TARGET_ARG, DESCRIPTOR_ARG],
-    output: "Profile occupant, model_id and revision (null without an open model), scale, visibility, height_px, viewport, edit_mode and selection. review contains the bounded native command projection: up to 256 cases with value/label/disabled, selected_case_index, display_case, marker_count and explicit case/label truncation. display contains native state and governed rows; analysis contains the bounded native command receipt. scene_loaded reports a revision-current scene. Selection includes entity_ids, primary, kind and structures [{id,number}].",
+    output: "Profile occupant, model_id and revision (null without an open model), scale, visibility, height_px, viewport, edit_mode and selection. review holds up to 256 cases with value/label/disabled, selected_case_index, display_case, marker_count and explicit case/label truncation. display holds native state and governed rows; analysis the bounded native receipt; analysis_state is due, current, off or not_applicable. scene_loaded reports a revision-current scene. Selection includes entity_ids, primary, kind and structures [{id,number}].",
     examples: &[Example {
         command: "ds map profile view --output json",
         note: "Read the live Profile's viewport, selection and edit mode before a scoped model command.",
@@ -96,7 +96,7 @@ pub static SET: Command = Command {
     path: &["map", "profile", "set"],
     contract: 4,
     summary: "Set the paired Profile's visual state through typed CLI inputs.",
-    purpose: "Updates the paired Profile display; omitted values stay. Rust validates display-case, visibility and scale against an open model; viewport and dock height may be staged first. Review boxes and usage labels default on. Fit, rebuild and analyze are explicit. Analyze runs native structure, section and clearance checks at the held revision with the model-bound case envelope; missing inputs block Profile and Issues. Weather changes only the curve, not the engineering envelope. No project data changes.",
+    purpose: "Updates the paired Profile display; omitted values stay. Rust validates display-case, visibility and scale against an open model; viewport and dock height may be staged first. Review boxes, usage labels and analysis default on: each revision is analyzed once. Fit and rebuild are explicit; analyze reruns native structure, section and clearance checks at the held revision with the model-bound case envelope; missing inputs block Profile and Issues. Weather changes only the curve. No project data changes.",
     chapter: Chapter::MapPresentation,
     effect: Effect::LocalUi,
     authority: Authority::DesktopPairing,
@@ -120,7 +120,7 @@ pub static SET: Command = Command {
         Arg::value(
             "visibility",
             "<json-object>",
-            "JSON booleans: review, ground, side_profiles, clearance_line, terrain_points, terrain_ordinates, grid, structures, wire, section_labels, span_distances, structure_labels, structure_numbers, structure_names, structure_comments, embedded, offset_embedment_height, route_deviation, structure_usage, section_state, section_usage.",
+            "JSON booleans: review, ground, side_profiles, clearance_line, terrain_points, terrain_ordinates, grid, structures, wire, section_labels, span_distances, structure_labels, structure_numbers, structure_names, structure_comments, embedded, offset_embedment_height, route_deviation, structure_usage, section_state, section_usage, analysis.",
         ),
         Arg::value(
             "cable-colors",
@@ -152,7 +152,7 @@ pub static SET: Command = Command {
         TARGET_ARG,
         DESCRIPTOR_ARG,
     ],
-    output: "The resulting exact visual state from the paired Profile, including height_px (dock height in pixels), with the applied patch and optional action. Analyze also returns ran:true and the bounded native analysis receipt; full evidence stays in Profile and Issues.",
+    output: "The resulting exact visual state from the paired Profile, including height_px, with the applied patch and optional action. Analyze also returns ran:true and the bounded native analysis receipt; full evidence stays in Profile and Issues.",
     examples: &[Example {
         command: "ds map profile set --height-px 480 --vertical-exaggeration 5 --visibility '{\"ground\":true,\"wire\":false}' --action fit --output json",
         note: "After map profile view, set dock height, scale and visibility, then fit; use map profile select with the view receipt's model_id, revision and entity IDs.",
@@ -551,6 +551,30 @@ mod tests {
         );
         assert!(parse_visibility(r#"{"ground":"false"}"#).is_err());
         assert!(parse_visibility(r#"{"bogus":true}"#).is_err());
+    }
+
+    #[test]
+    fn analysis_default_is_switched_through_the_existing_visibility_door() {
+        use ds_command_kernel::profile_display::{DisplayOption, DisplayState};
+        // Owner, 2026-10-05: the analysis report is on by default; the kernel owns
+        // the switch and the CLI forwards it unchanged for the Desktop to apply.
+        assert!(DisplayState::default().visibility[&DisplayOption::Analysis]);
+        for on in [false, true] {
+            let args = ["--visibility".to_owned(), format!(r#"{{"analysis":{on}}}"#)];
+            let inputs = ds_cli_contract::args::parse(&SET, &args).unwrap();
+            let patch = Value::Object(patch_from_inputs(&inputs).unwrap());
+            assert_eq!(patch, json!({"visibility": {"analysis": on}}));
+            assert_eq!(
+                ds_cli_desktop::ops::undeclared_key(&crate::PROFILE_SET, &patch),
+                None
+            );
+        }
+        assert!(parse_visibility(r#"{"analysis":"off"}"#).is_err());
+        assert!(parse_visibility(r#"{"auto_analysis":false}"#).is_err());
+        let visibility = SET.args.iter().find(|arg| arg.name == "visibility");
+        assert!(visibility.unwrap().summary.contains("analysis."));
+        assert!(SET.purpose.contains("analysis default on"));
+        assert!(VIEW.output.contains("analysis_state is due, current, off or not_applicable"));
     }
 
     #[test]
