@@ -269,12 +269,15 @@ pub(crate) fn governance<T: crate::AuthorizedTransport>(
         command,
         ds_command_kernel::style_governance::Command::PlanA4
             | ds_command_kernel::style_governance::Command::CreateA4 { .. }
+            | ds_command_kernel::style_governance::Command::PlanA4Migration
+            | ds_command_kernel::style_governance::Command::ApplyA4Migration { .. }
             | ds_command_kernel::style_governance::Command::PlanBinding { .. }
             | ds_command_kernel::style_governance::Command::CreateBinding { .. }
     ) {
         let plan = if matches!(
             command,
             ds_command_kernel::style_governance::Command::CreateA4 { .. }
+                | ds_command_kernel::style_governance::Command::ApplyA4Migration { .. }
                 | ds_command_kernel::style_governance::Command::CreateBinding { .. }
         ) {
             &admitted["plan"]

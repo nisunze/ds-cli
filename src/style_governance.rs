@@ -2,7 +2,7 @@
 //! hosts neither construct style ids nor edit inventory documents themselves.
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "operation", rename_all = "snake_case", deny_unknown_fields)]
@@ -22,6 +22,11 @@ pub enum Command {
     },
     PlanA4,
     CreateA4 {
+        expected_definition_sha256: String,
+        expected_plan_sha256: String,
+    },
+    PlanA4Migration,
+    ApplyA4Migration {
         expected_definition_sha256: String,
         expected_plan_sha256: String,
     },
@@ -82,6 +87,8 @@ impl Command {
             Self::CreateBinding { .. } => "create_style_binding",
             Self::PlanA4 => "plan_printing_a4",
             Self::CreateA4 { .. } => "create_printing_a4",
+            Self::PlanA4Migration => "plan_a4_migration",
+            Self::ApplyA4Migration { .. } => "apply_a4_migration",
             Self::Seed { .. } => "seed_manifest",
             Self::Inventory { .. } => "inventory_styles",
             Self::Backup { .. } => "backup_inventory",
@@ -114,6 +121,10 @@ pub fn request_body(request: &Request) -> Result<Value, String> {
             }
         }
         Command::CreateA4 {
+            expected_definition_sha256,
+            expected_plan_sha256,
+        }
+        | Command::ApplyA4Migration {
             expected_definition_sha256,
             expected_plan_sha256,
         } => {
@@ -230,6 +241,30 @@ pub fn admit(request: &Request, response: &Value) -> Result<Value, String> {
         }
         Command::PlanA4 => {
             admit_a4_plan(request, data)?;
+        }
+        Command::PlanA4Migration => {
+            admit_a4_migration_plan(request, data)?;
+        }
+        Command::ApplyA4Migration {
+            expected_definition_sha256,
+            expected_plan_sha256,
+        } => {
+            if data.as_object().is_none_or(|object| object.len() != 6)
+                || data["schema"] != "ds.print-a4-migration-result/v1"
+                || data["applied"] != true
+            {
+                return Err("style_governance_invalid: incomplete A4 migration receipt".into());
+            }
+            let plan = admit_a4_migration_plan(request, &data["plan"])?;
+            if !plan.apply_allowed
+                || plan.definition_sha256 != *expected_definition_sha256
+                || plan.plan_sha256 != *expected_plan_sha256
+                || data["updated"] != (plan.updates == 1)
+                || data["retained"] != (plan.retains == 1)
+                || data["preserved"] != (plan.preserves == 1)
+            {
+                return Err("style_governance_invalid: A4 migration differs from its reviewed source, destination or retained version".into());
+            }
         }
         Command::CreateA4 {
             expected_definition_sha256,
@@ -458,6 +493,125 @@ fn admit_binding_plan(
 fn a4_document_path(project: &str) -> String {
     format!("eds_project/{project}/printing_a4_documents/voltage-drop-a4-v1")
 }
+const A4_BASELINE_DEFINITION: &str =
+    "93a01522c92cf7a597d14a9f4dcb678f36aa81216b3ac41170fd9c9c9e17409e";
+const A4_BASELINE_CONTENT: &str =
+    "bdbe3df0b4e4154127b59070626d9298ca6faeaba0b5cabcb13268d5ef33344d";
+const A4_BASELINE_HTML: &str = "f8475303b1fb7b2cf9c613cb51f5f8d6fc7b843805fda247c7d281911a94fc3d";
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct A4MigrationPlan {
+    schema: String,
+    project_id: String,
+    principal: String,
+    document_path: String,
+    definition_sha256: String,
+    content_sha256: String,
+    html_sha256: String,
+    definition: Value,
+    existing_state: String,
+    #[serde(default)]
+    existing_sha256: String,
+    #[serde(default)]
+    existing_update_time: String,
+    creates: u8,
+    preserves: u8,
+    apply_allowed: bool,
+    plan_sha256: String,
+    retention_path: String,
+    previous_content_sha256: String,
+    previous_html_sha256: String,
+    updates: u8,
+    retains: u8,
+}
+fn admit_a4_migration_plan(request: &Request, data: &Value) -> Result<A4MigrationPlan, String> {
+    let plan: A4MigrationPlan = serde_json::from_value(data.clone())
+        .map_err(|error| format!("style_governance_invalid: A4 migration plan {error}"))?;
+    if plan.project_id != request.project {
+        return Err("project_context_changed: A4 migration belongs to another project".into());
+    }
+    let expected_retention = format!(
+        "{}/revisions/{A4_BASELINE_DEFINITION}",
+        a4_document_path(&request.project)
+    );
+    let without_retention = plan.retention_path.is_empty()
+        && plan.previous_content_sha256.is_empty()
+        && plan.previous_html_sha256.is_empty()
+        && plan.updates == 0
+        && plan.retains == 0;
+    let state_valid = match plan.existing_state.as_str() {
+        "baseline" => {
+            plan.existing_sha256 == A4_BASELINE_DEFINITION
+                && plan.definition_sha256 != A4_BASELINE_DEFINITION
+                && exact(&plan.existing_update_time, 64)
+                && plan.retention_path == expected_retention
+                && plan.previous_content_sha256 == A4_BASELINE_CONTENT
+                && plan.previous_html_sha256 == A4_BASELINE_HTML
+                && plan.updates == 1
+                && plan.retains == 1
+                && plan.preserves == 0
+                && plan.apply_allowed
+        }
+        "exact" => {
+            without_retention
+                && plan.existing_sha256 == plan.definition_sha256
+                && exact(&plan.existing_update_time, 64)
+                && plan.preserves == 1
+                && plan.apply_allowed
+        }
+        "missing" => {
+            without_retention
+                && plan.existing_sha256.is_empty()
+                && plan.existing_update_time.is_empty()
+                && plan.preserves == 0
+                && !plan.apply_allowed
+        }
+        "conflict" => {
+            without_retention
+                && digest(&plan.existing_sha256)
+                && plan.existing_sha256 != plan.definition_sha256
+                && plan.existing_sha256 != A4_BASELINE_DEFINITION
+                && exact(&plan.existing_update_time, 64)
+                && plan.preserves == 0
+                && !plan.apply_allowed
+        }
+        _ => false,
+    };
+    let definition = &plan.definition;
+    let definition_valid = definition
+        .as_object()
+        .is_some_and(|object| object.len() == 5)
+        && definition["schema"] == "ds.print-a4-default/v1"
+        && definition["html_sha256"] == plan.html_sha256
+        && definition["content_sha256"] == plan.content_sha256
+        && definition["status_layout"]["paper"]["size"] == "A4"
+        && definition["status_layout"]["paper"]["orientation"] == "portrait"
+        && definition["logo_slots"]
+            == json!([
+                "governed-logo-0",
+                "governed-logo-1",
+                "governed-logo-2",
+                "governed-logo-3",
+                "governed-logo-4",
+                "governed-logo-5"
+            ]);
+    let mut unhashed = data.clone();
+    unhashed["plan_sha256"] = json!("");
+    if plan.schema != "ds.print-a4-migration-plan/v1"
+        || plan.document_path != a4_document_path(&request.project)
+        || !exact(&plan.principal, 320)
+        || plan.creates != 0
+        || !state_valid
+        || !definition_valid
+        || !digest(&plan.html_sha256)
+        || !digest(&plan.content_sha256)
+        || plan.definition_sha256 != crate::style_plan::style_digest(definition)
+        || plan.plan_sha256 != crate::style_plan::style_digest(&unhashed)
+    {
+        return Err("style_governance_invalid: A4 migration source, retained version, scope or plan digest differs".into());
+    }
+    Ok(plan)
+}
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct A4SeedPlan {
@@ -618,19 +772,23 @@ mod tests {
         }
         let mut key = binding_key();
         key.target = crate::style_resolution::Target::Screen;
-        assert!(request_body(&Request {
-            project: "project_a".into(),
-            command: Command::PlanBinding {
-                key,
-                style_ref: "lv_poles_as_built_print".into()
-            },
-        })
-        .is_err());
-        assert!(serde_json::from_value::<Command>(json!({
-            "operation":"plan_binding", "key":binding_key(),
-            "style_ref":"lv_poles_as_built_print", "document":{}
-        }))
-        .is_err());
+        assert!(
+            request_body(&Request {
+                project: "project_a".into(),
+                command: Command::PlanBinding {
+                    key,
+                    style_ref: "lv_poles_as_built_print".into()
+                },
+            })
+            .is_err()
+        );
+        assert!(
+            serde_json::from_value::<Command>(json!({
+                "operation":"plan_binding", "key":binding_key(),
+                "style_ref":"lv_poles_as_built_print", "document":{}
+            }))
+            .is_err()
+        );
     }
     #[test]
     fn binding_create_preserves_existing_tuple_and_checks_both_reviewed_fences() {
@@ -716,9 +874,11 @@ mod tests {
             backup_id: "snapshot".into(),
             all_projects: false,
         };
-        assert!(request_body(&request)
-            .unwrap_err()
-            .contains("inventory digest"));
+        assert!(
+            request_body(&request)
+                .unwrap_err()
+                .contains("inventory digest")
+        );
         assert!(serde_json::from_value::<Command>(json!({"operation":"delete"})).is_err());
         request.command = Command::Inventory {
             cursor: None,
@@ -737,9 +897,11 @@ mod tests {
         let mut receipt = json!({"success":true,"data":{"manifest_revision":"a".repeat(64),"plan_sha256":"b".repeat(64),"creates":[],"preserves":[],"apply_allowed":true,"migrations":[{"style_ref":"fixture/line_print","expected_head":"c".repeat(64),"expected_content_sha256":"d".repeat(64),"content_sha256":crate::style_plan::style_digest(&document),"document":document}]}});
         assert!(admit(&request, &receipt).is_ok());
         receipt["data"]["migrations"][0]["document"]["paint"]["line-width"] = json!(3);
-        assert!(admit(&request, &receipt)
-            .unwrap_err()
-            .contains("destination authority"));
+        assert!(
+            admit(&request, &receipt)
+                .unwrap_err()
+                .contains("destination authority")
+        );
     }
     #[test]
     fn retirement_admission_never_accepts_an_executable_deletion() {
@@ -755,9 +917,11 @@ mod tests {
         assert!(admit(&request, &receipt).is_ok());
         let mut other_project = receipt.clone();
         other_project["data"]["scope"]["project_id"] = json!("other");
-        assert!(admit(&request, &other_project)
-            .unwrap_err()
-            .contains("project_context_changed"));
+        assert!(
+            admit(&request, &other_project)
+                .unwrap_err()
+                .contains("project_context_changed")
+        );
         receipt["data"]["deletion_executable"] = json!(true);
         assert!(admit(&request, &receipt).is_err());
     }
@@ -767,6 +931,75 @@ mod tests {
         let mut plan = json!({"schema":"ds.print-a4-seed-plan/v1","project_id":project,"principal":"user@example.com","document_path":a4_document_path(project),"definition_sha256":crate::style_plan::style_digest(&definition),"content_sha256":"b".repeat(64),"html_sha256":"a".repeat(64),"definition":definition,"existing_state":"missing","creates":1,"preserves":0,"apply_allowed":true,"plan_sha256":""});
         plan["plan_sha256"] = json!(crate::style_plan::style_digest(&plan));
         plan
+    }
+    #[test]
+    fn a4_migration_retains_only_the_known_baseline_and_refuses_rehashed_wrong_authority() {
+        let mut plan = a4_fixture_plan("project_a");
+        plan["schema"] = json!("ds.print-a4-migration-plan/v1");
+        plan["existing_state"] = json!("baseline");
+        plan["existing_sha256"] = json!(A4_BASELINE_DEFINITION);
+        plan["existing_update_time"] = json!("2026-10-05T00:00:00Z");
+        plan["creates"] = json!(0);
+        plan["retention_path"] = json!(format!(
+            "{}/revisions/{A4_BASELINE_DEFINITION}",
+            a4_document_path("project_a")
+        ));
+        plan["previous_content_sha256"] = json!(A4_BASELINE_CONTENT);
+        plan["previous_html_sha256"] = json!(A4_BASELINE_HTML);
+        plan["updates"] = json!(1);
+        plan["retains"] = json!(1);
+        plan["plan_sha256"] = json!("");
+        plan["plan_sha256"] = json!(crate::style_plan::style_digest(&plan));
+        let request = Request {
+            project: "project_a".into(),
+            command: Command::PlanA4Migration,
+        };
+        assert!(admit(&request, &json!({"success":true,"data":plan})).is_ok());
+        for field in [
+            "retention_path",
+            "existing_sha256",
+            "previous_content_sha256",
+            "previous_html_sha256",
+            "project_id",
+        ] {
+            let mut bad = plan.clone();
+            bad[field] = json!("a".repeat(64));
+            bad["plan_sha256"] = json!("");
+            bad["plan_sha256"] = json!(crate::style_plan::style_digest(&bad));
+            assert!(
+                admit(&request, &json!({"success":true,"data":bad})).is_err(),
+                "{field}"
+            );
+        }
+        let request = Request {
+            project: "project_a".into(),
+            command: Command::ApplyA4Migration {
+                expected_definition_sha256: plan["definition_sha256"].as_str().unwrap().into(),
+                expected_plan_sha256: plan["plan_sha256"].as_str().unwrap().into(),
+            },
+        };
+        let body = request_body(&request).unwrap();
+        assert_eq!(body["action"], "apply_a4_migration");
+        assert_eq!(body["data"].as_object().unwrap().len(), 3);
+        let mut response = json!({"success":true,"data":{"schema":"ds.print-a4-migration-result/v1","applied":true,"updated":true,"preserved":false,"retained":true,"plan":plan}});
+        assert!(admit(&request, &response).is_ok());
+        response["data"]["retained"] = json!(false);
+        assert!(admit(&request, &response).is_err());
+    }
+    #[test]
+    fn genuine_go_a4_migration_plan_has_the_same_native_digest_and_retention() {
+        let response: Value =
+            serde_json::from_str(include_str!("../tests/fixtures/a4-migration-go-plan.json"))
+                .unwrap();
+        let request = Request {
+            project: "project_a".into(),
+            command: Command::PlanA4Migration,
+        };
+        let plan = admit(&request, &response).unwrap();
+        assert_eq!(plan["updates"], 1);
+        assert_eq!(plan["retains"], 1);
+        assert_eq!(plan["creates"], 0);
+        assert_eq!(plan["existing_sha256"], A4_BASELINE_DEFINITION);
     }
     #[test]
     fn a4_seed_requires_exact_definition_scope_and_consistent_create_receipt() {
