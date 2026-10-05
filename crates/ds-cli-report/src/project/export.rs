@@ -1949,18 +1949,14 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     }
 
     let survey_refresh = inputs.require("survey-refresh")?;
-    let survey_context = match holdings_root.as_deref() {
-        Some(root) => super::survey_context::load(
-            root,
-            lane,
-            &holdings_scope,
-            &identity,
-            &contexts,
-            survey_refresh,
-            &mut link.borrow_mut(),
-        )?,
-        None => Vec::new(),
-    };
+    let survey_context = super::survey_context::load(
+        lane,
+        &holdings_scope,
+        &identity,
+        &contexts,
+        survey_refresh,
+        &mut link.borrow_mut(),
+    )?;
     let room_contexts: Vec<_> = contexts
         .iter()
         .filter(|context| {
