@@ -867,4 +867,153 @@ mod tests {
         assert_eq!(models, ["m1", "m2"]);
         assert_eq!(cursors, [None, Some("c1".to_owned())]);
     }
+
+    /// A read-only dry run against a local ds-brain, which the native profile
+    /// cannot address (its origin is a gateway). The doors read the same
+    /// routes the gateway serves; every write door panics, so the dry run is
+    /// proven to reach none. Run:
+    ///
+    /// ```text
+    /// DS_TEMPLATE_LIVE_BRAIN=http://127.0.0.1:8080 \
+    /// DS_TEMPLATE_LIVE_TOKEN_FILE=<id-token file> \
+    /// DS_TEMPLATE_LIVE_TEMPLATE=czgmdwth_gisagara \
+    /// DS_TEMPLATE_LIVE_NAME="Gisagara II" DS_TEMPLATE_LIVE_OUT=<plan.json> \
+    /// cargo test -p ds-cli-auth --lib live_local_dry_run -- --ignored
+    /// ```
+    #[test]
+    #[ignore = "needs a local ds-brain, a signed-in ID token and a template id"]
+    fn live_local_dry_run() {
+        struct LocalDoors {
+            base: String,
+            token: String,
+        }
+        impl LocalDoors {
+            fn get(&self, path: &str) -> Value {
+                let mut response = ureq::get(format!("{}{path}", self.base))
+                    .header("Authorization", &format!("Bearer {}", self.token))
+                    .call()
+                    .expect("local read");
+                response.body_mut().read_json().expect("json")
+            }
+            fn post(&self, path: &str, body: Value) -> Value {
+                let mut response = ureq::post(format!("{}{path}", self.base))
+                    .header("Authorization", &format!("Bearer {}", self.token))
+                    .send_json(body)
+                    .expect("local read");
+                response.body_mut().read_json().expect("json")
+            }
+        }
+        impl Doors for LocalDoors {
+            fn template(&mut self, project: &str) -> Result<Template, Failure> {
+                for status in ["active", "archived", "testing", "template"] {
+                    let listed = self.get(&format!("/api/v1/user/projects?status={status}"));
+                    assert_eq!(
+                        listed["data"]["status"], status,
+                        "the brain serves {status}"
+                    );
+                    let rows = listed["data"]["projects"]
+                        .as_array()
+                        .cloned()
+                        .unwrap_or_default();
+                    if let Some(row) = rows.iter().find(|row| row["eds_project_id"] == project) {
+                        let text = |key: &str| row[key].as_str().map(str::to_owned);
+                        return Ok(Template {
+                            project: project.to_owned(),
+                            lifecycle_state: text("lifecycle_state").expect("bucket"),
+                            display_name: text("display_name"),
+                            country: text("country"),
+                            client: text("client"),
+                            network_template: text("network_template"),
+                            styling_template_id: text("styling_template_id"),
+                            project_params: row["project_params"].clone(),
+                            project_components: row["project_components"].clone(),
+                            project_phases: row["project_phases"].clone(),
+                            processing_lanes: row["processing_lanes"].clone(),
+                        });
+                    }
+                }
+                Err(Failure::invalid(
+                    crate::TEMPLATE_NOT_VISIBLE_REFUSAL.code,
+                    "not visible",
+                ))
+            }
+            fn configuration(&mut self, project: &str) -> Result<Value, Failure> {
+                Ok(self.get(&format!("/config/{project}")))
+            }
+            fn save_sheet(&mut self, _: &str, _: &str, _: &Value) -> Result<bool, Failure> {
+                panic!("a dry run reaches no write door")
+            }
+            fn printing_setups(&mut self, project: &str) -> Result<Vec<PrintingSetup>, Failure> {
+                let listed = self.post(
+                    "/api/v1/printing",
+                    json!({"action":"list","scope":"project","project_id":project}),
+                );
+                Ok(setups_from(&listed["data"]))
+            }
+            fn copy_printing_setup(&mut self, _: &str, _: &PrintingRequest) -> Result<(), Failure> {
+                panic!("a dry run reaches no write door")
+            }
+            fn transformers(&mut self, project: &str) -> Result<Vec<Transformer>, Failure> {
+                let inventory = self.post(
+                    "/report",
+                    json!({"action":"transformer_inventory","eds_project_id":project}),
+                );
+                Ok(inventory["transformers"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .map(|row| Transformer {
+                        name: row["name"].as_str().unwrap_or_default().to_owned(),
+                        kind: row["kind"].as_str().unwrap_or_default().to_owned(),
+                        lifecycle: row["state"].as_str().unwrap_or_default().to_owned(),
+                    })
+                    .collect())
+            }
+            fn dsgrid_models(&mut self, project: &str) -> Result<Vec<String>, Failure> {
+                models_from(|cursor| {
+                    let listed = self.post(
+                        "/api/v1/grid/models",
+                        json!({"action":"list_models","project_id":project,"page_size":100,
+                            "cursor":cursor.unwrap_or_default(),"include_deleted":false}),
+                    );
+                    let data = &listed["data"];
+                    Ok(grid_models::Receipt {
+                        data: json!({"models": data["models"], "more": data["has_more"],
+                            "next_cursor": data["next_cursor"]}),
+                        bytes: None,
+                    })
+                })
+            }
+            fn create(&mut self, _: &NewProject) -> Result<Created, Failure> {
+                panic!("a dry run reaches no write door")
+            }
+            fn migrate(
+                &mut self,
+                _: &str,
+                _: &design_migration::Command,
+            ) -> Result<Value, Failure> {
+                panic!("a dry run reaches no write door")
+            }
+        }
+        let env = |key: &str| std::env::var(key).unwrap_or_else(|_| panic!("{key} is required"));
+        let mut doors = LocalDoors {
+            base: env("DS_TEMPLATE_LIVE_BRAIN"),
+            token: std::fs::read_to_string(env("DS_TEMPLATE_LIVE_TOKEN_FILE"))
+                .expect("token file")
+                .trim()
+                .to_owned(),
+        };
+        let request = Request {
+            display_name: env("DS_TEMPLATE_LIVE_NAME"),
+            location: None,
+            description: None,
+            country: None,
+            client: None,
+        };
+        let answer = run(&mut doors, &env("DS_TEMPLATE_LIVE_TEMPLATE"), request, true).unwrap();
+        assert!(answer["applied"].is_null());
+        let out = env("DS_TEMPLATE_LIVE_OUT");
+        std::fs::write(&out, serde_json::to_vec_pretty(&answer).unwrap()).unwrap();
+        std::fs::write(format!("{out}.txt"), render(&answer)).unwrap();
+    }
 }
