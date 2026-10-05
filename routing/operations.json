@@ -195,6 +195,43 @@
             "web": "gateway",
             "desktop": "gateway"
           }
+        },
+        "style_keys.read": {
+          "summary": "Plan one printing library's Kernel-decided legacy style_refs to style_keys migration, or page a census of every library.",
+          "transport": "json",
+          "action_key": "action",
+          "actions": ["plan", "census"],
+          "idempotency": "idempotent",
+          "retry_class": "none",
+          "timeout_s": 120,
+          "response_cap_bytes": 4194304,
+          "gateway": {
+            "method": "POST",
+            "path": "/api/v1/printing/style_keys",
+            "backend": "ds_brain_url"
+          },
+          "resolution": {
+            "web": "gateway",
+            "desktop": "gateway"
+          }
+        },
+        "style_keys.apply": {
+          "summary": "Apply exactly a reviewed printing-template style-key migration plan, keeping each replaced setup.",
+          "transport": "json",
+          "action": "apply",
+          "idempotency": "unsafe",
+          "retry_class": "none",
+          "timeout_s": 120,
+          "response_cap_bytes": 1048576,
+          "gateway": {
+            "method": "POST",
+            "path": "/api/v1/printing/style_keys",
+            "backend": "ds_brain_url"
+          },
+          "resolution": {
+            "web": "gateway",
+            "desktop": "gateway"
+          }
         }
       }
     },
