@@ -20,7 +20,7 @@ impl Scope {
             || self.principal.trim().is_empty()
             || self.project.len() > 500
             || self.principal.len() > 500
-            || !matches!(self.lane.as_str(), "stable" | "canary")
+            || !matches!(self.lane.as_str(), "stable" | "canary" | "local")
             || !super::exact_lower_sha256(&self.credential_audience_sha256)
             || !super::exact_lower_sha256(&self.sheets_sha256)
         {

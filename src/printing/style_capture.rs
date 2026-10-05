@@ -57,6 +57,96 @@ fn keys(layout: &Layout) -> BTreeMap<String, Key> {
     keys
 }
 impl Capture {
+    /// Consume the exact selections and immutable heads sealed by ds-brain.
+    /// This admits an existing server receipt; it does not resolve a mutable
+    /// catalogue, supply a missing key, or invent document provenance.
+    pub fn from_sealed_receipt(
+        project: &str,
+        lane: &str,
+        principal: &str,
+        audience: &str,
+        receipt: &crate::report_export::InputReceipt,
+        layouts: &[Layout],
+    ) -> Result<Self, String> {
+        receipt.validate()?;
+        let sheets = receipt.sheets()?;
+        let source = &sheets["printing_style_bindings"];
+        if source["manifest_id"] != "standard-style-set/v1" {
+            return Err("print_style_capture_invalid: sealed manifest is missing".into());
+        }
+        #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct Selected {
+            key: Key,
+            style_ref: String,
+        }
+        let mut captured = BTreeMap::new();
+        let mut total_bytes = 0usize;
+        for layout in layouts {
+            let keys = keys(layout);
+            let mut refs = BTreeMap::new();
+            let mut documents = BTreeMap::new();
+            let mut revisions = BTreeMap::new();
+            for (layer, key) in &keys {
+                let selected: Selected =
+                    serde_json::from_value(source["setups"][&layout.id][layer].clone())
+                        .map_err(|e| format!("print_style_capture_invalid: {layer}: {e}"))?;
+                if selected.key != *key || key.target != style_resolution::Target::Print {
+                    return Err(
+                        "print_style_capture_stale: sealed key differs from selected layout".into(),
+                    );
+                }
+                let mut document = sheets["printing_styles"][&selected.style_ref].clone();
+                let pin = document
+                    .as_object_mut()
+                    .and_then(|doc| doc.remove("_print_revision"))
+                    .ok_or("print_style_capture_invalid: sealed style has no revision")?;
+                if pin["style_ref"] != selected.style_ref {
+                    return Err(
+                        "print_style_capture_invalid: sealed revision names another style".into(),
+                    );
+                }
+                revisions.insert(
+                    selected.style_ref.clone(),
+                    serde_json::json!({
+                        "revision_id":pin["revision_id"], "content_sha256":pin["content_sha256"]
+                    }),
+                );
+                documents.insert(selected.style_ref.clone(), document);
+                refs.insert(layer.clone(), selected.style_ref);
+            }
+            let held = serde_json::json!({
+                "project_id":project, "resolution_revision":source["manifest_revision"],
+                "style_refs":refs, "print_styles":documents, "style_revisions":revisions,
+                "renderer_defaults":sheets["printing_renderer_defaults"]
+            });
+            style_resolution::admit_print_capture(project, &refs, &held)
+                .map_err(|e| e.to_string())?;
+            let item = LayoutCapture { keys, held };
+            total_bytes = total_bytes
+                .checked_add(serde_json::to_vec(&item).map_err(|e| e.to_string())?.len())
+                .ok_or("print_style_capture_invalid: capture size overflow")?;
+            if total_bytes > 32 * 1024 * 1024 || captured.len() >= 2000 {
+                return Err(
+                    "print_style_capture_invalid: selected style capture exceeds its bounded size"
+                        .into(),
+                );
+            }
+            captured.insert(layout_digest(layout)?, item);
+        }
+        let capture = Self {
+            schema: SCHEMA.into(),
+            project: project.into(),
+            lane: lane.into(),
+            principal: principal.into(),
+            credential_audience_sha256: audience.into(),
+            server_sheets_sha256: receipt.sheets_sha256.clone(),
+            source_sheets_sha256: source_digest(&sheets)?,
+            layouts: captured,
+        };
+        capture.validate_scope(project, lane, principal, audience, &sheets)?;
+        Ok(capture)
+    }
     pub fn new(
         snapshot: &Snapshot,
         project: &str,
@@ -126,7 +216,7 @@ impl Capture {
             || self.lane != lane
             || self.principal != principal
             || self.credential_audience_sha256 != audience
-            || !matches!(lane, "stable" | "canary")
+            || !matches!(lane, "stable" | "canary" | "local")
             || project.trim().is_empty()
             || project.len() > 500
             || principal.len() > 500
@@ -207,6 +297,104 @@ mod tests {
             layout,
             json!({"project_settings":[{"parameter":"report_locale","value":"en"}]}),
         )
+    }
+    #[test]
+    fn sealed_receipt_uses_actual_keys_revisions_and_renderer_without_resolving() {
+        let fixture: Value = serde_json::from_str(include_str!(
+            "../../tests/fixtures/printing-source-bindings.json"
+        ))
+        .unwrap();
+        let bindings: Vec<style_resolution::Binding> =
+            serde_json::from_value(fixture["bindings"].clone()).unwrap();
+        let binding = bindings
+            .iter()
+            .find(|b| {
+                b.key.target == style_resolution::Target::Print && b.key != renderer_defaults::key()
+            })
+            .unwrap();
+        let renderer = bindings
+            .iter()
+            .find(|b| b.key == renderer_defaults::key())
+            .unwrap();
+        let mut layout = super::super::default_layout();
+        layout.context_layers.clear();
+        layout.style_keys.clear();
+        layout
+            .style_keys
+            .insert("actual_layer".into(), binding.key.clone());
+        let mut document = binding.document.clone();
+        document["_print_revision"] = json!({"style_ref":binding.style_ref,"revision_id":binding.revision_id,"content_sha256":binding.content_sha256,"ordinal":1});
+        let sheets = json!({"printing_style_bindings":{"manifest_id":"standard-style-set/v1","manifest_revision":"b".repeat(64),"setups":{layout.id.clone():{"actual_layer":{"key":binding.key,"style_ref":binding.style_ref}}}},"printing_styles":{binding.style_ref.clone():document},"printing_renderer_defaults":renderer});
+        let receipt = |sheets: &Value| {
+            let text = sheets.to_string();
+            crate::report_export::InputReceipt {
+                schema: 1,
+                country: "Rwanda".into(),
+                sheets_sha256: crate::report_export::sha256_hex(text.as_bytes()),
+                sheets_json: text,
+                reference_semantic_sha256: "c".repeat(64),
+                local_print_recipe: None,
+            }
+        };
+        let capture = Capture::from_sealed_receipt(
+            "project-a",
+            "stable",
+            "user-a",
+            &"a".repeat(64),
+            &receipt(&sheets),
+            &[layout.clone()],
+        )
+        .unwrap();
+        assert_eq!(
+            capture.for_layout(&layout).unwrap()["print_styles"][&binding.style_ref],
+            binding.document
+        );
+        assert_eq!(capture.server_sheets_sha256, receipt(&sheets).sheets_sha256);
+        let local = Capture::from_sealed_receipt(
+            "project-a",
+            "local",
+            "user-a",
+            &"a".repeat(64),
+            &receipt(&sheets),
+            &[layout.clone()],
+        )
+        .unwrap();
+        assert!(local
+            .validate_scope("project-a", "local", "user-a", &"a".repeat(64), &sheets)
+            .is_ok());
+        assert!(local
+            .validate_scope("project-a", "stable", "user-a", &"a".repeat(64), &sheets)
+            .is_err());
+        for field in ["key", "style", "revision", "manifest"] {
+            let mut changed = sheets.clone();
+            match field {
+                "key" => {
+                    changed["printing_style_bindings"]["setups"][&layout.id]["actual_layer"]
+                        ["key"]["role"] = json!("foreign")
+                }
+                "style" => {
+                    changed["printing_styles"][&binding.style_ref]["paint"] =
+                        json!({"altered":true})
+                }
+                "revision" => {
+                    changed["printing_styles"][&binding.style_ref]["_print_revision"]
+                        ["content_sha256"] = json!("d".repeat(64))
+                }
+                _ => changed["printing_style_bindings"]["manifest_id"] = json!("foreign"),
+            }
+            assert!(
+                Capture::from_sealed_receipt(
+                    "project-a",
+                    "stable",
+                    "user-a",
+                    &"a".repeat(64),
+                    &receipt(&changed),
+                    &[layout.clone()]
+                )
+                .is_err(),
+                "{field}"
+            );
+        }
     }
     #[test]
     fn authentic_missing_corridor_materializes_without_mutating_held_source() {

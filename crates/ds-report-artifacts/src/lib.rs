@@ -767,6 +767,7 @@ pub fn local_publication_receipt_with_preview(
             })
             .to_string(),
         printing_preview: printing_preview.cloned(),
+        local_print_recipe: None,
         engine_version: engine_version.to_string(),
         engine_build_manifest_sha256: engine_build_manifest_sha256.to_string(),
         transformer: transformer.to_string(),
@@ -831,6 +832,79 @@ pub fn promote_local_artifacts_with_preview(
     operation_deadline: Instant,
     printing_preview: Option<&ds_command_kernel::printing::retained_preview::Binding>,
 ) -> Result<PendingAuthorizedPromotionBatch, String> {
+    promote_artifacts_with_purpose(
+        pending_root,
+        artifacts,
+        owner_uid,
+        project_id,
+        engine_version,
+        engine_build_manifest_sha256,
+        transformer,
+        transformer_revision,
+        input_base_fingerprint,
+        room_content_sha256,
+        client_run_id,
+        expected_formats,
+        operation_deadline,
+        printing_preview,
+        None,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn promote_local_review_artifacts(
+    pending_root: &Path,
+    artifacts: &[VerifiedSidecarArtifact],
+    owner_uid: &str,
+    project_id: &str,
+    engine_version: &str,
+    engine_build_manifest_sha256: &str,
+    transformer: &str,
+    transformer_revision: i64,
+    input_base_fingerprint: &str,
+    room_content_sha256: &str,
+    client_run_id: &str,
+    expected_formats: &[&str],
+    operation_deadline: Instant,
+    recipe: &ds_command_kernel::report_export::proof::Provenance,
+) -> Result<PendingAuthorizedPromotionBatch, String> {
+    promote_artifacts_with_purpose(
+        pending_root,
+        artifacts,
+        owner_uid,
+        project_id,
+        engine_version,
+        engine_build_manifest_sha256,
+        transformer,
+        transformer_revision,
+        input_base_fingerprint,
+        room_content_sha256,
+        client_run_id,
+        expected_formats,
+        operation_deadline,
+        None,
+        Some(recipe),
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn promote_artifacts_with_purpose(
+    pending_root: &Path,
+    artifacts: &[VerifiedSidecarArtifact],
+    owner_uid: &str,
+    project_id: &str,
+    engine_version: &str,
+    engine_build_manifest_sha256: &str,
+    transformer: &str,
+    transformer_revision: i64,
+    input_base_fingerprint: &str,
+    room_content_sha256: &str,
+    client_run_id: &str,
+    expected_formats: &[&str],
+    operation_deadline: Instant,
+    printing_preview: Option<&ds_command_kernel::printing::retained_preview::Binding>,
+    recipe: Option<&ds_command_kernel::report_export::proof::Provenance>,
+) -> Result<PendingAuthorizedPromotionBatch, String> {
     ensure_promotion_authority(operation_deadline)?;
     let pending_root = HeldDirectory::ensure_absolute(pending_root)?;
     let mut lock = lock_pending_upload_root(&pending_root, Some(operation_deadline))?;
@@ -856,7 +930,7 @@ pub fn promote_local_artifacts_with_preview(
         promotions,
         _lock: lock,
     };
-    let receipt = local_publication_receipt_with_preview(
+    let mut receipt = local_publication_receipt_with_preview(
         owner_uid,
         project_id,
         engine_version,
@@ -871,6 +945,10 @@ pub fn promote_local_artifacts_with_preview(
         expected_formats,
         printing_preview,
     )?;
+    if let Some(recipe) = recipe {
+        receipt.schema = publication::LOCAL_ONLY_SCHEMA;
+        receipt.local_print_recipe = Some(recipe.clone());
+    }
     let publication = PendingPublicationCommit::stage(&pending_root, &receipt)?;
     for promotion in &mut promotions.promotions {
         promotion.finalize(operation_deadline)?;
@@ -1136,6 +1214,24 @@ pub fn list_project_local_artifacts_from_root(
     project_id: &str,
     transformer: Option<&str>,
 ) -> Result<Vec<NetworkReporterLocalArtifactSet>, String> {
+    list_project_local_artifacts_with_purpose(root, owner_uid, project_id, transformer, false)
+}
+
+pub fn list_project_local_review_artifacts_from_root(
+    root: &Path,
+    owner_uid: &str,
+    project_id: &str,
+    transformer: Option<&str>,
+) -> Result<Vec<NetworkReporterLocalArtifactSet>, String> {
+    list_project_local_artifacts_with_purpose(root, owner_uid, project_id, transformer, true)
+}
+fn list_project_local_artifacts_with_purpose(
+    root: &Path,
+    owner_uid: &str,
+    project_id: &str,
+    transformer: Option<&str>,
+    local_review: bool,
+) -> Result<Vec<NetworkReporterLocalArtifactSet>, String> {
     if !valid_semantic_text(owner_uid, 128)
         || !valid_semantic_text(project_id, 128)
         || transformer.is_some_and(|name| !valid_semantic_text(name, 128))
@@ -1152,7 +1248,8 @@ pub fn list_project_local_artifacts_from_root(
     let mut sets = receipts
         .into_iter()
         .filter(|receipt| {
-            receipt.owner_uid == owner_uid
+            receipt.local_print_recipe.is_some() == local_review
+                && receipt.owner_uid == owner_uid
                 && receipt.project_id == project_id
                 && transformer.is_none_or(|name| receipt.transformer == name)
         })

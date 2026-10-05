@@ -63,9 +63,60 @@ pub fn with_layouts(source: &InputReceipt, layouts: &[Layout]) -> Result<InputRe
     Ok(result)
 }
 
+/// Local review outputs are print files, with only the A4 PDF's existing
+/// exact saved-analysis JSON companion allowed beside it.
+pub fn local_review_formats(formats: &[String]) -> Result<(), String> {
+    if formats.is_empty()
+        || formats.iter().any(|format| {
+            format != "voltage_drop_pdf"
+                && !(format == "voltage_drop" && formats.iter().any(|f| f == "voltage_drop_pdf"))
+                && crate::report_formats::named_print_output(format).is_none()
+        })
+    {
+        return Err("A local printing review only produces selected print files and their exact A4 analysis companion.".into());
+    }
+    Ok(())
+}
+
+/// Mark an unchanged governed capture as local review. The renderer keeps the
+/// exact saved recipes and source bytes; the purpose is never publishable.
+pub fn local_review(source: &InputReceipt, layouts: &[Layout]) -> Result<Provenance, String> {
+    source.validate()?;
+    if source.local_print_recipe.is_some() || layouts.len() > 32 {
+        return Err("A local review requires one original governed receipt".into());
+    }
+    let saved = crate::report_formats::named_layouts(&source.sheets()?)?;
+    let mut pins = BTreeMap::new();
+    for layout in layouts {
+        // Effective transformer overrides are admitted separately. Keep their
+        // actual render recipe pin and require an existing saved layout id.
+        crate::printing::validate(layout)?;
+        if !saved.contains_key(&layout.id) || pins.contains_key(&layout.id) {
+            return Err("A local review must name one existing project layout per id".into());
+        }
+        pins.insert(
+            layout.id.clone(),
+            sha256_hex(&serde_json::to_vec(layout).map_err(|e| e.to_string())?),
+        );
+    }
+    Ok(Provenance {
+        source_sheets_sha256: source.sheets_sha256.clone(),
+        layouts: pins,
+        preview: None,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn local_review_allows_only_print_files_and_the_actual_a4_companion() {
+        assert!(local_review_formats(&["voltage_drop_pdf".into(), "voltage_drop".into()]).is_ok());
+        assert!(local_review_formats(&["voltage_drop".into()]).is_err());
+        assert!(local_review_formats(&["voltage_drop_pdf".into(), "xlsx".into()]).is_err());
+        assert!(local_review_formats(&[]).is_err());
+    }
+
     #[test]
     fn local_recipes_change_only_existing_print_setups_and_keep_source_provenance() {
         let mut layout = crate::printing::default_layout();

@@ -43,6 +43,26 @@ pub struct PrintOverride {
     pub style_overrides: BTreeMap<String, PrintStyleOverride>,
 }
 pub type TransformerOverrides = BTreeMap<String, BTreeMap<String, PrintOverride>>;
+/// Read the same explicit project overrides consumed by capture and rendering.
+pub fn project_overrides(sheets: &serde_json::Value) -> Result<TransformerOverrides, String> {
+    let rows: Vec<_> = sheets["project_settings"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|row| row["parameter"] == "printing_overrides")
+        .collect();
+    if rows.len() > 1 {
+        return Err("Project settings contain duplicate printing_overrides parameters.".into());
+    }
+    serde_json::from_value(
+        sheets
+            .get("printing_overrides")
+            .cloned()
+            .or_else(|| rows.first().map(|row| row["value"].clone()))
+            .unwrap_or_else(|| serde_json::json!({})),
+    )
+    .map_err(|e| e.to_string())
+}
 pub fn apply(layout: &Layout, patch: &PrintOverride) -> Result<Layout, String> {
     if patch.note.len() > 2000 || patch.elements.len() > 64 || patch.style_overrides.len() > 64 {
         return Err("Transformer print overrides exceed their bound.".into());

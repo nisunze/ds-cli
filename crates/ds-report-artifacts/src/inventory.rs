@@ -323,6 +323,7 @@ mod tests {
             operation: "export-tx_1".into(),
             variant: "default".into(),
             printing_preview: None,
+            local_print_recipe: None,
             engine_version: format!("ds-network-reporter@0.1.0+{}", "a".repeat(40)),
             engine_build_manifest_sha256: "d".repeat(64),
             transformer: "tx_1".into(),
@@ -547,6 +548,7 @@ mod tests {
             owner: "owner-1".into(),
             project: "project-1".into(),
             head: Head {
+                printing_preview: None,
                 work_id: "exact-work".into(),
                 engine: "network_reporter".into(),
                 engine_version: Some(receipt.engine_version.clone()),

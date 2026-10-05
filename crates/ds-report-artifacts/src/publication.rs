@@ -55,6 +55,8 @@ pub struct PublicationBatchReceipt {
     pub variant: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub printing_preview: Option<ds_command_kernel::printing::retained_preview::Binding>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub local_print_recipe: Option<ds_command_kernel::report_export::proof::Provenance>,
     pub engine_version: String,
     #[serde(default)]
     pub engine_build_manifest_sha256: String,
@@ -174,7 +176,26 @@ pub fn validate_receipt(receipt: &PublicationBatchReceipt) -> Result<(), String>
         }
         _ => false,
     };
-    if !valid_admission_shape
+    let recipe_valid = receipt.local_print_recipe.as_ref().is_none_or(|recipe| {
+        receipt.schema == LOCAL_ONLY_SCHEMA
+            && receipt.printing_preview.is_none()
+            && exact_lower_hex(&recipe.source_sheets_sha256, 64)
+            && recipe.preview.is_none()
+            && recipe.layouts.len() <= 32
+            && recipe.layouts.iter().all(|(id, sha)| {
+                ds_command_kernel::printing::identifier(id) && exact_lower_hex(sha, 64)
+            })
+            && ds_command_kernel::report_export::proof::local_review_formats(
+                &receipt
+                    .outputs
+                    .iter()
+                    .map(|output| output.format.clone())
+                    .collect::<Vec<_>>(),
+            )
+            .is_ok()
+    });
+    if !recipe_valid
+        || !valid_admission_shape
         || !exact_lower_hex(&receipt.batch_id, 64)
         || !exact_edge_id(&receipt.owner_uid, 128)
         || receipt
@@ -205,7 +226,7 @@ pub fn validate_receipt(receipt: &PublicationBatchReceipt) -> Result<(), String>
                     || receipt.outputs[0].paper_size.as_deref() != Some("A4")
             }
         }
-        || !(if receipt.schema == LOCAL_ONLY_SCHEMA {
+        || !(if receipt.schema == LOCAL_ONLY_SCHEMA && receipt.local_print_recipe.is_none() {
             receipt.engine_version == DEVELOPMENT_ENGINE
         } else {
             receipt
@@ -585,6 +606,7 @@ mod tests {
             operation: operation.clone(),
             variant: "default".to_string(),
             printing_preview: None,
+            local_print_recipe: None,
             engine_version: format!("ds-network-reporter@0.1.0+{}", "b".repeat(40)),
             engine_build_manifest_sha256: "d".repeat(64),
             transformer: "tx_1".to_string(),
@@ -606,6 +628,39 @@ mod tests {
                 presentation: None,
             }],
         }
+    }
+
+    #[test]
+    fn local_review_retains_release_identity_and_refuses_publishable_or_unpinned_receipts() {
+        let mut local = receipt();
+        local.schema = LOCAL_ONLY_SCHEMA;
+        local.local_print_recipe = Some(ds_command_kernel::report_export::proof::Provenance {
+            source_sheets_sha256: "a".repeat(64),
+            layouts: BTreeMap::new(),
+            preview: None,
+        });
+        local.outputs[0].output_id = "voltage_drop_pdf".into();
+        local.outputs[0].format = "voltage_drop_pdf".into();
+        local.outputs[0].filename = "tx_1-voltage-drop.pdf".into();
+        local.outputs[0].content_type = "application/pdf".into();
+        local.outputs[0].paper_size = Some("A4".into());
+        assert!(validate_receipt(&local).is_ok());
+        local.schema = BATCH_SCHEMA;
+        assert!(validate_receipt(&local).is_err());
+        local.schema = LOCAL_ONLY_SCHEMA;
+        local
+            .local_print_recipe
+            .as_mut()
+            .unwrap()
+            .source_sheets_sha256 = "invalid".into();
+        assert!(validate_receipt(&local).is_err());
+        local
+            .local_print_recipe
+            .as_mut()
+            .unwrap()
+            .source_sheets_sha256 = "a".repeat(64);
+        local.local_print_recipe = None;
+        assert!(validate_receipt(&local).is_err());
     }
 
     #[test]

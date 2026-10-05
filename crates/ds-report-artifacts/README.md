@@ -29,3 +29,10 @@ enter the WASM dependency graph. Its moved tests exercise receipt corruption,
 identity and path confinement, partial discard, recovery and process-safe locks
 without Tauri. Preview reads retain their memory bound; streamed recovery and
 publication use the separate artifact size bound.
+
+A local printing review retains the actual saved input receipt and render recipe
+in `local_print_recipe`. Its batch uses `LOCAL_ONLY_SCHEMA` while retaining the
+real renderer release identity. It remains readable through the same artifact
+locator, but is excluded from main output inventory, publication candidates and
+recovery adoption. The explicit review inventory reads only these receipts; it
+never replaces the ordinary `export-<transformer>/default` publication head.

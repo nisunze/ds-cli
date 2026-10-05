@@ -556,6 +556,7 @@ mod tests {
             operation: "export-tx_1".to_string(),
             variant: "default".to_string(),
             printing_preview: None,
+            local_print_recipe: None,
             engine_version: format!("ds-network-reporter@0.1.0+{}", "b".repeat(40)),
             engine_build_manifest_sha256: "c".repeat(64),
             transformer: "tx_1".to_string(),
