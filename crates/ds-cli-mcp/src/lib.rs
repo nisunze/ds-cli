@@ -32,6 +32,7 @@
 //! or expose anything `ds capabilities` does not list. The moment it grows a
 //! tool the CLI lacks, it is the second surface the product ruled out.
 
+pub mod cli_catalog;
 mod identity;
 pub mod install;
 pub mod resources;

@@ -18,11 +18,13 @@ pub mod city_vectors;
 pub mod conversion_matrix;
 pub mod convert;
 pub mod elevation;
+pub mod elevation_compare;
 pub mod foundation;
 pub mod inspect;
 pub mod point_cloud;
 pub mod project_cache;
 pub mod spatial;
+pub mod terrain_sampling;
 pub mod vector;
 pub mod vector_workflow;
 
@@ -34,6 +36,9 @@ pub static DOMAIN: Domain = Domain {
         &convert::COMMAND,
         &conversion_matrix::COMMAND,
         &elevation::COMMAND,
+        &elevation_compare::COMMAND,
+        &terrain_sampling::DESCRIBE,
+        &terrain_sampling::SAMPLE,
         &point_cloud::PLAN_COMMAND,
         &point_cloud::EXTRACT_COMMAND,
         &admin_bounds::COMMAND,

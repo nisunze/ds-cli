@@ -94,8 +94,9 @@ command raises.
 
 Interpolates point sources through the native Desktop engine. CSV/TSV can name
 their coordinate columns and CRS; geometry formats carry coordinates. A
-`common-column` keeps each named surface all-or-nothing. AWS Terrarium fallback
-is explicit and can be disabled. Jobs above 4,000 parsed points require the
+`common-column` keeps each named surface all-or-nothing. Rwanda is the sole
+provider; coverage holes stay explicit. The compatibility flag accepts only
+`--fallback none`, which is also the default. Jobs above 4,000 parsed points require the
 verified full local Rwanda DEM component; the Desktop component manager installs
 or verifies it once before the operation retries. Smaller jobs may read exact
 public COG ranges through the bounded Desktop cache.
@@ -118,8 +119,7 @@ seeded-random cloud, samples the DEM locally, and writes a new GeoJSON plus a
 CSV sibling. It never calls Cloud Run.
 
 The area is either `--area <absolute GeoJSON|KML|KMZ|shapefile zip>` or
-`--bbox west,south,east,north`; the map is only an optional way to choose an
-area in the desktop UI. Grid extraction requires `--spacing-m`. Seeded-random
+`--bbox west,south,east,north`. Grid extraction requires `--spacing-m`. Seeded-random
 extraction requires `--seed` plus exactly one of `--count` or
 `--density-per-km2`; no density or seed is guessed.
 
@@ -445,6 +445,31 @@ evidence regardless of the presentation format. The current IPC/WKB path is
 not yet a GeoArrow extension array. A requested external delivery format needs
 an explicit adapter and its own completeness check; changing the output format
 does not require another BigQuery query.
+
+## Native elevation comparison and adaptive terrain sampling
+
+`data.elevation.compare` evaluates the published Rwanda TIFF and Terrarium at
+identical points without modifying their inputs. It exposes separate nearest
+and bilinear Terrarium readings and acquisition evidence. Comparisons are
+diagnostic: they do not select a mixed source or apply a height correction.
+
+`data.terrain.describe` returns the generated native request schema, adjustable
+defaults, source choices and density/error semantics. `data.terrain.sample`
+reads that strict request file and writes a fresh directory of native sampled
+artifacts. Choose one explicit Rwanda or declared survey surface. Centerline
+and optional signed side cuts are sampled at their actual XY; side profiles
+default to off. Seeded positions, terrain-preserving reduction and supplied
+engineering intervals control density. Random corridor and side observations
+remain separate from the nominal profiles.
+
+Generated samples retain derived provenance and never claim field measurement.
+Missing terrain remains gaps. Discrete baseline error, raster resolution,
+source uncertainty and engineering density are reported separately. Dry-run
+validates local inputs and the query plan without provider acquisition, surface
+queries or file creation. Sampling does not edit or publish a model. Read the
+live command contracts for delivery arguments and refusals, and the native
+[terrain contract](../../../ds-network/docs/contracts/adaptive-terrain-sampling.md)
+for the mathematical boundary.
 
 ## What this is not
 

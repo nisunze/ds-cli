@@ -1053,10 +1053,12 @@ dependencies = [
  "ds-client-core",
  "ds-columnar",
  "ds-command-kernel",
+ "ds-elevation-host",
  "ds-io",
  "ds-layer-store",
  "ds-network",
  "ds-project-data",
+ "ds-terrain-host",
  "serde_json",
  "ureq",
 ]
@@ -1536,6 +1538,32 @@ dependencies = [
 ]
 
 [[package]]
+name = "ds-elevation"
+version = "0.1.0"
+dependencies = [
+ "ds-geo",
+ "flate2",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
+name = "ds-elevation-host"
+version = "0.1.0"
+dependencies = [
+ "csv",
+ "ds-elevation",
+ "ds-geo",
+ "image",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "thiserror",
+ "ureq",
+]
+
+[[package]]
 name = "ds-geo"
 version = "0.1.0"
 dependencies = [
@@ -1932,6 +1960,31 @@ dependencies = [
  "rusqlite",
  "serde",
  "serde_json",
+ "thiserror",
+]
+
+[[package]]
+name = "ds-terrain-host"
+version = "0.1.0"
+dependencies = [
+ "csv",
+ "ds-elevation-host",
+ "ds-geo",
+ "ds-geo-lite",
+ "ds-terrain-sampling",
+ "schemars",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "thiserror",
+]
+
+[[package]]
+name = "ds-terrain-sampling"
+version = "0.1.0"
+dependencies = [
+ "schemars",
+ "serde",
  "thiserror",
 ]
 

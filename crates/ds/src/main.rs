@@ -19,6 +19,7 @@
 
 mod build;
 mod meta;
+mod native_catalog;
 mod registry;
 
 use std::process::ExitCode;

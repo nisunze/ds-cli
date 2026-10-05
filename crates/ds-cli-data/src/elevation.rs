@@ -84,14 +84,14 @@ const COMMON_COLUMN_ARG: Arg = Arg::value(
     "<name>",
     "Group points into all-or-nothing interpolation surfaces by this field.",
 );
-const FALLBACK_ARG: Arg = Arg {
+pub(crate) const FALLBACK_ARG: Arg = Arg {
     name: "fallback",
     kind: ArgKind::Value,
     value: "<source>",
     required: false,
-    default: Some("terrarium"),
-    choices: &["terrarium", "none"],
-    summary: "Use explicit AWS Terrarium fallback outside Rwanda DEM coverage, or none.",
+    default: Some("none"),
+    choices: &["none"],
+    summary: "Compatibility flag: only none. Rwanda coverage holes stay explicit; another provider is never substituted.",
 };
 
 const ABSOLUTE_PATH_REQUIRED: Refusal = Refusal {
@@ -118,9 +118,9 @@ const STREAM_GROUP_BOUND: Refusal = Refusal {
 pub static COMMAND: Command = Command {
     id: "data.elevation.attach",
     path: &["data", "elevation", "attach"],
-    contract: 1,
+    contract: 2,
     summary: "Attach Rwanda DEM elevation to a local point source on Desktop.",
-    purpose: "Asks the paired Desktop's native ds-network engine to interpolate the governed Rwanda DEM into a new local GeoJSON. Small jobs may use exact public byte ranges; jobs above 4,000 parsed points make the Desktop component manager install or verify the full local DEM once before retrying. AWS Terrarium is an explicit fallback, source/result bytes never enter DS Cloud Run, and no map needs to be open.",
+    purpose: "Asks the paired Desktop's native ds-network engine to interpolate only the governed Rwanda DEM into a new local GeoJSON. Rwanda coverage holes remain explicit; Terrarium is never substituted. Small jobs may use exact public byte ranges; jobs above 4,000 parsed points make the Desktop component manager install or verify the full local DEM once before retrying. Source/result bytes never enter DS Cloud Run, and no map needs to be open.",
     chapter: Chapter::Data,
     effect: Effect::LocalFileWrite,
     authority: Authority::DesktopPairing,
@@ -137,10 +137,10 @@ pub static COMMAND: Command = Command {
         TARGET_ARG,
         DESCRIPTOR_ARG,
     ],
-    output: "A native receipt with source/output paths and digest, point and coverage counts, DEM access mode, fallback evidence, and per-layer statistics.",
+    output: "A native receipt with source/output paths and digest, point and sole-Rwanda coverage counts, DEM access mode, zero fallback evidence, and per-layer statistics.",
     examples: &[
         Example {
-            command: "ds data elevation attach --source /data/poles.csv --out /data/poles-elevation.geojson --x-column longitude --y-column latitude --source-crs wgs84_lonlat --fallback terrarium",
+            command: "ds data elevation attach --source /data/poles.csv --out /data/poles-elevation.geojson --x-column longitude --y-column latitude --source-crs wgs84_lonlat --fallback none",
             note: "Hypothetical longitude/latitude table; works quietly without opening the map.",
             runnable: false,
         },
@@ -205,7 +205,7 @@ fn refusal(result: &Value) -> Result<Value, Failure> {
     Err(failure.remedy(remedy).detail(detail))
 }
 
-pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
+fn arguments(inputs: &Inputs) -> Result<Map<String, Value>, Failure> {
     let source = absolute_path(inputs, "source")?;
     let out = absolute_path(inputs, "out")?;
     let mut arguments = Map::new();
@@ -221,7 +221,11 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     if let Some(value) = inputs.value("common-column") {
         arguments.insert("common_column".into(), json!(value));
     }
+    Ok(arguments)
+}
 
+pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
+    let arguments = arguments(inputs)?;
     let descriptor = paired(inputs.value("desktop-descriptor"))?;
     let result = invoke(
         &descriptor,
@@ -254,6 +258,36 @@ pub fn render(data: &Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn default_and_explicit_none_dispatch_one_rwanda_provider_and_reject_terrarium() {
+        let tokens = [
+            "--source",
+            "/data/poles.csv",
+            "--out",
+            "/data/poles.geojson",
+        ]
+        .map(str::to_string)
+        .to_vec();
+        let defaults = ds_cli_contract::args::parse(&COMMAND, &tokens).unwrap();
+        let request = arguments(&defaults).unwrap();
+        assert_eq!(request["fallback"], "none");
+        assert_eq!(request["source"], "/data/poles.csv");
+        let mut explicit = tokens.clone();
+        explicit.extend(["--fallback", "none"].map(str::to_string));
+        assert_eq!(
+            arguments(&ds_cli_contract::args::parse(&COMMAND, &explicit).unwrap()).unwrap(),
+            request
+        );
+        let mut mixed = tokens;
+        mixed.extend(["--fallback", "terrarium"].map(str::to_string));
+        assert_eq!(
+            ds_cli_contract::args::parse(&COMMAND, &mixed)
+                .unwrap_err()
+                .code(),
+            "invalid_choice"
+        );
+    }
 
     #[test]
     fn bridge_contract_is_closed_and_mapless() {

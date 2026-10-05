@@ -86,13 +86,24 @@ one of them.",
         )
         .choices(Requires::TOKENS),
         Arg::value("limit", "<n>", "Cap search results.").default("10"),
+        Arg::value(
+            "export",
+            "<tools>",
+            "Explicit full native tools catalogue; no runtime probes.",
+        )
+        .choices(&["tools"]),
     ],
     output: "\
 A `tier` field naming what came back — `domains`, `commands`, `command`, \
 `search` or `requires` — and the matching payload. Descriptors carry effect, \
 authority, requires, availability, inputs, refusals and examples. The \
-`requires` tier adds the total and the per-domain counts.",
+`requires` tier adds the total and the per-domain counts. Explicit --export tools returns the complete declared tools catalogue with MCP argument schemas and authored CLI examples; availability is deferred and no command is executed.",
     examples: &[
+        Example {
+            command: "ds capabilities --export tools --output json",
+            note: "Explicit complete native tools contract; download JSON without probing runtime availability.",
+            runnable: true,
+        },
         Example {
             command: "ds capabilities --output json",
             note: "The domain index. Start here.",
@@ -132,8 +143,13 @@ authority, requires, availability, inputs, refusals and examples. The \
         },
         Refusal {
             code: "conflicting_selector",
-            when: "--requires is combined with --search or a command id",
+            when: "--requires is combined with --search or a command id, or --export is combined with another selector/filter",
             remedy: "ask `ds capabilities --requires <server|window> [<domain>]` on its own",
+        },
+        Refusal {
+            code: "catalog_export_invalid",
+            when: "a registered declaration cannot be projected faithfully into the exported catalogue",
+            remedy: "Report the named command's declaration mismatch; never substitute an inferred schema.",
         },
     ],
     reference: None,
@@ -143,6 +159,23 @@ authority, requires, availability, inputs, refusals and examples. The \
 };
 
 fn capabilities(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
+    if inputs.value("export").is_some() {
+        if inputs.value("selector").is_some()
+            || inputs.value("search").is_some()
+            || inputs.value("requires").is_some()
+            || inputs.value("limit").is_some_and(|limit| limit != "10")
+        {
+            return Err(Failure::invalid(
+                "conflicting_selector",
+                "A full tools export cannot be combined with selectors, filters or a search limit.",
+            )
+            .remedy("Use ds capabilities --export tools --output json on its own."));
+        }
+        return crate::native_catalog::export().map_err(|detail| {
+            Failure::internal("catalog_export_invalid", detail)
+                .remedy("Report the named command's declaration mismatch.")
+        });
+    }
     let schema_only = std::env::var_os("DS_CLI_SCHEMA_ONLY").is_some_and(|value| !value.is_empty());
 
     if let Some(token) = inputs.value("requires") {
@@ -578,6 +611,12 @@ fn search(query: &str, limit: &str) -> Result<Value, Failure> {
 }
 
 fn render_capabilities(data: &Value) -> String {
+    if data["schema"] == "ds.cli.tools-catalog/v1" {
+        return format!(
+            "{} declared native commands. Use --output json to download the full tools catalogue; runtime availability remains deferred.\n",
+            data["commands"].as_array().map_or(0, Vec::len)
+        );
+    }
     let mut out = String::new();
     match data["tier"].as_str().unwrap_or("") {
         "domains" => {
@@ -1044,8 +1083,11 @@ mod tests {
             ("cache rwanda data", "desktop.data.rwanda.install"),
             ("download datasets", "desktop.data.rwanda.install"),
             ("install reference data", "desktop.data.rwanda.install"),
-            ("ground data", "desktop.data.rwanda.install"),
             ("add all datasets", "desktop.data.rwanda.install"),
+            // Ground sampling now has a headless native door. Generic ground
+            // data must reach it; explicitly installing reference datasets
+            // still reaches the installer above.
+            ("ground data", "data.terrain.sample"),
             // The product calls it Project Management; an engineer briefed
             // with those words must land on the plan, not on auth.project
             // (feedback 8a15ecf2).

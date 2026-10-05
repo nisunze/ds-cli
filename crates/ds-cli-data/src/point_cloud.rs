@@ -19,6 +19,7 @@
 use std::path::Path;
 use std::time::Duration;
 
+use crate::elevation::FALLBACK_ARG;
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
     Arg, ArgKind, Authority, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
@@ -107,16 +108,6 @@ const OUT_ARG: Arg = Arg {
     choices: &[],
     summary: "Absolute path for a new GeoJSON result; the CSV is written beside it. Existing files are never overwritten.",
 };
-const FALLBACK_ARG: Arg = Arg {
-    name: "fallback",
-    kind: ArgKind::Value,
-    value: "<source>",
-    required: false,
-    default: Some("terrarium"),
-    choices: &["terrarium", "none"],
-    summary: "Use explicit AWS Terrarium fallback outside Rwanda DEM coverage, or none.",
-};
-
 const AREA_REQUIRED: Refusal = Refusal {
     code: "area_required",
     when: "neither --area nor --bbox was given, or --bbox is not four ordered finite numbers",
@@ -210,9 +201,9 @@ pub static PLAN_COMMAND: Command = Command {
 pub static EXTRACT_COMMAND: Command = Command {
     id: "data.elevation.extract",
     path: &["data", "elevation", "extract"],
-    contract: 1,
+    contract: 2,
     summary: "Extract an elevation point cloud from an area on Desktop.",
-    purpose: "Generates points across an area, attaches Rwanda DEM elevation, and writes a GeoJSON with a CSV beside it. Unlike `ds data elevation attach`, which enriches points the caller already has, this produces them. Generation is deterministic and keeps all source area attributes. Jobs over 4,000 points install or verify the full local DEM once, then retry. Nothing reaches DS Cloud Run; no map need be open.",
+    purpose: "Generates points across an area, attaches only Rwanda DEM elevation, and writes a GeoJSON with a CSV beside it. Rwanda coverage holes stay explicit; another provider is never substituted. Unlike `ds data elevation attach`, which enriches points the caller already has, this produces them. Generation is deterministic and keeps all source area attributes. Jobs over 4,000 points install or verify the full local DEM once, then retry. Nothing reaches DS Cloud Run; no map need be open.",
     chapter: Chapter::Data,
     effect: Effect::LocalFileWrite,
     authority: Authority::DesktopPairing,
@@ -233,13 +224,13 @@ pub static EXTRACT_COMMAND: Command = Command {
     output: "A native receipt: both written paths and digests, point and coverage counts, DEM access mode, per-area statistics, and any displaced source attribute.",
     examples: &[
         Example {
-            command: "ds data elevation extract --bbox \"30.05,-1.95,30.06,-1.94\" --out /data/kigali-elevation.geojson --mode grid --spacing-m 25",
+            command: "ds data elevation extract --bbox \"30.05,-1.95,30.06,-1.94\" --out /data/kigali-elevation.geojson --mode grid --spacing-m 25 --fallback none",
             note: "Hypothetical 25 m grading grid; writes GeoJSON plus kigali-elevation.csv.",
             runnable: false,
         },
         Example {
             command: "ds data elevation extract --area /data/sector.geojson --out /data/sector-points.geojson --mode seeded_random --seed 2026 --count 2000 --fallback none",
-            note: "Hypothetical reproducible sample; without a fallback, points outside Rwanda coverage stay explicit gaps.",
+            note: "Hypothetical reproducible sample; points outside Rwanda coverage stay explicit gaps.",
             runnable: false,
         },
     ],
@@ -395,7 +386,7 @@ pub fn run_plan(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     }
 }
 
-pub fn run_extract(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
+fn extract_arguments(inputs: &Inputs) -> Result<Map<String, Value>, Failure> {
     let mut arguments = common_arguments(inputs)?;
     let out = absolute(inputs, "out")?.ok_or_else(|| {
         Failure::invalid("absolute_path_required", "--out is required.")
@@ -403,7 +394,11 @@ pub fn run_extract(inputs: &Inputs, _context: &Context) -> Result<Value, Failure
     })?;
     arguments.insert("out".into(), json!(out));
     arguments.insert("fallback".into(), json!(inputs.require("fallback")?));
+    Ok(arguments)
+}
 
+pub fn run_extract(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
+    let arguments = extract_arguments(inputs)?;
     let descriptor = paired(inputs.value("desktop-descriptor"))?;
     let result = invoke(
         &descriptor,
@@ -481,6 +476,41 @@ pub fn render_extract(data: &Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn default_and_explicit_none_extract_only_rwanda_and_reject_terrarium_before_pairing() {
+        let tokens = [
+            "--bbox",
+            "30.05,-1.95,30.06,-1.94",
+            "--out",
+            "/data/points.geojson",
+            "--mode",
+            "grid",
+            "--spacing-m",
+            "25",
+        ]
+        .map(str::to_string)
+        .to_vec();
+        let defaults = ds_cli_contract::args::parse(&EXTRACT_COMMAND, &tokens).unwrap();
+        let request = extract_arguments(&defaults).unwrap();
+        assert_eq!(request["fallback"], "none");
+        assert_eq!(request["spacing_m"], "25");
+        let mut explicit = tokens.clone();
+        explicit.extend(["--fallback", "none"].map(str::to_string));
+        assert_eq!(
+            extract_arguments(&ds_cli_contract::args::parse(&EXTRACT_COMMAND, &explicit).unwrap())
+                .unwrap(),
+            request
+        );
+        let mut mixed = tokens;
+        mixed.extend(["--fallback", "terrarium"].map(str::to_string));
+        assert_eq!(
+            ds_cli_contract::args::parse(&EXTRACT_COMMAND, &mixed)
+                .unwrap_err()
+                .code(),
+            "invalid_choice"
+        );
+    }
 
     #[test]
     fn both_operations_are_closed_and_mapless() {

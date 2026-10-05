@@ -1,0 +1,3 @@
+interface:
+  display_name: "DS Terrain Sampling"
+  short_description: "Sample terrain curves with sensible adaptive density"

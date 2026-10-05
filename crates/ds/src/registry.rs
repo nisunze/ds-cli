@@ -1989,6 +1989,21 @@ static DATA_ENTRIES: &[Entry] = &[
         render: ds_cli_data::elevation::render,
     },
     Entry {
+        command: &ds_cli_data::elevation_compare::COMMAND,
+        handler: ds_cli_data::elevation_compare::run,
+        render: ds_cli_data::elevation_compare::render,
+    },
+    Entry {
+        command: &ds_cli_data::terrain_sampling::DESCRIBE,
+        handler: ds_cli_data::terrain_sampling::run_describe,
+        render: ds_cli_data::terrain_sampling::render,
+    },
+    Entry {
+        command: &ds_cli_data::terrain_sampling::SAMPLE,
+        handler: ds_cli_data::terrain_sampling::run_sample,
+        render: ds_cli_data::terrain_sampling::render,
+    },
+    Entry {
         command: &ds_cli_data::point_cloud::PLAN_COMMAND,
         handler: ds_cli_data::point_cloud::run_plan,
         render: ds_cli_data::point_cloud::render_plan,

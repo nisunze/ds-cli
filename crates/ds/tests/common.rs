@@ -6,6 +6,7 @@
 
 use std::path::PathBuf;
 use std::process::Command;
+use std::sync::OnceLock;
 
 use serde_json::Value;
 
@@ -53,7 +54,7 @@ pub fn json(args: &[&str]) -> (Value, i32) {
 /// report parity that no longer exists. `ds-cli` already cannot build without
 /// `ds-network` on disk — it links its crates by path — so depending on it
 /// here adds no new requirement.
-pub fn fixture() -> String {
+pub fn original_fixture() -> String {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../../../ds-network/fixtures/pls-public/humble-pole/humble-pole.dsgrid");
     let path = path.canonicalize().unwrap_or(path);
@@ -64,4 +65,40 @@ pub fn fixture() -> String {
         path.display()
     );
     path.display().to_string()
+}
+
+/// Open the committed predecessor through its owner's explicit migration into
+/// a test-local current-schema copy. Never rewrite or silently repack the
+/// original fixture; retain the native preservation receipt beside the copy.
+pub fn fixture() -> String {
+    static CURRENT: OnceLock<(tempfile::TempDir, String)> = OnceLock::new();
+    CURRENT
+        .get_or_init(|| {
+            let original = original_fixture();
+            let bytes = std::fs::read(&original).expect("committed fixture is readable");
+            let migrated = ds_grid_exchange::package_migration::migrate(&bytes)
+                .expect("the committed fixture has a registered native migration");
+            assert!(migrated.receipt.assets_and_attachments_preserved);
+            assert!(migrated.receipt.output_strictly_verified);
+            let scratch = std::env::var_os("TMPDIR").map_or_else(
+                || PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target/test-fixtures"),
+                PathBuf::from,
+            );
+            std::fs::create_dir_all(&scratch).expect("disk fixture scratch is available");
+            let directory = tempfile::Builder::new()
+                .prefix("ds-cli-native-fixture-")
+                .tempdir_in(scratch)
+                .expect("test-local fixture directory is available");
+            let path = directory.path().join("humble-pole.dsgrid");
+            std::fs::write(&path, migrated.bytes).expect("current fixture is written");
+            std::fs::write(
+                directory.path().join("migration-receipt.json"),
+                serde_json::to_vec_pretty(&migrated.receipt).unwrap(),
+            )
+            .expect("native preservation receipt is written");
+            assert_eq!(std::fs::read(original).unwrap(), bytes);
+            (directory, path.display().to_string())
+        })
+        .1
+        .clone()
 }

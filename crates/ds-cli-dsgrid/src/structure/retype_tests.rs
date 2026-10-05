@@ -41,6 +41,7 @@ fn fixture() -> GridModelSnapshot {
         terrain_corridor_half_width_m: None,
         route_buffer_half_width_m: None,
         terrain_gap_tolerance_m: None,
+        ground_profile_basis: None,
         survey_note: None,
         delivery_phase: None,
         global_station_gap_m: None,

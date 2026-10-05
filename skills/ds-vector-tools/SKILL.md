@@ -40,6 +40,9 @@ passing the result to another workflow.
 For other source formats, discover `data.inspect` and `data.convert`; follow
 their actual format and CRS contracts. A requested operation absent from the
 installed surface is a capability gap: follow `ds` discovery and feedback.
+For elevation curves, adaptive point reduction, span-aware density or optional
+side profiles, use `ds-terrain-sampling`; fixed-distance geometry sampling does
+not establish a representative terrain surface.
 For display, hand the produced GeoJSON to `ds-map-local-data` or
 `ds-layer-management`; for authorized corridor dataset reads, use
 `ds-cloud-datasets`.

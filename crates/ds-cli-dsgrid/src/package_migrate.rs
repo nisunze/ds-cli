@@ -171,10 +171,10 @@ pub(crate) fn materialize_preserving_source(
         return Err(output_error("readback differs"));
     }
     ds_grid_exchange::package::unpack(&saved).map_err(output_error)?;
-    if let Some(original) = original {
-        if std::fs::read(out.join("original.dsgrid")).map_err(output_error)? != original {
-            return Err(output_error("original archive readback differs"));
-        }
+    if let Some(original) = original
+        && std::fs::read(out.join("original.dsgrid")).map_err(output_error)? != original
+    {
+        return Err(output_error("original archive readback differs"));
     }
     // Commit marker comes only after persisted package/original readback.
     let encoded = serde_json::to_vec_pretty(&output.receipt).map_err(output_error)?;
@@ -247,9 +247,7 @@ pub fn run(inputs: &Inputs, context: &Context) -> Result<Value, Failure> {
         json!({"dry_run":dry,"source_path":source_path,"source_modified":false,"published":false,"receipt":output.receipt,"files":files}),
     )
 }
-fn successor_inputs<'a>(
-    inputs: &'a Inputs,
-) -> Result<Option<(&'a str, &'a str, &'a str, &'a str)>, Failure> {
+fn successor_inputs(inputs: &Inputs) -> Result<Option<(&str, &str, &str, &str)>, Failure> {
     let names = [
         "current-path",
         "expected-current-sha256",
@@ -459,7 +457,7 @@ mod supplemental_input_tests {
     fn successor_flags_are_complete_and_opt_in_before_file_reads() {
         assert!(successor_inputs(&inputs(vec![])).unwrap().is_none());
         assert!(successor_inputs(&inputs(vec!["--successor".into()])).is_err());
-        let flags = vec![
+        let flags = [
             "--current-path",
             "current.dsgrid",
             "--expected-current-sha256",

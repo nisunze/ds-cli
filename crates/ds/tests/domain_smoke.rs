@@ -1904,7 +1904,8 @@ fn dsgrid_asset_extracts_the_original_bak_and_round_trips_a_delivery() {
     use sha2::{Digest, Sha256};
     let model = common::fixture();
     let original_package = unpack(&std::fs::read(&model).unwrap()).unwrap();
-    let committed_bak = PathBuf::from(&model).with_file_name("humble-pole-16.81.bak");
+    let committed_bak =
+        PathBuf::from(common::original_fixture()).with_file_name("humble-pole-16.81.bak");
     let listed = ok(&[
         "dsgrid", "asset", "list", "--path", &model, "--output", "json",
     ]);
@@ -18202,6 +18203,12 @@ fn exports_and_version_markers_refuse_malformed_requests_before_authentication()
 #[path = "smoke/cable_source_reconcile.rs"]
 mod cable_source_reconcile;
 
+#[path = "smoke/elevation_compare.rs"]
+mod elevation_compare;
+
+#[path = "smoke/terrain_sampling.rs"]
+mod terrain_sampling;
+
 #[test]
 fn member_form_grants_are_headless_bounded_and_apply_stops_before_unconfirmed_effect() {
     for (id, confirmation) in [
@@ -18267,7 +18274,7 @@ fn pm_collaboration_adapters_declare_bounded_reads_and_confirmed_task_comment() 
 #[test]
 fn pls_structure_translate_names_local_models_and_accepts_them_by_quantities() {
     use sha2::{Digest, Sha256};
-    let backup = PathBuf::from(common::fixture()).with_file_name("humble-pole-16.81.bak");
+    let backup = PathBuf::from(common::original_fixture()).with_file_name("humble-pole-16.81.bak");
     let root = temp_root("structure-translate");
     let library = root.join("canonical");
     std::fs::create_dir_all(&library).unwrap();

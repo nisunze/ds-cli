@@ -734,6 +734,8 @@ const VECTOR_COMMANDS: &[&str] = &[
 // BigQuery dataset and end as a GeoJSON layer or an aggregate workbook.
 // These are typed commands, not an arbitrary SQL or file-system tool.
 const DATASET_COMMANDS: &[&str] = &[
+    "data.terrain.describe",
+    "data.terrain.sample",
     "data.project-cache.status",
     "data.project-cache.query",
     "data.spatial.plan",
