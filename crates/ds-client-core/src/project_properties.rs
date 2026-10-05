@@ -27,8 +27,11 @@
 //! Closed by construction: the [`Command`] enum is the complete set of
 //! actions this owner can send, and it writes only the keys the handler reads
 //! by name. The five property fields are the ones the browser's Edit Project
-//! form edits; lifecycle flags, project type, CRS, phases, components and
-//! lanes are deliberately not here.
+//! form edits. Two narrower doors exist for templates and nothing else:
+//! [`Command::CreateFromTemplate`] carries a template plan's settings blocks
+//! (project type and CRS, components, phases, lanes) into `create`, and
+//! [`Command::SetTemplate`] flips the one lifecycle flag a template is. The
+//! archive, testing and expiration flags stay out.
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -109,7 +112,27 @@ pub enum Command {
         project_id: String,
         properties: Properties,
     },
+    /// Create the project a template plan names
+    /// (`ds_command_kernel::project_template`): the operator's identity over
+    /// the template's settings blocks, sent through the same `create` action.
+    CreateFromTemplate {
+        project: ds_command_kernel::project_template::NewProject,
+    },
+    /// Mark one project template, or take it back to its other state. A
+    /// lifecycle-only update: ds-brain admits it on a lifecycle capability
+    /// (`project.template.mark`) or `project.properties.edit`.
+    SetTemplate { project_id: String, template: bool },
 }
+
+/// The settings blocks a template carries into the creation payload, closed.
+pub const TEMPLATE_SETTINGS: [&str; 4] = [
+    "project_params",
+    "project_components",
+    "project_phases",
+    "processing_lanes",
+];
+/// The largest settings block the creation payload carries.
+pub const MAX_SETTINGS_BYTES: usize = 8192;
 
 fn invalid(message: &'static str) -> ClientError {
     ClientError::new(ErrorKind::InvalidInput, message)
@@ -159,8 +182,8 @@ pub fn slug(display_name: &str) -> String {
 impl Command {
     pub fn action(&self) -> &'static str {
         match self {
-            Self::Create { .. } => "create",
-            Self::Update { .. } => "update",
+            Self::Create { .. } | Self::CreateFromTemplate { .. } => "create",
+            Self::Update { .. } | Self::SetTemplate { .. } => "update",
         }
     }
 
@@ -213,6 +236,49 @@ impl Command {
                     ));
                 }
             }
+            Self::CreateFromTemplate { project } => {
+                if !text(&project.display_name, MAX_TEXT_CHARS, false)
+                    || slug(&project.display_name).is_empty()
+                    || project.project_name != slug(&project.display_name)
+                {
+                    return Err(invalid(
+                        "a template plan's project needs a display name whose slug is its project_name",
+                    ));
+                }
+                let properties = Properties {
+                    display_name: None,
+                    location: project.location.clone(),
+                    country: project.country.clone(),
+                    client: project.client.clone(),
+                    description: project.description.clone(),
+                };
+                if !properties.valid()
+                    || !optional(&project.network_template, MAX_TEXT_CHARS, false)
+                    || !optional(&project.styling_template_id, MAX_TEXT_CHARS, false)
+                    || project
+                        .styling_template_id
+                        .as_ref()
+                        .is_some_and(|id| id.contains('/') || id == "." || id == "..")
+                {
+                    return Err(invalid(
+                        "a project property is empty, untrimmed, outside its bound, or carries a control character",
+                    ));
+                }
+                for (key, value) in &project.settings {
+                    if !TEMPLATE_SETTINGS.contains(&key.as_str())
+                        || !value.is_object()
+                        || serde_json::to_vec(value).map_or(usize::MAX, |b| b.len())
+                            > MAX_SETTINGS_BYTES
+                    {
+                        return Err(invalid(
+                            "a template settings block is unknown, not an object, or over 8 KiB",
+                        ));
+                    }
+                }
+            }
+            Self::SetTemplate { project_id, .. } => {
+                crate::tiles::validate_project(project_id)?;
+            }
         }
         Ok(())
     }
@@ -252,6 +318,46 @@ impl Command {
             } => {
                 data.insert("project_id".into(), Value::String(project_id.clone()));
                 properties.write(&mut data);
+            }
+            Self::CreateFromTemplate { project } => {
+                data.insert(
+                    "display_name".into(),
+                    Value::String(project.display_name.clone()),
+                );
+                data.insert(
+                    "project_name".into(),
+                    Value::String(project.project_name.clone()),
+                );
+                Properties {
+                    display_name: None,
+                    location: project.location.clone(),
+                    country: project.country.clone(),
+                    client: project.client.clone(),
+                    description: project.description.clone(),
+                }
+                .write(&mut data);
+                for (key, value) in [
+                    ("network_template", &project.network_template),
+                    ("styling_template_id", &project.styling_template_id),
+                ] {
+                    if let Some(value) = value {
+                        data.insert(key.into(), Value::String(value.clone()));
+                    }
+                }
+                for (key, value) in &project.settings {
+                    // Sorted at every depth: a block keeps whatever order the
+                    // serde_json feature set read it in, and the bytes may not.
+                    let mut value = value.clone();
+                    value.sort_all_objects();
+                    data.insert(key.clone(), value);
+                }
+            }
+            Self::SetTemplate {
+                project_id,
+                template,
+            } => {
+                data.insert("project_id".into(), Value::String(project_id.clone()));
+                data.insert("is_template".into(), Value::Bool(*template));
             }
         }
         json!({ "action": self.action(), "data": data })
@@ -355,14 +461,14 @@ pub(crate) fn decode_receipt(command: &Command, body: &[u8]) -> Result<Receipt, 
         return Err(unreadable());
     }
     match command {
-        Command::Create { .. } => {
+        Command::Create { .. } | Command::CreateFromTemplate { .. } => {
             let receipt: CreateReceipt = decode_success(body)?;
             if receipt.project_id.is_empty() || receipt.project_name.is_empty() {
                 return Err(unreadable());
             }
             Ok(Receipt::Created(Box::new(receipt)))
         }
-        Command::Update { project_id, .. } => {
+        Command::Update { project_id, .. } | Command::SetTemplate { project_id, .. } => {
             let receipt: UpdateReceipt = decode_success(body)?;
             if receipt.project_id != *project_id {
                 return Err(unreadable());
@@ -801,6 +907,108 @@ mod tests {
         );
         assert_eq!(error.kind(), ErrorKind::AuthenticationRejected);
         assert_eq!(error.project_properties_service_code(), None);
+    }
+
+    fn template_project() -> ds_command_kernel::project_template::NewProject {
+        ds_command_kernel::project_template::NewProject {
+            display_name: "Nyaruguru LV".into(),
+            project_name: "nyaruguru_lv".into(),
+            location: Some("Nyaruguru".into()),
+            description: None,
+            country: Some("Rwanda".into()),
+            client: Some("EDCL".into()),
+            network_template: Some("master".into()),
+            styling_template_id: None,
+            settings: BTreeMap::from([
+                (
+                    "project_params".to_owned(),
+                    json!({"project_type":"new_build","crs":{"mode":"tm_rwanda"}}),
+                ),
+                ("processing_lanes".to_owned(), json!({"fast":true})),
+            ]),
+        }
+    }
+
+    /// The template plan's creation is the same `create` action, carrying
+    /// the settings blocks the handler already reads by name.
+    #[test]
+    fn a_template_plans_creation_is_the_create_action_with_its_settings() {
+        let command = Command::CreateFromTemplate {
+            project: template_project(),
+        };
+        command.validate().expect("valid template creation");
+        assert_eq!(command.action(), "create");
+        assert_eq!(
+            String::from_utf8(command.body_bytes()).unwrap(),
+            r#"{"action":"create","data":{"client":"EDCL","country":"Rwanda","display_name":"Nyaruguru LV","network_template":"master","processing_lanes":{"fast":true},"project_location":"Nyaruguru","project_name":"nyaruguru_lv","project_params":{"crs":{"mode":"tm_rwanda"},"project_type":"new_build"}}}"#
+        );
+        let receipt = decode_receipt(
+            &command,
+            br#"{"success":true,"data":{"project_id":"uid_nyaruguru_lv","project_name":"nyaruguru_lv","display_name":"Nyaruguru LV","network_template":"master"}}"#,
+        )
+        .unwrap();
+        assert!(matches!(receipt, Receipt::Created(_)));
+
+        for broken in [
+            // A slug the display name does not derive.
+            ds_command_kernel::project_template::NewProject {
+                project_name: "other".into(),
+                ..template_project()
+            },
+            // A settings block the handler does not read.
+            ds_command_kernel::project_template::NewProject {
+                settings: BTreeMap::from([("is_template".to_owned(), json!({}))]),
+                ..template_project()
+            },
+            // A block that is not an object.
+            ds_command_kernel::project_template::NewProject {
+                settings: BTreeMap::from([("project_phases".to_owned(), json!(["I"]))]),
+                ..template_project()
+            },
+        ] {
+            let error = Command::CreateFromTemplate { project: broken }
+                .validate()
+                .unwrap_err();
+            assert_eq!(error.kind(), ErrorKind::InvalidInput);
+        }
+    }
+
+    /// Marking a template is a lifecycle-only update: it sends the project
+    /// and the one flag, nothing else, so ds-brain's archive gate exempts it.
+    #[test]
+    fn marking_a_template_sends_only_the_flag() {
+        for (template, body) in [
+            (
+                true,
+                r#"{"action":"update","data":{"is_template":true,"project_id":"czgmdwth_gisagara"}}"#,
+            ),
+            (
+                false,
+                r#"{"action":"update","data":{"is_template":false,"project_id":"czgmdwth_gisagara"}}"#,
+            ),
+        ] {
+            let command = Command::SetTemplate {
+                project_id: "czgmdwth_gisagara".into(),
+                template,
+            };
+            command.validate().unwrap();
+            assert_eq!(String::from_utf8(command.body_bytes()).unwrap(), body);
+        }
+        let other = Command::SetTemplate {
+            project_id: "czgmdwth_gisagara".into(),
+            template: true,
+        };
+        assert!(decode_receipt(
+            &other,
+            br#"{"success":true,"data":{"project_id":"someone_else","fields_updated":1}}"#
+        )
+        .is_err());
+        assert!(Command::SetTemplate {
+            project_id: " padded".into(),
+            template: true
+        }
+        .validate()
+        .is_err());
     }
 }
 

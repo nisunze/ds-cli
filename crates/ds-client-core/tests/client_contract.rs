@@ -8818,6 +8818,7 @@ fn printing_copy_pins_both_scopes_and_delete_pins_the_removed_revision() {
             &PrintingRequest::Copy {
                 source: PrintingSource {
                     scope: PrintingScope::Global,
+                    project: None,
                     id: "shared_a0".into(),
                     revision,
                 },

@@ -1740,7 +1740,7 @@ pub(crate) fn printing<T: AuthorizedTransport>(
     if !project.is_empty() {
         validate_tiles(project)?;
     }
-    request.validate()?;
+    request.validate_for(project)?;
     if project.is_empty() && request.needs_project(true) {
         return Err(ClientError::new(
             crate::ErrorKind::InvalidInput,

@@ -224,8 +224,10 @@ impl Command {
                 cursor,
                 limit,
             } => {
-                if !matches!(status.as_str(), "active" | "archived" | "testing")
-                    || !(1..=100).contains(limit)
+                if !matches!(
+                    status.as_str(),
+                    "active" | "archived" | "testing" | "template"
+                ) || !(1..=100).contains(limit)
                     || cursor.len() > 256
                     || cursor.trim() != cursor
                 {

@@ -21,6 +21,13 @@ pub enum PrintingScope {
 #[serde(deny_unknown_fields)]
 pub struct PrintingSource {
     pub scope: PrintingScope,
+    /// The project that holds a project-scoped source when it is not the
+    /// request's own project: a copy between two projects, as a template's
+    /// setups travel into the project made from it. ds-brain authorizes the
+    /// source read and the destination write independently. Absent, a
+    /// project source is the request's project.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project: Option<String>,
     pub id: String,
     pub revision: String,
 }
@@ -102,7 +109,16 @@ impl PrintingRequest {
                 valid_revision(&source.revision, false)?;
                 valid_id(&destination.id)?;
                 valid_revision(&destination.expected_revision, true)?;
-                if source.scope == destination.scope && source.id == destination.id {
+                if let Some(project) = &source.project {
+                    if source.scope != PrintingScope::Project
+                        || destination.scope != PrintingScope::Project
+                    {
+                        return Err(invalid(
+                            "A copy between projects names two project-scoped setups",
+                        ));
+                    }
+                    crate::tiles::validate_project(project)?;
+                } else if source.scope == destination.scope && source.id == destination.id {
                     return Err(invalid("Print copy destination must differ from source"));
                 }
                 if destination.name.as_ref().is_some_and(|name| {
@@ -129,6 +145,29 @@ impl PrintingRequest {
         }
     }
 
+    /// A copy between projects must name another project than the one the
+    /// request writes; the same project is the ordinary same-library copy.
+    pub fn validate_for(&self, project: &str) -> Result<(), ClientError> {
+        self.validate()?;
+        if let Self::Copy {
+            source:
+                PrintingSource {
+                    project: Some(source),
+                    ..
+                },
+            ..
+        } = self
+        {
+            if source == project {
+                return Err(ClientError::new(
+                    ErrorKind::InvalidInput,
+                    "A copy between projects names a source project other than the destination",
+                ));
+            }
+        }
+        Ok(())
+    }
+
     pub(crate) fn body(&self, project: &str) -> Vec<u8> {
         let mut value = serde_json::to_value(self).expect("validated print operation");
         if let Self::Copy {
@@ -136,8 +175,16 @@ impl PrintingRequest {
             destination,
         } = self
         {
-            apply_location(&mut value["source"], source.scope, project)
-                .expect("project requirement checked before transport");
+            // The source project is a location, written as the route reads it.
+            if let Some(map) = value["source"].as_object_mut() {
+                map.remove("project");
+            }
+            apply_location(
+                &mut value["source"],
+                source.scope,
+                source.project.as_deref().unwrap_or(project),
+            )
+            .expect("project requirement checked before transport");
             apply_location(&mut value["destination"], destination.scope, project)
                 .expect("project requirement checked before transport");
         } else {
@@ -362,6 +409,56 @@ fn validate_setup(data: &Value, id: &str, exact: Option<&Layout>) -> Result<(), 
 mod tests {
     use super::*;
     use crate::TransportResponse;
+
+    const REVISION: &str = "3e417f9c61c328262ada243ed6e954ad680839866e830ddc86239a2bf8b1813d";
+
+    fn between_projects(source_project: &str) -> PrintingRequest {
+        PrintingRequest::Copy {
+            source: PrintingSource {
+                scope: PrintingScope::Project,
+                project: Some(source_project.into()),
+                id: "a3-landscape-gisagara-cjic".into(),
+                revision: REVISION.into(),
+            },
+            destination: PrintingDestination {
+                scope: PrintingScope::Project,
+                id: "a3-landscape-gisagara-cjic".into(),
+                name: None,
+                expected_revision: String::new(),
+            },
+        }
+    }
+
+    /// A template's setups travel into the new project under the same id: the
+    /// source names its own project, the request names the destination, and
+    /// the wire carries each as the route reads a location.
+    #[test]
+    fn a_copy_between_projects_names_both_locations_on_the_wire() {
+        let request = between_projects("czgmdwth_gisagara");
+        request.validate_for("uid_nyaruguru_lv").unwrap();
+        let body: Value = serde_json::from_slice(&request.body("uid_nyaruguru_lv")).unwrap();
+        assert_eq!(
+            body,
+            json!({"action":"copy",
+                "source":{"scope":"project","project_id":"czgmdwth_gisagara","id":"a3-landscape-gisagara-cjic","revision":REVISION},
+                "destination":{"scope":"project","project_id":"uid_nyaruguru_lv","id":"a3-landscape-gisagara-cjic","expected_revision":""}})
+        );
+        // The same project is the same-library copy, which needs another id.
+        assert!(request.validate_for("czgmdwth_gisagara").is_err());
+        // A global location has no project of its own.
+        let mut global = between_projects("czgmdwth_gisagara");
+        if let PrintingRequest::Copy { source, .. } = &mut global {
+            source.scope = PrintingScope::Global;
+        }
+        assert!(global.validate().is_err());
+        // Without a source project the old rule stands: same scope, same id
+        // is no copy.
+        let mut same = between_projects("czgmdwth_gisagara");
+        if let PrintingRequest::Copy { source, .. } = &mut same {
+            source.project = None;
+        }
+        assert!(same.validate().is_err());
+    }
 
     fn refused(status: u16, body: &str) -> ClientError {
         decode(
