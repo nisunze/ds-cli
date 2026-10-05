@@ -151,6 +151,7 @@ pub const PROFILE_SET: BridgeOp = BridgeOp {
         "action",
         "display_case",
         "terrain",
+        "cable_colors",
     ],
 };
 pub const PROFILE_SELECT: BridgeOp = BridgeOp {

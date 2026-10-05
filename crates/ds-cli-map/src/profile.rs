@@ -120,7 +120,12 @@ pub static SET: Command = Command {
         Arg::value(
             "visibility",
             "<json-object>",
-            "JSON booleans: review, ground, side_profiles, clearance_line, terrain_points, terrain_ordinates, grid, structures, wire, section_labels, span_distances, structure_labels, structure_numbers, structure_names, structure_comments, embedded, offset_embedment_height, route_deviation.",
+            "JSON booleans: review, ground, side_profiles, clearance_line, terrain_points, terrain_ordinates, grid, structures, wire, section_labels, span_distances, structure_labels, structure_numbers, structure_names, structure_comments, embedded, offset_embedment_height, route_deviation, structure_usage, section_state, section_usage.",
+        ),
+        Arg::value(
+            "cable-colors",
+            "<json-object>",
+            "Per-cable wire colour {\"NAME\":\"#rrggbb\"}; null resets.",
         ),
         Arg::value(
             "height-px",
@@ -335,6 +340,24 @@ fn patch_from_inputs(inputs: &Inputs) -> Result<Map<String, Value>, Failure> {
         .map_err(|_| invalid("terrain must contain all four native numeric fields"))?;
         patch.insert("terrain".into(), value);
     }
+    if let Some(raw) = inputs.value("cable-colors") {
+        let value: Value = serde_json::from_str(raw)
+            .map_err(|_| invalid("cable-colors must be a JSON object of cable names"))?;
+        let colours: std::collections::BTreeMap<String, Option<String>> =
+            serde_json::from_value(value.clone())
+                .map_err(|_| invalid("cable-colors values must be #rrggbb or null"))?;
+        if colours.is_empty() {
+            return Err(invalid("cable-colors must name at least one cable"));
+        }
+        let check = ds_command_kernel::profile_display::DisplayPatch {
+            cable_colors: colours,
+            ..Default::default()
+        };
+        ds_command_kernel::profile_display::DisplayState::default()
+            .patched(&check)
+            .map_err(invalid)?;
+        patch.insert("cable_colors".into(), value);
+    }
     if let Some(raw) = inputs.value("display-case") {
         if raw.len() > 4096 {
             return Err(invalid(
@@ -530,6 +553,22 @@ mod tests {
         assert!(parse_visibility(r#"{"bogus":true}"#).is_err());
     }
 
+    #[test]
+    fn cable_colours_cross_the_bridge_validated_by_the_kernel() {
+        let args = ["--cable-colors", r##"{"ASTER 54.6":"#AABBCC","AAAC 34":null}"##].map(str::to_owned);
+        let inputs = ds_cli_contract::args::parse(&SET, &args).unwrap();
+        let patch = patch_from_inputs(&inputs).unwrap();
+        assert_eq!(patch["cable_colors"], json!({"ASTER 54.6":"#AABBCC","AAAC 34":null}));
+        for bad in [r#"{"ASTER":"red"}"#, r#"{}"#, r##"{" ":"#aabbcc"}"##, "[]"] {
+            let inputs =
+                ds_cli_contract::args::parse(&SET, &["--cable-colors".into(), bad.into()]).unwrap();
+            assert_eq!(
+                patch_from_inputs(&inputs).unwrap_err().code(),
+                "invalid_profile_view",
+                "{bad}"
+            );
+        }
+    }
     #[test]
     fn native_review_flags_and_complete_terrain_cross_the_bridge_without_defaults() {
         let args = ["--visibility", r#"{"review":false,"terrain_ordinates":true,"structure_comments":false}"#,
