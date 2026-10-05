@@ -25,6 +25,16 @@ The map element's rectangle is the physical viewport. Its `view_slot` is bound
 to a project named geographic view when an export is prepared; editor pan/zoom
 is not part of this document.
 
+An optional explicit `classification` owns catalogue organization:
+`{purpose: "lv_transformer" | "mv_model" | "project" | "voltage_drop", role: PageRole}`.
+The shared page-role vocabulary includes `overview` and `report`. Omission is
+Unclassified and serializes without this field; names, paper and the retired
+`project_overview` flag never classify a layout. `set_classification` sets an
+exact pair or clears it with null without changing any other layout content.
+`template_catalogue` projects compact authoritative rows into purpose → role →
+named templates and supplies the same native labels and authoring choices to
+every consumer. Rows hold their saved paper metadata, independent of selection.
+
 `elements` is the canonical back-to-front sheet stack. The final element is
 front-most. `bring_to_front`, `send_to_back`, `move_above` and `move_below`
 change only this order. Map-layer ordering inside the print viewport is a

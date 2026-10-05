@@ -3,6 +3,7 @@
 pub mod adjacent_networks;
 pub mod admin_reference;
 pub mod attribution;
+pub mod catalogue;
 pub mod context;
 pub mod custom;
 pub mod diagnostics;
@@ -62,6 +63,9 @@ pub const MAX_INPUT_BYTES: usize = 32 * 1024 * 1024;
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct Layout {
+    /// Explicit authored purpose and page role; legacy documents remain unclassified.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub classification: Option<catalogue::Classification>,
     /// Paper identity only; exact governed style keys determine the pens.
     #[serde(
         default,
@@ -1719,6 +1723,7 @@ pub fn default_layout() -> Layout {
         stroke_mm: None,
     };
     complete(Layout {
+        classification: None,
         ink_mode: crate::style_resolution::Ink::Colour,
         attribution: None,
         mv: None,
@@ -2302,6 +2307,13 @@ pub enum Command {
         layout: Layout,
         name: String,
     },
+    SetClassification {
+        layout: Layout,
+        classification: Option<catalogue::Classification>,
+    },
+    TemplateCatalogue {
+        rows: Vec<catalogue::Row>,
+    },
     Duplicate {
         layout: Layout,
         id: String,
@@ -2858,6 +2870,18 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
             layout.name = name;
             validate(&layout)?;
             json!({"layout":layout})
+        }
+        Command::SetClassification {
+            layout,
+            classification,
+        } => {
+            let mut layout = upgrade(layout)?;
+            layout.classification = classification;
+            validate(&layout)?;
+            json!({"layout":layout})
+        }
+        Command::TemplateCatalogue { rows } => {
+            serde_json::to_value(catalogue::project(rows)?).map_err(|e| e.to_string())?
         }
         Command::Duplicate { layout, id, name } => {
             let mut layout = upgrade(layout)?;

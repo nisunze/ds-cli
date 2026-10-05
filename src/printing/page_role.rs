@@ -2,7 +2,9 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[derive(
+    Debug, Clone, Copy, Serialize, Deserialize, JsonSchema, PartialEq, Eq, PartialOrd, Ord,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum PageRole {
     Cover,
@@ -18,4 +20,6 @@ pub enum PageRole {
     Schedule,
     PlanProfile,
     Context,
+    Overview,
+    Report,
 }
