@@ -187,12 +187,23 @@ fn barycentric(
     c: ProjectedPoint,
     p: ProjectedPoint,
 ) -> Option<(f64, f64, f64)> {
-    let den = (b.y - c.y) * (a.x - c.x) + (c.x - b.x) * (a.y - c.y);
+    barycentric_weights_xy([a.x, a.y], [b.x, b.y], [c.x, c.y], [p.x, p.y])
+}
+
+/// Shared Cartesian interpolation core. Legacy WGS84 sampling retains its
+/// boundary tolerance; the projected API additionally requires convex weights.
+pub(crate) fn barycentric_weights_xy(
+    a: [f64; 2],
+    b: [f64; 2],
+    c: [f64; 2],
+    p: [f64; 2],
+) -> Option<(f64, f64, f64)> {
+    let den = (b[1] - c[1]) * (a[0] - c[0]) + (c[0] - b[0]) * (a[1] - c[1]);
     if den.abs() <= f64::EPSILON {
         return None;
     }
-    let wa = ((b.y - c.y) * (p.x - c.x) + (c.x - b.x) * (p.y - c.y)) / den;
-    let wb = ((c.y - a.y) * (p.x - c.x) + (a.x - c.x) * (p.y - c.y)) / den;
+    let wa = ((b[1] - c[1]) * (p[0] - c[0]) + (c[0] - b[0]) * (p[1] - c[1])) / den;
+    let wb = ((c[1] - a[1]) * (p[0] - c[0]) + (a[0] - c[0]) * (p[1] - c[1])) / den;
     let wc = 1.0 - wa - wb;
     if wa >= -BARY_EPS && wb >= -BARY_EPS && wc >= -BARY_EPS {
         Some((wa, wb, wc))

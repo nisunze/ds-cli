@@ -39,6 +39,8 @@ pub mod viewport;
 pub mod line_corridor;
 pub mod operations;
 pub mod primitives;
+#[cfg(feature = "tin")]
+pub mod projected_tin;
 pub mod types;
 #[cfg(feature = "vector_types")]
 pub mod vector_types;

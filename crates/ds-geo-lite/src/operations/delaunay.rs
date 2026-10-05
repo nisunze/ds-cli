@@ -28,9 +28,29 @@ struct Triangle {
 /// Returns triangle indexes into the input triplets: `[i0, i1, i2, ...]`.
 /// Empty means malformed, too sparse, or degenerate/collinear input.
 pub fn triangulate_terrain(points_flat: &[f64]) -> Vec<u32> {
-    let Some(mut vertices) = terrain_vertices(points_flat) else {
+    let Some(vertices) = terrain_vertices(points_flat) else {
         return Vec::new();
     };
+    triangulate_vertices(vertices)
+}
+
+/// The same triangulation core for already admitted local Cartesian points.
+/// The caller owns units, finite-value admission and duplicate handling.
+pub(crate) fn triangulate_projected_xy(points: &[[f64; 2]]) -> Vec<u32> {
+    triangulate_vertices(
+        points
+            .iter()
+            .enumerate()
+            .map(|(source_index, xy)| Vertex {
+                x: xy[0],
+                y: xy[1],
+                source_index: Some(source_index),
+            })
+            .collect(),
+    )
+}
+
+fn triangulate_vertices(mut vertices: Vec<Vertex>) -> Vec<u32> {
     if vertices.len() < 3 {
         return Vec::new();
     }
