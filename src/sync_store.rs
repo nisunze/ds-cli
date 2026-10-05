@@ -427,7 +427,11 @@ pub fn apply(request: &Request) -> Result<Transition, String> {
                 );
             }
             if let Some(existing) = find_artifact(snapshot, &row.scope, &row.identity) {
-                if existing.sha256 == row.sha256 || existing.replay_key == row.replay_key {
+                let preview_refresh = row.identity.engine == "network_reporter"
+                    && row.identity.variant == crate::printing::retained_preview::VARIANT;
+                if (!preview_refresh && existing.sha256 == row.sha256)
+                    || existing.replay_key == row.replay_key
+                {
                     // The same publication, already recorded: whatever its
                     // state, it is not re-executed under a second key.
                     t.refuse(
@@ -1253,6 +1257,37 @@ mod tests {
         ))
         .unwrap();
         assert_eq!(clash.refusals[0].code, "replay_key_taken");
+    }
+
+    #[test]
+    fn explicit_preview_refresh_keeps_new_run_even_when_pdf_bytes_match() {
+        let mut prior = held("a", "k1");
+        prior.identity.variant = crate::printing::retained_preview::VARIANT.into();
+        prior.state = ArtifactState::Published;
+        let mut refreshed = prior.clone();
+        refreshed.replay_key = "k2".into();
+        refreshed.client_publish_id = "k2".into();
+        let transition = apply(&request(
+            Snapshot {
+                artifacts: vec![prior],
+                ..Default::default()
+            },
+            Event::LocalProduced {
+                row: refreshed.clone(),
+            },
+        ))
+        .unwrap();
+        assert!(transition.refusals.is_empty());
+        assert_eq!(artifacts(&transition)[0].replay_key, "k2");
+        let retry = apply(&request(
+            Snapshot {
+                artifacts: vec![refreshed.clone()],
+                ..Default::default()
+            },
+            Event::LocalProduced { row: refreshed },
+        ))
+        .unwrap();
+        assert_eq!(retry.refusals[0].code, "already_recorded");
     }
 
     #[test]

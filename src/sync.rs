@@ -693,9 +693,12 @@ pub fn plan(input: &Input) -> Result<Plan, String> {
     for identity in identities {
         if let Some(artifact) = local.get(&identity) {
             if let Some(computed) = &artifact.input_base_fingerprint {
-                let differs = remote
-                    .get(&identity)
-                    .is_none_or(|head| head.sha256 != artifact.sha256);
+                let differs = remote.get(&identity).is_none_or(|head| {
+                    head.sha256 != artifact.sha256
+                        || (identity.engine == "network_reporter"
+                            && identity.variant == crate::printing::retained_preview::VARIANT
+                            && artifact.produced_at_ms > head.published_at_ms)
+                });
                 // Ordering, decided here and nowhere else. A drain that has
                 // been held for days meets a record that moved on, and until
                 // now this branch uploaded regardless: a 09-04 batch silently
@@ -982,6 +985,34 @@ mod tests {
             input_base_fingerprint: Some("f".repeat(64)),
             ..remote(op, sha, "rev-9")
         }
+    }
+
+    #[test]
+    fn a_newer_explicit_preview_refresh_uploads_even_when_pdf_bytes_match() {
+        let mut artifact = derived("export-tx_1", SHA_A, 1_001);
+        artifact.identity.variant = crate::printing::retained_preview::VARIANT.into();
+        let mut head = head_at("export-tx_1", SHA_A, 1_000);
+        head.identity = artifact.identity.clone();
+        let mut request = input(vec![artifact], vec![head], None);
+        assert!(plan(&request)
+            .unwrap()
+            .actions
+            .iter()
+            .any(|action| matches!(action, Action::Upload { .. })));
+        request.local[0].produced_at_ms = 999;
+        assert!(!plan(&request)
+            .unwrap()
+            .actions
+            .iter()
+            .any(|action| matches!(action, Action::Upload { .. })));
+        request.local[0].produced_at_ms = 1_001;
+        request.local[0].identity.variant = "default".into();
+        request.remote[0].identity.variant = "default".into();
+        assert!(!plan(&request)
+            .unwrap()
+            .actions
+            .iter()
+            .any(|action| matches!(action, Action::Upload { .. })));
     }
 
     fn kinds(plan: &Plan) -> Vec<String> {

@@ -134,6 +134,35 @@ fn batch_for(
 }
 
 impl Producer for ReportProducer<'_> {
+    fn amend_open_declaration(
+        &self,
+        project: &str,
+        declaration: &mut serde_json::Value,
+    ) -> Result<(), String> {
+        if declaration["variant"] != ds_command_kernel::printing::retained_preview::VARIANT {
+            return Ok(());
+        }
+        if project != self.project {
+            return Err("printing preview producer project changed".into());
+        }
+        let publish_id = declaration["client_run_id"]
+            .as_str()
+            .ok_or("preview publication id missing")?;
+        let batch = batch_for(self.root, project, "", publish_id)?
+            .ok_or("committed preview receipt missing")?;
+        let binding = batch
+            .printing_preview
+            .as_ref()
+            .ok_or("committed preview binding missing")?;
+        if crate::rows::open_declaration(project, &row_of(&batch)) != *declaration {
+            return Err(
+                "printing preview declaration differs from its committed producer receipt".into(),
+            );
+        }
+        declaration["printing_preview"] =
+            serde_json::to_value(binding).map_err(|error| error.to_string())?;
+        Ok(())
+    }
     fn inventory(&self, project: &str) -> Result<Vec<LocalRow>, String> {
         if project != self.project {
             return Err("report producer project changed".into());
@@ -301,10 +330,74 @@ pub fn seal(
     root: &Path,
     request: &SealRequest<'_>,
 ) -> Result<SealOutcome, String> {
+    seal_with_preview(store, fence, root, request, None)
+}
+
+/// Seal one real A4 renderer result under its exact project template variant.
+pub fn seal_printing_preview(
+    store: &SharedStore,
+    fence: &store::Fence,
+    root: &Path,
+    request: &SealRequest<'_>,
+    binding: &ds_command_kernel::printing::retained_preview::Binding,
+) -> Result<SealOutcome, String> {
+    binding.validate()?;
+    if binding.transformer_revision != request.transformer_revision
+        || binding.input_base_fingerprint(request.project_id, request.transformer)?
+            != request.input_base_fingerprint
+        || request.artifacts.len() != 1
+        || request.artifacts[0].format != "voltage_drop_pdf"
+        || request.artifacts[0].paper_size.as_deref() != Some("A4")
+    {
+        return Err("printing_preview_invalid: the real renderer artifact differs from its captured binding".into());
+    }
+    seal_with_preview(store, fence, root, request, Some(binding))
+}
+
+/// Confirm the cloud acknowledgement belongs to this exact newly sealed
+/// preview publication. Equal input or PDF digests do not acknowledge a run.
+pub fn acknowledged_printing_preview_work(
+    store: &SharedStore,
+    fence: &store::Fence,
+    project: &str,
+    transformer: &str,
+    replay_key: &str,
+) -> Result<String, String> {
+    if !ds_command_kernel::report_export::valid_transformer_identity(transformer)
+        || replay_key.is_empty()
+    {
+        return Err("printing preview acknowledgement identity is invalid".into());
+    }
+    let identity = sync::Identity {
+        engine: ENGINE.into(),
+        operation: format!("export-{transformer}"),
+        variant: ds_command_kernel::printing::retained_preview::VARIANT.into(),
+    };
+    let row = crate::seal::standing(store, fence, project, &identity)?
+        .ok_or("the preview publication has no acknowledged store row")?;
+    if row.replay_key != replay_key || row.state != store::ArtifactState::Published {
+        return Err("the newly sealed preview publication has not been acknowledged".into());
+    }
+    row.acknowledged_work_id
+        .filter(|work| !work.is_empty())
+        .ok_or("the preview publication has no exact cloud work acknowledgement".into())
+}
+
+fn seal_with_preview(
+    store: &SharedStore,
+    fence: &store::Fence,
+    root: &Path,
+    request: &SealRequest<'_>,
+    printing_preview: Option<&ds_command_kernel::printing::retained_preview::Binding>,
+) -> Result<SealOutcome, String> {
     let identity = sync::Identity {
         engine: ENGINE.to_string(),
         operation: format!("export-{}", request.transformer),
-        variant: "default".to_string(),
+        variant: printing_preview
+            .map_or("default", |_| {
+                ds_command_kernel::printing::retained_preview::VARIANT
+            })
+            .to_string(),
     };
     let mut pairs: Vec<(String, String)> = request
         .artifacts
@@ -314,7 +407,28 @@ pub fn seal(
     let inventory_sha256 = crate::inventory_digest(&mut pairs);
     let previous = crate::seal::standing(store, fence, request.project_id, &identity)?;
     if let Some(previous) = previous.as_ref() {
-        if previous.sha256 == inventory_sha256 {
+        let same_preview_run = if printing_preview.is_some() {
+            batch_for(
+                root,
+                request.project_id,
+                &previous.bytes_locator,
+                &previous.client_publish_id,
+            )?
+            .is_some_and(|batch| batch.client_run_id == request.client_run_id)
+        } else {
+            false
+        };
+        if same_preview_run
+            && (previous.sha256 != inventory_sha256
+                || previous.input_base_fingerprint.as_deref()
+                    != Some(request.input_base_fingerprint))
+        {
+            return Err(
+                "printing_preview_invalid: a render run retry changed its bytes or captured inputs"
+                    .into(),
+            );
+        }
+        if same_preview_run || (printing_preview.is_none() && previous.sha256 == inventory_sha256) {
             return Ok(SealOutcome::AlreadyRecorded {
                 replay_key: previous.replay_key.clone(),
                 state: previous.state,
@@ -325,7 +439,7 @@ pub fn seal(
     // The bytes: verified as they are copied, receipted per output, and
     // committed by one rename. Everything below this line either ends in a
     // recorded row or removes what it wrote.
-    let pending = ds_report_artifacts::promote_local_artifacts(
+    let pending = ds_report_artifacts::promote_local_artifacts_with_preview(
         root,
         request.artifacts,
         request.owner_uid,
@@ -339,6 +453,7 @@ pub fn seal(
         request.client_run_id,
         request.expected_formats,
         request.deadline,
+        printing_preview,
     )?;
     (request.guard)()?;
     let committed = pending.commit(request.deadline)?;
@@ -432,6 +547,7 @@ mod tests {
             engine: "network_reporter".to_string(),
             operation: "export-tx_1".to_string(),
             variant: "default".to_string(),
+            printing_preview: None,
             engine_version: format!("ds-network-reporter@0.1.0+{}", "b".repeat(40)),
             engine_build_manifest_sha256: "c".repeat(64),
             transformer: "tx_1".to_string(),
@@ -707,6 +823,171 @@ mod tests {
             deadline,
             guard,
         }
+    }
+
+    fn preview_binding() -> ds_command_kernel::printing::retained_preview::Binding {
+        serde_json::from_value(serde_json::json!({
+            "schema":"ds.printing-preview/v1", "template_id":"voltage-drop-a4-v1",
+            "template_revision_id":"a".repeat(64), "template_html_sha256":"b".repeat(64),
+            "analysis_sha256":"c".repeat(64), "sheets_sha256":"d".repeat(64),
+            "report_input_fingerprint":"1".repeat(64),
+            "renderer_style_ref":"print_context/renderer_defaults_print", "renderer_revision_id":"revision_1",
+            "renderer_content_sha256":"e".repeat(64), "transformer_revision":3, "content_digest":"f".repeat(64)
+        })).unwrap()
+    }
+
+    #[test]
+    fn preview_seal_keeps_binding_in_the_committed_producer_and_refuses_crossed_open() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("report-artifacts");
+        let store = crate::open_store(&dir.path().join("store.sqlite")).unwrap();
+        let binding = preview_binding();
+        let fingerprint = binding.input_base_fingerprint("project-a", "tx_1").unwrap();
+        let mut pdf = staged(
+            dir.path(),
+            "tx_1.voltage-drop.pdf",
+            b"%PDF-1.7\nunit fixture",
+        );
+        pdf.format = "voltage_drop_pdf".into();
+        pdf.paper_size = Some("A4".into());
+        let artifacts = [pdf];
+        let guard = || Ok(());
+        let mut request = seal_request(
+            &artifacts,
+            &["voltage_drop_pdf"],
+            Instant::now() + std::time::Duration::from_secs(30),
+            &guard,
+        );
+        request.input_base_fingerprint = &fingerprint;
+        let SealOutcome::Sealed(sealed) =
+            seal_printing_preview(&store, &seal_fence(), &root, &request, &binding).unwrap()
+        else {
+            panic!("first preview must seal")
+        };
+        assert_eq!(sealed.receipt.printing_preview.as_ref(), Some(&binding));
+        assert_eq!(
+            sealed.row.identity.variant,
+            ds_command_kernel::printing::retained_preview::VARIANT
+        );
+        let row = inventory(&root, "project-a").unwrap().remove(0);
+        let mut declaration = crate::rows::open_declaration("project-a", &row);
+        let producer = ReportProducer {
+            root: &root,
+            project: "project-a",
+            upload: &|_, _, _| Err("not used".into()),
+        };
+        producer
+            .amend_open_declaration("project-a", &mut declaration)
+            .unwrap();
+        assert_eq!(
+            declaration["printing_preview"],
+            serde_json::to_value(&binding).unwrap()
+        );
+        let mut crossed = crate::rows::open_declaration("project-a", &row);
+        crossed["outputs"][0]["sha256"] = serde_json::json!("0".repeat(64));
+        assert!(producer
+            .amend_open_declaration("project-a", &mut crossed)
+            .is_err());
+        assert!(producer
+            .amend_open_declaration(
+                "other-project",
+                &mut crate::rows::open_declaration("project-a", &row)
+            )
+            .is_err());
+        assert!(matches!(
+            seal_printing_preview(&store, &seal_fence(), &root, &request, &binding).unwrap(),
+            SealOutcome::AlreadyRecorded { .. }
+        ));
+        // Refresh is a new run, even when unchanged inputs happen to produce
+        // byte-identical PDF output. The earlier receipt stays in the store.
+        request.client_run_id = "report-1123456789abcdef0123456789abcdef";
+        let SealOutcome::Sealed(refreshed) =
+            seal_printing_preview(&store, &seal_fence(), &root, &request, &binding).unwrap()
+        else {
+            panic!("explicit refresh must seal its own publication")
+        };
+        assert_ne!(refreshed.row.replay_key, sealed.row.replay_key);
+        assert_eq!(refreshed.row.sha256, sealed.row.sha256);
+        assert_eq!(refreshed.receipt.printing_preview.as_ref(), Some(&binding));
+        assert!(acknowledged_printing_preview_work(
+            &store,
+            &seal_fence(),
+            "project-a",
+            "tx_1",
+            &refreshed.row.replay_key,
+        )
+        .is_err());
+        let mut ack =
+            crate::rows::Receipt::new("upload", "committed").about(&refreshed.row.identity);
+        ack.client_publish_id = Some(refreshed.row.client_publish_id.clone());
+        ack.work_id = Some("work_preview_2".into());
+        let receipt = crate::rows::receipt_row("project-a", &ack, crate::now_ms());
+        let recorded = store
+            .lock()
+            .unwrap()
+            .apply(
+                &seal_fence(),
+                crate::now_ms(),
+                store::Event::ActionReceipt { receipt },
+            )
+            .unwrap();
+        assert!(recorded.refusals.is_empty());
+        assert_eq!(
+            acknowledged_printing_preview_work(
+                &store,
+                &seal_fence(),
+                "project-a",
+                "tx_1",
+                &refreshed.row.replay_key,
+            )
+            .unwrap(),
+            "work_preview_2"
+        );
+        assert!(acknowledged_printing_preview_work(
+            &store,
+            &seal_fence(),
+            "project-a",
+            "tx_1",
+            &sealed.row.replay_key,
+        )
+        .is_err());
+        assert!(acknowledged_printing_preview_work(
+            &store,
+            &seal_fence(),
+            "project-b",
+            "tx_1",
+            &refreshed.row.replay_key,
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn preview_seal_refuses_a_debug_build_without_recording_or_committing() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("report-artifacts");
+        let store = crate::open_store(&dir.path().join("store.sqlite")).unwrap();
+        let binding = preview_binding();
+        let fingerprint = binding.input_base_fingerprint("project-a", "tx_1").unwrap();
+        let mut pdf = staged(
+            dir.path(),
+            "tx_1.voltage-drop.pdf",
+            b"%PDF-1.7\nunit fixture",
+        );
+        pdf.format = "voltage_drop_pdf".into();
+        pdf.paper_size = Some("A4".into());
+        let artifacts = [pdf];
+        let guard = || Ok(());
+        let mut request = seal_request(
+            &artifacts,
+            &["voltage_drop_pdf"],
+            Instant::now() + std::time::Duration::from_secs(30),
+            &guard,
+        );
+        request.input_base_fingerprint = &fingerprint;
+        request.engine_version = ds_command_kernel::report::DEVELOPMENT_ENGINE;
+        assert!(seal_printing_preview(&store, &seal_fence(), &root, &request, &binding).is_err());
+        assert!(rows_in(&store, "project-a").is_empty());
+        assert!(inventory(&root, "project-a").unwrap().is_empty());
     }
 
     fn rows_in(store: &SharedStore, project: &str) -> Vec<store::ArtifactRow> {

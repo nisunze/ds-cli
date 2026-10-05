@@ -30,6 +30,7 @@ pub mod preview;
 pub mod project_crs;
 pub mod project_sources;
 pub mod renderer_defaults;
+pub mod retained_preview;
 pub mod resolved_styles;
 pub mod session;
 pub mod sheet_margin;

@@ -53,6 +53,8 @@ pub struct PublicationBatchReceipt {
     pub engine: String,
     pub operation: String,
     pub variant: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub printing_preview: Option<ds_command_kernel::printing::retained_preview::Binding>,
     pub engine_version: String,
     #[serde(default)]
     pub engine_build_manifest_sha256: String,
@@ -186,7 +188,23 @@ pub fn validate_receipt(receipt: &PublicationBatchReceipt) -> Result<(), String>
         || receipt.engine != "network_reporter"
         || !receipt.operation.starts_with("export-")
         || !exact_edge_id(&receipt.operation, 128)
-        || receipt.variant != "default"
+        || match &receipt.printing_preview {
+            None => receipt.variant != "default",
+            Some(binding) => {
+                receipt.schema != BATCH_SCHEMA
+                    || receipt.variant != ds_command_kernel::printing::retained_preview::VARIANT
+                    || binding.validate().is_err()
+                    || binding.transformer_revision != receipt.transformer_revision
+                    || binding
+                        .input_base_fingerprint(&receipt.project_id, &receipt.transformer)
+                        .ok()
+                        .as_deref()
+                        != Some(receipt.input_base_fingerprint.as_str())
+                    || receipt.outputs.len() != 1
+                    || receipt.outputs[0].output_id != "voltage_drop_pdf"
+                    || receipt.outputs[0].paper_size.as_deref() != Some("A4")
+            }
+        }
         || !(if receipt.schema == LOCAL_ONLY_SCHEMA {
             receipt.engine_version == DEVELOPMENT_ENGINE
         } else {
@@ -566,6 +584,7 @@ mod tests {
             engine: "network_reporter".to_string(),
             operation: operation.clone(),
             variant: "default".to_string(),
+            printing_preview: None,
             engine_version: format!("ds-network-reporter@0.1.0+{}", "b".repeat(40)),
             engine_build_manifest_sha256: "d".repeat(64),
             transformer: "tx_1".to_string(),

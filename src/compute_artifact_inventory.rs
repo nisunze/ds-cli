@@ -66,6 +66,8 @@ pub struct OutputOrigin {
 /// The published project head, independent of machine-local rooms or a shell.
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 pub struct Head {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub printing_preview: Option<crate::printing::retained_preview::Binding>,
     pub work_id: String,
     pub engine: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -183,6 +185,21 @@ pub fn decode_head(input: &[u8]) -> Result<Head, String> {
         return Err("Compute artifact response has an invalid head.".into());
     }
     // The same output owner validates inventory, head and downloads.
+    if let Some(binding) = &head.printing_preview {
+        binding.validate()?;
+        if head.engine != "network_reporter"
+            || head.variant != crate::printing::retained_preview::VARIANT
+            || head.outputs.len() != 1
+            || head.outputs[0].output_id != "voltage_drop_pdf"
+            || head.outputs[0].paper_size.as_deref() != Some("A4")
+        {
+            return Err(
+                "Compute artifact printing preview binding differs from its PDF head.".into(),
+            );
+        }
+    } else if head.variant == crate::printing::retained_preview::VARIANT {
+        return Err("Compute artifact printing preview binding is missing.".into());
+    }
     evaluate(
         &serde_json::to_vec(&serde_json::json!({
             "engine": head.engine, "operation": head.operation, "outputs": head.outputs

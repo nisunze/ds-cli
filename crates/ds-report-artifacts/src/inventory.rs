@@ -322,6 +322,7 @@ mod tests {
             engine: "network_reporter".into(),
             operation: "export-tx_1".into(),
             variant: "default".into(),
+            printing_preview: None,
             engine_version: format!("ds-network-reporter@0.1.0+{}", "a".repeat(40)),
             engine_build_manifest_sha256: "d".repeat(64),
             transformer: "tx_1".into(),

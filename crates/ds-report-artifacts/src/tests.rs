@@ -61,6 +61,7 @@ fn write_fixture(root: &Path, locator: &str, bytes: &[u8]) -> PathBuf {
             engine: "network_reporter".to_string(),
             operation: "export-tx_1".to_string(),
             variant: "default".to_string(),
+            printing_preview: None,
             engine_version: format!("ds-network-reporter@0.1.0+{}", "a".repeat(40)),
             engine_build_manifest_sha256: String::new(),
             transformer: "tx_1".to_string(),

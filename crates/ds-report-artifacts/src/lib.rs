@@ -679,6 +679,39 @@ pub fn local_publication_receipt(
     promotions: &PendingPromotionBatch,
     expected_formats: &[&str],
 ) -> Result<PublicationBatchReceipt, String> {
+    local_publication_receipt_with_preview(
+        owner_uid,
+        project_id,
+        engine_version,
+        engine_build_manifest_sha256,
+        transformer,
+        transformer_revision,
+        input_base_fingerprint,
+        room_content_sha256,
+        client_run_id,
+        batch_id,
+        promotions,
+        expected_formats,
+        None,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn local_publication_receipt_with_preview(
+    owner_uid: &str,
+    project_id: &str,
+    engine_version: &str,
+    engine_build_manifest_sha256: &str,
+    transformer: &str,
+    transformer_revision: i64,
+    input_base_fingerprint: &str,
+    room_content_sha256: &str,
+    client_run_id: &str,
+    batch_id: String,
+    promotions: &PendingPromotionBatch,
+    expected_formats: &[&str],
+    printing_preview: Option<&ds_command_kernel::printing::retained_preview::Binding>,
+) -> Result<PublicationBatchReceipt, String> {
     if promotions.promotions.len() != expected_formats.len() {
         return Err(
             "Network Reporter promotion does not match its local output inventory".to_string(),
@@ -728,7 +761,12 @@ pub fn local_publication_receipt(
         client_run_id: client_run_id.to_string(),
         engine: "network_reporter".to_string(),
         operation,
-        variant: "default".to_string(),
+        variant: printing_preview
+            .map_or("default", |_| {
+                ds_command_kernel::printing::retained_preview::VARIANT
+            })
+            .to_string(),
+        printing_preview: printing_preview.cloned(),
         engine_version: engine_version.to_string(),
         engine_build_manifest_sha256: engine_build_manifest_sha256.to_string(),
         transformer: transformer.to_string(),
@@ -758,6 +796,41 @@ pub fn promote_local_artifacts(
     expected_formats: &[&str],
     operation_deadline: Instant,
 ) -> Result<PendingAuthorizedPromotionBatch, String> {
+    promote_local_artifacts_with_preview(
+        pending_root,
+        artifacts,
+        owner_uid,
+        project_id,
+        engine_version,
+        engine_build_manifest_sha256,
+        transformer,
+        transformer_revision,
+        input_base_fingerprint,
+        room_content_sha256,
+        client_run_id,
+        expected_formats,
+        operation_deadline,
+        None,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn promote_local_artifacts_with_preview(
+    pending_root: &Path,
+    artifacts: &[VerifiedSidecarArtifact],
+    owner_uid: &str,
+    project_id: &str,
+    engine_version: &str,
+    engine_build_manifest_sha256: &str,
+    transformer: &str,
+    transformer_revision: i64,
+    input_base_fingerprint: &str,
+    room_content_sha256: &str,
+    client_run_id: &str,
+    expected_formats: &[&str],
+    operation_deadline: Instant,
+    printing_preview: Option<&ds_command_kernel::printing::retained_preview::Binding>,
+) -> Result<PendingAuthorizedPromotionBatch, String> {
     ensure_promotion_authority(operation_deadline)?;
     let pending_root = HeldDirectory::ensure_absolute(pending_root)?;
     let mut lock = lock_pending_upload_root(&pending_root, Some(operation_deadline))?;
@@ -783,7 +856,7 @@ pub fn promote_local_artifacts(
         promotions,
         _lock: lock,
     };
-    let receipt = local_publication_receipt(
+    let receipt = local_publication_receipt_with_preview(
         owner_uid,
         project_id,
         engine_version,
@@ -796,6 +869,7 @@ pub fn promote_local_artifacts(
         batch_id,
         &promotions,
         expected_formats,
+        printing_preview,
     )?;
     let publication = PendingPublicationCommit::stage(&pending_root, &receipt)?;
     for promotion in &mut promotions.promotions {
@@ -1161,6 +1235,7 @@ pub struct LocalPublicationBatch {
     pub batch_id: String,
     pub owner_uid: String,
     pub project_id: String,
+    pub client_run_id: String,
     pub client_publish_id: String,
     /// The compute-artifact engine id (`network_reporter`), which is what a
     /// head is keyed by. The edge lane spells the same engine
@@ -1168,6 +1243,7 @@ pub struct LocalPublicationBatch {
     pub engine: String,
     pub operation: String,
     pub variant: String,
+    pub printing_preview: Option<ds_command_kernel::printing::retained_preview::Binding>,
     /// `ds-network-reporter@<semver>+<40 hex>` — the sidecar release that
     /// produced these bytes, as the receipt recorded it.
     pub engine_release: String,
@@ -1227,10 +1303,12 @@ fn batch_from_receipt(root: &Path, receipt: PublicationBatchReceipt) -> LocalPub
         batch_id: receipt.batch_id,
         owner_uid: receipt.owner_uid,
         project_id: receipt.project_id,
+        client_run_id: receipt.client_run_id,
         client_publish_id: receipt.client_publish_id,
         engine: receipt.engine,
         operation: receipt.operation,
         variant: receipt.variant,
+        printing_preview: receipt.printing_preview,
         engine_release: receipt.engine_version,
         engine_build_manifest_sha256: receipt.engine_build_manifest_sha256,
         transformer: receipt.transformer,

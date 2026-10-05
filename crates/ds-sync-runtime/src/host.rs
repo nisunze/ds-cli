@@ -56,6 +56,15 @@ pub struct ActivityRow {
 /// row is not a publication and is never adopted — and to free what the
 /// store has settled as lost.
 pub trait Producer {
+    /// Add only provenance retained by this producer's committed receipt.
+    /// The declaration is already closed; a missing or crossed receipt refuses.
+    fn amend_open_declaration(
+        &self,
+        _project: &str,
+        _declaration: &mut Value,
+    ) -> Result<(), String> {
+        Ok(())
+    }
     /// Every publication this producer still holds bytes for in one project,
     /// each carrying the locator its bytes live at. Cheap: it reads the
     /// producer's own receipts, never the bytes. Project-keyed, never
@@ -785,9 +794,12 @@ impl SyncHost for StoreHost<'_> {
 
     fn open_publication(&self, declaration: &Value) -> Result<RecordAnswer, GatewayError> {
         self.ensure_active()?;
+        let mut declaration = declaration.clone();
+        self.producer
+            .amend_open_declaration(&self.project, &mut declaration)?;
         let answer = self
             .gateway
-            .post(SyncRoute::ComputeArtifacts, declaration)?;
+            .post(SyncRoute::ComputeArtifacts, &declaration)?;
         self.ensure_active()?;
         Ok(parse_record_answer(&answer)?)
     }
@@ -937,6 +949,17 @@ impl<'a> Producers<'a> {
 }
 
 impl Producer for Producers<'_> {
+    fn amend_open_declaration(&self, project: &str, declaration: &mut Value) -> Result<(), String> {
+        let engine = declaration["engine"]
+            .as_str()
+            .ok_or("publication engine missing")?;
+        self.engines
+            .iter()
+            .find(|(name, _)| *name == engine)
+            .ok_or("publication producer missing")?
+            .1
+            .amend_open_declaration(project, declaration)
+    }
     /// Every producer's inventory, in the order the set names them. A
     /// producer that offers a row of another engine is a host bug — its rows
     /// would be moved and freed by a producer that never held them — and is
