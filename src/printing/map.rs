@@ -508,8 +508,10 @@ pub fn model_room(owner: &str, project: &str, model: Model) -> Result<Value, Str
         model.digest.to_lowercase(),
     ))
     .map_err(|e| e.to_string())?;
+    // v2: structure labels are composed in Rust with the model's label
+    // policy; a v1 room still holds the browser-composed labels.
     Ok(json!(format!(
-        "print-input-room/mv-projection/v1:{:x}",
+        "print-input-room/mv-projection/v2:{:x}",
         Sha256::digest(identity)
     )))
 }
@@ -722,6 +724,11 @@ mod tests {
         };
         let a = "a".repeat(64);
         let key = model_room("owner", "project", model("rev1", &a)).unwrap();
+        // A room written before Rust composed the structure labels is never reused.
+        assert!(key
+            .as_str()
+            .unwrap()
+            .starts_with("print-input-room/mv-projection/v2:"));
         assert_eq!(
             key,
             model_room("owner", "project", model("rev1", &a)).unwrap()
