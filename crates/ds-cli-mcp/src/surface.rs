@@ -482,6 +482,9 @@ impl Profile {
                     && !REPORT_CONFIGURATION_COMMANDS.contains(&tool.id.as_str())
                     && !tool.id.starts_with("desktop.printing.")
                     && !tool.id.starts_with("report.layout.")
+                    // The governed standard and A4 print documents are
+                    // printing reads, never Grid leaves.
+                    && !tool.id.starts_with("report.standard.")
                     // Project head preparation (this machine's working copies
                     // against the governed heads) belongs to the focused model
                     // lifecycle surface. Keeping it out of this broad router
