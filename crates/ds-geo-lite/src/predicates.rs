@@ -107,7 +107,11 @@ pub fn point_on_segment(point: Point, a: Point, b: Point, tolerance: SegmentTole
                     .hypot(b[1] - a[1])
                     .max(tolerance.minimum_length)
     };
-    if !(orientation(a, b, point).abs() <= determinant) {
+    if orientation(a, b, point)
+        .abs()
+        .partial_cmp(&determinant)
+        .is_none_or(|ordering| ordering.is_gt())
+    {
         return false;
     }
     point[0] >= a[0].min(b[0]) - tolerance.bounds
