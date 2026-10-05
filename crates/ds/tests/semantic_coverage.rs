@@ -1308,6 +1308,16 @@ const EXPECTED: &[(&str, &str, &str)] = &[
         "headless_project",
     ),
     (
+        "style.catalogue.binding.plan",
+        "local_auth_state",
+        "headless_project",
+    ),
+    (
+        "style.catalogue.binding.create",
+        "global_write",
+        "headless_project",
+    ),
+    (
         "style.catalogue.backup.create",
         "global_write",
         "headless_project",

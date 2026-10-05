@@ -5,6 +5,20 @@ It requires a native sign-in and `--project <exact-id>` on every call (the saved
 involved. Use `--lane stable|canary` to choose the deployment. Catalogue reads and
 publication need the backend to be reachable.
 
+`ds style catalogue binding plan --project <id> --entity-class <exact-class>
+--source-kind <exact-kind> --role <exact-role> --ink colour|monochrome --ref
+<existing-print-ref>` reviews one print tuple binding to an existing `_print`
+style. Copy the exact tuple and ref from the blocked print layer and its actual
+style catalogue; the command supplies no guessed source, role or style body.
+The plan captures the authenticated project/principal, current manifest and
+style head/content digests, update time and create/preserve counts. Run the
+same arguments with `binding create --expected-manifest <manifest_revision>
+--expected-plan <plan_sha256> --yes` to create that one binding. A changed head
+or manifest refuses atomically; an exact existing tuple is preserved and a
+conflicting tuple/ref refuses. The API retains the previous manifest. This
+operation requires `styles.edit` and changes no style body, print layout,
+printing default or global page. Templates use ordinary project context.
+
 There is one route, so a server answers exactly as a desktop does. The Style
 Center in the application authors the same documents through the same Rust
 command kernel compiled to WASM; what differs is who is typing, not what is

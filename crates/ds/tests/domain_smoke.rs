@@ -18924,3 +18924,70 @@ fn fixed_a4_seed_is_discoverable_and_refuses_unconfirmed_publication() {
     assert_ne!(refused.code, 0);
     assert_eq!(refused.envelope["error"]["code"], "confirmation_required");
 }
+
+#[test]
+fn print_binding_is_discoverable_and_refuses_invalid_or_unconfirmed_effects() {
+    for (id, effect) in [
+        ("style.catalogue.binding.plan", "local_auth_state"),
+        ("style.catalogue.binding.create", "global_write"),
+    ] {
+        let described = native_ds(&["capabilities", id, "--output", "json"]);
+        assert_eq!(described.code, 0, "{}", described.envelope);
+        let command = &described.envelope["data"]["command"];
+        assert_eq!(command["effect"], effect);
+        assert_eq!(command["authority"], "headless_project");
+        assert_eq!(command["requires"], "server");
+        assert!(
+            command["purpose"]
+                .as_str()
+                .unwrap()
+                .contains("No style body, layout, printing defaults or global page is written")
+        );
+    }
+    let refused = native_ds(&[
+        "style",
+        "catalogue",
+        "binding",
+        "plan",
+        "--project",
+        "project_a",
+        "--entity-class",
+        "",
+        "--source-kind",
+        "live_geojson",
+        "--role",
+        "project",
+        "--ref",
+        "lv_poles_as_built_print",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(
+        refused.envelope["error"]["code"],
+        "style_governance_invalid"
+    );
+    let digest = "a".repeat(64);
+    let refused = native_ds(&[
+        "style",
+        "catalogue",
+        "binding",
+        "create",
+        "--project",
+        "project_a",
+        "--entity-class",
+        "survey_existing_poles",
+        "--source-kind",
+        "live_geojson",
+        "--role",
+        "project",
+        "--ref",
+        "lv_poles_as_built_print",
+        "--expected-manifest",
+        &digest,
+        "--expected-plan",
+        &digest,
+        "--output",
+        "json",
+    ]);
+    assert_eq!(refused.envelope["error"]["code"], "confirmation_required");
+}

@@ -1869,6 +1869,16 @@ static STYLE_ENTRIES: &[Entry] = &[
         render: ds_cli_style::governance::inventory::render,
     },
     Entry {
+        command: &ds_cli_style::binding::plan::COMMAND,
+        handler: ds_cli_style::binding::plan::run,
+        render: ds_cli_style::binding::plan::render,
+    },
+    Entry {
+        command: &ds_cli_style::binding::create::COMMAND,
+        handler: ds_cli_style::binding::create::run,
+        render: ds_cli_style::binding::create::render,
+    },
+    Entry {
         command: &ds_cli_style::governance::backup_create::COMMAND,
         handler: ds_cli_style::governance::backup_create::run,
         render: ds_cli_style::governance::backup_create::render,
