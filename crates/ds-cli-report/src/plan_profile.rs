@@ -19,26 +19,34 @@ use crate::{DS_REPORT, EXPORT_TIMEOUT};
 pub static COMMAND: Command = Command {
     id: "report.plan-profile",
     path: &["report", "plan-profile"],
-    contract: 3,
+    contract: 4,
     summary: "Render DS Grid plan/profile sheets from a pinned scene and plan.",
-    purpose: "Resolve the named project canonical MV setup from its exact adopted printing-library revision, then render same-revision engine projections and approved front matter into one local PDF. Repeat --alignment for exact scene band IDs, or omit it for every alignment. Title, party logos, page order, scales, fonts and fixed publication version/date come only from that setup. Allowed model identity/title differences are explicit. Missing configuration or held approved assets refuses before output. Use report layout copy and report project mv-setup set to adopt and select; no print data is mutated by this command.",
+    purpose: "Resolve the named project canonical MV setup from its exact adopted printing-library revision, then render same-revision engine projections and approved front matter into one local PDF. Repeat --alignment for exact scene band IDs, or omit it for every alignment. Title, party logos, page order, scales, fonts and fixed publication version/date come only from that setup. Allowed model identity/title differences are explicit. Missing configuration or held approved assets refuses before output. Use report layout copy and report project mv-setup set to adopt and select; no print data is mutated by this command. --request alone renders a complete engine print request, such as a fixture booklet, with no project read.",
     chapter: Chapter::Reports,
     effect: Effect::LocalFileWrite,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
     args: &[
+        Arg::value(
+            "request",
+            "<json-file>",
+            "Complete engine print request; replaces every project, geometry and setup flag.",
+        ),
         Arg::switch(
             "preview-only",
             "Produce the complete ordered PNG preview set and layout plan before assembling a PDF.",
         ),
-        crate::project::PROJECT_ARG,
+        Arg::value(
+            "project",
+            "<ds-project>",
+            "Project named for this request; required without --request.",
+        ),
         crate::project::LANE_ARG,
         Arg::value(
             "scene",
             "<path>",
             "Absolute same-revision project_profile_atlas scene JSON.",
-        )
-        .required(),
+        ),
         Arg::repeated(
             "alignment",
             "<id>",
@@ -48,14 +56,12 @@ pub static COMMAND: Command = Command {
             "plan",
             "<path>",
             "Absolute same-revision project_plan rows JSON.",
-        )
-        .required(),
+        ),
         Arg::value(
             "out-dir",
             "<path>",
             "Fresh absolute directory for the complete MV publication.",
-        )
-        .required(),
+        ),
         Arg::value(
             "model-identity",
             "<text>",
@@ -109,9 +115,11 @@ pub static COMMAND: Command = Command {
         note: "Render the adopted publication for one alignment from held engine projections.",
         runnable: false,
     }],
-    refusals: &crate::project::joined::<{ crate::project::NATIVE_READ_REFUSALS.len() + 12 }>(&[
+    refusals: &crate::project::joined::<{ crate::project::NATIVE_READ_REFUSALS.len() + 14 }>(&[
         crate::project::NATIVE_READ_REFUSALS,
         &[
+            REQUEST_MODE_REFUSAL,
+            PRINT_REQUEST_REFUSAL,
             crate::project::mv_setup::REFUSAL,
             crate::project::mv_setup::STYLE_REFUSAL,
             crate::project::mv_setup::PROJECT_CRS_CONTEXT_REFUSAL,
@@ -178,11 +186,113 @@ fn availability() -> Availability {
     DS_REPORT.availability()
 }
 
+/// One mode per call. A request file is the engine's whole request, so a
+/// project, geometry or setup flag beside it would be silently ignored.
+const REQUEST_MODE_REFUSAL: Refusal = Refusal {
+    code: "request_mode_invalid",
+    when: "--request is mixed with project, geometry or setup flags, or a project render lacks --project, --scene, --plan or --out-dir",
+    remedy: "Pass --request alone, or --project, --scene, --plan and --out-dir together",
+};
+const PRINT_REQUEST_REFUSAL: Refusal = Refusal {
+    code: "print_request_invalid",
+    when: "the --request file is unreadable, over 32 MiB, not a JSON object or has no absolute out_dir",
+    remedy: "Pass a complete engine print request; discover it with report tasks",
+};
+const REQUEST_LIMIT: u64 = 32 * 1024 * 1024;
+/// Inputs that only exist so ds can build the request itself.
+const PROJECT_MODE_INPUTS: &[&str] = &[
+    "project",
+    "scene",
+    "plan",
+    "out-dir",
+    "model-identity",
+    "model-title",
+    "publication-assets",
+    "side-profiles",
+    "notes",
+    "structure-descriptions",
+    "context-pages",
+    "model-crs",
+    "sample-pages",
+];
+
+fn mode_invalid(message: String) -> Failure {
+    Failure::invalid(REQUEST_MODE_REFUSAL.code, message).remedy(REQUEST_MODE_REFUSAL.remedy)
+}
+
+fn print_request_invalid(message: String) -> Failure {
+    Failure::invalid(PRINT_REQUEST_REFUSAL.code, message).remedy(PRINT_REQUEST_REFUSAL.remedy)
+}
+
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
-    let project = inputs.require("project")?;
-    let scene = PathBuf::from(inputs.require("scene")?);
-    let plan = PathBuf::from(inputs.require("plan")?);
-    let out_dir = PathBuf::from(inputs.require("out-dir")?);
+    match inputs.value("request") {
+        Some(request) => run_request(inputs, PathBuf::from(request)),
+        None => run_project(inputs),
+    }
+}
+
+/// Render a held engine request exactly as given, through the same engine
+/// call a project render makes. Nothing is read from any project.
+fn run_request(inputs: &Inputs, request: PathBuf) -> Result<Value, Failure> {
+    let mut mixed: Vec<&str> = PROJECT_MODE_INPUTS
+        .iter()
+        .copied()
+        .filter(|name| inputs.value(name).is_some())
+        .collect();
+    if !inputs.repeated("alignment").is_empty() {
+        mixed.push("alignment");
+    }
+    if inputs.switch("preview-only") {
+        mixed.push("preview-only");
+    }
+    if !mixed.is_empty() {
+        return Err(mode_invalid(format!(
+            "--request is the whole print request; remove --{}",
+            mixed.join(", --")
+        )));
+    }
+    let mut bytes = Vec::new();
+    std::fs::File::open(&request)
+        .and_then(|file| {
+            use std::io::Read;
+            file.take(REQUEST_LIMIT + 1).read_to_end(&mut bytes)
+        })
+        .map_err(|e| print_request_invalid(format!("{}: {e}", request.display())))?;
+    if bytes.len() as u64 > REQUEST_LIMIT {
+        return Err(print_request_invalid("request exceeds 32 MiB".into()));
+    }
+    let document: Value = serde_json::from_slice(&bytes)
+        .map_err(|e| print_request_invalid(format!("request is not JSON: {e}")))?;
+    let out_dir = document["out_dir"]
+        .as_str()
+        .map(PathBuf::from)
+        .filter(|path| path.is_absolute())
+        .ok_or_else(|| print_request_invalid("request out_dir must be an absolute path".into()))?;
+    if out_dir.symlink_metadata().is_ok() {
+        return Err(Failure::invalid(
+            "output_exists",
+            format!("output directory exists: {}", out_dir.display()),
+        ));
+    }
+    let staged = Staged::new(inputs.value("result"))?;
+    let mut document = staged.render(bytes)?;
+    if staged.keep {
+        document["result_path"] = json!(staged.result_path.display().to_string());
+    }
+    Ok(document)
+}
+
+fn project_input<'a>(inputs: &'a Inputs, name: &str) -> Result<&'a str, Failure> {
+    inputs
+        .value(name)
+        .ok_or_else(|| mode_invalid(format!("--{name} is required without --request")))
+}
+
+fn run_project(inputs: &Inputs) -> Result<Value, Failure> {
+    let project = project_input(inputs, "project")?;
+    let scene = PathBuf::from(project_input(inputs, "scene")?);
+    let plan = PathBuf::from(project_input(inputs, "plan")?);
+    let out_dir = PathBuf::from(project_input(inputs, "out-dir")?);
     for (name, path) in [("scene", &scene), ("plan", &plan)] {
         if !path.is_file() {
             return Err(Failure::invalid(
@@ -197,30 +307,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             format!("output directory exists: {}", out_dir.display()),
         ));
     }
-    let nonce = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|v| v.as_nanos())
-        .unwrap_or_default();
-    let request_path = std::env::temp_dir().join(format!(
-        "ds-grid-print-request-{}-{nonce}.json",
-        std::process::id()
-    ));
-    let (result_path, keep) = match inputs.value("result") {
-        Some(path) => (PathBuf::from(path), true),
-        None => (
-            std::env::temp_dir().join(format!(
-                "ds-grid-print-result-{}-{nonce}.json",
-                std::process::id()
-            )),
-            false,
-        ),
-    };
-    if result_path.symlink_metadata().is_ok() {
-        return Err(Failure::invalid(
-            "output_exists",
-            format!("result file exists: {}", result_path.display()),
-        ));
-    }
+    let staged = Staged::new(inputs.value("result"))?;
     let mut fields = BTreeMap::new();
     for (arg, field) in [
         (
@@ -279,45 +366,84 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let request = json!({"project_crs":project_crs,"report_config":report_config,"renderer_defaults":renderer_defaults,"style_resolution":style_resolution,"preview_only":inputs.switch("preview-only"),"project_id":project,"scene_path":scene_path,"plan_path":plan,"side_profiles_path":inputs.value("side-profiles"),"notes_path":inputs.value("notes"),"structure_descriptions_path":inputs.value("structure-descriptions"),"out_dir":out_dir,"sample_pages":sample_pages,"context_page_files":context_page_files,"model_crs":inputs.value("model-crs"),"settings":resolved.settings,"mv_setup":resolved,"publication_assets":publication_assets});
     let bytes = serde_json::to_vec(&request)
         .map_err(|e| Failure::internal("request_encode_failed", e.to_string()))?;
-    ds_layer_store::private::write(&request_path, bytes)
-        .map_err(|e| Failure::failed("request_write_failed", e.to_string()))?;
-    let args = vec![
-        OsString::from("--request"),
-        request_path.clone().into(),
-        OsString::from("--result"),
-        result_path.clone().into(),
-    ];
-    let completed = DS_REPORT.call("render-grid-plan-profile", &args, EXPORT_TIMEOUT);
-    let _ = std::fs::remove_file(&request_path);
-    let completed = completed?;
-    let document = std::fs::read(&result_path)
-        .ok()
-        .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok());
-    if !keep {
-        let _ = std::fs::remove_file(&result_path);
-    }
-    if !completed.succeeded() {
-        return Err(DS_REPORT.failure_from(&completed, "render-grid-plan-profile"));
-    }
-    let Some(mut document) = document else {
-        return Err(Failure::failed(
-            "engine_refused",
-            "reporter returned no print receipt",
-        ));
-    };
+    let mut document = staged.render(bytes)?;
     if let Some(selected) = &selected {
         document["alignment_selection"] = selected.receipt.clone();
-        if keep {
+        if staged.keep {
             let bytes = serde_json::to_vec(&document)
                 .map_err(|e| Failure::internal("request_encode_failed", e.to_string()))?;
-            ds_layer_store::private::write(&result_path, bytes)
+            ds_layer_store::private::write(&staged.result_path, bytes)
                 .map_err(|e| Failure::failed("request_write_failed", e.to_string()))?;
         }
     }
-    if keep {
-        document["result_path"] = json!(result_path.display().to_string());
+    if staged.keep {
+        document["result_path"] = json!(staged.result_path.display().to_string());
     }
     Ok(document)
+}
+
+/// The private request copy and the receipt path of one engine call.
+struct Staged {
+    request_path: PathBuf,
+    result_path: PathBuf,
+    keep: bool,
+}
+
+impl Staged {
+    /// Fixed before any setup read, so an existing receipt refuses first.
+    fn new(result: Option<&str>) -> Result<Self, Failure> {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|v| v.as_nanos())
+            .unwrap_or_default();
+        let scratch = |kind: &str| {
+            std::env::temp_dir().join(format!(
+                "ds-grid-print-{kind}-{}-{nonce}.json",
+                std::process::id()
+            ))
+        };
+        let (result_path, keep) = match result {
+            Some(path) => (PathBuf::from(path), true),
+            None => (scratch("result"), false),
+        };
+        if result_path.symlink_metadata().is_ok() {
+            return Err(Failure::invalid(
+                "output_exists",
+                format!("result file exists: {}", result_path.display()),
+            ));
+        }
+        Ok(Self {
+            request_path: scratch("request"),
+            result_path,
+            keep,
+        })
+    }
+
+    /// One `render-grid-plan-profile` call over these exact request bytes.
+    fn render(&self, bytes: Vec<u8>) -> Result<Value, Failure> {
+        ds_layer_store::private::write(&self.request_path, bytes)
+            .map_err(|e| Failure::failed("request_write_failed", e.to_string()))?;
+        let args = vec![
+            OsString::from("--request"),
+            self.request_path.clone().into(),
+            OsString::from("--result"),
+            self.result_path.clone().into(),
+        ];
+        let completed = DS_REPORT.call("render-grid-plan-profile", &args, EXPORT_TIMEOUT);
+        let _ = std::fs::remove_file(&self.request_path);
+        let completed = completed?;
+        let document = std::fs::read(&self.result_path)
+            .ok()
+            .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok());
+        if !self.keep {
+            let _ = std::fs::remove_file(&self.result_path);
+        }
+        if !completed.succeeded() {
+            return Err(DS_REPORT.failure_from(&completed, "render-grid-plan-profile"));
+        }
+        document
+            .ok_or_else(|| Failure::failed("engine_refused", "reporter returned no print receipt"))
+    }
 }
 
 struct SelectedScene {
@@ -378,6 +504,59 @@ pub fn render(data: &Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn refusal(args: &[&str]) -> String {
+        let tokens: Vec<String> = args.iter().map(|arg| arg.to_string()).collect();
+        let inputs = ds_cli_contract::args::parse(&COMMAND, &tokens).unwrap();
+        let outcome = match inputs.value("request") {
+            Some(request) => run_request(&inputs, PathBuf::from(request)),
+            None => run_project(&inputs),
+        };
+        outcome
+            .err()
+            .expect("refused before the engine")
+            .code()
+            .to_owned()
+    }
+
+    #[test]
+    fn request_mode_is_exclusive_and_refuses_before_the_engine() {
+        let dir = tempfile::tempdir().unwrap();
+        let request = dir.path().join("request.json");
+        let path = request.to_str().unwrap();
+        let held = dir.path().join("held");
+        std::fs::create_dir(&held).unwrap();
+        for mixed in [
+            &["--request", path, "--project", "fixture"][..],
+            &["--request", path, "--alignment", "al-1"],
+            &["--request", path, "--preview-only"],
+            &["--scene", path, "--plan", path, "--out-dir", "/x"],
+        ] {
+            assert_eq!(refusal(mixed), "request_mode_invalid", "{mixed:?}");
+        }
+        assert_eq!(refusal(&["--request", path]), "print_request_invalid");
+        for (bytes, code) in [
+            (json!("not an object").to_string(), "print_request_invalid"),
+            (
+                json!({"out_dir": "relative/out"}).to_string(),
+                "print_request_invalid",
+            ),
+            (json!({"out_dir": held}).to_string(), "output_exists"),
+        ] {
+            std::fs::write(&request, bytes).unwrap();
+            assert_eq!(refusal(&["--request", path]), code);
+        }
+        std::fs::write(
+            &request,
+            json!({"out_dir": dir.path().join("fresh")}).to_string(),
+        )
+        .unwrap();
+        assert_eq!(
+            refusal(&["--request", path, "--result", held.to_str().unwrap()]),
+            "output_exists"
+        );
+        assert!(!dir.path().join("fresh").exists());
+    }
 
     #[test]
     fn alignment_flag_stages_a_native_fixture_selection_and_cleans_up() {

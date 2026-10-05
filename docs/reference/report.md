@@ -1105,8 +1105,9 @@ plan unchanged. The receipt's `alignment_selection` pins the original scene
 SHA-256 and selected IDs; the reporter's scene digest pins the staged geometry.
 The same selection still requires the project's adopted publication setup.
 
-`report.plan-profile` contract 3 requires the named project's canonical setup
-and paired scene/plan projections from one unchanged model revision. Only
+`report.plan-profile` contract 4, without `--request`, requires the named
+project's canonical setup and paired scene/plan projections from one unchanged
+model revision. Only
 `--model-identity` / `--model-title` fields explicitly allowed by the template
 can differ. Transient title, logo, date, version, scale, ink and presentation
 flags are retired. Their adoption remedy is to approve those choices in the
@@ -1115,6 +1116,13 @@ project printing document and select its exact revision with
 or forbidden overrides return keyed actionable refusals. Desktop re-resolves
 the same command/receipt before preview or print and refuses stale receipts.
 MCP exposes the same declared commands.
+
+`--request <json-file>` renders one complete engine print request, such as a
+held fixture booklet, through the same `render-grid-plan-profile` call with no
+project read. It is exclusive: a project, geometry or setup flag beside it
+refuses `request_mode_invalid`, and its absolute `out_dir` must be absent. The
+engine reads the exact bytes from a private copy removed when it exits;
+`--result` retains the receipt.
 
 `report.plan-profile-config` contract 4 accepts `ds.grid-plan-profile-print/v3`
 with `project_id`, `scene_path` and `plan_path`. Supply a fresh absolute `--out`
