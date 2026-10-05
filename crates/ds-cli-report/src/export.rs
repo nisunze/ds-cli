@@ -263,6 +263,35 @@ pub fn voltage_drop_preflight() -> Result<(), Failure> {
     require_task("render_voltage_drop_result", VOLTAGE_DROP_SUBCOMMAND)
 }
 
+/// Project runs require the owner schema's governed project-capture route.
+/// Older reporters expose the task name but can still print a compiled default.
+pub fn voltage_drop_project_a4_preflight() -> Result<(), Failure> {
+    let schemas = crate::tasks::schemas()?;
+    let admitted = schemas["tasks"].as_array().is_some_and(|tasks| {
+        tasks.iter().any(|task| {
+            task["name"] == "render_voltage_drop_result"
+                && task["subcommand"] == VOLTAGE_DROP_SUBCOMMAND
+                && task["request_schema"]["anyOf"]
+                    .as_array()
+                    .is_some_and(|branches| {
+                        branches.iter().any(|branch| {
+                            let required =
+                                branch["properties"]["network_config"]["required"].as_array();
+                            required.is_some_and(|fields| {
+                                fields.iter().any(|field| field == "printing_a4")
+                                    && fields.iter().any(|field| field == "printing_context")
+                            })
+                        })
+                    })
+        })
+    });
+    if !admitted {
+        return Err(Failure::unavailable("unknown_task", "The installed reporter lacks governed project A4 capture admission")
+            .remedy("install the reporter advertising the owned A4 capture schema before computing or saving"));
+    }
+    Ok(())
+}
+
 /// Inspect the workstation-owned browser selection without effects. The
 /// composing command owns its refusal code and remedy.
 pub fn voltage_drop_browser_preflight() -> Result<(), String> {

@@ -266,6 +266,7 @@ struct Owners {
     save: fn(&Inputs, &Context, &str) -> Result<Value, Failure>,
     preflight: fn() -> Result<(), Failure>,
     analysis: SavedAnalysisRead,
+    renderer_policy: fn(&str, &str) -> Result<Value, Failure>,
     print: Handler,
 }
 const OWNERS: Owners = Owners {
@@ -274,11 +275,43 @@ const OWNERS: Owners = Owners {
     save: project_save::run_for_project,
     preflight: print_preflight,
     analysis: ds_cli_auth::transformer_analysis_for_project,
+    renderer_policy,
     print: ds_cli_report::export::run,
 };
 
+fn renderer_policy(lane: &str, project: &str) -> Result<Value, Failure> {
+    let snapshot: ds_command_kernel::style_resolution::Snapshot =
+        serde_json::from_value(ds_cli_auth::style_governance(
+            lane,
+            project,
+            &ds_command_kernel::style_governance::Command::Table,
+        )?)
+        .map_err(|error| incomplete(error.to_string()))?;
+    if snapshot.project_id != project {
+        return Err(incomplete("Renderer policy belongs to another project."));
+    }
+    let binding =
+        ds_command_kernel::printing::renderer_defaults::resolve(&snapshot).map_err(incomplete)?;
+    serde_json::to_value(binding).map_err(|error| incomplete(error.to_string()))
+}
+
+fn require_owned_a4(config: &Value, project: &str) -> Result<(), Failure> {
+    if config["printing_context"]["project_id"] != project {
+        return Err(incomplete(
+            "A4 capture lacks the exact run project context.",
+        ));
+    }
+    let document = &config["printing_a4"];
+    if document["schema"] != "ds.print-a4-document/v1" || document["project_id"] != project {
+        return Err(incomplete(
+            "A4 capture lacks the named project's governed document.",
+        ));
+    }
+    Ok(())
+}
+
 fn print_preflight() -> Result<(), Failure> {
-    ds_cli_report::export::voltage_drop_preflight()?;
+    ds_cli_report::export::voltage_drop_project_a4_preflight()?;
     ds_cli_report::export::voltage_drop_browser_preflight().map_err(|message| {
         Failure::unavailable("reporter_browser_missing", message).remedy(PRINT_REFUSALS[0].remedy)
     })
@@ -614,11 +647,12 @@ fn print_saved(owners: &Owners, context: &Context, run: PrintRun<'_>) -> Result<
     }
     let input: Value =
         serde_json::from_slice(run.input).map_err(|error| incomplete(error.to_string()))?;
-    let format = ds_command_kernel::report_formats::project_voltage_drop_report_format(
-        &input["jobs"][0]["config_dfs"],
-    )
-    .map_err(incomplete)?
-    .token();
+    let network_config = &input["jobs"][0]["config_dfs"];
+    require_owned_a4(network_config, run.project)?;
+    let format =
+        ds_command_kernel::report_formats::project_voltage_drop_report_format(network_config)
+            .map_err(incomplete)?
+            .token();
     let receipt_path = run.directory.join("print.json");
     if receipt_path
         .try_exists()
@@ -662,7 +696,9 @@ fn print_saved(owners: &Owners, context: &Context, run: PrintRun<'_>) -> Result<
     write_new(&analysis_path, &analysis, &RECEIPT)?;
     let request_path = attempt.join("request.json");
     let pdf = attempt.join("voltage-drop-a4.pdf");
+    let renderer_defaults = (owners.renderer_policy)(run.lane, run.project)?;
     let request = json!({"schema":"ds.voltage-drop-pdf.render-request/v1",
+        "network_config":network_config,"renderer_defaults":renderer_defaults,
         "source_document":analysis_path,"source_sha256":source_sha,"layers":layers,
         "report_format":format,"transformer":run.transformer,"project_label":run.project,"out_pdf":pdf});
     write_new(
@@ -771,6 +807,7 @@ mod tests {
         fail: Option<&'static str>,
         unverified: bool,
         brief: bool,
+        a4: Option<&'static str>,
     }
     thread_local! { static CALLS: RefCell<Calls> = RefCell::default(); }
 
@@ -796,9 +833,27 @@ mod tests {
                 "tr".to_owned(),
                 json!({"type":"FeatureCollection","features":[]}),
             )]),
-            &CALLS.with(|c| if c.borrow().brief {
-                std::collections::BTreeMap::from([("project_settings".to_owned(), json!([{"parameter":"design_export_format","value":{"schema":"ds.design-output-selection/v1","voltage_drop_report":"brief"}}]))])
-            } else { std::collections::BTreeMap::new() }),
+            &CALLS.with(|c| {
+                let mut document: Value = serde_json::from_str(include_str!(
+                    "../../../../../ds-network-reporter/tests/fixtures/lv-standard/a4-document.json"
+                )).unwrap();
+                document["project_id"] = json!("explicit-project");
+                let mut sheets = std::collections::BTreeMap::from([
+                    ("printing_context".to_owned(), json!({"project_id":"explicit-project","project":"Held project"})),
+                    ("printing_a4".to_owned(), document),
+                    ("project_settings".to_owned(), json!([{"parameter":"report_locale","value":"en"}])),
+                ]);
+                if c.borrow().brief {
+                    sheets.get_mut("project_settings").unwrap().as_array_mut().unwrap().push(
+                        json!({"parameter":"design_export_format","value":{"schema":"ds.design-output-selection/v1","voltage_drop_report":"brief"}}));
+                }
+                match c.borrow().a4 {
+                    Some("missing") => { sheets.remove("printing_a4"); }
+                    Some("crossed") => { sheets.get_mut("printing_a4").unwrap()["project_id"] = json!("other-project"); }
+                    _ => {}
+                }
+                sheets
+            }),
         )
         .unwrap();
         write_new(
@@ -897,6 +952,12 @@ mod tests {
         assert_eq!(sha, sha256(ANALYSIS));
         Ok(ANALYSIS.to_vec())
     }
+    fn held_renderer_policy(lane: &str, project: &str) -> Result<Value, Failure> {
+        stage("renderer")?;
+        assert_eq!(lane, "canary");
+        assert_eq!(project, "explicit-project");
+        Ok(json!({"held_api_renderer":"same-project"}))
+    }
     fn print(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
         stage("print")?;
         assert_eq!(inputs.require("task")?, "voltage-drop");
@@ -916,6 +977,19 @@ mod tests {
             })
         );
         assert_eq!(request["project_label"], "explicit-project");
+        assert_eq!(
+            request["network_config"]["printing_a4"]["project_id"],
+            "explicit-project"
+        );
+        assert_eq!(
+            request["network_config"]["printing_context"]["project_id"],
+            "explicit-project"
+        );
+        assert_eq!(
+            request["renderer_defaults"],
+            json!({"held_api_renderer":"same-project"})
+        );
+        assert!(request.get("printing_identity").is_none());
         let path = request["out_pdf"].as_str().unwrap();
         assert!(!Path::new(path).exists());
         let mut doc = lopdf::Document::with_version("1.5");
@@ -945,6 +1019,7 @@ mod tests {
         save,
         preflight,
         analysis,
+        renderer_policy: held_renderer_policy,
         print,
     };
 
@@ -975,6 +1050,46 @@ mod tests {
     }
 
     #[test]
+    fn print_run_refuses_missing_and_crossed_a4_without_fallback_or_recomputation() {
+        for variant in ["missing", "crossed"] {
+            CALLS.with(|calls| {
+                *calls.borrow_mut() = Calls {
+                    a4: Some(variant),
+                    ..Calls::default()
+                }
+            });
+            let root = tempfile::tempdir().unwrap();
+            let directory = root.path().join("run");
+            let refusal =
+                run_with(&inputs(&directory, &["--print-a4"]), &context(true), &MOCK).unwrap_err();
+            assert_eq!(refusal.code(), "fast_lv_run_print_failed");
+            assert_eq!(refusal.detail_value().unwrap()["saved"], true);
+            assert_eq!(refusal.detail_value().unwrap()["printed"], false);
+            let before = std::fs::read(directory.join("request.json")).unwrap();
+            let retry = run_with(
+                &inputs(&directory, &["--resume", "--print-a4"]),
+                &context(true),
+                &MOCK,
+            )
+            .unwrap_err();
+            assert_eq!(retry.code(), "fast_lv_run_print_failed");
+            assert_eq!(
+                std::fs::read(directory.join("request.json")).unwrap(),
+                before
+            );
+            CALLS.with(|calls| {
+                let stages = &calls.borrow().stages;
+                assert_eq!(
+                    stages.iter().filter(|stage| **stage == "process").count(),
+                    1
+                );
+                assert_eq!(stages.iter().filter(|stage| **stage == "save").count(), 1);
+                assert!(!stages.contains(&"renderer") && !stages.contains(&"print"));
+            });
+        }
+    }
+
+    #[test]
     fn legacy_first_save_receipt_can_print_without_rewrite_or_resave() {
         reset();
         let temp = tempfile::tempdir().unwrap();
@@ -1001,6 +1116,7 @@ mod tests {
                 "save",
                 "preflight",
                 "analysis",
+                "renderer",
                 "print"
             ]
         );
@@ -1156,9 +1272,11 @@ mod tests {
                 "process",
                 "save",
                 "analysis",
+                "renderer",
                 "print",
                 "preflight",
                 "analysis",
+                "renderer",
                 "print",
                 "preflight",
                 "analysis"

@@ -19,6 +19,8 @@ case "$1" in
  task-schemas)
    if test "$TEST_MODE" = unavailable; then
      printf '%s' '{"tasks":[]}'
+   elif test "$TEST_MODE" = governed; then
+     printf '%s' '{"tasks":[{"name":"render_voltage_drop_result","subcommand":"render-voltage-drop-result","request_schema":{"anyOf":[{"properties":{"network_config":{"required":["printing_context","printing_a4"]}}}]}}]}'
    else
      printf '%s' '{"tasks":[{"name":"render_voltage_drop_result","subcommand":"render-voltage-drop-result"}]}'
    fi ;;
@@ -165,7 +167,7 @@ fn a4_owner_refusal_preserves_diagnostic_without_recomputation() {
 
 #[test]
 fn project_run_discovers_missing_task_or_browser_before_any_effect() {
-    for mode in ["unavailable", "complete"] {
+    for mode in ["unavailable", "complete", "governed"] {
         let h = Harness::new();
         let directory = h.root.path().join("run");
         let output = Command::new(env!("CARGO_BIN_EXE_ds"))
@@ -202,10 +204,10 @@ fn project_run_discovers_missing_task_or_browser_before_any_effect() {
         let answer: Value = serde_json::from_slice(&output.stdout).unwrap();
         assert_eq!(
             answer["error"]["code"],
-            if mode == "unavailable" {
-                "unknown_task"
-            } else {
+            if mode == "governed" {
                 "reporter_browser_missing"
+            } else {
+                "unknown_task"
             }
         );
         assert!(!directory.exists());
