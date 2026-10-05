@@ -291,6 +291,7 @@ fn native_structure_labels_keep_the_vertical_profile_position() {
             label["rotation_radians"].as_f64().unwrap(),
             -std::f64::consts::FRAC_PI_2
         );
-        assert_eq!(label["offset_px"][1], -5.0);
+        // Owner, 2026-10-05: identities start above the attachment boxes (-8..8 px).
+        assert_eq!(label["offset_px"][1], -12.0);
     }
 }

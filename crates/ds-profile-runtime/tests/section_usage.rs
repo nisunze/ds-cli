@@ -121,7 +121,18 @@ fn section_usage_label_reads_current_solver_basis_and_native_selector_controls_i
     let tension = basis["maximum_support_tension_n"].as_f64().unwrap();
     let rated = basis["rated_strength_n"].as_f64().unwrap();
     assert!((percent - tension / rated * 100.0).abs() < 1e-10);
-    let expected = format!("display-section · Max support RTS {percent:.1}%");
+    // The wires read the exact cable engineering name, never the opaque section id.
+    let cable = shown["scene"]["conductor_spans"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|span| span["section_id"] == "display-section")
+        .expect("the fixture strings the section")["cable_engineering_name"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let expected = format!("{cable} · Max support RTS {percent:.1}%");
+    assert!(!expected.contains("display-section"));
     let labels = shown["scene"]["display"]["primitives"].as_array().unwrap();
     assert!(labels
         .iter()

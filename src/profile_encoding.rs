@@ -42,6 +42,8 @@ pub enum LegendKind {
     Wire,
     ClearanceLine,
     Embedded,
+    /// One drawn cable, by its exact engineering name.
+    Cable,
 }
 /// Semantic symbols use distinct governed Profile pens. Hosts never choose ink.
 #[derive(Debug, Clone, Serialize)]
@@ -83,10 +85,79 @@ pub fn legend(rows: &[DisplayRow]) -> Vec<LegendEntry> {
     })
     .collect()
 }
+/// Inks for every further cable. The first cable keeps the governed wire pen, so a
+/// one-cable Profile is unchanged; these stay clear of ground, clearance, review and
+/// selection inks.
+const CABLE_INKS: [&str; 8] = [
+    "#f472b6", "#a78bfa", "#fb923c", "#2dd4bf", "#e879f9", "#cbd5e1", "#818cf8", "#fda4af",
+];
+/// The pen of one drawn cable, keyed by its exact engineering name.
+#[derive(Debug, Clone, Serialize)]
+pub struct CablePen {
+    pub cable_name: String,
+    pub encoding: Encoding,
+}
+/// One pen per distinct cable engineering name, in name order; a configured colour wins.
+pub fn cable_pens<'a>(
+    names: impl IntoIterator<Item = &'a str>,
+    rows: &[DisplayRow],
+    configured: &BTreeMap<String, String>,
+) -> Vec<CablePen> {
+    let wire = &rows
+        .iter()
+        .find(|row| row.option == DisplayOption::Wire)
+        .expect("complete governed pens")
+        .encoding;
+    names
+        .into_iter()
+        .filter(|name| !name.trim().is_empty())
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .enumerate()
+        .map(|(index, name)| {
+            let mut encoding = wire.clone();
+            if let Some(color) = configured.get(name) {
+                encoding.color = color.clone();
+            } else if index > 0 {
+                encoding.color = CABLE_INKS[(index - 1) % CABLE_INKS.len()].into();
+            }
+            CablePen {
+                cable_name: name.into(),
+                encoding,
+            }
+        })
+        .collect()
+}
+/// The legend with its generic wire entry replaced by one entry per drawn cable.
+pub fn legend_with_cables(rows: &[DisplayRow], cables: &[CablePen]) -> Vec<LegendEntry> {
+    let mut entries = legend(rows);
+    if cables.is_empty() {
+        return entries;
+    }
+    let at = entries
+        .iter()
+        .position(|entry| entry.kind == LegendKind::Wire)
+        .unwrap_or(entries.len());
+    entries.retain(|entry| entry.kind != LegendKind::Wire);
+    entries.splice(
+        at..at,
+        cables.iter().map(|cable| LegendEntry {
+            kind: LegendKind::Cable,
+            label: cable.cable_name.clone(),
+            glyph: "━".into(),
+            encoding: cable.encoding.clone(),
+        }),
+    );
+    entries
+}
 fn pen_key(option: DisplayOption) -> String {
     match option {
         DisplayOption::RouteDeviation => "structure_labels".into(),
         DisplayOption::OffsetEmbedmentHeight => "embedded".into(),
+        // Review glyphs paint with native status colours; their switches share the review pen.
+        DisplayOption::StructureUsage | DisplayOption::SectionState | DisplayOption::SectionUsage => {
+            "review".into()
+        }
         other => serde_json::to_value(other)
             .unwrap()
             .as_str()
@@ -238,6 +309,56 @@ mod tests {
         }
     }
     #[test]
+    fn each_cable_name_gets_its_own_pen_and_legend_entry() {
+        let document: serde_json::Value =
+            serde_json::from_str(include_str!("../tests/fixtures/profile-display-style.json"))
+                .unwrap();
+        let rows = resolve(&DisplayState::default(), &document).unwrap();
+        let wire = rows
+            .iter()
+            .find(|row| row.option == DisplayOption::Wire)
+            .unwrap()
+            .encoding
+            .clone();
+        // Repeated spans of one cable collapse; blank names are never a cable.
+        let pens = cable_pens(["ASTER 54.6", "AAAC 34", "ASTER 54.6", " "], &rows, &BTreeMap::new());
+        assert_eq!(
+            pens.iter().map(|pen| pen.cable_name.as_str()).collect::<Vec<_>>(),
+            ["AAAC 34", "ASTER 54.6"]
+        );
+        // The first cable keeps the governed wire pen; the next one is distinct.
+        assert_eq!(pens[0].encoding.color, wire.color);
+        assert_ne!(pens[1].encoding.color, wire.color);
+        assert_eq!(pens[1].encoding.width_px, wire.width_px);
+        let legend = legend_with_cables(&rows, &pens);
+        assert!(legend.iter().all(|entry| entry.kind != LegendKind::Wire));
+        assert_eq!(
+            legend
+                .iter()
+                .filter(|entry| entry.kind == LegendKind::Cable)
+                .map(|entry| entry.label.as_str())
+                .collect::<Vec<_>>(),
+            ["AAAC 34", "ASTER 54.6"]
+        );
+        // A configured colour wins for its cable only.
+        let configured = BTreeMap::from([("ASTER 54.6".to_owned(), "#123456".to_owned())]);
+        let pens = cable_pens(["ASTER 54.6", "AAAC 34"], &rows, &configured);
+        assert_eq!(pens[0].encoding.color, wire.color);
+        assert_eq!(pens[1].encoding.color, "#123456");
+        // A Profile with no drawn cable keeps the generic wire entry.
+        assert!(legend_with_cables(&rows, &[])
+            .iter()
+            .any(|entry| entry.kind == LegendKind::Wire));
+        // Usage switches are visibility only: they never need a pen of their own.
+        for option in [
+            DisplayOption::StructureUsage,
+            DisplayOption::SectionState,
+            DisplayOption::SectionUsage,
+        ] {
+            assert_eq!(pen_key(option), "review");
+        }
+    }
+    #[test]
     fn governed_pens_are_complete_distinct_and_scaled() {
         let document: serde_json::Value =
             serde_json::from_str(include_str!("../tests/fixtures/profile-display-style.json"))
@@ -280,7 +401,8 @@ mod tests {
                 )
             })
             .collect();
-        assert_eq!(encodings.len(), rows.len() - 2);
+        // Deviation, embedment height and the three usage switches share native pens.
+        assert_eq!(encodings.len(), rows.len() - 5);
         let deviation = rows
             .iter()
             .find(|row| row.option == DisplayOption::RouteDeviation)

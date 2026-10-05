@@ -132,8 +132,10 @@ pub fn project(
                         points: vec![],
                         labels: vec![Label {
                             point: label.point,
+                            // The exact cable engineering name reads in the wires; the opaque
+                            // section identity stays in the bitmap summary and selection.
                             text: section_label(
-                                span.section_id.as_str(),
+                                span.cable_engineering_name.as_str(),
                                 scene
                                     .evidence
                                     .section_basis
@@ -193,7 +195,8 @@ pub fn project(
                         labels: vec![Label {
                             point: *structure.top.as_ref().unwrap_or(&structure.ground),
                             text,
-                            offset_px: [-offset - 6.0, -5.0],
+                            // Start above the attachment boxes (-8..8 px) so they never cover a name.
+                            offset_px: [-offset - 6.0, -12.0],
                             rotation_radians: -std::f64::consts::FRAC_PI_2,
                         }],
                     });
@@ -211,7 +214,7 @@ pub fn project(
                         labels: vec![Label {
                             point: *structure.top.as_ref().unwrap_or(&structure.ground),
                             text,
-                            offset_px: [-offset - 6.0, -5.0],
+                            offset_px: [-offset - 6.0, -12.0],
                             rotation_radians: -std::f64::consts::FRAC_PI_2,
                         }],
                     });
@@ -224,10 +227,10 @@ pub fn project(
 
 // A native solver fact, explicitly labelled against rated strength. It is not
 // the independent clearance verdict or a qualified section capacity PASS.
-fn section_label(section: &str, maximum_support_tension_rts_percent: Option<f64>) -> String {
+fn section_label(cable: &str, maximum_support_tension_rts_percent: Option<f64>) -> String {
     match maximum_support_tension_rts_percent.filter(|value| value.is_finite() && *value >= 0.0) {
-        Some(percent) => format!("{section} · Max support RTS {percent:.1}%"),
-        None => format!("{section} · Max support RTS unknown"),
+        Some(percent) => format!("{cable} · Max support RTS {percent:.1}%"),
+        None => format!("{cable} · Max support RTS unknown"),
     }
 }
 

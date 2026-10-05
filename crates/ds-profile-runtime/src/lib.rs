@@ -66,6 +66,8 @@ pub struct Projection {
     pub state: DisplayState,
     pub rows: Vec<DisplayRow>,
     pub legend: Vec<ds_command_kernel::profile_encoding::LegendEntry>,
+    /// One pen per drawn cable engineering name; hosts paint each span with its cable pen.
+    pub cables: Vec<ds_command_kernel::profile_encoding::CablePen>,
     pub label_fields: Vec<String>,
     pub scene_options: ProfileAtlasOptions,
     pub primitives: Vec<decorations::Primitive>,
@@ -335,13 +337,22 @@ impl Runtime {
             },
         );
         let primitives = decorations::project(&scene, &state, &rows, &label_policy);
+        let cables = ds_command_kernel::profile_encoding::cable_pens(
+            scene
+                .conductor_spans
+                .iter()
+                .map(|span| span.cable_engineering_name.as_str()),
+            &rows,
+            &state.cable_colors,
+        );
         let base_axis = self.held[&request.scope].review.base_axis_digest().unwrap();
         let mut scene = serde_json::to_value(scene).map_err(|error| error.to_string())?;
         scene["case_base_axis_digest"] = json!(base_axis);
         scene["display"] = serde_json::to_value(Projection {
             label_fields: label_fields(&state),
             state: state.clone(),
-            legend: ds_command_kernel::profile_encoding::legend(&rows),
+            legend: ds_command_kernel::profile_encoding::legend_with_cables(&rows, &cables),
+            cables,
             rows,
             scene_options,
             primitives,

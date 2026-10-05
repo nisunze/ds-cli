@@ -23,9 +23,15 @@ pub enum DisplayOption {
     Embedded,
     OffsetEmbedmentHeight,
     RouteDeviation,
+    /// The governing usage label under each structure.
+    StructureUsage,
+    /// The attachment boxes at each structure top (native section end states).
+    SectionState,
+    /// The section usage bitmap: one box per wire of each attachment set.
+    SectionUsage,
 }
 impl DisplayOption {
-    pub const ALL: [Self; 18] = [
+    pub const ALL: [Self; 21] = [
         Self::Review,
         Self::Grid,
         Self::Ground,
@@ -44,6 +50,9 @@ impl DisplayOption {
         Self::Embedded,
         Self::OffsetEmbedmentHeight,
         Self::RouteDeviation,
+        Self::StructureUsage,
+        Self::SectionState,
+        Self::SectionUsage,
     ];
     pub fn label_key(self) -> &'static str {
         match self {
@@ -65,6 +74,9 @@ impl DisplayOption {
             Self::Embedded => "gprof_display_embedded",
             Self::RouteDeviation => "gprof_display_route_deviation",
             Self::OffsetEmbedmentHeight => "gprof_display_offset_embedment_height",
+            Self::StructureUsage => "gprof_display_structure_usage",
+            Self::SectionState => "gprof_display_attachment_states",
+            Self::SectionUsage => "gprof_display_section_usage",
         }
     }
 }
@@ -84,6 +96,10 @@ pub struct DisplayState {
     pub display_case: DisplayCase,
     pub vertical_exaggeration: f64,
     pub terrain: TerrainSettings,
+    /// Configured wire colours by exact cable engineering name (`#rrggbb`). Wires are
+    /// categorical by cable; an unconfigured cable keeps its default pen.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub cable_colors: BTreeMap<String, String>,
 }
 impl Default for DisplayState {
     fn default() -> Self {
@@ -117,6 +133,7 @@ impl Default for DisplayState {
                 ground_clearance_offset_m: 6.0,
                 lowest_wire_drop_m: 0.0,
             },
+            cable_colors: BTreeMap::new(),
         }
     }
 }
@@ -151,6 +168,14 @@ pub struct DisplayPatch {
         skip_serializing_if = "Option::is_none"
     )]
     pub terrain: Option<TerrainSettings>,
+    /// Per-cable wire colour: a `#rrggbb` sets it, `null` returns the cable to its default pen.
+    #[serde(default)]
+    pub cable_colors: BTreeMap<String, Option<String>>,
+}
+fn is_hex_color(value: &str) -> bool {
+    value.len() == 7
+        && value.starts_with('#')
+        && value[1..].chars().all(|c| c.is_ascii_hexdigit())
 }
 // Omission retains state; explicit null is an invalid typed value. In particular,
 // JavaScript non-finite numbers serialized to null cannot silently become omission.
@@ -197,6 +222,25 @@ impl DisplayState {
             }
             next.display_case = case.clone();
         }
+        for (cable, color) in &patch.cable_colors {
+            if cable.trim().is_empty() || cable.len() > 200 || cable.chars().any(char::is_control) {
+                return Err("invalid_profile_view: cable colours need an exact cable engineering name".into());
+            }
+            match color {
+                Some(color) if is_hex_color(color) => {
+                    next.cable_colors.insert(cable.clone(), color.to_ascii_lowercase());
+                }
+                Some(_) => {
+                    return Err("invalid_profile_view: a cable colour must be #rrggbb".into());
+                }
+                None => {
+                    next.cable_colors.remove(cable);
+                }
+            }
+        }
+        if next.cable_colors.len() > 64 {
+            return Err("invalid_profile_view: at most 64 configured cable colours".into());
+        }
         next.visibility.extend(patch.visibility.clone());
         Ok(next)
     }
@@ -215,6 +259,11 @@ mod tests {
             DisplayOption::Ground,
             DisplayOption::StructureLabels,
             DisplayOption::StructureNumbers,
+            // Owner, 2026-10-05: structure usage, attachment boxes and the section bitmap
+            // are settings of their own, on by default.
+            DisplayOption::StructureUsage,
+            DisplayOption::SectionState,
+            DisplayOption::SectionUsage,
         ] {
             assert!(state.visibility[&shown], "{shown:?} must be on by default");
         }
@@ -232,6 +281,27 @@ mod tests {
         let patch: DisplayPatch =
             serde_json::from_str(r#"{"visibility":{"structure_names":true}}"#).unwrap();
         assert!(state.patched(&patch).unwrap().visibility[&DisplayOption::StructureNames]);
+    }
+    #[test]
+    fn cable_colours_patch_one_cable_at_a_time_and_reset_with_null() {
+        let state = DisplayState::default();
+        let set: DisplayPatch =
+            serde_json::from_str(r##"{"cable_colors":{"ASTER 54.6":"#AABBCC","AAAC 34":"#010203"}}"##).unwrap();
+        let next = state.patched(&set).unwrap();
+        assert_eq!(next.cable_colors["ASTER 54.6"], "#aabbcc");
+        assert_eq!(next.cable_colors.len(), 2);
+        let reset: DisplayPatch =
+            serde_json::from_str(r#"{"cable_colors":{"AAAC 34":null}}"#).unwrap();
+        let next = next.patched(&reset).unwrap();
+        assert_eq!(next.cable_colors.keys().collect::<Vec<_>>(), ["ASTER 54.6"]);
+        for bad in [r#"{"cable_colors":{"ASTER":"red"}}"#, r##"{"cable_colors":{" ":"#aabbcc"}}"##] {
+            let patch: DisplayPatch = serde_json::from_str(bad).unwrap();
+            assert!(next.patched(&patch).is_err(), "{bad}");
+        }
+        // States saved before cable colours existed still read.
+        let mut old = serde_json::to_value(DisplayState::default()).unwrap();
+        old.as_object_mut().unwrap().remove("cable_colors");
+        assert!(serde_json::from_value::<DisplayState>(old).unwrap().cable_colors.is_empty());
     }
     #[test]
     fn review_is_on_and_patches_are_atomic_and_strict() {
