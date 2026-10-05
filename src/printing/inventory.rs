@@ -47,6 +47,10 @@ pub struct PrintableRow {
 #[derive(Debug, Clone, Serialize, JsonSchema, PartialEq)]
 pub struct VoltageDropPreview {
     pub state: String,
+    /// The saved analysis is a calculated power flow with a compliance
+    /// verdict, so the A4 voltage-drop report states that verdict. Incomplete,
+    /// refused and reserved analyses only print that no verdict is issued.
+    pub calculated: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rule_confirmed: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -100,6 +104,7 @@ fn digest(value: &Value) -> Option<&str> {
 fn voltage_drop(row: &Map<String, Value>, dirty: bool) -> VoltageDropPreview {
     let unavailable = |state: &str| VoltageDropPreview {
         state: state.into(),
+        calculated: false,
         rule_confirmed: None,
         verdict: None,
         analysis_sha256: None,
@@ -169,6 +174,10 @@ fn voltage_drop(row: &Map<String, Value>, dirty: bool) -> VoltageDropPreview {
     }
     VoltageDropPreview {
         state: "saved_json".into(),
+        calculated: matches!(
+            verdict,
+            Some("complies" | "complies_with_reinforcement" | "does_not_comply")
+        ),
         rule_confirmed: summary["rule_confirmed"].as_bool(),
         verdict: verdict.map(str::to_string),
         analysis_sha256: value["analysis_sha256"].as_str().map(str::to_string),
@@ -420,7 +429,30 @@ mod tests {
             assert_eq!(preview.analysis_sha256, Some("b".repeat(64)));
             assert_eq!(preview.content_digest, Some("a".repeat(64)));
             assert_eq!(preview.version, Some(7));
+            assert_eq!(preview.calculated, verdict != "incomplete", "{verdict}");
         }
+    }
+
+    /// Only a calculated verdict makes an A4 voltage-drop report worth
+    /// previewing; incomplete, refused and reserved analyses print a stub.
+    #[test]
+    fn only_a_saved_calculated_verdict_is_a_calculated_voltage_drop() {
+        for status in ["incomplete", "refused", "reserved"] {
+            let mut row = saved("incomplete");
+            row["voltage_drop_metadata"]["status"] = json!(status);
+            row["voltage_drop_metadata"]["summary"]["status"] = json!(if status == "refused" {
+                "not_calculated"
+            } else {
+                status
+            });
+            let preview = &printable(&[row], &[], "", 500).unwrap().transformers[0].voltage_drop;
+            assert_eq!(preview.state, "saved_json", "{status}");
+            assert!(!preview.calculated, "{status}");
+        }
+        let dirty = printable(&[saved("complies")], &[room("tx_a", None, true)], "", 500).unwrap();
+        assert!(!dirty.transformers[0].voltage_drop.calculated);
+        let missing = printable(&rows(), &[], "", 500).unwrap();
+        assert!(!missing.transformers[0].voltage_drop.calculated);
     }
 
     #[test]
@@ -447,12 +479,10 @@ mod tests {
                 result.transformers[0].voltage_drop.state, "invalid_receipt",
                 "{path}"
             );
-            assert!(
-                result.transformers[0]
-                    .voltage_drop
-                    .analysis_sha256
-                    .is_none()
-            );
+            assert!(result.transformers[0]
+                .voltage_drop
+                .analysis_sha256
+                .is_none());
         }
         let result = printable(&[saved("complies")], &[room("tx_a", None, true)], "", 500).unwrap();
         assert_eq!(result.transformers[0].voltage_drop.state, "local_changes");
