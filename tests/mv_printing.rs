@@ -267,3 +267,48 @@ fn canonical_global_body_admits_generic_and_exact_preserved_model_pages() {
     );
     model.validate("nyamagabe").unwrap();
 }
+#[test]
+fn the_global_default_takes_the_printing_projects_title_and_country_and_names_no_employer() {
+    // Owner, 2026-10-05: the global MV default printed one project's parties
+    // for every project. It now names none; the printing project supplies
+    // its title and country, and only its own setup may name an employer.
+    let mut value = sheets();
+    for setting in ["project_title", "title_country", "title_employer"] {
+        value["printing_setups"][0]["layout"]["mv"]["settings"][setting] = json!("");
+    }
+    let mut own = value.clone();
+    own["report_context"] =
+        json!({"schema":"ds.report-context/v1","country":"Chad","project_title":"Projet test"});
+    assert_eq!(
+        mv::resolve(&own, "project_a", BTreeMap::new())
+            .unwrap_err()
+            .code,
+        "mv_print_text_missing",
+        "a project's own setup still approves every title field"
+    );
+    let selection = mv::resolve(&sheets(), "project_a", BTreeMap::new())
+        .unwrap()
+        .selection;
+    value["printing_defaults"] =
+        json!({"schema":"ds.printing-defaults/v1","mv_selection":selection});
+    value["global_printing_setups"] = value["printing_setups"].clone();
+    value["project_settings"] = json!([]);
+    value["printing_setups"] = json!([]);
+    value["report_context"] =
+        json!({"schema":"ds.report-context/v1","country":"Chad","project_title":"Projet test"});
+    let global = mv::resolve(&value, "project_a", BTreeMap::new()).unwrap();
+    assert_eq!(global.settings.project_title, "Projet test");
+    assert_eq!(global.settings.title_country, "Chad");
+    assert_eq!(global.settings.title_employer, "");
+    // Every consumer re-resolves the receipt, through the same global default.
+    global.validate("project_a").unwrap();
+    value["report_context"] =
+        json!({"schema":"ds.report-context/v1","project_title":"Projet test"});
+    assert_eq!(
+        mv::resolve(&value, "project_a", BTreeMap::new())
+            .unwrap_err()
+            .code,
+        "mv_print_text_missing",
+        "a project without a country is refused by name, never given another's"
+    );
+}

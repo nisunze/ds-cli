@@ -511,14 +511,15 @@ pub fn validate_template(layout: &Layout, template: &Template) -> Result<(), Ref
             "Declare 1..64 unique required title/front-matter binding keys.",
         ));
     }
-    if template.logos.is_empty()
-        || template.logos.len() > 6
+    // A global default names no party, so it may carry no logo (owner,
+    // 2026-10-05); a project setup still places at most six approved logos.
+    if template.logos.len() > 6
         || template
             .logos
             .iter()
             .any(|id| !layout.assets.contains_key(id))
     {
-        return Err(refuse("mv_print_template_invalid", "logos", "Select 1..6 approved embedded assets from this printing layout in their approved order."));
+        return Err(refuse("mv_print_template_invalid", "logos", "Select at most six approved embedded assets from this printing layout in their approved order."));
     }
     template
         .settings
@@ -687,11 +688,21 @@ pub fn resolve(
     }
     let mut settings = template.settings.clone();
     if global {
-        if let Some(title) = sheets["report_context"]["project_title"]
+        // Owner, 2026-10-05: the global default names no project's parties.
+        // The printing project supplies its own title and country; an
+        // employer is printed only from a project's own approved setup.
+        let context = &sheets["report_context"];
+        if let Some(title) = context["project_title"]
             .as_str()
             .filter(|title| valid_text(title, 200))
         {
             settings.project_title = title.into();
+        }
+        if let Some(country) = context["country"]
+            .as_str()
+            .filter(|country| valid_text(country, 200))
+        {
+            settings.title_country = country.into();
         }
     }
     for (field, value) in [
@@ -700,6 +711,9 @@ pub fn resolve(
         ("title_country", &settings.title_country),
         ("title_employer", &settings.title_employer),
     ] {
+        if global && field == "title_employer" && value.is_empty() {
+            continue;
+        }
         if !valid_text(value, 200) {
             return Err(refuse(
                 "mv_print_text_missing",
@@ -830,7 +844,17 @@ impl Resolved {
                 "Use the printing receipt for this exact project.",
             ));
         }
-        let sheets = json!({"project_settings":[{"parameter":SETTING,"value":self.selection}],"printing_setups":[{"id":self.layout.id,"revision":self.selection.revision,"layout":self.layout,"inherited_from":self.inherited_from}]});
+        // A receipt resolved through the global default re-resolves through it,
+        // with the title and country its printing project supplied.
+        let global = self.inherited_from.scope == "global"
+            && self.inherited_from.project_id.is_none()
+            && self.inherited_from.id == self.selection.layout_id
+            && self.inherited_from.revision == self.selection.revision;
+        let sheets = if global {
+            json!({"project_settings":[],"printing_defaults":{"schema":"ds.printing-defaults/v1","mv_selection":self.selection},"global_printing_setups":[{"id":self.layout.id,"revision":self.selection.revision,"layout":self.layout}],"report_context":{"project_title":self.settings.project_title,"country":self.settings.title_country}})
+        } else {
+            json!({"project_settings":[{"parameter":SETTING,"value":self.selection}],"printing_setups":[{"id":self.layout.id,"revision":self.selection.revision,"layout":self.layout,"inherited_from":self.inherited_from}]})
+        };
         let expected = resolve(&sheets, project, self.model_fields.clone())?;
         if &expected != self {
             return Err(refuse(
