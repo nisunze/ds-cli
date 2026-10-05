@@ -6,6 +6,7 @@
 
 pub mod catalog;
 pub mod global_catalog;
+pub mod global_download;
 pub mod global_member;
 pub mod open;
 pub mod pack;
@@ -31,6 +32,7 @@ pub static DOMAIN: Domain = Domain {
         &open::COMMAND,
         &catalog::COMMAND,
         &global_catalog::READ_COMMAND,
+        &global_download::COMMAND,
         &global_member::COMMAND,
         &global_catalog::FORK_COMMAND,
         &global_catalog::UPLOAD_COMMAND,

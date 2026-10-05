@@ -65,6 +65,21 @@ claim solver/engineering approval.
 
 ## Governed global catalogue
 
+`library global download` exports one pinned `library-manifest`,
+`library-validation`, or `example-model`. Library artifacts require
+`--library-id` and `--release-id`; example models require `--example-id` and
+`--revision-id`. All require `--expected-digest` (64 lowercase hexadecimal
+characters) and a fresh `--out` file in an existing directory. Exact source
+coordinates, the content-addressed Storage locator, byte count and SHA-256 must
+agree before any file is created. The receipt contains no delivery URL.
+
+This is a backup export, not project admission, format migration or corpus
+closure. A model file may omit separately held native library members. Never
+retire global metadata until its whole declared native corpus has a verified
+external backup and required project-owned references. Project and template
+models share the same ownership and import/edit/render contracts; the
+`template` lifecycle does not create another library authority.
+
 The global catalogue is a separate authority from the local immutable store.
 `library global read` lists global libraries, exact immutable releases, global
 examples, and exact example revisions. The primary publisher commands are

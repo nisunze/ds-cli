@@ -2309,6 +2309,26 @@ pub fn grid_catalog(
     run_grid_catalog(lane_value, command, map_client)
 }
 
+/// Export only an immutable artifact selected by the authenticated catalog.
+/// The signed Storage transfer sends no user/device credential and returns
+/// bytes only after the catalog coordinates, size and digest all agree.
+pub fn grid_catalog_artifact(
+    lane_value: &str,
+    selection: &ds_client_core::grid_catalog::ArtifactSelection,
+    expected_digest: &str,
+) -> Result<ds_client_core::grid_models::Receipt, Failure> {
+    let data = grid_catalog(lane_value, &selection.read_command())?;
+    selection
+        .download(&mut NativeTransport, &data, expected_digest)
+        .map_err(|_| {
+            Failure::failed(
+                "catalog_artifact_unverified",
+                "the exact catalog artifact coordinates, locator or bytes could not be verified",
+            )
+            .remedy("read the exact release/revision pins; preserve existing bytes and do not retire data until export verifies")
+        })
+}
+
 fn run_grid_catalog(
     lane_value: &str,
     command: &ds_client_core::grid_catalog::Command,

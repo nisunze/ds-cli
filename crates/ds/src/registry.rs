@@ -537,6 +537,11 @@ static LIBRARY_ENTRIES: &[Entry] = &[
         render: ds_cli_library::global_catalog::render,
     },
     Entry {
+        command: &ds_cli_library::global_download::COMMAND,
+        handler: ds_cli_library::global_download::run,
+        render: ds_cli_library::global_download::render,
+    },
+    Entry {
         command: &ds_cli_library::global_member::COMMAND,
         handler: ds_cli_library::global_member::run,
         render: ds_cli_library::global_member::render,

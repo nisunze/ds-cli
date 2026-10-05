@@ -96,7 +96,7 @@ const NATIVE_COUNT: usize = 16;
 /// disagrees: a wrong total either leaves a placeholder in the tail or indexes
 /// past the end, and `every_composed_set_ends_with_the_native_refusals` reads
 /// the result back.
-const fn with_native<const OWN: usize, const TOTAL: usize>(
+pub(super) const fn with_native<const OWN: usize, const TOTAL: usize>(
     own: [Refusal; OWN],
 ) -> [Refusal; TOTAL] {
     let mut all = [PAYLOAD_REFUSAL; TOTAL];
