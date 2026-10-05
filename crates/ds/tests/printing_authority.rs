@@ -148,3 +148,74 @@ fn report_print_transient_furniture_refusal_explains_governed_adoption_before_re
         assert_eq!(std::fs::read(&config).unwrap(), bytes);
     }
 }
+
+#[test]
+fn governed_print_documents_require_explicit_project_before_authentication() {
+    for id in ["report.standard.list", "report.standard.get"] {
+        let (contract, code) = common::json(&["capabilities", id, "--output", "json"]);
+        assert_eq!(code, 0);
+        let command = &contract["data"]["command"];
+        assert_eq!(command["authority"], "headless_project");
+        assert!(
+            command["inputs"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|arg| arg["name"] == "project" && arg["required"] == true)
+        );
+    }
+    for args in [
+        vec!["report", "standard", "list", "--output", "json"],
+        vec![
+            "report",
+            "standard",
+            "get",
+            "--kind",
+            "a4",
+            "--id",
+            "voltage-drop-a4-v1",
+            "--output",
+            "json",
+        ],
+    ] {
+        let (refused, code) = common::json(&args);
+        assert_ne!(code, 0);
+        let text = refused.to_string();
+        assert!(text.contains("project"), "{refused}");
+        assert!(
+            !text.contains("headless_signed_out"),
+            "missing project reached identity restore: {refused}"
+        );
+    }
+}
+
+#[test]
+fn project_layout_copy_uses_project_runtime_and_requires_its_destination() {
+    let root = tempfile::tempdir().unwrap();
+    let request = root.path().join("copy.json");
+    std::fs::write(&request, serde_json::json!({
+        "action":"copy",
+        "source":{"scope":"project","project":"template_project","id":"template_a3","revision":"a".repeat(64)},
+        "destination":{"scope":"project","id":"owned_a3","expected_revision":""}
+    }).to_string()).unwrap();
+    let bundle = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../ds-cli-auth/tests/fixtures/development-catalog.json");
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_ds"))
+        .args([
+            "report",
+            "layout",
+            "copy",
+            "--request",
+            request.to_str().unwrap(),
+            "--yes",
+            "--output",
+            "json",
+        ])
+        .env("DS_NATIVE_CLIENT_PROFILE_BUNDLE", bundle)
+        .env("DS_CONFIG_HOME", root.path())
+        .output()
+        .unwrap();
+    let refused: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert!(!output.status.success());
+    assert_eq!(refused["error"]["code"], "project_required", "{refused}");
+}

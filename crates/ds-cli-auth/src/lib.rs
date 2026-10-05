@@ -5739,48 +5739,40 @@ fn open_bundle_destination(dest: &Path) -> io::Result<std::fs::File> {
 }
 
 pub use ds_client_core::PrintingRequest;
-/// Global templates need identity but no project. Project requests address
-/// exactly the project the caller names; the saved selection is never read.
+/// Runtime printing always addresses an explicit project. Global is retained
+/// only as a refused compatibility flag, never dispatched to the service.
 pub fn printing(
     lane_value: &str,
     global: bool,
     project: Option<&str>,
     request: &PrintingRequest,
 ) -> Result<serde_json::Value, Failure> {
-    request.validate().map_err(map_client)?;
-    let lane = Lane::parse(lane_value)?;
-    if request.needs_project(global) {
-        let project = project.ok_or_else(|| {
-            Failure::invalid(
-                "project_required",
-                "a project printing library is addressed by --project; the saved selection is never read",
-            )
-            .remedy("pass --project <exact-id> for project scope or a copy that touches a project")
-        })?;
-        return headless_named_project(
-            lane_value,
-            project,
-            |device, project| device.printing(project, request),
-            |client, project| client.printing(project, request, now()),
+    if global {
+        return Err(Failure::invalid("printing_invalid", "Global printing runtime scope is retired")
+            .remedy("pass --scope project and --project <exact-id>; template projects are ordinary projects"));
+    }
+    let project = project.filter(|value| !value.is_empty()).ok_or_else(|| {
+        Failure::invalid(
+            "project_required",
+            "Printing requires an explicit project; the saved selection is never read",
         )
-        .map(HeadlessNamedProject::into_result);
-    }
-    let _ = probe_headless_identity(lane.token())?;
-    if let Some(mut device) = device::restore_session(lane)? {
-        return device.printing("", request).map_err(map_client);
-    }
-    let profile = profile::load(lane)?;
-    let store = NativeRefreshStore::open()?;
-    let mut client = Client::new(profile, NativeTransport, store);
-    require_restore_before_context(&mut client)?;
-    client.printing("", request, now()).map_err(map_client)
+        .remedy("pass --project <exact-id> with project scope")
+    })?;
+    request.validate_for(project).map_err(map_client)?;
+    headless_named_project(
+        lane_value,
+        project,
+        |device, project| device.printing(project, request),
+        |client, project| client.printing(project, request, now()),
+    )
+    .map(HeadlessNamedProject::into_result)
 }
 
 pub use ds_client_core::{PrintingStandardKind, PrintingStandardRequest};
 pub const PRINT_STANDARD_REQUEST_INVALID_REFUSAL: Refusal = Refusal {
     code: "print_standard_request_invalid",
-    when: "the id is not one governed document identifier, or ds-brain refused the read",
-    remedy: "pass --kind standard|a4 and one exact id from report.standard.list",
+    when: "the project/id is not exact, or ds-brain refused the scoped read",
+    remedy: "pass --project <exact-id>, --kind standard|a4 and one exact id from that project's report.standard.list",
 };
 pub const PRINT_STANDARD_NOT_FOUND_REFUSAL: Refusal = Refusal {
     code: "print_standard_not_found",
@@ -5790,7 +5782,7 @@ pub const PRINT_STANDARD_NOT_FOUND_REFUSAL: Refusal = Refusal {
 pub const PRINT_STANDARD_INVALID_REFUSAL: Refusal = Refusal {
     code: "print_standard_invalid",
     when: "a stored governed document no longer matches its seeded shape",
-    remedy: "re-apply the reviewed seed with ds style catalogue seed; never hand-edit it",
+    remedy: "review the project-owned definition; for A4 use ds style catalogue a4 plan/create with the same --project",
 };
 pub const PRINT_STANDARD_ROUTE_UNAVAILABLE_REFUSAL: Refusal = Refusal {
     code: "print_standard_route_unavailable",
@@ -5798,27 +5790,22 @@ pub const PRINT_STANDARD_ROUTE_UNAVAILABLE_REFUSAL: Refusal = Refusal {
     remedy: "update ds; if it persists, the route is unpublished on this lane",
 };
 
-/// The governed standard and A4 printing documents are global: identity, no
-/// project, read-only.
+/// Read the explicit project's governed documents under the restored identity.
+/// The native saved selection is never read and global fallback is unavailable.
 pub fn printing_standard(
     lane_value: &str,
+    project: &str,
     request: &PrintingStandardRequest,
 ) -> Result<serde_json::Value, Failure> {
     request.validate().map_err(map_printing_standard)?;
-    let lane = Lane::parse(lane_value)?;
-    let _ = probe_headless_identity(lane.token())?;
-    if let Some(mut device) = device::restore_session(lane)? {
-        return device
-            .printing_standard(request)
-            .map_err(map_printing_standard);
-    }
-    let profile = profile::load(lane)?;
-    let store = NativeRefreshStore::open()?;
-    let mut client = Client::new(profile, NativeTransport, store);
-    require_restore_before_context(&mut client)?;
-    client
-        .printing_standard(request, now())
-        .map_err(map_printing_standard)
+    headless_named_project_with(
+        lane_value,
+        project,
+        map_printing_standard,
+        |device, project| device.printing_standard(project, request),
+        |client, project| client.printing_standard(project, request, now()),
+    )
+    .map(HeadlessNamedProject::into_result)
 }
 
 /// The route's own refusals under the codes `ds report standard` documents;
@@ -5841,7 +5828,7 @@ fn map_printing_standard(error: ClientError) -> Failure {
         (ErrorKind::ResourceNotFound, _) => {
             Failure::invalid(PRINT_STANDARD_NOT_FOUND_REFUSAL.code, message)
                 .remedy(PRINT_STANDARD_NOT_FOUND_REFUSAL.remedy)
-                .next("ds report standard list --output json")
+                .next("ds report standard list --project <exact-id> --output json")
         }
         (ErrorKind::InvalidInput, _) => {
             Failure::invalid(PRINT_STANDARD_REQUEST_INVALID_REFUSAL.code, message)
@@ -5949,18 +5936,14 @@ fn map_print_style_keys(error: ClientError) -> Failure {
                 | "print_kernel_refused"
                 | "print_kernel_answer_invalid",
             ),
-        ) => {
-            Failure::unavailable(PRINT_STYLE_KEYS_KERNEL_UNAVAILABLE_REFUSAL.code, message)
-                .remedy(PRINT_STYLE_KEYS_KERNEL_UNAVAILABLE_REFUSAL.remedy)
-        }
+        ) => Failure::unavailable(PRINT_STYLE_KEYS_KERNEL_UNAVAILABLE_REFUSAL.code, message)
+            .remedy(PRINT_STYLE_KEYS_KERNEL_UNAVAILABLE_REFUSAL.remedy),
         (ErrorKind::RouteUnavailable, _) => {
             Failure::failed(PRINT_STYLE_KEYS_ROUTE_UNAVAILABLE_REFUSAL.code, message)
                 .remedy(PRINT_STYLE_KEYS_ROUTE_UNAVAILABLE_REFUSAL.remedy)
         }
-        (ErrorKind::ResourceNotFound, _) => {
-            Failure::invalid("print_setup_not_found", message)
-                .remedy("list the library with report.layout.list and pass one exact setup id")
-        }
+        (ErrorKind::ResourceNotFound, _) => Failure::invalid("print_setup_not_found", message)
+            .remedy("list the library with report.layout.list and pass one exact setup id"),
         (ErrorKind::InvalidInput, _) => {
             Failure::invalid(PRINT_STYLE_KEYS_REQUEST_INVALID_REFUSAL.code, message)
                 .remedy(PRINT_STYLE_KEYS_REQUEST_INVALID_REFUSAL.remedy)
@@ -6061,7 +6044,11 @@ mod print_style_keys_tests {
             script.print_style_keys_bodies[1],
             json!({"action":"apply","scope":"project","project_id":"czgmdwth_gisagara","expected_plan_sha256":digest})
         );
-        assert_eq!(script.print_style_keys_bodies.len(), 6, "a census with a project never leaves");
+        assert_eq!(
+            script.print_style_keys_bodies.len(),
+            6,
+            "a census with a project never leaves"
+        );
     }
 }
 
@@ -6072,9 +6059,24 @@ mod printing_standard_tests {
     use ds_client_core::TransportResponse;
 
     #[test]
+    fn retired_global_and_missing_project_layout_calls_refuse_before_identity() {
+        let request = PrintingRequest::List {};
+        assert_eq!(
+            printing("stable", true, None, &request).unwrap_err().code(),
+            "printing_invalid"
+        );
+        assert_eq!(
+            printing("stable", false, None, &request)
+                .unwrap_err()
+                .code(),
+            "project_required"
+        );
+    }
+
+    #[test]
     fn governed_printing_reads_answer_or_refuse_by_name() {
         let transport = FixtureTransport::default();
-        let catalog = json!({"success":true,"data":{"schema":"ds.printing-standard-catalog/v1",
+        let catalog = json!({"success":true,"data":{"scope":"project","project_id":"project_a","schema":"ds.printing-standard-catalog/v1",
             "documents":[{"kind":"a4","id":"voltage-drop-a4-v1","bound":true}]}});
         for (status, body) in [
             (200, catalog.clone()),
@@ -6102,7 +6104,7 @@ mod printing_standard_tests {
         let mut device = linked_device(transport.clone(), now());
         assert_eq!(
             device
-                .printing_standard(&PrintingStandardRequest::List {})
+                .printing_standard("project_a", &PrintingStandardRequest::List {})
                 .unwrap(),
             catalog["data"]
         );
@@ -6115,22 +6117,26 @@ mod printing_standard_tests {
             "print_standard_route_unavailable",
             "print_standard_invalid",
         ] {
-            let refused = map_printing_standard(device.printing_standard(&get).unwrap_err());
+            let refused =
+                map_printing_standard(device.printing_standard("project_a", &get).unwrap_err());
             assert_eq!(refused.code(), code);
         }
         let traversal = PrintingStandardRequest::Get {
             kind: PrintingStandardKind::A4,
             id: "../printing_defaults".into(),
         };
-        let refused = map_printing_standard(device.printing_standard(&traversal).unwrap_err());
+        let refused = map_printing_standard(
+            device
+                .printing_standard("project_a", &traversal)
+                .unwrap_err(),
+        );
         assert_eq!(refused.code(), "print_standard_request_invalid");
         let script = transport.lock();
-        let get_body =
-            json!({"action":"get","kind":"standard","id":"lv-transformer-a0-v1-network"});
+        let get_body = json!({"action":"get","scope":"project","project_id":"project_a","kind":"standard","id":"lv-transformer-a0-v1-network"});
         assert_eq!(
             script.printing_standard_bodies,
             vec![
-                json!({"action":"list"}),
+                json!({"action":"list","scope":"project","project_id":"project_a"}),
                 get_body.clone(),
                 get_body.clone(),
                 get_body
@@ -6139,6 +6145,39 @@ mod printing_standard_tests {
         assert_eq!(
             script.calls,
             vec![format!("printing_standard {DEVICE_ACCESS_TOKEN} device-1"); 4]
+        );
+    }
+    #[test]
+    fn interleaved_project_reads_keep_identity_and_refuse_crossed_response() {
+        let transport = FixtureTransport::default();
+        for project in ["project_a", "project_b", "project_b"] {
+            transport.lock().printing_standard.push_back(TransportResponse::new(200,
+                json!({"success":true,"data":{"schema":"ds.printing-standard-catalog/v1","scope":"project","project_id":project,"documents":[]}}).to_string().into_bytes()));
+        }
+        let mut device = linked_device(transport.clone(), now());
+        let request = PrintingStandardRequest::List {};
+        assert_eq!(
+            device.printing_standard("project_a", &request).unwrap()["project_id"],
+            "project_a"
+        );
+        assert_eq!(
+            device.printing_standard("project_b", &request).unwrap()["project_id"],
+            "project_b"
+        );
+        assert!(device.printing_standard("project_a", &request).is_err());
+        assert!(device.printing_standard("", &request).is_err());
+        let script = transport.lock();
+        assert_eq!(
+            script
+                .printing_standard_bodies
+                .iter()
+                .map(|body| body["project_id"].as_str().unwrap())
+                .collect::<Vec<_>>(),
+            vec!["project_a", "project_b", "project_a"]
+        );
+        assert_eq!(
+            script.calls,
+            vec![format!("printing_standard {DEVICE_ACCESS_TOKEN} device-1"); 3]
         );
     }
 }

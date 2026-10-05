@@ -1,7 +1,5 @@
-//! `ds report standard` — the governed global LV standard pages and A4 report
-//! documents a project binds by reference. ds-brain owns them and seeding owns
-//! every write; the shared printing library (`report layout list --scope
-//! global`) does not list them. This domain only reads them.
+//! Read governed documents held by one explicit project, outside its custom
+//! layout library. Template projects use the same ordinary project contract.
 use ds_cli_auth::{
     PRINT_STANDARD_INVALID_REFUSAL, PRINT_STANDARD_NOT_FOUND_REFUSAL,
     PRINT_STANDARD_REQUEST_INVALID_REFUSAL, PRINT_STANDARD_ROUTE_UNAVAILABLE_REFUSAL,
@@ -18,26 +16,33 @@ const LANE: Arg = ds_cli_contract::spec::LANE
     .placeholder("<lane>")
     .choices(&["canary", "stable"])
     .default("canary");
-const PURPOSE: &str = "Read the governed A0/A3 LV standard pages and the A4 voltage-drop document projects bind by reference; report layout list does not show them. Seeding owns every write.";
+const PROJECT: Arg = Arg::value(
+    "project",
+    "<exact-id>",
+    "Exact project holding the governed documents; the saved selection is never read.",
+)
+.required();
+const PURPOSE: &str = "Read only the named project's owned standard pages and A4 voltage-drop document; report layout list shows its custom layouts separately. A template is an ordinary project. Missing owned documents stay absent; no global fallback or seeding occurs.";
 
 pub static LIST: Command = Command {
     id: "report.standard.list",
     path: &["report", "standard", "list"],
-    contract: 1,
+    contract: 2,
     summary: "List the governed standard and A4 print documents.",
     purpose: PURPOSE,
     chapter: Chapter::Reports,
     effect: Effect::LocalAuthState,
-    authority: Authority::HeadlessUser,
+    authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[LANE],
-    output: "Catalogue schema, one row per document (kind, id, paper, role, revision, bound) and the bound defaults.",
+    args: &[PROJECT, LANE],
+    output: "Captured project identity and bounded document rows (kind, id, paper, role, revision/content pins, bound); no implicit defaults.",
     examples: &[Example {
-        command: "ds report standard list --output json",
+        command: "ds report standard list --project <exact-id> --output json",
         note: "Needs a restored session.",
         runnable: false,
     }],
     refusals: &[
+        PRINT_STANDARD_REQUEST_INVALID_REFUSAL,
         PRINT_STANDARD_INVALID_REFUSAL,
         PRINT_STANDARD_ROUTE_UNAVAILABLE_REFUSAL,
     ],
@@ -57,23 +62,24 @@ const GET_REFUSALS: &[Refusal] = &[
 pub static GET: Command = Command {
     id: "report.standard.get",
     path: &["report", "standard", "get"],
-    contract: 1,
+    contract: 2,
     summary: "Read one governed standard or A4 print document.",
     purpose: PURPOSE,
     chapter: Chapter::Reports,
     effect: Effect::LocalAuthState,
-    authority: Authority::HeadlessUser,
+    authority: Authority::HeadlessProject,
     execution: Execution::Sync,
     args: &[
+        PROJECT,
         LANE,
         Arg::value("kind", "<kind>", "standard page or a4 document.")
             .choices(&["standard", "a4"])
             .required(),
         Arg::value("id", "<id>", "Exact id from report.standard.list.").required(),
     ],
-    output: "standard: template, role, revision and print document. a4: definition and its HTML when the deployment holds it.",
+    output: "Captured project identity. standard: template, role, revision and document. a4: exact definition, governed body and revision/content/HTML pins.",
     examples: &[Example {
-        command: "ds report standard get --kind a4 --id voltage-drop-a4-v1 --output json",
+        command: "ds report standard get --project <exact-id> --kind a4 --id voltage-drop-a4-v1 --output json",
         note: "Needs a restored session.",
         runnable: false,
     }],
@@ -85,7 +91,11 @@ pub static GET: Command = Command {
 };
 
 pub fn list(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
-    ds_cli_auth::printing_standard(i.require("lane")?, &PrintingStandardRequest::List {})
+    ds_cli_auth::printing_standard(
+        i.require("lane")?,
+        i.require("project")?,
+        &PrintingStandardRequest::List {},
+    )
 }
 
 pub fn get(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
@@ -95,6 +105,7 @@ pub fn get(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
     };
     ds_cli_auth::printing_standard(
         i.require("lane")?,
+        i.require("project")?,
         &PrintingStandardRequest::Get {
             kind,
             id: i.require("id")?.into(),
@@ -125,4 +136,23 @@ pub fn render(data: &Value) -> String {
     }
     text.push_str(&format!("{} documents\n", rows.len()));
     text
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn owned_documents_capture_required_project_authority() {
+        for command in [&LIST, &GET] {
+            assert_eq!(command.authority, Authority::HeadlessProject);
+            assert!(
+                command
+                    .args
+                    .iter()
+                    .any(|arg| arg.name == "project" && arg.required)
+            );
+            assert!(!command.args.iter().any(|arg| arg.name == "scope"));
+        }
+    }
 }

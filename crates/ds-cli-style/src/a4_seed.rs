@@ -18,13 +18,13 @@ const PLAN: Arg = Arg::value(
     "Exact plan_sha256 from that same project/principal; destination changes refuse atomically.",
 )
 .required();
-const PURPOSE: &str = "Create only the fixed governed voltage-drop A4 status document. Plan holds its exact packaged HTML/body pins and definition, the authenticated project/principal and current destination. Creation requires styles.edit and map.defaults.edit; reads require project membership. Existing exact content is preserved, changed content refuses. No style, binding, layout, manifest head or printing-defaults pointer is changed. Review the plan, then confirm only this one document.";
+const PURPOSE: &str = "Create only the named project's fixed governed voltage-drop A4 status document. Plan holds its exact packaged HTML/body pins and definition, the authenticated project/principal and current destination. Creation requires printing.setup.edit for this exact project and lifecycle admission; reads require project membership. Global authority grants no fallback. Existing exact content is preserved, changed content refuses. No style, binding, layout, manifest head or printing-defaults pointer is changed. Review the plan, then confirm only this one document.";
 macro_rules! command {
     ($module:ident,$id:literal,$leaf:literal,$summary:literal,$effect:ident,$args:expr) => {
         pub mod $module {
             use super::*;
             pub static COMMAND: Command = Command {
-                id: $id, path: &["style", "catalogue", "a4", $leaf], contract: 1,
+                id: $id, path: &["style", "catalogue", "a4", $leaf], contract: 2,
                 summary: $summary, purpose: PURPOSE, chapter: Chapter::MapPresentation,
                 effect: Effect::$effect, authority: Authority::HeadlessProject, execution: Execution::Sync,
                 args: $args, output: "Fixed A4 definition/body/source digests, exact project/principal, destination state, create/preserve counts and plan SHA; create returns applied with its unchanged reviewed plan.",
@@ -63,7 +63,7 @@ command!(
 mod tests {
     use super::*;
     #[test]
-    fn a4_create_is_globally_confirmed_and_carries_both_reviewed_fences() {
+    fn a4_create_is_confirmed_for_project_authority_and_both_reviewed_fences() {
         assert_eq!(create::COMMAND.effect, Effect::GlobalWrite);
         assert_eq!(plan::COMMAND.effect, Effect::LocalAuthState);
         assert!(

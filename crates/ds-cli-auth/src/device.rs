@@ -836,9 +836,10 @@ impl<T: ds_client_core::Transport> DeviceSession<T> {
     }
     pub fn printing_standard(
         &mut self,
+        project: &str,
         request: &ds_client_core::PrintingStandardRequest,
     ) -> Result<serde_json::Value, ClientError> {
-        fixed_device_call!(self, printing_standard, request)
+        fixed_device_call!(self, printing_standard, project, request)
     }
     pub fn print_style_keys(
         &mut self,

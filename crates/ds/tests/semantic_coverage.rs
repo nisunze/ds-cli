@@ -929,12 +929,28 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("report.layout.render", "local_file_write", "none"),
     ("report.layout.list", "local_auth_state", "headless_user"),
     ("report.layout.get", "local_auth_state", "headless_user"),
-    // Governed global documents: a restored user, no project, read-only.
-    ("report.standard.list", "local_auth_state", "headless_user"),
-    ("report.standard.get", "local_auth_state", "headless_user"),
+    // Governed owned documents capture one explicit project under a restored identity.
+    (
+        "report.standard.list",
+        "local_auth_state",
+        "headless_project",
+    ),
+    (
+        "report.standard.get",
+        "local_auth_state",
+        "headless_project",
+    ),
     // Printing template style-key migration: plan reads, apply is a reviewed global write.
-    ("report.layout.style-keys.plan", "local_auth_state", "headless_user"),
-    ("report.layout.style-keys.apply", "global_write", "headless_user"),
+    (
+        "report.layout.style-keys.plan",
+        "local_auth_state",
+        "headless_user",
+    ),
+    (
+        "report.layout.style-keys.apply",
+        "global_write",
+        "headless_user",
+    ),
     ("report.layout.create", "global_write", "headless_user"),
     ("report.layout.update", "global_write", "headless_user"),
     ("report.layout.save", "global_write", "headless_user"),

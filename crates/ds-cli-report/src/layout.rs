@@ -45,7 +45,7 @@ const REQUEST: Arg = Arg::value("request", "<json-file>", "Bounded typed request
 const SCOPE: Arg = Arg::value(
     "scope",
     "<scope>",
-    "Global published samples, or customizations of the project named by --project.",
+    "Project-owned layouts. The legacy global value is refused before authentication.",
 )
 .choices(&["global", "project"])
 .required();
@@ -524,7 +524,7 @@ pub static LIST: Command = Command {
     id: "report.layout.list",
     path: &["report", "layout", "list"],
     contract: 1,
-    summary: "List published global samples or project printing setups.",
+    summary: "List printing setups held by the named project.",
     purpose: "Printing commands delegate to their owning Rust and native client contracts. Shared templates live in ds-brain; project scope names its project with --project. Geometry stays in ds-network and document validation in ds-command-kernel.",
     chapter: Chapter::Reports,
     effect: Effect::LocalAuthState,
@@ -607,8 +607,8 @@ pub static CREATE: Command = Command {
     id: "report.layout.create",
     path: &["report", "layout", "create"],
     contract: 1,
-    summary: "Create one global or project printing setup.",
-    purpose: "Publishes a validated layout as a new stable setup ID. Project scope is the project named by --project; global scope requires global printing authority.",
+    summary: "Create one project printing setup.",
+    purpose: "Publishes a validated layout as a new stable setup ID in the exact project named by --project; legacy global scope is refused.",
     chapter: Chapter::Reports,
     effect: Effect::GlobalWrite,
     authority: Authority::HeadlessUser,
@@ -626,7 +626,7 @@ pub static UPDATE: Command = Command {
     id: "report.layout.update",
     path: &["report", "layout", "update"],
     contract: 1,
-    summary: "Update one exact global or project printing revision.",
+    summary: "Update one exact project printing revision.",
     purpose: "Publishes a validated layout only when expected_revision still names the current setup. It never retries a conflict as an overwrite.",
     chapter: Chapter::Reports,
     effect: Effect::GlobalWrite,
@@ -645,7 +645,7 @@ pub static DELETE: Command = Command {
     id: "report.layout.delete",
     path: &["report", "layout", "delete"],
     contract: 1,
-    summary: "Delete one exact global or project printing revision.",
+    summary: "Delete one exact project printing revision.",
     purpose: "Deletes the named setup only when expected_revision is current. Brain retains the audited tombstone; copied templates remain independent.",
     chapter: Chapter::Reports,
     effect: Effect::GlobalWrite,
@@ -676,7 +676,7 @@ pub static COPY: Command = Command {
     path: &["report", "layout", "copy"],
     contract: 1,
     summary: "Copy an exact printing revision between libraries.",
-    purpose: "Performs global adoption, global promotion or same-library duplication as one Brain transaction. Project locations mean the project named by --project. The source remains unchanged.",
+    purpose: "Copies one exact revision between named projects or within one project as a Brain transaction. --project captures the destination; source.project may name another authorized project. The source remains unchanged.",
     chapter: Chapter::Reports,
     effect: Effect::GlobalWrite,
     authority: Authority::HeadlessUser,
@@ -699,7 +699,7 @@ pub fn new(_i: &Inputs, _c: &Context) -> Result<Value, Failure> {
 }
 pub fn schema(_i: &Inputs, _c: &Context) -> Result<Value, Failure> {
     Ok(
-        json!({"standards":ds_command_kernel::printing::standards::registry(),"mv_selection":ds_command_kernel::printing::mv::selection_schema(),"mv_resolved":ds_command_kernel::printing::mv::resolved_schema(),"map_request":ds_command_kernel::printing::map::request_schema(),"layout":ds_command_kernel::printing::layout_schema(),"edit":ds_command_kernel::printing::command_schema(),"output_selection":ds_command_kernel::report_formats::output_selection_schema(),"transactions":{"create":{"action":"create","layout":"<layout document>"},"update":{"action":"update","layout":"<layout document>","expected_revision":"<exact revision>"},"save":{"action":"save","layout":"<layout document>","expected_revision":"<empty to create, or the exact revision to update>"},"delete":"use --id and --expected-revision","copy":{"action":"copy","source":{"scope":"global|project","id":"<id>","revision":"<exact revision>"},"destination":{"scope":"global|project","id":"<new id>","name":"<optional name>","expected_revision":"<empty for create or exact revision>"}}},"render":"ds report tasks --task render_print_layout --output json"}),
+        json!({"standards":ds_command_kernel::printing::standards::registry(),"mv_selection":ds_command_kernel::printing::mv::selection_schema(),"mv_resolved":ds_command_kernel::printing::mv::resolved_schema(),"map_request":ds_command_kernel::printing::map::request_schema(),"layout":ds_command_kernel::printing::layout_schema(),"edit":ds_command_kernel::printing::command_schema(),"output_selection":ds_command_kernel::report_formats::output_selection_schema(),"transactions":{"create":{"action":"create","layout":"<layout document>"},"update":{"action":"update","layout":"<layout document>","expected_revision":"<exact revision>"},"save":{"action":"save","layout":"<layout document>","expected_revision":"<empty to create, or the exact revision to update>"},"delete":"use --id and --expected-revision","copy":{"action":"copy","source":{"scope":"project","project":"<optional exact source project>","id":"<id>","revision":"<exact revision>"},"destination":{"scope":"project","id":"<new id>","name":"<optional name>","expected_revision":"<empty for create or exact revision>"}}},"render":"ds report tasks --task render_print_layout --output json"}),
     )
 }
 pub fn edit(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
@@ -1177,7 +1177,7 @@ pub fn copy(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
     if !matches!(request, ds_cli_auth::PrintingRequest::Copy { .. }) {
         return Err(invalid("copy requires a copy request"));
     }
-    ds_cli_auth::printing(i.require("lane")?, true, i.value("project"), &request)
+    ds_cli_auth::printing(i.require("lane")?, false, i.value("project"), &request)
 }
 pub fn render(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
     // Copy input to a private scratch file so the bytes cannot change between validation and dispatch.

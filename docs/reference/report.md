@@ -513,36 +513,40 @@ its physical units, allowed elements and closed edit intents. `report.layout.edi
 --request edit.json` evaluates `{op:"edit",layout,element}` (or validate/remove)
 through command-kernel. It never changes an open desktop canvas.
 
-`report.layout.list --scope global` browses published samples. `report.layout.get
---scope global --id network-a3` returns a layout with its revision. Use
-`--scope project` for the native selected project's independent customizations.
-Both scope variants use the same protected native identity and accept no URL,
-token or project override. `--lane canary|stable` selects its credential lane.
+`report.layout.list --scope project --project <exact-id>` browses the named
+project's custom layouts. `report.layout.get --scope project --project
+<exact-id> --id <id>` returns a layout with its revision. These reads use the
+protected native identity and never read the saved selection. Legacy global
+scope is refused before authentication. `--lane canary|stable` selects its
+credential lane.
 
-`report.standard.list` reads what that library does not list: the governed
-A0/A3 LV standard pages (`kind: standard`) and the A4 voltage-drop document
-(`kind: a4`) every project binds by reference, plus the bound defaults.
-`report.standard.get --kind standard|a4 --id <id>` returns one: a page's
-template, role, revision and print document, or the A4 definition with its
-HTML when the deployment holds that exact body. Both are read-only; the
-reviewed seed (`ds style catalogue seed`) owns every write. A lane whose
-gateway does not publish `POST /api/v1/printing/standard` refuses with
-`print_standard_route_unavailable`.
+`report.standard.list --project <exact-id>` reads that project's owned standard
+pages (`kind: standard`) and A4 voltage-drop document (`kind: a4`). Missing
+project documents stay absent; neither a global default nor saved project
+selection is used. `report.standard.get --project <exact-id> --kind standard|a4
+--id <id>` returns the exact scoped document and revision pins; A4 also carries
+its full governed body and content/HTML pins. These are project-membership
+reads on the fixed `/api/v1/printing/standard` route. The native client refuses
+responses naming another project, including the A4 nested identity. Creation
+uses the separate reviewed `ds style catalogue a4 plan/create --project` door
+and named-project `printing.setup.edit` with lifecycle admission. An unpublished
+route keeps the named `print_standard_route_unavailable` refusal.
 
-Use `report.layout.create --scope global|project --request create.json --yes`
-with `{action:"create",layout}` for a new stable ID. Use
+Use `report.layout.create --scope project --project <exact-id> --request
+create.json --yes` with `{action:"create",layout}` for a new stable ID. Use
 `report.layout.update` with `{action:"update",layout,expected_revision}` for an
 existing setup, and `report.layout.delete --id ID --expected-revision REV` for
-an exact deletion. `report.layout.save` remains a compatibility command for
-older clients. Global writes require
-`map.defaults.edit`; project writes require `printing.setup.edit`, membership
-and an open project lifecycle. A conflict never becomes an unconditional save.
+an exact deletion, retaining explicit project scope. `report.layout.save`
+remains a compatibility command for older clients. Project writes require
+`printing.setup.edit`, membership and an open project lifecycle. A conflict
+never becomes an unconditional save.
 
-`report.layout.copy --request copy.json --yes` accepts one source and
-destination, each scoped `global` or `project`. It pins the exact source
-revision and creates with an empty destination revision or replaces an exact
-destination revision. Project scope always means the held selected project.
-This one transaction implements adoption, promotion and published duplication.
+`report.layout.copy --project <destination-project> --request copy.json --yes`
+accepts project-scoped source and destination. Optional `source.project`
+names another authorized project; absent, the source uses the destination
+project. It pins the exact source revision and creates with an empty
+destination revision or replaces an exact destination revision. The source
+remains unchanged and the destination keeps its pinned lineage.
 
 `report.layout.render --request render.json` calls the installed reporter's
 fixed `render-print-layout` task with held GeoJSON. Discover that task's complete
