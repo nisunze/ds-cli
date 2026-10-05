@@ -27,7 +27,7 @@ use rusqlite::{params, Connection, OpenFlags, OptionalExtension, TransactionBeha
 use std::path::Path;
 
 /// The on-disk schema this build reads and writes.
-pub const SCHEMA_VERSION: i64 = 1;
+pub const SCHEMA_VERSION: i64 = 2;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -60,8 +60,7 @@ CREATE TABLE IF NOT EXISTS artifacts(
     account TEXT NOT NULL, deployment TEXT NOT NULL, install_id TEXT NOT NULL,
     scope TEXT NOT NULL, engine TEXT NOT NULL, operation TEXT NOT NULL, variant TEXT NOT NULL,
     replay_key TEXT NOT NULL, state TEXT NOT NULL, updated_at_ms INTEGER NOT NULL, row TEXT NOT NULL,
-    PRIMARY KEY(account, deployment, install_id, scope, engine, operation, variant),
-    UNIQUE(account, deployment, install_id, replay_key));
+    PRIMARY KEY(account, deployment, install_id, replay_key));
 CREATE TABLE IF NOT EXISTS heads(
     account TEXT NOT NULL, deployment TEXT NOT NULL, install_id TEXT NOT NULL,
     scope TEXT NOT NULL, engine TEXT NOT NULL, operation TEXT NOT NULL, variant TEXT NOT NULL,
@@ -109,6 +108,105 @@ fn schema_version(connection: &Connection) -> Result<Option<i64>> {
             |row| row.get(0),
         )
         .optional()?)
+}
+
+// Version 2 retains earlier publication rows while the kernel sees one standing
+// row per identity. Unknown layouts refuse before a schema/version write.
+fn validate_artifacts_v2(connection: &Connection) -> Result<()> {
+    let columns = connection
+        .prepare("PRAGMA table_info(artifacts)")?
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, i64>(3)?,
+                row.get::<_, i64>(5)?,
+            ))
+        })?
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    let expected = [
+        ("account", "TEXT", 1, 1),
+        ("deployment", "TEXT", 1, 2),
+        ("install_id", "TEXT", 1, 3),
+        ("scope", "TEXT", 1, 0),
+        ("engine", "TEXT", 1, 0),
+        ("operation", "TEXT", 1, 0),
+        ("variant", "TEXT", 1, 0),
+        ("replay_key", "TEXT", 1, 4),
+        ("state", "TEXT", 1, 0),
+        ("updated_at_ms", "INTEGER", 1, 0),
+        ("row", "TEXT", 1, 0),
+    ];
+    if columns.len() != expected.len()
+        || columns.iter().zip(expected).any(|(actual, expected)| {
+            (actual.0.as_str(), actual.1.as_str(), actual.2, actual.3) != expected
+        })
+    {
+        return Err(Error::Open(
+            "schema 2 artifacts layout is unknown; all stored rows are left untouched".into(),
+        ));
+    }
+    let unique = connection
+        .prepare("PRAGMA index_list(artifacts)")?
+        .query_map([], |row| {
+            Ok((row.get::<_, i64>(2)?, row.get::<_, String>(3)?))
+        })?
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    if unique.iter().filter(|row| row.0 != 0).count() != 1
+        || !unique.iter().any(|row| row.0 != 0 && row.1 == "pk")
+    {
+        return Err(Error::Open(
+            "schema 2 artifact key is unknown; all stored rows are left untouched".into(),
+        ));
+    }
+    Ok(())
+}
+
+fn migrate_artifacts_v1(connection: &mut Connection) -> Result<()> {
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    let columns = transaction
+        .prepare("PRAGMA table_info(artifacts)")?
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, i64>(3)?,
+                row.get::<_, i64>(5)?,
+            ))
+        })?
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    let expected = [
+        ("account", "TEXT", 1, 1),
+        ("deployment", "TEXT", 1, 2),
+        ("install_id", "TEXT", 1, 3),
+        ("scope", "TEXT", 1, 4),
+        ("engine", "TEXT", 1, 5),
+        ("operation", "TEXT", 1, 6),
+        ("variant", "TEXT", 1, 7),
+        ("replay_key", "TEXT", 1, 0),
+        ("state", "TEXT", 1, 0),
+        ("updated_at_ms", "INTEGER", 1, 0),
+        ("row", "TEXT", 1, 0),
+    ];
+    if columns.len() != expected.len()
+        || columns.iter().zip(expected).any(|(actual, expected)| {
+            (actual.0.as_str(), actual.1.as_str(), actual.2, actual.3) != expected
+        })
+    {
+        return Err(Error::Open(
+            "schema 1 artifacts layout is unknown; migration left all rows untouched".into(),
+        ));
+    }
+    transaction.execute_batch("ALTER TABLE artifacts RENAME TO artifacts_v1;")?;
+    transaction.execute_batch(SCHEMA)?;
+    transaction.execute_batch("INSERT INTO artifacts SELECT account,deployment,install_id,scope,engine,operation,variant,replay_key,state,updated_at_ms,row FROM artifacts_v1; DROP TABLE artifacts_v1;")?;
+    validate_artifacts_v2(&transaction)?;
+    transaction.execute(
+        "UPDATE meta SET value=?1 WHERE key='schema_version'",
+        params![SCHEMA_VERSION],
+    )?;
+    transaction.commit()?;
+    Ok(())
 }
 
 fn scope_key(scope: &Scope) -> String {
@@ -169,7 +267,8 @@ impl Store {
     /// refused, never rewritten.
     pub fn open(path: &Path) -> Result<Self> {
         prepare_private(path).map_err(|error| Error::Open(error.to_string()))?;
-        let connection = Connection::open(path).map_err(|error| Error::Open(error.to_string()))?;
+        let mut connection =
+            Connection::open(path).map_err(|error| Error::Open(error.to_string()))?;
         connection.busy_timeout(std::time::Duration::from_secs(5))?;
         connection.pragma_update(None, "journal_mode", "WAL")?;
         // The power-loss guarantee, decided (owner, 2026-09-20, after a
@@ -181,7 +280,6 @@ impl Store {
         // that sees a few transitions per pass — against the durability of
         // every acknowledged row, receipt and lease. Durability wins.
         connection.pragma_update(None, "synchronous", "FULL")?;
-        connection.execute_batch(SCHEMA)?;
         let found = schema_version(&connection)?;
         match found {
             Some(found) if found > SCHEMA_VERSION => {
@@ -190,8 +288,28 @@ impl Store {
                     supported: SCHEMA_VERSION,
                 })
             }
-            Some(_) => {}
+            Some(2) => validate_artifacts_v2(&connection)?,
+            Some(1) => migrate_artifacts_v1(&mut connection)?,
+            Some(found) => {
+                return Err(Error::Open(format!(
+                    "unknown sync store schema {found}; store left untouched"
+                )))
+            }
             None => {
+                let existing: Option<i64> = connection
+                    .query_row(
+                        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='artifacts'",
+                        [],
+                        |row| row.get(0),
+                    )
+                    .optional()?;
+                if existing.is_some() {
+                    return Err(Error::Open(
+                        "an unversioned artifact store is unknown; all rows are left untouched"
+                            .into(),
+                    ));
+                }
+                connection.execute_batch(SCHEMA)?;
                 connection.execute(
                     "INSERT INTO meta(key, value) VALUES ('schema_version', ?1)",
                     params![SCHEMA_VERSION],
@@ -237,6 +355,13 @@ impl Store {
                     supported: SCHEMA_VERSION,
                 });
             }
+            if found == 2 {
+                validate_artifacts_v2(&connection)?;
+            } else if found != 1 {
+                return Err(Error::Open(format!(
+                    "unknown sync store schema {found}; store left untouched"
+                )));
+            }
         }
         Ok(Some(Store { connection }))
     }
@@ -269,7 +394,7 @@ impl Store {
         let key = scope_key(scope);
         let artifacts = Self::rows_on::<ArtifactRow>(
             connection,
-            "SELECT row FROM artifacts WHERE account=?1 AND deployment=?2 AND install_id=?3 AND scope=?4 ORDER BY engine, operation, variant",
+            "SELECT row FROM artifacts WHERE account=?1 AND deployment=?2 AND install_id=?3 AND scope=?4 AND NOT EXISTS (SELECT 1 FROM artifacts newer WHERE newer.account=artifacts.account AND newer.deployment=artifacts.deployment AND newer.install_id=artifacts.install_id AND newer.scope=artifacts.scope AND newer.engine=artifacts.engine AND newer.operation=artifacts.operation AND newer.variant=artifacts.variant AND newer.rowid>artifacts.rowid) ORDER BY engine, operation, variant",
             fence,
             &key,
         )?;
@@ -317,7 +442,7 @@ impl Store {
     /// Every artifact row of one fence, across scopes.
     pub fn artifacts_of_fence(&self, fence: &Fence) -> Result<Vec<ArtifactRow>> {
         self.rows::<ArtifactRow>(
-            "SELECT row FROM artifacts WHERE account=?1 AND deployment=?2 AND install_id=?3 AND ?4 = ?4 ORDER BY scope, engine, operation, variant",
+            "SELECT row FROM artifacts WHERE account=?1 AND deployment=?2 AND install_id=?3 AND ?4 = ?4 AND NOT EXISTS (SELECT 1 FROM artifacts newer WHERE newer.account=artifacts.account AND newer.deployment=artifacts.deployment AND newer.install_id=artifacts.install_id AND newer.scope=artifacts.scope AND newer.engine=artifacts.engine AND newer.operation=artifacts.operation AND newer.variant=artifacts.variant AND newer.rowid>artifacts.rowid) ORDER BY scope, engine, operation, variant",
             fence,
             "",
         )
@@ -665,11 +790,12 @@ fn event_scope(event: &Event) -> Scope {
 fn persist(tx: &rusqlite::Transaction<'_>, fence: &Fence, change: &RowChange) -> Result<()> {
     match change {
         RowChange::UpsertArtifact(row) => {
-            tx.execute(
+            let changed = tx.execute(
                 "INSERT INTO artifacts(account, deployment, install_id, scope, engine, operation, variant, replay_key, state, updated_at_ms, row)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
-                 ON CONFLICT(account, deployment, install_id, scope, engine, operation, variant)
-                 DO UPDATE SET replay_key=excluded.replay_key, state=excluded.state, updated_at_ms=excluded.updated_at_ms, row=excluded.row",
+                 ON CONFLICT(account, deployment, install_id, replay_key)
+                 DO UPDATE SET state=excluded.state, updated_at_ms=excluded.updated_at_ms, row=excluded.row
+                 WHERE artifacts.scope=excluded.scope AND artifacts.engine=excluded.engine AND artifacts.operation=excluded.operation AND artifacts.variant=excluded.variant",
                 params![
                     fence.account, fence.deployment, fence.install_id, scope_key(&row.scope),
                     row.identity.engine, row.identity.operation, row.identity.variant,
@@ -677,6 +803,9 @@ fn persist(tx: &rusqlite::Transaction<'_>, fence: &Fence, change: &RowChange) ->
                     serde_json::to_string(row)?
                 ],
             )?;
+            if changed != 1 {
+                return Err(Error::Kernel("replay_key_taken".into()));
+            }
         }
         RowChange::ReplaceHeads {
             scope,

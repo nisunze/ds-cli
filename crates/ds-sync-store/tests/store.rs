@@ -10,6 +10,200 @@ use ds_sync_store::{Error, Store, SCHEMA_VERSION};
 
 const SHA: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
+fn downgrade_fixture_to_v1(path: &std::path::Path) {
+    let raw = rusqlite::Connection::open(path).unwrap();
+    raw.execute_batch("BEGIN IMMEDIATE;
+        ALTER TABLE artifacts RENAME TO artifacts_v2;
+        CREATE TABLE artifacts(account TEXT NOT NULL, deployment TEXT NOT NULL, install_id TEXT NOT NULL,
+        scope TEXT NOT NULL, engine TEXT NOT NULL, operation TEXT NOT NULL, variant TEXT NOT NULL,
+        replay_key TEXT NOT NULL, state TEXT NOT NULL, updated_at_ms INTEGER NOT NULL, row TEXT NOT NULL,
+        PRIMARY KEY(account,deployment,install_id,scope,engine,operation,variant),
+        UNIQUE(account,deployment,install_id,replay_key));
+        INSERT INTO artifacts SELECT * FROM artifacts_v2; DROP TABLE artifacts_v2;
+        UPDATE meta SET value=1 WHERE key='schema_version'; COMMIT;").unwrap();
+}
+
+#[test]
+fn v1_upgrade_preserves_artifact_bytes_and_receipts() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("store.sqlite");
+    let mut store = Store::open(&path).unwrap();
+    store
+        .apply(
+            &fence("alice"),
+            1,
+            Event::LocalProduced {
+                row: row("a", "k1"),
+            },
+        )
+        .unwrap();
+    let before = store.snapshot(&fence("alice"), &scope()).unwrap().artifacts;
+    drop(store);
+    downgrade_fixture_to_v1(&path);
+    let store = Store::open(&path).unwrap();
+    assert_eq!(
+        store.snapshot(&fence("alice"), &scope()).unwrap().artifacts,
+        before
+    );
+    assert_eq!(
+        store
+            .connection_for_test()
+            .query_row(
+                "SELECT value FROM meta WHERE key='schema_version'",
+                [],
+                |r| r.get::<_, i64>(0)
+            )
+            .unwrap(),
+        2
+    );
+}
+
+#[test]
+fn unknown_legacy_or_unversioned_artifacts_are_not_silently_relabelled() {
+    for unversioned in [false, true] {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("store.sqlite");
+        let mut store = Store::open(&path).unwrap();
+        store
+            .apply(
+                &fence("alice"),
+                1,
+                Event::LocalProduced {
+                    row: row("a", "k1"),
+                },
+            )
+            .unwrap();
+        drop(store);
+        downgrade_fixture_to_v1(&path);
+        let connection = rusqlite::Connection::open(&path).unwrap();
+        if unversioned {
+            connection
+                .execute("DELETE FROM meta WHERE key='schema_version'", [])
+                .unwrap();
+        } else {
+            connection
+                .execute(
+                    "ALTER TABLE artifacts ADD COLUMN unknown_owner_data TEXT",
+                    [],
+                )
+                .unwrap();
+        }
+        let before: String = connection
+            .query_row("SELECT row FROM artifacts", [], |row| row.get(0))
+            .unwrap();
+        drop(connection);
+        assert!(Store::open(&path).is_err());
+        let connection = rusqlite::Connection::open(&path).unwrap();
+        assert_eq!(
+            connection
+                .query_row("SELECT row FROM artifacts", [], |row| row
+                    .get::<_, String>(0))
+                .unwrap(),
+            before
+        );
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT count(*) FROM meta WHERE key='schema_version' AND value=2",
+                    [],
+                    |row| row.get::<_, i64>(0)
+                )
+                .unwrap(),
+            0
+        );
+    }
+}
+
+#[test]
+fn v2_keeps_prior_publication_rows_and_projects_one_standing_identity() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("store.sqlite");
+    let mut store = Store::open(&path).unwrap();
+    store
+        .apply(
+            &fence("alice"),
+            1,
+            Event::LocalProduced {
+                row: row("a", "k1"),
+            },
+        )
+        .unwrap();
+    let mut later = row("a", "k2");
+    later.sha256 = "b".repeat(64);
+    later.produced_at_ms = 2;
+    store
+        .apply(&fence("alice"), 2, Event::LocalProduced { row: later })
+        .unwrap();
+    drop(store);
+    let store = Store::open_read_only(&path).unwrap().unwrap();
+    assert_eq!(
+        store.snapshot(&fence("alice"), &scope()).unwrap().artifacts[0].replay_key,
+        "k2"
+    );
+    assert_eq!(store.artifacts_of_fence(&fence("alice")).unwrap().len(), 1);
+    assert_eq!(
+        store
+            .connection_for_test()
+            .query_row("SELECT count(*) FROM artifacts", [], |r| r.get::<_, i64>(0))
+            .unwrap(),
+        2
+    );
+    let first: String = store
+        .connection_for_test()
+        .query_row("SELECT row FROM artifacts WHERE replay_key='k1'", [], |r| {
+            r.get(0)
+        })
+        .unwrap();
+    assert_eq!(
+        serde_json::from_str::<ArtifactRow>(&first).unwrap().sha256,
+        SHA
+    );
+    assert!(store
+        .snapshot(&fence("bob"), &scope())
+        .unwrap()
+        .artifacts
+        .is_empty());
+}
+
+#[test]
+fn unknown_v2_layout_refuses_without_relabeling_or_losing_rows() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("store.sqlite");
+    let mut store = Store::open(&path).unwrap();
+    store
+        .apply(
+            &fence("alice"),
+            1,
+            Event::LocalProduced {
+                row: row("a", "k1"),
+            },
+        )
+        .unwrap();
+    drop(store);
+    downgrade_fixture_to_v1(&path);
+    let raw = rusqlite::Connection::open(&path).unwrap();
+    raw.execute("UPDATE meta SET value=2 WHERE key='schema_version'", [])
+        .unwrap();
+    drop(raw);
+    assert!(Store::open(&path).is_err());
+    assert!(Store::open_read_only(&path).is_err());
+    let raw = rusqlite::Connection::open(&path).unwrap();
+    assert_eq!(
+        raw.query_row(
+            "SELECT value FROM meta WHERE key='schema_version'",
+            [],
+            |r| r.get::<_, i64>(0)
+        )
+        .unwrap(),
+        2
+    );
+    assert_eq!(
+        raw.query_row("SELECT count(*) FROM artifacts", [], |r| r.get::<_, i64>(0))
+            .unwrap(),
+        1
+    );
+}
+
 fn fence(account: &str) -> Fence {
     Fence {
         account: account.into(),
