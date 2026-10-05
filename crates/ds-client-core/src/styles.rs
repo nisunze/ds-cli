@@ -269,10 +269,13 @@ pub(crate) fn governance<T: crate::AuthorizedTransport>(
         command,
         ds_command_kernel::style_governance::Command::PlanA4
             | ds_command_kernel::style_governance::Command::CreateA4 { .. }
+            | ds_command_kernel::style_governance::Command::PlanBinding { .. }
+            | ds_command_kernel::style_governance::Command::CreateBinding { .. }
     ) {
         let plan = if matches!(
             command,
             ds_command_kernel::style_governance::Command::CreateA4 { .. }
+                | ds_command_kernel::style_governance::Command::CreateBinding { .. }
         ) {
             &admitted["plan"]
         } else {
@@ -280,7 +283,7 @@ pub(crate) fn governance<T: crate::AuthorizedTransport>(
         };
         if plan["principal"] != authority.email {
             return Err(governance_refused(
-                "project_context_changed: A4 plan belongs to another captured principal",
+                "project_context_changed: governed style plan belongs to another captured principal",
             ));
         }
     }

@@ -13876,7 +13876,7 @@ fn fixed_a4_seed_uses_the_existing_native_styles_route_and_rejects_another_princ
     let transport = FixtureTransport::with_sign_in(SIGN_IN);
     let mut client = signed_in(transport.clone(), MemoryStore::default());
     let definition = serde_json::json!({"schema":"ds.print-a4-default/v1","html_sha256":"a".repeat(64),"content_sha256":"b".repeat(64),"status_layout":{"paper":{"size":"A4","orientation":"portrait"}},"logo_slots":["governed-logo-0","governed-logo-1","governed-logo-2","governed-logo-3","governed-logo-4","governed-logo-5"]});
-    let mut plan = serde_json::json!({"schema":"ds.print-a4-seed-plan/v1","project_id":"project_a","principal":"user@example.com","document_path":"eds_apps/ds_griddesign/printing_a4_documents/voltage-drop-a4-v1","definition_sha256":ds_command_kernel::style_plan::style_digest(&definition),"content_sha256":"b".repeat(64),"html_sha256":"a".repeat(64),"definition":definition,"existing_state":"missing","creates":1,"preserves":0,"apply_allowed":true,"plan_sha256":""});
+    let mut plan = serde_json::json!({"schema":"ds.print-a4-seed-plan/v1","project_id":"project_a","principal":"user@example.com","document_path":"eds_project/project_a/printing_a4_documents/voltage-drop-a4-v1","definition_sha256":ds_command_kernel::style_plan::style_digest(&definition),"content_sha256":"b".repeat(64),"html_sha256":"a".repeat(64),"definition":definition,"existing_state":"missing","creates":1,"preserves":0,"apply_allowed":true,"plan_sha256":""});
     plan["plan_sha256"] = serde_json::json!(ds_command_kernel::style_plan::style_digest(&plan));
     push_styles(&transport, serde_json::json!({"success":true,"data":plan}));
     let admitted = client
@@ -13927,4 +13927,42 @@ fn fixed_a4_seed_uses_the_existing_native_styles_route_and_rejects_another_princ
     assert!(client
         .style_governance("project_a", &Command::PlanA4, NOW + 1)
         .is_err());
+}
+
+#[test]
+fn print_binding_uses_captured_authority_and_refuses_a_rehashed_other_principal() {
+    use ds_command_kernel::{style_governance::Command, style_resolution::{Ink, Key, Target}};
+    let transport = FixtureTransport::with_sign_in(SIGN_IN);
+    let mut client = signed_in(transport.clone(), MemoryStore::default());
+    let key = Key {
+        entity_class:"survey_existing_poles".into(), source_kind:"live_geojson".into(),
+        target:Target::Print, role:"project".into(), ink:Ink::Colour,
+    };
+    let command = Command::PlanBinding {key:key.clone(), style_ref:"lv_poles_as_built_print".into()};
+    let mut plan = serde_json::json!({
+        "schema":"ds.style-binding-plan/v1", "project_id":"project_a", "principal":"user@example.com",
+        "key":key,"style_ref":"lv_poles_as_built_print","manifest_revision":"a".repeat(64),
+        "style_head_sha256":"b".repeat(64),"style_content_sha256":"c".repeat(64),
+        "style_update_time":"2026-10-05T00:00:00Z","next_manifest_revision":"d".repeat(64),
+        "adds_document":false,"creates":1,"preserves":0,"apply_allowed":true,"plan_sha256":""
+    });
+    plan["plan_sha256"] = serde_json::json!(ds_command_kernel::style_plan::style_digest(&plan));
+    push_styles(&transport, serde_json::json!({"success":true,"data":plan}));
+    assert_eq!(client.style_governance("project_a", &command, NOW + 1).unwrap()["creates"], 1);
+    let before = transport.calls().len();
+    assert!(client.style_governance("project_a", &Command::CreateBinding {
+        key, style_ref:"lv_poles_as_built_print".into(),
+        expected_manifest_revision:"bad".into(),expected_plan_sha256:"a".repeat(64),
+    }, NOW + 1).is_err());
+    assert_eq!(transport.calls().len(), before);
+    for mutation in ["project", "principal"] {
+        let mut bad = plan.clone();
+        bad[if mutation == "project" {"project_id"} else {"principal"}] =
+            serde_json::json!(if mutation == "project" {"project_b"} else {"other@example.com"});
+        bad["plan_sha256"] = serde_json::json!("");
+        bad["plan_sha256"] = serde_json::json!(ds_command_kernel::style_plan::style_digest(&bad));
+        push_styles(&transport, serde_json::json!({"success":true,"data":bad}));
+        let error = client.style_governance("project_a", &command, NOW + 1).unwrap_err();
+        assert_eq!(error.service_refusal().and_then(|refusal| refusal.code()), Some("project_context_changed"));
+    }
 }

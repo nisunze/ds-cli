@@ -10,6 +10,16 @@ pub enum Command {
     Table,
     Manifest,
     PlanSeed,
+    PlanBinding {
+        key: crate::style_resolution::Key,
+        style_ref: String,
+    },
+    CreateBinding {
+        key: crate::style_resolution::Key,
+        style_ref: String,
+        expected_manifest_revision: String,
+        expected_plan_sha256: String,
+    },
     PlanA4,
     CreateA4 {
         expected_definition_sha256: String,
@@ -68,6 +78,8 @@ impl Command {
             Self::Table => "get_style_table",
             Self::Manifest => "get_seed_manifest",
             Self::PlanSeed => "plan_seed_manifest",
+            Self::PlanBinding { .. } => "plan_style_binding",
+            Self::CreateBinding { .. } => "create_style_binding",
             Self::PlanA4 => "plan_printing_a4",
             Self::CreateA4 { .. } => "create_printing_a4",
             Self::Seed { .. } => "seed_manifest",
@@ -84,6 +96,23 @@ pub fn request_body(request: &Request) -> Result<Value, String> {
     }
     let mut data = json!({"project_id":request.project});
     match &request.command {
+        Command::PlanBinding { key, style_ref } | Command::CreateBinding { key, style_ref, .. } => {
+            validate_binding(key, style_ref)?;
+            data["key"] = json!(key);
+            data["style_ref"] = json!(style_ref);
+            if let Command::CreateBinding {
+                expected_manifest_revision,
+                expected_plan_sha256,
+                ..
+            } = &request.command
+            {
+                if !digest(expected_manifest_revision) || !digest(expected_plan_sha256) {
+                    return Err("style_governance_invalid: binding create needs its reviewed manifest and plan digests".into());
+                }
+                data["expected_manifest_revision"] = json!(expected_manifest_revision);
+                data["expected_plan_sha256"] = json!(expected_plan_sha256);
+            }
+        }
         Command::CreateA4 {
             expected_definition_sha256,
             expected_plan_sha256,
@@ -174,6 +203,31 @@ pub fn admit(request: &Request, response: &Value) -> Result<Value, String> {
         }
     }
     match &request.command {
+        Command::PlanBinding { key, style_ref } => {
+            admit_binding_plan(request, key, style_ref, data)?;
+        }
+        Command::CreateBinding {
+            key,
+            style_ref,
+            expected_manifest_revision,
+            expected_plan_sha256,
+        } => {
+            if data.as_object().is_none_or(|object| object.len() != 6)
+                || data["schema"] != "ds.style-binding-result/v1"
+                || data["applied"] != true
+            {
+                return Err("style_governance_invalid: incomplete binding create receipt".into());
+            }
+            let plan = admit_binding_plan(request, key, style_ref, &data["plan"])?;
+            if plan.manifest_revision != *expected_manifest_revision
+                || plan.plan_sha256 != *expected_plan_sha256
+                || data["created"] != (plan.creates == 1)
+                || data["preserved"] != (plan.preserves == 1)
+                || data["manifest_revision"] != plan.next_manifest_revision
+            {
+                return Err("style_governance_invalid: binding create differs from its reviewed manifest or plan".into());
+            }
+        }
         Command::PlanA4 => {
             admit_a4_plan(request, data)?;
         }
@@ -324,6 +378,82 @@ pub fn admit(request: &Request, response: &Value) -> Result<Value, String> {
     }
     Ok(data.clone())
 }
+
+fn validate_binding(key: &crate::style_resolution::Key, style_ref: &str) -> Result<(), String> {
+    key.validate()
+        .map_err(|error| format!("style_governance_invalid: {error}"))?;
+    if key.target != crate::style_resolution::Target::Print
+        || !exact(style_ref, 500)
+        || !style_ref.ends_with("_print")
+    {
+        return Err("style_governance_invalid: binding requires an exact print key and existing _print style ref".into());
+    }
+    Ok(())
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct BindingPlan {
+    schema: String,
+    project_id: String,
+    principal: String,
+    key: crate::style_resolution::Key,
+    style_ref: String,
+    manifest_revision: String,
+    style_head_sha256: String,
+    style_content_sha256: String,
+    style_update_time: String,
+    next_manifest_revision: String,
+    adds_document: bool,
+    creates: u8,
+    preserves: u8,
+    apply_allowed: bool,
+    plan_sha256: String,
+}
+
+fn admit_binding_plan(
+    request: &Request,
+    key: &crate::style_resolution::Key,
+    style_ref: &str,
+    data: &Value,
+) -> Result<BindingPlan, String> {
+    validate_binding(key, style_ref)?;
+    let plan: BindingPlan = serde_json::from_value(data.clone())
+        .map_err(|error| format!("style_governance_invalid: binding plan {error}"))?;
+    if plan.project_id != request.project {
+        return Err(
+            "project_context_changed: binding plan belongs to another captured project".into(),
+        );
+    }
+    let state_valid = match (plan.creates, plan.preserves) {
+        (1, 0) => plan.next_manifest_revision != plan.manifest_revision,
+        (0, 1) => !plan.adds_document && plan.next_manifest_revision == plan.manifest_revision,
+        _ => false,
+    };
+    let mut unhashed = data.clone();
+    unhashed["plan_sha256"] = json!("");
+    if plan.schema != "ds.style-binding-plan/v1"
+        || plan.key != *key
+        || plan.style_ref != style_ref
+        || !exact(&plan.principal, 320)
+        || !digest(&plan.manifest_revision)
+        || !digest(&plan.style_head_sha256)
+        || !digest(&plan.style_content_sha256)
+        || !digest(&plan.next_manifest_revision)
+        || !digest(&plan.plan_sha256)
+        || !state_valid
+        || !plan.apply_allowed
+        || time::OffsetDateTime::parse(
+            &plan.style_update_time,
+            &time::format_description::well_known::Rfc3339,
+        )
+        .is_err()
+        || plan.plan_sha256 != crate::style_plan::style_digest(&unhashed)
+    {
+        return Err("style_governance_invalid: binding scope, exact key/style, state or plan digest differs".into());
+    }
+    Ok(plan)
+}
 // This remains a fixed reference; neither host supplies an arbitrary path/body.
 fn a4_document_path(project: &str) -> String {
     format!("eds_project/{project}/printing_a4_documents/voltage-drop-a4-v1")
@@ -420,6 +550,155 @@ fn admit_a4_plan(request: &Request, data: &Value) -> Result<A4SeedPlan, String> 
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn binding_key() -> crate::style_resolution::Key {
+        crate::style_resolution::Key {
+            entity_class: "survey_existing_poles".into(),
+            source_kind: "live_geojson".into(),
+            target: crate::style_resolution::Target::Print,
+            role: "project".into(),
+            ink: crate::style_resolution::Ink::Colour,
+        }
+    }
+    fn binding_fixture_plan() -> Value {
+        let mut plan = json!({
+            "schema":"ds.style-binding-plan/v1", "project_id":"project_a",
+            "principal":"user@example.com", "key":binding_key(),
+            "style_ref":"lv_poles_as_built_print", "manifest_revision":"a".repeat(64),
+            "style_head_sha256":"b".repeat(64), "style_content_sha256":"c".repeat(64),
+            "style_update_time":"2026-10-05T00:00:00.123456789Z",
+            "next_manifest_revision":"d".repeat(64), "adds_document":false,
+            "creates":1, "preserves":0, "apply_allowed":true, "plan_sha256":""
+        });
+        plan["plan_sha256"] = json!(crate::style_plan::style_digest(&plan));
+        plan
+    }
+    #[test]
+    fn binding_authority_is_print_only_and_refuses_unrequested_plan_effects() {
+        let request = Request {
+            project: "project_a".into(),
+            command: Command::PlanBinding {
+                key: binding_key(),
+                style_ref: "lv_poles_as_built_print".into(),
+            },
+        };
+        let body = request_body(&request).unwrap();
+        assert_eq!(body["action"], "plan_style_binding");
+        assert_eq!(body["data"].as_object().unwrap().len(), 3);
+        assert!(body["data"]["key"].get("ink").is_none());
+        let plan = binding_fixture_plan();
+        assert!(admit(&request, &json!({"success":true,"data":plan})).is_ok());
+        for mutation in [
+            "project",
+            "key",
+            "style",
+            "default",
+            "count",
+            "timestamp",
+            "hash",
+        ] {
+            let mut bad = plan.clone();
+            match mutation {
+                "project" => bad["project_id"] = json!("project_b"),
+                "key" => bad["key"]["source_kind"] = json!("saved_design"),
+                "style" => bad["style_ref"] = json!("other_print"),
+                "default" => bad["default_pointer"] = json!("other"),
+                "count" => bad["creates"] = json!(2),
+                "timestamp" => bad["style_update_time"] = json!("not-a-timestamp"),
+                _ => {}
+            }
+            bad["plan_sha256"] = json!("");
+            bad["plan_sha256"] = json!(crate::style_plan::style_digest(&bad));
+            if mutation == "hash" {
+                bad["style_head_sha256"] = json!("e".repeat(64));
+            }
+            assert!(
+                admit(&request, &json!({"success":true,"data":bad})).is_err(),
+                "{mutation}"
+            );
+        }
+        let mut key = binding_key();
+        key.target = crate::style_resolution::Target::Screen;
+        assert!(request_body(&Request {
+            project: "project_a".into(),
+            command: Command::PlanBinding {
+                key,
+                style_ref: "lv_poles_as_built_print".into()
+            },
+        })
+        .is_err());
+        assert!(serde_json::from_value::<Command>(json!({
+            "operation":"plan_binding", "key":binding_key(),
+            "style_ref":"lv_poles_as_built_print", "document":{}
+        }))
+        .is_err());
+    }
+    #[test]
+    fn binding_create_preserves_existing_tuple_and_checks_both_reviewed_fences() {
+        let mut plan = binding_fixture_plan();
+        for preserve in [false, true] {
+            if preserve {
+                plan["creates"] = json!(0);
+                plan["preserves"] = json!(1);
+                plan["next_manifest_revision"] = plan["manifest_revision"].clone();
+                plan["plan_sha256"] = json!("");
+                plan["plan_sha256"] = json!(crate::style_plan::style_digest(&plan));
+            }
+            let mut request = Request {
+                project: "project_a".into(),
+                command: Command::CreateBinding {
+                    key: binding_key(),
+                    style_ref: "lv_poles_as_built_print".into(),
+                    expected_manifest_revision: plan["manifest_revision"].as_str().unwrap().into(),
+                    expected_plan_sha256: plan["plan_sha256"].as_str().unwrap().into(),
+                },
+            };
+            let body = request_body(&request).unwrap();
+            assert_eq!(body["action"], "create_style_binding");
+            assert_eq!(body["data"].as_object().unwrap().len(), 5);
+            let receipt = json!({"success":true,"data":{
+                "schema":"ds.style-binding-result/v1", "applied":true,
+                "created":!preserve,"preserved":preserve,"plan":plan,
+                "manifest_revision":plan["next_manifest_revision"]
+            }});
+            assert!(admit(&request, &receipt).is_ok());
+            if let Command::CreateBinding {
+                expected_manifest_revision,
+                ..
+            } = &mut request.command
+            {
+                *expected_manifest_revision = "f".repeat(64);
+            }
+            assert!(admit(&request, &receipt).is_err());
+            if let Command::CreateBinding {
+                expected_manifest_revision,
+                expected_plan_sha256,
+                ..
+            } = &mut request.command
+            {
+                *expected_manifest_revision = plan["manifest_revision"].as_str().unwrap().into();
+                *expected_plan_sha256 = "f".repeat(64);
+            }
+            assert!(admit(&request, &receipt).is_err());
+        }
+    }
+    #[test]
+    #[ignore = "requires exact fresh Go binding-plan bytes; mandatory separate owning gate"]
+    fn genuine_go_binding_plan_has_the_same_native_digest_and_scope() {
+        let path = std::env::var("DS_STYLE_BINDING_PLAN_INPUT")
+            .expect("fresh owning Go producer capture is required");
+        let response: Value = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+        let plan = &response["data"];
+        let request = Request {
+            project: plan["project_id"].as_str().unwrap().into(),
+            command: Command::PlanBinding {
+                key: serde_json::from_value(plan["key"].clone()).unwrap(),
+                style_ref: plan["style_ref"].as_str().unwrap().into(),
+            },
+        };
+        let admitted = admit(&request, &response).unwrap();
+        assert_eq!(admitted["creates"], 1);
+        assert_eq!(admitted["preserves"], 0);
+    }
     #[test]
     fn effects_are_closed_and_fenced_without_a_deletion_command() {
         let mut request = Request {
