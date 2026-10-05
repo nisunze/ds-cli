@@ -658,6 +658,26 @@ operations; `ds report layout pens` is the same surface headlessly.
 
 ## Printable inventory and preview admission
 
+The inventory carries exact saved `layers.customers` and `layers.lv_poles`
+counts when present. `preview_cases` identifies the smallest and largest of
+each among the returned rows, with stable name order for ties. Missing or
+noninteger counts remain absent; `more.omitted` states when this is a partial
+inventory.
+
+Each row's `voltage_drop` describes its held saved-JSON candidate, separately
+from map availability. `saved_json` requires a positive exact server version,
+matching server/receipt content digest, the admitted analysis schema/method,
+all four byte/producer digest pins, bounded JSON size and a consistent summary.
+Its verdict is the producer's `complies`, `complies_with_reinforcement`,
+`does_not_comply`, `incomplete`, `refused` or `reserved`; no voltage threshold
+or recommendation is calculated by the inventory. `rule_confirmed` passes
+through the actual producer value without an assumed default. Missing, stale,
+malformed and locally edited rows cannot offer saved JSON.
+
+This projection does not authorize rendering by itself. The consumer must
+freshly read the exact saved analysis under version, content and analysis
+pins, and admit its current nature/configuration binding before rendering.
+
 `printable_transformers` takes status `rows`, optional account-fenced host
 `rooms`, `current_user`, and a `limit` of 1 through 500. Reserved names use
 `design::row_kind`, so aggregate, analysis and project-document rows remain

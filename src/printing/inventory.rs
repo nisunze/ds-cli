@@ -37,6 +37,42 @@ pub struct PrintableRow {
     /// `metadata.version`, else the client's base server version, else 0 —
     /// read as JavaScript's `Number` read it (`null` for what it could not).
     pub server_version: Value,
+    pub customers: Option<u64>,
+    pub poles: Option<u64>,
+    /// Eligibility from the held server receipt only. Rendering still reads
+    /// the exact saved JSON under all three pins and validates current inputs.
+    pub voltage_drop: VoltageDropPreview,
+}
+
+#[derive(Debug, Clone, Serialize, JsonSchema, PartialEq)]
+pub struct VoltageDropPreview {
+    pub state: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rule_confirmed: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub verdict: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub analysis_sha256: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content_digest: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub version: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, JsonSchema, PartialEq)]
+pub struct CountCase {
+    pub name: String,
+    pub count: u64,
+}
+
+#[derive(Debug, Clone, Serialize, JsonSchema, PartialEq)]
+pub struct PreviewCases {
+    /// Cases describe only the returned inventory; `more.omitted` remains
+    /// explicit when the caller requested a partial inventory.
+    pub smallest_customers: Option<CountCase>,
+    pub largest_customers: Option<CountCase>,
+    pub smallest_poles: Option<CountCase>,
+    pub largest_poles: Option<CountCase>,
 }
 
 #[derive(Debug, Clone, Serialize, JsonSchema, PartialEq)]
@@ -49,6 +85,117 @@ pub struct Inventory {
     pub total: usize,
     pub transformers: Vec<PrintableRow>,
     pub more: More,
+    pub preview_cases: PreviewCases,
+}
+
+fn digest(value: &Value) -> Option<&str> {
+    value.as_str().filter(|text| {
+        text.len() == 64
+            && text
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    })
+}
+
+fn voltage_drop(row: &Map<String, Value>, dirty: bool) -> VoltageDropPreview {
+    let unavailable = |state: &str| VoltageDropPreview {
+        state: state.into(),
+        rule_confirmed: None,
+        verdict: None,
+        analysis_sha256: None,
+        content_digest: None,
+        version: None,
+    };
+    if dirty {
+        return unavailable("local_changes");
+    }
+    let Some(receipt) = row.get("voltage_drop_metadata").and_then(Value::as_object) else {
+        return unavailable("missing");
+    };
+    match receipt.get("state").and_then(Value::as_str) {
+        Some("missing") => return unavailable("missing"),
+        Some("stale") => return unavailable("stale"),
+        Some("ready") => {}
+        _ => return unavailable("invalid_receipt"),
+    }
+    let metadata = row.get("metadata").unwrap_or(&Value::Null);
+    let Some(version) = metadata["version"].as_u64().filter(|v| *v > 0) else {
+        return unavailable("invalid_receipt");
+    };
+    let Some(content_digest) = digest(&metadata["content_digest"]) else {
+        return unavailable("invalid_receipt");
+    };
+    let value = Value::Object(receipt.clone());
+    let summary = &value["summary"];
+    let status = value["status"].as_str().unwrap_or("");
+    let verdict = match status {
+        "reserved" => Some("reserved"),
+        "refused" => Some("refused"),
+        "incomplete" => Some("incomplete"),
+        "calculated" => summary["verdict"].as_str().filter(|v| {
+            matches!(
+                *v,
+                "complies" | "complies_with_reinforcement" | "does_not_comply" | "incomplete"
+            )
+        }),
+        _ => None,
+    };
+    let valid = value["schema"] == "ds.lv-voltage-drop.analysis/v1"
+        && value["method"] == "ds-lv-vd/1"
+        && value["content_digest"] == content_digest
+        && [
+            "analysis_sha256",
+            "inputs_digest",
+            "analysis_inputs_digest",
+            "processed_digest",
+        ]
+        .iter()
+        .all(|key| digest(&value[*key]).is_some())
+        && value["json_bytes"]
+            .as_u64()
+            .is_some_and(|bytes| (1..=32 * 1024 * 1024).contains(&bytes))
+        && summary["method"] == value["method"]
+        && summary["status"]
+            == if status == "refused" {
+                "not_calculated"
+            } else {
+                status
+            }
+        && summary.get("transformer_nature").is_some()
+        && summary["transformer_nature"] == value["nature"]
+        && verdict.is_some();
+    if !valid {
+        return unavailable("invalid_receipt");
+    }
+    VoltageDropPreview {
+        state: "saved_json".into(),
+        rule_confirmed: summary["rule_confirmed"].as_bool(),
+        verdict: verdict.map(str::to_string),
+        analysis_sha256: value["analysis_sha256"].as_str().map(str::to_string),
+        content_digest: Some(content_digest.into()),
+        version: Some(version),
+    }
+}
+
+fn count_case(rows: &[PrintableRow], poles: bool, largest: bool) -> Option<CountCase> {
+    let mut candidates = rows
+        .iter()
+        .filter_map(|row| {
+            (if poles { row.poles } else { row.customers }).map(|count| CountCase {
+                name: row.name.clone(),
+                count,
+            })
+        })
+        .collect::<Vec<_>>();
+    candidates.sort_by(|a, b| {
+        let count = if largest {
+            b.count.cmp(&a.count)
+        } else {
+            a.count.cmp(&b.count)
+        };
+        count.then_with(|| locale_cmp(&a.name, &b.name))
+    });
+    candidates.into_iter().next()
 }
 
 /// Numeric version coercion for JSON status values, matching Number().
@@ -197,14 +344,28 @@ pub fn printable(
                 cached: held.is_some(),
                 dirty: held.is_some_and(|room| room.local_dirty),
                 server_version: version,
+                customers: row
+                    .get("layers")
+                    .and_then(|layers| layers["customers"].as_u64()),
+                poles: row
+                    .get("layers")
+                    .and_then(|layers| layers["lv_poles"].as_u64()),
+                voltage_drop: voltage_drop(row, held.is_some_and(|room| room.local_dirty)),
             }
         })
         .collect();
     let omitted = total - transformers.len();
+    let preview_cases = PreviewCases {
+        smallest_customers: count_case(&transformers, false, false),
+        largest_customers: count_case(&transformers, false, true),
+        smallest_poles: count_case(&transformers, true, false),
+        largest_poles: count_case(&transformers, true, true),
+    };
     Ok(Inventory {
         total,
         transformers,
         more: More { omitted },
+        preview_cases,
     })
 }
 
@@ -230,6 +391,121 @@ mod tests {
             json!({"name": "mv_data", "kind": null}),
             json!({"name": "TX_D", "kind": "individual", "metadata": {"version": null}, "client_base_server_version": "seven"}),
         ]
+    }
+
+    fn saved(verdict: &str) -> Value {
+        json!({"name":"tx_a","metadata":{"version":7,"content_digest":"a".repeat(64)},
+            "layers":{"customers":12,"lv_poles":6},
+            "voltage_drop_metadata":{"state":"ready","schema":"ds.lv-voltage-drop.analysis/v1",
+                "method":"ds-lv-vd/1","status":"calculated","nature":"new",
+                "content_digest":"a".repeat(64),"analysis_sha256":"b".repeat(64),
+                "inputs_digest":"c".repeat(64),"analysis_inputs_digest":"d".repeat(64),
+                "processed_digest":"e".repeat(64),"json_bytes":1024,
+                "summary":{"method":"ds-lv-vd/1","status":"calculated",
+                    "transformer_nature":"new","verdict":verdict}}})
+    }
+
+    #[test]
+    fn saved_json_candidates_keep_exact_head_pins_and_producer_verdict() {
+        for verdict in [
+            "complies",
+            "complies_with_reinforcement",
+            "does_not_comply",
+            "incomplete",
+        ] {
+            let result = printable(&[saved(verdict)], &[], "", 500).unwrap();
+            let preview = &result.transformers[0].voltage_drop;
+            assert_eq!(preview.state, "saved_json");
+            assert_eq!(preview.verdict.as_deref(), Some(verdict));
+            assert_eq!(preview.analysis_sha256, Some("b".repeat(64)));
+            assert_eq!(preview.content_digest, Some("a".repeat(64)));
+            assert_eq!(preview.version, Some(7));
+        }
+    }
+
+    #[test]
+    fn wrong_head_malformed_receipt_and_dirty_rooms_cannot_offer_a4_json() {
+        for (path, value) in [
+            ("/metadata/content_digest", json!("f".repeat(64))),
+            ("/metadata/version", json!("7")),
+            (
+                "/voltage_drop_metadata/analysis_sha256",
+                json!("B".repeat(64)),
+            ),
+            ("/voltage_drop_metadata/processed_digest", Value::Null),
+            (
+                "/voltage_drop_metadata/summary/transformer_nature",
+                json!("upgrade"),
+            ),
+            ("/voltage_drop_metadata/json_bytes", json!(0)),
+            ("/voltage_drop_metadata/summary/verdict", json!("success")),
+        ] {
+            let mut row = saved("complies");
+            *row.pointer_mut(path).unwrap() = value;
+            let result = printable(&[row], &[], "", 500).unwrap();
+            assert_eq!(
+                result.transformers[0].voltage_drop.state, "invalid_receipt",
+                "{path}"
+            );
+            assert!(
+                result.transformers[0]
+                    .voltage_drop
+                    .analysis_sha256
+                    .is_none()
+            );
+        }
+        let result = printable(&[saved("complies")], &[room("tx_a", None, true)], "", 500).unwrap();
+        assert_eq!(result.transformers[0].voltage_drop.state, "local_changes");
+        let mut row = saved("complies");
+        row["voltage_drop_metadata"]["state"] = json!("stale");
+        assert_eq!(
+            printable(&[row], &[], "", 500).unwrap().transformers[0]
+                .voltage_drop
+                .state,
+            "stale"
+        );
+    }
+
+    #[test]
+    fn outliers_use_only_returned_authoritative_counts_with_stable_ties() {
+        let result = printable(
+            &[
+                json!({"name":"b","layers":{"customers":10,"lv_poles":6}}),
+                json!({"name":"a","layers":{"customers":10,"lv_poles":3}}),
+                json!({"name":"c","layers":{"customers":900,"lv_poles":100}}),
+                json!({"name":"d","layers":{"customers":"1","lv_poles":-1}}),
+            ],
+            &[],
+            "",
+            2,
+        )
+        .unwrap();
+        assert_eq!(
+            result
+                .preview_cases
+                .smallest_customers
+                .as_ref()
+                .unwrap()
+                .name,
+            "a"
+        );
+        assert_eq!(
+            result
+                .preview_cases
+                .largest_customers
+                .as_ref()
+                .unwrap()
+                .name,
+            "a"
+        );
+        assert_eq!(
+            result.preview_cases.largest_poles.as_ref().unwrap().name,
+            "b"
+        );
+        assert_eq!(result.more.omitted, 2);
+        let missing = printable(&rows(), &[], "", 500).unwrap();
+        assert!(missing.preview_cases.smallest_customers.is_none());
+        assert_eq!(missing.transformers[0].voltage_drop.state, "missing");
     }
 
     #[test]
