@@ -766,7 +766,10 @@ impl SyncHost for StoreHost<'_> {
         let mut seen = std::collections::BTreeSet::new();
         loop {
             self.ensure_active()?;
-            let mut body = json!({"action": "list", "project_id": project, "limit": 100});
+            // Match the service's ordinary page size. A whole project's
+            // heads need not fit one control-plane request on a slow link;
+            // the cursor walk still proves the complete bounded inventory.
+            let mut body = json!({"action": "list", "project_id": project, "limit": 25});
             if !cursor.is_empty() {
                 body["cursor"] = json!(cursor);
             }

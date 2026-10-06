@@ -1524,7 +1524,7 @@ fn report_pass_does_not_send_solar_through_the_report_door() {
 }
 
 #[test]
-fn head_inventory_crosses_the_services_hundred_row_page_without_truncation() {
+fn head_inventory_walks_service_default_pages_without_truncation() {
     use ds_sync_runtime::SyncHost;
     let h = Harness::new();
     fakes::lock(&h.world).record = (0..101)
@@ -1563,7 +1563,7 @@ fn head_inventory_crosses_the_services_hundred_row_page_without_truncation() {
         heads[0].input_base_fingerprint.as_deref(),
         Some(fakes::FINGERPRINT)
     );
-    assert_eq!(fakes::lock(&h.world).head_reads, 2);
+    assert_eq!(fakes::lock(&h.world).head_reads, 5);
 }
 
 #[test]
