@@ -6,6 +6,14 @@ transformer. Opening reads the current retained PDF. Only explicit Refresh
 captures inputs, renders and publishes a replacement. Earlier immutable cloud
 objects and compute runs remain retained; this contract has no TTL or deletion.
 
+`ds-sync-runtime::retained_preview::read_a4` owns the native read sequence for
+Server and Desktop: read the exact head, admit its matching download ticket,
+then verify PDF size and digest through the host's `Reads` adapter. The host
+supplies authenticated `Gateway` and account/project scope checks; those checks
+run before each effect and before returning bytes. A ticket for a moved head
+refuses even if its PDF digest is unchanged. Opening has no renderer, source
+capture or publication-queue dependency.
+
 The first consumer is the governed `voltage-drop-a4-v1` document. Its head uses
 `network_reporter / export-<canonical-transformer> /
 printing-preview-voltage-drop-a4-v1`, with exactly one `voltage_drop_pdf` output,
