@@ -83,6 +83,7 @@ pub const ACCOUNT_ARG: Arg = Arg::value(
 /// The declared refusals every typed mutation shares, spliced into each
 /// command's own list so the vocabulary is written once.
 pub const REFUSALS: &[Refusal] = &[
+    package::PROTECTED_MODEL,
     Refusal {
         code: "target_required",
         when: "neither --model nor --package names a target, or both do",
@@ -303,7 +304,7 @@ pub fn open(target: Target, inputs: &Inputs) -> Result<Opened, Failure> {
     let path = target.path();
     let bytes = package::read_bytes(&path)?;
     let package = package::decode(&path, &bytes)?;
-    let session = GridSession::open(package.snapshot.clone());
+    let session = ds_grid_exchange::linked_models::open_session(&package);
     let head = session.current_revision().revision_id.clone();
     if let Some(pinned) = inputs.value("revision").map(str::trim)
         && pinned != head.as_str()
@@ -461,7 +462,9 @@ pub fn run(
 
     // Persist: a new package for the immutable target, or the working copy's
     // next revision in place.
-    let checkpoint = session.checkpoint();
+    let checkpoint = session
+        .save_checkpoint()
+        .map_err(crate::apply::map_command_error)?;
     let source_package_revision = package.manifest.model.model_revision;
     let options = PackOptions {
         presentation: package.manifest.model.presentation.clone(),

@@ -334,7 +334,7 @@ fn all_linked_commands_plan_by_default_apply_atomically_and_name_conflicts() {
     };
     assert_eq!(state("north"), "ahead");
     assert_eq!(state("south"), "in_step");
-    // The burst rewrote only the edited part and the combined model.
+    // A terrain edit also refreshes the other split part's read-only ground mirror.
     let written = |id: &str| {
         reconciled["participants"]
             .as_array()
@@ -346,7 +346,7 @@ fn all_linked_commands_plan_by_default_apply_atomically_and_name_conflicts() {
     };
     assert_eq!(written("north"), "new_revision");
     assert_eq!(written(&combined), "new_revision");
-    assert_eq!(written("south"), "in_step");
+    assert_eq!(written("south"), "new_revision");
     // Extract writes one participant's exact attested bytes, never repacked.
     let extracted_path = root.join("extracted-south.dsgrid");
     let extracted = ok(&[
@@ -401,11 +401,19 @@ fn all_linked_commands_plan_by_default_apply_atomically_and_name_conflicts() {
         "--output",
         "json",
     ]);
-    assert_eq!(code, 5, "{error}");
-    assert_eq!(error["error"]["code"], "composite_conflict");
-    assert_eq!(
-        error["error"]["detail"]["features"][0],
-        "terrain_points:[\"point-a\"]"
+    assert_eq!(code, 2, "{error}");
+    assert_eq!(error["error"]["code"], "composite_model_protected");
+    assert!(
+        error["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("north")
+    );
+    assert!(
+        error["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("south")
     );
     let mut sources = Vec::new();
     for id in ["north", "south"] {
@@ -418,7 +426,30 @@ fn all_linked_commands_plan_by_default_apply_atomically_and_name_conflicts() {
     let derive_request = root.join("derive.json");
     write_json(
         &derive_request,
+        &json!({"sources":sources,"shared_owners":{"terrain_points:[\"point-a\"]":"north", "terrain_points:[\"point-b\"]":"south"}}),
+    );
+    let missing_owners_request = root.join("missing-owners.json");
+    write_json(
+        &missing_owners_request,
         &json!({"sources":sources,"shared_owners":{}}),
+    );
+    let (missing, code) = common::json(&[
+        "dsgrid",
+        "model",
+        "reconcile",
+        "--request",
+        path(&missing_owners_request),
+        "--output",
+        "json",
+    ]);
+    assert_ne!(code, 0);
+    assert_eq!(missing["error"]["code"], "composite_owner_required");
+    assert_eq!(
+        missing["error"]["detail"]["features"],
+        json!([
+            "terrain_points:[\"point-a\"]",
+            "terrain_points:[\"point-b\"]"
+        ])
     );
     let derived = ok(&[
         "dsgrid",
@@ -505,6 +536,248 @@ fn all_linked_commands_plan_by_default_apply_atomically_and_name_conflicts() {
     let packages = linked_models::exact_packages(&std::fs::read(&bundle).unwrap()).unwrap();
     let combined_package = root.join("combined.dsgrid");
     std::fs::write(&combined_package, &packages[&combined]).unwrap();
+    // Exact extracted combined bytes retain protected mode at every local door.
+    let protected = unpack(&packages[&combined]).unwrap();
+    let envelope = ds_grid_engine::CommandEnvelope::new(
+        "protected-terrain-edit",
+        linked_models::open_session(&protected)
+            .current_revision()
+            .revision_id
+            .clone(),
+        ds_grid_engine::GridCommand::SetTerrainPointElevation {
+            id: protected.snapshot.terrain_points[0].id.clone(),
+            elevation_m: 99.0,
+        },
+    );
+    let envelope_path = root.join("protected-edit.json");
+    write_json(&envelope_path, &envelope);
+    let refused_out = root.join("protected-save.dsgrid");
+    for mode in [vec!["--dry-run"], vec!["--out", path(&refused_out)]] {
+        let mut args = vec![
+            "dsgrid",
+            "apply",
+            "--model",
+            path(&combined_package),
+            "--envelope",
+            path(&envelope_path),
+        ];
+        args.extend(mode);
+        args.extend(["--output", "json"]);
+        let (refusal, code) = common::json(&args);
+        assert_ne!(code, 0, "{refusal}");
+        assert_eq!(refusal["error"]["code"], "composite_model_protected");
+        assert!(
+            refusal["error"]["message"]
+                .as_str()
+                .unwrap()
+                .contains("north")
+        );
+        assert!(!refused_out.exists());
+    }
+    let (refusal, code) = common::json(&[
+        "dsgrid",
+        "publish-version",
+        "--path",
+        path(&combined_package),
+        "--project",
+        "protected-copy",
+        "--kind",
+        "mv_line",
+        "--name",
+        "Combined",
+        "--yes",
+        "--output",
+        "json",
+    ]);
+    assert_ne!(code, 0, "{refusal}");
+    assert_eq!(
+        refusal["error"]["code"], "composite_model_protected",
+        "{refusal}"
+    );
+    for owner in ["north", "south"] {
+        assert!(
+            refusal["error"]["message"]
+                .as_str()
+                .unwrap()
+                .contains(owner)
+        );
+    }
+    let (refusal, code) = common::json(&[
+        "dsgrid",
+        "model",
+        "import-external",
+        "--path",
+        path(&combined_package),
+        "--name",
+        "User combined",
+        "--account",
+        "test-protected",
+        "--output",
+        "json",
+    ]);
+    assert_ne!(code, 0, "{refusal}");
+    assert_eq!(
+        refusal["error"]["code"], "composite_model_protected",
+        "{refusal}"
+    );
+    // A persisted combined read view cannot be deleted or linked by the CLI.
+    // Seed it through the native store as a fixture, outside real catalogues.
+    {
+        use ds_command_kernel::local_models::{Op, Origin, Scope};
+        use sha2::{Digest, Sha256};
+        let layer_root = root.join("isolated-models");
+        let scope = Scope {
+            lane: "stable".into(),
+            uid: "test-protected".into(),
+        };
+        let combined_bytes = &packages[&combined];
+        ds_layer_store::local_models::execute_at(
+            &layer_root,
+            &scope,
+            Op::Register {
+                id: "local-protected".into(),
+                display_name: "Combined read view".into(),
+                origin: Origin::Imported,
+                crs: protected.manifest.model.coordinate_system.to_string(),
+                model_revision: 1,
+                bytes: combined_bytes.len() as u64,
+                sha256: format!("{:x}", Sha256::digest(combined_bytes)),
+                created_at: Some("2026-10-06T00:00:00Z".into()),
+                project: None,
+                head_revision: None,
+                activate: false,
+            },
+            Some(combined_bytes),
+        )
+        .unwrap();
+        let baseline = ds_layer_store::local_models::read_at(&layer_root, &scope).unwrap();
+        for operation in ["forget", "link", "unlink"] {
+            let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_ds"));
+            command.args([
+                "dsgrid",
+                "model",
+                operation,
+                "--model",
+                "local-protected",
+                "--account",
+                "test-protected",
+                "--output",
+                "json",
+            ]);
+            if operation == "link" {
+                command.args(["--workspace", path(root)]);
+            }
+            let output = command.env("DS_LAYER_HOME", &layer_root).output().unwrap();
+            let refusal: Value = serde_json::from_slice(&output.stdout).unwrap();
+            assert!(!output.status.success(), "{refusal}");
+            assert_eq!(
+                refusal["error"]["code"], "composite_model_protected",
+                "{refusal}"
+            );
+            for owner in ["north", "south"] {
+                assert!(
+                    refusal["error"]["message"]
+                        .as_str()
+                        .unwrap()
+                        .contains(owner)
+                );
+            }
+            assert_eq!(
+                ds_layer_store::local_models::read_at(&layer_root, &scope).unwrap(),
+                baseline
+            );
+        }
+    }
+    let (refusal, code) = common::json(&[
+        "dsgrid",
+        "create",
+        "--model-id",
+        &combined,
+        "--crs",
+        "EPSG:32735",
+        "--out",
+        path(&refused_out),
+        "--output",
+        "json",
+    ]);
+    assert_ne!(code, 0, "{refusal}");
+    assert_eq!(refusal["error"]["code"], "composite_model_protected");
+    assert!(!refused_out.exists());
+    // MCP relays the same native refusal through a real stdio call.
+    let batch_path = root.join("protected-batch.json");
+    write_json(
+        &batch_path,
+        &json!({"expected_revision": envelope.expected_revision,
+        "commands":[{"command_id":"protected-batch", "command":envelope.command}]}),
+    );
+    let (refusal, code) = common::json(&[
+        "dsgrid",
+        "apply-batch",
+        "--model",
+        path(&combined_package),
+        "--batch",
+        path(&batch_path),
+        "--dry-run",
+        "--output",
+        "json",
+    ]);
+    assert_ne!(code, 0, "{refusal}");
+    assert_eq!(refusal["error"]["code"], "composite_model_protected");
+    {
+        use std::io::Write;
+        use std::process::{Command, Stdio};
+        let mut child = Command::new(env!("CARGO_BIN_EXE_ds"))
+            .args([
+                "mcp",
+                "serve",
+                "--exposure",
+                "commands",
+                "--profile",
+                "grid-native",
+            ])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        {
+            let stdin = child.stdin.as_mut().unwrap();
+            for request in [
+                json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"dsgrid_apply","arguments":{"model":combined_package,"envelope":envelope_path,"dry-run":true}}}),
+                json!({"jsonrpc":"2.0","id":999,"method":"shutdown"}),
+            ] {
+                serde_json::to_writer(&mut *stdin, &request).unwrap();
+                stdin.write_all(b"\n").unwrap();
+            }
+        }
+        let result = child.wait_with_output().unwrap();
+        assert!(
+            result.status.success(),
+            "{}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+        let response = String::from_utf8(result.stdout)
+            .unwrap()
+            .lines()
+            .map(|line| serde_json::from_str::<Value>(line).unwrap())
+            .find(|r| r["id"] == 2)
+            .unwrap();
+        assert!(
+            response.to_string().contains("composite_model_protected"),
+            "{response}"
+        );
+        assert!(response.to_string().contains("north"), "{response}");
+    }
+    // Reading the same protected bytes remains available.
+    let read = ok(&[
+        "dsgrid",
+        "inspect",
+        "--model",
+        path(&combined_package),
+        "--output",
+        "json",
+    ]);
+    assert!(read.is_object());
     let plan = ok(&[
         "dsgrid-exchange",
         "plan",
@@ -536,6 +809,12 @@ fn all_linked_commands_plan_by_default_apply_atomically_and_name_conflicts() {
             "json",
         ]);
         assert_eq!(d["command"]["availability"], "available");
+        let tool = ds_cli_mcp::tools::tool_from_descriptor(&d["command"]).unwrap();
+        assert!(
+            tool.description.contains("composite_model_protected"),
+            "{tool:?}"
+        );
+        assert!(tool.description.contains("protected mode"), "{tool:?}");
     }
 }
 

@@ -18,6 +18,7 @@ use sha2::Digest;
 use crate::{apply, package};
 
 const REFUSALS: &[Refusal] = &[
+    package::PROTECTED_MODEL,
     Refusal {
         code: "labels_invalid",
         when: "a field is unknown or repeated, or orientation is unsupported",
@@ -139,6 +140,7 @@ pub fn set(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let fields = parse_fields(inputs.require("fields")?)?;
     let bytes = package::read_bytes(path)?;
     let package = package::decode(path, &bytes)?;
+    package::authorize_write(&package, "edit profile labels")?;
     let orientation = match inputs.value("orientation") {
         Some(raw) => serde_json::from_value::<StructureLabelOrientation>(json!(raw))
             .map_err(|_| invalid("orientation is unsupported"))?,

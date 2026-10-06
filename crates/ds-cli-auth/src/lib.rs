@@ -6364,7 +6364,7 @@ pub fn grid_models_for_project(
 
 /// The refusals every project-model operation over the native owner can
 /// return beyond authentication: each is the Server's own answer, named.
-pub const GRID_MODEL_REFUSALS: [Refusal; 5] = [
+pub const GRID_MODEL_REFUSALS: [Refusal; 6] = [
     Refusal {
         code: "grid_request_invalid",
         when: "an id, bound or governance field fails the catalog's own rules before any request is sent",
@@ -6390,6 +6390,11 @@ pub const GRID_MODEL_REFUSALS: [Refusal; 5] = [
         when: "the export id already exists on the revision with different content; export records are immutable",
         remedy: "list the revision's exports and publish under a new export id",
     },
+    Refusal {
+        code: "composite_model_protected",
+        when: "a user mutation targets an automatic combined model in protected mode",
+        remedy: "edit the owning submodels named by the Server, then reconcile the derived combined model",
+    },
 ];
 
 fn map_grid_publication(error: ClientError) -> Failure {
@@ -6409,6 +6414,10 @@ fn map_grid_publication(error: ClientError) -> Failure {
     let detail = json!({"http_status":refusal.status(),"service_code":refusal.code(),
         "service_message":refusal.message()});
     match refusal.code() {
+        Some("composite_model_protected") => Failure::invalid(
+            "composite_model_protected",
+            said("the automatic combined model is protected"),
+        ).detail(detail).remedy("edit the owning submodels named by the Server, then reconcile"),
         Some("grid_publication_conflict") => Failure::conflict(
             "publish_conflict",
             said("the model publication conflicts with stored state; the request was not changed or retried"),

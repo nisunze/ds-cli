@@ -20,6 +20,22 @@ use serde_json::json;
 /// instead of exhausting memory.
 pub const MAX_PACKAGE_BYTES: u64 = 512 * 1024 * 1024;
 
+/// Native protected-mode policy, projected by every mutating command.
+pub const PROTECTED_MODEL: ds_cli_contract::spec::Refusal = ds_cli_contract::spec::Refusal {
+    code: ds_grid_engine::model_protection::PROTECTED_CODE,
+    when: "the target is the automatic combined model in protected mode",
+    remedy: "edit the owning submodel named in the refusal, then reconcile; combined models remain available for reads, status, tiling and reports",
+};
+
+pub fn authorize_write(package: &GridPackage, operation: &str) -> Result<(), Failure> {
+    ds_grid_exchange::linked_models::authorize_package_write(package, operation, &[]).map_err(
+        |error| {
+            Failure::invalid("composite_model_protected", error.message)
+                .remedy(PROTECTED_MODEL.remedy)
+        },
+    )
+}
+
 /// The refusals every command in this domain shares. Declared here as data so
 /// a command can splice them into its own list rather than restating them —
 /// a restatement is a second description, and those drift.

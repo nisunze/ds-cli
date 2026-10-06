@@ -10,7 +10,7 @@ use ds_cli_contract::spec::{
 };
 use ds_cli_contract::{Context, Inputs};
 use ds_grid_engine::correction_scope::CorrectionScope;
-use ds_grid_engine::{CommandEnvelope, GridCommand, GridSession, RevisionId};
+use ds_grid_engine::{CommandEnvelope, GridCommand, RevisionId};
 use ds_grid_exchange::{PackOptions, dsgrid};
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -90,6 +90,7 @@ SHA-256. Receipt size is independent of entity count.",
         },
     ],
     refusals: &[
+        package::PROTECTED_MODEL,
         Refusal {
             code: "model_not_found",
             when: "the source path does not exist or is not a file",
@@ -698,6 +699,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         .detail(json!({"expected": guard.source_sha256, "actual": sha256(&bytes)})));
     }
     let package = package::decode(model_path, &bytes)?;
+    package::authorize_write(&package, "apply batch")?;
     let before = package.snapshot.clone();
     if let Some((guard, _)) = &guard {
         for item in &batch.commands {
@@ -735,7 +737,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
                 .map_err(map_command_error)?;
         }
     }
-    let mut session = GridSession::open(package.snapshot);
+    let mut session = ds_grid_exchange::linked_models::open_session(&package);
     let head = session.current_revision().revision_id.clone();
     let command_count = batch.commands.len();
     let applied_command_ids: Vec<_> = batch
@@ -771,7 +773,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
                 .collect(),
         )
         .map_err(map_command_error)?;
-    let checkpoint = session.checkpoint();
+    let checkpoint = session.save_checkpoint().map_err(map_command_error)?;
     if let Some((guard, _)) = &guard {
         guard
             .scope

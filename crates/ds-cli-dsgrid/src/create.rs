@@ -61,6 +61,7 @@ pub static COMMAND: Command = Command {
         },
     ],
     refusals: &[
+        crate::package::PROTECTED_MODEL,
         Refusal {
             code: "invalid_id",
             when: "the engine rejects the model identity",
@@ -146,6 +147,10 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             }
             BlankModelError::Standards(_) => Failure::invalid("standards_refused", message)
                 .remedy("use a verified standards-only .dsgrid-template"),
+            BlankModelError::Package(ds_grid_exchange::package::PackageError::ProtectedModel(
+                error,
+            )) => Failure::invalid("composite_model_protected", error.message)
+                .remedy(crate::package::PROTECTED_MODEL.remedy),
             BlankModelError::Package(_) => Failure::failed("package_emit_failed", message)
                 .remedy("report this engine error; no output was written"),
         }

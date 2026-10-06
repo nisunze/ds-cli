@@ -34,7 +34,7 @@ pub const APPLY: Arg = Arg::switch(
 pub const PUBLICATION: Arg = Arg::value(
     "publication",
     "<project-publication.json>",
-    "Explicit project, graph generation and every participant's project-model/head binding; --apply --yes publishes all versions atomically after local commit.",
+    "Explicit project, graph generation and each submodel's project-model/head binding; the combined binding is derived. --apply --yes publishes all versions atomically after local commit.",
 );
 pub const LANE: Arg = Arg::value(
     "lane",
@@ -46,7 +46,7 @@ pub const LANE: Arg = Arg::value(
 pub const EDIT: Arg = Arg::repeated(
     "edited",
     "<model-id=package.dsgrid>",
-    "Replace a participant in the candidate with an exact edited .dsgrid package; never overwrites the baseline.",
+    "Replace an owning submodel in the candidate with an exact edited .dsgrid package; a combined-model edit refuses in protected mode.",
 );
 
 const OWN_REFUSALS: &[Refusal] = &[
@@ -62,7 +62,7 @@ const OWN_REFUSALS: &[Refusal] = &[
     },
     Refusal {
         code: "composite_conflict",
-        when: "both owner and composite changed the same feature or source rows differ",
+        when: "source or owning submodel rows conflict",
         remedy: "resolve the exact named features against the common baseline",
     },
     Refusal {
@@ -73,7 +73,7 @@ const OWN_REFUSALS: &[Refusal] = &[
     Refusal {
         code: "composite_boundary_read_only",
         when: "a nonowner changed a boundary mirror",
-        remedy: "make the edit in its owner or in the composite",
+        remedy: "make the edit in the named owning submodel, then reconcile",
     },
     Refusal {
         code: "composite_generation_conflict",
@@ -153,7 +153,7 @@ command!(
     "reconcile",
     Effect::GlobalWrite,
     "Keep the automatic combined model in step in one bounded burst.",
-    "The combined model is automatic: it is derived from its submodels and nobody creates, combines or deletes it. With --bundle, the burst request pins expected_generation and max_affected_features; edits are compared with the saved baseline, all owner/combined conflicts are named, span/corridor and section calculations are localized, and unavailable sag/clearance inputs are reported. Without --bundle, the derive request names 2..100 exact submodel packages and explicit owners for shared features, and derives generation zero of their combined model. Default is a dry run. --apply commits graph and every package together to a new local checkpoint; --publication additionally stages exact bytes and publishes one atomic project version vector.",
+    "The combined model is automatic and protected: it is derived from its submodels and nobody creates, edits, saves, publishes, links or deletes it. Reads, status, tiling and combined reports remain available. With --bundle, the burst request pins expected_generation and max_affected_features; edits are compared with the saved baseline, only owning submodels may be edited; every combined edit refuses composite_model_protected with named owners, span/corridor and section calculations are localized, and unavailable sag/clearance inputs are reported. Without --bundle, the derive request names 2..100 exact submodel packages and explicit owners for shared features, and derives generation zero of their combined model. Default is a dry run. --apply commits graph and every package together to a new local checkpoint; --publication additionally stages exact bytes and publishes one atomic project version vector.",
     &[
         BUNDLE,
         REQUEST.required(),
@@ -201,7 +201,7 @@ pub static EXTRACT: Command = Command {
     path: &["dsgrid", "model", "extract"],
     contract: 1,
     summary: "Write one participant's exact package from a linked checkpoint.",
-    purpose: "Verifies the whole local checkpoint, then writes the exact attested .dsgrid bytes of one participant (a submodel or the automatic combined model) to a new path, byte-identical to the member the checkpoint pins. Nothing is repacked or published; an existing --out is refused. The combined model serves tiling and combined reports; its PLS-CADD export still refuses.",
+    purpose: "Verifies the whole local checkpoint, then writes the exact attested .dsgrid bytes of one participant (a submodel or the automatic combined model) to a new path, byte-identical to the member the checkpoint pins. Nothing is repacked or published; an existing --out is refused. The extracted combined package remains in protected mode: edits, saves, publication, links and deletion refuse composite_model_protected with named submodels; reads, status, tiling and combined reports work. PLS-CADD export refuses its named limitations.",
     chapter: Chapter::GridModel,
     effect: Effect::LocalFileWrite,
     authority: Authority::None,
@@ -245,9 +245,14 @@ fn failure(error: LinkedError) -> Failure {
             } else {
                 Failure::invalid(&error.code, &error.message)
             };
-            failure.detail(json!({"features": error.features})).remedy(
-                "resolve the named features or input using the engine's linked model schema",
-            )
+            let remedy = if error.code == ds_grid_engine::model_protection::PROTECTED_CODE {
+                crate::package::PROTECTED_MODEL.remedy
+            } else {
+                "resolve the named features or input using the engine's linked model schema"
+            };
+            failure
+                .detail(json!({"features": error.features}))
+                .remedy(remedy)
         }
         error => Failure::invalid("linked_package_invalid", error.to_string())
             .remedy("use exact compatible packages and a verified checkpoint"),

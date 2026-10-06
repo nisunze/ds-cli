@@ -76,6 +76,7 @@ pub const REVISION_CONFLICT: Refusal = Refusal {
 /// plus this host's one IO failure. Composed, so a new kernel refusal is
 /// documented the moment it exists.
 pub const REFUSALS: &[Refusal] = &[
+    crate::package::PROTECTED_MODEL,
     UNKNOWN_MODEL,
     NAME_TAKEN,
     CATALOGUE_FULL,
@@ -144,7 +145,40 @@ pub fn execute(inputs: &Inputs, op: Op, package: Option<&[u8]>) -> Result<Outcom
 
 /// Apply one operation to a catalogue already located by [`locate`].
 pub fn execute_in(scope: &Scope, op: Op, package: Option<&[u8]>) -> Result<Outcome, Failure> {
-    ds_layer_store::local_models::execute_at(&root()?, scope, op, package).map_err(refuse)
+    let root = root()?;
+    let guarded = match &op {
+        // Acquiring a verified project revision is a read view, not model creation.
+        Op::Register {
+            origin: Origin::Project,
+            ..
+        } => None,
+        Op::Register { .. } => Some((None, "create")),
+        Op::Revise { id, .. } => Some((Some(id), "save")),
+        Op::StageDraft { id, .. } => Some((Some(id), "save draft")),
+        Op::Forget { id } => Some((Some(id), "delete")),
+        Op::Link { id, .. } | Op::Unlink { id } => Some((Some(id), "link")),
+        Op::SetActive { .. } => None,
+    };
+    if let Some((id, operation)) = guarded {
+        if let Some(id) = id
+            && ds_layer_store::local_models::read_at(&root, scope)
+                .map_err(refuse)?
+                .models
+                .iter()
+                .any(|row| &row.id == id)
+        {
+            let dir = ds_layer_store::local_models::scope_dir(&root, scope).map_err(refuse)?;
+            let path = ds_layer_store::local_models::package_path(&dir, id).map_err(refuse)?;
+            let bytes = crate::package::read_bytes(&path.to_string_lossy())?;
+            let opened = crate::package::decode(&path.to_string_lossy(), &bytes)?;
+            crate::package::authorize_write(&opened, operation)?;
+        }
+        if let Some(bytes) = package {
+            let opened = crate::package::decode("working copy", bytes)?;
+            crate::package::authorize_write(&opened, operation)?;
+        }
+    }
+    ds_layer_store::local_models::execute_at(&root, scope, op, package).map_err(refuse)
 }
 
 /// One working copy found on this machine: its catalogue, its row and the

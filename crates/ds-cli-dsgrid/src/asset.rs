@@ -175,6 +175,7 @@ const EXACT_READ: &[Refusal] = &[
 ];
 const WRITE: &[Refusal] = &[OUTPUT_EXISTS, OUTPUT_UNWRITABLE];
 const EDIT: &[Refusal] = &[
+    package::PROTECTED_MODEL,
     PACKAGE_DIGEST_MISMATCH,
     PACKAGE_INVALID,
     PACKAGE_UNSUPPORTED,
@@ -470,6 +471,7 @@ pub fn attach(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     let path = inputs.require("path")?;
     let out = inputs.require("out")?;
     let package_bytes = read_package(path)?;
+    package::authorize_write(&package::decode(path, &package_bytes)?, "edit attachments")?;
     let file = inputs.require("file")?;
     let bytes = read_attachment(file)?;
     let expected = expected_digest(inputs, &package_bytes);
@@ -495,6 +497,7 @@ pub fn detach(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     let path = inputs.require("path")?;
     let out = inputs.require("out")?;
     let package_bytes = read_package(path)?;
+    package::authorize_write(&package::decode(path, &package_bytes)?, "edit attachments")?;
     let expected = expected_digest(inputs, &package_bytes);
     let output = package_assets::detach_package_asset(&DetachRequest {
         package_bytes: &package_bytes,

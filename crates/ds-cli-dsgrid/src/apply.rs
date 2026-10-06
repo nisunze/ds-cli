@@ -14,7 +14,7 @@ use ds_cli_contract::spec::{
     Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
-use ds_grid_engine::{CommandEnvelope, CommandError, GridCommand, GridSession};
+use ds_grid_engine::{CommandEnvelope, CommandError, GridCommand};
 use ds_grid_exchange::{PackOptions, dsgrid};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -70,6 +70,7 @@ also returns the new package path, package revision, byte length and SHA-256.",
         },
     ],
     refusals: &[
+        package::PROTECTED_MODEL,
         Refusal {
             code: "model_not_found",
             when: "the source path does not exist or is not a file",
@@ -201,7 +202,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let coordinate_system = package.manifest.model.coordinate_system.clone();
     let assets = package.assets.clone();
     let exchange_bindings = package.exchange_bindings.clone();
-    let mut session = GridSession::open(package.snapshot);
+    let mut session = ds_grid_exchange::linked_models::open_session(&package);
     let current_revision = session.current_revision().revision_id.clone();
 
     if dry_run {
@@ -235,7 +236,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let command_id = envelope.command_id.clone();
     let command_kind = envelope.command.command_kind().to_string();
     let outcome = session.apply_command(envelope).map_err(map_command_error)?;
-    let checkpoint = session.checkpoint();
+    let checkpoint = session.save_checkpoint().map_err(map_command_error)?;
 
     let options = PackOptions {
         presentation: package.manifest.model.presentation.clone(),
@@ -342,6 +343,12 @@ fn read_envelope(raw_path: &str) -> Result<CommandEnvelope, Failure> {
 
 pub(crate) fn map_command_error(error: CommandError) -> Failure {
     match error {
+        CommandError::InvalidInput { operation, message }
+            if operation == ds_grid_engine::model_protection::PROTECTED_CODE =>
+        {
+            Failure::invalid("composite_model_protected", message)
+                .remedy(package::PROTECTED_MODEL.remedy)
+        }
         CommandError::StaleRevision { expected, actual } => Failure::conflict(
             "revision_conflict",
             "the command envelope was authored against a different revision",

@@ -49,6 +49,7 @@ pub static COMMAND: Command = Command {
         runnable: true,
     }],
     refusals: &[
+        crate::package::PROTECTED_MODEL,
         Refusal {
             code: "model_not_found",
             when: "the package path is absent or not a regular file",
@@ -129,7 +130,9 @@ pub static COMMAND: Command = Command {
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let out = inputs.require("out")?;
     crate::apply::validate_output_path(out)?;
-    let package = crate::package::read_bytes(inputs.require("package")?)?;
+    let path = inputs.require("package")?;
+    let package = crate::package::read_bytes(path)?;
+    crate::package::authorize_write(&crate::package::decode(path, &package)?, "import structure")?;
     let source = inputs.require("source")?;
     let leaf = Path::new(source)
         .file_name()

@@ -68,6 +68,8 @@ pub fn run(inputs: &Inputs, path: &str) -> Result<Value, Failure> {
                 format!("project head package: {e}"),
             )
         })?;
+        crate::package::authorize_write(&incoming_package, "publish")?;
+        crate::package::authorize_write(&target_package, "publish replacement")?;
         let incoming_sha = format!("{:x}", Sha256::digest(&incoming));
         let target_sha = downloaded.data["sha256"].as_str().ok_or_else(|| {
             Failure::failed(
@@ -138,6 +140,10 @@ pub fn run(inputs: &Inputs, path: &str) -> Result<Value, Failure> {
     }
     let intent = grid_publication::prepare(&request, &bytes).map_err(|message| {
         let failure = match message.split(':').next().unwrap_or("") {
+            "composite_model_protected" => {
+                return Failure::invalid("composite_model_protected", message)
+                    .remedy(crate::package::PROTECTED_MODEL.remedy);
+            }
             "publish_expected_head_required" => {
                 Failure::invalid("publish_expected_head_required", message)
             }

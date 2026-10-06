@@ -79,6 +79,7 @@ pub static COMMAND: Command = Command {
         },
     ],
     refusals: &[
+        package::PROTECTED_MODEL,
         Refusal {
             code: "model_not_found",
             when: "the source is absent or is not a regular file",
@@ -221,6 +222,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         Some(out)
     };
     let bytes = package::read_bytes(model)?;
+    package::authorize_write(&package::decode(model, &bytes)?, "reconcile cable source")?;
     let result = reconcile_cable_source_package(&bytes, &request).map_err(owner_failure)?;
     let mut receipt =
         serde_json::to_value(&result).expect("native reconciliation receipt serializes");

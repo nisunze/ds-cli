@@ -287,6 +287,7 @@ pub static APPLY: Command = Command {
         runnable: false,
     }],
     refusals: &[
+        crate::package::PROTECTED_MODEL,
         Refusal {
             code: "revision_conflict",
             when: "the model head differs from --revision",
@@ -323,6 +324,10 @@ pub fn apply(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let out = inputs.require("out")?;
     crate::apply::validate_output_path(out)?;
     let model = crate::package::read_bytes(inputs.require("model")?)?;
+    crate::package::authorize_write(
+        &crate::package::decode(inputs.require("model")?, &model)?,
+        "apply template",
+    )?;
     let template = crate::package::read_bytes(inputs.require("template")?)?;
     let outcome = ds_grid_exchange::standards_apply::apply_structure_standards_template(
         &model,
