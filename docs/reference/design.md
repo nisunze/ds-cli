@@ -874,14 +874,6 @@ source's membership and `project.edit` on the destination.
 `ds auth project create --from-template` runs exactly this copy (both parts)
 after creating the project.
 
-While the global store retires, platform administrators move each project's
-resolved template into its own `docs/network_template`:
-`ds design config copy census` pages every project (`in_sync`, the resolved
-template, `master_fallback` where the named template is gone, and the
-migration `plan_sha256`), and `copy apply --source-template selected` applies
-one row. `--source-template <id>` seeds a template project from a named global
-template.
-
 ## Internal properties versus external publication
 
 `tag_<definition_id>` is an ordinary property in Properties and Attribute

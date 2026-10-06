@@ -2742,11 +2742,6 @@ static DESIGN_ENTRIES: &[Entry] = &[
         render: ds_cli_design::config_copy::render,
     },
     Entry {
-        command: &ds_cli_design::config_copy::CENSUS,
-        handler: ds_cli_design::config_copy::census,
-        render: ds_cli_design::config_copy::render,
-    },
-    Entry {
         command: &ds_cli_design::feeder_limits::READ,
         handler: ds_cli_design::feeder_limits::read,
         render: ds_cli_design::feeder_limits::render,

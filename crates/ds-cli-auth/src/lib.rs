@@ -5981,11 +5981,11 @@ fn map_print_style_keys(error: ClientError) -> Failure {
     }
 }
 
-pub use ds_client_core::{NetworkDocumentsRequest, NetworkDocumentsSource};
+pub use ds_client_core::NetworkDocumentsRequest;
 pub const NETWORK_DOCUMENTS_INVALID_REFUSAL: Refusal = Refusal {
     code: "network_documents_invalid",
-    when: "the copy names no project, its own project, an unknown part, or a global source with network_config",
-    remedy: "name --project and exactly one of --source-project (another project) or --source-template; parts are network_template and network_config",
+    when: "the copy names no project, its own project, or an unknown part",
+    remedy: "name --project and --source-project (another project); parts are network_template and network_config",
 };
 pub const NETWORK_DOCUMENTS_PLAN_CHANGED_REFUSAL: Refusal = Refusal {
     code: "network_documents_plan_changed",
@@ -5994,8 +5994,8 @@ pub const NETWORK_DOCUMENTS_PLAN_CHANGED_REFUSAL: Refusal = Refusal {
 };
 pub const NETWORK_DOCUMENTS_SOURCE_MISSING_REFUSAL: Refusal = Refusal {
     code: "network_documents_source_missing",
-    when: "the source project holds no such network document, or the named global template does not exist",
-    remedy: "plan without --parts to copy what the source holds, or name an existing template",
+    when: "the source project holds no such network document",
+    remedy: "plan without --part to copy what the source holds, or name a template project holding that document",
 };
 pub const NETWORK_DOCUMENTS_PROJECT_NOT_FOUND_REFUSAL: Refusal = Refusal {
     code: "network_documents_project_not_found",
@@ -6008,8 +6008,7 @@ pub const NETWORK_DOCUMENTS_ROUTE_UNAVAILABLE_REFUSAL: Refusal = Refusal {
     remedy: "deploy a ds-brain that serves the network_documents action on this lane",
 };
 
-/// One network document copy into `project`, or the all-project census
-/// (`project` `None`).
+/// One network document copy into the explicitly named project.
 pub fn network_documents(
     lane_value: &str,
     project: Option<&str>,
