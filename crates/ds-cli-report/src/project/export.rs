@@ -2686,6 +2686,7 @@ fn preview_pages(
     // sheet, which is what a preview is for.
     let holdings = shared_root().ok().map(|root| Holdings {
         catalog: held_catalog_rooms(&root, holdings_scope),
+        room_root: ds_layer_store::default_root().ok(),
         scope: holdings_scope.clone(),
         root,
     });
