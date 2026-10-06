@@ -184,8 +184,8 @@ reachable on an archived project like every lifecycle-only update.
 
 `auth project create --from-template <project-id>` starts a project from a
 template project. `ds_command_kernel::project_template` decides the plan from
-fresh reads of the template (its directory row, configuration document,
-printing setups, transformer inventory and live DS Grid models); this command
+fresh reads of the template (its directory row, printing setups, transformer
+inventory and live DS Grid models); this command
 only runs it, through doors that already exist and authorize themselves:
 
 1. `create` with the operator's display name, location and description over
@@ -193,7 +193,9 @@ only runs it, through doors that already exist and authorize themselves:
    type and CRS, components, phases and lanes (`--country` / `--client`
    override; `--network-template` / `--styling-template` are refused as
    `template_setting_inherited`);
-2. `save_config` for every stored configuration sheet the save door admits;
+2. one `design config copy` of the template's network documents
+   (`docs/network_template` and `docs/network_config`), planned then applied
+   under the plan's digest; a template that holds none reports `absent`;
 3. a printing copy from the template into the new project for every setup,
    same id, each with the logos its layout holds (a setup the creation adopted
    from the global seeds under the same id is replaced at its revision);

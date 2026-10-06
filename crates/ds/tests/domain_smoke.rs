@@ -9716,6 +9716,28 @@ fn saved_selections_are_native_and_ds_brain_still_decides_membership() {
 }
 
 #[test]
+fn a_network_document_copy_names_exactly_one_source_before_anything_is_sent() {
+    // A copy with no source, both sources, or itself as the source is refused
+    // locally: nothing reaches ds-brain, and the refusal is the documented one.
+    for args in [
+        &["design", "config", "copy", "plan", "--project", "test-project"][..],
+        &[
+            "design", "config", "copy", "plan", "--project", "test-project",
+            "--source-project", "template_tchad", "--source-template", "master",
+        ][..],
+        &[
+            "design", "config", "copy", "plan", "--project", "test-project",
+            "--source-project", "test-project",
+        ][..],
+        &["design", "config", "copy", "census", "--limit", "26"][..],
+    ] {
+        let mut call = args.to_vec();
+        call.extend(["--output", "json"]);
+        assert_eq!(native_refusal(&call), "network_documents_invalid", "{args:?}");
+    }
+}
+
+#[test]
 fn every_design_command_is_discoverable_without_the_desktop_installed() {
     // Every native command is discoverable and honestly unavailable when this
     // test build has no digest-pinned release catalog; the kernel-local ones
@@ -9727,8 +9749,9 @@ fn every_design_command_is_discoverable_without_the_desktop_installed() {
         // Base 101, minus four retired commands, plus three version and five
         // attachment/comment commands added on 2026-09-25, plus the LV
         // voltage-drop check (2026-09-28), one-shot project run (2026-09-30),
-        // the governed tag project-list read, and LV analysis availability.
-        108,
+        // the governed tag project-list read, and LV analysis availability,
+        // plus the three network document copy commands (2026-10-06).
+        111,
         "the design domain should expose its whole family: {commands:?}"
     );
     for command in commands {
@@ -9749,6 +9772,9 @@ fn every_design_command_is_discoverable_without_the_desktop_installed() {
                     | "design.config.set"
                     | "design.config.save"
                     | "design.config.rule-set.duplicate"
+                    | "design.config.copy.plan"
+                    | "design.config.copy.apply"
+                    | "design.config.copy.census"
                     | "design.feeder-limits.read"
                     | "design.feeder-limits.set"
                     | "design.categories.read"

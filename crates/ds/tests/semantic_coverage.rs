@@ -475,6 +475,11 @@ const EXPECTED: &[(&str, &str, &str)] = &[
         "global_write",
         "headless_project",
     ),
+    // A project's network documents from a template project: plan reads,
+    // apply writes the destination; the census reads every project.
+    ("design.config.copy.plan", "local_auth_state", "headless_project"),
+    ("design.config.copy.apply", "global_write", "headless_project"),
+    ("design.config.copy.census", "local_auth_state", "headless_user"),
     (
         "design.feeder-limits.read",
         "local_file_write",

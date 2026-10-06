@@ -71,6 +71,7 @@ pub mod category_catalog;
 pub mod collisions;
 pub mod comment;
 pub mod config;
+pub mod config_copy;
 pub mod data_lane;
 pub mod features;
 pub mod feeder_limits;
@@ -115,6 +116,9 @@ pub static DOMAIN: Domain = Domain {
         &config::SET,
         &config::SAVE,
         &config::DUPLICATE,
+        &config_copy::PLAN,
+        &config_copy::APPLY,
+        &config_copy::CENSUS,
         &project::SOURCES,
         &project::INIT,
         &project::WRITE,

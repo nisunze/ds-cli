@@ -6052,24 +6052,27 @@ pub(crate) fn map_network_documents(error: ClientError) -> Failure {
         .and_then(|refusal| refusal.code())
         .map(str::to_owned);
     let message = error.to_string();
-    let named =
-        |refusal: Refusal| Failure::invalid(refusal.code, message.clone()).remedy(refusal.remedy);
     match (error.kind(), refused.as_deref()) {
         (_, Some("network_documents_plan_changed")) => {
-            named(NETWORK_DOCUMENTS_PLAN_CHANGED_REFUSAL)
+            Failure::invalid(NETWORK_DOCUMENTS_PLAN_CHANGED_REFUSAL.code, message)
+                .remedy(NETWORK_DOCUMENTS_PLAN_CHANGED_REFUSAL.remedy)
         }
         (_, Some("network_documents_source_missing")) => {
-            named(NETWORK_DOCUMENTS_SOURCE_MISSING_REFUSAL)
+            Failure::invalid(NETWORK_DOCUMENTS_SOURCE_MISSING_REFUSAL.code, message)
+                .remedy(NETWORK_DOCUMENTS_SOURCE_MISSING_REFUSAL.remedy)
         }
         (_, Some("network_documents_project_not_found")) => {
-            named(NETWORK_DOCUMENTS_PROJECT_NOT_FOUND_REFUSAL)
+            Failure::invalid(NETWORK_DOCUMENTS_PROJECT_NOT_FOUND_REFUSAL.code, message)
+                .remedy(NETWORK_DOCUMENTS_PROJECT_NOT_FOUND_REFUSAL.remedy)
         }
-        (ErrorKind::RouteUnavailable, _) => Failure::failed(
-            NETWORK_DOCUMENTS_ROUTE_UNAVAILABLE_REFUSAL.code,
-            message.clone(),
-        )
-        .remedy(NETWORK_DOCUMENTS_ROUTE_UNAVAILABLE_REFUSAL.remedy),
-        (ErrorKind::InvalidInput, _) => named(NETWORK_DOCUMENTS_INVALID_REFUSAL),
+        (ErrorKind::RouteUnavailable, _) => {
+            Failure::failed(NETWORK_DOCUMENTS_ROUTE_UNAVAILABLE_REFUSAL.code, message)
+                .remedy(NETWORK_DOCUMENTS_ROUTE_UNAVAILABLE_REFUSAL.remedy)
+        }
+        (ErrorKind::InvalidInput, _) => {
+            Failure::invalid(NETWORK_DOCUMENTS_INVALID_REFUSAL.code, message)
+                .remedy(NETWORK_DOCUMENTS_INVALID_REFUSAL.remedy)
+        }
         _ => map_client(error),
     }
 }

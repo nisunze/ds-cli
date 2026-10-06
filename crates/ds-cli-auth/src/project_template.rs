@@ -580,7 +580,7 @@ mod tests {
         calls: Vec<String>,
         held: BTreeMap<String, Vec<PrintingSetup>>,
         // The network document copy answers this, or this refusal code.
-        network_refusal: Option<&'static str>,
+        network_refusal: Option<Failure>,
     }
 
     impl FakeDoors {
@@ -648,8 +648,8 @@ mod tests {
         ) -> Result<Value, Failure> {
             self.calls
                 .push(format!("network documents {template} -> {project}"));
-            match self.network_refusal {
-                Some(code) => Err(Failure::invalid(code, "refused")),
+            match self.network_refusal.take() {
+                Some(refused) => Err(refused),
                 None => Ok(
                     json!({"written":["network_template","network_config"],"plan_sha256":REVISION}),
                 ),
@@ -813,7 +813,10 @@ mod tests {
     #[test]
     fn a_failed_item_after_creation_is_stated_and_the_rest_still_runs() {
         let mut doors = FakeDoors::template("template");
-        doors.network_refusal = Some("network_documents_plan_changed");
+        doors.network_refusal = Some(Failure::invalid(
+            "network_documents_plan_changed",
+            "reviewed plan moved",
+        ));
         let answer = run(&mut doors, "czgmdwth_gisagara", request(), false).unwrap();
         let applied = &answer["applied"];
         assert_eq!(applied["network_documents"]["outcome"], "failed");
@@ -835,7 +838,10 @@ mod tests {
     #[test]
     fn a_template_without_network_documents_reports_them_absent() {
         let mut doors = FakeDoors::template("template");
-        doors.network_refusal = Some(crate::NETWORK_DOCUMENTS_SOURCE_MISSING_REFUSAL.code);
+        doors.network_refusal = Some(Failure::invalid(
+            "network_documents_source_missing",
+            "the template holds none",
+        ));
         let answer = run(&mut doors, "czgmdwth_gisagara", request(), false).unwrap();
         assert_eq!(answer["applied"]["network_documents"]["outcome"], "absent");
         assert_eq!(answer["applied"]["complete"], true);

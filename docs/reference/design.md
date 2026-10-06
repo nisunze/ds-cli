@@ -846,6 +846,42 @@ or resize design geometry. The minimum LV cable also uses its catalog match,
 not automatically the minimum feeder: 50 mm² ABC maps to a 35 mm² feeder even
 when the feeder minimum is 25 mm².
 
+## A project's network template and Settings come from a template project
+
+A project owns two network documents: `docs/network_template`, the network
+template its layers, domains and rule sets are read from, and
+`docs/network_config`, its Settings sheets. There is no global template to
+fall back on: the global Network and Solar template stores are retired the way
+the global printing library was (ds-brain
+`docs/contracts/project-network-documents.md`). A new or empty project takes
+both from a template project, or one at a time:
+
+```text
+ds design config copy plan  --project <new> --source-project <template> [--part network_config]
+ds design config copy apply --project <new> --source-project <template> --expected-plan <plan_sha256> --yes
+```
+
+The plan names each document's source and destination SHA-256 and its
+outcome — `create`, `replace` or `identical` — and the `plan_sha256` the apply
+must echo. The apply re-decides inside one transaction and refuses
+`network_documents_plan_changed` if either side moved; identical documents are
+not written, so a replay changes nothing; the source is never changed. A
+Settings copy that moves the design data locality marks the design tiles stale
+as any Settings replacement does. `--part` names one document; a named part
+the source lacks is `network_documents_source_missing`. The authority is the
+source's membership and `project.edit` on the destination.
+
+`ds auth project create --from-template` runs exactly this copy (both parts)
+after creating the project.
+
+While the global store retires, platform administrators move each project's
+resolved template into its own `docs/network_template`:
+`ds design config copy census` pages every project (`in_sync`, the resolved
+template, `master_fallback` where the named template is gone, and the
+migration `plan_sha256`), and `copy apply --source-template selected` applies
+one row. `--source-template <id>` seeds a template project from a named global
+template.
+
 ## Internal properties versus external publication
 
 `tag_<definition_id>` is an ordinary property in Properties and Attribute
