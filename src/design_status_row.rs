@@ -209,6 +209,54 @@ pub struct View {
     pub badges: Vec<Badge>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub locality_hint_key: Option<String>,
+    /// The transformer's voltage-drop analysis; absent on rows that are not
+    /// transformers.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub voltage_drop: Option<VoltageDropView>,
+}
+
+/// A transformer's voltage-drop analysis as the register shows it: the one
+/// classification printing also reads (`printing::inventory::voltage_drop`),
+/// labelled. `state` is `saved_json`, `local_changes` (computed on this device,
+/// not saved), `missing`, `stale` or `invalid_receipt`; a saved analysis
+/// carries its verdict, and the engine's own reason when it is incomplete or
+/// was not calculated.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct VoltageDropView {
+    pub state: String,
+    pub calculated: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub verdict: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+    pub label_key: String,
+    pub tone: String,
+}
+
+fn voltage_drop_view(row: &Map<String, Value>, dirty: bool) -> VoltageDropView {
+    let preview = crate::printing::inventory::voltage_drop(row, dirty);
+    let (label_key, tone) = match (preview.state.as_str(), preview.verdict.as_deref()) {
+        ("saved_json", Some("complies")) => ("dsr_vd_complies", "emerald"),
+        ("saved_json", Some("complies_with_reinforcement")) => {
+            ("dsr_vd_complies_with_reinforcement", "amber")
+        }
+        ("saved_json", Some("does_not_comply")) => ("dsr_vd_does_not_comply", "red"),
+        ("saved_json", Some("incomplete")) => ("dsr_vd_incomplete", "amber"),
+        ("saved_json", Some("refused")) => ("dsr_vd_not_calculated", "red"),
+        ("saved_json", Some("reserved")) => ("dsr_vd_reserved", "slate"),
+        ("local_changes", _) => ("dsr_vd_local_changes", "blue"),
+        ("stale", _) => ("dsr_vd_stale", "amber"),
+        ("missing", _) => ("dsr_vd_missing", "slate"),
+        _ => ("dsr_vd_invalid_receipt", "red"),
+    };
+    VoltageDropView {
+        state: preview.state,
+        calculated: preview.calculated,
+        verdict: preview.verdict,
+        reason: preview.reason,
+        label_key: label_key.into(),
+        tone: tone.into(),
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -1482,6 +1530,8 @@ fn row_reply(request: &Request, entry: Entry, current_user: &str) -> RowReply {
             report_status: phase_status(phase(row, "report_metadata")).to_string(),
             badges,
             locality_hint_key: (locality == Locality::Local).then(|| "dsr_local_copy".into()),
+            voltage_drop: (!is_special_row(&entry.name))
+                .then(|| voltage_drop_view(row, client.dirty)),
         },
         phase_ownership: PhaseOwnership {
             owner: supersession.owner,
@@ -1591,6 +1641,59 @@ mod tests {
             );
         }
         assert!(!governance(json!({}).as_object().unwrap(), true).entry_blocked);
+    }
+
+    /// The register shows each transformer's analysis as printing classifies
+    /// it, labelled, with the engine's own reason when it was not calculated.
+    #[test]
+    fn each_transformer_row_shows_its_voltage_drop_analysis() {
+        let saved = |status: &str, summary: Value| {
+            json!({"name": format!("tx_{status}"),
+                "metadata": {"version": 3, "content_digest": "a".repeat(64)},
+                "voltage_drop_metadata": {"state": "ready",
+                    "schema": "ds.lv-voltage-drop.analysis/v1", "method": "ds-lv-vd/1",
+                    "status": status, "nature": null, "content_digest": "a".repeat(64),
+                    "analysis_sha256": "b".repeat(64), "inputs_digest": "c".repeat(64),
+                    "analysis_inputs_digest": "d".repeat(64), "processed_digest": "e".repeat(64),
+                    "json_bytes": 2048, "summary": summary}})
+        };
+        let answer = reply(request(json!([
+            saved("calculated", json!({"method": "ds-lv-vd/1", "status": "calculated",
+                "transformer_nature": null, "verdict": "complies", "issues": []})),
+            saved("refused", json!({"method": "ds-lv-vd/1", "status": "not_calculated",
+                "transformer_nature": null, "verdict": "incomplete",
+                "issues": ["the network has no transformer node to start from"]})),
+            {"name": "tx_local", "client_dirty": true},
+            {"name": "tx_never"},
+            {"name": "mv_data"}
+        ])));
+        let view = |name: &str| {
+            answer["rows"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|row| row["name"] == name)
+                .unwrap()["view"]["voltage_drop"]
+                .clone()
+        };
+        assert_eq!(
+            view("tx_calculated"),
+            json!({"state": "saved_json", "calculated": true, "verdict": "complies",
+                "label_key": "dsr_vd_complies", "tone": "emerald"})
+        );
+        assert_eq!(
+            view("tx_refused"),
+            json!({"state": "saved_json", "calculated": false, "verdict": "refused",
+                "reason": "the network has no transformer node to start from",
+                "label_key": "dsr_vd_not_calculated", "tone": "red"})
+        );
+        assert_eq!(view("tx_local")["state"], "local_changes");
+        assert_eq!(view("tx_local")["label_key"], "dsr_vd_local_changes");
+        assert_eq!(view("tx_never")["label_key"], "dsr_vd_missing");
+        assert!(
+            view("mv_data").is_null(),
+            "an aggregate row has no analysis"
+        );
     }
 
     #[test]

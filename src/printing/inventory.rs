@@ -55,6 +55,10 @@ pub struct VoltageDropPreview {
     pub rule_confirmed: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub verdict: Option<String>,
+    /// The engine's own words for an analysis that is incomplete or was not
+    /// calculated: its issues, or the calculation gate's reason.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub analysis_sha256: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -101,12 +105,16 @@ fn digest(value: &Value) -> Option<&str> {
     })
 }
 
-fn voltage_drop(row: &Map<String, Value>, dirty: bool) -> VoltageDropPreview {
+/// What a transformer's held voltage-drop analysis is, from its saved receipt
+/// and whether this device holds newer unsaved work. Printing and the status
+/// register both read this one classification.
+pub(crate) fn voltage_drop(row: &Map<String, Value>, dirty: bool) -> VoltageDropPreview {
     let unavailable = |state: &str| VoltageDropPreview {
         state: state.into(),
         calculated: false,
         rule_confirmed: None,
         verdict: None,
+        reason: None,
         analysis_sha256: None,
         content_digest: None,
         version: None,
@@ -172,14 +180,29 @@ fn voltage_drop(row: &Map<String, Value>, dirty: bool) -> VoltageDropPreview {
     if !valid {
         return unavailable("invalid_receipt");
     }
+    let calculated = matches!(
+        verdict,
+        Some("complies" | "complies_with_reinforcement" | "does_not_comply")
+    );
+    let reason = if status == "reserved" {
+        summary["calculation"].as_str().map(str::to_string)
+    } else if calculated {
+        None
+    } else {
+        let issues = summary["issues"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+            .collect::<Vec<_>>();
+        (!issues.is_empty()).then(|| issues.join("; "))
+    };
     VoltageDropPreview {
         state: "saved_json".into(),
-        calculated: matches!(
-            verdict,
-            Some("complies" | "complies_with_reinforcement" | "does_not_comply")
-        ),
+        calculated,
         rule_confirmed: summary["rule_confirmed"].as_bool(),
         verdict: verdict.map(str::to_string),
+        reason: reason.map(|text| crate::design_health::sanitize_message(&text)),
         analysis_sha256: value["analysis_sha256"].as_str().map(str::to_string),
         content_digest: Some(content_digest.into()),
         version: Some(version),
@@ -453,6 +476,50 @@ mod tests {
         assert!(!dirty.transformers[0].voltage_drop.calculated);
         let missing = printable(&rows(), &[], "", 500).unwrap();
         assert!(!missing.transformers[0].voltage_drop.calculated);
+    }
+
+    /// An analysis that is incomplete or was not calculated says why, in the
+    /// engine's own words; a calculated verdict needs no reason.
+    #[test]
+    fn a_saved_analysis_without_a_verdict_carries_the_engine_reason() {
+        for (status, summary_status, key, value, reason) in [
+            (
+                "refused",
+                "not_calculated",
+                "issues",
+                json!(["the network has no transformer node to start from"]),
+                Some("the network has no transformer node to start from"),
+            ),
+            (
+                "incomplete",
+                "incomplete",
+                "issues",
+                json!([
+                    "no transfo_sizes row with electrical_params for 0 kVA",
+                    "one more"
+                ]),
+                Some("no transfo_sizes row with electrical_params for 0 kVA; one more"),
+            ),
+            ("incomplete", "incomplete", "issues", json!([]), None),
+            (
+                "reserved",
+                "reserved",
+                "calculation",
+                json!("method default: a fill_in transformer is not calculated"),
+                Some("method default: a fill_in transformer is not calculated"),
+            ),
+        ] {
+            let mut row = saved("incomplete");
+            row["voltage_drop_metadata"]["status"] = json!(status);
+            row["voltage_drop_metadata"]["summary"]["status"] = json!(summary_status);
+            row["voltage_drop_metadata"]["summary"][key] = value;
+            let preview = &printable(&[row], &[], "", 500).unwrap().transformers[0].voltage_drop;
+            assert_eq!(preview.reason.as_deref(), reason, "{status}");
+        }
+        let mut calculated = saved("complies");
+        calculated["voltage_drop_metadata"]["summary"]["issues"] = json!(["ignored"]);
+        let preview = &printable(&[calculated], &[], "", 500).unwrap().transformers[0].voltage_drop;
+        assert_eq!(preview.reason, None);
     }
 
     #[test]
