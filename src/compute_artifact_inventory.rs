@@ -8,7 +8,7 @@ use std::collections::{BTreeMap, BTreeSet};
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 pub struct Declaration {
     pub output_id: String,
-    /// Exact native report receipt name; older report declarations require migration.
+    /// Exact native report receipt name; absent historical names are projected by Rust.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub filename: Option<String>,
     pub format: String,
@@ -161,7 +161,7 @@ pub fn decode_head(input: &[u8]) -> Result<Head, String> {
     if input.is_empty() || input.len() > 512 * 1024 {
         return Err("Artifact head exceeds its byte bound.".into());
     }
-    let head: Head = serde_json::from_slice(input)
+    let mut head: Head = serde_json::from_slice(input)
         .map_err(|_| "Compute artifact response has an invalid head.".to_string())?;
     if !matches!(
         head.engine.as_str(),
@@ -185,6 +185,9 @@ pub fn decode_head(input: &[u8]) -> Result<Head, String> {
         return Err("Compute artifact response has an invalid head.".into());
     }
     // The same output owner validates inventory, head and downloads.
+    for output in &mut head.outputs {
+        normalize_stored_filename(&head.engine, &head.operation, output)?;
+    }
     if let Some(binding) = &head.printing_preview {
         binding.validate()?;
         if head.engine != "network_reporter"
@@ -317,11 +320,27 @@ pub fn filename(engine: &str, operation: &str, output: &Declaration) -> String {
     }
     format!("{stem}.{}", output.format)
 }
+
+// Read compatibility for heads sealed before receipt filenames were recorded.
+// Only absence is repaired in the projection. A supplied empty or unsafe name
+// remains malformed, and strict new-publication validation is unchanged.
+fn normalize_stored_filename(
+    engine: &str,
+    operation: &str,
+    output: &mut Declaration,
+) -> Result<(), String> {
+    if engine == "network_reporter" && output.filename.is_none() {
+        crate::report_formats::output(&output.format)
+            .map_err(|_| "Compute artifact response has an invalid output declaration.")?;
+        output.filename = Some(filename(engine, operation, output));
+    }
+    Ok(())
+}
 pub fn evaluate(input: &[u8]) -> Result<String, String> {
     if input.is_empty() || input.len() > 512 * 1024 {
         return Err("Artifact inventory exceeds its byte bound.".into());
     }
-    let request: Request =
+    let mut request: Request =
         serde_json::from_slice(input).map_err(|_| "Invalid artifact inventory response.")?;
     if !matches!(
         request.engine.as_str(),
@@ -333,6 +352,16 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
     }
     let mut ids = BTreeSet::new();
     let mut file_names = Vec::new();
+    for output in &mut request.outputs {
+        normalize_stored_filename(&request.engine, &request.operation, output)?;
+    }
+    if let Some(download) = &mut request.download {
+        let historical = request.engine == "network_reporter" && download.output.filename.is_none();
+        normalize_stored_filename(&request.engine, &request.operation, &mut download.output)?;
+        if historical && download.file_name.is_empty() {
+            download.file_name = filename(&request.engine, &request.operation, &download.output);
+        }
+    }
     for output in &request.outputs {
         validate(&request.engine, output)?;
         if !ids.insert(&output.output_id) {
@@ -413,6 +442,47 @@ mod tests {
             "output_origins":{
                 "xlsx":{"work_id":"work_prior", "input_base_fingerprint":"f".repeat(64), "engine_version":"ds-network-reporter@0.1.0", "engine_build_manifest_sha256":"d".repeat(64)},
                 "gpkg":{"work_id":"work_next", "input_base_fingerprint":"a".repeat(64), "engine_version":"ds-network-reporter@0.2.0", "engine_build_manifest_sha256":"e".repeat(64)}}})
+    }
+
+    #[test]
+    fn historical_heads_project_only_absent_names_without_changing_provenance() {
+        let modern = reporter_head();
+        let expected = decode_head(&serde_json::to_vec(&modern).unwrap()).unwrap();
+        let mut historical = modern.clone();
+        for output in historical["outputs"].as_array_mut().unwrap() {
+            output.as_object_mut().unwrap().remove("filename");
+        }
+        let actual = decode_head(&serde_json::to_vec(&historical).unwrap()).unwrap();
+        assert_eq!(actual, expected);
+        let old: Declaration = serde_json::from_value(historical["outputs"][0].clone()).unwrap();
+        assert!(
+            validate("network_reporter", &old).is_err(),
+            "new publications remain strict"
+        );
+        for bad in [json!(""), json!("../unsafe.xlsx"), json!("wrong.xlsx")] {
+            let mut malformed = modern.clone();
+            malformed["outputs"][0]["filename"] = bad;
+            assert!(decode_head(&serde_json::to_vec(&malformed).unwrap()).is_err());
+        }
+        historical["outputs"][0]["sha256"] = json!("malformed");
+        assert!(decode_head(&serde_json::to_vec(&historical).unwrap()).is_err());
+    }
+
+    #[test]
+    fn historical_download_projects_canonical_name_and_keeps_byte_checks() {
+        let mut output = reporter_head()["outputs"][0].clone();
+        output.as_object_mut().unwrap().remove("filename");
+        let mut input = json!({"engine":"network_reporter", "operation":"export-agasharu",
+            "outputs":[output.clone()], "download":{"output":output, "file_name":""}});
+        let projected: serde_json::Value =
+            serde_json::from_str(&evaluate(&serde_json::to_vec(&input).unwrap()).unwrap()).unwrap();
+        assert_eq!(projected["file_names"][0], "agasharu.xlsx");
+        assert_eq!(projected["outputs"][0], projected["download_output"]);
+        input["download"]["output"]["sha256"] = json!("c".repeat(64));
+        assert!(evaluate(&serde_json::to_vec(&input).unwrap()).is_err());
+        input["download"]["output"] = input["outputs"][0].clone();
+        input["download"]["file_name"] = json!("../unsafe.xlsx");
+        assert!(evaluate(&serde_json::to_vec(&input).unwrap()).is_err());
     }
 
     #[test]
