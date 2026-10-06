@@ -26,9 +26,13 @@ const LANE_ARG: Arg = ds_cli_contract::spec::Arg {
     choices: &[],
     ..ds_cli_contract::spec::LANE
 };
+const RETIRED: Refusal = Refusal {
+    code: "solar_seed_retired",
+    when: "the global Solar seed route has been retired; Solar inputs belong to projects",
+    remedy: "Use project-owned Solar inputs. This retired global seed route cannot copy them.",
+};
 fn native_available() -> Availability {
-    // The restored native identity owns backend availability at execution.
-    Availability::Available
+    Availability::unavailable(RETIRED.code, RETIRED.when, RETIRED.remedy)
 }
 
 /// ds-brain refuses more than this many cities in one request
@@ -106,6 +110,7 @@ const CITY_ARG: Arg = Arg::repeated(
 /// under ds-brain's own names: a caller branching on `error.code` sees the
 /// condition the server saw, and the remedies are the contract's.
 static SEED_REFUSALS: &[Refusal] = &[
+    RETIRED,
     Refusal {
         code: "solar_seed_bounded",
         when: "more than 64 cities were requested, or the seed exceeds one governed request",
@@ -464,19 +469,8 @@ pub fn apply(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
 
 /// Send one seeding operation and translate ds-brain's own refusal codes back
 /// into named CLI refusals.
-fn invoke(inputs: &Inputs, _operation: &'static str, arguments: Value) -> Result<Value, Failure> {
-    let mut session = ds_cli_auth::solar_project_session_for_project(
-        inputs.value("lane").unwrap_or("stable"),
-        inputs.require("project")?,
-    )?;
-    session
-        .execute(&ds_cli_auth::SolarProjectCommand::Seed {
-            source: inputs.value("source").map(str::to_owned),
-            cities: inputs.repeated("city").to_vec(),
-            overwrite: inputs.switch("overwrite"),
-            digest: arguments["seed_digest"].as_str().map(str::to_owned),
-        })
-        .map_err(classify_seed_failure)
+fn invoke(_inputs: &Inputs, _operation: &'static str, _arguments: Value) -> Result<Value, Failure> {
+    Err(Failure::unavailable(RETIRED.code, RETIRED.when).remedy(RETIRED.remedy))
 }
 
 /// Name the six conditions ds-brain gives a stable code, so a caller branching
