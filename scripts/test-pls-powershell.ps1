@@ -157,6 +157,16 @@ try {
     $cases.Add('a4_default_and_explicit_a3_all_sections')
     Assert-Refuses { Set-PlsReportPaper @() 'A2' } 'ValidateSet|validation' 'unsupported_report_paper_negative'
 
+    . (Import-TestFunction (Join-Path $plsCadd 'ds-desktop-check.ps1') 'Read-DsSettingsLines')
+    $iniFixture = Join-Path $scratch 'PLS_CADD.INI'
+    @('unrelated=1', 'PREF_WANT_PLSCADD_PROJECT_WIZARD=0', 'CLASSIC_INTERFACE=1') | Set-Content -LiteralPath $iniFixture
+    $iniEvidence = @(Read-DsSettingsLines $iniFixture)
+    Assert-That ($iniEvidence.Count -eq 2 -and $iniEvidence[0] -ceq 'PREF_WANT_PLSCADD_PROJECT_WIZARD=0') 'Readiness must preserve matching native setting text.'
+    Assert-That (@($iniEvidence | Where-Object { $_.PSObject.Properties.Match('PSDrive').Count -gt 0 -or $_.PSObject.Properties.Match('PSProvider').Count -gt 0 }).Count -eq 0) 'Readiness must not retain filesystem provider metadata.'
+    $settingsJson = [ordered]@{ matching_lines = $iniEvidence } | ConvertTo-Json -Depth 12
+    Assert-That ($settingsJson.Length -lt 512 -and $settingsJson -notmatch 'PSProvider|PSDrive') 'Readiness JSON must remain bounded at its production serialization depth.'
+    $cases.Add('readiness_ini_text_without_recursive_provider_metadata')
+
     Import-Module (Join-Path $plsCadd 'pls-window-classification.psm1') -Force -DisableNameChecking
     $handle = [long] 8589934593
     $frame = "$handle vis=True en=True [PLS-CADD] 'same title'"

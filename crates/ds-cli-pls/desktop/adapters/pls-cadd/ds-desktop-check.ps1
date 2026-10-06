@@ -5,6 +5,12 @@ param([Parameter(Mandatory = $true)][string] $ResultPath)
 # Wizard switch have no characterized setting key yet, so they are listed for the operator to
 # confirm, with any PLS_CADD.INI lines that mention them as evidence - never guessed.
 . (Join-Path $PSScriptRoot 'ds-desktop-lib.ps1')
+# Get-Content strings carry PSDrive/PSProvider metadata. Keep only native INI
+# text so ConvertTo-Json cannot recursively serialize the provider object graph.
+function Read-DsSettingsLines([string] $Path) {
+    Get-Content -LiteralPath $Path | Where-Object { $_ -match '(?i)wizard|classic|ribbon|interface' } |
+        Select-Object -First 40 | ForEach-Object { [string]::Copy($_.ToString()) }
+}
 Invoke-DsEntry $ResultPath 'check' {
     Import-Module (Join-Path $here 'pls-backup-restore-lib.psm1') -Force
     $found = Test-Path -LiteralPath $PlsExecutable -PathType Leaf
@@ -19,7 +25,7 @@ Invoke-DsEntry $ResultPath 'check' {
     $ini = Join-Path $env:APPDATA 'PLS\PLS_CADD.INI'
     $iniFound = Test-Path -LiteralPath $ini -PathType Leaf
     $iniLines = @()
-    if ($iniFound) { $iniLines = @(Get-Content -LiteralPath $ini | Where-Object { $_ -match '(?i)wizard|classic|ribbon|interface' } | Select-Object -First 40) }
+    if ($iniFound) { $iniLines = @(Read-DsSettingsLines $ini) }
     $word = $null -ne [Type]::GetTypeFromProgID('Word.Application')
     $running = @(Get-Process -Name 'pls_cadd64' -ErrorAction SilentlyContinue | ForEach-Object { $_.Id })
     $powershell = $PSVersionTable.PSVersion
