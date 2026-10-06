@@ -55,8 +55,8 @@ const SPAWN_OWNERS: &[(&str, &str)] = &[
     ),
     (
         "crates/ds-cli-mcp/src/tools.rs",
-        "re-invokes this same executable to read its own `ds capabilities` (fixed \
-         literal argv, path is `current_exe`) and, for one MCP invoke whose live \
+        "re-invokes this same executable for declared tool calls and diagnostic probes \
+         (descriptor-built argv, path is `current_exe`) and, for one MCP invoke whose live \
          descriptor carries desktop-class authority and names no descriptor, starts \
          the installed DS GridDesign application once with no arguments",
     ),

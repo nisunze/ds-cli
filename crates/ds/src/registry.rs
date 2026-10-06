@@ -3370,7 +3370,7 @@ static WORKSTATION_ENTRIES: &[Entry] = &[
 static MCP_ENTRIES: &[Entry] = &[
     Entry {
         command: &ds_cli_mcp::serve::COMMAND,
-        handler: ds_cli_mcp::serve::run,
+        handler: serve_mcp,
         render: ds_cli_mcp::serve::render,
     },
     Entry {
@@ -3653,6 +3653,19 @@ pub fn find_by_id(id: &str) -> Option<&'static Entry> {
         .flat_map(|registered| registered.entries.iter())
         .chain(meta_commands().iter())
         .find(|entry| entry.command.id == id)
+}
+
+/// MCP consumes the same domain declarations as CLI capability discovery.
+/// Root meta commands remain diagnostics, as in the tiered CLI catalogue.
+fn serve_mcp(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
+    ds_cli_mcp::serve::run(
+        inputs,
+        DOMAINS
+            .iter()
+            .flat_map(|registered| registered.entries.iter())
+            .map(|entry| entry.command),
+        crate::build::identity(),
+    )
 }
 
 /// Every registered command, in registration order. Used by capability search

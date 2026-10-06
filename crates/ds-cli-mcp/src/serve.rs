@@ -11,11 +11,11 @@
 
 use std::io::{self, BufRead, Write};
 
+use ds_cli_contract::Inputs;
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
     Arg, ArgKind, Authority, Command, Effect, Example, Execution, Requires,
 };
-use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
 use crate::surface::{Exposure, Profile, Surface};
@@ -93,9 +93,14 @@ pub static COMMAND: Command = Command {
     availability: crate::always,
 };
 
-pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
+/// The executable's registry supplies canonical declarations and build identity.
+/// No domain or registry is linked back into the MCP adapter.
+pub fn run<'a>(
+    inputs: &Inputs,
+    commands: impl IntoIterator<Item = &'a Command>,
+    build: Value,
+) -> Result<Value, Failure> {
     let executable = tools::cli_executable()?;
-    let build = tools::build_identity(&executable)?;
     let source_sha = build["source_sha"].as_str().ok_or_else(|| {
         Failure::failed(
             "mcp_capabilities_unavailable",
@@ -118,7 +123,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         call_timeout,
         &resources,
     );
-    let surface = Surface::new(exposure, profile, tools::discover_tools(&executable)?)?
+    let surface = Surface::new(exposure, profile, tools::from_commands(commands)?)?
         .with_identity(identity)
         .with_call_timeout(call_timeout);
     eprintln!(

@@ -16,7 +16,7 @@ skills; MCP reaches the rest. `ds mcp` gives those hosts the command line
 | It is | It is not |
 |---|---|
 | The same `ds` executable, launched with `mcp serve` by the host | A separate binary, sidecar or service |
-| Chapter/profile views generated at startup from unchecked `ds capabilities` schemas; live availability resolves on catalogue describe or invoke | A second command registry or hand-written command schema |
+| Chapter/profile views generated in-process from the CLI registry's unchecked schemas; live availability resolves on catalogue describe or invoke | A second command registry or hand-written command schema |
 | One `ds <path> … --output json` process per `tools/call`, the CLI's envelope returned within the adapter's documented bounds | A cache, a batch, or a "convenience" tool the CLI lacks |
 | Uses each live descriptor's authority to keep headless commands headless, and to make one bounded local pairing attempt for paired commands | A credential, a listener, or a network hop |
 | Receipt-verified `SKILL.md` documents exposed lazily through MCP resources | A requirement to copy skills into an agent home directory |
@@ -175,8 +175,11 @@ command: a verb registered later is published with no edit to this crate.
 
 ### Coverage
 
-`tools::discover_tools` walks `ds capabilities` tier by tier at startup (schema
-mode, so no availability is resolved) and projects each descriptor. Excluded:
+`tools::from_commands` projects the existing executable registry in-process at
+startup, using the same unchecked descriptor projection as `ds capabilities`.
+No command availability is probed and no CLI children are launched for startup
+metadata. An explicit describe or invocation still resolves live availability
+through the CLI. Build identity also comes from this executable's native owner. Excluded:
 the `mcp` domain itself, and `tools::NEVER_TOOLS`, each with its reason —
 `auth.login` (a password at a trusted terminal), `auth.link.approve` (the
 signed-in Desktop's act) and `server.serve` (a foreground host never answers).

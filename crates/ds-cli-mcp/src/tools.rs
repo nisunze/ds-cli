@@ -1114,15 +1114,7 @@ pub fn install_profile(executable: &Path) -> &'static str {
 /// Run `ds <argv…>` and return (exit code, stdout, stderr), within the probe
 /// bound. Used for the server's own questions of its executable.
 pub fn run_cli(executable: &PathBuf, argv: &[String]) -> Result<(i32, String, String), String> {
-    run_cli_with_schema_mode(executable, argv, false)
-}
-
-fn run_cli_with_schema_mode(
-    executable: &PathBuf,
-    argv: &[String],
-    schema_only: bool,
-) -> Result<(i32, String, String), String> {
-    let ran = run_bounded(executable, argv, schema_only, PROBE_TIMEOUT, &mut |_| {})?;
+    let ran = run_bounded(executable, argv, PROBE_TIMEOUT, &mut |_| {})?;
     if ran.timed_out {
         return Err(format!(
             "`{}` did not answer within {} seconds",
@@ -1162,31 +1154,22 @@ pub fn run_cli_bounded(
     timeout: Duration,
     tick: &mut dyn FnMut(Duration),
 ) -> Result<Ran, String> {
-    run_bounded(executable, argv, false, timeout, tick)
+    run_bounded(executable, argv, timeout, tick)
 }
 
 fn run_bounded(
     executable: &PathBuf,
     argv: &[String],
-    schema_only: bool,
     timeout: Duration,
     tick: &mut dyn FnMut(Duration),
 ) -> Result<Ran, String> {
     let mut command = Command::new(executable);
-    // Both names are deliberately protocol-free, and stay that way. What the
-    // child has to know is that no human is at a terminal, and that a schema
-    // is enough without resolving live availability. Neither fact is about
-    // MCP. A variable named for this protocol would put this protocol's name
-    // inside the domain that reads it, and the next protocol would arrive as
-    // an edit to that domain rather than to this crate.
-    // `crates/ds/tests/protocol_boundary.rs` holds that line.
+    // Invocations remain noninteractive and always resolve live availability.
+    // The parent's schema-only discovery setting must not bypass that check.
     command
         .args(argv)
         .env("DS_CLI_NONINTERACTIVE", "1")
         .env_remove("DS_CLI_SCHEMA_ONLY");
-    if schema_only {
-        command.env("DS_CLI_SCHEMA_ONLY", "1");
-    }
     // This server's own stdin is the JSON-RPC channel; the child gets none.
     let mut child = command
         .stdin(Stdio::null())
@@ -1357,113 +1340,102 @@ pub fn doctor_identity(executable: &PathBuf) -> Result<Value, Failure> {
     Ok(envelope.get("data").cloned().unwrap_or(Value::Null))
 }
 
-/// Read one `ds capabilities …` envelope and return its `data`.
-fn capabilities(
-    executable: &PathBuf,
-    selector: Option<&str>,
-    schema_only: bool,
-) -> Result<Value, Failure> {
-    let mut argv = vec!["capabilities".to_string()];
-    if let Some(selector) = selector {
-        argv.push(selector.to_string());
-    }
-    argv.push("--output".to_string());
-    argv.push("json".to_string());
-    let (code, stdout, stderr) =
-        run_cli_with_schema_mode(executable, &argv, schema_only).map_err(|message| {
-            Failure::failed("mcp_capabilities_unavailable", message).remedy(
-            "run `ds capabilities --output json` by hand and fix what it reports before serving",
-        )
-        })?;
-    let envelope: Value = serde_json::from_str(&stdout).map_err(|error| {
-        Failure::failed(
-            "mcp_capabilities_unavailable",
-            format!(
-                "`ds capabilities {}` emitted no envelope ({error}): {stderr}",
-                selector.unwrap_or("")
-            ),
-        )
-        .remedy(
-            "run `ds capabilities --output json` by hand and fix what it reports before serving",
-        )
-    })?;
-    if code != 0 || envelope.get("status").and_then(Value::as_str) != Some("ok") {
-        return Err(Failure::failed(
-            "mcp_capabilities_unavailable",
-            format!(
-                "`ds capabilities {}` refused: {}",
-                selector.unwrap_or(""),
-                envelope["error"]["message"].as_str().unwrap_or("unknown")
-            ),
-        )
-        .remedy(
-            "run `ds capabilities --output json` by hand and fix what it reports before serving",
-        )
-        .detail(envelope["error"].clone()));
-    }
-    Ok(envelope.get("data").cloned().unwrap_or(Value::Null))
-}
-
-/// Every tool this executable can serve — built from the live tiers, never
-/// from a table. The `mcp` domain itself and [`NEVER_TOOLS`] are excluded; a
-/// command registered anywhere else becomes a tool with no edit here.
-pub fn discover_tools(executable: &PathBuf) -> Result<Vec<Tool>, Failure> {
-    let index = capabilities(executable, None, true)?;
-    let mut tools = Vec::new();
-    for domain in index
-        .get("domains")
-        .and_then(Value::as_array)
+/// Project the executable's registered domain declarations without child
+/// processes or availability probes. Hosts pass their existing registry;
+/// this adapter never keeps a second inventory or links any domain crate.
+pub fn from_commands<'a>(
+    commands: impl IntoIterator<Item = &'a ds_cli_contract::spec::Command>,
+) -> Result<Vec<Tool>, Failure> {
+    commands
         .into_iter()
-        .flatten()
-    {
-        let Some(domain_id) = domain.get("id").and_then(Value::as_str) else {
-            continue;
-        };
-        if domain_id == crate::DOMAIN.id {
-            continue;
-        }
-        let tier = capabilities(executable, Some(domain_id), true)?;
-        for command in tier
-            .get("commands")
-            .and_then(Value::as_array)
-            .into_iter()
-            .flatten()
-        {
-            let Some(id) = command.get("id").and_then(Value::as_str) else {
-                continue;
-            };
-            // Live, discoverable CLI contracts that must never become MCP
-            // tools — including under the broad compatibility exposure. Each
-            // carries its reason in the list.
-            if NEVER_TOOLS.iter().any(|(never, _)| *never == id) {
-                continue;
-            }
-            let descriptor = capabilities(executable, Some(id), true)?;
-            let command = descriptor.get("command").ok_or_else(|| {
+        .filter(|command| {
+            command.path.first() != Some(&crate::DOMAIN.id)
+                && !NEVER_TOOLS.iter().any(|(id, _)| *id == command.id)
+        })
+        .map(|command| {
+            let descriptor = ds_cli_contract::help::command_json_unchecked(command);
+            tool_from_descriptor(&descriptor).ok_or_else(|| {
                 Failure::failed(
                     "mcp_capabilities_unavailable",
-                    format!("`ds capabilities {id}` omitted its command descriptor"),
+                    format!("{} has no valid MCP chapter or schema", command.id),
                 )
-                .remedy("repair the command registry and rebuild this exact `ds` executable")
-            })?;
-            let tool = tool_from_descriptor(command).ok_or_else(|| {
-                Failure::failed(
-                    "mcp_capabilities_unavailable",
-                    format!("`ds capabilities {id}` has no valid MCP chapter or schema"),
-                )
-                .remedy("assign the command exactly one valid chapter and rebuild `ds`")
-                .detail(command.clone())
-            })?;
-            tools.push(tool);
-        }
-    }
-    tools.sort_by(|a, b| a.name.cmp(&b.name));
-    Ok(tools)
+                .remedy("repair the registered command descriptor and rebuild this executable")
+                .detail(descriptor)
+            })
+        })
+        .collect()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn registered_command() -> ds_cli_contract::spec::Command {
+        use ds_cli_contract::spec::{Arg, Command, Requires};
+        const ARGS: &[Arg] = &[Arg::value("target", "<name>", "Exact target.")];
+        Command {
+            id: "shell.status",
+            path: &["shell", "status"],
+            contract: 1,
+            chapter: Chapter::Operations,
+            summary: "Inspect the native shell.",
+            purpose: "Read the declared shell status without acquiring project authority.",
+            output: "The canonical native shell status receipt.",
+            effect: Effect::ReadOnly,
+            authority: Authority::None,
+            execution: Execution::Sync,
+            args: ARGS,
+            examples: &[],
+            refusals: &[],
+            reference: None,
+            search: &[],
+            requires: Requires::Server,
+            availability: || panic!("startup must not probe live availability"),
+        }
+    }
+
+    #[test]
+    fn registry_projection_defers_availability_and_preserves_declared_schema() {
+        let command = registered_command();
+        let tools = from_commands([&command]).unwrap();
+        assert_eq!(tools.len(), 1);
+        let tool = &tools[0];
+        assert_eq!(tool.id, command.id);
+        assert_eq!(tool.path, command.path);
+        assert_eq!(tool.descriptor["availability"], "unchecked");
+        assert_eq!(tool.descriptor["purpose"], command.purpose);
+        assert_eq!(tool.input_schema["properties"]["target"]["type"], "string");
+        assert_eq!(tool.authority, command.authority);
+        assert_eq!(tool.effect, command.effect);
+    }
+
+    #[test]
+    fn registry_projection_excludes_mcp_and_privileged_non_tools() {
+        let mut excluded = registered_command();
+        for (id, _) in NEVER_TOOLS {
+            excluded.id = id;
+            assert!(
+                from_commands([&crate::serve::COMMAND, &excluded])
+                    .unwrap()
+                    .is_empty()
+            );
+        }
+    }
+
+    #[test]
+    fn invalid_registry_schema_refuses_instead_of_publishing_partial_tools() {
+        let valid = registered_command();
+        let mut broken = registered_command();
+        const BROKEN_ARGS: &[ds_cli_contract::spec::Arg] = &[ds_cli_contract::spec::Arg::value(
+            "output",
+            "<text>",
+            "Conflicts with a global flag.",
+        )];
+        broken.args = BROKEN_ARGS;
+        let error = from_commands([&valid, &broken]).unwrap_err();
+        assert_eq!(error.code(), "mcp_capabilities_unavailable");
+        assert!(error.to_string().contains("shell.status"));
+    }
 
     fn descriptor() -> Value {
         json!({
@@ -1845,7 +1817,6 @@ mod tests {
         let ran = run_bounded(
             &sleeper,
             &["5".to_string()],
-            false,
             Duration::from_millis(300),
             &mut |_| ticks += 1,
         )
@@ -1866,7 +1837,6 @@ mod tests {
                 (STDOUT_CAPTURE_LIMIT + 10).to_string(),
                 "/dev/zero".to_string(),
             ],
-            false,
             Duration::from_secs(60),
             &mut |_| {},
         )

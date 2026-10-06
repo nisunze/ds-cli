@@ -6,9 +6,11 @@
 //! them a second product surface:
 //!
 //! - no command schema is hand-written. Every command's inputs, effect,
-//!   authority and refusals are read from `ds capabilities` at startup,
-//!   descriptor by descriptor, so a command's typing can never drift from the
-//!   CLI it fronts. What *is* written here is the routing above that: under
+//!   authority and refusals use the same Rust declarations and unchecked
+//!   descriptor projection as `ds capabilities`. The executable passes its
+//!   existing registry at startup without subprocess discovery, so a command
+//!   cannot drift from the CLI it fronts. What *is* written here is the routing
+//!   above that: under
 //!   the default `--exposure chapters` the bounded bootstrap and chapter tools
 //!   and their prose live in `surface.rs`, and bounded profiles select by
 //!   command id rather than by chapter. Those lists are held to the live
