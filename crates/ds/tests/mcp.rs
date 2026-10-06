@@ -1,5 +1,7 @@
 //! Real stdio coverage for chapter routing, typed profiles, and CLI parity.
 
+mod common;
+
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io::Write;
@@ -2073,7 +2075,7 @@ fn local_model_scoped_routers_reach_every_allowed_verb_and_preserve_refusals() {
     calls.extend([
         json!({"jsonrpc":"2.0", "id":1000, "method":"tools/call", "params":{"name":"ds_grid_model", "arguments":{"operation":"invoke", "command":"dsgrid.inspect", "arguments":{}}}}),
         json!({"jsonrpc":"2.0", "id":1001, "method":"tools/call", "params":{"name":"ds_design", "arguments":{"operation":"invoke", "command":"dsgrid.model.list", "arguments":{}}}}),
-        json!({"jsonrpc":"2.0", "id":1002, "method":"tools/call", "params":{"name":"ds_grid_model", "arguments":{"operation":"invoke", "command":"dsgrid.model.status", "arguments":{"undeclared-privilege":true}}}}),
+        json!({"jsonrpc":"2.0", "id":1002, "method":"tools/call", "params":{"name":"ds_grid_model", "arguments":{"operation":"invoke", "command":"dsgrid.model.combine", "arguments":{"undeclared-privilege":true}}}}),
         json!({"jsonrpc":"2.0", "id":1003, "method":"tools/call", "params":{"name":"ds_grid_model", "arguments":{"operation":"invoke", "command":"dsgrid.project.retire", "arguments":{"project":"not-authority", "model":"m", "expected-head":"rev", "expected-digest":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "reason":"unconfirmed control"}}}}),
         json!({"jsonrpc":"2.0", "id":1004, "method":"tools/call", "params":{"name":"dsgrid_model_list", "arguments":{}}}),
         json!({"jsonrpc":"2.0", "id":1005, "method":"tools/call", "params":{"name":"ds_grid_model", "arguments":{"operation":"invoke", "command":"dsgrid.model.list", "arguments":{"account":"scope-only", "lane":"stable", "project":"not-authority"}}}}),
@@ -2099,7 +2101,7 @@ fn local_model_scoped_routers_reach_every_allowed_verb_and_preserve_refusals() {
     );
     assert_eq!(
         allowed.len(),
-        59, // dsgrid.model.extract (813c35ca): the linked-checkpoint extract verb
+        56, // Four automatic verbs retired; one manual combination verb added.
         "review every added lifecycle verb; do not hide it from disclosure"
     );
     for (index, id) in allowed.iter().enumerate() {
@@ -3751,5 +3753,28 @@ fn messaging_profile_uses_descriptor_inputs_and_confirmation() {
     assert_eq!(
         response(&messages, 2)["result"]["structuredContent"]["error"]["code"],
         "confirmation_required"
+    );
+}
+
+#[test]
+fn manual_combination_projects_the_same_preview_through_mcp() {
+    let fixture = common::fixture();
+    let (messages, _) = mcp(
+        &["--exposure", "commands", "--profile", "grid-local-model"],
+        &[
+            json!({"jsonrpc":"2.0", "id":1, "method":"tools/call", "params":{"name":"ds_grid_model", "arguments":{"operation":"describe", "command":"dsgrid.model.combine"}}}),
+            json!({"jsonrpc":"2.0", "id":2, "method":"tools/call", "params":{"name":"ds_grid_model", "arguments":{"operation":"invoke", "command":"dsgrid.model.combine", "arguments":{"source":[fixture,fixture]}}}}),
+        ],
+    );
+    assert_eq!(
+        response(&messages, 1)["result"]["structuredContent"],
+        cli(&["capabilities", "dsgrid.model.combine", "--output", "json"])
+    );
+    assert_eq!(
+        response(&messages, 2)["result"]["structuredContent"],
+        cli(&[
+            "dsgrid", "model", "combine", "--source", &fixture, "--source", &fixture, "--output",
+            "json"
+        ])
     );
 }

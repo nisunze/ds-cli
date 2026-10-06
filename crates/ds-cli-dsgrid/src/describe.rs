@@ -42,14 +42,6 @@ pub static COMMAND: Command = Command {
             .default("operations")
             .choices(KINDS),
         Arg::value("id", "<id>", "Return this one entry's full descriptor."),
-        Arg::switch(
-            "linked-models",
-            "Read the engine's linked split/burst/derive request schemas, the automatic combined-model rule and the refusal vocabulary.",
-        ),
-        Arg::switch(
-            "linked-publication",
-            "Read the typed project binding schema for atomic linked publication.",
-        ),
     ],
     output: "Engine version and catalog index; with --id, one descriptor and its derived type_schemas. Deferred shapes appear in more_type_schemas. Types return fully documented JSON Schema.",
     examples: &[
@@ -107,18 +99,6 @@ fn identifier(entry: &Value) -> Option<&str> {
 }
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
-    if inputs.switch("linked-publication") {
-        let publication = crate::model::composite_publication::schema();
-        if inputs.switch("linked-models") {
-            return Ok(
-                json!({"engine":ds_grid_engine::composite::descriptors(),"publication":publication}),
-            );
-        }
-        return Ok(publication);
-    }
-    if inputs.switch("linked-models") {
-        return Ok(ds_grid_engine::composite::descriptors());
-    }
     let kind = inputs.value("kind").unwrap_or("operations");
     let catalog = catalog(kind);
     let entries = catalog.as_array().cloned().unwrap_or_default();

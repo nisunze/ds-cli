@@ -133,6 +133,7 @@ ds-solar-contracts = { path = "../ds-solar/crates/ds-solar-contracts" }
 ds-grid-model = { path = "../ds-network/crates/ds-grid-model", features = ["arrow"] }
 ds-grid-engine = { path = "../ds-network/crates/ds-grid-engine" }
 ds-grid-exchange = { path = "../ds-network/crates/ds-grid-exchange" }
+ds-grid-composition = { path = "../ds-network/crates/ds-grid-composition" }
 ds-grid-tasks = { path = "../ds-network/crates/ds-grid-tasks" }
 ds-io = { path = "../ds-network/crates/ds-io" }
 ds-network = { path = "../ds-network/crates/ds-network", features = ["arrow_ipc"] }

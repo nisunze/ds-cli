@@ -2910,17 +2910,11 @@ fn no_dsgrid_model_command_can_carry_model_content() {
     // the content rule before this number moved.
     // Ten since `dsgrid.model.unlink` joined on 2026-09-25: it takes a local
     // id and account scope and removes a link row; no bytes cross it.
-    // Thirteen since `dsgrid.model.split`, `reconcile` and `status` joined on
-    // 2026-10-04 (the automatic combined model): they take package, request
-    // and checkpoint paths, and a checkpoint pins every package by digest
-    // and byte count; no bytes cross them.
-    // Fourteen since `dsgrid.model.extract` joined on 2026-10-04: it takes a
-    // checkpoint path, a package identity and an output path, and writes the
-    // exact attested member bytes; no bytes cross it.
+    // Eleven after automatic graph commands were replaced by deliberate
+    // combination: source and output paths, with a reviewed plan id.
     assert_eq!(
-        checked, 14,
-        "the DS Grid model family must be fourteen commands; this check would \
-         otherwise silently stop covering one"
+        checked, 11,
+        "review the DS Grid model family when its command count changes"
     );
 }
 

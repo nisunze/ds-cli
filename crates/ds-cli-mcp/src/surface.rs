@@ -904,13 +904,8 @@ const GRID_LOCAL_MODEL_COMMANDS: &[&str] = &[
     "design.attachment.versions",
     "design.attachment.set-latest",
     "design.attachment.retire",
-    // The automatic combined model (owner, 2026-10-04): status, reconcile
-    // and split of a submodel are model lifecycle beside the atomic
-    // publication of their linked generation, not broad `grid` routing.
-    "dsgrid.model.split",
-    "dsgrid.model.reconcile",
-    "dsgrid.model.status",
-    "dsgrid.model.extract",
+    // Deliberate editable snapshot composition belongs to model lifecycle.
+    "dsgrid.model.combine",
 ];
 
 /// The members of `grid-local-model` that the broad `grid` router leaves to
@@ -935,10 +930,7 @@ const GRID_LOCAL_MODEL_TYPED_EDITS: &[&str] = &[
     "dsgrid.alignment.gap.show",
     "dsgrid.alignment.gap.set",
     "dsgrid.model.unlink",
-    "dsgrid.model.split",
-    "dsgrid.model.reconcile",
-    "dsgrid.model.status",
-    "dsgrid.model.extract",
+    "dsgrid.model.combine",
 ];
 
 // Program contract 03: feature codes and clearance across the PLS-CADD
@@ -2876,7 +2868,7 @@ mod tests {
             Some(Profile::GridLocalModel),
             vec![
                 tool("dsgrid.model.list", Chapter::GridModel, false),
-                tool("dsgrid.model.split", Chapter::GridModel, false),
+                tool("dsgrid.model.combine", Chapter::GridModel, false),
                 tool("design.version.list", Chapter::Design, false),
                 tool("dsgrid.inspect", Chapter::GridModel, false),
                 tool("design.lv.process", Chapter::Design, true),
@@ -2895,7 +2887,7 @@ mod tests {
         assert_eq!(surface.published_count(), 4);
         let executable = PathBuf::from("unused-catalogue-does-not-spawn");
         for (command, router) in [
-            ("dsgrid.model.split", "ds_grid_model"),
+            ("dsgrid.model.combine", "ds_grid_model"),
             ("design.version.list", "ds_design"),
         ] {
             let result = surface
@@ -2921,7 +2913,7 @@ mod tests {
         }
         assert!(
             surface
-                .call("dsgrid_model_split", &json!({}), &executable)
+                .call("dsgrid_model_combine", &json!({}), &executable)
                 .is_err()
         );
         assert!(surface.call("ds_reports", &json!({}), &executable).is_err());

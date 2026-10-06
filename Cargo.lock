@@ -1107,6 +1107,7 @@ dependencies = [
  "ds-command-kernel",
  "ds-design-workspace",
  "ds-geo",
+ "ds-grid-composition",
  "ds-grid-engine",
  "ds-grid-exchange",
  "ds-grid-model",
@@ -1592,6 +1593,17 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
+ "thiserror",
+]
+
+[[package]]
+name = "ds-grid-composition"
+version = "0.1.0"
+dependencies = [
+ "ds-grid-exchange",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
  "thiserror",
 ]
 

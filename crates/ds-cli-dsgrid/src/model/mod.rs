@@ -47,8 +47,7 @@
 //!   revert reversed, so this family refuses one locally and says where it
 //!   went.
 
-pub mod composite;
-pub mod composite_publication;
+pub mod combine;
 pub mod create_local;
 pub mod forget;
 pub mod import_external;

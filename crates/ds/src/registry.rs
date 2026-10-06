@@ -358,24 +358,9 @@ static DSGRID_ENTRIES: &[Entry] = &[
         render: ds_cli_dsgrid::model::link::render,
     },
     Entry {
-        command: &ds_cli_dsgrid::model::composite::SPLIT,
-        handler: ds_cli_dsgrid::model::composite::split,
-        render: ds_cli_dsgrid::model::composite::render,
-    },
-    Entry {
-        command: &ds_cli_dsgrid::model::composite::RECONCILE,
-        handler: ds_cli_dsgrid::model::composite::reconcile,
-        render: ds_cli_dsgrid::model::composite::render,
-    },
-    Entry {
-        command: &ds_cli_dsgrid::model::composite::STATUS,
-        handler: ds_cli_dsgrid::model::composite::status,
-        render: ds_cli_dsgrid::model::composite::render,
-    },
-    Entry {
-        command: &ds_cli_dsgrid::model::composite::EXTRACT,
-        handler: ds_cli_dsgrid::model::composite::extract,
-        render: ds_cli_dsgrid::model::composite::render,
+        command: &ds_cli_dsgrid::model::combine::COMMAND,
+        handler: ds_cli_dsgrid::model::combine::run,
+        render: ds_cli_dsgrid::model::combine::render,
     },
     Entry {
         command: &ds_cli_dsgrid::model::unlink::COMMAND,
