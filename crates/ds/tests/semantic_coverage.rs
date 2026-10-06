@@ -34,6 +34,12 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("data.vector.outliers", "local_file_write", "none"),
     ("data.vector.random-points-area", "local_file_write", "none"),
     // Exact effect and authority reviewed from the integrated CLI descriptors.
+    ("assets.download", "read_only", "headless_project"),
+    (
+        "desktop.printing.preview",
+        "local_file_write",
+        "desktop_user",
+    ),
     ("assets.versions", "read_only", "headless_project"),
     (
         "data.project-cache.query",
@@ -477,8 +483,16 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ),
     // A project's network documents from a template project: plan reads,
     // apply writes the destination.
-    ("design.config.copy.plan", "local_auth_state", "headless_project"),
-    ("design.config.copy.apply", "global_write", "headless_project"),
+    (
+        "design.config.copy.plan",
+        "local_auth_state",
+        "headless_project",
+    ),
+    (
+        "design.config.copy.apply",
+        "global_write",
+        "headless_project",
+    ),
     (
         "design.feeder-limits.read",
         "local_file_write",
@@ -772,7 +786,11 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("feedback.submit", "global_write", "headless_user"),
     ("library.catalog", "read_only", "none"),
     ("library.global.read", "read_only", "headless_user"),
-    ("library.global.download", "local_file_write", "headless_user"),
+    (
+        "library.global.download",
+        "local_file_write",
+        "headless_user",
+    ),
     (
         "library.global.resolve-member",
         "read_only",
@@ -958,7 +976,11 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("report.layout.copy", "global_write", "headless_user"),
     ("report.export", "local_file_write", "none"),
     ("report.preview.read", "artifact_write", "headless_project"),
-    ("report.preview.refresh", "artifact_write", "headless_project"),
+    (
+        "report.preview.refresh",
+        "artifact_write",
+        "headless_project",
+    ),
     ("report.tasks", "discovery", "none"),
     // The publication queue's own surface. `status` is a credential-free
     // local read — that is the point: the machines where a stopped queue goes

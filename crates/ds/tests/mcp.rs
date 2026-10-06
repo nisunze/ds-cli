@@ -1647,6 +1647,7 @@ fn the_assets_chapter_is_routed_and_describes_the_live_command() {
         "assets.tree",
         "assets.versions",
         "assets.read",
+        "assets.download",
         "assets.preview",
         "assets.classify",
         "assets.promote",
@@ -2342,7 +2343,17 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
         assert!(!published["grid"].contains(leaf), "{leaf}");
     }
     assert!(published["printing-maps"].contains("assets_map_publish"));
-    assert!(published["printing"].contains("report_artifact_remove"));
+    for leaf in [
+        "dsgrid_template_inspect",
+        "dsgrid_template_compile",
+        "dsgrid_template_apply",
+    ] {
+        assert!(published["grid-native"].contains(leaf), "{leaf}");
+        assert!(!published["grid"].contains(leaf), "{leaf}");
+    }
+    assert!(published["project-operations"].contains("report_artifact_remove"));
+    assert!(published["library-governance"].contains("library_global_download"));
+    assert!(!published["printing"].contains("report_artifact_remove"));
     // The headless production loop is reachable through the printing profile.
     for headless in [
         "data_project-cache_status",
@@ -2523,6 +2534,10 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
         "the print-styles profile must expose create-only source and print workflows"
     );
     for leaf in [
+        "style_catalogue_a4_migration_plan",
+        "style_catalogue_a4_migration_apply",
+        "style_catalogue_binding_plan",
+        "style_catalogue_binding_create",
         "style_print_versions_list",
         "style_print_versions_read",
         "style_print_versions_compare",
@@ -3331,6 +3346,33 @@ fn signed_out_cli(home: &TestDir, args: &[&str]) -> Value {
 
 fn structured(responses: &[Value], id: i64) -> &Value {
     &response(responses, id)["result"]["structuredContent"]
+}
+
+#[test]
+fn published_artifact_removal_stays_confirmed_in_project_operations() {
+    let home = signed_out("artifact-removal");
+    let responses = signed_out_mcp(
+        &home,
+        &["--exposure", "commands", "--profile", "project-operations"],
+        &[
+            json!({"jsonrpc":"2.0", "id":1, "method":"tools/call", "params":{
+                "name":"report_artifact_remove", "arguments":{
+                    "project":"no-authority", "scope":"mv", "transformer":"mv_data",
+                    "filename":"test.pdf", "gcs-path":"gs://no-authority/test.pdf",
+                    "sha256":"a".repeat(64)
+                }
+            }}),
+        ],
+    );
+    assert_eq!(response(&responses, 1)["result"]["isError"], true);
+    assert_eq!(
+        structured(&responses, 1)["error"]["code"],
+        "confirmation_required"
+    );
+    assert_eq!(
+        structured(&responses, 1)["command"],
+        "report.artifact.remove"
+    );
 }
 
 /// The global-write gate through typed tools: nothing confirms but

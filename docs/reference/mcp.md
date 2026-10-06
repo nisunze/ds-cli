@@ -71,7 +71,10 @@ workbook delivery. `vector` provides portable descriptor discovery, seven Rust
 vector tools and workflow describe/validate/run (eleven leaves plus two
 bootstrap tools); it needs no project or Desktop. The datasets profile retains
 its existing four vector primitives. `printing` owns report production and output selection;
-`printing-maps` owns map composition and publication. Each headless read names
+`printing-maps` owns map composition and publication. `project-operations` owns
+published report artifact removal; `grid-native` owns DS Grid file-template
+inspection, compilation and application; `print-styles` includes catalogue migration
+and binding alongside print-style creation and history. Each headless read names
 its authorized project.
 `correspondence` owns the parties, the records and threads and the
 task blockers (`pm.party.*`, `pm.record.*`, `pm.task.block|unblock`) with the

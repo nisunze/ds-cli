@@ -476,6 +476,10 @@ impl Profile {
                     && !matches!(tool.id.as_str(),
                         "dsgrid.apply-batch" | "dsgrid.apply-correction" | "dsgrid-exchange.sync")
                     && tool.id != "dsgrid.reconcile-cable-source"
+                    // File-template compilation and application belong to
+                    // `grid-native`; keep this whole family out of the broad
+                    // model/report workflow instead of expanding its budget.
+                    && !tool.id.starts_with("dsgrid.template.")
                     && !PROJECT_OPERATIONS_COMMANDS.contains(&tool.id.as_str())
                     && tool.id != "report.spatial.workbook"
                     // Printing has its own workflow profile and Reports router;
@@ -807,6 +811,10 @@ const STYLE_COMMANDS: &[&str] = &[
 /// Create-only source seeding and print cloning are one small publication
 /// workflow, kept separate from ordinary Style Center edits.
 const PRINT_STYLE_COMMANDS: &[&str] = &[
+    "style.catalogue.a4.migration.plan",
+    "style.catalogue.a4.migration.apply",
+    "style.catalogue.binding.plan",
+    "style.catalogue.binding.create",
     "style.seed.plan",
     "style.seed.create",
     "style.print.plan",
@@ -981,6 +989,7 @@ const PLS_LIBRARY_COMMANDS: &[&str] = &[
 ];
 
 const LIBRARY_GOVERNANCE_COMMANDS: &[&str] = &[
+    "library.global.download",
     "library.global.resolve-member",
     "library.global.read",
     "library.global.fork-example",
@@ -1150,6 +1159,7 @@ const PROJECT_TASK_OPERATIONS_COMMANDS: &[&str] = &[
 ];
 
 const PROJECT_OPERATIONS_COMMANDS: &[&str] = &[
+    "report.artifact.remove",
     "design.status",
     "design.transformer.inventory",
     "design.transformer.retire",
@@ -2542,7 +2552,6 @@ pub const fn chapter_description(chapter: Chapter) -> &'static str {
 // remain for what has no headless owner yet: survey and local-layer context,
 // per-transformer overrides, district and custom-area maps.
 const PRINTING_COMMANDS: &[&str] = &[
-    "report.artifact.remove",
     "report.layout.render",
     "report.layout.context",
     "report.layout.list",
