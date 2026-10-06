@@ -1507,7 +1507,7 @@ impl DeviceApiAuthorization<'_> {
         )
     }
     /// Plan, census or apply one copy of a project's network documents
-    /// (`ds_project` is the destination; empty for a census).
+    /// (`ds_project` is the destination).
     pub fn network_documents<T: AuthorizedTransport>(
         &self,
         transport: &mut T,

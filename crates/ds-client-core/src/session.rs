@@ -1020,7 +1020,7 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         )
     }
     /// Plan, census or apply one copy of a project's network documents
-    /// (`ds_project` is the destination; empty for a census).
+    /// (`ds_project` is the destination).
     pub fn network_documents(
         &mut self,
         ds_project: &str,
