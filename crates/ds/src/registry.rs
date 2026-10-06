@@ -1226,16 +1226,6 @@ static SOLAR_ENTRIES: &[Entry] = &[
         render: ds_cli_solar::exports::render,
     },
     Entry {
-        command: &ds_cli_solar::seed::PREVIEW_COMMAND,
-        handler: ds_cli_solar::seed::preview,
-        render: ds_cli_solar::seed::render,
-    },
-    Entry {
-        command: &ds_cli_solar::seed::APPLY_COMMAND,
-        handler: ds_cli_solar::seed::apply,
-        render: ds_cli_solar::seed::render,
-    },
-    Entry {
         command: &ds_cli_solar::migrate::PLAN_COMMAND,
         handler: ds_cli_solar::migrate::plan,
         render: ds_cli_solar::migrate::render,
@@ -2739,11 +2729,6 @@ static DESIGN_ENTRIES: &[Entry] = &[
     Entry {
         command: &ds_cli_design::config_copy::APPLY,
         handler: ds_cli_design::config_copy::apply,
-        render: ds_cli_design::config_copy::render,
-    },
-    Entry {
-        command: &ds_cli_design::config_copy::CENSUS,
-        handler: ds_cli_design::config_copy::census,
         render: ds_cli_design::config_copy::render,
     },
     Entry {

@@ -1,5 +1,7 @@
 //! One authenticated acquisition, with Solar-owned request and cache semantics.
-use ds_cli_contract::spec::{Arg, Authority, Chapter, Command, Effect, Execution, Requires};
+use ds_cli_contract::spec::{
+    Arg, Authority, Chapter, Command, Effect, Execution, Refusal, Requires,
+};
 use ds_cli_contract::{Context, Failure, Inputs};
 use serde_json::{Value, json};
 
@@ -30,7 +32,7 @@ pub static COMMAND: Command = Command {
     ],
     output: "Project, city, input digest, readiness, cache location and acquisition receipt. No bytes, token or signed URL.",
     examples: &[],
-    refusals: crate::seed::REFERENCE_REFUSALS,
+    refusals: REFERENCE_REFUSALS,
     reference: Some("docs/reference/solar.md"),
     search: &[],
     requires: Requires::Server,
@@ -85,3 +87,58 @@ pub fn run(i: &Inputs, _: &Context) -> Result<Value, Failure> {
 pub fn render(v: &Value) -> String {
     serde_json::to_string_pretty(v).unwrap_or_default()
 }
+
+const NATIVE_REFUSALS: &[Refusal] = ds_cli_auth::PROJECT_STATUS_COMMAND.refusals;
+const fn with_native<const N: usize>(legacy: &[Refusal]) -> [Refusal; N] {
+    let mut result = [legacy[0]; N];
+    let mut i = 0;
+    while i < legacy.len() {
+        result[i] = legacy[i];
+        i += 1;
+    }
+    let mut j = 0;
+    while j < NATIVE_REFUSALS.len() {
+        result[i + j] = NATIVE_REFUSALS[j];
+        j += 1;
+    }
+    result
+}
+const REFERENCE_LOCAL: &[Refusal] = &[
+    Refusal {
+        code: "solar_reference_refused",
+        when: "the producer or sealed bundle verification refused",
+        remedy: "read the producer detail and correct site/equipment before retrying",
+    },
+    Refusal {
+        code: "solar_reference_scope_mismatch",
+        when: "the workspace belongs to another project",
+        remedy: "pass the workspace project explicitly with --project",
+    },
+    Refusal {
+        code: "solar_reference_contract_mismatch",
+        when: "the Solar request is malformed",
+        remedy: "install matching ds and Solar releases",
+    },
+    Refusal {
+        code: "solar_project_schema_unavailable",
+        when: "the Solar owner lacks the local workspace schema",
+        remedy: "install matching ds and Solar releases",
+    },
+    Refusal {
+        code: "solar_project_io",
+        when: "private owner request or receipt IO failed",
+        remedy: "verify writable private directories and matching releases",
+    },
+    Refusal {
+        code: "solar_engine_missing",
+        when: "the Solar owner is absent",
+        remedy: "install the complete Linux Server package",
+    },
+    Refusal {
+        code: "engine_refused",
+        when: "the Solar owner refused preparation or verification",
+        remedy: "read the bounded engine detail and correct the city inputs",
+    },
+];
+const REFERENCE_REFUSALS: &[Refusal] =
+    &with_native::<{ REFERENCE_LOCAL.len() + NATIVE_REFUSALS.len() }>(REFERENCE_LOCAL);

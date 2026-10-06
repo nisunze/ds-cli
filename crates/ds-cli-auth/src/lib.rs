@@ -5981,11 +5981,11 @@ fn map_print_style_keys(error: ClientError) -> Failure {
     }
 }
 
-pub use ds_client_core::{NetworkDocumentsRequest, NetworkDocumentsSource};
+pub use ds_client_core::NetworkDocumentsRequest;
 pub const NETWORK_DOCUMENTS_INVALID_REFUSAL: Refusal = Refusal {
     code: "network_documents_invalid",
-    when: "the copy names no project, its own project, an unknown part, or a global source with network_config",
-    remedy: "name --project and exactly one of --source-project (another project) or --source-template; parts are network_template and network_config",
+    when: "the copy names no project, its own project as the source, or an unknown part",
+    remedy: "name --project and --source-project (another project, usually a template); parts are network_template and network_config",
 };
 pub const NETWORK_DOCUMENTS_PLAN_CHANGED_REFUSAL: Refusal = Refusal {
     code: "network_documents_plan_changed",
@@ -5994,8 +5994,8 @@ pub const NETWORK_DOCUMENTS_PLAN_CHANGED_REFUSAL: Refusal = Refusal {
 };
 pub const NETWORK_DOCUMENTS_SOURCE_MISSING_REFUSAL: Refusal = Refusal {
     code: "network_documents_source_missing",
-    when: "the source project holds no such network document, or the named global template does not exist",
-    remedy: "plan without --parts to copy what the source holds, or name an existing template",
+    when: "the source project holds no such network document",
+    remedy: "plan without --parts to copy what the source holds",
 };
 pub const NETWORK_DOCUMENTS_PROJECT_NOT_FOUND_REFUSAL: Refusal = Refusal {
     code: "network_documents_project_not_found",
@@ -6008,40 +6008,23 @@ pub const NETWORK_DOCUMENTS_ROUTE_UNAVAILABLE_REFUSAL: Refusal = Refusal {
     remedy: "deploy a ds-brain that serves the network_documents action on this lane",
 };
 
-/// One network document copy into `project`, or the all-project census
-/// (`project` `None`).
+/// One network document copy into `project` from the request's source project.
 pub fn network_documents(
     lane_value: &str,
-    project: Option<&str>,
+    project: &str,
     request: &NetworkDocumentsRequest,
 ) -> Result<serde_json::Value, Failure> {
     request
-        .validate_for(project.unwrap_or(""))
+        .validate_for(project)
         .map_err(map_network_documents)?;
-    let lane = Lane::parse(lane_value)?;
-    if let Some(project) = project {
-        return headless_named_project_with(
-            lane_value,
-            project,
-            map_network_documents,
-            |device, project| device.network_documents(project, request),
-            |client, project| client.network_documents(project, request, now()),
-        )
-        .map(HeadlessNamedProject::into_result);
-    }
-    let _ = probe_headless_identity(lane.token())?;
-    if let Some(mut device) = device::restore_session(lane)? {
-        return device
-            .network_documents("", request)
-            .map_err(map_network_documents);
-    }
-    let profile = profile::load(lane)?;
-    let store = NativeRefreshStore::open()?;
-    let mut client = Client::new(profile, NativeTransport, store);
-    require_restore_before_context(&mut client)?;
-    client
-        .network_documents("", request, now())
-        .map_err(map_network_documents)
+    headless_named_project_with(
+        lane_value,
+        project,
+        map_network_documents,
+        |device, project| device.network_documents(project, request),
+        |client, project| client.network_documents(project, request, now()),
+    )
+    .map(HeadlessNamedProject::into_result)
 }
 
 /// The action's own refusals under the codes `ds design config copy`

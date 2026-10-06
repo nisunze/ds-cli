@@ -17,9 +17,8 @@
 
 use ds_cli_contract::outcome::Failure;
 use ds_client_core::{
-    ClientError, NetworkDocumentsRequest, NetworkDocumentsSource, PrintingDestination,
-    PrintingRequest, PrintingScope, PrintingSource, TransformerSet, design_migration, grid_models,
-    project_properties,
+    ClientError, NetworkDocumentsRequest, PrintingDestination, PrintingRequest, PrintingScope,
+    PrintingSource, TransformerSet, design_migration, grid_models, project_properties,
 };
 use ds_command_kernel::design_migration::Mode;
 use ds_command_kernel::project_template::{
@@ -85,16 +84,13 @@ fn plan_then_apply(
     mut call: impl FnMut(&NetworkDocumentsRequest) -> Result<Value, ClientError>,
     template: &str,
 ) -> Result<Value, Failure> {
-    let source = NetworkDocumentsSource::Project {
-        project: template.to_owned(),
-    };
     let plan = call(&NetworkDocumentsRequest::Plan {
-        source: source.clone(),
+        source_project: template.to_owned(),
         parts: Vec::new(),
     })
     .map_err(super::map_network_documents)?;
     call(&NetworkDocumentsRequest::Apply {
-        source,
+        source_project: template.to_owned(),
         parts: Vec::new(),
         expected_plan_sha256: plan["plan_sha256"].as_str().unwrap_or_default().to_owned(),
     })

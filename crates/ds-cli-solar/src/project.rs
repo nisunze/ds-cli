@@ -23,7 +23,7 @@ const WORKSPACE: Arg = Arg::value(
 /// the owner's prose after the round trip. `ds-solar-project` seeds 1..64
 /// cities atomically, computes 1..64 explicitly selected cities per run and
 /// accepts concurrency 1..32; this is the same reasoning as
-/// `crate::seed::MAX_CITIES` on the governed lane.
+/// `ds_command_kernel::solar_seed::MAX_CITIES` on the governed lane.
 const MAX_PROJECT_SEED_INPUTS: usize = 64;
 const MAX_PROJECT_RUN_CITIES: usize = MAX_PROJECT_SEED_INPUTS;
 const MAX_PROJECT_CONCURRENCY: usize = 32;

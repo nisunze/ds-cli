@@ -30,7 +30,6 @@ pub mod project;
 pub mod project_sync;
 pub mod reference;
 pub mod run;
-pub mod seed;
 pub mod weather;
 pub mod workflow;
 
@@ -116,8 +115,6 @@ pub static DOMAIN: Domain = Domain {
         &exports::REPORT_EXPORT_COMMAND,
         &exports::REPORT_BUNDLE_COMMAND,
         &exports::PORTFOLIO_EXPORT_COMMAND,
-        &seed::PREVIEW_COMMAND,
-        &seed::APPLY_COMMAND,
         &migrate::PLAN_COMMAND,
         &migrate::APPLY_COMMAND,
         &network_seed::COMMAND,

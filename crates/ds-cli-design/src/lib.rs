@@ -118,7 +118,6 @@ pub static DOMAIN: Domain = Domain {
         &config::DUPLICATE,
         &config_copy::PLAN,
         &config_copy::APPLY,
-        &config_copy::CENSUS,
         &project::SOURCES,
         &project::INIT,
         &project::WRITE,
