@@ -129,7 +129,7 @@ pub static READ: Command = Command {
     }],
     refusals: REFUSALS,
     reference: Some("docs/reference/report.md"),
-    search: &["printing", "cached preview", "A4", "voltage drop", "PDF"],
+    search: &["printing", "cached preview", "voltage drop"],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
@@ -159,7 +159,7 @@ pub static REFRESH: Command = Command {
     }],
     refusals: REFUSALS,
     reference: Some("docs/reference/report.md"),
-    search: &["printing", "refresh preview", "A4", "voltage drop", "PDF"],
+    search: &["printing", "refresh preview", "voltage drop"],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };

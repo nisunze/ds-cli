@@ -107,9 +107,8 @@ never pixels or remote content. PDF defaults to pdf.js metadata. Embedded \
 PDF text: --pdf-text-pages FIRST:LAST for a whole PDF, inclusive 1-based \
 range, at most 5 actual pages, last at most 10000. --pages/--rows select \
 ordinary preview only. Fixed Linux Poppler/prlimit required; other hosts or \
-missing helpers refuse. Limits: 32 MiB input; 10000 document pages; 256 MiB \
-address space and 5 CPU seconds per decoder; shared 8 seconds; text 64 KiB/page, \
-256 KiB total. No OCR, annotations, layout reconstruction or partial text. \
+missing helpers refuse. Decoder byte, page and resource limits are in the reference. \
+No OCR, annotations, layout reconstruction or partial text. \
 Encrypted/malformed content refused. sys: bytes unavailable. Headless.",
     chapter: Chapter::Assets,
     effect: Effect::ReadOnly,

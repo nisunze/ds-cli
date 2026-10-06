@@ -67,13 +67,13 @@ const fn splice() -> [Refusal; OWN.len() + mutation::REFUSALS.len()] {
 }
 
 const SHOW_REFUSALS: &[Refusal] = &[
-    mutation::REFUSALS[0],  // target_required
-    mutation::REFUSALS[6],  // local_model_not_found
-    mutation::REFUSALS[7],  // local_model_ambiguous
-    mutation::REFUSALS[8],  // local_model_store_unavailable
-    mutation::REFUSALS[9],  // model_not_found
-    mutation::REFUSALS[10], // not_a_dsgrid_package
-    mutation::REFUSALS[11], // package_decode_failed
+    mutation::refusal("target_required"),
+    mutation::refusal("local_model_not_found"),
+    mutation::refusal("local_model_ambiguous"),
+    mutation::refusal("local_model_store_unavailable"),
+    mutation::refusal("model_not_found"),
+    mutation::refusal("not_a_dsgrid_package"),
+    mutation::refusal("package_decode_failed"),
 ];
 
 pub static SHOW: Command = Command {

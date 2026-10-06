@@ -2848,11 +2848,11 @@ fn project_inputs(
     if let Some(mut inputs) = read_inputs(lane, project, identity, link, selection)? {
         // Retain previously admitted optional inputs only beside the unchanged
         // server receipt; use still requires their authenticated/source fences.
-        if let Ok(previous) = hold.inputs("retaining optional held inputs") {
-            if previous.configuration == inputs.configuration {
-                inputs.transformer_natures = previous.transformer_natures;
-                inputs.saved_analyses = previous.saved_analyses;
-            }
+        if let Ok(previous) = hold.inputs("retaining optional held inputs")
+            && previous.configuration == inputs.configuration
+        {
+            inputs.transformer_natures = previous.transformer_natures;
+            inputs.saved_analyses = previous.saved_analyses;
         }
         let receipt = match hold.hold_inputs(&inputs) {
             Ok(()) => json!({"source": "service", "held": true}),

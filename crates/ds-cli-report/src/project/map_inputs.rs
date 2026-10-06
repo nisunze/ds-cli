@@ -14,7 +14,7 @@ pub static COMMAND: Command = Command {
     path: &["report", "project", "map-inputs"],
     contract: 2,
     summary: "Capture governed project maps for headless printing.",
-    purpose: "Read the selected active LV transformers and exact current MV models with provenance and print styles. Omitting --transformer includes all active transformers. Bound vectors without straightening crossing lines. Capture the authored layout, held context and API renderer policy in a replayable report.layout.render request. No design write or publication; omitted context is reported.",
+    purpose: "Capture active LV transformers and exact current MV models, provenance, styles, layout, held context and renderer policy in a replayable report.layout.render request. Omit --transformer for all active transformers. Vectors retain crossing geometry. No design write or publication; omissions are reported.",
     chapter: Chapter::Reports,
     effect: Effect::LocalFileWrite,
     authority: Authority::HeadlessProject,

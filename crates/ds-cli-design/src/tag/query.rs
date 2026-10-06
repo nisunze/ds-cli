@@ -96,9 +96,8 @@ pub static COMMAND: Command = Command {
     summary: "Find transformers with bounded typed tag predicates.",
     purpose: "\
 Evaluates 1-20 typed predicates against the project's current Transformer \
-Status projection. Each filter names its type explicitly, so a numeric \
-comparison cannot turn into lexical string ordering and free text is never \
-mistaken for a choice vocabulary. The server scans transformers once and \
+Status projection. Typed filters distinguish numeric ordering, free text \
+and choice vocabulary. The server scans transformers once and \
 assignments once per referenced definition. --limit is an admission bound: \
 if more rows match, the call refuses rather than returning a partial selection. \
 A choice predicate is matched against the stored vocabulary byte for byte and \

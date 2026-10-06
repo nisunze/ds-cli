@@ -84,16 +84,16 @@ const OWN: &[Refusal] = &[
 
 /// Shared read-target and file refusals, minus the writing-only ones.
 const SHARED: &[Refusal] = &[
-    mutation::REFUSALS[0],  // target_required
-    mutation::REFUSALS[2],  // output_exists
-    mutation::REFUSALS[3],  // output_parent_missing
-    mutation::REFUSALS[6],  // local_model_not_found
-    mutation::REFUSALS[7],  // local_model_ambiguous
-    mutation::REFUSALS[8],  // local_model_store_unavailable
-    mutation::REFUSALS[9],  // model_not_found
-    mutation::REFUSALS[10], // not_a_dsgrid_package
-    mutation::REFUSALS[11], // package_decode_failed
-    mutation::REFUSALS[17], // output_unwritable
+    mutation::refusal("target_required"),
+    mutation::refusal("output_exists"),
+    mutation::refusal("output_parent_missing"),
+    mutation::refusal("local_model_not_found"),
+    mutation::refusal("local_model_ambiguous"),
+    mutation::refusal("local_model_store_unavailable"),
+    mutation::refusal("model_not_found"),
+    mutation::refusal("not_a_dsgrid_package"),
+    mutation::refusal("package_decode_failed"),
+    mutation::refusal("output_unwritable"),
 ];
 
 const REFUSALS: &[Refusal; OWN.len() + SHARED.len()] = &splice();

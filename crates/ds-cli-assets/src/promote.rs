@@ -51,7 +51,7 @@ pub static COMMAND: Command = Command {
     contract: 1,
     summary: "Promote a geo asset, or a geo pack member, to a local layer.",
     purpose: "\
-Fetches the asset's bytes through the catalogue's signed read and admits them \
+Fetch the asset's bytes through the catalogue's signed read and admit them \
 to this machine's prepared local layer store — the one `ds map local` reads \
 and writes, per lane and DS account — never a new store, never an upload. \
 The layer records the source asset as provenance; the asset is unchanged. The \

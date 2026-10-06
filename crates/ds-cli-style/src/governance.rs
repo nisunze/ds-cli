@@ -315,7 +315,7 @@ pub mod purpose_index {
         path: &["style", "purpose", "index"],
         contract: 1,
         summary: "Read authored purpose groups and their exact held style roles.",
-        purpose: "Read metadata.style_purposes from the named project's immutable governed style documents. Rust resolves every required exact tuple and authored linetype constraint, preserving target, ink, source kind, role and revision. Missing declarations, roles or constraints refuse; no adjacent style or default is inferred. Required printing layout references remain separate Templates authority and return explicit capture-required blockers; this style table alone never admits layout bodies. No seed, adoption, preview or production write occurs.",
+        purpose: "Read metadata.style_purposes from the named project's immutable style documents. Resolve exact tuples and authored linetype constraints, preserving target, ink, source kind, role and revision. Missing declarations, roles or constraints refuse without defaults. Layout references require separate Templates authority and explicit capture; this table never admits layout bodies. No seed, adoption, preview or production write occurs.",
         chapter: Chapter::MapPresentation,
         effect: Effect::LocalAuthState,
         authority: Authority::HeadlessProject,

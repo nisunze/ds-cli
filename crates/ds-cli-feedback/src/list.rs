@@ -18,15 +18,12 @@ pub static COMMAND: Command = Command {
     contract: 2,
     summary: "The shared feedback backlog, as a difference since you last read it.",
     purpose: "\
-Reads the same deduplicated backlog the `fb` tab shows, through the native \
-signed-in user, without a selected project or Desktop. The backlog remembers \
-how far this account has read, so a visit that changed nothing answers \
-`changed: false` with no rows and no local file to keep. Enumeration is \
-complete: a `--limit` that holds rows back holds them for the NEXT call, so \
-listing again returns the next chunk until nothing is left — the backlog is \
-read once in pieces, never re-read in full. Narrowing with `--component` or \
-`--query` asks a different question, so it is answered in full and leaves the \
-sweep where it was; `--all` reads the top the same way. \
+Read the deduplicated `fb` backlog through the native signed-in user, without \
+a project or Desktop. The API remembers this account's position; no changes \
+returns `changed: false` with no rows or local state to keep. Enumeration is \
+complete: --limit holds remaining rows for the NEXT call; repeat until empty. \
+--component and --query are complete lookups that preserve the sweep position; \
+--all peeks from the top without moving it. \
 Each row decides on its own: status, whether it is blocked and on what, the \
 latest note, and the id and version a close must carry.",
     chapter: Chapter::Operations,

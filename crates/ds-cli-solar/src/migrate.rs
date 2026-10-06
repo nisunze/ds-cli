@@ -245,7 +245,7 @@ pub static PLAN_COMMAND: Command = Command {
     contract: 1,
     summary: "Plan which Solar objects would migrate in from another project.",
     purpose: "\
-Asks ds-brain headlessly what WOULD move from one project's Solar root into \
+Plans what WOULD move from one project's Solar root into \
 another's: with --kind city each city's authored input documents, with --kind \
 portfolio each portfolio definition and its ordered member cities. It writes \
 nothing — the plan carries the server's own `mutated: false`. COMPUTATION \

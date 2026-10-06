@@ -30,7 +30,7 @@ pub static COMMAND: Command = Command {
         crate::ASSETS_UNREADABLE,
     ]),
     reference: Some("docs/reference/assets.md"),
-    search: &["signed read", "large PDF", "download reference"],
+    search: &["signed read", "large pdf", "download reference"],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };

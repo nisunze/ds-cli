@@ -17,7 +17,7 @@ pub static COMMAND: Command = Command {
     id: "report.mv-frontmatter",
     path: &["report", "mv-frontmatter"],
     contract: 1,
-    summary: "Render selected MV front-matter pages from held project source and explicit facts.",
+    summary: "Render MV front-matter pages from held sources and explicit facts.",
     purpose: "Pass a typed local request to the Rust reporter. It verifies the project-owned HTML, CSS and logo digests, fills only explicitly supplied facts, and prints selected A3 cover or naming pages with Chromium. The receipt pins inputs and PDFs; the existing MV booklet assembler consumes those PDFs. This command does not publish or edit a project.",
     chapter: Chapter::Reports,
     effect: Effect::LocalFileWrite,

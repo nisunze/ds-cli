@@ -206,7 +206,7 @@ pub static EXPORT_COMMAND: Command = Command {
     path: &["desktop", "printing", "export"],
     contract: 4,
     summary: "Export selected formats for one or more held transformers.",
-    purpose: "Runs the desktop-native Network Reporter for one explicit project and transformer. Repeat --transformer for a batch. Defaults: SHP/KMZ/XLSX/saved voltage-drop JSON; saved output sets are ignored. --selection supplies a run matrix without changing settings. Main exports overwrite selected canonical outputs and queue ordinary publication; unselected artifacts keep their provenance. --intent preview produces local-only review artifacts without replacing main outputs, publishing, or saving settings; combined_transformer cannot be previewed. Missing selected map context is acquired automatically when online; offline execution uses held data.",
+    purpose: "Run the desktop-native Network Reporter for one explicit project; repeat --transformer for a batch. Defaults: SHP/KMZ/XLSX/saved voltage-drop JSON, ignoring saved output sets. --selection supplies a run matrix without saving settings. Main exports replace selected outputs and queue publication; unselected provenance is retained. --intent preview is local-only, without main output replacement, publication or settings writes; combined_transformer cannot be previewed. Acquire missing selected context online; use held data offline.",
     chapter: Chapter::Reports,
     effect: Effect::ArtifactWrite,
     authority: Authority::DesktopUser,

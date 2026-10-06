@@ -176,6 +176,27 @@ pub const REFUSALS: &[Refusal] = &[
     },
 ];
 
+/// Select a shared declaration by code so additions cannot shift a reader's
+/// refusal vocabulary. An unknown code fails during command construction.
+pub const fn refusal(code: &str) -> Refusal {
+    let wanted = code.as_bytes();
+    let mut index = 0;
+    while index < REFUSALS.len() {
+        let candidate = REFUSALS[index].code.as_bytes();
+        if candidate.len() == wanted.len() {
+            let mut byte = 0;
+            while byte < wanted.len() && candidate[byte] == wanted[byte] {
+                byte += 1;
+            }
+            if byte == wanted.len() {
+                return REFUSALS[index];
+            }
+        }
+        index += 1;
+    }
+    panic!("shared mutation refusal is not declared");
+}
+
 // ── Mode ────────────────────────────────────────────────────────────────
 
 /// `--dry-run` xor `--yes`, decided once for the whole family.

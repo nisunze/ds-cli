@@ -89,7 +89,7 @@ macro_rules! command {
                 args: $args,
                 output: "ds.style-binding-plan/v1 with exact tuple/ref, project/principal, manifest and style head/content fences, create/preserve counts and plan SHA; creation returns the unchanged reviewed plan and resulting manifest revision.",
                 examples: &[], refusals: crate::governance::command_refusals(),
-                reference: Some("docs/reference/style.md"), search: &["print", "tuple", "governance"],
+                reference: Some("docs/reference/style.md"), search: &["governance"],
                 requires: Requires::Server, availability: ds_cli_auth::native_availability,
             };
             pub fn run(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
