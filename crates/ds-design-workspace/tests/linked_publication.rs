@@ -96,3 +96,53 @@ fn the_combined_models_binding_and_publication_revision_are_derived() {
         .unwrap_err()
         .contains("model_invalid"));
 }
+
+#[test]
+fn ordinary_publication_refuses_protected_combined_but_derived_publication_and_reads_work() {
+    let source = |id| {
+        pack(
+            &GridModelSnapshot::default(),
+            &PackOptions {
+                model_id: EntityId::new(id).unwrap(),
+                model_revision: 1,
+                presentation: Default::default(),
+                coordinate_system: ModelCrs::new("EPSG:32735").unwrap(),
+                library_pins: Vec::new(),
+                library_needs: Vec::new(),
+                assets: Vec::new(),
+                exchange_bindings: Default::default(),
+            },
+        )
+        .unwrap()
+    };
+    let checkpoint = ds_grid_exchange::linked_models::link_sources(
+        &[source("north"), source("south")],
+        &Default::default(),
+    )
+    .unwrap();
+    let encoded = ds_grid_exchange::linked_models::encode_packages(&checkpoint).unwrap();
+    let bytes = &encoded.packages[&checkpoint.state.graph.composite];
+    let request = Request {
+        project: "proof-project".into(),
+        model_kind: "general".into(),
+        display_name: Some("Combined model".into()),
+        ..Default::default()
+    };
+    let error = ds_design_workspace::grid_publication::prepare(&request, bytes).unwrap_err();
+    assert!(error.starts_with("composite_model_protected:"), "{error}");
+    assert!(error.contains("north") && error.contains("south"));
+    let derived =
+        ds_design_workspace::grid_publication::combined_model_id(&checkpoint.state.graph.composite)
+            .unwrap();
+    assert_eq!(
+        prepare_linked(&request, bytes, &derived, "")
+            .unwrap()
+            .model_id,
+        derived
+    );
+    assert!(ds_design_workspace::grid_publication::publication_revision(bytes).is_ok());
+    assert!(
+        ds_design_workspace::grid_publication::prepare(&request, &encoded.packages["north"])
+            .is_ok()
+    );
+}

@@ -64,12 +64,26 @@ pub fn publication_revision(bytes: &[u8]) -> Result<String, String> {
         .ok_or_else(|| "grid_publication_revision_invalid".to_owned())
 }
 
+/// User publication is a submodel operation. Combined publication belongs
+/// exclusively to the reconciled, atomic linked-generation boundary below.
 pub fn prepare(request: &Request, bytes: &[u8]) -> Result<Intent, String> {
+    prepare_inner(request, bytes, false)
+}
+
+fn prepare_inner(
+    request: &Request,
+    bytes: &[u8],
+    reconciled_generation: bool,
+) -> Result<Intent, String> {
     if bytes.is_empty() || bytes.len() > MAX_MODEL_BYTES {
         return Err("model_too_large: expected a nonempty package up to 256 MiB".into());
     }
     let decoded =
         ds_grid_exchange::package::unpack(bytes).map_err(|e| format!("model_invalid: {e}"))?;
+    if !reconciled_generation {
+        ds_grid_exchange::linked_models::authorize_package_write(&decoded, "publish", &[])
+            .map_err(|error| error.to_string())?;
+    }
     let validation = ds_grid_model::validate_snapshot(&decoded.snapshot);
     if !validation.is_valid() {
         return Err(format!(
@@ -181,7 +195,7 @@ pub fn prepare_linked(
     captured.model_id = (!expected_head.is_empty()).then(|| model_id.to_owned());
     captured.expected_head_revision_id =
         (!expected_head.is_empty()).then(|| expected_head.to_owned());
-    let mut intent = prepare(&captured, bytes)?;
+    let mut intent = prepare_inner(&captured, bytes, true)?;
     intent.model_id = model_id.to_owned();
     intent
         .plan(&request.project, bytes)
