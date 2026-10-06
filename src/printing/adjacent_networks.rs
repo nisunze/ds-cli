@@ -210,8 +210,8 @@ pub fn required_fields(
     Ok(result)
 }
 
-/// Split existing neighbouring LV from design context using the native
-/// producer's exact normalized lifecycle vocabulary. The effective page binds
+/// Split confirmed existing neighbouring LV from design context. Unknown
+/// lifecycle stays unchanged for the governed context pen's fallback. The page binds
 /// existing features to the foreground role's already-held governed reference
 /// and complete override; it never authors a pen or changes source features.
 /// This projection also admits old/raw renderer captures at the final boundary.
@@ -241,8 +241,7 @@ pub fn preserve_existing_lv(
         for feature in features {
             match feature["properties"]["existing_status"].as_str() {
                 Some("existing") => existing.push(feature.clone()),
-                Some("new") => proposed.push(feature.clone()),
-                _ => return Err(format!("print_neighbor_lifecycle_invalid: {} feature {} lacks normalized new/existing evidence; refresh its native room without guessing status", layer.id, feature.get("id").unwrap_or(&Value::Null))),
+                _ => proposed.push(feature.clone()),
             }
         }
         if existing.is_empty() {
@@ -419,7 +418,9 @@ pub fn attach(
                     continue;
                 }
                 if let Some(owner) = feature["properties"]["transfo"].as_str() {
-                    if owner != room.transformer {
+                    if crate::design::canonical_row_name(owner)
+                        != crate::design::canonical_row_name(&room.transformer)
+                    {
                         return Err(format!(
                             "{} {source} carries another transformer's ownership",
                             room.transformer
@@ -709,12 +710,9 @@ mod tests {
             .contains("print_invariant_style_mismatch"));
         let mut unknown = layers.clone();
         unknown[0].geojson["features"][0]["properties"]["existing_status"] = json!("Existing pole");
-        assert!(
-            preserve_existing_lv(&layout, &unknown)
-                .unwrap_err()
-                .contains("normalized new/existing"),
-            "printing does not repeat producer status normalization"
-        );
+        let (_, projected) = preserve_existing_lv(&layout, &unknown).unwrap().unwrap();
+        assert_eq!(projected[0].geojson, unknown[0].geojson,
+            "unrecognized lifecycle stays exact under the governed fallback, never becomes existing or new");
         let mut missing = layout.clone();
         missing.style_refs.remove("lv_lines");
         assert!(preserve_existing_lv(&missing, &layers)
@@ -907,6 +905,17 @@ mod tests {
             assert!(!text.contains(absent));
         }
         assert_eq!(serde_json::to_vec(&rooms).unwrap(), before);
+        let mut display_names = rooms.clone();
+        display_names[1].layers.get_mut("lv_lines").unwrap()["features"][0]["properties"]
+            ["transfo"] = json!("EDGE-A");
+        let display_context = attach("focus", &display_names, None, &BTreeMap::new())
+            .unwrap()
+            .unwrap();
+        assert_eq!(display_context["layers"], doc["layers"]);
+        assert_ne!(
+            display_context["sources"][0]["source_sha256"], doc["sources"][0]["source_sha256"],
+            "provenance still hashes the exact saved source bytes"
+        );
         let mut bad = rooms.clone();
         bad[1].layers.get_mut("lv_lines").unwrap()["features"][0]["properties"]["transfo"] =
             json!("focus");
