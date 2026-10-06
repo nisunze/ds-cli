@@ -5,6 +5,7 @@
 //! bearer, or another project. Every read and every publication is fenced to
 //! the selected project; the record asks the session's own authority.
 
+use serde::Deserialize;
 use serde_json::{json, Value};
 
 use crate::{ClientError, ErrorKind};
@@ -273,7 +274,17 @@ impl NativeSyncRequest {
                 for output in outputs {
                     let output = output.as_object().ok_or_else(invalid)?;
                     let field = |key: &str| output.get(key).and_then(Value::as_str);
-                    if output.len() != 5
+                    const OUTPUT_KEYS: [&str; 8] = [
+                        "output_id",
+                        "format",
+                        "content_type",
+                        "sha256",
+                        "size_bytes",
+                        "filename",
+                        "paper_size",
+                        "presentation",
+                    ];
+                    if !output.keys().all(|key| OUTPUT_KEYS.contains(&key.as_str()))
                         || output
                             .get("size_bytes")
                             .and_then(Value::as_u64)
@@ -285,6 +296,7 @@ impl NativeSyncRequest {
                     bounded(field("format").ok_or_else(invalid)?)?;
                     bounded(field("content_type").ok_or_else(invalid)?)?;
                     sha256(field("sha256").ok_or_else(invalid)?)?;
+                    report_output_metadata(output)?;
                 }
                 SyncGatewayOperation::ComputeArtifactsOpen
             }
@@ -348,6 +360,68 @@ impl NativeSyncRequest {
     pub(crate) fn body(&self) -> &Value {
         &self.body
     }
+}
+
+// These additive receipt fields are authored by the renderer and already
+// transported by ds-sync-runtime. Keep their shape closed before credentials
+// are attached; the record still owns validation against its sealed inputs.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PrintPresentation {
+    layout_id: String,
+    layout_name: String,
+    paper_name: String,
+    orientation: String,
+    page_mm: [f64; 2],
+}
+
+fn metadata_text(value: &str, limit: usize) -> Result<(), ClientError> {
+    bounded(value)?;
+    if value.len() > limit {
+        return Err(invalid());
+    }
+    Ok(())
+}
+
+fn report_output_metadata(output: &serde_json::Map<String, Value>) -> Result<(), ClientError> {
+    if let Some(filename) = output.get("filename") {
+        let filename = filename.as_str().ok_or_else(invalid)?;
+        metadata_text(filename, 255)?;
+        if matches!(filename, "." | "..") || filename.contains(['/', '\\']) {
+            return Err(invalid());
+        }
+    }
+    let paper = output
+        .get("paper_size")
+        .map(|value| {
+            let paper = value.as_str().ok_or_else(invalid)?;
+            metadata_text(paper, 40)?;
+            Ok::<_, ClientError>(paper)
+        })
+        .transpose()?;
+    if let Some(value) = output.get("presentation") {
+        let presentation: PrintPresentation =
+            serde_json::from_value(value.clone()).map_err(|_| invalid())?;
+        metadata_text(&presentation.layout_id, 80)?;
+        metadata_text(&presentation.layout_name, 240)?;
+        if Some(presentation.paper_name.as_str()) != paper {
+            return Err(invalid());
+        }
+        let [width, height] = presentation.page_mm;
+        let orientation_valid = match presentation.orientation.as_str() {
+            "portrait" => width <= height,
+            "landscape" => width >= height,
+            _ => false,
+        };
+        if ![width, height]
+            .iter()
+            .all(|size| size.is_finite() && (50.0..=2000.0).contains(size))
+            || !orientation_valid
+        {
+            return Err(invalid());
+        }
+    }
+    Ok(())
 }
 
 fn bounded(value: &str) -> Result<(), ClientError> {
@@ -478,6 +552,80 @@ mod tests {
                 "{refused}"
             );
         }
+    }
+
+    #[test]
+    fn report_publication_keeps_closed_renderer_receipt_metadata() {
+        let mut open = json!({
+            "action":"open", "project_id":"project-a", "client_run_id":"publish-1234",
+            "engine":"network_reporter", "operation":"export-agahehe", "variant":"default",
+            "engine_version":"ds-network-reporter@0.1.0+held-build",
+            "engine_build_manifest_sha256":"5".repeat(64),
+            "input_base_fingerprint":"b".repeat(64),
+            "outputs":[{"output_id":"pdf__a0-landscape-gisagara-cjic", "format":"pdf__a0-landscape-gisagara-cjic",
+                "content_type":"application/pdf", "sha256":"a".repeat(64),
+                "size_bytes":3586561, "filename":"Agahehe.a0-landscape-gisagara-cjic.pdf"}],
+        });
+        // Current non-print outputs carry a filename without print metadata.
+        assert_eq!(
+            NativeSyncRequest::report_publication("project-a", &open)
+                .unwrap()
+                .body(),
+            &open
+        );
+        open["outputs"][0]["paper_size"] = json!("A0");
+        open["outputs"][0]["presentation"] = json!({
+            "layout_id":"a0-landscape-gisagara-cjic", "layout_name":"A0 LV CATEGORICAL - GISAGARA CJIC", "paper_name":"A0",
+            "orientation":"landscape", "page_mm":[1189,841],
+        });
+        assert_eq!(
+            NativeSyncRequest::report_publication("project-a", &open)
+                .unwrap()
+                .body(),
+            &open
+        );
+        assert!(NativeSyncRequest::report_publication("project-b", &open).is_err());
+        for (path, value) in [
+            ("/outputs/0/filename", json!("../report.pdf")),
+            ("/outputs/0/filename", json!("report\\escape.pdf")),
+            ("/outputs/0/filename", json!("report\n.pdf")),
+            ("/outputs/0/filename", json!("a".repeat(256))),
+            ("/outputs/0/filename", Value::Null),
+            ("/outputs/0/paper_size", json!("A3")),
+            ("/outputs/0/presentation", json!({"layout_id":"governed"})),
+            ("/outputs/0/presentation", Value::Null),
+            ("/outputs/0/presentation/orientation", json!("portrait")),
+            ("/outputs/0/presentation/page_mm", json!([1189, 841, 1])),
+            ("/outputs/0/presentation/page_mm", json!([0, 841])),
+            ("/outputs/0/sha256", json!("bad")),
+            ("/outputs/0/size_bytes", json!(0)),
+        ] {
+            let mut refused = open.clone();
+            *refused.pointer_mut(path).unwrap() = value;
+            assert!(
+                NativeSyncRequest::report_publication("project-a", &refused).is_err(),
+                "{path}: {refused}"
+            );
+        }
+        for path in ["/outputs/0", "/outputs/0/presentation"] {
+            let mut refused = open.clone();
+            refused
+                .pointer_mut(path)
+                .unwrap()
+                .as_object_mut()
+                .unwrap()
+                .insert("authority_grant_id".into(), json!("grant_a"));
+            assert!(
+                NativeSyncRequest::report_publication("project-a", &refused).is_err(),
+                "{path}"
+            );
+        }
+        let mut missing_paper = open;
+        missing_paper["outputs"][0]
+            .as_object_mut()
+            .unwrap()
+            .remove("paper_size");
+        assert!(NativeSyncRequest::report_publication("project-a", &missing_paper).is_err());
     }
 
     #[test]
