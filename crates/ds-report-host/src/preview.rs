@@ -413,6 +413,9 @@ pub struct PreviewRequest {
 #[derive(Debug, Clone)]
 pub struct Holdings {
     pub root: PathBuf,
+    /// Project print roster and saved rooms live under the machine layer root,
+    /// independently of the geographic cache's configured storage location.
+    pub room_root: Option<PathBuf>,
     pub scope: Scope,
     pub catalog: Vec<ReferenceResource>,
 }
@@ -694,10 +697,16 @@ pub fn execute_with_styles(
                     // draft never fetches unheld rooms or silently prints a subset.
                     let rooms = match &held.context.holdings {
                         Some(holdings) if holdings.scope.project == settings.project_id => {
-                            ds_project_data::room_hold::active_print_rooms(
-                                &holdings.root,
-                                &holdings.scope,
-                            )
+                            holdings
+                                .room_root
+                                .as_ref()
+                                .ok_or_else(|| "no project print room root on this host".to_owned())
+                                .and_then(|root| {
+                                    ds_project_data::room_hold::active_print_rooms(
+                                        root,
+                                        &holdings.scope,
+                                    )
+                                })
                         }
                         _ => Err("no project holdings root on this host".into()),
                     };
@@ -1447,6 +1456,127 @@ mod tests {
         assert_eq!(page.receipt["print_context_layers"], json!(["survey_x"]));
         assert_eq!(page.receipt["print_context_omitted"], json!(["roads"]));
         assert_eq!(engine.calls.load(Ordering::SeqCst), 1);
+        assert!(nothing_left(&staging));
+    }
+
+    #[test]
+    fn adjacent_preview_uses_separate_room_root_and_keeps_account_scope() {
+        use ds_project_data::room_hold::{self, Room};
+
+        let temp = tempfile::tempdir().unwrap();
+        let staging = temp.path().join("staging");
+        let geographic_root = temp.path().join("geographic");
+        let room_root = temp.path().join("layers");
+        let scope = Scope {
+            principal: "owner".into(),
+            project: "proj-1".into(),
+        };
+        let mut held = held("tx_a", Vec::new());
+        let focus = Room {
+            transformer: held.room.transformer.clone(),
+            version: Some(held.room.server_version),
+            content_digest: Some(report_export::jcs::layers_content_digest(&held.room.layers).unwrap()),
+            layers: held.room.layers.clone(),
+        };
+        let layers = BTreeMap::from([
+            (
+                "tr".into(),
+                json!({"type":"FeatureCollection","features":[{
+                    "type":"Feature","properties":{"transfo":"tx_b","existing_status":"new"},
+                    "geometry":{"type":"Point","coordinates":[30.0601,-1.94]}
+                }]}),
+            ),
+            (
+                "lv_lines".into(),
+                json!({"type":"FeatureCollection","features":[{
+                    "type":"Feature","properties":{"transfo":"tx_b","existing_status":"new"},
+                    "geometry":{"type":"LineString","coordinates":[[30.0601,-1.94],[30.0602,-1.94]]}
+                }]}),
+            ),
+        ]);
+        let neighbor = Room {
+            transformer: "tx_b".into(),
+            version: Some(3),
+            content_digest: Some(report_export::jcs::layers_content_digest(&layers).unwrap()),
+            layers,
+        };
+        room_hold::hold_inputs(
+            &room_root,
+            &scope,
+            &json!({"rows":[
+                {"name":"tx_a","kind":"transformer","state":"active"},
+                {"name":"tx_b","kind":"transformer","state":"active"}
+            ]}),
+        )
+        .unwrap();
+        room_hold::hold_room(&room_root, &scope, &focus).unwrap();
+        room_hold::hold_room(&room_root, &scope, &neighbor).unwrap();
+        held.context.holdings = Some(Holdings {
+            root: geographic_root.clone(),
+            room_root: Some(room_root),
+            scope,
+            catalog: Vec::new(),
+        });
+        let mut layout = draft();
+        layout.context_layers.clear();
+        layout
+            .style_refs
+            .insert("neighbor_transformers".into(), "context/tr_print".into());
+        layout
+            .style_refs
+            .insert("neighbor_lv_lines".into(), "context/lv_print".into());
+        let mut receipt = receipt("Benin");
+        let mut sheets = receipt.sheets().unwrap();
+        sheets["printing_styles"] = json!({
+            "context/tr_print":{"type":"circle","paint":{"circle-radius":1,"circle-opacity":0.65,
+                "circle-color":["match",["get","existing_status"],"new","#0F766E","existing","#295B86","#228B83"]}},
+            "context/lv_print":{"type":"line","paint":{"line-width":1,"line-opacity":0.65,
+                "line-color":["match",["get","existing_status"],"new","#0F766E","existing","#295B86","#228B83"]}}
+        });
+        receipt.sheets_json = serde_json::to_string(&sheets).unwrap();
+        receipt.sheets_sha256 = format!("{:x}", Sha256::digest(receipt.sheets_json.as_bytes()));
+        let engine = FakeEngine::release();
+        let request = request(layout);
+        let page = execute(&engine, &settings(&receipt, &staging), &request, &held).unwrap();
+        assert!(page
+            .context_layers
+            .iter()
+            .any(|id| id == "neighbor_transformers"));
+        assert!(page
+            .context_layers
+            .iter()
+            .any(|id| id == "neighbor_lv_lines"));
+        assert!(page.context_omitted.is_empty());
+        assert_eq!(held.room.layers, focus.layers);
+        assert_eq!(
+            held.context.holdings.as_ref().unwrap().root,
+            geographic_root
+        );
+
+        let mut wrong_root = held.clone();
+        wrong_root.context.holdings.as_mut().unwrap().room_root = Some(geographic_root);
+        let omitted = execute(
+            &engine,
+            &settings(&receipt, &staging),
+            &request,
+            &wrong_root,
+        )
+        .unwrap();
+        assert!(omitted.context_layers.is_empty());
+        assert!(omitted
+            .context_omitted
+            .iter()
+            .any(|row| row.layer == "neighbor_transformers"
+                && row.reason == "no project print inventory is held"));
+
+        held.context.holdings.as_mut().unwrap().scope.principal = "another-owner".into();
+        let omitted = execute(&engine, &settings(&receipt, &staging), &request, &held).unwrap();
+        assert!(omitted.context_layers.is_empty());
+        assert!(omitted
+            .context_omitted
+            .iter()
+            .any(|row| row.layer == "neighbor_transformers"
+                && row.reason == "no project print inventory is held"));
         assert!(nothing_left(&staging));
     }
 
