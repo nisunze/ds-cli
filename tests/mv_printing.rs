@@ -130,13 +130,115 @@ fn missing_fields_and_duplicate_selection_are_keyed_refusals_before_output() {
     assert_eq!(refused.code, "mv_print_text_missing");
     assert_eq!(refused.field, "contract_number");
     let mut value = sheets();
-    value["printing_setups"][0]["inherited_from"] = Value::Null;
+    value["printing_setups"][0]["inherited_from"] = json!({});
     assert_eq!(
         mv::resolve(&value, "project_a", BTreeMap::new())
             .unwrap_err()
             .code,
         "mv_print_setup_not_adopted"
     );
+}
+#[test]
+fn copied_project_setup_preserves_its_exact_source_and_selected_revision() {
+    let mut value = sheets();
+    let source = json!({"scope":"project","project_id":"rwanda_template","id":"source_mv","revision":"b".repeat(64)});
+    value["printing_setups"][0]["inherited_from"] = source.clone();
+    let resolved = mv::resolve(&value, "project_a", BTreeMap::new()).unwrap();
+    assert_eq!(
+        serde_json::to_value(&resolved.inherited_from).unwrap(),
+        source
+    );
+    resolved.validate("project_a").unwrap();
+    // An unrelated global setup cannot advance the project's independently
+    // selected copied revision.
+    value["global_printing_setups"] = json!([{"id":"source_mv","revision":"c".repeat(64)}]);
+    assert_eq!(
+        mv::resolve(&value, "project_a", BTreeMap::new()).unwrap(),
+        resolved
+    );
+    value["printing_setups"][0]["revision"] = json!("c".repeat(64));
+    assert_eq!(
+        mv::resolve(&value, "project_a", BTreeMap::new())
+            .unwrap_err()
+            .code,
+        "mv_print_setup_revision_changed"
+    );
+    let mut modified = resolved;
+    modified.inherited_from.revision = "d".repeat(64);
+    assert_eq!(
+        modified.validate("project_a").unwrap_err().code,
+        "mv_print_receipt_changed"
+    );
+}
+
+#[test]
+fn authored_project_setup_captures_itself_without_global_lineage() {
+    let base = mv::resolve(&sheets(), "project_a", BTreeMap::new()).unwrap();
+    for absent in [false, true] {
+        let mut value = sheets();
+        if absent {
+            value["printing_setups"][0]
+                .as_object_mut()
+                .unwrap()
+                .remove("inherited_from");
+        } else {
+            value["printing_setups"][0]["inherited_from"] = Value::Null;
+        }
+        let resolved = mv::resolve(&value, "project_a", BTreeMap::new()).unwrap();
+        assert_eq!(resolved.inherited_from.scope, "project");
+        assert_eq!(
+            resolved.inherited_from.project_id.as_deref(),
+            Some("project_a")
+        );
+        assert_eq!(resolved.inherited_from.id, resolved.selection.layout_id);
+        assert_eq!(
+            resolved.inherited_from.revision,
+            resolved.selection.revision
+        );
+        assert_eq!(resolved.layout, base.layout);
+        assert_eq!(resolved.settings, base.settings);
+        assert_eq!(resolved.selection, base.selection);
+        resolved.validate("project_a").unwrap();
+        assert_eq!(
+            resolved.validate("project_b").unwrap_err().code,
+            "mv_print_project_mismatch"
+        );
+    }
+}
+
+#[test]
+fn malformed_copy_lineage_is_never_treated_as_an_authored_project_setup() {
+    let valid = json!({"scope":"project","project_id":"source_project","id":"source_mv","revision":"b".repeat(64)});
+    let mut invalid = vec![json!({}), json!("source_project")];
+    for (field, replacement) in [
+        ("scope", json!("personal")),
+        ("scope", json!("global")),
+        ("project_id", Value::Null),
+        ("project_id", json!("")),
+        ("project_id", json!("source/project")),
+        ("project_id", json!(" source_project")),
+        ("project_id", json!("x".repeat(129))),
+        ("id", json!("invalid/id")),
+        ("revision", json!("b".repeat(63))),
+        ("revision", json!("B".repeat(64))),
+    ] {
+        let mut origin = valid.clone();
+        origin[field] = replacement;
+        invalid.push(origin);
+    }
+    let mut missing_project = valid.clone();
+    missing_project
+        .as_object_mut()
+        .unwrap()
+        .remove("project_id");
+    invalid.push(missing_project);
+    for origin in invalid {
+        let mut value = sheets();
+        value["printing_setups"][0]["inherited_from"] = origin.clone();
+        let refusal = mv::resolve(&value, "project_a", BTreeMap::new()).unwrap_err();
+        assert_eq!(refusal.code, "mv_print_setup_not_adopted", "{origin}");
+        assert_eq!(refusal.field, "inherited_from", "{origin}");
+    }
 }
 #[test]
 fn issue_policy_and_library_documents_never_guess_a_date_logo_font_or_presentation() {

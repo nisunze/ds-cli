@@ -275,6 +275,7 @@ pub struct Resolved {
     pub schema: String,
     pub project_id: String,
     pub selection: Selection,
+    /// Exact copied source; authored setups capture their own project revision.
     pub inherited_from: Origin,
     pub layout: Layout,
     pub model_fields: BTreeMap<ModelField, String>,
@@ -309,6 +310,12 @@ fn valid_text(value: &str, limit: usize) -> bool {
         && value.trim() == value
         && value.len() <= limit
         && !value.chars().any(char::is_control)
+}
+fn valid_project(value: &str) -> bool {
+    valid_text(value, 128)
+        && value
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_'))
 }
 pub fn valid_revision(value: &str) -> bool {
     value.len() == 64
@@ -597,11 +604,7 @@ pub fn resolve(
     project_id: &str,
     model_fields: BTreeMap<ModelField, String>,
 ) -> Result<Resolved, Refusal> {
-    if !valid_text(project_id, 128)
-        || !project_id
-            .bytes()
-            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_'))
-    {
+    if !valid_project(project_id) {
         return Err(refuse(
             "mv_print_project_mismatch",
             "project_id",
@@ -660,18 +663,34 @@ pub fn resolve(
             id: selected.layout_id.clone(),
             revision: selected.revision.clone(),
         }
+    } else if row["inherited_from"].is_null() {
+        // An ordinary project may author its own setup. Its receipt captures
+        // that exact project document without inventing a global ancestor.
+        Origin {
+            scope: "project".into(),
+            project_id: Some(project_id.into()),
+            id: selected.layout_id.clone(),
+            revision: selected.revision.clone(),
+        }
     } else {
-        serde_json::from_value(row["inherited_from"].clone()).map_err(|_| refuse("mv_print_setup_not_adopted", "inherited_from", "Copy an exact global template revision into the project; preserve its library lineage."))?
+        serde_json::from_value(row["inherited_from"].clone()).map_err(|_| {
+            refuse(
+                "mv_print_setup_not_adopted",
+                "inherited_from",
+                "Preserve the copied setup's exact source scope, project, id and revision.",
+            )
+        })?
     };
-    if origin.scope != "global"
-        || origin.project_id.is_some()
-        || !super::identifier(&origin.id)
-        || !valid_revision(&origin.revision)
-    {
+    let valid_scope = match origin.scope.as_str() {
+        "global" => origin.project_id.is_none(),
+        "project" => origin.project_id.as_deref().is_some_and(valid_project),
+        _ => false,
+    };
+    if !valid_scope || !super::identifier(&origin.id) || !valid_revision(&origin.revision) {
         return Err(refuse(
             "mv_print_setup_not_adopted",
             "inherited_from",
-            "Adopt an exact global revision with the existing printing library copy action.",
+            "Preserve an exact global source or a named project source with its valid id and revision.",
         ));
     }
     let template = layout.mv.as_ref().ok_or_else(|| {

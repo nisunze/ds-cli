@@ -951,8 +951,10 @@ bundled font. Ordinary LV documents omit `mv` and retain their wire bytes.
 
 One `mv_printing_setup` project parameter pins a project library id/revision,
 simple external publication number and fixed real calendar date. Resolve
-requires exact global copy lineage and exact adopted revision. It never reads
-a global head. A `model_preserved_pdf` binding names each permitted exact
+requires the exact selected revision. Copied setups retain their exact source
+project (or historical global source), id and revision; a directly authored
+setup captures its own project/id/revision. Resolution never reads a mutable
+source head. A `model_preserved_pdf` binding names each permitted exact
 model identity with its approved asset id/digest. The resolved receipt records
 each chosen preserved page by index; a consumer re-resolves and compares the
 whole receipt, so changing a cover pin, project, issue or scale refuses. Model1
