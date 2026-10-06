@@ -33,6 +33,7 @@ pub mod engine;
 pub mod export;
 pub mod layout;
 pub mod outbox;
+pub mod mv_frontmatter;
 pub mod plan_profile;
 pub mod plan_profile_config;
 pub mod planning;
@@ -100,6 +101,7 @@ pub static DOMAIN: Domain = Domain {
         &tasks::COMMAND,
         &export::COMMAND,
         &voltage_drop_combined::COMMAND,
+        &mv_frontmatter::COMMAND,
         &bundle::COMMAND,
         &plan_profile::COMMAND,
         &plan_profile_config::COMMAND,

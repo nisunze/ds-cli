@@ -905,6 +905,7 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("pls.terrain-reconcile", "local_file_write", "none"),
     ("report.bundle", "local_file_write", "none"),
     ("report.voltage-drop-combined", "local_file_write", "none"),
+    ("report.mv-frontmatter", "local_file_write", "none"),
     ("report.artifact.remove", "global_write", "headless_project"),
     (
         "report.plan-profile",

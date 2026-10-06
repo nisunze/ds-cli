@@ -2573,6 +2573,7 @@ const PRINTING_COMMANDS: &[&str] = &[
     "report.project.map-inputs",
     "report.project.crs",
     "report.voltage-drop-combined",
+    "report.mv-frontmatter",
     "desktop.printing.prepare",
     "desktop.printing.transformers",
     "desktop.printing.export",

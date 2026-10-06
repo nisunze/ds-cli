@@ -1435,3 +1435,14 @@ when the governed metric grid is enabled. Capturing an automatic or unsupported
 projection does not authorize guessing one. Ordinary export and preview capture
 the same authority through this directory owner and bind it into the exact
 SHA-verified print context without changing the server configuration receipt.
+
+### Reusable MV front-matter pages
+
+`ds report mv-frontmatter` hands reviewed, digest-pinned project HTML/CSS,
+logos and explicit facts to the native Chromium document renderer. Discover
+its typed request with `ds report tasks --task render_mv_frontmatter`. Select
+cover and/or naming pages; missing facts refuse rather than acquiring defaults.
+The resulting one-page A3 PDFs carry source, fact and artifact pins and feed
+the existing preserved-PDF MV booklet assembler. Sources and reviewed outputs
+remain ordinary project assets, copied and adapted with explicit project data.
+See the [renderer contract](../../../ds-network-reporter/docs/contracts/mv-frontmatter-rendering.md).
