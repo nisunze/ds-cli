@@ -2125,6 +2125,34 @@ fn local_model_scoped_routers_reach_every_allowed_verb_and_preserve_refusals() {
 }
 
 #[test]
+fn printing_profile_exposes_one_bounded_live_preview_without_export_options() {
+    let (responses, _) = mcp(
+        &["--exposure", "commands", "--profile", "printing"],
+        &[json!({"jsonrpc":"2.0","id":1,"method":"tools/list"})],
+    );
+    let tools = response(&responses, 1)["result"]["tools"]
+        .as_array()
+        .unwrap();
+    assert!((2..=29).contains(&tools.len()));
+    let matching = tools
+        .iter()
+        .filter(|tool| tool["name"] == "desktop_printing_preview")
+        .collect::<Vec<_>>();
+    assert_eq!(matching.len(), 1);
+    let tool = matching[0];
+    assert_eq!(tool["title"], "desktop.printing.preview");
+    assert_eq!(
+        tool["inputSchema"]["required"],
+        json!(["project", "transformer", "layout"])
+    );
+    assert_eq!(tool["inputSchema"]["additionalProperties"], false);
+    let properties = tool["inputSchema"]["properties"].as_object().unwrap();
+    for forbidden in ["force", "selection", "intent", "confirm", "yes"] {
+        assert!(!properties.contains_key(forbidden), "{forbidden}");
+    }
+}
+
+#[test]
 fn every_specialized_profile_is_bounded_and_catalogued() {
     let mut published = BTreeMap::<&str, BTreeSet<String>>::new();
     for profile in [
@@ -2244,7 +2272,7 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
             // workflow beside the retained desktop-owned operations.
             // The two reviewed printing leaves capture project CRS and
             // combine saved voltage-drop pages; Grid's own bound stays fixed.
-            "printing" => 28,
+            "printing" => 29,
             "printing-maps" => 7,
             // Eleven existing guided leaves, eleven new authoring leaves and
             // nine resolver/catalogue leaves. Mirrors the explicitly closed

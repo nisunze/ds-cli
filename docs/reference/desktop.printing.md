@@ -5,6 +5,17 @@ It reads project settings and reports the saved selection, planned output IDs
 and the actual selected template papers. It never infers paper from a filename.
 The same leaf is exposed by `ds mcp serve --exposure commands --profile printing`.
 
+`ds desktop printing preview --project <exact-current-project> --transformer
+<name> --layout draft-layout.json --output json` previews a full draft sheet
+through the same live SVG command as the Printing setup canvas. It resolves the
+held governed styles and prepares that transformer's ordinary cached context;
+the JSON returns SVG, diagnostics, omissions and context warnings. The project
+must match the paired Desktop's current project, and an account or project
+change refuses. The layout input is bounded to 800 KB and the existing bridge
+response to 8 MiB. No layout, export selection, main output or publication is
+written. This SVG command is separate from `export --intent preview`, which
+produces review artifacts from saved project layouts.
+
 Named setups are read and published natively, with no paired application.
 Project scope always names its project; the saved selection is never read.
 `ds report layout list --scope project --project <id> --output json` inspects

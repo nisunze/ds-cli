@@ -335,7 +335,7 @@ impl Profile {
             // Named printing additions: report.project.crs captures the map's
             // authority; report.voltage-drop-combined assembles saved status
             // pages. Both stay in this workflow, outside the bounded Grid router.
-            Self::Printing => 28,
+            Self::Printing => 29,
             Self::PrintingMaps => 7,
             // The layer drawer's profile also carries this machine's prepared
             // local layer catalogue: seventeen leaves plus both bootstrap tools.
@@ -2576,6 +2576,7 @@ const PRINTING_COMMANDS: &[&str] = &[
     "desktop.printing.prepare",
     "desktop.printing.transformers",
     "desktop.printing.export",
+    "desktop.printing.preview",
     "desktop.printing.artifact.read",
     "desktop.printing.seed-context",
 ];

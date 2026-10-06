@@ -101,6 +101,39 @@ pub const EXPORT_OP: BridgeOp = BridgeOp {
         "intent",
     ],
 };
+pub const PREVIEW_OP: BridgeOp = BridgeOp {
+    operation: "printing.preview",
+    arguments: &["project", "transformer", "layout"],
+};
+pub static PREVIEW_COMMAND: Command = Command {
+    id: "desktop.printing.preview",
+    path: &["desktop", "printing", "preview"],
+    contract: 1,
+    summary: "Preview a draft transformer sheet through the live SVG renderer.",
+    purpose: "Requires the paired Desktop's current signed-in project. Reads a bounded draft layout, resolves its exact governed styles and prepares the same held room/context as the Printing setup page, then invokes report.project.export --preview-layout. Returns SVG, diagnostics, omissions and context preparation warnings. Never saves a layout or selection, writes main report outputs, publishes, switches projects, or refreshes survey data. Missing context can be acquired into the ordinary local cache, as for the page's preview.",
+    chapter: Chapter::Reports,
+    effect: Effect::LocalFileWrite,
+    authority: Authority::DesktopUser,
+    execution: Execution::Sync,
+    args: &[
+        Arg::value("project", "<exact-id>", "Exact current Desktop project; a mismatch refuses without switching it.").required(),
+        Arg::value("transformer", "<name>", "One canonical individual transformer name; combined_transformer is refused.").required(),
+        Arg::value("layout", "<json-file>", "Full draft print-layout JSON document, at most 800 KB; no layout or project settings are saved.").required(),
+        TARGET_ARG,
+        DESCRIPTOR_ARG,
+    ],
+    output: "Explicit project, preview identity and inline SVG result with SHA-256, print diagnostics, context omissions and preparation warnings. Existing paired bridge response bound: 8 MiB.",
+    examples: &[],
+    refusals: &[
+        ops::NOT_PAIRED, ops::AMBIGUOUS, ops::UNREACHABLE, ops::PAIRING_REJECTED,
+        ops::REFUSED, ops::UNSUPPORTED, ops::UNREADABLE, ops::SIGNED_OUT,
+        PRINTING_READ_INVALID,
+    ],
+    reference: Some("docs/reference/desktop.printing.md"),
+    search: &[],
+    requires: Requires::Window,
+    availability: ops::paired_availability,
+};
 const FORCE_ARG: Arg = Arg {
     name: "force",
     kind: ArgKind::Switch,
@@ -313,20 +346,7 @@ fn export_arguments(inputs: &Inputs) -> Result<Value, Failure> {
         return Err(invalid_read("select 1..2000 transformers"));
     }
     for transformer in transformers {
-        if transformer.is_empty()
-            || transformer.len() > 121
-            || !transformer
-                .bytes()
-                .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_')
-            || !(transformer.as_bytes()[0].is_ascii_lowercase()
-                || (transformer.starts_with('_')
-                    && transformer
-                        .as_bytes()
-                        .get(1)
-                        .is_some_and(u8::is_ascii_digit)))
-        {
-            return Err(invalid_read("invalid canonical transformer name"));
-        }
+        bounded_transformer(transformer)?;
     }
     if inputs.value("intent") == Some("preview")
         && transformers
@@ -366,6 +386,56 @@ fn export_arguments(inputs: &Inputs) -> Result<Value, Failure> {
             serde_json::to_value(selection).map_err(|e| invalid_read(e.to_string()))?;
     }
     Ok(arguments)
+}
+
+fn bounded_transformer(transformer: &str) -> Result<&str, Failure> {
+    if transformer.is_empty()
+        || transformer.len() > 121
+        || !transformer
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_')
+        || !(transformer.as_bytes()[0].is_ascii_lowercase()
+            || (transformer.starts_with('_')
+                && transformer
+                    .as_bytes()
+                    .get(1)
+                    .is_some_and(u8::is_ascii_digit)))
+    {
+        return Err(invalid_read("invalid canonical transformer name"));
+    }
+    Ok(transformer)
+}
+
+fn preview_arguments(inputs: &Inputs, layout: Value) -> Result<Value, Failure> {
+    let project = bounded_project(inputs.require("project")?)?;
+    let transformer = bounded_transformer(inputs.require("transformer")?)?;
+    if transformer == "combined_transformer" {
+        return Err(invalid_read(
+            "live sheet preview requires one individual transformer",
+        ));
+    }
+    let parsed: ds_command_kernel::printing::Layout =
+        serde_json::from_value(layout.clone()).map_err(|error| invalid_read(error.to_string()))?;
+    ds_command_kernel::printing::validate(&parsed).map_err(invalid_read)?;
+    Ok(json!({"project":project,"transformer":transformer,"layout":layout}))
+}
+
+pub fn preview(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
+    // Project/name/document validation precedes pairing or any application call.
+    bounded_project(inputs.require("project")?)?;
+    bounded_transformer(inputs.require("transformer")?)?;
+    let layout = read_request(
+        inputs.require("layout")?,
+        "provide a full print-layout JSON document at most 800 KB",
+    )?;
+    let arguments = preview_arguments(inputs, layout)?;
+    ops::invoke(
+        &ops::paired(inputs.value("desktop-descriptor"))?,
+        &PREVIEW_OP,
+        arguments,
+        Duration::from_secs(30 * 60),
+    )
+    .map_err(ops::classify_signed_out)
 }
 
 pub fn export(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
@@ -416,6 +486,7 @@ mod tests {
     #[test]
     fn read_operations_declare_explicit_project_without_a_switch_operation() {
         assert_eq!(TRANSFORMERS_OP.arguments, ["project", "limit"]);
+        assert_eq!(PREVIEW_OP.arguments, ["project", "transformer", "layout"]);
         assert_eq!(
             EXPORT_OP.arguments,
             [
@@ -426,6 +497,84 @@ mod tests {
                 "selection",
                 "intent"
             ]
+        );
+    }
+
+    fn preview_inputs(tokens: &[&str]) -> Result<Inputs, Failure> {
+        ds_cli_contract::args::parse(
+            &PREVIEW_COMMAND,
+            &tokens
+                .iter()
+                .map(|token| (*token).to_owned())
+                .collect::<Vec<_>>(),
+        )
+    }
+
+    #[test]
+    fn live_preview_refuses_export_options_and_invalid_identity_before_pairing() {
+        for extra in ["--force", "--selection", "--intent"] {
+            assert!(
+                preview_inputs(&[
+                    "--project",
+                    "huye",
+                    "--transformer",
+                    "agasharu",
+                    "--layout",
+                    "draft.json",
+                    extra
+                ])
+                .is_err()
+            );
+        }
+        let layout = serde_json::to_value(ds_command_kernel::printing::default_layout()).unwrap();
+        for name in ["combined_transformer", "AGASHARU", "../agasharu"] {
+            let inputs = preview_inputs(&[
+                "--project",
+                "huye",
+                "--transformer",
+                name,
+                "--layout",
+                "draft.json",
+            ])
+            .unwrap();
+            assert_eq!(
+                preview_arguments(&inputs, layout.clone())
+                    .unwrap_err()
+                    .code(),
+                "printing_request_invalid"
+            );
+        }
+        let inputs = preview_inputs(&[
+            "--project",
+            " huye ",
+            "--transformer",
+            "agasharu",
+            "--layout",
+            "draft.json",
+        ])
+        .unwrap();
+        assert_eq!(
+            preview_arguments(&inputs, layout).unwrap_err().code(),
+            "printing_request_invalid"
+        );
+    }
+
+    #[test]
+    fn live_preview_hands_only_the_validated_draft_and_explicit_identity_to_the_bridge() {
+        let inputs = preview_inputs(&[
+            "--project",
+            "huye",
+            "--transformer",
+            "agasharu",
+            "--layout",
+            "draft.json",
+        ])
+        .unwrap();
+        assert!(preview_arguments(&inputs, json!({"schema":"foreign"})).is_err());
+        let layout = serde_json::to_value(ds_command_kernel::printing::default_layout()).unwrap();
+        assert_eq!(
+            preview_arguments(&inputs, layout.clone()).unwrap(),
+            json!({"project":"huye","transformer":"agasharu","layout":layout})
         );
     }
 

@@ -400,6 +400,7 @@ fn printing_operations_have_one_closed_application_owner() {
     for op in [
         &ds_cli_desktop::printing::TRANSFORMERS_OP,
         &ds_cli_desktop::printing::EXPORT_OP,
+        &ds_cli_desktop::printing::PREVIEW_OP,
         &ds_cli_desktop::printing::SETTINGS_OP,
         &ds_cli_desktop::printing::PREPARE_OP,
         &ds_cli_desktop::printing::SEED_CONTEXT_OP,

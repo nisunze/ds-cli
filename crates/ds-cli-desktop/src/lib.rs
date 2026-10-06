@@ -55,6 +55,7 @@ pub static DOMAIN: Domain = Domain {
         &printing::SETTINGS_COMMAND,
         &printing::TRANSFORMERS_COMMAND,
         &printing::EXPORT_COMMAND,
+        &printing::PREVIEW_COMMAND,
         &printing::PREPARE_COMMAND,
         &sync_plan::PLAN_COMMAND,
         &printing::SEED_CONTEXT_COMMAND,
