@@ -1973,6 +1973,29 @@ fn fit_to_paper(mut layout: Layout, paper: PaperSpec) -> Result<Layout, String> 
             element.rect[3] * scale,
         ];
         element.font_pt = (element.font_pt * scale).clamp(4., 144.);
+        // Frames and their content share one physical scale. Keep the existing
+        // readable dimension floors, without changing weights or row inventory.
+        if let Some(table) = &mut element.table {
+            for width in &mut table.min_widths_mm {
+                *width *= scale;
+            }
+            for width in &mut table.max_widths_mm {
+                *width = (*width * scale).max(3.);
+            }
+            table.row_mm = table.row_mm.map(|height| (height * scale).max(2.));
+            table.gap_mm *= scale;
+        }
+        if let Some(legend) = &mut element.legend {
+            legend.row_mm = (legend.row_mm * scale).max(3.);
+            legend.indent_mm *= scale;
+        }
+        if let Some(flow) = &mut element.flow {
+            flow.gap_mm *= scale;
+        }
+    }
+    if let Some(composition) = &mut layout.composition {
+        composition.gap_mm *= scale;
+        composition.collision_margin_mm *= scale;
     }
     layout.paper = paper;
     layout.page_mm = page;
@@ -4346,6 +4369,102 @@ mod tests {
                 orientation: Orientation::Landscape
             }
         );
+    }
+
+    // Exact furniture from Rwanda Template's governed transformer-focus-a0
+    // document. The map fit list is bounded to the captured furniture; logos
+    // and unrelated title-block elements are not needed for this regression.
+    fn authored_a0_furniture() -> Layout {
+        serde_json::from_str(include_str!(
+            "../../tests/fixtures/printing-paper-furniture-a0.json"
+        ))
+        .unwrap()
+    }
+
+    #[test]
+    fn paper_fit_scales_authored_schedule_furniture_with_its_frame() {
+        let a0 = authored_a0_furniture();
+        validate(&a0).unwrap();
+        let a3 = evaluated_layout(json!({
+            "op":"set_paper", "layout":a0, "paper":"A3", "orientation":"landscape"
+        }));
+        let close = |actual: f64, expected: f64| {
+            assert!((actual - expected).abs() < 1e-9, "{actual} != {expected}");
+        };
+        let scale = 297. / 841.;
+        let pole = &a3.elements[element_index(&a3, "pole-schedule").unwrap()];
+        let table = pole.table.as_ref().unwrap();
+        // Each panel kept its 127 mm A0 column minimum even though the whole
+        // A3 container is only 148 mm wide, refusing a two-panel schedule.
+        close(pole.rect[2], 420. * scale);
+        close(table.min_widths_mm.iter().sum(), 127. * scale);
+        close(table.max_widths_mm[2], 58. * scale);
+        close(table.gap_mm, 5. * scale);
+        assert_eq!(table.row_mm, Some(2.));
+        assert_eq!(pole.font_pt, 4.);
+        let info = &a3.elements[element_index(&a3, "lv-print-info").unwrap()];
+        assert_eq!(info.table.as_ref().unwrap().max_widths_mm[0], 3.);
+
+        for (before, after) in a0.elements.iter().zip(&a3.elements) {
+            assert_eq!(before.id, after.id);
+            assert_eq!(before.viewport, after.viewport);
+            if let Some(original) = &before.table {
+                // Changing paper never drops/reorders fields or data, changes
+                // panel limits, or converts proportional column weights to mm.
+                let scaled = after.table.as_ref().unwrap();
+                let mut content = scaled.clone();
+                content.min_widths_mm = original.min_widths_mm.clone();
+                content.max_widths_mm = original.max_widths_mm.clone();
+                content.row_mm = original.row_mm;
+                content.gap_mm = original.gap_mm;
+                assert_eq!(&content, original);
+            }
+        }
+        let legend = &a3.elements[element_index(&a3, "legend").unwrap()];
+        assert_eq!(legend.legend.as_ref().unwrap().row_mm, 3.);
+        close(legend.legend.as_ref().unwrap().indent_mm, 4. * scale);
+        close(legend.flow.as_ref().unwrap().gap_mm, 5. * scale);
+        close(a3.composition.as_ref().unwrap().gap_mm, 5. * scale);
+        assert_eq!(a3.composition.as_ref().unwrap().min_font_scale, 1.);
+        // The cloned command input and the original A0 remain unchanged.
+        assert_eq!(a0, authored_a0_furniture());
+    }
+
+    #[test]
+    fn paper_fit_same_paper_preserves_the_authored_a0_document() {
+        let a0 = authored_a0_furniture();
+        assert_eq!(
+            evaluated_layout(json!({
+                "op":"set_paper", "layout":a0, "paper":"A0", "orientation":"landscape"
+            })),
+            a0
+        );
+    }
+
+    #[test]
+    fn paper_fit_preserves_automatic_table_sizing_and_geographic_policy() {
+        let mut a0 = authored_a0_furniture();
+        let index = element_index(&a0, "pole-schedule").unwrap();
+        let table = a0.elements[index].table.as_mut().unwrap();
+        table.min_widths_mm.clear();
+        table.max_widths_mm.clear();
+        table.row_mm = None;
+        a0.network_fit = Some(
+            serde_json::from_value(json!({"source_layers":["lv_lines"],"clearance_mm":2.}))
+                .unwrap(),
+        );
+        a0.styles = default_layout().styles;
+        a0.scale_rounding = Some(500.);
+        let a3 = evaluated_layout(json!({
+            "op":"set_paper", "layout":a0, "paper":"A3", "orientation":"landscape"
+        }));
+        let table = a3.elements[index].table.as_ref().unwrap();
+        assert!(table.min_widths_mm.is_empty());
+        assert!(table.max_widths_mm.is_empty());
+        assert_eq!(table.row_mm, None);
+        assert_eq!(a3.network_fit, a0.network_fit);
+        assert_eq!(a3.styles, a0.styles);
+        assert_eq!(a3.scale_rounding, a0.scale_rounding);
     }
 
     #[test]
