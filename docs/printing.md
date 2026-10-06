@@ -517,9 +517,9 @@ This avoids long titles such as "Service Area Length M" setting a numeric
 column's width. The aliases skip retained literal letter titles so the key is
 unambiguous. `indexed` aliases every column. `abbreviated` may use a measured
 prefix with an ellipsis, falling back to a letter when necessary. Compact modes
-repeat an untruncated explanatory key above each
+repeat an untruncated explanatory key below each
 panel. Full headings remain in the document; columns and values never change.
-The full key repeats above each measured data panel, wrapping at the authored
+The full key repeats below each measured data panel, wrapping at the authored
 type size within that panel width. It never extends into unused authored frame
 width or creates a gap before an adjacent schedule. This corrects the former
 full-frame key behavior, which visibly separated the Zihare schedule bodies.
@@ -744,7 +744,7 @@ Split panels need not have equal heights. `table.panel_rows` can specify exact
 positive row counts for adjacent panels; the sum must cover every row, with no
 duplication or omission, and each panel must fit its readable frame. With no
 explicit counts, automatic composition considers balanced and stepped profiles.
-Keys repeat above each panel. Only actual occupied panel rectangles obstruct
+Keys repeat below each panel. Only actual occupied panel rectangles obstruct
 map fitting: the space below a short panel remains available.
 
 A root’s `flow.after` followers move with it as one adjacent group. Panel heights
@@ -935,7 +935,7 @@ unchanged. White space is not introduced to equalize unrelated columns.
 
 The default `heading_mode: auto_index` keeps fitting titles written out and
 aliases only long titles: for example `A, Description, B, X, Y`, with
-`A: Number` and `B: Flying stay` in the full key above every panel. Literal
+`A: Number` and `B: Flying stay` in the full key below every panel. Literal
 letter titles are reserved before aliases are assigned, so an existing `A` or
 `X` cannot become ambiguous. All full definitions remain in source order.
 `indexed` labels every column; `literal` keeps authored titles. Optional
