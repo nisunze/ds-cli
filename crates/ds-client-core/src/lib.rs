@@ -232,6 +232,13 @@ pub use printing_style_keys::{
     PRINT_STYLE_KEYS_RECEIPT_SCHEMA, PRINT_STYLE_KEYS_RESPONSE_LIMIT,
 };
 
+pub mod network_documents;
+pub use network_documents::{
+    NetworkDocumentsCall, NetworkDocumentsRequest, NetworkDocumentsSource, NETWORK_DOCUMENTS_ACTION,
+    NETWORK_DOCUMENTS_CENSUS_SCHEMA, NETWORK_DOCUMENTS_PLAN_SCHEMA, NETWORK_DOCUMENTS_RECEIPT_SCHEMA,
+    NETWORK_DOCUMENTS_RESPONSE_LIMIT, NETWORK_DOCUMENT_PARTS,
+};
+
 pub mod data_distribution;
 pub use data_distribution::{
     download_bundle, normalize_upi, BundleDownloadReceipt, BundleSink, ContourParameters,

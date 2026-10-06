@@ -1019,6 +1019,30 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
             request,
         )
     }
+    /// Plan, census or apply one copy of a project's network documents
+    /// (`ds_project` is the destination; empty for a census).
+    pub fn network_documents(
+        &mut self,
+        ds_project: &str,
+        request: &crate::NetworkDocumentsRequest,
+        now_epoch_seconds: u64,
+    ) -> Result<serde_json::Value, ClientError> {
+        request.validate_for(ds_project)?;
+        self.ensure_fresh_session(now_epoch_seconds)?;
+        let session = self.session.as_ref().ok_or_else(signed_out)?;
+        crate::network_documents::call(
+            &self.profile,
+            &mut self.transport,
+            crate::authorized::Authority {
+                bearer_token: &session.id_token,
+                uid: &session.stored.uid,
+                email: &session.stored.email,
+                device_id: None,
+            },
+            ds_project,
+            request,
+        )
+    }
     /// Plan, census or apply the governed printing-template migration of one
     /// library (`ds_project` empty for the global one).
     pub fn print_style_keys(

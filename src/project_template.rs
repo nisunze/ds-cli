@@ -8,8 +8,10 @@
 //!
 //! 1. `POST /api/v1/projects {action:"create"}` — the new project, carrying the
 //!    template's own settings;
-//! 2. `save_config` — every stored configuration sheet (rules, catalogues,
-//!    project and transformer settings) the save door admits;
+//! 2. the `/report` `network_documents` copy — the template's own network
+//!    documents (`docs/network_template`, `docs/network_config`), planned
+//!    then applied under the plan's digest (ds-brain
+//!    `docs/contracts/project-network-documents.md`);
 //! 3. `POST /api/v1/printing {action:"copy"}` — every printing setup the
 //!    template holds, each with the logos its layout carries;
 //! 4. the design migration — every active transformer with the MV design
@@ -120,10 +122,6 @@ pub struct Transformer {
 pub struct Input {
     pub request: Request,
     pub template: Template,
-    /// The template's configuration document as `GET /config/{project}`
-    /// answers it (`{"sheets": {...}, ...}`).
-    #[serde(default)]
-    pub configuration: Value,
     #[serde(default)]
     pub printing_setups: Vec<PrintingSetup>,
     #[serde(default)]
@@ -156,22 +154,15 @@ pub struct NewProject {
     pub settings: BTreeMap<String, Value>,
 }
 
-/// One configuration sheet the plan saves into the new project.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Sheet {
-    pub sheet: String,
-    pub rows: usize,
-}
-
 /// One door call group, in the order a host runs them.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "door", rename_all = "snake_case")]
 pub enum Step {
     /// `POST /api/v1/projects {action:"create"}` with [`Plan::project`].
     CreateProject { order: usize },
-    /// `save_config`, one call per sheet, each against the new project's
-    /// freshly read configuration.
-    ConfigurationSheets { order: usize, sheets: Vec<Sheet> },
+    /// `/report` `network_documents` plan then apply: every network document
+    /// the template holds, copied whole into the new project.
+    NetworkDocuments { order: usize },
     /// `POST /api/v1/printing {action:"copy"}` from the template into the new
     /// project, one call per setup, same id.
     PrintingSetups {
@@ -208,7 +199,8 @@ impl Finding {
 /// What the plan carries, counted.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Totals {
-    pub configuration_sheets: usize,
+    /// One copy of the template's network documents.
+    pub network_documents: usize,
     pub printing_setups: usize,
     pub transformers: usize,
     pub dsgrid_models: usize,
@@ -258,7 +250,6 @@ pub mod refusal {
 
 /// Why an item the template holds is left behind.
 pub mod skip {
-    pub const SHEET_NOT_SAVEABLE: &str = "configuration_sheet_not_saveable";
     pub const SETTINGS_NOT_AN_OBJECT: &str = "settings_block_not_an_object";
     pub const TRANSFORMER_NOT_ACTIVE: &str = "transformer_not_active";
     pub const PROJECT_LEVEL_COMPUTED: &str = "project_level_document_computed";
@@ -302,24 +293,6 @@ pub fn slug(display_name: &str) -> String {
         }
     }
     out.trim_matches('_').to_owned()
-}
-
-fn sheet_rows(value: &Value) -> usize {
-    match value {
-        Value::Array(rows) => rows.len(),
-        Value::Object(sets) => sets
-            .values()
-            .map(|set| match set {
-                Value::Array(rows) => rows.len(),
-                Value::Object(entry) => entry
-                    .get("rows")
-                    .and_then(Value::as_array)
-                    .map_or(0, Vec::len),
-                _ => 0,
-            })
-            .sum(),
-        _ => 0,
-    }
 }
 
 fn valid_revision(revision: &str) -> bool {
@@ -410,22 +383,6 @@ pub fn plan(input: &Input) -> Plan {
         }
     }
 
-    // Configuration: every stored sheet the save door admits, by key order.
-    let mut sheets = Vec::new();
-    if let Some(stored) = input.configuration.get("sheets").and_then(Value::as_object) {
-        let ordered: BTreeMap<&String, &Value> = stored.iter().collect();
-        for (key, value) in ordered {
-            if crate::design_config::save_sheet(&input.configuration, key, value).is_ok() {
-                sheets.push(Sheet {
-                    sheet: key.clone(),
-                    rows: sheet_rows(value),
-                });
-            } else {
-                skipped.insert(Finding::new(skip::SHEET_NOT_SAVEABLE, Some(key)));
-            }
-        }
-    }
-
     // Printing: every valid setup, by id; the copy keeps the id.
     let mut setups: BTreeMap<String, PrintingSetup> = BTreeMap::new();
     for setup in input.printing_setups.iter().take(MAX_PRINTING_SETUPS) {
@@ -463,14 +420,9 @@ pub fn plan(input: &Input) -> Plan {
         .collect();
 
     let mut steps = vec![Step::CreateProject { order: 1 }];
-    let mut write_calls = 1;
-    if !sheets.is_empty() {
-        write_calls += sheets.len();
-        steps.push(Step::ConfigurationSheets {
-            order: steps.len() + 1,
-            sheets: sheets.clone(),
-        });
-    }
+    // The network documents travel whole: one plan and one apply.
+    steps.push(Step::NetworkDocuments { order: 2 });
+    let mut write_calls = 2;
     if !setups.is_empty() {
         write_calls += setups.len();
         steps.push(Step::PrintingSetups {
@@ -495,7 +447,7 @@ pub fn plan(input: &Input) -> Plan {
     }
 
     let totals = Totals {
-        configuration_sheets: sheets.len(),
+        network_documents: 1,
         printing_setups: setups.len(),
         transformers: transformers.len(),
         dsgrid_models: models.len(),
@@ -552,11 +504,6 @@ mod tests {
                 client: None,
             },
             template: template(state),
-            configuration: json!({"sheets": {
-                "project_settings": [{"parameter":"feeder_max","value":"8"}],
-                "cust_category": [{"category":"residential"},{"category":"commercial"}],
-                "printing_context": {"project_id":"czgmdwth_gisagara"},
-            }}),
             printing_setups: vec![
                 PrintingSetup {
                     id: "a3-landscape-gisagara-cjic".into(),
@@ -610,7 +557,7 @@ mod tests {
             .iter()
             .map(|step| match step {
                 Step::CreateProject { .. } => "create_project",
-                Step::ConfigurationSheets { .. } => "configuration_sheets",
+                Step::NetworkDocuments { .. } => "network_documents",
                 Step::PrintingSetups { .. } => "printing_setups",
                 Step::DesignMigration { kind, .. } => kind.wire(),
             })
@@ -619,7 +566,7 @@ mod tests {
             doors,
             [
                 "create_project",
-                "configuration_sheets",
+                "network_documents",
                 "printing_setups",
                 "transformer",
                 "dsgrid"
@@ -630,7 +577,7 @@ mod tests {
             .iter()
             .map(|step| match step {
                 Step::CreateProject { order }
-                | Step::ConfigurationSheets { order, .. }
+                | Step::NetworkDocuments { order }
                 | Step::PrintingSetups { order, .. }
                 | Step::DesignMigration { order, .. } => *order,
             })
@@ -650,11 +597,11 @@ mod tests {
         assert_eq!(
             plan.totals,
             Totals {
-                configuration_sheets: 2,
+                network_documents: 1,
                 printing_setups: 2,
                 transformers: 3,
                 dsgrid_models: 2,
-                write_calls: 1 + 2 + 2 + 1 + 1,
+                write_calls: 1 + 1 + 2 + 1 + 1,
             }
         );
         assert_eq!(plan.not_carried, NOT_CARRIED);
@@ -681,14 +628,7 @@ mod tests {
         assert!(plan.skipped.contains(&Finding::new(
             skip::PROJECT_LEVEL_COMPUTED,
             Some("collisions")
-        )));
-        // The server attaches its printing context per request: an object
-        // sheet the save door refuses is left behind, by key.
-        assert!(plan.skipped.contains(&Finding::new(
-            skip::SHEET_NOT_SAVEABLE,
-            Some("printing_context")
-        )));
-    }
+        )));    }
 
     /// A project that is not in the template state is no template. The plan
     /// is still stated in full, so a dry run shows what marking it would
@@ -757,9 +697,8 @@ mod tests {
     }
 
     #[test]
-    fn an_empty_template_is_still_a_creation() {
+    fn an_empty_template_is_still_a_creation_with_its_network_documents() {
         let empty = Input {
-            configuration: Value::Null,
             printing_setups: vec![],
             transformers: vec![],
             dsgrid_models: vec![],
@@ -767,8 +706,11 @@ mod tests {
         };
         let plan = plan(&empty);
         assert!(plan.ready);
-        assert_eq!(plan.steps, [Step::CreateProject { order: 1 }]);
-        assert_eq!(plan.totals.write_calls, 1);
+        assert_eq!(
+            plan.steps,
+            [Step::CreateProject { order: 1 }, Step::NetworkDocuments { order: 2 }]
+        );
+        assert_eq!(plan.totals.write_calls, 2);
     }
 
     #[test]

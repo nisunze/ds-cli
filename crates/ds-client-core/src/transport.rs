@@ -3292,6 +3292,12 @@ pub trait Transport {
     ) -> Result<TransportResponse, TransportError> {
         Err(TransportError::Unreachable)
     }
+    fn network_documents(
+        &mut self,
+        _call: crate::NetworkDocumentsCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        Err(TransportError::Unreachable)
+    }
     fn design_selections(
         &mut self,
         _call: DesignSelectionsCall<'_>,
@@ -3636,6 +3642,12 @@ pub trait AuthorizedTransport {
     fn print_style_keys(
         &mut self,
         _call: crate::PrintStyleKeysCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        Err(TransportError::Unreachable)
+    }
+    fn network_documents(
+        &mut self,
+        _call: crate::NetworkDocumentsCall<'_>,
     ) -> Result<TransportResponse, TransportError> {
         Err(TransportError::Unreachable)
     }
@@ -3984,6 +3996,12 @@ impl<T: Transport> AuthorizedTransport for T {
         call: crate::PrintStyleKeysCall<'_>,
     ) -> Result<TransportResponse, TransportError> {
         Transport::print_style_keys(self, call)
+    }
+    fn network_documents(
+        &mut self,
+        call: crate::NetworkDocumentsCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        Transport::network_documents(self, call)
     }
     fn layers(&mut self, call: LayersCall<'_>) -> Result<TransportResponse, TransportError> {
         Transport::layers(self, call)

@@ -1506,6 +1506,19 @@ impl DeviceApiAuthorization<'_> {
             request,
         )
     }
+    /// Plan, census or apply one copy of a project's network documents
+    /// (`ds_project` is the destination; empty for a census).
+    pub fn network_documents<T: AuthorizedTransport>(
+        &self,
+        transport: &mut T,
+        ds_project: &str,
+        request: &crate::NetworkDocumentsRequest,
+        now: u64,
+    ) -> Result<serde_json::Value, ClientError> {
+        request.validate_for(ds_project)?;
+        self.ensure_active(now)?;
+        crate::network_documents::call(self.profile, transport, self.authority(), ds_project, request)
+    }
     /// Plan, census or apply the governed printing-template migration of one
     /// library (`ds_project` empty for the global one).
     pub fn print_style_keys<T: AuthorizedTransport>(
