@@ -639,6 +639,10 @@ pub struct Graticule {
     pub labels: bool,
     #[serde(default = "graticule_color")]
     pub color: String,
+    /// Coordinate label ink, independent of the grid lines and edge ticks.
+    /// Omitted retains the grid's historical shared colour.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label_color: Option<String>,
     #[serde(default = "graticule_width")]
     pub width_mm: f64,
     #[serde(default = "graticule_font")]
@@ -652,6 +656,7 @@ impl Default for Graticule {
             lines: true,
             labels: true,
             color: graticule_color(),
+            label_color: None,
             width_mm: graticule_width(),
             font_pt: graticule_font(),
         }
@@ -1271,6 +1276,10 @@ pub(super) fn validate_with_semantic_layers(
                     || !bounded(graticule.width_mm, 0.05, 1.)
                     || !bounded(graticule.font_pt, 4., 12.)
                     || !color(&graticule.color)
+                    || graticule
+                        .label_color
+                        .as_ref()
+                        .is_some_and(|ink| !color(ink))
                 {
                     return Err(
                         "graticule needs a positive interval, 0.05-1 mm lines, 4-12 pt labels and a hex colour"
@@ -3204,6 +3213,58 @@ pub fn command_schema() -> serde_json::Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn graticule_label_ink_is_optional_and_legacy_documents_round_trip_unchanged() {
+        let legacy = json!({
+            "crs":"tm_rwanda", "interval":500., "lines":true, "labels":true,
+            "color":"#6B7280", "width_mm":0.12, "font_pt":6.
+        });
+        let graticule: Graticule = serde_json::from_value(legacy.clone()).unwrap();
+        assert_eq!(graticule.label_color, None);
+        assert_eq!(serde_json::to_value(graticule).unwrap(), legacy);
+        assert!(serde_json::to_value(Graticule::default())
+            .unwrap()
+            .get("label_color")
+            .is_none());
+    }
+
+    #[test]
+    fn graticule_label_ink_validates_independently_and_typed_edit_preserves_it() {
+        let mut layout = default_layout();
+        let index = element_index(&layout, "map").unwrap();
+        layout.elements[index].viewport.as_mut().unwrap().graticule = Some(Graticule {
+            label_color: Some("#18212b".into()),
+            font_pt: 8.,
+            ..Default::default()
+        });
+        validate(&layout).unwrap();
+        let edited = evaluated_layout(json!({
+            "op":"edit", "layout":layout, "element":layout.elements[index]
+        }));
+        let graticule = edited.elements[index]
+            .viewport
+            .as_ref()
+            .unwrap()
+            .graticule
+            .as_ref()
+            .unwrap();
+        assert_eq!(graticule.color, "#6B7280");
+        assert_eq!(graticule.label_color.as_deref(), Some("#18212b"));
+        assert_eq!(graticule.font_pt, 8.);
+        for invalid in ["black", "#12345g", "#12345678", ""] {
+            let mut bad = edited.clone();
+            bad.elements[index]
+                .viewport
+                .as_mut()
+                .unwrap()
+                .graticule
+                .as_mut()
+                .unwrap()
+                .label_color = Some(invalid.into());
+            assert!(validate(&bad).is_err(), "accepted {invalid:?}");
+        }
+    }
 
     #[test]
     fn legend_category_fields_are_explicit_bounded_and_legacy_omitted() {
