@@ -232,10 +232,10 @@ pub struct Catalogue {
 }
 
 const PURPOSES: [(Purpose, &str); 4] = [
-    (Purpose::LvTransformer, "LV sheets"),
-    (Purpose::MvModel, "MV sheets"),
-    (Purpose::Project, "Project pages"),
-    (Purpose::VoltageDrop, "Voltage drop"),
+    (Purpose::LvTransformer, "LV Sheets"),
+    (Purpose::MvModel, "MV Sheets"),
+    (Purpose::Project, "Overview Sheets"),
+    (Purpose::VoltageDrop, "Voltage Drop"),
 ];
 const ROLES: [(PageRole, &str); 15] = [
     (PageRole::Cover, "Cover"),
@@ -359,7 +359,18 @@ mod tests {
             {"id":"mv","name":"A0 LV","classification":{"purpose":"mv_model","role":"plan_profile"}}
         ])).unwrap();
         let out = serde_json::to_value(project(rows, None, None).unwrap()).unwrap();
+        assert_eq!(
+            out["purposes"],
+            json!([
+                {"value":"lv_transformer","label":"LV Sheets"},
+                {"value":"mv_model","label":"MV Sheets"},
+                {"value":"project","label":"Overview Sheets"},
+                {"value":"voltage_drop","label":"Voltage Drop"}
+            ])
+        );
         assert_eq!(out["groups"][0]["purpose"], "mv_model");
+        assert_eq!(out["groups"][0]["label"], "MV Sheets");
+        assert_eq!(out["groups"][1]["label"], "Overview Sheets");
         assert_eq!(out["groups"][1]["roles"][0]["role"], "overview");
         assert_eq!(out["groups"][1]["roles"][0]["templates"][0]["id"], "a");
         assert_eq!(out["groups"][2]["label"], "Unclassified");
