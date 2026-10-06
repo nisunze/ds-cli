@@ -5981,6 +5981,99 @@ fn map_print_style_keys(error: ClientError) -> Failure {
     }
 }
 
+pub use ds_client_core::{NetworkDocumentsRequest, NetworkDocumentsSource};
+pub const NETWORK_DOCUMENTS_INVALID_REFUSAL: Refusal = Refusal {
+    code: "network_documents_invalid",
+    when: "the copy names no project, its own project, an unknown part, or a global source with network_config",
+    remedy: "name --project and exactly one of --source-project (another project) or --source-template; parts are network_template and network_config",
+};
+pub const NETWORK_DOCUMENTS_PLAN_CHANGED_REFUSAL: Refusal = Refusal {
+    code: "network_documents_plan_changed",
+    when: "a source or destination document changed after the reviewed plan",
+    remedy: "plan again, review the new plan_sha256 and apply that",
+};
+pub const NETWORK_DOCUMENTS_SOURCE_MISSING_REFUSAL: Refusal = Refusal {
+    code: "network_documents_source_missing",
+    when: "the source project holds no such network document, or the named global template does not exist",
+    remedy: "plan without --parts to copy what the source holds, or name an existing template",
+};
+pub const NETWORK_DOCUMENTS_PROJECT_NOT_FOUND_REFUSAL: Refusal = Refusal {
+    code: "network_documents_project_not_found",
+    when: "the destination or source project does not exist",
+    remedy: "pass exact ids from auth project list",
+};
+pub const NETWORK_DOCUMENTS_ROUTE_UNAVAILABLE_REFUSAL: Refusal = Refusal {
+    code: "network_documents_route_unavailable",
+    when: "this lane's ds-brain predates network document copies",
+    remedy: "deploy a ds-brain that serves the network_documents action on this lane",
+};
+
+/// One network document copy into `project`, or the all-project census
+/// (`project` `None`).
+pub fn network_documents(
+    lane_value: &str,
+    project: Option<&str>,
+    request: &NetworkDocumentsRequest,
+) -> Result<serde_json::Value, Failure> {
+    request
+        .validate_for(project.unwrap_or(""))
+        .map_err(map_network_documents)?;
+    let lane = Lane::parse(lane_value)?;
+    if let Some(project) = project {
+        return headless_named_project_with(
+            lane_value,
+            project,
+            map_network_documents,
+            |device, project| device.network_documents(project, request),
+            |client, project| client.network_documents(project, request, now()),
+        )
+        .map(HeadlessNamedProject::into_result);
+    }
+    let _ = probe_headless_identity(lane.token())?;
+    if let Some(mut device) = device::restore_session(lane)? {
+        return device
+            .network_documents("", request)
+            .map_err(map_network_documents);
+    }
+    let profile = profile::load(lane)?;
+    let store = NativeRefreshStore::open()?;
+    let mut client = Client::new(profile, NativeTransport, store);
+    require_restore_before_context(&mut client)?;
+    client
+        .network_documents("", request, now())
+        .map_err(map_network_documents)
+}
+
+/// The action's own refusals under the codes `ds design config copy`
+/// documents; everything else keeps the shared native mapping.
+pub(crate) fn map_network_documents(error: ClientError) -> Failure {
+    let refused = error
+        .service_refusal()
+        .and_then(|refusal| refusal.code())
+        .map(str::to_owned);
+    let message = error.to_string();
+    let named =
+        |refusal: Refusal| Failure::invalid(refusal.code, message.clone()).remedy(refusal.remedy);
+    match (error.kind(), refused.as_deref()) {
+        (_, Some("network_documents_plan_changed")) => {
+            named(NETWORK_DOCUMENTS_PLAN_CHANGED_REFUSAL)
+        }
+        (_, Some("network_documents_source_missing")) => {
+            named(NETWORK_DOCUMENTS_SOURCE_MISSING_REFUSAL)
+        }
+        (_, Some("network_documents_project_not_found")) => {
+            named(NETWORK_DOCUMENTS_PROJECT_NOT_FOUND_REFUSAL)
+        }
+        (ErrorKind::RouteUnavailable, _) => Failure::failed(
+            NETWORK_DOCUMENTS_ROUTE_UNAVAILABLE_REFUSAL.code,
+            message.clone(),
+        )
+        .remedy(NETWORK_DOCUMENTS_ROUTE_UNAVAILABLE_REFUSAL.remedy),
+        (ErrorKind::InvalidInput, _) => named(NETWORK_DOCUMENTS_INVALID_REFUSAL),
+        _ => map_client(error),
+    }
+}
+
 #[cfg(test)]
 mod print_style_keys_tests {
     use super::*;

@@ -2007,6 +2007,43 @@ impl Transport for NativeTransport {
         bounded(response, call.response_limit())
     }
 
+    fn network_documents(
+        &mut self,
+        call: ds_client_core::NetworkDocumentsCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        debug_assert_eq!(call.method(), "POST");
+        debug_assert_eq!(call.path(), ds_client_core::PROJECT_REPORT_PATH);
+        let (request_id, action_id) = correlation_headers();
+        let mut bearer = format!("Bearer {}", call.bearer_token());
+        let body = call.body();
+        let url = format!(
+            "{}{}",
+            local_go::api_origin(call.gateway_origin())?,
+            ds_client_core::PROJECT_REPORT_PATH
+        );
+        let result = local_go::api_agent()?
+            .post(url)
+            .header("Accept", call.content_type())
+            .header("Content-Type", call.content_type())
+            .header("X-App-Id", call.client_id())
+            .header("X-Request-Id", &request_id)
+            .header("X-DS-Action-Id", &action_id)
+            .header("X-User-Email", call.canonical_email())
+            .header("x-api-key", call.gateway_api_key())
+            .header("Authorization", &bearer)
+            .header("X-Forwarded-Authorization", &bearer)
+            .config()
+            .max_redirects(0)
+            .http_status_as_error(false)
+            .timeout_connect(Some(CONNECT_TIMEOUT))
+            .timeout_global(Some(Duration::from_secs(call.timeout_seconds())))
+            .build()
+            .send(body.as_bytes());
+        bearer.zeroize();
+        let response = result.map_err(classify)?;
+        bounded(response, call.response_limit())
+    }
+
     fn data_distribution(
         &mut self,
         call: ds_client_core::DataDistributionCall<'_>,

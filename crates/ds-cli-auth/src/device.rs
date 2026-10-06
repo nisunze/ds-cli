@@ -848,6 +848,13 @@ impl<T: ds_client_core::Transport> DeviceSession<T> {
     ) -> Result<serde_json::Value, ClientError> {
         fixed_device_call!(self, print_style_keys, project, request)
     }
+    pub fn network_documents(
+        &mut self,
+        project: &str,
+        request: &ds_client_core::NetworkDocumentsRequest,
+    ) -> Result<serde_json::Value, ClientError> {
+        fixed_device_call!(self, network_documents, project, request)
+    }
     pub fn layer_config(
         &mut self,
         project: &str,

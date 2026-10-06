@@ -4,9 +4,9 @@
 //! `ds_command_kernel::project_template` decides the plan. This module only
 //! reads the facts it is decided from and runs it, through doors that already
 //! exist and authorize themselves: the project directory, the template's
-//! configuration, printing and design inventories, then `create`,
-//! `save_config` per sheet, a printing copy between the two projects and the
-//! design migration. Nothing here decides what a template carries.
+//! printing and design inventories, then `create`, one fenced copy of the
+//! template's network documents, a printing copy between the two projects and
+//! the design migration. Nothing here decides what a template carries.
 //!
 //! A dry run reads and plans and writes nothing. An apply refuses a plan that
 //! is not ready (a source outside the template state above all), creates the
@@ -17,8 +17,9 @@
 
 use ds_cli_contract::outcome::Failure;
 use ds_client_core::{
-    PrintingDestination, PrintingRequest, PrintingScope, PrintingSource,
-    ProjectConfigurationChange, TransformerSet, design_migration, grid_models, project_properties,
+    ClientError, NetworkDocumentsRequest, NetworkDocumentsSource, PrintingDestination,
+    PrintingRequest, PrintingScope, PrintingSource, TransformerSet, design_migration, grid_models,
+    project_properties,
 };
 use ds_command_kernel::design_migration::Mode;
 use ds_command_kernel::project_template::{
@@ -41,10 +42,9 @@ pub(crate) struct Created {
 pub(crate) trait Doors {
     /// The template as the caller's fresh directory lists it.
     fn template(&mut self, project: &str) -> Result<Template, Failure>;
-    /// A project's configuration document, `GET /config/{project}`.
-    fn configuration(&mut self, project: &str) -> Result<Value, Failure>;
-    /// Save one sheet through the governed save door; `true` when it wrote.
-    fn save_sheet(&mut self, project: &str, sheet: &str, value: &Value) -> Result<bool, Failure>;
+    /// Copy every network document `template` holds into `project`: the
+    /// plan, then the apply of exactly that plan. Answers the receipt.
+    fn copy_network_documents(&mut self, project: &str, template: &str) -> Result<Value, Failure>;
     fn printing_setups(&mut self, project: &str) -> Result<Vec<PrintingSetup>, Failure>;
     fn copy_printing_setup(
         &mut self,
@@ -66,19 +66,39 @@ pub(crate) fn plan(
     doors: &mut impl Doors,
     template: &str,
     request: Request,
-) -> Result<(Plan, Value), Failure> {
+) -> Result<Plan, Failure> {
     let template = doors.template(template)?;
     let project = template.project.clone();
-    let configuration = doors.configuration(&project)?;
     let input = Input {
         request,
         printing_setups: doors.printing_setups(&project)?,
         transformers: doors.transformers(&project)?,
         dsgrid_models: doors.dsgrid_models(&project)?,
-        configuration,
         template,
     };
-    Ok((project_template::plan(&input), input.configuration))
+    Ok(project_template::plan(&input))
+}
+
+/// The template's network documents into `project`: plan, then apply exactly
+/// that plan. `call` is one credential's closed network document call.
+fn plan_then_apply(
+    mut call: impl FnMut(&NetworkDocumentsRequest) -> Result<Value, ClientError>,
+    template: &str,
+) -> Result<Value, Failure> {
+    let source = NetworkDocumentsSource::Project {
+        project: template.to_owned(),
+    };
+    let plan = call(&NetworkDocumentsRequest::Plan {
+        source: source.clone(),
+        parts: Vec::new(),
+    })
+    .map_err(super::map_network_documents)?;
+    call(&NetworkDocumentsRequest::Apply {
+        source,
+        parts: Vec::new(),
+        expected_plan_sha256: plan["plan_sha256"].as_str().unwrap_or_default().to_owned(),
+    })
+    .map_err(super::map_network_documents)
 }
 
 fn failure_row(item: Value, error: &Failure) -> Value {
@@ -90,11 +110,7 @@ fn failure_row(item: Value, error: &Failure) -> Value {
 
 /// Run a ready plan. The creation is the one step whose failure stops the
 /// run, because nothing else has a project to write into.
-pub(crate) fn apply(
-    doors: &mut impl Doors,
-    plan: &Plan,
-    configuration: &Value,
-) -> Result<Value, Failure> {
+pub(crate) fn apply(doors: &mut impl Doors, plan: &Plan) -> Result<Value, Failure> {
     if !plan.ready {
         return Err(Failure::invalid(
             super::TEMPLATE_PLAN_REFUSED_REFUSAL.code,
@@ -105,27 +121,35 @@ pub(crate) fn apply(
     }
     let created = doors.create(&plan.project)?;
     let target = created.project_id.clone();
-    let mut sheets = Vec::new();
+    let mut network = Vec::new();
     let mut setups = Vec::new();
     let mut migrations = Vec::new();
     for step in &plan.steps {
         match step {
             Step::CreateProject { .. } => {}
-            Step::ConfigurationSheets {
-                sheets: planned, ..
-            } => {
-                for sheet in planned {
-                    let value = &configuration["sheets"][&sheet.sheet];
-                    let item = json!({ "sheet": sheet.sheet });
-                    sheets.push(match doors.save_sheet(&target, &sheet.sheet, value) {
-                        Ok(saved) => {
-                            let mut row = item;
-                            row["outcome"] = json!(if saved { "saved" } else { "identical" });
-                            row
+            Step::NetworkDocuments { .. } => {
+                network.push(
+                    match doors.copy_network_documents(&target, &plan.template) {
+                        Ok(receipt) => {
+                            let written = receipt["written"].clone();
+                            let copied = written.as_array().is_some_and(|parts| !parts.is_empty());
+                            json!({
+                                "outcome": if copied { "copied" } else { "identical" },
+                                "written": written,
+                                "plan_sha256": receipt["plan_sha256"],
+                            })
                         }
-                        Err(error) => failure_row(item, &error),
-                    });
-                }
+                        // A template that holds no network document has
+                        // nothing to copy; that is stated, not a failure.
+                        Err(error)
+                            if error.code()
+                                == super::NETWORK_DOCUMENTS_SOURCE_MISSING_REFUSAL.code =>
+                        {
+                            json!({ "outcome": "absent" })
+                        }
+                        Err(error) => failure_row(json!({}), &error),
+                    },
+                );
             }
             Step::PrintingSetups {
                 setups: planned, ..
@@ -197,13 +221,13 @@ pub(crate) fn apply(
             }
         }
     }
-    let complete = [&sheets, &setups, &migrations].iter().all(|rows| {
+    let complete = [&network, &setups, &migrations].iter().all(|rows| {
         rows.iter()
             .all(|row| !matches!(row["outcome"].as_str(), Some("failed" | "partial")))
     });
     Ok(json!({
         "project": { "project_id": created.project_id, "project_name": created.project_name },
-        "configuration_sheets": sheets,
+        "network_documents": network.into_iter().next().unwrap_or(Value::Null),
         "printing_setups": setups,
         "design_migrations": migrations,
         "complete": complete,
@@ -217,11 +241,11 @@ pub(crate) fn run(
     request: Request,
     dry_run: bool,
 ) -> Result<Value, Failure> {
-    let (plan, configuration) = plan(doors, template, request)?;
+    let plan = plan(doors, template, request)?;
     let applied = if dry_run {
         Value::Null
     } else {
-        apply(doors, &plan, &configuration)?
+        apply(doors, &plan)?
     };
     Ok(json!({
         "mode": if dry_run { "plan" } else { "apply" },
@@ -348,25 +372,12 @@ impl Doors for NativeDoors {
             .map_err(super::map_client)?;
         visible(&directory, project)
     }
-    fn configuration(&mut self, project: &str) -> Result<Value, Failure> {
-        self.client
-            .feeder_configuration(
-                project,
-                Some(&ProjectConfigurationChange::ReadSettings),
-                super::now(),
-            )
-            .map(|read| read.document)
-            .map_err(super::map_client)
-    }
-    fn save_sheet(&mut self, project: &str, sheet: &str, value: &Value) -> Result<bool, Failure> {
-        let change = ProjectConfigurationChange::SaveSheet {
-            sheet: sheet.to_owned(),
-            value: value.clone(),
-        };
-        self.client
-            .feeder_configuration(project, Some(&change), super::now())
-            .map(|saved| saved.summary["saved"] == true)
-            .map_err(super::map_client)
+    fn copy_network_documents(&mut self, project: &str, template: &str) -> Result<Value, Failure> {
+        let client = &mut self.client;
+        plan_then_apply(
+            |request| client.network_documents(project, request, super::now()),
+            template,
+        )
     }
     fn printing_setups(&mut self, project: &str) -> Result<Vec<PrintingSetup>, Failure> {
         self.client
@@ -425,19 +436,8 @@ impl Doors for crate::device::DeviceSession {
         let directory = self.list_projects().map_err(super::map_client)?;
         visible(&directory, project)
     }
-    fn configuration(&mut self, project: &str) -> Result<Value, Failure> {
-        self.feeder_configuration(project, Some(&ProjectConfigurationChange::ReadSettings))
-            .map(|read| read.document)
-            .map_err(super::map_client)
-    }
-    fn save_sheet(&mut self, project: &str, sheet: &str, value: &Value) -> Result<bool, Failure> {
-        let change = ProjectConfigurationChange::SaveSheet {
-            sheet: sheet.to_owned(),
-            value: value.clone(),
-        };
-        self.feeder_configuration(project, Some(&change))
-            .map(|saved| saved.summary["saved"] == true)
-            .map_err(super::map_client)
+    fn copy_network_documents(&mut self, project: &str, template: &str) -> Result<Value, Failure> {
+        plan_then_apply(|request| self.network_documents(project, request), template)
     }
     fn printing_setups(&mut self, project: &str) -> Result<Vec<PrintingSetup>, Failure> {
         self.printing(project, &PrintingRequest::List {})
@@ -505,7 +505,7 @@ pub fn render(data: &Value) -> String {
     let plan = &data["plan"];
     let totals = &plan["totals"];
     let mut out = format!(
-        "{} {}  from template {} ({})\n  {} configuration sheet(s) · {} printing setup(s) · {} transformer(s) · {} DS Grid model(s) · {} write call(s)\n",
+        "{} {}  from template {} ({})\n  {} network document copy · {} printing setup(s) · {} transformer(s) · {} DS Grid model(s) · {} write call(s)\n",
         if data["mode"] == "plan" {
             "would create"
         } else {
@@ -514,7 +514,7 @@ pub fn render(data: &Value) -> String {
         plan["project"]["display_name"].as_str().unwrap_or("?"),
         plan["template"].as_str().unwrap_or("?"),
         plan["template_state"].as_str().unwrap_or("?"),
-        totals["configuration_sheets"],
+        totals["network_documents"],
         totals["printing_setups"],
         totals["transformers"],
         totals["dsgrid_models"],
@@ -579,7 +579,8 @@ mod tests {
         state: String,
         calls: Vec<String>,
         held: BTreeMap<String, Vec<PrintingSetup>>,
-        failing_sheet: Option<String>,
+        // The network document copy answers this, or this refusal code.
+        network_refusal: Option<&'static str>,
     }
 
     impl FakeDoors {
@@ -640,27 +641,19 @@ mod tests {
                 processing_lanes: json!({"fast":true}),
             })
         }
-        fn configuration(&mut self, project: &str) -> Result<Value, Failure> {
-            self.calls.push(format!("configuration {project}"));
-            Ok(json!({"sheets": {
-                "project_settings": [{"parameter":"feeder_max","value":"8"}],
-                "cust_category": [{"category":"residential"}],
-            }}))
-        }
-        fn save_sheet(
+        fn copy_network_documents(
             &mut self,
             project: &str,
-            sheet: &str,
-            value: &Value,
-        ) -> Result<bool, Failure> {
-            self.calls.push(format!("save {project} {sheet} {value}"));
-            if self.failing_sheet.as_deref() == Some(sheet) {
-                return Err(Failure::invalid(
-                    "auth_input_invalid",
-                    "config_sheet_unknown",
-                ));
+            template: &str,
+        ) -> Result<Value, Failure> {
+            self.calls
+                .push(format!("network documents {template} -> {project}"));
+            match self.network_refusal {
+                Some(code) => Err(Failure::invalid(code, "refused")),
+                None => Ok(
+                    json!({"written":["network_template","network_config"],"plan_sha256":REVISION}),
+                ),
             }
-            Ok(sheet != "cust_category")
         }
         fn printing_setups(&mut self, project: &str) -> Result<Vec<PrintingSetup>, Failure> {
             self.calls.push(format!("printing list {project}"));
@@ -760,7 +753,6 @@ mod tests {
             doors.calls,
             [
                 "directory czgmdwth_gisagara",
-                "configuration czgmdwth_gisagara",
                 "printing list czgmdwth_gisagara",
                 "inventory czgmdwth_gisagara",
                 "models czgmdwth_gisagara",
@@ -769,20 +761,19 @@ mod tests {
     }
 
     /// The apply creates, then runs every existing door in the plan's order:
-    /// sheets into the new project, printing copied between the projects
+    /// the network documents into the new project, printing copied between the projects
     /// (replacing the adopted seed of the same id at its revision), then the
     /// two design migrations without overwrite.
     #[test]
     fn an_apply_creates_then_runs_every_copy_door_into_the_new_project() {
         let mut doors = FakeDoors::template("template");
         let answer = run(&mut doors, "czgmdwth_gisagara", request(), false).unwrap();
-        let writes: Vec<&str> = doors.calls[5..].iter().map(String::as_str).collect();
+        let writes: Vec<&str> = doors.calls[4..].iter().map(String::as_str).collect();
         assert_eq!(
             writes,
             [
                 "create nyaruguru_lv country=Some(\"Rwanda\") settings=4",
-                "save uid_nyaruguru_lv cust_category [{\"category\":\"residential\"}]",
-                "save uid_nyaruguru_lv project_settings [{\"parameter\":\"feeder_max\",\"value\":\"8\"}]",
+                "network documents czgmdwth_gisagara -> uid_nyaruguru_lv",
                 "printing list uid_nyaruguru_lv",
                 "printing copy czgmdwth_gisagara:a0-landscape-gisagara-cjic -> uid_nyaruguru_lv:a0-landscape-gisagara-cjic expecting \"\"",
                 &format!(
@@ -794,8 +785,8 @@ mod tests {
         );
         let applied = &answer["applied"];
         assert_eq!(applied["project"]["project_id"], "uid_nyaruguru_lv");
-        assert_eq!(applied["configuration_sheets"][0]["outcome"], "identical");
-        assert_eq!(applied["configuration_sheets"][1]["outcome"], "saved");
+        assert_eq!(applied["network_documents"]["outcome"], "copied");
+        assert_eq!(applied["network_documents"]["written"][1], "network_config");
         assert_eq!(applied["printing_setups"][1]["replaced_seed"], true);
         assert_eq!(applied["design_migrations"][0]["moving"], 2);
         assert_eq!(applied["complete"], true);
@@ -822,13 +813,13 @@ mod tests {
     #[test]
     fn a_failed_item_after_creation_is_stated_and_the_rest_still_runs() {
         let mut doors = FakeDoors::template("template");
-        doors.failing_sheet = Some("project_settings".into());
+        doors.network_refusal = Some("network_documents_plan_changed");
         let answer = run(&mut doors, "czgmdwth_gisagara", request(), false).unwrap();
         let applied = &answer["applied"];
-        assert_eq!(applied["configuration_sheets"][1]["outcome"], "failed");
+        assert_eq!(applied["network_documents"]["outcome"], "failed");
         assert_eq!(
-            applied["configuration_sheets"][1]["code"],
-            "auth_input_invalid"
+            applied["network_documents"]["code"],
+            "network_documents_plan_changed"
         );
         assert_eq!(applied["complete"], false);
         assert!(
@@ -837,6 +828,17 @@ mod tests {
                 .iter()
                 .any(|call| call.starts_with("migrate dsgrid"))
         );
+    }
+
+    /// A template that holds no network document copies none; that is
+    /// stated, and the run is still complete.
+    #[test]
+    fn a_template_without_network_documents_reports_them_absent() {
+        let mut doors = FakeDoors::template("template");
+        doors.network_refusal = Some(crate::NETWORK_DOCUMENTS_SOURCE_MISSING_REFUSAL.code);
+        let answer = run(&mut doors, "czgmdwth_gisagara", request(), false).unwrap();
+        assert_eq!(answer["applied"]["network_documents"]["outcome"], "absent");
+        assert_eq!(answer["applied"]["complete"], true);
     }
 
     #[test]
@@ -935,10 +937,7 @@ mod tests {
                     "not visible",
                 ))
             }
-            fn configuration(&mut self, project: &str) -> Result<Value, Failure> {
-                Ok(self.get(&format!("/config/{project}")))
-            }
-            fn save_sheet(&mut self, _: &str, _: &str, _: &Value) -> Result<bool, Failure> {
+            fn copy_network_documents(&mut self, _: &str, _: &str) -> Result<Value, Failure> {
                 panic!("a dry run reaches no write door")
             }
             fn printing_setups(&mut self, project: &str) -> Result<Vec<PrintingSetup>, Failure> {
