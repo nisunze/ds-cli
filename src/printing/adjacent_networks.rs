@@ -35,9 +35,11 @@ pub struct Room {
 }
 
 pub fn selected(layout: &Layout) -> bool {
-    LAYERS[1..]
-        .iter()
-        .any(|(_, id)| layout.styles.contains_key(*id) || layout.style_refs.contains_key(*id))
+    LAYERS[1..].iter().any(|(_, id)| {
+        layout.styles.contains_key(*id)
+            || layout.style_refs.contains_key(*id)
+            || layout.style_keys.contains_key(*id)
+    })
 }
 
 /// An effective page may omit absent roles or partition them by source kind.
@@ -90,6 +92,9 @@ pub fn configure(
         for (source, id) in LAYERS {
             let reference = style_refs[source].clone();
             layout.styles.remove(id);
+            // A newly selected governed reference replaces the old semantic
+            // binding; otherwise resolution would restore its previous pen.
+            layout.style_keys.remove(id);
             layout.style_refs.insert(id.into(), reference);
             layout.style_overrides.remove(id);
             if policy.is_some() {
@@ -127,6 +132,7 @@ pub fn configure(
         for (_, id) in &LAYERS[1..] {
             layout.styles.remove(*id);
             layout.style_refs.remove(*id);
+            layout.style_keys.remove(*id);
             layout.style_overrides.remove(*id);
         }
         layout
@@ -503,6 +509,105 @@ pub fn attach(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn context_key(source: &str) -> crate::style_resolution::Key {
+        super::super::context::style_key(source, "saved_design", "context")
+    }
+
+    #[test]
+    fn governed_keys_select_circuits_without_selecting_point_only_or_unrelated_styles() {
+        let mut layout = super::super::default_layout();
+        assert!(!selected(&layout));
+        layout
+            .style_keys
+            .insert("lv_lines".into(), context_key("lv_line"));
+        layout.style_keys.insert(
+            "neighbor_transformers".into(),
+            context_key("lv_transformer"),
+        );
+        assert!(
+            !selected(&layout),
+            "point-only context does not acquire circuits"
+        );
+        for (source, role) in &LAYERS[1..] {
+            let mut one_role = layout.clone();
+            one_role
+                .style_keys
+                .insert((*role).into(), context_key(source));
+            assert!(
+                selected(&one_role),
+                "migrated {role} selects circuit context"
+            );
+            assert!(one_role.style_refs.is_empty());
+        }
+    }
+
+    #[test]
+    fn disabling_migrated_circuits_clears_keys_and_refs_and_retains_point_context_and_focus() {
+        let mut layout = super::super::default_layout();
+        for (source, role) in LAYERS {
+            layout.style_keys.insert(role.into(), context_key(source));
+            layout
+                .style_refs
+                .insert(role.into(), format!("context/{source}_print"));
+            layout.layer_order.push(role.into());
+        }
+        layout
+            .style_keys
+            .insert("lv_lines".into(), context_key("lv_line"));
+        let before = layout.clone();
+        assert!(selected(&layout));
+        let disabled = configure(layout, false, BTreeMap::new(), None).unwrap();
+        assert!(!selected(&disabled));
+        for (_, role) in &LAYERS[1..] {
+            assert!(!disabled.style_keys.contains_key(*role));
+            assert!(!disabled.style_refs.contains_key(*role));
+            assert!(!disabled.layer_order.iter().any(|id| id == role));
+        }
+        assert_eq!(
+            disabled.style_keys["neighbor_transformers"],
+            before.style_keys["neighbor_transformers"]
+        );
+        assert_eq!(
+            disabled.style_refs["neighbor_transformers"],
+            before.style_refs["neighbor_transformers"]
+        );
+        assert_eq!(
+            disabled.style_keys["lv_lines"],
+            before.style_keys["lv_lines"]
+        );
+        assert_eq!(disabled.elements, before.elements);
+        assert_eq!(disabled.network_fit, before.network_fit);
+    }
+
+    #[test]
+    fn enabling_new_governed_refs_replaces_stale_context_keys_without_changing_focus() {
+        let mut layout = super::super::default_layout();
+        for (source, role) in LAYERS {
+            layout.style_keys.insert(role.into(), context_key(source));
+        }
+        layout
+            .style_keys
+            .insert("lv_lines".into(), context_key("lv_line"));
+        let before = layout.clone();
+        let refs = LAYERS
+            .into_iter()
+            .map(|(source, _)| (source.into(), format!("context/{source}_print")))
+            .collect();
+        let enabled = configure(layout, true, refs, None).unwrap();
+        assert!(selected(&enabled));
+        for (source, role) in LAYERS {
+            assert!(!enabled.style_keys.contains_key(role));
+            assert_eq!(enabled.style_refs[role], format!("context/{source}_print"));
+        }
+        assert_eq!(
+            enabled.style_keys["lv_lines"],
+            before.style_keys["lv_lines"]
+        );
+        assert_eq!(enabled.elements, before.elements);
+        assert_eq!(enabled.network_fit, before.network_fit);
+    }
+
     fn room(name: &str, y: f64) -> Room {
         Room {
             transformer: name.into(),
