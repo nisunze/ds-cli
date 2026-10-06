@@ -1908,8 +1908,13 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         None
     };
     let neighbor_fields = if neighbor_networks_selected {
-        super::neighbor_points::network_fields(&receipt, &held_inputs.setups, &requested_outputs)
-            .map_err(|e| Failure::invalid(INPUTS_INVALID.code, e))?
+        super::neighbor_points::network_fields(
+            &receipt,
+            &held_inputs.setups,
+            &requested_outputs,
+            printing_style_capture.as_ref(),
+        )
+        .map_err(|e| Failure::invalid(INPUTS_INVALID.code, e))?
     } else {
         BTreeMap::new()
     };
@@ -2007,6 +2012,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     if let Some(request) = preview_request {
         return preview_pages(
             &request,
+            printing_style_capture.as_ref(),
             &plan.names,
             &PreviewSettings {
                 project_id: &project_id,
@@ -2665,6 +2671,7 @@ struct PreviewFacts<'a> {
 #[allow(clippy::too_many_arguments)]
 fn preview_pages(
     request: &PreviewRequest,
+    capture: Option<&ds_command_kernel::printing::style_capture::Capture>,
     names: &[String],
     settings: &PreviewSettings<'_>,
     holdings_scope: &ds_command_kernel::project_dataset_cache::Scope,
@@ -2713,7 +2720,11 @@ fn preview_pages(
                 holdings: holdings.clone(),
             },
         };
-        let page = ds_report_host::execute(
+        let captured = capture
+            .map(|capture| capture.for_layout(&request.layout))
+            .transpose()
+            .map_err(|error| Failure::invalid(INPUTS_INVALID.code, error))?;
+        let page = ds_report_host::execute_with_styles(
             &CliEngine,
             settings,
             &ds_report_host::PreviewRequest {
@@ -2721,6 +2732,7 @@ fn preview_pages(
                 layout: request.layout.clone(),
             },
             &held,
+            captured.as_ref(),
         )
         .map_err(preview_failure)?;
         let page_path = folder.join(&page.filename);

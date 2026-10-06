@@ -137,20 +137,40 @@ pub(super) fn network_fields(
     receipt: &ds_command_kernel::report_export::InputReceipt,
     held_setups: &[Value],
     selection: &ds_command_kernel::report_formats::DesignOutputSelection,
+    capture: Option<&ds_command_kernel::printing::style_capture::Capture>,
 ) -> Result<BTreeMap<String, std::collections::BTreeSet<String>>, String> {
     let sheets = receipt.sheets()?;
     let setups = sheets["printing_setups"]
         .as_array()
         .map_or(held_setups, Vec::as_slice);
-    let layouts = setups
+    let layouts: Vec<ds_command_kernel::printing::Layout> = setups
         .iter()
         .filter(|setup| selected_setup(setup, selection))
         .map(|setup| serde_json::from_value(setup["layout"].clone()).map_err(|e| e.to_string()))
         .collect::<Result<Vec<_>, _>>()?;
-    ds_command_kernel::printing::adjacent_networks::required_fields(
-        &layouts,
-        &sheets["printing_styles"],
-    )
+    let mut fields: BTreeMap<String, std::collections::BTreeSet<String>> = BTreeMap::new();
+    for mut layout in layouts {
+        let held = capture
+            .map(|capture| capture.for_layout(&layout))
+            .transpose()?;
+        let documents = match &held {
+            Some(held) => {
+                layout.style_refs.extend(
+                    serde_json::from_value::<BTreeMap<String, String>>(held["style_refs"].clone())
+                        .map_err(|e| e.to_string())?,
+                );
+                &held["print_styles"]
+            }
+            None => &sheets["printing_styles"],
+        };
+        for (layer, required) in ds_command_kernel::printing::adjacent_networks::required_fields(
+            std::slice::from_ref(&layout),
+            documents,
+        )? {
+            fields.entry(layer).or_default().extend(required);
+        }
+    }
+    Ok(fields)
 }
 
 fn unavailable(message: impl Into<String>) -> Failure {
