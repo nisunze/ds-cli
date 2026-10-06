@@ -234,9 +234,8 @@ pub use printing_style_keys::{
 
 pub mod network_documents;
 pub use network_documents::{
-    NetworkDocumentsCall, NetworkDocumentsRequest, NetworkDocumentsSource, NETWORK_DOCUMENTS_ACTION,
-    NETWORK_DOCUMENTS_CENSUS_SCHEMA, NETWORK_DOCUMENTS_PLAN_SCHEMA, NETWORK_DOCUMENTS_RECEIPT_SCHEMA,
-    NETWORK_DOCUMENTS_RESPONSE_LIMIT, NETWORK_DOCUMENT_PARTS,
+    NetworkDocumentsCall, NetworkDocumentsRequest, NETWORK_DOCUMENTS_ACTION, NETWORK_DOCUMENTS_PLAN_SCHEMA,
+    NETWORK_DOCUMENTS_RECEIPT_SCHEMA, NETWORK_DOCUMENTS_RESPONSE_LIMIT, NETWORK_DOCUMENT_PARTS,
 };
 
 pub mod data_distribution;
