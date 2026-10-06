@@ -48,11 +48,10 @@ const WORKSPACE_ARG: Arg = Arg {
     summary: "The PLS-CADD workspace folder (the one holding the .don) this copy was converted from.",
 };
 
-const LINK_OWN: [Refusal; 6] = [
+const LINK_OWN: [Refusal; 5] = [
     WORKSPACE_NOT_FOUND,
     WORKSPACE_NOT_THIS_PACKAGE,
     MODEL_NOT_FROM_PLS,
-    crate::package::PROTECTED_MODEL,
     crate::folder::TOO_LARGE,
     crate::folder::UNREADABLE,
 ];

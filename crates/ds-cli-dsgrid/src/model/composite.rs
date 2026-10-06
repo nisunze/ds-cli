@@ -153,7 +153,7 @@ command!(
     "reconcile",
     Effect::GlobalWrite,
     "Keep the automatic combined model in step in one bounded burst.",
-    "The combined model is automatic and protected: it is derived from its submodels and nobody creates, edits, saves, publishes, links or deletes it. Reads, status, tiling and combined reports remain available. With --bundle, the burst request pins expected_generation and max_affected_features; edits are compared with the saved baseline, only owning submodels may be edited; every combined edit refuses composite_model_protected with named owners, span/corridor and section calculations are localized, and unavailable sag/clearance inputs are reported. Without --bundle, the derive request names 2..100 exact submodel packages and explicit owners for shared features, and derives generation zero of their combined model. Default is a dry run. --apply commits graph and every package together to a new local checkpoint; --publication additionally stages exact bytes and publishes one atomic project version vector.",
+    "Keep the automatic combined model in protected mode. Edit, save, publish, link and delete refuse composite_model_protected and name owning submodels; read, status, tiling and reports work. With --bundle, pin expected_generation and max_affected_features; reconcile owning-submodel edits against the baseline, localize span/corridor/section calculations, and report missing engineering inputs. Without --bundle, name 2..100 exact submodel packages and explicit shared owners to derive generation zero. Dry run by default; --apply commits every package and graph to a new checkpoint. --publication derives the combined binding and publishes an atomic project vector.",
     &[
         BUNDLE,
         REQUEST.required(),

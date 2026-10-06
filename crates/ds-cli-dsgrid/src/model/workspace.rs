@@ -170,8 +170,18 @@ pub fn execute_in(scope: &Scope, op: Op, package: Option<&[u8]>) -> Result<Outco
             let dir = ds_layer_store::local_models::scope_dir(&root, scope).map_err(refuse)?;
             let path = ds_layer_store::local_models::package_path(&dir, id).map_err(refuse)?;
             let bytes = crate::package::read_bytes(&path.to_string_lossy())?;
-            let opened = crate::package::decode(&path.to_string_lossy(), &bytes)?;
-            crate::package::authorize_write(&opened, operation)?;
+            // Catalogue metadata operations also govern opaque/historical
+            // ordinary payloads. Decode engineering only for a combined identity.
+            if crate::package::read_manifest(&path.to_string_lossy(), &bytes).is_ok_and(
+                |manifest| {
+                    ds_grid_engine::composite::is_combined_identity(
+                        manifest.model.model_id.as_str(),
+                    )
+                },
+            ) {
+                let opened = crate::package::decode(&path.to_string_lossy(), &bytes)?;
+                crate::package::authorize_write(&opened, operation)?;
+            }
         }
         if let Some(bytes) = package {
             let opened = crate::package::decode("working copy", bytes)?;

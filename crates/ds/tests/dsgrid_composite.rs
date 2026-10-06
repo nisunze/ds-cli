@@ -820,6 +820,29 @@ fn all_linked_commands_plan_by_default_apply_atomically_and_name_conflicts() {
 
 #[test]
 fn every_engine_linked_refusal_is_declared_by_the_cli() {
+    for id in [
+        "dsgrid.apply",
+        "dsgrid.apply-batch",
+        "dsgrid.model.link",
+        "dsgrid.model.unlink",
+        "dsgrid.model.forget",
+        "dsgrid.publish-version",
+        "dsgrid.create",
+    ] {
+        let descriptor = ok(&["capabilities", id, "--output", "json"]);
+        let refusals = descriptor["command"]["refusals"].as_array().unwrap();
+        let codes = refusals
+            .iter()
+            .map(|r| r["code"].as_str().unwrap())
+            .collect::<std::collections::BTreeSet<_>>();
+        assert_eq!(codes.len(), refusals.len(), "duplicate refusal on {id}");
+        assert!(codes.contains("composite_model_protected"), "{id}");
+        let tool = ds_cli_mcp::tools::tool_from_descriptor(&descriptor["command"]).unwrap();
+        assert!(
+            tool.description.contains("composite_model_protected"),
+            "{id}"
+        );
+    }
     let codes = ds_grid_engine::composite::descriptors()["refusals"]
         .as_array()
         .unwrap()
