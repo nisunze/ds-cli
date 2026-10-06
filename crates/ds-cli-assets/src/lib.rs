@@ -59,6 +59,7 @@ pub mod attach;
 pub mod backup;
 pub mod classify;
 pub mod correspondence;
+pub mod download;
 pub mod folder;
 pub mod ingest;
 pub mod list;
@@ -93,6 +94,7 @@ pub static DOMAIN: Domain = Domain {
         &list::COMMAND,
         &tree::COMMAND,
         &versions::COMMAND,
+        &download::COMMAND,
         &read::COMMAND,
         &preview::COMMAND,
         &classify::COMMAND,

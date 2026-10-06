@@ -2517,6 +2517,11 @@ static ASSETS_ENTRIES: &[Entry] = &[
         render: ds_cli_assets::read::render,
     },
     Entry {
+        command: &ds_cli_assets::download::COMMAND,
+        handler: ds_cli_assets::download::run,
+        render: ds_cli_assets::download::render,
+    },
+    Entry {
         command: &ds_cli_assets::preview::COMMAND,
         handler: ds_cli_assets::preview::run,
         render: ds_cli_assets::preview::render,
@@ -3868,6 +3873,40 @@ fn host_target(command: &Command, inputs: &Inputs) -> Option<String> {
 fn headless_probe_means_absent(error: &Failure) -> bool {
     error.code() == "native_profile_not_configured"
         || error.code() == "native_state_protection_unavailable"
+}
+
+#[cfg(test)]
+mod asset_download_tests {
+    use super::*;
+
+    #[test]
+    fn the_download_descriptor_and_path_dispatch_the_same_read_adapter() {
+        let entry = find_by_id("assets.download").expect("discoverable download read");
+        let tokens = [
+            "assets",
+            "download",
+            "--project",
+            "p",
+            "--asset",
+            "a_4v6w339ffevs",
+        ]
+        .map(str::to_owned);
+        let (by_path, consumed) = find_by_path(&tokens).expect("dispatchable download read");
+        assert!(std::ptr::eq(entry, by_path));
+        assert_eq!(consumed, 2);
+        assert!(std::ptr::eq(
+            entry.command,
+            &ds_cli_assets::download::COMMAND
+        ));
+        assert!(std::ptr::fn_addr_eq(
+            entry.handler,
+            ds_cli_assets::download::run as Handler
+        ));
+        let inputs = ds_cli_contract::parse(entry.command, &tokens[consumed..]).unwrap();
+        assert_eq!(inputs.value("project"), Some("p"));
+        assert_eq!(inputs.value("asset"), Some("a_4v6w339ffevs"));
+        assert!(!entry.command.confirmation_required_for(&inputs));
+    }
 }
 
 #[cfg(test)]

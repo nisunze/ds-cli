@@ -39,6 +39,12 @@ The bytes are somewhere else again — project storage, behind a fresh
 short-lived signed read minted per access after an authority check. Nothing
 here hands out a durable link to anything above `open`.
 
+`assets.download` returns that authorized read reference without fetching the
+file. A document reader can stream a large PDF through it; the bounded
+`assets.read` copy keeps its existing memory limit. The JSON download response
+contains temporary read authority and must be consumed immediately, not stored
+as a durable document link. Human output excludes the signed URL.
+
 Every project command runs headless, under the restored native user or device
 credential, against the explicit `--project <id>` on that call, on `--lane`.
 The ID is an address to authorize, never proof of authority. The local-only
