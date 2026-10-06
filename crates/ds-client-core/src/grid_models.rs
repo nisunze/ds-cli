@@ -377,19 +377,26 @@ pub(crate) fn refusal(
     struct Wire {
         #[serde(default)]
         message: String,
+        #[serde(default)]
+        code: String,
     }
     #[derive(serde::Deserialize)]
     struct Envelope {
         error: Option<Wire>,
     }
-    let sentence = (response.body.len() <= 64 * 1024)
+    let wire = (response.body.len() <= 64 * 1024)
         .then(|| serde_json::from_slice::<Envelope>(&response.body).ok())
         .flatten()
         .and_then(|envelope| envelope.error)
-        .unwrap_or_default()
-        .message;
+        .unwrap_or_default();
+    let sentence = wire.message;
     let said = (!sentence.is_empty()).then_some(sentence.as_str());
     match response.status {
+        409 if wire.code == "composite_model_protected" => ClientError::with_service_refusal(
+            ErrorKind::InvalidInput,
+            "the automatic combined model is protected; edit its owning submodels",
+            ServiceRefusal::new(409, Some("composite_model_protected"), said),
+        ),
         409 => ClientError::with_service_refusal(
             ErrorKind::InvalidInput,
             "grid publication conflicts with stored state; the request was not changed or retried",
@@ -587,7 +594,11 @@ fn head_projection(row: &Value) -> Value {
     head
 }
 
-pub(crate) fn locator<'a>(url: &'a str, object: &str, size: usize) -> Result<DownloadCall<'a>, ClientError> {
+pub(crate) fn locator<'a>(
+    url: &'a str,
+    object: &str,
+    size: usize,
+) -> Result<DownloadCall<'a>, ClientError> {
     let u = url::Url::parse(url).map_err(|_| bad())?;
     if url.len() > 8192
         || u.scheme() != "https"
@@ -1075,6 +1086,39 @@ mod tests {
             Some("grid_export_conflict")
         );
     }
+    #[test]
+    fn protected_combined_refusal_preserves_every_owner_and_code() {
+        let response = TransportResponse::new(409, serde_json::to_vec(&json!({
+            "error": {"code": "composite_model_protected", "message": "edit north, south, additional"}
+        })).unwrap());
+        for action in [
+            "create_version",
+            "update_model",
+            "set_approval",
+            "bump_version",
+            "delete_model",
+            "restore_model",
+        ] {
+            let error = refusal(&response, action, false);
+            let refusal = error.service_refusal().unwrap();
+            assert_eq!(refusal.code(), Some("composite_model_protected"));
+            assert_eq!(refusal.message(), Some("edit north, south, additional"));
+        }
+        // An unrecognized server code never acquires this policy by its message.
+        let ordinary = TransportResponse::new(
+            409,
+            serde_json::to_vec(&json!({"error":{"code":"CONFLICT","message":"edit north, south"}}))
+                .unwrap(),
+        );
+        assert_eq!(
+            refusal(&ordinary, "create_version", false)
+                .service_refusal()
+                .unwrap()
+                .code(),
+            Some("grid_publication_conflict")
+        );
+    }
+
     #[test]
     fn export_ids_follow_the_catalog_grammar() {
         let publish = |export: &str| Command::PublishExport {
