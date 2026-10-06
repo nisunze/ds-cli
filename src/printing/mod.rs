@@ -1662,6 +1662,12 @@ pub fn resolve_style_documents(
     if layout.style_keys.is_empty() && !layout.style_refs.is_empty() {
         return Err("style_resolution_required: migrate the governed printing template to exact style_keys through the API".into());
     }
+    // A selected source may expand into a print-only layer (for example the
+    // MV route corridor). Resolve the source's declared keys just as the
+    // sealed report capture does; preserve every authored pen or binding.
+    layout
+        .style_keys
+        .extend(context::missing_context_style_keys(&layout));
     if layout.ink_mode == crate::style_resolution::Ink::Monochrome {
         for key in layout.style_keys.values_mut() {
             key.ink = crate::style_resolution::Ink::Monochrome;

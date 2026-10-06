@@ -449,6 +449,58 @@ mod tests {
         assert!(held["renderer_defaults"].is_object());
     }
     #[test]
+    fn draft_resolution_holds_the_same_derived_corridor_as_report_capture() {
+        let (snapshot, mut layout, _) = source();
+        // Inline physical pens already own the model layers. The selected
+        // source also derives a corridor, whose governed choice is absent.
+        layout.style_refs.clear();
+        for id in super::super::map::MV_PRINT_LAYER_IDS {
+            layout
+                .styles
+                .insert(id.into(), super::super::PrintStyle::default());
+        }
+        let before = layout.clone();
+        let (resolved, held) = super::super::resolve_style_documents(layout, &snapshot).unwrap();
+        let reference = "print_context/dsgrid_mv_corridor_print";
+        assert_eq!(resolved.style_refs["dsgrid_mv_corridor"], reference);
+        assert_eq!(held["style_refs"]["dsgrid_mv_corridor"], reference);
+        assert_eq!(
+            resolved.style_keys["dsgrid_mv_corridor"],
+            context::missing_context_style_keys(&before)["dsgrid_mv_corridor"]
+        );
+        let binding = snapshot
+            .bindings
+            .iter()
+            .find(|b| b.style_ref == reference)
+            .unwrap();
+        assert_eq!(held["print_styles"][reference], binding.document);
+        assert_eq!(
+            held["style_revisions"][reference]["revision_id"],
+            binding.revision_id
+        );
+        assert_eq!(resolved.styles, before.styles);
+        assert_eq!(resolved.context_layers, before.context_layers);
+        assert_eq!(resolved.style_overrides, before.style_overrides);
+
+        let mut missing = snapshot.clone();
+        missing.bindings.retain(|b| b.style_ref != reference);
+        assert!(
+            super::super::resolve_style_documents(before.clone(), &missing)
+                .unwrap_err()
+                .contains("style_resolution_unknown")
+        );
+
+        let mut authored = before;
+        let pen = super::super::PrintStyle::default();
+        authored
+            .styles
+            .insert("dsgrid_mv_corridor".into(), pen.clone());
+        let (resolved, held) = super::super::resolve_style_documents(authored, &missing).unwrap();
+        assert_eq!(resolved.styles["dsgrid_mv_corridor"], pen);
+        assert!(!resolved.style_keys.contains_key("dsgrid_mv_corridor"));
+        assert!(held["style_refs"].as_object().unwrap().is_empty());
+    }
+    #[test]
     fn cross_project_identity_stale_configuration_layout_and_document_refuse() {
         let (snapshot, mut layout, sheets) = source();
         let capture = Capture::new(
