@@ -97,7 +97,7 @@ pub fn configure(
             layout.style_keys.remove(id);
             layout.style_refs.insert(id.into(), reference);
             layout.style_overrides.remove(id);
-            if policy.is_some() {
+            if policy.is_some() || source != "tr" {
                 layout.style_overrides.insert(
                     id.into(),
                     PrintStyleOverride {
@@ -111,6 +111,10 @@ pub fn configure(
                             ])
                         }),
                         opacity: policy.as_ref().map(|p| p.opacity),
+                        label: (source != "tr").then(|| super::PrintLabelOverride {
+                            visible: Some(false),
+                            ..Default::default()
+                        }),
                         ..Default::default()
                     },
                 );
@@ -249,11 +253,25 @@ pub fn preserve_existing_lv(
         }
         let reference = layout.style_refs.get(*source)
             .ok_or_else(|| format!("print_invariant_style_missing: {} needs the exact governed foreground {source} reference", layer.id))?;
-        let foreground_override = layout.style_overrides.get(*source);
+        let mut foreground_override = layout.style_overrides.get(*source).cloned();
+        // Lifecycle keeps the foreground pen; label visibility is still the
+        // contextual role's authored choice, never the focused numbering.
+        if let Some(visible) = layout
+            .style_overrides
+            .get(base)
+            .and_then(|change| change.label.as_ref())
+            .and_then(|label| label.visible)
+        {
+            foreground_override
+                .get_or_insert_with(Default::default)
+                .label
+                .get_or_insert_with(Default::default)
+                .visible = Some(visible);
+        }
         if layer.id.ends_with(SUFFIX) {
             if !proposed.is_empty()
                 || layout.style_refs.get(&layer.id) != Some(reference)
-                || layout.style_overrides.get(&layer.id) != foreground_override
+                || layout.style_overrides.get(&layer.id) != foreground_override.as_ref()
                 || layout.style_keys.get(&layer.id) != layout.style_keys.get(*source)
                 || layout.styles.contains_key(&layer.id)
             {
@@ -289,7 +307,7 @@ pub fn preserve_existing_lv(
         if let Some(change) = foreground_override {
             effective
                 .style_overrides
-                .insert(destination.clone(), change.clone());
+                .insert(destination.clone(), change);
         }
         effective.style_keys.remove(&destination);
         if let Some(key) = layout.style_keys.get(*source) {
@@ -664,6 +682,16 @@ mod tests {
                 "label":{"visible":true,"size_pt":8,"color":"#445566","halo_mm":0.25}}))
                 .unwrap();
             layout.style_overrides.insert((*source).into(), change);
+            layout.style_overrides.insert(
+                (*target).into(),
+                PrintStyleOverride {
+                    label: Some(super::super::PrintLabelOverride {
+                        visible: Some(false),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+            );
             layout.layer_order.insert(0, (*target).into());
             layers.push(super::super::resolved_styles::VectorLayer {
                 id: (*target).into(), label: (*target).into(), geojson: json!({"type":"FeatureCollection","features":[
@@ -677,10 +705,9 @@ mod tests {
         for (source, target) in &LAYERS[1..] {
             let alias = format!("{target}-source-invariant-existing");
             assert_eq!(effective.style_refs[&alias], layout.style_refs[*source]);
-            assert_eq!(
-                effective.style_overrides[&alias],
-                layout.style_overrides[*source]
-            );
+            let mut expected = layout.style_overrides[*source].clone();
+            expected.label.as_mut().unwrap().visible = Some(false);
+            assert_eq!(effective.style_overrides[&alias], expected);
             let context = projected.iter().find(|layer| layer.id == *target).unwrap();
             let invariant = projected.iter().find(|layer| layer.id == alias).unwrap();
             assert_eq!(
@@ -1178,9 +1205,16 @@ mod tests {
             configured.style_refs["neighbor_customers"],
             "fixture/context-customers_print"
         );
-        assert!(!configured
-            .style_overrides
-            .contains_key("neighbor_customers"));
+        for (_, role) in &LAYERS[1..] {
+            assert_eq!(
+                configured.style_overrides[*role]
+                    .label
+                    .as_ref()
+                    .unwrap()
+                    .visible,
+                Some(false)
+            );
+        }
         assert_eq!(configured.layer_order.first().unwrap(), "buildings");
         assert!(
             configured
@@ -1196,6 +1230,7 @@ mod tests {
         );
         let mut partial = configured.clone();
         partial.style_refs.remove("neighbor_customers");
+        partial.style_overrides.remove("neighbor_customers");
         super::super::validate(&partial).unwrap();
         assert!(!selected(
             &configure(configured, false, BTreeMap::new(), None).unwrap()
