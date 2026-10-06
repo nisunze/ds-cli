@@ -78,7 +78,7 @@ fn print_policy(buffer_m: f64) -> Result<BufferPolicy, Failure> {
     Ok(policy)
 }
 
-fn sheet_area(
+pub fn sheet_area(
     scope: &Scope,
     transformer: &str,
     layers: &Value,

@@ -266,6 +266,10 @@ It reads all active, checksum-verified saved rooms once and clips their exact
 geometry to the focused viewport, including edge-crossing circuits whose
 transformer is outside it. It does not widen the focused camera, alter topology
 or import context into quantities, customer schedules or electrical reports.
+Staging first selects whole features intersecting the captured sheet coverage;
+the renderer performs the final clip. Off-sheet transformer points do not
+exclude crossing circuits. Each staged layer names its projected feature count
+and the complete saved-room revision/digest roster in its source receipt.
 Held preview uses the same projection and explicitly names unavailable context.
 Partial context pen sets, wrong ownership, missing style documents and incomplete
 rosters refuse rather than silently guessing.

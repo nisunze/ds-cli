@@ -713,12 +713,21 @@ pub fn execute_with_styles(
                         .map(|c| serde_json::from_slice::<Value>(&c.bytes))
                         .transpose()
                         .map_err(|e| inputs_invalid(e.to_string()))?;
+                    let mut field_layout = request.layout.clone();
+                    if let Some(capture) = captured {
+                        field_layout.style_refs.extend(
+                            serde_json::from_value::<BTreeMap<String, String>>(
+                                capture["style_refs"].clone(),
+                            )
+                            .map_err(|e| inputs_invalid(e.to_string()))?,
+                        );
+                    }
                     let doc = printing::adjacent_networks::attach(
                         &request.transformer,
                         &rooms,
                         document.as_ref(),
                         &printing::adjacent_networks::required_fields(
-                            std::slice::from_ref(&request.layout),
+                            std::slice::from_ref(&field_layout),
                             captured
                                 .and_then(|capture| capture.get("print_styles"))
                                 .unwrap_or(

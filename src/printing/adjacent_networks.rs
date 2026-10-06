@@ -365,9 +365,10 @@ fn validate_lifecycle_pen(document: &Value) -> Result<(), String> {
     Ok(())
 }
 
-/// Keep every circuit, even when its transformer lies outside the sheet.
-/// Spatial selection is the final map clip, including explicit view exceptions.
-/// No nearest-transformer heuristic or geometry repair belongs here.
+/// Keep circuits intersecting the captured sheet coverage, even when their
+/// transformer lies outside it. Preserve crossing geometries for the final map
+/// clip; never choose neighbours by transformer distance or repair source data.
+/// Without captured coverage, retain the complete projection.
 pub fn attach(
     current: &str,
     rooms: &[Room],
@@ -383,12 +384,17 @@ pub fn attach(
     let mut doc = context
         .cloned()
         .unwrap_or_else(|| json!({"coverage":null,"sources":[],"layers":{}}));
+    let area = doc.get("coverage").filter(|area| !area.is_null()).cloned();
+    if let Some(area) = &area {
+        crate::reference_cache::validate_area(area)?;
+    }
     let mut layers: BTreeMap<String, Value> = serde_json::from_value(doc["layers"].clone())
         .map_err(|e| format!("invalid adjacent print context: {e}"))?;
     let mut projected: BTreeMap<String, Vec<Value>> = BTreeMap::new();
     let mut sources = Vec::new();
     let mut names = std::collections::BTreeSet::new();
     let mut count = 0usize;
+    let mut scanned = 0usize;
     let mut bounds: Option<[f64; 4]> = None;
     let world = json!({"type":"Polygon","coordinates":[[[-180.,-90.],[180.,-90.],[180.,90.],[-180.,90.],[-180.,-90.]]]});
     for room in rooms {
@@ -405,6 +411,7 @@ pub fn attach(
             continue;
         }
         let mut owner_count = 0usize;
+        let mut source_count = 0usize;
         for (source, target) in LAYERS {
             let Some(layer) = room.layers.get(source) else {
                 continue;
@@ -429,6 +436,19 @@ pub fn attach(
                 }
                 // Reuse the vector owner's exact WGS84 admission.
                 ds_geo_lite::spatial_predicate::intersects_area(geometry, &world)?;
+                scanned += 1;
+                source_count += 1;
+                if scanned > 200_000 {
+                    return Err(
+                        "adjacent context exceeds 200,000 features; no circuits were truncated"
+                            .into(),
+                    );
+                }
+                if let Some(area) = &area {
+                    if !ds_geo_lite::spatial_predicate::intersects_area(geometry, area)? {
+                        continue;
+                    }
+                }
                 let b = ds_geo_lite::viewport::geojson_bounds(geometry)
                     .ok_or("adjacent geometry has no geographic bounds")?;
                 bounds = Some(bounds.map_or(b, |a| {
@@ -441,12 +461,6 @@ pub fn attach(
                 }));
                 count += 1;
                 owner_count += 1;
-                if count > 200_000 {
-                    return Err(
-                        "adjacent context exceeds 200,000 features; no circuits were truncated"
-                            .into(),
-                    );
-                }
                 let mut properties = json!({"transfo":room.transformer,"print_context_source":"project_transformer_networks",
                     "room_version":room.version,"source_layer":source,"source_feature_id":feature.get("id")});
                 for key in fields
@@ -476,6 +490,7 @@ pub fn attach(
         }
         sources.push(json!({"kind":"project_transformer_networks","transformer":room.transformer,
             "room_version":room.version,"feature_count":owner_count,
+            "source_feature_count":source_count,
             "source_sha256":crate::report_export::sha256_hex(&serde_json::to_vec(room).map_err(|e|e.to_string())?)}));
     }
     if count == 0 {
@@ -485,6 +500,9 @@ pub fn attach(
         if layers.contains_key(&id) {
             return Err(format!("print context already contains {id}"));
         }
+        doc["sources"].as_array_mut().ok_or("print context has no sources")?.push(
+            json!({"layer":id,"kind":"project_transformer_networks","feature_count":features.len(),"rooms":sources})
+        );
         layers.insert(id, json!({"type":"FeatureCollection","features":features}));
     }
     if doc["coverage"].is_null() {
@@ -499,10 +517,6 @@ pub fn attach(
         }
         doc["coverage"] = json!({"type":"Polygon","coordinates":[[[w,s],[e,s],[e,n],[w,n],[w,s]]]});
     }
-    doc["sources"]
-        .as_array_mut()
-        .ok_or("print context has no sources")?
-        .extend(sources);
     doc["layers"] = serde_json::to_value(layers).map_err(|e| e.to_string())?;
     Ok(Some(doc))
 }
@@ -913,7 +927,8 @@ mod tests {
             .unwrap();
         assert_eq!(display_context["layers"], doc["layers"]);
         assert_ne!(
-            display_context["sources"][0]["source_sha256"], doc["sources"][0]["source_sha256"],
+            display_context["sources"][0]["rooms"][0]["source_sha256"],
+            doc["sources"][0]["rooms"][0]["source_sha256"],
             "provenance still hashes the exact saved source bytes"
         );
         let mut bad = rooms.clone();
@@ -922,6 +937,92 @@ mod tests {
         assert!(attach("focus", &bad, None, &BTreeMap::new())
             .unwrap_err()
             .contains("ownership"));
+    }
+
+    #[test]
+    fn captured_sheet_keeps_crossing_circuits_and_stages_a_valid_bounded_document() {
+        let area = json!({"type":"Polygon","coordinates":[[
+            [29.99,-2.001],[30.01,-2.001],[30.01,-1.999],[29.99,-1.999],[29.99,-2.001]
+        ]]});
+        let rooms = vec![room("focus", -2.), room("crossing", -2.), room("far", -1.)];
+        let before = serde_json::to_vec(&rooms).unwrap();
+        let held = json!({"coverage":area,"sources":[],"layers":{}});
+        let doc = attach("focus", &rooms, Some(&held), &BTreeMap::new())
+            .unwrap()
+            .unwrap();
+        assert_eq!(doc["coverage"], area);
+        assert!(
+            doc["layers"].get("neighbor_transformers").is_none(),
+            "an outside transformer must not discard its crossing line"
+        );
+        let lines = doc["layers"]["neighbor_lv_lines"]["features"]
+            .as_array()
+            .unwrap();
+        assert_eq!(lines.len(), 1);
+        assert_eq!(
+            lines[0]["geometry"],
+            rooms[1].layers["lv_lines"]["features"][0]["geometry"]
+        );
+        assert_eq!(lines[0]["properties"]["transfo"], "crossing");
+        let layers = serde_json::from_value(doc["layers"].clone()).unwrap();
+        crate::report_export::print_context_document(&area, &doc["sources"], &layers).unwrap();
+        let sources = doc["sources"].as_array().unwrap();
+        assert!(sources.len() <= LAYERS.len());
+        for source in sources {
+            assert!(doc["layers"]
+                .get(source["layer"].as_str().unwrap())
+                .is_some());
+            assert_eq!(source["rooms"].as_array().unwrap().len(), 2);
+            assert_eq!(source["rooms"][1]["feature_count"], 0);
+            assert!(source["rooms"][1]["source_feature_count"].as_u64().unwrap() > 0);
+        }
+        assert_eq!(serde_json::to_vec(&rooms).unwrap(), before);
+        let mut wrong_owner = rooms;
+        wrong_owner[2].layers.get_mut("lv_lines").unwrap()["features"][0]["properties"]
+            ["transfo"] = json!("someone-else");
+        assert!(
+            attach("focus", &wrong_owner, Some(&held), &BTreeMap::new())
+                .unwrap_err()
+                .contains("ownership"),
+            "off-page data still requires verified ownership"
+        );
+        let mut malformed = held;
+        malformed["coverage"] = json!({"type":"Point","coordinates":[30.,-2.]});
+        assert!(attach("focus", &wrong_owner, Some(&malformed), &BTreeMap::new()).is_err());
+    }
+
+    #[test]
+    fn a_large_off_sheet_roster_does_not_exhaust_the_print_feature_or_source_budget() {
+        let mut far = room("far", -1.);
+        let feature = far.layers["customers"]["features"][0].clone();
+        far.layers.get_mut("customers").unwrap()["features"] = json!(vec![
+            feature;
+            crate::report_export::MAX_PRINT_CONTEXT_FEATURES
+                + 1
+        ]);
+        let mut rooms = vec![room("focus", -2.), room("crossing", -2.), far];
+        rooms.extend((0..70).map(|index| room(&format!("off-sheet-{index}"), -1.)));
+        let held = json!({"coverage":{"type":"Polygon","coordinates":[[
+            [29.99,-2.001],[30.01,-2.001],[30.01,-1.999],[29.99,-1.999],[29.99,-2.001]
+        ]]},"sources":[],"layers":{}});
+        let doc = attach("focus", &rooms, Some(&held), &BTreeMap::new())
+            .unwrap()
+            .unwrap();
+        let layers = serde_json::from_value(doc["layers"].clone()).unwrap();
+        crate::report_export::print_context_document(&doc["coverage"], &doc["sources"], &layers)
+            .unwrap();
+        assert!(doc["sources"].as_array().unwrap().len() <= LAYERS.len());
+        assert_eq!(
+            doc["sources"][0]["rooms"].as_array().unwrap().len(),
+            rooms.len() - 1
+        );
+        assert_eq!(
+            doc["layers"]["neighbor_lv_lines"]["features"]
+                .as_array()
+                .unwrap()
+                .len(),
+            1
+        );
     }
     #[test]
     fn proposed_transformer_on_existing_lv_keeps_roles_status_geometry_and_unknowns() {
