@@ -476,10 +476,9 @@ const EXPECTED: &[(&str, &str, &str)] = &[
         "headless_project",
     ),
     // A project's network documents from a template project: plan reads,
-    // apply writes the destination; the census reads every project.
+    // apply writes the destination.
     ("design.config.copy.plan", "local_auth_state", "headless_project"),
     ("design.config.copy.apply", "global_write", "headless_project"),
-    ("design.config.copy.census", "local_auth_state", "headless_user"),
     (
         "design.feeder-limits.read",
         "local_file_write",
@@ -1121,9 +1120,7 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     // durable file, and a plan must stay usable on a read-only destination.
     ("solar.migrate.apply", "global_write", "headless_project"),
     ("solar.migrate.plan", "read_only", "headless_project"),
-    ("solar.seed.apply", "global_write", "headless_project"),
     ("solar.seed.network-plan", "local_file_write", "none"),
-    ("solar.seed.preview", "read_only", "headless_project"),
     ("solar.sync.status", "read_only", "desktop_user"),
     ("solar.verify-weather", "read_only", "none"),
     ("sre.events", "read_only", "headless_user"),

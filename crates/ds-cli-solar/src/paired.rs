@@ -110,8 +110,6 @@ pub const PORTFOLIO_ANALYSIS_OP: BridgeOp = BridgeOp {
 /// runtime key guard and gives bridge-parity tests one machine-readable source
 /// of truth to compare with the paired application.
 pub const BRIDGE_OPS: &[&BridgeOp] = &[
-    &crate::seed::PREVIEW_OP,
-    &crate::seed::APPLY_OP,
     &PORTFOLIO_BATCH_START_OP,
     &PORTFOLIO_BATCH_STATUS_OP,
     &PORTFOLIO_BATCH_CANCEL_OP,

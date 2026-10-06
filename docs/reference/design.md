@@ -874,6 +874,8 @@ source's membership and `project.edit` on the destination.
 `ds auth project create --from-template` runs exactly this copy (both parts)
 after creating the project.
 
+The migration of every existing project ran on 2026-10-06 (66/66 in sync).
+
 ## Internal properties versus external publication
 
 `tag_<definition_id>` is an ordinary property in Properties and Attribute

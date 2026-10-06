@@ -8,7 +8,8 @@
 //! A project owns `docs/network_template` (the network template it reads) and
 //! `docs/network_config` (its Settings sheets). A new or empty project takes
 //! them from a template project, whole or one at a time; ds-brain copies them
-//! under the reviewed plan's digest and never changes the source.
+//! under the reviewed plan's digest and never changes the source. There is no
+//! global template store (ds-brain `docs/contracts/project-network-documents.md`).
 //!
 //! Like `ds design migrate`, both projects are named on every call and
 //! neither is the saved selection.
@@ -36,7 +37,8 @@ const SOURCE_PROJECT: Arg = Arg::value(
     "source-project",
     "<id>",
     "Copy FROM this project, usually a template project.",
-);
+)
+.required();
 const PART: Arg = Arg::repeated(
     "part",
     "<network_template|network_config>",
@@ -73,7 +75,7 @@ const REFUSALS: &[Refusal] = &[
     Refusal {
         code: "auth_rejected",
         when: "the caller may not read the source or edit the destination configuration",
-        remedy: "a project copy needs membership of the source and project.edit on the destination",
+        remedy: "a copy needs membership of the source and project.edit on the destination",
     },
     Refusal {
         code: "auth_transient",
@@ -105,7 +107,7 @@ pub static PLAN: Command = Command {
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
     args: &[PROJECT, SOURCE_PROJECT, PART, LANE],
-    output: "Per document: source and destination sha256 and the outcome create|replace|identical; the source project and the plan_sha256 apply checks.",
+    output: "Per document: source and destination sha256 and the outcome create|replace|identical, and the plan_sha256 apply checks.",
     examples: &[Example {
         command: "ds design config copy plan --project <new-project> --source-project <template-project> --output json",
         note: "Both documents; read .data.parts[].outcome and .data.plan_sha256.",
@@ -148,39 +150,28 @@ pub static APPLY: Command = Command {
     availability: ds_cli_auth::native_availability,
 };
 
-fn invalid(message: &str) -> Failure {
-    Failure::invalid("network_documents_invalid", message.to_owned())
-        .remedy(NETWORK_DOCUMENTS_INVALID_REFUSAL.remedy)
-}
-
-fn source(i: &Inputs) -> Result<String, Failure> {
-    i.value("source-project")
-        .map(str::to_owned)
-        .ok_or_else(|| invalid("name --source-project"))
-}
-
 fn parts(i: &Inputs) -> Vec<String> {
     i.repeated("part").to_vec()
 }
 
 pub fn plan(i: &Inputs, _: &Context) -> Result<Value, Failure> {
     let request = NetworkDocumentsRequest::Plan {
-        source_project: source(i)?,
+        source_project: i.require("source-project")?.to_owned(),
         parts: parts(i),
     };
-    ds_cli_auth::network_documents(i.require("lane")?, Some(i.require("project")?), &request)
+    ds_cli_auth::network_documents(i.require("lane")?, i.require("project")?, &request)
 }
 
 pub fn apply(i: &Inputs, _: &Context) -> Result<Value, Failure> {
     let request = NetworkDocumentsRequest::Apply {
-        source_project: source(i)?,
+        source_project: i.require("source-project")?.to_owned(),
         parts: parts(i),
         expected_plan_sha256: i.require("expected-plan")?.to_owned(),
     };
-    ds_cli_auth::network_documents(i.require("lane")?, Some(i.require("project")?), &request)
+    ds_cli_auth::network_documents(i.require("lane")?, i.require("project")?, &request)
 }
 
-/// A plan reads one line per document; a receipt names the documents written.
+/// A plan reads one line per document; a receipt the documents written.
 pub fn render(data: &Value) -> String {
     let text = |value: &Value| value.as_str().unwrap_or("-").to_owned();
     let mut out = String::new();
@@ -229,33 +220,26 @@ mod tests {
     }
 
     #[test]
-    fn only_a_project_source_is_accepted_before_anything_is_sent() {
-        assert_eq!(
-            source(&parse(&PLAN, &["--project", "p", "--source-project", "t"])).unwrap(),
-            "t"
+    fn a_copy_names_both_projects_and_its_parts() {
+        let inputs = parse(
+            &PLAN,
+            &[
+                "--project",
+                "p",
+                "--source-project",
+                "t",
+                "--part",
+                "network_config",
+            ],
         );
-        assert_eq!(
-            source(&parse(&PLAN, &["--project", "p"]))
-                .unwrap_err()
-                .code(),
-            "network_documents_invalid"
+        assert_eq!(inputs.value("source-project"), Some("t"));
+        assert_eq!(parts(&inputs), ["network_config"]);
+        assert!(
+            PLAN.args
+                .iter()
+                .any(|a| a.name == "source-project" && a.required)
         );
-        let retired = ["--project", "p", "--source-template", "selected"].map(str::to_owned);
-        assert!(ds_cli_contract::parse(&PLAN, &retired).is_err());
-        assert_eq!(
-            parts(&parse(
-                &PLAN,
-                &[
-                    "--project",
-                    "p",
-                    "--source-project",
-                    "t",
-                    "--part",
-                    "network_config"
-                ]
-            )),
-            ["network_config"]
-        );
+        assert!(!PLAN.args.iter().any(|a| a.name == "source-template"));
     }
 
     #[test]
@@ -275,7 +259,11 @@ mod tests {
     fn renderings_name_what_happened() {
         let plan = render(&json!({"project_id":"p","source_project":"t",
             "parts":[{"part":"network_template","outcome":"create"}],"plan_sha256":"a"}));
-        assert!(plan.contains("network_template create") && plan.contains("plan_sha256 a"));
+        assert!(
+            plan.contains("into p from t")
+                && plan.contains("network_template create")
+                && plan.contains("plan_sha256 a")
+        );
         let receipt = render(&json!({"project_id":"p","written":[]}));
         assert!(receipt.contains("already identical"));
     }

@@ -412,19 +412,18 @@ directory. That would cross the desktop cache boundary and invite two cache
 protocols. Use the paired lifecycle for product city contexts; use the
 `ds-solar` artifact contract when an offline batch already has prepared bytes.
 
-## Governed project seeding
+## Governed project seeding (retired)
 
-Seeding is what makes a project's Solar cities exist before any preparation or
-run. It COPIES authored city inputs from a governed seed source root into the
-project's Solar root, and it is the same governed copy `create_template`
-already performs — not a second seed model and not a duplicate city catalog.
-`ds solar prepare` is a different thing entirely: it caches and seals inputs
-for cities the project already has.
+`ds solar seed` is retired with the global Solar root (2026-10-06; ds-brain
+`docs/contracts/project-network-documents.md`). A project takes its Solar
+cities and portfolios from a template project:
 
 ```text
-ds solar seed preview --project <exact-id> [--source <root>] [--city <id> ...]
-ds solar seed apply --project <exact-id> --seed-digest <64-hex> [--source <root>] [--city <id> ...] --yes
+ds solar migrate plan  --source-project <template> --project <exact-id> --kind city
+ds solar migrate apply --source-project <template> --project <exact-id> --kind city --migrate-digest <64-hex> --yes
 ```
+
+The notes below record what seeding was.
 
 ds-brain owns every decision. Its
 `docs/contracts/solar-project-seeding.md` is the authority, and it names
@@ -498,8 +497,6 @@ bridge seeding is no longer the CLI transport.
 |---|---|---|---|
 | `solar input capture` | fixed native `desktop_snapshot` + governed owner stdin | local file write | verified governed city intake |
 | `solar input prepare` | fixed native cache-only `prepare` | local file write | private prepared input and publication-claim pair |
-| `solar seed preview --project ID` | native `SolarProjectCommand::Seed` | read only | ds-brain's SolarSeedPlan, verbatim |
-| `solar seed apply --project ID` | native `SolarProjectCommand::Seed` | global write | ds-brain's SolarSeedApplyResult, verbatim |
 | `solar prepare` | `solar.prepare` | local file write | completed preparation receipt |
 | `solar run start` | `solar.run.start` | local file write | launch receipt with a run id that outlives the session; the compute itself is owned by the paired application and ends with it |
 | `solar run progress` | `solar.run.progress` | read only | bounded progress receipt |
@@ -529,7 +526,6 @@ set of product actions and never a generic desktop RPC.
 |---|---:|---|
 | `solar input capture` | 120 s request + 5 min owner intake | bounded explicit-project capture and create-new sealing |
 | `solar input prepare` | 30 min | cache-only native preparation of one governed intake |
-| `solar seed preview` / `apply` | 60 s | one ds-brain round trip; the card allows the same |
 | `solar prepare` | 30 min | cache capture or authenticated refresh across selected cities |
 | `solar run start` | 30 s | creates a local run receipt; compute continues inside the paired application for as long as it runs — closing DS GridDesign ends the run and later reads settle it as abandoned |
 | lifecycle reads / cancel | 30 s | bounded local bridge replies |

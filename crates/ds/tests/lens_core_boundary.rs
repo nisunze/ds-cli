@@ -103,7 +103,7 @@ const INVENTORY: &[(&str, Layer, usize)] = &[
     // a headless owner; do not hide its bridge site behind the old ceiling.
     ("ds-cli-dsgrid", Layer::CorePending, 2),
     // Solar runs read the workspace the application holds open.
-    ("ds-cli-solar", Layer::CorePending, 2),
+    ("ds-cli-solar", Layer::CorePending, 1),
     // `ds-cli-pm` left on 2026-09-20: every Project Management command is a
     // governed action on `POST /api/v1/pm` under the native credential, and
     // the kernel decides what the graph means and which command a flag

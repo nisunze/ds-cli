@@ -1212,8 +1212,6 @@ const SOLAR_RUN_COMMANDS: &[&str] = &[
     // Preserve the established end-to-end run profile. Native governed input
     // handoffs get their own narrow profile because adding them here would
     // exceed the bounded leaf-tool surface and silently change existing hosts.
-    "solar.seed.preview",
-    "solar.seed.apply",
     "solar.prepare",
     "solar.run",
     "solar.run.start",
