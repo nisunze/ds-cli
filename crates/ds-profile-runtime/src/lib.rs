@@ -22,6 +22,7 @@ mod replay;
 pub use replay::{InitializeRequest, RefreshRequest, ReleaseRequest};
 mod publication;
 pub use publication::{ConfirmPublicationRequest, DiscardPublicationRequest, PublicationPin};
+mod replay_cost;
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -1718,8 +1719,7 @@ mod transactional_projection_tests {
         assert!(runtime.held.contains_key("other-0"));
         assert_eq!(runtime.held.len(), 8);
     }
-    #[test]
-    fn refresh_carries_demand_cache_through_native_receipts_but_not_navigation() {
+    fn section_demand_fixture() -> ds_grid_model::GridModelSnapshot {
         use ds_grid_model::*;
         let mut snapshot = common::fixture();
         snapshot.tension_sections.push(TensionSectionRow {
@@ -1757,6 +1757,89 @@ mod transactional_projection_tests {
                 });
         }
         snapshot.tension_sections.push(adjacent);
+        snapshot
+    }
+    #[test]
+    fn future_redo_weather_never_invalidates_current_cursor_section_demands() {
+        let snapshot = section_demand_fixture();
+        let cases = snapshot.analysis_cases.len();
+        let input = request_for(snapshot.clone());
+        let mut worker = GridSession::open(snapshot);
+        let mut runtime = Runtime::default();
+        runtime.execute(input.clone()).unwrap();
+        describe(
+            &mut worker,
+            "active-description",
+            "only one section changed",
+        );
+        let mut weather = worker.snapshot().weather_states[0].clone();
+        weather.temperature_c += 1.;
+        worker
+            .apply_command(ds_grid_engine::CommandEnvelope::new(
+                "future-weather",
+                worker.current_revision().revision_id.clone(),
+                ds_grid_engine::GridCommand::UpdateWeatherState {
+                    id: weather.id.clone(),
+                    row: weather,
+                },
+            ))
+            .unwrap();
+        worker.undo().unwrap();
+        let mut corrupt = refresh(&runtime, &input, &input.expected_revision, &worker);
+        let mut journal: Value = serde_json::from_str(&corrupt.journal_json).unwrap();
+        journal["entries"][1]["resulting_revision"] = json!("fnv1a64:0000000000000000");
+        corrupt.journal_json = journal.to_string();
+        let before = runtime.held[&input.scope].session.history_state();
+        assert!(runtime
+            .execute(corrupt)
+            .unwrap_err()
+            .starts_with("profile_replay_diverged:"));
+        assert_eq!(runtime.held[&input.scope].session.history_state(), before);
+        let result = runtime
+            .execute(refresh(&runtime, &input, &input.expected_revision, &worker))
+            .unwrap();
+        let work = runtime.held[&input.scope].demand_cache.last_demand_work();
+        assert_eq!(
+            work.computed_cases, cases,
+            "future redo must not clear the unchanged section"
+        );
+        assert_eq!(work.reused_cases, cases);
+        assert_eq!(result["metrics"]["replayed_entries"], 2);
+        assert_eq!(result["metrics"]["applied_entries"], 1);
+        assert_eq!(result["metrics"]["last_demand_computed_cases"], cases);
+        assert_eq!(result["metrics"]["last_demand_reused_cases"], cases);
+        let metrics = result["metrics"].as_object().unwrap();
+        assert!(metrics
+            .values()
+            .all(|value| value.as_f64().is_some_and(|n| n.is_finite() && n >= 0.)));
+        assert!(
+            metrics["replay_apply_total_ms"].as_f64().unwrap()
+                <= metrics["replay_ms"].as_f64().unwrap() + 0.001
+        );
+        assert_eq!(
+            runtime.held[&input.scope].session.history_state(),
+            worker.history_state()
+        );
+        let fresh = Runtime::default()
+            .execute(request_for(worker.snapshot().clone()))
+            .unwrap();
+        assert_eq!(result["scene"], fresh["scene"]);
+        let base = worker.current_revision().revision_id.to_string();
+        worker.redo().unwrap();
+        let redone = runtime
+            .execute(refresh(&runtime, &input, &base, &worker))
+            .unwrap();
+        let fresh = Runtime::default()
+            .execute(request_for(worker.snapshot().clone()))
+            .unwrap();
+        assert_eq!(redone["scene"], fresh["scene"]);
+        assert_eq!(redone["metrics"]["replayed_entries"], 0);
+        assert_eq!(redone["metrics"]["last_demand_computed_cases"], cases * 2);
+    }
+    #[test]
+    fn refresh_carries_demand_cache_through_native_receipts_but_not_navigation() {
+        use ds_grid_model::*;
+        let snapshot = section_demand_fixture();
         let selection = ds_grid_engine::structure_usage::StructureUsageScreeningRequest {
             criterion_set_id: snapshot.criterion_sets[0].id.clone(),
             analysis_case_ids: snapshot

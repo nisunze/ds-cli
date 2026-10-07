@@ -206,6 +206,8 @@ impl Runtime {
         if request.journal_json.len() > 64 * 1024 * 1024 {
             return Err("profile_replay_invalid: journal exceeds native transport bounds".into());
         }
+        let admission_ms = started.elapsed().as_secs_f64() * 1000.0;
+        let journal_started = std::time::Instant::now();
         let journal: ds_grid_engine::journal::SessionJournal =
             serde_json::from_str(&request.journal_json)
                 .map_err(|error| format!("profile_replay_invalid: {error}"))?;
@@ -215,7 +217,6 @@ impl Runtime {
             );
         }
         let entries = journal.entries;
-        let journal_ms = started.elapsed().as_secs_f64() * 1000.0;
         if entries.len() > 16_384 {
             return Err("profile_replay_invalid: journal exceeds native bounds".into());
         }
@@ -234,8 +235,10 @@ impl Runtime {
                     .into(),
             );
         }
+        let journal_ms = journal_started.elapsed().as_secs_f64() * 1000.0;
         let mut session = held.session.clone();
         let replay_started = std::time::Instant::now();
+        let mut replay_cost = replay_cost::ReplayCost::default();
         let mut cache = held.demand_cache.clone();
         let initial = session.history_state().initial_revision;
         if entries
@@ -258,7 +261,7 @@ impl Runtime {
         }
         let mut receipts = Vec::new();
         if start < entries.len() {
-            for entry in &entries[start..] {
+            for (offset, entry) in entries[start..].iter().enumerate() {
                 if session.current_revision().revision_id != entry.parent_revision {
                     return Err(
                         "profile_replay_diverged: journal parent differs from the staged head"
@@ -280,7 +283,12 @@ impl Runtime {
                             .into(),
                     );
                 }
-                cache.advance_command(&outcome);
+                replay_cost.record(&session);
+                // Validate the complete retained journal, but a redo-tail
+                // command is not an admitted current-cursor invalidation.
+                if start + offset < request.target_history.undo_depth {
+                    cache.advance_command(&outcome);
+                }
                 receipts.push(outcome);
             }
         }
@@ -299,6 +307,7 @@ impl Runtime {
         if session.history_state() != request.target_history {
             return Err("profile_replay_diverged: staged cursor or history differs from the requested state".into());
         }
+        let replay_ms = replay_started.elapsed().as_secs_f64() * 1000.0;
         // Preflight options/styles before transferring projection cache ownership.
         // A failed refresh is a transaction refusal, including Analyze requests;
         // the previous display, session and analysis stay admitted together.
@@ -332,7 +341,6 @@ impl Runtime {
             pending.clear();
         }
         if !calculate {
-            let replay_ms = replay_started.elapsed().as_secs_f64() * 1000.0;
             let authored_started = std::time::Instant::now();
             // Admission stays transactional, but observation never enters scene,
             // weather, usage or analysis preparation. Retain the calculated view
@@ -430,15 +438,30 @@ impl Runtime {
                 "calculation":{"policy":"explicit", "model_revision":request.expected_revision,
                     "computed_revision":computed, "required":computed != Some(&request.expected_revision),
                     "scope":scope}});
-            response["metrics"] = json!({"journal_ms":journal_ms,"replay_ms":replay_ms,
+            response["metrics"] = json!({"admission_ms":admission_ms,"journal_ms":journal_ms,"replay_ms":replay_ms,
                 "authored_ms":authored_ms,"total_native_ms":started.elapsed().as_secs_f64()*1000.0,
                 "authored_delta_bytes":delta_bytes,"authored_display_delta_bytes":authored_display_delta.as_ref().map(|delta| serde_json::to_vec(delta).unwrap().len()),"applied_entries":receipts.len(),"retained_entries":entries.len()});
+            replay_cost.append(&mut response["metrics"]);
             return Ok(response);
         }
         if pending_reconcile {
             pending.clear();
         }
-        self.render_replayed(project, session, source, cache, request.analyze, &pending)
+        let calculation_started = std::time::Instant::now();
+        let mut result =
+            self.render_replayed(project, session, source, cache, request.analyze, &pending)?;
+        let held = &self.held[&request.scope];
+        let surface = held.review.surface_work().unwrap_or_default();
+        let demands = held.demand_cache.last_demand_work();
+        result["metrics"] = json!({"admission_ms":admission_ms,"journal_ms":journal_ms,"replay_ms":replay_ms,
+            "calculation_ms":calculation_started.elapsed().as_secs_f64()*1000.0,
+            "total_native_ms":started.elapsed().as_secs_f64()*1000.0,
+            "applied_entries":receipts.len(),"retained_entries":entries.len(),
+            "last_surface_computed_bands":surface.computed_bands,"last_surface_reused_bands":surface.reused_bands,
+            "last_surface_computed_ground":surface.computed_ground,"last_surface_reused_ground":surface.reused_ground,
+            "last_demand_computed_cases":demands.computed_cases,"last_demand_reused_cases":demands.reused_cases});
+        replay_cost.append(&mut result["metrics"]);
+        Ok(result)
     }
     fn render_replayed(
         &mut self,

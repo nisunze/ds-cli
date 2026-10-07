@@ -200,3 +200,29 @@ Native deserialization and revision/history validation remain authoritative.
 Initialization admits at most 1 GiB of seed JSON (including encoded assets);
 refresh admits at most 64 MiB of journal JSON and 16,384 entries. Old object
 handover fields refuse rather than falling back to package reopening.
+
+Replay validates every new retained command, including future redo commands,
+with native apply and result-revision fences. Only receipts at or before the
+requested cursor advance demand caches. An undone weather command cannot clear
+unrelated current-cursor section cases. The deterministic future-redo gate
+reduces recomputed cases from six to the three affected cases, reuses the other
+three, retains the exact redo history, and matches a fresh native scene.
+
+Observe and explicit Refresh/Analyze return bounded numeric `metrics`.
+`admission_ms`, `journal_ms` and `replay_ms` separate request admission, native
+journal decoding/chain validation and staged replay/navigation. The summed
+`replay_apply_*_ms` phases measure actual native command admission, snapshot
+clone, command, stored geometry, outer validation, revision, delta, commit and
+total apply. `replayed_entries` includes validated future-tail commands;
+`applied_entries` counts receipts admitted at the current cursor, and
+`retained_entries` is the complete journal length.
+
+Explicit calculation additionally reports `calculation_ms`, including native
+scene preparation, analysis when requested, and result construction.
+`last_surface_*` counters describe the retained surface's last preparation;
+`last_demand_*_cases` describes the final demand consumer. These last-work
+counters are not a sum of all calculation stages and may describe retained
+preparation on a cache hit. `total_native_ms` ends after native result
+construction, before host transport, worker installation and painting. Debug
+revision phases include the full-snapshot incremental-token audit; the guard
+is unchanged. Metrics never alter journal, authored or engineering identity.
