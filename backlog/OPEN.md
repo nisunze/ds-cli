@@ -8,7 +8,7 @@ Unfinished code that an agent can implement and prove without further owner inpu
 
 | Area | Remaining entries |
 | --- | ---: |
-| [1. Source integration and release code](#1-source-integration-and-release-code) | 3 |
+| [1. Source integration and release code](#1-source-integration-and-release-code) | 4 |
 | [2. Green `run` and release gates](#2-green-run-and-release-gates) | 4 |
 | [3. Template creation code](#3-template-creation-code) | 2 |
 | [4. Print template and style code](#4-print-template-and-style-code) | 2 |
@@ -40,6 +40,8 @@ Unfinished code that an agent can implement and prove without further owner inpu
 - **Native source pins and integration**: reconcile any still-unpushed repository changes and update `ds-network-reporter/pins/native-build-sources.json` to the exact published native sources before packaging. Recheck the remaining repositories before changing pins.
 
 - **Security `c9df4098`**: yes, short-lived signed URLs via ds-brain replace Firebase download-token URLs (code tonight; deploy with ds-brain).
+
+- **Move ds-network to Polars 0.55** (owner, 2026-10-07): `ds-network` pins `polars`, `polars-arrow` and `polars-io` at exactly 0.53.0 (workspace `Cargo.toml:74-76`), while ds-solar is already on 0.55.2. Rust 0.x minor versions break APIs. `polars-arrow` writes the `.dsgrid` Arrow IPC tables, so prove the emitted packages are byte-identical before and after: no package format change (schema 5 is final). Then run the ds-network, ds-cli and reporter suites and check the WASM size (`wasm-size`). Polars 2.0 is the Python release and does not apply.
 
 ## 2. Green `run` and release gates
 
