@@ -241,6 +241,111 @@ point (§11). Every computation must animate the toolbar's status button.
   point within the first seconds. Read `ds map profile view` repeatedly to
   time when the selection, the scene and the analysis settle.
 
+### 13. Print templates: wrong MV/Overview grouping, missing Front matter, transformer-only subject
+
+**Owner, 2026-10-07:**
+
+- MV Sheets → Network should list plan-and-profile A3 landscape only.
+- Overview Sheets should hold the maps.
+- A **Front matter** category is missing even though its pages are defined.
+  Front matter can select DS Grid MV model(s).
+- The catalogue and previews already work in the CLI. The Desktop should only
+  list, group and render them from that JSON, writing little beyond small pen
+  settings. Delete the TypeScript that does more than that.
+
+**Evidence** (read-only; data from installed `ds-canary report layout list
+--scope project --project wnmajona_edcl_rural_electrification_template`):
+
+- **Data.** The project holds 12 custom layouts.
+  - The two district maps are stored as `mv_model / network`:
+    - `nyamagabe-district-mv-a3-core-v0` (A3 portrait, rev `38eabe5e…`);
+    - `nyaruguru-district-mv-a3-landscape-core-v0` (A3 landscape, rev
+      `f4564fbd…`).
+
+    Both are inherited from `arjgpydw_nyam`. This is why they show under MV
+    Sheets → Network.
+  - `project-overview-a0/a3` are `project / overview`. `transformer-focus-a0`
+    and `a3-landscape-rwanda-project-lv` are `lv_transformer / network`.
+  - Seven layouts are unclassified. No plan-and-profile layout is among the 12.
+- **Grouping follows stored classification only.**
+  - `template_catalogue` groups by `classification` alone
+    (`src/printing/catalogue.rs:258-340`). Names and paper never classify
+    (`docs/printing.md:28-37`).
+  - Nothing restricts `mv_model / network` to an A3 landscape plan-and-profile
+    sheet. `set_classification` accepts any pair.
+- **Front matter is defined but never listed.**
+  - `Purpose` has four values: `lv_transformer`, `mv_model`, `project`,
+    `voltage_drop` (`catalogue.rs:14-19`). The front-matter roles (Cover,
+    Naming, SheetIndex, KeyMap, KeyPlan, Legend, GeneralNotes, LegendNotes,
+    Revisions) exist only as roles under one of those purposes
+    (`catalogue.rs:241-249`).
+  - The governed front-matter pages come from `report.standard.list` as
+    `kind: standard`. The catalogue drops every one of them:
+    `Some("standard") => continue` (`catalogue.rs:109`). The contract says
+    "Governed booklet documents retain their existing consumer"
+    (`docs/printing.md:71`).
+- **The preview subject is always an LV transformer.**
+  - A preview is "one transformer rendered" (`docs/printing.md:537`).
+  - `printing::preview::plan` refuses a non-transformer with
+    `print_preview_not_a_transformer` (`src/printing/preview.rs:150-160`).
+  - The Desktop picker lists only printable transformers
+    (`ds-web/src/lib/components/printing/PrintingSetup.svelte:246-254`). In
+    the owner's screenshot, an MV template previews against LV transformer
+    `agahehe`.
+  - No subject exists for a DS Grid MV model or a map extent.
+- **The Desktop does more than read.**
+  - It reads layouts and governed pages straight from ds-brain:
+    `/api/v1/printing` (`ds-web/src/lib/printing/shared.ts:153`) and
+    `/api/v1/printing/standard` (`ds-web/src/lib/printing/governed.ts:18`).
+  - It runs its own cache and read plan, then sends the rows through WASM
+    `template_catalogue` (`ds-web/src/lib/printing/catalogue.ts:25`).
+  - It orchestrates transformer previews in the 2,117-line
+    `PrintingSetup.svelte` (`:469-547`).
+  - No `ds report layout catalogue` (grouped JSON) command was found in
+    `ds-cli/docs/reference/report.md`. The CLI has `report.layout.list`,
+    `report.standard.list` and `report.layout.render`, plus `report.project.export
+    --preview-layout` for previews.
+
+**Needed** (one slice each; prove each slice through `ds` before the next):
+
+1. **Kernel: Front matter purpose.**
+   - Add `front_matter` to `Purpose`, labelled "Front matter", holding the
+     front-matter roles.
+   - Project the governed `kind: standard` pages under it instead of skipping
+     them.
+   - The change is additive. Check older readers against PRINCIPLES §2: no
+     breaking bump.
+2. **Kernel: subject follows purpose.**
+   - `lv_transformer` previews against one transformer.
+   - `mv_model` and `front_matter` preview against one or more DS Grid MV
+     models.
+   - `project` previews against a map or project extent.
+   - `preview::plan` takes the subject and refuses a mismatch with a keyed
+     reason. This replaces the transformer-only rule.
+3. **Kernel: MV Network admission.** `mv_model / network` admits only the
+   plan-and-profile A3 landscape sheet. `set_classification` refuses anything
+   else, and the catalogue flags stored mismatches.
+4. **CLI/MCP.** Add one grouped catalogue read and a subject-aware preview, so
+   the Desktop and agents read the same JSON.
+5. **Desktop.**
+   - The Print templates panel renders that JSON: groups, entries, subjects
+     and preview pages.
+   - Delete the replaced TypeScript: the direct ds-brain reads, the
+     catalogue cache and read plan, and the transformer-only subject logic.
+   - Keep pen-setting writes.
+6. **Data (seeding, not code).** Reclassify the two district maps in the
+   Rwanda Template to `project / overview` with `report.layout.edit`
+   `set_classification` and `report.layout.update`. The Template's seeding
+   does this (`SEEDING.md`).
+
+**Proof:**
+
+- `ds report layout list` and the new catalogue read show:
+  - the district maps under Overview;
+  - the front-matter pages under Front matter;
+  - only plan-and-profile A3 landscape under MV → Network.
+- An MV preview chooses a DS Grid MV model and never `agahehe`.
+
 ## Moved from OPEN.md and OPEN-X.md: related work, fix together (owner, 2026-10-07)
 
 These entries share code with the stabilization items above. Fix each group in
