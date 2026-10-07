@@ -84,7 +84,7 @@ pub static BUNDLE: &[Script] = &[
     ),
     script!(
         "adapters/pls-cadd/ds-desktop-lib.ps1",
-        "3cf02e2b5612a5abbd89f271c240b05618a0743ce52039fd6d05b5c7944bb792"
+        "a52498d3d1803bc44d0cb71c8cb18d384ee32cebbd111aec4c6db7ff27365995"
     ),
     script!(
         "adapters/pls-cadd/ds-desktop-qualify.ps1",
@@ -196,7 +196,7 @@ pub static BUNDLE: &[Script] = &[
     ),
     script!(
         "adapters/pls-cadd/pls-deliver-autosag.ps1",
-        "7fb94954c4b5d7389ebb82f738f8d07373b41905cc437f7468dd26d114a5f5e3"
+        "78bb6bd83ddc32b3562fa2e821311db7c60a19834b1539328ee69759d2f56ce1"
     ),
     script!(
         "adapters/pls-cadd/pls-dialog-capture.ps1",
@@ -224,7 +224,7 @@ pub static BUNDLE: &[Script] = &[
     ),
     script!(
         "adapters/pls-cadd/pls-dialog-watch.ps1",
-        "8f1e78bce6151927329e12e35b91d2e56dc2e7e764782b1a50b90014a3f47d1e"
+        "bc3be8fec8b72d6638e17d86ca1bbd489b1f6055889e60be1da2832e79f5abe2"
     ),
     script!(
         "adapters/pls-cadd/pls-dismiss-startup.ps1",

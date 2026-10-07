@@ -98,6 +98,20 @@ Assert ((ClickButton 202 999 'about') -eq 'acted') 'An unresponsive About is wai
 Assert ([DsWatch]::Commands -eq 3) 'An unresponsive dialog must not receive queued commands'
 Assert ((ClickButton 202 999 'another_catalogued_dialog') -eq 'acted' -and $clicks -eq 1) 'Other catalogued actions retain their existing first click'
 
+# Exercise the actual ready gate over delayed startup, a late modal and reset.
+Load-Function $watch 'Test-ReadyFrame'
+$UntilTitle = '^PLS-CADD - M1\.xyz(?: - |$)'; $ReadyQuietSeconds = 5
+$script:readySince = $null; $t = [DateTime]::Parse('2026-10-07T12:00:00Z').ToUniversalTime()
+Assert (-not (Test-ReadyFrame 'en=True' 'PLS-CADD' $false $t)) 'An enabled blank startup frame is not the named project'
+Assert (-not (Test-ReadyFrame 'en=True' 'PLS-CADD - M1.xyz - [Profile View]' $false $t.AddSeconds(2))) 'Project title alone does not prove startup settled'
+Assert (-not (Test-ReadyFrame 'en=False' 'PLS-CADD - M1.xyz - [Profile View]' $true $t.AddSeconds(4))) 'A late About modal resets the quiet interval'
+Assert (-not (Test-ReadyFrame 'en=True' 'PLS-CADD - M1.xyz - [Profile View]' $false $t.AddSeconds(6))) 'Ready restarts after the modal'
+Assert (-not (Test-ReadyFrame 'en=True' 'PLS-CADD - M1.xyz - [Profile View]' $false $t.AddSeconds(10))) 'An incomplete quiet interval is not ready'
+Assert (Test-ReadyFrame 'en=True' 'PLS-CADD - M1.xyz - [Profile View]' $false $t.AddSeconds(12)) 'The named project becomes ready after an uninterrupted interval'
+Assert (-not (Test-ReadyFrame '' '' $false $t.AddSeconds(13))) 'A missing frame resets readiness'
+$ReadyQuietSeconds = 0; $UntilTitle = ''
+Assert (Test-ReadyFrame 'en=True' 'PLS-CADD' $false $t.AddSeconds(14)) 'Existing zero-quiet watcher calls retain their behavior'
+
 $lib = Tree 'ds-desktop-lib.ps1'
 $libText = $lib.Extent.Text
 Assert ($libText.IndexOf('$w0 = Watch 300') -lt $libText.IndexOf('Unexpected PLS-CADD main-window title')) 'Startup catalogue must settle before frame title check'

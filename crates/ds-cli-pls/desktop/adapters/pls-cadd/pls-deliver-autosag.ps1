@@ -54,7 +54,7 @@ function Verdict([string]$path) {
         clearance_spans_ok    = Count $path '(\d+) spans without clearance violations'
     }
 }
-function Watch([int]$seconds) { & (Join-Path $here 'pls-dialog-watch.ps1') -ProcessId $script:procId -MainWindowHandle $script:frame -TimeoutSeconds $seconds -JournalPath (Join-Path $run 'watch-journal.jsonl') | ConvertFrom-Json }
+function Watch([int]$seconds, [string]$untilTitle = '', [int]$readyQuietSeconds = 0) { & (Join-Path $here 'pls-dialog-watch.ps1') -ProcessId $script:procId -MainWindowHandle $script:frame -TimeoutSeconds $seconds -UntilTitle $untilTitle -ReadyQuietSeconds $readyQuietSeconds -JournalPath (Join-Path $run 'watch-journal.jsonl') | ConvertFrom-Json }
 function Title { (Get-Process -Id $script:procId).MainWindowTitle }
 function Save([string]$what) {
     & (Join-Path $here 'pls-command.ps1') -WindowHandle $script:frame -CommandId 40003 -Post | Out-Null

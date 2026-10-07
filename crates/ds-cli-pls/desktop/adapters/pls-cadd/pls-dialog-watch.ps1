@@ -3,6 +3,7 @@ param(
     [Parameter(Mandatory = $true)][long] $MainWindowHandle,
     [int] $TimeoutSeconds = 120,
     [string] $UntilTitle = '',
+    [ValidateRange(0, 30)][int] $ReadyQuietSeconds = 0,
     [string] $JournalPath = '',
     [string] $CatalogPath = (Join-Path $PSScriptRoot 'pls-dialog-catalog.psd1'),
     [switch] $Once
@@ -16,6 +17,7 @@ param(
 # (and -UntilTitle, if given, matches the frame title), or on 'stop'/'unknown',
 # or at the timeout. -Once does a single pass.
 $ErrorActionPreference = 'Stop'
+if ($Once -and $ReadyQuietSeconds -gt 0) { throw 'A single dialog pass cannot prove a ready quiet interval' }
 $here = $PSScriptRoot
 Import-Module (Join-Path $here 'pls-window-classification.psm1') -Force
 $catalog = Import-PowerShellDataFile $CatalogPath
@@ -86,6 +88,17 @@ function ClickButton([long]$dialog, [long]$button, [string]$name) {
     return 'acted'
 }
 
+# Startup can expose an enabled blank frame before the project and About dialog.
+# Require an uninterrupted ready interval only where a workflow requests one.
+function Test-ReadyFrame([string] $FrameRow, [string] $FrameTitle, [bool] $Blocking, [DateTime] $Now) {
+    if ($Blocking -or $FrameRow -notmatch 'en=True' -or (($UntilTitle -ne '') -and ($FrameTitle -notmatch $UntilTitle))) {
+        $script:readySince = $null
+        return $false
+    }
+    if ($null -eq $script:readySince) { $script:readySince = $Now }
+    return (($Now - $script:readySince).TotalSeconds -ge $ReadyQuietSeconds)
+}
+$script:readySince = $null
 $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
 $outcome = 'timeout'
 do {
@@ -138,7 +151,10 @@ do {
     }
     if ($outcome -in @('unknown', 'stop', 'flow') -or $actionFailed) { break }
     $frameTitle = if ($frame) { Title $frame } else { '' }
-    if (-not $blocking -and $frame -match 'en=True' -and (($UntilTitle -eq '') -or ($frameTitle -match $UntilTitle))) { $outcome = 'ready'; break }
+    if (Test-ReadyFrame ([string]$frame) $frameTitle $blocking ([DateTime]::UtcNow)) {
+        if ($ReadyQuietSeconds -gt 0) { Journal @{ event = 'ready_quiet'; seconds = $ReadyQuietSeconds; frame_title = $frameTitle } }
+        $outcome = 'ready'; break
+    }
     if ($Once) { $outcome = if ($blocking) { 'acted' } else { 'ready' }; break }
     Start-Sleep -Seconds 2
 } while ([DateTime]::UtcNow -lt $deadline)

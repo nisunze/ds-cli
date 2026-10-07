@@ -117,10 +117,11 @@ function Open-DsProject([string] $ProjectPath) {
     Log "opened pid=$($script:procId) hwnd=$($script:frame)"
     # The catalogue handles About (bounded WM_COMMAND) before any enabled-frame
     # requirement in AutoSag/report capture. An unknown prompt stops here.
-    $w0 = Watch 300
+    $leaf = [System.IO.Path]::GetFileName($ProjectPath)
+    $projectTitle = '^PLS-CADD - (?:.*[\\/])?' + [regex]::Escape($leaf) + '(?: - |$)'
+    $w0 = Watch 300 $projectTitle 5
     if ($w0.outcome -ne 'ready') { throw "PLS-CADD not ready after open (project): $($w0.outcome)" }
     if ((Title) -notmatch '^PLS-CADD(?:\s|$)') { throw "Unexpected PLS-CADD main-window title: '$(Title)'" }
-    $leaf = [System.IO.Path]::GetFileName($ProjectPath)
     if ((Title) -notmatch [regex]::Escape($leaf)) { throw "Project $leaf did not open in the PLS-CADD frame: $(Title)" }
     $launch
 }
