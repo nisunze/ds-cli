@@ -33,7 +33,7 @@ pub struct DisplayRow {
 }
 /// The legend's semantic kinds, serialized snake_case. Typed rather than spelled so
 /// template vocabulary never appears as a production string literal.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum LegendKind {
     Strain,
@@ -47,6 +47,13 @@ pub enum LegendKind {
     /// One drawn cable, by its exact engineering name.
     Cable,
 }
+/// Symbol style targets share the legend's canonical wire vocabulary.
+pub const SYMBOL_STYLE_KINDS: [LegendKind; 4] = [
+    LegendKind::Strain,
+    LegendKind::Suspension,
+    LegendKind::Junction,
+    LegendKind::Unknown,
+];
 /// Semantic symbols use distinct governed Profile pens. Hosts never choose ink.
 #[derive(Debug, Clone, Serialize)]
 pub struct LegendEntry {
@@ -164,14 +171,15 @@ pub fn styled_legend(
 ) -> Vec<LegendEntry> {
     let mut entries = legend_with_cables(rows, cables);
     for entry in &mut entries {
-        let role = match entry.kind {
-            LegendKind::Strain => "strain",
-            LegendKind::Suspension => "suspension",
-            LegendKind::Junction => "junction",
-            LegendKind::Unknown => "unknown",
-            _ => continue,
-        };
-        crate::profile_style::apply(state, role, &mut entry.encoding);
+        if !SYMBOL_STYLE_KINDS.contains(&entry.kind) {
+            continue;
+        }
+        let role = serde_json::to_value(entry.kind).expect("canonical legend kind");
+        crate::profile_style::apply(
+            state,
+            role.as_str().expect("legend kind serializes as a string"),
+            &mut entry.encoding,
+        );
         entry.encoding.font = format!("{}px monospace", (entry.encoding.width_px * 4.0).max(8.0));
         if let Some(symbol) = &entry.encoding.symbol {
             entry.glyph = symbol.clone();

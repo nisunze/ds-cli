@@ -1,7 +1,7 @@
 //! Transient Profile appearance. Governed pens remain the base; overrides are
 //! scoped to the held native view and never change engineering or global styles.
 use crate::profile_display::{DisplayOption, DisplayState};
-use crate::profile_encoding::{DisplayRow, Encoding};
+use crate::profile_encoding::{DisplayRow, Encoding, LegendKind, SYMBOL_STYLE_KINDS};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
@@ -29,7 +29,8 @@ pub struct Style {
 impl Style {
     pub fn validate(&self, target: &str) -> Result<(), String> {
         let option = serde_json::from_value::<DisplayOption>(json!(target)).is_ok();
-        let symbol = matches!(target, "strain" | "suspension" | "junction" | "unknown");
+        let symbol = serde_json::from_value::<LegendKind>(json!(target))
+            .is_ok_and(|kind| SYMBOL_STYLE_KINDS.contains(&kind));
         if !option && !symbol
             || self.symbol.is_some()
                 && !symbol
@@ -101,7 +102,7 @@ pub fn controls(state: &DisplayState, rows: &[DisplayRow]) -> Value {
         .iter()
         .map(|row| json!({"target":row.option,"label_key":row.label_key}))
         .chain(
-            ["strain", "suspension", "junction", "unknown"]
+            SYMBOL_STYLE_KINDS
                 .into_iter()
                 .map(|target| json!({"target":target})),
         )
@@ -113,6 +114,46 @@ pub fn controls(state: &DisplayState, rows: &[DisplayRow]) -> Value {
 mod tests {
     use super::*;
     use crate::profile_display::DisplayPatch;
+    #[test]
+    fn semantic_style_targets_retain_their_wire_keys_and_legend_effects() {
+        let targets = ["strain", "suspension", "junction", "unknown"];
+        let projected = controls(&DisplayState::default(), &[]);
+        assert_eq!(
+            projected["targets"],
+            json!(targets.map(|target| json!({"target":target})))
+        );
+        let styles = targets
+            .into_iter()
+            .map(|target| {
+                (
+                    target.to_owned(),
+                    json!({"symbol":"◆", "color":"#123456", "width_mm":0.8}),
+                )
+            })
+            .collect::<serde_json::Map<_, _>>();
+        let state = DisplayState::default()
+            .patched(&serde_json::from_value(json!({"styles":styles})).unwrap())
+            .unwrap();
+        let document =
+            serde_json::from_str(include_str!("../tests/fixtures/profile-display-style.json"))
+                .unwrap();
+        let rows = crate::profile_encoding::resolve(&state, &document).unwrap();
+        let legend = crate::profile_encoding::styled_legend(&state, &rows, &[]);
+        for kind in SYMBOL_STYLE_KINDS {
+            let entry = legend.iter().find(|entry| entry.kind == kind).unwrap();
+            assert_eq!(entry.glyph, "◆");
+            assert_eq!(entry.encoding.color, "#123456");
+            assert_eq!(entry.encoding.width_px, 0.8 * 96.0 / 25.4);
+        }
+        for target in ["ground", "wire", "cable", "embedded"] {
+            assert!(Style {
+                symbol: Some("◆".into()),
+                ..Default::default()
+            }
+            .validate(target)
+            .is_err());
+        }
+    }
     #[test]
     fn styles_merge_reset_and_refuse_atomically() {
         let state = DisplayState::default();
