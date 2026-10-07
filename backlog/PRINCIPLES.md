@@ -9,6 +9,31 @@ The standing owner rulings for everyone who works the backlog. [OPEN.md](OPEN.md
 - Anything can come back. A user, a `ds` interaction, a feedback report or a discovered bug that shows the problem again puts a new entry in, stating what is broken now. That is normal, not a failure.
 - Write each entry as the current unmet condition: what is observed broken or absent, and what would show it works.
 
+**What not to do — claims still in the backlog (found 2026-10-07).** These entries claim fixes, landings or passed proofs. The next coding agent that reaches one verifies it against current `run` and installed `ds`: if the problem is gone, delete the entry; if not, rewrite it as the current unmet condition. Then delete its row here. When the table is empty, delete the table.
+
+| File | Entry | The claim |
+| --- | --- | --- |
+| OPEN.md §16 | Vector runner | "The kernel cause is fixed (`535a50a`)" |
+| OPEN.md §23 | One Rust communication authority | "The transfer protocol landed 2026-09-10" |
+| SEEDING.md §1 | Scoped backlog read deployment | "the already-landed caller-authority fix" |
+| SEEDING.md §1 | Transformer tags in tiles | "The source changes are recorded on `run`" |
+| SEEDING.md §6 | Nyamagabe dense-neighbor LV delivery | "install the already-landed angle-symbol/neighbour fixes" |
+| SEEDING.md §6 | Northern Hub LV delivery | "install the already-landed empty-table fix" |
+| SEEDING.md §8 | Canary store and Northern Hub reconciliation | "install the landed reclaim fix" |
+| SEEDING.md §11 | Stage-two qualification gate | "The oracle correction is already on `run`" |
+| SEEDING.md §12 | Saved scaffold trust states | "Install the landed native preview/WASM correction" |
+| SEEDING.md §13 | Installed spotting progress and Windows budget | "install the landed stage/pass/alignment progress" |
+| SEEDING.md §14 | Large-model edit lifecycle acceptance | "Source guards and hot-reload tests already exist" |
+| SEEDING.md §14 | Paired selection acceptance | "Deploy the landed `79ceb421` lasso fix" |
+| SEEDING.md §14 | Paired geometry authoring acceptance | "proofs are retained in their receipts" |
+| SEEDING.md §16 | Cache catalogue installation and Desktop acceptance | "Installed stable already reports all 44 held rows ready" |
+| SEEDING.md §16 | Screen style and Windows replay | "Install the landed PNG-stream read retry" |
+| SEEDING.md §17 | Authenticated Server and Dashboard acceptance | "Published Web source/asset checks already passed" |
+| SEEDING.md §17 | PM events and ownership acceptance | "Backend notices and project-event outbox are already deployed" |
+| SEEDING.md §17 | Remaining Assets formats | "… already have receipts" |
+| SEEDING.md §21 | Installed PLS readiness | "install the landed provider-metadata/INI string projection" |
+| SEEDING.md §21 | Installed native PLS controls | "verify the landed guarded attach" |
+
 ## 1. The backlog split (owner, 2026-10-07)
 
 - **OPEN.md** — unfinished code that an agent can implement and prove without further owner input: product defects, missing native CLI/MCP capabilities, UI bindings, test repairs and integration.
