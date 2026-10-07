@@ -13,6 +13,8 @@ use serde::Serialize;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct Primitive {
+    #[serde(skip)]
+    pub structure_id: Option<String>,
     pub option: O,
     pub encoding: Encoding,
     pub points: Vec<ProfileAtlasPoint>,
@@ -50,6 +52,7 @@ pub fn project(
                 None => (vec![], "◌".into(), pen(O::Embedded)),
             };
             out.push(Primitive {
+                structure_id: Some(structure.entity_id.to_string()),
                 option: O::OffsetEmbedmentHeight,
                 encoding,
                 points,
@@ -68,6 +71,7 @@ pub fn project(
                 let mut foot = terrain.point;
                 foot.scene_y = scene.plot_bounds.max_y;
                 out.push(Primitive {
+                    structure_id: None,
                     option: O::TerrainOrdinates,
                     encoding: pen(O::TerrainOrdinates),
                     points: vec![terrain.point, foot],
@@ -108,6 +112,7 @@ pub fn project(
                     point.scene_y = (a.unwrap_or(point.scene_y) + b.unwrap_or(point.scene_y)) / 2.0;
                 }
                 out.push(Primitive {
+                    structure_id: None,
                     option: O::SpanDistances,
                     encoding: pen(O::SpanDistances),
                     points: vec![],
@@ -127,6 +132,7 @@ pub fn project(
             if let Some(label) = &span.span_label {
                 if seen.insert(span.section_id.clone()) {
                     out.push(Primitive {
+                        structure_id: None,
                         option: O::SectionLabels,
                         encoding: pen(O::SectionLabels),
                         points: vec![],
@@ -189,6 +195,7 @@ pub fn project(
                         continue;
                     }
                     out.push(Primitive {
+                        structure_id: Some(structure.entity_id.to_string()),
                         option,
                         encoding: pen(option),
                         points: vec![],
@@ -208,6 +215,7 @@ pub fn project(
                         .map(|value| format!("Dev {value:+.1}°"))
                         .unwrap_or_else(|| "Dev unresolved".into());
                     out.push(Primitive {
+                        structure_id: Some(structure.entity_id.to_string()),
                         option: O::RouteDeviation,
                         encoding: pen(O::RouteDeviation),
                         points: vec![],

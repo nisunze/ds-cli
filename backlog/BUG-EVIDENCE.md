@@ -408,6 +408,12 @@ template edits, competing builds or model mutations.
 
 ## Focused review: atomic Profile geometry
 
+Read-only review request for native structure-presentation deltas and Web/Desktop
+admission: check descriptions, attachment glyphs, deletion and shared supports;
+unchanged terrain must not travel with a structure edit. Check native worker and
+popout base/computed/axis fences, camera retention and old engineering display.
+Maximum two concrete findings; no source changes or competing builds.
+
 Read-only review request for the retained-axis native delta slice: trace authored
 geometry and calculated evidence as separate identities; check repeated edits,
 deleted attachments/sections, stale delta admission, navigation and independent

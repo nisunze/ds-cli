@@ -87,6 +87,14 @@ measurements exclude host transport and worker installation and do not constitut
 release-performance acceptance. Native surface work separately counts rebuilt
 bands and rebuilt ground, distinguishing reused terrain from placement work.
 
+Native display projection partitions `authored_structures` by canonical support
+identity; static `symbols` and `primitives` retain terrain and calculated labels.
+Observation returns only changed support groups in `authored_display_delta`, with
+null tombstones for deletion. Renderers apply these native replacements after
+worker geometry admission. Canonical staking comments and structure descriptions
+are distinct fields; changing a description does not invent a staking comment.
+`authored_display_delta_bytes` measures this additional transfer independently.
+
 Calculation is intentional only (owner, 2026-10-07): edits, idle time, opening
 Issues, leaving editing and Save never schedule it. Report visibility remains
 independent of this policy; `analysis_state:due` is informational. Explicit

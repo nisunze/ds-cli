@@ -6,6 +6,7 @@ use ds_command_kernel::profile_encoding::{
     clearance_violation_encoding, resolve, review_box_ink, review_status_colors, DisplayRow,
     Encoding,
 };
+mod authored_display;
 mod command_view;
 mod decorations;
 mod label_lanes;
@@ -79,6 +80,7 @@ struct HeldView {
     demand_cache: ds_grid_engine::StructureUsageScreeningCache,
     review: ds_grid_engine::profile_engineering::ProfileReviewView,
     authored: Option<ds_grid_engine::profile_atlas::ProfileAuthoredView>,
+    authored_display: authored_display::Groups,
     options: ProfileAtlasOptions,
     rows: Vec<DisplayRow>,
     label_policy: ds_grid_model::StructureLabelPolicy,
@@ -93,6 +95,7 @@ pub struct Projection {
     pub groups: Vec<ds_command_kernel::profile_controls::ControlGroup>,
     pub style_controls: Value,
     pub symbols: Vec<symbols::Symbol>,
+    pub authored_structures: authored_display::Groups,
     pub selection_families: Vec<ds_command_kernel::grid_selection_controls::Family>,
     pub legend: Vec<ds_command_kernel::profile_encoding::LegendEntry>,
     /// One pen per drawn cable engineering name; hosts paint each span with its cable pen.
@@ -439,6 +442,7 @@ impl Runtime {
                 demand_cache,
                 review,
                 authored,
+                authored_display: Default::default(),
                 options: scene_options.clone(),
                 rows: rows.clone(),
                 label_policy: label_policy.clone(),
@@ -456,9 +460,16 @@ impl Runtime {
             &rows,
             &state.cable_colors,
         );
-        let base_axis = self.held[&request.scope].review.base_axis_digest().unwrap();
+        let base_axis = self.held[&request.scope]
+            .review
+            .base_axis_digest()
+            .unwrap()
+            .to_string();
         let legend = ds_command_kernel::profile_encoding::styled_legend(&state, &rows, &cables);
         let symbols = symbols::project(&scene, &state, &rows, &legend);
+        let (authored_structures, symbols, primitives) =
+            authored_display::partition(symbols, primitives, &scene);
+        self.held.get_mut(&request.scope).unwrap().authored_display = authored_structures.clone();
         let mut scene = serde_json::to_value(scene).map_err(|error| error.to_string())?;
         scene["case_base_axis_digest"] = json!(base_axis);
         scene["display"] = serde_json::to_value(Projection {
@@ -466,6 +477,7 @@ impl Runtime {
             groups: ds_command_kernel::profile_controls::groups(&state, &rows, &cables),
             style_controls: ds_command_kernel::profile_style::controls(&state, &rows),
             symbols,
+            authored_structures,
             selection_families: ds_command_kernel::grid_selection_controls::profile_families(
                 &state,
             ),
@@ -679,6 +691,24 @@ mod transactional_projection_tests {
     fn two_band_request() -> (ProjectRequest, GridSession) {
         use ds_grid_model::{AlignmentId, RouteEdgeId};
         let mut snapshot = common::fixture();
+        for (index, (x_m, y_m, z_m)) in [(0., 0., 100.), (300., 0., 102.), (600., 40., 98.)]
+            .into_iter()
+            .enumerate()
+        {
+            snapshot
+                .terrain_points
+                .push(ds_grid_model::TerrainPointRow {
+                    id: ds_grid_model::TerrainPointId::new(format!("profile-ground-{index}"))
+                        .unwrap(),
+                    x_m,
+                    y_m,
+                    z_m,
+                    feature_class: "ground".into(),
+                    description: None,
+                    required_clearance_m: None,
+                    source_id: None,
+                });
+        }
         let mut second = snapshot.alignments[0].clone();
         second.id = AlignmentId::new("independent-band").unwrap();
         second.label = "Independent band".into();
@@ -765,6 +795,42 @@ mod transactional_projection_tests {
         refresh_surface(&mut runtime, &input, &worker, 1, 1);
     }
     #[test]
+    fn observed_deletion_removes_native_structure_presentation_without_terrain() {
+        let (input, mut worker) = two_band_request();
+        let mut runtime = Runtime::default();
+        let initial = runtime.execute(input.clone()).unwrap();
+        assert!(initial["scene"]["display"]["authored_structures"]["str-2"].is_object());
+        worker
+            .apply_command(ds_grid_engine::CommandEnvelope::new(
+                "delete",
+                worker.current_revision().revision_id.clone(),
+                ds_grid_engine::GridCommand::DeleteProfileEntities {
+                    ids: vec![EntityId::new("str-2").unwrap()],
+                },
+            ))
+            .unwrap();
+        let result = runtime
+            .execute(Request::Observe(Box::new(refresh(
+                &runtime,
+                &input,
+                &input.expected_revision,
+                &worker,
+            ))))
+            .unwrap();
+        assert_eq!(result["authored_display_delta"], json!({"str-2": null}));
+        assert_eq!(result["authored_delta"]["work"]["computed_ground"], 0);
+        assert!(result["scene"].is_null());
+        assert_eq!(
+            runtime.held[&input.scope]
+                .review
+                .base_scene()
+                .unwrap()
+                .model_revision
+                .as_str(),
+            input.expected_revision
+        );
+    }
+    #[test]
     fn observe_accumulates_edits_without_projection_and_refresh_reuses_unchanged_alignment() {
         let (input, mut worker) = two_band_request();
         let mut runtime = Runtime::default();
@@ -798,6 +864,13 @@ mod transactional_projection_tests {
                 .path
                 .iter()
                 .any(|part| part == "ground" || part == "terrain_points")));
+            // Description is an authored Properties fact, separate from the
+            // canonical staking comments painted as labels. Its geometry row
+            // changes without duplicating unchanged glyph/label groups.
+            assert!(result["authored_display_delta"]
+                .as_object()
+                .unwrap()
+                .is_empty());
             assert_eq!(result["metrics"]["applied_entries"], 1);
             assert!(result["metrics"]["authored_delta_bytes"].as_u64().unwrap() < 64 * 1024);
             assert_eq!(

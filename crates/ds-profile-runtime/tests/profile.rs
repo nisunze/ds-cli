@@ -273,12 +273,23 @@ fn native_structure_labels_keep_the_vertical_profile_position() {
     let option = |p: &Value, name: &str| p["option"].as_str() == Some(name);
     // Owner, 2026-10-05: names and comments are visible alongside numbers.
     let opened = runtime.execute(packet.clone()).unwrap();
-    let opened = opened["scene"]["display"]["primitives"].as_array().unwrap();
+    let opened = opened["scene"]["display"]["authored_structures"]
+        .as_object()
+        .unwrap()
+        .values()
+        .flat_map(|group| group["primitives"].as_array().unwrap())
+        .collect::<Vec<_>>();
     assert!(opened.iter().any(|p| option(p, "structure_numbers")));
     assert!(opened.iter().any(|p| option(p, "structure_names")));
     packet.patch = serde_json::from_str(r#"{"visibility":{"structure_names":true}}"#).unwrap();
     let result = runtime.execute(packet).unwrap();
-    let primitives = result["scene"]["display"]["primitives"].as_array().unwrap();
+    let primitives = result["scene"]["display"]["authored_structures"]
+        .as_object()
+        .unwrap()
+        .values()
+        .flat_map(|group| group["primitives"].as_array().unwrap())
+        .cloned()
+        .collect::<Vec<_>>();
     assert!(primitives.iter().any(|p| option(p, "structure_names")));
     let labels = primitives
         .iter()
