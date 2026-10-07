@@ -400,3 +400,17 @@ visible; release ownership before destruction and make replacement/teardown
 single-owner operations. Prove constructor refusal followed by teardown and
 ordinary replacement/unmount without a second free. Claude owns template
 previewing; Codex leaves this component untouched to avoid overlapping edits.
+
+## Bound the remaining live Profile refresh cost before another optimization
+
+Structure 40's idle 190→255 edit still spends 8,352 ms in Profile refresh;
+transaction/session refresh is 512 ms. Exact receipt is
+`ds-cli/out/stabilization/profile-controls/retype40-native-envelope.json`.
+The current CLI receipt aggregates native projection, transport and worker
+installation, so it cannot identify their individual costs. Investigate native
+case preparation/election, marker/layout assembly and response/installation
+sizes at the exact model/history pin. Return at most two measured targets;
+retain affected-section end boundaries, stale-result refusals and scope/cache
+isolation. No template edits, competing builds or model mutations. Expose
+bounded native phase/work evidence through CLI before attributing latency to a
+particular remaining stage or claiming the release acceptance target.
