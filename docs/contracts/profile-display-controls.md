@@ -97,3 +97,13 @@ and its issue screen. Applied-load and whole-support report evidence stays
 identical to uncached native analysis; the issue screen reuses those section
 cases instead of solving them again. Clearance remains a separate design-case
 calculation. This change alone is not scoped-band or release-latency acceptance.
+
+Native Profile scopes are leases. The runtime admits up to eight and refuses a
+new scope with `profile_replay_capacity` before seed/package work if all slots
+are held. It never evicts another admitted client by UUID ordering or recency.
+`release` takes exact `scope` and `model_id`, refuses a mismatched held model,
+and idempotently drops its session, retained source assets, display and analysis
+state. It never changes the worker's authored session or Save metadata. Hosts
+release on replacement/disposal and may initialize a fresh read-only seed once
+if a restarted runtime reports `profile_replay_base_unavailable`; that recovery
+is not a per-edit package fallback.

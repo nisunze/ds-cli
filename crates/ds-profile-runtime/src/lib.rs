@@ -18,7 +18,7 @@ use serde_json::{json, Value};
 use std::collections::BTreeMap;
 use std::sync::Arc;
 mod replay;
-pub use replay::{InitializeRequest, RefreshRequest};
+pub use replay::{InitializeRequest, RefreshRequest, ReleaseRequest};
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -37,6 +37,7 @@ pub enum Request {
     Project(Box<ProjectRequest>),
     Initialize(Box<InitializeRequest>),
     Refresh(Box<RefreshRequest>),
+    Release(ReleaseRequest),
     CaseLayer(CaseRequest),
     Layout(ds_command_kernel::profile_layout::Request),
     SelectionControls(ds_command_kernel::grid_selection_controls::Request),
@@ -109,6 +110,7 @@ impl Runtime {
             Request::Project(request) => self.project(*request),
             Request::Initialize(request) => self.initialize(*request),
             Request::Refresh(request) => self.refresh(*request),
+            Request::Release(request) => self.release(request),
             Request::CaseLayer(request) => self.case_layer(request),
             Request::Layout(request) => {
                 Ok(json!(ds_command_kernel::profile_layout::resolve(request)?))
@@ -238,6 +240,7 @@ impl Runtime {
         {
             return Err("invalid_profile_view: request exceeds native bounds".into());
         }
+        self.ensure_scope_available(&request.scope)?;
         let (package, _) = ds_grid_exchange::dsgrid::ingest(&request.package_bytes)
             .map_err(|error| format!("profile_package_invalid: {error}"))?;
         let session = ds_grid_exchange::linked_models::open_session(&package);
@@ -255,6 +258,7 @@ impl Runtime {
         source: HeldSource,
         mut demand_cache: ds_grid_engine::StructureUsageScreeningCache,
     ) -> Result<Value, String> {
+        self.ensure_scope_available(&request.scope)?;
         let model_id = &source.model_id;
         let history = session.history_state();
         let revision = session.current_revision();
@@ -463,19 +467,16 @@ impl Runtime {
             json!({ "model_id":model_id, "model_revision":request.expected_revision, "history":history, "retained_asset_count":source.assets.len(), "scene": scene, "analysis": analysis, "display_state":state, "projection_unavailable":null, "command_view":command_view, "ran": request.analyze }),
         )
     }
+    fn ensure_scope_available(&self, scope: &str) -> Result<(), String> {
+        // Every admitted scope is leased until explicit release. UUID ordering
+        // and recency cannot establish that another client's session is unused.
+        if !self.views.contains_key(scope) && self.views.len() >= 8 {
+            return Err("profile_replay_capacity: release an unused Profile scope before initializing another".into());
+        }
+        Ok(())
+    }
     fn commit_view(&mut self, scope: &str, state: DisplayState) {
         self.views.insert(scope.to_owned(), state);
-        while self.views.len() > 8 {
-            let key = self
-                .views
-                .keys()
-                .find(|key| key.as_str() != scope)
-                .unwrap()
-                .clone();
-            self.views.remove(&key);
-            self.analyses.remove(&key);
-            self.held.remove(&key);
-        }
     }
 }
 
@@ -838,6 +839,108 @@ mod transactional_projection_tests {
             .session
             .redo()
             .is_err());
+    }
+    #[test]
+    fn scope_capacity_preserves_live_sessions_and_release_frees_exact_assets() {
+        let input = request();
+        let worker = GridSession::open(common::fixture());
+        let seed = ds_grid_exchange::profile_session::ProfileSessionSeed::capture(
+            &worker,
+            EntityId::new("profile-test").unwrap(),
+            Default::default(),
+            &[ds_grid_exchange::AssetBytes {
+                invariant_leaf: "retained.def".into(),
+                bytes: b"native retained asset".to_vec(),
+            }],
+        );
+        let initialize = |scope: &str| InitializeRequest {
+            scope: scope.into(),
+            seed: seed.clone(),
+            options: input.options.clone(),
+            style_document: input.style_document.clone(),
+            patch: Default::default(),
+            analyze: true,
+        };
+        let mut runtime = Runtime::default();
+        runtime.execute(initialize("a-live")).unwrap();
+        let weak = Arc::downgrade(&runtime.held["a-live"].source.assets);
+        for i in 0..7 {
+            runtime.execute(initialize(&format!("other-{i}"))).unwrap();
+        }
+        for i in 0..3 {
+            assert!(runtime
+                .execute(initialize(&format!("refused-{i}")))
+                .unwrap_err()
+                .starts_with("profile_replay_capacity:"));
+            let mut current = input.clone();
+            current.scope = "a-live".into();
+            runtime
+                .execute(refresh(
+                    &runtime,
+                    &current,
+                    &input.expected_revision,
+                    &worker,
+                ))
+                .unwrap();
+        }
+        assert_eq!(runtime.held.len(), 8);
+        assert_eq!(runtime.views.len(), 8);
+        assert_eq!(runtime.analyses.len(), 8);
+        assert!(runtime
+            .execute(ReleaseRequest {
+                scope: "a-live".into(),
+                model_id: "different-model".into()
+            })
+            .unwrap_err()
+            .starts_with("profile_replay_model_mismatch:"));
+        assert!(weak.upgrade().is_some());
+        let released = runtime
+            .execute(
+                serde_json::from_value::<Request>(json!({
+                    "operation":"release", "scope":"a-live", "model_id":"profile-test",
+                }))
+                .unwrap(),
+            )
+            .unwrap();
+        assert_eq!(released["released"], true);
+        assert!(
+            weak.upgrade().is_none(),
+            "release drops the native retained source bytes"
+        );
+        assert!(!runtime.held.contains_key("a-live"));
+        assert!(!runtime.views.contains_key("a-live"));
+        assert!(!runtime.analyses.contains_key("a-live"));
+        assert_eq!(
+            runtime
+                .execute(ReleaseRequest {
+                    scope: "a-live".into(),
+                    model_id: "profile-test".into()
+                })
+                .unwrap()["released"],
+            false
+        );
+        let mut current = input.clone();
+        current.scope = "a-live".into();
+        let stale = RefreshRequest {
+            scope: current.scope.clone(),
+            model_id: "profile-test".into(),
+            base_revision: worker.current_revision().revision_id.clone(),
+            base_history: worker.history_state(),
+            expected_revision: worker.current_revision().revision_id.clone(),
+            target_history: worker.history_state(),
+            entries: vec![],
+            options: current.options.clone(),
+            style_document: current.style_document.clone(),
+            patch: Default::default(),
+            analyze: false,
+        };
+        assert!(runtime
+            .execute(stale)
+            .unwrap_err()
+            .starts_with("profile_replay_base_unavailable:"));
+        runtime.execute(initialize("replacement-slot")).unwrap();
+        assert!(runtime.held.contains_key("other-0"));
+        assert_eq!(runtime.held.len(), 8);
     }
     #[test]
     fn refresh_carries_demand_cache_through_native_receipts_but_not_navigation() {

@@ -17,6 +17,18 @@ impl From<InitializeRequest> for Request {
     }
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ReleaseRequest {
+    pub scope: String,
+    pub model_id: String,
+}
+impl From<ReleaseRequest> for Request {
+    fn from(value: ReleaseRequest) -> Self {
+        Self::Release(value)
+    }
+}
+
 /// A model-bound, head-fenced refresh. Entries include the worker's redo tail;
 /// target_history pins its exact cursor. Empty entries restore the opened state.
 /// Native receipts alone advance disposable demand caches. Exact entry identity
@@ -43,6 +55,22 @@ impl From<RefreshRequest> for Request {
 }
 
 impl Runtime {
+    pub(super) fn release(&mut self, request: ReleaseRequest) -> Result<Value, String> {
+        if request.scope.is_empty() || request.scope.len() > 1024 || request.model_id.is_empty() {
+            return Err("invalid_profile_view: invalid release identity".into());
+        }
+        if self
+            .held
+            .get(&request.scope)
+            .is_some_and(|held| held.source.model_id != request.model_id)
+        {
+            return Err("profile_replay_model_mismatch: release belongs to another model".into());
+        }
+        let released = self.views.remove(&request.scope).is_some();
+        self.held.remove(&request.scope);
+        self.analyses.remove(&request.scope);
+        Ok(json!({"scope":request.scope, "model_id":request.model_id, "released":released}))
+    }
     pub(super) fn initialize(&mut self, request: InitializeRequest) -> Result<Value, String> {
         if request.scope.is_empty() || request.scope.len() > 1024 {
             return Err("invalid_profile_view: invalid initialization scope".into());
@@ -52,6 +80,7 @@ impl Runtime {
                 "profile_replay_scope_initialized: use a fresh scope for initialization".into(),
             );
         }
+        self.ensure_scope_available(&request.scope)?;
         let initialized = request.seed.open()?;
         let project = ProjectRequest {
             scope: request.scope,
