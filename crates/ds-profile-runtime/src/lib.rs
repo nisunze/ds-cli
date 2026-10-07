@@ -3,8 +3,8 @@
 //! neither refresh nor history navigation writes or packs a package.
 use ds_command_kernel::profile_display::{DisplayPatch, DisplayState};
 use ds_command_kernel::profile_encoding::{
-    clearance_violation_encoding, resolve, review_box_ink, review_status_colors, DisplayRow,
-    Encoding,
+    DisplayRow, Encoding, clearance_violation_encoding, resolve, review_box_ink,
+    review_status_colors,
 };
 mod authored_display;
 mod command_view;
@@ -15,11 +15,13 @@ use ds_grid_engine::{GridSession, ProfileAtlasOptions};
 mod analysis;
 pub use analysis::analyze;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::BTreeMap;
 use std::sync::Arc;
 mod replay;
 pub use replay::{InitializeRequest, RefreshRequest, ReleaseRequest};
+mod publication;
+pub use publication::{ConfirmPublicationRequest, DiscardPublicationRequest, PublicationPin};
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -42,6 +44,8 @@ pub enum Request {
     Observe(Box<RefreshRequest>),
     /// Presentation changes may reuse admitted results but cannot calculate.
     Present(Box<RefreshRequest>),
+    ConfirmPublication(ConfirmPublicationRequest),
+    DiscardPublication(DiscardPublicationRequest),
     Release(ReleaseRequest),
     CaseLayer(CaseRequest),
     Layout(ds_command_kernel::profile_layout::Request),
@@ -74,12 +78,13 @@ struct HeldSource {
     presentation: ds_grid_model::GridPresentationPolicy,
     assets: Arc<Vec<ds_grid_exchange::AssetBytes>>,
 }
+#[derive(Clone)]
 struct HeldView {
     session: GridSession,
     source: HeldSource,
     demand_cache: ds_grid_engine::StructureUsageScreeningCache,
-    review: ds_grid_engine::profile_engineering::ProfileReviewView,
-    authored: Option<ds_grid_engine::profile_atlas::ProfileAuthoredView>,
+    review: Arc<ds_grid_engine::profile_engineering::ProfileReviewView>,
+    authored: Option<Arc<ds_grid_engine::profile_atlas::ProfileAuthoredView>>,
     authored_display: authored_display::Groups,
     options: ProfileAtlasOptions,
     rows: Vec<DisplayRow>,
@@ -113,15 +118,21 @@ pub struct Runtime {
     views: BTreeMap<String, DisplayState>,
     analyses: BTreeMap<String, Value>,
     held: BTreeMap<String, HeldView>,
+    publications: BTreeMap<String, publication::PendingPublication>,
 }
 impl Runtime {
     pub fn execute(&mut self, request: impl Into<Request>) -> Result<Value, String> {
-        match request.into() {
+        self.execute_with_publication(request.into())
+    }
+    fn execute_inner(&mut self, request: Request) -> Result<Value, String> {
+        match request {
             Request::Project(request) => self.project(*request),
             Request::Initialize(request) => self.initialize(*request),
             Request::Refresh(request) => self.refresh(*request, true),
             Request::Observe(request) => self.refresh(*request, false),
             Request::Present(request) => self.present(*request),
+            Request::ConfirmPublication(request) => self.confirm_publication(request),
+            Request::DiscardPublication(request) => self.discard_publication(request),
             Request::Release(request) => self.release(request),
             Request::CaseLayer(request) => self.case_layer(request),
             Request::Layout(request) => {
@@ -174,7 +185,7 @@ impl Runtime {
             if !request.select {
                 return Err("invalid_profile_view: cached receipt requires selection".into());
             }
-            held.review
+            Arc::make_mut(&mut held.review)
                 .select_prepared_case(
                     &held.session,
                     request.display_case.clone(),
@@ -191,8 +202,7 @@ impl Runtime {
                 .base_scene()
                 .ok_or("profile_case_base_unavailable: scene is missing")?
                 .clone();
-            let layer = held
-                .review
+            let layer = Arc::make_mut(&mut held.review)
                 .case_layer(
                     &held.session,
                     request.display_case.clone(),
@@ -334,13 +344,13 @@ impl Runtime {
             .filter(|_| same_model)
             .map(|held| std::mem::take(&mut held.review))
             .unwrap_or_default();
-        review.install_case(requested_case);
+        Arc::make_mut(&mut review).install_case(requested_case);
         // Analyze may return an explicit unavailable projection. A style
         // refusal must not advance the retained review against the old session.
         let scene = if let Err(error) = &styles {
             Err(error.clone())
         } else {
-            review
+            Arc::make_mut(&mut review)
                 .scene_after_with_cache(
                     &session,
                     request.options,
@@ -355,7 +365,7 @@ impl Runtime {
             // weather sequence and disposable cache. Transfer ownership back rather
             // than cloning the potentially large projection.
             if let Some(mut held) = previous.take() {
-                review.install_case(
+                Arc::make_mut(&mut review).install_case(
                     serde_json::from_value(serde_json::to_value(&current.display_case).unwrap())
                         .expect("admitted display case"),
                 );
@@ -433,7 +443,7 @@ impl Runtime {
             !session.snapshot().structures.is_empty(),
         );
         self.commit_view(&request.scope, state.clone());
-        let authored = review.authored_view(&label_policy);
+        let authored = review.authored_view(&label_policy).map(Arc::new);
         self.held.insert(
             request.scope.clone(),
             HeldView {
@@ -600,6 +610,7 @@ mod transactional_projection_tests {
         session: &GridSession,
     ) -> RefreshRequest {
         RefreshRequest {
+            publication_id: None,
             scope: input.scope.clone(),
             model_id: "profile-test".into(),
             base_revision: serde_json::from_value(json!(base)).unwrap(),
@@ -829,6 +840,220 @@ mod transactional_projection_tests {
                 .as_str(),
             input.expected_revision
         );
+    }
+    #[test]
+    fn discarded_observation_composes_the_next_delta_from_the_published_history() {
+        let (input, mut worker) = two_band_request();
+        let mut runtime = Runtime::default();
+        let initial = runtime.execute(input.clone()).unwrap();
+        let published = runtime.held[&input.scope].session.history_state();
+        let computed = runtime.held[&input.scope].review.clone();
+        describe(&mut worker, "unpublished-B", "B");
+        let mut request = refresh(&runtime, &input, &input.expected_revision, &worker);
+        request.publication_id = Some("observe-B".into());
+        let b = runtime
+            .execute(Request::Observe(Box::new(request.clone())))
+            .unwrap();
+        let pin: PublicationPin = serde_json::from_value(b["publication"].clone()).unwrap();
+        assert!(Arc::ptr_eq(&computed, &runtime.held[&input.scope].review));
+        // No later request may silently adopt an unconfirmed native base.
+        assert!(runtime
+            .execute(Request::Observe(Box::new(request)))
+            .unwrap_err()
+            .starts_with("profile_publication_pending:"));
+        let mut wrong = pin.clone();
+        wrong.axis_pin_digest = Some("different-axis".into());
+        assert!(runtime
+            .execute(Request::ConfirmPublication(ConfirmPublicationRequest {
+                scope: input.scope.clone(),
+                publication: wrong
+            }))
+            .is_err());
+        let mut wrong = pin.clone();
+        wrong.history.undo_depth += 1;
+        wrong.history.history_pin = "repeated-content-other-history".into();
+        assert!(runtime
+            .execute(Request::ConfirmPublication(ConfirmPublicationRequest {
+                scope: input.scope.clone(),
+                publication: wrong,
+            }))
+            .is_err());
+        runtime
+            .execute(Request::ConfirmPublication(ConfirmPublicationRequest {
+                scope: input.scope.clone(),
+                publication: pin.clone(),
+            }))
+            .unwrap();
+        // Renderer refusal after worker admission can still discard this one
+        // publication. Authored RAM is never rolled back or packed.
+        describe(&mut worker, "unpublished-C", "C");
+        runtime
+            .execute(Request::DiscardPublication(DiscardPublicationRequest {
+                scope: input.scope.clone(),
+                model_id: pin.model_id,
+                publication_id: pin.publication_id,
+                target_history: pin.history,
+            }))
+            .unwrap();
+        assert_eq!(
+            runtime.held[&input.scope].session.history_state(),
+            published
+        );
+        assert!(Arc::ptr_eq(&computed, &runtime.held[&input.scope].review));
+        let c = runtime
+            .execute(Request::Observe(Box::new(refresh(
+                &runtime,
+                &input,
+                &input.expected_revision,
+                &worker,
+            ))))
+            .unwrap();
+        assert_eq!(
+            c["authored_delta"]["base_revision"],
+            initial["model_revision"]
+        );
+        assert_eq!(
+            c["authored_delta"]["computed_revision"],
+            initial["model_revision"]
+        );
+        assert_eq!(c["authored_delta"]["work"]["computed_ground"], 0);
+        assert_eq!(c["metrics"]["applied_entries"], 2);
+        assert_eq!(c["history"], json!(worker.history_state()));
+        assert_eq!(
+            runtime.held[&input.scope].review.base_scene(),
+            computed.base_scene()
+        );
+    }
+
+    #[test]
+    fn dropped_calculation_restores_pending_scope_and_allows_another_authored_edit() {
+        let (input, mut worker) = two_band_request();
+        let mut runtime = Runtime::default();
+        runtime.execute(input.clone()).unwrap();
+        describe(&mut worker, "observed-B", "B");
+        runtime
+            .execute(Request::Observe(Box::new(refresh(
+                &runtime,
+                &input,
+                &input.expected_revision,
+                &worker,
+            ))))
+            .unwrap();
+        let published = runtime.held[&input.scope].session.history_state();
+        let pending = runtime.held[&input.scope].pending_receipts.clone();
+        let computed = runtime.held[&input.scope].review.clone();
+        let base = worker.current_revision().revision_id.to_string();
+        let mut request = refresh(&runtime, &input, &base, &worker);
+        request.publication_id = Some("calculate-B".into());
+        request.analyze = true;
+        let b = runtime.execute(request).unwrap();
+        assert_eq!(
+            b["scene"]["model_revision"],
+            json!(worker.current_revision().revision_id)
+        );
+        describe(&mut worker, "during-calculation-C", "C");
+        let mut discard = DiscardPublicationRequest {
+            scope: input.scope.clone(),
+            model_id: "profile-test".into(),
+            publication_id: "calculate-B".into(),
+            target_history: published.clone(),
+        };
+        discard.target_history.history_pin = "unrelated-history".into();
+        assert!(runtime
+            .execute(Request::DiscardPublication(discard.clone()))
+            .is_err());
+        discard.target_history = published.clone();
+        runtime
+            .execute(Request::DiscardPublication(discard))
+            .unwrap();
+        assert_eq!(
+            runtime.held[&input.scope].session.history_state(),
+            published
+        );
+        assert_eq!(runtime.held[&input.scope].pending_receipts, pending);
+        assert!(Arc::ptr_eq(&computed, &runtime.held[&input.scope].review));
+        let c = runtime
+            .execute(Request::Observe(Box::new(refresh(
+                &runtime, &input, &base, &worker,
+            ))))
+            .unwrap();
+        assert_eq!(
+            c["authored_delta"]["base_revision"],
+            json!(published.model_revision)
+        );
+        assert_eq!(
+            c["authored_delta"]["computed_revision"],
+            json!(computed.base_scene().unwrap().model_revision)
+        );
+        assert_eq!(c["calculation"]["required"], true);
+        assert_eq!(c["authored_delta"]["work"]["computed_ground"], 0);
+        assert!(c["analysis"].is_null());
+        assert!(runtime.analyses.get(&input.scope).is_none());
+    }
+
+    #[test]
+    fn publication_initialization_discard_is_exact_and_isolated_between_scopes() {
+        let (input, worker) = two_band_request();
+        let seed = ds_grid_exchange::profile_session::ProfileSessionSeed::capture(
+            &worker,
+            EntityId::new("profile-test").unwrap(),
+            Default::default(),
+            &[],
+        );
+        let initialize = |scope: &str, id: &str| InitializeRequest {
+            scope: scope.into(),
+            publication_id: Some(id.into()),
+            seed_json: serde_json::to_string(&seed).unwrap(),
+            restore_state: None,
+            options: input.options.clone(),
+            style_document: input.style_document.clone(),
+            patch: Default::default(),
+            analyze: false,
+        };
+        let mut runtime = Runtime::default();
+        let a = runtime.execute(initialize("a", "publication-a")).unwrap();
+        let b = runtime.execute(initialize("b", "publication-b")).unwrap();
+        let b_before = runtime.held["b"].session.history_state();
+        let pin: PublicationPin = serde_json::from_value(a["publication"].clone()).unwrap();
+        let mut discard = DiscardPublicationRequest {
+            scope: "a".into(),
+            model_id: "wrong-model".into(),
+            publication_id: pin.publication_id,
+            target_history: pin.history,
+        };
+        assert!(runtime
+            .execute(Request::DiscardPublication(discard.clone()))
+            .is_err());
+        discard.model_id = "profile-test".into();
+        runtime
+            .execute(Request::DiscardPublication(discard))
+            .unwrap();
+        assert!(!runtime.held.contains_key("a"));
+        assert!(!runtime.views.contains_key("a"));
+        assert!(!runtime.publications.contains_key("a"));
+        assert_eq!(runtime.held["b"].session.history_state(), b_before);
+        let pin: PublicationPin = serde_json::from_value(b["publication"].clone()).unwrap();
+        let confirm: Request = serde_json::from_value(json!({
+            "operation":"confirm_publication", "scope":"b", "publication":pin,
+        }))
+        .unwrap();
+        runtime.execute(confirm).unwrap();
+        assert!(serde_json::from_value::<Request>(json!({
+            "operation":"discard_publication", "scope":"b", "model_id":"profile-test",
+            "publication_id":"publication-b", "target_history":b_before, "accept_stale":true,
+        }))
+        .is_err());
+        assert_eq!(
+            runtime
+                .execute(ReleaseRequest {
+                    scope: "b".into(),
+                    model_id: "profile-test".into()
+                })
+                .unwrap()["released"],
+            true
+        );
+        assert!(runtime.publications.is_empty());
+        runtime.execute(initialize("a", "replacement-a")).unwrap();
     }
     #[test]
     fn observe_accumulates_edits_without_projection_and_refresh_reuses_unchanged_alignment() {
@@ -1156,6 +1381,7 @@ mod transactional_projection_tests {
         let mut initialized = Runtime::default();
         initialized
             .execute(InitializeRequest {
+                publication_id: None,
                 scope: input.scope.clone(),
                 seed_json: serde_json::to_string(&seed).unwrap(),
                 restore_state: None,
@@ -1401,6 +1627,7 @@ mod transactional_projection_tests {
             }],
         );
         let initialize = |scope: &str| InitializeRequest {
+            publication_id: None,
             scope: scope.into(),
             seed_json: serde_json::to_string(&seed).unwrap(),
             restore_state: None,
@@ -1470,6 +1697,7 @@ mod transactional_projection_tests {
         let mut current = input.clone();
         current.scope = "a-live".into();
         let stale = RefreshRequest {
+            publication_id: None,
             scope: current.scope.clone(),
             model_id: "profile-test".into(),
             base_revision: worker.current_revision().revision_id.clone(),

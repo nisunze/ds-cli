@@ -5,6 +5,9 @@ use ds_grid_engine::{CommandEnvelope, RevisionId, SessionHistoryState};
 #[serde(deny_unknown_fields)]
 pub struct InitializeRequest {
     pub scope: String,
+    /// Stage disposable results until the host confirms worker/render admission.
+    #[serde(default)]
+    pub publication_id: Option<String>,
     /// Exact native JSON; JS object transport loses signed zero and revision identity.
     pub seed_json: String,
     /// Pass through a prior admitted native state after runtime loss. Rust
@@ -42,6 +45,8 @@ impl From<ReleaseRequest> for Request {
 #[serde(deny_unknown_fields)]
 pub struct RefreshRequest {
     pub scope: String,
+    #[serde(default)]
+    pub publication_id: Option<String>,
     pub model_id: String,
     pub base_revision: RevisionId,
     pub base_history: SessionHistoryState,
@@ -98,6 +103,7 @@ impl Runtime {
         let released = self.views.remove(&request.scope).is_some();
         self.held.remove(&request.scope);
         self.analyses.remove(&request.scope);
+        self.publications.remove(&request.scope);
         Ok(json!({"scope":request.scope, "model_id":request.model_id, "released":released}))
     }
     pub(super) fn initialize(&mut self, request: InitializeRequest) -> Result<Value, String> {
@@ -354,7 +360,7 @@ impl Runtime {
                 })
                 .transpose();
             let (authored, authored_delta, authored_unavailable) = match authored {
-                Ok(Some((view, delta))) => (Some(view), Some(delta), None),
+                Ok(Some((view, delta))) => (Some(Arc::new(view)), Some(delta), None),
                 Ok(None) => (
                     None,
                     None,

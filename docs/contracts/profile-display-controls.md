@@ -119,8 +119,31 @@ These named refusals never trigger an automatic package-checkpoint fallback.
 Initialize a replacement model in a fresh scope; reinitializing an admitted scope
 refuses. The renderer captures its own scope/generation and journal cursor before
 work and installs a result only while those
-pins are still current; a stale display result does not undo an admitted native
-session advance. The next request uses the native receipt's admitted head.
+pins are still current. Hosts that install results across asynchronous boundaries
+stage a native publication before adopting its replay head.
+
+`publication_id` on Initialize/Refresh/Observe/Present stages a disposable result.
+Its `publication` receipt pins the exact model, native authored history,
+calculated revision and retained axis. `confirm_publication` accepts only that
+entire receipt; `discard_publication` names the captured publication identity,
+model and target history, so even a lost response can be discarded. An
+unconfirmed result blocks another projection in that scope with
+`profile_publication_pending`; another model scope remains independent.
+Discard restores the prior native session cursor, display, analysis, pending
+engineering receipts and geometry together. It does not alter worker-authored
+edits, run calculation, write a package or Save.
+
+One rollback checkpoint survives confirmation until the next operation in that
+scope. This permits a renderer refusal after worker admission to discard the
+same publication. Repeated-content histories, wrong calculated/axis pins and
+foreign model discards refuse. Release clears the checkpoint with its lease.
+Large authored and calculated geometry are shared immutable Arcs during local
+staging; `publication_checkpoint_ms` exposes the remaining checkpoint cost.
+The native gates prove dropped observation followed by a coalesced edit, stale
+calculation followed by another edit with its old engineering and accumulated
+scope preserved, initialization discard and interleaved contexts. Worker
+rollback and Web/Desktop publication bindings must consume these controls;
+the native gates alone do not establish those transport races are closed.
 
 The session retains package assets by shared ownership and opens with the same
 package-derived protection as other native consumers. Demand caches advance
