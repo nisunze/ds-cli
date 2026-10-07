@@ -39,6 +39,7 @@ pub use ds_command_kernel::report_export::{
     batch_plan, blocker_summary, BatchPlan, DEFAULT_RESIDENT_LIMIT, MAX_RESIDENT_LIMIT,
 };
 
+pub mod mv_preview;
 pub mod preview;
 pub use preview::*;
 
@@ -60,6 +61,8 @@ pub const CODE_ENGINE_IDENTITY_CHANGED: &str = "report_engine_identity_changed";
 pub const CODE_ENGINE_IDENTITY_INVALID: &str = "callee_contract_mismatch";
 /// A Rwanda project needs the installed administrative reference asset.
 pub const CODE_ADMIN_BOUNDS_UNAVAILABLE: &str = "admin_bounds_unavailable";
+/// The reached engine has no task for the requested render.
+pub const CODE_ENGINE_UNSUPPORTED: &str = "report_engine_unsupported";
 
 /// The DSAB spatial-index header the reporter writes (`prepare-admin-bounds`).
 const DSAB_MAGIC: &[u8; 8] = b"DSABIDX\0";
@@ -141,6 +144,19 @@ pub trait ReportEngine: Sync {
         request: &Path,
         result: &Path,
     ) -> Result<EngineExit, HostFailure>;
+    /// `ds-report render-grid-plan-profile --request REQUEST --result RESULT`.
+    /// An engine that serves only transformer exports refuses it by name.
+    fn render_grid_plan_profile(
+        &self,
+        request: &Path,
+        result: &Path,
+    ) -> Result<EngineExit, HostFailure> {
+        let _ = (request, result);
+        Err(HostFailure::new(
+            CODE_ENGINE_UNSUPPORTED,
+            "this report engine does not render MV plan and profile sheets",
+        ))
+    }
 }
 
 /// The external print context one transformer prints with: the exact
