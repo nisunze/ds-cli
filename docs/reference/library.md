@@ -175,3 +175,6 @@ Publish the resulting model through `dsgrid.publish-version` with explicit
 project authorization and the reviewed expected head. Deliberate cross-project
 adoption uses the destination project's own authorization; a library identity
 does not grant it. Later changes to a library head never reinterpret pinned models.
+
+
+Indexed governed member byte readback uses `library global download --kind library-asset --library-id <id> --release-id <id> --relative-path <exact-inventory-path> --expected-digest <64-lowercase-hex> --out <fresh-file>`. The authenticated resolver selects the exact immutable inventory entry; its signed generation-bound delivery is checked for the fixed storage origin, content-addressed object, byte length and SHA-256. JSON exposes the verified pin and generation, never the signed URL. Missing legacy indexes remain a named refusal; paths are never inferred from file names or summary counts.

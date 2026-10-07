@@ -1,4 +1,4 @@
-//! Exact-byte export of legacy global artifacts for backup and preservation.
+//! Exact-byte export of governed global artifacts and indexed native members.
 //! This does not publish, migrate a model format, or retire catalog data.
 use std::{fs::OpenOptions, io::Write, path::Path};
 
@@ -26,7 +26,7 @@ pub static COMMAND: Command = Command {
     path: &["library", "global", "download"],
     contract: 1,
     summary: "Export one exact global catalog artifact with verified bytes.",
-    purpose: "Backup one pinned legacy library manifest, validation report or example model to a fresh file. Reuses the catalog's authenticated exact read and signed content-addressed transfer. Never selects a mutable head, accepts a URL, converts formats, copies ownership or deletes data. A model artifact is not proof of all separately held native members.",
+    purpose: "Download one pinned library manifest, validation report, indexed asset or example model to a fresh file. Indexed members require their exact inventory path, digest and signed storage generation. Reuses the catalog's authenticated exact read and signed content-addressed transfer. Never selects a mutable head, accepts a URL, converts formats, copies ownership or deletes data. A model artifact is not proof of all separately held native members.",
     chapter: Chapter::PlsCadd,
     effect: Effect::LocalFileWrite,
     authority: Authority::HeadlessUser,
@@ -38,7 +38,12 @@ pub static COMMAND: Command = Command {
             value: "<kind>",
             required: true,
             default: None,
-            choices: &["library-manifest", "library-validation", "example-model"],
+            choices: &[
+                "library-manifest",
+                "library-validation",
+                "library-asset",
+                "example-model",
+            ],
             summary: "Exact artifact class.",
         },
         Arg::value("library-id", "<id>", "Library id for a library artifact."),
@@ -46,6 +51,11 @@ pub static COMMAND: Command = Command {
             "release-id",
             "<id>",
             "Exact immutable library release; required with library-id.",
+        ),
+        Arg::value(
+            "relative-path",
+            "<path>",
+            "Exact inventory path; required only for library-asset.",
         ),
         Arg::value("example-id", "<id>", "Example id for an example model."),
         Arg::value(
@@ -84,23 +94,39 @@ fn selection(inputs: &Inputs) -> Result<ArtifactSelection, Failure> {
     let release = inputs.value("release-id");
     let example = inputs.value("example-id");
     let revision = inputs.value("revision-id");
-    match (inputs.require("kind")?, library, release, example, revision) {
-        ("library-manifest", Some(library), Some(release), None, None) => {
+    let relative_path = inputs.value("relative-path");
+    match (
+        inputs.require("kind")?,
+        library,
+        release,
+        example,
+        revision,
+        relative_path,
+    ) {
+        ("library-manifest", Some(library), Some(release), None, None, None) => {
             Ok(ArtifactSelection::LibraryManifest {
                 library: library.into(),
                 release: release.into(),
             })
         }
-        ("library-validation", Some(library), Some(release), None, None) => {
+        ("library-validation", Some(library), Some(release), None, None, None) => {
             Ok(ArtifactSelection::LibraryValidation {
                 library: library.into(),
                 release: release.into(),
             })
         }
-        ("example-model", None, None, Some(example), Some(revision)) => {
+        ("example-model", None, None, Some(example), Some(revision), None) => {
             Ok(ArtifactSelection::ExampleModel {
                 example: example.into(),
                 revision: revision.into(),
+            })
+        }
+        ("library-asset", Some(library), Some(release), None, None, Some(relative_path)) => {
+            Ok(ArtifactSelection::LibraryAsset {
+                library: library.into(),
+                release: release.into(),
+                relative_path: relative_path.into(),
+                expected_digest: inputs.require("expected-digest")?.into(),
             })
         }
         _ => Err(invalid()),
@@ -188,6 +214,34 @@ mod tests {
             let inputs = ds_cli_contract::args::parse(&COMMAND, &tokens).unwrap();
             assert!(selection(&inputs).is_err());
         }
+    }
+
+    #[test]
+    fn indexed_asset_requires_exact_inventory_path_and_preserves_all_pins() {
+        let mut tokens = vec![
+            "--kind",
+            "library-asset",
+            "--library-id",
+            "library_1",
+            "--release-id",
+            "release_1",
+            "--expected-digest",
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "--out",
+            "fresh.bin",
+        ]
+        .into_iter()
+        .map(str::to_owned)
+        .collect::<Vec<_>>();
+        assert!(selection(&ds_cli_contract::args::parse(&COMMAND, &tokens).unwrap()).is_err());
+        tokens.extend(["--relative-path".into(), "native/pole.012".into()]);
+        let selected =
+            selection(&ds_cli_contract::args::parse(&COMMAND, &tokens).unwrap()).unwrap();
+        assert!(
+            matches!(selected.read_command(), ds_client_core::grid_catalog::Command::ResolveLibraryMember { library_id, release_id, relative_path, expected_digest } if library_id == "library_1" && release_id == "release_1" && relative_path == "native/pole.012" && expected_digest == "a".repeat(64))
+        );
+        tokens[1] = "library-manifest".into();
+        assert!(selection(&ds_cli_contract::args::parse(&COMMAND, &tokens).unwrap()).is_err());
     }
 
     #[test]
