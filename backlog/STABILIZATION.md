@@ -413,9 +413,41 @@ the current layout contract, see below):
 
 **Tool note:** installed `ds-canary` (2026-09-29) lists the 12 layouts, but
 `report layout get` refuses 10 of them: "the authentication or project
-response did not match its closed contract". Debug `ds` builds route native
-API calls to the local Go authority (ds-cli `980462e7`), so they can't read
-the cloud project either.
+response did not match its closed contract". A current debug `ds` reads the
+cloud project when given a development catalog: ds-web
+`scripts/run/server-profile.mjs <installed catalog> <out> <sha> routing/operations.json`,
+then `DS_NATIVE_CLIENT_PROFILE_BUNDLE=<out>`.
+
+### 15. Defects met while proving the MV template preview (2026-10-07)
+
+The MV preview landed and is proven headlessly (`ds report plan-profile
+--preview-layout`, kernel `55014fc`/`c34fadb`, ds-cli `7a490bad`, ds-web
+`dabd6e34d`). Three defects remain:
+
+1. **Sync-store migration fails on a legacy store.** Every project mutation
+   behind the report-reconciliation gate refuses on this machine, for example
+   `report project mv-setup set` → `report_reconciliation_required`, with
+   detail "NOT NULL constraint failed: artifacts.account". The v1→v2
+   migration copies `artifacts_v1` rows with a NULL account into the new NOT
+   NULL table (`crates/ds-sync-store/src/lib.rs:202`). An upgrade from the
+   installed canary will hit the same failure. Decide what legacy rows without
+   an account become, then prove it on a copy of a v1 store.
+2. **The MV global-default fallback can't work.** With no project MV selection,
+   `printing_inputs` fetches the global default layout with
+   `printing(lane, true, None, …)` (ds-cli
+   `crates/ds-cli-report/src/project/mv_setup.rs:112-129`). That call has
+   been refused since `b9d9e52a` ("Global printing runtime scope is retired").
+   `mv-setup resolve` therefore fails with a misleading message for every
+   project without its own selection (Rwanda Template, `arjgpydw_nyam`).
+   The Template now holds its own copy, `mv-a3-plan-profile-template`;
+   selecting it is blocked by defect 1.
+3. **Hairline dividers break the template editor canvas.** The approved MV
+   layout draws 0.16 mm divider rectangles (`divider-5`…`divider-9`).
+   ds-network `crates/ds-canvas/src/free_layout.rs:121-129` refuses any
+   rectangle under the placement minimum, so opening that template shows
+   "canvas rectangles must fit the finite scene bounds". Exempt
+   non-interactive hairlines from placement, or size their hit target
+   separately from their ink.
 
 ## Moved from OPEN.md and OPEN-X.md: related work, fix together (owner, 2026-10-07)
 
