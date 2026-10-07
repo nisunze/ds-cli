@@ -9,7 +9,7 @@ Unfinished code that an agent can implement and prove without further owner inpu
 | Area | Remaining entries |
 | --- | ---: |
 | [1. Source integration and release code](#1-source-integration-and-release-code) | 3 |
-| [2. Green `run` and release gates](#2-green-run-and-release-gates) | 6 |
+| [2. Green `run` and release gates](#2-green-run-and-release-gates) | 7 |
 | [3. Template creation code](#3-template-creation-code) | 2 |
 | [4. Print template and style code](#4-print-template-and-style-code) | 2 |
 | [5. Print renderer and booklet code](#5-print-renderer-and-booklet-code) | 5 |
@@ -43,6 +43,15 @@ Unfinished code that an agent can implement and prove without further owner inpu
 
 ## 2. Green `run` and release gates
 
+- **Stabilization after the 7 October test sweep** (owner, 2026-10-07): finish these on canonical `run`, one proven slice at a time. This entry may touch any other backlog surface it intersects (§2 formatting and release gates, §11 PLS exchange, §12 structure usage, §18 libraries, §23 JSON UI, §25 CLI reliability); close or update those entries rather than duplicating them.
+  - **Schema 5 against the no-breaking-bump ruling** (owner, 2026-10-07: stop breaking schema bumps, especially since schema 4): `ds-grid-model` `tests/determinism.rs::canonical_schema_four_requires_migration_without_changing_container_format` is red because `6b34bf38` (2026-10-05) bumped `SCHEMA_VERSION` to 5, with a verified schema-4 migration. Do not re-pin the test to 5. Ask the owner whether schema 5 stands as the last breaking bump (the test then guards against further bumps) or its alignment-ground fields are carried compatibly.
+  - **Suites still to prove on settled tips**: ds-network shows 225 green suites; apart from the schema test, only the three §11 private-corpus PLS imports fail. Rerun `ds-geo` and `ds-grid-engine` after `c28ee1a5`. Run ds-solar (`cargo test --locked --workspace`; it links the kernel and the reporter's `ds-network-information`) and the kernel suite. The reporter suite and the ds-cli workspace were green on 7 October; ds-cli needs `DS_REPORT_BIN`/`DS_SOLAR_BIN` set to freshly built engines, because the stable `/usr/bin/ds-report` is uninstalled on ds-server.
+  - **Release pins, last**: set `ds-cli/pins/ds-command-kernel.rev` to the kernel HEAD, `ds-client-core.rev` to a commit whose native crates are tree-identical to it, and `ds-network.rev` plus the reporter's `pins/native-build-sources.json` kernel/network entries to the same tips. Prove with `ds-cli/scripts/with-network-deps.sh true`, then `ds-web/linux-server-deploy.sh prod --check` (it builds and publishes nothing).
+  - **PLS-CADD `.bak` export**: ten diagnosed holes, with file references and the filed items they advance (`e258b287`, `8f6e3ff1`, `b1a2b25c`, `4af28da3`, the §11 Restore items, §18, §23, §25), are in `outputs/pls-bak-export-plan-20261007/PLS-BAK-EXPORT-PLAN.md`.
+  - **Uneven structure results across models**: Nyamagabe MV Model 1 "2026-10-02 oracle reference copy" shows usage % per structure and "Analysis complete"; other models stop at unresolved `capacity_case_binding`/capacity and "Engineering issue unsupported". List per model, through `ds`, which structures lack a result and why. Then test whether attaching the common cloud interoperability library (the 157-member `pls-interoperability-canonical-candidate`, SEEDING §18) reaches the oracle copy's completeness, and report which gaps need source evidence instead. Never invent capacities. Intersects §12 structure usage, `df1f53ae`, `908c07c1`, `4ba8ab15`, and SEEDING "Saved scaffold trust states" and "Shared-library capacity tables" (`3acfd343`).
+  - **Externalized DS Grid libraries** (owner direction, 2026-10-07): many models refer to the same external libraries (criteria/CRI, structures), so one library update reaches every referencing model. The cloud interoperability library sits beside DS's own library and third parties: PLS-CADD first, possibly Camelia or Jove later. Today each model carries exact immutable pins and a cached copy of each pinned release (ds-network `c2a17b70`, `b442dd6c`; kernel `3bda1f1`, `9c44615`), and §18 forbids head or basename fallback. Before any code, bring the owner a design that answers: how an update propagates while each model revision keeps its exact release (an auditable re-pin with an impact report); what happens to results an update changes; offline Desktop/Server behaviour; third-party adapters without a new authority; and references without another breaking `.dsgrid` schema bump.
+  - **Owner wording check**: the MV plan key now prints the held legend titles (ds-network-reporter `3748e48`), for example "New LV cables / Existing LV lines / Existing MV lines" instead of "Context LV / Existing LV / Existing MV". If the owner prefers the old words, author them as governed legend titles in the MV context template.
+
 - **Red on run, Grid (pre-existing at `4180a3d`)**: `ds-grid-wasm` test `station_move_preview::station_move_tangent_uses_outgoing_leg_at_pi_and_last_leg_at_terminus` expects `reconcile_required` and gets `patched`. Decide whether the preview or the test is right, fix it, and keep `cargo test --workspace` green.
 
 - **LV test red on run** (pre-existing): `transformer_process_contract::adding_a_disjoint_feeder_does_not_collapse_the_existing_one` keeps an unconnected-customer warning without its diagnostic layer. Slice `lv-disjoint-feeder`.
@@ -53,7 +62,7 @@ Unfinished code that an agent can implement and prove without further owner inpu
 
 - **Printing toolbar test**: `src/tests/printing-toolbar.test.ts` fails to locate the toolbar closing markup in current `PrintingSetup.svelte`. Repair the test boundary and verify narrow-width controls; `TemplateCatalogue.browser.test.ts` passes.
 
-- **Reporter XLSX gate**: `exports::xlsx::tests::data_sheets_drop_fully_empty_columns` drops a populated optional customer identifier (expected one, observed zero). Repair the owning projection or incorrect fixture and replay the XLSX suite.
+- **National ID and phone in external reports: not urgent, no code now** (owner, 2026-10-07): DS does handle national IDs. Reporter `a69402e` hides `nid`, `national_id` and phone from every external report projection, but that restriction came from the datasolutions.rw product context and was not meant for everything. Kernel `3e23208` overstated it as a general "personal identity never prints" rule, and reporter `ac7e740` aligned the XLSX and as-built schedule tests with `a69402e`, so the former XLSX test failure is green. Implement no identity removal or restoration until the owner scopes it; correct the `3e23208` wording when this is taken up.
 
 ## 3. Template creation code
 
