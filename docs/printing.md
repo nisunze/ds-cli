@@ -443,7 +443,6 @@ The customer/house-connection schedule is:
 | meter_type | Meter Type |
 | category | Category |
 | from_tr | From Tr Distance |
-| nid | Nid |
 | service_area | Service Area Length M |
 | village | Village |
 | x | X |
@@ -453,8 +452,11 @@ The customer/house-connection schedule is:
 identify an installed, metered connection and carry no meaning for a design:
 
 - `meter_type`
-- `nid`
-- any phone number
+
+**Personal identity never prints** (owner, 2026-10-07). National ID (`nid`,
+`national_id`) and phone numbers are excluded from every external report
+projection, as-built included; the schedule follows the workbook, which never
+carries them.
 
 Everything else prints. Omission here is about meaning, not width: a field is
 dropped because a design cannot have it, never because the sheet is crowded.
