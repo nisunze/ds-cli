@@ -80,6 +80,10 @@ independent of this policy; `analysis_state:due` is informational. Explicit
 Refresh/Analyze requests consume accumulated receipts; unchanged alignment
 surfaces and section demands remain reusable. History navigation retains the
 old scene and reports that explicit reconciliation is needed.
+`operation: present` admits display-only patches against current, prepared
+results. It refuses `profile_scene_unavailable` when edits or new coordinate
+inputs would require calculation; callers must explicitly Refresh or Analyze.
+Visibility/style controls cannot become hidden engineering calculation paths.
 The runtime finds the exact common command prefix, navigates retained history,
 and applies only new entries with parent and resulting-revision fences. Native
 discard/navigation pins install the exact cursor and truncate only the worker's

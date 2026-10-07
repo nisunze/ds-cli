@@ -60,6 +60,30 @@ impl From<RefreshRequest> for Request {
 }
 
 impl Runtime {
+    pub(super) fn present(&mut self, request: RefreshRequest) -> Result<Value, String> {
+        let held = self
+            .held
+            .get(&request.scope)
+            .ok_or("profile_replay_base_unavailable: initialize this model scope first")?;
+        let state = self.views[&request.scope].patched(&request.patch)?;
+        let options = project_options(request.options.clone(), &state)?;
+        let mut allowed = held.options.clone();
+        allowed.display_case = options.display_case.clone();
+        // Rendering controls cannot quietly turn an outstanding edit or a
+        // changed coordinate interpretation into an engineering calculation.
+        if request.analyze
+            || request.target_history != held.session.history_state()
+            || held
+                .review
+                .base_scene()
+                .is_none_or(|scene| scene.model_revision != request.expected_revision)
+            || options != allowed
+            || held.review.prepared_layer(&options.display_case).is_none()
+        {
+            return Err("profile_scene_unavailable: explicit Refresh or Analyze is required before presenting changed calculation inputs".into());
+        }
+        self.refresh(request, true)
+    }
     pub(super) fn release(&mut self, request: ReleaseRequest) -> Result<Value, String> {
         if request.scope.is_empty() || request.scope.len() > 1024 || request.model_id.is_empty() {
             return Err("invalid_profile_view: invalid release identity".into());

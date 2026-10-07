@@ -39,6 +39,8 @@ pub enum Request {
     Refresh(Box<RefreshRequest>),
     /// Replay authored RAM edits without projecting or calculating engineering.
     Observe(Box<RefreshRequest>),
+    /// Presentation changes may reuse admitted results but cannot calculate.
+    Present(Box<RefreshRequest>),
     Release(ReleaseRequest),
     CaseLayer(CaseRequest),
     Layout(ds_command_kernel::profile_layout::Request),
@@ -115,6 +117,7 @@ impl Runtime {
             Request::Initialize(request) => self.initialize(*request),
             Request::Refresh(request) => self.refresh(*request, true),
             Request::Observe(request) => self.refresh(*request, false),
+            Request::Present(request) => self.present(*request),
             Request::Release(request) => self.release(request),
             Request::CaseLayer(request) => self.case_layer(request),
             Request::Layout(request) => {
@@ -293,14 +296,7 @@ impl Runtime {
                 return Err(error.clone());
             }
         }
-        request.options.vertical_exaggeration = Some(state.vertical_exaggeration);
-        request.options.terrain_corridor_half_width_m = Some(state.terrain.corridor_half_width_m);
-        request.options.terrain_gap_tolerance_m = Some(state.terrain.gap_tolerance_m);
-        request.options.clearance_ground_offset_m = Some(state.terrain.ground_clearance_offset_m);
-        request.options.clearance_lowest_wire_drop_m = Some(state.terrain.lowest_wire_drop_m);
-        request.options.display_case =
-            serde_json::from_value(serde_json::to_value(&state.display_case).unwrap())
-                .map_err(|error| format!("invalid_profile_view: {error}"))?;
+        request.options = project_options(request.options, &state)?;
         // Named cases must exist. Failed selection cannot replace the current state.
         if let ds_grid_engine::profile_display_case::ProfileDisplayCase::AnalysisCase {
             analysis_case_id,
@@ -506,6 +502,22 @@ impl Runtime {
     fn commit_view(&mut self, scope: &str, state: DisplayState) {
         self.views.insert(scope.to_owned(), state);
     }
+}
+
+fn project_options(
+    mut options: ProfileAtlasOptions,
+    state: &DisplayState,
+) -> Result<ProfileAtlasOptions, String> {
+    options.vertical_exaggeration = Some(state.vertical_exaggeration);
+    options.terrain_corridor_half_width_m = Some(state.terrain.corridor_half_width_m);
+    options.terrain_gap_tolerance_m = Some(state.terrain.gap_tolerance_m);
+    options.clearance_ground_offset_m = Some(state.terrain.ground_clearance_offset_m);
+    options.clearance_lowest_wire_drop_m = Some(state.terrain.lowest_wire_drop_m);
+    options.display_case =
+        serde_json::from_value(serde_json::to_value(&state.display_case).unwrap())
+            .map_err(|error| format!("invalid_profile_view: {error}"))?;
+    options.engineering_selection = None;
+    Ok(options)
 }
 
 fn label_fields(state: &DisplayState) -> Vec<String> {
@@ -818,6 +830,66 @@ mod transactional_projection_tests {
             runtime.held[&input.scope].session.history_state(),
             worker.history_state()
         );
+    }
+    #[test]
+    fn presentation_reuses_results_and_refuses_hidden_calculation_after_an_edit() {
+        let input = request();
+        let mut runtime = Runtime::default();
+        let opened = runtime.execute(input.clone()).unwrap();
+        let mut worker = GridSession::open(common::fixture());
+        let mut presentation = refresh(&runtime, &input, &input.expected_revision, &worker);
+        presentation.patch.visibility.insert(
+            ds_command_kernel::profile_display::DisplayOption::Wire,
+            false,
+        );
+        let rendered = runtime
+            .execute(Request::Present(Box::new(presentation)))
+            .unwrap();
+        assert_eq!(
+            rendered["scene"]["engineering"],
+            opened["scene"]["engineering"]
+        );
+        assert_eq!(
+            rendered["scene"]["conductor_spans"],
+            opened["scene"]["conductor_spans"]
+        );
+        assert_eq!(rendered["ran"], false);
+        describe(&mut worker, "one", "changed");
+        let pending = refresh(&runtime, &input, &input.expected_revision, &worker);
+        assert!(runtime
+            .execute(Request::Present(Box::new(pending.clone())))
+            .unwrap_err()
+            .starts_with("profile_scene_unavailable:"));
+        assert_eq!(
+            runtime.held[&input.scope]
+                .session
+                .current_revision()
+                .revision_id
+                .to_string(),
+            input.expected_revision
+        );
+        runtime
+            .execute(Request::Observe(Box::new(pending)))
+            .unwrap();
+        let head = worker.current_revision().revision_id.to_string();
+        let presentation = refresh(&runtime, &input, &head, &worker);
+        assert!(runtime
+            .execute(Request::Present(Box::new(presentation)))
+            .unwrap_err()
+            .starts_with("profile_scene_unavailable:"));
+        assert_eq!(runtime.held[&input.scope].pending_receipts.len(), 1);
+        runtime
+            .execute(refresh(&runtime, &input, &head, &worker))
+            .unwrap();
+        let mut presentation = refresh(&runtime, &input, &head, &worker);
+        presentation.patch.terrain = Some(ds_command_kernel::profile_display::TerrainSettings {
+            corridor_half_width_m: 25.0,
+            ..runtime.views[&input.scope].terrain.clone()
+        });
+        assert!(runtime
+            .execute(Request::Present(Box::new(presentation)))
+            .unwrap_err()
+            .starts_with("profile_scene_unavailable:"));
     }
     #[test]
     fn retained_future_command_does_not_expand_target_surface_scope() {
