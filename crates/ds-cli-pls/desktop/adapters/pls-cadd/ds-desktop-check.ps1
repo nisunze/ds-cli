@@ -33,7 +33,8 @@ Invoke-DsEntry $ResultPath 'check' {
     if (-not $found) { $blockers += 'pls_cadd_not_found' }
     elseif ($digest -cne $pinned -or -not $versionOk) { $blockers += 'pls_cadd_mismatch' }
     if ($running.Count -gt 0) { $blockers += 'pls_cadd_running' }
-    if (-not $word) { $blockers += 'word_not_found' }
+    $converter = Get-DsReportConverter
+    if (-not $converter) { $blockers += 'report_converter_not_found' }
     if ($powershell.Major -ne 5 -or $powershell.Minor -ne 1) { $blockers += 'powershell_not_5_1' }
     $script:DsResult = [ordered]@{
         ready = ($blockers.Count -eq 0)
@@ -43,6 +44,8 @@ Invoke-DsEntry $ResultPath 'check' {
             expected_version = [string] $DsProfile.ProductVersion; version_ok = [bool] $versionOk }
         pls_cadd_running = $running
         word_registered = $word
+        report_pdf_converter = $converter
+        libreoffice_path = 'C:\Program Files\LibreOffice\program\soffice.exe'
         powershell_version = $powershell.ToString()
         operator_confirms = @(
             'PLS-CADD opens with the Classic interface (the drivers post Classic menu command ids)',

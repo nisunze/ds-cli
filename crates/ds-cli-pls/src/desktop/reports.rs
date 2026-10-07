@@ -27,7 +27,7 @@ pub static COMMAND: Command = Command {
     path: &["pls", "desktop", "reports"],
     contract: 2,
     summary: "Save five canonical PLS-CADD reports as RTF and A4 PDF, or RTF only.",
-    purpose: "Opens a saved project in PLS-CADD 16.81 and saves Section Usage, Structure Usage, Terrain Clearances for every feature code, Summary and Section Sag-Tension as RTF with violation counts, then exits without saving. Microsoft Word converts each report to A4 landscape PDF. A3 paper and the supplementary Wind & Weight Span report require explicit customization. --rtf-only skips Word and PDF conversion; the default remains RTF plus Word PDF. --attach-pid uses an existing pinned process only when its unique frame proves the current project's exact full path, and leaves that session open instead of exiting. Staking is an Excel deliverable, not a printed report. The project's .xyz is its entry point; no model or engineering setting is changed.",
+    purpose: "Opens a saved project in PLS-CADD 16.81 and saves Section Usage, Structure Usage, Terrain Clearances for every feature code, Summary and Section Sag-Tension as RTF with violation counts, then exits without saving. Microsoft Word, or installed LibreOffice when Word is absent, converts each report to A4 landscape PDF. A3 paper and the supplementary Wind & Weight Span report require explicit customization. --rtf-only skips Word and PDF conversion; the default remains RTF plus PDF. --attach-pid uses an existing pinned process only when its unique frame proves the current project's exact full path, and leaves that session open instead of exiting. Staking is an Excel deliverable, not a printed report. The project's .xyz is its entry point; no model or engineering setting is changed.",
     chapter: Chapter::PlsCadd,
     effect: Effect::LocalFileWrite,
     authority: Authority::None,
@@ -85,6 +85,7 @@ pub static COMMAND: Command = Command {
         PLS_CADD_MISMATCH,
         ATTACH_REFUSED,
         WORD_NOT_FOUND,
+        REPORT_CONVERTER_NOT_FOUND,
         UNKNOWN_DIALOG,
         DIALOG_STOP,
         PLS_CADD_TIMEOUT,
@@ -235,8 +236,8 @@ mod tests {
         let entry = bundle::text(Entry::Reports.file()).unwrap();
         assert!(entry.contains("schema = 'ds.pls.desktop_reports.v1'"));
         assert!(
-            entry.contains("Assert-DsWord"),
-            "the selected Word PDF path retains its Word preflight"
+            entry.contains("Assert-DsReportConverter"),
+            "the selected PDF path retains its converter preflight"
         );
         let receipt = json!({
             "schema": RECEIPT_SCHEMA,

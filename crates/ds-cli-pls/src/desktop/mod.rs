@@ -150,6 +150,11 @@ pub const RESTORED_TREE_MISMATCH: Refusal = Refusal {
     when: "the restored files differ from the backup's members",
     remedy: "read detail.message; the backup or the restore folder is not what was intended",
 };
+pub const REPORT_CONVERTER_NOT_FOUND: Refusal = Refusal {
+    code: "report_converter_not_found",
+    when: "neither Microsoft Word nor LibreOffice at its supported Windows path is available for report PDFs",
+    remedy: "install Microsoft Word or LibreOffice at C:\\Program Files\\LibreOffice\\program\\soffice.exe, or request reports with --rtf-only",
+};
 pub const WORD_NOT_FOUND: Refusal = Refusal {
     code: "word_not_found",
     when: "Microsoft Word is not registered; report PDFs are made from the RTFs with it",

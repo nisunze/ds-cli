@@ -140,7 +140,7 @@ try {
     $entry = Tree 'ds-desktop-reports.ps1'
     $invoke = @($entry.FindAll({ param($n) $n -is [System.Management.Automation.Language.CommandAst] -and $n.GetCommandName() -eq 'Invoke-DsEntry' }, $true))[0]
     $body = [scriptblock]::Create($invoke.CommandElements[-1].ScriptBlock.Extent.Text.TrimStart('{').TrimEnd('}'))
-    function Assert-DsWord { $script:wordChecks++; throw 'Microsoft Word is not registered (mock)' }
+    function Assert-DsReportConverter { $script:converterChecks++; throw 'No report PDF converter: (mock)' }
     function New-DsRunDirectory { $scratch }
     function Connect-DsProject { $script:connects++; @{ project_path = 'G:\Nyamagabe\M1.xyz'; project_sha256 = 'abc' } }
     function Invoke-DsReports { [ordered]@{ Usage = @{ rtf = 'G:\reports\Usage.rtf'; verdict = @{ section_violations = 3 } } } }
@@ -150,19 +150,19 @@ try {
     function Write-DsDocument([string] $Path, [object] $Value) { $script:receipt = $Value }
     $ProjectPath = 'G:\Nyamagabe\M1.xyz'; $RunDirectory = $scratch; $ReportTimeoutSeconds = 60
     $PdfPaper = 'A4'; $IncludeWindWeightSpan = $false
-    $wordChecks = 0; $connects = 0; $exits = 0; $rechecks = 0; $receipt = $null
+    $converterChecks = 0; $connects = 0; $exits = 0; $rechecks = 0; $receipt = $null
     $AttachProcessId = 4242; $RtfOnly = $true
     & $body
-    Assert ($wordChecks -eq 0 -and $exits -eq 0 -and $rechecks -eq 1) 'RTF-only attach must skip Word and leave the project open'
+    Assert ($converterChecks -eq 0 -and $exits -eq 0 -and $rechecks -eq 1) 'RTF-only attach must skip PDF converter checks and leave the project open'
     Assert ($receipt.reports.Usage.verdict.section_violations -eq 3 -and -not $receipt.reports.Usage.ContainsKey('pdf')) 'RTF-only must preserve verdicts without PDF fields'
     Assert ($receipt.session.project_left_open -and $receipt.report_format -eq 'rtf_only') 'Receipt must state selected format and session disposition'
     Assert (-not $receipt.Contains('pdf_paper') -and -not $receipt.Contains('pdf_orientation')) 'RTF-only receipt must carry no PDF paper fields'
     $AttachProcessId = 0
     & $body
     Assert ($exits -eq 1) 'Launched RTF-only still exits by default'
-    $RtfOnly = $false; $connectsBefore = $connects; $wordRefused = $false
-    try { & $body } catch { $wordRefused = $_.Exception.Message.Contains('Microsoft Word') }
-    Assert ($wordRefused -and $wordChecks -eq 1 -and $connects -eq $connectsBefore) 'Default PDF path must require Word before launch'
+    $RtfOnly = $false; $connectsBefore = $connects; $converterRefused = $false
+    try { & $body } catch { $converterRefused = $_.Exception.Message.Contains('No report PDF converter:') }
+    Assert ($converterRefused -and $converterChecks -eq 1 -and $connects -eq $connectsBefore) 'Default PDF path must require a PDF converter before launch'
     $autosag = (Tree 'ds-desktop-autosag.ps1').Extent.Text
     Assert ($autosag.Contains("if (`$AttachProcessId -eq 0) { ExitPls 'project' } else { Assert-DsAttachedProject }")) 'AutoSag attach must leave the project open'
     Assert ($autosag.Contains("Assert-DsAttachedProject`n    Save 'after autosag'")) 'AutoSag must revalidate attachment before saving'

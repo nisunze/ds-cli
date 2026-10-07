@@ -30,8 +30,9 @@ use serde_json::{Value, json};
 use super::run::Finished;
 use super::{
     ATTACH_REFUSED, BACKUP_DIGEST_MISMATCH, BACKUP_INVALID, DIALOG_STOP, DRIVER_FAILED,
-    OUTPUT_EXISTS, PLS_CADD_MISMATCH, PLS_CADD_RUNNING, PLS_CADD_TIMEOUT, RESTORED_TREE_MISMATCH,
-    RESULT_UNREADABLE, SYSTEM_DRIVE_REFUSED, UNKNOWN_DIALOG, WORD_NOT_FOUND,
+    OUTPUT_EXISTS, PLS_CADD_MISMATCH, PLS_CADD_RUNNING, PLS_CADD_TIMEOUT,
+    REPORT_CONVERTER_NOT_FOUND, RESTORED_TREE_MISMATCH, RESULT_UNREADABLE, SYSTEM_DRIVE_REFUSED,
+    UNKNOWN_DIALOG, WORD_NOT_FOUND,
 };
 
 /// What went wrong, before it is checked against what the verb documents.
@@ -44,6 +45,7 @@ pub(crate) enum Kind {
     BackupInvalid,
     RestoredTreeMismatch,
     WordNotFound,
+    ReportConverterNotFound,
     OutputExists,
     SystemDrive,
     UnknownDialog,
@@ -62,6 +64,7 @@ impl Kind {
             Self::BackupInvalid => &BACKUP_INVALID,
             Self::RestoredTreeMismatch => &RESTORED_TREE_MISMATCH,
             Self::WordNotFound => &WORD_NOT_FOUND,
+            Self::ReportConverterNotFound => &REPORT_CONVERTER_NOT_FOUND,
             Self::OutputExists => &OUTPUT_EXISTS,
             Self::SystemDrive => &SYSTEM_DRIVE_REFUSED,
             Self::UnknownDialog => &UNKNOWN_DIALOG,
@@ -133,6 +136,7 @@ pub(crate) const MESSAGE_RULES: &[(Kind, &[&str])] = &[
             "Native member payload digest mismatch",
         ],
     ),
+    (Kind::ReportConverterNotFound, &["No report PDF converter:"]),
     (Kind::WordNotFound, &["Microsoft Word is not registered"]),
     (
         Kind::SystemDrive,
@@ -305,6 +309,9 @@ fn constructed(kind: Kind, message: &str) -> Failure {
         Kind::BackupInvalid => Failure::invalid(BACKUP_INVALID.code, message),
         Kind::RestoredTreeMismatch => Failure::failed(RESTORED_TREE_MISMATCH.code, message),
         Kind::WordNotFound => Failure::unavailable(WORD_NOT_FOUND.code, message),
+        Kind::ReportConverterNotFound => {
+            Failure::unavailable(REPORT_CONVERTER_NOT_FOUND.code, message)
+        }
         Kind::OutputExists => Failure::conflict(OUTPUT_EXISTS.code, message),
         Kind::SystemDrive => Failure::invalid(SYSTEM_DRIVE_REFUSED.code, message),
         Kind::UnknownDialog => Failure::failed(UNKNOWN_DIALOG.code, message),
@@ -478,13 +485,14 @@ mod tests {
     fn the_rule_table_keeps_causes_before_families() {
         let order: Vec<Kind> = MESSAGE_RULES.iter().map(|(kind, _)| *kind).collect();
         assert_eq!(
-            &order[..8],
+            &order[..9],
             [
                 Kind::PlsCaddRunning,
                 Kind::PlsCaddMismatch,
                 Kind::BackupDigestMismatch,
                 Kind::BackupInvalid,
                 Kind::RestoredTreeMismatch,
+                Kind::ReportConverterNotFound,
                 Kind::WordNotFound,
                 Kind::SystemDrive,
                 Kind::OutputExists,

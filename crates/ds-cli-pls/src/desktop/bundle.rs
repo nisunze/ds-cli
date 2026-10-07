@@ -76,15 +76,15 @@ pub static BUNDLE: &[Script] = &[
     ),
     script!(
         "adapters/pls-cadd/ds-desktop-check.ps1",
-        "41c63351771400599639b73a2051ac537e48975adfee0941be81ccddccd59194"
+        "a0ea4caa370025125e74ba1b8d9d6dc42dd217e6e08289a83a0698828888e66c"
     ),
     script!(
         "adapters/pls-cadd/ds-desktop-deliver.ps1",
-        "57e7b7ecd5efb53215d20b4c6fde34e0c67e1fe511c9de032da8042476652b7d"
+        "557c54c11b6e6fb4b6b0cb092a9b74c8eb8472aad3d8aa92dfdd612faf5428f2"
     ),
     script!(
         "adapters/pls-cadd/ds-desktop-lib.ps1",
-        "e0f45bbd4c8f0ff35d97e31e0d11cba3d76e1d2448dbebc1d10af7789a61e89a"
+        "3cf02e2b5612a5abbd89f271c240b05618a0743ce52039fd6d05b5c7944bb792"
     ),
     script!(
         "adapters/pls-cadd/ds-desktop-qualify.ps1",
@@ -92,7 +92,7 @@ pub static BUNDLE: &[Script] = &[
     ),
     script!(
         "adapters/pls-cadd/ds-desktop-reports.ps1",
-        "a013bf2fc8a29d44637b7d87e9b2bf8ca775391de742a4ff010d652eac774a42"
+        "1a1d2c740809e46ebab26e66f9605a8a98f2ebbeb29e7716890094f104d7b40a"
     ),
     script!(
         "adapters/pls-cadd/ds-desktop-restore.ps1",
@@ -196,7 +196,7 @@ pub static BUNDLE: &[Script] = &[
     ),
     script!(
         "adapters/pls-cadd/pls-deliver-autosag.ps1",
-        "91cf68a27c96c2cc76716cb151bdd7fbddbb764c9834e2ba4adaeb2779186a3a"
+        "7fb94954c4b5d7389ebb82f738f8d07373b41905cc437f7468dd26d114a5f5e3"
     ),
     script!(
         "adapters/pls-cadd/pls-dialog-capture.ps1",
@@ -420,11 +420,11 @@ pub static BUNDLE: &[Script] = &[
     ),
     script!(
         "adapters/word/README.md",
-        "702ebc130ccc3af6a2e28dd0e670fe7319f42ac316594433ed1cfda188db3cf3"
+        "845ee115d8d7ae4614419e72ffac61a470f46872c515b0a3393ec004876e8297"
     ),
     script!(
         "adapters/word/pls-rtf-to-pdf.ps1",
-        "d412e324fd7d7103b18278cc1c7c8402b373c991fbf88150712830dadd42887f"
+        "7f41703daa33e60e6377e7dd07b6ac2b455f20dd77cba5e2493c903e6b99c6a8"
     ),
     script!(
         "lab/README.md",

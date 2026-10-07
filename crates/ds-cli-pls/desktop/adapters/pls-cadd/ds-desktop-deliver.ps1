@@ -13,7 +13,7 @@ param(
 # every step. Word is checked first: the report PDFs are its last step, hours in.
 . (Join-Path $PSScriptRoot 'ds-desktop-lib.ps1')
 Invoke-DsEntry $ResultPath 'deliver' {
-    Assert-DsWord
+    Assert-DsReportConverter
     $a = @{ BackupPath = $BackupPath; ExpectedBackupSha256 = $ExpectedBackupSha256; RunDirectory = $RunDirectory
             Label = $Label; AlignmentGap = $AlignmentGap; ReportTimeoutSeconds = $ReportTimeoutSeconds }
     if ($SourceRoot) { $a.SourceRoot = $SourceRoot }

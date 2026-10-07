@@ -153,7 +153,7 @@ ExitPls 'r2'
 
 # ---- report PDFs
 $pdfs = & (Join-Path $here '..\word\pls-rtf-to-pdf.ps1') -A3Landscape -RtfPath @($reports.Values | ForEach-Object { $_.rtf }) | ConvertFrom-Json
-foreach ($p in @($pdfs)) { $k = [System.IO.Path]::GetFileNameWithoutExtension($p.pdf); $reports[$k].pdf = $p.pdf; $reports[$k].pdf_bytes = $p.bytes }
+foreach ($p in @($pdfs)) { $k = [System.IO.Path]::GetFileNameWithoutExtension($p.pdf); $reports[$k].pdf = $p.pdf; $reports[$k].pdf_bytes = $p.bytes; $reports[$k].pdf_converter = $p.converter }
 Log "report pdfs $(@($pdfs).Count)"
 
 $result = [ordered]@{

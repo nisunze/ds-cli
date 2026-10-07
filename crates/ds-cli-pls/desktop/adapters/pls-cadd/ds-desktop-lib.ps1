@@ -93,9 +93,15 @@ function Assert-DsPlsNotRunning {
     if (Get-Process pls_cadd64 -ErrorAction SilentlyContinue) { throw 'PLS-CADD is already running; close it first' }
 }
 
-function Assert-DsWord {
-    if (-not [Type]::GetTypeFromProgID('Word.Application')) {
-        throw 'Microsoft Word is not registered (Word.Application): the report PDFs are made from the RTFs with Word'
+function Get-DsReportConverter {
+    if ([Type]::GetTypeFromProgID('Word.Application')) { return 'word' }
+    if (Test-Path -LiteralPath 'C:\Program Files\LibreOffice\program\soffice.exe' -PathType Leaf) { return 'libreoffice' }
+    return $null
+}
+
+function Assert-DsReportConverter {
+    if (-not (Get-DsReportConverter)) {
+        throw 'No report PDF converter: Microsoft Word is not registered and LibreOffice is not installed at its supported path'
     }
 }
 
