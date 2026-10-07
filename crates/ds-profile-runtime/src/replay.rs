@@ -169,6 +169,7 @@ impl Runtime {
         request: RefreshRequest,
         calculate: bool,
     ) -> Result<Value, String> {
+        let started = std::time::Instant::now();
         if !calculate
             && (request.analyze
                 || serde_json::to_value(&request.patch).unwrap()
@@ -208,6 +209,7 @@ impl Runtime {
             );
         }
         let entries = journal.entries;
+        let journal_ms = started.elapsed().as_secs_f64() * 1000.0;
         if entries.len() > 16_384 {
             return Err("profile_replay_invalid: journal exceeds native bounds".into());
         }
@@ -227,6 +229,7 @@ impl Runtime {
             );
         }
         let mut session = held.session.clone();
+        let replay_started = std::time::Instant::now();
         let mut cache = held.demand_cache.clone();
         let initial = session.history_state().initial_revision;
         if entries
@@ -313,7 +316,7 @@ impl Runtime {
         let mut pending = held.pending_receipts.clone();
         if extending {
             receipts.truncate(request.target_history.undo_depth - start);
-            pending.extend(receipts);
+            pending.extend(receipts.iter().cloned());
         } else if !unchanged {
             pending_reconcile = true;
             pending.clear();
@@ -323,6 +326,8 @@ impl Runtime {
             pending.clear();
         }
         if !calculate {
+            let replay_ms = replay_started.elapsed().as_secs_f64() * 1000.0;
+            let authored_started = std::time::Instant::now();
             // Admission stays transactional, but observation never enters scene,
             // weather, usage or analysis preparation. Retain the calculated view
             // and its axis in RAM; the response is bounded freshness metadata.
@@ -330,11 +335,43 @@ impl Runtime {
             resolve(&state, &project.style_document)?;
             review_status_colors(&project.style_document)?;
             review_box_ink(&project.style_document)?;
+            // Stage authored geometry before admission, independently of the
+            // retained calculated review. Navigation derives geometry fresh,
+            // without running any engineering calculation.
+            let authored = held
+                .authored
+                .as_ref()
+                .zip(held.review.base_scene())
+                .map(|(view, computed)| {
+                    view.advance(
+                        session.snapshot(),
+                        session.current_revision(),
+                        held.options.clone(),
+                        if extending { &receipts } else { &[] },
+                        computed,
+                        &held.label_policy,
+                    )
+                })
+                .transpose();
+            let (authored, authored_delta, authored_unavailable) = match authored {
+                Ok(Some((view, delta))) => (Some(view), Some(delta), None),
+                Ok(None) => (
+                    None,
+                    None,
+                    Some("profile_authored_base_unavailable".to_string()),
+                ),
+                Err(error) => (
+                    held.authored.clone(),
+                    None,
+                    Some(format!("profile_authored_geometry_unavailable: {error}")),
+                ),
+            };
             let held = self.held.get_mut(&request.scope).expect("admitted base");
             held.session = session;
             held.demand_cache = cache;
             held.pending_receipts = pending;
             held.pending_reconcile = pending_reconcile;
+            held.authored = authored;
             let mut scope = ds_grid_engine::recalculation_scope::RecalculationScope {
                 whole_model: pending_reconcile,
                 ..Default::default()
@@ -353,18 +390,27 @@ impl Runtime {
                 scope.alignments.extend(change.alignments.iter().cloned());
             }
             let computed = held.review.base_scene().map(|scene| &scene.model_revision);
-            return Ok(
-                json!({"model_id":request.model_id, "model_revision":request.expected_revision,
+            let authored_ms = authored_started.elapsed().as_secs_f64() * 1000.0;
+            let delta_bytes = authored_delta.as_ref().map(|delta| {
+                serde_json::to_vec(delta)
+                    .expect("native delta serializes")
+                    .len()
+            });
+            let mut response = json!({"model_id":request.model_id, "model_revision":request.expected_revision,
                 "history":held.session.history_state(), "retained_asset_count":held.source.assets.len(),
                 "display_state":state, "scene":null, "analysis":null,
                 "command_view":{"display":null,"review":null,"analysis":null,
                     "analysis_state":state.analysis_state(false, !held.session.snapshot().structures.is_empty()),
                     "calculation_policy":"explicit"},
                 "projection_unavailable":null, "ran":false, "deferred":true,
+                "authored_delta":authored_delta, "authored_unavailable":authored_unavailable,
                 "calculation":{"policy":"explicit", "model_revision":request.expected_revision,
                     "computed_revision":computed, "required":computed != Some(&request.expected_revision),
-                    "scope":scope}}),
-            );
+                    "scope":scope}});
+            response["metrics"] = json!({"journal_ms":journal_ms,"replay_ms":replay_ms,
+                "authored_ms":authored_ms,"total_native_ms":started.elapsed().as_secs_f64()*1000.0,
+                "authored_delta_bytes":delta_bytes,"applied_entries":receipts.len(),"retained_entries":entries.len()});
+            return Ok(response);
         }
         if pending_reconcile {
             pending.clear();

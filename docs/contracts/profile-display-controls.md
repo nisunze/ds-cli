@@ -74,6 +74,19 @@ returns `deferred:true`, `ran:false`, and native `calculation` metadata: explici
 policy, authored/computed revisions, whether calculation is required, and the
 union of engine recalculation scopes since the held scene. Display patches and
 Analyze are refused on observation. No dense scene is serialized for this read.
+Observation also stages an independent native `ProfileAuthoredView` and returns
+`authored_delta` at the retained axis. Its fields identify the previous authored
+revision, current authored root, calculated revision and axis digest. Workers
+admit it against exact history before updating their current geometry/pick index;
+renderers transport native field changes without deriving geometry. The calculated
+review and its input root remain unchanged. An unavailable authored axis is named
+in `authored_unavailable`, with no package or calculated-scene fallback.
+`metrics` reports journal admission, native replay and authored projection
+milliseconds, delta bytes and actual applied/retained entry counts. These phase
+measurements exclude host transport and worker installation and do not constitute
+release-performance acceptance. Native surface work separately counts rebuilt
+bands and rebuilt ground, distinguishing reused terrain from placement work.
+
 Calculation is intentional only (owner, 2026-10-07): edits, idle time, opening
 Issues, leaving editing and Save never schedule it. Report visibility remains
 independent of this policy; `analysis_state:due` is informational. Explicit

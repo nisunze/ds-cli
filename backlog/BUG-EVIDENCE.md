@@ -408,6 +408,12 @@ template edits, competing builds or model mutations.
 
 ## Focused review: atomic Profile geometry
 
+Read-only review request for the retained-axis native delta slice: trace authored
+geometry and calculated evidence as separate identities; check repeated edits,
+deleted attachments/sections, stale delta admission, navigation and independent
+bands. Check receipt-bound terrain reuse against a fresh surface. Keep review
+bounded to the engine, Profile runtime and their worker transport; no templates.
+
 Next bounded investigation: native authored-geometry deltas at the held Profile
 axis. Current manual observation retains old calculation but current-scene
 revision fences disable subsequent Profile geometry picks/edits until explicit

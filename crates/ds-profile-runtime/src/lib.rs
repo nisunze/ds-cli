@@ -78,6 +78,7 @@ struct HeldView {
     source: HeldSource,
     demand_cache: ds_grid_engine::StructureUsageScreeningCache,
     review: ds_grid_engine::profile_engineering::ProfileReviewView,
+    authored: Option<ds_grid_engine::profile_atlas::ProfileAuthoredView>,
     options: ProfileAtlasOptions,
     rows: Vec<DisplayRow>,
     label_policy: ds_grid_model::StructureLabelPolicy,
@@ -429,6 +430,7 @@ impl Runtime {
             !session.snapshot().structures.is_empty(),
         );
         self.commit_view(&request.scope, state.clone());
+        let authored = review.authored_view(&label_policy);
         self.held.insert(
             request.scope.clone(),
             HeldView {
@@ -436,6 +438,7 @@ impl Runtime {
                 source: source.clone(),
                 demand_cache,
                 review,
+                authored,
                 options: scene_options.clone(),
                 rows: rows.clone(),
                 label_policy: label_policy.clone(),
@@ -707,6 +710,8 @@ mod transactional_projection_tests {
             ds_grid_engine::profile_atlas::ProfileSurfaceWork {
                 computed_bands: computed,
                 reused_bands: reused,
+                computed_ground: if reused == 0 { computed } else { 0 },
+                reused_ground: if reused == 0 { 0 } else { computed + reused },
             }
         );
         let mut fresh_request = request_for(worker.snapshot().clone());
@@ -782,6 +787,19 @@ mod transactional_projection_tests {
             assert_eq!(result["ran"], false);
             assert!(result["scene"].is_null());
             assert!(result["analysis"].is_null());
+            assert!(result["authored_unavailable"].is_null());
+            let delta: ds_grid_engine::profile_atlas::ProfileAuthoredDelta =
+                serde_json::from_value(result["authored_delta"].clone()).unwrap();
+            assert_eq!(delta.work.computed_ground, 0);
+            assert_eq!(delta.work.reused_ground, 2);
+            assert_eq!(delta.model_revision, worker.current_revision().revision_id);
+            assert_eq!(delta.computed_revision, original_scene.model_revision);
+            assert!(delta.changes.iter().all(|change| !change
+                .path
+                .iter()
+                .any(|part| part == "ground" || part == "terrain_points")));
+            assert_eq!(result["metrics"]["applied_entries"], 1);
+            assert!(result["metrics"]["authored_delta_bytes"].as_u64().unwrap() < 64 * 1024);
             assert_eq!(
                 result["calculation"]["computed_revision"],
                 initial["model_revision"]
