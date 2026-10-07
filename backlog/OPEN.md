@@ -227,11 +227,13 @@ start/status/cancel controls directly through CLI/MCP, and bind the native owner
 for browser/peer calculation. Cold initialization still projects synchronously;
 calculated-scene transfer remains broad. Prove matching installed artifacts and
 live interaction while it runs,
-and reject/suppress stale results without losing edits. Query native retained typed
-or Arrow results directly for usage, failures, negative loading, violating
-sections, qualification and blockers; expose bounded CLI/MCP projections and
-counts with current-input/freshness evidence. Carry only necessary result/delta
-bytes into Profile. The Server/native owner must not depend on Svelte, browser
+and reject/suppress stale results without losing edits. Complete cached queries
+for model-bound design-clearance point findings and default-analysis resistance
+checks, retaining facts before their report caps. Localize result-index
+reconstruction/preservation and bind cached reads into existing selected usage
+and findings controls. The compiled query CLI/MCP and source bindings still need
+matching native Desktop activation and live proof. Carry only necessary computed
+result/delta bytes into Profile. The Server/native owner must not depend on Svelte, browser
 state or Tauri; preserve explicit project/principal/model/session context.
 Selection-driven usage screening and uncached display-case changes must not
 solve implicitly: query admitted results or name the explicit calculation needed.
