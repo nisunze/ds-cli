@@ -6,7 +6,7 @@ The standing owner rulings for everyone who works the backlog. [OPEN.md](OPEN.md
 
 - **OPEN.md** — unfinished code that an agent can implement and prove without further owner input: product defects, missing native CLI/MCP capabilities, UI bindings, test repairs and integration.
 - **OPEN-X.md** — unresolved owner decisions, authority and supervised steps, each naming the exact input and the boundary it controls.
-- **SEEDING.md** — parameters, template/library seeding, deployment and operational acceptance through existing code.
+- **SEEDING.md** — template building and seeding that require **no code change** (owner, 2026-10-07): templates, parameters, style documents, engineering/data seeds and library curation through existing `ds` contracts, plus deployment, install and acceptance of already-landed code. Any part that needs a code change moves to OPEN.md.
 - Section numbers keep the former work-domain identity across the three files.
 
 ## 2. How to work an entry

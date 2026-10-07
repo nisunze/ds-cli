@@ -1,8 +1,8 @@
-# Parameters, template seeding and operational acceptance
+# Template building and seeding — no code changes
 
 > **Moved 2026-10-07:** this backlog now lives in `ds-command-kernel/backlog/`. The old `ds-work/backlog/` no longer exists: edit these files here, commit them to ds-command-kernel `run`, and stage only `backlog/`. ds-work holds working sessions, not coding lists.
 
-This is the operational companion to [OPEN.md](OPEN.md), which holds independently actionable code. Unresolved owner decisions, authority and supervised steps are in [OPEN-X.md](OPEN-X.md). Work here uses existing native CLI/MCP contracts: project-owned parameters, templates and style documents; authoritative engineering/data seeds; immutable library curation and native qualification; deployment/install and exact artifact acceptance.
+**Everything here is done without a code change** (owner, 2026-10-07), through the existing native CLI/MCP contracts: building and seeding templates, project-owned parameters and style documents; authoritative engineering/data seeds; immutable library curation and native qualification; then deploying, installing and accepting code that has already landed. If an entry turns out to need a code change, move that part to [OPEN.md](OPEN.md) and keep only the seeding or acceptance part here. Unresolved owner decisions, authority and supervised steps are in [OPEN-X.md](OPEN-X.md); the standing rulings are in [PRINCIPLES.md](PRINCIPLES.md).
 
 Discover the live contract, review the exact project/revision/digest and apply only authorized effects through `ds`. Preserve authored definitions, original native bytes, approved geometry, unrelated projects and retained history. Build locally and deploy the exact local artifact; an agent never starts remote Cloud Build/CI. On Windows, delivery remains in the project G: folder with the Desktop shortcut and verified bytes.
 
