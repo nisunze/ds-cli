@@ -281,6 +281,72 @@ two findings, with a concrete negative control for each.
 
 **Claimed (Claude, 2026-10-07 15:10 UTC):** focused initialization review.
 
+**Findings (Claude, 2026-10-07 15:14 UTC; read-only at ds-network `c36cced6`,
+kernel `d38ef37`, ds-web `f7f0b118c`):**
+
+**Checked, no defect:**
+
+- **Head agreement.** `capture` takes `history[0]` as the opened snapshot,
+  plus every retained entry and the cursor. Session history is only ever
+  truncated at the tail (`session.rs:452, 671, 808`). `open()` replays and
+  undoes `redo_depth`, then fences the history and the head
+  (`profile_session.rs:126-158`).
+- **Invalid drafts.** The seed requires only that the opened snapshot is
+  valid (`:120`). Every worker open path guarantees that already: `unpack`
+  refuses invalid snapshots (`package.rs:693-699`), and so does import
+  (`ds-grid-wasm/src/session.rs:767`). An invalid current draft is admitted,
+  as `invalid_current_draft_initializes_without_checkpoint_and_remains_undoable`
+  shows.
+- **Combined protection.** It comes from the same `protection_from_assets`
+  as the package path (`linked_models.rs:75-105`).
+- **Retained assets.** Each asset's bytes, digest and identity are checked
+  (`:90-115`).
+- **Save state.** `profileSessionSeedJson` and `profileSessionJournalJson`
+  are `&self` reads, so the fingerprint, revision and sequence can't move.
+
+**Finding: a live Profile scope can be evicted, and its Desktop never
+recovers.**
+
+- **The runtime is shared and keeps up to 8 scopes.**
+  - The Desktop runs one native runtime for every model,
+    `GridProfileState(Arc<Mutex<Runtime>>)` (`ds-web/src-tauri/src/grid_profile.rs:6`).
+  - Each initialization takes a fresh `crypto.randomUUID()` scope
+    (`ds-web/src/lib/grid/profile-native.ts:76-78`).
+  - Scopes are never released. When a client is dropped or its context
+    changes, the TypeScript `heldByClient` WeakMap forgets it, but the native
+    session and its assets stay.
+- **Eviction ignores which scope is live.**
+  - `commit_view` caps `views` at 8. It then removes the first *other* key in
+    sorted `BTreeMap` order, together with its `held` session
+    (`ds-profile-runtime/src/lib.rs:466-479`). That is neither the oldest
+    scope nor the least recently used.
+  - With random UUIDs, a ninth initialization can evict the live scope of
+    another open model.
+- **The evicted client stays stuck.** Its next `refresh` returns
+  `profile_replay_base_unavailable` (`replay.rs:82-85`).
+  `nativeProfileCommand` keeps the same `held`, because its context is
+  unchanged, and nothing handles that refusal. Every later refresh refuses
+  the same way until the model's context changes.
+- **Also:** up to 7 orphaned sessions, each with its decoded assets, stay
+  resident in the Desktop process.
+- **Fix:**
+  - Add a native release operation called when a held Profile is replaced or
+    its client is disposed.
+  - Evict by least recent use, never a scope used within the current
+    generation.
+  - Have the Desktop re-initialize with a new seed on
+    `profile_replay_base_unavailable`. This is a fresh initialization, not a
+    checkpoint fallback.
+- **Regression test:** in one `Runtime`, initialize scope A, then initialize
+  9 more scopes. Refreshing A must still succeed, or, after an explicit
+  release, refuse; the Desktop then re-initializes A once and its Profile
+  shows A's head.
+- **Negative controls:**
+  - with one client and at most 8 initializations, no scope is evicted;
+  - a released scope refuses with `profile_replay_base_unavailable`;
+  - re-initialization never sends package bytes and never changes the Save
+    fingerprint.
+
 - Native scene preparation still rebuilds all bands at a changed revision.
   Consume the command-receipt closure for affected bands and engineering
   refresh, retaining unchanged scene and demand inputs at section ends.
