@@ -144,7 +144,9 @@ trace below confirms it.
 type and updated usage in well under 0.5 seconds, with no whole-model package
 round trip. Edits stay dirty in RAM until explicit Save. Recalculation reaches
 incident and adjacent tension sections and their affected supports, spans and
-bands. Whole-model analysis stays available on demand.
+bands, stopping propagation at affected tension-section ends during interaction.
+Wider sway/downstream propagation waits for reconciliation; whole-model analysis
+stays available on demand.
 
 ### 5. Bug evidence found during the trace
 

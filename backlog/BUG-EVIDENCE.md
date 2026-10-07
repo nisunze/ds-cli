@@ -290,6 +290,12 @@ usage stale. Specify positive/negative cache controls and fences; no broad
 reimplementation or source writes. Edited models remain dirty in memory;
 recalculation must not save a package. Split and merge must share this closure.
 
+**Interactive boundary (owner, 2026-10-07):** stop at the affected tension-section
+ends for both CLI and user edits. Combine adjacent forces at shared end supports;
+do not recursively chase sway or negligible downstream effects through the
+alignment. Wider propagation is deferred to reconciliation. Distinguish local
+interactive work from pending reconciliation in the proposed cache controls.
+
 **Claimed (Claude, 14:00 UTC):** dirty-closure / adjacent-section recalculation trace.
 
 **Findings (Claude, 14:25 UTC; read-only, scratch packages only; ds-network `d5f9d0c9`):**
