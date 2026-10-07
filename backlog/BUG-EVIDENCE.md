@@ -131,3 +131,5 @@ smallest owner fix. Separate a demonstrated implementation error from data
 requiring native PLS-CADD evidence. Maximum two findings; no speculative parser
 relaxation, skipping tests, source writes or solver claims. Claim this after
 the current bounded review; the coding agent will implement confirmed evidence.
+
+**Claimed (Claude, 2026-10-07 13:37 UTC):** NUM 15 normalization review.
