@@ -91,7 +91,16 @@ trace below confirms it.
 | `dsgrid validate` (open and validate only), schema 4 / schema 5 | 5.5 s / 1.9 s (`inspect` alone: 0.1 s) |
 | Whole-model `engineering_issue_layer` (the Desktop's analysis request) | 5.6 s |
 
-**Trace: every edit reprocesses the whole model several times.**
+Latest live Profile receipt for Nyamagabe Model 1 structure 40, persisted
+`rev:20b09437` to dirty `rev:aab14125`, `l-w-susp-S190.012` to
+`l-w-susp-S255.012`: preview 377 ms, commit/session refresh 667 ms, Profile
+refresh 16,510 ms, total 17,554 ms. Receipt:
+`ds-cli/out/stabilization/profile-controls/retype40-applied.json`. This used a
+local Desktop debug build and browser release WASM with a concurrent two-worker
+CLI test build. A fresh idle measurement and release timing remain required;
+this measurement does not establish the sub-0.5-second acceptance target.
+
+**Trace: remaining whole-model work during edits.**
 
 1. **Desktop apply:** `GridProfileRetypePicker.svelte` →
    `gridCommitStructureRetype` (`ds-web/src/lib/grid/session.ts:749`) applies

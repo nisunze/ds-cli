@@ -383,55 +383,10 @@ fails.**
     unchanged.
 - **Out of scope:** no solver approval, and tolerances are unchanged.
 
-## Bounded live Profile refresh cost investigation
-
-Current native live CLI receipt for Nyamagabe Model 1 structure 40, persisted
-base rev:20b09437 to dirty rev:aab14125, l-w-susp-S190.012 to
-l-w-susp-S255.012: preview 377 ms, commit/session refresh 667 ms, Profile refresh
-16,510 ms, total 17,554 ms. Receipt is
-`ds-cli/out/stabilization/profile-controls/retype40-applied.json`; matching
-local Desktop debug build and browser release WASM, concurrent two-worker local
-CLI test build. This is measured interaction cost, not release acceptance.
-Read-only investigation requested before the next performance slice: trace
-independent UI revision-triggered and CLI completion-triggered Profile refresh,
-full-scene installation/serialization, existing native scoped demand/curve and
-case caches. Maximum two independently verified improvements; no templates
-(Claude owns template preview), no competing builds or model mutations.
-Native authored choices should appear immediately, affected computed results
-stay stale until revision-fenced background resolution. Never present invented
-engineering results as optimistic computation; preserve scoped section ends.
-
-Independently verified two bounded sources of duplicate work:
-- GridProfilePanel revision effect loads client.profileAtlasScene through its
-  scene cache; CLI completion calls nativeProfileCommand directly. The native
-  queue serializes both equivalent pure refreshes but does not share their
-  pending receipt. Both install a complete worker scene and clear case caches.
-  Share only identical pure read transport at the exact published native
-  history/client/ownership pin; explicit display patches, analysis, cancellation
-  and case commands remain ordered and isolated. Test one invoke/install for
-  concurrent consumers, equal-content cursor changes and failures.
-- WASM install_profile_scene_json parses the full typed scene and then parses
-  the same JSON into Value solely for case_base_axis_digest. Admit that existing
-  native metadata in the typed volatile scene and deserialize once, preserving
-  revision/input-root and missing-base refusals and installed pick behavior.
-  This is additive scene metadata, not a package schema change.
-
 Unrelated full CLI gate boundary: report.layout.render help is 2545 bytes against
 2480-byte allowance; Claude owns template-preview changes. Codex must leave its
 source and tests unchanged. Continue owning controls/transport checks; do not
 claim the unrestricted workspace suite passed until that owner closes it.
-The current whole-workspace format check also reaches Claude's in-progress
-`ds-report-host/src/mv_preview.rs`; leave that owner's formatting unchanged.
-
-## Native Profile Zoom window control
-
-The requested compact Profile header needs Zoom window alongside Fit and
-percentage zoom. `ds-canvas::viewport` and packed camera ABI own existing
-camera math, but have no rectangle-fit operation. Add a bounded native
-CSS-pixel window projection with reversed-drag parity, finite/positive extent
-refusals, existing zoom limits and pixel padding. Expose the same operation to
-CLI and UI; the UI captures the rectangle and paints its gesture only. Review
-headless centering, aspect ratio and clamp behavior before UI activation.
 
 ## Printing teardown frees an already released WASM handle — Claude-owned slice
 
