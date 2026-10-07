@@ -412,7 +412,7 @@ pub static BUNDLE: &[Script] = &[
     ),
     script!(
         "adapters/pls-cadd/pls-windows.ps1",
-        "3adc9387aa69563c83310782a99725059ddc7b2c52f3dcacca3e93723848756b"
+        "c3f956a0d6ecec73faa02d9da3e5848e8eeecb9031838524569e7688ffe4b55b"
     ),
     script!(
         "adapters/pls-cadd/tests/pls-backup-restore-contract.tests.ps1",

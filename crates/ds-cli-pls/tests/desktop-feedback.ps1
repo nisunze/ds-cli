@@ -23,6 +23,29 @@ function Load-Function([object] $Ast, [string] $Name) {
 foreach ($name in 'ds-desktop-reports.ps1', 'ds-desktop-autosag.ps1', 'ds-desktop-lib.ps1', 'pls-launch-project.ps1', 'pls-dialog-watch.ps1', 'pls-window-classification.psm1') {
     $null = Tree $name
 }
+# A PowerShell alias outranks a function with the same name. Exercise the
+# actual accessor selected by its native call, with cls still bound to Clear-Host.
+# Only this pure accessor is loaded; no native driver entry or user32 is called.
+Add-Type @'
+using System; using System.Text;
+public static class DsPw {
+    public static int GetClassName(IntPtr h, StringBuilder value, int length) {
+        value.Append("Afx:native-class-fixture"); return value.Length;
+    }
+}
+'@
+$classTree = Tree 'pls-windows.ps1'
+$classAccessors = @($classTree.FindAll({ param($node)
+    $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+    $node.Body.Extent.Text.Contains('[DsPw]::GetClassName')
+}, $false))
+Assert ($classAccessors.Count -eq 1) 'One accessor must read the native window class'
+$clsBefore = (Get-Alias cls).Definition
+Load-Function $classTree $classAccessors[0].Name
+$classValue = & $classAccessors[0].Name ([IntPtr]101)
+Assert ($classValue -ceq 'Afx:native-class-fixture') 'Native class reading must work while the builtin cls alias exists'
+Assert ((Get-Alias cls).Definition -ceq $clsBefore) 'Native class reading must preserve the existing cls alias'
+
 Import-Module (Join-Path $desktop 'pls-window-classification.psm1') -Force
 $fullTitle = 'PLS-CADD - G:\Nyamagabe\M1.xyz - 1 - [Plan View]'
 $frameRow = "101 vis=True en=True owner=0 [Afx:frame] '$fullTitle'"

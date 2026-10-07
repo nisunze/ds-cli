@@ -39,7 +39,7 @@ function Caption([IntPtr]$h) {
     [DsPw]::GetWindowText($h, $sb, 1024) | Out-Null
     $sb.ToString()
 }
-function Cls([IntPtr]$h) { $sb = New-Object System.Text.StringBuilder 256; [DsPw]::GetClassName($h, $sb, 256) | Out-Null; $sb.ToString() }
+function Get-PlsWindowClass([IntPtr]$h) { $sb = New-Object System.Text.StringBuilder 256; [DsPw]::GetClassName($h, $sb, 256) | Out-Null; $sb.ToString() }
 
 if ($Click -ne 0) {
     [DsPw]::PostMessage([IntPtr]$Click, 0x00F5, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null   # BM_CLICK
@@ -54,7 +54,7 @@ if ($CloseWindow -ne 0) {
 if ($Children -ne 0) {
     $cb2 = [DsPw+EnumWindowsProc]{ param($c, $l)
         $t = (Text $c); if ($t.Length -gt 160) { $t = $t.Substring(0, 160) }
-        [void]$rows.Add("  child $([long]$c) id=$([DsPw]::GetDlgCtrlID($c)) [$(Cls $c)] vis=$([DsPw]::IsWindowVisible($c)) en=$([DsPw]::IsWindowEnabled($c)) '$($t -replace "`r`n", " | ")'")
+        [void]$rows.Add("  child $([long]$c) id=$([DsPw]::GetDlgCtrlID($c)) [$(Get-PlsWindowClass $c)] vis=$([DsPw]::IsWindowVisible($c)) en=$([DsPw]::IsWindowEnabled($c)) '$($t -replace "`r`n", " | ")'")
         $true }
     [DsPw]::EnumChildWindows([IntPtr]$Children, $cb2, [IntPtr]::Zero) | Out-Null
     $rows
@@ -66,7 +66,7 @@ $cb = [DsPw+EnumWindowsProc]{ param($h, $l)
     if ($p -eq $pid_) {
         $t = Caption $h; $vis = [DsPw]::IsWindowVisible($h)
         if ($All -or $vis -or $t.Length -gt 0) {
-            [void]$rows.Add("$([long]$h) vis=$vis en=$([DsPw]::IsWindowEnabled($h)) owner=$([long][DsPw]::GetWindow($h, 4)) [$(Cls $h)] '$t'")
+            [void]$rows.Add("$([long]$h) vis=$vis en=$([DsPw]::IsWindowEnabled($h)) owner=$([long][DsPw]::GetWindow($h, 4)) [$(Get-PlsWindowClass $h)] '$t'")
         }
     }
     $true }
