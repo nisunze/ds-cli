@@ -8,7 +8,7 @@ Use the live `ds` contract before coding. First try the admitted project-owned p
 
 Recheck legacy claims against current code/tests before implementing. Delete proven fixes permanently; keep evidence in owning code/contracts/tests or project receipts, with no completed-work archive. Split mixed obligations: finish independently actionable code here and link only its unresolved owner decision in OPEN-X.md. Do not park routine implementation, tests, already-authorized features or work awaiting another host as owner questions. If existing contracts or evidence settle a question, proceed and remove that dependency. Section numbers retain the former work-domain identity.
 
-First-release work: clear the reproduced CLI source gates, complete the provider-model library lifecycle in block 18, integrate the existing PLS-CADD controls in block 21, and move touched UI controls to the kernel with JSON input/preview and replacement-code deletion in block 23. Fix measured renderer/compute failures. Unrelated tuning and native candidate qualification can continue through SEEDING.md.
+First-release work: **block 25 is a priority (owner, 2026-10-07)** — `ds` logs its failures to SRE and everyone files feedback unprompted. Also clear the reproduced CLI source gates, complete the provider-model library lifecycle in block 18, integrate the existing PLS-CADD controls in block 21, and move touched UI controls to the kernel with JSON input/preview and replacement-code deletion in block 23. Fix measured renderer/compute failures. Unrelated tuning and native candidate qualification can continue through SEEDING.md.
 
 <!-- toc -->
 
@@ -36,6 +36,7 @@ First-release work: clear the reproduced CLI source gates, complete the provider
 | [22. Operations product code](#22-operations-product-code) | 2 |
 | [23. Kernel controls, JSON UI and TypeScript retirement](#23-kernel-controls-json-ui-and-typescript-retirement) | 5 |
 | [24. Owner feature requests (CLI-first, after stabilization)](#24-owner-feature-requests-cli-first-after-stabilization) | 4 |
+| [25. CLI reliability reporting and proactive feedback (priority)](#25-cli-reliability-reporting-and-proactive-feedback-priority) | 7 |
 <!-- /toc -->
 
 ## 1. Source integration and release code
@@ -355,10 +356,36 @@ Owner ruling, 2026-10-07: migrate touched controls for the first release. Work o
 
 ## 24. Owner feature requests (CLI-first, after stabilization)
 
-- **DS Workflows** (owner direction 2026-10-07): declarative `ds workflow` documents over Rust vector/table engines replace ad-hoc data patching; Data Factory becomes a workflow builder and its TypeScript transforms are deleted. Contract: [docs/contracts/ds-workflows.md](../docs/contracts/ds-workflows.md); phases and proofs: [WORKFLOWS-TODO.md](WORKFLOWS-TODO.md). Specification only until the owner admits phase 1.
+- **DS Workflows — not now, not a priority** (owner direction 2026-10-07): declarative `ds workflow` documents over the Rust vector/table engines become the preferred data and geographic processing interface; Data Factory becomes one way to build a workflow (temporary or saved) and its TypeScript transforms are deleted; agents compose workflows instead of patching data with geopandas, pandas or Polars. Contract and owner questions: [docs/contracts/ds-workflows.md](../docs/contracts/ds-workflows.md) (§14). Phases, each landed and proven before the next, only once the owner admits the work:
+  0. Inventory every Data Factory, upload-wizard and attribute-table transformation and map it to a spec §5.2 op; record gaps as spec §5.3.
+  1. Kernel: `ds.workflow/v1` types, canonical digest, DAG validation, op registry, static schema propagation; tests over spec §13 documents and negative controls, building with `ds-network` absent.
+  2. Kernel: Arrow frames with admission; `data.vector.*` and `geo.*` ops on `ds-geo-lite`, byte-identical to the standalone commands; dedupe and layer append moved from TypeScript to Rust.
+  3. ds-cli: `ds workflow ops|op|new|step|validate|preview|plan|run` and one MCP chapter; spec §13 examples 1 and 3 and the negative controls through installed `ds`.
+  4. ds-network: `table.*` ops over `ds-geo::table` and `ds-cleaning`, streaming via `ds-columnar`, memory class and `workflow_budget_exceeded`; spec §13 example 2 headless to `design.stage`.
+  5. Saved immutable revisions, receipts, plan/source-changed guards.
+  6. ds-web: Data Factory emits steps into a temporary draft; delete `data-factory-layer-merge.ts`, `data-factory-geometry-merge.ts`, the transformation parts of `attributeTable/table-tools.ts` and `data-factory/columnar-request.ts`; spec §13 example 4 byte-identical.
+  7. Design intake as a built-in workflow template; 8. a `ds-workflows` skill proven by a blind agent.
 
 - Per-project style overrides: project over global, separate live/print surfaces, reset to inheritance.
 
 - Multi-village (leaf) Working Area and pipeline filters.
 
 - Governed per-entity DS Grid tag editing, validating `tag_<id>` against definitions.
+
+## 25. CLI reliability reporting and proactive feedback (priority)
+
+Owner direction 2026-10-07, **priority**: `ds` logs its own failures to SRE and files feedback without being asked; anyone using `ds` files sightings unprompted. Contract: [docs/contracts/ds-cli-reliability-and-feedback.md](../docs/contracts/ds-cli-reliability-and-feedback.md). Owner questions (opt-out, signed-out hosts, automatic-filing scope, read access) are in [OPEN-X.md block 25](OPEN-X.md#25-cli-reliability-and-feedback); slices below proceed on the spec's defaults. Land each slice on `run` before the next.
+
+- **Teach the duty first (ds-cli, text only):** add "Report as you go" (spec §5.1–5.2) near the top of the `ds` skill and name feedback as a primary duty in its description; rewrite the `feedback.submit` description so friction, confusion, slowness and ideas are filed as well as gaps; add `FEEDBACK_GUIDANCE` to the MCP initialize instructions beside `REGRESSION_GUIDANCE`. **Proof:** ds-cli discovery and MCP surface tests pass; a blind low-powered agent hitting a seeded friction files a report unprompted and lists its id (spec §7.7).
+
+- **Store accepts `ds` events (ds-sre, ds-brain):** amend the request-event store contract with `source = "cli_command"` and `cli_rollup` and the fields in spec §3.2; ds-brain stamps `service = "ds"` from the source instead of the hard-coded `ds-web` (`internal/services/sre_event_store.go` `RecordClientRequestEvent`) and `ds sre events --source` filters them. **Proof:** brain unit tests plus the full emulator suite; a posted `cli_command` row reads back through `ds sre events --source cli_command`.
+
+- **Reporter in `ds-client-core` (ds-command-kernel):** result classification (`failed` / `crashed` / `refused`), sanitizer, one event per invocation over `domains.sre.client_request_event`, bounded on-disk outbox, 30 s dedupe and per-minute cap, daily success rollup, no recursion, `DS_SRE_REPORTING=off` for tests. **Proof:** spec §7.1–7.5 as kernel tests (transport failure through outbox and flush, refusal not an SLI failure, privacy sentinels, byte-identical output on/off and online/offline).
+
+- **Wire CLI and MCP (ds-cli):** one event per CLI process and per MCP tool call; `ds doctor` shows reporting state, outbox size and last flush; error envelopes carry `next.feedback`. **Proof:** installed `ds` against an unreachable gateway, then online, shows the event with the same `request_id`.
+
+- **Invocation journal and `ds feedback draft --last` (ds-command-kernel, ds-cli):** the last 50 invocations under the §3.3 privacy rules; a draft that `ds feedback submit --yes` accepts after adding only expectation and acceptance. **Proof:** spec §7.6.
+
+- **Automatic bug on crash:** a `crashed` invocation files one `bug` report as `ds (automatic)` with the SRE event id; repeats raise occurrences. **Proof:** spec §7.3 with a test-only panic hook.
+
+- **SRE overview row (ds-sre, ds-brain):** `ds` client fault rate, top failing and most-refused commands. **Proof:** `ds sre overview` shows the row after the slices above emit events.

@@ -16,6 +16,7 @@ Check existing contracts, source evidence and recorded owner choices first. Rout
 | [15. Project scope and engineering choices](#15-project-scope-and-engineering-choices) | 3 |
 | [18. Supervised native qualification](#18-supervised-native-qualification) | 1 |
 | [22. Account and data-owner authority](#22-account-and-data-owner-authority) | 2 |
+| [25. CLI reliability and feedback](#25-cli-reliability-and-feedback) | 1 |
 | [Parked: outside stabilization](#parked-outside-stabilization) | 2 |
 <!-- /toc -->
 
@@ -52,6 +53,10 @@ Check existing contracts, source evidence and recorded owner choices first. Rout
 - **Unused Firebase CLI token**: revoke the unused token in the Google account. **Input needed:** the account owner’s revocation or explicit account-authorized execution. **Boundary:** changing account credentials; do not assume project access grants Google-account authority.
 
 - **Rwanda BigQuery geometry repairs**: repair the globe-covering reference geometries in the three identified datasets; backed-up rows require the data owner’s write authority. **Input needed:** that owner’s authorization for the exact reviewed row changes. **Boundary:** writing those authoritative datasets. Prepare and validate the concrete repair/readback before seeking approval; do not infer write authority from read access.
+
+## 25. CLI reliability and feedback
+
+- **Reporting and automatic-filing policy** (spec [ds-cli-reliability-and-feedback.md](../docs/contracts/ds-cli-reliability-and-feedback.md) §9): **Input needed:** whether operators may turn SRE reporting off (spec default: on, `DS_SRE_REPORTING=off` for tests only); whether signed-out hosts report as `anonymous` (default) or hold events until sign-in; whether automatic `bug` filing stays crash-only (default) or also covers repeated identical failures; whether a user may read their own CLI events (default: platform admins only). **Boundary:** changing those defaults. All [OPEN.md block 25](OPEN.md#25-cli-reliability-reporting-and-proactive-feedback-priority) slices proceed on the defaults.
 
 ## Parked: outside stabilization
 

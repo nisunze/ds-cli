@@ -1,7 +1,8 @@
 # DS Workflows — the data and geographic processing contract
 
-**Status:** specification, owner direction 2026-10-07. No code yet. Implementation
-order and proof gates are in [`backlog/WORKFLOWS-TODO.md`](../../backlog/WORKFLOWS-TODO.md).
+**Status:** specification, owner direction 2026-10-07 — not now, not a priority.
+No code yet. Implementation phases and proof gates are in
+[`backlog/OPEN.md` block 24](../../backlog/OPEN.md#24-owner-feature-requests-cli-first-after-stabilization).
 Open owner questions are listed in §14 and must not be guessed in code.
 
 ## 1. Intent
