@@ -162,7 +162,7 @@ pub static SET: Command = Command {
         TARGET_ARG,
         DESCRIPTOR_ARG,
     ],
-    output: "Resulting view. Rebuild waits for its native receipt; Analyze adds ran:true and bounded evidence. Full results stay in Profile and Issues. Calculation never saves the RAM model.",
+    output: "Resulting view. Rebuild awaits native results; Analyze adds ran:true and evidence. Full results stay in Profile/Issues. Calculation never saves.",
     examples: &[Example {
         command: "ds map profile set --height-px 480 --vertical-exaggeration 5 --visibility '{\"ground\":true,\"wire\":false}' --action fit --output json",
         note: "Set controls after map profile view, then fit; model edits require explicit model/revision.",
