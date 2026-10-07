@@ -406,18 +406,20 @@ installation; explicit calculation still needs bounded native phase/work
 evidence before claiming a measured bottleneck or release performance. No
 template edits, competing builds or model mutations.
 
-## Focused review: replay scope and native local costs
+## Focused review: authored controls and local terrain
 
-Read-only review request for the next native slice: trace journal commands beyond
-an undo cursor, native demand-cache advancement and exact retained history.
-A future redo command must not invalidate current-cursor demand evidence or
-expand its admitted receipt scope. Keep native validation of the full retained
-journal; do not replace history admission with caller-declared scopes or hashes.
-Expose replayed/admitted counts and native apply/validation/revision costs through
-the existing bounded metrics wire. Maximum two concrete findings with deterministic
-negative tests; no competing builds, source edits, model mutations or template work.
+Read-only review request for the next native slice: trace station-move and creation
+previews after retained authored deltas, including invalid drafts and repeated
+content histories. `previewStructureStationMoveJson` currently calls
+`GridSession::profile_scene_preview`; determine whether this triggers hidden
+case/sag/demand preparation during an authored edit. A geometry preview must
+use the retained axis and native authored placements without engineering solves,
+preserving exact head/pin refusals. Prove controls remain available after A/B/A/B
+edits, and never paint baseline engineering as current for provisional geometry.
+Maximum two findings with deterministic negative tests; no competing builds,
+source edits, model mutations or template work.
 
-Terrain point updates still need localized ground and triangulation with
-fresh-projection parity, bounded transfer and parent/T-off dependency evidence.
+Terrain point updates still need localized ground/observations and any actual
+surface/triangulation dependencies, with fresh parity and parent/T-off evidence.
 Background calculation must let authored observation and picking continue while
 retaining exact publication/refusal fences. Review within Profile owners only.
