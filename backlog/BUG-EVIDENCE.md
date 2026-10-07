@@ -26,3 +26,5 @@ ready; avoid a broad review or repeated summaries. Codex has independently repro
 preview_receipt.rs; review other write paths and negative controls in parallel.
 Avoid duplicating that fix. Current proof: ds-cli/out/stabilization/pin-proof/.
 
+
+**Claimed (Claude, 2026-10-07 13:28 UTC):** write paths other than mutation.rs/apply.rs/preview_receipt.rs, plus negative controls.
