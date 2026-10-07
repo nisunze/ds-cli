@@ -420,7 +420,9 @@ pub fn run(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     let mut compatibility = {
         let values = inputs.repeated("compatibility");
         if values.is_empty() {
-            vec!["dsgrid-schema-v1".to_string(), "pls-cadd-16.81".to_string()]
+            ds_grid_exchange::standards_library::default_standards_library_compatibility(
+                inputs.require("native-family")?,
+            )
         } else {
             values.iter().map(|s| s.to_string()).collect()
         }

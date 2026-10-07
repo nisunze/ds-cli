@@ -56,6 +56,11 @@ version. Re-running the identical seed is idempotent; any byte difference at an
 existing version refuses. Publication/sync remains a separate governed service
 decision.
 
+When compatibility tokens are omitted, the native seed planner supplies the
+emitted DS Grid model schema and selected native family. The standards manifest
+schema remains 1; it is independent of model schema 5. Explicit compatibility
+tokens are retained.
+
 `library prepare-publication` is the only local-seed to governed-publication
 bridge. It verifies and copies the exact manifest-declared DS Grid bundle and
 native PLS-CADD members into a fresh prepared directory, then writes the typed

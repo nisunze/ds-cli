@@ -1459,6 +1459,18 @@ fn library_seed_materializes_two_native_families_idempotently() {
     assert!(version.join(&native_path).is_file());
     let bundle_path = version.join(&manifest.dsgrid_bundle_path);
     let release = unpack_model_template(&std::fs::read(&bundle_path).unwrap()).unwrap();
+    let expected_compatibility = vec![
+        format!("dsgrid-schema-v{}", release.manifest.model_schema_version),
+        manifest.native_family.clone(),
+    ];
+    assert_eq!(manifest.compatibility, expected_compatibility);
+    assert!(
+        manifest
+            .members
+            .iter()
+            .all(|member| member.compatibility == expected_compatibility)
+    );
+    assert_eq!(manifest.schema_version, 1);
     assert!(
         !release.assets.is_empty(),
         "the template must embed its exact engineering resource bytes"
