@@ -197,6 +197,88 @@ Rules: [PRINCIPLES.md §6](PRINCIPLES.md#6-ds-grid-engineering).
 
 ## 14. Plan and Profile authoring
 
+### Profile-only continuation: atomic editing and intentional calculation
+
+Owner scope, 2026-10-07: make Profile precise, continuously usable and fast,
+driven by native CLI/MCP controls. Work only its owning engine/runtime, result
+queries, CLI transports and Web/Desktop bindings. Defer unrelated stabilization,
+printing/templates, NUM conversion, library curation and release pins. The
+remaining Profile package branch and print-scale screening item below are
+secondary to interactive atomic editing and calculation; do not let them become
+a campaign across other surfaces.
+
+**First owning slice: retained-axis authored deltas.** `Runtime::Observe` admits
+journal/history without calculation and returns native affected scope;
+`Runtime::Present` refuses inputs requiring calculation. The retained calculated
+scene has its old revision, and `GridProfilePanel.svelte` disables picking,
+station/create/retype controls and selection usage against that old scene.
+Emit bounded native authored-geometry deltas and freshness evidence, then admit
+them through the existing native worker/canvas contract. Keep authored revision,
+computed revision and affected-section freshness distinct. Show new types,
+placements, descriptions, deletion and stringing immediately; preserve the held
+axis/camera and independent bands. Engineering curves/evidence remain attached
+to their computed inputs until an explicit calculation replaces them. Never
+retag old engineering as current, loosen revision fences, synthesize geometry in
+TypeScript, or hide a refusal behind a full package/scene fallback. Prove repeated
+UI and CLI edits without Refresh, Save, loss of picking or broken zoom/lasso.
+
+**Next owning slice: retain unchanged terrain inside affected alignments.**
+`ds-grid-engine/src/profile_atlas/case_projection.rs::prepare_after` retains
+unaffected raw bands, but calls `profile_atlas.rs::raw_profile_surface_scoped`
+for each affected band. That calls `projection.rs::profile_geometry`, which
+restations corridor points and rebuilds ground even when a retype changes no
+terrain or route. Separate retained route/terrain inputs from authored placements;
+use native changed-table/dependency evidence to invalidate them. Retype,
+description, deletion and stringing must not rebuild untouched ground. Terrain
+point insertion/removal/movement must update its local surface/triangulation and
+relevant spans, with declared downstream station/axis effects and parent/T-off
+boundaries. Prove fresh-projection parity and exact reuse/work counts for one
+changed alignment beside an independent alignment. Do not infer safety from
+unchanged whole-model revision alone or duplicate old terrain in dense JSON.
+
+**Next owning slice: localized explicit calculation and cheap queries.**
+Accumulate native invalidation across many edits and undo/redo/branching. Only
+explicit section calculation, Refresh, Analyze or reconciliation may solve.
+Recompute affected tension sections, their spans and structure usage including
+other incident forces at shared supports; stop there during interaction. Reuse
+unchanged demands, ground, case preparation, markers and layout. Keep calculation
+asynchronous and revision-fenced, allow further interaction while it runs, and
+reject/suppress stale results without losing edits. Query native retained typed
+or Arrow results directly for usage, failures, negative loading, violating
+sections, qualification and blockers; expose bounded CLI/MCP projections and
+counts with current-input/freshness evidence. Carry only necessary result/delta
+bytes into Profile. The Server/native owner must not depend on Svelte, browser
+state or Tauri; preserve explicit project/principal/model/session context.
+
+**Measure and prove each slice.** Read `AGENTS.md`, PRINCIPLES.md, STABILIZATION.md
+and BUG-EVIDENCE.md first; use the `ds` skill and live command discovery. Read the
+owning native Profile contract and existing tests before changing its DTOs.
+Expose bounded native phase timings, work/reuse counts and transfer sizes through
+the CLI before attributing cost. Current live retypes take about 1.5–1.6 seconds
+without calculation; native history observation is about 1 second and commit/
+session-state refresh about 0.4–0.5 seconds. The owning receipts are under
+`ds-cli/out/stabilization/profile-controls/intentional-*.json`; they use a debug
+native Desktop and release browser WASM, not a release-performance acceptance.
+Trace duplicated apply/replay, revision hashing, validation and state projection
+before introducing parallelism. Target authored local edits and explicitly
+requested local calculation below 0.5 seconds while preserving exact engineering
+results. Test fresh-versus-incremental results, repeated A→B→A→B, undo/redo tails,
+deleted entities, attachment/topology changes, independent/T-off alignments,
+stale heads/results, interleaved contexts, cancellation and invalid RAM drafts.
+Keep Save explicit and independent from calculation. Prove CLI/native refusal
+paths before UI bindings; retain exact usage qualification, never solver approval.
+
+Code directly on canonical `run`, no worktrees, no official goal tool. Place a
+focused read-only review request in BUG-EVIDENCE.md before each source slice and
+re-read it and STABILIZATION.md between slices. Preserve Claude's template edits
+and processes; do not repair its unrelated test failures. Run two Cargo workers,
+check memory/processes before heavy jobs, use disk scratch and avoid overlapping
+large builds. Build/activate only local artifacts; no remote CI/Cloud Build.
+Commit and push each coherent owning slice before the next. Delete fulfilled
+backlog/evidence, keep durable proof in owning tests/contracts, and finish with
+an honest measured result and the exact remaining boundary. Current worktree
+registry is empty; release pins remain last.
+
 - **Avoid redundant native Profile demand work**: `ds-profile-runtime::refresh` advances demands through new journal entries beyond the target cursor before restoring that cursor, so a coalesced edit/undo conservatively drops reuse. Advance only admitted forward receipts while retaining exact history/refusal fences; prove fresh-scene parity and computed/reused work for a future redo tail. `ds-grid-engine::profile_atlas_scenes` also screens the same model twice for the two print scales; share native screening evidence without changing scale-specific marker projection. These are independent optimization slices, not release-latency proof.
 
 - **Remove dormant Profile package projection**: `ds-profile-runtime::Request::Project` still accepts a full package and can return the new head's history after restoring the old held session on Analyze projection refusal. Desktop transport and `profile-native.ts` now use only initialize/refresh; `ds-cli-map/src/profile.rs` drives that Desktop transport. Trace remaining callers, migrate package-era runtime tests/smoke examples to readonly native seed initialization, then delete the public package request/ingest branch and its dormant Analyze fallback. Preserve transactional seed/replay refusal and native offline smoke coverage.

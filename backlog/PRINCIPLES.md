@@ -79,6 +79,7 @@ Outside coding sessions, product-use sightings follow [ds-cli-reliability-and-fe
 - Windows owns DS Grid engineering; the server session integrates the other surfaces.
 - Measure → test → fix → remeasure on exact reference revisions.
 - Preserve engineering authority and record numbers as owning tests — never per-model constants or widened tolerances.
+- Owner, 2026-10-07: engineering calculation is intentional. Edits accumulate without calculation or Save. Atomic localized work comes first: reuse unchanged alignments and terrain, update only affected authored geometry and tension-section results, including adjacent incident forces at shared supports. Stop edit propagation at affected tension-section ends; wider propagation is explicit reconciliation. Retained RAM is an accelerator, not a substitute for bounded computation. Preserve the same engineering results.
 
 ## 7. No single-country assumptions
 

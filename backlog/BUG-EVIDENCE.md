@@ -11,20 +11,6 @@ evidence; reviewers mark a request claimed here to avoid duplicate work.
 
 ## Queued next: characterized NUM 15 normalization
 
-## Focused review: explicit engineering calculation after accumulated RAM edits
-
-Owner clarification, 2026-10-07: engineering recalculation is intentional only;
-retype, stringing, deletion and repeated edits accumulate in RAM independently
-of Save and calculation. Trace native replay/cache freshness and retained scene
-ownership through history navigation. Confirm that observing a new head does no
-curve solve, usage screening, weather preparation or analysis; only explicit
-Refresh/Analyze/calculation requests may perform that work. Negative controls:
-multiple edits, undo/redo with repeated content, stale context/results, independent
-alignments and changed tension-section ends with adjacent incident forces.
-Codex owns this source slice; read-only review must not touch templates/printing
-or launch builds. Remaining cheap authored-geometry projection must retain the
-held profile axis rather than rebuild independent alignments.
-
 Review only the failing Huye 120 PLS-CADD 19.01 → 16.81 conversion in
 STABILIZATION.md §2 / the moved private-corpus entry below. Trace the conversion planner's renumbering
 and NUM normalization into the strict 16.81 writer. Existing evidence is in
@@ -248,13 +234,6 @@ schema-5 packages); Nyamagabe M1, 1.4 MB, structure 618:
 
 1. **The edit.** `gridCommitStructureRetype` applies it in the worker
    (`ds-web/src/lib/grid/session.ts:749`). This part is cheap.
-3. **Auto analysis.** The new revision re-offers it
-   (`GridProfilePanel.svelte:1210-1226`; on by default since 2026-10-05).
-   `executeNativeProfileCommand` (`profile-native.ts`) then:
-   - still assembles case transitions/election, engineering markers and layout
-     across the Profile, with separate design-case clearance work;
-   - returns the full scene and up to 2,000 issues per kind, which are
-     re-installed in the worker.
 4. **CLI path** (`ds-cli-dsgrid/src/mutation.rs`, `structure/retype.rs`):
    decode the whole package (schema-4 copies re-run the 4 → 5 migration on
    every open), compute line angles for every structure, then re-emit and hash the whole
@@ -415,16 +394,26 @@ single-owner operations. Prove constructor refusal followed by teardown and
 ordinary replacement/unmount without a second free. Claude owns template
 previewing; Codex leaves this component untouched to avoid overlapping edits.
 
-## Bound the remaining live Profile refresh cost before another optimization
+## Bound native replay and explicit calculation cost
 
-Structure 40's idle 190→255 edit still spends 8,352 ms in Profile refresh;
-transaction/session refresh is 512 ms. Exact receipt is
-`ds-cli/out/stabilization/profile-controls/retype40-native-envelope.json`.
-The current CLI receipt aggregates native projection, transport and worker
-installation, so it cannot identify their individual costs. Investigate native
-case preparation/election, marker/layout assembly and response/installation
-sizes at the exact model/history pin. Return at most two measured targets;
-retain affected-section end boundaries, stale-result refusals and scope/cache
-isolation. No template edits, competing builds or model mutations. Expose
-bounded native phase/work evidence through CLI before attributing latency to a
-particular remaining stage or claiming the release acceptance target.
+Live structure 40 retypes now take 1,512–1,549 ms without calculation or Save;
+988–1,026 ms remains in native history observation and 495–508 ms in commit
+and session-state refresh. Native receipts identify one affected alignment and
+four demand sections. Investigate staged replay, repeated whole-model revision
+and validation work before attributing cost to RAM, serialization or solving.
+The earlier 8,352-ms Profile refresh combined projection, transport and worker
+installation; explicit calculation still needs bounded native phase/work
+evidence before claiming a measured bottleneck or release performance. No
+template edits, competing builds or model mutations.
+
+## Focused review: atomic Profile geometry
+
+Next bounded investigation: native authored-geometry deltas at the held Profile
+axis. Current manual observation retains old calculation but current-scene
+revision fences disable subsequent Profile geometry picks/edits until explicit
+Refresh. CLI edits continue; this UI boundary is unfinished source work. Trace
+a cheap native projection and worker admission that separate authored and
+computed revisions without marking old engineering current or serializing the
+whole scene. Retype/stringing/deletion must reuse unchanged route and terrain;
+point edits need local terrain updates, not alignment-wide regeneration. At most
+two concrete findings with negative controls and fresh-scene parity.

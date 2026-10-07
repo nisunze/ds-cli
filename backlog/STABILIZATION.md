@@ -91,14 +91,22 @@ trace below confirms it.
 | `dsgrid validate` (open and validate only), schema 4 / schema 5 | 5.5 s / 1.9 s (`inspect` alone: 0.1 s) |
 | Whole-model `engineering_issue_layer` (the Desktop's analysis request) | 5.6 s |
 
-Most recent idle live Profile receipt for Nyamagabe Model 1 structure 40,
-persisted `rev:20b09437` to dirty `rev:aab14125`, `l-w-susp-S190.012` to
-`l-w-susp-S255.012`: preview 42 ms, commit/session refresh 512 ms, Profile
-refresh 8,352 ms, total 8,906 ms (CLI wall 8,936 ms). Receipt:
-`ds-cli/out/stabilization/profile-controls/retype40-native-envelope.json`.
-This used a local Desktop debug build and browser release WASM with builds and
-tests idle. Profile refresh remains the dominant cost; release timing and the
-sub-0.5-second acceptance target remain unmet. Save was not invoked.
+Current remaining latency boundary: three consecutive live native retypes of
+Nyamagabe structure 40 take 1,545 / 1,549 / 1,512 ms without calculation or
+Save. Preview is 28–37 ms, commit/session refresh 495–508 ms, native history
+observation 988–1,026 ms. Receipts:
+`ds-cli/out/stabilization/profile-controls/intentional-retype40-{first,second,third}.json`.
+The sub-0.5-second target remains unmet. Atomic localized work is the priority;
+RAM retention alone does not close the performance requirement. Instrument and
+reduce native apply/replay/session-state work without weakening revision fences.
+
+Retained calculated scenes currently keep current-scene pick/edit fences until
+explicit Refresh. Implement a cheap native authored-geometry delta with separate
+authored/computed revision evidence so repeated UI editing remains available.
+The affected raw band still calls `profile_geometry`, which restations terrain
+and rebuilds effective ground even for retypes. Reuse unchanged route/terrain
+inputs inside that affected alignment, then localize point edits and downstream
+station changes. Preserve fresh-scene and engineering parity.
 
 **Trace: remaining whole-model work during edits.**
 
@@ -145,8 +153,10 @@ sub-0.5-second acceptance target remain unmet. Save was not invoked.
    explicit section calculation, Refresh or Analyze.
 
 **Acceptance:** on this model, in a release build, retyping 618 shows the new
-type and updated usage in well under 0.5 seconds, with no whole-model package
-round trip. Edits stay dirty in RAM until explicit Save. Recalculation reaches
+authored type in well under 0.5 seconds, with no whole-model package round trip
+or implicit engineering work. Only intentional calculation updates usage;
+the scoped calculation must also meet the local latency requirement. Edits stay
+dirty until explicit Save. Recalculation reaches
 incident and adjacent tension sections and their affected supports, spans and
 bands, stopping propagation at affected tension-section ends during interaction.
 Wider sway/downstream propagation waits for reconciliation; whole-model analysis
