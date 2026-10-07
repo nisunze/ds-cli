@@ -720,6 +720,24 @@ The analysis report (`analysis`) is on by default. While it is on, the Desktop r
 
 `ds map profile set --action analyze` runs the native structure, section and clearance checks on every invocation at the held model revision. It uses the complete model-bound case envelope; selecting weather changes the displayed curve, never that engineering envelope. Qualified, partial and unknown results and typed blockers remain visible in Profile and Issues. The result retains `ran`, model/revision and the bounded native analysis receipt. No engineering model or project data is changed. This action replaces the redundant `ds map profile analyze` command; headless file analysis remains `ds dsgrid run --model <file> --operation analyze_model_defaults`.
 
+`ds map profile results --model <model-id> --revision <revision-id> --request
+'{"kind":"negative_loading","limit":50}' --output json` reads admitted
+native calculated facts without calculating, observing or saving. Kinds are
+`usage`, `failures`, `negative_loading`, `violating_sections`, `qualification`
+and `blockers`. Structure queries accept structure IDs; violating sections
+accept section IDs; blockers accept structure, section or alignment IDs.
+Pass `entity_ids` for a focused read and the emitted `next_cursor` as `cursor`
+to continue. Counts precede paging; native responses stop at 200 items or
+256 KiB. `--history` optionally pins the exact history from Profile view.
+The response states authored/computed revisions, engineering roots and native
+freshness. Pending affected inputs refuse until explicit rebuild/analyze;
+unaffected focused reads can reuse prior facts. Negative loading retains
+proven `uplift_failure` separately. Qualification is structure screening;
+blockers cover Profile curve/clearance and usage evidence. Design-clearance
+and default-analysis resistance findings remain in their analysis receipt.
+An unavailable usage envelope refuses, so an empty failure page never stands
+in for unavailable calculation.
+
 `ds map profile select --model <model-id> --revision <revision-id> --from <entity-id> --to <entity-id> [--mode replace|add|remove|intersect]` changes only that transient selection. The Desktop refuses a different model or revision. The native held scene resolves an inclusive range when both IDs belong to the same entity family; use the same ID for both endpoints to select one item. The default mode is `replace`. `add`, `remove` and `intersect` combine that resolved range with the current selection. The CLI sends the two IDs unchanged and returns the Desktop's selection receipt; it does not reconstruct scene order or author the model. On a local development Desktop, pass `--desktop-descriptor ~/.local/share/rw.datasolutions.desktop.local-dev/cli-bridge.d/<instance-id>.json` to address that instance directly.
 
 `ds map grid lasso` adds a Plan/Profile polygon selection lens with optional

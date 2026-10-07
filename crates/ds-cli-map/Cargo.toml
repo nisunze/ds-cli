@@ -22,6 +22,8 @@ ds-cli-server = { workspace = true }
 ds-command-kernel = { workspace = true }
 # Typed native issue queries; no engineering predicate is copied into the lens.
 ds-grid-engine = { workspace = true }
+# Profile query input DTOs come from their native owner; this lens never solves.
+ds-profile-runtime = { path = "../../../ds-command-kernel/crates/ds-profile-runtime" }
 ds-canvas = { path = "../../../ds-network/crates/ds-canvas" }
 serde_json = { workspace = true }
 serde = { workspace = true }

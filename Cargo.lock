@@ -1206,6 +1206,7 @@ dependencies = [
  "ds-grid-engine",
  "ds-layer-ops",
  "ds-layer-store",
+ "ds-profile-runtime",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -1787,6 +1788,19 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror",
+]
+
+[[package]]
+name = "ds-profile-runtime"
+version = "0.1.0"
+dependencies = [
+ "ds-command-kernel",
+ "ds-grid-engine",
+ "ds-grid-exchange",
+ "ds-grid-model",
+ "ds-grid-physics",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
