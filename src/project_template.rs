@@ -628,7 +628,8 @@ mod tests {
         assert!(plan.skipped.contains(&Finding::new(
             skip::PROJECT_LEVEL_COMPUTED,
             Some("collisions")
-        )));    }
+        )));
+    }
 
     /// A project that is not in the template state is no template. The plan
     /// is still stated in full, so a dry run shows what marking it would
@@ -708,7 +709,10 @@ mod tests {
         assert!(plan.ready);
         assert_eq!(
             plan.steps,
-            [Step::CreateProject { order: 1 }, Step::NetworkDocuments { order: 2 }]
+            [
+                Step::CreateProject { order: 1 },
+                Step::NetworkDocuments { order: 2 }
+            ]
         );
         assert_eq!(plan.totals.write_calls, 2);
     }

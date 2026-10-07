@@ -1,9 +1,9 @@
 //! Explicit template organization shared by native and web consumers.
 //! Names, paper formats and retired layout fields never decide classification.
-use super::{PaperSpec, page_role::PageRole};
+use super::{page_role::PageRole, PaperSpec};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 

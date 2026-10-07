@@ -218,8 +218,8 @@ pub use printing::{
 };
 pub use transport::PrintingCall;
 
-pub mod printing_standard;
 pub mod printing_capture;
+pub mod printing_standard;
 pub use printing_standard::{
     PrintingStandardCall, PrintingStandardKind, PrintingStandardRequest,
     PRINTING_STANDARD_CATALOG_SCHEMA, PRINTING_STANDARD_PATH, PRINTING_STANDARD_RESPONSE_LIMIT,
@@ -234,8 +234,9 @@ pub use printing_style_keys::{
 
 pub mod network_documents;
 pub use network_documents::{
-    NetworkDocumentsCall, NetworkDocumentsRequest, NETWORK_DOCUMENTS_ACTION, NETWORK_DOCUMENTS_PLAN_SCHEMA,
-    NETWORK_DOCUMENTS_RECEIPT_SCHEMA, NETWORK_DOCUMENTS_RESPONSE_LIMIT, NETWORK_DOCUMENT_PARTS,
+    NetworkDocumentsCall, NetworkDocumentsRequest, NETWORK_DOCUMENTS_ACTION,
+    NETWORK_DOCUMENTS_PLAN_SCHEMA, NETWORK_DOCUMENTS_RECEIPT_SCHEMA,
+    NETWORK_DOCUMENTS_RESPONSE_LIMIT, NETWORK_DOCUMENT_PARTS,
 };
 
 pub mod data_distribution;

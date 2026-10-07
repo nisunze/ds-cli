@@ -205,9 +205,7 @@ pub struct DisplayPatch {
     pub cable_colors: BTreeMap<String, Option<String>>,
 }
 fn is_hex_color(value: &str) -> bool {
-    value.len() == 7
-        && value.starts_with('#')
-        && value[1..].chars().all(|c| c.is_ascii_hexdigit())
+    value.len() == 7 && value.starts_with('#') && value[1..].chars().all(|c| c.is_ascii_hexdigit())
 }
 // Omission retains state; explicit null is an invalid typed value. In particular,
 // JavaScript non-finite numbers serialized to null cannot silently become omission.
@@ -256,11 +254,15 @@ impl DisplayState {
         }
         for (cable, color) in &patch.cable_colors {
             if cable.trim().is_empty() || cable.len() > 200 || cable.chars().any(char::is_control) {
-                return Err("invalid_profile_view: cable colours need an exact cable engineering name".into());
+                return Err(
+                    "invalid_profile_view: cable colours need an exact cable engineering name"
+                        .into(),
+                );
             }
             match color {
                 Some(color) if is_hex_color(color) => {
-                    next.cable_colors.insert(cable.clone(), color.to_ascii_lowercase());
+                    next.cable_colors
+                        .insert(cable.clone(), color.to_ascii_lowercase());
                 }
                 Some(_) => {
                     return Err("invalid_profile_view: a cable colour must be #rrggbb".into());
@@ -308,8 +310,10 @@ mod tests {
             );
         }
         // Both identifying labels remain adjustable after opening Profile.
-        let patch: DisplayPatch =
-            serde_json::from_str(r#"{"visibility":{"structure_names":false,"structure_comments":false}}"#).unwrap();
+        let patch: DisplayPatch = serde_json::from_str(
+            r#"{"visibility":{"structure_names":false,"structure_comments":false}}"#,
+        )
+        .unwrap();
         let hidden = state.patched(&patch).unwrap();
         assert!(!hidden.visibility[&DisplayOption::StructureNames]);
         assert!(!hidden.visibility[&DisplayOption::StructureComments]);
@@ -317,8 +321,10 @@ mod tests {
     #[test]
     fn cable_colours_patch_one_cable_at_a_time_and_reset_with_null() {
         let state = DisplayState::default();
-        let set: DisplayPatch =
-            serde_json::from_str(r##"{"cable_colors":{"ASTER 54.6":"#AABBCC","AAAC 34":"#010203"}}"##).unwrap();
+        let set: DisplayPatch = serde_json::from_str(
+            r##"{"cable_colors":{"ASTER 54.6":"#AABBCC","AAAC 34":"#010203"}}"##,
+        )
+        .unwrap();
         let next = state.patched(&set).unwrap();
         assert_eq!(next.cable_colors["ASTER 54.6"], "#aabbcc");
         assert_eq!(next.cable_colors.len(), 2);
@@ -326,14 +332,20 @@ mod tests {
             serde_json::from_str(r#"{"cable_colors":{"AAAC 34":null}}"#).unwrap();
         let next = next.patched(&reset).unwrap();
         assert_eq!(next.cable_colors.keys().collect::<Vec<_>>(), ["ASTER 54.6"]);
-        for bad in [r#"{"cable_colors":{"ASTER":"red"}}"#, r##"{"cable_colors":{" ":"#aabbcc"}}"##] {
+        for bad in [
+            r#"{"cable_colors":{"ASTER":"red"}}"#,
+            r##"{"cable_colors":{" ":"#aabbcc"}}"##,
+        ] {
             let patch: DisplayPatch = serde_json::from_str(bad).unwrap();
             assert!(next.patched(&patch).is_err(), "{bad}");
         }
         // States saved before cable colours existed still read.
         let mut old = serde_json::to_value(DisplayState::default()).unwrap();
         old.as_object_mut().unwrap().remove("cable_colors");
-        assert!(serde_json::from_value::<DisplayState>(old).unwrap().cable_colors.is_empty());
+        assert!(serde_json::from_value::<DisplayState>(old)
+            .unwrap()
+            .cable_colors
+            .is_empty());
     }
     #[test]
     fn review_is_on_and_patches_are_atomic_and_strict() {

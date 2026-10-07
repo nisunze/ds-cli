@@ -1517,7 +1517,13 @@ impl DeviceApiAuthorization<'_> {
     ) -> Result<serde_json::Value, ClientError> {
         request.validate_for(ds_project)?;
         self.ensure_active(now)?;
-        crate::network_documents::call(self.profile, transport, self.authority(), ds_project, request)
+        crate::network_documents::call(
+            self.profile,
+            transport,
+            self.authority(),
+            ds_project,
+            request,
+        )
     }
     /// Plan, census or apply the governed printing-template migration of one
     /// library (`ds_project` empty for the global one).

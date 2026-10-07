@@ -2,7 +2,7 @@
 //! hosts neither construct style ids nor edit inventory documents themselves.
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "operation", rename_all = "snake_case", deny_unknown_fields)]
@@ -501,8 +501,7 @@ const A4_BASELINE_HTML: &str = "f8475303b1fb7b2cf9c613cb51f5f8d6fc7b843805fda247
 // Reviewed fitting revision immediately before the farthest-customer metric.
 const A4_FITTING_DEFINITION: &str =
     "967ebb76ab66af38f3ad20ac04844da2383feea3df6fe725ea8870393de0d1f0";
-const A4_FITTING_CONTENT: &str =
-    "736e564abc947dbde216dd0bd73569d900522f005ad51553fe9f69ceaaebc863";
+const A4_FITTING_CONTENT: &str = "736e564abc947dbde216dd0bd73569d900522f005ad51553fe9f69ceaaebc863";
 const A4_FITTING_HTML: &str = "124a3e83edb483ee9c776d30a4994e25c2f707f79c2536cd0d0a5a99aef3015d";
 
 fn a4_retained_hashes(definition: &str) -> Option<(&'static str, &'static str)> {
@@ -555,19 +554,17 @@ fn admit_a4_migration_plan(request: &Request, data: &Value) -> Result<A4Migratio
         && plan.updates == 0
         && plan.retains == 0;
     let state_valid = match plan.existing_state.as_str() {
-        "baseline" => {
-            a4_retained_hashes(&plan.existing_sha256).is_some_and(|(content, html)| {
-                plan.definition_sha256 != plan.existing_sha256
-                    && exact(&plan.existing_update_time, 64)
-                    && plan.retention_path == expected_retention
-                    && plan.previous_content_sha256 == content
-                    && plan.previous_html_sha256 == html
-                    && plan.updates == 1
-                    && plan.retains == 1
-                    && plan.preserves == 0
-                    && plan.apply_allowed
-            })
-        }
+        "baseline" => a4_retained_hashes(&plan.existing_sha256).is_some_and(|(content, html)| {
+            plan.definition_sha256 != plan.existing_sha256
+                && exact(&plan.existing_update_time, 64)
+                && plan.retention_path == expected_retention
+                && plan.previous_content_sha256 == content
+                && plan.previous_html_sha256 == html
+                && plan.updates == 1
+                && plan.retains == 1
+                && plan.preserves == 0
+                && plan.apply_allowed
+        }),
         "exact" => {
             without_retention
                 && plan.existing_sha256 == plan.definition_sha256
@@ -788,23 +785,19 @@ mod tests {
         }
         let mut key = binding_key();
         key.target = crate::style_resolution::Target::Screen;
-        assert!(
-            request_body(&Request {
-                project: "project_a".into(),
-                command: Command::PlanBinding {
-                    key,
-                    style_ref: "lv_poles_as_built_print".into()
-                },
-            })
-            .is_err()
-        );
-        assert!(
-            serde_json::from_value::<Command>(json!({
-                "operation":"plan_binding", "key":binding_key(),
-                "style_ref":"lv_poles_as_built_print", "document":{}
-            }))
-            .is_err()
-        );
+        assert!(request_body(&Request {
+            project: "project_a".into(),
+            command: Command::PlanBinding {
+                key,
+                style_ref: "lv_poles_as_built_print".into()
+            },
+        })
+        .is_err());
+        assert!(serde_json::from_value::<Command>(json!({
+            "operation":"plan_binding", "key":binding_key(),
+            "style_ref":"lv_poles_as_built_print", "document":{}
+        }))
+        .is_err());
     }
     #[test]
     fn binding_create_preserves_existing_tuple_and_checks_both_reviewed_fences() {
@@ -890,11 +883,9 @@ mod tests {
             backup_id: "snapshot".into(),
             all_projects: false,
         };
-        assert!(
-            request_body(&request)
-                .unwrap_err()
-                .contains("inventory digest")
-        );
+        assert!(request_body(&request)
+            .unwrap_err()
+            .contains("inventory digest"));
         assert!(serde_json::from_value::<Command>(json!({"operation":"delete"})).is_err());
         request.command = Command::Inventory {
             cursor: None,
@@ -913,11 +904,9 @@ mod tests {
         let mut receipt = json!({"success":true,"data":{"manifest_revision":"a".repeat(64),"plan_sha256":"b".repeat(64),"creates":[],"preserves":[],"apply_allowed":true,"migrations":[{"style_ref":"fixture/line_print","expected_head":"c".repeat(64),"expected_content_sha256":"d".repeat(64),"content_sha256":crate::style_plan::style_digest(&document),"document":document}]}});
         assert!(admit(&request, &receipt).is_ok());
         receipt["data"]["migrations"][0]["document"]["paint"]["line-width"] = json!(3);
-        assert!(
-            admit(&request, &receipt)
-                .unwrap_err()
-                .contains("destination authority")
-        );
+        assert!(admit(&request, &receipt)
+            .unwrap_err()
+            .contains("destination authority"));
     }
     #[test]
     fn retirement_admission_never_accepts_an_executable_deletion() {
@@ -933,11 +922,9 @@ mod tests {
         assert!(admit(&request, &receipt).is_ok());
         let mut other_project = receipt.clone();
         other_project["data"]["scope"]["project_id"] = json!("other");
-        assert!(
-            admit(&request, &other_project)
-                .unwrap_err()
-                .contains("project_context_changed")
-        );
+        assert!(admit(&request, &other_project)
+            .unwrap_err()
+            .contains("project_context_changed"));
         receipt["data"]["deletion_executable"] = json!(true);
         assert!(admit(&request, &receipt).is_err());
     }

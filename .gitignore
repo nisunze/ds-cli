@@ -25,3 +25,6 @@ _discardable/
 
 # Native Profile host crate owns a detached workspace.
 crates/ds-profile-runtime/target/
+
+# Generated job logs, receipts and copied gate sources stay local.
+/out/

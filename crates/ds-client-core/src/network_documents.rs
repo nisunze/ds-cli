@@ -330,12 +330,15 @@ mod tests {
                 "p",
             ),
         ] {
-            assert!(request.validate_for(project).is_err(), "{request:?} {project}");
+            assert!(
+                request.validate_for(project).is_err(),
+                "{request:?} {project}"
+            );
         }
-        assert!(serde_json::from_value::<NetworkDocumentsRequest>(
-            json!({"operation":"census"})
-        )
-        .is_err());
+        assert!(
+            serde_json::from_value::<NetworkDocumentsRequest>(json!({"operation":"census"}))
+                .is_err()
+        );
     }
 
     #[test]
@@ -389,7 +392,12 @@ mod tests {
         )
         .unwrap_err();
         assert_eq!(missing.kind(), ErrorKind::ResourceNotFound);
-        let older = decode(response(400, json!({"detail":"Unknown action"})), "p", &request).unwrap_err();
+        let older = decode(
+            response(400, json!({"detail":"Unknown action"})),
+            "p",
+            &request,
+        )
+        .unwrap_err();
         assert_eq!(older.kind(), ErrorKind::RouteUnavailable);
     }
 }

@@ -30,8 +30,8 @@ pub mod preview;
 pub mod project_crs;
 pub mod project_sources;
 pub mod renderer_defaults;
-pub mod retained_preview;
 pub mod resolved_styles;
+pub mod retained_preview;
 pub mod session;
 pub mod sheet_margin;
 pub mod sheet_status;
@@ -2927,11 +2927,15 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
             validate(&layout)?;
             json!({"layout":layout})
         }
-        Command::TemplateCatalogue { rows, project_id, governed } => {
-            serde_json::to_value(catalogue::project(rows, project_id.as_deref(), governed)?).map_err(|e| e.to_string())?
-        }
+        Command::TemplateCatalogue {
+            rows,
+            project_id,
+            governed,
+        } => serde_json::to_value(catalogue::project(rows, project_id.as_deref(), governed)?)
+            .map_err(|e| e.to_string())?,
         Command::ReadGovernedTemplate { location, response } => {
-            serde_json::to_value(catalogue::read_governed(location, response)?).map_err(|e| e.to_string())?
+            serde_json::to_value(catalogue::read_governed(location, response)?)
+                .map_err(|e| e.to_string())?
         }
         Command::Duplicate { layout, id, name } => {
             let mut layout = upgrade(layout)?;

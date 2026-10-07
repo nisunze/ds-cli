@@ -621,4 +621,3 @@ fn draft_id(id: &str) -> bool {
             | "financial-draft-en"
     )
 }
-

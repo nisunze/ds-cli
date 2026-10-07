@@ -323,9 +323,15 @@ mod tests {
             .encoding
             .clone();
         // Repeated spans of one cable collapse; blank names are never a cable.
-        let pens = cable_pens(["ASTER 54.6", "AAAC 34", "ASTER 54.6", " "], &rows, &BTreeMap::new());
+        let pens = cable_pens(
+            ["ASTER 54.6", "AAAC 34", "ASTER 54.6", " "],
+            &rows,
+            &BTreeMap::new(),
+        );
         assert_eq!(
-            pens.iter().map(|pen| pen.cable_name.as_str()).collect::<Vec<_>>(),
+            pens.iter()
+                .map(|pen| pen.cable_name.as_str())
+                .collect::<Vec<_>>(),
             ["AAAC 34", "ASTER 54.6"]
         );
         // The first cable keeps the governed wire pen; the next one is distinct.

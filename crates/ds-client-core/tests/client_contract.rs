@@ -13858,14 +13858,23 @@ fn fixed_a4_seed_uses_the_existing_native_styles_route_and_rejects_another_princ
 
 #[test]
 fn print_binding_uses_captured_authority_and_refuses_a_rehashed_other_principal() {
-    use ds_command_kernel::{style_governance::Command, style_resolution::{Ink, Key, Target}};
+    use ds_command_kernel::{
+        style_governance::Command,
+        style_resolution::{Ink, Key, Target},
+    };
     let transport = FixtureTransport::with_sign_in(SIGN_IN);
     let mut client = signed_in(transport.clone(), MemoryStore::default());
     let key = Key {
-        entity_class:"survey_existing_poles".into(), source_kind:"live_geojson".into(),
-        target:Target::Print, role:"project".into(), ink:Ink::Colour,
+        entity_class: "survey_existing_poles".into(),
+        source_kind: "live_geojson".into(),
+        target: Target::Print,
+        role: "project".into(),
+        ink: Ink::Colour,
     };
-    let command = Command::PlanBinding {key:key.clone(), style_ref:"lv_poles_as_built_print".into()};
+    let command = Command::PlanBinding {
+        key: key.clone(),
+        style_ref: "lv_poles_as_built_print".into(),
+    };
     let mut plan = serde_json::json!({
         "schema":"ds.style-binding-plan/v1", "project_id":"project_a", "principal":"user@example.com",
         "key":key,"style_ref":"lv_poles_as_built_print","manifest_revision":"a".repeat(64),
@@ -13875,21 +13884,46 @@ fn print_binding_uses_captured_authority_and_refuses_a_rehashed_other_principal(
     });
     plan["plan_sha256"] = serde_json::json!(ds_command_kernel::style_plan::style_digest(&plan));
     push_styles(&transport, serde_json::json!({"success":true,"data":plan}));
-    assert_eq!(client.style_governance("project_a", &command, NOW + 1).unwrap()["creates"], 1);
+    assert_eq!(
+        client
+            .style_governance("project_a", &command, NOW + 1)
+            .unwrap()["creates"],
+        1
+    );
     let before = transport.calls().len();
-    assert!(client.style_governance("project_a", &Command::CreateBinding {
-        key, style_ref:"lv_poles_as_built_print".into(),
-        expected_manifest_revision:"bad".into(),expected_plan_sha256:"a".repeat(64),
-    }, NOW + 1).is_err());
+    assert!(client
+        .style_governance(
+            "project_a",
+            &Command::CreateBinding {
+                key,
+                style_ref: "lv_poles_as_built_print".into(),
+                expected_manifest_revision: "bad".into(),
+                expected_plan_sha256: "a".repeat(64),
+            },
+            NOW + 1
+        )
+        .is_err());
     assert_eq!(transport.calls().len(), before);
     for mutation in ["project", "principal"] {
         let mut bad = plan.clone();
-        bad[if mutation == "project" {"project_id"} else {"principal"}] =
-            serde_json::json!(if mutation == "project" {"project_b"} else {"other@example.com"});
+        bad[if mutation == "project" {
+            "project_id"
+        } else {
+            "principal"
+        }] = serde_json::json!(if mutation == "project" {
+            "project_b"
+        } else {
+            "other@example.com"
+        });
         bad["plan_sha256"] = serde_json::json!("");
         bad["plan_sha256"] = serde_json::json!(ds_command_kernel::style_plan::style_digest(&bad));
         push_styles(&transport, serde_json::json!({"success":true,"data":bad}));
-        let error = client.style_governance("project_a", &command, NOW + 1).unwrap_err();
-        assert_eq!(error.service_refusal().and_then(|refusal| refusal.code()), Some("project_context_changed"));
+        let error = client
+            .style_governance("project_a", &command, NOW + 1)
+            .unwrap_err();
+        assert_eq!(
+            error.service_refusal().and_then(|refusal| refusal.code()),
+            Some("project_context_changed")
+        );
     }
 }

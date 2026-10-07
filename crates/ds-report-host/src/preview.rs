@@ -696,18 +696,16 @@ pub fn execute_with_styles(
                     // Both native hosts read the same account/project hold. A
                     // draft never fetches unheld rooms or silently prints a subset.
                     let rooms = match &held.context.holdings {
-                        Some(holdings) if holdings.scope.project == settings.project_id => {
-                            holdings
-                                .room_root
-                                .as_ref()
-                                .ok_or_else(|| "no project print room root on this host".to_owned())
-                                .and_then(|root| {
-                                    ds_project_data::room_hold::active_print_rooms(
-                                        root,
-                                        &holdings.scope,
-                                    )
-                                })
-                        }
+                        Some(holdings) if holdings.scope.project == settings.project_id => holdings
+                            .room_root
+                            .as_ref()
+                            .ok_or_else(|| "no project print room root on this host".to_owned())
+                            .and_then(|root| {
+                                ds_project_data::room_hold::active_print_rooms(
+                                    root,
+                                    &holdings.scope,
+                                )
+                            }),
                         _ => Err("no project holdings root on this host".into()),
                     };
                     let rooms = match rooms {
@@ -1475,7 +1473,9 @@ mod tests {
         let focus = Room {
             transformer: held.room.transformer.clone(),
             version: Some(held.room.server_version),
-            content_digest: Some(report_export::jcs::layers_content_digest(&held.room.layers).unwrap()),
+            content_digest: Some(
+                report_export::jcs::layers_content_digest(&held.room.layers).unwrap(),
+            ),
             layers: held.room.layers.clone(),
         };
         let layers = BTreeMap::from([
