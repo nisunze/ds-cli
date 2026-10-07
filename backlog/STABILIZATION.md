@@ -141,11 +141,14 @@ MV". If the owner wants the old words, author them as governed legend titles
 in the MV context template; the template-literal ratchet forbids Rust
 literals.
 
-## 8. The Issues drawer opens uninvited
+## 8. The right dock: Issues opens uninvited and keeps the focus
 
-**Owner, 2026-10-07:** the Engineering issues drawer "is coming uninvited too
-much". Seen on Desktop with Nyamagabe MV Model 1, while working on the map and
-Profile.
+**Owner, 2026-10-07:**
+
+- The Engineering issues drawer "is coming uninvited too much". Seen on
+  Desktop with Nyamagabe MV Model 1, while working on the map and Profile.
+- Opening Properties docks it, but Issues stays the active tab. The panel the
+  user opened last should be the active one.
 
 **Cause:**
 
@@ -158,6 +161,9 @@ Profile.
 - So each compute or refresh pops the drawer open, even when nobody asked.
 - The invited path is the Profile toolbar's Issues button
   (`GridProfilePanel.svelte:726`).
+- The dock's tab rule reacts only to Issues and Work appearing
+  (`previousIssues`, `previousWork` in `MapRightDock.svelte`). It never reacts
+  to Properties, so opening Properties leaves Issues active.
 
 **Needed:**
 
@@ -165,8 +171,35 @@ Profile.
   the tab.
 - Open it only on the user's action (the Issues button or a finding link).
 - Respect a closed drawer until the user reopens it.
+- Whatever the user opened last (Properties, Issues or Work) becomes the
+  active tab.
 
 This intersects Codex's in-progress Profile UI work: fold it into that slice.
+
+## 9. One selection-aware context menu in every editing context
+
+**Owner, 2026-10-07:** LV design shows a contextual menu when something is
+selected, with the selection filter and the other selection actions. The
+other editing contexts do not offer the same.
+
+**Seen:**
+
+- In the DS Grid model edit context (Nyamagabe MV Model 1, oracle reference
+  copy), right-click shows only "Measure distance", "Exit edit context",
+  "New…" and "Fix Popup".
+- It has no selection filter and no selection actions. General geographic
+  editing has the same gap.
+
+**Needed:**
+
+- The same selection-aware context menu as LV design (selection filter and
+  selection actions) in the DS Grid model edit context and in general
+  geographic editing.
+- The active editing context decides which actions apply.
+- Per [PRINCIPLES.md §5](PRINCIPLES.md), the actions come from the
+  kernel/CLI contracts and the UI renders them.
+- Starting point for the filter:
+  `ds-web/src/lib/components/map/SelectionFilterDialog.svelte`.
 
 ## Reference: landed on 7 October, don't redo
 
