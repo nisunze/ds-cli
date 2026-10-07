@@ -377,9 +377,10 @@ impl Runtime {
             self.analyses
                 .insert(request.scope.clone(), analysis.clone());
             self.commit_view(&request.scope, state.clone());
-            return Ok(
-                json!({"model_id":model_id, "model_revision":request.expected_revision, "history":history, "retained_asset_count":source.assets.len(), "scene":null, "analysis":analysis, "display_state":state, "projection_unavailable":error, "command_view":command_view, "ran":true}),
-            );
+            let mut response = json!({"model_id":model_id, "model_revision":request.expected_revision, "history":history, "retained_asset_count":source.assets.len(), "scene":null, "analysis":null, "display_state":state, "projection_unavailable":error, "command_view":null, "ran":true});
+            response["analysis"] = analysis;
+            response["command_view"] = command_view;
+            return Ok(response);
         }
         let mut scene = scene.unwrap();
         let (rows, review_status_colors, review_box_ink) = styles.unwrap();
@@ -475,9 +476,14 @@ impl Runtime {
         .unwrap();
         // Keep analysis once on the native wire. The desktop transports that same
         // evidence alongside its held scene without serializing a second copy.
-        Ok(
-            json!({ "model_id":model_id, "model_revision":request.expected_revision, "history":history, "retained_asset_count":source.assets.len(), "scene": scene, "analysis": analysis, "display_state":state, "projection_unavailable":null, "command_view":command_view, "ran": request.analyze }),
-        )
+        // json! serializes borrowed expressions even when they are already
+        // Values. Move these trees into the envelope rather than rebuilding
+        // the complete scene and its issue payload after their first encoding.
+        let mut response = json!({ "model_id":model_id, "model_revision":request.expected_revision, "history":history, "retained_asset_count":source.assets.len(), "scene":null, "analysis":null, "display_state":state, "projection_unavailable":null, "command_view":null, "ran": request.analyze });
+        response["scene"] = scene;
+        response["analysis"] = analysis.unwrap_or(Value::Null);
+        response["command_view"] = command_view;
+        Ok(response)
     }
     fn ensure_scope_available(&self, scope: &str) -> Result<(), String> {
         // Every admitted scope is leased until explicit release. UUID ordering
