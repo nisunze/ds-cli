@@ -27,6 +27,11 @@ be filed. Today:
 
 ## 2. The rule
 
+Owner ruling, 2026-10-07: coding agents never submit feedback during coding
+sessions. They solve findings or put unfinished work in OPEN.md, OPEN-X.md or
+SEEDING.md according to the owning backlog split, then remove proved fixes.
+The agent feedback duties below apply only outside coding sessions.
+
 Two channels, separate and linked:
 
 | | **SRE event** | **Feedback report** |
@@ -146,7 +151,7 @@ adds only what it expected and the acceptance condition, then submits.
 
 ### 5.1 When an agent files — the duty
 
-Anyone using `ds` — an agent through the CLI or MCP, or a person — files a
+Outside coding sessions, anyone using `ds` — an agent through the CLI or MCP, or a person — files a
 sighting **as soon as it happens, without waiting to be asked**, when any of
 these occurs:
 
@@ -165,7 +170,7 @@ occurrences, so filing twice is cheap and filing never is the failure.
 
 ### 5.2 How it is reported to the user
 
-At the end of the task the agent lists the report ids it filed, one line each.
+At the end of a product-use task outside coding, the agent lists the report ids it filed, one line each.
 It does not ask permission first; feedback is the agent's own observation, not
 an effect on the user's project. It never puts secrets or customer data in a
 report (the existing `invalid_text` contract).
@@ -218,7 +223,7 @@ Proven through installed `ds`, on this box, with these exact scenarios:
 6. **Draft:** after a failure, `ds feedback draft --last` returns a payload that
    `ds feedback submit --yes` accepts after adding only expectation and
    acceptance.
-7. **Unprompted filing:** a blind low-powered agent given a task that hits a
+7. **Unprompted filing outside coding:** a blind low-powered agent given a product-use task that hits a
    seeded friction (a command it must search for twice) files a feedback report
    without being asked and lists its id at the end.
 
@@ -226,8 +231,8 @@ Proven through installed `ds`, on this box, with these exact scenarios:
 
 - Not product analytics: no usage profiling beyond the daily per-command
   success count.
-- Not a second issue channel: feedback stays the one backlog; SRE stays the one
-  event store.
+- Product-use feedback stays in the shared feedback backlog; coding findings
+  stay in the owning source backlogs. SRE stays the one event store.
 - No feedback filed on the user's behalf about their project data or people.
 
 ## 9. Open owner questions

@@ -43,6 +43,7 @@ The standing owner rulings for everyone who works the backlog. [OPEN.md](OPEN.md
 
 ## 2. How to work an entry
 
+- **Schema 5 is the final breaking `.dsgrid` schema bump** (owner, 2026-10-07). Carry future fields and external-library references compatibly. The canonical model determinism test guards this ruling.
 - **Use the live `ds` contract before coding.** First try the admitted project-owned parameters and seeds. A valid configuration ignored by the renderer, an absent required capability, incorrect computation, clipping/overflow or a broken contract is code (OPEN.md); a colour/pen/label/title/extent choice is seeding (SEEDING.md). Do not alter engineering facts to improve a picture.
 - **Recheck legacy claims** against current code and tests before implementing.
 - **Delete proven fixes permanently.** Keep evidence in owning code, contracts, tests or project receipts, with no completed-work archive.
@@ -62,7 +63,9 @@ The standing owner rulings for everyone who works the backlog. [OPEN.md](OPEN.md
 
 ## 4. Report as you go (owner, 2026-10-07)
 
-`ds` logs its own failures to SRE and files feedback without being asked; anyone using `ds` — agent or person — files sightings unprompted, and lists the report ids at the end of the task. Nobody waits for the owner to ask. Contract: [ds-cli-reliability-and-feedback.md](../docs/contracts/ds-cli-reliability-and-feedback.md).
+**Coding sessions:** agents solve findings or record unfinished work only in the owning backlogs; they never submit feedback during coding (owner, 2026-10-07). Use OPEN.md for actionable code, OPEN-X.md for owner decisions or authority, and SEEDING.md for existing-code operational work. Remove entries after proof. Do not file a feedback report for work the coding agent is responsible for solving.
+
+Outside coding sessions, product-use sightings follow [ds-cli-reliability-and-feedback.md](../docs/contracts/ds-cli-reliability-and-feedback.md). The product's own SRE reporting remains separate from a coding agent's backlog work.
 
 ## 5. Kernel, CLI and UI (owner, 2026-10-07)
 

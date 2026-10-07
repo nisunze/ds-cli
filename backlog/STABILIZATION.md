@@ -15,7 +15,7 @@ then commit to `run` in its owning repository. Never use a worktree.
 
 ## Owner rulings that apply
 
-- **No more breaking schema bumps**, especially since schema 4.
+- **No more breaking schema bumps:** follow [PRINCIPLES.md §2](PRINCIPLES.md#2-how-to-work-an-entry).
 - **Never work in worktrees.** Before any release, run the owning full suites
   on canonical `run`.
 - **ds-server keeps only the canary package.** The stable `ds-cli-headless`
@@ -25,27 +25,15 @@ then commit to `run` in its owning repository. Never use a worktree.
   IDs, and the `a69402e` restriction came from the datasolutions.rw product
   context.
 
-## 1. Schema 5 against the no-breaking-bump ruling
-
-- `ds-grid-model` `tests/determinism.rs::canonical_schema_four_requires_migration_without_changing_container_format`
-  is red: `SCHEMA_VERSION` is 5.
-- The bump came in ds-network `6b34bf38` (2026-10-05, "Sample terrain
-  adaptively and select explicit alignment ground"), with a verified schema-4
-  migration (`ds-grid-exchange/tests/schema4_capture.rs`).
-- **Do not re-pin the test to 5.** Ask the owner to choose:
-  - schema 5 stands as the last breaking bump, and the test then guards
-    against any further bump; or
-  - its alignment-ground fields are carried compatibly.
-
 ## 2. Suites to prove on settled tips
 
 | Suite | Command | Last result (7 October) |
 | --- | --- | --- |
 | ds-network-reporter | `cargo test --locked --no-fail-fast` | All green |
 | ds-cli | `DS_REPORT_BIN=<reporter target>/debug/ds-report DS_SOLAR_BIN=<ds-solar target>/debug/ds-solar cargo test --locked --workspace --all-features --no-fail-fast` | 107 suites green; the MCP skill check was fixed in `4e466494` |
-| ds-network | `cargo test --locked --workspace --no-fail-fast` | 225 suites green. Failing: item 1, plus the three private-corpus PLS imports already in OPEN.md §11 |
+| ds-network | `cargo test --locked --workspace --no-fail-fast` | Pending on settled tips; the three private-corpus PLS imports are already in OPEN.md §11 |
 | ds-solar | `cargo test --locked --workspace` | Not run. It links the kernel and the reporter's `ds-network-information`. |
-| ds-command-kernel | its full suite | Not run (Codex was mid-change) |
+| ds-command-kernel | `cargo test --locked --workspace --all-features --no-fail-fast` | `template_literal_ratchet` rejects three new Profile style-target literals |
 
 - The three private-corpus tests are `conversion_planner::corpus_planner_bak_matches_direct_ingest_model`, `conversion_planner::corpus_planner_normalizes_characterized_19_01_source_to_16_81` and `ds-grid-wasm import_convert::corpus_huye_backup_imports_through_the_wasm_handle`.
 - `c28ee1a5` landed during the ds-network run: rerun `ds-geo` and

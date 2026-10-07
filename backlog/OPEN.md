@@ -24,7 +24,7 @@ Unfinished code that an agent can implement and prove without further owner inpu
 | [15. Project delivery code](#15-project-delivery-code) | 2 |
 | [16. Map data, datasets and screen styling](#16-map-data-datasets-and-screen-styling) | 9 |
 | [17. Project Work and Assets](#17-project-work-and-assets) | 7 |
-| [18. Global DS Grid library](#18-global-ds-grid-library) | 4 |
+| [18. Global DS Grid library](#18-global-ds-grid-library) | 5 |
 | [19. Country neutrality and duplicated rules](#19-country-neutrality-and-duplicated-rules) | 2 |
 | [21. Windows release code](#21-windows-release-code) | 6 |
 | [22. Operations product code](#22-operations-product-code) | 2 |
@@ -50,8 +50,6 @@ Unfinished code that an agent can implement and prove without further owner inpu
 - **LV test red on run** (pre-existing): `transformer_process_contract::adding_a_disjoint_feeder_does_not_collapse_the_existing_one` keeps an unconnected-customer warning without its diagnostic layer. Slice `lv-disjoint-feeder`.
 
 - **Remaining source release gates**: recheck the recorded Web navigation/design/version tests, CLI bridge-parity harness, Solar `aderm_beinamar` chart digest, Solar Dockerfile dependency omissions, reporter `golden_artifacts` / `printing_examples` and reporter / ds-grid-exchange Clippy. The 7 October CLI workspace run also reproduces `dsgrid_profile_review::profile_review_json_retains_native_per_structure_summaries_without_authoring`: `SectionState` marker text is nonempty where the assertion expects empty text, against in-flight network engineering changes. Resolve the owning projection/expectation with those changes and rerun the final pinned suite; preserve other agents' edits. Repair only still-failing assertions or owning code; remove each claim after its gate passes.
-
-- **Native dependency formatting gate**: land active owners' formatter corrections in kernel, network and reporter, preserving overlapping work. The 7 October working-copy CLI formatting check still reports two hunks in kernel `src/style_governance.rs`; working-copy corrections elsewhere are not proof of landed release sources. Recheck workspace formatting on the final release source vector.
 
 - **Printing toolbar test**: `src/tests/printing-toolbar.test.ts` fails to locate the toolbar closing markup in current `PrintingSetup.svelte`. Repair the test boundary and verify narrow-width controls; `TemplateCatalogue.browser.test.ts` passes.
 
@@ -289,6 +287,8 @@ Rules: [PRINCIPLES.md §6](PRINCIPLES.md#6-ds-grid-engineering).
 
 ## 18. Global DS Grid library
 
+- **Installed global release discovery returns a transformer refusal**: canary `ds` build `507d1b7e4be51995fa60abb18bb4624669af2b69` advertises `library.global.read`, but `library-releases` for `pls-interoperability-canonical-candidate` on canary returns non-retryable `transformer_not_found` and a transformer remedy. Trace the declared library owner and repair the runtime/refusal mapping; return library release metadata or an applicable documented library/auth refusal without transformer context. Negative control: payload `{}` correctly returns `catalog_payload_invalid` for missing `library_id`. This blocks STABILIZATION §5's governed-library comparison.
+
 - **Governed model-library adoption and UI**: bind the native `library.model.create/attach/clone/detach/show` workflow to the model view and exact governed cloud releases. The local provider-neutral lifecycle, offline exact release cache, semantic/digest fences, retained native bytes, and distinct library adoption/detach cloud publication revisions have landed (`ds-network c2a17b70/b442dd6c/b06f5931/48c7915d`, `ds-cli 962c39e8`, kernel `3bda1f1`). Complete standalone model-extracted library publication, project-authorized cross-project adoption and readable incoming/outgoing source history; local capture or a cache does not establish a cloud review state. Keep explicit project and expected-head fences, and bind UI actions to these native contracts.
 
 - Record each incoming/imported and outgoing/exported member and model as exact immutable evidence with the chosen library release, mapping, warnings, and project context. A future `.bak` example upload should offer a clear default-on consent control with a visible off choice before cloud transfer; preserve project and account authorization. Compare source, DS Grid translation, and outgoing native state without silently treating a round trip as solver approval. Keep full project manipulation history readable without mixing customers' data or giving the web an active-project assumption on the server.
@@ -372,7 +372,7 @@ Rules: [PRINCIPLES.md §5](PRINCIPLES.md#5-kernel-cli-and-ui-owner-2026-10-07) �
 
 Priority ([PRINCIPLES.md §3–4](PRINCIPLES.md#4-report-as-you-go-owner-2026-10-07)). Contract: [docs/contracts/ds-cli-reliability-and-feedback.md](../docs/contracts/ds-cli-reliability-and-feedback.md). Owner questions (opt-out, signed-out hosts, automatic-filing scope, read access) are in [OPEN-X.md block 25](OPEN-X.md#25-cli-reliability-and-feedback); slices below proceed on the spec's defaults. Land each slice on `run` before the next.
 
-- **Teach the duty first (ds-cli, text only):** add "Report as you go" (spec §5.1–5.2) near the top of the `ds` skill and name feedback as a primary duty in its description; rewrite the `feedback.submit` description so friction, confusion, slowness and ideas are filed as well as gaps; add `FEEDBACK_GUIDANCE` to the MCP initialize instructions beside `REGRESSION_GUIDANCE`. **Proof:** ds-cli discovery and MCP surface tests pass; a blind low-powered agent hitting a seeded friction files a report unprompted and lists its id (spec §7.7).
+- **Teach the product-use duty (ds-cli, text only):** teach reporting outside coding sessions in the `ds` skill and MCP guidance; coding sessions must solve findings or use the owning backlogs, never submit feedback. Rewrite the `feedback.submit` description so product-use friction, confusion, slowness and ideas are filed as well as gaps. **Proof:** discovery and MCP tests pass; a blind product-use trial files seeded friction, while a coding trial uses only the owning backlogs (spec §7.7).
 
 - **Store accepts `ds` events (ds-sre, ds-brain):** amend the request-event store contract with `source = "cli_command"` and `cli_rollup` and the fields in spec §3.2; ds-brain stamps `service = "ds"` from the source instead of the hard-coded `ds-web` (`internal/services/sre_event_store.go` `RecordClientRequestEvent`) and `ds sre events --source` filters them. **Proof:** brain unit tests plus the full emulator suite; a posted `cli_command` row reads back through `ds sre events --source cli_command`.
 
