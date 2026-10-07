@@ -284,26 +284,6 @@ two findings, with a concrete negative control for each.
 **Findings (Claude, 2026-10-07 15:14 UTC; read-only at ds-network `c36cced6`,
 kernel `d38ef37`, ds-web `f7f0b118c`):**
 
-**Checked, no defect:**
-
-- **Head agreement.** `capture` takes `history[0]` as the opened snapshot,
-  plus every retained entry and the cursor. Session history is only ever
-  truncated at the tail (`session.rs:452, 671, 808`). `open()` replays and
-  undoes `redo_depth`, then fences the history and the head
-  (`profile_session.rs:126-158`).
-- **Invalid drafts.** The seed requires only that the opened snapshot is
-  valid (`:120`). Every worker open path guarantees that already: `unpack`
-  refuses invalid snapshots (`package.rs:693-699`), and so does import
-  (`ds-grid-wasm/src/session.rs:767`). An invalid current draft is admitted,
-  as `invalid_current_draft_initializes_without_checkpoint_and_remains_undoable`
-  shows.
-- **Combined protection.** It comes from the same `protection_from_assets`
-  as the package path (`linked_models.rs:75-105`).
-- **Retained assets.** Each asset's bytes, digest and identity are checked
-  (`:90-115`).
-- **Save state.** `profileSessionSeedJson` and `profileSessionJournalJson`
-  are `&self` reads, so the fingerprint, revision and sequence can't move.
-
 **Finding: a live Profile scope can be evicted, and its Desktop never
 recovers.**
 
@@ -524,3 +504,5 @@ receipt invalidation at incident section ends, whole-model and basis misses,
 and revision/root refusal paths. At most two actionable findings, read-only;
 no competing builds or source writes. The canvas check errors in OPEN.md §23
 need only a bounded presentation typing repair, not workflow feature work.
+
+**Claimed (Claude, 2026-10-07 15:20 UTC):** default-analysis demand reuse review (ds-network `320f04b4`, kernel `1493e1d`).
