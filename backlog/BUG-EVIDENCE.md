@@ -115,6 +115,51 @@ four points. Please trace the existing split primitive and the reverse merge.
 
 **Claimed (Claude, 13:52 UTC):** split primitive and reverse merge trace.
 
+**Findings (Claude, 14:05 UTC; read-only, ds-network `d5f9d0c9`):**
+
+1. **Split exists, but only for structure insertion.**
+   - `split_at_anchor` (`ds-grid-engine/src/structure_placement.rs:867`,
+     private) replaces each member section with two anchor-to-anchor halves.
+     Each half clones the replaced section: cable, stringing intent, sag,
+     criteria and details are unchanged.
+   - Lineage is recorded as `TensionSectionSplitDelta`
+     (`command.rs:834-881`, `effects.tension_section_splits`).
+   - Back/ahead sets come from `resolve_directional_strain` (`:749`), which
+     uses authored attachment facings (`orientation_rad`), never labels, and
+     refuses uncharacterized facings. It is reached only via
+     `apply_plan` / `resolve_action` (`:809-826`, `:579`, candidate sets
+     `:514`) when a new structure is placed. Suspension insertion uses
+     `splice_suspension` (`:833`) and does not split.
+2. **Reverse merge exists, but only for deletion.**
+   - Deleting a strain structure heals the run (`command.rs:4103`, owner
+     2026-10-05).
+   - Only the physical conductor must agree (`conductor_join_conflict`,
+     `:4188-4206`: cable, nominal voltage, wires per phase, bundle). The
+     incoming section's sag, criteria and details carry the joined run.
+   - Branch points refuse (`:4087`).
+3. **Neither is reachable from a retype.** `RetypeStructuresWithSupports`
+   only rebinds supports; it never splits or merges.
+   - **Executed:** `project_structure_library` for `j-w-S325.014` shows
+     characterized facings: `30kV [set 2]` dead_end at 1.571 rad,
+     `30kV [set 3]` dead_end at 4.712 rad, `GW` shield. So
+     `resolve_directional_strain` can assign 292's back/ahead sets
+     deterministically, consistent with Codex's 618 sequence evidence.
+   - **Smallest owner change:** in `structure_placement`, plan a retype that
+     changes duty as one transaction, with the existing structure as the
+     anchor.
+     - **Suspension → strain:** reuse `candidate_sets` +
+       `resolve_directional_strain` + `split_at_anchor` at 292's index in
+       each member path (both 30kV phase sections and the GW section, which
+       binds to `GW`).
+     - **Strain → suspension:** reuse the deletion heal (path join +
+       `conductor_join_conflict`) while keeping the structure, then bind the
+       joined path to the single suspension set.
+     - **Refusals:** the same as today's insertion and deletion.
+   - **Regression fixture:** the Nyamagabe reference, 292 → `j-w-S325.014`.
+     Expect 291→292 and 292→293 halves with inherited sag and criteria, and
+     no unresolved attachments. The reverse retype heals back to one
+     section per set.
+
 ### Why even successful retypes are too slow for real-time use (measured, Claude, 2026-10-07)
 
 **Owner:** retypes that do work take too long to use live. The edit itself is
@@ -156,6 +201,18 @@ schema-5 packages); Nyamagabe M1, 1.4 MB, structure 618:
 **So:** one structure's change costs at least two full package emits, one
 full decode and validate, a whole-scene rebuild and a whole-model analysis.
 A retype that fails, as above, pays the same chain before the save refuses.
+
+**Owner ruling (2026-10-07):** a retype, a slide/move, or any other edit must
+not save the model. The model stays in memory in a dirty state for fast
+interaction; persistence happens only through the Save button. A retype plus
+its recalculation must take well under 0.5 s: high-performance editing, not a
+sluggish Profile. This means:
+
+- no `checkpointDsgrid()`, working checkpoint or package `pack`/validation on
+  the edit path;
+- a draft that fails package validation must not block the edit; it shows as
+  pending issues until the user saves;
+- recalculation is scoped to the affected sections, bands and spans.
 
 **Fix direction:** send the edit, not the package (the queued replay review
 below), and recompute only the affected tension sections, bands and spans.
