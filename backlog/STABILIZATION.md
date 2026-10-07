@@ -160,6 +160,8 @@ bands. Whole-model analysis stays available on demand.
 
 ### 11. Intermittent: a selected ground point shows no highlight and no vertical handle (unproven)
 
+
+**Update (owner, 2026-10-07):** the likely cause is the Profile warm-up window; see §12.
 Not reproducible after 13:25 UTC. The owner reports it working again and
 suspects the debug state.
 
@@ -201,6 +203,45 @@ suspects the debug state.
 point first in the Plan, then in the Profile. Read `ds map profile view` after
 each click, and confirm that the selection kind and id match a point in the
 Profile scene.
+
+### 12. Profile warm-up: early selections are floppy; animate the status button during any computation
+
+**Owner, 2026-10-07:** right after the Profile opens, the first selections are
+"floppy", as if it needs to warm up. This is what blocked moving the ground
+point (§11). Every computation must animate the toolbar's status button.
+
+**Evidence** (code; not timed in the UI):
+
+- **One queue.** Opening the Profile queues, one after the other on the same
+  model client (`nativeProfileCommand` serializes per client,
+  `ds-web/src/lib/grid/profile-native.ts:44-49`):
+  - the native `project`: a full `checkpointDsgrid()` emit, a JSON
+    `Array.from` IPC transfer, a full decode, and the whole scene;
+  - then the automatic whole-model analysis
+    (`GridProfilePanel.svelte:1210-1226`).
+- **Selection before the first scene.** Until the first native scene exists,
+  case-layer requests refuse with
+  `profile_case_base_unavailable: draw the native Profile first`
+  (`nativeProfileCaseCommand`, `profile-native.ts:58`). Selection-dependent
+  reads (selected usage, scene ids for highlights and handles) wait, or miss.
+- **Comparable costs** (§4, debug builds): a full open and validate takes
+  1.9–5.5 s; the whole-model issue analysis takes 5.6 s.
+- **Status button.** The toolbar's leftmost button spins only for edit
+  reconciliation (`reconciliationStatus.phase === 'pending'`,
+  `GridProfilePanel.svelte:1455-1470`). Scene building (`loading`), the
+  automatic analysis, case layers and usage screening animate nothing.
+
+**Needed:**
+
+- One busy signal fed by every native Profile computation: project,
+  analysis, case layer, usage and reconciliation. The status button animates
+  while any of them is in flight, and its tooltip names it.
+- Selection and handles work immediately from the Plan and scene data already
+  shown. Heavy analysis runs in the background and never blocks selection
+  (§4 and the edits-in-RAM ruling in BUG-EVIDENCE.md).
+- **Reproduce:** restart the Desktop, open the Profile, and click a ground
+  point within the first seconds. Read `ds map profile view` repeatedly to
+  time when the selection, the scene and the analysis settle.
 
 ## Reference: landed on 7 October, don't redo
 
