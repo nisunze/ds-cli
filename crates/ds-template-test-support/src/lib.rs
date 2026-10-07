@@ -790,7 +790,7 @@ pub fn source_occurrences(repo: &Path) -> Vec<LiteralOccurrence> {
             }
         }
     }
-    fn collect(dir: &Path, files: &mut Vec<std::path::PathBuf>) {
+    fn collect(repo: &Path, dir: &Path, files: &mut Vec<std::path::PathBuf>) {
         if !dir.exists() {
             return;
         }
@@ -798,6 +798,11 @@ pub fn source_occurrences(repo: &Path) -> Vec<LiteralOccurrence> {
             let p = entry.unwrap().path();
             let name = p.file_name().unwrap().to_str().unwrap();
             if p.is_dir() {
+                // Job outputs may contain complete copied repositories. Only
+                // root scratch is excluded; src/out remains production code.
+                if p == repo.join("out") || p == repo.join("_discardable") {
+                    continue;
+                }
                 if !matches!(
                     name,
                     "target"
@@ -810,7 +815,7 @@ pub fn source_occurrences(repo: &Path) -> Vec<LiteralOccurrence> {
                         | "ds-template-test-support"
                         | "__tests__"
                 ) {
-                    collect(&p, files);
+                    collect(repo, &p, files);
                 }
             } else if p.extension().is_some_and(|ext| {
                 matches!(
@@ -832,7 +837,7 @@ pub fn source_occurrences(repo: &Path) -> Vec<LiteralOccurrence> {
     let tokens = vocabulary_tokens();
     let compound = compound_vocabulary_tokens();
     let mut files = Vec::new();
-    collect(repo, &mut files);
+    collect(repo, repo, &mut files);
     assert!(
         !files.is_empty(),
         "no production sources found in {}",
@@ -1037,6 +1042,38 @@ mod tests {
                 .iter()
                 .any(|e| e.contains("disagrees"))
         );
+    }
+    #[test]
+    fn source_ratchet_excludes_root_job_copies_but_scans_nested_source_out() {
+        let root = std::path::PathBuf::from(std::env::var_os("TMPDIR").unwrap()).join(format!(
+            "literal-job-copies-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        for file in [
+            "src/lib.rs",
+            "src/out/real.rs",
+            "out/gate/source/src/lib.rs",
+            "_discardable/gate/src/lib.rs",
+        ] {
+            let path = root.join(file);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, "pub const LABEL: &str = \"S140\";\n").unwrap();
+        }
+        let found = source_occurrences(&root);
+        assert_eq!(found.len(), 2, "{found:?}");
+        assert!(
+            found.iter().all(|row| row.path.starts_with("src/")),
+            "{found:?}"
+        );
+        assert!(
+            found.iter().any(|row| row.path == "src/out/real.rs"),
+            "{found:?}"
+        );
+        std::fs::remove_dir_all(root).unwrap();
     }
     #[test]
     fn historical_ratchet_rejects_raised_working_and_committed_baselines() {
