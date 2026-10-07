@@ -200,6 +200,41 @@ other editing contexts do not offer the same.
 - Starting point for the filter:
   `ds-web/src/lib/components/map/SelectionFilterDialog.svelte`.
 
+## 10. Remove Profile lasso; one rich Plan selection; two-way Plan/Profile tracking
+
+**Owner, 2026-10-07:**
+
+- Profile lasso selection never worked. Remove it, together with the
+  contracts that describe it and its dead code, so selection is one unified,
+  rich selection in the Plan.
+- Keep the behaviour the owner loves: clicking any element in the Profile
+  navigates the Plan to it.
+- Add the reverse: with the Profile open, selecting in the Plan something the
+  Profile shows navigates the Profile to it.
+- Let the user turn either direction off, in the editing context or wherever
+  it fits: "Plan follows Profile" and "Profile follows Plan" are independent
+  switches.
+
+**Remove (Profile lasso only):** keep the Plan/map lasso; it is part of the
+unified Plan selection.
+
+- **Contract:** `ds-web/docs/profile-view-contract.md:303` (the Profile
+  toolbar lasso, `profileSelectionLasso` / `profileSelectionLassoJson`). Also
+  check `ds-network/docs/contracts/spatial-selection-semantics.md` and the
+  profile-lasso row of `ds-network/docs/design/geometry-toolkit-consolidation.md:331`.
+- **Engine and WASM:** `ds-network/crates/ds-grid-engine/src/profile_lasso.rs`
+  and its hooks in `lib.rs`, `descriptor.rs`, `profile_hit.rs` and
+  `tests/descriptors.rs`; the `ds-grid-wasm/src/session.rs` binding and
+  `ds-grid-wasm/tests/profile_lasso.rs`.
+- **Web:** `ds-web/src/lib/grid/profile-lasso.ts`, its use in
+  `profile-display.ts`, and the tests `grid-profile-lasso-wasm.test.ts`,
+  `grid-profile-lasso-protocol.test.ts` and
+  `helpers/GridProfileLassoHarness.svelte`. Check `lasso-run.test.ts`,
+  `lasso.ts` and `ds-canvas/src/selection.rs` for Profile-only parts.
+
+Codex changed Profile lasso today (ds-network `c28ee1a5`, "Select disjoint
+Plan and Profile geometry with Outside"). Reconcile with that work.
+
 ## Reference: landed on 7 October, don't redo
 
 ds-network `720f4184` (one compact attachment box per structure), `516e29c0`;
