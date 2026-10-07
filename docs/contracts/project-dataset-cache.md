@@ -58,10 +58,16 @@ command line alike. It is not "everything published for this country": an
 excluded or unavailable catalogue layer is not declared.
 
 Naming `--dataset` remains the explicit act of adding one dataset the project
-has not declared. A dataset the project already holds is always refreshed, so an
+has not declared. An active dataset the project already holds is always refreshed, so an
 operator who deliberately seeded something outside the declaration keeps it.
 Seeding is per dataset: one dataset's failure records its own `last_error` and
 never abandons the rest, and `seeded` is never `ready`.
+
+Retired broad layers (`powerlines`, `elementary_school`) may retain historical
+rooms, but those rooms do not appear in the active overview or automatic seed
+targets. Explicit requests by name or a retained room's digest refuse
+`dataset_retired` with the detailed alternatives. Retirement does not remove
+stored features or equate their coverage with a replacement.
 
 Which datasets one run acts on is `seed_targets` (action `seed_targets`), not a
 host's own arithmetic: it takes the declaration, the rooms that already exist

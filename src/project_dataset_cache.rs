@@ -1766,6 +1766,18 @@ pub struct OverviewRow {
     pub held: Value,
 }
 
+/// A retired broad layer remains in old rooms for recovery, but is not an
+/// active dataset. Its digest is not an alias for any detailed replacement.
+/// Hosts use the same decision for explicit requests and automatic seeding.
+pub fn retired_dataset_layer(dataset: &CatalogEntry) -> Option<&str> {
+    let layer = dataset
+        .parameters
+        .get("layer")
+        .and_then(Value::as_str)
+        .unwrap_or(&dataset.id);
+    crate::printing::context::retired_alternatives(layer).map(|_| layer)
+}
+
 /// Which canonical datasets this project holds, and what each one covers.
 ///
 /// One projection, read by the Project Control card and by the command line.
@@ -1773,12 +1785,14 @@ pub struct OverviewRow {
 /// it cannot be a browser function: a field defaulted differently on either
 /// side is a silent divergence in what an operator is told they hold.
 ///
-/// Nothing here fetches, refreshes or removes a row. Absent is reported as
+/// Nothing here fetches, refreshes or removes held bytes. Retired broad layers
+/// are omitted even if their historical rooms still exist. Absent is reported as
 /// absent, staleness travels with the row that is stale, and no dataset ever
 /// speaks for another.
 pub fn overview(project: &str, policy: &BufferPolicy, rows: &[OverviewRow]) -> Value {
     let datasets: Vec<Value> = rows
         .iter()
+        .filter(|row| retired_dataset_layer(&row.dataset).is_none())
         .map(|row| overview_row(&row.dataset, &row.held, policy))
         .collect();
     let seeded = datasets
@@ -2084,6 +2098,65 @@ mod tests {
             residency: String::new(),
             unpublished: false,
         }
+    }
+
+    #[test]
+    fn retired_held_layers_do_not_return_as_active_datasets() {
+        let policy = buffer_policy(&[]).unwrap();
+        let held = json!({
+            "exists": true, "ready": true, "index_state": "ready",
+            "feature_count": 42, "fresh": true,
+        });
+        let row = |id: &str, layer: &str| OverviewRow {
+            dataset: CatalogEntry {
+                id: id.into(),
+                parameters: BTreeMap::from([("layer".into(), json!(layer))]),
+                ..catalog()
+            },
+            held: held.clone(),
+        };
+        let rows = vec![
+            row("retired-schools-digest", "elementary_school"),
+            row("retired-power-digest", "powerlines"),
+            row("primary-schools-digest", "primary_schools"),
+            row("hv-digest", "hv_line"),
+            row("unlisted-retained-digest", "operator_layer"),
+        ];
+        let before: Vec<_> = rows.iter().map(|row| row.held.clone()).collect();
+        let answer = overview("p1", &policy, &rows);
+        let ids: Vec<_> = answer["datasets"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|row| row["dataset_id"].as_str().unwrap())
+            .collect();
+        assert_eq!(
+            ids,
+            [
+                "primary-schools-digest",
+                "hv-digest",
+                "unlisted-retained-digest"
+            ]
+        );
+        assert_eq!(answer["available"], 3);
+        assert_eq!(answer["seeded"], 3);
+        assert!(answer["datasets"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|row| row["ready"] == true && row["feature_count"] == 42));
+        assert_eq!(
+            rows.iter().map(|row| row.held.clone()).collect::<Vec<_>>(),
+            before
+        );
+        // Old named rooms without parameters still obey the same retirement.
+        assert_eq!(
+            retired_dataset_layer(&CatalogEntry {
+                id: "powerlines".into(),
+                ..catalog()
+            }),
+            Some("powerlines")
+        );
     }
 
     /// The projection the card and the command line both read. Absent is not
