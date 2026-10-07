@@ -294,7 +294,7 @@ const WINDOW_COMMANDS: &[(&str, usize)] = &[
     // `ds report project compounded` only.
     // 38 → 39: the explicit revision-guarded map.profile.select lens command.
     // 39 → 40 on 2026-09-30: authorized Plan/Profile lasso selection lens.
-    ("ds-cli-map", 40),
+    ("ds-cli-map", 44),
     // ── core, pending a headless form ───────────────────────────────────────
     // `ds-cli-assets` left this ledger on 2026-09-20: 9 → 0, every catalogue
     // command headless (contract 01 of the dsgrid-authority program).
@@ -546,7 +546,7 @@ const WINDOW_BACKLOG: &[(&str, u64)] = &[
     // 38 → 39 on 2026-09-29: revision-guarded map.profile.select is an
     // authorized transient Profile lens command; the native scene owns range.
     // 39 → 40 on 2026-09-30: authorized Plan/Profile lasso selection lens.
-    ("map", 40),
+    ("map", 44),
     ("solar", 16),
     // 9 → 8: `pm.plan` is a headless project read now, not a window command.
     // 8 → 0 on 2026-09-20: task list/read/create/update/assign/respond and
@@ -567,7 +567,9 @@ const WINDOW_BACKLOG: &[(&str, u64)] = &[
 // 86 → 87: the Plan/Profile lasso lens only changes transient selection.
 // 87 → 88: the paired draft SVG preview reads window context; the compute
 // remains a headless `report.project.export --preview-layout` operation.
-const WINDOW_BACKLOG_TOTAL: u64 = 88;
+// 88 → 92: owner-requested native reads/edits and selection refinement of a human-held dirty RAM session.
+// Computation remains the existing headless Rust usage/REG owner.
+const WINDOW_BACKLOG_TOTAL: u64 = 92;
 
 #[test]
 fn paired_draft_preview_keeps_a_headless_computation_owner() {

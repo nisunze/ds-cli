@@ -1299,6 +1299,26 @@ static MAP_ENTRIES: &[Entry] = &[
         render: ds_cli_map::profile::render_selection,
     },
     Entry {
+        command: &ds_cli_map::profile_model::USAGE,
+        handler: ds_cli_map::profile_model::usage,
+        render: ds_cli_map::profile::render,
+    },
+    Entry {
+        command: &ds_cli_map::profile_model::FILTER,
+        handler: ds_cli_map::profile_model::filter,
+        render: ds_cli_map::profile::render,
+    },
+    Entry {
+        command: &ds_cli_map::profile_model::ISSUES,
+        handler: ds_cli_map::profile_model::issues,
+        render: ds_cli_map::profile::render,
+    },
+    Entry {
+        command: &ds_cli_map::profile_model::RETYPE,
+        handler: ds_cli_map::profile_model::retype,
+        render: ds_cli_map::profile::render,
+    },
+    Entry {
         command: &ds_cli_map::grid_lasso::COMMAND,
         handler: ds_cli_map::grid_lasso::run,
         render: ds_cli_map::grid_lasso::render,

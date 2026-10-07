@@ -18,6 +18,7 @@ pub mod outliers;
 pub mod points_along;
 pub mod print_schema;
 pub mod profile;
+pub mod profile_model;
 pub mod random_points;
 pub mod remove;
 pub mod renderer_configure;
@@ -65,6 +66,10 @@ pub static DOMAIN: Domain = Domain {
         &profile::VIEW,
         &profile::SET,
         &profile::SELECT,
+        &profile_model::USAGE,
+        &profile_model::ISSUES,
+        &profile_model::FILTER,
+        &profile_model::RETYPE,
         &grid_lasso::COMMAND,
         &draw::COMMAND,
         &remove::COMMAND,
@@ -163,6 +168,35 @@ pub const PROFILE_SELECT: BridgeOp = BridgeOp {
         "from_entity_id",
         "to_entity_id",
         "mode",
+    ],
+};
+pub const PROFILE_USAGE: BridgeOp = BridgeOp {
+    operation: "map.profile.usage",
+    arguments: &["model_id", "expected_revision", "structure_id", "types"],
+};
+pub const PROFILE_FILTER: BridgeOp = BridgeOp {
+    operation: "map.profile.filter",
+    arguments: &[
+        "model_id",
+        "expected_revision",
+        "table",
+        "query",
+        "mode",
+        "action",
+    ],
+};
+pub const PROFILE_ISSUES: BridgeOp = BridgeOp {
+    operation: "map.profile.issues",
+    arguments: &["model_id", "expected_revision", "request"],
+};
+pub const PROFILE_RETYPE: BridgeOp = BridgeOp {
+    operation: "map.profile.retype",
+    arguments: &[
+        "model_id",
+        "expected_revision",
+        "structure_ids",
+        "structure_type_id",
+        "apply",
     ],
 };
 pub const GRID_LASSO: BridgeOp = BridgeOp {
@@ -383,6 +417,10 @@ pub const BRIDGE_OPS: &[&BridgeOp] = &[
     &PROFILE_VIEW,
     &PROFILE_SET,
     &PROFILE_SELECT,
+    &PROFILE_USAGE,
+    &PROFILE_ISSUES,
+    &PROFILE_FILTER,
+    &PROFILE_RETYPE,
     &GRID_LASSO,
     &RENDERER_CONFIGURE,
     &UI_OPEN,

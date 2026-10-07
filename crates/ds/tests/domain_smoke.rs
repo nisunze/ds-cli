@@ -1118,7 +1118,7 @@ fn capabilities_requires_separates_the_window_from_the_server() {
     assert_eq!(window["tier"], "requires");
     assert_eq!(window["requires"], "window");
     assert_eq!(window["domain"], "map");
-    assert_eq!(window["matched"], 40, "map's window commands");
+    assert_eq!(window["matched"], 44, "map's window commands");
     let ids: Vec<&str> = window["results"]
         .as_array()
         .expect("results")
@@ -1131,7 +1131,7 @@ fn capabilities_requires_separates_the_window_from_the_server() {
         "moving the camera is the window's own work: {ids:?}"
     );
     assert_eq!(window["more"]["shown"], 5);
-    assert_eq!(window["more"]["matched"], 40);
+    assert_eq!(window["more"]["matched"], 44);
 
     // Survey moved to the server. If a survey command ever needs the window
     // again, this is where it is noticed.
@@ -7764,6 +7764,10 @@ fn every_map_command_is_reachable_without_the_desktop_installed() {
         "map.profile.view",
         "map.profile.set",
         "map.profile.select",
+        "map.profile.usage",
+        "map.profile.retype",
+        "map.profile.issues",
+        "map.profile.filter",
         "map.grid.lasso",
         "map.renderer.configure",
         "map.draw",
@@ -7818,6 +7822,105 @@ fn every_map_command_is_reachable_without_the_desktop_installed() {
     assert_eq!(
         actual, expected,
         "map command coverage list changed; add a specific smoke assertion for the new command before accepting it"
+    );
+    assert_eq!(
+        refusal(&[
+            "map",
+            "profile",
+            "usage",
+            "--model",
+            " ",
+            "--revision",
+            "rev:a",
+            "--structure",
+            "pole-40",
+            "--output",
+            "json"
+        ]),
+        "invalid_profile_model_request"
+    );
+    assert_eq!(
+        refusal(&[
+            "map",
+            "profile",
+            "retype",
+            "--model",
+            "a",
+            "--revision",
+            "rev:a",
+            "--structure",
+            "pole-40",
+            "--type",
+            "type-b",
+            "--output",
+            "json"
+        ]),
+        "confirmation_required"
+    );
+    assert_eq!(
+        refusal(&[
+            "map",
+            "profile",
+            "issues",
+            "--model",
+            "a",
+            "--revision",
+            "rev:a",
+            "--request",
+            "{\"filter\":{\"nature\":\"invented-predicate\"}}",
+            "--output",
+            "json"
+        ]),
+        "invalid_profile_model_request"
+    );
+    assert_eq!(
+        refusal(&[
+            "map",
+            "profile",
+            "filter",
+            "--model",
+            "a",
+            "--revision",
+            "rev:a",
+            "--table",
+            "structures",
+            "--mode",
+            "intersect",
+            "--query",
+            "{}",
+            "--output",
+            "json"
+        ]),
+        "confirmation_required"
+    );
+    assert_eq!(
+        refusal(&[
+            "map",
+            "profile",
+            "filter",
+            "--model",
+            "a",
+            "--revision",
+            "rev:a",
+            "--table",
+            "structures",
+            "--mode",
+            "intersect",
+            "--query",
+            "{\"filters\":[{\"column\":\"number\",\"op\":\"invented\",\"value\":\"40\"}]}",
+            "--dry-run",
+            "--output",
+            "json"
+        ]),
+        "invalid_profile_model_request"
+    );
+    let live_usage = ok(&["capabilities", "map.profile.usage", "--output", "json"]);
+    assert_eq!(live_usage["command"]["effect"], "read_only");
+    assert!(
+        live_usage["command"]["output"]
+            .as_str()
+            .unwrap()
+            .contains("screening_usage_percent")
     );
     let profile_select = ok(&["capabilities", "map.profile.select", "--output", "json"]);
     assert_eq!(profile_select["command"]["effect"], "local_ui");

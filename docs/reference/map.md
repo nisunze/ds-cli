@@ -730,3 +730,45 @@ Operators: `contains`, `equals`, `not_equals`, `starts_with`, `ends_with`, `gt`,
 which take `values` (at most 256 strings; tokens are semicolon-separated). Unknown or duplicate keys are refused.
 
 These commands do not author structure-label fields. Use `ds dsgrid profile labels show|set` for the portable model Profile label policy. Fixed-paper sheet Profile and sheet Plan composition are separate from these commands.
+
+
+### Reading and editing the current RAM model
+
+Read `map profile view` first and pin its exact `model_id` and `revision`.
+`map profile usage --model <id> --revision <rev> --structure <native-id>` reads
+one support from the native live session, including usage percentage, declared
+scope, governing cases, uplift and blockers. `--types` also returns native
+structure type choices. Selection supplies IDs; displayed pole numbers do not
+identify a revision or another model.
+
+`map profile issues --model <id> --revision <rev> --request '<native-json>'`
+queries retained native engineering findings. For example, use
+`{"derive_structure_screening":true,"filter":{"nature":"structure_failure"}}`
+or `{"derive_structure_screening":true,"filter":{"nature":"uplift_case","entity_ids":["<selected-native-id>"]}}`.
+Native issues preserve basis, unavailable inputs, full-model blockers, source
+identities, totals and truncation. Numeric screening is limited engineering
+screening; uplift-case presence is signed weight-span evidence. Inspect caps
+before claiming a complete query result. Filtering operates in Rust and
+reuses its exact-head evidence cache.
+
+`map profile retype --model <id> --revision <rev> --structure <native-id>
+--type <native-type-id> --dry-run` returns the native REG preview. An authorized
+`--yes` applies the same explicit request to the held RAM model and waits for
+native Profile refresh. The receipt identifies the committed revision,
+`persisted:false`, separate preview/commit/Profile elapsed times, and whether
+refresh completed. If refresh fails, the committed outcome remains explicit.
+A context change after commit names that committed model and revision, so a
+caller can inspect it before another edit. Saving is a separate explicit action.
+
+These controls query and edit the human-held session. Package-backed headless
+engineering commands remain available for closed files and catalogue models;
+reading a saved package does not establish the head of an unsaved session.
+
+`ds map profile filter` refines the captured current Plan selection through the
+same native field query and ordered composition as its visible toolbar. Supply
+`--model`, `--revision`, `--table`, native JSON `--query`, and `--mode intersect`
+or `--mode remove`. Use `--dry-run` for a read-only preview, then `--yes` for an
+explicit selection change. This never edits or saves the model. Candidate IDs
+come from the captured selection; a query cannot expand that scope. The native
+handle reuses one exact-head Arrow table, returning only IDs, schema and scoped
+statistics. Changed principal, project, model, head or selection refuses apply.

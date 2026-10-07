@@ -62,7 +62,7 @@ const PROFILE_SELECTION_STALE: Refusal = Refusal {
 pub static VIEW: Command = Command {
     id: "map.profile.view",
     path: &["map", "profile", "view"],
-    contract: 2,
+    contract: 3,
     summary: "Read the paired Profile's exact visual state.",
     purpose: "Reads the paired Profile occupant, dock height in pixels, viewport, selection and edit mode. Selection is transient UI context; the view and engineering model remain unchanged.",
     chapter: Chapter::MapPresentation,
@@ -70,7 +70,7 @@ pub static VIEW: Command = Command {
     authority: Authority::DesktopPairing,
     execution: Execution::Sync,
     args: &[TARGET_ARG, DESCRIPTOR_ARG],
-    output: "Profile occupant, model_id and revision (null without an open model), scale, visibility, height_px, viewport, edit_mode and selection. review holds up to 256 cases with value/label/disabled, selected_case_index, display_case, marker_count and explicit case/label truncation. display holds native state and governed rows; analysis the bounded native receipt; analysis_state is due, current, off or not_applicable. scene_loaded reports a revision-current scene. Selection includes entity_ids, primary, kind and structures [{id,number}].",
+    output: "Profile occupant, model_id, model_name and revision (null without an open model), persisted and native history (undo/redo depths and history pin), scale, visibility, height_px, viewport, edit_mode and selection. review holds up to 256 cases with value/label/disabled, selected_case_index, display_case, marker_count and explicit case/label truncation. display holds native state and governed rows; analysis the bounded native receipt; analysis_state is due, current, off or not_applicable. scene_loaded reports a revision-current scene. Selection includes entity_ids, primary, kind and structures [{id,number}].",
     examples: &[Example {
         command: "ds map profile view --output json",
         note: "Read the live Profile's viewport, selection and edit mode before a scoped model command.",
