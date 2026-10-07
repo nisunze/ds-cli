@@ -59,21 +59,28 @@ ordered selected identities; host project/model/revision/scene/cancellation fenc
 remain in force. Outside means disjoint, including all occurrences, never merely
 "not wholly within".
 
-Native Profile sessions initialize once with `operation: project`. The admitted
-receipt names `model_id` and `model_revision`. `operation: refresh` contains that
-model identity, the held `base_revision`, the worker's `expected_revision`, its
-active typed `JournalEntry` prefix from the initialized snapshot, and the same
-options/style/patch/analyze inputs. There are no package bytes in refresh.
+Native Profile sessions initialize once with `operation: initialize`, receiving
+the worker's read-only `ProfileSessionSeed` and options/style/patch/analyze inputs.
+The opened snapshot, full retained journal and exact cursor are independently
+verified before projection. The admitted receipt names `model_id`,
+`model_revision` and native `history`. `operation: refresh` contains that model
+identity, the held `base_revision` and `base_history`, the worker's
+`expected_revision` and `target_history`, its full retained typed `JournalEntry`
+list, and the same display inputs. There are no package bytes in refresh.
 The runtime finds the exact common command prefix, navigates retained history,
-and applies only new entries with parent and resulting-revision fences. Command
-identity distinguishes repeated content revisions, including a branch after undo.
+and applies only new entries with parent and resulting-revision fences. Native
+discard/navigation pins install the exact cursor and truncate only the worker's
+discarded tail. Command identity, history pins and depths distinguish repeated
+content revisions, including a branch after undo; an old request whose content
+revision repeats still refuses against a changed history.
 
 Replay and projection admission are one transaction. A stale base, replacement
 model, unknown journal origin, invalid command, divergent result or failed
 projection leaves the held session, redo tail, display and analysis unchanged.
 These named refusals never trigger an automatic package-checkpoint fallback.
-Initialize a replacement model in a fresh scope. The renderer captures its own
-scope/generation and revision before work and installs a result only while those
+Initialize a replacement model in a fresh scope; reinitializing an admitted scope
+refuses. The renderer captures its own scope/generation and journal cursor before
+work and installs a result only while those
 pins are still current; a stale display result does not undo an admitted native
 session advance. The next request uses the native receipt's admitted head.
 

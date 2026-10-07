@@ -18,7 +18,7 @@ use serde_json::{json, Value};
 use std::collections::BTreeMap;
 use std::sync::Arc;
 mod replay;
-pub use replay::RefreshRequest;
+pub use replay::{InitializeRequest, RefreshRequest};
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -35,6 +35,7 @@ pub struct ProjectRequest {
 #[serde(tag = "operation", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Request {
     Project(Box<ProjectRequest>),
+    Initialize(Box<InitializeRequest>),
     Refresh(Box<RefreshRequest>),
     CaseLayer(CaseRequest),
     Layout(ds_command_kernel::profile_layout::Request),
@@ -106,6 +107,7 @@ impl Runtime {
     pub fn execute(&mut self, request: impl Into<Request>) -> Result<Value, String> {
         match request.into() {
             Request::Project(request) => self.project(*request),
+            Request::Initialize(request) => self.initialize(*request),
             Request::Refresh(request) => self.refresh(*request),
             Request::CaseLayer(request) => self.case_layer(request),
             Request::Layout(request) => {
@@ -254,6 +256,7 @@ impl Runtime {
         mut demand_cache: ds_grid_engine::StructureUsageScreeningCache,
     ) -> Result<Value, String> {
         let model_id = &source.model_id;
+        let history = session.history_state();
         let revision = session.current_revision();
         if revision.revision_id.to_string() != request.expected_revision {
             return Err(
@@ -359,7 +362,7 @@ impl Runtime {
                 .insert(request.scope.clone(), analysis.clone());
             self.commit_view(&request.scope, state.clone());
             return Ok(
-                json!({"model_id":model_id, "model_revision":request.expected_revision, "retained_asset_count":source.assets.len(), "scene":null, "analysis":analysis, "display_state":state, "projection_unavailable":error, "command_view":command_view, "ran":true}),
+                json!({"model_id":model_id, "model_revision":request.expected_revision, "history":history, "retained_asset_count":source.assets.len(), "scene":null, "analysis":analysis, "display_state":state, "projection_unavailable":error, "command_view":command_view, "ran":true}),
             );
         }
         let mut scene = scene.unwrap();
@@ -457,7 +460,7 @@ impl Runtime {
         // Keep analysis once on the native wire. The desktop transports that same
         // evidence alongside its held scene without serializing a second copy.
         Ok(
-            json!({ "model_id":model_id, "model_revision":request.expected_revision, "retained_asset_count":source.assets.len(), "scene": scene, "analysis": analysis, "display_state":state, "projection_unavailable":null, "command_view":command_view, "ran": request.analyze }),
+            json!({ "model_id":model_id, "model_revision":request.expected_revision, "history":history, "retained_asset_count":source.assets.len(), "scene": scene, "analysis": analysis, "display_state":state, "projection_unavailable":null, "command_view":command_view, "ran": request.analyze }),
         )
     }
     fn commit_view(&mut self, scope: &str, state: DisplayState) {
@@ -534,13 +537,20 @@ mod transactional_projection_tests {
             analyze: false,
         }
     }
-    fn refresh(input: &ProjectRequest, base: &str, session: &GridSession) -> RefreshRequest {
+    fn refresh(
+        runtime: &Runtime,
+        input: &ProjectRequest,
+        base: &str,
+        session: &GridSession,
+    ) -> RefreshRequest {
         RefreshRequest {
             scope: input.scope.clone(),
             model_id: "profile-test".into(),
             base_revision: serde_json::from_value(json!(base)).unwrap(),
+            base_history: runtime.held[&input.scope].session.history_state(),
             expected_revision: session.current_revision().revision_id.clone(),
-            entries: session.command_history(),
+            target_history: session.history_state(),
+            entries: session.retained_journal().entries,
             options: input.options.clone(),
             style_document: input.style_document.clone(),
             patch: Default::default(),
@@ -570,7 +580,7 @@ mod transactional_projection_tests {
         describe(&mut worker, "two", "changed twice");
         let edited = worker.current_revision().revision_id.to_string();
         let replay = runtime
-            .execute(refresh(&input, &input.expected_revision, &worker))
+            .execute(refresh(&runtime, &input, &input.expected_revision, &worker))
             .unwrap();
         let fresh = Runtime::default()
             .project_session(
@@ -587,7 +597,8 @@ mod transactional_projection_tests {
                 Default::default(),
             )
             .unwrap();
-        assert_eq!(replay, fresh);
+        assert_eq!(replay["scene"], fresh["scene"]);
+        assert_eq!(replay["command_view"], fresh["command_view"]);
         assert!(Arc::ptr_eq(
             &assets,
             &runtime.held[&input.scope].source.assets
@@ -595,16 +606,22 @@ mod transactional_projection_tests {
         assert_eq!(assets[0].bytes, b"retained exact evidence");
         worker.undo().unwrap();
         let middle = worker.current_revision().revision_id.to_string();
-        runtime.execute(refresh(&input, &edited, &worker)).unwrap();
+        runtime
+            .execute(refresh(&runtime, &input, &edited, &worker))
+            .unwrap();
         assert_eq!(
             runtime.held[&input.scope].session.snapshot(),
             worker.snapshot()
         );
         worker.redo().unwrap();
-        runtime.execute(refresh(&input, &middle, &worker)).unwrap();
+        runtime
+            .execute(refresh(&runtime, &input, &middle, &worker))
+            .unwrap();
         worker.undo().unwrap();
         describe(&mut worker, "branch", "new branch");
-        runtime.execute(refresh(&input, &edited, &worker)).unwrap();
+        runtime
+            .execute(refresh(&runtime, &input, &edited, &worker))
+            .unwrap();
         assert_eq!(
             runtime.held[&input.scope].session.snapshot(),
             worker.snapshot()
@@ -620,6 +637,7 @@ mod transactional_projection_tests {
         let mut worker = GridSession::open(common::fixture());
         let mut runtime = Runtime::default();
         runtime.execute(input.clone()).unwrap();
+        let stale = refresh(&runtime, &input, &input.expected_revision, &worker);
         describe(&mut worker, "one", "temporary description");
         worker
             .apply_command(ds_grid_engine::CommandEnvelope::new(
@@ -636,13 +654,17 @@ mod transactional_projection_tests {
             input.expected_revision
         );
         runtime
-            .execute(refresh(&input, &input.expected_revision, &worker))
+            .execute(refresh(&runtime, &input, &input.expected_revision, &worker))
             .unwrap();
+        assert!(runtime
+            .execute(stale)
+            .unwrap_err()
+            .starts_with("profile_replay_stale:"));
         assert_eq!(
             runtime.held[&input.scope].session.history_state(),
             worker.history_state()
         );
-        let mut bad = refresh(&input, &input.expected_revision, &worker);
+        let mut bad = refresh(&runtime, &input, &input.expected_revision, &worker);
         bad.entries[1].command_id = "one".into();
         assert!(runtime
             .execute(bad)
@@ -705,7 +727,7 @@ mod transactional_projection_tests {
             "the unresolved draft must fail package validation"
         );
         let result = runtime
-            .execute(refresh(&input, &input.expected_revision, &worker))
+            .execute(refresh(&runtime, &input, &input.expected_revision, &worker))
             .unwrap();
         assert_eq!(
             result["model_revision"],
@@ -719,6 +741,103 @@ mod transactional_projection_tests {
             runtime.held[&input.scope].session.snapshot(),
             worker.snapshot()
         );
+        let seed = ds_grid_exchange::profile_session::ProfileSessionSeed::capture(
+            &worker,
+            EntityId::new("profile-test").unwrap(),
+            Default::default(),
+            &[],
+        );
+        let mut initialized = Runtime::default();
+        initialized
+            .execute(InitializeRequest {
+                scope: input.scope.clone(),
+                seed,
+                options: input.options.clone(),
+                style_document: input.style_document.clone(),
+                patch: Default::default(),
+                analyze: true,
+            })
+            .unwrap();
+        assert_eq!(
+            initialized.held[&input.scope].session.validation(),
+            worker.validation()
+        );
+        let draft = worker.current_revision().revision_id.to_string();
+        worker.undo().unwrap();
+        initialized
+            .execute(refresh(&initialized, &input, &draft, &worker))
+            .unwrap();
+        assert!(initialized.held[&input.scope].session.is_valid());
+    }
+    #[test]
+    fn initialization_wire_replays_prior_edits_retains_redo_and_refuses_scope_reuse() {
+        let input = request();
+        let mut worker = GridSession::open(common::fixture());
+        describe(&mut worker, "one", "initial edit");
+        describe(&mut worker, "two", "redo tail");
+        worker.undo().unwrap();
+        let seed = ds_grid_exchange::profile_session::ProfileSessionSeed::capture(
+            &worker,
+            EntityId::new("profile-test").unwrap(),
+            Default::default(),
+            &[ds_grid_exchange::AssetBytes {
+                invariant_leaf: "source.def".into(),
+                bytes: b"native evidence".to_vec(),
+            }],
+        );
+        let wire = json!({"operation":"initialize", "scope":input.scope, "seed":seed,
+            "options":input.options, "style_document":input.style_document, "patch":{}, "analyze":true});
+        let mut runtime = Runtime::default();
+        let result = runtime
+            .execute(serde_json::from_value::<Request>(wire.clone()).unwrap())
+            .unwrap();
+        assert_eq!(result["history"], json!(worker.history_state()));
+        assert_eq!(result["retained_asset_count"], 1);
+        assert_eq!(
+            result["analysis"]["model_revision"],
+            worker.current_revision().revision_id.to_string()
+        );
+        assert_eq!(
+            runtime.held[&input.scope].session.retained_journal(),
+            worker.retained_journal()
+        );
+        assert!(runtime
+            .execute(serde_json::from_value::<Request>(wire).unwrap())
+            .unwrap_err()
+            .starts_with("profile_replay_scope_initialized:"));
+        let middle = worker.current_revision().revision_id.to_string();
+        worker.redo().unwrap();
+        runtime
+            .execute(refresh(&runtime, &input, &middle, &worker))
+            .unwrap();
+        let tip = worker.current_revision().revision_id.to_string();
+        let entry = GridSession::open(common::fixture()).history_state();
+        let current = worker.history_state();
+        worker
+            .discard_edits_at_head(&ds_grid_engine::SessionDiscardRequest {
+                expected_revision: current.model_revision,
+                expected_undo_depth: current.undo_depth,
+                expected_history_pin: current.history_pin,
+                target_revision: entry.model_revision,
+                target_undo_depth: 0,
+                target_redo_depth: 0,
+                target_history_pin: entry.history_pin,
+            })
+            .unwrap();
+        runtime
+            .execute(refresh(&runtime, &input, &tip, &worker))
+            .unwrap();
+        assert_eq!(
+            runtime.held[&input.scope].session.retained_journal(),
+            worker.retained_journal()
+        );
+        assert!(runtime
+            .held
+            .get_mut(&input.scope)
+            .unwrap()
+            .session
+            .redo()
+            .is_err());
     }
     #[test]
     fn refresh_carries_demand_cache_through_native_receipts_but_not_navigation() {
@@ -789,7 +908,7 @@ mod transactional_projection_tests {
             "only one incident section invalidates",
         );
         runtime
-            .execute(refresh(&input, &input.expected_revision, &worker))
+            .execute(refresh(&runtime, &input, &input.expected_revision, &worker))
             .unwrap();
         let held = runtime.held.get_mut(&input.scope).unwrap();
         let cached = screen(held);
@@ -811,7 +930,9 @@ mod transactional_projection_tests {
         );
         let edited = worker.current_revision().revision_id.to_string();
         worker.undo().unwrap();
-        runtime.execute(refresh(&input, &edited, &worker)).unwrap();
+        runtime
+            .execute(refresh(&runtime, &input, &edited, &worker))
+            .unwrap();
         let held = runtime.held.get_mut(&input.scope).unwrap();
         screen(held);
         assert!(held.demand_cache.last_demand_work().computed_cases > 0);
@@ -828,9 +949,10 @@ mod transactional_projection_tests {
         let mut worker = GridSession::open(common::fixture());
         describe(&mut worker, "one", "first staged edit");
         describe(&mut worker, "two", "second staged edit");
-        let mut bad = refresh(&input, &input.expected_revision, &worker);
+        let mut bad = refresh(&runtime, &input, &input.expected_revision, &worker);
         bad.entries[1].resulting_revision = serde_json::from_value(json!("wrong-result")).unwrap();
         bad.expected_revision = bad.entries[1].resulting_revision.clone();
+        bad.target_history.model_revision = bad.expected_revision.clone();
         assert!(runtime
             .execute(bad)
             .unwrap_err()
@@ -842,7 +964,7 @@ mod transactional_projection_tests {
             .unwrap()
             .terrain
             .gap_tolerance_m = -1.0;
-        let bad = refresh(&input, &input.expected_revision, &worker);
+        let bad = refresh(&runtime, &input, &input.expected_revision, &worker);
         assert!(runtime
             .execute(bad)
             .unwrap_err()
@@ -851,10 +973,10 @@ mod transactional_projection_tests {
         assert_eq!(runtime.held[&input.scope].session.history_state(), history);
         assert_eq!(runtime.analyses[&input.scope], analysis);
         runtime
-            .execute(refresh(&input, &input.expected_revision, &worker))
+            .execute(refresh(&runtime, &input, &input.expected_revision, &worker))
             .unwrap();
         assert!(runtime
-            .execute(refresh(&input, &input.expected_revision, &worker))
+            .execute(refresh(&runtime, &input, &input.expected_revision, &worker))
             .unwrap_err()
             .starts_with("profile_replay_stale:"));
     }
@@ -868,14 +990,14 @@ mod transactional_projection_tests {
         runtime.execute(two.clone()).unwrap();
         let mut worker = GridSession::open(common::fixture());
         describe(&mut worker, "one", "scoped edit");
-        let mut wrong = refresh(&one, &one.expected_revision, &worker);
+        let mut wrong = refresh(&runtime, &one, &one.expected_revision, &worker);
         wrong.model_id = "replacement-model".into();
         assert!(runtime
             .execute(wrong)
             .unwrap_err()
             .starts_with("profile_replay_model_mismatch:"));
         runtime
-            .execute(refresh(&one, &one.expected_revision, &worker))
+            .execute(refresh(&runtime, &one, &one.expected_revision, &worker))
             .unwrap();
         assert_eq!(
             runtime.held[&two.scope]
@@ -885,14 +1007,15 @@ mod transactional_projection_tests {
                 .to_string(),
             two.expected_revision
         );
-        let mut missing = refresh(&two, &two.expected_revision, &worker);
+        let mut missing = refresh(&runtime, &two, &two.expected_revision, &worker);
         missing.scope = "missing".into();
         assert!(runtime
             .execute(missing)
             .unwrap_err()
             .starts_with("profile_replay_base_unavailable:"));
         let mut wire = serde_json::json!({"operation":"refresh", "scope":"one", "model_id":"profile-test",
-            "base_revision":one.expected_revision, "expected_revision":worker.current_revision().revision_id,
+            "base_revision":one.expected_revision, "base_history":runtime.held[&one.scope].session.history_state(),
+            "target_history":worker.history_state(), "expected_revision":worker.current_revision().revision_id,
             "entries":worker.command_history(), "options":one.options, "style_document":one.style_document,
             "patch":{}, "analyze":false});
         wire["entries"][0]["command"]["command_kind"] = json!("unknown_command");
@@ -922,7 +1045,12 @@ mod transactional_projection_tests {
         runtime.execute(input.clone()).unwrap();
         let mut unprotected_worker = GridSession::open(common::fixture());
         describe(&mut unprotected_worker, "write", "must refuse");
-        let mut attempt = refresh(&input, &input.expected_revision, &unprotected_worker);
+        let mut attempt = refresh(
+            &runtime,
+            &input,
+            &input.expected_revision,
+            &unprotected_worker,
+        );
         attempt.model_id = model_id.into();
         let error = runtime.execute(attempt).unwrap_err();
         assert!(error.starts_with("profile_replay_diverged:"), "{error}");

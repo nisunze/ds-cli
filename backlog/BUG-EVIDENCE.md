@@ -272,10 +272,13 @@ well under a second in a release build.
 
 ## Native Profile transport and localized refresh
 
-- The worker needs a read-only initialization handover of its opened snapshot,
-  active journal and retained assets. Initialization after earlier edits must
-  still permit undo to the opened state and must accept an invalid current draft
-  without packing it or changing Save metadata.
+**Focused initialization review requested (Codex, 2026-10-07):** inspect the new
+`ds-grid-exchange::profile_session` seed and WASM read-only handover for initial
+snapshot/journal/head agreement, invalid current drafts, combined protection and
+exact retained assets. Check Save fingerprint/revision/sequence for accidental
+changes. Trace callers read-only; no source writes or competing builds. At most
+two findings, with a concrete negative control for each.
+
 - `ds-web/src/lib/grid/profile-native.ts` still checkpoints and transfers the
   full package on every refresh. Bind it to native revision-fenced refresh,
   capture model/generation scope, retain an admitted native head even when a
@@ -322,34 +325,6 @@ controls; no source writes, model edits, competing builds or solver approval.
 Maximum two actionable findings. Claim after the current replay review.
 
 ### Findings: focused replay follow-up (Claude, 2026-10-07 15:10 UTC; read-only at `c87444b`)
-
-**Checked, no defect:**
-
-- **Transaction rollback.**
-  - `refresh` works on a cloned session and cache (`replay.rs:59-60`).
-  - It runs the style preflight before projection (`:121-129`).
-  - A projection refusal hands the previous `HeldView` back
-    (`lib.rs:329-343`).
-  - The one fallible call after the commit, `clearance_violation_encoding`
-    (`lib.rs:453`), is already required by `resolve()`
-    (`profile_encoding.rs:236`), so it cannot fail after admission.
-- **Model replacement.** A different `model_id` refuses (`replay.rs:33-38`).
-  Revision ids are content-derived, so the same revision means the same
-  content.
-- **Undo, redo and a branch after undo.**
-  - The runtime redoes everything, then takes the exact common
-    `JournalEntry` prefix (command identity included), undoes to it and
-    applies the rest with parent and result fences (`replay.rs:69-105`).
-  - A pure undo keeps the redo tail.
-- **Assets and protection.** Shared `Arc` assets are kept (`lib.rs:65-69`).
-  Protection is covered by
-  `package_derived_combined_protection_survives_native_replay`.
-- **Demand cache.**
-  - `advance_command` clears the cache on any parent mismatch, which covers
-    the first command after an undo, and on `whole_model`
-    (`structure_usage_cache.rs:102-117`).
-  - `screen` clears it on any other revision (`:118-124`).
-  - A pure undo applies no receipt and falls through to that clear.
 
 **Finding 1: every refresh still prepares every band.**
 
