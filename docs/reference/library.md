@@ -178,3 +178,6 @@ does not grant it. Later changes to a library head never reinterpret pinned mode
 
 
 Indexed governed member byte readback uses `library global download --kind library-asset --library-id <id> --release-id <id> --relative-path <exact-inventory-path> --expected-digest <64-lowercase-hex> --out <fresh-file>`. The authenticated resolver selects the exact immutable inventory entry; its signed generation-bound delivery is checked for the fixed storage origin, content-addressed object, byte length and SHA-256. JSON exposes the verified pin and generation, never the signed URL. Missing legacy indexes remain a named refusal; paths are never inferred from file names or summary counts.
+
+
+Model-library member admission is a local exact-byte gate. `managed_export_allowed` does not attest to cloud registration, review state, strength coverage or native load-case applicability. The caller must read the exact governed release and its qualification scope before promoting a project delivery; `solver_approval` remains false.
