@@ -79,3 +79,14 @@ The standing owner rulings for everyone who works the backlog. [OPEN.md](OPEN.md
 ## 7. No single-country assumptions
 
 Owner: "it will be adopted internationally, so no hardcoding at all." No fallback may turn one country's input into another's; code must not know rule-set names (the live Chad rule set is `rule_tchd`). The queued slices are in OPEN.md block 19.
+
+## 8. Never a worktree unless the user controls it (owner, 2026-10-07)
+
+Agents never create, code in or land from a git worktree or feature branch. Code directly in the canonical checkout on `run`: make the smallest coherent change, prove it, commit and push `run` before the next one, staging only your own paths and preserving other agents' uncommitted work. The only exception is a worktree the user creates and controls; an agent works there only when the user says so, and the user decides when it lands and when it goes.
+
+Why — the painful history:
+
+- On 2026-10-04 there were **719 unique commits**, made since 2026-09-01, that had never reached `run`. Finished features were lost in forgotten trees again and again, among them the Profile weather case, the usage labels and the dynamic combined model. The "Never-landed" entries still in OPEN.md are what was recovered from them.
+- Forgotten trees were the largest thing on the box: five already-merged lanes held **194 GB**; deleting them took the disk from 83% to 63%.
+- Every later investigation re-read those trees, mistook them for live work and paid again to settle what was already settled.
+- A registry of trees (`git_trees/gittrees-index.json`, 2026-10-04) did not stop the loss. On 2026-10-05 the owner ruled: code directly in each canonical checkout on `run`, no worktrees, no feature branches. A commit on a branch counts as zero; only `run` counts.
