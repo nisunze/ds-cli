@@ -18,7 +18,65 @@ Check existing contracts, source evidence and recorded owner choices first. Rout
 | [22. Account and data-owner authority](#22-account-and-data-owner-authority) | 2 |
 | [25. CLI reliability and feedback](#25-cli-reliability-and-feedback) | 1 |
 | [Parked: outside stabilization](#parked-outside-stabilization) | 2 |
+| [Temporary: owner-supervised Codex handover](#temporary-owner-supervised-codex-handover-2026-10-07) | 7 |
 <!-- /toc -->
+
+## Temporary: owner-supervised Codex handover (2026-10-07)
+
+From Claude to Codex. The owner supervises this session live: Codex
+implements, the owner watches each step and gives the decisions it names.
+Delete this section when the session ends; move anything left to its owning
+list.
+
+**State:** the MV template preview is proven headlessly.
+
+- **Commits:** kernel `55014fc`/`c34fadb`, ds-cli `7a490bad`, ds-web
+  `dabd6e34d`.
+- **Command:** `ds report plan-profile --preview-layout <layout.json>
+  --project <id> --scene <scene.json> --plan <plan.json> --model-crs <crs>`.
+  It renders one sample sheet from in-memory projections; nothing is saved.
+- **Proof:** sheet 1 of 91 of the Gisagara M1 seed, under the Rwanda Template
+  layout `mv-a3-plan-profile-template`, now classified `mv_model /
+  plan_profile`.
+- **Headless setup:** a debug `ds` reaches the cloud with
+  `DS_NATIVE_CLIENT_PROFILE_BUNDLE` set to the output of ds-web
+  `scripts/run/server-profile.mjs`. `DS_REPORT_BIN` points at the dev
+  `ds-report`.
+
+1. **Relaunch and prove in the window.** Relaunch DS GridDesign Local (Dev).
+   Its shell predates the new `ds_invoke` door, and the current one runs from
+   Codex's supervisor. Then open Rwanda Template → Printing setup → MV Sheets
+   → Plan and profile, tick an open DS Grid model, and click Preview. **Owner
+   watches:** one plan and profile sheet appears, never the transformer list.
+2. **Print the ticked models.** The PDF button is not wired for MV templates.
+   Run the existing `report plan-profile` render once per ticked model, and
+   show each model's pages as they arrive, never waiting for all of them.
+   **Owner decides:** one PDF per model, or one combined booklet.
+3. **Sync-store migration** (STABILIZATION §15.1). **Owner decides:** what a
+   legacy `artifacts` row with a NULL account becomes, discarded or attributed
+   to the current account. Codex fixes `ds-sync-store` and proves it on a copy
+   of a v1 store.
+4. **Select the Template's MV setup** (after step 3). Run `report project
+   mv-setup set` for `mv-a3-plan-profile-template` at its current revision.
+   **Owner gives:** `external_version` and the fixed `issue_date`.
+5. **MV global-default fallback** (STABILIZATION §15.2). **Owner decides:**
+   retire the global fallback, so every project selects its own MV setup, or
+   read the default from a template project.
+6. **Finish the Rwanda Template seed** (SEEDING §3; data only, no code).
+   - Replace the logos and title-block text on the remaining LV layouts with
+     the generated set in `outputs/rwanda-template-seed-20261007/logos/`.
+   - Use fictitious companies and account numbers, and gibberish-Latin
+     people's names.
+   - **Owner gives:** whether signed-in read-only access needs a new grant,
+     since no such control exists.
+7. **Printing slices queued:** STABILIZATION §13 (Front matter purpose,
+   subject per purpose), §14 (preview map context) and §15.3 (hairline
+   dividers break the editor canvas). **Owner picks** the order.
+
+Backups of the reclassified layouts are in
+`~/.cache/claude-build-tmp/rwt/reclass/`. `printing-settings-offline.test.ts`
+fails on a mock without `canonicalName`; that failure is not from the preview
+change.
 
 ## 12. Engineering acceptance and material authority
 
