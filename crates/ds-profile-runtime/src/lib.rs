@@ -25,6 +25,8 @@ pub use publication::{ConfirmPublicationRequest, DiscardPublicationRequest, Publ
 mod replay_cost;
 mod calculation_jobs;
 pub use calculation_jobs::{AdmitCalculationRequest, CalculationJobRequest, StartCalculationRequest};
+mod result_queries;
+pub use result_queries::{QueryArguments, QueryCursor, QueryKind, QueryResultsRequest};
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -53,6 +55,7 @@ pub enum Request {
     CalculationStatus(CalculationJobRequest),
     CancelCalculation(CalculationJobRequest),
     AdmitCalculation(AdmitCalculationRequest),
+    QueryResults(QueryResultsRequest),
     Release(ReleaseRequest),
     CaseLayer(CaseRequest),
     Layout(ds_command_kernel::profile_layout::Request),
@@ -99,6 +102,8 @@ struct HeldView {
     last_weather_sequence: u64,
     pending_receipts: Vec<ds_grid_engine::CommandOutcome>,
     pending_reconcile: bool,
+    result_index: Arc<result_queries::Index>,
+    query_scope: ds_grid_engine::recalculation_scope::RecalculationScope,
 }
 #[derive(Debug, Clone, Serialize)]
 pub struct Projection {
@@ -169,6 +174,7 @@ impl Runtime {
             Request::CalculationStatus(request) => self.calculation_status(request),
             Request::CancelCalculation(request) => self.cancel_calculation(request),
             Request::AdmitCalculation(request) => self.admit_calculation(request),
+            Request::QueryResults(request) => self.query_results(request),
             Request::Release(request) => self.release(request),
             Request::CaseLayer(request) => self.case_layer(request),
             Request::Layout(request) => {
@@ -480,6 +486,9 @@ impl Runtime {
         );
         self.commit_view(&request.scope, state.clone());
         let authored = review.authored_view(&label_policy).map(Arc::new);
+        let result_index = Arc::new(previous.as_ref().filter(|_| same_model)
+            .and_then(|held| held.result_index.identical_projection(&scene))
+            .unwrap_or_else(|| result_queries::Index::new(&session, &scene, &demand_cache)));
         self.held.insert(
             request.scope.clone(),
             HeldView {
@@ -495,6 +504,8 @@ impl Runtime {
                 last_weather_sequence,
                 pending_receipts: Vec::new(),
                 pending_reconcile: false,
+                result_index,
+                query_scope: Default::default(),
             },
         );
         let primitives = decorations::project(&scene, &state, &rows, &label_policy);

@@ -296,3 +296,65 @@ path, not fresh preparations. Explicit calculation also exposes these as
 `last_surface_local_ground_rebuilds`, with the same last-preparation semantics.
 The runtime gate checks A/B/A/B terrain edits, exact worker history, no scene or
 analysis generation, unchanged calculated base, and native work-count transport.
+## Cached native result queries
+
+`ds-profile-runtime::Request::QueryResults` reads an admitted in-memory result
+index. It does not project, screen, assemble demand, calculate or save. The
+request carries scope/model, exact expected history and authored engineering
+input root; `kind` is `usage`, `failures`, `negative_loading`,
+`violating_sections`, `qualification` or `blockers`. Optional `entity_ids`
+focuses up to 128 native identities. Empty means the full calculated corpus.
+`limit` defaults to 50 and admits 1–200. Each encoded response is at most
+256 KiB; native byte limits can end a page before its item limit.
+
+Usage and qualification return the native screening row's typed facts with
+counts for blockers, unevaluated checks and advisories; blocker messages are
+queried separately. Failure uses the native fail status. Negative loading uses
+the native uplift witness or negative minimum signed weight span and retains
+`uplift_failure` separately: negative loading alone is not a failure. Counts
+include all typed cached rows before the analysis report's 2,000-row cap.
+The complete matching native usage envelope is retained; a missing envelope
+refuses these four queries rather than reporting a false zero.
+
+Violating sections are distinct native section IDs with proven structure
+capacity contributions, displayed-case Profile clearance failure or native
+section-state failure. Contributors are counted before their 50-ID display
+cap. This is Profile clearance, not the separate model-bound design clearance
+report. Qualification describes structure usage screening. Blockers cover
+Profile curve/projection/clearance and structure usage evidence, with explicit
+basis metadata and evidence-record counts; they are not a complete query of
+the default analysis's resistance checks or design-clearance point findings.
+Messages are presented, never parsed for an engineering verdict. A message
+retains its original character count and truncation flag after 1,024 characters.
+
+The response names authored and computed revisions/roots separately. Equal
+engineering inputs admit the cached facts at a later authored history. Native
+forward receipts also permit focused reads outside affected structure/incident
+section/alignment dependencies (`freshness: unchanged_dependencies`). Global
+reads across pending affected inputs, affected focused reads, unknown lineage
+and unindexed displayed clearance cases refuse `profile_calculation_required`.
+Whole-model invalidation stays conservative. Querying an unconfirmed publication
+refuses; discard restores the prior index alongside its prior calculated view.
+
+`next_cursor` pins the exact result identity, scope/model, history, kind,
+canonical entity selection and offset. Recalculation at equal content creates
+a new identity; old pages refuse. History ABA, redo-tail replacement, release,
+foreign models and unknown entities are tested. `total` counts matching native
+facts before paging; `truncated` means another page exists. `query_ms` includes
+native bounded response construction and byte-limit verification, excluding
+transport. The dense measurement test includes request DTO decode and final
+JSON byte encoding separately. Owning tests live in `result_queries.rs`; the
+engine cache's immutable exact-envelope accessor has its own negative controls.
+
+The ordinary release dense-query gate retains 10,004 structure rows, one
+three-support tension section and 10,001 unstrung supports. Median times for
+50-item pages (including DTO decode and final JSON encoding) are 0.268 ms for
+usage, 0.260 ms for qualification and 0.076 ms for blockers. Usage transfers
+43,093 bytes; blockers transfer 12,298 bytes. Three proven failures take
+0.023 ms and transfer 4,479 bytes; the negative-loading witness takes 0.012 ms
+and transfers 2,731 bytes. The complete blocker corpus contains 40,008 evidence
+records before paging. The receipt is
+`ds-network/out/profile-native/result-query-cost-release.json`; the prior debug
+receipt uses the same row count with an unpinned capacity fixture and is not a
+failure-performance comparison. These are source/headless query measurements,
+excluding IPC, renderer, calculation/index construction and installed artifacts.

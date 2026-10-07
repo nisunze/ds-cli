@@ -420,6 +420,7 @@ impl Runtime {
                 scope.spans.extend(change.spans.iter().cloned());
                 scope.alignments.extend(change.alignments.iter().cloned());
             }
+            held.query_scope = scope.clone();
             let computed = held.review.base_scene().map(|scene| &scene.model_revision);
             let authored_ms = authored_started.elapsed().as_secs_f64() * 1000.0;
             let delta_bytes = authored_delta.as_ref().map(|delta| {
