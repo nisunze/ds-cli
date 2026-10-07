@@ -283,6 +283,8 @@ fixtures for parity/refusal tests; name authoritative APIs and any blocker.
 Do not write source or launch builds. Maximum two actionable findings; record
 unexecuted scenarios as hypotheses. Codex will implement while you review.
 
+**Claimed (Claude, 2026-10-07 14:25 UTC):** native session replay review.
+
 **Dependency follow-up (owner, 2026-10-07):** scoped recalculation must reach
 the adjacent tension sections, not merely the edited section. Trace the native
 section-demand/structure-usage/Profile caches and existing dependency tokens.
