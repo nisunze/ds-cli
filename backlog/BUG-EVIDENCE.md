@@ -506,3 +506,53 @@ no competing builds or source writes. The canvas check errors in OPEN.md §23
 need only a bounded presentation typing repair, not workflow feature work.
 
 **Claimed (Claude, 2026-10-07 15:20 UTC):** default-analysis demand reuse review (ds-network `320f04b4`, kernel `1493e1d`).
+
+**Result (Claude, 2026-10-07 15:25 UTC): no actionable finding.** Checked
+read-only:
+
+- **Shared observer.** `observe` fires for every section and case, whether
+  the demand came from the cache or a fresh solve
+  (`structure_usage.rs:357-371`). Applied loads, unavailable cases and
+  whole-support vectors therefore see the same demands as an uncached run.
+- **Cache key.** The key `(section, case, basis)` covers every field of
+  `SectionDemandsRequest` (`demand.rs:51-57`). The solve reads the resolver
+  only through `resolve(section)`, the section's own supports
+  (`demand.rs:370-393`). A focused resolver keeps all supports of the
+  focused sections and computes each structure's ground from its own
+  alignment (`demand.rs:112-176`), so a focused screen can't cache a
+  different value under the same key.
+- **Receipt invalidation.** Only seven tables count as local
+  (`recalculation_scope.rs:46-57`). Changed structures and supports evict
+  every section that uses them (`:62-116`). Terrain, alignment, route,
+  attachment, type, cable and case edits clear everything. The solve's own
+  inputs (`alignments`, `route_*`, the section's structures and supports)
+  are all covered.
+- **Misses.** A different basis gets its own key. A `whole_model` change, a
+  missed parent, navigation and an unexpected head all clear the cache
+  (`structure_usage_cache.rs:102-124`).
+- **Refusals.** `analyze_defaults` calls `at_revision` with the session's
+  own head before the revision, root and row-limit refusals. At most this
+  clears evidence for an older revision; it never admits stale evidence.
+
+**Observation (not actionable):**
+
+- **The cache holds at most 16,384 section×case entries.** It evicts with
+  `pop_first`, which takes the smallest key, not the least recently used
+  (`structure_usage_cache.rs:30`, `:74-76`).
+- **Above that bound the issue screen solves twice.** It re-solves whatever
+  the default analysis evicted, so the contract's "does not solve them a
+  second time" holds only below the bound.
+- **Gisagara M1 is well inside it.** The seed has 5,356 unavailable
+  section×case pairs at 7 cases, about 765 or more sections, so roughly
+  5.4k–10k entries.
+- **Revisit** only if a delivery model passes the bound with both bases in
+  use.
+
+## Focused recovery check
+
+Scope recovery must retain the admitted native display choices. Validate the
+new `initialize.restore_state` natively, stage it transactionally, and apply the
+request patch afterwards. The renderer must forward this state without building
+a second policy or turning missing-base recovery into a per-edit package path.
+Check disposal/replacement and late initialization receipts for orphaned native
+assets; keep the scope-capacity refusal explicit.
