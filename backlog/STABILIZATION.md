@@ -33,7 +33,7 @@ The coding agent re-reads both files between slices.
 | Suite | Command | Last result (7 October) |
 | --- | --- | --- |
 | ds-network-reporter | `cargo test --locked --no-fail-fast` | All green |
-| ds-cli | `DS_REPORT_BIN=<reporter target>/debug/ds-report DS_SOLAR_BIN=<ds-solar target>/debug/ds-solar cargo test --locked --workspace --all-features --no-fail-fast` | Latest full run was interrupted during Native Server tests. Five earlier selection/skill failures are repaired and pass owning checks; finish the settled-tip full suite. |
+| ds-cli | `DS_REPORT_BIN=<reporter target>/debug/ds-report DS_SOLAR_BIN=<ds-solar target>/debug/ds-solar cargo test --locked --workspace --all-features --no-fail-fast` | Full settled-tip run: 1,841 tests across 108 targets green (15 explicitly ignored); workspace/all-targets/all-features Clippy also green. |
 | ds-network | `cargo test --locked --workspace --no-fail-fast` | Full settled-tip run: three known private-corpus failures in two targets; all other targets passed. Fixes remain in OPEN.md §11 |
 | ds-solar | `cargo test --locked --workspace` | Full settled-tip run: 427 tests across 58 targets green. |
 
