@@ -45,7 +45,7 @@ const PROFILE_PACKAGE_INVALID: Refusal = Refusal {
 };
 const INVALID_PROFILE_VIEW: Refusal = Refusal {
     code: "invalid_profile_view",
-    when: "a visibility, scale, dock height, viewport, or action value is invalid",
+    when: "a visibility, style, scale, dock height, viewport, or action value is invalid",
     remedy: "use the exact fields and ranges in ds map profile set --help",
 };
 const INVALID_PROFILE_SELECTION: Refusal = Refusal {
@@ -94,9 +94,9 @@ pub static VIEW: Command = Command {
 pub static SET: Command = Command {
     id: "map.profile.set",
     path: &["map", "profile", "set"],
-    contract: 4,
+    contract: 5,
     summary: "Set the paired Profile's visual state through typed CLI inputs.",
-    purpose: "Updates the paired Profile display; omitted values stay. Rust validates display-case, visibility and scale against an open model; viewport and dock height may be staged first. Review boxes, usage labels and analysis default on: each revision is analyzed once. Fit and rebuild are explicit; analyze reruns native structure, section and clearance checks at the held revision with the model-bound case envelope; missing inputs block Profile and Issues. Weather changes only the curve. No project data changes.",
+    purpose: "Set transient Profile appearance; omitted values stay. Display needs an open model; height and camera may be staged. Review boxes, usage labels and analysis default on. Analyze reruns native checks at the held revision with the model-bound case envelope; blockers remain in Profile and Issues. Weather changes only the curve.",
     chapter: Chapter::MapPresentation,
     effect: Effect::LocalUi,
     authority: Authority::DesktopPairing,
@@ -128,9 +128,14 @@ pub static SET: Command = Command {
             "Per-cable wire colour {\"NAME\":\"#rrggbb\"}; null resets.",
         ),
         Arg::value(
+            "styles",
+            "<json-object>",
+            "Style map: {\"ground\":{\"color\":\"#rrggbb\",\"width_mm\":0.5,\"line_type\":\"dashed\"},\"strain\":{\"symbol\":\"▲\"}}. Width 0.05..3 mm; solid/dashed/dotted/dash_dot. One visible symbol for strain/suspension/junction/unknown/structures/terrain_points. Other targets are visibility keys. Omitted fields retain; null target resets. Schema/targets: map profile view display.style_controls.",
+        ),
+        Arg::value(
             "height-px",
             "<pixels>",
-            "Profile dock height, finite 220..10000 pixels.",
+            "Profile dock height, finite 1..10000 pixels; Rust requires both panes to remain visible.",
         ),
         Arg::value("zoom", "<ratio>", "Absolute Profile zoom, 0.2..1000000."),
         Arg::value(
@@ -152,10 +157,10 @@ pub static SET: Command = Command {
         TARGET_ARG,
         DESCRIPTOR_ARG,
     ],
-    output: "The resulting exact visual state from the paired Profile, including height_px, with the applied patch and optional action. Analyze also returns ran:true and the bounded native analysis receipt; full evidence stays in Profile and Issues.",
+    output: "Exact resulting view and applied patch. Analyze includes ran:true and the bounded native receipt; full evidence remains in Profile and Issues.",
     examples: &[Example {
         command: "ds map profile set --height-px 480 --vertical-exaggeration 5 --visibility '{\"ground\":true,\"wire\":false}' --action fit --output json",
-        note: "After map profile view, set dock height, scale and visibility, then fit; use map profile select with the view receipt's model_id, revision and entity IDs.",
+        note: "Set controls after map profile view, then fit; model edits require explicit model/revision.",
         runnable: false,
     }],
     refusals: &[
@@ -182,6 +187,12 @@ pub static SET: Command = Command {
         "fit",
         "rebuild",
         "visibility",
+        "colour",
+        "color",
+        "width",
+        "line type",
+        "symbol",
+        "appearance",
         "usage",
         "clearance",
         "blockers",
@@ -331,6 +342,19 @@ fn invalid_selection(message: impl Into<String>) -> Failure {
 
 fn patch_from_inputs(inputs: &Inputs) -> Result<Map<String, Value>, Failure> {
     let mut patch = Map::new();
+    if let Some(raw) = inputs.value("styles") {
+        if raw.len() > 65536 {
+            return Err(invalid("styles exceeds 64 KiB"));
+        }
+        let value: Value = serde_json::from_str(raw)
+            .map_err(|_| invalid("styles must be a native JSON object"))?;
+        let check: ds_command_kernel::profile_display::DisplayPatch =
+            serde_json::from_value(json!({"styles":value})).map_err(|e| invalid(e.to_string()))?;
+        ds_command_kernel::profile_display::DisplayState::default()
+            .patched(&check)
+            .map_err(invalid)?;
+        patch.insert("styles".into(), value);
+    }
     if let Some(raw) = inputs.value("terrain") {
         let value: Value = serde_json::from_str(raw)
             .map_err(|_| invalid("terrain must be a complete native JSON object"))?;
@@ -386,7 +410,7 @@ fn patch_from_inputs(inputs: &Inputs) -> Result<Map<String, Value>, Failure> {
     if let Some(raw) = inputs.value("height-px") {
         patch.insert(
             "height_px".to_owned(),
-            json!(bounded(raw, "height-px", 220.0, 10_000.0)?),
+            json!(bounded(raw, "height-px", 1.0, 10_000.0)?),
         );
     }
     if let Some(raw) = inputs.value("zoom") {
@@ -491,8 +515,34 @@ mod tests {
     }
 
     #[test]
+    fn styles_use_native_validation_and_forward_exact_patch() {
+        let style = json!({"ground":{"color":"#ABCDEF","width_mm":0.8,"line_type":"dotted"},"strain":{"symbol":"▲"},"wire":null});
+        let args = ["--styles".to_owned(), style.to_string()];
+        let inputs = ds_cli_contract::args::parse(&SET, &args).unwrap();
+        let patch = Value::Object(patch_from_inputs(&inputs).unwrap());
+        assert_eq!(patch, json!({"styles":style}));
+        assert_eq!(
+            ds_cli_desktop::ops::undeclared_key(&crate::PROFILE_SET, &patch),
+            None
+        );
+        for raw in [
+            r#"{"ground":{"width_mm":0}}"#,
+            r#"{"ground":{"symbol":"x"}}"#,
+            r#"{"strain":{"line_type":"invented"}}"#,
+            r#"{"bogus":null}"#,
+        ] {
+            let args = ["--styles".to_owned(), raw.to_owned()];
+            let inputs = ds_cli_contract::args::parse(&SET, &args).unwrap();
+            assert_eq!(
+                patch_from_inputs(&inputs).unwrap_err().code(),
+                "invalid_profile_view"
+            );
+        }
+    }
+
+    #[test]
     fn height_parser_accepts_inclusive_bounds_and_fractional_pixels() {
-        for height in ["220", "480.5", "10000"] {
+        for height in ["1", "480.5", "10000"] {
             let args = ["--height-px", height].map(str::to_owned);
             let inputs = ds_cli_contract::args::parse(&SET, &args).expect("declared height");
             let patch = patch_from_inputs(&inputs).expect("valid height");
@@ -516,9 +566,7 @@ mod tests {
 
     #[test]
     fn height_parser_rejects_invalid_values_before_pairing() {
-        for height in [
-            "219.99", "10000.01", "NaN", "inf", "-inf", "1e309", "pixels", "",
-        ] {
+        for height in ["0", "10000.01", "NaN", "inf", "-inf", "1e309", "pixels", ""] {
             let args = [format!("--height-px={height}")];
             let inputs = ds_cli_contract::args::parse(&SET, &args).expect("declared height");
             assert_eq!(

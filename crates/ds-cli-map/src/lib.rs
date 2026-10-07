@@ -152,6 +152,7 @@ pub const PROFILE_SET: BridgeOp = BridgeOp {
         "display_case",
         "terrain",
         "cable_colors",
+        "styles",
     ],
 };
 pub const PROFILE_SELECT: BridgeOp = BridgeOp {
@@ -175,6 +176,7 @@ pub const GRID_LASSO: BridgeOp = BridgeOp {
         "families",
         "filter",
         "mode",
+        "action",
     ],
 };
 pub const CAMERA_SET: BridgeOp = BridgeOp {

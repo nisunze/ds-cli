@@ -43,9 +43,9 @@ const EDIT_CONTEXT_CLOSED: Refusal = Refusal {
 pub static COMMAND: Command = Command {
     id: "map.grid.lasso",
     path: &["map", "grid", "lasso"],
-    contract: 1,
-    summary: "Select Grid Plan or Profile elements by lasso and attribute filters.",
-    purpose: "Transient selection only; no model effect/inferred project. Window fences model/revision, supplies axis pin for native spatial/attribute queries. Inputs validate before pairing. Requires Desktop map.grid.lasso.",
+    contract: 2,
+    summary: "Select Grid elements or configure shared Plan/Profile selection controls.",
+    purpose: "Select without model edits; the window fences model/revision. Read/configure share toolbar preferences: initially Within, All layers; omission retains scoped choices. Outside selects disjoint solved geometry.",
     chapter: Chapter::MapPresentation,
     effect: Effect::LocalUi,
     authority: Authority::DesktopPairing,
@@ -54,15 +54,17 @@ pub static COMMAND: Command = Command {
         Arg::value("model", "<model-id>", "Exact open model ID; nonblank <=200 bytes, no surrounding whitespace/controls.").required(),
         Arg::value("revision", "<revision-id>", "Exact held revision ID; --model's bounds apply.").required(),
         Arg::value("space", "<profile|plan>", "Coordinate space of the held scene.").choices(&["profile", "plan"]).required(),
-        Arg::value("polygon", "<json>", "<=64 KiB, finite exact pairs. Profile: 3..256 [scene_x,scene_y] engineering pairs (not pixels), open/closed once, abs <=1e9; or same-unit GeoJSON. Plan: WGS84 GeoJSON, lon [-180,180], lat [-90,90]. GeoJSON only {type:Polygon,coordinates:[ring]}, closed 4..256 pairs; no holes/extra keys/ordinates.").required(),
-        Arg::value("predicate", "<intersects|within>", "Boundary-inclusive; within requires the whole entity.").choices(&["intersects", "within"]).default("intersects"),
-        Arg::repeated("family", "<family>", "Repeat distinct scene families; default: held visible families supported in this space. Plan lacks attachment-point geometry; terrain_points = native ground points.").choices(FAMILIES),
+        Arg::value("polygon", "<json>", "<=64 KiB, finite exact pairs. Profile: 3..256 [scene_x,scene_y] engineering pairs (not pixels), open/closed once, abs <=1e9; or same-unit GeoJSON. Plan: WGS84 GeoJSON, lon [-180,180], lat [-90,90]. GeoJSON only {type:Polygon,coordinates:[ring]}, closed 4..256 pairs; no holes/extra keys/ordinates."),
+        Arg::value("predicate", "<within|intersects|outside>", "Initial Within; omitted retains native preference. Within is boundary-inclusive; Outside excludes touching/crossing geometry.").choices(&["within", "intersects", "outside"]),
+        Arg::repeated("family", "<family>", "Repeat distinct families; omission uses native saved choices (initial All). Plan has no attachment geometry; terrain_points are ground points.").choices(FAMILIES),
         Arg::value("filter", "<json>", "Closed ProfileTableFilterQuery <=64 KiB: {filters?:[{column,op,value?,value2?,values?}],stats_columns?:[]}; <=64 AND filters, <=8 stats names, strings <=4096 bytes, values <=256. Operators and name rules: docs/reference/map.md (grid lasso filter)."),
-        Arg::value("mode", "<replace|add|remove|intersect>", "Combine native hits with the current selection.").choices(&["replace", "add", "remove", "intersect"]).default("replace"),
+        Arg::value("mode", "<replace|add|remove|intersect>", "Combine native hits; initial Replace, omitted retains native preference.").choices(&["replace", "add", "remove", "intersect"]),
+        Arg::value("action", "<select|read|configure>", "Select needs --polygon; read/configure operate the shared toolbar preferences without selecting features.").choices(&["select", "read", "configure"]),
+        Arg::switch("all-layers", "With --action configure, reset remembered layer choices to All; excludes --family."),
         crate::TARGET_ARG,
         crate::DESCRIPTOR_ARG,
     ],
-    output: "Exact window receipt: held model/revision, native identities/primary focus. Empty hits succeed; CLI computes nothing.",
+    output: "Exact selection receipt with held model/revision, native identities and primary. Read/configure return native control state, available layers and choices.",
     examples: &[
         Example {
             command: "ds map grid lasso --model <id> --revision <rev> --space profile --polygon '[[0,0],[100,0],[100,100]]' --family structures --output json",
@@ -76,7 +78,7 @@ pub static COMMAND: Command = Command {
         crate::UNREADABLE, crate::REFUSED,
     ],
     reference: Some("docs/reference/map.md"),
-    search: &["selection", "polygon", "attributes", "structures", "terrain"],
+    search: &["selection", "polygon", "attributes", "structures", "terrain", "outside", "within", "layers", "preferences", "remembered"],
     requires: Requires::Window,
     availability: crate::paired_availability,
 };
@@ -87,12 +89,14 @@ struct GridLassoRequest<'a> {
     expected_revision: &'a str,
     space: &'a str,
     polygon: Value,
-    predicate: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    predicate: Option<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     families: Option<Vec<&'a str>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     filter: Option<Value>,
-    mode: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    mode: Option<&'a str>,
 }
 
 #[derive(Deserialize)]
@@ -145,16 +149,14 @@ fn request(inputs: &Inputs) -> Result<Value, Failure> {
     let model_id = id(inputs.require("model")?, "model")?;
     let expected_revision = id(inputs.require("revision")?, "revision")?;
     let space = choice(inputs.require("space")?, &["profile", "plan"], "space")?;
-    let predicate = choice(
-        inputs.value("predicate").unwrap_or("intersects"),
-        &["intersects", "within"],
-        "predicate",
-    )?;
-    let mode = choice(
-        inputs.value("mode").unwrap_or("replace"),
-        &["replace", "add", "remove", "intersect"],
-        "mode",
-    )?;
+    let predicate = inputs
+        .value("predicate")
+        .map(|v| choice(v, &["intersects", "within", "outside"], "predicate"))
+        .transpose()?;
+    let mode = inputs
+        .value("mode")
+        .map(|v| choice(v, &["replace", "add", "remove", "intersect"], "mode"))
+        .transpose()?;
     let mut families = Vec::new();
     for family in inputs.repeated("family") {
         let family = choice(family, FAMILIES, "family")?;
@@ -167,6 +169,45 @@ fn request(inputs: &Inputs) -> Result<Value, Failure> {
             return Err(invalid("repeat only distinct --family values"));
         }
         families.push(family);
+    }
+    let action = choice(
+        inputs.value("action").unwrap_or("select"),
+        &["select", "read", "configure"],
+        "action",
+    )?;
+    if action != "select" {
+        if inputs.value("polygon").is_some() || inputs.value("filter").is_some() {
+            return Err(invalid("read/configure take no polygon or filter"));
+        }
+        if inputs.switch("all-layers") && !families.is_empty() {
+            return Err(invalid("all-layers excludes family choices"));
+        }
+        if action == "read"
+            && (predicate.is_some()
+                || mode.is_some()
+                || !families.is_empty()
+                || inputs.switch("all-layers"))
+        {
+            return Err(invalid("read takes no preference changes"));
+        }
+        let mut result = json!({"model_id":model_id,"expected_revision":expected_revision,"space":space,"action":action});
+        if let Some(v) = predicate {
+            result["predicate"] = json!(v);
+        }
+        if let Some(v) = mode {
+            result["mode"] = json!(v);
+        }
+        if inputs.switch("all-layers") {
+            result["families"] = Value::Null;
+        } else if !families.is_empty() {
+            result["families"] = json!(families);
+        }
+        return Ok(result);
+    }
+    if inputs.switch("all-layers") {
+        return Err(invalid(
+            "use --action configure --all-layers before selection",
+        ));
     }
     let polygon = polygon(inputs.require("polygon")?, space)?;
     let filter = inputs.value("filter").map(filter).transpose()?;
@@ -399,11 +440,59 @@ mod tests {
             .keys()
             .map(String::as_str)
             .collect::<std::collections::BTreeSet<_>>();
-        assert_eq!(keys, crate::GRID_LASSO.arguments.iter().copied().collect());
+        assert_eq!(
+            keys,
+            crate::GRID_LASSO
+                .arguments
+                .iter()
+                .copied()
+                .filter(|v| *v != "action")
+                .collect()
+        );
     }
 
     #[test]
-    fn plan_payload_preserves_wgs84_and_explicit_defaults() {
+    fn preference_requests_need_no_polygon_and_all_layers_resets_to_null() {
+        for (extra, expected) in [
+            (
+                vec!["--action", "read"],
+                json!({"model_id":"model-a","expected_revision":"rev-b","space":"profile","action":"read"}),
+            ),
+            (
+                vec![
+                    "--action",
+                    "configure",
+                    "--predicate",
+                    "outside",
+                    "--mode",
+                    "intersect",
+                    "--all-layers",
+                ],
+                json!({"model_id":"model-a","expected_revision":"rev-b","space":"profile","action":"configure","predicate":"outside","mode":"intersect","families":null}),
+            ),
+        ] {
+            let mut args = vec![
+                "--model",
+                "model-a",
+                "--revision",
+                "rev-b",
+                "--space",
+                "profile",
+            ];
+            args.extend(extra);
+            let args = args.into_iter().map(str::to_owned).collect::<Vec<_>>();
+            let inputs = ds_cli_contract::args::parse(&COMMAND, &args).unwrap();
+            let payload = request(&inputs).unwrap();
+            assert_eq!(payload, expected);
+            assert_eq!(
+                ds_cli_desktop::ops::undeclared_key(&crate::GRID_LASSO, &payload),
+                None
+            );
+        }
+    }
+
+    #[test]
+    fn plan_payload_preserves_wgs84_and_defers_omitted_preferences_to_native_state() {
         let polygon =
             r#"{"type":"Polygon","coordinates":[[[30,-2],[30.1,-2],[30.1,-1.9],[30,-2]]]}"#;
         let payload = request(&inputs("plan", polygon, &[]).unwrap()).unwrap();
@@ -412,7 +501,6 @@ mod tests {
             json!({
                 "model_id":"model-a", "expected_revision":"rev-b", "space":"plan",
                 "polygon":{"type":"Polygon","coordinates":[[[30.0,-2.0],[30.1,-2.0],[30.1,-1.9],[30.0,-2.0]]]},
-                "predicate":"intersects", "mode":"replace"
             })
         );
         assert_eq!(
