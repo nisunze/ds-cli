@@ -355,6 +355,8 @@ Owner ruling, 2026-10-07: migrate touched controls for the first release. Work o
 
 ## 24. Owner feature requests (CLI-first, after stabilization)
 
+- **DS Workflows** (owner direction 2026-10-07): declarative `ds workflow` documents over Rust vector/table engines replace ad-hoc data patching; Data Factory becomes a workflow builder and its TypeScript transforms are deleted. Contract: [docs/contracts/ds-workflows.md](../docs/contracts/ds-workflows.md); phases and proofs: [WORKFLOWS-TODO.md](WORKFLOWS-TODO.md). Specification only until the owner admits phase 1.
+
 - Per-project style overrides: project over global, separate live/print surfaces, reset to inheritance.
 
 - Multi-village (leaf) Working Area and pipeline filters.
