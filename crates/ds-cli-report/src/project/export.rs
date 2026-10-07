@@ -142,7 +142,7 @@ const EXPORT_BLOCKED: Refusal = Refusal {
     when: "the engine produced NO format for a transformer (a batch row carries its blockers)",
     remedy: "read `error.detail.blockers`, fix the named input, and re-run that transformer",
 };
-pub(super) const INPUTS_INVALID: Refusal = Refusal {
+pub(crate) const INPUTS_INVALID: Refusal = Refusal {
     code: "report_inputs_invalid",
     when: "the input receipt, a transformer's saved layers or the output policy cannot be run as given",
     remedy: "run `ds report project settings`; it names the missing input and the repair",
@@ -152,7 +152,7 @@ const TRANSFORMER_NATURE_UNAVAILABLE: Refusal = Refusal {
     when: "a voltage-drop output is selected but the current project transformer_nature projection could not be verified",
     remedy: "retry while connected and signed in to the named project; do not publish a voltage-drop report without current governed tags",
 };
-const STAGING_FAILED: Refusal = Refusal {
+pub(crate) const STAGING_FAILED: Refusal = Refusal {
     code: "report_staging_failed",
     when: "the output directory or its staging area could not be prepared",
     remedy: "check that --out-dir is writable and has space",
@@ -162,7 +162,7 @@ const OUTPUT_EXISTS: Refusal = Refusal {
     when: "--out-dir already holds a batch receipt or that transformer's folder",
     remedy: "choose a fresh --out-dir; a report is never overwritten",
 };
-const RESULT_INVALID: Refusal = Refusal {
+pub(crate) const RESULT_INVALID: Refusal = Refusal {
     code: "report_result_invalid",
     when: "the engine's result or the bytes it declared are not this run's answer",
     remedy: "retry; if it persists, update `ds` and the reporter to matching releases",
@@ -399,7 +399,7 @@ fn availability() -> Availability {
 /// `ds-report`, reached through the audited process boundary: one static
 /// subcommand per method, typed paths as arguments, never an argument vector
 /// from the host crate.
-struct CliEngine;
+pub(crate) struct CliEngine;
 
 /// Exact saved analysis admitted for one room; no producer work occurs here.
 #[derive(Debug, Clone)]
@@ -659,11 +659,31 @@ impl ReportEngine for CliEngine {
             summary: bounded_summary(&completed.stderr, &completed.stdout),
         })
     }
+
+    fn render_grid_plan_profile(
+        &self,
+        request: &Path,
+        result: &Path,
+    ) -> Result<EngineExit, HostFailure> {
+        let args: Vec<OsString> = vec![
+            OsString::from("--request"),
+            request.into(),
+            OsString::from("--result"),
+            result.into(),
+        ];
+        let completed = DS_REPORT
+            .call("render-grid-plan-profile", &args, EXPORT_TIMEOUT)
+            .map_err(failure_to_host)?;
+        Ok(EngineExit {
+            succeeded: completed.succeeded(),
+            summary: bounded_summary(&completed.stderr, &completed.stdout),
+        })
+    }
 }
 
 /// A host failure that ends the whole command, in the CLI's own classes.
 /// Every arm is a literal so the code is documented above.
-fn host_failure(failure: HostFailure) -> Failure {
+pub(crate) fn host_failure(failure: HostFailure) -> Failure {
     let message = failure.message.clone();
     let mapped = match failure.code.as_str() {
         "report_inputs_invalid" => {

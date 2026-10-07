@@ -21,7 +21,7 @@ pub static COMMAND: Command = Command {
     path: &["report", "plan-profile"],
     contract: 4,
     summary: "Render DS Grid plan/profile sheets from a pinned scene and plan.",
-    purpose: "Resolve the named project canonical MV setup from its exact adopted printing-library revision, then render same-revision engine projections and approved front matter into one local PDF. Repeat --alignment for exact scene band IDs, or omit it for every alignment. Title, party logos, page order, scales, fonts and fixed publication version/date come only from that setup. Allowed model identity/title differences are explicit. Missing configuration or held approved assets refuses before output. Use report layout copy and report project mv-setup set to adopt and select; no print data is mutated by this command. --request alone renders a complete engine print request, such as a fixture booklet, with no project read.",
+    purpose: "Resolve the named project canonical MV setup from its exact adopted printing-library revision, then render same-revision engine projections and approved front matter into one local PDF. Repeat --alignment for exact scene band IDs, or omit it for every alignment. Title, party logos, page order, scales, fonts and fixed publication version/date come only from that setup. Allowed model identity/title differences are explicit. Missing configuration or held approved assets refuses before output. Use report layout copy and report project mv-setup set to adopt and select; no print data is mutated by this command. --request alone renders a complete engine print request, such as a fixture booklet, with no project read. --preview-layout shows one sample sheet of a saved or draft MV layout before adoption, under the project's issue identity and styles; nothing is written.",
     chapter: Chapter::Reports,
     effect: Effect::LocalFileWrite,
     authority: Authority::HeadlessProject,
@@ -31,6 +31,11 @@ pub static COMMAND: Command = Command {
             "request",
             "<json-file>",
             "Complete engine print request; replaces every project, geometry and setup flag.",
+        ),
+        Arg::value(
+            "preview-layout",
+            "<json-file>",
+            "Saved or draft MV printing layout to preview on one sample sheet of --scene/--plan; needs --project, writes nothing.",
         ),
         Arg::switch(
             "preview-only",
@@ -115,10 +120,14 @@ pub static COMMAND: Command = Command {
         note: "Render the adopted publication for one alignment from held engine projections.",
         runnable: false,
     }],
-    refusals: &crate::project::joined::<{ crate::project::NATIVE_READ_REFUSALS.len() + 14 }>(&[
+    refusals: &crate::project::joined::<{ crate::project::NATIVE_READ_REFUSALS.len() + 18 }>(&[
         crate::project::NATIVE_READ_REFUSALS,
         &[
             REQUEST_MODE_REFUSAL,
+            PREVIEW_LAYOUT_REFUSAL,
+            crate::project::export::INPUTS_INVALID,
+            crate::project::export::STAGING_FAILED,
+            crate::project::export::RESULT_INVALID,
             PRINT_REQUEST_REFUSAL,
             crate::project::mv_setup::REFUSAL,
             crate::project::mv_setup::STYLE_REFUSAL,
@@ -193,6 +202,11 @@ const REQUEST_MODE_REFUSAL: Refusal = Refusal {
     when: "--request is mixed with project, geometry or setup flags, or a project render lacks --project, --scene, --plan or --out-dir",
     remedy: "Pass --request alone, or --project, --scene, --plan and --out-dir together",
 };
+const PREVIEW_LAYOUT_REFUSAL: Refusal = Refusal {
+    code: "preview_layout_invalid",
+    when: "the --preview-layout file is unreadable, oversized or not a printing layout document",
+    remedy: "Pass a ds.print-layout/v2 MV document from report layout get, or the draft being edited",
+};
 const PRINT_REQUEST_REFUSAL: Refusal = Refusal {
     code: "print_request_invalid",
     when: "the --request file is unreadable, over 32 MiB, not a JSON object or has no absolute out_dir",
@@ -225,6 +239,9 @@ fn print_request_invalid(message: String) -> Failure {
 }
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
+    if let Some(layout) = inputs.value("preview-layout") {
+        return run_template_preview(inputs, layout);
+    }
     match inputs.value("request") {
         Some(request) => run_request(inputs, PathBuf::from(request)),
         None => run_project(inputs),
@@ -280,6 +297,107 @@ fn run_request(inputs: &Inputs, request: PathBuf) -> Result<Value, Failure> {
         document["result_path"] = json!(staged.result_path.display().to_string());
     }
     Ok(document)
+}
+
+/// Preview one saved or draft MV layout on a single sample sheet of held
+/// projections, under the project's issue identity and governed styles. The
+/// shared report host stages, renders and removes the run; nothing is kept.
+fn run_template_preview(inputs: &Inputs, layout_path: &str) -> Result<Value, Failure> {
+    use ds_report_host::mv_preview::{self, MvPreviewInputs, MvPreviewRefusal};
+    let mut mixed: Vec<&str> = [
+        "request",
+        "out-dir",
+        "model-identity",
+        "model-title",
+        "publication-assets",
+        "side-profiles",
+        "notes",
+        "structure-descriptions",
+        "context-pages",
+        "sample-pages",
+        "result",
+    ]
+    .into_iter()
+    .filter(|name| inputs.value(name).is_some())
+    .collect();
+    if !inputs.repeated("alignment").is_empty() {
+        mixed.push("alignment");
+    }
+    if inputs.switch("preview-only") {
+        mixed.push("preview-only");
+    }
+    if !mixed.is_empty() {
+        return Err(mode_invalid(format!(
+            "--preview-layout previews one sample sheet; remove --{}",
+            mixed.join(", --")
+        )));
+    }
+    let required = |name: &str| {
+        inputs.value(name).ok_or_else(|| {
+            mode_invalid(format!(
+                "--preview-layout requires --project, --scene and --plan; --{name} is missing"
+            ))
+        })
+    };
+    let project = required("project")?;
+    let read = |path: &str, limit: usize| -> Option<Vec<u8>> {
+        use std::io::Read;
+        let mut bytes = Vec::new();
+        std::fs::File::open(path)
+            .and_then(|file| file.take(limit as u64 + 1).read_to_end(&mut bytes))
+            .ok()
+            .filter(|_| !bytes.is_empty() && bytes.len() <= limit)
+            .map(|_| bytes)
+    };
+    let mut projections = Vec::new();
+    for name in ["scene", "plan"] {
+        let path = required(name)?;
+        projections.push(read(path, mv_preview::MAX_PROJECTION_BYTES).ok_or_else(|| {
+            Failure::invalid(
+                "projection_missing",
+                format!("{name} file is missing, empty or oversized: {path}"),
+            )
+        })?);
+    }
+    let layout: ds_command_kernel::printing::Layout =
+        read(layout_path, ds_command_kernel::printing::MAX_LAYOUT_BYTES)
+            .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+            .ok_or_else(|| {
+                Failure::invalid(
+                    PREVIEW_LAYOUT_REFUSAL.code,
+                    format!("{layout_path} is not a printing layout"),
+                )
+                .remedy(PREVIEW_LAYOUT_REFUSAL.remedy)
+            })?;
+    let lane = inputs.require("lane")?;
+    let (sheets, project_crs) = crate::project::mv_setup::project_print_context(lane, project)?;
+    let table = crate::project::mv_setup::style_table(lane, project)?;
+    let staging = tempfile::tempdir().map_err(|error| {
+        Failure::failed(
+            crate::project::export::STAGING_FAILED.code,
+            error.to_string(),
+        )
+        .remedy(crate::project::export::STAGING_FAILED.remedy)
+    })?;
+    let answer = mv_preview::execute(
+        &crate::project::export::CliEngine,
+        &MvPreviewInputs {
+            project_id: project,
+            sheets: &sheets,
+            layout: &layout,
+            table: &table,
+            project_crs: project_crs.as_ref(),
+            model_crs: inputs.value("model-crs"),
+            scene: &projections[0],
+            plan: &projections[1],
+            staging: staging.path(),
+        },
+    )
+    .map_err(|refusal| match refusal {
+        MvPreviewRefusal::Kernel(error) => crate::project::mv_setup::failure(error),
+        MvPreviewRefusal::Host(failure) => crate::project::export::host_failure(failure),
+    })?;
+    Ok(answer.to_value())
 }
 
 fn project_input<'a>(inputs: &'a Inputs, name: &str) -> Result<&'a str, Failure> {

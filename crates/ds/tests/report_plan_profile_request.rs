@@ -97,3 +97,106 @@ printf '%s' '{"project_id":"global_fixture","model_revision":"r1","alignments":1
     let calls = std::fs::read_to_string(root.join("calls")).unwrap();
     assert_eq!(calls.lines().count(), 1, "{calls}");
 }
+
+#[test]
+fn preview_layout_mode_refuses_mixed_or_unusable_inputs_before_any_read() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    let engine = root.join("ds-report");
+    std::fs::write(
+        &engine,
+        "#!/bin/sh\nprintf '%s\\n' \"$1\" >> \"$TEST_CALLS\"\nexit 1\n",
+    )
+    .unwrap();
+    std::fs::set_permissions(&engine, std::fs::Permissions::from_mode(0o700)).unwrap();
+    let projection = root.join("projection.json");
+    std::fs::write(&projection, b"{}").unwrap();
+    let layout = root.join("layout.json");
+    std::fs::write(&layout, b"{\"not\":\"a layout\"}").unwrap();
+    let p = projection.to_str().unwrap();
+    let l = layout.to_str().unwrap();
+    let missing = root.join("absent.json");
+    let m = missing.to_str().unwrap();
+    for (args, code) in [
+        (
+            &[
+                "--preview-layout",
+                l,
+                "--project",
+                "p",
+                "--scene",
+                p,
+                "--plan",
+                p,
+                "--out-dir",
+                "/fresh",
+            ][..],
+            "request_mode_invalid",
+        ),
+        (
+            &[
+                "--preview-layout",
+                l,
+                "--project",
+                "p",
+                "--scene",
+                p,
+                "--plan",
+                p,
+                "--sample-pages",
+                "2",
+            ][..],
+            "request_mode_invalid",
+        ),
+        (
+            &[
+                "--preview-layout",
+                l,
+                "--request",
+                p,
+                "--project",
+                "p",
+                "--scene",
+                p,
+                "--plan",
+                p,
+            ][..],
+            "request_mode_invalid",
+        ),
+        (
+            &["--preview-layout", l, "--scene", p, "--plan", p][..],
+            "request_mode_invalid",
+        ),
+        (
+            &[
+                "--preview-layout",
+                l,
+                "--project",
+                "p",
+                "--scene",
+                m,
+                "--plan",
+                p,
+            ][..],
+            "projection_missing",
+        ),
+        (
+            &[
+                "--preview-layout",
+                l,
+                "--project",
+                "p",
+                "--scene",
+                p,
+                "--plan",
+                p,
+            ][..],
+            "preview_layout_invalid",
+        ),
+    ] {
+        let (ok, answer) = plan_profile(root, args);
+        assert!(!ok);
+        assert_eq!(answer["error"]["code"], code, "{args:?}");
+    }
+    assert!(!root.join("calls").exists(), "no engine call");
+}

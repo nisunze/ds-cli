@@ -1117,6 +1117,17 @@ and passes a `publication_assets` map of only the resolved asset ids to held
 absolute paths. The reporter validates every digest and retains original
 components unchanged alongside the assembled booklet.
 
+`report plan-profile --preview-layout <json-file> --project <id> --scene
+<path> --plan <path> [--model-crs <crs>]` previews a saved or draft MV layout
+before it is adopted. The kernel resolves that layout as the selection under
+the project's own issue identity (its fixed version and date) and governed
+styles, and the shared report host renders one `preview_only` sample sheet.
+The answer carries that sheet's SVG, station window, pinned model revision,
+setup digest and the full sheet count. Nothing is written or selected, and the
+run's private files are removed. Model-specific preserved pages need an
+adopted setup and a print. A metric-grid project needs `--model-crs`. Desktop
+previews the same request through its window.
+
 `report plan-profile --alignment <id>` selects exact `alignment_id` band IDs
 from the held `--scene`; repeat the flag for multiple bands (1..256 IDs).
 Omitting it prints every band. Unknown or malformed IDs return

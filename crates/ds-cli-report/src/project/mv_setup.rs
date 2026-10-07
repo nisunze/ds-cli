@@ -126,18 +126,13 @@ fn printing_inputs(lane: &str, project: &str, sheets: &Value) -> Result<Value, F
     sheets["global_printing_setups"] = json!([setup]);
     Ok(sheets)
 }
-/// Resolver acquisition seam for print-styles integration. The authorized
-/// project API materializes this exact binding; the CLI never searches a
-/// catalogue, constructs an id, or supplies a packaged paint default.
-pub(crate) fn resolve_project_print(
+/// The server-issued configuration sheets and authenticated project CRS
+/// capture every MV print or preview starts from, fenced to one identity.
+pub(crate) fn project_print_context(
     lane: &str,
     project: &str,
-    fields: BTreeMap<ModelField, String>,
 ) -> Result<
     (
-        Resolved,
-        Value,
-        Value,
         Value,
         Option<ds_command_kernel::printing::project_crs::Capture>,
     ),
@@ -168,17 +163,43 @@ pub(crate) fn resolve_project_print(
         .transpose()
         .map_err(|e| Failure::invalid("print_project_crs_invalid", e))?;
     let configuration = scoped.into_result();
-    let sheets = printing_inputs(lane, project, &configuration.document["sheets"])?;
-    let setup = mv::resolve(&sheets, project, fields).map_err(failure)?;
+    Ok((configuration.document["sheets"].clone(), project_crs))
+}
+/// The project's governed style table, as MV paper and renderer bindings read it.
+pub(crate) fn style_table(
+    lane: &str,
+    project: &str,
+) -> Result<ds_command_kernel::style_resolution::Snapshot, Failure> {
     let table = ds_cli_auth::style_governance(
         lane,
         project,
         &ds_command_kernel::style_governance::Command::Table,
     )?;
-    let snapshot: ds_command_kernel::style_resolution::Snapshot = serde_json::from_value(table)
-        .map_err(|error| {
-            Failure::failed(STYLE_REFUSAL.code, error.to_string()).remedy(STYLE_REFUSAL.remedy)
-        })?;
+    serde_json::from_value(table).map_err(|error| {
+        Failure::failed(STYLE_REFUSAL.code, error.to_string()).remedy(STYLE_REFUSAL.remedy)
+    })
+}
+/// Resolver acquisition seam for print-styles integration. The authorized
+/// project API materializes this exact binding; the CLI never searches a
+/// catalogue, constructs an id, or supplies a packaged paint default.
+pub(crate) fn resolve_project_print(
+    lane: &str,
+    project: &str,
+    fields: BTreeMap<ModelField, String>,
+) -> Result<
+    (
+        Resolved,
+        Value,
+        Value,
+        Value,
+        Option<ds_command_kernel::printing::project_crs::Capture>,
+    ),
+    Failure,
+> {
+    let (configuration, project_crs) = project_print_context(lane, project)?;
+    let sheets = printing_inputs(lane, project, &configuration)?;
+    let setup = mv::resolve(&sheets, project, fields).map_err(failure)?;
+    let snapshot = style_table(lane, project)?;
     let (paper, renderer) = mv::resolve_print_bindings(&setup, &snapshot).map_err(|error| {
         Failure::failed(STYLE_REFUSAL.code, error.to_string()).remedy(STYLE_REFUSAL.remedy)
     })?;
