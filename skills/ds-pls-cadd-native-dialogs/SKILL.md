@@ -36,6 +36,30 @@ whole observation to exactly one characterized transition:
   operator can classify it. Never blanket-dismiss modals, click a guessed
   coordinate, or retry a state-changing operation from an uncertain stage.
 
+## Insufficient strength criteria
+
+`Insufficient criteria to verify structure strength` means a strength check
+was unavailable, not that the structure passed or failed. In an authorized
+read-only diagnostic, the characterized driver may route repeated warnings to
+the Error Log so reports can finish. That does not resolve the finding.
+
+Capture the full affected native member paths, criterion/load-case bindings
+and every affected placement from the native log and report, including
+suppressed repeats. A report's violation count alone does not establish
+coverage. Record these placements as **strength not checked** and keep
+engineering acceptance incomplete.
+
+Repair a separate candidate through the supported DS controls using exact
+reviewed native library members and their compatible criteria, loads, factors
+and dependencies. Check provenance: analytical-scaffold capacity tables and
+same-name members are not proof of native strength authority. Never invent
+criteria, alter a native structure file, weaken factors or change the check
+method merely to suppress the warning. If authoritative inputs are absent,
+name that missing member/binding for the engineer while completing independent
+software checks. Require fresh native reports with no insufficient-criteria
+warnings and complete intended case/placement coverage before accepting the
+repair; any real strength violation remains a separate engineering finding.
+
 ## Characterized 16.81 Restore transition
 
 After the backup picker and Directory Mapping For Restore are accepted, PLS
