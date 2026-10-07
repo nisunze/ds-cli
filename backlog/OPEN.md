@@ -20,7 +20,7 @@ Unfinished code that an agent can implement and prove without further owner inpu
 | [11. PLS-CADD exchange round trip](#11-pls-cadd-exchange-round-trip) | 13 |
 | [12. DS Grid engineering (Codex main)](#12-ds-grid-engineering-codex-main) | 12 |
 | [13. Spotting (Codex main)](#13-spotting-codex-main) | 9 |
-| [14. Plan and Profile authoring](#14-plan-and-profile-authoring) | 6 |
+| [14. Plan and Profile authoring](#14-plan-and-profile-authoring) | 7 |
 | [15. Project delivery code](#15-project-delivery-code) | 2 |
 | [16. Map data, datasets and screen styling](#16-map-data-datasets-and-screen-styling) | 9 |
 | [17. Project Work and Assets](#17-project-work-and-assets) | 7 |
@@ -28,7 +28,7 @@ Unfinished code that an agent can implement and prove without further owner inpu
 | [19. Country neutrality and duplicated rules](#19-country-neutrality-and-duplicated-rules) | 2 |
 | [21. Windows release code](#21-windows-release-code) | 6 |
 | [22. Operations product code](#22-operations-product-code) | 2 |
-| [23. Kernel controls, JSON UI and TypeScript retirement](#23-kernel-controls-json-ui-and-typescript-retirement) | 5 |
+| [23. Kernel controls, JSON UI and TypeScript retirement](#23-kernel-controls-json-ui-and-typescript-retirement) | 6 |
 | [24. Owner feature requests (CLI-first, after stabilization)](#24-owner-feature-requests-cli-first-after-stabilization) | 4 |
 | [25. CLI reliability reporting and proactive feedback (priority)](#25-cli-reliability-reporting-and-proactive-feedback-priority) | 7 |
 <!-- /toc -->
@@ -171,7 +171,7 @@ Unfinished code that an agent can implement and prove without further owner inpu
 
 - **Restore path handling** (`9f2316b3`): verify the filed project `.str`/`.cri` rebasing failure on the affected source before changing writers. Keep clean native positive controls and source bytes; do not preserve the disproved blanket claim that every relative member header causes repair.
 
-- `e258b287` (blocker): PLS export plan accepts unsupported edited model but convert cannot emit backup.
+- `e258b287` (blocker): PLS export plan accepts unsupported edited model but convert cannot emit backup. Complete the model-menu `.bak` export vertical in the seven bounded slices diagnosed in `outputs/pls-bak-export-plan-20261007/PLS-BAK-EXPORT-PLAN.md`: engine plan-time library admission and unpinned/qualification warnings; truthful CLI failed/partial outcomes; Restore/report gates; composition pin preservation or refusal; native flow with pinned-plan UI preview/apply; shared version intents; exact per-pin cloud state. This advances the existing §11, §18, §23 and §25 items without another gap list. Each slice needs owning tests and a real filed-model replay through `ds` before landing; byte verification never implies native Restore or solver approval.
 
 - `c45dc437` (major): A characterized PLS-CADD 19.01 DON v68 backup cannot normalize to 16.81: direct v68 comment writing is rightly refused, while deferring it exposes a 12-to-15 criterion-case binding mismatch. Preserve the native writer refusal and prove stage-two parity, restored workspace identity, and the 16.20 negative control.
 
@@ -231,6 +231,8 @@ Rules: [PRINCIPLES.md §6](PRINCIPLES.md#6-ds-grid-engineering).
 
 ## 14. Plan and Profile authoring
 
+- **One Plan selection and independent two-way tracking** (owner, 2026-10-07): remove the non-working Profile lasso and its native contracts, `ds-grid-engine/src/profile_lasso.rs`/descriptor/pick-index hooks, WASM binding/tests, web overlay/binder/protocol and Profile-only adaptive-runner tests. Keep the Plan/map lasso, field/layer filters, Within/Intersects/Outside predicates and native composition. Audit shared `profile_hit`, `lasso.ts`, `lasso-run.ts` and `ds-canvas/src/selection.rs` consumers before deletion. Preserve Profile-click navigation to Plan; selecting a displayed element in Plan must navigate Profile. Expose independent "Plan follows Profile" and "Profile follows Plan" switches through the kernel/CLI, then render them. Reconcile the earlier `c28ee1a5` Outside implementation; the Plan predicate remains. Prove selection identity/revision isolation, both direction switches and removal of obsolete discovery/contracts.
+
 - **Native selected-case Profile binding**: complete criterion/case/weight-basis transport, separate scene-cache identities and native/Web bindings for the selected display case. Paint usage, failures, uplift and clearance findings from the Rust projection; screening percentages must retain their declared limited scope. Current runtime/Windows acceptance belongs in SEEDING.md, not a repeated implementation-history paragraph.
 
 - **Show loading, uplift and failures in Profile for the selected case, as PLS-CADD does** (owner, 2026-10-02; DS Grid compute track): a criterion-set/case (and weight-basis) selector drives the drawn `display_case` and a per-case `structure_usage_screening`; each structure gets a source-backed usage-% label (owner-defined colour bands are separated into [OPEN-X.md](OPEN-X.md#14-profile-display-and-supervised-editing)), uplift is marked from `uplift_case_present`/`uplift_failure`, and clearance violations are drawn at their station and elevation. Profile paints none of these today; only the selected structure's screening % shows. `profileAtlasSceneJson` accepts `display_case` but ds-web never sends it; `clearance_report` cannot run for one case (no case ids in `ClearanceReportOptions`) and its findings carry no scene coordinates; `conductor_spans[].clearance` follows the display case but is untyped and unpainted in ds-web.
@@ -289,7 +291,6 @@ Rules: [PRINCIPLES.md §6](PRINCIPLES.md#6-ds-grid-engineering).
 
 - **External libraries and explicit impact-plan apply**: implement the approved propagation contract in `ds-network/docs/contracts/dsgrid-plscadd-library-boundary.md` ("External references and explicit propagation"). Keep immutable exact release/member pins in each model revision, separate governed follower metadata, read-only impact plans and explicit authorized apply with expected-head fences and honest partial receipts. Mark old results stale in the new revision, recompute headlessly and expose changed results for review without granting engineering approval. Remove duplicated full library payloads from normal model packages through the exact shared Desktop/Server release cache; offline missing/corrupt dependencies refuse. Keep third-party adapters as evidence translators and evolve compatibly inside final schema 5. Prove native resolution, refusal, project/revision isolation and CLI/MCP request/result parity before UI bindings. This broad implementation continues here after the owner approved explicit impact-plan apply on 2026-10-07.
 
-- **Installed global release discovery returns a transformer refusal**: canary `ds` build `507d1b7e4be51995fa60abb18bb4624669af2b69` advertises `library.global.read`, but `library-releases` for `pls-interoperability-canonical-candidate` on canary returns non-retryable `transformer_not_found` and a transformer remedy. Trace the declared library owner and repair the runtime/refusal mapping; return library release metadata or an applicable documented library/auth refusal without transformer context. Negative control: payload `{}` correctly returns `catalog_payload_invalid` for missing `library_id`. The same installed `library-list` read returns only `ds_grid_pls_structures` / `seed_2026_07_13`; it does not list the requested candidate. Distinguish absent or unauthorized library metadata from the incorrect transformer refusal; do not claim that the candidate is globally published. This blocks STABILIZATION §5's governed-library comparison.
 
 - **Governed model-library adoption and UI**: bind the native `library.model.create/attach/clone/detach/show` workflow to the model view and exact governed cloud releases. The local provider-neutral lifecycle, offline exact release cache, semantic/digest fences, retained native bytes, and distinct library adoption/detach cloud publication revisions have landed (`ds-network c2a17b70/b442dd6c/b06f5931/48c7915d`, `ds-cli 962c39e8`, kernel `3bda1f1`). Complete standalone model-extracted library publication, project-authorized cross-project adoption and readable incoming/outgoing source history; local capture or a cache does not establish a cloud review state. Keep explicit project and expected-head fences, and bind UI actions to these native contracts.
 
@@ -339,6 +340,8 @@ Rules: [PRINCIPLES.md §6](PRINCIPLES.md#6-ds-grid-engineering).
 - **Feedback and SRE closure are not linked**: SRE request events are immutable and the current incident feed has no close action. Define the actionable auto-report lifecycle so a proven, closed feedback issue no longer reappears as open SRE work, while retaining request-event evidence.
 
 ## 23. Kernel controls, JSON UI and TypeScript retirement
+
+- **Selection-aware context menu across editing contexts** (owner, 2026-10-07): extend LV design’s selection filter/actions to DS Grid model and general geographic editing. The active editing context selects applicable actions through declared kernel/CLI contracts; Web/Desktop render that JSON. Replace the current Grid right-click menu limited to Measure/Exit/New/Fix Popup. Trace `ds-web/src/lib/components/map/SelectionFilterDialog.svelte` and existing LV/native selection contracts; preserve the same selection context and exact project/model/revision fences across CLI and UI.
 
 Rules: [PRINCIPLES.md §5](PRINCIPLES.md#5-kernel-cli-and-ui-owner-2026-10-07) — migrate touched controls one vertical at a time; complicated TypeScript goes to the CLI and its UI becomes JSON; result renderers and their downloads stay.
 

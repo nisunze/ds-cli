@@ -31,12 +31,10 @@ then commit to `run` in its owning repository. Never use a worktree.
 | --- | --- | --- |
 | ds-network-reporter | `cargo test --locked --no-fail-fast` | All green |
 | ds-cli | `DS_REPORT_BIN=<reporter target>/debug/ds-report DS_SOLAR_BIN=<ds-solar target>/debug/ds-solar cargo test --locked --workspace --all-features --no-fail-fast` | 107 suites green; the MCP skill check was fixed in `4e466494` |
-| ds-network | `cargo test --locked --workspace --no-fail-fast` | Pending on settled tips; the three private-corpus PLS imports are already in OPEN.md §11 |
+| ds-network | `cargo test --locked --workspace --no-fail-fast` | Full settled-tip run: three known private-corpus failures in two targets; all other targets passed. Fixes remain in OPEN.md §11 |
 | ds-solar | `cargo test --locked --workspace` | Not run. It links the kernel and the reporter's `ds-network-information`. |
 
 - The three private-corpus tests are `conversion_planner::corpus_planner_bak_matches_direct_ingest_model`, `conversion_planner::corpus_planner_normalizes_characterized_19_01_source_to_16_81` and `ds-grid-wasm import_convert::corpus_huye_backup_imports_through_the_wasm_handle`.
-- `c28ee1a5` landed during the ds-network run: rerun `ds-geo` and
-  `ds-grid-engine`.
 - The stable `/usr/bin/ds-report` is uninstalled on ds-server, so point
   `DS_REPORT_BIN` and `DS_SOLAR_BIN` at freshly built engines.
 - All five lockfiles are current (`cargo metadata --locked`).
@@ -56,14 +54,6 @@ Once the slices above have landed:
 - then run `cd ds-web && bash -l -c './linux-server-deploy.sh prod --check'`.
   It builds and publishes nothing; the version gate passes (source 0.1.7,
   production `0.1.7-r86`). Publishing is the owner's decision.
-
-## 4. PLS-CADD `.bak` export holes
-
-Ten holes are diagnosed, with file references and the filed items they
-advance (`e258b287`, `8f6e3ff1`, `b1a2b25c`, `4af28da3`, the §11 Restore
-items, §18, §23, §25), in seven slices:
-`outputs/pls-bak-export-plan-20261007/PLS-BAK-EXPORT-PLAN.md` (in the
-workspace, outside git).
 
 ## 5. Uneven structure results across models
 
@@ -106,66 +96,6 @@ lines / Existing MV lines" instead of "Context LV / Existing LV / Existing
 MV". If the owner wants the old words, author them as governed legend titles
 in the MV context template; the template-literal ratchet forbids Rust
 literals.
-
-## 9. One selection-aware context menu in every editing context
-
-**Owner, 2026-10-07:** LV design shows a contextual menu when something is
-selected, with the selection filter and the other selection actions. The
-other editing contexts do not offer the same.
-
-**Seen:**
-
-- In the DS Grid model edit context (Nyamagabe MV Model 1, oracle reference
-  copy), right-click shows only "Measure distance", "Exit edit context",
-  "New…" and "Fix Popup".
-- It has no selection filter and no selection actions. General geographic
-  editing has the same gap.
-
-**Needed:**
-
-- The same selection-aware context menu as LV design (selection filter and
-  selection actions) in the DS Grid model edit context and in general
-  geographic editing.
-- The active editing context decides which actions apply.
-- Per [PRINCIPLES.md §5](PRINCIPLES.md), the actions come from the
-  kernel/CLI contracts and the UI renders them.
-- Starting point for the filter:
-  `ds-web/src/lib/components/map/SelectionFilterDialog.svelte`.
-
-## 10. Remove Profile lasso; one rich Plan selection; two-way Plan/Profile tracking
-
-**Owner, 2026-10-07:**
-
-- Profile lasso selection never worked. Remove it, together with the
-  contracts that describe it and its dead code, so selection is one unified,
-  rich selection in the Plan.
-- Keep the behaviour the owner loves: clicking any element in the Profile
-  navigates the Plan to it.
-- Add the reverse: with the Profile open, selecting in the Plan something the
-  Profile shows navigates the Profile to it.
-- Let the user turn either direction off, in the editing context or wherever
-  it fits: "Plan follows Profile" and "Profile follows Plan" are independent
-  switches.
-
-**Remove (Profile lasso only):** keep the Plan/map lasso; it is part of the
-unified Plan selection.
-
-- **Contract:** `ds-web/docs/profile-view-contract.md:303` (the Profile
-  toolbar lasso, `profileSelectionLasso` / `profileSelectionLassoJson`). Also
-  check `ds-network/docs/contracts/spatial-selection-semantics.md` and the
-  profile-lasso row of `ds-network/docs/design/geometry-toolkit-consolidation.md:331`.
-- **Engine and WASM:** `ds-network/crates/ds-grid-engine/src/profile_lasso.rs`
-  and its hooks in `lib.rs`, `descriptor.rs`, `profile_hit.rs` and
-  `tests/descriptors.rs`; the `ds-grid-wasm/src/session.rs` binding and
-  `ds-grid-wasm/tests/profile_lasso.rs`.
-- **Web:** `ds-web/src/lib/grid/profile-lasso.ts`, its use in
-  `profile-display.ts`, and the tests `grid-profile-lasso-wasm.test.ts`,
-  `grid-profile-lasso-protocol.test.ts` and
-  `helpers/GridProfileLassoHarness.svelte`. Check `lasso-run.test.ts`,
-  `lasso.ts` and `ds-canvas/src/selection.rs` for Profile-only parts.
-
-Codex changed Profile lasso today (ds-network `c28ee1a5`, "Select disjoint
-Plan and Profile geometry with Outside"). Reconcile with that work.
 
 ## 11. One colour code for usage %
 

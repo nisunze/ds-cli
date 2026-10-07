@@ -44,6 +44,7 @@ The standing owner rulings for everyone who works the backlog. [OPEN.md](OPEN.md
 ## 2. How to work an entry
 
 - **Schema 5 is the final breaking `.dsgrid` schema bump** (owner, 2026-10-07). Carry future fields and external-library references compatibly. The canonical model determinism test guards this ruling.
+- **Implement seeding and templating controls before curation** (owner, 2026-10-07): routine seed parameters, eventual sanitization and template choices must not stall authorized code behind more owner questions. Implement and prove the headless contracts, then seed and sanitize through them. If native PLS-CADD evidence is needed, provide the exact artifact, pins and check for the owner’s Windows Codex to prove; finish independent code first.
 - **Use the live `ds` contract before coding.** First try the admitted project-owned parameters and seeds. A valid configuration ignored by the renderer, an absent required capability, incorrect computation, clipping/overflow or a broken contract is code (OPEN.md); a colour/pen/label/title/extent choice is seeding (SEEDING.md). Do not alter engineering facts to improve a picture.
 - **Recheck legacy claims** against current code and tests before implementing.
 - **Delete proven fixes permanently.** Keep evidence in owning code, contracts, tests or project receipts, with no completed-work archive.
