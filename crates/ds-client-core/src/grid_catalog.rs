@@ -26,17 +26,43 @@ use crate::{
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 
-/// An exact legacy catalog artifact. Coordinates are required; a mutable head
+/// An exact governed catalog artifact. Coordinates are required; a mutable head
 /// and a caller-supplied URL cannot select bytes for backup.
 pub enum ArtifactSelection {
-    LibraryManifest { library: String, release: String },
-    LibraryValidation { library: String, release: String },
-    ExampleModel { example: String, revision: String },
+    LibraryManifest {
+        library: String,
+        release: String,
+    },
+    LibraryValidation {
+        library: String,
+        release: String,
+    },
+    ExampleModel {
+        example: String,
+        revision: String,
+    },
+    LibraryAsset {
+        library: String,
+        release: String,
+        relative_path: String,
+        expected_digest: String,
+    },
 }
 
 impl ArtifactSelection {
     pub fn read_command(&self) -> Command {
         match self {
+            Self::LibraryAsset {
+                library,
+                release,
+                relative_path,
+                expected_digest,
+            } => Command::ResolveLibraryMember {
+                library_id: library.clone(),
+                release_id: release.clone(),
+                relative_path: relative_path.clone(),
+                expected_digest: expected_digest.clone(),
+            },
             Self::LibraryManifest { library, release }
             | Self::LibraryValidation { library, release } => Command::GetLibrary {
                 library: library.clone(),
@@ -66,6 +92,39 @@ impl ArtifactSelection {
             ));
         }
         let (artifact, url, mut receipt) = match self {
+            Self::LibraryAsset {
+                library,
+                release,
+                relative_path,
+                expected_digest: selected_digest,
+            } => {
+                if selected_digest != expected_digest {
+                    return Err(unreadable());
+                }
+                validate_member_response(data, library, release, relative_path, selected_digest)?;
+                let locator =
+                    url::Url::parse(data["download_url"].as_str().ok_or_else(unreadable)?)
+                        .map_err(|_| unreadable())?;
+                let generations = locator
+                    .query_pairs()
+                    .filter(|(key, _)| key == "generation")
+                    .map(|(_, value)| value.into_owned())
+                    .collect::<Vec<_>>();
+                if generations.len() != 1
+                    || generations[0]
+                        .parse::<u64>()
+                        .ok()
+                        .filter(|n| *n > 0)
+                        .is_none()
+                {
+                    return Err(unreadable());
+                }
+                (
+                    &data["member"]["artifact"],
+                    &data["download_url"],
+                    json!({"kind":"library-asset","library_id":library,"release_id":release,"relative_path":relative_path,"storage_generation":generations[0]}),
+                )
+            }
             Self::LibraryManifest { library, release }
             | Self::LibraryValidation { library, release } => {
                 if data["head"]["library_id"] != *library
@@ -698,6 +757,93 @@ mod tests {
                 .download(&mut transport, &data, &digest)
                 .is_err());
             assert_eq!(transport.calls, 1);
+        }
+    }
+
+    fn member_fixture() -> (Value, String, Vec<u8>, ArtifactSelection) {
+        let (_, digest, bytes) = artifact_fixture();
+        let object = format!("ds-grid/objects/sha256/{digest}");
+        let data = json!({"library_id":"library_1","release_id":"release_1", "member":{"relative_path":"native/pole.012","class":"structure","artifact":{"digest":digest,"object":object,"byte_length":bytes.len()},"provenance":{"kind":"seed","reference":"reviewed exact source","source_digest":digest}},"download_url":format!("https://storage.googleapis.com/bucket/{object}?generation=123&signed=private"),"expires_at":"2026-10-07T12:00:00Z"});
+        let selection = ArtifactSelection::LibraryAsset {
+            library: "library_1".into(),
+            release: "release_1".into(),
+            relative_path: "native/pole.012".into(),
+            expected_digest: digest.clone(),
+        };
+        (data, digest, bytes, selection)
+    }
+
+    #[test]
+    fn indexed_member_download_verifies_exact_pin_generation_and_native_bytes() {
+        let (data, digest, bytes, selection) = member_fixture();
+        assert!(matches!(
+            selection.read_command(),
+            Command::ResolveLibraryMember { .. }
+        ));
+        let mut transport = ArtifactTransport {
+            body: bytes.clone(),
+            status: 200,
+            calls: 0,
+        };
+        let receipt = selection.download(&mut transport, &data, &digest).unwrap();
+        assert_eq!(receipt.bytes.as_deref(), Some(bytes.as_slice()));
+        assert_eq!(receipt.data["relative_path"], "native/pole.012");
+        assert_eq!(receipt.data["storage_generation"], "123");
+        assert!(!receipt.data.to_string().contains("signed"));
+        assert_eq!(transport.calls, 1);
+        for (pointer, value) in [
+            ("/library_id", json!("other")),
+            ("/release_id", json!("head")),
+            ("/member/relative_path", json!("native/other.012")),
+            ("/member/artifact/digest", json!("a".repeat(64))),
+            ("/member/artifact/object", json!("other")),
+            (
+                "/download_url",
+                json!("https://storage.googleapis.com/bucket/object?generation=0"),
+            ),
+            (
+                "/download_url",
+                json!("https://storage.googleapis.com/bucket/object?generation=1&generation=2"),
+            ),
+            (
+                "/download_url",
+                json!("https://storage.googleapis.com/bucket/object?signed=private"),
+            ),
+            (
+                "/download_url",
+                json!("https://example.com/object?generation=123"),
+            ),
+        ] {
+            let mut bad = data.clone();
+            *bad.pointer_mut(pointer).unwrap() = value;
+            let mut transport = ArtifactTransport {
+                body: bytes.clone(),
+                status: 200,
+                calls: 0,
+            };
+            assert!(selection.download(&mut transport, &bad, &digest).is_err());
+            assert_eq!(transport.calls, 0);
+        }
+        let mut transport = ArtifactTransport {
+            body: bytes.clone(),
+            status: 200,
+            calls: 0,
+        };
+        assert!(selection
+            .download(&mut transport, &data, &"a".repeat(64))
+            .is_err());
+        assert_eq!(transport.calls, 0);
+        for (body, status) in [
+            (bytes[..bytes.len() - 1].to_vec(), 200),
+            (b"wrong".to_vec(), 200),
+            (bytes, 302),
+        ] {
+            let mut transport = ArtifactTransport {
+                body,
+                status,
+                calls: 0,
+            };
+            assert!(selection.download(&mut transport, &data, &digest).is_err());
         }
     }
 
