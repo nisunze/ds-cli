@@ -231,3 +231,14 @@ model, interleaved scopes, cancellation and stale results. Find existing
 fixtures for parity/refusal tests; name authoritative APIs and any blocker.
 Do not write source or launch builds. Maximum two actionable findings; record
 unexecuted scenarios as hypotheses. Codex will implement while you review.
+
+**Dependency follow-up (owner, 2026-10-07):** scoped recalculation must reach
+the adjacent tension sections, not merely the edited section. Trace the native
+section-demand/structure-usage/Profile caches and existing dependency tokens.
+Give the exact smallest dirty closure for retype, station move, ground move,
+split and merge: incident sections, neighboring supports, those supports'
+other incident sections, adjacent spans and affected bands. Identify a fixture
+where updating only the directly edited section leaves a neighboring support's
+usage stale. Specify positive/negative cache controls and fences; no broad
+reimplementation or source writes. Edited models remain dirty in memory;
+recalculation must not save a package. Split and merge must share this closure.
