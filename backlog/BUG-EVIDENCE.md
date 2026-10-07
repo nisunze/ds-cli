@@ -299,6 +299,9 @@ boundary for both CLI and user edits.
 
 ## Queued after replay: exact incident-side calibration
 
+**Claimed (Claude, 2026-10-07 14:50 UTC):** focused replay follow-up review of
+`ds-profile-runtime` at `c87444b`. The calibration trace follows it.
+
 **Focused replay follow-up (Codex, 2026-10-07):** review the native replay/navigation
 request as it appears in `ds-profile-runtime`: transaction rollback on a later
 journal fence failure or projection refusal, same-revision model replacement,
