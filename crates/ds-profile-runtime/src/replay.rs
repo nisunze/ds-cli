@@ -6,6 +6,10 @@ use ds_grid_engine::{CommandEnvelope, JournalEntry, RevisionId, SessionHistorySt
 pub struct InitializeRequest {
     pub scope: String,
     pub seed: ds_grid_exchange::profile_session::ProfileSessionSeed,
+    /// Pass through a prior admitted native state after runtime loss. Rust
+    /// validates it with the ordinary patch controls before applying new input.
+    #[serde(default)]
+    pub restore_state: Option<DisplayState>,
     pub options: ProfileAtlasOptions,
     pub style_document: Value,
     pub patch: DisplayPatch,
@@ -81,6 +85,15 @@ impl Runtime {
             );
         }
         self.ensure_scope_available(&request.scope)?;
+        let restoration = request
+            .restore_state
+            .map(|state| {
+                let patch: DisplayPatch =
+                    serde_json::from_value(serde_json::to_value(state).unwrap())
+                        .map_err(|error| format!("invalid_profile_view: {error}"))?;
+                DisplayState::default().patched(&patch)
+            })
+            .transpose()?;
         let initialized = request.seed.open()?;
         let project = ProjectRequest {
             scope: request.scope,
@@ -95,7 +108,9 @@ impl Runtime {
             patch: request.patch,
             analyze: false,
         };
-        self.render_replayed(
+        let scope = project.scope.clone();
+        let prior = restoration.map(|state| self.views.insert(scope.clone(), state));
+        let result = self.render_replayed(
             project,
             initialized.session,
             HeldSource {
@@ -105,7 +120,17 @@ impl Runtime {
             },
             Default::default(),
             request.analyze,
-        )
+        );
+        if result.is_err() {
+            if let Some(previous) = prior {
+                if let Some(state) = previous {
+                    self.views.insert(scope, state);
+                } else {
+                    self.views.remove(&scope);
+                }
+            }
+        }
+        result
     }
     pub(super) fn refresh(&mut self, request: RefreshRequest) -> Result<Value, String> {
         let held = self

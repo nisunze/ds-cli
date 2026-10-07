@@ -753,6 +753,7 @@ mod transactional_projection_tests {
             .execute(InitializeRequest {
                 scope: input.scope.clone(),
                 seed,
+                restore_state: None,
                 options: input.options.clone(),
                 style_document: input.style_document.clone(),
                 patch: Default::default(),
@@ -841,6 +842,46 @@ mod transactional_projection_tests {
             .is_err());
     }
     #[test]
+    fn recovered_initialization_preserves_native_choices_and_refuses_invalid_restore_atomically() {
+        let mut input = request();
+        input.patch = serde_json::from_value(
+            json!({"visibility":{"wire":false}, "vertical_exaggeration":8.0}),
+        )
+        .unwrap();
+        let admitted = Runtime::default().execute(input.clone()).unwrap();
+        let seed = ds_grid_exchange::profile_session::ProfileSessionSeed::capture(
+            &GridSession::open(common::fixture()),
+            EntityId::new("profile-test").unwrap(),
+            Default::default(),
+            &[],
+        );
+        let mut wire = json!({"operation":"initialize", "scope":"recovered", "seed":seed,
+            "restore_state":admitted["display_state"], "options":input.options, "style_document":input.style_document,
+            "patch":{"visibility":{"ground":false}}, "analyze":false});
+        let mut restored = Runtime::default();
+        let receipt = restored
+            .execute(serde_json::from_value::<Request>(wire.clone()).unwrap())
+            .unwrap();
+        assert_eq!(receipt["display_state"]["vertical_exaggeration"], 8.0);
+        assert_eq!(receipt["display_state"]["visibility"]["wire"], false);
+        assert_eq!(receipt["display_state"]["visibility"]["ground"], false);
+        wire["scope"] = json!("invalid");
+        wire["restore_state"]["vertical_exaggeration"] = json!(-1);
+        assert!(restored
+            .execute(serde_json::from_value::<Request>(wire.clone()).unwrap())
+            .is_err());
+        assert!(!restored.views.contains_key("invalid"));
+        assert!(!restored.held.contains_key("invalid"));
+        wire["restore_state"] = admitted["display_state"].clone();
+        wire["style_document"] = Value::Null;
+        assert!(restored
+            .execute(serde_json::from_value::<Request>(wire).unwrap())
+            .is_err());
+        assert!(!restored.views.contains_key("invalid"));
+        assert!(!restored.held.contains_key("invalid"));
+        assert!(restored.held.contains_key("recovered"));
+    }
+    #[test]
     fn scope_capacity_preserves_live_sessions_and_release_frees_exact_assets() {
         let input = request();
         let worker = GridSession::open(common::fixture());
@@ -856,6 +897,7 @@ mod transactional_projection_tests {
         let initialize = |scope: &str| InitializeRequest {
             scope: scope.into(),
             seed: seed.clone(),
+            restore_state: None,
             options: input.options.clone(),
             style_document: input.style_document.clone(),
             patch: Default::default(),

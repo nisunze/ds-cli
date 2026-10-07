@@ -107,3 +107,10 @@ state. It never changes the worker's authored session or Save metadata. Hosts
 release on replacement/disposal and may initialize a fresh read-only seed once
 if a restarted runtime reports `profile_replay_base_unavailable`; that recovery
 is not a per-edit package fallback.
+
+A recovery initialization may forward its prior admitted `display_state` as
+`restore_state`. Rust validates this with the ordinary DisplayPatch controls,
+then applies the new request patch. Restore, seed replay and scene admission
+are transactional: invalid state or projection refusal leaves no new scope.
+The renderer transports these choices unchanged; it does not reconstruct
+native defaults or merging policy.
