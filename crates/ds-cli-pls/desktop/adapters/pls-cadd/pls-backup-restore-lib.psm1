@@ -481,29 +481,71 @@ function Get-PlsNativeBackupInventory {
     }
 }
 
-function Compare-PlsProtectedInventories {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory = $true)][object] $Expected,
-        [Parameter(Mandatory = $true)][object] $Actual
-    )
-
+function Compare-PlsProtectedInventories([object] $Expected, [object] $Actual) {
     $differences = New-Object System.Collections.ArrayList
-    foreach ($group in @('project_core', 'engineering_library', 'protected')) {
-        if ([string] $Expected.digests.$group -cne [string] $Actual.digests.$group) {
-            $differences.Add("$group digest differs") | Out-Null
+    $checks = New-Object System.Collections.ArrayList
+    $expectedMembers = @($Expected.members | Where-Object { $_.role -in @('project_core', 'engineering_library') })
+    $actualMembers = @($Actual.members | Where-Object { $_.role -in @('project_core', 'engineering_library') })
+    foreach ($role in @('project_core', 'engineering_library')) {
+        if (@($expectedMembers | Where-Object role -eq $role).Count -ne
+            @($actualMembers | Where-Object role -eq $role).Count) {
+            $differences.Add("$role count differs") | Out-Null
         }
     }
-    foreach ($count in @('project_core', 'engineering_library')) {
-        if ([int] $Expected.counts.$count -ne [int] $Actual.counts.$count) {
-            $differences.Add("$count count differs") | Out-Null
+    foreach ($member in $expectedMembers) {
+        $matches = @($actualMembers | Where-Object {
+            $_.relative_path -ieq $member.relative_path -and $_.role -ceq $member.role
+        })
+        $verification = 'mismatch'
+        if ($matches.Count -ne 1) {
+            $differences.Add("$($member.relative_path): missing or ambiguous protected member") | Out-Null
+        } else {
+            $other = $matches[0]
+            if ($member.kind -ceq $other.kind -and $member.bytes -eq $other.bytes -and
+                $member.sha256 -ceq $other.sha256) {
+                $verification = 'exact'
+            } elseif ($member.kind -ceq 'text' -and $other.kind -ceq 'text') {
+                # The same narrowly characterized relocation used by Test-PlsRestoredTree.
+                # Raw hashes remain recorded; no bytes are rewritten or replaced.
+                $latin1 = [System.Text.Encoding]::GetEncoding(28591)
+                $left = $latin1.GetString((Get-PlsNativeMemberBytes $Expected $member)).Replace("`r`n", "`n")
+                $right = $latin1.GetString((Get-PlsNativeMemberBytes $Actual $other)).Replace("`r`n", "`n")
+                $rebased = $right
+                if (-not [string]::IsNullOrWhiteSpace($Actual.project_source_root) -and
+                    -not [string]::IsNullOrWhiteSpace($Expected.project_source_root)) {
+                    $rebased = $right.Replace([string] $Actual.project_source_root,
+                        [string] $Expected.project_source_root)
+                }
+                if ($left -ceq $rebased) {
+                    $verification = if ($rebased -cne $right) { 'native_text_crlf_and_path_rebase' } else { 'native_text_crlf' }
+                }
+            }
+            if ($verification -ceq 'mismatch') {
+                $differences.Add("$($member.relative_path): protected content differs") | Out-Null
+            }
+        }
+        $checks.Add([ordered]@{
+            relative_path = $member.relative_path
+            role = $member.role
+            verification = $verification
+            expected_sha256 = $member.sha256
+            actual_sha256 = if ($matches.Count -eq 1) { $matches[0].sha256 } else { $null }
+        }) | Out-Null
+    }
+    foreach ($other in $actualMembers) {
+        if (@($expectedMembers | Where-Object {
+            $_.relative_path -ieq $other.relative_path -and $_.role -ceq $other.role
+        }).Count -ne 1) {
+            $differences.Add("$($other.relative_path): unexpected or ambiguous protected member") | Out-Null
         }
     }
     [ordered]@{
         equal = ($differences.Count -eq 0)
+        raw_digest_equal = ($Expected.digests.protected -ceq $Actual.digests.protected)
         differences = @($differences)
         expected_protected_sha256 = $Expected.digests.protected
         actual_protected_sha256 = $Actual.digests.protected
+        members = @($checks)
     }
 }
 

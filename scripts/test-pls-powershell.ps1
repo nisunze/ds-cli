@@ -89,6 +89,9 @@ foreach ($entry in $declared) {
 $cases.Add('all_bundle_files_pinned_inside_their_areas')
 $cases.Add('all_powershell_files_parse_and_target_5_1')
 
+& (Join-Path $PSScriptRoot 'test-pls-protected-comparison.ps1') | Out-Null
+$cases.Add('protected_comparison_relocation_and_negative_controls')
+
 $scratch = Join-Path ([System.IO.Path]::GetTempPath()) ('ds-pls-powershell-' + [guid]::NewGuid().ToString('N'))
 [System.IO.Directory]::CreateDirectory($scratch) | Out-Null
 try {

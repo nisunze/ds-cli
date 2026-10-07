@@ -136,7 +136,7 @@ pub static BUNDLE: &[Script] = &[
     ),
     script!(
         "adapters/pls-cadd/pls-backup-restore-lib.psm1",
-        "1ac2e3f9d141db73114f46c10441a5141f8f5549d9ba9f23304a83f3d9f6993d"
+        "be6535c87fe737bbd81616d800063d22bd89f992c074e9c1e7b662f07add44dc"
     ),
     script!(
         "adapters/pls-cadd/pls-backup-restore-profile.psd1",
@@ -144,7 +144,7 @@ pub static BUNDLE: &[Script] = &[
     ),
     script!(
         "adapters/pls-cadd/pls-backup-restore-qualify.ps1",
-        "6c53c97d471fadabb47ae1e9b16caaa9ffbb323445c9da277b1f0cf9d219f863"
+        "b1c871a06746bd3b0c5886787170c1ae19a8a49f45ae1752637d3ebd3c33ecd1"
     ),
     script!(
         "adapters/pls-cadd/pls-bak-replace-files.py",

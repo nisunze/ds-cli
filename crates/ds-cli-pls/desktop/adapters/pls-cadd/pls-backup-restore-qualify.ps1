@@ -955,7 +955,7 @@ function Invoke-PlsBackup {
             throw "Multiple PLS-CADD top-level windows during backup: $(@($windows.title) -join ', ')"
         }
         if ($windows.Count -eq 0) {
-            if ($fileSubmitted -and $optionsAccepted -and (Test-Path -LiteralPath $OutputPath -PathType Leaf)) {
+            if ($fileSubmitted -and $optionsAccepted -and $completionObserved -and (Test-Path -LiteralPath $OutputPath -PathType Leaf)) {
                 Wait-StableRegularFile $OutputPath ([int] $profile.BackupTimeoutSeconds) | Out-Null
                 Write-Journal 'fresh_backup_stable' ([ordered]@{ path = $OutputPath; completion_prompt_observed = $completionObserved })
                 return [ordered]@{
@@ -1197,11 +1197,12 @@ try {
     $freshBackupDigest = Get-PlsFileSha256 $FreshBackupPath
     $freshPayload = Resolve-PlsNativeBackupPayload $FreshBackupPath $freshBackupDigest (Join-Path $EvidenceDirectory 'fresh-backup-payload')
     $freshInventory = Get-PlsNativeBackupInventory $freshPayload.native_path $ProjectFileName $FirstRestoreDirectory
+    Write-PlsJsonCreateNew (Join-Path $EvidenceDirectory 'fresh-backup-inventory.json') $freshInventory
     $protectedComparison = Compare-PlsProtectedInventories $candidateInventory $freshInventory
+    Write-PlsJsonCreateNew (Join-Path $EvidenceDirectory 'protected-comparison.json') $protectedComparison
     if (-not $protectedComparison.equal) {
         throw "Fresh PLS backup changed protected candidate content: $($protectedComparison.differences -join ', ')"
     }
-    Write-PlsJsonCreateNew (Join-Path $EvidenceDirectory 'fresh-backup-inventory.json') $freshInventory
     Close-PlsWithoutSaving $activeProcess $first.main_window_handle
     $activeProcess = $null
     $firstFull = Test-PlsRestoredTree $candidateInventory $FirstRestoreDirectory 'Full' @($profile.AllowedFreshRestoreExtras)
