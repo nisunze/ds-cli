@@ -6,10 +6,13 @@ description: "Use deployed `ds` as the sole DS interface: discover one live comm
 # Work through `ds`
 
 Use `ds` for DS data and effects. Do not substitute an API, desktop bridge,
-store, parser, repository or skill-local program. Report absent capabilities
-through `ds`.
+store, parser, repository or skill-local program.
 
 Use `--output json` for agents.
+
+Coding sessions: fix findings or record unfinished work only in the owning
+backlogs (OPEN.md code, OPEN-X.md decisions, SEEDING.md operations). Never
+submit feedback during coding; remove entries after proof.
 
 ## Find one command
 
@@ -71,7 +74,8 @@ return with its result:
 
 ## When `ds` cannot
 
-After ruling out a stop and trying other vocabulary, discover feedback:
+Outside coding sessions, after ruling out a stop and trying other vocabulary,
+discover feedback:
 
 ```
 ds capabilities --search feedback --output json

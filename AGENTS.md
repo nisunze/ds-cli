@@ -51,10 +51,11 @@ ledger.
 Beyond the list in `CLAUDE.md`:
 
 - A skill-local executable, copied CLI contract, or direct API route.
-- A local gap Markdown ledger. Agents report verified gaps through
-  `ds feedback submit`, which reaches the same backlog as the app's `fb`
-  shortcut, and close what they have fixed with `ds feedback close` — the
-  same governed triage call, needing the same platform capability.
+- A separate local gap ledger. During coding sessions, fix findings or use
+  the owning OPEN.md, OPEN-X.md and SEEDING.md backlogs; never submit feedback
+  during coding (owner, 2026-10-07). Product-use sightings outside coding use
+  the governed `ds feedback` surface. See
+  [PRINCIPLES.md §4](../ds-command-kernel/backlog/PRINCIPLES.md#4-report-as-you-go-owner-2026-10-07).
 
 ## Blind workflow trials
 
