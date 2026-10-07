@@ -154,6 +154,15 @@ to emit. Then retype it back: expect the same.
 
 **Related:** STABILIZATION.md §4 (swift editing).
 
+**Bounded follow-up requested:** prove the arriving/departing set convention
+from already-strung native Type J witnesses such as structure 618, and check
+whether structure 292 is an interior support in a continuous tension section
+or an endpoint of independent sections. Give exact support sequence, neighboring
+structures/stations, attachment labels/slots and native request evidence.
+If an interior section must split to introduce a strain, identify the existing
+atomic splitting command and its sag/criterion preservation contract. Do not
+guess phase ordering from labels, edit the working copy or write source.
+
 ## Queued next: native session replay for swift Profile edits
 
 After the NUM review, trace only STABILIZATION.md §4's package round trip:
