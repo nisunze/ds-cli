@@ -142,15 +142,11 @@ stays available on demand.
 
 ### 5. Bug evidence found during the trace
 
-- **The CLI cannot co-work with the dev Desktop.**
-  - `dsgrid.structure.retype` has no `--target`, so the CLI cannot edit the
-    model the Desktop has open.
-  - `dsgrid.model.list` reaches only the stable and canary catalogues, not the
-    dev Desktop's `local` lane.
-  - `desktop.status` and `map.profile.view` report the open model's id but not
-    its name.
-  - `map.profile.view --target desktop:<id>` does report the selection
-    correctly: structure 618.
+- **Local catalogue boundary:** `dsgrid.model.list` still reaches only the
+  stable and canary catalogues, not the dev Desktop's `local` lane. Complete
+  exact local-catalogue discovery/opening without replacing held RAM sessions.
+  Keep `desktop.status` model-name projection consistent with the native
+  foreground Profile summary.
 
 ### 11. Intermittent: a selected ground point shows no highlight and no vertical handle (unproven)
 
@@ -445,7 +441,7 @@ decisions keep their **Input needed** and **Boundary**.
 
 - `d8529cff` (minor): Retype keeps material-specific staking facts (E-STEEL on a wooden H-pole).
 
-- **Selection-aware context menu across editing contexts** (owner, 2026-10-07): extend LV design’s selection filter/actions to DS Grid model and general geographic editing. The active editing context selects applicable actions through declared kernel/CLI contracts; Web/Desktop render that JSON. Replace the current Grid right-click menu limited to Measure/Exit/New/Fix Popup. Trace `ds-web/src/lib/components/map/SelectionFilterDialog.svelte` and existing LV/native selection contracts; preserve the same selection context and exact project/model/revision fences across CLI and UI.
+- **Remaining native selection controls across editing contexts** (owner, 2026-10-07): migrate LV's existing lasso predicate/layer preferences and selection refinements to declared kernel/CLI controls, retaining exact project/model/revision/selection fences. LV currently admits Within/Intersects through its existing session owner; finish native Outside parity and geographic editing admission. Keep applicable controls in the shared visible live selection toolbar; do not restore buried right-click Selection/Lasso menus. MV selected-row filtering must remain native and bounded to the captured current selection.
 
 - **Nyamagabe LV transformer editing opens a generic map menu** (`d654bfcc`): prove the affected installed session can select the design transformer with a cold index, then move, edit, save and reload it without changing another transformer.
 
