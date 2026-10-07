@@ -32,7 +32,7 @@ then commit to `run` in its owning repository. Never use a worktree.
 | ds-network-reporter | `cargo test --locked --no-fail-fast` | All green |
 | ds-cli | `DS_REPORT_BIN=<reporter target>/debug/ds-report DS_SOLAR_BIN=<ds-solar target>/debug/ds-solar cargo test --locked --workspace --all-features --no-fail-fast` | 107 suites green; the MCP skill check was fixed in `4e466494` |
 | ds-network | `cargo test --locked --workspace --no-fail-fast` | Full settled-tip run: three known private-corpus failures in two targets; all other targets passed. Fixes remain in OPEN.md §11 |
-| ds-solar | `cargo test --locked --workspace` | Not run. It links the kernel and the reporter's `ds-network-information`. |
+| ds-solar | `cargo test --locked --workspace` | Full settled-tip run: 427 tests across 58 targets green. |
 
 - The three private-corpus tests are `conversion_planner::corpus_planner_bak_matches_direct_ingest_model`, `conversion_planner::corpus_planner_normalizes_characterized_19_01_source_to_16_81` and `ds-grid-wasm import_convert::corpus_huye_backup_imports_through_the_wasm_handle`.
 - The stable `/usr/bin/ds-report` is uninstalled on ds-server, so point
@@ -54,71 +54,6 @@ Once the slices above have landed:
 - then run `cd ds-web && bash -l -c './linux-server-deploy.sh prod --check'`.
   It builds and publishes nothing; the version gate passes (source 0.1.7,
   production `0.1.7-r86`). Publishing is the owner's decision.
-
-## 5. Uneven structure results across models
-
-**What the owner sees:**
-
-- Nyamagabe MV Model 1, "2026-10-02 oracle reference copy", shows complete
-  structure computation in Profile: usage % per structure, the counted section
-  boxes, and "Analysis complete" in the Engineering issues panel.
-- Other models stop at `structure_usage` issues with an unresolved
-  `capacity_case_binding` / unresolved capacity, or at "Engineering issue
-  unsupported".
-
-**Ask:**
-
-1. For each project model, list through `ds` which structures lack a usage
-   result and the exact reason. Possible reasons: missing or unqualified
-   capacity artifact, unresolved capacity case binding, analytical-scaffold
-   provenance, unverified Method-2 interaction artifact.
-2. Test whether attaching the common cloud interoperability library gives
-   every model the oracle copy's completeness. The candidate is the
-   157-member `pls-interoperability-canonical-candidate` (2026-10-07-v2).
-3. Report which gaps the library closes and which need source evidence
-   instead. Never invent capacities.
-
-**Intersects:**
-
-- OPEN.md §12: "1. Loads and strength (structure usage)", "Qualified
-  structure usage contracts", `df1f53ae`, `908c07c1`, `4ba8ab15`.
-- OPEN.md §14: "Show loading, uplift and failures in Profile".
-- SEEDING.md: "Saved scaffold trust states", "Shared-library capacity tables"
-  (`3acfd343`), "Four-donor composite native qualification".
-- OPEN-X.md: "Material and capacity source conflicts", "Uncharacterized .012
-  policy" (`5d0fd02b`).
-
-## 7. Owner wording check
-
-The MV plan key now prints the held legend titles (ds-network-reporter
-`3748e48`). On the Gisagara capture that reads "New LV cables / Existing LV
-lines / Existing MV lines" instead of "Context LV / Existing LV / Existing
-MV". If the owner wants the old words, author them as governed legend titles
-in the MV context template; the template-literal ratchet forbids Rust
-literals.
-
-## 11. One colour code for usage %
-
-**Owner, 2026-10-07:** the same value must use the same colour code.
-
-**Seen:** Nyamagabe MV Model 1 (oracle reference copy), structure 5
-(`l-s-S800-stay.012`). The Profile drawing shows 3.4% in green; the toolbar
-badge shows the same 3.4% on amber.
-
-**Cause:**
-
-- The badge picks its own colour in TypeScript from `engineering_status`
-  (`fail` → rose, `pass` → green, `unknown` → amber), in
-  `ds-web/src/lib/components/grid/GridProfileContextBar.svelte:27-29`.
-- The drawing uses the engine's colour role for the label.
-- So there are two colour authorities for one value.
-
-**Needed:**
-
-- The badge takes the same colour role as the Profile label from the
-  engine/kernel; the UI does not decide colours (PRINCIPLES.md §5).
-- The band thresholds themselves are still the owner's open choice:
-  OPEN-X.md "Usage-% colour bands".
 
 ## Reference: landed on 7 October, don't redo
 
