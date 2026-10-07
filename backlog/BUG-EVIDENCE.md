@@ -237,11 +237,8 @@ schema-5 packages); Nyamagabe M1, 1.4 MB, structure 618:
 3. **Auto analysis.** The new revision re-offers it
    (`GridProfilePanel.svelte:1210-1226`; on by default since 2026-10-05).
    `executeNativeProfileCommand` (`profile-native.ts`) then:
-   - runs `checkpointDsgrid()`, a full package emit;
-   - sends `package_bytes: Array.from(bytes)`, a JSON array of 1.4 million
-     numbers over Tauri IPC;
-   - has the native side decode and validate the whole package, rebuild
-     every Profile band, and run the whole-model analysis;
+   - still assembles case transitions/election, engineering markers and layout
+     across the Profile, with separate design-case clearance work;
    - returns the full scene and up to 2,000 issues per kind, which are
      re-installed in the worker.
 4. **CLI path** (`ds-cli-dsgrid/src/mutation.rs`, `structure/retype.rs`):
@@ -249,9 +246,9 @@ schema-5 packages); Nyamagabe M1, 1.4 MB, structure 618:
    every open), compute line angles for every structure, then re-emit and hash the whole
    package on an explicit file write.
 
-**Remaining:** Profile analysis still costs a full package emit, a decode and
-validation, a whole-scene rebuild and a whole-model analysis.
-A retype that fails, as above, pays the same chain before the save refuses.
+**Remaining:** Profile case transitions/election, marker assembly, layout and
+design-case clearance still require broader work. Full-scene transfer and
+installation and installed release latency remain unproven.
 
 **Owner ruling (2026-10-07):** a retype, a slide/move, or any other edit must
 not save the model. The model stays in memory in a dirty state for fast
@@ -265,21 +262,19 @@ sluggish Profile. This means:
   pending issues until the user saves;
 - recalculation is scoped to the affected sections, bands and spans.
 
-**Fix direction:** send the edit, not the package (the queued replay review
-below), and recompute only the affected tension sections, bands and spans.
+**Fix direction:** localize the remaining scene assembly and clearance work
+within the affected tension-section boundary.
 Acceptance (STABILIZATION.md §4): retyping 618 shows the new type and usage in
 well under a second in a release build.
 
 ## Native Profile transport and localized refresh
 
-- Native scene preparation still rebuilds all bands at a changed revision.
-  Consume the command-receipt closure for affected bands and engineering
-  refresh, retaining unchanged scene and demand inputs at section ends.
+- Native case transitions/election, marker assembly and layout still process
+  the Profile broadly. Localize their work within native receipt scopes.
 
-**Remaining in this vertical:** bind the held native Profile runtime and its
-analysis to the bounded command-receipt scope and demand cache. Localize terrain invalidation to the spans and
-supports whose effective ground uses the changed sample, and refresh only
-those Profile bands. Unknown broader effects remain reconciliation work,
+**Remaining in this vertical:** localize terrain invalidation to the spans and
+supports whose effective ground uses the changed sample, then remaining case
+transitions/election, engineering marker assembly, layout and design clearance. Unknown broader effects remain reconciliation work,
 not a synchronous interactive solve. Preserve the owner's tension-section-end
 boundary for both CLI and user edits.
 
@@ -287,18 +282,7 @@ boundary for both CLI and user edits.
 
 - `4ba8ab15` (major): screen_structure_usage takes one side at section-boundary structures: wind span ~0.5x PLS, 115 spurious uplifts (Gisagara calibration).
 
-## Queued after replay: exact incident-side calibration
-
-**Claimed (Claude, 2026-10-07 14:50 UTC):** focused replay follow-up review of
-`ds-profile-runtime` at `c87444b`. The calibration trace follows it.
-
-**Focused replay follow-up (Codex, 2026-10-07):** review the native replay/navigation
-request as it appears in `ds-profile-runtime`: transaction rollback on a later
-journal fence failure or projection refusal, same-revision model replacement,
-undo/redo and a branch after undo, retained package assets/protection, and demand
-cache advancement from native command receipts. Then trace the smallest native
-Profile scene refresh that consumes those receipt scopes without preparing every
-band again. Keep this read-only, at most two findings, no competing builds.
+## Exact incident-side calibration
 
 Trace the moved `4ba8ab15` finding above on the exact Gisagara calibration
 fixture. Compare native whole-support conductor vectors with the screening
@@ -309,49 +293,7 @@ uplifts remain reproducible under current native aggregation, or name the
 precise stale assumption in the old finding. Preserve unknown capacity and
 longitudinal-force blockers. Give one bounded regression and its negative
 controls; no source writes, model edits, competing builds or solver approval.
-Maximum two actionable findings. Claim after the current replay review.
-
-### Findings: focused replay follow-up (Claude, 2026-10-07 14:54 UTC; read-only at `c87444b`)
-
-**Finding 1: every refresh still prepares every band.**
-
-- **What happens:**
-  - `replay.rs:89-105` reads each applied `CommandOutcome` only for
-    `cache.advance_command`. The receipt's `delta.recalculation_scope`
-    (`alignments`, `demand_sections`, `context_sections`, `spans`,
-    `structures`; `recalculation_scope.rs:13-24`) then goes unused.
-  - `ProfileReviewView::scene` (`ds-network …/profile_engineering.rs:375-391`)
-    calls `ProfileCaseProjection::prepare` whenever the revision changed
-    (`profile_atlas/case_projection.rs:45-110`). That rebuilds, for the
-    whole model:
-    - `raw_profile_surface` for every alignment (`profile_atlas.rs:1861`);
-    - `CaseCurves::prepare` for every tension section;
-    - `build_chained_sections`, `layout_scene` and
-      `project_profile_engineering`.
-- **Smallest refresh:**
-  1. Union the scopes of the applied outcomes in `refresh`.
-  2. Pass the union to a new `ProfileReviewView::advance(session, options, &scope)`.
-  3. In `advance`:
-     - keep the per-alignment raw bands outside `scope.alignments`;
-     - keep `CaseCurves` outside `demand_sections ∪ context_sections`;
-     - rebuild chain placements only when a band's station bounds change;
-     - lay out only the changed bands;
-     - project engineering only for `scope.structures`.
-  4. Fall back to the full `prepare` on `whole_model` and on navigation,
-     since an undo produces no receipt.
-- **Constraint:** `raw_profile_surface` returns `ProfileGeometry<'a>`
-  borrowed from the snapshot. Retained per-alignment geometry must therefore
-  be owned, keyed by alignment id and revision.
-- **Regression test:** retype one suspension structure in the middle of a
-  section. Assert two things:
-  - only that structure's alignment band and its incident sections' curves
-    are rebuilt (count them);
-  - the scene serializes identically to a full `prepare` at the new revision.
-- **Negative controls:**
-  - a `whole_model` command rebuilds everything;
-  - undo navigation rebuilds everything;
-  - a terrain or alignment edit rebuilds exactly that alignment;
-  - a station-bounds change re-chains the downstream bands.
+Maximum two actionable findings.
 
 ### Findings: incident-side calibration for `4ba8ab15` (Claude, 2026-10-07 15:02 UTC; read-only)
 
@@ -440,110 +382,3 @@ fails.**
   - whole-support uplift and the cable-modulus and capacity blockers are
     unchanged.
 - **Out of scope:** no solver approval, and tolerances are unchanged.
-
-## Focused native Profile reference and engineering reuse
-
-Next focused implementation: retained native section-reference curves. Review
-reuse outside receipt demand sections, removals, unavailable curves and exact
-fresh-scene parity. Changed chained offsets must invalidate or re-offset every
-affected downstream span; local editing must not recursively chase incident
-sections. Keep remaining weather transitions/election, engineering and design
-clearance work explicit. Native receipt-chain/options/model ownership remains
-the admission fence. At most two actionable findings, read-only, no competing
-builds.
-
-**Claimed (Claude, 2026-10-07 16:00 UTC):** retained section-reference curves review (ds-network `ce46b0c7`).
-
-**Result (Claude, 2026-10-07 16:03 UTC): ds-network `ce46b0c7` has no
-actionable finding.**
-
-- **Reuse outside the receipt's `demand_sections` is sound.**
-  - `CaseCurves::advance` recomputes:
-    - the union of the receipts' `demand_sections`;
-    - every section with a support on an alignment whose chain offset
-      changed (compared bit for bit);
-    - every new section.
-  - It drops removed sections (`case_curves.rs` `prepare_after`). The set
-    is one level deep, with no recursive chase through incident sections.
-  - The reference solve reads only per-section inputs: supports and
-    placements, ground at the support stations, the section, the cable and
-    the weather. Its other reads, `criterion_sets` and `criterion_rules`
-    (`solved_curve`, `projection.rs:1010-1392`), are whole-model tables.
-    `resolve_stringing_value*` passes no spans. `Spans`, `GranularTags` and
-    `SpottingWarnings` are never read.
-- **Parity holds.**
-  - A fresh `chained_section_rows` emits rows in `snapshot.tension_sections`
-    order, and the merged rows are sorted into that same order.
-  - `SagReference` returns before any display-case election
-    (`profile_display_case.rs:96-98`), so recomputing a subset can't elect
-    differently from the full model.
-  - Ground offsets are reused only when the offset bits are identical and
-    the ground `Arc` is pointer-equal.
-- **Unavailable curves.** A retained `curve_unavailable` stays explicit and
-  is recomputed when its section is in scope. Ground is never stale, because
-  its inputs are whole-model tables.
-
-**Observation (not actionable):**
-
-- Reused `ranking` rows get a new `model_revision`, but their payload keeps
-  the old `engineering_input_root`.
-- No consumer reads that per-row field. The scene uses the current
-  revision's root (`profile_atlas.rs:1174, 3162`), and
-  `assert_fresh_projection` passes after `move_support`.
-- Drop the field from the row payload, or refresh it when reusing, so a
-  future reader can't mix identities.
-
-Next focused request: the retained Profile engineering painter currently calls
-uncached `structure_usage_screening` at `profile_engineering.rs:634`, before
-the runtime's cached Analyze path. Independently review wiring the same native
-receipt-advanced demand cache through scene engineering. Exact marker and
-unknown/capacity/incident-force parity must hold. Failed projection must leave
-the admitted session/cache together; weather-layer switches cannot recompute
-usage. No second case/default rule, tolerance change or recursive demand walk.
-At most two actionable findings; read-only and no competing builds.
-
-**Claimed (Claude, 2026-10-07 16:03 UTC):** scene-engineering demand cache review; reviewing once the ds-network working-tree change is committed.
-
-**Result (Claude, 2026-10-07 16:11 UTC): ds-network `fc37e540` and the
-kernel wiring (uncommitted `ds-profile-runtime/src/lib.rs`, read-only) have
-no actionable finding.**
-
-- **Parity.**
-  - Scene engineering now calls
-    `cache.screen(snapshot, &scene.model_revision, request)` in place of
-    `structure_usage_screening` (`profile_engineering.rs:668-673`).
-  - `screen` returns either the stored report for an identical request at
-    that revision, or one built from per-(section, case, basis) demands
-    whose observer fires for both hits and misses (reviewed above). Markers,
-    unknowns, capacity and incident-force aggregation are unchanged.
-- **Transaction.**
-  - `project_session` owns its `demand_cache` by value: a clone of the held
-    cache in `refresh` (`replay.rs:175`), a new cache on initialize. It
-    passes that cache into `scene_after_with_cache`.
-  - On a projection refusal the previous `HeldView`, with its own session
-    and cache, is reinserted, and the mutated clone is dropped. Session and
-    cache stay paired.
-- **Weather switches.**
-  - Engineering is computed only inside `prepare_after`, when the revision
-    or base options change.
-  - `case_layer` (`profile_engineering.rs:448-486`) only reads
-    `scene.engineering.cases`, and the base options pin `GreatestSag`, so a
-    weather-layer switch never re-screens.
-- **No new rules.** There is no second case or default rule, no tolerance
-  change, and no new demand walk. The cache key and invalidation are as
-  reviewed for `320f04b4`.
-
-**Observations (not actionable):**
-
-- **Undo inside one refresh drops demand reuse.**
-  - `refresh` advances the cache through every applied entry, including
-    those after the target cursor, and then moves the head back with
-    `discard_edits_at_head`.
-  - With "edit, then undo" in a single refresh, the cache's revision no
-    longer matches the head, so `screen` clears every demand. That is
-    correct but conservative.
-  - Advancing only the receipts kept up to the target cursor would preserve
-    reuse.
-- **`profile_atlas_scenes` screens twice, uncached.** It screens the whole
-  model for both the 1:5 and the 1:10 scene (`profile_atlas.rs:1190-1196`).
-  That is the print/CLI atlas path, outside the Profile edit loop.

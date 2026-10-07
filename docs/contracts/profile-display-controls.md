@@ -92,11 +92,13 @@ Old analysis is never projected as current at a different authored revision.
 Initialization must use the worker's opened snapshot so its entire active
 journal, including undo before the first Profile display, remains navigable.
 
-Analyze shares the receipt-advanced native demand cache between default analysis
-and its issue screen. Applied-load and whole-support report evidence stays
-identical to uncached native analysis; the issue screen reuses retained section cases. The cache has 16,384
-section/case/basis slots; inputs evicted above that bound must be solved again. Clearance remains a separate design-case
-calculation. This change alone is not scoped-band or release-latency acceptance.
+Profile scene engineering and Analyze share the same receipt-advanced native
+demand cache. Scene preparation populates it before default analysis and the
+issue screen; repeated reads reuse those native section cases. Applied-load and
+whole-support report evidence stays identical to uncached native analysis; the
+issue screen reuses retained section cases. The cache has 16,384
+section/case/basis slots; inputs evicted above that bound must be solved again.
+Clearance remains a separate design-case calculation. This change alone is not scoped-band or release-latency acceptance.
 
 Native Profile scopes are leases. The runtime admits up to eight and refuses a
 new scope with `profile_replay_capacity` before seed/package work if all slots
@@ -116,7 +118,7 @@ The renderer transports these choices unchanged; it does not reconstruct
 native defaults or merging policy.
 
 Native Profile journal replay passes its actual command outcomes into
-`ProfileReviewView::scene_after`. Surface reuse starts only at the admitted
+`ProfileReviewView::scene_after_with_cache`. Surface reuse starts only at the admitted
 cursor, follows the complete native parent chain, and stops at the requested
 cursor; commands in a retained redo tail do not contribute to its scope.
 Undo/redo and a divergent prefix reconcile without forward receipts. The
@@ -125,4 +127,7 @@ input can supply a recalculation scope. A refused replay retains the previous
 session, view and analysis together. Analyze with an unavailable style never
 advances the retained review against an unadmitted model head. Native runtime
 transaction tests prove surface work and exact fresh-scene parity for local
-and coalesced edits, navigation, branching and style refusal.
+and coalesced edits, navigation, branching and style refusal. Runtime checks
+also prove that a local refresh computes only affected section cases, Analyze
+reuses those demands with exact uncached report parity, and undo reconciles
+instead of retaining forward-edit evidence.

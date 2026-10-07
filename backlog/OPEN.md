@@ -197,6 +197,8 @@ Rules: [PRINCIPLES.md §6](PRINCIPLES.md#6-ds-grid-engineering).
 
 ## 14. Plan and Profile authoring
 
+- **Avoid redundant native Profile demand work**: `ds-profile-runtime::refresh` advances demands through new journal entries beyond the target cursor before restoring that cursor, so a coalesced edit/undo conservatively drops reuse. Advance only admitted forward receipts while retaining exact history/refusal fences; prove fresh-scene parity and computed/reused work for a future redo tail. `ds-grid-engine::profile_atlas_scenes` also screens the same model twice for the two print scales; share native screening evidence without changing scale-specific marker projection. These are independent optimization slices, not release-latency proof.
+
 - **Remove dormant Profile package projection**: `ds-profile-runtime::Request::Project` still accepts a full package and can return the new head's history after restoring the old held session on Analyze projection refusal. Desktop transport and `profile-native.ts` now use only initialize/refresh; `ds-cli-map/src/profile.rs` drives that Desktop transport. Trace remaining callers, migrate package-era runtime tests/smoke examples to readonly native seed initialization, then delete the public package request/ingest branch and its dormant Analyze fallback. Preserve transactional seed/replay refusal and native offline smoke coverage.
 
 Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group A, to be fixed together with the Profile editing and performance items.

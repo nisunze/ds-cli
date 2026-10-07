@@ -97,8 +97,9 @@ trace below confirms it.
    `gridCommitStructureRetype` (`ds-web/src/lib/grid/session.ts:749`) applies
    the edit in the worker, which is cheap.
 3. **Auto analysis:** revision changes re-offer auto analysis (on by default).
-   The native session refresh still rebuilds section curves, engineering and
-   layout across the Profile and runs separate design-case clearance work.
+   The native session refresh still rebuilds case transitions/election,
+   engineering marker assembly and layout across the Profile, and runs separate
+   design-case clearance work.
    It returns the full scene and bounded issues for worker installation.
    Localize those remaining stages and the remaining clearance work.
 4. **CLI path** (`ds-cli/crates/ds-cli-dsgrid/src/structure/retype.rs`,
@@ -117,9 +118,10 @@ trace below confirms it.
    clearance of the adjacent spans. Reuse cached results elsewhere, keyed by
    per-section or per-structure input digests (the engine already has a
    per-revision `engineering_input_root`).
-3. **Retain unaffected Profile preparation.** Reuse section-reference curves
-   and engineering outside native receipt scopes. Rebuild only affected paint
-   rows, with explicit downstream station-offset and global-axis fences.
+3. **Retain unaffected Profile preparation.** Localize remaining case
+   transitions/election, engineering marker assembly and layout. Rebuild only
+   affected paint rows, with explicit downstream station-offset and global-axis
+   fences; retain fresh-scene parity and explicit unavailable evidence.
 4. **Background analysis.** Auto analysis stays on (owner, 2026-10-05), but it
    runs scoped and in the background. It never blocks the next edit, and it
    never opens the Issues drawer (item 6).

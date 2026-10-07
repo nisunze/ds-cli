@@ -336,10 +336,11 @@ impl Runtime {
             Err(error.clone())
         } else {
             review
-                .scene_after(
+                .scene_after_with_cache(
                     &session,
                     request.options,
                     if same_model { receipts } else { &[] },
+                    &mut demand_cache,
                 )
                 .map_err(|error| format!("profile_scene_unavailable: {error}"))
         };
@@ -1197,7 +1198,21 @@ mod transactional_projection_tests {
                 )
                 .unwrap()
         };
+        assert_eq!(
+            runtime.held[&input.scope]
+                .demand_cache
+                .last_demand_work()
+                .computed_cases,
+            2 * selection.analysis_case_ids.len()
+        );
         screen(runtime.held.get_mut(&input.scope).unwrap());
+        assert_eq!(
+            runtime.held[&input.scope]
+                .demand_cache
+                .last_demand_work()
+                .computed_cases,
+            0
+        );
         describe(
             &mut worker,
             "annotation",
@@ -1207,7 +1222,6 @@ mod transactional_projection_tests {
             .execute(refresh(&runtime, &input, &input.expected_revision, &worker))
             .unwrap();
         let held = runtime.held.get_mut(&input.scope).unwrap();
-        let cached = screen(held);
         assert_eq!(
             held.demand_cache.last_demand_work().computed_cases,
             selection.analysis_case_ids.len()
@@ -1216,6 +1230,8 @@ mod transactional_projection_tests {
             held.demand_cache.last_demand_work().reused_cases,
             selection.analysis_case_ids.len()
         );
+        let cached = screen(held);
+        assert_eq!(held.demand_cache.last_demand_work().computed_cases, 0);
         assert_eq!(
             cached,
             ds_grid_engine::structure_usage::structure_usage_screening(
@@ -1224,15 +1240,41 @@ mod transactional_projection_tests {
             )
             .unwrap()
         );
+        let analysis_request = ds_grid_engine::DefaultAnalysisRequest {
+            expected_revision: held.session.current_revision().revision_id.clone(),
+            expected_engineering_input_root: held
+                .session
+                .current_revision()
+                .roots
+                .engineering_input_root
+                .clone(),
+            max_rows: 2000,
+        };
+        let report = held
+            .session
+            .analyze_model_defaults_with_cache(&analysis_request, &mut held.demand_cache)
+            .unwrap();
+        assert_eq!(
+            report,
+            held.session
+                .analyze_model_defaults(&analysis_request)
+                .unwrap()
+        );
+        assert_eq!(held.demand_cache.last_demand_work().computed_cases, 0);
+        assert_eq!(
+            held.demand_cache.last_demand_work().reused_cases,
+            2 * selection.analysis_case_ids.len()
+        );
         let edited = worker.current_revision().revision_id.to_string();
         worker.undo().unwrap();
         runtime
             .execute(refresh(&runtime, &input, &edited, &worker))
             .unwrap();
         let held = runtime.held.get_mut(&input.scope).unwrap();
-        screen(held);
         assert!(held.demand_cache.last_demand_work().computed_cases > 0);
         assert_eq!(held.demand_cache.last_demand_work().reused_cases, 0);
+        screen(held);
+        assert_eq!(held.demand_cache.last_demand_work().computed_cases, 0);
     }
     #[test]
     fn analyze_populates_shared_demands_before_its_issue_screen() {
