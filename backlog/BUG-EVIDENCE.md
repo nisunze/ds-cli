@@ -412,3 +412,91 @@ Maximum two actionable findings. Claim after the current replay review.
 - **Negative controls:**
   - a `whole_model` edit recomputes every case;
   - a changed `weight_span_basis` misses the cache.
+
+### Findings: incident-side calibration for `4ba8ab15` (Claude, 2026-10-07 15:45 UTC; read-only)
+
+**Run.**
+
+- **Package:** the local Gisagara Model 1 seed
+  `~/.cache/claude-agents/seed/gisagara-mv-model1-rev3.dsgrid`: authored
+  `rev:79def71d…`, revision 30, fingerprint `fnv1a64:65d91b7dc13baa24`.
+- **Not the calibration package:** the revision-81 calibration package
+  (`b6d75f61…`) isn't on this host.
+- **Command:** `ds dsgrid run --operation analyze_model_defaults` (case
+  envelope: 7 cases, `exact_force_equivalent`). It took 4.1 s.
+- **Binary:** debug build from 10:40 today. The aggregation code is
+  unchanged since `390bf15d` (10-03). Today's `f72d28a6` only changes
+  caching.
+
+**Finding 1: neither the factor of two nor the 115 uplifts reproduce at
+paired boundaries; the old finding's assumption is stale.**
+
+- **Paired boundaries carry the full wind span.**
+  - 191 of the 193 structures with 8 incident sections (back plus ahead
+    per wire) combine both sides.
+  - Their wind spans have median 71.5 m (p25 64.1, p75 78.7). Mid-section
+    suspension types are on the same scale: `st-fab01188…` averages
+    67.0 m and `st-d4275080…` 67.6 m.
+  - The median spread across phases is 0.4%.
+  - Pairing at `str-…-6`, for example: `[163, 3]`,
+    `[163-slot-1, 3-slot-1]`, `[163-slot-2, 3-slot-2]`, `[256, 257]`.
+- **Uplift is now decided by the whole support.**
+  - 1,577 per-side upward demand case rows (`upward_load_case_count`)
+    become 35 structures with whole-support uplift, out of 300 complete
+    case states.
+  - 3,453 case states stay incomplete (no cable modulus) and remain
+    blockers. Keep those blockers, and keep the unknown-capacity
+    blockers.
+- **Stale assumption:** the old finding read one incident side's wind span
+  and negative vertical as the structure's. Uplift is now the signed
+  resultant of all incident realizations (`structure_usage.rs:820-826,
+  960-985`), and opposite strain ends join one joint (`390bf15d`).
+- **Not this defect:**
+  - The 101 low-wind-span 4-incident rows (types `st-37909e…` and
+    `st-af1099…`) belong to two-structure alignments. For example,
+    `aln-…-52` holds only `str-390`/`-391`, one 2.4 m span apart.
+  - So a 1.3 m wind span is correct there. Their ±137 m weight spans
+    fit a short span strung at full tension.
+
+**Finding 2: a residual one-sided wind span where strain-end pairing
+fails.**
+
+- **Where:** `str-…-216` (type `st-deded789…`) and `str-…-308`
+  (`st-dd93738b…`).
+- **What happens:**
+  - At `str-216` each of the 8 incident sections forms its own
+    realization: `215`, `215-slot-1/2`, `91`, `91-slot-1/2`, `376`,
+    `503`.
+  - At `str-308`, `230`, `230-slot-1/2` and `504` stay single; only
+    `[432, 433]` pairs.
+  - The structure's wind span is then one side's: 13.1–25.0 m at
+    `str-216`, 26.4–70.8 m at `str-308`.
+- **Why it can fail:**
+  - `opposite_strain_end` (`structure_usage.rs:714-754`) pairs only when
+    all of these hold:
+    - the attachments carry the same cable (`used` is filtered by
+      cable, `:802-806`);
+    - they have the same type and slot;
+    - their local coordinates are bit-identical;
+    - their orientations differ by π ± 0.001.
+  - `st-deded789…` is a three-way strain junction. Its front (1.571)
+    and back (4.712) sets share (±1.15 / 0, 0, 9.05). A tap set at
+    3.142 sits at (0.7, ±1.15, 8.05).
+- **Two possible causes, not yet told apart:**
+  - the back and ahead sections at `str-216` carry different cable ids;
+  - the continuing line uses the 3.142 tap set, which forms a
+    perpendicular pair, not an opposite one.
+- **To decide:** read `cable_id` and `attachment_point_id` of sections
+  91, 215, 376 and 503 at `str-216`.
+- **Regression test:** screen `str-216` and `str-6` on this package.
+  - `str-6` keeps its four joints.
+  - `str-216` pairs its opposite same-cable ends. Any side that remains
+    unpaired is named in a row advisory, and its one-sided wind span is
+    never reported as the structure's wind span.
+- **Negative controls:**
+  - a single-sided terminal dead-end stays one realization, with no
+    advisory;
+  - a genuine perpendicular tap keeps separate realizations;
+  - whole-support uplift and the cable-modulus and capacity blockers are
+    unchanged.
+- **Out of scope:** no solver approval, and tolerances are unchanged.
