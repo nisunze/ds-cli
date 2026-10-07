@@ -100,13 +100,12 @@ The sub-0.5-second target remains unmet. Atomic localized work is the priority;
 RAM retention alone does not close the performance requirement. Instrument and
 reduce native apply/replay/session-state work without weakening revision fences.
 
-Retained calculated scenes currently keep current-scene pick/edit fences until
-explicit Refresh. Implement a cheap native authored-geometry delta with separate
-authored/computed revision evidence so repeated UI editing remains available.
-The affected raw band still calls `profile_geometry`, which restations terrain
-and rebuilds effective ground even for retypes. Reuse unchanged route/terrain
-inputs inside that affected alignment, then localize point edits and downstream
-station changes. Preserve fresh-scene and engineering parity.
+Refused/dropped authored observations and stale calculation results need a native
+publication boundary so the next delta can still start at the worker's admitted
+scene/history. Terrain point edits still require local ground/triangulation and
+station updates. Full authored layout, comparison and cloning remain measurable
+costs despite retained route/ground inputs. Preserve fresh-scene and engineering
+parity while bounding those costs.
 
 **Trace: remaining whole-model work during edits.**
 

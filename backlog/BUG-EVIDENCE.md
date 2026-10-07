@@ -406,26 +406,17 @@ installation; explicit calculation still needs bounded native phase/work
 evidence before claiming a measured bottleneck or release performance. No
 template edits, competing builds or model mutations.
 
-## Focused review: atomic Profile geometry
+## Focused review: native Profile publication and local costs
 
-Read-only review request for native structure-presentation deltas and Web/Desktop
-admission: check descriptions, attachment glyphs, deletion and shared supports;
-unchanged terrain must not travel with a structure edit. Check native worker and
-popout base/computed/axis fences, camera retention and old engineering display.
-Maximum two concrete findings; no source changes or competing builds.
+Read-only review request for the next native slice: trace rejected/dropped Observe
+and asynchronous calculation results through runtime-held geometry, worker
+installation and renderer publication. A new edit after a stale response must
+still produce a delta from the actually admitted history/computed/axis base.
+Check repeated-content histories, navigation, cancellation and interleaved
+contexts without implicit Refresh or package fallback. Maximum two concrete
+findings with deterministic negative tests; no competing builds or source edits.
 
-Read-only review request for the retained-axis native delta slice: trace authored
-geometry and calculated evidence as separate identities; check repeated edits,
-deleted attachments/sections, stale delta admission, navigation and independent
-bands. Check receipt-bound terrain reuse against a fresh surface. Keep review
-bounded to the engine, Profile runtime and their worker transport; no templates.
-
-Next bounded investigation: native authored-geometry deltas at the held Profile
-axis. Current manual observation retains old calculation but current-scene
-revision fences disable subsequent Profile geometry picks/edits until explicit
-Refresh. CLI edits continue; this UI boundary is unfinished source work. Trace
-a cheap native projection and worker admission that separate authored and
-computed revisions without marking old engineering current or serializing the
-whole scene. Retype/stringing/deletion must reuse unchanged route and terrain;
-point edits need local terrain updates, not alignment-wide regeneration. At most
-two concrete findings with negative controls and fresh-scene parity.
+Measure remaining full authored field serialization/layout/cloning and replay
+costs. Terrain point updates still need localized ground and triangulation with
+fresh-projection parity, bounded transfer and parent/T-off dependency evidence.
+Keep this review within Profile owners; preserve template work and processes.

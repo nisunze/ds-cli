@@ -207,34 +207,22 @@ remaining Profile package branch and print-scale screening item below are
 secondary to interactive atomic editing and calculation; do not let them become
 a campaign across other surfaces.
 
-**First owning slice: retained-axis authored deltas.** `Runtime::Observe` admits
-journal/history without calculation and returns native affected scope;
-`Runtime::Present` refuses inputs requiring calculation. The retained calculated
-scene has its old revision, and `GridProfilePanel.svelte` disables picking,
-station/create/retype controls and selection usage against that old scene.
-Emit bounded native authored-geometry deltas and freshness evidence, then admit
-them through the existing native worker/canvas contract. Keep authored revision,
-computed revision and affected-section freshness distinct. Show new types,
-placements, descriptions, deletion and stringing immediately; preserve the held
-axis/camera and independent bands. Engineering curves/evidence remain attached
-to their computed inputs until an explicit calculation replaces them. Never
-retag old engineering as current, loosen revision fences, synthesize geometry in
-TypeScript, or hide a refusal behind a full package/scene fallback. Prove repeated
-UI and CLI edits without Refresh, Save, loss of picking or broken zoom/lasso.
+**Retained-axis publication recovery.** A refused or dropped native observation
+or asynchronous calculation must not strand further authored editing by moving
+the native delta base beyond the geometry actually admitted by the worker and
+renderer. Pin native publication to exact authored history, computed revision
+and axis; retain enough native state to compose the next delta from that admitted
+base. Prove edits arriving before and during worker installation, repeated-content
+histories, navigation and a stale calculation followed by another local edit.
+No implicit Refresh, package fallback, engineering retagging or weakened fences.
 
-**Next owning slice: retain unchanged terrain inside affected alignments.**
-`ds-grid-engine/src/profile_atlas/case_projection.rs::prepare_after` retains
-unaffected raw bands, but calls `profile_atlas.rs::raw_profile_surface_scoped`
-for each affected band. That calls `projection.rs::profile_geometry`, which
-restations corridor points and rebuilds ground even when a retype changes no
-terrain or route. Separate retained route/terrain inputs from authored placements;
-use native changed-table/dependency evidence to invalidate them. Retype,
-description, deletion and stringing must not rebuild untouched ground. Terrain
-point insertion/removal/movement must update its local surface/triangulation and
-relevant spans, with declared downstream station/axis effects and parent/T-off
-boundaries. Prove fresh-projection parity and exact reuse/work counts for one
-changed alignment beside an independent alignment. Do not infer safety from
-unchanged whole-model revision alone or duplicate old terrain in dense JSON.
+**Next owning slice: local terrain-point updates.** Terrain point insertion,
+removal and movement still require localized surface/triangulation updates and
+bounded ground/observation deltas. Invalidate relevant spans and characterize
+station/axis effects at parent/T-off boundaries. Preserve unaffected alignments
+and prove fresh-projection parity and exact work counts. Retained route/terrain
+Arc ownership does not remove remaining full layout, comparison and cloning
+costs inside an affected authored surface; measure and bound those costs.
 
 **Next owning slice: localized explicit calculation and cheap queries.**
 Accumulate native invalidation across many edits and undo/redo/branching. Only
