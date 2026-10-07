@@ -492,8 +492,10 @@ pub fn run(
         model_id: package.manifest.model.model_id.clone(),
         model_revision: source_package_revision + checkpoint.sequence,
         coordinate_system: package.manifest.model.coordinate_system.clone(),
-        library_pins: Vec::new(),
-        library_needs: Vec::new(),
+        // The emitter verifies retained exact definitions; an ordinary edit
+        // must never silently detach the authored library identity.
+        library_pins: package.manifest.model.library_pins.clone(),
+        library_needs: package.manifest.model.library_needs.clone(),
         assets: package.assets.clone(),
         exchange_bindings: package.exchange_bindings.clone(),
     };

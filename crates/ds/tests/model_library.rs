@@ -4,6 +4,8 @@ use ds_grid_exchange::structure_import::import_structure_package;
 use serde_json::Value;
 use std::process::Command;
 
+mod common;
+
 fn invoke(args: &[&str], ok: bool) -> Value {
     let result = Command::new(env!("CARGO_BIN_EXE_ds"))
         .args(args)
@@ -174,4 +176,131 @@ fn lifecycle_is_discoverable_and_preserves_native_evidence() {
     assert_eq!(detached.assets, after.assets);
     assert_eq!(std::fs::read(&model).unwrap(), source);
     std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn ordinary_cli_edits_preserve_exact_library_pins_and_offline_admission() {
+    use ds_grid_engine::{CommandEnvelope, GridCommand};
+    use ds_grid_exchange::model_library::{attach_model_library, create_model_library};
+    use ds_grid_model::EntityId;
+
+    let scratch = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../out");
+    let dir = tempfile::tempdir_in(scratch).unwrap();
+    let source = std::fs::read(common::fixture()).unwrap();
+    let library = create_model_library(
+        &source,
+        &bundle_digest(&source),
+        EntityId::new("edit-proof-library").unwrap(),
+        EntityId::new("r1").unwrap(),
+    )
+    .unwrap();
+    let attached = attach_model_library(
+        &source,
+        &bundle_digest(&source),
+        &library,
+        &bundle_digest(&library),
+        &[],
+    )
+    .unwrap();
+    let before = ds_grid_exchange::unpack(&attached.bytes).unwrap();
+    assert!(!before.manifest.model.library_pins.is_empty());
+    assert!(!before.manifest.model.library_needs.is_empty());
+    let model = dir.path().join("pinned.dsgrid");
+    std::fs::write(&model, &attached.bytes).unwrap();
+    let structure = &before.snapshot.structures[0];
+    let envelope = CommandEnvelope::new(
+        "describe-pinned-instance",
+        ds_grid_exchange::linked_models::open_session(&before)
+            .current_revision()
+            .revision_id
+            .clone(),
+        GridCommand::DescribeStructure {
+            id: structure.id.clone(),
+            description: Some("Reviewed placed instance".into()),
+        },
+    );
+    let request = dir.path().join("command.json");
+    std::fs::write(&request, serde_json::to_vec(&envelope).unwrap()).unwrap();
+    let typed = vec![
+        "dsgrid",
+        "structure",
+        "describe",
+        "--package",
+        model.to_str().unwrap(),
+        "--structure",
+        structure.id.as_str(),
+        "--text",
+        "Reviewed placed instance",
+    ];
+    let generic = vec![
+        "dsgrid",
+        "apply",
+        "--model",
+        model.to_str().unwrap(),
+        "--envelope",
+        request.to_str().unwrap(),
+    ];
+    for (index, args) in [typed, generic].into_iter().enumerate() {
+        let output = dir.path().join(format!("edited-{index}.dsgrid"));
+        let mut dry = args.clone();
+        dry.extend(["--out", output.to_str().unwrap(), "--dry-run"]);
+        assert_eq!(invoke(&dry, true)["data"]["persisted"], false);
+        assert!(!output.exists());
+        assert_eq!(std::fs::read(&model).unwrap(), attached.bytes);
+        let mut write = args.clone();
+        write.extend(["--out", output.to_str().unwrap()]);
+        if index == 0 {
+            write.push("--yes");
+        }
+        assert_eq!(invoke(&write, true)["data"]["persisted"], true);
+        let bytes = std::fs::read(&output).unwrap();
+        let after = ds_grid_exchange::unpack(&bytes).unwrap();
+        assert_eq!(
+            after.manifest.model.library_pins,
+            before.manifest.model.library_pins
+        );
+        assert_eq!(
+            after.manifest.model.library_needs,
+            before.manifest.model.library_needs
+        );
+        assert_eq!(after.assets, before.assets);
+        assert_eq!(after.exchange_bindings, before.exchange_bindings);
+        assert_eq!(
+            after.snapshot.structure_types,
+            before.snapshot.structure_types
+        );
+        assert_eq!(
+            after.manifest.model.model_revision,
+            before.manifest.model.model_revision + 1
+        );
+        let shown = invoke(
+            &[
+                "library",
+                "model",
+                "show",
+                "--model",
+                output.to_str().unwrap(),
+                "--expected-sha256",
+                &bundle_digest(&bytes),
+            ],
+            true,
+        );
+        assert_eq!(shown["data"]["managed_export_allowed"], true);
+        assert_eq!(shown["data"]["solver_approval"], false);
+        if index == 0 {
+            let unchanged = dir.path().join("unchanged.dsgrid");
+            let mut no_change = args;
+            let package_arg = no_change
+                .iter()
+                .position(|arg| *arg == "--package")
+                .unwrap()
+                + 1;
+            no_change[package_arg] = output.to_str().unwrap();
+            no_change.extend(["--out", unchanged.to_str().unwrap(), "--yes"]);
+            assert_eq!(invoke(&no_change, true)["data"]["persisted"], false);
+            assert!(!unchanged.exists());
+            assert_eq!(std::fs::read(&output).unwrap(), bytes);
+        }
+    }
+    assert_eq!(std::fs::read(&model).unwrap(), attached.bytes);
 }

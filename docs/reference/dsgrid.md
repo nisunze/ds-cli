@@ -34,6 +34,16 @@ revision-gated mutation and persistence. They do not make the paired model
 catalogue, active-model selection or project publication headless; those
 commands retain their explicitly declared authority below.
 
+## Library identity across edits
+
+Typed mutations, command-envelope apply and spotting visualization previews
+retain the source package's exact library pins and element needs, assets and
+exchange bindings. The native emitter verifies the retained release cache and
+definitions before exposing new bytes. Editing a placed instance does not
+detach its library or confer solver approval. A change that contradicts an
+exact pinned definition must satisfy the native library contract; silently
+dropping the pin is never an edit remedy. Dry runs leave source bytes intact.
+
 ## Template spotting default
 
 `dsgrid template compile` accepts an optional, human-editable spotting settings
