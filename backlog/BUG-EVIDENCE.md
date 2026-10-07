@@ -63,58 +63,11 @@ a copy of `ds-cli/out/stabilization/pin-proof/adopted.dsgrid`: 1 pin
   composition tests with two pinned inputs (same pin → kept; conflicting pins
   → refused).
 
-**F2. The Desktop/web WASM session drops pins on open and on every checkpoint
-(hypothesis: code-proven, not executed).**
-
-- **Evidence:**
-  - `GridSessionHandle::open_dsgrid` (`ds-grid-wasm/src/session.rs:545`)
-    keeps the model id, revision, presentation, CRS, assets and exchange
-    bindings, but has no field for `library_pins` / `library_needs`.
-  - `pack_options` (`:3170-3182`) hard-codes `library_pins: Vec::new()` and
-    `library_needs: Vec::new()`.
-  - `checkpoint_dsgrid` (`:933`) emits with those options.
-  - `package_fingerprint` (`:3145`) also ignores pins, so a pin-only change
-    never counts as a change.
-  - The cached release bytes survive in `assets`, but the pins pointing at
-    them are gone.
-- **Affected callers:** all ordinary instance edits, none of which change
-  library members, so all must carry pins unchanged:
-  - every Desktop/web save and working checkpoint
-    (`ds-web/src/lib/grid/session.ts:371`, `:1644`, `:1733`);
-  - the native Profile/analysis handover
-    (`ds-web/src/lib/grid/profile-native.ts:23`);
-  - the model-menu export prepare (`GridExportModelDialog.svelte:213`).
-- **Reproduction for Codex** (not written by Claude):
-  1. In a `ds-grid-wasm` native test, load the bytes of `adopted.dsgrid`, or
-     build them as `ds-grid-exchange/tests/model_library.rs` does
-     (`create_model_library` + `attach_model_library`).
-  2. Run `GridSessionHandle::open_dsgrid(&bytes)?.checkpoint_dsgrid()?`.
-  3. Unpack the result and assert that `manifest.model.library_pins` and
-     `library_needs` equal the input's. The expected failure is an empty
-     vector.
-  4. **Negative control:** an unpinned package checkpoints with empty pins
-     unchanged.
-- **Smallest fix:** store pins and needs on the handle at `open_dsgrid`, use
-  them in `pack_options`, and include them in `package_fingerprint`.
-
-**F3. Negative controls and paths that need no fix.**
-
-- **Executed:** `ds dsgrid profile labels set --model adopted.dsgrid --fields number,type --out labelled.dsgrid`
-  keeps the pin (`library model show`: 1 pin, managed `true`), via
-  `profile/labels.rs:187-201`.
-- **Correct by code:** `validate.rs:304-318` and `apply_batch.rs:818-832`
-  copy pins and needs from the source manifest.
-- **Legitimately pinless (new models):**
-  - `pack_imported_model` (`conversion.rs:8940`);
-  - `pack_lv_transformer` (`lv_transformer.rs:89`);
-  - `blank_model.rs:251`;
-  - `ds-grid-cli` `pack_command` / `pack_element_snapshot*` (`main.rs:2642`,
-    `:2985`, `:4738`).
-- **Test-only empty-pin sites:**
-  - `lineage_transfer.rs` tests;
-  - `ds-profile-runtime/src/lib.rs:461`;
-  - `conversion.rs:9480`;
-  - `retype_tests.rs`.
+Codex independently reproduced F1 with two identical pinned inputs through the
+current CLI. Exact requests/results: `ds-cli/out/stabilization/pin-proof/`
+`composition-identical.json` and `composition-identical-pins.json`; output has
+zero pins and managed export refused. Implement the union/conflict/verification
+slice separately; do not silently detach.
 
 ## Queued next: characterized NUM 15 normalization
 
