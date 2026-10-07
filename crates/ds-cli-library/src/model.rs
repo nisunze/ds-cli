@@ -124,6 +124,17 @@ const REFUSALS: &[Refusal] = &[
     },
 ];
 
+const SEARCH: &[&str] = &[
+    "interoperability",
+    "provider",
+    "model library",
+    "cloud equivalence",
+];
+/// A declared term must say what the id or summary does not already say.
+const SEARCH_WHERE_SUMMARY_SAYS_INTEROPERABILITY: &[&str] =
+    &["provider", "model library", "cloud equivalence"];
+
+#[allow(clippy::too_many_arguments)]
 const fn command(
     id: &'static str,
     path: &'static [&'static str],
@@ -132,6 +143,7 @@ const fn command(
     args: &'static [Arg],
     examples: &'static [Example],
     effect: Effect,
+    search: &'static [&'static str],
 ) -> Command {
     Command {
         id,
@@ -148,12 +160,7 @@ const fn command(
         examples,
         refusals: REFUSALS,
         reference: Some("docs/reference/library.md"),
-        search: &[
-            "interoperability",
-            "provider",
-            "model library",
-            "cloud equivalence",
-        ],
+        search,
         requires: Requires::Server,
         availability: || Availability::Available,
     }
@@ -170,6 +177,7 @@ pub static CREATE: Command = command(
         runnable: false,
     }],
     Effect::LocalFileWrite,
+    SEARCH_WHERE_SUMMARY_SAYS_INTEROPERABILITY,
 );
 pub static ATTACH: Command = command(
     "library.model.attach",
@@ -199,6 +207,7 @@ pub static ATTACH: Command = command(
         runnable: false,
     }],
     Effect::LocalFileWrite,
+    SEARCH,
 );
 pub static DETACH: Command = command(
     "library.model.detach",
@@ -224,6 +233,7 @@ pub static DETACH: Command = command(
         runnable: false,
     }],
     Effect::LocalFileWrite,
+    SEARCH,
 );
 pub static CLONE: Command = command(
     "library.model.clone",
@@ -237,6 +247,7 @@ pub static CLONE: Command = command(
         runnable: false,
     }],
     Effect::LocalFileWrite,
+    SEARCH_WHERE_SUMMARY_SAYS_INTEROPERABILITY,
 );
 pub static SHOW: Command = command(
     "library.model.show",
@@ -255,6 +266,7 @@ pub static SHOW: Command = command(
         runnable: false,
     }],
     Effect::ReadOnly,
+    SEARCH,
 );
 
 fn owner_error(message: String) -> Failure {
