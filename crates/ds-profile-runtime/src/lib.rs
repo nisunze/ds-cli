@@ -65,6 +65,7 @@ struct HeldView {
 pub struct Projection {
     pub state: DisplayState,
     pub rows: Vec<DisplayRow>,
+    pub groups: Vec<ds_command_kernel::profile_controls::ControlGroup>,
     pub legend: Vec<ds_command_kernel::profile_encoding::LegendEntry>,
     /// One pen per drawn cable engineering name; hosts paint each span with its cable pen.
     pub cables: Vec<ds_command_kernel::profile_encoding::CablePen>,
@@ -365,6 +366,7 @@ impl Runtime {
         scene["case_base_axis_digest"] = json!(base_axis);
         scene["display"] = serde_json::to_value(Projection {
             label_fields: label_fields(&state),
+            groups: ds_command_kernel::profile_controls::groups(&state, &rows, &cables),
             state: state.clone(),
             legend: ds_command_kernel::profile_encoding::legend_with_cables(&rows, &cables),
             cables,

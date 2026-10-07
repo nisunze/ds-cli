@@ -214,6 +214,10 @@ fn present_value<'de, T: Deserialize<'de>, D: serde::Deserializer<'de>>(
 ) -> Result<Option<T>, D::Error> {
     T::deserialize(deserializer).map(Some)
 }
+pub const MIN_EXAGGERATION: f64 = 0.5;
+pub const MAX_EXAGGERATION: f64 = 100.0;
+pub const MAX_TERRAIN_VALUE: f64 = 10_000.0;
+
 impl DisplayState {
     /// Validate the whole patch before committing any of it.
     pub fn patched(&self, patch: &DisplayPatch) -> Result<Self, String> {
@@ -226,7 +230,7 @@ impl DisplayState {
                 terrain.lowest_wire_drop_m,
             ]
             .iter()
-            .any(|v| !v.is_finite() || !(0.0..=10_000.0).contains(v))
+            .any(|v| !v.is_finite() || !(0.0..=MAX_TERRAIN_VALUE).contains(v))
                 || terrain.gap_tolerance_m <= 0.0
             {
                 return Err("invalid_profile_view: terrain values must be finite and within 0..10000; gap tolerance must be positive".into());
@@ -234,7 +238,7 @@ impl DisplayState {
             next.terrain = terrain.clone();
         }
         if let Some(value) = patch.vertical_exaggeration {
-            if !value.is_finite() || !(0.5..=100.0).contains(&value) {
+            if !value.is_finite() || !(MIN_EXAGGERATION..=MAX_EXAGGERATION).contains(&value) {
                 return Err(
                     "invalid_profile_view: vertical exaggeration must be within 0.5..100".into(),
                 );

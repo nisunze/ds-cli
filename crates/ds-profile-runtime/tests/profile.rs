@@ -271,11 +271,11 @@ fn native_structure_labels_keep_the_vertical_profile_position() {
         .contains(&p["option"].as_str().unwrap())
     };
     let option = |p: &Value, name: &str| p["option"].as_str() == Some(name);
-    // Owner, 2026-10-03: the Profile opens with numbers only; type names are requested.
+    // Owner, 2026-10-05: names and comments are visible alongside numbers.
     let opened = runtime.execute(packet.clone()).unwrap();
     let opened = opened["scene"]["display"]["primitives"].as_array().unwrap();
     assert!(opened.iter().any(|p| option(p, "structure_numbers")));
-    assert!(!opened.iter().any(|p| option(p, "structure_names")));
+    assert!(opened.iter().any(|p| option(p, "structure_names")));
     packet.patch = serde_json::from_str(r#"{"visibility":{"structure_names":true}}"#).unwrap();
     let result = runtime.execute(packet).unwrap();
     let primitives = result["scene"]["display"]["primitives"].as_array().unwrap();
@@ -294,4 +294,67 @@ fn native_structure_labels_keep_the_vertical_profile_position() {
         // Owner, 2026-10-05: identities start above the attachment boxes (-8..8 px).
         assert_eq!(label["offset_px"][1], -12.0);
     }
+}
+
+#[test]
+fn cli_and_renderer_share_native_controls_and_colour_state() {
+    // Reset availability is native metadata, not a host decision.
+    let styles = serde_json::from_str(include_str!(
+        "../../../tests/fixtures/profile-display-style.json"
+    ))
+    .unwrap();
+    let state = ds_command_kernel::profile_display::DisplayState::default();
+    let rows = ds_command_kernel::profile_encoding::resolve(&state, &styles).unwrap();
+    let colours = std::collections::BTreeMap::from([("Cable A".to_owned(), "#aabbcc".to_owned())]);
+    let cables =
+        ds_command_kernel::profile_encoding::cable_pens(["Cable A", "Cable B"], &rows, &colours);
+    assert!(cables[0].can_reset);
+    assert!(!cables[1].can_reset);
+    let mut runtime = Runtime::default();
+    let mut one = request();
+    one.patch = serde_json::from_value(json!({"vertical_exaggeration": 7.5, "cable_colors":{"Cable A":"#AABBCC"},
+        "terrain":{"corridor_half_width_m":25.0,"gap_tolerance_m":42.0,"ground_clearance_offset_m":6.0,"lowest_wire_drop_m":2.0}})).unwrap();
+    let result = runtime.execute(one.clone()).unwrap();
+    assert_eq!(
+        result["scene"]["display"]["groups"],
+        result["command_view"]["display"]["groups"]
+    );
+    assert_eq!(
+        result["command_view"]["display"]["state"]["cable_colors"]["Cable A"],
+        "#aabbcc"
+    );
+    assert_eq!(
+        result["scene"]["display"]["groups"][0]["numbers"][0]["value"],
+        7.5
+    );
+    assert_eq!(
+        result["scene"]["display"]["groups"][1]["numbers"][1]["value"],
+        42.0
+    );
+    let mut two = request();
+    two.scope = "two".into();
+    let other = runtime.execute(two).unwrap();
+    assert_eq!(
+        other["scene"]["display"]["groups"][0]["numbers"][0]["value"],
+        5.0
+    );
+    assert!(other["display_state"].get("cable_colors").is_none());
+    one.patch = serde_json::from_value(
+        json!({"visibility":{"wire":false},"cable_colors":{"Cable A":"red"}}),
+    )
+    .unwrap();
+    assert!(runtime
+        .execute(one.clone())
+        .unwrap_err()
+        .starts_with("invalid_profile_view:"));
+    one.patch = Default::default();
+    let retained = runtime.execute(one.clone()).unwrap();
+    assert_eq!(
+        retained["scene"]["display"]["groups"],
+        result["scene"]["display"]["groups"]
+    );
+    one.patch = serde_json::from_value(json!({"cable_colors":{"Cable A":null}})).unwrap();
+    assert!(runtime.execute(one).unwrap()["display_state"]
+        .get("cable_colors")
+        .is_none());
 }

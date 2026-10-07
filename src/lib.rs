@@ -16,6 +16,7 @@ pub use ds_solar_contracts::is_solar_id;
 pub use time;
 pub mod assets;
 pub mod profile_display;
+pub mod profile_controls;
 pub mod profile_encoding;
 pub use ds_kml as kml;
 pub mod solar_dashboard;

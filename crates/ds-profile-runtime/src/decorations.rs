@@ -263,7 +263,7 @@ mod section_usage_tests {
 mod tests {
     use super::*;
     #[test]
-    fn structure_text_is_vertical_and_only_on_request() {
+    fn structure_text_is_vertical_and_follows_native_visibility() {
         let bytes = std::fs::read(concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/../../../ds-network/fixtures/pls-public/humble-pole/humble-pole.dsgrid"
@@ -278,7 +278,8 @@ mod tests {
         structure.is_alignment_angle = true;
         structure.angle_deviation_deg = Some(-48.6);
         let state = DisplayState::default();
-        assert!(!state.visibility[&O::StructureComments]);
+        assert!(state.visibility[&O::StructureComments]);
+        assert!(state.visibility[&O::StructureNames]);
         assert!(!state.visibility[&O::RouteDeviation]);
         let document = serde_json::from_str(include_str!(
             "../../../tests/fixtures/profile-display-style.json"
@@ -286,16 +287,18 @@ mod tests {
         .unwrap();
         let rows = ds_command_kernel::profile_encoding::resolve(&state, &document).unwrap();
         let primitives = project(&scene, &state, &rows, &Default::default());
-        // Owner, 2026-10-03: by default only the structure number is written per structure.
-        assert!(primitives.iter().all(|p| !matches!(
-            p.option,
-            O::StructureNames | O::StructureComments | O::RouteDeviation
-        )));
-        assert!(primitives.iter().any(|p| p.option == O::StructureNumbers));
-        let mut named = state.clone();
-        named.visibility.insert(O::StructureNames, true);
-        let primitives = project(&scene, &named, &rows, &Default::default());
-        assert!(primitives.iter().any(|p| p.option == O::StructureNames));
+        // Owner, 2026-10-05: identifying names and comments are visible by default.
+        for option in [O::StructureNumbers, O::StructureNames, O::StructureComments] {
+            assert!(primitives.iter().any(|p| p.option == option));
+        }
+        assert!(primitives.iter().all(|p| p.option != O::RouteDeviation));
+        let mut hidden = state.clone();
+        hidden.visibility.insert(O::StructureNames, false);
+        hidden.visibility.insert(O::StructureComments, false);
+        assert!(project(&scene, &hidden, &rows, &Default::default())
+            .iter()
+            .all(|p| !matches!(p.option, O::StructureNames | O::StructureComments)));
+
         let identities = primitives
             .iter()
             .filter(|p| matches!(p.option, O::StructureNames | O::StructureNumbers))

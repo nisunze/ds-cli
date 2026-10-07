@@ -56,7 +56,16 @@ pub fn project(
             "clearance_features_truncated":source["issues"]["clearance_features_truncated"], "structure_features_truncated":source["issues"]["structure_features_truncated"]});
         result
     });
-    json!({"display":rows.map(|rows| json!({"state":state, "rows":rows,"legend":ds_command_kernel::profile_encoding::legend(rows)})), "review":review, "analysis":analysis, "analysis_state":analysis_state})
+    let display = rows.map(|rows| {
+        let cables = ds_command_kernel::profile_encoding::cable_pens(
+            scene.into_iter().flat_map(|scene| scene.conductor_spans.iter().map(|span| span.cable_engineering_name.as_str())),
+            rows, &state.cable_colors,
+        );
+        json!({"state":state, "rows":rows,
+            "groups":ds_command_kernel::profile_controls::groups(state, rows, &cables),
+            "cables":cables, "legend":ds_command_kernel::profile_encoding::legend_with_cables(rows, &cables)})
+    });
+    json!({"display":display, "review":review, "analysis":analysis, "analysis_state":analysis_state})
 }
 
 #[cfg(test)]

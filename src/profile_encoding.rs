@@ -95,6 +95,7 @@ const CABLE_INKS: [&str; 8] = [
 #[derive(Debug, Clone, Serialize)]
 pub struct CablePen {
     pub cable_name: String,
+    pub can_reset: bool,
     pub encoding: Encoding,
 }
 /// One pen per distinct cable engineering name, in name order; a configured colour wins.
@@ -123,6 +124,7 @@ pub fn cable_pens<'a>(
             }
             CablePen {
                 cable_name: name.into(),
+                can_reset: configured.contains_key(name),
                 encoding,
             }
         })
