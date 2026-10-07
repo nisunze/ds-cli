@@ -153,6 +153,16 @@ a headless owning-crate measurement, excluding wire encoding/transport, worker
 picking and painting; it is not installed Desktop or large-connected-model
 acceptance. Set `DS_PROFILE_JOB_COST_RECEIPT` to an absolute disk path and run
 the named ignored gate through the runtime manifest to reproduce it.
+
+Ordinary release on the same fixture has medians of 6.59 ms apply, 28.82 ms
+Observe, 5.19 ms capture, 95.49 ms worker calculation and 9.17 ms admission
+(6.50 ms of admission is publication checkpoint staging). Native job elapsed
+time, including polling, is 108.72 ms, range 104.33–113.30 ms. The result still
+transfers 15.61 MB. The source receipt is
+`ds-network/out/profile-native/native-job-cost-release.json`; the timing
+exclusions and single-section limitation above remain in force. The transitive
+release build requires the exact local Solar source SHA and this runtime's
+Cargo.lock path in `DS_SOLAR_SOURCE_SHA` and `DS_SOLAR_CARGO_LOCK_PATH`.
 `operation: present` admits display-only patches against current, prepared
 results. It refuses `profile_scene_unavailable` when edits or new coordinate
 inputs would require calculation; callers must explicitly Refresh or Analyze.

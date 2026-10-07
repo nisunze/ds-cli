@@ -406,17 +406,18 @@ installation; explicit calculation still needs bounded native phase/work
 evidence before claiming a measured bottleneck or release performance. No
 template edits, competing builds or model mutations.
 
-## Focused review: Profile job transport and publication
+## Focused review: cached native Profile result queries
 
-Read-only request for the next binding slice: use ds-profile-runtime's native
-start/status/cancel/admit controls from CLI/MCP and Web/Desktop. Keep solving
-and status polling outside the per-client native queue; queue only capture and
-head-fenced result admission. Trace worker edits and observation during a pending
-solve, retained picking/selection, model/history and display ABA, scope release,
-interleaved contexts, lost transport, cancellation and synchronous renderer
-refusal after worker/native confirmation. Reuse the existing publication
-checkpoint; do not admit a stale result or unwind edits. No implicit solve,
-Save or package write. First initialization and full calculated-scene transfer
-remain explicit boundaries. Native cancellation does not interrupt a running solver.
+Read-only request for the next native slice: bounded, non-calculating queries
+for usage, failures, negative loading, violating sections, qualification and
+blockers. Trace typed cached screening/demand/clearance facts before report caps,
+selection-envelope matching, root/history/case freshness, command invalidation,
+undo/redo/branching, deleted entities, pagination identity, total counts and
+truncation. Preserve known negative loading separately from proven signed-bound
+failure and omitted cases; never parse English marker details as engineering.
+Check selection-driven screening and uncached case presentation for hidden
+solving. Queries must return cached facts or a typed calculation-required refusal.
+No UI authority, Save or package effects. Match fresh results after explicit
+calculation and prove stale/foreign/cancelled reads before bindings.
 Maximum two deterministic findings with negative controls; no source writes,
 model effects, competing builds or printing/template work.

@@ -104,10 +104,12 @@ Terrain point edits still require interval segmentation and local
 calculation/station dependencies; dense segment splits/merges and identity
 reorders can require large changed array ranges.
 Full authored layout, comparison and cloning remain measurable costs despite
-retained route/ground inputs. Desktop still requests synchronous calculation
-inside the per-client queue. Bind native calculation jobs so authored observation,
-picking and selection remain available while it runs. Preserve exact history and
-publication fences, bounded native metrics and fresh engineering parity.
+retained route/ground inputs. Native job admission still transfers a full
+calculated scene. Browser/peer calculation remains on its model worker; bind
+the native job owner there so picking and selection remain available while it
+runs. Matching installed Desktop/CLI artifacts, native job controls and measured
+live editing/calculation acceptance remain outstanding. Preserve exact history
+and publication fences, bounded native metrics and fresh engineering parity.
 
 **Trace: remaining whole-model work during edits.**
 

@@ -222,16 +222,19 @@ explicit section calculation, Refresh, Analyze or reconciliation may solve.
 Recompute affected tension sections, their spans and structure usage including
 other incident forces at shared supports; stop there during interaction. Reuse
 unchanged demands, ground, case preparation, markers and layout. Keep calculation
-asynchronous and revision-fenced: bind the native job start/status/cancel/admit
-controls through CLI/MCP and Web/Desktop without holding the per-client queue
-while solving or polling. Cold initialization still projects synchronously;
-calculated-scene transfer remains broad. Allow further interaction while it runs,
+asynchronous and revision-fenced: expose native job tickets and bounded
+start/status/cancel controls directly through CLI/MCP, and bind the native owner
+for browser/peer calculation. Cold initialization still projects synchronously;
+calculated-scene transfer remains broad. Prove matching installed artifacts and
+live interaction while it runs,
 and reject/suppress stale results without losing edits. Query native retained typed
 or Arrow results directly for usage, failures, negative loading, violating
 sections, qualification and blockers; expose bounded CLI/MCP projections and
 counts with current-input/freshness evidence. Carry only necessary result/delta
 bytes into Profile. The Server/native owner must not depend on Svelte, browser
 state or Tauri; preserve explicit project/principal/model/session context.
+Selection-driven usage screening and uncached display-case changes must not
+solve implicitly: query admitted results or name the explicit calculation needed.
 
 **Measure and prove each slice.** Read `AGENTS.md`, PRINCIPLES.md, STABILIZATION.md
 and BUG-EVIDENCE.md first; use the `ds` skill and live command discovery. Read the
