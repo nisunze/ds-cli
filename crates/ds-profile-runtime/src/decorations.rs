@@ -43,7 +43,7 @@ pub fn project(
         for structure in scene.bands.iter().flat_map(|band| &band.structures) {
             let (points, text, encoding) = match structure.setting_depth_m {
                 Some(depth) => (
-                    vec![structure.ground.clone(), structure.base.clone()],
+                    vec![structure.ground, structure.base],
                     format!("{depth:.1} m"),
                     pen(O::OffsetEmbedmentHeight),
                 ),
@@ -54,7 +54,7 @@ pub fn project(
                 encoding,
                 points,
                 labels: vec![Label {
-                    point: structure.base.clone(),
+                    point: structure.base,
                     text,
                     offset_px: [6.0, 0.0],
                     rotation_radians: 0.0,
@@ -334,8 +334,8 @@ mod tests {
         structure.setting_depth_m = Some(2.0);
         structure.base.elevation_m = structure.ground.elevation_m - 2.0;
         structure.base.scene_y = structure.ground.scene_y + 10.0;
-        let ground = structure.ground.clone();
-        let foot = structure.base.clone();
+        let ground = structure.ground;
+        let foot = structure.base;
         let state = DisplayState::default();
         assert!(state.visibility[&O::OffsetEmbedmentHeight]);
         let document = serde_json::from_str(include_str!(

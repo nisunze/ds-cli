@@ -270,82 +270,20 @@ below), and recompute only the affected tension sections, bands and spans.
 Acceptance (STABILIZATION.md §4): retyping 618 shows the new type and usage in
 well under a second in a release build.
 
-## Queued next: native session replay for swift Profile edits
+## Native Profile transport and localized refresh
 
-After the NUM review, trace only STABILIZATION.md §4's package round trip:
-`ds-web/src/lib/grid/profile-native.ts`, worker command history, and
-`ds-command-kernel/crates/ds-profile-runtime`. The runtime already holds a
-session per scope. Identify the smallest native request that can replay the
-worker's typed journal with exact revision fences instead of checkpointing and
-decoding the entire package after every edit. Cover undo/redo, a replacement
-model, interleaved scopes, cancellation and stale results. Find existing
-fixtures for parity/refusal tests; name authoritative APIs and any blocker.
-Do not write source or launch builds. Maximum two actionable findings; record
-unexecuted scenarios as hypotheses. Codex will implement while you review.
-
-**Claimed (Claude, 2026-10-07 14:25 UTC):** native session replay review.
-
-**Findings (Claude, 14:40 UTC; read-only; kernel and ds-network `run`):**
-
-1. **Every piece exists except one runtime request.**
-   - **The runtime keeps a session, then throws it away.** It holds a
-     `GridSession` per scope (`ds-profile-runtime/src/lib.rs:59-66`
-     `HeldView`; maps `:87-90`), but its `Request` enum (`:32-37`) has only
-     `Project`, `CaseLayer`, `Layout` and `SelectionControls`. Every refresh
-     is `project`: it ingests the full `package_bytes` and opens a new
-     session (`:225-228`), after `checkpointDsgrid()` plus `Array.from` on
-     the web side (`ds-web/src/lib/grid/profile-native.ts:23`).
-   - **The engine already replays deterministically.**
-     `GridSession::replay` (`ds-grid-engine/src/session.rs:1002`): revision
-     ids are content-derived, and replay reproduces them (test
-     `tests/session.rs:258`).
-   - **The worker already exposes its journal.** `commandHistoryJson` and
-     `compareRevisions`, which returns the journal slice and the changed
-     dependency tokens between two revisions
-     (`ds-grid-wasm/src/session.rs:1241`, `:1262`). Each `JournalEntry`
-     (`journal.rs:16-23`) serializes the `command_id`, the `GridCommand`,
-     its `parent_revision` and its `resulting_revision`.
-   - **Smallest request:**
-     `Request::Advance { scope, base_revision, entries: Vec<JournalEntry> }`.
-     1. Refuse unless the held head equals `base_revision`.
-     2. For each entry: require parent = current head, apply
-        `CommandEnvelope::new(command_id, parent, command)` to the held
-        session, and require the result to equal `resulting_revision`.
-     3. Re-project from the held session, with no ingest. Then apply the
-        scoped dirty closure above instead of the whole model.
-     4. On any fence failure, return a typed `profile_replay_diverged`; the
-        web falls back to today's `project`.
-     5. Drop `checkpointDsgrid()` and `Array.from` from the per-edit path.
-   - **Fixtures to reuse:** engine `tests/session.rs:258`, `:281` and
-     `:485`; `tests/structure_rules.rs:579`; runtime `lib.rs:487` and
-     `:512`.
-   - **New tests:**
-     - **Parity:** `project(R0)` followed by `advance(R0 → R2)` must equal
-       `project(R2)`, compared as scene JSON.
-     - **Refusals:** a wrong base, a tampered `resulting_revision`, and an
-       unknown command kind.
-2. **Scenarios (hypotheses; not executed).**
-   - **Undo/redo.** Both sides apply identical entries, so the held session
-     has the same history. Add
-     `Request::Rewind { scope, to_revision }` using the engine's
-     `undo`/`redo` (`session.rs:733`, `:742`) until the head equals the
-     target. A target outside the held history means `project`.
-   - **Replacement model.** The runtime must compare the held model identity
-     and the base revision. A mismatch refuses, and the web falls back to
-     `project`.
-   - **Interleaved scopes.** Each `GridSessionClient` gets its own scope
-     UUID (`profile-native.ts`), and the runtime keys everything by scope,
-     so scopes stay independent.
-   - **Cancellation and stale results.** Keep the per-client serialized
-     queue (`profile-native.ts:44-49`) and the existing post-call
-     `currentRevision` check, so a result installs only at the head it was
-     computed for.
-   - **Blocker:** the held session is opened from `package.snapshot` only,
-     so retained assets are dropped (`lib.rs:228`). Commands that need
-     assets (native structure bytes, library attach) must fall back to
-     `project`, or the runtime must also keep the package assets. A cached
-     analysis (`analyses`) must be invalidated by the closure, never reused
-     across revisions.
+- The worker needs a read-only initialization handover of its opened snapshot,
+  active journal and retained assets. Initialization after earlier edits must
+  still permit undo to the opened state and must accept an invalid current draft
+  without packing it or changing Save metadata.
+- `ds-web/src/lib/grid/profile-native.ts` still checkpoints and transfers the
+  full package on every refresh. Bind it to native revision-fenced refresh,
+  capture model/generation scope, retain an admitted native head even when a
+  display result becomes stale, serialize same-client work and expose refusals
+  without an automatic checkpoint fallback.
+- Native scene preparation still rebuilds all bands at a changed revision.
+  Consume the command-receipt closure for affected bands and engineering
+  refresh, retaining unchanged scene and demand inputs at section ends.
 
 **Remaining in this vertical:** bind the held native Profile runtime and its
 analysis to the bounded command-receipt scope and demand cache; remove the
@@ -360,6 +298,14 @@ boundary for both CLI and user edits.
 - `4ba8ab15` (major): screen_structure_usage takes one side at section-boundary structures: wind span ~0.5x PLS, 115 spurious uplifts (Gisagara calibration).
 
 ## Queued after replay: exact incident-side calibration
+
+**Focused replay follow-up (Codex, 2026-10-07):** review the native replay/navigation
+request as it appears in `ds-profile-runtime`: transaction rollback on a later
+journal fence failure or projection refusal, same-revision model replacement,
+undo/redo and a branch after undo, retained package assets/protection, and demand
+cache advancement from native command receipts. Then trace the smallest native
+Profile scene refresh that consumes those receipt scopes without preparing every
+band again. Keep this read-only, at most two findings, no competing builds.
 
 Trace the moved `4ba8ab15` finding above on the exact Gisagara calibration
 fixture. Compare native whole-support conductor vectors with the screening

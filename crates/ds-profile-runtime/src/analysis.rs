@@ -9,6 +9,22 @@ pub fn analyze(
     scene: Option<&ds_grid_engine::ProfileAtlasScene>,
     projection_error: Option<&str>,
 ) -> Value {
+    analyze_with_cache(
+        session,
+        display_case,
+        scene,
+        projection_error,
+        &mut Default::default(),
+    )
+}
+
+pub(crate) fn analyze_with_cache(
+    session: &GridSession,
+    display_case: &ds_grid_engine::profile_display_case::ProfileDisplayCase,
+    scene: Option<&ds_grid_engine::ProfileAtlasScene>,
+    projection_error: Option<&str>,
+    cache: &mut ds_grid_engine::StructureUsageScreeningCache,
+) -> Value {
     let revision = session.current_revision();
     let mut blockers = Vec::new();
     if let Some(message) = projection_error {
@@ -37,7 +53,9 @@ pub fn analyze(
             json!({"status":"unavailable", "refusal":reason})
         }
     };
-    let issues = match session.engineering_issue_layer(
+    let issues = match ds_grid_engine::engineering_issue_layer::engineering_issue_layer_with_cache(
+        session.snapshot(),
+        session.current_revision(),
         &ds_grid_engine::engineering_issue_layer::EngineeringIssueLayerRequest {
             derive_structure_screening: true,
             structure_screening: scene.and_then(|scene| scene.engineering.usage_request.clone()),
@@ -47,6 +65,7 @@ pub fn analyze(
             max_features_per_kind: 2000,
             ..Default::default()
         },
+        cache,
     ) {
         Ok(layer) => {
             if let Some(reason) = &layer.clearance_unavailable {

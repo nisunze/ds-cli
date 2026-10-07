@@ -1,5 +1,6 @@
 //! Native Profile execution shared by the desktop host and headless callers.
-//! The immutable checkpoint is pinned before work; no package is ever written.
+//! Initialization pins a package once. Refresh replays the typed journal in RAM;
+//! neither refresh nor history navigation writes or packs a package.
 use ds_command_kernel::profile_display::{DisplayPatch, DisplayState};
 use ds_command_kernel::profile_encoding::{
     clearance_violation_encoding, resolve, review_box_ink, review_status_colors, DisplayRow,
@@ -15,6 +16,9 @@ pub use analysis::analyze;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
+use std::sync::Arc;
+mod replay;
+pub use replay::RefreshRequest;
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -31,6 +35,7 @@ pub struct ProjectRequest {
 #[serde(tag = "operation", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Request {
     Project(Box<ProjectRequest>),
+    Refresh(Box<RefreshRequest>),
     CaseLayer(CaseRequest),
     Layout(ds_command_kernel::profile_layout::Request),
     SelectionControls(ds_command_kernel::grid_selection_controls::Request),
@@ -56,8 +61,16 @@ impl From<CaseRequest> for Request {
     }
 }
 
+#[derive(Clone)]
+struct HeldSource {
+    model_id: String,
+    presentation: ds_grid_model::GridPresentationPolicy,
+    assets: Arc<Vec<ds_grid_exchange::AssetBytes>>,
+}
 struct HeldView {
     session: GridSession,
+    source: HeldSource,
+    demand_cache: ds_grid_engine::StructureUsageScreeningCache,
     review: ds_grid_engine::profile_engineering::ProfileReviewView,
     options: ProfileAtlasOptions,
     rows: Vec<DisplayRow>,
@@ -93,6 +106,7 @@ impl Runtime {
     pub fn execute(&mut self, request: impl Into<Request>) -> Result<Value, String> {
         match request.into() {
             Request::Project(request) => self.project(*request),
+            Request::Refresh(request) => self.refresh(*request),
             Request::CaseLayer(request) => self.case_layer(request),
             Request::Layout(request) => {
                 Ok(json!(ds_command_kernel::profile_layout::resolve(request)?))
@@ -215,7 +229,7 @@ impl Runtime {
         }
         Ok(receipt)
     }
-    fn project(&mut self, mut request: ProjectRequest) -> Result<Value, String> {
+    fn project(&mut self, request: ProjectRequest) -> Result<Value, String> {
         if request.scope.is_empty()
             || request.scope.len() > 1024
             || request.package_bytes.len() > 512 * 1024 * 1024
@@ -224,8 +238,22 @@ impl Runtime {
         }
         let (package, _) = ds_grid_exchange::dsgrid::ingest(&request.package_bytes)
             .map_err(|error| format!("profile_package_invalid: {error}"))?;
-        let presentation = package.manifest.model.presentation;
-        let session = GridSession::open(package.snapshot);
+        let session = ds_grid_exchange::linked_models::open_session(&package);
+        let source = HeldSource {
+            model_id: package.manifest.model.model_id.to_string(),
+            presentation: package.manifest.model.presentation,
+            assets: Arc::new(package.assets),
+        };
+        self.project_session(request, session, source, Default::default())
+    }
+    fn project_session(
+        &mut self,
+        mut request: ProjectRequest,
+        session: GridSession,
+        source: HeldSource,
+        mut demand_cache: ds_grid_engine::StructureUsageScreeningCache,
+    ) -> Result<Value, String> {
+        let model_id = &source.model_id;
         let revision = session.current_revision();
         if revision.revision_id.to_string() != request.expected_revision {
             return Err(
@@ -281,11 +309,16 @@ impl Runtime {
         let scene_options = request.options.clone();
         let requested_case = request.options.display_case.clone();
         let mut previous = self.held.remove(&request.scope);
+        let same_model = previous
+            .as_ref()
+            .is_some_and(|held| held.source.model_id == *model_id);
         let last_weather_sequence = previous
             .as_ref()
+            .filter(|_| same_model)
             .map_or(0, |held| held.last_weather_sequence);
         let mut review = previous
             .as_mut()
+            .filter(|_| same_model)
             .map(|held| std::mem::take(&mut held.review))
             .unwrap_or_default();
         review.install_case(requested_case);
@@ -308,11 +341,12 @@ impl Runtime {
             if !request.analyze {
                 return Err(error.clone());
             }
-            let analysis = analyze(
+            let analysis = analysis::analyze_with_cache(
                 &session,
                 &scene_options.display_case,
                 scene.as_ref().ok(),
                 Some(error),
+                &mut demand_cache,
             );
             let command_view = command_view::project(
                 &state,
@@ -325,12 +359,12 @@ impl Runtime {
                 .insert(request.scope.clone(), analysis.clone());
             self.commit_view(&request.scope, state.clone());
             return Ok(
-                json!({"scene":null, "analysis":analysis, "display_state":state, "projection_unavailable":error, "command_view":command_view, "ran":true}),
+                json!({"model_id":model_id, "model_revision":request.expected_revision, "retained_asset_count":source.assets.len(), "scene":null, "analysis":analysis, "display_state":state, "projection_unavailable":error, "command_view":command_view, "ran":true}),
             );
         }
         let mut scene = scene.unwrap();
         let (rows, review_status_colors, review_box_ink) = styles.unwrap();
-        let mut label_policy = presentation.effective_profile_structure_labels();
+        let mut label_policy = source.presentation.effective_profile_structure_labels();
         label_policy.fields = serde_json::from_value(json!(label_fields(&state)))
             .map_err(|error| error.to_string())?;
         ds_grid_engine::profile_labels::compose_scene_structure_labels(&mut scene, &label_policy);
@@ -348,15 +382,24 @@ impl Runtime {
             stroke.dash_px = grid.dash_px.clone();
         }
         let analysis = if request.analyze {
-            let value = analyze(&session, &scene_options.display_case, Some(&scene), None);
+            let value = analysis::analyze_with_cache(
+                &session,
+                &scene_options.display_case,
+                Some(&scene),
+                None,
+                &mut demand_cache,
+            );
             self.analyses.insert(request.scope.clone(), value.clone());
             Some(value)
         } else {
             self.analyses
                 .get(&request.scope)
-                .filter(|value| value["model_revision"] == request.expected_revision)
+                .filter(|value| same_model && value["model_revision"] == request.expected_revision)
                 .cloned()
         };
+        if !same_model && !request.analyze {
+            self.analyses.remove(&request.scope);
+        }
         let command_view = command_view::project(
             &state,
             Some(&rows),
@@ -369,6 +412,8 @@ impl Runtime {
             request.scope.clone(),
             HeldView {
                 session,
+                source: source.clone(),
+                demand_cache,
                 review,
                 options: scene_options.clone(),
                 rows: rows.clone(),
@@ -412,7 +457,7 @@ impl Runtime {
         // Keep analysis once on the native wire. The desktop transports that same
         // evidence alongside its held scene without serializing a second copy.
         Ok(
-            json!({ "scene": scene, "analysis": analysis, "display_state":state, "projection_unavailable":null, "command_view":command_view, "ran": request.analyze }),
+            json!({ "model_id":model_id, "model_revision":request.expected_revision, "retained_asset_count":source.assets.len(), "scene": scene, "analysis": analysis, "display_state":state, "projection_unavailable":null, "command_view":command_view, "ran": request.analyze }),
         )
     }
     fn commit_view(&mut self, scope: &str, state: DisplayState) {
@@ -455,7 +500,10 @@ mod transactional_projection_tests {
     use super::*;
     use ds_grid_model::{EntityId, ModelCrs};
     fn request() -> ProjectRequest {
-        let session = GridSession::open(common::fixture());
+        request_for(common::fixture())
+    }
+    fn request_for(snapshot: ds_grid_model::GridModelSnapshot) -> ProjectRequest {
+        let session = GridSession::open(snapshot);
         let (artifacts, _) = ds_grid_exchange::dsgrid::emit(
             session.snapshot(),
             &ds_grid_exchange::PackOptions {
@@ -465,7 +513,10 @@ mod transactional_projection_tests {
                 presentation: Default::default(),
                 library_pins: vec![],
                 library_needs: vec![],
-                assets: vec![],
+                assets: vec![ds_grid_exchange::AssetBytes {
+                    invariant_leaf: "source-evidence.txt".into(),
+                    bytes: b"retained exact evidence".to_vec(),
+                }],
                 exchange_bindings: Default::default(),
             },
         )
@@ -482,6 +533,411 @@ mod transactional_projection_tests {
             patch: Default::default(),
             analyze: false,
         }
+    }
+    fn refresh(input: &ProjectRequest, base: &str, session: &GridSession) -> RefreshRequest {
+        RefreshRequest {
+            scope: input.scope.clone(),
+            model_id: "profile-test".into(),
+            base_revision: serde_json::from_value(json!(base)).unwrap(),
+            expected_revision: session.current_revision().revision_id.clone(),
+            entries: session.command_history(),
+            options: input.options.clone(),
+            style_document: input.style_document.clone(),
+            patch: Default::default(),
+            analyze: false,
+        }
+    }
+    fn describe(session: &mut GridSession, id: &str, text: &str) {
+        session
+            .apply_command(ds_grid_engine::CommandEnvelope::new(
+                id,
+                session.current_revision().revision_id.clone(),
+                ds_grid_engine::GridCommand::DescribeStructure {
+                    id: ds_grid_model::StructureId::new("str-2").unwrap(),
+                    description: Some(text.into()),
+                },
+            ))
+            .unwrap();
+    }
+    #[test]
+    fn journal_refresh_matches_fresh_projection_and_navigates_undo_redo_and_branches() {
+        let input = request();
+        let mut runtime = Runtime::default();
+        runtime.execute(input.clone()).unwrap();
+        let assets = runtime.held[&input.scope].source.assets.clone();
+        let mut worker = GridSession::open(common::fixture());
+        describe(&mut worker, "one", "changed once");
+        describe(&mut worker, "two", "changed twice");
+        let edited = worker.current_revision().revision_id.to_string();
+        let replay = runtime
+            .execute(refresh(&input, &input.expected_revision, &worker))
+            .unwrap();
+        let fresh = Runtime::default()
+            .project_session(
+                ProjectRequest {
+                    expected_revision: edited.clone(),
+                    ..input.clone()
+                },
+                GridSession::open(worker.snapshot().clone()),
+                HeldSource {
+                    model_id: "profile-test".into(),
+                    presentation: Default::default(),
+                    assets: assets.clone(),
+                },
+                Default::default(),
+            )
+            .unwrap();
+        assert_eq!(replay, fresh);
+        assert!(Arc::ptr_eq(
+            &assets,
+            &runtime.held[&input.scope].source.assets
+        ));
+        assert_eq!(assets[0].bytes, b"retained exact evidence");
+        worker.undo().unwrap();
+        let middle = worker.current_revision().revision_id.to_string();
+        runtime.execute(refresh(&input, &edited, &worker)).unwrap();
+        assert_eq!(
+            runtime.held[&input.scope].session.snapshot(),
+            worker.snapshot()
+        );
+        worker.redo().unwrap();
+        runtime.execute(refresh(&input, &middle, &worker)).unwrap();
+        worker.undo().unwrap();
+        describe(&mut worker, "branch", "new branch");
+        runtime.execute(refresh(&input, &edited, &worker)).unwrap();
+        assert_eq!(
+            runtime.held[&input.scope].session.snapshot(),
+            worker.snapshot()
+        );
+        assert_eq!(
+            runtime.held[&input.scope].session.history_state(),
+            worker.history_state()
+        );
+    }
+    #[test]
+    fn repeated_content_revision_preserves_the_exact_journal_cursor() {
+        let input = request();
+        let mut worker = GridSession::open(common::fixture());
+        let mut runtime = Runtime::default();
+        runtime.execute(input.clone()).unwrap();
+        describe(&mut worker, "one", "temporary description");
+        worker
+            .apply_command(ds_grid_engine::CommandEnvelope::new(
+                "two",
+                worker.current_revision().revision_id.clone(),
+                ds_grid_engine::GridCommand::DescribeStructure {
+                    id: ds_grid_model::StructureId::new("str-2").unwrap(),
+                    description: None,
+                },
+            ))
+            .unwrap();
+        assert_eq!(
+            worker.current_revision().revision_id.to_string(),
+            input.expected_revision
+        );
+        runtime
+            .execute(refresh(&input, &input.expected_revision, &worker))
+            .unwrap();
+        assert_eq!(
+            runtime.held[&input.scope].session.history_state(),
+            worker.history_state()
+        );
+        let mut bad = refresh(&input, &input.expected_revision, &worker);
+        bad.entries[1].command_id = "one".into();
+        assert!(runtime
+            .execute(bad)
+            .unwrap_err()
+            .starts_with("profile_replay_diverged:"));
+        assert_eq!(
+            runtime.held[&input.scope].session.history_state(),
+            worker.history_state()
+        );
+    }
+    #[test]
+    fn unresolved_attachment_draft_refreshes_in_ram_without_pack_validation() {
+        use ds_grid_model::*;
+        let mut snapshot = common::fixture();
+        let mut target = snapshot.structure_types[0].clone();
+        target.id = StructureTypeId::new("target-type").unwrap();
+        target.engineering_name = "Unresolved target".into();
+        snapshot.structure_types.push(target);
+        let mut geometry = snapshot.structure_geometry[0].clone();
+        geometry.id = StructureMemberId::new("target-geometry").unwrap();
+        geometry.structure_type_id = StructureTypeId::new("target-type").unwrap();
+        snapshot.structure_geometry.push(geometry);
+        snapshot.tension_sections.push(TensionSectionRow {
+            id: TensionSectionId::new("draft-section").unwrap(),
+            cable_id: CableId::new("cb-1").unwrap(),
+            criterion_set_id: None,
+            sag: AuthoredSag::HorizontalTension { tension_n: 20_000. },
+            sag_condition: Some(CableCondition::Initial),
+            sag_weather_state_id: Some(WeatherStateId::new("ws-everyday").unwrap()),
+            ruling_span_m: Some(300.),
+            details: Default::default(),
+        });
+        for (sequence, id) in ["str-1", "str-2", "str-3"].into_iter().enumerate() {
+            snapshot
+                .tension_section_supports
+                .push(TensionSectionSupportRow {
+                    section_id: TensionSectionId::new("draft-section").unwrap(),
+                    sequence: sequence as u32,
+                    structure_id: StructureId::new(id).unwrap(),
+                    attachment_point_id: Some(AttachmentPointId::new("ap-left").unwrap()),
+                    insulator_model: None,
+                });
+        }
+        let input = request_for(snapshot.clone());
+        let mut worker = GridSession::open(snapshot);
+        let mut runtime = Runtime::default();
+        runtime.execute(input.clone()).unwrap();
+        worker
+            .apply_command(ds_grid_engine::CommandEnvelope::new(
+                "draft-retype",
+                worker.current_revision().revision_id.clone(),
+                ds_grid_engine::GridCommand::RetypeStructure {
+                    id: StructureId::new("str-2").unwrap(),
+                    structure_type_id: StructureTypeId::new("target-type").unwrap(),
+                },
+            ))
+            .unwrap();
+        assert!(
+            !worker.is_valid(),
+            "the unresolved draft must fail package validation"
+        );
+        let result = runtime
+            .execute(refresh(&input, &input.expected_revision, &worker))
+            .unwrap();
+        assert_eq!(
+            result["model_revision"],
+            worker.current_revision().revision_id.to_string()
+        );
+        assert_eq!(
+            runtime.held[&input.scope].session.validation(),
+            worker.validation()
+        );
+        assert_eq!(
+            runtime.held[&input.scope].session.snapshot(),
+            worker.snapshot()
+        );
+    }
+    #[test]
+    fn refresh_carries_demand_cache_through_native_receipts_but_not_navigation() {
+        use ds_grid_model::*;
+        let mut snapshot = common::fixture();
+        snapshot.tension_sections.push(TensionSectionRow {
+            id: TensionSectionId::new("cache-section").unwrap(),
+            cable_id: snapshot.cables[0].id.clone(),
+            criterion_set_id: Some(snapshot.criterion_sets[0].id.clone()),
+            sag: AuthoredSag::HorizontalTension { tension_n: 5000. },
+            sag_condition: Some(CableCondition::Initial),
+            sag_weather_state_id: Some(snapshot.weather_states[0].id.clone()),
+            ruling_span_m: None,
+            details: Default::default(),
+        });
+        for (sequence, structure) in snapshot.structures.iter().enumerate() {
+            snapshot
+                .tension_section_supports
+                .push(TensionSectionSupportRow {
+                    section_id: snapshot.tension_sections[0].id.clone(),
+                    sequence: sequence as u32,
+                    structure_id: structure.id.clone(),
+                    attachment_point_id: Some(snapshot.attachment_points[0].id.clone()),
+                    insulator_model: None,
+                });
+        }
+        let mut adjacent = snapshot.tension_sections[0].clone();
+        adjacent.id = TensionSectionId::new("unchanged-section").unwrap();
+        for (sequence, index) in [0, 2].into_iter().enumerate() {
+            snapshot
+                .tension_section_supports
+                .push(TensionSectionSupportRow {
+                    section_id: adjacent.id.clone(),
+                    sequence: sequence as u32,
+                    structure_id: snapshot.structures[index].id.clone(),
+                    attachment_point_id: Some(snapshot.attachment_points[1].id.clone()),
+                    insulator_model: None,
+                });
+        }
+        snapshot.tension_sections.push(adjacent);
+        let selection = ds_grid_engine::structure_usage::StructureUsageScreeningRequest {
+            criterion_set_id: snapshot.criterion_sets[0].id.clone(),
+            analysis_case_ids: snapshot
+                .analysis_cases
+                .iter()
+                .map(|case| case.id.clone())
+                .collect(),
+            weight_span_basis: WeightSpanBasis::Conventional,
+            structure_ids: vec![],
+        };
+        let input = request_for(snapshot.clone());
+        let mut worker = GridSession::open(snapshot);
+        let mut runtime = Runtime::default();
+        runtime.execute(input.clone()).unwrap();
+        let screen = |held: &mut HeldView| {
+            held.demand_cache
+                .screen(
+                    held.session.snapshot(),
+                    &held.session.current_revision().revision_id,
+                    &selection,
+                )
+                .unwrap()
+        };
+        screen(runtime.held.get_mut(&input.scope).unwrap());
+        describe(
+            &mut worker,
+            "annotation",
+            "only one incident section invalidates",
+        );
+        runtime
+            .execute(refresh(&input, &input.expected_revision, &worker))
+            .unwrap();
+        let held = runtime.held.get_mut(&input.scope).unwrap();
+        let cached = screen(held);
+        assert_eq!(
+            held.demand_cache.last_demand_work().computed_cases,
+            selection.analysis_case_ids.len()
+        );
+        assert_eq!(
+            held.demand_cache.last_demand_work().reused_cases,
+            selection.analysis_case_ids.len()
+        );
+        assert_eq!(
+            cached,
+            ds_grid_engine::structure_usage::structure_usage_screening(
+                worker.snapshot(),
+                &selection
+            )
+            .unwrap()
+        );
+        let edited = worker.current_revision().revision_id.to_string();
+        worker.undo().unwrap();
+        runtime.execute(refresh(&input, &edited, &worker)).unwrap();
+        let held = runtime.held.get_mut(&input.scope).unwrap();
+        screen(held);
+        assert!(held.demand_cache.last_demand_work().computed_cases > 0);
+        assert_eq!(held.demand_cache.last_demand_work().reused_cases, 0);
+    }
+    #[test]
+    fn later_replay_or_projection_refusal_preserves_history_display_assets_and_analysis() {
+        let mut input = request();
+        input.analyze = true;
+        let mut runtime = Runtime::default();
+        runtime.execute(input.clone()).unwrap();
+        let analysis = runtime.analyses[&input.scope].clone();
+        let history = runtime.held[&input.scope].session.history_state();
+        let mut worker = GridSession::open(common::fixture());
+        describe(&mut worker, "one", "first staged edit");
+        describe(&mut worker, "two", "second staged edit");
+        let mut bad = refresh(&input, &input.expected_revision, &worker);
+        bad.entries[1].resulting_revision = serde_json::from_value(json!("wrong-result")).unwrap();
+        bad.expected_revision = bad.entries[1].resulting_revision.clone();
+        assert!(runtime
+            .execute(bad)
+            .unwrap_err()
+            .starts_with("profile_replay_diverged:"));
+        let admitted = runtime.views[&input.scope].clone();
+        runtime
+            .views
+            .get_mut(&input.scope)
+            .unwrap()
+            .terrain
+            .gap_tolerance_m = -1.0;
+        let bad = refresh(&input, &input.expected_revision, &worker);
+        assert!(runtime
+            .execute(bad)
+            .unwrap_err()
+            .starts_with("profile_scene_unavailable:"));
+        runtime.views.insert(input.scope.clone(), admitted);
+        assert_eq!(runtime.held[&input.scope].session.history_state(), history);
+        assert_eq!(runtime.analyses[&input.scope], analysis);
+        runtime
+            .execute(refresh(&input, &input.expected_revision, &worker))
+            .unwrap();
+        assert!(runtime
+            .execute(refresh(&input, &input.expected_revision, &worker))
+            .unwrap_err()
+            .starts_with("profile_replay_stale:"));
+    }
+    #[test]
+    fn replay_isolated_by_scope_and_model_even_with_identical_content_revisions() {
+        let one = request();
+        let mut two = one.clone();
+        two.scope = "two".into();
+        let mut runtime = Runtime::default();
+        runtime.execute(one.clone()).unwrap();
+        runtime.execute(two.clone()).unwrap();
+        let mut worker = GridSession::open(common::fixture());
+        describe(&mut worker, "one", "scoped edit");
+        let mut wrong = refresh(&one, &one.expected_revision, &worker);
+        wrong.model_id = "replacement-model".into();
+        assert!(runtime
+            .execute(wrong)
+            .unwrap_err()
+            .starts_with("profile_replay_model_mismatch:"));
+        runtime
+            .execute(refresh(&one, &one.expected_revision, &worker))
+            .unwrap();
+        assert_eq!(
+            runtime.held[&two.scope]
+                .session
+                .current_revision()
+                .revision_id
+                .to_string(),
+            two.expected_revision
+        );
+        let mut missing = refresh(&two, &two.expected_revision, &worker);
+        missing.scope = "missing".into();
+        assert!(runtime
+            .execute(missing)
+            .unwrap_err()
+            .starts_with("profile_replay_base_unavailable:"));
+        let mut wire = serde_json::json!({"operation":"refresh", "scope":"one", "model_id":"profile-test",
+            "base_revision":one.expected_revision, "expected_revision":worker.current_revision().revision_id,
+            "entries":worker.command_history(), "options":one.options, "style_document":one.style_document,
+            "patch":{}, "analyze":false});
+        wire["entries"][0]["command"]["command_kind"] = json!("unknown_command");
+        assert!(serde_json::from_value::<Request>(wire).is_err());
+    }
+    #[test]
+    fn package_derived_combined_protection_survives_native_replay() {
+        let mut input = request();
+        let (package, _) = ds_grid_exchange::dsgrid::ingest(&input.package_bytes).unwrap();
+        let model_id = "combined.0123456789abcdef";
+        let bytes = ds_grid_exchange::pack(
+            &package.snapshot,
+            &ds_grid_exchange::PackOptions {
+                model_id: EntityId::new(model_id).unwrap(),
+                model_revision: 0,
+                coordinate_system: ModelCrs::new("EPSG:32736").unwrap(),
+                presentation: Default::default(),
+                library_pins: vec![],
+                library_needs: vec![],
+                assets: package.assets,
+                exchange_bindings: Default::default(),
+            },
+        )
+        .unwrap();
+        input.package_bytes = bytes;
+        let mut runtime = Runtime::default();
+        runtime.execute(input.clone()).unwrap();
+        let mut unprotected_worker = GridSession::open(common::fixture());
+        describe(&mut unprotected_worker, "write", "must refuse");
+        let mut attempt = refresh(&input, &input.expected_revision, &unprotected_worker);
+        attempt.model_id = model_id.into();
+        let error = runtime.execute(attempt).unwrap_err();
+        assert!(error.starts_with("profile_replay_diverged:"), "{error}");
+        assert!(
+            error.contains(ds_grid_engine::model_protection::PROTECTED_CODE),
+            "{error}"
+        );
+        assert_eq!(
+            runtime.held[&input.scope]
+                .session
+                .current_revision()
+                .revision_id
+                .to_string(),
+            input.expected_revision
+        );
     }
     #[test]
     fn boxed_project_request_preserves_exact_native_wire_fields_and_package_bytes() {

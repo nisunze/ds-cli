@@ -58,3 +58,29 @@ combination operation, then layer choice. Rust admits queries and composes
 ordered selected identities; host project/model/revision/scene/cancellation fences
 remain in force. Outside means disjoint, including all occurrences, never merely
 "not wholly within".
+
+Native Profile sessions initialize once with `operation: project`. The admitted
+receipt names `model_id` and `model_revision`. `operation: refresh` contains that
+model identity, the held `base_revision`, the worker's `expected_revision`, its
+active typed `JournalEntry` prefix from the initialized snapshot, and the same
+options/style/patch/analyze inputs. There are no package bytes in refresh.
+The runtime finds the exact common command prefix, navigates retained history,
+and applies only new entries with parent and resulting-revision fences. Command
+identity distinguishes repeated content revisions, including a branch after undo.
+
+Replay and projection admission are one transaction. A stale base, replacement
+model, unknown journal origin, invalid command, divergent result or failed
+projection leaves the held session, redo tail, display and analysis unchanged.
+These named refusals never trigger an automatic package-checkpoint fallback.
+Initialize a replacement model in a fresh scope. The renderer captures its own
+scope/generation and revision before work and installs a result only while those
+pins are still current; a stale display result does not undo an admitted native
+session advance. The next request uses the native receipt's admitted head.
+
+The session retains package assets by shared ownership and opens with the same
+package-derived protection as other native consumers. Demand caches advance
+only from engine command receipts: unaffected section demands survive forward
+edits, while navigation or unmatched parents make old evidence non-current.
+Old analysis is never projected as current at a different authored revision.
+Initialization must use the worker's opened snapshot so its entire active
+journal, including undo before the first Profile display, remains navigable.
