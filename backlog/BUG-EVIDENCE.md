@@ -153,3 +153,16 @@ retyped to a two-set strain type. Expect every support rebound and the package
 to emit. Then retype it back: expect the same.
 
 **Related:** STABILIZATION.md §4 (swift editing).
+
+## Queued next: native session replay for swift Profile edits
+
+After the NUM review, trace only STABILIZATION.md §4's package round trip:
+`ds-web/src/lib/grid/profile-native.ts`, worker command history, and
+`ds-command-kernel/crates/ds-profile-runtime`. The runtime already holds a
+session per scope. Identify the smallest native request that can replay the
+worker's typed journal with exact revision fences instead of checkpointing and
+decoding the entire package after every edit. Cover undo/redo, a replacement
+model, interleaved scopes, cancellation and stale results. Find existing
+fixtures for parity/refusal tests; name authoritative APIs and any blocker.
+Do not write source or launch builds. Maximum two actionable findings; record
+unexecuted scenarios as hypotheses. Codex will implement while you review.
