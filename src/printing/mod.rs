@@ -18,6 +18,7 @@ pub mod mv;
 pub mod mv_booklet;
 pub mod mv_context;
 pub mod mv_placement;
+pub mod mv_preview;
 pub mod mv_settings;
 pub mod names;
 pub mod network_fit;
