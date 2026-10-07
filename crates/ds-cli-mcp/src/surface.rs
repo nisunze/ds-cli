@@ -3372,33 +3372,52 @@ mod tests {
                         .collect::<Vec<_>>()
                 })
             });
-            let profile = text.lines().find_map(|line| {
+            // A skill that teaches several workflows names each workflow's
+            // typed profile. Together they carry every declared chapter, and
+            // none is named that carries no chapter of the skill.
+            let profiles = text.lines().find_map(|line| {
                 line.trim_start()
                     .strip_prefix("ds-mcp-profile:")
                     .map(|value| {
-                        let token = value.trim();
-                        Profile::from_token(token).unwrap_or_else(|| {
-                            panic!("{} names unknown profile `{token}`", path.display())
-                        })
+                        value
+                            .split(',')
+                            .map(str::trim)
+                            .map(|token| {
+                                Profile::from_token(token).unwrap_or_else(|| {
+                                    panic!("{} names unknown profile `{token}`", path.display())
+                                })
+                            })
+                            .collect::<Vec<_>>()
                     })
             });
             if let Some(chapters) = chapters {
                 declared += 1;
                 assert!(!chapters.is_empty(), "{} has no chapters", path.display());
-                if let Some(profile) = profile {
-                    for chapter in chapters {
+                if let Some(profiles) = profiles {
+                    for chapter in &chapters {
                         assert!(
-                            profile.includes_chapter(chapter),
-                            "{} requires `{}` but profile `{}` omits it",
+                            profiles
+                                .iter()
+                                .any(|profile| profile.includes_chapter(*chapter)),
+                            "{} requires `{}` but no named profile carries it",
                             path.display(),
-                            chapter.token(),
+                            chapter.token()
+                        );
+                    }
+                    for profile in &profiles {
+                        assert!(
+                            chapters
+                                .iter()
+                                .any(|chapter| profile.includes_chapter(*chapter)),
+                            "{} names profile `{}`, which carries none of its chapters",
+                            path.display(),
                             profile.token()
                         );
                     }
                 }
             } else {
                 assert!(
-                    profile.is_none(),
+                    profiles.is_none(),
                     "{} names a profile without declaring chapters",
                     path.display()
                 );

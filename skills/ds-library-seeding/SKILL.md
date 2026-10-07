@@ -3,7 +3,7 @@ name: ds-library-seeding
 description: Capture and pin an immutable DS Grid model library, or seed and verify a parallel native library with exact digest-pinned members.
 metadata:
   ds-chapters: grid-model, pls-cadd
-  ds-mcp-profile: pls
+  ds-mcp-profile: grid-local-model, pls-library, library-governance
 ---
 
 # Seed one immutable engineering library
