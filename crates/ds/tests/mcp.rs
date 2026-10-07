@@ -3257,8 +3257,13 @@ fn grid_lasso_mcp_projects_the_contract_and_paired_authority_gate() {
         .find(|input| input["name"] == "family")
         .unwrap();
     assert_eq!(properties["family"]["items"]["enum"], family["choices"]);
-    assert_eq!(properties["mode"]["default"], "replace");
-    assert_eq!(properties["predicate"]["default"], "intersects");
+    assert!(properties["mode"].get("default").is_none());
+    assert!(properties["predicate"].get("default").is_none());
+    assert_eq!(properties["all-layers"]["type"], "boolean");
+    assert_eq!(
+        properties["action"]["enum"],
+        json!(["select", "read", "configure"])
+    );
     assert_eq!(properties["filter"]["type"], "string");
     assert!(properties.get("project").is_none());
     assert!(properties.get("axis_pin_digest").is_none());

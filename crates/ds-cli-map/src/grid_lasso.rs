@@ -44,7 +44,7 @@ pub static COMMAND: Command = Command {
     id: "map.grid.lasso",
     path: &["map", "grid", "lasso"],
     contract: 2,
-    summary: "Select Grid elements or configure shared Plan/Profile selection controls.",
+    summary: "Select Grid elements or configure Plan/Profile controls.",
     purpose: "Select without model edits; the window fences model/revision. Read/configure share toolbar preferences: initially Within, All layers; omission retains scoped choices. Outside selects disjoint solved geometry.",
     chapter: Chapter::MapPresentation,
     effect: Effect::LocalUi,

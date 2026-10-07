@@ -4737,6 +4737,8 @@ fn grid_lasso_sends_one_declared_query_and_returns_the_exact_window_receipt() {
             "family",
             "filter",
             "mode",
+            "action",
+            "all-layers",
             "target",
             "desktop-descriptor"
         ])
@@ -4780,8 +4782,10 @@ fn grid_lasso_sends_one_declared_query_and_returns_the_exact_window_receipt() {
         assert_eq!(payload["expected_revision"], "rev-b");
         assert_eq!(payload["space"], space);
         assert_eq!(payload["families"], json!(["structures"]));
-        assert_eq!(payload["predicate"], "intersects");
-        assert_eq!(payload["mode"], "replace");
+        // Omitted controls use the native owner's defaults or remembered
+        // choices, rather than a second default supplied by the CLI.
+        assert!(payload.get("predicate").is_none());
+        assert!(payload.get("mode").is_none());
         assert_eq!(
             ds_cli_desktop::ops::undeclared_key(&ds_cli_map::GRID_LASSO, payload),
             None
