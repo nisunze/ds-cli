@@ -153,6 +153,33 @@ MV". If the owner wants the old words, author them as governed legend titles
 in the MV context template; the template-literal ratchet forbids Rust
 literals.
 
+## 8. The Issues drawer opens uninvited
+
+**Owner, 2026-10-07:** the Engineering issues drawer "is coming uninvited too
+much". Seen on Desktop with Nyamagabe MV Model 1, while working on the map and
+Profile.
+
+**Cause:**
+
+- Every native Profile run with analysis publishes an issue target
+  (`ds-web/src/lib/desktop/cli-profile-native.ts:57`,
+  `engineeringIssueDock.set(...)`).
+- `ds-web/src/lib/components/map/MapRightDock.svelte:74` then switches the
+  right dock to Issues whenever issues become available
+  (`if (showIssues && !previousIssues) active = 'issues'`).
+- So each compute or refresh pops the drawer open, even when nobody asked.
+- The invited path is the Profile toolbar's Issues button
+  (`GridProfilePanel.svelte:726`).
+
+**Needed:**
+
+- Keep the analysis result current without opening the drawer or switching
+  the tab.
+- Open it only on the user's action (the Issues button or a finding link).
+- Respect a closed drawer until the user reopens it.
+
+This intersects Codex's in-progress Profile UI work: fold it into that slice.
+
 ## Reference: landed on 7 October, don't redo
 
 ds-network `720f4184` (one compact attachment box per structure), `516e29c0`;
