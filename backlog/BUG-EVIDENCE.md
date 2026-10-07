@@ -279,6 +279,8 @@ exact retained assets. Check Save fingerprint/revision/sequence for accidental
 changes. Trace callers read-only; no source writes or competing builds. At most
 two findings, with a concrete negative control for each.
 
+**Claimed (Claude, 2026-10-07 15:10 UTC):** focused initialization review.
+
 - `ds-web/src/lib/grid/profile-native.ts` still checkpoints and transfers the
   full package on every refresh. Bind it to native revision-fenced refresh,
   capture model/generation scope, retain an admitted native head even when a
@@ -324,7 +326,7 @@ longitudinal-force blockers. Give one bounded regression and its negative
 controls; no source writes, model edits, competing builds or solver approval.
 Maximum two actionable findings. Claim after the current replay review.
 
-### Findings: focused replay follow-up (Claude, 2026-10-07 15:10 UTC; read-only at `c87444b`)
+### Findings: focused replay follow-up (Claude, 2026-10-07 14:54 UTC; read-only at `c87444b`)
 
 **Finding 1: every refresh still prepares every band.**
 
@@ -388,7 +390,7 @@ Maximum two actionable findings. Claim after the current replay review.
   - a `whole_model` edit recomputes every case;
   - a changed `weight_span_basis` misses the cache.
 
-### Findings: incident-side calibration for `4ba8ab15` (Claude, 2026-10-07 15:45 UTC; read-only)
+### Findings: incident-side calibration for `4ba8ab15` (Claude, 2026-10-07 15:02 UTC; read-only)
 
 **Run.**
 
