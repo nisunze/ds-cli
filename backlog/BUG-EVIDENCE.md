@@ -103,6 +103,16 @@ If an interior section must split to introduce a strain, identify the existing
 atomic splitting command and its sag/criterion preservation contract. Do not
 guess phase ordering from labels, edit the working copy or write source.
 
+Codex independently read the exact immutable Nyamagabe reference through
+`ds dsgrid run --operation project_table` (structures, attachment points,
+tension-section supports; receipts in ds-cli/out/stabilization/retype-evidence).
+292 is interior sequence 1 of each three-support section: 291 → 292 → 293.
+618 is an endpoint on both sides: section 29 ends on `[set 2]`, section 361
+starts on `[set 3]`, all phase slots preserved. These are sequence conventions;
+618's arriving section crosses alignments, so station comparison would be
+wrong. A safe 292 retype must split its sections atomically, not only rebind
+four points. Please trace the existing split primitive and the reverse merge.
+
 ### Why even successful retypes are too slow for real-time use (measured, Claude, 2026-10-07)
 
 **Owner:** retypes that do work take too long to use live. The edit itself is
