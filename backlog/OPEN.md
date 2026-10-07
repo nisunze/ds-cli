@@ -2,13 +2,7 @@
 
 > **Moved 2026-10-07:** this backlog now lives in `ds-command-kernel/backlog/`. The old `ds-work/backlog/` no longer exists: edit these files here, commit them to ds-command-kernel `run`, and stage only `backlog/`. ds-work holds working sessions, not coding lists.
 
-Unfinished code that an agent can implement and prove without further owner input belongs here: product defects, missing native CLI/MCP capabilities, UI bindings, test repairs and integration. Decisions and supervised steps requiring the owner are in [OPEN-X.md](OPEN-X.md). Parameters, template/library seeding, deployment and operational acceptance remain in [SEEDING.md](SEEDING.md). This is the owner’s 7 October 2026 split.
-
-Use the live `ds` contract before coding. First try the admitted project-owned parameters and seeds. A valid configuration ignored by the renderer, an absent required capability, incorrect computation, clipping/overflow or a broken contract belongs here; a colour/pen/label/title/extent choice belongs in the seeding list. Do not alter engineering facts to improve a picture.
-
-Recheck legacy claims against current code/tests before implementing. Delete proven fixes permanently; keep evidence in owning code/contracts/tests or project receipts, with no completed-work archive. Split mixed obligations: finish independently actionable code here and link only its unresolved owner decision in OPEN-X.md. Do not park routine implementation, tests, already-authorized features or work awaiting another host as owner questions. If existing contracts or evidence settle a question, proceed and remove that dependency. Section numbers retain the former work-domain identity.
-
-First-release work: **block 25 is a priority (owner, 2026-10-07)** — `ds` logs its failures to SRE and everyone files feedback unprompted. Complicated TypeScript moves to the CLI and its UI becomes JSON input/output; result renderers and their downloads stay (see [block 23](#23-kernel-controls-json-ui-and-typescript-retirement)). Also clear the reproduced CLI source gates, complete the provider-model library lifecycle in block 18, integrate the existing PLS-CADD controls in block 21, and move touched UI controls to the kernel with JSON input/preview and replacement-code deletion in block 23. Fix measured renderer/compute failures. Unrelated tuning and native candidate qualification can continue through SEEDING.md.
+Unfinished code that an agent can implement and prove without further owner input. The standing owner rulings — the backlog split, how to work an entry, priorities, reporting, kernel/CLI/UI, engineering and country neutrality — are in [PRINCIPLES.md](PRINCIPLES.md); the start order is [ORDER.md](ORDER.md). Owner decisions are in [OPEN-X.md](OPEN-X.md); parameters, seeding, deployment and operational acceptance in [SEEDING.md](SEEDING.md).
 
 <!-- toc -->
 
@@ -189,7 +183,7 @@ First-release work: **block 25 is a priority (owner, 2026-10-07)** — `ds` logs
 
 ## 12. DS Grid engineering (Codex main)
 
-Windows owns DS Grid engineering; the server session integrates the other surfaces. Measure → test → fix → remeasure on exact reference revisions. Preserve engineering authority and record numbers as owning tests, never per-model constants or widened tolerances.
+Rules: [PRINCIPLES.md §6](PRINCIPLES.md#6-ds-grid-engineering).
 
 - **1. Loads and strength (structure usage)**: applied loads and reactions per load case and weather case; Method 1 and Method 2 usage from interaction diagrams; governing case, margin and loads per structure. Implement and test source-backed loads, usage and exact case binding; report measured PLS differences. Approval of an unspecified engineering acceptance tolerance is separated into [OPEN-X.md](OPEN-X.md#12-engineering-acceptance-and-material-authority). Items: `3d2ddd7a` Method 2 usage in DS Grid; `df1f53ae` Model 2 interaction artifacts unverified; `4ff54666` 334,508% usage on stayed steel; `4ba8ab15` section-boundary structures take one side (wind span ~0.5x PLS); guys/stays and foundations (14 m burial 2.0 m).
 
@@ -303,7 +297,7 @@ Windows owns DS Grid engineering; the server session integrates the other surfac
 
 ## 19. Country neutrality and duplicated rules
 
-- **No single-country assumptions** (owner: "it will be adopted internationally, so no hardcoding at all"; country scout 2026-10-02, ~223 findings). The worst are fallbacks that turn a Chad input into a Rwanda one. The live Chad rule set is `rule_tchd`; code must not know rule-set names. Queued Sol slices, started as capacity frees:
+- **No single-country assumptions** ([PRINCIPLES.md §7](PRINCIPLES.md#7-no-single-country-assumptions); country scout 2026-10-02, ~223 findings). The worst are fallbacks that turn a Chad input into a Rwanda one. Queued Sol slices, started as capacity frees:
   - **CRS from the project, never Rwanda TM by default**: ds-io no-`.prj` and PLS import/writeback defaults; ds-brain country->CRS (Web Mercator for non-Rwanda) and the `looksProjectedCRS` refusal of real UTM `.prj`; reporter X/Y, print rectangles and collisions; WASM origin (30,-2)/32736; ds-web edit-projection policy -> kernel. Print graticule (`TmRwanda` default), MV booklet "Republic of Rwanda"/"EDCL" defaults and the fixed Rwanda MV context bbox go to the print slices.
   - **Country identity**: a required ISO-3166 `country_code` on the project; missing country never becomes "Rwanda"; one alias table; the reporter receipt digest per country; no `network_template` fallback to `master`.
   - **Solar generic** (after `solar-int`), reading the existing **Solar templates** (ds-brain `POST /api/v1/solar`, `internal/models/solar.go`: `_root`, `_config`, numbered sheets; kernel `solar_snapshot.rs`) as the only source, with no new settings invented: household `kind`/reference category instead of `Pauvre/Moyenne/Riche`; template currency and exchange rate (no XAF/600 constants); required `report_language`; `report_profile` for benchmarks, term sheet and standards; BOQ item roles.
@@ -342,9 +336,7 @@ Windows owns DS Grid engineering; the server session integrates the other surfac
 
 ## 23. Kernel controls, JSON UI and TypeScript retirement
 
-Owner ruling, 2026-10-07: migrate touched controls for the first release. Work one owning vertical at a time; a polished UI can follow the native contract and usable JSON input/preview. Trace the explicitly named consumers rather than starting an all-repository rewrite.
-
-**Owner ruling, 2026-10-07 — complicated TypeScript goes to the CLI, its UI becomes JSON.** When a UI rests on complicated TypeScript logic, migrate that logic into the kernel and CLI/MCP, then delete the whole UI and replace it with a JSON input editor and a JSON output view over the same CLI contract. Losing UI elements in favour of the CLI is perfectly acceptable: the product comes from the future and there is no going back. **Never destroy validation paths:** keep, and keep working, every view that renders results for a person to check — Markdown, HTML, PDF, XLSX, images and maps, and the like. Keep the capacity to download those results from the UI as well; downloading the same artifacts through the CLI is welcome, but it does not replace the UI download. Removing a control is allowed; removing the way a person sees, verifies and downloads a result is not.
+Rules: [PRINCIPLES.md §5](PRINCIPLES.md#5-kernel-cli-and-ui-owner-2026-10-07) — migrate touched controls one vertical at a time; complicated TypeScript goes to the CLI and its UI becomes JSON; result renderers and their downloads stay.
 
 - **First-release native controls and JSON UI**: move demonstrated UI-only or duplicated control decisions into the owning Rust kernel/native slice, expose and prove them through CLI/MCP, then bind Web/Desktop to that same authority. Supply a JSON input editor and native read-only preview/result where polished controls are not ready; apply must remain explicit, project/principal/revision fenced and faithful to authored choices. Render the owner’s validation, refusals and results without TypeScript recomputation or hidden defaults. Prove headless behavior and UI/native request/result parity, then delete replaced TypeScript control logic, direct gateway bypasses, obsolete adapters/tests/imports and dead code in that slice. Keep only useful presentation/transport/interaction code; preserve unrelated work. Durable contracts and tests live with their owner.
 
@@ -376,7 +368,7 @@ Owner ruling, 2026-10-07: migrate touched controls for the first release. Work o
 
 ## 25. CLI reliability reporting and proactive feedback (priority)
 
-Owner direction 2026-10-07, **priority**: `ds` logs its own failures to SRE and files feedback without being asked; anyone using `ds` files sightings unprompted. Contract: [docs/contracts/ds-cli-reliability-and-feedback.md](../docs/contracts/ds-cli-reliability-and-feedback.md). Owner questions (opt-out, signed-out hosts, automatic-filing scope, read access) are in [OPEN-X.md block 25](OPEN-X.md#25-cli-reliability-and-feedback); slices below proceed on the spec's defaults. Land each slice on `run` before the next.
+Priority ([PRINCIPLES.md §3–4](PRINCIPLES.md#4-report-as-you-go-owner-2026-10-07)). Contract: [docs/contracts/ds-cli-reliability-and-feedback.md](../docs/contracts/ds-cli-reliability-and-feedback.md). Owner questions (opt-out, signed-out hosts, automatic-filing scope, read access) are in [OPEN-X.md block 25](OPEN-X.md#25-cli-reliability-and-feedback); slices below proceed on the spec's defaults. Land each slice on `run` before the next.
 
 - **Teach the duty first (ds-cli, text only):** add "Report as you go" (spec §5.1–5.2) near the top of the `ds` skill and name feedback as a primary duty in its description; rewrite the `feedback.submit` description so friction, confusion, slowness and ideas are filed as well as gaps; add `FEEDBACK_GUIDANCE` to the MCP initialize instructions beside `REGRESSION_GUIDANCE`. **Proof:** ds-cli discovery and MCP surface tests pass; a blind low-powered agent hitting a seeded friction files a report unprompted and lists its id (spec §7.7).
 

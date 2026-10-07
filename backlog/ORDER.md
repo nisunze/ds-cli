@@ -1,6 +1,6 @@
 # Coding order
 
-The sequence in which [OPEN.md](OPEN.md) slices are started, by owner priority and then impact. This file holds **order only**: scope, evidence and proof for each slice live in the linked OPEN.md entry. When a slice lands, delete its row here and its entry there in the same commit. Owner decisions that gate a slice are in [OPEN-X.md](OPEN-X.md); operational acceptance after the code lands is in [SEEDING.md](SEEDING.md).
+The sequence in which [OPEN.md](OPEN.md) slices are started, by owner priority ([PRINCIPLES.md §3](PRINCIPLES.md#3-priorities-owner-2026-10-07)) and then impact. This file holds **order only**: scope, evidence and proof for each slice live in the linked OPEN.md entry. When a slice lands, delete its row here and its entry there in the same commit. Owner decisions that gate a slice are in [OPEN-X.md](OPEN-X.md); operational acceptance after the code lands is in [SEEDING.md](SEEDING.md).
 
 How to pick: take the first row whose repository is free (no other agent's uncommitted work in the files it touches) and whose "after" column is satisfied. Rows in different repositories may run in parallel; within one repository, one slice at a time, landed on `run` before the next. Blocks 12–13 are Codex's (OPEN.md "Codex main"); they are ordered here for visibility, not for another agent to start.
 
