@@ -41,7 +41,7 @@ impl From<ReleaseRequest> for Request {
 /// target_history pins its exact cursor. Empty entries restore the opened state.
 /// Native receipts alone advance disposable demand caches. Exact entry identity
 /// distinguishes different cursors that happen to have equal authored content.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RefreshRequest {
     pub scope: String,

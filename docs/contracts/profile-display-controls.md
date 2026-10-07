@@ -101,6 +101,58 @@ independent of this policy; `analysis_state:due` is informational. Explicit
 Refresh/Analyze requests consume accumulated receipts; unchanged alignment
 surfaces and section demands remain reusable. History navigation retains the
 old scene and reports that explicit reconciliation is needed.
+
+Explicit background calculation uses four native operations, available to a
+headless `ds-profile-runtime::Runtime` without a Desktop scheduler:
+
+- `start_calculation` takes `{job_id, request: RefreshRequest}`. First Observe
+  the exact worker history; both refresh histories and revisions must equal
+  that admitted native cursor. The request requires a new `publication_id`.
+  Rust forks only that scope's retained RAM inputs, demand cache and review,
+  then solves on its own thread after returning a bounded job receipt.
+- `calculation_status` takes `{scope, model_id, job_id}` and returns only the
+  captured history, running/ready/failed/stale/cancelled state, timing and
+  refusal evidence. It neither returns the scene nor publishes engineering.
+- `cancel_calculation` uses the same identity. It discards the result and
+  checks cancellation before and after solving. `solver_interruptible:false`
+  describes the current solver boundary. `runtime_worker_active` truthfully
+  reports whether any physical calculation worker still occupies the slot.
+- `admit_calculation` adds the exact start `publication_id` to that identity.
+  Rust checks the captured authored history and native display context before
+  installing the ready result under the ordinary publication checkpoint.
+  Worker/render admission must still Confirm or Discard it.
+
+Observe and native selection remain executable while a job runs. Authored
+history pins distinguish repeated-content cursors; native context identity
+also distinguishes display changes away and back, calculation, release and
+replacement. A stale, cancelled, pending or failed result cannot replace the
+live review or erase pending edits. Interleaved scopes retain their own inputs.
+One physical worker per Runtime is admitted, including cancelled work until
+it exits; there are at most eight retained results. Job IDs cannot be reused
+within a Runtime lifetime, with a bounded 16,384-ID ledger. No job writes or
+packs a model. First initialization still projects synchronously; these controls
+address calculation in an already retained editable Profile.
+
+The admitted result adds `job_start_ms` (capture/fork/thread launch),
+`job_worker_ms` (native calculation/serialization on the fork), and
+`job_elapsed_ms` (capture through admission, including scheduling and polling).
+The existing `publication_checkpoint_ms` measures admission rollback staging.
+These are native phases, excluding transport, worker picking and painting.
+RAM cloning and complete calculated-scene transfer remain measured costs;
+background scheduling alone does not prove a faster solver. Wire encoding is
+outside these phases.
+
+The ignored `dense_native_job_costs_and_fresh_parity` gate measures twelve
+alternating description edits with 10,004 terrain points, 403 supports and one
+three-support tension section. Each admitted scene and analysis equals a fresh
+runtime. The debug median is 168.25 ms apply, 249.47 ms Observe, 11.61 ms job
+capture, 395.37 ms calculation and 16.63 ms admission. The admitted response is
+15,611,679 bytes: calculated-scene transfer is still a broad boundary. The
+receipt is `ds-network/out/profile-native/native-job-cost-debug.json`. This is
+a headless owning-crate measurement, excluding wire encoding/transport, worker
+picking and painting; it is not installed Desktop or large-connected-model
+acceptance. Set `DS_PROFILE_JOB_COST_RECEIPT` to an absolute disk path and run
+the named ignored gate through the runtime manifest to reproduce it.
 `operation: present` admits display-only patches against current, prepared
 results. It refuses `profile_scene_unavailable` when edits or new coordinate
 inputs would require calculation; callers must explicitly Refresh or Analyze.

@@ -104,8 +104,8 @@ Terrain point edits still require interval segmentation and local
 calculation/station dependencies; dense segment splits/merges and identity
 reorders can require large changed array ranges.
 Full authored layout, comparison and cloning remain measurable costs despite
-retained route/ground inputs. Calculation remains on the native per-client queue;
-move explicitly requested calculation off that queue so authored observation,
+retained route/ground inputs. Desktop still requests synchronous calculation
+inside the per-client queue. Bind native calculation jobs so authored observation,
 picking and selection remain available while it runs. Preserve exact history and
 publication fences, bounded native metrics and fresh engineering parity.
 

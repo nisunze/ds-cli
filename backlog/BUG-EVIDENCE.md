@@ -406,16 +406,17 @@ installation; explicit calculation still needs bounded native phase/work
 evidence before claiming a measured bottleneck or release performance. No
 template edits, competing builds or model mutations.
 
-## Focused review: native Profile calculation jobs
+## Focused review: Profile job transport and publication
 
-Read-only request for the next native slice: ds-profile-runtime calculation
-currently holds the Desktop runtime mutex, while the renderer awaits it inside
-the per-client native queue. Trace a native RAM calculation fork, bounded job
-start/status/cancel and explicit result admission through the existing publication
-checkpoint. Check exact model/history pins, display-context changes including
-ABA, release/reinitialization, interleaved scopes, worker edits during a solve,
-cancelled or failed results, and continued authored observation and picking.
-Do not admit a stale result or unwind edits. No implicit solve, Save or package
-write; cancellation must truthfully describe any noninterruptible solver work.
+Read-only request for the next binding slice: use ds-profile-runtime's native
+start/status/cancel/admit controls from CLI/MCP and Web/Desktop. Keep solving
+and status polling outside the per-client native queue; queue only capture and
+head-fenced result admission. Trace worker edits and observation during a pending
+solve, retained picking/selection, model/history and display ABA, scope release,
+interleaved contexts, lost transport, cancellation and synchronous renderer
+refusal after worker/native confirmation. Reuse the existing publication
+checkpoint; do not admit a stale result or unwind edits. No implicit solve,
+Save or package write. First initialization and full calculated-scene transfer
+remain explicit boundaries. Native cancellation does not interrupt a running solver.
 Maximum two deterministic findings with negative controls; no source writes,
 model effects, competing builds or printing/template work.

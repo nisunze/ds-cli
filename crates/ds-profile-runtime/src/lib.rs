@@ -23,6 +23,8 @@ pub use replay::{InitializeRequest, RefreshRequest, ReleaseRequest};
 mod publication;
 pub use publication::{ConfirmPublicationRequest, DiscardPublicationRequest, PublicationPin};
 mod replay_cost;
+mod calculation_jobs;
+pub use calculation_jobs::{AdmitCalculationRequest, CalculationJobRequest, StartCalculationRequest};
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -47,6 +49,10 @@ pub enum Request {
     Present(Box<RefreshRequest>),
     ConfirmPublication(ConfirmPublicationRequest),
     DiscardPublication(DiscardPublicationRequest),
+    StartCalculation(Box<StartCalculationRequest>),
+    CalculationStatus(CalculationJobRequest),
+    CancelCalculation(CalculationJobRequest),
+    AdmitCalculation(AdmitCalculationRequest),
     Release(ReleaseRequest),
     CaseLayer(CaseRequest),
     Layout(ds_command_kernel::profile_layout::Request),
@@ -120,10 +126,35 @@ pub struct Runtime {
     analyses: BTreeMap<String, Value>,
     held: BTreeMap<String, HeldView>,
     publications: BTreeMap<String, publication::PendingPublication>,
+    calculation_jobs: calculation_jobs::Jobs,
+    /// Identity changes even when display inputs change away and back.
+    calculation_contexts: BTreeMap<String, Arc<()>>,
 }
 impl Runtime {
     pub fn execute(&mut self, request: impl Into<Request>) -> Result<Value, String> {
-        self.execute_with_publication(request.into())
+        let request = request.into();
+        let changed_context = match &request {
+            Request::Project(r) => Some(r.scope.clone()),
+            Request::Initialize(r) => Some(r.scope.clone()),
+            Request::Refresh(r) | Request::Present(r) => Some(r.scope.clone()),
+            Request::CaseLayer(r) => Some(r.scope.clone()),
+            Request::DiscardPublication(r) => Some(r.scope.clone()),
+            Request::AdmitCalculation(r) => Some(r.scope.clone()),
+            Request::Release(r) => Some(r.scope.clone()),
+            _ => None,
+        };
+        let result = self.execute_with_publication(request);
+        if result.is_ok() {
+            if let Some(scope) = changed_context {
+                if self.held.contains_key(&scope) {
+                    self.calculation_contexts.insert(scope, Arc::new(()));
+                } else {
+                    self.calculation_contexts.remove(&scope);
+                    self.calculation_jobs.release_scope(&scope);
+                }
+            }
+        }
+        result
     }
     fn execute_inner(&mut self, request: Request) -> Result<Value, String> {
         match request {
@@ -134,6 +165,10 @@ impl Runtime {
             Request::Present(request) => self.present(*request),
             Request::ConfirmPublication(request) => self.confirm_publication(request),
             Request::DiscardPublication(request) => self.discard_publication(request),
+            Request::StartCalculation(request) => self.start_calculation(*request),
+            Request::CalculationStatus(request) => self.calculation_status(request),
+            Request::CancelCalculation(request) => self.cancel_calculation(request),
+            Request::AdmitCalculation(request) => self.admit_calculation(request),
             Request::Release(request) => self.release(request),
             Request::CaseLayer(request) => self.case_layer(request),
             Request::Layout(request) => {
@@ -569,10 +604,10 @@ mod common;
 mod transactional_projection_tests {
     use super::*;
     use ds_grid_model::{EntityId, ModelCrs};
-    fn request() -> ProjectRequest {
+    pub(super) fn request() -> ProjectRequest {
         request_for(common::fixture())
     }
-    fn request_for(snapshot: ds_grid_model::GridModelSnapshot) -> ProjectRequest {
+    pub(super) fn request_for(snapshot: ds_grid_model::GridModelSnapshot) -> ProjectRequest {
         let session = GridSession::open(snapshot);
         let (artifacts, _) = ds_grid_exchange::dsgrid::emit(
             session.snapshot(),
@@ -604,7 +639,7 @@ mod transactional_projection_tests {
             analyze: false,
         }
     }
-    fn refresh(
+    pub(super) fn refresh(
         runtime: &Runtime,
         input: &ProjectRequest,
         base: &str,
@@ -625,7 +660,7 @@ mod transactional_projection_tests {
             analyze: false,
         }
     }
-    fn describe(session: &mut GridSession, id: &str, text: &str) {
+    pub(super) fn describe(session: &mut GridSession, id: &str, text: &str) {
         session
             .apply_command(ds_grid_engine::CommandEnvelope::new(
                 id,

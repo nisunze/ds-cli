@@ -222,8 +222,11 @@ explicit section calculation, Refresh, Analyze or reconciliation may solve.
 Recompute affected tension sections, their spans and structure usage including
 other incident forces at shared supports; stop there during interaction. Reuse
 unchanged demands, ground, case preparation, markers and layout. Keep calculation
-asynchronous and revision-fenced, allow further interaction while it runs, and
-reject/suppress stale results without losing edits. Query native retained typed
+asynchronous and revision-fenced: bind the native job start/status/cancel/admit
+controls through CLI/MCP and Web/Desktop without holding the per-client queue
+while solving or polling. Cold initialization still projects synchronously;
+calculated-scene transfer remains broad. Allow further interaction while it runs,
+and reject/suppress stale results without losing edits. Query native retained typed
 or Arrow results directly for usage, failures, negative loading, violating
 sections, qualification and blockers; expose bounded CLI/MCP projections and
 counts with current-input/freshness evidence. Carry only necessary result/delta

@@ -37,9 +37,9 @@ struct Checkpoint {
 }
 
 pub(super) struct PendingPublication {
-    pin: PublicationPin,
+    pub(super) pin: PublicationPin,
     checkpoint: Checkpoint,
-    confirmed: bool,
+    pub(super) confirmed: bool,
 }
 
 impl Runtime {
@@ -50,6 +50,7 @@ impl Runtime {
             Request::Refresh(r) | Request::Observe(r) | Request::Present(r) => {
                 Some((&r.scope, &r.publication_id))
             }
+            Request::AdmitCalculation(r) => Some((&r.scope, &r.publication_id)),
             Request::Project(r) => Some((&r.scope, &immediate)),
             _ => None,
         };
