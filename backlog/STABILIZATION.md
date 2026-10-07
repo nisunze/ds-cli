@@ -168,6 +168,50 @@ round trip. Whole-model analysis stays available on demand.
   - `map.profile.view --target desktop:<id>` does report the selection
     correctly: structure 618.
 
+### 11. Intermittent: a selected ground point shows no highlight and no vertical handle (unproven)
+
+Not reproducible after 13:25 UTC. The owner reports it working again and
+suspects the debug state.
+
+**Evidence (7 October):**
+
+- **13:22 screenshot** (dev Desktop, "Nyamagabe MV Model 1 - structure usage
+  oracle test copy v1", edit mode):
+  - Properties shows ground point `ter-423815a32fed4309-4029` (elevation
+    2067.902344, GROUND).
+  - The Profile neither highlights it nor shows its vertical-move handle.
+- **13:24:26:** `ds map profile view --target desktop:5d53513e…` reports
+  structure `str-423815a32fed4309-5` as the Profile selection, not that ground
+  point. Properties and the Profile selection disagreed.
+- **13:25:17:** the selection is `ter-423815a32fed4309-3370`
+  (`kind: terrain_points`), with edit mode on and ground points visible. The
+  owner reports it working.
+- **What the code requires:**
+  - The highlight (`ds-web/src/lib/grid/profile-draw.ts:946-958`) and the
+    handle (`GridProfileCanvas.svelte:172-189`) need the selected id to be in
+    the scene's `band.terrain_points`.
+  - The handle also needs edit mode, visible ground points, `scene.axis_pin`,
+    a finite elevation and `movingGroundPoint` false.
+  - `GridProfilePanel.svelte:1686-1714` wires all of these unconditionally.
+- **Build state:** the dev Desktop's native binary was built at 12:06 UTC
+  (debug), while its TypeScript hot-reloads. Since then, kernel `4258972`
+  (Profile symbol vocabulary), ds-network `70d36346` and ds-web `0b3794b9c`
+  have landed, so it ran a mixed state.
+
+**Hypotheses (none executed):**
+
+1. Properties showed a Plan-selected ground point while the Profile selection
+   still held structure 5. The Plan/Properties selection diverged from the
+   Profile selection (see OPEN.md §14, two-way tracking).
+2. A `movingGroundPoint` left set by an interrupted ground move hides the
+   handle. This would not explain the missing highlight.
+3. The mixed native/TypeScript dev build.
+
+**Next check:** on a freshly restarted or release Desktop, select a ground
+point first in the Plan, then in the Profile. Read `ds map profile view` after
+each click, and confirm that the selection kind and id match a point in the
+Profile scene.
+
 ## Reference: landed on 7 October, don't redo
 
 ds-network `720f4184` (one compact attachment box per structure), `516e29c0`;
