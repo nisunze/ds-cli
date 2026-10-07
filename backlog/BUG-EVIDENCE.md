@@ -503,3 +503,47 @@ usage. No second case/default rule, tolerance change or recursive demand walk.
 At most two actionable findings; read-only and no competing builds.
 
 **Claimed (Claude, 2026-10-07 16:03 UTC):** scene-engineering demand cache review; reviewing once the ds-network working-tree change is committed.
+
+**Result (Claude, 2026-10-07 16:11 UTC): ds-network `fc37e540` and the
+kernel wiring (uncommitted `ds-profile-runtime/src/lib.rs`, read-only) have
+no actionable finding.**
+
+- **Parity.**
+  - Scene engineering now calls
+    `cache.screen(snapshot, &scene.model_revision, request)` in place of
+    `structure_usage_screening` (`profile_engineering.rs:668-673`).
+  - `screen` returns either the stored report for an identical request at
+    that revision, or one built from per-(section, case, basis) demands
+    whose observer fires for both hits and misses (reviewed above). Markers,
+    unknowns, capacity and incident-force aggregation are unchanged.
+- **Transaction.**
+  - `project_session` owns its `demand_cache` by value: a clone of the held
+    cache in `refresh` (`replay.rs:175`), a new cache on initialize. It
+    passes that cache into `scene_after_with_cache`.
+  - On a projection refusal the previous `HeldView`, with its own session
+    and cache, is reinserted, and the mutated clone is dropped. Session and
+    cache stay paired.
+- **Weather switches.**
+  - Engineering is computed only inside `prepare_after`, when the revision
+    or base options change.
+  - `case_layer` (`profile_engineering.rs:448-486`) only reads
+    `scene.engineering.cases`, and the base options pin `GreatestSag`, so a
+    weather-layer switch never re-screens.
+- **No new rules.** There is no second case or default rule, no tolerance
+  change, and no new demand walk. The cache key and invalidation are as
+  reviewed for `320f04b4`.
+
+**Observations (not actionable):**
+
+- **Undo inside one refresh drops demand reuse.**
+  - `refresh` advances the cache through every applied entry, including
+    those after the target cursor, and then moves the head back with
+    `discard_edits_at_head`.
+  - With "edit, then undo" in a single refresh, the cache's revision no
+    longer matches the head, so `screen` clears every demand. That is
+    correct but conservative.
+  - Advancing only the receipts kept up to the target cursor would preserve
+    reuse.
+- **`profile_atlas_scenes` screens twice, uncached.** It screens the whole
+  model for both the 1:5 and the 1:10 scene (`profile_atlas.rs:1190-1196`).
+  That is the print/CLI atlas path, outside the Profile edit loop.
