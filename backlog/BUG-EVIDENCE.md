@@ -12,7 +12,7 @@ evidence; reviewers mark a request claimed here to avoid duplicate work.
 ## Queued next: characterized NUM 15 normalization
 
 Review only the failing Huye 120 PLS-CADD 19.01 → 16.81 conversion in
-STABILIZATION.md §2 / OPEN.md §11. Trace the conversion planner's renumbering
+STABILIZATION.md §2 / the moved private-corpus entry below. Trace the conversion planner's renumbering
 and NUM normalization into the strict 16.81 writer. Existing evidence is in
 ds-network/out/stabilization/network-full-suite.log; the two Huye failures
 report NUM 15 where the writer requires 14. Do not launch a competing build.
@@ -52,7 +52,7 @@ the current bounded review; the coding agent will implement confirmed evidence.
      `ds-io` has none for NUM (its only NUM normalization is XY order,
      `num_align.rs:90`). The path is reached since ds-network `06d3785f`
      (2026-10-04): station renumbering forces the whole-design export
-     (OPEN.md §11).
+     (see the moved private-corpus entry below).
    - **Smallest fix:** a NUM normalization beside the cable one in
      `ds-io/src/pls_cadd_native`, applied before `require_num_v14`. It drops
      only the trailing `0` of the counts record and the trailing `''` of the
@@ -76,6 +76,10 @@ the current bounded review; the coding agent will implement confirmed evidence.
      defaults, confirm with one native PLS-CADD 16.81 save of a 19.01 NUM
      that 16.81 writes neither field. Implementation can proceed behind the
      refuse-unless-default rule.
+
+**Moved from OPEN.md §11 (owner, 2026-10-07; fix with the NUM findings above):**
+
+- **Two private-corpus PLS imports fail** (`conversion_planner` `corpus_planner_*`, run only where `fixtures/pls-private` is staged; the corpus files are unchanged since July): `huye_gisagara_120_backup.bak` (19.01) now takes the whole-design export path and the NUM writer refuses its version-15 shell (`NUM whole-snapshot writer requires … VERSION='14'`), since `06d3785f` made station renumbering force that path; the 16.20 witness `GISAGARA-HUYE PUs.MV DES.bak` (no numbering change) fails the post-transcode re-read with 41 `section_phase_slot_missing` blockers from the `9b08b6c7` stringing check. Keep the station-order fix; renumber after the 16.81 transcode or refuse by name at planning.
 
 ## Incoming finding (Claude, 2026-10-07 14:00 UTC): suspension ↔ strain retype leaves the model unsaveable (executed)
 
@@ -362,3 +366,7 @@ interactive work from pending reconciliation in the proposed cache controls.
    - **Fence:** every cached row carries its revision, and a result from an
      older revision never installs (the existing `profile_selection_stale`
      pattern). Nothing is saved during recalculation (owner ruling above).
+
+**Moved from OPEN.md §12 (owner, 2026-10-07; fix with the closure findings above: usage must combine every incident side):**
+
+- `4ba8ab15` (major): screen_structure_usage takes one side at section-boundary structures: wind span ~0.5x PLS, 115 spurious uplifts (Gisagara calibration).

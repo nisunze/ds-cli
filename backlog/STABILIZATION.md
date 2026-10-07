@@ -60,12 +60,8 @@ Once the slices above have landed:
 
 ## Owner requests, investigations and bug evidence (2026-10-07)
 
-The owner puts requests here. The coding agent decides where each one belongs
-and moves it there. Already moved:
-
-- the PLS-CADD `.bak` export holes → OPEN.md §11 `e258b287`;
-- Profile lasso removal and two-way tracking → OPEN.md §14;
-- the selection-aware context menu → OPEN.md §23.
+The owner puts requests here. Related OPEN.md and OPEN-X.md work is grouped
+below (A–D, moved 2026-10-07) so it is fixed together with these items.
 
 ### 4. Swift editing: retyping one structure, a range or a selection must feel instant
 
@@ -196,7 +192,7 @@ suspects the debug state.
 
 1. Properties showed a Plan-selected ground point while the Profile selection
    still held structure 5. The Plan/Properties selection diverged from the
-   Profile selection (see OPEN.md §14, two-way tracking).
+   Profile selection (see group A below, two-way tracking).
 2. A `movingGroundPoint` left set by an interrupted ground move hides the
    handle. This would not explain the missing highlight.
 3. The mixed native/TypeScript dev build.
@@ -244,6 +240,64 @@ point (§11). Every computation must animate the toolbar's status button.
 - **Reproduce:** restart the Desktop, open the Profile, and click a ground
   point within the first seconds. Read `ds map profile view` repeatedly to
   time when the selection, the scene and the analysis settle.
+
+## Moved from OPEN.md and OPEN-X.md: related work, fix together (owner, 2026-10-07)
+
+These entries share code with the stabilization items above. Fix each group in
+the same slices as its related item, so nothing is read or fixed twice. Owner
+decisions keep their **Input needed** and **Boundary**.
+
+### A. Profile editing, selection and docking (with §4, §11, §12 and BUG-EVIDENCE.md retype/closure)
+
+- **One Plan selection and independent two-way tracking** (owner, 2026-10-07): remove the non-working Profile lasso and its native contracts, `ds-grid-engine/src/profile_lasso.rs`/descriptor/pick-index hooks, WASM binding/tests, web overlay/binder/protocol and Profile-only adaptive-runner tests. Keep the Plan/map lasso, field/layer filters, Within/Intersects/Outside predicates and native composition. Audit shared `profile_hit`, `lasso.ts`, `lasso-run.ts` and `ds-canvas/src/selection.rs` consumers before deletion. Preserve Profile-click navigation to Plan; selecting a displayed element in Plan must navigate Profile. Expose independent "Plan follows Profile" and "Profile follows Plan" switches through the kernel/CLI, then render them. Reconcile the earlier `c28ee1a5` Outside implementation; the Plan predicate remains. Prove selection identity/revision isolation, both direction switches and removal of obsolete discovery/contracts.
+
+- **Native selected-case Profile binding**: complete criterion/case/weight-basis transport, separate scene-cache identities and native/Web bindings for the selected display case. Paint usage, failures, uplift and clearance findings from the Rust projection; screening percentages must retain their declared limited scope. Current runtime/Windows acceptance belongs in SEEDING.md, not a repeated implementation-history paragraph.
+
+- **Show loading, uplift and failures in Profile for the selected case, as PLS-CADD does** (owner, 2026-10-02; DS Grid compute track): a criterion-set/case (and weight-basis) selector drives the drawn `display_case` and a per-case `structure_usage_screening`; each structure gets a source-backed usage-% label (owner-defined colour bands are separated into [OPEN-X.md](OPEN-X.md#14-profile-display-and-supervised-editing)), uplift is marked from `uplift_case_present`/`uplift_failure`, and clearance violations are drawn at their station and elevation. Profile paints none of these today; only the selected structure's screening % shows. `profileAtlasSceneJson` accepts `display_case` but ds-web never sends it; `clearance_report` cannot run for one case (no case ids in `ClearanceReportOptions`) and its findings carry no scene coordinates; `conductor_spans[].clearance` follows the display case but is untyped and unpainted in ds-web.
+
+- Make selection, hover, range, drag, and cross-alignment switching responsive on a large real model; measure the slow path. Use Rust hit/pick/snap rules, with ground-point collision priority, a hover cursor, sensible overlap cycling, and free select/zoom in Plan and Profile. Prove popout fit stable on the live profile.
+
+- Keep one universal, resizable, flat Properties dock for Plan, Profile, and tables. Useful editable facts come first, immutable IDs last. Remove duplicate compact dialogs. Use a pen for edit context; show model name, revision, dirty/save/discard state only while editing. Model cloud-save belongs in the model menu; continuous working-head synchronization must not bump the intentional named version.
+
+- Move a structure instantly within legal station bounds, with a centered hitable slider and no filled ring. Warn before crossing a neighbor or moving an angle duty off the route angle; imported supports outside their alignment need explicit native findings and review, never silent snapping. Retype inline with current type selected and searchable assembly-first choices; the Profile source now shows exact native unresolved-attachment findings after an accepted draft retype, but repair controls and installed/live proof remain. Keep spotting/stringing revisions local to affected angle and tension intervals and terminate each spotting session cleanly.
+
+- Complete the CLI's revision-pinned Profile edit bridge for a full human/CLI edit cycle without inferring or overwriting the person's choice. Native camera/selection paths are source-tested. An incompatible retype yields exact unresolved attachments, but the CLI's package-backed copy cannot persist that invalid draft (`package_emit_failed`); wire the new pinned native draft checkpoint through the local catalogue while keeping strict export/publication gates. Keep cloud working revisions synchronized without a version bump during ordinary iterations; make bumping a version intentional, and never upload local-dev compute artifacts. Implement scoped proposals, explicit decision/checkpoint handling and an HTML modification-note asset; prove revision fences and refusal paths with fixtures. The human demonstration, chosen changes and review of the resulting notes are in [OPEN-X.md](OPEN-X.md#14-profile-display-and-supervised-editing).
+
+- `d8529cff` (minor): Retype keeps material-specific staking facts (E-STEEL on a wooden H-pole).
+
+- **Selection-aware context menu across editing contexts** (owner, 2026-10-07): extend LV design’s selection filter/actions to DS Grid model and general geographic editing. The active editing context selects applicable actions through declared kernel/CLI contracts; Web/Desktop render that JSON. Replace the current Grid right-click menu limited to Measure/Exit/New/Fix Popup. Trace `ds-web/src/lib/components/map/SelectionFilterDialog.svelte` and existing LV/native selection contracts; preserve the same selection context and exact project/model/revision fences across CLI and UI.
+
+- **Nyamagabe LV transformer editing opens a generic map menu** (`d654bfcc`): prove the affected installed session can select the design transformer with a cold index, then move, edit, save and reload it without changing another transformer.
+
+Owner decisions (from OPEN-X.md §14):
+
+- **Usage-% colour bands** (owner request, 2026-10-02): no bands are defined for per-case Profile labels. **Input needed:** choose thresholds and colours, and confirm their meaning for limited-scope screening versus qualified capacity. **Boundary:** seeding semantic colour bands. Native case transport, labels, uplift/clearance findings and UI binding continue in [OPEN.md block 14](OPEN.md#14-plan-and-profile-authoring); do not invent safety bands or hide an unknown verdict.
+
+- **Human/CLI edit demonstration and chosen changes**: the requested full edit cycle includes a person demonstrating edits, deciding which scoped proposals to accept and reviewing modification notes. **Input needed:** that demonstration and the intended edits on an identified model/revision. **Boundary:** applying the person’s choices and marking notes reviewed. Agents first finish and prove pinned draft checkpoints, proposal/decision handling, export gates and HTML note generation in [OPEN.md block 14](OPEN.md#14-plan-and-profile-authoring); ordinary code testing is their responsibility.
+
+### B. PLS-CADD `.bak` export (with outputs/pls-bak-export-plan-20261007/PLS-BAK-EXPORT-PLAN.md and BUG-EVIDENCE.md NUM)
+
+- `e258b287` (blocker): PLS export plan accepts unsupported edited model but convert cannot emit backup. Complete the model-menu `.bak` export vertical in the seven bounded slices diagnosed in `outputs/pls-bak-export-plan-20261007/PLS-BAK-EXPORT-PLAN.md`: engine plan-time library admission and unpinned/qualification warnings; truthful CLI failed/partial outcomes; Restore/report gates; composition pin preservation or refusal; native flow with pinned-plan UI preview/apply; shared version intents; exact per-pin cloud state. This advances the existing §11, §18, §23 and §25 items without another gap list. Each slice needs owning tests and a real filed-model replay through `ds` before landing; byte verification never implies native Restore or solver approval.
+
+- `4af28da3` (minor): Model 2 package cannot export: 'preserved PLS source version could not be inspected'.
+
+- `8f6e3ff1` (major): Alignment-revised .dsgrid cannot return to PLS-CADD: export refuses on pre-existing PLS-POLE 20.01 library members, sync has no writer for the edit class.
+
+### C. Library identity and external libraries (with §5 and BUG-EVIDENCE.md pin evidence)
+
+- **External libraries and explicit impact-plan apply**: implement the approved propagation contract in `ds-network/docs/contracts/dsgrid-plscadd-library-boundary.md` ("External references and explicit propagation"). Keep immutable exact release/member pins in each model revision, separate governed follower metadata, read-only impact plans and explicit authorized apply with expected-head fences and honest partial receipts. Mark old results stale in the new revision, recompute headlessly and expose changed results for review without granting engineering approval. Remove duplicated full library payloads from normal model packages through the exact shared Desktop/Server release cache; offline missing/corrupt dependencies refuse. Keep third-party adapters as evidence translators and evolve compatibly inside final schema 5. Prove native resolution, refusal, project/revision isolation and CLI/MCP request/result parity before UI bindings. This broad implementation continues here after the owner approved explicit impact-plan apply on 2026-10-07.
+
+- **Governed model-library adoption and UI**: bind the native `library.model.create/attach/clone/detach/show` workflow to the model view and exact governed cloud releases. The local provider-neutral lifecycle, offline exact release cache, semantic/digest fences, retained native bytes, and distinct library adoption/detach cloud publication revisions have landed (`ds-network c2a17b70/b442dd6c/b06f5931/48c7915d`, `ds-cli 962c39e8`, kernel `3bda1f1`). Complete standalone model-extracted library publication, project-authorized cross-project adoption and readable incoming/outgoing source history; local capture or a cache does not establish a cloud review state. Keep explicit project and expected-head fences, and bind UI actions to these native contracts.
+
+- Record each incoming/imported and outgoing/exported member and model as exact immutable evidence with the chosen library release, mapping, warnings, and project context. A future `.bak` example upload should offer a clear default-on consent control with a visible off choice before cloud transfer; preserve project and account authorization. Compare source, DS Grid translation, and outgoing native state without silently treating a round trip as solver approval. Keep full project manipulation history readable without mixing customers' data or giving the web an active-project assumption on the server.
+
+- **Governed trust and export admission in the model view**: complete cloud qualification/state and UI evidence on top of the landed exact pinned-byte gate and CLI/MCP member report. `exact_native_bytes` and `managed_export_allowed` currently describe local immutable byte coverage, not cloud registration, native case applicability or engineering approval. Route, terrain and typed project settings report `retained_project_evidence`; feature-code native definitions remain required and unknown native dependencies fail as `no_cloud_equivalent`. The blind cached-library export now emits a verified 15-member backup without granting solver approval. Promoted managed exports still need the exact governed release and qualified scope; no head/basename/scaffold fallback. Also close the native structure-substitution dependency materialization gap: swapping the recovered three models currently leaves 29 unresolved references. Preserve every unrelated source byte and refuse conflicting or unsourced dependencies; do not repair this by manual file copying. Characterize the donor CRI positive-tension rows with blank wire selectors in the native adapter before admitting them as reusable criteria; do not infer all-wire semantics or weaken the criterion invariant.
+
+### D. Release sources and gates (with §2 and §3)
+
+- **Native source pins and integration**: reconcile any still-unpushed repository changes and update `ds-network-reporter/pins/native-build-sources.json` to the exact published native sources before packaging. Recheck the remaining repositories before changing pins.
+
+- **Remaining source release gates**: recheck the recorded Web navigation/design/version tests, CLI bridge-parity harness, Solar Dockerfile dependency omissions, reporter `golden_artifacts` / `printing_examples` and reporter Clippy. Native checkpoint validation also reproduces 8 existing ds-io and 28 ds-grid-engine Clippy errors (collapsible conditions, type complexity and argument counts); repair these in their own slices. The changed ds-grid-wasm crate and checkpoint regression pass strict owning Clippy with dependencies excluded; the broader log is `ds-network/out/stabilization/wasm-pins-clippy.log`. Repair only still-failing assertions or owning code; remove each claim after its gate passes.
 
 ## Reference: landed on 7 October, don't redo
 

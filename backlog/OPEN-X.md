@@ -12,7 +12,7 @@ Check existing contracts, source evidence and recorded owner choices first. Rout
 | --- | ---: |
 | [12. Engineering acceptance and material authority](#12-engineering-acceptance-and-material-authority) | 2 |
 | [13. Between-angle policy](#13-between-angle-policy) | 1 |
-| [14. Profile display and supervised editing](#14-profile-display-and-supervised-editing) | 2 |
+| [14. Profile display and supervised editing](#14-profile-display-and-supervised-editing) | 0 |
 | [15. Project scope and engineering choices](#15-project-scope-and-engineering-choices) | 3 |
 | [18. Supervised native qualification](#18-supervised-native-qualification) | 1 |
 | [22. Account and data-owner authority](#22-account-and-data-owner-authority) | 2 |
@@ -32,9 +32,7 @@ Check existing contracts, source evidence and recorded owner choices first. Rout
 
 ## 14. Profile display and supervised editing
 
-- **Usage-% colour bands** (owner request, 2026-10-02): no bands are defined for per-case Profile labels. **Input needed:** choose thresholds and colours, and confirm their meaning for limited-scope screening versus qualified capacity. **Boundary:** seeding semantic colour bands. Native case transport, labels, uplift/clearance findings and UI binding continue in [OPEN.md block 14](OPEN.md#14-plan-and-profile-authoring); do not invent safety bands or hide an unknown verdict.
-
-- **Human/CLI edit demonstration and chosen changes**: the requested full edit cycle includes a person demonstrating edits, deciding which scoped proposals to accept and reviewing modification notes. **Input needed:** that demonstration and the intended edits on an identified model/revision. **Boundary:** applying the person’s choices and marking notes reviewed. Agents first finish and prove pinned draft checkpoints, proposal/decision handling, export gates and HTML note generation in [OPEN.md block 14](OPEN.md#14-plan-and-profile-authoring); ordinary code testing is their responsibility.
+Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group A (owner decisions kept with their Input needed and Boundary).
 
 ## 15. Project scope and engineering choices
 

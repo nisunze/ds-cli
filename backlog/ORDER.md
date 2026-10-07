@@ -34,7 +34,7 @@ Proceed on the specification defaults; [OPEN-X §25](OPEN-X.md#25-cli-reliabilit
 | # | Slice | OPEN.md | Repos | Impact | After |
 | ---: | --- | --- | --- | --- | --- |
 | 10 | PLS-CADD control integration and freeze: Restore, reopen, qualification, AutoSag, reports, backup, delivery as `ds` commands; dialog catalogue packaged | [§21](OPEN.md#21-windows-release-code) | ds-cli, kernel | first release | — |
-| 11 | Provider-model library lifecycle through CLI/MCP and UI; missing-equivalent export admission | [§18](OPEN.md#18-global-ds-grid-library) | kernel, network, ds-cli, ds-web | first release | — |
+| 11 | Provider-model library lifecycle through CLI/MCP and UI; missing-equivalent export admission | [§18](OPEN.md#18-global-ds-grid-library), [stabilization C](STABILIZATION.md#moved-from-openmd-and-open-xmd-related-work-fix-together-owner-2026-10-07) | kernel, network, ds-cli, ds-web | first release | — |
 | 12 | Native controls and JSON UI: choose one demonstrated missing vertical in the current delivery, prove it and delete replaced TypeScript | [§23](OPEN.md#23-kernel-controls-json-ui-and-typescript-retirement) | kernel, ds-cli, ds-web | first release; debt | — |
 | 13 | Windows Server public release integration; headless PDF promotion denied (`7519c28b`) | [§21](OPEN.md#21-windows-release-code) | ds-cli, ds-web | first release | — |
 | 14 | Retire the interim PLS drivers | [§21](OPEN.md#21-windows-release-code) | ds-cli, ds-work | debt | 10 + [installed Windows toolkit](SEEDING.md#21-windows-native-release) |
@@ -55,7 +55,7 @@ Proceed on the specification defaults; [OPEN-X §25](OPEN-X.md#25-cli-reliabilit
 | 24 | Assets ingest through the paired Desktop fails (`e9b5858d`, `40b53f7f`); task attachment route (`e01cf456`) | [§17](OPEN.md#17-project-work-and-assets) | ds-web (Desktop), ds-cli, ds-brain | blocked — documents cannot reach tasks | — |
 | 25 | Headless LV intake: Northern Hub upload (`14fd08e8`), Gisagara standards columns (`2adfa7d2`), 10-character DBF names (`83f3712b`), legacy unfenced rooms (`007c1624`), `Existing` → `existing_status` migration (`7f5ac170`) | [§9](OPEN.md#9-lv-processing-sizing-and-headless-intake) | kernel, ds-cli, ds-brain | blocked — client data cannot enter headlessly | 16 for preservation-sensitive writes |
 | 26 | Vector runner names every dropped feature in `skipped` | [§16](OPEN.md#16-map-data-datasets-and-screen-styling) | network | **wrong** — silent feature loss in `ds data vector` | — |
-| 27 | PLS restore acceptance: catalogued exit prompt and exact restored bytes (`1086e058`, `6f346aa3`); export-plan/convert admission parity (`e258b287`) | [§11](OPEN.md#11-pls-cadd-exchange-round-trip) | network, ds-cli | **wrong** — a dialog count reported as success | — |
+| 27 | PLS restore acceptance: catalogued exit prompt and exact restored bytes (`1086e058`, `6f346aa3`); export-plan/convert admission parity (`e258b287`) | [§11](OPEN.md#11-pls-cadd-exchange-round-trip), [stabilization B](STABILIZATION.md#moved-from-openmd-and-open-xmd-related-work-fix-together-owner-2026-10-07) | network, ds-cli | **wrong** — a dialog count reported as success | — |
 
 ## Windows engineering track — independent of the server queue
 
@@ -69,7 +69,7 @@ Windows owns OPEN.md blocks 12–13 and their engineering consumers. This track 
 | 31 | Spotting legality: forbidden 10–60° band (`fb163694`), planner/attachment clearance parity (`449b4f36`) | [§13](OPEN.md#13-spotting-codex-main) | **wrong** |
 | 32 | Structure usage and Method-2 artifacts (`3d2ddd7a`, `df1f53ae`, `4ff54666`) | [§12](OPEN.md#12-ds-grid-engineering-codex-main) | blocked — implement source binding and truthful unknowns; [OPEN-X §12](OPEN-X.md#12-engineering-acceptance-and-material-authority) gates unresolved material choices and acceptance |
 | 33 | Clearance report case identity (`null °C`); existing conductor status on sections | [§15](OPEN.md#15-project-delivery-code), [§12](OPEN.md#12-ds-grid-engineering-codex-main) | **wrong** on print |
-| 34 | Bounded laptop spotting (`6b597153`) and Profile selected-case binding | [§13](OPEN.md#13-spotting-codex-main), [§14](OPEN.md#14-plan-and-profile-authoring) | wrong/slow |
+| 34 | Bounded laptop spotting (`6b597153`) and Profile selected-case binding | [§13](OPEN.md#13-spotting-codex-main), [stabilization A](STABILIZATION.md#moved-from-openmd-and-open-xmd-related-work-fix-together-owner-2026-10-07) | wrong/slow |
 
 ## Priority 4 — Delivery cost and remaining blockers
 
