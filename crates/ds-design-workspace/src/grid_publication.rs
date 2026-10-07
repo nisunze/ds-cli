@@ -59,9 +59,29 @@ pub fn combined_model_id(identity: &str) -> Result<String, String> {
 pub fn publication_revision(bytes: &[u8]) -> Result<String, String> {
     let decoded =
         ds_grid_exchange::package::unpack(bytes).map_err(|e| format!("model_invalid: {e}"))?;
-    let session = GridSession::open(decoded.snapshot);
-    revision_identifier(session.current_revision().revision_id.as_str())
+    revision_identifier(&source_revision(bytes, &decoded))
         .ok_or_else(|| "grid_publication_revision_invalid".to_owned())
+}
+
+// Authored geometry can stay identical while immutable library identity changes.
+// Retained cache evidence also records detach history. Bind publication to the
+// exact package in either case; keep the established revision for other models.
+fn source_revision(bytes: &[u8], decoded: &ds_grid_exchange::package::GridPackage) -> String {
+    if !decoded.manifest.model.library_pins.is_empty()
+        || decoded.assets.iter().any(|asset| {
+            asset
+                .invariant_leaf
+                .starts_with(ds_grid_exchange::model_library::LIBRARY_CACHE_PREFIX)
+        })
+    {
+        format!("rev:{:x}", Sha256::digest(bytes))
+    } else {
+        GridSession::open(decoded.snapshot.clone())
+            .current_revision()
+            .revision_id
+            .as_str()
+            .into()
+    }
 }
 
 /// User publication is a submodel operation. Combined publication belongs
@@ -132,11 +152,7 @@ fn prepare_inner(
         expected_head_revision_id: expected,
         manifest_model_id: decoded.manifest.model.model_id.as_str().into(),
         manifest_model_revision: decoded.manifest.model.model_revision,
-        source_revision_id: GridSession::open(decoded.snapshot)
-            .current_revision()
-            .revision_id
-            .as_str()
-            .into(),
+        source_revision_id: source_revision(bytes, &decoded),
         model_schema_version: ds_grid_model::SCHEMA_VERSION.to_string(),
         engine_version: ds_grid_engine::ENGINE_VERSION.into(),
         display_name: request.display_name.clone(),
