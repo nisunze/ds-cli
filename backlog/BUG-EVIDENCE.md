@@ -180,9 +180,8 @@ schema-5 packages); Nyamagabe M1, 1.4 MB, structure 618:
 
 1. **The edit.** `gridCommitStructureRetype` applies it in the worker
    (`ds-web/src/lib/grid/session.ts:749`). This part is cheap.
-2. **Session refresh** (`session.ts:684-695`): re-read the snapshot, persist
-   the session state, and schedule a working checkpoint, which is a full
-   package emit.
+2. **Session refresh:** read validation/history and transfer every headline
+   table in full, even though the native readiness summary carries counts.
 3. **Auto analysis.** The new revision re-offers it
    (`GridProfilePanel.svelte:1210-1226`; on by default since 2026-10-05).
    `executeNativeProfileCommand` (`profile-native.ts`) then:
@@ -195,11 +194,11 @@ schema-5 packages); Nyamagabe M1, 1.4 MB, structure 618:
      re-installed in the worker.
 4. **CLI path** (`ds-cli-dsgrid/src/mutation.rs`, `structure/retype.rs`):
    decode the whole package (schema-4 copies re-run the 4 → 5 migration on
-   every open), compute line angles for every structure, clone the whole
-   session for a dry run, then re-emit and hash the whole package.
+   every open), compute line angles for every structure, then re-emit and hash the whole
+   package on an explicit file write.
 
-**So:** one structure's change costs at least two full package emits, one
-full decode and validate, a whole-scene rebuild and a whole-model analysis.
+**Remaining:** Profile analysis still costs a full package emit, a decode and
+validation, a whole-scene rebuild and a whole-model analysis.
 A retype that fails, as above, pays the same chain before the save refuses.
 
 **Owner ruling (2026-10-07):** a retype, a slide/move, or any other edit must

@@ -97,8 +97,8 @@ trace below confirms it.
    `gridCommitStructureRetype` (`ds-web/src/lib/grid/session.ts:749`) applies
    the edit in the worker, which is cheap.
 2. **Session refresh:** `refreshGridSessionState` then re-reads the snapshot,
-   persists the session state and schedules a working checkpoint
-   (`session.ts:684-695`).
+   reads validation, history and every headline table projection before the
+   next edit. Replace full table transport with native summary counts.
 3. **Auto analysis:** the revision change re-offers auto analysis
    (`GridProfilePanel.svelte:1210-1226`, on by default since 2026-10-05). It
    calls `executeNativeProfileCommand` (`ds-web/src/lib/grid/profile-native.ts`),
@@ -117,7 +117,6 @@ trace below confirms it.
      its verification on every open;
    - open a session;
    - run `line_angles_by_structure` over every structure;
-   - clone the whole session for a dry run;
    - apply, checkpoint, then re-emit the whole package with all its assets,
      hash it and write it.
 
@@ -137,19 +136,18 @@ trace below confirms it.
 4. **Background analysis.** Auto analysis stays on (owner, 2026-10-05), but it
    runs scoped and in the background. It never blocks the next edit, and it
    never opens the Issues drawer (item 6).
-5. **Persist off the interaction path.** Checkpoint and persist debounced, not
-   on every edit.
 6. **CLI fixes:**
    - store a migrated working copy once in schema 5, using the existing
      migration (no new bump);
    - compute line angles only for the selected structures;
-   - use a lighter dry-run probe than a whole-session clone.
 7. **One path for batches.** Retype one, a range or a selection through the
    same single transaction, followed by the same scoped recompute.
 
 **Acceptance:** on this model, in a release build, retyping 618 shows the new
-type and the updated usage in well under a second, with no whole-model package
-round trip. Whole-model analysis stays available on demand.
+type and updated usage in well under 0.5 seconds, with no whole-model package
+round trip. Edits stay dirty in RAM until explicit Save. Recalculation reaches
+incident and adjacent tension sections and their affected supports, spans and
+bands. Whole-model analysis stays available on demand.
 
 ### 5. Bug evidence found during the trace
 
