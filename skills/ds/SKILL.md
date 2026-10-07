@@ -16,7 +16,7 @@ submit feedback during coding; remove entries after proof.
 
 ## Find one command
 
-Check installed discovery; memory is not evidence.
+Check installed discovery.
 
 ```
 ds --version
@@ -25,8 +25,6 @@ ds capabilities --output json
 ds capabilities <domain> --output json
 ds capabilities --search '<words>' --output json
 ```
-
-Try domain terms first.
 
 ## Read, then invoke, the contract
 
@@ -46,21 +44,18 @@ reconstruct a refused answer.
 Signed out (`headless_signed_out`): run `ds account connect` (MCP: the
 `account.connect` tool), have the person approve it in their signed-in DS
 GridDesign Desktop under Account > Link a trusted device, then run it again.
-Only this signs in; never ask for an address or secret. CLI and map
-lane/principal must match. A mismatch is a refusal; never borrow credentials,
-projects or lanes.
+Only this signs in; never ask for an address or secret. CLI/map lane and
+principal must match; never borrow credentials, projects or lanes.
 
 ## Through MCP
 
-Use `ds_catalog` and chapter routers: select, `describe`, then invoke declared
-arguments. Set envelope `confirm: true` only when required. Typed profiles
-advertise leaf tools. Follow DS envelopes and remedies; `ds-mcp-host` covers
-installation and profiles.
+Use `ds_catalog` and chapter routers: select, `describe`, invoke. Set
+`confirm: true` only when required. Typed profiles advertise leaf tools.
+Follow DS envelopes and remedies; see `ds-mcp-host` for installation.
 
 ## Where `ds` stops, and who continues
 
-Four tasks need another tool. Hand over only when one applies, name it, and
-return with its result:
+Hand over only at an applicable boundary; name it and return with its result:
 
 - Native PLS-CADD — the model must be solved or accepted as the authority:
   edit in DS Grid, export, let PLS-CADD verify; `ds` never drives that UI.
@@ -69,8 +64,7 @@ return with its result:
 - The DS GridDesign Desktop map and screen recorders — interactive geometry
   drawing or motion capture: `ds` serves layers, tiles and still evidence only.
 - The operator — the effect needs authority `ds` will not grant: approval,
-  credentials, an OS install, a deploy, a refusal's remedy. Report the refusal
-  code with that remedy; never route around it.
+  credentials, install, deploy or refusal remedy. Report the code and remedy.
 
 ## When `ds` cannot
 
@@ -95,8 +89,7 @@ DS data or effects or route around `ds` with a gap file or API call.
   customers in a boundary; seeded per project).
 - Maps — `ds-map-composition` (print hierarchy, relief), `ds-map-local-data`
   (temporary layers, viewport), `ds-style-composite` (two-field cartography).
-- Local geometry — `ds-vector-tools` (native GeoJSON measurement, zones,
-  points along lines and line crossings).
+- Local geometry — `ds-vector-tools` (GeoJSON measurement, zones, sampling, crossings).
 - Design and delivery — `ds-grid-spotting`, `ds-lv-design-revision`,
   `ds-lv-voltage-drop`, `ds-pls-cadd-terrain-roundtrip`,
   `ds-pls-cadd-backup-delivery`, `ds-pls-cadd-native-dialogs`,
@@ -104,4 +97,4 @@ DS data or effects or route around `ds` with a gap file or API call.
 - Surface and backlog — `ds-mcp-host`, `ds-workstation-setup`,
   `ds-feedback-triage`.
 
-Stops at: the four continuations above, each on its own condition.
+Stops at: PLS-CADD, a renderer, Desktop or the operator, as above.
