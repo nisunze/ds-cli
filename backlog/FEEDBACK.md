@@ -2,9 +2,9 @@
 
 > **Moved 2026-10-07:** this backlog now lives in `ds-command-kernel/backlog/`. The old `ds-work/backlog/` no longer exists: edit these files here, commit them to ds-command-kernel `run`, and stage only `backlog/`. ds-work holds working sessions, not coding lists.
 
-Snapshot of every report `ds feedback list --view not_addressed` returned on 2026-10-07: 246 unsettled (127 open, 119 waiting on a named dependency). The feedback API is the authority; regenerate this file after closing or noting reports.
+Snapshot of every report `ds feedback list --view not_addressed` returned on 2026-10-07, with the four kernel-owned reports refreshed after their verification notes: 246 unsettled (124 open, 122 waiting on a named dependency). The feedback API is the authority; regenerate this file after closing or noting reports.
 
-Reports are grouped by the live repository that owns the code, then by component. The component is the submitter's free-text label, shown verbatim so `ds feedback list --component` finds it. Legacy labels map as follows: `ds-grid*`, `dsgrid*`, `ds/grid-*`, `ds/pls-library` → ds-network; `ds-report*`, `ds-printing*` → ds-network-reporter; `ds-desktop*` → ds-web (`src-tauri`); `ds pls desktop` → ds-cli (`ds-cli-pls/desktop`). Labels that name no repository stay **unassigned**. "Backlog" names the [OPEN.md](OPEN.md), [OPEN-X.md](OPEN-X.md) or [SEEDING.md](SEEDING.md) section citing the report; **untracked** means none does (128 reports).
+Reports are grouped by the live repository that owns the code, then by component. The component is the submitter's free-text label, shown verbatim so `ds feedback list --component` finds it. Legacy labels map as follows: `ds-grid*`, `dsgrid*`, `ds/grid-*`, `ds/pls-library` → ds-network; `ds-report*`, `ds-printing*` → ds-network-reporter; `ds-desktop*` → ds-web (`src-tauri`); `ds pls desktop` → ds-cli (`ds-cli-pls/desktop`). Labels that name no repository stay **unassigned**. "Backlog" names the [OPEN.md](OPEN.md), [OPEN-X.md](OPEN-X.md) or [SEEDING.md](SEEDING.md) section citing the report; **untracked** means none does (127 reports).
 
 | Repository | Total | Blocker | Major | Minor | Waiting | Untracked |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -12,7 +12,7 @@ Reports are grouped by the live repository that owns the code, then by component
 | [ds-network](#ds-network) | 70 | 17 | 49 | 4 | 20 | 23 |
 | [ds-network-reporter](#ds-network-reporter) | 28 | 1 | 21 | 6 | 15 | 17 |
 | [ds-web](#ds-web) | 36 | 7 | 26 | 3 | 26 | 17 |
-| [ds-command-kernel](#ds-command-kernel) | 4 | 0 | 3 | 1 | 1 | 1 |
+| [ds-command-kernel](#ds-command-kernel) | 4 | 0 | 3 | 1 | 4 | 0 |
 | [ds-brain](#ds-brain) | 6 | 0 | 5 | 1 | 4 | 3 |
 | [ds-apis-tf](#ds-apis-tf) | 1 | 0 | 1 | 0 | 1 | 0 |
 | [ds-vector-tiler](#ds-vector-tiler) | 1 | 0 | 1 | 0 | 1 | 0 |
@@ -268,10 +268,10 @@ Reports are grouped by the live repository that owns the code, then by component
 
 | Component | ID | Sev | Kind | Title | State | Backlog |
 | --- | --- | --- | --- | --- | --- | --- |
-| ds-command-kernel/design_config | `d76f6e55` | minor | obstacle | Project copy cannot seed a source configuration sheet absent from destination | open | **untracked** |
-| ds-command-kernel/printing | `7da49ff8` | major | friction | Internal drafting diagnostic layers appear in client print legend | open | SEEDING.md §6 |
-| ds-command-kernel/printing | `fe036819` | major | friction | LV print setup silently flattens cable categories to one pen | open | SEEDING.md §6 |
-| ds-command-kernel/project-dataset-cache | `de978fdf` | major | friction | Geodata catalogue duplication and project-cache ready=false for datasets that are held and indexed | waiting: a paired Desktop run of ds desktop data rwanda status on czgmdwth_gisagara | OPEN.md §16 |
+| ds-command-kernel/design_config | `d76f6e55` | minor | obstacle | Project copy cannot seed a source configuration sheet absent from destination | waiting: typed single-sheet copy plan/apply with source READ, destination WRITE, absent-sheet validation and readback | OPEN.md §3 |
+| ds-command-kernel/printing | `7da49ff8` | major | friction | Internal drafting diagnostic layers appear in client print legend | waiting: matching installed classified-layout client/render engine, then Gisagara A0 preview/PDF proof | SEEDING.md §6 |
+| ds-command-kernel/printing | `fe036819` | major | friction | LV print setup silently flattens cable categories to one pen | waiting: matching installed renderer, intended pole palette and categorical A0 preview/PDF proof | SEEDING.md §6 |
+| ds-command-kernel/project-dataset-cache | `de978fdf` | major | friction | Geodata catalogue duplication and project-cache ready=false for datasets that are held and indexed | waiting: install pinned cache fix, then paired Desktop Gisagara catalogue and exact retired-id/readiness acceptance | SEEDING.md §16 |
 
 ## ds-brain
 

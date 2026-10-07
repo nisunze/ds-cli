@@ -29,7 +29,7 @@ Candidate curation and native PLS-CADD acceptance are separate from coding the c
 | [13. Spotting (Codex main)](#13-spotting-codex-main) | 2 |
 | [14. Plan and Profile authoring](#14-plan-and-profile-authoring) | 5 |
 | [15. Project deliveries](#15-project-deliveries) | 6 |
-| [16. Map data, datasets and screen styling](#16-map-data-datasets-and-screen-styling) | 5 |
+| [16. Map data, datasets and screen styling](#16-map-data-datasets-and-screen-styling) | 6 |
 | [17. Project Work and Assets](#17-project-work-and-assets) | 5 |
 | [18. Global DS Grid library](#18-global-ds-grid-library) | 3 |
 | [21. Windows native release](#21-windows-native-release) | 8 |
@@ -100,7 +100,7 @@ Candidate curation and native PLS-CADD acceptance are separate from coding the c
 
 - **Northern Hub LV delivery** (`0c274013`): install the already-landed empty-table fix, replace Pending issue language in the governed A0 document, then verify individual/combined PDFs and Drive publication.
 
-- **Gisagara A0 acceptance** (`7da49ff8`, `fe036819`): verify the governed setup hides diagnostic layers and uses intended categorical LV/pole colours with separate MV pens. Render and inspect the preview and final PDF. Preserve deliberate monochrome output; a missing or misleading control requires separate reproduced code evidence.
+- **Gisagara A0 acceptance** (`7da49ff8`, `fe036819`): install a matching CLI/render engine accepting the current layout's `classification` field; installed `b12041b6` rejects the one-transformer `agahehe` export before rendering. The approved read-only source diagnostic of revision `eb38900b` confirms hidden diagnostic layers/labels, no diagnostic legend entries, four `cable_size` LV colours and independent existing-blue/proposed-red MV pens, but is not deployed preview/PDF acceptance. Resolve the intended pole encoding: the current authored document uses `cable_size`, while the filed acceptance names `struct_type`; preserve authored choices until settled. Render and inspect preview and final PDF for diagnostic exclusion and categorical legends without altering underlying project QA data. Promote only a reproduced remaining renderer/control defect to OPEN.md.
 
 ## 7. Report compute, export and combined output
 
@@ -183,6 +183,8 @@ Candidate curation and native PLS-CADD acceptance are separate from coding the c
 - Locally build and directly deploy needed canary dependencies, then rerender MV booklets without ground points, publish Nyamagabe into the system, and finish its stale A4 set and UI voltage-drop PDF. Keep the other documented landing defects open until individually proved. Never launch remote Cloud Build or deploy `ds-system` without its explicit name from the owner.
 
 ## 16. Map data, datasets and screen styling
+
+- **Cache catalogue installation and Desktop acceptance** (`de978fdf`): install the pinned CLI/kernel cache correction, then verify the paired Desktop on `czgmdwth_gisagara` under matching identity/project context. Installed stable already reports all 44 held rows ready, including 121,270 buildings and 826,669 contours, but still lists two retired Rwanda school/powerline rooms beside their replacements. Prove those historical rooms are absent from active overview/automatic seeding, exact retired digests refuse with named alternatives, retained bytes remain intact and valid other-country layers still work. The current paired Desktop check refuses `auth_context_mismatch`; do not substitute a different project or source-only test for its acceptance.
 
 - **Chad elevation**: Copernicus GLO-30 (open, 30 m) as the Chad DEM source.
 

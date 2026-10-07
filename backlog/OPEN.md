@@ -16,7 +16,7 @@ First-release work: clear the reproduced CLI source gates, complete the provider
 | --- | ---: |
 | [1. Source integration and release code](#1-source-integration-and-release-code) | 3 |
 | [2. Green `run` and release gates](#2-green-run-and-release-gates) | 6 |
-| [3. Template creation code](#3-template-creation-code) | 1 |
+| [3. Template creation code](#3-template-creation-code) | 2 |
 | [4. Print template and style code](#4-print-template-and-style-code) | 2 |
 | [5. Print renderer and booklet code](#5-print-renderer-and-booklet-code) | 5 |
 | [7. Report compute, export and combined output](#7-report-compute-export-and-combined-output) | 14 |
@@ -28,14 +28,14 @@ First-release work: clear the reproduced CLI source gates, complete the provider
 | [13. Spotting (Codex main)](#13-spotting-codex-main) | 9 |
 | [14. Plan and Profile authoring](#14-plan-and-profile-authoring) | 6 |
 | [15. Project delivery code](#15-project-delivery-code) | 2 |
-| [16. Map data, datasets and screen styling](#16-map-data-datasets-and-screen-styling) | 10 |
+| [16. Map data, datasets and screen styling](#16-map-data-datasets-and-screen-styling) | 9 |
 | [17. Project Work and Assets](#17-project-work-and-assets) | 7 |
 | [18. Global DS Grid library](#18-global-ds-grid-library) | 4 |
 | [19. Country neutrality and duplicated rules](#19-country-neutrality-and-duplicated-rules) | 2 |
 | [21. Windows release code](#21-windows-release-code) | 6 |
 | [22. Operations product code](#22-operations-product-code) | 2 |
 | [23. Kernel controls, JSON UI and TypeScript retirement](#23-kernel-controls-json-ui-and-typescript-retirement) | 5 |
-| [24. Owner feature requests (CLI-first, after stabilization)](#24-owner-feature-requests-cli-first-after-stabilization) | 3 |
+| [24. Owner feature requests (CLI-first, after stabilization)](#24-owner-feature-requests-cli-first-after-stabilization) | 4 |
 <!-- /toc -->
 
 ## 1. Source integration and release code
@@ -52,9 +52,9 @@ First-release work: clear the reproduced CLI source gates, complete the provider
 
 - **LV test red on run** (pre-existing): `transformer_process_contract::adding_a_disjoint_feeder_does_not_collapse_the_existing_one` keeps an unconnected-customer warning without its diagnostic layer. Slice `lv-disjoint-feeder`.
 
-- **Remaining source release gates**: recheck the recorded Web navigation/design/version tests, CLI bridge-parity harness, Solar `aderm_beinamar` chart digest, Solar Dockerfile dependency omissions, reporter `golden_artifacts` / `printing_examples` and reporter / ds-grid-exchange Clippy. Repair only still-failing assertions or owning code; remove each claim after its gate passes.
+- **Remaining source release gates**: recheck the recorded Web navigation/design/version tests, CLI bridge-parity harness, Solar `aderm_beinamar` chart digest, Solar Dockerfile dependency omissions, reporter `golden_artifacts` / `printing_examples` and reporter / ds-grid-exchange Clippy. The 7 October CLI workspace run also reproduces `dsgrid_profile_review::profile_review_json_retains_native_per_structure_summaries_without_authoring`: `SectionState` marker text is nonempty where the assertion expects empty text, against in-flight network engineering changes. Resolve the owning projection/expectation with those changes and rerun the final pinned suite; preserve other agents' edits. Repair only still-failing assertions or owning code; remove each claim after its gate passes.
 
-- **Native dependency formatting gate**: clear the remaining 19 formatter-reported files in kernel, network and reporter after their active owners land their edits; preserve overlapping work. Recheck workspace formatting on the final release source vector.
+- **Native dependency formatting gate**: land active owners' formatter corrections in kernel, network and reporter, preserving overlapping work. The 7 October working-copy CLI formatting check still reports two hunks in kernel `src/style_governance.rs`; working-copy corrections elsewhere are not proof of landed release sources. Recheck workspace formatting on the final release source vector.
 
 - **Printing toolbar test**: `src/tests/printing-toolbar.test.ts` fails to locate the toolbar closing markup in current `PrintingSetup.svelte`. Repair the test boundary and verify narrow-width controls; `TemplateCatalogue.browser.test.ts` passes.
 
@@ -63,6 +63,8 @@ First-release work: clear the reproduced CLI source gates, complete the provider
 ## 3. Template creation code
 
 - **Template creation fixtures and UI binding**: complete representative transformer-outlier fixtures and any missing selectable-copy UI binding over the declared CLI contract. Keep explicit template identity and copy choices in the owner; Tchad layout contents and project parameters belong in [SEEDING.md](SEEDING.md#3-template-projects).
+
+- **Typed single-sheet configuration copy** (`d76f6e55`): expose a reviewable plan/apply operation with source READ and destination WRITE authorization. Installed stable exposes `layer_mapping` in `arjgpydw_survey_test` but omits it from `wnmajona_edcl_rural_electrification_template`; existing-sheet editing refuses that absent destination sheet. Validate admitted sheet identity/schema, create only the selected sheet, preserve unrelated destination sheets and read back the result. Prove an existing `cust_category` copy and unknown-sheet refusal as controls. Do not relax arbitrary-sheet validation or substitute whole-network configuration copying.
 
 ## 4. Print template and style code
 
@@ -253,8 +255,6 @@ Windows owns DS Grid engineering; the server session integrates the other surfac
 - **Clearance report case identity**: the Gisagara M3 report prints `vertical at — (null °C)` although its vertical case is 75 °C. Fix the producer/report projection from the exact selected case; never patch the label to a per-model constant.
 
 ## 16. Map data, datasets and screen styling
-
-- `de978fdf` (major): Geodata catalogue duplication and project-cache ready=false for datasets that are held and indexed.
 
 - `33003988` (minor): Wetlands dataset download fails with HTTP 422 after 12 attempts, then succeeds unprompted, so a one-shot install reports a false permanent failure.
 
