@@ -501,3 +501,5 @@ unknown/capacity/incident-force parity must hold. Failed projection must leave
 the admitted session/cache together; weather-layer switches cannot recompute
 usage. No second case/default rule, tolerance change or recursive demand walk.
 At most two actionable findings; read-only and no competing builds.
+
+**Claimed (Claude, 2026-10-07 16:03 UTC):** scene-engineering demand cache review; reviewing once the ds-network working-tree change is committed.
