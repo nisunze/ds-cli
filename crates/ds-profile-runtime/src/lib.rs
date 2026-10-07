@@ -249,7 +249,7 @@ impl Runtime {
             presentation: package.manifest.model.presentation,
             assets: Arc::new(package.assets),
         };
-        self.project_session(request, session, source, Default::default())
+        self.project_session(request, session, source, Default::default(), &[])
     }
     fn project_session(
         &mut self,
@@ -257,6 +257,7 @@ impl Runtime {
         session: GridSession,
         source: HeldSource,
         mut demand_cache: ds_grid_engine::StructureUsageScreeningCache,
+        receipts: &[ds_grid_engine::CommandOutcome],
     ) -> Result<Value, String> {
         self.ensure_scope_available(&request.scope)?;
         let model_id = &source.model_id;
@@ -329,9 +330,19 @@ impl Runtime {
             .map(|held| std::mem::take(&mut held.review))
             .unwrap_or_default();
         review.install_case(requested_case);
-        let scene = review
-            .scene(&session, request.options)
-            .map_err(|error| format!("profile_scene_unavailable: {error}"));
+        // Analyze may return an explicit unavailable projection. A style
+        // refusal must not advance the retained review against the old session.
+        let scene = if let Err(error) = &styles {
+            Err(error.clone())
+        } else {
+            review
+                .scene_after(
+                    &session,
+                    request.options,
+                    if same_model { receipts } else { &[] },
+                )
+                .map_err(|error| format!("profile_scene_unavailable: {error}"))
+        };
         let projection_error = styles.as_ref().err().or(scene.as_ref().err()).cloned();
         if let Some(error) = &projection_error {
             // A refused projection must retain the previously admitted checkpoint,
@@ -596,6 +607,7 @@ mod transactional_projection_tests {
                     assets: assets.clone(),
                 },
                 Default::default(),
+                &[],
             )
             .unwrap();
         assert_eq!(replay["scene"], fresh["scene"]);
@@ -631,6 +643,145 @@ mod transactional_projection_tests {
             runtime.held[&input.scope].session.history_state(),
             worker.history_state()
         );
+    }
+    fn two_band_request() -> (ProjectRequest, GridSession) {
+        use ds_grid_model::{AlignmentId, RouteEdgeId};
+        let mut snapshot = common::fixture();
+        let mut second = snapshot.alignments[0].clone();
+        second.id = AlignmentId::new("independent-band").unwrap();
+        second.label = "Independent band".into();
+        snapshot.alignments.push(second.clone());
+        for mut edge in snapshot.route_edges.clone() {
+            edge.id = RouteEdgeId::new(format!("independent-{}", edge.id)).unwrap();
+            edge.alignment_id = second.id.clone();
+            snapshot.route_edges.push(edge);
+        }
+        (request_for(snapshot.clone()), GridSession::open(snapshot))
+    }
+    fn refresh_surface(
+        runtime: &mut Runtime,
+        input: &ProjectRequest,
+        worker: &GridSession,
+        computed: usize,
+        reused: usize,
+    ) {
+        let base = runtime.held[&input.scope]
+            .session
+            .current_revision()
+            .revision_id
+            .to_string();
+        let result = runtime
+            .execute(refresh(runtime, input, &base, worker))
+            .unwrap();
+        assert_eq!(
+            runtime.held[&input.scope].review.surface_work().unwrap(),
+            ds_grid_engine::profile_atlas::ProfileSurfaceWork {
+                computed_bands: computed,
+                reused_bands: reused,
+            }
+        );
+        let mut fresh_request = request_for(worker.snapshot().clone());
+        fresh_request.patch =
+            serde_json::from_value(serde_json::to_value(&runtime.views[&input.scope]).unwrap())
+                .unwrap();
+        let fresh = Runtime::default().execute(fresh_request).unwrap();
+        assert_eq!(result["scene"], fresh["scene"]);
+        assert_eq!(
+            result["command_view"]["display"],
+            fresh["command_view"]["display"]
+        );
+        assert_eq!(
+            result["command_view"]["review"],
+            fresh["command_view"]["review"]
+        );
+        if result["analysis"].is_null() {
+            assert_eq!(result["command_view"], fresh["command_view"]);
+        }
+    }
+    #[test]
+    fn refresh_reuses_surface_from_native_receipts_and_reconciles_navigation() {
+        let (input, mut worker) = two_band_request();
+        let mut runtime = Runtime::default();
+        runtime.execute(input.clone()).unwrap();
+        describe(&mut worker, "one", "first local edit");
+        refresh_surface(&mut runtime, &input, &worker, 1, 1);
+        describe(&mut worker, "two", "coalesced first edit");
+        describe(&mut worker, "three", "coalesced last edit");
+        let base = runtime.held[&input.scope]
+            .session
+            .current_revision()
+            .revision_id
+            .to_string();
+        let before = runtime.held[&input.scope].session.history_state();
+        let mut refused = refresh(&runtime, &input, &base, &worker);
+        refused.analyze = true;
+        refused.style_document = Value::Null;
+        assert!(runtime.execute(refused).is_err());
+        assert_eq!(runtime.held[&input.scope].session.history_state(), before);
+        refresh_surface(&mut runtime, &input, &worker, 1, 1);
+        worker.undo().unwrap();
+        refresh_surface(&mut runtime, &input, &worker, 2, 0);
+        worker.redo().unwrap();
+        refresh_surface(&mut runtime, &input, &worker, 2, 0);
+        worker.undo().unwrap();
+        refresh_surface(&mut runtime, &input, &worker, 2, 0);
+        // A new branch extends the admitted cursor even though it replaces a
+        // retained redo tail. It must use native receipts from that cursor.
+        describe(&mut worker, "branch", "replacement branch");
+        refresh_surface(&mut runtime, &input, &worker, 1, 1);
+    }
+    #[test]
+    fn retained_future_command_does_not_expand_target_surface_scope() {
+        let (input, mut worker) = two_band_request();
+        let mut runtime = Runtime::default();
+        runtime.execute(input.clone()).unwrap();
+        describe(&mut worker, "active", "active local command");
+        let mut weather = worker.snapshot().weather_states[0].clone();
+        weather.temperature_c += 1.;
+        worker
+            .apply_command(ds_grid_engine::CommandEnvelope::new(
+                "future-weather",
+                worker.current_revision().revision_id.clone(),
+                ds_grid_engine::GridCommand::UpdateWeatherState {
+                    id: weather.id.clone(),
+                    row: weather,
+                },
+            ))
+            .unwrap();
+        worker.undo().unwrap();
+        refresh_surface(&mut runtime, &input, &worker, 1, 1);
+        assert_eq!(
+            runtime.held[&input.scope]
+                .session
+                .history_state()
+                .redo_depth,
+            1
+        );
+        worker.redo().unwrap();
+        refresh_surface(&mut runtime, &input, &worker, 2, 0);
+    }
+    #[test]
+    fn unavailable_analyze_style_cannot_advance_review_against_old_held_session() {
+        let (input, mut worker) = two_band_request();
+        let mut runtime = Runtime::default();
+        runtime.execute(input.clone()).unwrap();
+        let before = runtime.held[&input.scope].session.history_state();
+        describe(&mut worker, "one", "new head not yet admitted");
+        let mut unavailable = request_for(worker.snapshot().clone());
+        unavailable.style_document = Value::Null;
+        unavailable.analyze = true;
+        let result = runtime.execute(unavailable).unwrap();
+        assert!(result["scene"].is_null());
+        assert_eq!(runtime.held[&input.scope].session.history_state(), before);
+        assert_eq!(
+            runtime.held[&input.scope]
+                .review
+                .surface_work()
+                .unwrap()
+                .computed_bands,
+            2
+        );
+        refresh_surface(&mut runtime, &input, &worker, 1, 1);
     }
     #[test]
     fn repeated_content_revision_preserves_the_exact_journal_cursor() {

@@ -497,3 +497,12 @@ negative control):
    uses `alignment_placements()`). The control: a structure on two
    alignments rebuilds both, and the result is byte-identical to a fresh
    scene.
+
+Next focused implementation: retained native section-reference curves. Review
+reuse outside receipt demand sections, removals, unavailable curves and exact
+fresh-scene parity. Changed chained offsets must invalidate or re-offset every
+affected downstream span; local editing must not recursively chase incident
+sections. Keep remaining weather transitions/election, engineering and design
+clearance work explicit. Native receipt-chain/options/model ownership remains
+the admission fence. At most two actionable findings, read-only, no competing
+builds.

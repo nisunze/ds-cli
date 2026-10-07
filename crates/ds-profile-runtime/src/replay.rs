@@ -120,6 +120,7 @@ impl Runtime {
             },
             Default::default(),
             request.analyze,
+            &[],
         );
         if result.is_err() {
             if let Some(previous) = prior {
@@ -192,6 +193,7 @@ impl Runtime {
         while session.history_state().undo_depth > start {
             session.undo().expect("retained prefix exists");
         }
+        let mut receipts = Vec::new();
         if start < request.entries.len() {
             for entry in &request.entries[start..] {
                 if session.current_revision().revision_id != entry.parent_revision {
@@ -216,6 +218,7 @@ impl Runtime {
                     );
                 }
                 cache.advance_command(&outcome);
+                receipts.push(outcome);
             }
         }
         let staged = session.history_state();
@@ -246,7 +249,15 @@ impl Runtime {
             patch: request.patch,
             analyze: false,
         };
-        self.render_replayed(project, session, source, cache, request.analyze)
+        // Only replay extending the admitted cursor has receipt lineage from
+        // the held scene. Undo/redo and divergent prefixes reconcile explicitly.
+        // Commands retained beyond the target cursor never enter its surface scope.
+        if start == request.base_history.undo_depth && request.target_history.undo_depth >= start {
+            receipts.truncate(request.target_history.undo_depth - start);
+        } else {
+            receipts.clear();
+        }
+        self.render_replayed(project, session, source, cache, request.analyze, &receipts)
     }
     fn render_replayed(
         &mut self,
@@ -255,6 +266,7 @@ impl Runtime {
         source: HeldSource,
         cache: ds_grid_engine::StructureUsageScreeningCache,
         analyze: bool,
+        receipts: &[ds_grid_engine::CommandOutcome],
     ) -> Result<Value, String> {
         if analyze {
             project.patch.visibility.insert(
@@ -274,7 +286,7 @@ impl Runtime {
         let scope = project.scope.clone();
         // Projection refusal restores the old held cache in project_session.
         // Analyze is run only after that projection has been admitted.
-        let mut result = self.project_session(project, session, source, cache)?;
+        let mut result = self.project_session(project, session, source, cache, receipts)?;
         if analyze {
             let held = self.held.get_mut(&scope).expect("admitted projection");
             let analysis = analysis::analyze_with_cache(

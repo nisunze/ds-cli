@@ -114,3 +114,15 @@ then applies the new request patch. Restore, seed replay and scene admission
 are transactional: invalid state or projection refusal leaves no new scope.
 The renderer transports these choices unchanged; it does not reconstruct
 native defaults or merging policy.
+
+Native Profile journal replay passes its actual command outcomes into
+`ProfileReviewView::scene_after`. Surface reuse starts only at the admitted
+cursor, follows the complete native parent chain, and stops at the requested
+cursor; commands in a retained redo tail do not contribute to its scope.
+Undo/redo and a divergent prefix reconcile without forward receipts. The
+runtime's scope/model/history fences continue to own isolation, and no web
+input can supply a recalculation scope. A refused replay retains the previous
+session, view and analysis together. Analyze with an unavailable style never
+advances the retained review against an unadmitted model head. Native runtime
+transaction tests prove surface work and exact fresh-scene parity for local
+and coalesced edits, navigation, branching and style refusal.
