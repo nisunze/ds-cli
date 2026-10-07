@@ -27,6 +27,56 @@ the current bounded review; the coding agent will implement confirmed evidence.
 
 **Claimed (Claude, 2026-10-07 13:37 UTC):** NUM 15 normalization review.
 
+**Findings (Claude, 14:20 UTC; read-only; members extracted with `ds pls backup-extract` into scratch):**
+
+1. **The exact native differences are two suffix records, and the gate is
+   right to refuse (executed).**
+   - **Compared:** the `huye_gisagara_120_backup.bak` NUM
+     (`VERSION='15'`, `SOURCE='PLS-CADD Version 19.01'`, 450 PIs) against
+     the `GISAGARA-HUYE PUs.MV DES.bak` NUM (`VERSION='14'`, 16.20, 11 PIs).
+   - **Identical in shape:** the prefix line (`1 0 0 -1 …`), the PI count
+     line, every PI point and attribute record, the start station, the
+     offsets, the 20 side-profile rows and the station equations.
+   - **Differences:**
+     - after `… ; back margin, ahead margin, number start/stop station pairs`,
+       the next record has 7 numbers in v14 (`65 64 0 71 11 15.24 1000`) and
+       8 in v15 (`2354 2363 0 2717 450 15 1000 0`; extra trailing `0`);
+     - the custom coordinate-system record gains a trailing quoted string in
+       v15 (`'custom' 'EDCL' 'EDCL Rwanda' '' 0 0 0.000000 0 ''`).
+   - **The gate is correct.** `num_materialize.rs` keeps the source prefix
+     and suffix verbatim (`:117-177`) and refuses anything but v14
+     (`require_num_v14`, `:187`). Relabelling a v15 shell as 14 would carry
+     the two v15 records into a v14 file.
+   - **The gap is a missing characterized NUM v15 → v14 suffix normalization.**
+     The cable writer has one (`pls_cadd_wire.rs:1562`, `:1661`, `:1733`);
+     `ds-io` has none for NUM (its only NUM normalization is XY order,
+     `num_align.rs:90`). The path is reached since ds-network `06d3785f`
+     (2026-10-04): station renumbering forces the whole-design export
+     (OPEN.md §11).
+   - **Smallest fix:** a NUM normalization beside the cable one in
+     `ds-io/src/pls_cadd_native`, applied before `require_num_v14`. It drops
+     only the trailing `0` of the counts record and the trailing `''` of the
+     coordinate-system record, and refuses any other value.
+   - **Regression fixture:** take `tests_support.rs` `sample_num` (v14) and
+     make a v15 twin (header `15`, a counts record with an 8th `0`, a
+     coordinate-system record with `''`). Expect normalization back to the
+     v14 bytes.
+   - **Negative controls:** an 8th field of `1`, or a trailing `'X'`, must
+     refuse.
+2. **Two different failures, plus one fact that needs native evidence.**
+   - **Scope:** only the 19.01 backup is a NUM 15 failure. The 16.20
+     `GISAGARA-HUYE PUs.MV DES.bak` NUM is already v14; it fails the
+     post-export re-read with 41 `section_phase_slot_missing` blockers
+     (`network-full-suite.log:2352`), which is a separate stringing
+     defect.
+   - **Hypothesis (unexecuted):** the counts record's 5th field equals the
+     PI count (11 and 450 here). A whole-design rewrite that changes the PI
+     count must keep that record consistent; check `verify_materialized_num`.
+   - **Native evidence needed:** before dropping the two v15 fields as
+     defaults, confirm with one native PLS-CADD 16.81 save of a 19.01 NUM
+     that 16.81 writes neither field. Implementation can proceed behind the
+     refuse-unless-default rule.
+
 ## Incoming finding (Claude, 2026-10-07 14:00 UTC): suspension ↔ strain retype leaves the model unsaveable (executed)
 
 **Owner report:** the retype fails with "model failed validation with 3
