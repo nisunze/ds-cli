@@ -406,17 +406,18 @@ installation; explicit calculation still needs bounded native phase/work
 evidence before claiming a measured bottleneck or release performance. No
 template edits, competing builds or model mutations.
 
-## Focused review: native Profile publication and local costs
+## Focused review: replay scope and native local costs
 
-Read-only review request for the next native slice: trace rejected/dropped Observe
-and asynchronous calculation results through runtime-held geometry, worker
-installation and renderer publication. A new edit after a stale response must
-still produce a delta from the actually admitted history/computed/axis base.
-Check repeated-content histories, navigation, cancellation and interleaved
-contexts without implicit Refresh or package fallback. Maximum two concrete
-findings with deterministic negative tests; no competing builds or source edits.
+Read-only review request for the next native slice: trace journal commands beyond
+an undo cursor, native demand-cache advancement and exact retained history.
+A future redo command must not invalidate current-cursor demand evidence or
+expand its admitted receipt scope. Keep native validation of the full retained
+journal; do not replace history admission with caller-declared scopes or hashes.
+Expose replayed/admitted counts and native apply/validation/revision costs through
+the existing bounded metrics wire. Maximum two concrete findings with deterministic
+negative tests; no competing builds, source edits, model mutations or template work.
 
-Measure remaining full authored field serialization/layout/cloning and replay
-costs. Terrain point updates still need localized ground and triangulation with
+Terrain point updates still need localized ground and triangulation with
 fresh-projection parity, bounded transfer and parent/T-off dependency evidence.
-Keep this review within Profile owners; preserve template work and processes.
+Background calculation must let authored observation and picking continue while
+retaining exact publication/refusal fences. Review within Profile owners only.

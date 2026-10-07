@@ -207,15 +207,6 @@ remaining Profile package branch and print-scale screening item below are
 secondary to interactive atomic editing and calculation; do not let them become
 a campaign across other surfaces.
 
-**Retained-axis publication recovery.** A refused or dropped native observation
-or asynchronous calculation must not strand further authored editing by moving
-the native delta base beyond the geometry actually admitted by the worker and
-renderer. Pin native publication to exact authored history, computed revision
-and axis; retain enough native state to compose the next delta from that admitted
-base. Prove edits arriving before and during worker installation, repeated-content
-histories, navigation and a stale calculation followed by another local edit.
-No implicit Refresh, package fallback, engineering retagging or weakened fences.
-
 **Next owning slice: local terrain-point updates.** Terrain point insertion,
 removal and movement still require localized surface/triangulation updates and
 bounded ground/observation deltas. Invalidate relevant spans and characterize
