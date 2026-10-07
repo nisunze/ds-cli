@@ -320,3 +320,95 @@ precise stale assumption in the old finding. Preserve unknown capacity and
 longitudinal-force blockers. Give one bounded regression and its negative
 controls; no source writes, model edits, competing builds or solver approval.
 Maximum two actionable findings. Claim after the current replay review.
+
+### Findings: focused replay follow-up (Claude, 2026-10-07 15:10 UTC; read-only at `c87444b`)
+
+**Checked, no defect:**
+
+- **Transaction rollback.**
+  - `refresh` works on a cloned session and cache (`replay.rs:59-60`).
+  - It runs the style preflight before projection (`:121-129`).
+  - A projection refusal hands the previous `HeldView` back
+    (`lib.rs:329-343`).
+  - The one fallible call after the commit, `clearance_violation_encoding`
+    (`lib.rs:453`), is already required by `resolve()`
+    (`profile_encoding.rs:236`), so it cannot fail after admission.
+- **Model replacement.** A different `model_id` refuses (`replay.rs:33-38`).
+  Revision ids are content-derived, so the same revision means the same
+  content.
+- **Undo, redo and a branch after undo.**
+  - The runtime redoes everything, then takes the exact common
+    `JournalEntry` prefix (command identity included), undoes to it and
+    applies the rest with parent and result fences (`replay.rs:69-105`).
+  - A pure undo keeps the redo tail.
+- **Assets and protection.** Shared `Arc` assets are kept (`lib.rs:65-69`).
+  Protection is covered by
+  `package_derived_combined_protection_survives_native_replay`.
+- **Demand cache.**
+  - `advance_command` clears the cache on any parent mismatch, which covers
+    the first command after an undo, and on `whole_model`
+    (`structure_usage_cache.rs:102-117`).
+  - `screen` clears it on any other revision (`:118-124`).
+  - A pure undo applies no receipt and falls through to that clear.
+
+**Finding 1: every refresh still prepares every band.**
+
+- **What happens:**
+  - `replay.rs:89-105` reads each applied `CommandOutcome` only for
+    `cache.advance_command`. The receipt's `delta.recalculation_scope`
+    (`alignments`, `demand_sections`, `context_sections`, `spans`,
+    `structures`; `recalculation_scope.rs:13-24`) then goes unused.
+  - `ProfileReviewView::scene` (`ds-network …/profile_engineering.rs:375-391`)
+    calls `ProfileCaseProjection::prepare` whenever the revision changed
+    (`profile_atlas/case_projection.rs:45-110`). That rebuilds, for the
+    whole model:
+    - `raw_profile_surface` for every alignment (`profile_atlas.rs:1861`);
+    - `CaseCurves::prepare` for every tension section;
+    - `build_chained_sections`, `layout_scene` and
+      `project_profile_engineering`.
+- **Smallest refresh:**
+  1. Union the scopes of the applied outcomes in `refresh`.
+  2. Pass the union to a new `ProfileReviewView::advance(session, options, &scope)`.
+  3. In `advance`:
+     - keep the per-alignment raw bands outside `scope.alignments`;
+     - keep `CaseCurves` outside `demand_sections ∪ context_sections`;
+     - rebuild chain placements only when a band's station bounds change;
+     - lay out only the changed bands;
+     - project engineering only for `scope.structures`.
+  4. Fall back to the full `prepare` on `whole_model` and on navigation,
+     since an undo produces no receipt.
+- **Constraint:** `raw_profile_surface` returns `ProfileGeometry<'a>`
+  borrowed from the snapshot. Retained per-alignment geometry must therefore
+  be owned, keyed by alignment id and revision.
+- **Regression test:** retype one suspension structure in the middle of a
+  section. Assert two things:
+  - only that structure's alignment band and its incident sections' curves
+    are rebuilt (count them);
+  - the scene serializes identically to a full `prepare` at the new revision.
+- **Negative controls:**
+  - a `whole_model` command rebuilds everything;
+  - undo navigation rebuilds everything;
+  - a terrain or alignment edit rebuilds exactly that alignment;
+  - a station-bounds change re-chains the downstream bands.
+
+**Finding 2: Analyze screens the whole model without the cache.**
+
+- **What happens:**
+  - `analysis::analyze_with_cache` first calls
+    `session.analyze_model_defaults` (`analysis.rs:33-37`). That runs
+    `structure_usage_screening_with_demands` for every structure
+    (`structure_ids: []`, `default_analysis.rs:802-810`) with no cache.
+  - Only after that does the cached issue layer screen again
+    (`analysis.rs:56-68`).
+- **Effect:** the receipt-advanced `StructureUsageScreeningCache` cannot
+  make an Analyze refresh cheaper than a whole-model section-demand solve.
+- **Fix:** add a `_with_cache` form of the default analysis that reads and
+  fills the same `SectionDemandCache` entries, keyed by
+  `(section, case, basis)`, that `screen` uses.
+- **Regression test:** open, analyze, retype one structure, then refresh
+  with `analyze: true`. Assert that both the default analysis and the issue
+  layer report `computed_cases` equal to the incident sections × cases, and
+  that the report is byte-identical to an uncached analysis.
+- **Negative controls:**
+  - a `whole_model` edit recomputes every case;
+  - a changed `weight_span_basis` misses the cache.
