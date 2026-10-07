@@ -131,3 +131,11 @@ and coalesced edits, navigation, branching and style refusal. Runtime checks
 also prove that a local refresh computes only affected section cases, Analyze
 reuses those demands with exact uncached report parity, and undo reconciles
 instead of retaining forward-edit evidence.
+
+Seed and journal handovers use opaque `seed_json` and `journal_json` strings.
+Renderers may parse identity/cursor metadata but forward the original text: JS
+number reserialization loses signed zero and can change native revision hashes.
+Native deserialization and revision/history validation remain authoritative.
+Initialization admits at most 1 GiB of seed JSON (including encoded assets);
+refresh admits at most 64 MiB of journal JSON and 16,384 entries. Old object
+handover fields refuse rather than falling back to package reopening.

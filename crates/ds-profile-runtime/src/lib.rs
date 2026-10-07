@@ -563,7 +563,7 @@ mod transactional_projection_tests {
             base_history: runtime.held[&input.scope].session.history_state(),
             expected_revision: session.current_revision().revision_id.clone(),
             target_history: session.history_state(),
-            entries: session.retained_journal().entries,
+            journal_json: serde_json::to_string(&session.retained_journal()).unwrap(),
             options: input.options.clone(),
             style_document: input.style_document.clone(),
             patch: Default::default(),
@@ -818,7 +818,9 @@ mod transactional_projection_tests {
             worker.history_state()
         );
         let mut bad = refresh(&runtime, &input, &input.expected_revision, &worker);
-        bad.entries[1].command_id = "one".into();
+        let mut journal = worker.retained_journal();
+        journal.entries[1].command_id = "one".into();
+        bad.journal_json = serde_json::to_string(&journal).unwrap();
         assert!(runtime
             .execute(bad)
             .unwrap_err()
@@ -904,7 +906,7 @@ mod transactional_projection_tests {
         initialized
             .execute(InitializeRequest {
                 scope: input.scope.clone(),
-                seed,
+                seed_json: serde_json::to_string(&seed).unwrap(),
                 restore_state: None,
                 options: input.options.clone(),
                 style_document: input.style_document.clone(),
@@ -939,7 +941,7 @@ mod transactional_projection_tests {
                 bytes: b"native evidence".to_vec(),
             }],
         );
-        let wire = json!({"operation":"initialize", "scope":input.scope, "seed":seed,
+        let wire = json!({"operation":"initialize", "scope":input.scope, "seed_json":serde_json::to_string(&seed).unwrap(),
             "options":input.options, "style_document":input.style_document, "patch":{}, "analyze":true});
         let mut runtime = Runtime::default();
         let result = runtime
@@ -1007,7 +1009,7 @@ mod transactional_projection_tests {
             Default::default(),
             &[],
         );
-        let mut wire = json!({"operation":"initialize", "scope":"recovered", "seed":seed,
+        let mut wire = json!({"operation":"initialize", "scope":"recovered", "seed_json":serde_json::to_string(&seed).unwrap(),
             "restore_state":admitted["display_state"], "options":input.options, "style_document":input.style_document,
             "patch":{"visibility":{"ground":false}}, "analyze":false});
         let mut restored = Runtime::default();
@@ -1034,6 +1036,107 @@ mod transactional_projection_tests {
         assert!(restored.held.contains_key("recovered"));
     }
     #[test]
+    fn opaque_wire_preserves_signed_zero_and_refuses_corruption_transactionally() {
+        let mut snapshot = common::fixture();
+        snapshot.structures[1].profile_offset_m = Some(-0.0);
+        snapshot.structures[1].orientation_rad = -0.0;
+        let input = request_for(snapshot.clone());
+        let mut worker = GridSession::open(snapshot);
+        let seed = ds_grid_exchange::profile_session::ProfileSessionSeed::capture(
+            &worker,
+            EntityId::new("profile-test").unwrap(),
+            Default::default(),
+            &[],
+        );
+        let seed_json = serde_json::to_string(&seed).unwrap();
+        assert!(seed_json.contains("-0.0"));
+        let wire = json!({"operation":"initialize", "scope":input.scope, "seed_json":seed_json,
+            "options":input.options, "style_document":input.style_document, "patch":{}, "analyze":false});
+        let mut runtime = Runtime::default();
+        runtime
+            .execute(serde_json::from_str::<Request>(&wire.to_string()).unwrap())
+            .unwrap();
+        assert_eq!(
+            runtime.held[&input.scope].session.current_revision(),
+            worker.current_revision()
+        );
+        assert!(runtime.held[&input.scope].session.snapshot().structures[1]
+            .profile_offset_m
+            .unwrap()
+            .is_sign_negative());
+        let mut corrupted = wire.clone();
+        corrupted["scope"] = json!("corrupt");
+        corrupted["seed_json"] = json!(seed_json.replace("-0.0", "0"));
+        assert!(runtime
+            .execute(serde_json::from_value::<Request>(corrupted).unwrap())
+            .unwrap_err()
+            .starts_with("profile_seed_invalid:"));
+        assert!(!runtime.held.contains_key("corrupt"));
+        let mut obsolete = wire;
+        obsolete.as_object_mut().unwrap().remove("seed_json");
+        obsolete["seed"] = json!(seed);
+        assert!(serde_json::from_value::<Request>(obsolete).is_err());
+
+        let row = worker.snapshot().structures[1].clone();
+        worker
+            .apply_command(ds_grid_engine::CommandEnvelope::new(
+                "move-zero",
+                worker.current_revision().revision_id.clone(),
+                ds_grid_engine::GridCommand::MoveStructure {
+                    id: row.id,
+                    x_m: row.x_m,
+                    y_m: row.y_m,
+                    z_m: row.z_m,
+                    orientation_rad: -0.0,
+                },
+            ))
+            .unwrap();
+        let mut request = refresh(&runtime, &input, &input.expected_revision, &worker);
+        // A JS outer JSON envelope quotes the opaque journal, preserving its bytes.
+        request.journal_json =
+            serde_json::from_str(&serde_json::to_string(&request.journal_json).unwrap()).unwrap();
+        assert!(request.journal_json.contains("-0.0"));
+        let original = request.journal_json.clone();
+        request.journal_json = original.replace("-0.0", "0");
+        assert!(runtime
+            .execute(request)
+            .unwrap_err()
+            .starts_with("profile_replay_diverged:"));
+        assert_eq!(
+            runtime.held[&input.scope]
+                .session
+                .current_revision()
+                .revision_id
+                .to_string(),
+            input.expected_revision
+        );
+        runtime
+            .execute(refresh(&runtime, &input, &input.expected_revision, &worker))
+            .unwrap();
+        assert_eq!(
+            runtime.held[&input.scope].session.history_state(),
+            worker.history_state()
+        );
+        assert!(runtime.held[&input.scope].session.snapshot().structures[1]
+            .orientation_rad
+            .is_sign_negative());
+        let mut malformed = refresh(
+            &runtime,
+            &input,
+            worker.current_revision().revision_id.as_str(),
+            &worker,
+        );
+        malformed.journal_json = "{".into();
+        assert!(runtime
+            .execute(malformed)
+            .unwrap_err()
+            .starts_with("profile_replay_invalid:"));
+        assert_eq!(
+            runtime.held[&input.scope].session.history_state(),
+            worker.history_state()
+        );
+    }
+    #[test]
     fn scope_capacity_preserves_live_sessions_and_release_frees_exact_assets() {
         let input = request();
         let worker = GridSession::open(common::fixture());
@@ -1048,7 +1151,7 @@ mod transactional_projection_tests {
         );
         let initialize = |scope: &str| InitializeRequest {
             scope: scope.into(),
-            seed: seed.clone(),
+            seed_json: serde_json::to_string(&seed).unwrap(),
             restore_state: None,
             options: input.options.clone(),
             style_document: input.style_document.clone(),
@@ -1122,7 +1225,7 @@ mod transactional_projection_tests {
             base_history: worker.history_state(),
             expected_revision: worker.current_revision().revision_id.clone(),
             target_history: worker.history_state(),
-            entries: vec![],
+            journal_json: serde_json::to_string(&worker.retained_journal()).unwrap(),
             options: current.options.clone(),
             style_document: current.style_document.clone(),
             patch: Default::default(),
@@ -1326,8 +1429,12 @@ mod transactional_projection_tests {
         describe(&mut worker, "one", "first staged edit");
         describe(&mut worker, "two", "second staged edit");
         let mut bad = refresh(&runtime, &input, &input.expected_revision, &worker);
-        bad.entries[1].resulting_revision = serde_json::from_value(json!("wrong-result")).unwrap();
-        bad.expected_revision = bad.entries[1].resulting_revision.clone();
+        let mut journal = worker.retained_journal();
+        journal.entries[1].resulting_revision =
+            serde_json::from_value(json!("wrong-result")).unwrap();
+        bad.expected_revision = journal.entries[1].resulting_revision.clone();
+        journal.history.model_revision = bad.expected_revision.clone();
+        bad.journal_json = serde_json::to_string(&journal).unwrap();
         bad.target_history.model_revision = bad.expected_revision.clone();
         assert!(runtime
             .execute(bad)

@@ -1,11 +1,12 @@
 use super::*;
-use ds_grid_engine::{CommandEnvelope, JournalEntry, RevisionId, SessionHistoryState};
+use ds_grid_engine::{CommandEnvelope, RevisionId, SessionHistoryState};
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct InitializeRequest {
     pub scope: String,
-    pub seed: ds_grid_exchange::profile_session::ProfileSessionSeed,
+    /// Exact native JSON; JS object transport loses signed zero and revision identity.
+    pub seed_json: String,
     /// Pass through a prior admitted native state after runtime loss. Rust
     /// validates it with the ordinary patch controls before applying new input.
     #[serde(default)]
@@ -46,7 +47,7 @@ pub struct RefreshRequest {
     pub base_history: SessionHistoryState,
     pub expected_revision: RevisionId,
     pub target_history: SessionHistoryState,
-    pub entries: Vec<JournalEntry>,
+    pub journal_json: String,
     pub options: ProfileAtlasOptions,
     pub style_document: Value,
     pub patch: DisplayPatch,
@@ -94,7 +95,13 @@ impl Runtime {
                 DisplayState::default().patched(&patch)
             })
             .transpose()?;
-        let initialized = request.seed.open()?;
+        if request.seed_json.len() > 1024 * 1024 * 1024 {
+            return Err("profile_seed_invalid: seed exceeds native transport bounds".into());
+        }
+        let seed: ds_grid_exchange::profile_session::ProfileSessionSeed =
+            serde_json::from_str(&request.seed_json)
+                .map_err(|error| format!("profile_seed_invalid: {error}"))?;
+        let initialized = seed.open()?;
         let project = ProjectRequest {
             scope: request.scope,
             expected_revision: initialized
@@ -152,11 +159,22 @@ impl Runtime {
                     .into(),
             );
         }
-        if request.entries.len() > 16_384 {
+        if request.journal_json.len() > 64 * 1024 * 1024 {
+            return Err("profile_replay_invalid: journal exceeds native transport bounds".into());
+        }
+        let journal: ds_grid_engine::journal::SessionJournal =
+            serde_json::from_str(&request.journal_json)
+                .map_err(|error| format!("profile_replay_invalid: {error}"))?;
+        if journal.history != request.target_history {
+            return Err(
+                "profile_replay_diverged: journal cursor differs from requested history".into(),
+            );
+        }
+        let entries = journal.entries;
+        if entries.len() > 16_384 {
             return Err("profile_replay_invalid: journal exceeds native bounds".into());
         }
-        if request
-            .entries
+        if entries
             .windows(2)
             .any(|pair| pair[0].resulting_revision != pair[1].parent_revision)
             || request.target_history.model_revision != request.expected_revision
@@ -164,7 +182,7 @@ impl Runtime {
                 .target_history
                 .undo_depth
                 .checked_add(request.target_history.redo_depth)
-                != Some(request.entries.len())
+                != Some(entries.len())
         {
             return Err(
                 "profile_replay_diverged: journal does not form the requested revision chain"
@@ -174,8 +192,7 @@ impl Runtime {
         let mut session = held.session.clone();
         let mut cache = held.demand_cache.clone();
         let initial = session.history_state().initial_revision;
-        if request
-            .entries
+        if entries
             .first()
             .is_some_and(|entry| entry.parent_revision != initial)
         {
@@ -185,7 +202,7 @@ impl Runtime {
         let retained = session.command_history();
         let start = retained
             .iter()
-            .zip(&request.entries)
+            .zip(&entries)
             .take_while(|(a, b)| a == b)
             .count();
         // Choose the exact common command prefix, never a content-only match:
@@ -194,8 +211,8 @@ impl Runtime {
             session.undo().expect("retained prefix exists");
         }
         let mut receipts = Vec::new();
-        if start < request.entries.len() {
-            for entry in &request.entries[start..] {
+        if start < entries.len() {
+            for entry in &entries[start..] {
                 if session.current_revision().revision_id != entry.parent_revision {
                     return Err(
                         "profile_replay_diverged: journal parent differs from the staged head"
