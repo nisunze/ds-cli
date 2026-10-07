@@ -153,11 +153,6 @@ round trip. Whole-model analysis stays available on demand.
 
 ### 5. Bug evidence found during the trace
 
-- **CLI edits drop library pins.** The persist path in
-  `ds-cli/crates/ds-cli-dsgrid/src/mutation.rs` packs with
-  `library_pins: Vec::new()` and `library_needs: Vec::new()`. Every CLI edit
-  (retype, describe, …) silently removes the model's interoperability-library
-  pins. Carry them through, as model composition should too (`.bak` hole 3).
 - **The CLI cannot co-work with the dev Desktop.**
   - `dsgrid.structure.retype` has no `--target`, so the CLI cannot edit the
     model the Desktop has open.
