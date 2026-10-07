@@ -38,6 +38,12 @@ pub enum CameraIntent {
         viewport: Viewport,
         point: Point,
     },
+    ZoomWindow {
+        bounds: Bounds,
+        host: HostSurface,
+        viewport: Viewport,
+        window: ds_canvas_lite::viewport::ZoomWindow,
+    },
 }
 impl CameraIntent {
     pub fn evaluate(self) -> Result<Value, String> {
@@ -85,6 +91,16 @@ impl CameraIntent {
                 b.extend([point.x, point.y]);
                 (5, b)
             }
+            Self::ZoomWindow {
+                bounds,
+                host,
+                viewport,
+                window,
+            } => {
+                let mut b = base(bounds, host, viewport)?;
+                b.extend([window.from.x, window.from.y, window.to.x, window.to.y]);
+                (9, b)
+            }
         };
         let out = camera_buffer(operation, &input)?;
         Ok(if operation == 0 {
@@ -124,5 +140,25 @@ mod tests {
         assert!(selection_buffer(1, &[f64::NAN, 0.], &[0., 0.]).is_err());
         assert!(selection_buffer(3, &vec![0.; 4096], &vec![0.; 4096]).is_err());
         assert!(evaluate(br#"{"operation":"fit","typo":true}"#).is_err());
+    }
+    #[test]
+    fn window_intent_is_the_same_native_camera_and_refuses_zero_area() {
+        let request = br#"{"operation":"zoom_window","bounds":{"min_x":100,"min_y":20,"max_x":1100,"max_y":220},"host":{"width":1024,"height":424,"device_pixel_ratio":2},"viewport":{"zoom":2,"pan_x":170,"pan_y":-30},"window":{"from":{"x":212,"y":112},"to":{"x":812,"y":312}}}"#;
+        let raw = camera_buffer(
+            9,
+            &[
+                100., 20., 1100., 220., 1024., 424., 2., 170., -30., 212., 112., 812., 312.,
+            ],
+        )
+        .unwrap();
+        assert_eq!(
+            evaluate(request).unwrap(),
+            json!({"zoom":raw[0],"pan_x":raw[1],"pan_y":raw[2]})
+        );
+        let mut invalid: Value = serde_json::from_slice(request).unwrap();
+        invalid["window"]["to"]["x"] = json!(212);
+        assert!(evaluate(&serde_json::to_vec(&invalid).unwrap())
+            .unwrap_err()
+            .contains("positive width"));
     }
 }

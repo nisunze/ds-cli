@@ -168,6 +168,59 @@ pub fn center_on(
     }
 }
 
+/// A host gesture in CSS pixels. It is transient camera input, never model data.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ZoomWindow {
+    pub from: Point,
+    pub to: Point,
+}
+impl ZoomWindow {
+    pub fn validate(self) -> Result<(), String> {
+        if !self.from.is_finite() || !self.to.is_finite() {
+            return Err("canvas zoom window must be finite".into());
+        }
+        let width = (self.to.x - self.from.x).abs();
+        let height = (self.to.y - self.from.y).abs();
+        if !width.is_finite() || !height.is_finite() {
+            return Err("canvas zoom window extent must be finite".into());
+        }
+        if width == 0. || height == 0. {
+            return Err("canvas zoom window must have positive width and height".into());
+        }
+        Ok(())
+    }
+}
+
+/// Fit the scene beneath a dragged window without changing its aspect ratio.
+/// Both drag directions use the same center, existing zoom limits and padding.
+pub fn zoom_window(
+    bounds: &Bounds,
+    host: &HostSurface,
+    viewport: &Viewport,
+    window: ZoomWindow,
+) -> Result<Viewport, String> {
+    window.validate()?;
+    let current = projection(bounds, host, viewport);
+    let width = (window.to.x - window.from.x).abs();
+    let height = (window.to.y - window.from.y).abs();
+    let center = current.unproject(Point::new(
+        window.from.x / 2. + window.to.x / 2.,
+        window.from.y / 2. + window.to.y / 2.,
+    ));
+    let factor = ((host.width - FIT_PADDING_PX).max(1.) / width)
+        .min((host.height - FIT_PADDING_PX).max(1.) / height);
+    let zoom = (clamp_zoom(viewport.zoom) * factor).clamp(MIN_ZOOM, MAX_ZOOM);
+    let result = center_on(bounds, host, &Viewport { zoom, ..*viewport }, center);
+    if ![result.zoom, result.pan_x, result.pan_y]
+        .iter()
+        .all(|v| v.is_finite())
+    {
+        return Err("canvas zoom window projection must be finite".into());
+    }
+    Ok(result)
+}
+
 /// Keep a saved camera while the scene still intersects the host. A camera is
 /// stored in CSS pixels, so another window size or a later scene can otherwise
 /// leave every engineering mark outside the canvas. When that happens, prefer
@@ -221,6 +274,84 @@ mod tests {
     }
     fn host() -> HostSurface {
         HostSurface::new(1024., 424., 2.).unwrap()
+    }
+    #[test]
+    fn window_fit_centers_the_original_scene_point_and_preserves_aspect() {
+        let viewport = Viewport {
+            zoom: 2.,
+            pan_x: 170.,
+            pan_y: -30.,
+        };
+        let window = ZoomWindow {
+            from: Point::new(212., 112.),
+            to: Point::new(812., 312.),
+        };
+        let before = projection(&bounds(), &host(), &viewport);
+        let center = before.unproject(Point::new(512., 212.));
+        let fitted = zoom_window(&bounds(), &host(), &viewport, window).unwrap();
+        let after = projection(&bounds(), &host(), &fitted);
+        assert!((after.project(center).x - 512.).abs() < 1e-9);
+        assert!((after.project(center).y - 212.).abs() < 1e-9);
+        assert!((after.scale / before.scale - 1000. / 600.).abs() < 1e-9);
+        assert_eq!(
+            zoom_window(
+                &bounds(),
+                &host(),
+                &viewport,
+                ZoomWindow {
+                    from: window.to,
+                    to: window.from
+                }
+            )
+            .unwrap(),
+            fitted
+        );
+    }
+    #[test]
+    fn window_fit_obeys_zoom_limits_and_refuses_degenerate_input() {
+        for (width, expected) in [(1e-8, MAX_ZOOM), (1e-320, MAX_ZOOM), (1e12, MIN_ZOOM)] {
+            let fitted = zoom_window(
+                &bounds(),
+                &host(),
+                &Viewport::fitted(),
+                ZoomWindow {
+                    from: Point::new(0., 0.),
+                    to: Point::new(width, width),
+                },
+            )
+            .unwrap();
+            assert_eq!(fitted.zoom, expected);
+        }
+        for to in [
+            Point::new(0., 10.),
+            Point::new(10., 0.),
+            Point::new(f64::NAN, 10.),
+        ] {
+            assert!(
+                zoom_window(
+                    &bounds(),
+                    &host(),
+                    &Viewport::fitted(),
+                    ZoomWindow {
+                        from: Point::new(0., 0.),
+                        to
+                    }
+                )
+                .is_err()
+            );
+        }
+        assert!(
+            zoom_window(
+                &bounds(),
+                &host(),
+                &Viewport::fitted(),
+                ZoomWindow {
+                    from: Point::new(-f64::MAX, 0.),
+                    to: Point::new(f64::MAX, 10.),
+                }
+            )
+            .is_err()
+        );
     }
     #[test]
     fn profile_fit_fixture_is_unchanged() {

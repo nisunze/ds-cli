@@ -39,7 +39,8 @@ fn scene(input: &[f64]) -> Result<(Bounds, HostSurface, Viewport), String> {
 }
 /// ABI v1: 0 projection, 1 pan, 2 centered zoom, 3 cursor zoom,
 /// 4 fit, 5 center on scene point, 6 clamp zoom, 7 constants,
-/// 8 preserve/rebase a saved camera against the current scene and host.
+/// 8 preserve/rebase a saved camera against the current scene and host,
+/// 9 fit a CSS-pixel window (scene tuple followed by x0,y0,x1,y1).
 pub fn camera_buffer(operation: u8, input: &[f64]) -> Result<Vec<f64>, String> {
     match operation {
         0 => {
@@ -95,6 +96,19 @@ pub fn camera_buffer(operation: u8, input: &[f64]) -> Result<Vec<f64>, String> {
                 &v,
                 focus.is_finite().then_some(focus),
             )))
+        }
+        9 => {
+            exact(input, 13)?;
+            let (b, h, v) = scene(input)?;
+            Ok(view_buffer(viewport::zoom_window(
+                &b,
+                &h,
+                &v,
+                viewport::ZoomWindow {
+                    from: point(&input[9..11]),
+                    to: point(&input[11..13]),
+                },
+            )?))
         }
         _ => Err("unknown canvas camera operation".into()),
     }
@@ -169,6 +183,34 @@ pub fn gesture_buffer(operation: u8, input: &[f64]) -> Result<Vec<f64>, String> 
 #[cfg(test)]
 mod camera_tests {
     use super::*;
+    #[test]
+    fn window_camera_transport_matches_native_and_refuses_invalid_buffers() {
+        let input = [
+            100., 20., 1100., 220., 1024., 424., 2., 170., -30., 212., 112., 812., 312.,
+        ];
+        let (b, h, v) = scene(&input).unwrap();
+        let expected = viewport::zoom_window(
+            &b,
+            &h,
+            &v,
+            viewport::ZoomWindow {
+                from: Point::new(212., 112.),
+                to: Point::new(812., 312.),
+            },
+        )
+        .unwrap();
+        assert_eq!(camera_buffer(9, &input).unwrap(), view_buffer(expected));
+        assert!(camera_buffer(9, &input[..12]).is_err());
+        let mut invalid = input;
+        invalid[11] = invalid[9];
+        assert!(camera_buffer(9, &invalid).is_err());
+        invalid = input;
+        invalid[4] = 0.;
+        assert!(camera_buffer(9, &invalid).is_err());
+        invalid = input;
+        invalid[0] = f64::NAN;
+        assert!(camera_buffer(9, &invalid).is_err());
+    }
 
     #[test]
     fn offscreen_camera_operation_centers_focus_or_fits() {

@@ -129,8 +129,7 @@ Snapshot hashes are not a substitute for numerical or packet parity.
 
 ## 2. What is snapshotted
 
-10 remaining files, `vendor/ds-geo-lite/MANIFEST.json`, taken at ds-network `a644fb0`
-(`577ec83` until geometry admission was added, 2026-09-27):
+10 remaining files, pinned per file by `vendor/ds-geo-lite/MANIFEST.json`:
 
 | Vendored | ds-network source | Whole |
 |---|---|---|
