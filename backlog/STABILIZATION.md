@@ -96,9 +96,6 @@ trace below confirms it.
 1. **Desktop apply:** `GridProfileRetypePicker.svelte` →
    `gridCommitStructureRetype` (`ds-web/src/lib/grid/session.ts:749`) applies
    the edit in the worker, which is cheap.
-2. **Session refresh:** `refreshGridSessionState` then re-reads the snapshot,
-   reads validation, history and every headline table projection before the
-   next edit. Replace full table transport with native summary counts.
 3. **Auto analysis:** the revision change re-offers auto analysis
    (`GridProfilePanel.svelte:1210-1226`, on by default since 2026-10-05). It
    calls `executeNativeProfileCommand` (`ds-web/src/lib/grid/profile-native.ts`),
