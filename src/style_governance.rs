@@ -498,6 +498,20 @@ const A4_BASELINE_DEFINITION: &str =
 const A4_BASELINE_CONTENT: &str =
     "bdbe3df0b4e4154127b59070626d9298ca6faeaba0b5cabcb13268d5ef33344d";
 const A4_BASELINE_HTML: &str = "f8475303b1fb7b2cf9c613cb51f5f8d6fc7b843805fda247c7d281911a94fc3d";
+// Reviewed fitting revision immediately before the farthest-customer metric.
+const A4_FITTING_DEFINITION: &str =
+    "967ebb76ab66af38f3ad20ac04844da2383feea3df6fe725ea8870393de0d1f0";
+const A4_FITTING_CONTENT: &str =
+    "736e564abc947dbde216dd0bd73569d900522f005ad51553fe9f69ceaaebc863";
+const A4_FITTING_HTML: &str = "124a3e83edb483ee9c776d30a4994e25c2f707f79c2536cd0d0a5a99aef3015d";
+
+fn a4_retained_hashes(definition: &str) -> Option<(&'static str, &'static str)> {
+    match definition {
+        A4_BASELINE_DEFINITION => Some((A4_BASELINE_CONTENT, A4_BASELINE_HTML)),
+        A4_FITTING_DEFINITION => Some((A4_FITTING_CONTENT, A4_FITTING_HTML)),
+        _ => None,
+    }
+}
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct A4MigrationPlan {
@@ -531,8 +545,9 @@ fn admit_a4_migration_plan(request: &Request, data: &Value) -> Result<A4Migratio
         return Err("project_context_changed: A4 migration belongs to another project".into());
     }
     let expected_retention = format!(
-        "{}/revisions/{A4_BASELINE_DEFINITION}",
-        a4_document_path(&request.project)
+        "{}/revisions/{}",
+        a4_document_path(&request.project),
+        plan.existing_sha256
     );
     let without_retention = plan.retention_path.is_empty()
         && plan.previous_content_sha256.is_empty()
@@ -541,16 +556,17 @@ fn admit_a4_migration_plan(request: &Request, data: &Value) -> Result<A4Migratio
         && plan.retains == 0;
     let state_valid = match plan.existing_state.as_str() {
         "baseline" => {
-            plan.existing_sha256 == A4_BASELINE_DEFINITION
-                && plan.definition_sha256 != A4_BASELINE_DEFINITION
-                && exact(&plan.existing_update_time, 64)
-                && plan.retention_path == expected_retention
-                && plan.previous_content_sha256 == A4_BASELINE_CONTENT
-                && plan.previous_html_sha256 == A4_BASELINE_HTML
-                && plan.updates == 1
-                && plan.retains == 1
-                && plan.preserves == 0
-                && plan.apply_allowed
+            a4_retained_hashes(&plan.existing_sha256).is_some_and(|(content, html)| {
+                plan.definition_sha256 != plan.existing_sha256
+                    && exact(&plan.existing_update_time, 64)
+                    && plan.retention_path == expected_retention
+                    && plan.previous_content_sha256 == content
+                    && plan.previous_html_sha256 == html
+                    && plan.updates == 1
+                    && plan.retains == 1
+                    && plan.preserves == 0
+                    && plan.apply_allowed
+            })
         }
         "exact" => {
             without_retention
@@ -570,7 +586,7 @@ fn admit_a4_migration_plan(request: &Request, data: &Value) -> Result<A4Migratio
             without_retention
                 && digest(&plan.existing_sha256)
                 && plan.existing_sha256 != plan.definition_sha256
-                && plan.existing_sha256 != A4_BASELINE_DEFINITION
+                && a4_retained_hashes(&plan.existing_sha256).is_none()
                 && exact(&plan.existing_update_time, 64)
                 && plan.preserves == 0
                 && !plan.apply_allowed

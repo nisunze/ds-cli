@@ -1,0 +1,226 @@
+{
+  "data": {
+    "schema": "ds.print-a4-migration-plan/v1",
+    "project_id": "project_a",
+    "principal": "owner@example.com",
+    "document_path": "eds_project/project_a/printing_a4_documents/voltage-drop-a4-v1",
+    "definition_sha256": "a03bcec0fbec1ad96bb28680e51645c659779ab976bbddd6598ef2610e7018b0",
+    "content_sha256": "7460b1be984eeac3823ee1d32cc3eef811cce238927a644b4bbf26fa5cdbcfb4",
+    "html_sha256": "09d27d66defdf8657b30e06073a5de2b0b6d0db830936900bdcfe2fe0e6f6764",
+    "definition": {
+      "content_sha256": "7460b1be984eeac3823ee1d32cc3eef811cce238927a644b4bbf26fa5cdbcfb4",
+      "html_sha256": "09d27d66defdf8657b30e06073a5de2b0b6d0db830936900bdcfe2fe0e6f6764",
+      "logo_slots": [
+        "governed-logo-0",
+        "governed-logo-1",
+        "governed-logo-2",
+        "governed-logo-3",
+        "governed-logo-4",
+        "governed-logo-5"
+      ],
+      "schema": "ds.print-a4-default/v1",
+      "status_layout": {
+        "assets": {},
+        "attribution": {
+          "baseline_pt": 7,
+          "color": "#595959",
+          "font_pt": 7,
+          "pdf_font_family": "Helvetica",
+          "right_inset_pt": 146,
+          "svg_font_family": "DejaVu Sans"
+        },
+        "context_layers": [],
+        "elements": [
+          {
+            "asset": "",
+            "color": "#192b38",
+            "fill": "#ffffff",
+            "font_pt": 8,
+            "id": "border",
+            "kind": "rectangle",
+            "opacity": 1,
+            "rect": [
+              5,
+              5,
+              200,
+              287
+            ],
+            "text": ""
+          },
+          {
+            "asset": "",
+            "color": "#192b38",
+            "fill": "#ffffff",
+            "font_pt": 14,
+            "id": "title",
+            "kind": "text",
+            "opacity": 1,
+            "rect": [
+              12,
+              12,
+              186,
+              24
+            ],
+            "text": "{title}"
+          },
+          {
+            "asset": "",
+            "color": "#192b38",
+            "fill": "#ffffff",
+            "font_pt": 10,
+            "id": "status",
+            "kind": "text",
+            "opacity": 1,
+            "rect": [
+              12,
+              48,
+              186,
+              180
+            ],
+            "text": "{status}"
+          },
+          {
+            "asset": "",
+            "color": "#192b38",
+            "fill": "#ffffff",
+            "font_pt": 9,
+            "id": "identity",
+            "kind": "text",
+            "opacity": 1,
+            "rect": [
+              12,
+              255,
+              186,
+              24
+            ],
+            "text": "{project}\nExact saved analysis"
+          },
+          {
+            "asset": "governed-logo-0",
+            "color": "#192b38",
+            "fill": "#ffffff",
+            "font_pt": 8,
+            "id": "logo-publisher-0",
+            "kind": "logo",
+            "opacity": 1,
+            "rect": [
+              12,
+              237,
+              28,
+              14
+            ],
+            "text": ""
+          },
+          {
+            "asset": "governed-logo-1",
+            "color": "#192b38",
+            "fill": "#ffffff",
+            "font_pt": 8,
+            "id": "logo-publisher-1",
+            "kind": "logo",
+            "opacity": 1,
+            "rect": [
+              43,
+              237,
+              28,
+              14
+            ],
+            "text": ""
+          },
+          {
+            "asset": "governed-logo-2",
+            "color": "#192b38",
+            "fill": "#ffffff",
+            "font_pt": 8,
+            "id": "logo-publisher-2",
+            "kind": "logo",
+            "opacity": 1,
+            "rect": [
+              74,
+              237,
+              28,
+              14
+            ],
+            "text": ""
+          },
+          {
+            "asset": "governed-logo-3",
+            "color": "#192b38",
+            "fill": "#ffffff",
+            "font_pt": 8,
+            "id": "logo-publisher-3",
+            "kind": "logo",
+            "opacity": 1,
+            "rect": [
+              105,
+              237,
+              28,
+              14
+            ],
+            "text": ""
+          },
+          {
+            "asset": "governed-logo-4",
+            "color": "#192b38",
+            "fill": "#ffffff",
+            "font_pt": 8,
+            "id": "logo-publisher-4",
+            "kind": "logo",
+            "opacity": 1,
+            "rect": [
+              136,
+              237,
+              28,
+              14
+            ],
+            "text": ""
+          },
+          {
+            "asset": "governed-logo-5",
+            "color": "#192b38",
+            "fill": "#ffffff",
+            "font_pt": 8,
+            "id": "logo-publisher-5",
+            "kind": "logo",
+            "opacity": 1,
+            "rect": [
+              167,
+              237,
+              28,
+              14
+            ],
+            "text": ""
+          }
+        ],
+        "id": "lv-voltage-drop-status-v1",
+        "layer_order": [],
+        "name": "LV voltage-drop status A4",
+        "page_mm": [
+          210,
+          297
+        ],
+        "paper": {
+          "orientation": "portrait",
+          "size": "A4"
+        },
+        "schema": "ds.print-layout/v2",
+        "style_overrides": {},
+        "style_refs": {},
+        "styles": {}
+      }
+    },
+    "existing_state": "baseline",
+    "existing_sha256": "967ebb76ab66af38f3ad20ac04844da2383feea3df6fe725ea8870393de0d1f0",
+    "existing_update_time": "2026-10-07T00:00:00Z",
+    "creates": 0,
+    "preserves": 0,
+    "apply_allowed": true,
+    "plan_sha256": "eb65bc7d55ae0630910c1de77731f202991128e161ab0cb136e57105be76fd3f",
+    "retention_path": "eds_project/project_a/printing_a4_documents/voltage-drop-a4-v1/revisions/967ebb76ab66af38f3ad20ac04844da2383feea3df6fe725ea8870393de0d1f0",
+    "previous_content_sha256": "736e564abc947dbde216dd0bd73569d900522f005ad51553fe9f69ceaaebc863",
+    "previous_html_sha256": "124a3e83edb483ee9c776d30a4994e25c2f707f79c2536cd0d0a5a99aef3015d",
+    "updates": 1,
+    "retains": 1
+  },
+  "success": true
+}

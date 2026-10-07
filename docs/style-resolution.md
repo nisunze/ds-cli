@@ -43,6 +43,14 @@ through the authorized idempotent API operation before upgraded consumers are
 released. An unmigrated baseline refuses resolution rather than enlarging pens.
 A packaged preview is not a persisted document.
 
+Project-owned A4 migration admission accepts the two reviewed retained
+baselines: the original template and the fitting revision before the
+farthest-customer metric. Each definition digest selects its own exact content
+and HTML digests and its project-local immutable retention path. Mixing those
+identities, selecting an unreviewed baseline or redirecting retention refuses
+even when the plan digest is recomputed. Apply must match the reviewed source,
+destination and plan and confirm retention; authored drift is never overwritten.
+
 `prepare_print(snapshot, layer_keys)` consumes explicit template keys and returns
 held `style_refs`, `print_styles`, `style_revisions` and `resolution_revision`.
 The native renderer consumes those held documents unchanged and performs no
