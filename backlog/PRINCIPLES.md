@@ -2,6 +2,13 @@
 
 The standing owner rulings for everyone who works the backlog. [OPEN.md](OPEN.md) holds the unfinished code, [OPEN-X.md](OPEN-X.md) the owner decisions, [SEEDING.md](SEEDING.md) parameters, seeding and operational acceptance, [ORDER.md](ORDER.md) the order in which slices start, and [FEEDBACK.md](FEEDBACK.md) a snapshot of unclosed feedback. A ruling lives here once; the lists point to it rather than repeat it. Change a ruling only on the owner's word, with its date.
 
+## 0. The backlog is declarative (owner, 2026-10-07)
+
+- The backlog states only what is known **not** to work, or not to exist yet. It never claims what was fixed: no "fixed in", "already landed", "done" or progress notes.
+- An entry that is handled is removed at once, the same way official feedback is closed. The commit and the owning tests are the record; the backlog is not.
+- Anything can come back. A user, a `ds` interaction, a feedback report or a discovered bug that shows the problem again puts a new entry in, stating what is broken now. That is normal, not a failure.
+- Write each entry as the current unmet condition: what is observed broken or absent, and what would show it works.
+
 ## 1. The backlog split (owner, 2026-10-07)
 
 - **OPEN.md** — unfinished code that an agent can implement and prove without further owner input: product defects, missing native CLI/MCP capabilities, UI bindings, test repairs and integration.

@@ -2,7 +2,7 @@
 
 > **Moved 2026-10-07:** this backlog now lives in `ds-command-kernel/backlog/`. The old `ds-work/backlog/` no longer exists: edit these files here, commit them to ds-command-kernel `run`, and stage only `backlog/`. ds-work holds working sessions, not coding lists.
 
-Unfinished code that an agent can implement and prove without further owner input. The standing owner rulings — the backlog split, how to work an entry, priorities, reporting, kernel/CLI/UI, engineering and country neutrality — are in [PRINCIPLES.md](PRINCIPLES.md); the start order is [ORDER.md](ORDER.md). Owner decisions are in [OPEN-X.md](OPEN-X.md); template building and seeding that need no code change, plus deployment and acceptance, in [SEEDING.md](SEEDING.md).
+Unfinished code that an agent can implement and prove without further owner input. The backlog is declarative: it lists only what is known not to work, and an entry is removed the moment it is handled ([PRINCIPLES.md §0](PRINCIPLES.md#0-the-backlog-is-declarative-owner-2026-10-07)). The standing owner rulings — the backlog split, how to work an entry, priorities, reporting, kernel/CLI/UI, engineering and country neutrality — are in [PRINCIPLES.md](PRINCIPLES.md); the start order is [ORDER.md](ORDER.md). Owner decisions are in [OPEN-X.md](OPEN-X.md); template building and seeding that need no code change, plus deployment and acceptance, in [SEEDING.md](SEEDING.md).
 
 <!-- toc -->
 
