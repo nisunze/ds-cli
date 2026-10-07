@@ -12,7 +12,7 @@ fn text(value: &Value) -> Value {
         .unwrap_or(Value::Null)
 }
 /// `analysis` is the held analysis of exactly this revision, if any; `analysis_state`
-/// tells hosts whether the default analysis is still owed for it.
+/// reports freshness, never an instruction to schedule work.
 pub fn project(
     state: &DisplayState,
     rows: Option<&[DisplayRow]>,
@@ -66,7 +66,7 @@ pub fn project(
             "groups":ds_command_kernel::profile_controls::groups(state, rows, &cables),
             "cables":cables, "legend":ds_command_kernel::profile_encoding::styled_legend(state, rows, &cables)})
     });
-    json!({"display":display, "review":review, "analysis":analysis, "analysis_state":analysis_state})
+    json!({"display":display, "review":review, "analysis":analysis, "analysis_state":analysis_state, "calculation_policy":"explicit"})
 }
 
 #[cfg(test)]

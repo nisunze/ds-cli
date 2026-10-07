@@ -11,6 +11,20 @@ evidence; reviewers mark a request claimed here to avoid duplicate work.
 
 ## Queued next: characterized NUM 15 normalization
 
+## Focused review: explicit engineering calculation after accumulated RAM edits
+
+Owner clarification, 2026-10-07: engineering recalculation is intentional only;
+retype, stringing, deletion and repeated edits accumulate in RAM independently
+of Save and calculation. Trace native replay/cache freshness and retained scene
+ownership through history navigation. Confirm that observing a new head does no
+curve solve, usage screening, weather preparation or analysis; only explicit
+Refresh/Analyze/calculation requests may perform that work. Negative controls:
+multiple edits, undo/redo with repeated content, stale context/results, independent
+alignments and changed tension-section ends with adjacent incident forces.
+Codex owns this source slice; read-only review must not touch templates/printing
+or launch builds. Remaining cheap authored-geometry projection must retain the
+held profile axis rather than rebuild independent alignments.
+
 Review only the failing Huye 120 PLS-CADD 19.01 → 16.81 conversion in
 STABILIZATION.md §2 / the moved private-corpus entry below. Trace the conversion planner's renumbering
 and NUM normalization into the strict 16.81 writer. Existing evidence is in

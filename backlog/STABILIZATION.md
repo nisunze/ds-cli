@@ -105,8 +105,10 @@ sub-0.5-second acceptance target remain unmet. Save was not invoked.
 1. **Desktop apply:** `GridProfileRetypePicker.svelte` →
    `gridCommitStructureRetype` (`ds-web/src/lib/grid/session.ts:749`) applies
    the edit in the worker, which is cheap.
-3. **Auto analysis:** revision changes re-offer auto analysis (on by default).
-   The native session refresh still rebuilds case transitions/election,
+3. **Explicit calculation:** engineering calculation is intentional only
+   (owner clarification, 2026-10-07). Repeated edits accumulate in RAM;
+   neither idle time nor Save authorizes calculation. The explicit native
+   session refresh still rebuilds case transitions/election,
    engineering marker assembly and layout across the Profile, and runs separate
    design-case clearance work.
    It returns the full scene and bounded issues for worker installation.
@@ -131,15 +133,16 @@ sub-0.5-second acceptance target remain unmet. Save was not invoked.
    transitions/election, engineering marker assembly and layout. Rebuild only
    affected paint rows, with explicit downstream station-offset and global-axis
    fences; retain fresh-scene parity and explicit unavailable evidence.
-4. **Background analysis.** Auto analysis stays on (owner, 2026-10-05), but it
-   runs scoped and in the background. It never blocks the next edit, and it
-   never opens the Issues drawer (item 6).
+4. **Intentional background calculation.** Explicitly requested analysis runs
+   scoped in the background without blocking another edit or opening Issues.
+   Report visibility does not schedule engineering work.
 6. **CLI fixes:**
    - store a migrated working copy once in schema 5, using the existing
      migration (no new bump);
    - compute line angles only for the selected structures;
 7. **One path for batches.** Retype one, a range or a selection through the
-   same single transaction, followed by the same scoped recompute.
+   same single transaction. Accumulate native affected scopes for a later
+   explicit section calculation, Refresh or Analyze.
 
 **Acceptance:** on this model, in a release build, retyping 618 shows the new
 type and updated usage in well under 0.5 seconds, with no whole-model package
@@ -216,8 +219,8 @@ point (§11). Every computation must animate the toolbar's status button.
   `ds-web/src/lib/grid/profile-native.ts:44-49`):
   - the native `project`: a full `checkpointDsgrid()` emit, a JSON
     `Array.from` IPC transfer, a full decode, and the whole scene;
-  - then the automatic whole-model analysis
-    (`GridProfilePanel.svelte:1210-1226`).
+  - remove revision-driven projection, automatic analysis and offscreen
+    weather preparation; observe authored history without solving.
 - **Selection before the first scene.** Until the first native scene exists,
   case-layer requests refuse with
   `profile_case_base_unavailable: draw the native Profile first`
@@ -228,7 +231,7 @@ point (§11). Every computation must animate the toolbar's status button.
 - **Status button.** The toolbar's leftmost button spins only for edit
   reconciliation (`reconciliationStatus.phase === 'pending'`,
   `GridProfilePanel.svelte:1455-1470`). Scene building (`loading`), the
-  automatic analysis, case layers and usage screening animate nothing.
+  case layers and usage screening animate nothing.
 
 **Needed:**
 

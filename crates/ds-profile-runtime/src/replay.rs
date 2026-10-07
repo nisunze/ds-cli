@@ -140,7 +140,20 @@ impl Runtime {
         }
         result
     }
-    pub(super) fn refresh(&mut self, request: RefreshRequest) -> Result<Value, String> {
+    pub(super) fn refresh(
+        &mut self,
+        request: RefreshRequest,
+        calculate: bool,
+    ) -> Result<Value, String> {
+        if !calculate
+            && (request.analyze
+                || serde_json::to_value(&request.patch).unwrap()
+                    != serde_json::to_value(DisplayPatch::default()).unwrap())
+        {
+            return Err(
+                "invalid_profile_view: observe retains display controls and cannot analyze".into(),
+            );
+        }
         let held = self
             .held
             .get(&request.scope)
@@ -269,12 +282,70 @@ impl Runtime {
         // Only replay extending the admitted cursor has receipt lineage from
         // the held scene. Undo/redo and divergent prefixes reconcile explicitly.
         // Commands retained beyond the target cursor never enter its surface scope.
-        if start == request.base_history.undo_depth && request.target_history.undo_depth >= start {
+        let extending =
+            start == request.base_history.undo_depth && request.target_history.undo_depth >= start;
+        let unchanged = request.base_history == request.target_history;
+        let mut pending_reconcile = held.pending_reconcile;
+        let mut pending = held.pending_receipts.clone();
+        if extending {
             receipts.truncate(request.target_history.undo_depth - start);
-        } else {
-            receipts.clear();
+            pending.extend(receipts);
+        } else if !unchanged {
+            pending_reconcile = true;
+            pending.clear();
         }
-        self.render_replayed(project, session, source, cache, request.analyze, &receipts)
+        if pending.len() > 16_384 {
+            pending_reconcile = true;
+            pending.clear();
+        }
+        if !calculate {
+            // Admission stays transactional, but observation never enters scene,
+            // weather, usage or analysis preparation. Retain the calculated view
+            // and its axis in RAM; the response is bounded freshness metadata.
+            let state = self.views[&request.scope].clone();
+            resolve(&state, &project.style_document)?;
+            review_status_colors(&project.style_document)?;
+            review_box_ink(&project.style_document)?;
+            let held = self.held.get_mut(&request.scope).expect("admitted base");
+            held.session = session;
+            held.demand_cache = cache;
+            held.pending_receipts = pending;
+            held.pending_reconcile = pending_reconcile;
+            let mut scope = ds_grid_engine::recalculation_scope::RecalculationScope {
+                whole_model: pending_reconcile,
+                ..Default::default()
+            };
+            for outcome in &held.pending_receipts {
+                let change = &outcome.delta.recalculation_scope;
+                scope.whole_model |= change.whole_model;
+                scope
+                    .demand_sections
+                    .extend(change.demand_sections.iter().cloned());
+                scope.structures.extend(change.structures.iter().cloned());
+                scope
+                    .context_sections
+                    .extend(change.context_sections.iter().cloned());
+                scope.spans.extend(change.spans.iter().cloned());
+                scope.alignments.extend(change.alignments.iter().cloned());
+            }
+            let computed = held.review.base_scene().map(|scene| &scene.model_revision);
+            return Ok(
+                json!({"model_id":request.model_id, "model_revision":request.expected_revision,
+                "history":held.session.history_state(), "retained_asset_count":held.source.assets.len(),
+                "display_state":state, "scene":null, "analysis":null,
+                "command_view":{"display":null,"review":null,"analysis":null,
+                    "analysis_state":state.analysis_state(false, !held.session.snapshot().structures.is_empty()),
+                    "calculation_policy":"explicit"},
+                "projection_unavailable":null, "ran":false, "deferred":true,
+                "calculation":{"policy":"explicit", "model_revision":request.expected_revision,
+                    "computed_revision":computed, "required":computed != Some(&request.expected_revision),
+                    "scope":scope}}),
+            );
+        }
+        if pending_reconcile {
+            pending.clear();
+        }
+        self.render_replayed(project, session, source, cache, request.analyze, &pending)
     }
     fn render_replayed(
         &mut self,

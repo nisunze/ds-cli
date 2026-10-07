@@ -67,6 +67,19 @@ verified before projection. The admitted receipt names `model_id`,
 identity, the held `base_revision` and `base_history`, the worker's
 `expected_revision` and `target_history`, its full retained typed `JournalEntry`
 list, and the same display inputs. There are no package bytes in refresh.
+`operation: observe` uses the same fenced replay inputs but never prepares a
+scene, weather case, usage screen or analysis. It retains the calculated scene
+and axis, advances authored RAM history and demand-cache invalidation only, and
+returns `deferred:true`, `ran:false`, and native `calculation` metadata: explicit
+policy, authored/computed revisions, whether calculation is required, and the
+union of engine recalculation scopes since the held scene. Display patches and
+Analyze are refused on observation. No dense scene is serialized for this read.
+Calculation is intentional only (owner, 2026-10-07): edits, idle time, opening
+Issues, leaving editing and Save never schedule it. Report visibility remains
+independent of this policy; `analysis_state:due` is informational. Explicit
+Refresh/Analyze requests consume accumulated receipts; unchanged alignment
+surfaces and section demands remain reusable. History navigation retains the
+old scene and reports that explicit reconciliation is needed.
 The runtime finds the exact common command prefix, navigates retained history,
 and applies only new entries with parent and resulting-revision fences. Native
 discard/navigation pins install the exact cursor and truncate only the worker's

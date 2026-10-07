@@ -37,6 +37,8 @@ pub enum Request {
     Project(Box<ProjectRequest>),
     Initialize(Box<InitializeRequest>),
     Refresh(Box<RefreshRequest>),
+    /// Replay authored RAM edits without projecting or calculating engineering.
+    Observe(Box<RefreshRequest>),
     Release(ReleaseRequest),
     CaseLayer(CaseRequest),
     Layout(ds_command_kernel::profile_layout::Request),
@@ -78,6 +80,8 @@ struct HeldView {
     rows: Vec<DisplayRow>,
     label_policy: ds_grid_model::StructureLabelPolicy,
     last_weather_sequence: u64,
+    pending_receipts: Vec<ds_grid_engine::CommandOutcome>,
+    pending_reconcile: bool,
 }
 #[derive(Debug, Clone, Serialize)]
 pub struct Projection {
@@ -109,7 +113,8 @@ impl Runtime {
         match request.into() {
             Request::Project(request) => self.project(*request),
             Request::Initialize(request) => self.initialize(*request),
-            Request::Refresh(request) => self.refresh(*request),
+            Request::Refresh(request) => self.refresh(*request, true),
+            Request::Observe(request) => self.refresh(*request, false),
             Request::Release(request) => self.release(request),
             Request::CaseLayer(request) => self.case_layer(request),
             Request::Layout(request) => {
@@ -439,6 +444,8 @@ impl Runtime {
                 rows: rows.clone(),
                 label_policy: label_policy.clone(),
                 last_weather_sequence,
+                pending_receipts: Vec::new(),
+                pending_reconcile: false,
             },
         );
         let primitives = decorations::project(&scene, &state, &rows, &label_policy);
@@ -483,6 +490,9 @@ impl Runtime {
         response["scene"] = scene;
         response["analysis"] = analysis.unwrap_or(Value::Null);
         response["command_view"] = command_view;
+        response["calculation"] = json!({"policy":"explicit", "model_revision":request.expected_revision,
+            "computed_revision":request.expected_revision, "required":false,
+            "scope":ds_grid_engine::recalculation_scope::RecalculationScope::default()});
         Ok(response)
     }
     fn ensure_scope_available(&self, scope: &str) -> Result<(), String> {
@@ -736,6 +746,78 @@ mod transactional_projection_tests {
         // retained redo tail. It must use native receipts from that cursor.
         describe(&mut worker, "branch", "replacement branch");
         refresh_surface(&mut runtime, &input, &worker, 1, 1);
+    }
+    #[test]
+    fn observe_accumulates_edits_without_projection_and_refresh_reuses_unchanged_alignment() {
+        let (input, mut worker) = two_band_request();
+        let mut runtime = Runtime::default();
+        let initial = runtime.execute(input.clone()).unwrap();
+        let original_scene = runtime.held[&input.scope]
+            .review
+            .base_scene()
+            .unwrap()
+            .clone();
+        let assets = runtime.held[&input.scope].source.assets.clone();
+        let mut base = input.expected_revision.clone();
+        for (id, text) in [("one", "first"), ("two", "second")] {
+            describe(&mut worker, id, text);
+            let result = runtime
+                .execute(Request::Observe(Box::new(refresh(
+                    &runtime, &input, &base, &worker,
+                ))))
+                .unwrap();
+            assert_eq!(result["deferred"], true);
+            assert_eq!(result["ran"], false);
+            assert!(result["scene"].is_null());
+            assert!(result["analysis"].is_null());
+            assert_eq!(
+                result["calculation"]["computed_revision"],
+                initial["model_revision"]
+            );
+            assert_eq!(result["calculation"]["required"], true);
+            assert_eq!(result["calculation"]["scope"]["whole_model"], false);
+            assert_eq!(
+                runtime.held[&input.scope].review.base_scene(),
+                Some(&original_scene)
+            );
+            assert!(Arc::ptr_eq(
+                &assets,
+                &runtime.held[&input.scope].source.assets
+            ));
+            base = worker.current_revision().revision_id.to_string();
+        }
+        assert_eq!(runtime.held[&input.scope].pending_receipts.len(), 2);
+        // The eventual explicit calculation receives both native receipts.
+        // Only the authored alignment is projected; the other band is reused.
+        refresh_surface(&mut runtime, &input, &worker, 1, 1);
+        assert!(runtime.held[&input.scope].pending_receipts.is_empty());
+        let calculated = runtime.held[&input.scope]
+            .review
+            .base_scene()
+            .unwrap()
+            .clone();
+        worker.undo().unwrap();
+        let result = runtime
+            .execute(Request::Observe(Box::new(refresh(
+                &runtime, &input, &base, &worker,
+            ))))
+            .unwrap();
+        assert_eq!(result["calculation"]["scope"]["whole_model"], true);
+        assert_eq!(
+            runtime.held[&input.scope].review.base_scene(),
+            Some(&calculated)
+        );
+        let base = worker.current_revision().revision_id.to_string();
+        let mut request = refresh(&runtime, &input, &base, &worker);
+        request.analyze = true;
+        assert!(runtime
+            .execute(Request::Observe(Box::new(request)))
+            .unwrap_err()
+            .starts_with("invalid_profile_view:"));
+        assert_eq!(
+            runtime.held[&input.scope].session.history_state(),
+            worker.history_state()
+        );
     }
     #[test]
     fn retained_future_command_does_not_expand_target_surface_scope() {

@@ -29,8 +29,7 @@ pub enum DisplayOption {
     SectionState,
     /// The section usage bitmap: one box per wire of each attachment set.
     SectionUsage,
-    /// The analysis report. On, each held model revision is analyzed once without a
-    /// click (see `analysis_state`); off, Analyze stays an explicit action.
+    /// Visibility of the analysis report. Calculation is always explicit.
     Analysis,
 }
 impl DisplayOption {
@@ -144,14 +143,14 @@ impl Default for DisplayState {
         }
     }
 }
-/// Whether the held model revision still owes its default analysis. Hosts run the
-/// explicit Analyze action only while this reads `due`; they never decide it.
+/// Freshness of the held report. `Due` is informational, never permission for
+/// automatic calculation. Edits and Save are independent of explicit Analyze.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AnalysisState {
     /// The analysis switch is on and this revision has no analysis yet.
     Due,
-    /// An analysis of exactly this revision is held, automatic or explicit.
+    /// An explicitly requested analysis of exactly this revision is held.
     Current,
     /// The switch is off; Analyze stays explicit.
     Off,
