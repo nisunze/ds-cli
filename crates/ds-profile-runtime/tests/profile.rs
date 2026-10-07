@@ -137,11 +137,15 @@ fn cached_weather_is_display_only_and_revision_fenced() {
     let mut runtime = Runtime::default();
     let mut initial = request();
     initial.analyze = true;
+    initial.patch.display_case =
+        Some(serde_json::from_value(json!({"mode":"sag_reference"})).unwrap());
     let revision = initial.expected_revision.clone();
     let projected = runtime.execute(initial).unwrap();
     let analysis = projected["command_view"]["analysis"].clone();
     let mut case = CaseRequest {
         scope: "one".into(),
+        model_id: "profile-test".into(),
+        expected_history: serde_json::from_value(projected["history"].clone()).unwrap(),
         expected_revision: revision,
         display_case: ProfileDisplayCase::SagReference,
         select: false,
@@ -216,9 +220,11 @@ fn refused_updates_preserve_the_prior_checkpoint_weather_sequence_and_cached_cas
     use ds_profile_runtime::CaseRequest;
     let mut runtime = Runtime::default();
     let original = request();
-    runtime.execute(original.clone()).unwrap();
+    let opened = runtime.execute(original.clone()).unwrap();
     let case = |sequence| CaseRequest {
         scope: original.scope.clone(),
+        model_id: "profile-test".into(),
+        expected_history: serde_json::from_value(opened["history"].clone()).unwrap(),
         expected_revision: original.expected_revision.clone(),
         display_case: ProfileDisplayCase::GreatestSag,
         select: true,

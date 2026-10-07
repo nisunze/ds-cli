@@ -38,11 +38,13 @@ fn request(snapshot: &GridModelSnapshot) -> ProjectRequest {
     }
 }
 
-fn weather(project: &ProjectRequest) -> Request {
+fn weather(project: &ProjectRequest, result: &Value) -> Request {
     CaseRequest {
         scope: project.scope.clone(),
+        model_id: "default-analysis".into(),
+        expected_history: serde_json::from_value(result["history"].clone()).unwrap(),
         expected_revision: project.expected_revision.clone(),
-        display_case: ProfileDisplayCase::SagReference,
+        display_case: ProfileDisplayCase::GreatestSag,
         select: false,
         cached_only: false,
         sequence: 1,
@@ -95,7 +97,7 @@ fn default_analysis_is_due_once_per_revision_and_one_switch_turns_it_off() {
     let patched = runtime.execute(patch).unwrap();
     assert_eq!(patched["ran"], false);
     assert_eq!(state(&patched), "current");
-    let case = runtime.execute(weather(&first)).unwrap();
+    let case = runtime.execute(weather(&first, &patched)).unwrap();
     assert_eq!(state(&case), "current");
     assert_eq!(
         case["command_view"]["analysis"]["model_revision"],
@@ -120,7 +122,7 @@ fn an_edited_revision_owes_its_own_analysis_and_never_reads_the_previous_one() {
     assert_eq!(state(&projected), "due");
     // Negative control: a weather receipt at the edited revision must not carry the
     // previous revision's analysis, or the edit would never be analyzed.
-    let case = runtime.execute(weather(&second)).unwrap();
+    let case = runtime.execute(weather(&second, &projected)).unwrap();
     assert!(case["command_view"]["analysis"].is_null());
     assert_eq!(state(&case), "due");
 }

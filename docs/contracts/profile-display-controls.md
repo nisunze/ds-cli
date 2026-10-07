@@ -102,6 +102,28 @@ Refresh/Analyze requests consume accumulated receipts; unchanged alignment
 surfaces and section demands remain reusable. History navigation retains the
 old scene and reports that explicit reconciliation is needed.
 
+Weather selection and prepared-layer transfer cannot calculate. Native
+`case_layer` retains the `cached_only` wire field solely to suppress geometry
+bytes; false never authorizes preparation. Both reads and selection require
+the captured model, full native history (including undo/redo tails), exact
+current revision, coordinate options and a valid prepared case. Receipt identity
+includes the same scope, model and history.
+Valid missing/stale preparation refuses `profile_calculation_required`;
+unknown/disabled cases refuse `profile_case_unavailable`. Explicit Refresh or
+Analyze carries the requested `patch.display_case` and prepares it. Save is
+independent. A pure read does not change display state, weather sequence, job
+context, result identity or a confirmed publication rollback checkpoint.
+Selection changes the native display/job context and admits a result index for
+that prepared clearance case, invalidating older query cursors. It returns
+native case decorations even when geometry bytes are suppressed.
+
+Case receipts expose `case_ms`, `materialize_ms`, `decorations_ms`,
+`layer_encode_ms`, `layer_bytes`, `index_ms`, `index_rebuilt` and
+`calculated_cases:0`. These include native scene materialization and index
+reconstruction, which remain broad; they exclude final JSON encoding, IPC and
+paint. The cached case path does not claim bounded projection or installed
+latency merely because it does no new engineering.
+
 Explicit background calculation uses four native operations, available to a
 headless `ds-profile-runtime::Runtime` without a Desktop scheduler:
 

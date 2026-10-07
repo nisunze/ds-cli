@@ -26,6 +26,7 @@ mod replay_cost;
 mod calculation_jobs;
 pub use calculation_jobs::{AdmitCalculationRequest, CalculationJobRequest, StartCalculationRequest};
 mod result_queries;
+mod cached_cases;
 pub use result_queries::{QueryArguments, QueryCursor, QueryKind, QueryResultsRequest};
 
 #[derive(Debug, Clone, Deserialize)]
@@ -70,7 +71,9 @@ impl From<ProjectRequest> for Request {
 #[serde(deny_unknown_fields)]
 pub struct CaseRequest {
     pub scope: String,
+    pub model_id: String,
     pub expected_revision: String,
+    pub expected_history: ds_grid_engine::SessionHistoryState,
     pub display_case: ds_grid_engine::profile_display_case::ProfileDisplayCase,
     pub select: bool,
     pub cached_only: bool,
@@ -142,7 +145,7 @@ impl Runtime {
             Request::Project(r) => Some(r.scope.clone()),
             Request::Initialize(r) => Some(r.scope.clone()),
             Request::Refresh(r) | Request::Present(r) => Some(r.scope.clone()),
-            Request::CaseLayer(r) => Some(r.scope.clone()),
+            Request::CaseLayer(r) if r.select => Some(r.scope.clone()),
             Request::DiscardPublication(r) => Some(r.scope.clone()),
             Request::AdmitCalculation(r) => Some(r.scope.clone()),
             Request::Release(r) => Some(r.scope.clone()),
@@ -195,107 +198,6 @@ impl Runtime {
                 Ok(result)
             }
         }
-    }
-    fn case_layer(&mut self, request: CaseRequest) -> Result<Value, String> {
-        let held = self
-            .held
-            .get_mut(&request.scope)
-            .ok_or("profile_case_base_unavailable: draw the active Profile first")?;
-        if held.session.current_revision().revision_id.to_string() != request.expected_revision {
-            return Err(
-                "profile_selection_stale: cached Profile differs from the held revision".into(),
-            );
-        }
-        if request.select && request.sequence <= held.last_weather_sequence {
-            return Err(
-                "profile_selection_stale: a newer weather selection already took over".into(),
-            );
-        }
-        let current = self
-            .views
-            .get(&request.scope)
-            .ok_or("profile_case_base_unavailable: display state is missing")?;
-        let patch = DisplayPatch {
-            display_case: Some(
-                serde_json::from_value(serde_json::to_value(&request.display_case).unwrap())
-                    .unwrap(),
-            ),
-            ..Default::default()
-        };
-        let state = current.patched(&patch)?;
-        if request.cached_only {
-            if !request.select {
-                return Err("invalid_profile_view: cached receipt requires selection".into());
-            }
-            Arc::make_mut(&mut held.review)
-                .select_prepared_case(
-                    &held.session,
-                    request.display_case.clone(),
-                    held.options.clone(),
-                )
-                .map_err(|e| format!("profile_case_unavailable: {e}"))?;
-        }
-        let mut case_primitives = None;
-        let bytes = if request.cached_only {
-            None
-        } else {
-            let mut scene = held
-                .review
-                .base_scene()
-                .ok_or("profile_case_base_unavailable: scene is missing")?
-                .clone();
-            let layer = Arc::make_mut(&mut held.review)
-                .case_layer(
-                    &held.session,
-                    request.display_case.clone(),
-                    held.options.clone(),
-                    request.select,
-                )
-                .map_err(|e| format!("profile_case_unavailable: {e}"))?;
-            layer.apply_to_scene(&mut scene);
-            case_primitives = Some(
-                decorations::project(&scene, &state, &held.rows, &held.label_policy)
-                    .into_iter()
-                    .filter(|primitive| {
-                        matches!(
-                            primitive.option,
-                            ds_command_kernel::profile_display::DisplayOption::SpanDistances
-                                | ds_command_kernel::profile_display::DisplayOption::SectionLabels
-                        )
-                    })
-                    .collect::<Vec<_>>(),
-            );
-            Some(layer.to_bytes().map_err(|e| e.to_string())?)
-        };
-        let scene = held
-            .review
-            .base_scene()
-            .ok_or("profile_case_base_unavailable: scene is missing")?;
-        let layer = held
-            .review
-            .prepared_layer(&request.display_case)
-            .ok_or("profile_case_base_unavailable: requested layer is missing")?;
-        // Only the held revision's analysis counts, so a weather switch after an edit
-        // never reports the previous revision's analysis as current.
-        let mut command_view = command_view::project(
-            &state,
-            Some(&held.rows),
-            Some(scene),
-            self.analyses
-                .get(&request.scope)
-                .filter(|value| value["model_revision"] == request.expected_revision),
-            !held.session.snapshot().structures.is_empty(),
-        );
-        command_view["review"]["display_case"] =
-            serde_json::to_value(&layer.display_case.requested).map_err(|e| e.to_string())?;
-        command_view["review"]["selected_case_index"] = json!(layer.selected_case_index);
-        let receipt = json!({"model_revision":request.expected_revision,"display_case":request.display_case,
-            "axis_pin_digest":layer.axis_pin.digest,"bytes":bytes,"case_primitives":case_primitives,"display_state":state,"command_view":command_view});
-        if request.select {
-            held.last_weather_sequence = request.sequence;
-            self.views.insert(request.scope, state);
-        }
-        Ok(receipt)
     }
     fn project(&mut self, request: ProjectRequest) -> Result<Value, String> {
         if request.scope.is_empty()
@@ -2239,11 +2141,16 @@ mod transactional_projection_tests {
     #[test]
     fn refused_scene_projection_restores_owned_held_cache_without_cloning() {
         let mut runtime = Runtime::default();
-        let original = request();
+        let mut original = request();
+        original.patch.display_case = Some(serde_json::from_value(json!({
+            "mode":"analysis_case", "analysis_case_id":common::fixture().analysis_cases[0].id
+        })).unwrap());
         runtime.execute(original.clone()).unwrap();
         let prepared = runtime
             .execute(CaseRequest {
                 scope: original.scope.clone(),
+                model_id: "profile-test".into(),
+                expected_history: runtime.held[&original.scope].session.history_state(),
                 expected_revision: original.expected_revision.clone(),
                 display_case:
                     ds_grid_engine::profile_display_case::ProfileDisplayCase::AnalysisCase {
@@ -2257,6 +2164,8 @@ mod transactional_projection_tests {
         let selected = runtime
             .execute(CaseRequest {
                 scope: original.scope.clone(),
+                model_id: "profile-test".into(),
+                expected_history: runtime.held[&original.scope].session.history_state(),
                 expected_revision: original.expected_revision.clone(),
                 display_case:
                     ds_grid_engine::profile_display_case::ProfileDisplayCase::AnalysisCase {
@@ -2313,6 +2222,8 @@ mod transactional_projection_tests {
         let after = runtime
             .execute(CaseRequest {
                 scope: original.scope.clone(),
+                model_id: "profile-test".into(),
+                expected_history: runtime.held[&original.scope].session.history_state(),
                 expected_revision: original.expected_revision.clone(),
                 display_case:
                     ds_grid_engine::profile_display_case::ProfileDisplayCase::AnalysisCase {
@@ -2327,7 +2238,9 @@ mod transactional_projection_tests {
         assert_eq!(after["display_state"], selected["display_state"]);
         let retained = runtime
             .execute(CaseRequest {
+                expected_history: runtime.held[&original.scope].session.history_state(),
                 scope: original.scope,
+                model_id: "profile-test".into(),
                 expected_revision: original.expected_revision,
                 display_case:
                     ds_grid_engine::profile_display_case::ProfileDisplayCase::AnalysisCase {

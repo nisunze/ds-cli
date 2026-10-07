@@ -72,7 +72,7 @@ impl Runtime {
                 {
                     return Err("profile_publication_pending: admit the outstanding native result before selecting a case".into());
                 }
-                Some(r.scope.clone())
+                r.select.then(|| r.scope.clone())
             } else if let Some((scope, _)) = binding {
                 Some(scope.clone())
             } else {
