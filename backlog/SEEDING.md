@@ -16,7 +16,7 @@ Candidate curation and native PLS-CADD acceptance are separate from coding the c
 | --- | ---: |
 | [1. Deployment and template rollout](#1-deployment-and-template-rollout) | 14 |
 | [2. Release acceptance](#2-release-acceptance) | 1 |
-| [3. Template projects](#3-template-projects) | 1 |
+| [3. Template projects](#3-template-projects) | 2 |
 | [4. Print templates, styles and seed](#4-print-templates-styles-and-seed) | 2 |
 | [5. Print sheet content and legibility](#5-print-sheet-content-and-legibility) | 6 |
 | [6. Print acceptance on live projects](#6-print-acceptance-on-live-projects) | 3 |
@@ -71,6 +71,13 @@ Candidate curation and native PLS-CADD acceptance are separate from coding the c
 - **Unobserved platform gates**: run the current Windows Field gate, Storage-emulator rules and shellcheck at the pinned source. An unrun check is an acceptance task; promote a concrete failing source check to `OPEN.md` only after reproducing it.
 
 ## 3. Template projects
+
+- **Rwanda Template as a read-only demonstration project** (owner, 2026-10-07; `wnmajona_edcl_rural_electrification_template`): signed-in users read it for tutorials and demonstrations. Replace logos rather than anonymizing them. Title blocks get fictitious companies and account numbers, and their names become gibberish Latin for every transformer. Claude is doing this.
+  - **Logos ready:** `outputs/rwanda-template-seed-20261007/logos/generated/` (each ≤ 200 KB, under the 350,000-character base64 bound at `src/printing/mod.rs:1446`). Asset `rwanda` → Republic of Calventa; `edcl` → Velmora Grid Authority; `afdb` → Quenara Development Fund; `cjic` → Tallowind Lineworks; `ccce` → Orvanex Engineering.
+  - **Steps:** back up each of the 12 layouts (`report layout get`). Replace `assets` and the `title_block` and text values. Persist with `report layout update --expected-revision`. Reclassify the two district maps to `project / overview` ([STABILIZATION.md](STABILIZATION.md) §13 step 6). Then read back and render one LV sheet and one MV sheet.
+  - **Owner decision pending:** `auth project create --from-template` copies every setup "with the logos its layout holds" (ds-cli `docs/reference/auth.md:185-200`). Seeding this project itself therefore puts fictitious logos into every future EDCL project created from it; a demonstration copy would not.
+  - **Read-only for all signed-in users:** no such grant appears in the ds-cli reference; access is per membership. If none exists, record the gap in STABILIZATION.md.
+  - **Blocked on tooling:** installed `ds-canary` (2026-09-29) refuses 10 of the 12 layouts on its closed contract, as in §6 Gisagara. Install a current canary (ds-web `./linux-server-deploy.sh canary --install`), then apply. Delete the `outputs/` folder once seeded.
 
 - **Template Tchad contents and copy acceptance**: verify the person can choose a source template and explicit copy contents through the live CLI. Complete the `a3-landscape-aderm-lv` layout, project parameters and CRS, then exercise representative dense/outlier transformer copies without changing unrelated project contents.
 
