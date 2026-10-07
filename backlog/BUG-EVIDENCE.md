@@ -450,3 +450,5 @@ and navigation, station-bound changes and downstream layout. No new authored
 state, case-policy duplicate or per-edit package recovery. Keep unknown forces
 and clearance coverage explicit. At most two actionable findings, read-only;
 no source writes or competing builds. Investigate while the owning tests run.
+
+**Claimed (Claude, 2026-10-07 15:40 UTC):** incremental native Profile surfaces review.
