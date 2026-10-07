@@ -62,7 +62,7 @@ const PROFILE_SELECTION_STALE: Refusal = Refusal {
 pub static VIEW: Command = Command {
     id: "map.profile.view",
     path: &["map", "profile", "view"],
-    contract: 3,
+    contract: 4,
     summary: "Read the paired Profile's exact visual state.",
     purpose: "Reads the paired Profile occupant, dock height in pixels, viewport, selection and edit mode. Selection is transient UI context; the view and engineering model remain unchanged.",
     chapter: Chapter::MapPresentation,
@@ -70,7 +70,7 @@ pub static VIEW: Command = Command {
     authority: Authority::DesktopPairing,
     execution: Execution::Sync,
     args: &[TARGET_ARG, DESCRIPTOR_ARG],
-    output: "Profile occupant, model_id, model_name and revision (null without an open model), persisted and native history (undo/redo depths and history pin), scale, visibility, height_px, viewport, edit_mode and selection. review holds up to 256 cases with value/label/disabled, selected_case_index, display_case, marker_count and explicit case/label truncation. display holds native state and governed rows; analysis the bounded native receipt; analysis_state is due, current, off or not_applicable. scene_loaded reports a revision-current scene. Selection includes entity_ids, primary, kind and structures [{id,number}].",
+    output: "occupant, model_id/model_name/revision (null when closed), persisted, history (undo/redo depths and pin), scale, visibility, height_px, viewport, surface {width,height,scale} (CSS pixels, native px/scene-unit; null unmounted), edit_mode, selection {entity_ids,primary,kind,structures [{id,number}]}. review: up to 256 cases {value,label,disabled}, selected_case_index, display_case, marker_count and truncation. display: native state and governed rows; analysis: bounded receipt; analysis_state: due/current/off/not_applicable; scene_loaded: revision-current scene.",
     examples: &[Example {
         command: "ds map profile view --output json",
         note: "Read the live Profile's viewport, selection and edit mode before a scoped model command.",
@@ -94,7 +94,7 @@ pub static VIEW: Command = Command {
 pub static SET: Command = Command {
     id: "map.profile.set",
     path: &["map", "profile", "set"],
-    contract: 5,
+    contract: 6,
     summary: "Set the paired Profile's visual state through typed CLI inputs.",
     purpose: "Set transient Profile appearance; omitted values stay. Display needs an open model; height and camera may be staged. Review boxes, usage labels and analysis default on. Analyze reruns native checks at the held revision with the model-bound case envelope; blockers remain in Profile and Issues. Weather changes only the curve.",
     chapter: Chapter::MapPresentation,
@@ -138,6 +138,11 @@ pub static SET: Command = Command {
             "Profile dock height, finite 1..10000 pixels; Rust requires both panes to remain visible.",
         ),
         Arg::value("zoom", "<ratio>", "Absolute Profile zoom, 0.2..1000000."),
+        Arg::value(
+            "zoom-window",
+            "<native-json>",
+            "Fit a CSS-pixel rectangle: {\"from\":{\"x\":100,\"y\":50},\"to\":{\"x\":600,\"y\":300}}. Read surface dimensions with map profile view. Use alone.",
+        ),
         Arg::value(
             "pan-x",
             "<pixels>",
@@ -419,6 +424,20 @@ fn patch_from_inputs(inputs: &Inputs) -> Result<Map<String, Value>, Failure> {
             json!(bounded(raw, "zoom", 0.2, 1_000_000.0)?),
         );
     }
+    if let Some(raw) = inputs.value("zoom-window") {
+        if raw.len() > 4096 {
+            return Err(invalid(
+                "zoom-window exceeds the bounded native request size",
+            ));
+        }
+        let window: ds_canvas::viewport::ZoomWindow =
+            serde_json::from_str(raw).map_err(|e| invalid(format!("zoom-window: {e}")))?;
+        window.validate().map_err(invalid)?;
+        patch.insert(
+            "zoom_window".into(),
+            serde_json::to_value(window).map_err(|e| invalid(e.to_string()))?,
+        );
+    }
     for (flag, key) in [("pan-x", "pan_x"), ("pan-y", "pan_y")] {
         if let Some(raw) = inputs.value(flag) {
             patch.insert(
@@ -435,6 +454,11 @@ fn patch_from_inputs(inputs: &Inputs) -> Result<Map<String, Value>, Failure> {
     }
     if patch.is_empty() {
         return Err(invalid("provide at least one Profile setting or --action"));
+    }
+    if patch.contains_key("zoom_window") && patch.len() != 1 {
+        return Err(invalid(
+            "zoom-window must be used alone without other Profile settings",
+        ));
     }
     Ok(patch)
 }
@@ -752,5 +776,32 @@ mod tests {
                 "invalid_profile_selection"
             );
         }
+    }
+    #[test]
+    fn window_camera_request_uses_native_validation_before_pairing() {
+        let window = r#"{"from":{"x":100,"y":50},"to":{"x":600,"y":300}}"#;
+        let args = ["--zoom-window", window].map(str::to_owned);
+        let inputs = ds_cli_contract::args::parse(&SET, &args).unwrap();
+        assert_eq!(
+            patch_from_inputs(&inputs).unwrap()["zoom_window"],
+            json!({"from":{"x":100.0,"y":50.0},"to":{"x":600.0,"y":300.0}})
+        );
+        for raw in [
+            r#"{"from":{"x":0,"y":0},"to":{"x":0,"y":100}}"#,
+            r#"{"from":{"x":0,"y":0},"to":{"x":100,"y":100},"extra":true}"#,
+        ] {
+            let args = ["--zoom-window", raw].map(str::to_owned);
+            let inputs = ds_cli_contract::args::parse(&SET, &args).unwrap();
+            assert_eq!(
+                patch_from_inputs(&inputs).unwrap_err().code(),
+                "invalid_profile_view"
+            );
+        }
+        let args = ["--zoom-window", window, "--action", "fit"].map(str::to_owned);
+        let inputs = ds_cli_contract::args::parse(&SET, &args).unwrap();
+        assert_eq!(
+            patch_from_inputs(&inputs).unwrap_err().code(),
+            "invalid_profile_view"
+        );
     }
 }

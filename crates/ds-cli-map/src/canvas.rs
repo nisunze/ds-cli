@@ -10,9 +10,9 @@ use std::io::Read;
 pub static COMMAND: Command = Command {
     id: "map.canvas.camera",
     path: &["map", "canvas", "camera"],
-    contract: 1,
+    contract: 2,
     summary: "Compute a Canvas2D camera using Profile's shared Rust primitives.",
-    purpose: "Evaluates one bounded camera intent without a desktop, project, or network. Fit, pan, centered zoom, cursor zoom, projection and centering use the same ds-network spatial core used by Profile and printing WASM hosts. This computes a camera; it does not move an open application's camera.",
+    purpose: "Evaluates one bounded camera intent without a desktop, project, or network. Fit, pan, centered zoom, cursor zoom, window zoom, projection and centering use Profile's shared native spatial core. This computes a camera; it does not move an open application's camera.",
     chapter: Chapter::MapPresentation,
     effect: Effect::ReadOnly,
     authority: Authority::None,

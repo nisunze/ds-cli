@@ -980,6 +980,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "ds-canvas"
+version = "0.1.0"
+dependencies = [
+ "ds-geo-lite",
+ "serde",
+]
+
+[[package]]
 name = "ds-canvas-lite"
 version = "0.1.0"
 dependencies = [
@@ -1187,6 +1195,7 @@ dependencies = [
 name = "ds-cli-map"
 version = "0.1.0"
 dependencies = [
+ "ds-canvas",
  "ds-cli-auth",
  "ds-cli-contract",
  "ds-cli-desktop",

@@ -6,6 +6,20 @@ of them.
 
 ## Execution hosts
 
+Profile camera controls share native `ds-canvas` math with the UI. To zoom a
+window, read `ds map profile view` for its rendered `surface` dimensions, then
+use `ds map profile set --zoom-window '{"from":{"x":100,"y":50},"to":{"x":600,"y":300}}'`.
+The rectangle uses CSS pixels in the displayed Profile. Reversed corners are
+equivalent; zero-area or nonfinite rectangles refuse. Use this camera input
+alone. It changes neither engineering results nor the model, and remains usable
+while newer computed results are pending.
+
+The same operation is headless through `ds map canvas camera --request window.json`:
+
+```json
+{"operation":"zoom_window","bounds":{"min_x":100,"min_y":20,"max_x":1100,"max_y":220},"host":{"width":1024,"height":424,"device_pixel_ratio":1},"viewport":{"zoom":2,"pan_x":170,"pan_y":-30},"window":{"from":{"x":212,"y":112},"to":{"x":812,"y":312}}}
+```
+
 `ds map scene build` prepares a Cesium display scene **headlessly**. It needs no
 Desktop, login, network or selected project and never switches the UI context.
 The CLI reads/writes files; `ds-command-kernel` owns admission, composition,
