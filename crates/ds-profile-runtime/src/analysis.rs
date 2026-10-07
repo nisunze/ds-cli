@@ -30,11 +30,14 @@ pub(crate) fn analyze_with_cache(
     if let Some(message) = projection_error {
         blockers.push(json!({"kind":"profile_projection", "message":message}));
     }
-    let report = match session.analyze_model_defaults(&DefaultAnalysisRequest {
-        expected_revision: revision.revision_id.clone(),
-        expected_engineering_input_root: revision.roots.engineering_input_root.clone(),
-        max_rows: 2000,
-    }) {
+    let report = match session.analyze_model_defaults_with_cache(
+        &DefaultAnalysisRequest {
+            expected_revision: revision.revision_id.clone(),
+            expected_engineering_input_root: revision.roots.engineering_input_root.clone(),
+            max_rows: 2000,
+        },
+        cache,
+    ) {
         Ok(report) => {
             for row in &report.demand_unavailable.rows {
                 blockers.push(json!({"kind":"section_demand", "entity_id":row.tension_section_id, "message":row.reason}));

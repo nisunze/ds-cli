@@ -43,6 +43,8 @@ Unfinished code that an agent can implement and prove without further owner inpu
 
 ## 2. Green `run` and release gates
 
+- **Native engine strict Clippy gate**: `cargo clippy --locked -p ds-grid-engine --all-targets --no-deps -- -D warnings` currently reports 28 library and 31 library-test diagnostics outside the demand-cache change: duplicated common test modules, collapsible conditions, large error/enum variants, argument counts and presentation clone/borrow issues. Exact log: `ds-network/out/stabilization/analysis-cache-clippy.log`. Repair coherent owning slices; retain native error JSON and engineering behavior. The 130 library and 7 recalculation-scope tests pass.
+
 - **Stabilization after the 7 October test sweep** (owner, 2026-10-07): the full list is in [STABILIZATION.md](STABILIZATION.md). It may touch any other backlog surface it intersects.
 
 - **National ID and phone in external reports: not urgent, no code now** (owner, 2026-10-07): DS does handle national IDs. Reporter `a69402e` hides `nid`, `national_id` and phone from every external report projection, but that restriction came from the datasolutions.rw product context and was not meant for everything. Kernel `3e23208` overstated it as a general "personal identity never prints" rule, and reporter `ac7e740` aligned the XLSX and as-built schedule tests with `a69402e`, so the former XLSX test failure is green. Implement no identity removal or restoration until the owner scopes it; correct the `3e23208` wording when this is taken up.

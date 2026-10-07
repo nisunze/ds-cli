@@ -939,6 +939,44 @@ mod transactional_projection_tests {
         assert_eq!(held.demand_cache.last_demand_work().reused_cases, 0);
     }
     #[test]
+    fn analyze_populates_shared_demands_before_its_issue_screen() {
+        use ds_grid_model::*;
+        let mut snapshot = common::fixture();
+        snapshot.tension_sections.push(TensionSectionRow {
+            id: TensionSectionId::new("analyzed-section").unwrap(),
+            cable_id: snapshot.cables[0].id.clone(),
+            criterion_set_id: Some(snapshot.criterion_sets[0].id.clone()),
+            sag: AuthoredSag::HorizontalTension { tension_n: 5000. },
+            sag_condition: Some(CableCondition::Initial),
+            sag_weather_state_id: Some(snapshot.weather_states[0].id.clone()),
+            ruling_span_m: None,
+            details: Default::default(),
+        });
+        for (sequence, structure) in snapshot.structures.iter().enumerate() {
+            snapshot
+                .tension_section_supports
+                .push(TensionSectionSupportRow {
+                    section_id: snapshot.tension_sections[0].id.clone(),
+                    sequence: sequence as u32,
+                    structure_id: structure.id.clone(),
+                    attachment_point_id: Some(snapshot.attachment_points[0].id.clone()),
+                    insulator_model: None,
+                });
+        }
+        let session = GridSession::open(snapshot);
+        let mut cache = ds_grid_engine::StructureUsageScreeningCache::default();
+        let case = ds_grid_engine::profile_display_case::ProfileDisplayCase::default();
+        let cached = analysis::analyze_with_cache(&session, &case, None, None, &mut cache);
+        assert_eq!(cached, analysis::analyze(&session, &case, None, None));
+        assert_eq!(cached["report"]["status"], "ok");
+        assert_eq!(
+            cache.last_demand_work().computed_cases,
+            0,
+            "the issue screen must not solve default analysis demands again"
+        );
+        assert!(cache.last_demand_work().reused_cases > 0);
+    }
+    #[test]
     fn later_replay_or_projection_refusal_preserves_history_display_assets_and_analysis() {
         let mut input = request();
         input.analyze = true;

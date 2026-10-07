@@ -91,3 +91,9 @@ edits, while navigation or unmatched parents make old evidence non-current.
 Old analysis is never projected as current at a different authored revision.
 Initialization must use the worker's opened snapshot so its entire active
 journal, including undo before the first Profile display, remains navigable.
+
+Analyze shares the receipt-advanced native demand cache between default analysis
+and its issue screen. Applied-load and whole-support report evidence stays
+identical to uncached native analysis; the issue screen reuses those section
+cases instead of solving them again. Clearance remains a separate design-case
+calculation. This change alone is not scoped-band or release-latency acceptance.

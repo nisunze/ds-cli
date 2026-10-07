@@ -428,28 +428,6 @@ Maximum two actionable findings. Claim after the current replay review.
   - a terrain or alignment edit rebuilds exactly that alignment;
   - a station-bounds change re-chains the downstream bands.
 
-**Finding 2: Analyze screens the whole model without the cache.**
-
-- **What happens:**
-  - `analysis::analyze_with_cache` first calls
-    `session.analyze_model_defaults` (`analysis.rs:33-37`). That runs
-    `structure_usage_screening_with_demands` for every structure
-    (`structure_ids: []`, `default_analysis.rs:802-810`) with no cache.
-  - Only after that does the cached issue layer screen again
-    (`analysis.rs:56-68`).
-- **Effect:** the receipt-advanced `StructureUsageScreeningCache` cannot
-  make an Analyze refresh cheaper than a whole-model section-demand solve.
-- **Fix:** add a `_with_cache` form of the default analysis that reads and
-  fills the same `SectionDemandCache` entries, keyed by
-  `(section, case, basis)`, that `screen` uses.
-- **Regression test:** open, analyze, retype one structure, then refresh
-  with `analyze: true`. Assert that both the default analysis and the issue
-  layer report `computed_cases` equal to the incident sections × cases, and
-  that the report is byte-identical to an uncached analysis.
-- **Negative controls:**
-  - a `whole_model` edit recomputes every case;
-  - a changed `weight_span_basis` misses the cache.
-
 ### Findings: incident-side calibration for `4ba8ab15` (Claude, 2026-10-07 15:02 UTC; read-only)
 
 **Run.**

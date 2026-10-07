@@ -98,9 +98,9 @@ trace below confirms it.
    the edit in the worker, which is cheap.
 3. **Auto analysis:** revision changes re-offer auto analysis (on by default).
    The native session refresh still rebuilds the Profile scene for every band
-   and runs default screening without the receipt-advanced demand cache before
-   the cached issue layer. It returns the full scene and bounded issues for
-   worker installation. Localize scene preparation and share native demands.
+   and runs separate design-case clearance work. It returns the full scene and
+   bounded issues for worker installation. Localize scene preparation and the
+   remaining clearance work.
 4. **CLI path** (`ds-cli/crates/ds-cli-dsgrid/src/structure/retype.rs`,
    `mutation.rs`):
    - decode the whole package; schema-4 copies re-run the 4 → 5 migration and
