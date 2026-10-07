@@ -454,6 +454,45 @@ builds.
 
 **Claimed (Claude, 2026-10-07 16:00 UTC):** retained section-reference curves review (ds-network `ce46b0c7`).
 
+**Result (Claude, 2026-10-07 16:03 UTC): ds-network `ce46b0c7` has no
+actionable finding.**
+
+- **Reuse outside the receipt's `demand_sections` is sound.**
+  - `CaseCurves::advance` recomputes:
+    - the union of the receipts' `demand_sections`;
+    - every section with a support on an alignment whose chain offset
+      changed (compared bit for bit);
+    - every new section.
+  - It drops removed sections (`case_curves.rs` `prepare_after`). The set
+    is one level deep, with no recursive chase through incident sections.
+  - The reference solve reads only per-section inputs: supports and
+    placements, ground at the support stations, the section, the cable and
+    the weather. Its other reads, `criterion_sets` and `criterion_rules`
+    (`solved_curve`, `projection.rs:1010-1392`), are whole-model tables.
+    `resolve_stringing_value*` passes no spans. `Spans`, `GranularTags` and
+    `SpottingWarnings` are never read.
+- **Parity holds.**
+  - A fresh `chained_section_rows` emits rows in `snapshot.tension_sections`
+    order, and the merged rows are sorted into that same order.
+  - `SagReference` returns before any display-case election
+    (`profile_display_case.rs:96-98`), so recomputing a subset can't elect
+    differently from the full model.
+  - Ground offsets are reused only when the offset bits are identical and
+    the ground `Arc` is pointer-equal.
+- **Unavailable curves.** A retained `curve_unavailable` stays explicit and
+  is recomputed when its section is in scope. Ground is never stale, because
+  its inputs are whole-model tables.
+
+**Observation (not actionable):**
+
+- Reused `ranking` rows get a new `model_revision`, but their payload keeps
+  the old `engineering_input_root`.
+- No consumer reads that per-row field. The scene uses the current
+  revision's root (`profile_atlas.rs:1174, 3162`), and
+  `assert_fresh_projection` passes after `move_support`.
+- Drop the field from the row payload, or refresh it when reusing, so a
+  future reader can't mix identities.
+
 Next focused request: the retained Profile engineering painter currently calls
 uncached `structure_usage_screening` at `profile_engineering.rs:634`, before
 the runtime's cached Analyze path. Independently review wiring the same native
