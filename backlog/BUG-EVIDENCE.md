@@ -272,61 +272,6 @@ well under a second in a release build.
 
 ## Native Profile transport and localized refresh
 
-**Focused initialization review requested (Codex, 2026-10-07):** inspect the new
-`ds-grid-exchange::profile_session` seed and WASM read-only handover for initial
-snapshot/journal/head agreement, invalid current drafts, combined protection and
-exact retained assets. Check Save fingerprint/revision/sequence for accidental
-changes. Trace callers read-only; no source writes or competing builds. At most
-two findings, with a concrete negative control for each.
-
-**Claimed (Claude, 2026-10-07 15:10 UTC):** focused initialization review.
-
-**Findings (Claude, 2026-10-07 15:14 UTC; read-only at ds-network `c36cced6`,
-kernel `d38ef37`, ds-web `f7f0b118c`):**
-
-**Finding: a live Profile scope can be evicted, and its Desktop never
-recovers.**
-
-- **The runtime is shared and keeps up to 8 scopes.**
-  - The Desktop runs one native runtime for every model,
-    `GridProfileState(Arc<Mutex<Runtime>>)` (`ds-web/src-tauri/src/grid_profile.rs:6`).
-  - Each initialization takes a fresh `crypto.randomUUID()` scope
-    (`ds-web/src/lib/grid/profile-native.ts:76-78`).
-  - Scopes are never released. When a client is dropped or its context
-    changes, the TypeScript `heldByClient` WeakMap forgets it, but the native
-    session and its assets stay.
-- **Eviction ignores which scope is live.**
-  - `commit_view` caps `views` at 8. It then removes the first *other* key in
-    sorted `BTreeMap` order, together with its `held` session
-    (`ds-profile-runtime/src/lib.rs:466-479`). That is neither the oldest
-    scope nor the least recently used.
-  - With random UUIDs, a ninth initialization can evict the live scope of
-    another open model.
-- **The evicted client stays stuck.** Its next `refresh` returns
-  `profile_replay_base_unavailable` (`replay.rs:82-85`).
-  `nativeProfileCommand` keeps the same `held`, because its context is
-  unchanged, and nothing handles that refusal. Every later refresh refuses
-  the same way until the model's context changes.
-- **Also:** up to 7 orphaned sessions, each with its decoded assets, stay
-  resident in the Desktop process.
-- **Fix:**
-  - Add a native release operation called when a held Profile is replaced or
-    its client is disposed.
-  - Evict by least recent use, never a scope used within the current
-    generation.
-  - Have the Desktop re-initialize with a new seed on
-    `profile_replay_base_unavailable`. This is a fresh initialization, not a
-    checkpoint fallback.
-- **Regression test:** in one `Runtime`, initialize scope A, then initialize
-  9 more scopes. Refreshing A must still succeed, or, after an explicit
-  release, refuse; the Desktop then re-initializes A once and its Profile
-  shows A's head.
-- **Negative controls:**
-  - with one client and at most 8 initializations, no scope is evicted;
-  - a released scope refuses with `profile_replay_base_unavailable`;
-  - re-initialization never sends package bytes and never changes the Save
-    fingerprint.
-
 - Native scene preparation still rebuilds all bands at a changed revision.
   Consume the command-receipt closure for affected bands and engineering
   refresh, retaining unchanged scene and demand inputs at section ends.
@@ -496,63 +441,12 @@ fails.**
     unchanged.
 - **Out of scope:** no solver approval, and tolerances are unchanged.
 
-## Focused next: native default-analysis demand reuse
+## Focused next: incremental native Profile surfaces
 
-Review the owning cache-aware default-analysis change after implementation:
-shared observer and screening demands, exact uncached report parity, native
-receipt invalidation at incident section ends, whole-model and basis misses,
-and revision/root refusal paths. At most two actionable findings, read-only;
-no competing builds or source writes. The canvas check errors in OPEN.md §23
-need only a bounded presentation typing repair, not workflow feature work.
-
-**Claimed (Claude, 2026-10-07 15:20 UTC):** default-analysis demand reuse review (ds-network `320f04b4`, kernel `1493e1d`).
-
-**Result (Claude, 2026-10-07 15:25 UTC): no actionable finding.** Checked
-read-only:
-
-- **Shared observer.** `observe` fires for every section and case, whether
-  the demand came from the cache or a fresh solve
-  (`structure_usage.rs:357-371`). Applied loads, unavailable cases and
-  whole-support vectors therefore see the same demands as an uncached run.
-- **Cache key.** The key `(section, case, basis)` covers every field of
-  `SectionDemandsRequest` (`demand.rs:51-57`). The solve reads the resolver
-  only through `resolve(section)`, the section's own supports
-  (`demand.rs:370-393`). A focused resolver keeps all supports of the
-  focused sections and computes each structure's ground from its own
-  alignment (`demand.rs:112-176`), so a focused screen can't cache a
-  different value under the same key.
-- **Receipt invalidation.** Only seven tables count as local
-  (`recalculation_scope.rs:46-57`). Changed structures and supports evict
-  every section that uses them (`:62-116`). Terrain, alignment, route,
-  attachment, type, cable and case edits clear everything. The solve's own
-  inputs (`alignments`, `route_*`, the section's structures and supports)
-  are all covered.
-- **Misses.** A different basis gets its own key. A `whole_model` change, a
-  missed parent, navigation and an unexpected head all clear the cache
-  (`structure_usage_cache.rs:102-124`).
-- **Refusals.** `analyze_defaults` calls `at_revision` with the session's
-  own head before the revision, root and row-limit refusals. At most this
-  clears evidence for an older revision; it never admits stale evidence.
-
-**Observation (not actionable):**
-
-- **The cache holds at most 16,384 section×case entries.** It evicts with
-  `pop_first`, which takes the smallest key, not the least recently used
-  (`structure_usage_cache.rs:30`, `:74-76`).
-- **Above that bound the issue screen solves twice.** It re-solves whatever
-  the default analysis evicted, so the contract's "does not solve them a
-  second time" holds only below the bound.
-- **Gisagara M1 is well inside it.** The seed has 5,356 unavailable
-  section×case pairs at 7 cases, about 765 or more sections, so roughly
-  5.4k–10k entries.
-- **Revisit** only if a delivery model passes the bound with both bases in
-  use.
-
-## Focused recovery check
-
-Scope recovery must retain the admitted native display choices. Validate the
-new `initialize.restore_state` natively, stage it transactionally, and apply the
-request patch afterwards. The renderer must forward this state without building
-a second policy or turning missing-base recovery into a per-edit package path.
-Check disposal/replacement and late initialization receipts for orphaned native
-assets; keep the scope-capacity refusal explicit.
+Review the owning retained-surface/ground-input change and scoped projection
+advance as they land. Check raw-band and section-curve reuse outside native
+receipt scopes, exact fresh-scene parity, parent/options/model fences, removal
+and navigation, station-bound changes and downstream layout. No new authored
+state, case-policy duplicate or per-edit package recovery. Keep unknown forces
+and clearance coverage explicit. At most two actionable findings, read-only;
+no source writes or competing builds. Investigate while the owning tests run.

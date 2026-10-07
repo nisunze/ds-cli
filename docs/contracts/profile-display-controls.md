@@ -94,8 +94,8 @@ journal, including undo before the first Profile display, remains navigable.
 
 Analyze shares the receipt-advanced native demand cache between default analysis
 and its issue screen. Applied-load and whole-support report evidence stays
-identical to uncached native analysis; the issue screen reuses those section
-cases instead of solving them again. Clearance remains a separate design-case
+identical to uncached native analysis; the issue screen reuses retained section cases. The cache has 16,384
+section/case/basis slots; inputs evicted above that bound must be solved again. Clearance remains a separate design-case
 calculation. This change alone is not scoped-band or release-latency acceptance.
 
 Native Profile scopes are leases. The runtime admits up to eight and refuses a
