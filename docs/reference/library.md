@@ -144,3 +144,34 @@ Execution ownership:
 After any PLS-CADD UI save, re-import and compare the saved workspace as a new
 authority candidate. A parser/readback result is not native solver or
 engineering approval.
+
+## Model-bound interoperability libraries
+
+Discover `library.model.create|attach|detach|clone|show`. These generic native
+commands share the DS Grid package/library codecs and are available through the
+`grid-local-model` MCP profile. PLS-CADD remains an exchange adapter; the lifecycle
+does not run an external solver or claim strength adequacy.
+
+`create` captures reusable definitions from the exact `--model` revision, fenced
+by `--expected-sha256`, under explicit `--library-id` and `--library-version`.
+It excludes project routes, terrain and unrelated customer documents. Verify
+native dependency coverage: an uncaptured native resource is not made equivalent
+by capture. `attach` fences both the model and `--release` bundle, adopts exact
+equivalents and retains native bytes and a verified portable cache. Use repeated
+`--element` IDs for an explicit subset; omitted selects all release elements.
+Same names with different definitions refuse `no_cloud_equivalent`.
+
+`show` reports exact release pins, per-native-resource equivalence and managed
+export admission. Page resource rows with `--offset` and `--limit`. Missing
+equivalents block a managed PLS-CADD export; an exact native-byte match still
+does not prove strength-case coverage or native solver acceptance.
+
+`clone` requires a distinct library identity and retains exact definitions and
+native bytes. `detach` requires the whole immutable pin including `--content-root`
+and retains native bytes, cached releases and earlier project history. Every write
+uses a new `--out` path and changes no active model or cloud head.
+
+Publish the resulting model through `dsgrid.publish-version` with explicit
+project authorization and the reviewed expected head. Deliberate cross-project
+adoption uses the destination project's own authorization; a library identity
+does not grant it. Later changes to a library head never reinterpret pinned models.

@@ -8,6 +8,7 @@ pub mod catalog;
 pub mod global_catalog;
 pub mod global_download;
 pub mod global_member;
+pub mod model;
 pub mod open;
 pub mod pack;
 pub mod prepare_publication;
@@ -40,6 +41,11 @@ pub static DOMAIN: Domain = Domain {
         &global_catalog::PUBLISH_EXAMPLE_COMMAND,
         &global_catalog::LIBRARY_LIFECYCLE_COMMAND,
         &global_catalog::EXAMPLE_LIFECYCLE_COMMAND,
+        &model::CREATE,
+        &model::ATTACH,
+        &model::DETACH,
+        &model::CLONE,
+        &model::SHOW,
         &pack::COMMAND,
         &unpack::COMMAND,
         &seed::COMMAND,

@@ -2102,7 +2102,7 @@ fn local_model_scoped_routers_reach_every_allowed_verb_and_preserve_refusals() {
     );
     assert_eq!(
         allowed.len(),
-        56, // Four automatic verbs retired; one manual combination verb added.
+        61, // Five provider-neutral model-library lifecycle verbs added.
         "review every added lifecycle verb; do not hide it from disclosure"
     );
     for (index, id) in allowed.iter().enumerate() {
@@ -2610,7 +2610,9 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
                                 | "design_lv_process"
                                 | "design_lv_voltage-drop"
                         ))
-                    || (prefix == "pls_" && name.starts_with("library_"))
+                    || (prefix == "pls_"
+                        && name.starts_with("library_")
+                        && !name.starts_with("library_model_"))
             })
             .cloned()
             .collect::<BTreeSet<_>>();

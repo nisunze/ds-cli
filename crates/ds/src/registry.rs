@@ -562,6 +562,31 @@ static LIBRARY_ENTRIES: &[Entry] = &[
         render: ds_cli_library::global_catalog::render,
     },
     Entry {
+        command: &ds_cli_library::model::CREATE,
+        handler: ds_cli_library::model::create,
+        render: ds_cli_library::model::render,
+    },
+    Entry {
+        command: &ds_cli_library::model::ATTACH,
+        handler: ds_cli_library::model::attach,
+        render: ds_cli_library::model::render,
+    },
+    Entry {
+        command: &ds_cli_library::model::DETACH,
+        handler: ds_cli_library::model::detach,
+        render: ds_cli_library::model::render,
+    },
+    Entry {
+        command: &ds_cli_library::model::CLONE,
+        handler: ds_cli_library::model::clone,
+        render: ds_cli_library::model::render,
+    },
+    Entry {
+        command: &ds_cli_library::model::SHOW,
+        handler: ds_cli_library::model::show,
+        render: ds_cli_library::model::render,
+    },
+    Entry {
         command: &ds_cli_library::pack::COMMAND,
         handler: ds_cli_library::pack::run,
         render: ds_cli_library::pack::render,

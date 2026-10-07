@@ -473,6 +473,9 @@ impl Profile {
             Self::GridCorrections => GRID_CORRECTION_COMMANDS.contains(&tool.id.as_str()),
             Self::Grid => {
                 matches!(tool.chapter, Chapter::GridModel | Chapter::Reports)
+                    // Model library adoption belongs to the scoped lifecycle
+                    // router, never to the bounded spotting/report profile.
+                    && !tool.id.starts_with("library.model.")
                     && !matches!(tool.id.as_str(),
                         "dsgrid.apply-batch" | "dsgrid.apply-correction" | "dsgrid-exchange.sync")
                     && tool.id != "dsgrid.reconcile-cable-source"
@@ -829,6 +832,11 @@ const PRINT_STYLE_COMMANDS: &[&str] = &[
 // project model by opaque ID before asking for that model's versions; display
 // names are not identifiers and do not encode version numbers.
 const GRID_LOCAL_MODEL_COMMANDS: &[&str] = &[
+    "library.model.create",
+    "library.model.attach",
+    "library.model.detach",
+    "library.model.clone",
+    "library.model.show",
     "dsgrid.model.list",
     "dsgrid.model.show",
     "dsgrid.model.create-local",

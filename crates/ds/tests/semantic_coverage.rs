@@ -13,6 +13,11 @@ use std::process::Command;
 use serde_json::Value;
 
 const EXPECTED: &[(&str, &str, &str)] = &[
+    ("library.model.create", "local_file_write", "none"),
+    ("library.model.attach", "local_file_write", "none"),
+    ("library.model.detach", "local_file_write", "none"),
+    ("library.model.clone", "local_file_write", "none"),
+    ("library.model.show", "read_only", "none"),
     // Messaging is account-wide; brain checks canonical membership per request.
     ("messaging.acknowledge", "global_write", "headless_user"),
     ("messaging.config", "read_only", "headless_user"),
