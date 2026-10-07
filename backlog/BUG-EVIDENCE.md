@@ -347,90 +347,27 @@ unexecuted scenarios as hypotheses. Codex will implement while you review.
      analysis (`analyses`) must be invalidated by the closure, never reused
      across revisions.
 
-**Dependency follow-up (owner, 2026-10-07):** scoped recalculation must reach
-the adjacent tension sections, not merely the edited section. Trace the native
-section-demand/structure-usage/Profile caches and existing dependency tokens.
-Give the exact smallest dirty closure for retype, station move, ground move,
-split and merge: incident sections, neighboring supports, those supports'
-other incident sections, adjacent spans and affected bands. Identify a fixture
-where updating only the directly edited section leaves a neighboring support's
-usage stale. Specify positive/negative cache controls and fences; no broad
-reimplementation or source writes. Edited models remain dirty in memory;
-recalculation must not save a package. Split and merge must share this closure.
-
-**Interactive boundary (owner, 2026-10-07):** stop at the affected tension-section
-ends for both CLI and user edits. Combine adjacent forces at shared end supports;
-do not recursively chase sway or negligible downstream effects through the
-alignment. Wider propagation is deferred to reconciliation. Distinguish local
-interactive work from pending reconciliation in the proposed cache controls.
-
-**Claimed (Claude, 14:00 UTC):** dirty-closure / adjacent-section recalculation trace.
-
-**Findings (Claude, 14:25 UTC; read-only, scratch packages only; ds-network `d5f9d0c9`):**
-
-1. **Caches are whole-revision; no entity-level dependency exists.**
-   - `StructureUsageScreeningCache`
-     (`ds-grid-engine/src/structure_usage_cache.rs:22-55`) clears every
-     report when the revision changes (`at_revision`) and stores whole
-     reports keyed by the exact request. So any edit forces a whole-model
-     rescreen.
-   - Revision tokens exist only per table
-     (`RevisionManifest::dependency_tokens`, `revision.rs:266`), plus one
-     whole-snapshot `engineering_input_root` (`:286`).
-   - An entity-level reference-graph closure exists only for combined models
-     (`composite.rs:1430` `mark_dirty`, `:1461` `dependency_closure`). It is
-     a reusable shape.
-   - A scoped primitive already exists: `StructureUsageScreeningRequest.structure_ids`
-     (`structure_usage.rs:112-121`) restricts demand assembly to incident
-     sections.
-2. **Staleness fixture (executed).**
-   - Setup: the Nyamagabe reference (stable copy `local-aad500c1e08847db`).
-     Retype 292 `a-w-S325.014` → `a-w-S255.012` (same attachment sets; scratch
-     package). Run `screen_structure_usage` with
-     `criterion-set-b37880c65c5c362a`, all 8 cases, `conventional`, for 291–293.
-   - Result:
-
-     | Structure | Max signed weight span, before → after | Max wind span, before → after |
-     | --- | --- | --- |
-     | 291 | 212.57 → 226.22 m | 88.214 → 88.201 m |
-     | 292 (edited) | 330.14 → 281.65 m | unchanged |
-     | 293 | 234.79 → 262.19 m | 32.272 → 32.259 m |
-
-   - Recomputing only 292 leaves 291 and 293 stale.
-   - Timing: screening those 3 structures took 5.3 s on the schema-4 package
-     and 1.9 s on schema 5. Opening the package dominates, not the scoped
-     screen.
-3. **Smallest dirty closure** (one rule, shared by split and merge).
-   - **Basis:** a structure's usage depends on all its incident sections
-     (`structure_usage.rs:341-362`). A section's demand depends on its whole
-     support path through the ruling span (`engineering_tables.rs:869`).
-   - **Affected sections X per edit:**
-     - **Retype or station move of S:** the incident sections of S, plus
-       S's route-neighbour line angles if S is a route node.
-     - **Ground move of point T:** the sections spanning T's station
-       (clearance), plus the incident sections of structures whose ground
-       derives from T.
-     - **Split:** the replaced section's two halves.
-     - **Merge:** the joined section.
-   - **Recompute:**
-     - section demand and stringing for X;
-     - usage for every support on X, combining the cached demand of those
-       supports' other incident sections (which is not recomputed);
-     - clearance for X's spans;
-     - the Profile bands containing them.
-   - **Cache keys:**
-     - per section: a digest of the section row, ordered supports, their
-       type and attachment rows, spans, terrain under the spans, and the
-       criterion and cases;
-     - per structure: its incident section digests plus its capacity.
-   - **Controls:**
-     - **Positive:** a distant section keeps its cached demand after 292 is
-       edited.
-     - **Negative:** 291 and 293 must recompute, as shown in item 2.
-   - **Fence:** every cached row carries its revision, and a result from an
-     older revision never installs (the existing `profile_selection_stale`
-     pattern). Nothing is saved during recalculation (owner ruling above).
+**Remaining in this vertical:** bind the held native Profile runtime and its
+analysis to the bounded command-receipt scope and demand cache; remove the
+per-edit package round trip. Localize terrain invalidation to the spans and
+supports whose effective ground uses the changed sample, and refresh only
+those Profile bands. Unknown broader effects remain reconciliation work,
+not a synchronous interactive solve. Preserve the owner's tension-section-end
+boundary for both CLI and user edits.
 
 **Moved from OPEN.md §12 (owner, 2026-10-07; fix with the closure findings above: usage must combine every incident side):**
 
 - `4ba8ab15` (major): screen_structure_usage takes one side at section-boundary structures: wind span ~0.5x PLS, 115 spurious uplifts (Gisagara calibration).
+
+## Queued after replay: exact incident-side calibration
+
+Trace the moved `4ba8ab15` finding above on the exact Gisagara calibration
+fixture. Compare native whole-support conductor vectors with the screening
+realizations at a tension-section boundary: attachment identities, authored
+facings and coordinates, cable/phase slots, each incident demand and the final
+capacity input. Identify whether the factor-of-two wind span and reported
+uplifts remain reproducible under current native aggregation, or name the
+precise stale assumption in the old finding. Preserve unknown capacity and
+longitudinal-force blockers. Give one bounded regression and its negative
+controls; no source writes, model edits, competing builds or solver approval.
+Maximum two actionable findings. Claim after the current replay review.
