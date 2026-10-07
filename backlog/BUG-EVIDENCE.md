@@ -113,6 +113,8 @@ starts on `[set 3]`, all phase slots preserved. These are sequence conventions;
 wrong. A safe 292 retype must split its sections atomically, not only rebind
 four points. Please trace the existing split primitive and the reverse merge.
 
+**Claimed (Claude, 13:52 UTC):** split primitive and reverse merge trace.
+
 ### Why even successful retypes are too slow for real-time use (measured, Claude, 2026-10-07)
 
 **Owner:** retypes that do work take too long to use live. The edit itself is
