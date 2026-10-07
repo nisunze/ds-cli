@@ -91,8 +91,16 @@ pub static PLAN: Command = Command {
             "all-projects",
             "Census of every library, a page at a time; platform administrators only.",
         ),
-        Arg::value("cursor", "<cursor>", "next_cursor of the previous census page."),
-        Arg::value("limit", "<n>", "Libraries per census page, 1-25 (default 10)."),
+        Arg::value(
+            "cursor",
+            "<cursor>",
+            "next_cursor of the previous census page.",
+        ),
+        Arg::value(
+            "limit",
+            "<n>",
+            "Libraries per census page, 1-25 (default 10).",
+        ),
         LANE,
     ],
     output: "Per template: status current|migrate|blocked|refused, Kernel keys, document changes, findings with governed candidates and the plan_sha256 apply checks; --all-projects pages libraries with counts and plan_sha256.",
@@ -170,9 +178,13 @@ fn library(i: &Inputs) -> Result<Option<String>, Failure> {
     match (i.value("scope"), i.value("project")) {
         (Some("global"), None) => Ok(None),
         (Some("project"), Some(project)) => Ok(Some(project.to_owned())),
-        (Some("project"), None) => Err(refuse("--scope project addresses the library named by --project")),
+        (Some("project"), None) => Err(refuse(
+            "--scope project addresses the library named by --project",
+        )),
         (Some(_), Some(_)) => Err(refuse("--scope global names no --project")),
-        _ => Err(invalid("name one library with --scope, or pass --all-projects alone")),
+        _ => Err(invalid(
+            "name one library with --scope, or pass --all-projects alone",
+        )),
     }
 }
 
@@ -338,16 +350,22 @@ mod tests {
             None
         );
         assert_eq!(
-            library(&parse(&PLAN, &["--scope", "project", "--project", "czgmdwth_gisagara"]))
-                .unwrap()
-                .as_deref(),
+            library(&parse(
+                &PLAN,
+                &["--scope", "project", "--project", "czgmdwth_gisagara"]
+            ))
+            .unwrap()
+            .as_deref(),
             Some("czgmdwth_gisagara")
         );
         for args in [
             &["--scope", "project"][..],
             &["--scope", "global", "--project", "p"][..],
         ] {
-            assert_eq!(library(&parse(&PLAN, args)).unwrap_err().code(), "project_required");
+            assert_eq!(
+                library(&parse(&PLAN, args)).unwrap_err().code(),
+                "project_required"
+            );
         }
         assert_eq!(
             library(&parse(&PLAN, &[])).unwrap_err().code(),
@@ -398,7 +416,12 @@ mod tests {
     fn apply_is_a_confirmed_write_fenced_on_the_reviewed_plan() {
         assert_eq!(APPLY.effect, Effect::GlobalWrite);
         assert_eq!(PLAN.effect, Effect::LocalAuthState);
-        assert!(APPLY.args.iter().any(|a| a.name == "expected-plan" && a.required));
+        assert!(
+            APPLY
+                .args
+                .iter()
+                .any(|a| a.name == "expected-plan" && a.required)
+        );
         assert!(APPLY.args.iter().any(|a| a.name == "scope" && a.required));
         assert!(!APPLY.args.iter().any(|a| a.name == "all-projects"));
         assert!(PLAN.search.contains(&"template"));

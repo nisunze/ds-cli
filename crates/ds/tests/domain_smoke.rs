@@ -6196,22 +6196,16 @@ fn background_project_operations_are_map_independent_and_use_the_declared_projec
     // Scope refusals are local and precede any credential restore; the
     // development catalog makes the native availability gate pass so the
     // command's own input validation is what answers.
-    let bundle = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../ds-cli-auth/tests/fixtures/development-catalog.json");
     let headless = |args: &[&str]| -> String {
         let mut named = args.to_vec();
         if args.starts_with(&["report", "project"]) || args.starts_with(&["design", "transformer"])
         {
             named.extend(["--project", "test-project"]);
         }
-        let output = Command::new(env!("CARGO_BIN_EXE_ds"))
-            .args(named)
-            .env("DS_NATIVE_CLIENT_PROFILE_BUNDLE", &bundle)
-            .env("NO_COLOR", "1")
-            .output()
-            .expect("ds binary runs");
-        let envelope: Value = serde_json::from_slice(&output.stdout).unwrap_or(Value::Null);
-        envelope["error"]["code"]
+        // Use the isolated native runner: this gate must never restore the
+        // operator's credential or discover their running Desktop.
+        let result = native_ds(&named);
+        result.envelope["error"]["code"]
             .as_str()
             .unwrap_or_default()
             .to_string()
@@ -9715,17 +9709,35 @@ fn a_network_document_copy_names_another_project_before_anything_is_sent() {
     // refused locally: nothing reaches ds-brain, and the refusal is documented.
     for args in [
         &[
-            "design", "config", "copy", "plan", "--project", "test-project",
-            "--source-project", "test-project",
+            "design",
+            "config",
+            "copy",
+            "plan",
+            "--project",
+            "test-project",
+            "--source-project",
+            "test-project",
         ][..],
         &[
-            "design", "config", "copy", "plan", "--project", "test-project",
-            "--source-project", "template_tchad", "--part", "layers",
+            "design",
+            "config",
+            "copy",
+            "plan",
+            "--project",
+            "test-project",
+            "--source-project",
+            "template_tchad",
+            "--part",
+            "layers",
         ][..],
     ] {
         let mut call = args.to_vec();
         call.extend(["--output", "json"]);
-        assert_eq!(native_refusal(&call), "network_documents_invalid", "{args:?}");
+        assert_eq!(
+            native_refusal(&call),
+            "network_documents_invalid",
+            "{args:?}"
+        );
     }
 }
 
@@ -12502,6 +12514,62 @@ fn assets_backup_plans_files_and_zip_without_identity_or_a_desktop() {
 }
 
 #[test]
+fn asset_download_names_read_authority_and_refuses_unsafe_targets_before_auth() {
+    let described = native_ds(&["capabilities", "assets.download", "--output", "json"]);
+    assert_eq!(described.code, 0, "{}", described.envelope);
+    let command = &described.envelope["data"]["command"];
+    assert_eq!(command["effect"], "read_only");
+    assert_eq!(command["authority"], "headless_project");
+    assert_eq!(command["requires"], "server");
+    assert_eq!(command["confirmation_required"], false);
+    assert!(
+        command["purpose"]
+            .as_str()
+            .unwrap()
+            .contains("No asset bytes are fetched")
+    );
+
+    for (asset, expected) in [
+        ("not_an_asset", "invalid_asset_id"),
+        (
+            "sys:grid_export:model:export:pdf",
+            "origin_read_unavailable",
+        ),
+        ("a_4v6w339ffevs", "headless_signed_out"),
+    ] {
+        let refused = native_ds(&[
+            "assets",
+            "download",
+            "--project",
+            "named-project",
+            "--asset",
+            asset,
+            "--output",
+            "json",
+        ]);
+        assert_ne!(refused.code, 0, "{}", refused.envelope);
+        assert_eq!(
+            refused.envelope["error"]["code"], expected,
+            "{}",
+            refused.envelope
+        );
+        assert!(refused.envelope["data"].is_null());
+    }
+    assert_eq!(
+        native_refusal(&[
+            "assets",
+            "download",
+            "--asset",
+            "a_4v6w339ffevs",
+            "--output",
+            "json"
+        ]),
+        "missing_input",
+        "a download reference must name its project before restoring credentials"
+    );
+}
+
+#[test]
 fn every_assets_command_is_reachable_without_the_desktop_installed() {
     // Every command of this domain is headless since 2026-09-20; the index
     // is pinned so a new command gets its own smoke assertion, and the effect
@@ -12518,6 +12586,7 @@ fn every_assets_command_is_reachable_without_the_desktop_installed() {
         "assets.tree",
         "assets.versions",
         "assets.read",
+        "assets.download",
         "assets.preview",
         "assets.classify",
         "assets.promote",
@@ -12593,7 +12662,9 @@ fn every_assets_command_is_reachable_without_the_desktop_installed() {
         let id = command["id"].as_str().expect("id");
         let expected = match id {
             "assets.list" | "assets.tree" | "assets.versions" | "assets.preview"
-            | "assets.resolve" | "assets.maps" | "assets.backup.plan" => "read_only",
+            | "assets.download" | "assets.resolve" | "assets.maps" | "assets.backup.plan" => {
+                "read_only"
+            }
             "assets.read" | "assets.promote" => "local_file_write",
             _ => "global_write",
         };
@@ -19031,15 +19102,44 @@ fn retained_print_previews_are_explicit_and_opening_does_not_render() {
         assert_eq!(command["authority"], "headless_project");
         let purpose = command["purpose"].as_str().unwrap();
         if id == "report.preview.read" {
-            assert!(purpose.contains("does not capture current inputs, render, or wake the publication queue"));
+            assert!(purpose.contains(
+                "does not capture current inputs, render, or wake the publication queue"
+            ));
         } else {
-            assert!(purpose.contains("Every explicit refresh has a fresh run identity, including unchanged inputs"));
+            assert!(purpose.contains(
+                "Every explicit refresh has a fresh run identity, including unchanged inputs"
+            ));
         }
     }
     for action in ["read", "refresh"] {
-        let refused = native_ds(&["report", "preview", action, "--project", "project_a", "--transformer", "gashariki", "--out", "/absolute/fresh-preview.pdf", "--output", "json"]);
+        let refused = native_ds(&[
+            "report",
+            "preview",
+            action,
+            "--project",
+            "project_a",
+            "--transformer",
+            "gashariki",
+            "--out",
+            "/absolute/fresh-preview.pdf",
+            "--output",
+            "json",
+        ]);
         assert_eq!(refused.envelope["error"]["code"], "confirmation_required");
     }
-    let refused = native_ds(&["report", "preview", "read", "--project", "project_a", "--transformer", "UPPERCASE", "--out", "/absolute/fresh-preview.pdf", "--yes", "--output", "json"]);
+    let refused = native_ds(&[
+        "report",
+        "preview",
+        "read",
+        "--project",
+        "project_a",
+        "--transformer",
+        "UPPERCASE",
+        "--out",
+        "/absolute/fresh-preview.pdf",
+        "--yes",
+        "--output",
+        "json",
+    ]);
     assert_eq!(refused.envelope["error"]["code"], "preview_inputs_invalid");
 }

@@ -294,9 +294,18 @@ mod tests {
         assert_eq!(pole["id"], "approved-missing-pole");
         assert_eq!(pole["properties"]["struct_type"], "manual");
         assert!(output["voltage_drop"]["status"].is_string());
-        assert!(output["warnings"].as_array().unwrap().iter().any(|warning| {
-            warning["code"] == "approved_network_kept"
-                && warning["message"].as_str().unwrap().contains("lv_poles: @missing 1")
-        }));
+        assert!(
+            output["warnings"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|warning| {
+                    warning["code"] == "approved_network_kept"
+                        && warning["message"]
+                            .as_str()
+                            .unwrap()
+                            .contains("lv_poles: @missing 1")
+                })
+        );
     }
 }

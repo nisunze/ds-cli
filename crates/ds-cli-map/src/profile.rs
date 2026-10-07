@@ -574,15 +574,25 @@ mod tests {
         let visibility = SET.args.iter().find(|arg| arg.name == "visibility");
         assert!(visibility.unwrap().summary.contains("analysis."));
         assert!(SET.purpose.contains("analysis default on"));
-        assert!(VIEW.output.contains("analysis_state is due, current, off or not_applicable"));
+        assert!(
+            VIEW.output
+                .contains("analysis_state is due, current, off or not_applicable")
+        );
     }
 
     #[test]
     fn cable_colours_cross_the_bridge_validated_by_the_kernel() {
-        let args = ["--cable-colors", r##"{"ASTER 54.6":"#AABBCC","AAAC 34":null}"##].map(str::to_owned);
+        let args = [
+            "--cable-colors",
+            r##"{"ASTER 54.6":"#AABBCC","AAAC 34":null}"##,
+        ]
+        .map(str::to_owned);
         let inputs = ds_cli_contract::args::parse(&SET, &args).unwrap();
         let patch = patch_from_inputs(&inputs).unwrap();
-        assert_eq!(patch["cable_colors"], json!({"ASTER 54.6":"#AABBCC","AAAC 34":null}));
+        assert_eq!(
+            patch["cable_colors"],
+            json!({"ASTER 54.6":"#AABBCC","AAAC 34":null})
+        );
         for bad in [r#"{"ASTER":"red"}"#, r#"{}"#, r##"{" ":"#aabbcc"}"##, "[]"] {
             let inputs =
                 ds_cli_contract::args::parse(&SET, &["--cable-colors".into(), bad.into()]).unwrap();

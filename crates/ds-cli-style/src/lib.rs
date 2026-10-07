@@ -3,10 +3,10 @@
 //! The visual Style Center uses the same transformations through WASM.
 
 pub use native::{LANE_ARG, PROJECT_ARG};
-pub mod a4_seed;
 pub mod a4_migration;
-pub mod binding;
+pub mod a4_seed;
 pub mod appearance;
+pub mod binding;
 pub mod cartography;
 pub mod dimension;
 pub mod governance;

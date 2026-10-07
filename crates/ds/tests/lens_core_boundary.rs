@@ -278,7 +278,10 @@ fn the_target_layers_are_exactly_the_window_and_the_binary() {
 /// Measured against the 2026-09-22 run tip.
 const WINDOW_COMMANDS: &[(&str, usize)] = &[
     // The bridge's own domain: pairing, sync, printing, published artifacts.
-    ("ds-cli-desktop", 25),
+    // 25 → 26: `desktop.printing.preview` (0b9a457b) reads the paired
+    // window's held context and draft SVG, while `report.project.export`
+    // owns headless preview computation. It cannot save or publish a layout.
+    ("ds-cli-desktop", 26),
     // The lens crate. Window commands are its purpose; its server commands
     // (the machine-local layer catalogue) are not counted here.
     // Profile view/set/select are display and transient selection controls in
@@ -531,7 +534,9 @@ const WINDOW_BACKLOG: &[(&str, u64)] = &[
     // known-columns/materials run headless on the kernel's design doors;
     // `design.sync.*` and `design.transformer.download` were retired.
     ("design", 0),
-    ("desktop", 26),
+    // 26 → 27: the same held-window SVG preview admitted above. Connectivity
+    // contributes the existing shared-constructor declaration difference.
+    ("desktop", 27),
     // `dsgrid.model.prepare-project` is headless; `dsgrid.profile.open` is
     // the one window command admitted on 2026-09-22.
     ("dsgrid", 1),
@@ -560,7 +565,36 @@ const WINDOW_BACKLOG: &[(&str, u64)] = &[
 // The 2026-09-22 audit admits three existing Profile window commands that
 // landed after the prior snapshot: dsgrid.profile.open and map.profile.view/set.
 // 86 → 87: the Plan/Profile lasso lens only changes transient selection.
-const WINDOW_BACKLOG_TOTAL: u64 = 87;
+// 87 → 88: the paired draft SVG preview reads window context; the compute
+// remains a headless `report.project.export --preview-layout` operation.
+const WINDOW_BACKLOG_TOTAL: u64 = 88;
+
+#[test]
+fn paired_draft_preview_keeps_a_headless_computation_owner() {
+    let describe = |id| {
+        let output = std::process::Command::new(env!("CARGO_BIN_EXE_ds"))
+            .args(["capabilities", id, "--output", "json"])
+            .env("NO_COLOR", "1")
+            .output()
+            .expect("ds binary runs");
+        assert!(output.status.success(), "cannot describe {id}");
+        let answer: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+        answer["data"]["command"].clone()
+    };
+    let lens = describe("desktop.printing.preview");
+    assert_eq!(lens["requires"], "window");
+    assert_eq!(lens["authority"], "desktop_user");
+    let owner = describe("report.project.export");
+    assert_eq!(owner["requires"], "server");
+    assert!(
+        owner["inputs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|input| { input["name"] == "preview-layout" }),
+        "draft preview computation must remain reachable without a window"
+    );
+}
 
 #[test]
 fn the_registered_window_backlog_never_grows() {

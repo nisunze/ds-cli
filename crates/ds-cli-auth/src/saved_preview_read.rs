@@ -3,8 +3,8 @@
 use ds_cli_contract::Failure;
 use ds_command_kernel::compute_artifact_inventory::Head;
 use ds_sync_runtime::{
-    retained_preview::{read_a4, ReadError},
     VerifiedReads,
+    retained_preview::{ReadError, read_a4},
 };
 use std::path::Path;
 
