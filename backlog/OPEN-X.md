@@ -14,7 +14,7 @@ Check existing contracts, source evidence and recorded owner choices first. Rout
 | [13. Between-angle policy](#13-between-angle-policy) | 1 |
 | [14. Profile display and supervised editing](#14-profile-display-and-supervised-editing) | 2 |
 | [15. Project scope and engineering choices](#15-project-scope-and-engineering-choices) | 3 |
-| [18. Supervised native qualification](#18-supervised-native-qualification) | 1 |
+| [18. Supervised native qualification](#18-supervised-native-qualification) | 2 |
 | [22. Account and data-owner authority](#22-account-and-data-owner-authority) | 2 |
 | [25. CLI reliability and feedback](#25-cli-reliability-and-feedback) | 1 |
 | [Parked: outside stabilization](#parked-outside-stabilization) | 2 |
@@ -47,6 +47,8 @@ Check existing contracts, source evidence and recorded owner choices first. Rout
 ## 18. Supervised native qualification
 
 - **Unknown PLS-CADD Error Log**: the Windows handoff preserved an unclassified Error Log, reported in process 23884, with screenshot/text under `q11-gisagara-m1-v31\unknown-error-log\`. **Input needed:** operator classification of the actual preserved dialog and the authorized next native action. **Boundary:** resuming that blocked PLS-CADD session; never dismiss an unknown dialog blindly. The complete candidate evidence, trust state and remaining native gates stay in [SEEDING.md block 18](SEEDING.md#18-global-ds-grid-library). Managed library lifecycle and export-admission coding continues independently in [OPEN.md block 18](OPEN.md#18-global-ds-grid-library).
+
+- **Unpinned PLS-CADD `.bak` for client delivery**: a model with no interoperability-library pin exports today with no library check; [OPEN.md block 18](OPEN.md#18-global-ds-grid-library) makes that an explicit `unmanaged_export` warning. **Input needed:** whether a client-delivery `.bak` may be issued from an unpinned model with that warning, or must refuse until every native member is an exact pinned library equivalent. **Boundary:** warn-or-refuse for unpinned `pls-bak`/workspace exports. Pinned models with uncovered members already refuse.
 
 ## 22. Account and data-owner authority
 
