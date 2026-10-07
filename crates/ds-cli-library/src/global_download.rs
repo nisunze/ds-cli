@@ -19,7 +19,7 @@ const INTEGRITY: Refusal = Refusal {
     when: "the exact catalog coordinates, locator, byte count or SHA-256 could not be verified",
     remedy: "read the exact release/revision pins; preserve existing bytes and do not retire data until export verifies",
 };
-const REFUSALS: [Refusal; 18] = super::global_catalog::with_native([LOCAL, INTEGRITY]);
+const REFUSALS: [Refusal; 19] = super::global_catalog::with_native([LOCAL, INTEGRITY]);
 
 pub static COMMAND: Command = Command {
     id: "library.global.download",

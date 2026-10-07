@@ -96,6 +96,11 @@ publisher-write commands have separate
 effect/authority contracts; exact project forks additionally require project
 authorization. Local `library seed` does not publish anything globally.
 
+An absent or non-visible library, example, immutable release/revision or indexed
+member returns `catalog_not_found`. Its remedy uses visible catalog identities
+and exact release pins; it does not name a transformer or another project.
+Authentication and transient failures retain their native refusal codes.
+
 Short hypothetical requests and their command shapes:
 
 ```text

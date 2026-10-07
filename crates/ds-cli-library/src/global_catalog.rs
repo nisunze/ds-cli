@@ -89,11 +89,12 @@ const UPLOAD_REFUSAL: Refusal = Refusal {
 /// undocumented code, and `native_refusal_count_is_the_owner_s` names it.
 const NATIVE_COUNT: usize = 16;
 
-/// This domain's own refusals, then the native user's, in one array.
+/// This domain's own refusals, the native user's, then the catalog absence
+/// refusal declared by the native transport owner, in one array.
 ///
 /// `OWN + NATIVE_COUNT` cannot be written as a const-generic expression, so
 /// `TOTAL` is passed explicitly and the fill below refuses to compile if it
-/// disagrees: a wrong total either leaves a placeholder in the tail or indexes
+/// disagrees (OWN + NATIVE_COUNT + 1): a wrong total either leaves a placeholder in the tail or indexes
 /// past the end, and `every_composed_set_ends_with_the_native_refusals` reads
 /// the result back.
 pub(super) const fn with_native<const OWN: usize, const TOTAL: usize>(
@@ -110,17 +111,19 @@ pub(super) const fn with_native<const OWN: usize, const TOTAL: usize>(
         all[OWN + native] = NATIVE[native];
         native += 1;
     }
+    all[OWN + NATIVE_COUNT] = ds_cli_auth::GRID_CATALOG_NOT_FOUND_REFUSAL;
     all
 }
 
-const READ_SET: [Refusal; 18] = with_native::<2, 18>([PAYLOAD_REFUSAL, ACTION_REFUSAL]);
+const READ_SET: [Refusal; 19] = with_native::<2, 19>([PAYLOAD_REFUSAL, ACTION_REFUSAL]);
 const READ_REFUSALS: &[Refusal] = &READ_SET;
-const FORK_SET: [Refusal; 17] = with_native::<1, 17>([PAYLOAD_REFUSAL]);
+const FORK_SET: [Refusal; 18] = with_native::<1, 18>([PAYLOAD_REFUSAL]);
 const FORK_REFUSALS: &[Refusal] = &FORK_SET;
-const UPLOAD_SET: [Refusal; 18] = with_native::<2, 18>([ARTIFACT_REFUSAL, UPLOAD_REFUSAL]);
-const PUBLISH_SET: [Refusal; 19] =
-    with_native::<3, 19>([ARTIFACT_REFUSAL, UPLOAD_REFUSAL, PREPARED_REFUSAL]);
-const REFUSALS: &[Refusal] = NATIVE;
+const UPLOAD_SET: [Refusal; 19] = with_native::<2, 19>([ARTIFACT_REFUSAL, UPLOAD_REFUSAL]);
+const PUBLISH_SET: [Refusal; 20] =
+    with_native::<3, 20>([ARTIFACT_REFUSAL, UPLOAD_REFUSAL, PREPARED_REFUSAL]);
+const CATALOG_SET: [Refusal; 17] = with_native::<0, 17>([]);
+const REFUSALS: &[Refusal] = &CATALOG_SET;
 
 const LANE: ds_cli_contract::spec::Arg =
     ds_cli_contract::spec::LANE.summary("Native authentication lane.");
@@ -855,14 +858,14 @@ mod tests {
     }
 
     #[test]
-    fn every_composed_set_ends_with_the_native_refusals() {
+    fn every_composed_set_retains_native_and_catalog_refusals() {
         for (set, own) in [
             (READ_REFUSALS, 2usize),
             (FORK_REFUSALS, 1),
             (UPLOAD_SET.as_slice(), 2),
             (PUBLISH_SET.as_slice(), 3),
         ] {
-            assert_eq!(set.len(), own + NATIVE_COUNT);
+            assert_eq!(set.len(), own + NATIVE_COUNT + 1);
             for (index, refusal) in NATIVE.iter().enumerate() {
                 assert_eq!(
                     set[own + index].code,
@@ -870,6 +873,10 @@ mod tests {
                     "composed set lost a native refusal"
                 );
             }
+            assert_eq!(
+                set[own + NATIVE_COUNT].code,
+                ds_cli_auth::GRID_CATALOG_NOT_FOUND_REFUSAL.code
+            );
         }
     }
 

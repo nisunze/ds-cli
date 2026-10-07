@@ -2315,7 +2315,24 @@ pub fn grid_catalog(
     lane_value: &str,
     command: &ds_client_core::grid_catalog::Command,
 ) -> Result<serde_json::Value, Failure> {
-    run_grid_catalog(lane_value, command, map_client)
+    run_grid_catalog(lane_value, command, map_catalog_client)
+}
+
+pub const GRID_CATALOG_NOT_FOUND_REFUSAL: Refusal = Refusal {
+    code: "catalog_not_found",
+    when: "the governed catalog has no visible library, example, release, revision or indexed member matching the request",
+    remedy: "list the libraries or examples visible to this account and use their exact ids and immutable release pins",
+};
+
+fn map_catalog_client(error: ClientError) -> Failure {
+    catalog_kind(error.kind(), error.to_string()).unwrap_or_else(|| map_client(error))
+}
+
+fn catalog_kind(kind: ErrorKind, message: String) -> Option<Failure> {
+    (kind == ErrorKind::ResourceNotFound).then(|| {
+        Failure::invalid(GRID_CATALOG_NOT_FOUND_REFUSAL.code, message)
+            .remedy(GRID_CATALOG_NOT_FOUND_REFUSAL.remedy)
+    })
 }
 
 /// Export only an immutable artifact selected by the authenticated catalog.
@@ -7383,6 +7400,42 @@ mod tests {
         ] {
             assert!(install_kind(kind).is_none(), "{kind:?}");
         }
+    }
+
+    #[test]
+    fn catalog_absence_preserves_its_domain_and_other_native_refusals() {
+        let failure = catalog_kind(
+            ErrorKind::ResourceNotFound,
+            "no such governed library, example, release, revision or indexed member".to_string(),
+        )
+        .unwrap();
+        assert_eq!(failure.code(), GRID_CATALOG_NOT_FOUND_REFUSAL.code);
+        assert_eq!(
+            failure.class(),
+            ds_cli_contract::outcome::ExitClass::InvalidInput
+        );
+        assert_eq!(
+            failure.remedy_text(),
+            Some(GRID_CATALOG_NOT_FOUND_REFUSAL.remedy)
+        );
+        assert!(!failure.to_string().contains("transformer"));
+        for kind in [
+            ErrorKind::SignedOut,
+            ErrorKind::InvalidInput,
+            ErrorKind::AuthenticationRejected,
+            ErrorKind::Transient,
+            ErrorKind::UnreadableResponse,
+        ] {
+            assert!(catalog_kind(kind, "native diagnostic".to_string()).is_none());
+        }
+        assert_eq!(
+            map_client_kind(
+                ErrorKind::ResourceNotFound,
+                "transformer absent".to_string()
+            )
+            .code(),
+            "transformer_not_found"
+        );
     }
 
     #[test]
