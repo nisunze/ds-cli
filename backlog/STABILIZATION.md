@@ -98,39 +98,6 @@ workspace, outside git).
 - OPEN-X.md: "Material and capacity source conflicts", "Uncharacterized .012
   policy" (`5d0fd02b`).
 
-## 6. Owner direction: externalize DS Grid libraries
-
-In the owner's words: libraries will be externalized "violently". Many models
-refer to the same external libraries, such as criteria (CRI) and structures,
-so that updating one library updates every model that uses it. The cloud
-interoperability library sits beside DS Grid's own library, with third
-parties starting with PLS-CADD and possibly later Camelia or Jove.
-
-**What exists today:**
-
-- A model carries exact, immutable library pins and a cached copy of each
-  pinned release inside its package (`library.model.create`, `attach`,
-  `detach`, `clone` and `show`; ds-network `c2a17b70`, `b442dd6c`).
-- Governed global libraries are reached through `library.global.*`.
-- Kernel publication is bound to exact package bytes (`3bda1f1`); exact
-  indexed member downloads exist (`9c44615`).
-- OPEN.md §18 forbids any head, basename or scaffold fallback.
-
-**Before any code, bring the owner a design that answers:**
-
-1. **Propagation versus reproducibility.** How does one library update reach
-   every referencing model while each model revision still records the exact
-   release it was computed with? For example, an auditable re-pin that
-   produces new model revisions, with an impact report.
-2. **Changed results.** What happens to a model whose results change after a
-   library update: flagged stale, recomputed, or reviewed?
-3. **Offline.** How do the Desktop and Server behave against a referenced,
-   not embedded, library?
-4. **Third-party adapters.** How do PLS-CADD first, and Camelia or Jove later,
-   map onto one interoperability library without becoming the authority?
-5. **Schema.** References must not force another breaking `.dsgrid` schema
-   bump; carry them compatibly.
-
 ## 7. Owner wording check
 
 The MV plan key now prints the held legend titles (ds-network-reporter
