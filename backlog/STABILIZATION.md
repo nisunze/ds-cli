@@ -13,13 +13,16 @@ each item below once it is done, as for every backlog file.
 **How to work it:** one small slice at a time. Prove it with the owning tests,
 then commit to `run` in its owning repository. Never use a worktree.
 
-## Claude evidence queue — start while Codex codes
+## Evidence queue — pick up while the coding agent works
 
-Codex is the sole source writer. Claude reviews read-only and may write only
+The coding Codex is the sole source writer. Claude or a reviewing Codex can
+pick up these requests without an owner relay. Review read-only; write only
 this file and [BUG-EVIDENCE.md](BUG-EVIDENCE.md). No feedback submissions,
 project mutations, publication, source edits or competing builds. Codex
 independently confirms each finding, implements it and owns proof and landing.
 Request the next bounded review before finishing the current coding slice.
+The coding agent re-reads both files between slices and incorporates new
+evidence; reviewers mark a request claimed here to avoid duplicate work.
 
 **First assignment: library identity survives CLI edits (§5).** Trace the
 shared persistence path in `ds-cli/crates/ds-cli-dsgrid/src/mutation.rs` and its
