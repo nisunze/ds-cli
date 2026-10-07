@@ -1,5 +1,7 @@
 # Open code changes
 
+> **Moved 2026-10-07:** this backlog now lives in `ds-command-kernel/backlog/`. The old `ds-work/backlog/` no longer exists: edit these files here, commit them to ds-command-kernel `run`, and stage only `backlog/`. ds-work holds working sessions, not coding lists.
+
 Unfinished code that an agent can implement and prove without further owner input belongs here: product defects, missing native CLI/MCP capabilities, UI bindings, test repairs and integration. Decisions and supervised steps requiring the owner are in [OPEN-X.md](OPEN-X.md). Parameters, template/library seeding, deployment and operational acceptance remain in [SEEDING.md](SEEDING.md). This is the owner’s 7 October 2026 split.
 
 Use the live `ds` contract before coding. First try the admitted project-owned parameters and seeds. A valid configuration ignored by the renderer, an absent required capability, incorrect computation, clipping/overflow or a broken contract belongs here; a colour/pen/label/title/extent choice belongs in the seeding list. Do not alter engineering facts to improve a picture.

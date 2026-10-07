@@ -1,5 +1,7 @@
 # Open work requiring owner input
 
+> **Moved 2026-10-07:** this backlog now lives in `ds-command-kernel/backlog/`. The old `ds-work/backlog/` no longer exists: edit these files here, commit them to ds-command-kernel `run`, and stage only `backlog/`. ds-work holds working sessions, not coding lists.
+
 Only an unresolved owner decision, authority or supervised step belongs here. Each entry names the input needed and the boundary it controls. Agents continue independent code in [OPEN.md](OPEN.md) and parameter/seeding work in [SEEDING.md](SEEDING.md); they do not wait on this list to fix unrelated defects.
 
 Check existing contracts, source evidence and recorded owner choices first. Routine design choices, test execution, difficult code and host availability do not require owner guidance. If evidence settles a question, return its implementation to OPEN.md or its operational action to SEEDING.md. The owner does not hand-test code: agents prove it through `ds` or owning tests. Delete a resolved decision; retain its durable authority in the owning contract or governed project data, with no historical fixes archive.
