@@ -406,20 +406,21 @@ installation; explicit calculation still needs bounded native phase/work
 evidence before claiming a measured bottleneck or release performance. No
 template edits, competing builds or model mutations.
 
-## Focused review: authored controls and local terrain
+## Focused review: localized Profile terrain inputs
 
-Read-only review request for the next native slice: trace station-move and creation
-previews after retained authored deltas, including invalid drafts and repeated
-content histories. `previewStructureStationMoveJson` currently calls
-`GridSession::profile_scene_preview`; determine whether this triggers hidden
-case/sag/demand preparation during an authored edit. A geometry preview must
-use the retained axis and native authored placements without engineering solves,
-preserving exact head/pin refusals. Prove controls remain available after A/B/A/B
-edits, and never paint baseline engineering as current for provisional geometry.
-Maximum two findings with deterministic negative tests; no competing builds,
-source edits, model mutations or template work.
+Read-only request for the next native slice: trace terrain-point insertion,
+removal, elevation and classification changes through retained authored ground.
+The current Profile surface rebuilds ground for every alignment after these
+receipts. Check old/new corridor membership, authored supported-run bases,
+source precedence and gap boundaries, including shared parent/T-off samples.
+Determine which dependencies are actual Profile ground inputs and distinguish
+those from external/native TIN evidence; do not invent triangulation here.
+Require fresh-versus-retained parity, unaffected route/ground reuse, exact work
+counts and bounded observation/ground transport. Maximum two deterministic
+findings with negative controls; no source writes, model effects, builds or
+printing/template work.
 
-Terrain point updates still need localized ground/observations and any actual
-surface/triangulation dependencies, with fresh parity and parent/T-off evidence.
-Background calculation must let authored observation and picking continue while
-retaining exact publication/refusal fences. Review within Profile owners only.
+Explicit calculation still needs local ground dependency invalidation of
+reference curves, demands, incident-support results and clearance. Background
+calculation must permit authored observation and picking while retaining exact
+history/publication fences. Review within Profile owners only.
