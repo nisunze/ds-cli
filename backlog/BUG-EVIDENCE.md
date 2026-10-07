@@ -103,6 +103,53 @@ If an interior section must split to introduce a strain, identify the existing
 atomic splitting command and its sag/criterion preservation contract. Do not
 guess phase ordering from labels, edit the working copy or write source.
 
+### Why even successful retypes are too slow for real-time use (measured, Claude, 2026-10-07)
+
+**Owner:** retypes that do work take too long to use live. The edit itself is
+cheap; what follows it reprocesses the whole model several times. Full
+timings and trace are in STABILIZATION.md §4.
+
+**Measured** on ds-server, debug builds (the only `ds` that reads today's
+schema-5 packages); Nyamagabe M1, 1.4 MB, structure 618:
+
+| Step | Time |
+| --- | --- |
+| CLI retype dry run, nothing written | 6.0–6.2 s |
+| CLI retype write | 3.9–7.3 s |
+| Open and validate only | 1.9 s (schema 5) / 5.5 s (schema 4) |
+| Whole-model `engineering_issue_layer` | 5.6 s |
+
+**What one Desktop retype triggers:**
+
+1. **The edit.** `gridCommitStructureRetype` applies it in the worker
+   (`ds-web/src/lib/grid/session.ts:749`). This part is cheap.
+2. **Session refresh** (`session.ts:684-695`): re-read the snapshot, persist
+   the session state, and schedule a working checkpoint, which is a full
+   package emit.
+3. **Auto analysis.** The new revision re-offers it
+   (`GridProfilePanel.svelte:1210-1226`; on by default since 2026-10-05).
+   `executeNativeProfileCommand` (`profile-native.ts`) then:
+   - runs `checkpointDsgrid()`, a full package emit;
+   - sends `package_bytes: Array.from(bytes)`, a JSON array of 1.4 million
+     numbers over Tauri IPC;
+   - has the native side decode and validate the whole package, rebuild
+     every Profile band, and run the whole-model analysis;
+   - returns the full scene and up to 2,000 issues per kind, which are
+     re-installed in the worker.
+4. **CLI path** (`ds-cli-dsgrid/src/mutation.rs`, `structure/retype.rs`):
+   decode the whole package (schema-4 copies re-run the 4 → 5 migration on
+   every open), compute line angles for every structure, clone the whole
+   session for a dry run, then re-emit and hash the whole package.
+
+**So:** one structure's change costs at least two full package emits, one
+full decode and validate, a whole-scene rebuild and a whole-model analysis.
+A retype that fails, as above, pays the same chain before the save refuses.
+
+**Fix direction:** send the edit, not the package (the queued replay review
+below), and recompute only the affected tension sections, bands and spans.
+Acceptance (STABILIZATION.md §4): retyping 618 shows the new type and usage in
+well under a second in a release build.
+
 ## Queued next: native session replay for swift Profile edits
 
 After the NUM review, trace only STABILIZATION.md §4's package round trip:
