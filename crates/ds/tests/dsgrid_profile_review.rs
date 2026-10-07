@@ -40,7 +40,15 @@ fn profile_review_json_retains_native_per_structure_summaries_without_authoring(
         assert!(marker.labels[0].summary.is_some());
         assert!(!marker.labels[0].text.to_lowercase().contains("unknown"));
         if marker.kind == ProfileEngineeringMarkerKind::SectionState {
-            assert!(marker.labels[0].text.is_empty());
+            // Native section/attachment boxes may show an issue count.
+            // The owner tests its engineering meaning; this adapter retains
+            // that count and every member rather than demanding blank text.
+            let label = &marker.labels[0];
+            if !label.text.is_empty() {
+                let count = label.text.parse::<usize>().expect("native issue count");
+                let summary = label.summary.as_ref().unwrap();
+                assert!(count > 0 && count <= summary.members.len(), "{summary:?}");
+            }
             if serde_json::to_value(marker.status).unwrap() == "unknown" {
                 assert_eq!(
                     marker.labels[0].colour_role,
