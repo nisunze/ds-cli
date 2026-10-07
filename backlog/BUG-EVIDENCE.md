@@ -241,3 +241,5 @@ where updating only the directly edited section leaves a neighboring support's
 usage stale. Specify positive/negative cache controls and fences; no broad
 reimplementation or source writes. Edited models remain dirty in memory;
 recalculation must not save a package. Split and merge must share this closure.
+
+**Claimed (Claude, 14:00 UTC):** dirty-closure / adjacent-section recalculation trace.
