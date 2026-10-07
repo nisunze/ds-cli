@@ -20,7 +20,7 @@ Unfinished code that an agent can implement and prove without further owner inpu
 | [11. PLS-CADD exchange round trip](#11-pls-cadd-exchange-round-trip) | 9 |
 | [12. DS Grid engineering (Codex main)](#12-ds-grid-engineering-codex-main) | 11 |
 | [13. Spotting (Codex main)](#13-spotting-codex-main) | 8 |
-| [14. Plan and Profile authoring](#14-plan-and-profile-authoring) | 0 |
+| [14. Plan and Profile authoring](#14-plan-and-profile-authoring) | 1 |
 | [15. Project delivery code](#15-project-delivery-code) | 2 |
 | [16. Map data, datasets and screen styling](#16-map-data-datasets-and-screen-styling) | 9 |
 | [17. Project Work and Assets](#17-project-work-and-assets) | 7 |
@@ -43,7 +43,7 @@ Unfinished code that an agent can implement and prove without further owner inpu
 
 ## 2. Green `run` and release gates
 
-- **Native engine strict Clippy gate**: `cargo clippy --locked -p ds-grid-engine --all-targets --no-deps -- -D warnings` currently reports 28 library and 31 library-test diagnostics outside the demand-cache change: duplicated common test modules, collapsible conditions, large error/enum variants, argument counts and presentation clone/borrow issues. Exact log: `ds-network/out/stabilization/analysis-cache-clippy.log`. Repair coherent owning slices; retain native error JSON and engineering behavior. The 130 library and 7 recalculation-scope tests pass.
+- **Native engine strict Clippy gate**: `cargo clippy --locked -p ds-grid-engine --all-targets --no-deps -- -D warnings` remains blocked by baseline owning diagnostics: collapsible conditions, large error/enum variants, argument counts and presentation borrow/style issues. Current library gate reports 27 diagnostics; exact log: `ds-network/out/stabilization/profile-reference-reuse-clippy.log`. Repair coherent owning slices and rerun library-test diagnostics after the library gate admits; retain native error JSON and engineering behavior.
 
 - **Stabilization after the 7 October test sweep** (owner, 2026-10-07): the full list is in [STABILIZATION.md](STABILIZATION.md). It may touch any other backlog surface it intersects.
 
@@ -196,6 +196,8 @@ Rules: [PRINCIPLES.md §6](PRINCIPLES.md#6-ds-grid-engineering).
 - **Bounded spotting and scoped refinement** (`6b597153`): complete truthful CPU/memory/work admission, safe cancellation and progress/remaining-time projection where still absent. Support granular alignment/interval/pass reruns and partial refinement while evaluating all required conductor, attachment and governing-case facts for the final result. Compact rough-search hints must not replace full-layout engineering coverage. Preserve unaffected intervals, declared capacity/ground rules and provisional/unknown status; measure actual missing behaviour before more optimization. The accepted 17-minute baseline and installed stage/ETA proof are operational acceptance in SEEDING.md.
 
 ## 14. Plan and Profile authoring
+
+- **Remove dormant Profile package projection**: `ds-profile-runtime::Request::Project` still accepts a full package and can return the new head's history after restoring the old held session on Analyze projection refusal. Desktop transport and `profile-native.ts` now use only initialize/refresh; `ds-cli-map/src/profile.rs` drives that Desktop transport. Trace remaining callers, migrate package-era runtime tests/smoke examples to readonly native seed initialization, then delete the public package request/ingest branch and its dormant Analyze fallback. Preserve transactional seed/replay refusal and native offline smoke coverage.
 
 Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group A, to be fixed together with the Profile editing and performance items.
 

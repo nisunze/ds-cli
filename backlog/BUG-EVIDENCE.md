@@ -441,110 +441,7 @@ fails.**
     unchanged.
 - **Out of scope:** no solver approval, and tolerances are unchanged.
 
-## Focused next: incremental native Profile surfaces
-
-Review the owning retained-surface/ground-input change and scoped projection
-advance as they land. Check raw-band and section-curve reuse outside native
-receipt scopes, exact fresh-scene parity, parent/options/model fences, removal
-and navigation, station-bound changes and downstream layout. No new authored
-state, case-policy duplicate or per-edit package recovery. Keep unknown forces
-and clearance coverage explicit. At most two actionable findings, read-only;
-no source writes or competing builds. Investigate while the owning tests run.
-
-**Claimed (Claude, 2026-10-07 15:40 UTC):** incremental native Profile surfaces review.
-
-**Interim (Claude, 2026-10-07 15:41 UTC): ds-network `9d51dbff` reviewed, no
-defect. The scoped projection advance has not landed yet; this claim stays
-open for it.**
-
-- **`9d51dbff` changes types only.**
-  - `raw_profile_surface` builds every structure row from its placement
-    first, then stores `geometry.into_ground()` (`profile_atlas.rs:2060-2110`).
-  - Both `build_chained_sections` and `CaseCurves::prepare` now take
-    `ProfileGroundGeometry`. It compiles, which proves neither ever read the
-    dropped placements.
-- **What retained ground depends on.** `profile_geometry`
-  (`projection.rs:367-395`) reads:
-  - the alignment polyline;
-  - corridor terrain points;
-  - `selected_ground_points` (`alignments.ground_profile_basis`,
-    `terrain_points`, `terrain_sources`, route length;
-    `terrain.rs:selected_ground_points`);
-  - the options `terrain_corridor_half_width_m` and
-    `terrain_gap_tolerance_m`.
-
-  None of those tables counts as local in `recalculation_scope`
-  (`:46-57`), so editing any of them is a whole-model receipt.
-  `route_corridors` is derived stored geometry that the Profile ground never
-  reads.
-
-**Checks for the advance when it lands** (each is an evidence-backed
-negative control):
-
-1. **Options fence.** Retained ground and bands must be keyed by the two
-   terrain options. They come from Profile display state
-   (`ds-profile-runtime/src/lib.rs:283-287`), not from the model. Changing
-   the corridor half-width at the same revision must rebuild ground.
-2. **Station bounds.** Retained `CaseCurves` hold chained stations, because
-   `CaseCurves::prepare` applies the per-alignment chain `offsets` through
-   `chained_section_rows` (`profile_atlas/case_curves.rs:34-44`). When an
-   in-scope band's station bounds change, every downstream band's retained
-   curves must be re-offset or rebuilt. An edit that keeps the bounds must
-   leave the offsets byte-identical.
-3. **Alignment scope.** A structure edit must add every alignment the
-   structure sits on, including `additional_alignment_placements`, so a
-   junction structure refreshes both bands (`recalculation_scope.rs:136-142`
-   uses `alignment_placements()`). The control: a structure on two
-   alignments rebuilds both, and the result is byte-identical to a fresh
-   scene.
-
-**Result (Claude, 2026-10-07 15:52 UTC): ds-network `b01c2612` and the kernel
-receipt plumbing (uncommitted working tree, read-only) pass all three
-checks. No actionable finding.**
-
-1. **Options fence: passes.** Reuse requires `previous.options == options`,
-   a non-empty receipt chain, and no `whole_model` receipt
-   (`case_projection.rs` `prepare_after`). The terrain options are part of
-   `ProfileAtlasOptions`.
-2. **Station bounds: pass.** Only raw bands and ground inputs are reused.
-   Chain placements and offsets, `CaseCurves::prepare`,
-   `build_chained_sections`, layout and engineering are all recomputed at
-   the head. No retained curve keeps a stale offset.
-3. **Alignment scope: passes.**
-   - The raw band reads only `alignments`, `structure_types`,
-     `feature_codes`, `terrain_points`, `design_policies`, the
-     membership/placements of structures, and
-     `tension_section_supports` (`profile_atlas.rs:1874-2132`).
-   - Structure and support changes add every alignment of every affected
-     structure, before and after the edit
-     (`recalculation_scope.rs:118-142`). Every other table read here is
-     whole-model.
-   - `Spans`, `GranularTags` and `SpottingWarnings` are never read, so
-     reusing a band past them is safe.
-   - Removed bands drop out, and a missing band refuses
-     (`alignment_order` loop).
-- **Receipt lineage.**
-  - `advance` refuses when the receipts don't chain from the previous scene
-    to the head.
-  - The kernel passes receipts only when replay extends the admitted cursor
-    (`start == base_history.undo_depth`), cut to the target cursor. It
-    clears them on navigation or redo (`replay.rs:250-258`), so navigation
-    triggers a full prepare, not a refusal.
-  - Initialize and refresh project with Analyze off, so a projection
-    refusal is a refusal of the whole transaction.
-
-**Observations (not actionable):**
-
-- **Dormant path.** In the legacy `operation: project`, a projection refusal
-  under Analyze restores the old held session but returns the new head's
-  `history` (`ds-profile-runtime/src/lib.rs:346-381`). No Desktop or CLI
-  caller remains (`profile-native.ts` sends only initialize and refresh).
-  Under the kernel-controls ruling, delete it rather than keep a dormant
-  fallback.
-- **Remaining per-edit cost.** Reuse stops at the raw bands. Section curves,
-  chained sections, layout and engineering are still whole-model on every
-  refresh. That is the remaining gap against the owner's under-0.5 s edit
-  target (STABILIZATION §4).
+## Focused native Profile reference and engineering reuse
 
 Next focused implementation: retained native section-reference curves. Review
 reuse outside receipt demand sections, removals, unavailable curves and exact
@@ -556,3 +453,12 @@ the admission fence. At most two actionable findings, read-only, no competing
 builds.
 
 **Claimed (Claude, 2026-10-07 16:00 UTC):** retained section-reference curves review (ds-network `ce46b0c7`).
+
+Next focused request: the retained Profile engineering painter currently calls
+uncached `structure_usage_screening` at `profile_engineering.rs:634`, before
+the runtime's cached Analyze path. Independently review wiring the same native
+receipt-advanced demand cache through scene engineering. Exact marker and
+unknown/capacity/incident-force parity must hold. Failed projection must leave
+the admitted session/cache together; weather-layer switches cannot recompute
+usage. No second case/default rule, tolerance change or recursive demand walk.
+At most two actionable findings; read-only and no competing builds.
