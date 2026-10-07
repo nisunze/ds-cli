@@ -100,8 +100,9 @@ The sub-0.5-second target remains unmet. Atomic localized work is the priority;
 RAM retention alone does not close the performance requirement. Instrument and
 reduce native apply/replay/session-state work without weakening revision fences.
 
-Terrain point edits still require bounded ground/observation deltas, interval
-segmentation and local calculation/station dependencies.
+Terrain point edits still require interval segmentation and local
+calculation/station dependencies; dense segment splits/merges and identity
+reorders can require large changed array ranges.
 Full authored layout, comparison and cloning remain measurable costs despite
 retained route/ground inputs. Calculation remains on the native per-client queue;
 move explicitly requested calculation off that queue so authored observation,

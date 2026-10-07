@@ -406,19 +406,16 @@ installation; explicit calculation still needs bounded native phase/work
 evidence before claiming a measured bottleneck or release performance. No
 template edits, competing builds or model mutations.
 
-## Focused review: bounded Profile terrain deltas
+## Focused review: native Profile calculation jobs
 
-Read-only request for the next native slice: a single terrain-point elevation
-still transfers full changed ground and observation arrays (about 4.99 MB on
-the dense native fixture). Trace native array splice admission, sorted identity
-order, insertion/removal, source precedence and gap changes, parent/T-off
-membership and exact head/computed/axis fences. Require fresh parity, bounded
-bytes and transactional malformed-path/range refusals before UI transport.
+Read-only request for the next native slice: ds-profile-runtime calculation
+currently holds the Desktop runtime mutex, while the renderer awaits it inside
+the per-client native queue. Trace a native RAM calculation fork, bounded job
+start/status/cancel and explicit result admission through the existing publication
+checkpoint. Check exact model/history pins, display-context changes including
+ABA, release/reinitialization, interleaved scopes, worker edits during a solve,
+cancelled or failed results, and continued authored observation and picking.
+Do not admit a stale result or unwind edits. No implicit solve, Save or package
+write; cancellation must truthfully describe any noninterruptible solver work.
 Maximum two deterministic findings with negative controls; no source writes,
-model effects, builds or printing/template work.
-
-Effective-ground segmentation and authored layout/comparison still visit an
-affected alignment. Explicit terrain calculation still requires local reference,
-demand, incident-support and clearance invalidation. Background calculation must
-permit authored observation and picking with exact history/publication fences.
-Review within Profile owners only.
+model effects, competing builds or printing/template work.

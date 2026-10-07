@@ -207,14 +207,12 @@ remaining Profile package branch and print-scale screening item below are
 secondary to interactive atomic editing and calculation; do not let them become
 a campaign across other surfaces.
 
-**Next owning slice: bounded terrain deltas and interval preparation.** A local
-point elevation still transfers whole changed ground/observation arrays (about
-4.99 MB on the 10,004-point fixture). Native array edits must bound replacement
-bytes for point insertion/removal/elevation and preserve fresh parity, stable
-order and transactional worker/renderer refusals. Effective-ground segmentation,
+**Remaining terrain slice: interval preparation and calculation dependencies.**
+Effective-ground segmentation,
 layout, comparison and typed cloning still visit an affected alignment broadly;
 measure and localize their intervals and station/axis consequences at parent/T-off
-boundaries. Explicit terrain invalidation still clears broad demand/reference
+boundaries. Dense segment splits/merges and identity reorders can still require
+large changed array ranges. Explicit terrain invalidation still clears broad demand/reference
 results rather than only affected spans/supports. Distinguish actual Profile
 ground inputs from any external native triangulation evidence.
 
