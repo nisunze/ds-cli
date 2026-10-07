@@ -62,15 +62,15 @@ const PROFILE_SELECTION_STALE: Refusal = Refusal {
 pub static VIEW: Command = Command {
     id: "map.profile.view",
     path: &["map", "profile", "view"],
-    contract: 4,
+    contract: 5,
     summary: "Read the paired Profile's exact visual state.",
-    purpose: "Reads the paired Profile occupant, dock height in pixels, viewport, selection and edit mode. Selection is transient UI context; the view and engineering model remain unchanged.",
+    purpose: "Read the Profile occupant, dock height, viewport, selection and edit mode. This read changes neither view nor model.",
     chapter: Chapter::MapPresentation,
     effect: Effect::ReadOnly,
     authority: Authority::DesktopPairing,
     execution: Execution::Sync,
     args: &[TARGET_ARG, DESCRIPTOR_ARG],
-    output: "occupant, model_id/model_name/revision (null when closed), persisted, history (undo/redo depths and pin), scale, visibility, height_px, viewport, surface {width,height,scale} (CSS pixels, native px/scene-unit; null unmounted), edit_mode, selection {entity_ids,primary,kind,structures [{id,number}]}. review: up to 256 cases {value,label,disabled}, selected_case_index, display_case, marker_count and truncation. display: native state and governed rows; analysis: bounded receipt; analysis_state: due/current/off/not_applicable; scene_loaded: revision-current scene.",
+    output: "occupant, model_id/model_name/revision, persisted, history, scale, visibility, height_px, viewport, surface {width,height,scale} (CSS pixels, native px/scene-unit; null unmounted), edit_mode, selection {entity_ids,primary,kind,structures [{id,number}]}. review: up to 256 cases, selected_case_index, display_case, marker counts/truncation. display: native state/rows; analysis: bounded receipt; analysis_state: due/current/off/not_applicable. scene_loaded: current scene; scene_revision: retained head. calculation: native policy,model_revision,computed_revision,required,scope; null before observation.",
     examples: &[Example {
         command: "ds map profile view --output json",
         note: "Read the live Profile's viewport, selection and edit mode before a scoped model command.",
@@ -94,9 +94,9 @@ pub static VIEW: Command = Command {
 pub static SET: Command = Command {
     id: "map.profile.set",
     path: &["map", "profile", "set"],
-    contract: 6,
+    contract: 7,
     summary: "Set the paired Profile's visual state through typed CLI inputs.",
-    purpose: "Set transient Profile appearance; omitted values stay. Display needs an open model; height and camera may be staged. Review boxes, usage labels and analysis default on. Analyze reruns native checks at the held revision with the model-bound case envelope; blockers remain in Profile and Issues. Weather changes only the curve.",
+    purpose: "Set Profile appearance; omitted values stay. Display needs an open model; height and camera may be staged. Calculation is explicit: rebuild waits for native refresh; analyze runs checks. Display changes needing calculation refuse until rebuild/analyze. Report visibility schedules no analysis. Weather projects only the requested case.",
     chapter: Chapter::MapPresentation,
     effect: Effect::LocalUi,
     authority: Authority::DesktopPairing,
@@ -162,7 +162,7 @@ pub static SET: Command = Command {
         TARGET_ARG,
         DESCRIPTOR_ARG,
     ],
-    output: "Exact resulting view and applied patch. Analyze includes ran:true and the bounded native receipt; full evidence remains in Profile and Issues.",
+    output: "Resulting view. Rebuild waits for its native receipt; Analyze adds ran:true and bounded evidence. Full results stay in Profile and Issues. Calculation never saves the RAM model.",
     examples: &[Example {
         command: "ds map profile set --height-px 480 --vertical-exaggeration 5 --visibility '{\"ground\":true,\"wire\":false}' --action fit --output json",
         note: "Set controls after map profile view, then fit; model edits require explicit model/revision.",
@@ -626,7 +626,7 @@ mod tests {
     }
 
     #[test]
-    fn analysis_default_is_switched_through_the_existing_visibility_door() {
+    fn report_visibility_is_independent_of_explicit_calculation() {
         use ds_command_kernel::profile_display::{DisplayOption, DisplayState};
         // Owner, 2026-10-05: the analysis report is on by default; the kernel owns
         // the switch and the CLI forwards it unchanged for the Desktop to apply.
@@ -645,11 +645,12 @@ mod tests {
         assert!(parse_visibility(r#"{"auto_analysis":false}"#).is_err());
         let visibility = SET.args.iter().find(|arg| arg.name == "visibility");
         assert!(visibility.unwrap().summary.contains("analysis."));
-        assert!(SET.purpose.contains("analysis default on"));
+        assert!(SET.purpose.contains("Calculation is explicit"));
         assert!(
             VIEW.output
-                .contains("analysis_state is due, current, off or not_applicable")
+                .contains("analysis_state: due/current/off/not_applicable")
         );
+        assert!(VIEW.output.contains("computed_revision,required,scope"));
     }
 
     #[test]
