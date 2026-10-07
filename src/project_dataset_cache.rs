@@ -1770,6 +1770,16 @@ pub struct OverviewRow {
 /// active dataset. Its digest is not an alias for any detailed replacement.
 /// Hosts use the same decision for explicit requests and automatic seeding.
 pub fn retired_dataset_layer(dataset: &CatalogEntry) -> Option<&str> {
+    // Retirement belongs to Rwanda's foundation catalogue. A source using
+    // the same layer name in another country is not that retired dataset.
+    if dataset
+        .parameters
+        .get("country")
+        .and_then(Value::as_str)
+        .is_some_and(|country| !country.eq_ignore_ascii_case("Rwanda"))
+    {
+        return None;
+    }
     let layer = dataset
         .parameters
         .get("layer")
@@ -2115,12 +2125,18 @@ mod tests {
             },
             held: held.clone(),
         };
+        let mut other_country = row("other-country-power-digest", "powerlines");
+        other_country
+            .dataset
+            .parameters
+            .insert("country".into(), json!("Burkina Faso"));
         let rows = vec![
             row("retired-schools-digest", "elementary_school"),
             row("retired-power-digest", "powerlines"),
             row("primary-schools-digest", "primary_schools"),
             row("hv-digest", "hv_line"),
             row("unlisted-retained-digest", "operator_layer"),
+            other_country,
         ];
         let before: Vec<_> = rows.iter().map(|row| row.held.clone()).collect();
         let answer = overview("p1", &policy, &rows);
@@ -2135,11 +2151,12 @@ mod tests {
             [
                 "primary-schools-digest",
                 "hv-digest",
-                "unlisted-retained-digest"
+                "unlisted-retained-digest",
+                "other-country-power-digest"
             ]
         );
-        assert_eq!(answer["available"], 3);
-        assert_eq!(answer["seeded"], 3);
+        assert_eq!(answer["available"], 4);
+        assert_eq!(answer["seeded"], 4);
         assert!(answer["datasets"]
             .as_array()
             .unwrap()
