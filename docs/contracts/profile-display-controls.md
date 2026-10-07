@@ -226,3 +226,11 @@ preparation on a cache hit. `total_native_ms` ends after native result
 construction, before host transport, worker installation and painting. Debug
 revision phases include the full-snapshot incremental-token audit; the guard
 is unchanged. Metrics never alter journal, authored or engineering identity.
+
+Terrain observations return `authored_delta.work.local_terrain_point_projections`
+and `local_ground_rebuilds` without calculation. These count the receipt-local
+path, not fresh preparations. Explicit calculation also exposes these as
+`last_surface_local_terrain_point_projections` and
+`last_surface_local_ground_rebuilds`, with the same last-preparation semantics.
+The runtime gate checks A/B/A/B terrain edits, exact worker history, no scene or
+analysis generation, unchanged calculated base, and native work-count transport.

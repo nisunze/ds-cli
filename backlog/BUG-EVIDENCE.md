@@ -406,21 +406,19 @@ installation; explicit calculation still needs bounded native phase/work
 evidence before claiming a measured bottleneck or release performance. No
 template edits, competing builds or model mutations.
 
-## Focused review: localized Profile terrain inputs
+## Focused review: bounded Profile terrain deltas
 
-Read-only request for the next native slice: trace terrain-point insertion,
-removal, elevation and classification changes through retained authored ground.
-The current Profile surface rebuilds ground for every alignment after these
-receipts. Check old/new corridor membership, authored supported-run bases,
-source precedence and gap boundaries, including shared parent/T-off samples.
-Determine which dependencies are actual Profile ground inputs and distinguish
-those from external/native TIN evidence; do not invent triangulation here.
-Require fresh-versus-retained parity, unaffected route/ground reuse, exact work
-counts and bounded observation/ground transport. Maximum two deterministic
-findings with negative controls; no source writes, model effects, builds or
-printing/template work.
+Read-only request for the next native slice: a single terrain-point elevation
+still transfers full changed ground and observation arrays (about 4.99 MB on
+the dense native fixture). Trace native array splice admission, sorted identity
+order, insertion/removal, source precedence and gap changes, parent/T-off
+membership and exact head/computed/axis fences. Require fresh parity, bounded
+bytes and transactional malformed-path/range refusals before UI transport.
+Maximum two deterministic findings with negative controls; no source writes,
+model effects, builds or printing/template work.
 
-Explicit calculation still needs local ground dependency invalidation of
-reference curves, demands, incident-support results and clearance. Background
-calculation must permit authored observation and picking while retaining exact
-history/publication fences. Review within Profile owners only.
+Effective-ground segmentation and authored layout/comparison still visit an
+affected alignment. Explicit terrain calculation still requires local reference,
+demand, incident-support and clearance invalidation. Background calculation must
+permit authored observation and picking with exact history/publication fences.
+Review within Profile owners only.

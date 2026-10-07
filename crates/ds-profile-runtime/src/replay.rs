@@ -459,6 +459,8 @@ impl Runtime {
             "applied_entries":receipts.len(),"retained_entries":entries.len(),
             "last_surface_computed_bands":surface.computed_bands,"last_surface_reused_bands":surface.reused_bands,
             "last_surface_computed_ground":surface.computed_ground,"last_surface_reused_ground":surface.reused_ground,
+            "last_surface_local_terrain_point_projections":surface.local_terrain_point_projections,
+            "last_surface_local_ground_rebuilds":surface.local_ground_rebuilds,
             "last_demand_computed_cases":demands.computed_cases,"last_demand_reused_cases":demands.reused_cases});
         replay_cost.append(&mut result["metrics"]);
         Ok(result)

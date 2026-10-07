@@ -754,6 +754,7 @@ mod transactional_projection_tests {
                 reused_bands: reused,
                 computed_ground: if reused == 0 { computed } else { 0 },
                 reused_ground: if reused == 0 { 0 } else { computed + reused },
+                ..Default::default()
             }
         );
         let mut fresh_request = request_for(worker.snapshot().clone());
@@ -1055,6 +1056,58 @@ mod transactional_projection_tests {
         );
         assert!(runtime.publications.is_empty());
         runtime.execute(initialize("a", "replacement-a")).unwrap();
+    }
+    #[test]
+    fn native_terrain_observation_transports_work_without_advancing_engineering() {
+        use ds_grid_engine::{CommandEnvelope, GridCommand};
+        let (input, mut worker) = two_band_request();
+        let mut runtime = Runtime::default();
+        runtime.execute(input.clone()).unwrap();
+        let computed = runtime.held[&input.scope]
+            .review
+            .base_scene()
+            .unwrap()
+            .clone();
+        let mut base = input.expected_revision.clone();
+        for (index, elevation) in [102.2, 102.0, 102.2, 102.0].into_iter().enumerate() {
+            worker
+                .apply_command(CommandEnvelope::new(
+                    format!("terrain-observe-{index}"),
+                    worker.current_revision().revision_id.clone(),
+                    GridCommand::SetTerrainPointElevation {
+                        id: ds_grid_model::TerrainPointId::new("profile-ground-1").unwrap(),
+                        elevation_m: elevation,
+                    },
+                ))
+                .unwrap();
+            let result = runtime
+                .execute(Request::Observe(Box::new(refresh(
+                    &runtime, &input, &base, &worker,
+                ))))
+                .unwrap();
+            assert_eq!(result["ran"], false);
+            assert!(result["scene"].is_null());
+            assert!(result["analysis"].is_null());
+            assert!(result["authored_unavailable"].is_null());
+            assert_eq!(
+                result["authored_delta"]["work"]["local_terrain_point_projections"],
+                2
+            );
+            assert_eq!(result["authored_delta"]["work"]["local_ground_rebuilds"], 2);
+            assert_eq!(
+                runtime.held[&input.scope].review.base_scene(),
+                Some(&computed)
+            );
+            assert_eq!(
+                result["calculation"]["computed_revision"],
+                computed.model_revision.to_string()
+            );
+            assert_eq!(
+                result["history"],
+                serde_json::to_value(worker.history_state()).unwrap()
+            );
+            base = worker.current_revision().revision_id.to_string();
+        }
     }
     #[test]
     fn observe_accumulates_edits_without_projection_and_refresh_reuses_unchanged_alignment() {

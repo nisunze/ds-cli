@@ -207,13 +207,16 @@ remaining Profile package branch and print-scale screening item below are
 secondary to interactive atomic editing and calculation; do not let them become
 a campaign across other surfaces.
 
-**Next owning slice: local terrain-point updates.** Terrain point insertion,
-removal and movement still require localized surface/triangulation updates and
-bounded ground/observation deltas. Invalidate relevant spans and characterize
-station/axis effects at parent/T-off boundaries. Preserve unaffected alignments
-and prove fresh-projection parity and exact work counts. Retained route/terrain
-Arc ownership does not remove remaining full layout, comparison and cloning
-costs inside an affected authored surface; measure and bound those costs.
+**Next owning slice: bounded terrain deltas and interval preparation.** A local
+point elevation still transfers whole changed ground/observation arrays (about
+4.99 MB on the 10,004-point fixture). Native array edits must bound replacement
+bytes for point insertion/removal/elevation and preserve fresh parity, stable
+order and transactional worker/renderer refusals. Effective-ground segmentation,
+layout, comparison and typed cloning still visit an affected alignment broadly;
+measure and localize their intervals and station/axis consequences at parent/T-off
+boundaries. Explicit terrain invalidation still clears broad demand/reference
+results rather than only affected spans/supports. Distinguish actual Profile
+ground inputs from any external native triangulation evidence.
 
 **Next owning slice: localized explicit calculation and cheap queries.**
 Accumulate native invalidation across many edits and undo/redo/branching. Only
