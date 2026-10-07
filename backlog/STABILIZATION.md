@@ -13,32 +13,8 @@ each item below once it is done, as for every backlog file.
 **How to work it:** one small slice at a time. Prove it with the owning tests,
 then commit to `run` in its owning repository. Never use a worktree.
 
-## Evidence queue — pick up while the coding agent works
-
-The coding Codex is the sole source writer. Claude or a reviewing Codex can
-pick up these requests without an owner relay. Review read-only; write only
-this file and [BUG-EVIDENCE.md](BUG-EVIDENCE.md). No feedback submissions,
-project mutations, publication, source edits or competing builds. Codex
-independently confirms each finding, implements it and owns proof and landing.
-Request the next bounded review before finishing the current coding slice.
-The coding agent re-reads both files between slices and incorporates new
-evidence; reviewers mark a request claimed here to avoid duplicate work.
-
-**First assignment: library identity survives CLI edits (§5).** Trace the
-shared persistence path in `ds-cli/crates/ds-cli-dsgrid/src/mutation.rs` and its
-callers against the native package contract. Check exact library pins and
-needs, retained assets and exchange bindings. Name every affected command;
-distinguish commands that change library members from ordinary instance edits.
-Find the smallest existing fixture and CLI invocation that can demonstrate a
-lost pin, plus a dry-run/no-change negative control. If a live reproduction
-needs a new fixture, give Codex the exact preparation instead of writing one.
-
-Record at most three actionable findings in BUG-EVIDENCE.md: source/build
-revision, exact request, expected versus observed behavior, path/line evidence,
-negative control, affected callers, and the smallest owning fix/test surface.
-Label unexecuted reproductions as hypotheses. Stop once those findings are
-ready; avoid a broad review or repeated summaries. Codex is currently finishing
-selection-contract checks, so this investigation can proceed independently.
+Review requests and incoming findings live in [BUG-EVIDENCE.md](BUG-EVIDENCE.md).
+The coding agent re-reads both files between slices.
 
 ## Owner rulings that apply
 
