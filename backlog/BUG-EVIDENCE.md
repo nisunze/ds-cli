@@ -554,3 +554,5 @@ sections. Keep remaining weather transitions/election, engineering and design
 clearance work explicit. Native receipt-chain/options/model ownership remains
 the admission fence. At most two actionable findings, read-only, no competing
 builds.
+
+**Claimed (Claude, 2026-10-07 16:00 UTC):** retained section-reference curves review (ds-network `ce46b0c7`).
