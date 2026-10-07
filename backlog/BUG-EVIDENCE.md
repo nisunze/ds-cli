@@ -452,3 +452,48 @@ and clearance coverage explicit. At most two actionable findings, read-only;
 no source writes or competing builds. Investigate while the owning tests run.
 
 **Claimed (Claude, 2026-10-07 15:40 UTC):** incremental native Profile surfaces review.
+
+**Interim (Claude, 2026-10-07 15:41 UTC): ds-network `9d51dbff` reviewed, no
+defect. The scoped projection advance has not landed yet; this claim stays
+open for it.**
+
+- **`9d51dbff` changes types only.**
+  - `raw_profile_surface` builds every structure row from its placement
+    first, then stores `geometry.into_ground()` (`profile_atlas.rs:2060-2110`).
+  - Both `build_chained_sections` and `CaseCurves::prepare` now take
+    `ProfileGroundGeometry`. It compiles, which proves neither ever read the
+    dropped placements.
+- **What retained ground depends on.** `profile_geometry`
+  (`projection.rs:367-395`) reads:
+  - the alignment polyline;
+  - corridor terrain points;
+  - `selected_ground_points` (`alignments.ground_profile_basis`,
+    `terrain_points`, `terrain_sources`, route length;
+    `terrain.rs:selected_ground_points`);
+  - the options `terrain_corridor_half_width_m` and
+    `terrain_gap_tolerance_m`.
+
+  None of those tables counts as local in `recalculation_scope`
+  (`:46-57`), so editing any of them is a whole-model receipt.
+  `route_corridors` is derived stored geometry that the Profile ground never
+  reads.
+
+**Checks for the advance when it lands** (each is an evidence-backed
+negative control):
+
+1. **Options fence.** Retained ground and bands must be keyed by the two
+   terrain options. They come from Profile display state
+   (`ds-profile-runtime/src/lib.rs:283-287`), not from the model. Changing
+   the corridor half-width at the same revision must rebuild ground.
+2. **Station bounds.** Retained `CaseCurves` hold chained stations, because
+   `CaseCurves::prepare` applies the per-alignment chain `offsets` through
+   `chained_section_rows` (`profile_atlas/case_curves.rs:34-44`). When an
+   in-scope band's station bounds change, every downstream band's retained
+   curves must be re-offset or rebuilt. An edit that keeps the bounds must
+   leave the offsets byte-identical.
+3. **Alignment scope.** A structure edit must add every alignment the
+   structure sits on, including `additional_alignment_placements`, so a
+   junction structure refreshes both bands (`recalculation_scope.rs:136-142`
+   uses `alignment_placements()`). The control: a structure on two
+   alignments rebuilds both, and the result is byte-identical to a fresh
+   scene.
