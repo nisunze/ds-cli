@@ -174,11 +174,17 @@ fn replay(
         if let Some(accepted) = accepted {
             receipts.push(accepted);
         } else {
+            let code = match &response {
+                Err(_) => "transport_ambiguous",
+                Ok(response) => match response.status {
+                    409 => "conflict",
+                    401 | 403 => "authority_refused",
+                    200 => "receipt_ambiguous",
+                    _ => "service_refused",
+                },
+            };
             failure = json!({"index":index,"form_id":intent["identity"]["form_id"],"doc_id":intent["identity"]["doc_id"],
-                "status":response.as_ref().ok().map(|r| r.status),
-                "code":if response.is_err() {"transport_ambiguous"} else if response.as_ref().unwrap().status == 409 {"conflict"}
-                    else if matches!(response.as_ref().unwrap().status,401|403) {"authority_refused"}
-                    else if response.as_ref().unwrap().status == 200 {"receipt_ambiguous"} else {"service_refused"}});
+                "status":response.as_ref().ok().map(|r| r.status), "code":code});
             break;
         }
     }

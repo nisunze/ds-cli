@@ -117,7 +117,7 @@ impl TransformerSet {
 /// Match ds-brain's `CanonicalTransformerReferenceName`: lowercase ASCII
 /// reference keys, separators/punctuation folded to `_`, no leading digit,
 /// and the legacy aggregate aliases collapsed to one key.
-
+///
 /// One compounded report request: an explicit scope (empty = every active
 /// saved transformer), the archive layout, and the force bit.
 #[derive(Debug, Clone, PartialEq, Eq)]
