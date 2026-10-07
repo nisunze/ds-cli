@@ -59,6 +59,8 @@ pub enum RegionPredicate {
     /// The geometry lies wholly inside the region; crossing the boundary
     /// excludes it.
     Within,
+    /// No part of a nonempty, readable geometry touches the selector.
+    Outside,
 }
 
 /// Read a GeoJSON `Polygon` geometry into rings.
@@ -89,6 +91,41 @@ pub fn geojson_geometry_selected(
     match predicate {
         RegionPredicate::Intersects => geometry_intersects_polygon(geometry, region),
         RegionPredicate::Within => geometry_within_polygon(geometry, region),
+        RegionPredicate::Outside => {
+            geometry_readable(geometry) && !geometry_intersects_polygon(geometry, region)
+        }
+    }
+}
+fn geometry_readable(geometry: &Value) -> bool {
+    match geometry.get("type").and_then(Value::as_str) {
+        Some("Point") => point_coords(geometry.get("coordinates")).is_some(),
+        Some("MultiPoint") => {
+            coord_array(geometry.get("coordinates")).is_some_and(|v| !v.is_empty())
+        }
+        Some("LineString") => {
+            coord_array(geometry.get("coordinates")).is_some_and(|v| v.len() >= 2)
+        }
+        Some("Polygon") => rings_from_geojson_polygon(geometry)
+            .is_some_and(|r| !r.is_empty() && r.iter().all(|r| r.len() >= 3)),
+        Some("MultiLineString" | "MultiPolygon") => geometry
+            .get("coordinates")
+            .and_then(Value::as_array)
+            .is_some_and(|items| {
+                !items.is_empty()
+                    && items.iter().all(|v| {
+                        if geometry["type"] == "MultiLineString" {
+                            coord_array(Some(v)).is_some_and(|v| v.len() >= 2)
+                        } else {
+                            rings_from_value(v)
+                                .is_some_and(|r| !r.is_empty() && r.iter().all(|r| r.len() >= 3))
+                        }
+                    })
+            }),
+        Some("GeometryCollection") => geometry
+            .get("geometries")
+            .and_then(Value::as_array)
+            .is_some_and(|v| !v.is_empty() && v.iter().all(geometry_readable)),
+        _ => false,
     }
 }
 
@@ -487,5 +524,41 @@ mod tests {
             RegionPredicate::Intersects
         );
         assert_eq!(RegionPredicate::default(), RegionPredicate::Intersects);
+    }
+}
+
+#[cfg(test)]
+mod outside_tests {
+    use super::*;
+    use serde_json::json;
+    #[test]
+    fn outside_is_disjoint_and_never_selects_missing_or_empty_geometry() {
+        let region = vec![vec![[0., 0.], [10., 0.], [10., 10.], [0., 10.], [0., 0.]]];
+        for (geometry, expected) in [
+            (json!({"type":"Point","coordinates":[20,20]}), true),
+            (json!({"type":"Point","coordinates":[10,5]}), false),
+            (
+                json!({"type":"LineString","coordinates":[[-1,5],[11,5]]}),
+                false,
+            ),
+            (
+                json!({"type":"LineString","coordinates":[[11,5],[20,5]]}),
+                true,
+            ),
+            (json!({"type":"GeometryCollection","geometries":[]}), false),
+            (json!({"type":"MultiPoint","coordinates":[]}), false),
+            (Value::Null, false),
+        ] {
+            assert_eq!(
+                geojson_geometry_selected(Some(&geometry), &region, RegionPredicate::Outside),
+                expected,
+                "{geometry}"
+            );
+        }
+        assert!(!geojson_geometry_selected(
+            None,
+            &region,
+            RegionPredicate::Outside
+        ));
     }
 }

@@ -105,6 +105,8 @@ pub struct DisplayState {
     /// categorical by cable; an unconfigured cable keeps its default pen.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub cable_colors: BTreeMap<String, String>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub styles: BTreeMap<String, crate::profile_style::Style>,
 }
 impl Default for DisplayState {
     fn default() -> Self {
@@ -138,6 +140,7 @@ impl Default for DisplayState {
                 lowest_wire_drop_m: 0.0,
             },
             cable_colors: BTreeMap::new(),
+            styles: BTreeMap::new(),
         }
     }
 }
@@ -203,6 +206,8 @@ pub struct DisplayPatch {
     /// Per-cable wire colour: a `#rrggbb` sets it, `null` returns the cable to its default pen.
     #[serde(default)]
     pub cable_colors: BTreeMap<String, Option<String>>,
+    #[serde(default)]
+    pub styles: BTreeMap<String, Option<crate::profile_style::Style>>,
 }
 fn is_hex_color(value: &str) -> bool {
     value.len() == 7 && value.starts_with('#') && value[1..].chars().all(|c| c.is_ascii_hexdigit())
@@ -222,6 +227,18 @@ impl DisplayState {
     /// Validate the whole patch before committing any of it.
     pub fn patched(&self, patch: &DisplayPatch) -> Result<Self, String> {
         let mut next = self.clone();
+        for (target, style) in &patch.styles {
+            // Even a reset must name a supported role.
+            style
+                .as_ref()
+                .unwrap_or(&crate::profile_style::Style::default())
+                .validate(target)?;
+            if let Some(style) = style {
+                next.styles.entry(target.clone()).or_default().merge(style);
+            } else {
+                next.styles.remove(target);
+            }
+        }
         if let Some(terrain) = &patch.terrain {
             if [
                 terrain.corridor_half_width_m,

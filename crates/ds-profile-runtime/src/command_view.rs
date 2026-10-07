@@ -62,8 +62,9 @@ pub fn project(
             rows, &state.cable_colors,
         );
         json!({"state":state, "rows":rows,
+            "style_controls":ds_command_kernel::profile_style::controls(state, rows),
             "groups":ds_command_kernel::profile_controls::groups(state, rows, &cables),
-            "cables":cables, "legend":ds_command_kernel::profile_encoding::legend_with_cables(rows, &cables)})
+            "cables":cables, "legend":ds_command_kernel::profile_encoding::styled_legend(state, rows, &cables)})
     });
     json!({"display":display, "review":review, "analysis":analysis, "analysis_state":analysis_state})
 }

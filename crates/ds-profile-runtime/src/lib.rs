@@ -8,6 +8,7 @@ use ds_command_kernel::profile_encoding::{
 mod command_view;
 mod decorations;
 mod label_lanes;
+mod symbols;
 use ds_grid_engine::{GridSession, ProfileAtlasOptions};
 mod analysis;
 pub use analysis::analyze;
@@ -31,6 +32,8 @@ pub struct ProjectRequest {
 pub enum Request {
     Project(Box<ProjectRequest>),
     CaseLayer(CaseRequest),
+    Layout(ds_command_kernel::profile_layout::Request),
+    SelectionControls(ds_command_kernel::grid_selection_controls::Request),
 }
 impl From<ProjectRequest> for Request {
     fn from(value: ProjectRequest) -> Self {
@@ -66,6 +69,9 @@ pub struct Projection {
     pub state: DisplayState,
     pub rows: Vec<DisplayRow>,
     pub groups: Vec<ds_command_kernel::profile_controls::ControlGroup>,
+    pub style_controls: Value,
+    pub symbols: Vec<symbols::Symbol>,
+    pub selection_families: Vec<ds_command_kernel::grid_selection_controls::Family>,
     pub legend: Vec<ds_command_kernel::profile_encoding::LegendEntry>,
     /// One pen per drawn cable engineering name; hosts paint each span with its cable pen.
     pub cables: Vec<ds_command_kernel::profile_encoding::CablePen>,
@@ -78,6 +84,7 @@ pub struct Projection {
 }
 #[derive(Default)]
 pub struct Runtime {
+    selections: BTreeMap<String, ds_command_kernel::grid_selection_controls::State>,
     views: BTreeMap<String, DisplayState>,
     analyses: BTreeMap<String, Value>,
     held: BTreeMap<String, HeldView>,
@@ -87,6 +94,23 @@ impl Runtime {
         match request.into() {
             Request::Project(request) => self.project(*request),
             Request::CaseLayer(request) => self.case_layer(request),
+            Request::Layout(request) => {
+                Ok(json!(ds_command_kernel::profile_layout::resolve(request)?))
+            }
+            Request::SelectionControls(request) => {
+                let state = self
+                    .selections
+                    .get(&request.scope)
+                    .cloned()
+                    .unwrap_or_default();
+                let (state, result) =
+                    ds_command_kernel::grid_selection_controls::execute(&state, &request)?;
+                if !self.selections.contains_key(&request.scope) && self.selections.len() >= 256 {
+                    return Err("invalid_grid_lasso: selection context capacity reached".into());
+                }
+                self.selections.insert(request.scope, state);
+                Ok(result)
+            }
         }
     }
     fn case_layer(&mut self, request: CaseRequest) -> Result<Value, String> {
@@ -362,13 +386,20 @@ impl Runtime {
             &state.cable_colors,
         );
         let base_axis = self.held[&request.scope].review.base_axis_digest().unwrap();
+        let legend = ds_command_kernel::profile_encoding::styled_legend(&state, &rows, &cables);
+        let symbols = symbols::project(&scene, &state, &rows, &legend);
         let mut scene = serde_json::to_value(scene).map_err(|error| error.to_string())?;
         scene["case_base_axis_digest"] = json!(base_axis);
         scene["display"] = serde_json::to_value(Projection {
             label_fields: label_fields(&state),
             groups: ds_command_kernel::profile_controls::groups(&state, &rows, &cables),
+            style_controls: ds_command_kernel::profile_style::controls(&state, &rows),
+            symbols,
+            selection_families: ds_command_kernel::grid_selection_controls::profile_families(
+                &state,
+            ),
             state: state.clone(),
-            legend: ds_command_kernel::profile_encoding::legend_with_cables(&rows, &cables),
+            legend,
             cables,
             rows,
             scene_options,

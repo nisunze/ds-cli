@@ -312,7 +312,7 @@ fn cli_and_renderer_share_native_controls_and_colour_state() {
     assert!(!cables[1].can_reset);
     let mut runtime = Runtime::default();
     let mut one = request();
-    one.patch = serde_json::from_value(json!({"vertical_exaggeration": 7.5, "cable_colors":{"Cable A":"#AABBCC"},
+    one.patch = serde_json::from_value(json!({"styles":{"ground":{"color":"#112233","width_mm":0.8,"line_type":"dotted"},"strain":{"symbol":"▲","color":"#ABCDEF"}},"vertical_exaggeration": 7.5, "cable_colors":{"Cable A":"#AABBCC"},
         "terrain":{"corridor_half_width_m":25.0,"gap_tolerance_m":42.0,"ground_clearance_offset_m":6.0,"lowest_wire_drop_m":2.0}})).unwrap();
     let result = runtime.execute(one.clone()).unwrap();
     assert_eq!(
@@ -331,6 +331,28 @@ fn cli_and_renderer_share_native_controls_and_colour_state() {
         result["scene"]["display"]["groups"][1]["numbers"][1]["value"],
         42.0
     );
+    assert_eq!(
+        result["scene"]["display"]["style_controls"],
+        result["command_view"]["display"]["style_controls"]
+    );
+    assert_eq!(
+        result["scene"]["display"]["legend"],
+        result["command_view"]["display"]["legend"]
+    );
+    assert_eq!(result["scene"]["display"]["legend"][0]["glyph"], "▲");
+    assert_eq!(
+        result["scene"]["display"]["legend"][0]["encoding"]["color"],
+        "#abcdef"
+    );
+    let ground = result["scene"]["display"]["rows"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|r| r["option"] == "ground")
+        .unwrap();
+    assert_eq!(ground["encoding"]["color"], "#112233");
+    assert!((ground["encoding"]["width_px"].as_f64().unwrap() - 0.8 * 96.0 / 25.4).abs() < 1e-9);
+    assert_eq!(ground["encoding"]["dash_px"].as_array().unwrap().len(), 2);
     let mut two = request();
     two.scope = "two".into();
     let other = runtime.execute(two).unwrap();

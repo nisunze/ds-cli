@@ -50,12 +50,18 @@ impl PlanarPolygon {
     }
     pub fn selects_segment(&self, a: [f64; 2], b: [f64; 2], mode: RegionPredicate) -> bool {
         if a == b {
-            return self.polygon.intersects(&Point::new(a[0], a[1]));
+            let inside = self.polygon.intersects(&Point::new(a[0], a[1]));
+            return if mode == RegionPredicate::Outside {
+                !inside
+            } else {
+                inside
+            };
         }
         let line = Line::new((a[0], a[1]), (b[0], b[1]));
         match mode {
             RegionPredicate::Intersects => self.polygon.intersects(&line),
             RegionPredicate::Within => self.polygon.relate(&line).is_covers(),
+            RegionPredicate::Outside => !self.polygon.intersects(&line),
         }
     }
 }

@@ -34,3 +34,27 @@ that numeric requests use the owner's validation. The runtime integration gate
 `cli_and_renderer_share_native_controls_and_colour_state` proves matching
 receipts, state retention after invalid combined patches, colour normalization
 and reset, and isolation between view scopes.
+
+Local appearance uses `DisplayPatch.styles`: exact native option or semantic symbol
+role to `{color?, width_mm?, line_type?, symbol?}`; null resets the role. Rust
+merges omitted fields, validates the entire request and converts physical pen
+units to screen encodings. Symbols apply to strain/suspension/junction/unknown
+and structure/terrain points. Allowed line types are solid, dashed, dotted and
+dash_dot. CLI receipts and drawing carry the same native styles, JSON request
+and compiled schema. These transient overrides never publish global styles.
+
+`profile_layout::resolve` receives the available Map/Profile area. Omitted height
+opens equal halves; explicit user/CLI resize must leave both panes visible.
+Persisted pixel height must never override the opening half-height policy.
+
+Shared Plan/Profile selection controls execute `grid_selection_controls` through
+the native runtime. Initial relation is Within; initial layers are All. Explicit
+layer choices remain in the principal/project/model scope for the Desktop
+lifetime and are filtered against each held surface's native available families.
+Only configure changes remembered preferences; one-shot admission never changes them.
+Read/configure/admit/compose are separate typed requests; omission retains the
+scoped preferences, and null families restores All. The toolbar renders relation,
+combination operation, then layer choice. Rust admits queries and composes
+ordered selected identities; host project/model/revision/scene/cancellation fences
+remain in force. Outside means disjoint, including all occurrences, never merely
+"not wholly within".

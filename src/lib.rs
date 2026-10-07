@@ -15,9 +15,12 @@ pub use ds_solar_contracts::is_solar_id;
 /// The time crate the kernel's instants are spelled in, for hosts that pass them.
 pub use time;
 pub mod assets;
-pub mod profile_display;
+pub mod grid_selection_controls;
 pub mod profile_controls;
+pub mod profile_display;
 pub mod profile_encoding;
+pub mod profile_layout;
+pub mod profile_style;
 pub use ds_kml as kml;
 pub mod solar_dashboard;
 pub mod solar_report_bundle;

@@ -16,6 +16,8 @@ pub struct Pen {
 }
 #[derive(Debug, Clone, Serialize)]
 pub struct Encoding {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub symbol: Option<String>,
     pub color: String,
     pub width_px: f64,
     pub dash_px: Vec<f64>,
@@ -48,6 +50,7 @@ pub enum LegendKind {
 /// Semantic symbols use distinct governed Profile pens. Hosts never choose ink.
 #[derive(Debug, Clone, Serialize)]
 pub struct LegendEntry {
+    pub line: bool,
     pub kind: LegendKind,
     pub label: String,
     pub glyph: String,
@@ -73,6 +76,7 @@ pub fn legend(rows: &[DisplayRow]) -> Vec<LegendEntry> {
     ]
     .into_iter()
     .map(|(kind, label, glyph, option)| LegendEntry {
+        line: matches!(kind, K::Ground | K::Wire | K::ClearanceLine | K::Embedded),
         kind,
         label: label.into(),
         glyph: glyph.into(),
@@ -144,12 +148,35 @@ pub fn legend_with_cables(rows: &[DisplayRow], cables: &[CablePen]) -> Vec<Legen
     entries.splice(
         at..at,
         cables.iter().map(|cable| LegendEntry {
+            line: true,
             kind: LegendKind::Cable,
             label: cable.cable_name.clone(),
             glyph: "━".into(),
             encoding: cable.encoding.clone(),
         }),
     );
+    entries
+}
+pub fn styled_legend(
+    state: &DisplayState,
+    rows: &[DisplayRow],
+    cables: &[CablePen],
+) -> Vec<LegendEntry> {
+    let mut entries = legend_with_cables(rows, cables);
+    for entry in &mut entries {
+        let role = match entry.kind {
+            LegendKind::Strain => "strain",
+            LegendKind::Suspension => "suspension",
+            LegendKind::Junction => "junction",
+            LegendKind::Unknown => "unknown",
+            _ => continue,
+        };
+        crate::profile_style::apply(state, role, &mut entry.encoding);
+        entry.encoding.font = format!("{}px monospace", (entry.encoding.width_px * 4.0).max(8.0));
+        if let Some(symbol) = &entry.encoding.symbol {
+            entry.glyph = symbol.clone();
+        }
+    }
     entries
 }
 fn pen_key(option: DisplayOption) -> String {
@@ -211,7 +238,15 @@ pub fn resolve(
                 option,
                 label_key: option.label_key().into(),
                 checked: state.visibility[&option],
-                encoding: encode_pen(pen, key)?,
+                encoding: {
+                    let mut encoding = encode_pen(pen, key)?;
+                    crate::profile_style::apply(
+                        state,
+                        &serde_json::to_value(option).unwrap().as_str().unwrap(),
+                        &mut encoding,
+                    );
+                    encoding
+                },
             })
         })
         .collect()
@@ -240,6 +275,7 @@ fn encode_pen(pen: &Pen, key: &str) -> Result<Encoding, String> {
         return Err(format!("profile_styles_invalid: {key}"));
     }
     Ok(Encoding {
+        symbol: None,
         color: pen.color.clone(),
         width_px: pen.width_mm * 96.0 / 25.4,
         dash_px: pen.dash_mm.iter().map(|v| v * 96.0 / 25.4).collect(),
