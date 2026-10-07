@@ -9,7 +9,7 @@ Unfinished code that an agent can implement and prove without further owner inpu
 | Area | Remaining entries |
 | --- | ---: |
 | [1. Source integration and release code](#1-source-integration-and-release-code) | 3 |
-| [2. Green `run` and release gates](#2-green-run-and-release-gates) | 6 |
+| [2. Green `run` and release gates](#2-green-run-and-release-gates) | 4 |
 | [3. Template creation code](#3-template-creation-code) | 2 |
 | [4. Print template and style code](#4-print-template-and-style-code) | 2 |
 | [5. Print renderer and booklet code](#5-print-renderer-and-booklet-code) | 5 |
@@ -45,11 +45,7 @@ Unfinished code that an agent can implement and prove without further owner inpu
 
 - **Stabilization after the 7 October test sweep** (owner, 2026-10-07): the full list is in [STABILIZATION.md](STABILIZATION.md). It may touch any other backlog surface it intersects.
 
-- **Red on run, Grid (pre-existing at `4180a3d`)**: `ds-grid-wasm` test `station_move_preview::station_move_tangent_uses_outgoing_leg_at_pi_and_last_leg_at_terminus` expects `reconcile_required` and gets `patched`. Decide whether the preview or the test is right, fix it, and keep `cargo test --workspace` green.
-
-- **LV test red on run** (pre-existing): `transformer_process_contract::adding_a_disjoint_feeder_does_not_collapse_the_existing_one` keeps an unconnected-customer warning without its diagnostic layer. Slice `lv-disjoint-feeder`.
-
-- **Remaining source release gates**: recheck the recorded Web navigation/design/version tests, CLI bridge-parity harness, Solar `aderm_beinamar` chart digest, Solar Dockerfile dependency omissions, reporter `golden_artifacts` / `printing_examples` and reporter / ds-grid-exchange Clippy. The 7 October CLI workspace run also reproduces `dsgrid_profile_review::profile_review_json_retains_native_per_structure_summaries_without_authoring`: `SectionState` marker text is nonempty where the assertion expects empty text, against in-flight network engineering changes. Resolve the owning projection/expectation with those changes and rerun the final pinned suite; preserve other agents' edits. Repair only still-failing assertions or owning code; remove each claim after its gate passes.
+- **Remaining source release gates**: recheck the recorded Web navigation/design/version tests, CLI bridge-parity harness, Solar Dockerfile dependency omissions, reporter `golden_artifacts` / `printing_examples` and reporter / ds-grid-exchange Clippy. The 7 October CLI workspace run also reproduces `dsgrid_profile_review::profile_review_json_retains_native_per_structure_summaries_without_authoring`: `SectionState` marker text is nonempty where the assertion expects empty text, against in-flight network engineering changes. Resolve the owning projection/expectation with those changes and rerun the final pinned suite; preserve other agents' edits. Repair only still-failing assertions or owning code; remove each claim after its gate passes.
 
 - **Printing toolbar test**: `src/tests/printing-toolbar.test.ts` fails to locate the toolbar closing markup in current `PrintingSetup.svelte`. Repair the test boundary and verify narrow-width controls; `TemplateCatalogue.browser.test.ts` passes.
 
