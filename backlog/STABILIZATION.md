@@ -3,6 +3,10 @@
 For Codex, on canonical `run`. Opened 2026-10-07 by the owner after the 7
 October test sweep. There is no deployment pressure.
 
+**Priority (owner, 2026-10-07):** this file is the owner's current priority
+order. Take its items before the rows of [ORDER.md](ORDER.md); ORDER.md rows that
+link here are worked from here.
+
 **Scope:** this work may touch any other backlog surface it intersects:
 [OPEN.md](OPEN.md) §2 formatting and release gates, §11 PLS exchange, §12
 structure usage, §18 libraries, §23 JSON UI, §25 CLI reliability; and
@@ -267,6 +271,11 @@ point (§11). Every computation must animate the toolbar's status button.
   - `project-overview-a0/a3` are `project / overview`. `transformer-focus-a0`
     and `a3-landscape-rwanda-project-lv` are `lv_transformer / network`.
   - Seven layouts are unclassified. No plan-and-profile layout is among the 12.
+  - The plan-and-profile A3 landscape sheet isn't a Layout at all. It is a
+    reporter engine configuration, `ds.grid-plan-profile-print/v3`, rendered
+    by `report.plan-profile-config` (`ds-cli/docs/reference/report.md:1150`).
+    `catalogue::Location` has only `layout` and `governed_html`
+    (`catalogue.rs:40-53`), so the catalogue cannot list it.
 - **Grouping follows stored classification only.**
   - `template_catalogue` groups by `classification` alone
     (`src/printing/catalogue.rs:258-340`). Names and paper never classify
@@ -322,9 +331,12 @@ point (§11). Every computation must animate the toolbar's status button.
    - `project` previews against a map or project extent.
    - `preview::plan` takes the subject and refuses a mismatch with a keyed
      reason. This replaces the transformer-only rule.
-3. **Kernel: MV Network admission.** `mv_model / network` admits only the
-   plan-and-profile A3 landscape sheet. `set_classification` refuses anything
-   else, and the catalogue flags stored mismatches.
+3. **Kernel: MV Network admission.**
+   - Give the catalogue a storage location for the plan-and-profile print
+     configuration, so it can be listed under MV → Network.
+   - `mv_model / network` admits only that A3 landscape sheet.
+     `set_classification` refuses anything else, and the catalogue flags
+     stored mismatches.
 4. **CLI/MCP.** Add one grouped catalogue read and a subject-aware preview, so
    the Desktop and agents read the same JSON.
 5. **Desktop.**
@@ -345,6 +357,77 @@ point (§11). Every computation must animate the toolbar's status button.
   - the front-matter pages under Front matter;
   - only plan-and-profile A3 landscape under MV → Network.
 - An MV preview chooses a DS Grid MV model and never `agahehe`.
+
+### 14. Print previews miss map context
+
+**Owner, 2026-10-07:** printing previews are missing context. Take this
+together with §13 and group E.
+
+**Evidence** (code; not reproduced, because the installed canary `ds` predates
+the current layout contract, see below):
+
+- **TypeScript gathers preview context per transformer.**
+  - The Desktop preview calls
+    `prepareDraftTransformerPrintContext(project, uid, transformer, room.layers, draft)`
+    (`ds-web/src/lib/components/printing/PrintingSetup.svelte:550`). This runs
+    `collectTransformerPrintContext`
+    (`ds-web/src/lib/reports/transformer-print-context.ts:192-268`), a
+    TypeScript loop that fetches each context layer.
+  - The kernel only lists which layers print and sets
+    `acquire_missing: online` (`src/printing/mod.rs:3073-3084`).
+- **Context is clipped to one transformer's design plus 200 m.**
+  - Catalog layers become a project subset bounded by the transformer's
+    design and `buffer_m ?? 200`
+    (`transformer-print-context.ts:52-54, 82, 225-232`).
+  - DS Grid MV, Open Buildings and contours go through
+    `retainedDerivedPrintContext(..., transformer, design, ...)` (`:255`).
+  - A district or overview sheet covers far more than that buffer. Its
+    context outside the buffer is never staged. This compounds §13: these
+    templates preview against an LV transformer (`agahehe`).
+- **Failures degrade silently into warnings.**
+  - Any catalog or derived context error becomes a warning, and the preview
+    renders without that layer. Only survey and local layers stop the preview
+    (`transformer-print-context.ts:257-263`).
+  - The warnings are appended to the preview status (`PrintingSetup.svelte:570`).
+  - Offline, an unheld catalog layer fails with "This layer is not available
+    offline" (`:242`).
+- **Two contract sentences to reconcile.**
+  - `docs/printing.md:282` says "a read or preview never acquires providers".
+  - `docs/printing.md:389-391` lets `preview_context_preparation` prepare
+    missing inputs online, before the read-only render. The kernel and
+    TypeScript follow the second sentence.
+
+**Needed:**
+
+1. **Kernel: context extent follows the §13 subject and the sheet.** The
+   context extent is the map viewport's coverage for that subject:
+   - one transformer's design plus buffer;
+   - the MV model's corridor;
+   - the project or district extent.
+
+   Never use a fixed transformer buffer for MV or overview sheets.
+2. **Native: one context acquisition behind `ds`.** The CLI's export path and
+   the Desktop preview call the same native preparation, which returns layers
+   plus a typed omission per missing layer. Delete the TypeScript loop and
+   its gateway reads (PRINCIPLES §5; OPEN §23).
+3. **Preview status: name every omission.** List each missing layer with its
+   reason: hidden by the layout, unheld offline, empty in the extent, or
+   failed. A degraded preview is labelled degraded, never shown as complete.
+4. Reconcile the two `docs/printing.md` sentences in the same slice.
+
+**Reproduce once a current canary is installed:**
+
+1. Run `ds report project export --preview-layout` for
+   `nyaruguru-district-mv-a3-landscape-core-v0` and for `project-overview-a3`
+   in `wnmajona_edcl_rural_electrification_template`.
+2. Compare the staged context layers and omissions with the sheet's map
+   coverage.
+
+**Tool note:** installed `ds-canary` (2026-09-29) lists the 12 layouts, but
+`report layout get` refuses 10 of them: "the authentication or project
+response did not match its closed contract". Debug `ds` builds route native
+API calls to the local Go authority (ds-cli `980462e7`), so they can't read
+the cloud project either.
 
 ## Moved from OPEN.md and OPEN-X.md: related work, fix together (owner, 2026-10-07)
 
@@ -403,6 +486,31 @@ Owner decisions (from OPEN-X.md §14):
 - **Native source pins and integration**: reconcile any still-unpushed repository changes and update `ds-network-reporter/pins/native-build-sources.json` to the exact published native sources before packaging. Recheck the remaining repositories before changing pins.
 
 - **Remaining source release gates**: recheck the recorded Web navigation/design/version tests, CLI bridge-parity harness, Solar Dockerfile dependency omissions, reporter `golden_artifacts` / `printing_examples` and reporter Clippy. Native checkpoint validation also reproduces 8 existing ds-io and 28 ds-grid-engine Clippy errors (collapsible conditions, type complexity and argument counts); repair these in their own slices. The changed ds-grid-wasm crate and checkpoint regression pass strict owning Clippy with dependencies excluded; the broader log is `ds-network/out/stabilization/wasm-pins-clippy.log`. Repair only still-failing assertions or owning code; remove each claim after its gate passes.
+
+### E. Printing templates, previews and booklets (with §13 and §14)
+
+Moved from OPEN.md §2, §4, §5 and §7. Operational print seeding stays in
+[SEEDING.md](SEEDING.md) §4–§6. Combined-output entries stay in OPEN.md §7.
+
+- **Printing toolbar test**: `src/tests/printing-toolbar.test.ts` fails to locate the toolbar closing markup in current `PrintingSetup.svelte`. Repair the test boundary and verify narrow-width controls; `TemplateCatalogue.browser.test.ts` passes.
+
+- **KMZ style resolution**: move the 30 Grid and 47 transformer KMZ tuples from `ds_kml::governed_document` into the sole governed style resolver and its declarative seed.
+
+- **Absent-field country defaults**: remove implicit Rwanda/EDCL print defaults from owning code after checking stored project layouts. Require authored country/branding metadata; issue-date/version values, distinct LV context pens and A3 overview seeding belong in [SEEDING.md](SEEDING.md#4-print-templates-styles-and-seed).
+
+- **MV booklet owner integration** (`f0e9c2ed`, `290bf404`, `46f54c67`): complete any missing native cover → naming → key-map → plan/profile integration that still needs the ds-work Python bridge. Resolve project-native PLS types to exact canonical DS members or return missing mappings. Runtime-gate the structure-description offset correction and restore held-model preview/background preparation on new installations. Final page composition and real project delivery belong in [SEEDING.md](SEEDING.md#5-print-sheet-content-and-legibility).
+
+- **Print sets are too large** (`e2cd543e`): Gisagara's 96-page A3 MV booklet is 481 MB and 86-page A0 LV combined PDF is 714 MB. Reduce repeated vector resources and paths while preserving legible schedules, linework, pagination and supported georeferencing; keep any raster context settings in project-owned output JSON.
+
+- **MV map-inputs repeatedly reads the whole project** (`f48bd93c`): each Northern Hub plan/profile capture rereads 180 transformer contexts and takes about six minutes; the command does not read native server state, so a state-dir flag alone cannot cure it. Add bounded, digest-pinned source reuse and a named failure for stalled acquisition. The delivery runner's pinned district-capture reuse must become a governed DS path.
+
+- `5828fac5` (minor): A0 contour index labels fail renderer with text paper wider than frame.
+
+- `778a9f4d` (minor): Plan & profile: labels after an elevation break drawn in the top band with leader lines crossing the scale bar.
+
+- `8de3e8e0` (major): Batch transformer export needs a declarative JSON job for layout, naming and packaging.
+
+- `88c03fbd` (major): Desktop printing export rejects current reporter result field.
 
 ## Reference: landed on 7 October, don't redo
 

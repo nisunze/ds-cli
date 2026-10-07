@@ -1,5 +1,7 @@
 # Coding order
 
+**Owner, 2026-10-07:** [STABILIZATION.md](STABILIZATION.md) holds the current priority and comes before this order.
+
 Start order for [OPEN.md](OPEN.md), following [owner priorities](PRINCIPLES.md#3-priorities-owner-2026-10-07). This file holds order and dependencies; scope, evidence and proof stay in OPEN.md. Delete a fulfilled row with its OPEN.md entry. [OPEN-X.md](OPEN-X.md) gates only the named decision; [SEEDING.md](SEEDING.md) owns configuration, deployment and installed acceptance.
 
 Pick the first actionable row in your track whose touched files are free. Recheck the defect through installed `ds` and owning tests; use admitted parameters/seeds before coding. “After” names an actual prerequisite, not a wait for every earlier row. A red gate blocks its affected release, not unrelated work. Work on canonical `run`, one coherent slice per repository, prove/commit/push before the next; preserve occupied edits. Cross-repository rows are successive owning slices, not a mixed checkpoint.
@@ -49,7 +51,7 @@ Proceed on the specification defaults; [OPEN-X §25](OPEN-X.md#25-cli-reliabilit
 | 18 | Transformer protection sizing: frozen/existing transformers unchecked (`4070556f`), `minimum_tr_size` leaves protection on the smaller row (`571c4b57`), 15 kV fuse ignored (`dcacdb90`) | [§9](OPEN.md#9-lv-processing-sizing-and-headless-intake) | network (sizing), reporter | **wrong** — protection does not match selected size/voltage | — |
 | 19 | Combined output: no partial archive on refusal (`4151b6b7`); Desktop/headless MV parity; true combined A0/A3 PDFs and workbook (`42f3abd1`) | [§7](OPEN.md#7-report-compute-export-and-combined-output) | kernel, reporter, ds-brain | **wrong** — incomplete output published | — |
 | 20 | Model and transformer retirement without a verified backup; governed restore (`b1b3eec5`, `81ae43eb`) | [§7](OPEN.md#7-report-compute-export-and-combined-output) | kernel, ds-cli, ds-brain | **lost** — a tombstone can leave nothing to restore | — |
-| 21 | Reporter/Desktop contract drift: `survey_layers_omitted` rejected (`56749e69`), printing export rejects the current result field (`88c03fbd`) | [§7](OPEN.md#7-report-compute-export-and-combined-output) | ds-web (Desktop), reporter | blocked — Desktop reports refused | — |
+| 21 | Reporter/Desktop contract drift: `survey_layers_omitted` rejected (`56749e69`), printing export rejects the current result field (`88c03fbd`) | [§7](OPEN.md#7-report-compute-export-and-combined-output), [stabilization E](STABILIZATION.md#e-printing-templates-previews-and-booklets-with-13-and-14) (`88c03fbd`) | ds-web (Desktop), reporter | blocked — Desktop reports refused | — |
 | 22 | Solar design runs refused: UI sends `concurrency: 0` (every ADERM city) | [§21](OPEN.md#21-windows-release-code) | ds-web, ds-solar | blocked — whole Solar design path; small fix | — |
 | 23 | Project data never renders: uploads have no layer class, styles or tiles (`011ae5a6`); bare `.shp` drop freezes Desktop (`ad44f3a0`) | [§16](OPEN.md#16-map-data-datasets-and-screen-styling) | kernel, ds-web | blocked — uploaded data unusable on the map | — |
 | 24 | Assets ingest through the paired Desktop fails (`e9b5858d`, `40b53f7f`); task attachment route (`e01cf456`) | [§17](OPEN.md#17-project-work-and-assets) | ds-web (Desktop), ds-cli, ds-brain | blocked — documents cannot reach tasks | — |
@@ -75,10 +77,10 @@ Windows owns OPEN.md blocks 12–13 and their engineering consumers. This track 
 
 | # | Slice | OPEN.md | Repos | Impact | After |
 | ---: | --- | --- | --- | --- | --- |
-| 35 | MV map-inputs rereads the whole project: six minutes per capture (`f48bd93c`) | [§5](OPEN.md#5-print-renderer-and-booklet-code) | reporter, kernel | slow | — |
+| 35 | MV map-inputs rereads the whole project: six minutes per capture (`f48bd93c`) | [stabilization E](STABILIZATION.md#e-printing-templates-previews-and-booklets-with-13-and-14) | reporter, kernel | slow | — |
 | 36 | Combined report waits on serial publication (`69f60e82`) | [§7](OPEN.md#7-report-compute-export-and-combined-output) | kernel, ds-brain | slow | 15 |
-| 37 | Print sets too large: 481 MB / 714 MB PDFs (`e2cd543e`) | [§5](OPEN.md#5-print-renderer-and-booklet-code) | reporter | slow; delivery size | — |
-| 38 | MV booklet owner integration without the Python bridge | [§5](OPEN.md#5-print-renderer-and-booklet-code) | reporter, ds-cli | blocked — delivery still depends on a retired bridge | — |
+| 37 | Print sets too large: 481 MB / 714 MB PDFs (`e2cd543e`) | [stabilization E](STABILIZATION.md#e-printing-templates-previews-and-booklets-with-13-and-14) | reporter | slow; delivery size | — |
+| 38 | MV booklet owner integration without the Python bridge | [stabilization E](STABILIZATION.md#e-printing-templates-previews-and-booklets-with-13-and-14) | reporter, ds-cli | blocked — delivery still depends on a retired bridge | — |
 | 39 | Script-removal gaps: execute download plan with SHA-256 manifest; district from artifacts; MV/LV orphan join | [§7](OPEN.md#7-report-compute-export-and-combined-output) | kernel, ds-cli | blocked for agents | — |
 | 40 | Data install: wetlands 422, bulk install 504, ground data never indexed; 10k caps and paging (`46dec14e`) | [§16](OPEN.md#16-map-data-datasets-and-screen-styling) | kernel, ds-cli, ds-web | blocked/slow | — |
 | 41 | Voltage-drop analysis/Reporter one input digest | [§10](OPEN.md#10-voltage-drop) | network, reporter | **wrong** when stale | — |
@@ -89,7 +91,7 @@ Windows owns OPEN.md blocks 12–13 and their engineering consumers. This track 
 | # | Slice | OPEN.md | Impact |
 | ---: | --- | --- | --- |
 | 43 | Country neutrality: CRS from the project, country identity, report i18n, guards | [§19](OPEN.md#19-country-neutrality-and-duplicated-rules) | **wrong** — non-Rwanda CRS, identity and report semantics |
-| 44 | KMZ styles into the governed resolver; no implicit Rwanda print defaults | [§4](OPEN.md#4-print-template-and-style-code) | debt |
+| 44 | KMZ styles into the governed resolver; no implicit Rwanda print defaults | [stabilization E](STABILIZATION.md#e-printing-templates-previews-and-booklets-with-13-and-14) | debt |
 | 45 | Remaining duplicated rules: sizing, file stems, upload transport, archive grouping (fold into the owning fix when touched) | [§19](OPEN.md#19-country-neutrality-and-duplicated-rules) | debt; drift risk |
 | 46 | Sidebar gateway bypasses and one Rust communication authority | [§23](OPEN.md#23-kernel-controls-json-ui-and-typescript-retirement) | debt |
 | 47 | Never-landed work: verify ancestry and adapt archive-group readers (§7), Rust-owned selection (§16), PM model-version links (§17), style family (§23) | [§7](OPEN.md#7-report-compute-export-and-combined-output), [§16](OPEN.md#16-map-data-datasets-and-screen-styling), [§17](OPEN.md#17-project-work-and-assets), [§23](OPEN.md#23-kernel-controls-json-ui-and-typescript-retirement) | debt — finished work not on `run` |

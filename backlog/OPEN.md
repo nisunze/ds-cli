@@ -9,11 +9,11 @@ Unfinished code that an agent can implement and prove without further owner inpu
 | Area | Remaining entries |
 | --- | ---: |
 | [1. Source integration and release code](#1-source-integration-and-release-code) | 3 |
-| [2. Green `run` and release gates](#2-green-run-and-release-gates) | 3 |
+| [2. Green `run` and release gates](#2-green-run-and-release-gates) | 2 |
 | [3. Template creation code](#3-template-creation-code) | 2 |
-| [4. Print template and style code](#4-print-template-and-style-code) | 2 |
-| [5. Print renderer and booklet code](#5-print-renderer-and-booklet-code) | 5 |
-| [7. Report compute, export and combined output](#7-report-compute-export-and-combined-output) | 14 |
+| [4. Print template and style code](#4-print-template-and-style-code) | 0 |
+| [5. Print renderer and booklet code](#5-print-renderer-and-booklet-code) | 0 |
+| [7. Report compute, export and combined output](#7-report-compute-export-and-combined-output) | 12 |
 | [8. Sync, publication and edge outbox](#8-sync-publication-and-edge-outbox) | 4 |
 | [9. LV processing, sizing and headless intake](#9-lv-processing-sizing-and-headless-intake) | 13 |
 | [10. Voltage drop](#10-voltage-drop) | 1 |
@@ -45,8 +45,6 @@ Unfinished code that an agent can implement and prove without further owner inpu
 
 - **Stabilization after the 7 October test sweep** (owner, 2026-10-07): the full list is in [STABILIZATION.md](STABILIZATION.md). It may touch any other backlog surface it intersects.
 
-- **Printing toolbar test**: `src/tests/printing-toolbar.test.ts` fails to locate the toolbar closing markup in current `PrintingSetup.svelte`. Repair the test boundary and verify narrow-width controls; `TemplateCatalogue.browser.test.ts` passes.
-
 - **National ID and phone in external reports: not urgent, no code now** (owner, 2026-10-07): DS does handle national IDs. Reporter `a69402e` hides `nid`, `national_id` and phone from every external report projection, but that restriction came from the datasolutions.rw product context and was not meant for everything. Kernel `3e23208` overstated it as a general "personal identity never prints" rule, and reporter `ac7e740` aligned the XLSX and as-built schedule tests with `a69402e`, so the former XLSX test failure is green. Implement no identity removal or restoration until the owner scopes it; correct the `3e23208` wording when this is taken up.
 
 ## 3. Template creation code
@@ -57,21 +55,11 @@ Unfinished code that an agent can implement and prove without further owner inpu
 
 ## 4. Print template and style code
 
-- **KMZ style resolution**: move the 30 Grid and 47 transformer KMZ tuples from `ds_kml::governed_document` into the sole governed style resolver and its declarative seed.
-
-- **Absent-field country defaults**: remove implicit Rwanda/EDCL print defaults from owning code after checking stored project layouts. Require authored country/branding metadata; issue-date/version values, distinct LV context pens and A3 overview seeding belong in [SEEDING.md](SEEDING.md#4-print-templates-styles-and-seed).
+Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group E (printing templates, previews and booklets).
 
 ## 5. Print renderer and booklet code
 
-- **MV booklet owner integration** (`f0e9c2ed`, `290bf404`, `46f54c67`): complete any missing native cover → naming → key-map → plan/profile integration that still needs the ds-work Python bridge. Resolve project-native PLS types to exact canonical DS members or return missing mappings. Runtime-gate the structure-description offset correction and restore held-model preview/background preparation on new installations. Final page composition and real project delivery belong in [SEEDING.md](SEEDING.md#5-print-sheet-content-and-legibility).
-
-- **Print sets are too large** (`e2cd543e`): Gisagara's 96-page A3 MV booklet is 481 MB and 86-page A0 LV combined PDF is 714 MB. Reduce repeated vector resources and paths while preserving legible schedules, linework, pagination and supported georeferencing; keep any raster context settings in project-owned output JSON.
-
-- **MV map-inputs repeatedly reads the whole project** (`f48bd93c`): each Northern Hub plan/profile capture rereads 180 transformer contexts and takes about six minutes; the command does not read native server state, so a state-dir flag alone cannot cure it. Add bounded, digest-pinned source reuse and a named failure for stalled acquisition. The delivery runner's pinned district-capture reuse must become a governed DS path.
-
-- `5828fac5` (minor): A0 contour index labels fail renderer with text paper wider than frame.
-
-- `778a9f4d` (minor): Plan & profile: labels after an elevation break drawn in the top band with leader lines crossing the scale bar.
+Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group E (printing templates, previews and booklets).
 
 ## 7. Report compute, export and combined output
 
@@ -89,13 +77,9 @@ Unfinished code that an agent can implement and prove without further owner inpu
 
 - `f6597311` (major): map design batch report: CLI advertises --file-level/--combine-per-group the Desktop rejects, and it needs an unprepared report_archive grouping.
 
-- `8de3e8e0` (major): Batch transformer export needs a declarative JSON job for layout, naming and packaging.
-
 - `da000524` (minor): Export delivery needs a JSON manifest with hash verification and destination receipts.
 
 - `69f60e82` (major): Combined report waits on slow serial publication of all transformer reports.
-
-- `88c03fbd` (major): Desktop printing export rejects current reporter result field.
 
 - `1849f4a3` (major): Group successful report warnings so engineering blockers stay actionable.
 
