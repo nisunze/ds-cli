@@ -243,6 +243,8 @@ Candidate curation and native PLS-CADD acceptance are separate from coding the c
 
 ## 22. Operations
 
+- **Canonical web push pending**: `ds-web` commit `f7f0b118c` is proven locally on `run` (39 owning tests; full check has the separate presentation errors in OPEN.md §23). Three SSH pushes on 7 October failed with GitHub `Internal Server Error`; live `refs/heads/run` remains `601a8f8ce081115431fe83b22b440f932f19d989`. Retry `git -C /home/magese/data-solutions/ds-web push origin run`, verify the exact commit on the remote, then delete this entry. No worktree or remote build is involved.
+
 - **Monitor service configuration**: inspect the status publisher’s repeated gcloud polling and the non-firing `ds-server-watchdog.timer`; adjust supported scheduling/configuration and verify freshness without killing other agents’ processes. Open an owning-code failure only if valid configuration cannot deliver the declared status.
 
 - **Legacy RAM scratch**: inventory the recorded `/tmp`, `/dev/shm/ds-root-relief-20260930` and canonical-library mirror scratch before moving or retiring completed owned output. Preserve active jobs, source bytes and reusable caches; stage further work on disk. The historical 23/9.3 GB figures require a fresh measurement.

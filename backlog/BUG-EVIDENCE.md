@@ -281,18 +281,12 @@ two findings, with a concrete negative control for each.
 
 **Claimed (Claude, 2026-10-07 15:10 UTC):** focused initialization review.
 
-- `ds-web/src/lib/grid/profile-native.ts` still checkpoints and transfers the
-  full package on every refresh. Bind it to native revision-fenced refresh,
-  capture model/generation scope, retain an admitted native head even when a
-  display result becomes stale, serialize same-client work and expose refusals
-  without an automatic checkpoint fallback.
 - Native scene preparation still rebuilds all bands at a changed revision.
   Consume the command-receipt closure for affected bands and engineering
   refresh, retaining unchanged scene and demand inputs at section ends.
 
 **Remaining in this vertical:** bind the held native Profile runtime and its
-analysis to the bounded command-receipt scope and demand cache; remove the
-per-edit package round trip. Localize terrain invalidation to the spans and
+analysis to the bounded command-receipt scope and demand cache. Localize terrain invalidation to the spans and
 supports whose effective ground uses the changed sample, and refresh only
 those Profile bands. Unknown broader effects remain reconciliation work,
 not a synchronous interactive solve. Preserve the owner's tension-section-end
@@ -477,3 +471,12 @@ fails.**
   - whole-support uplift and the cable-modulus and capacity blockers are
     unchanged.
 - **Out of scope:** no solver approval, and tolerances are unchanged.
+
+## Focused next: native default-analysis demand reuse
+
+Review the owning cache-aware default-analysis change after implementation:
+shared observer and screening demands, exact uncached report parity, native
+receipt invalidation at incident section ends, whole-model and basis misses,
+and revision/root refusal paths. At most two actionable findings, read-only;
+no competing builds or source writes. The canvas check errors in OPEN.md §23
+need only a bounded presentation typing repair, not workflow feature work.

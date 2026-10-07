@@ -96,18 +96,11 @@ trace below confirms it.
 1. **Desktop apply:** `GridProfileRetypePicker.svelte` →
    `gridCommitStructureRetype` (`ds-web/src/lib/grid/session.ts:749`) applies
    the edit in the worker, which is cheap.
-3. **Auto analysis:** the revision change re-offers auto analysis
-   (`GridProfilePanel.svelte:1210-1226`, on by default since 2026-10-05). It
-   calls `executeNativeProfileCommand` (`ds-web/src/lib/grid/profile-native.ts`),
-   which:
-   - runs `client.checkpointDsgrid()`, a full package emit;
-   - sends `package_bytes: Array.from(bytes)`, a JSON array of 1.4 million
-     numbers, over Tauri IPC;
-   - has the native side decode and validate the whole package, rebuild the
-     Profile scene for every band, and run the whole-model engineering
-     analysis;
-   - returns the full scene and up to 2,000 issues per kind, which are then
-     re-installed in the worker.
+3. **Auto analysis:** revision changes re-offer auto analysis (on by default).
+   The native session refresh still rebuilds the Profile scene for every band
+   and runs default screening without the receipt-advanced demand cache before
+   the cached issue layer. It returns the full scene and bounded issues for
+   worker installation. Localize scene preparation and share native demands.
 4. **CLI path** (`ds-cli/crates/ds-cli-dsgrid/src/structure/retype.rs`,
    `mutation.rs`):
    - decode the whole package; schema-4 copies re-run the 4 → 5 migration and
@@ -119,10 +112,6 @@ trace below confirms it.
 
 **Patch direction, smallest first:**
 
-1. **Send the edit, not the package.** Keep a native session per open model and
-   revision, and replay the journaled command on it. Stop calling
-   `checkpointDsgrid()` and sending `Array.from(bytes)` on every Profile
-   refresh. At minimum, use binary IPC instead of a JSON number array.
 2. **Scope the recompute.** A retype touches one structure: recompute its
    incident tension sections, those sections' structure usage and the
    clearance of the adjacent spans. Reuse cached results elsewhere, keyed by

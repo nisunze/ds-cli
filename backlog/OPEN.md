@@ -285,6 +285,8 @@ Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group A, to be fixed to
 
 ## 23. Kernel controls, JSON UI and TypeScript retirement
 
+- **Web check gate (7 October)**: `npm run check` reports two existing Workflow presentation errors: `src/lib/tools/workflow-painter.ts:16` duplicates `name` before spreading the port; `src/lib/components/tools/WorkflowCanvas.svelte:28` casts `WorkflowNode[]` to `PaperNode[]` although camera fitting reads only rectangles. Repair the presentation typing without adding workflow features, then prove the full web check and existing camera tests. Profile transport files have no diagnostics.
+
 Rules: [PRINCIPLES.md §5](PRINCIPLES.md#5-kernel-cli-and-ui-owner-2026-10-07) — migrate touched controls one vertical at a time; complicated TypeScript goes to the CLI and its UI becomes JSON; result renderers and their downloads stay.
 
 - **First-release native controls and JSON UI**: move demonstrated UI-only or duplicated control decisions into the owning Rust kernel/native slice, expose and prove them through CLI/MCP, then bind Web/Desktop to that same authority. Supply a JSON input editor and native read-only preview/result where polished controls are not ready; apply must remain explicit, project/principal/revision fenced and faithful to authored choices. Render the owner’s validation, refusals and results without TypeScript recomputation or hidden defaults. Prove headless behavior and UI/native request/result parity, then delete replaced TypeScript control logic, direct gateway bypasses, obsolete adapters/tests/imports and dead code in that slice. Keep only useful presentation/transport/interaction code; preserve unrelated work. Durable contracts and tests live with their owner.
