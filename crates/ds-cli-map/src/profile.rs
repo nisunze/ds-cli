@@ -59,6 +59,16 @@ const PROFILE_SELECTION_STALE: Refusal = Refusal {
     remedy: "read map profile view again, use its model_id and revision, and retry against the current scene",
 };
 
+macro_rules! native_profile_refusal {
+    ($code:literal, $when:literal, $remedy:literal) => {
+        Refusal {
+            code: $code,
+            when: $when,
+            remedy: $remedy,
+        }
+    };
+}
+
 pub static VIEW: Command = Command {
     id: "map.profile.view",
     path: &["map", "profile", "view"],
@@ -94,9 +104,9 @@ pub static VIEW: Command = Command {
 pub static SET: Command = Command {
     id: "map.profile.set",
     path: &["map", "profile", "set"],
-    contract: 7,
+    contract: 8,
     summary: "Set the paired Profile's visual state through typed CLI inputs.",
-    purpose: "Set Profile appearance; omitted values stay. Display needs an open model; height and camera may be staged. Calculation is explicit: rebuild waits for native refresh; analyze runs checks. Display changes needing calculation refuse until rebuild/analyze. Report visibility schedules no analysis. Weather projects only the requested case.",
+    purpose: "Set Profile appearance; omitted values stay. Display needs an open model; height and camera may be staged. Calculation is explicit: rebuild/analyze await a native background job while edits and observation continue. Only current history and display context can admit its result. Save is independent. First initialization remains synchronous. Display changes needing calculation refuse until rebuild/analyze. Report visibility schedules no analysis. Weather projects only the requested case.",
     chapter: Chapter::MapPresentation,
     effect: Effect::LocalUi,
     authority: Authority::DesktopPairing,
@@ -182,6 +192,66 @@ pub static SET: Command = Command {
         PROFILE_CASE_UNAVAILABLE,
         PROFILE_PACKAGE_INVALID,
         PROFILE_SELECTION_STALE,
+        native_profile_refusal!(
+            "profile_replay_stale",
+            "authored history differs from the observed native base",
+            "wait for authored observation, read map profile view, and explicitly retry calculation"
+        ),
+        native_profile_refusal!(
+            "profile_calculation_busy",
+            "a native calculation worker is still running, including cancelled noninterruptible work",
+            "wait for that worker to finish; edits and observation remain available"
+        ),
+        native_profile_refusal!(
+            "profile_calculation_capacity",
+            "the native result or job identity capacity is reached",
+            "read the native capacity detail and admit or cancel unused results"
+        ),
+        native_profile_refusal!(
+            "profile_calculation_pending",
+            "calculation has not produced a ready result",
+            "poll the captured native job before admission"
+        ),
+        native_profile_refusal!(
+            "profile_calculation_stale",
+            "model history, display context or calculation identity changed",
+            "retain authored edits and explicitly request calculation for the current Profile"
+        ),
+        native_profile_refusal!(
+            "profile_calculation_unavailable",
+            "the captured native job no longer exists",
+            "read the current Profile and explicitly request a new calculation"
+        ),
+        native_profile_refusal!(
+            "profile_calculation_cancelled",
+            "the native calculation result was cancelled",
+            "continue editing or explicitly request another calculation"
+        ),
+        native_profile_refusal!(
+            "profile_calculation_failed",
+            "the native calculation worker failed",
+            "inspect the native failure and current Profile before retrying"
+        ),
+        native_profile_refusal!(
+            "profile_publication_pending",
+            "a native result still awaits confirmation or discard",
+            "admit or discard that exact native publication"
+        ),
+        native_profile_refusal!(
+            "profile_publication_stale",
+            "publication history, calculated revision, axis or identity differs",
+            "discard the captured result and use the current Profile context"
+        ),
+        native_profile_refusal!(
+            "profile_publication_unavailable",
+            "no captured native publication exists",
+            "read the current Profile before another explicit action"
+        ),
+        native_profile_refusal!(
+            "profile_publication_failed",
+            "worker or native publication rollback refused",
+            "inspect the native refusal; preserve edits and resolve the named publication before retrying"
+        ),
         crate::UNSUPPORTED,
         crate::UNREADABLE,
         crate::REFUSED,
@@ -651,6 +721,31 @@ mod tests {
                 .contains("analysis_state: due/current/off/not_applicable")
         );
         assert!(VIEW.output.contains("computed_revision,required,scope"));
+    }
+
+    #[test]
+    fn background_calculation_and_publication_refusals_are_declared() {
+        for code in [
+            "profile_replay_stale",
+            "profile_calculation_busy",
+            "profile_calculation_capacity",
+            "profile_calculation_pending",
+            "profile_calculation_stale",
+            "profile_calculation_unavailable",
+            "profile_calculation_cancelled",
+            "profile_calculation_failed",
+            "profile_publication_pending",
+            "profile_publication_stale",
+            "profile_publication_unavailable",
+            "profile_publication_failed",
+        ] {
+            assert!(
+                SET.refusals.iter().any(|refusal| refusal.code == code),
+                "{code}"
+            );
+        }
+        assert!(SET.purpose.contains("while edits and observation continue"));
+        assert!(SET.purpose.contains("Save is independent"));
     }
 
     #[test]
