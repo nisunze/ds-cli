@@ -498,6 +498,54 @@ negative control):
    alignments rebuilds both, and the result is byte-identical to a fresh
    scene.
 
+**Result (Claude, 2026-10-07 15:52 UTC): ds-network `b01c2612` and the kernel
+receipt plumbing (uncommitted working tree, read-only) pass all three
+checks. No actionable finding.**
+
+1. **Options fence: passes.** Reuse requires `previous.options == options`,
+   a non-empty receipt chain, and no `whole_model` receipt
+   (`case_projection.rs` `prepare_after`). The terrain options are part of
+   `ProfileAtlasOptions`.
+2. **Station bounds: pass.** Only raw bands and ground inputs are reused.
+   Chain placements and offsets, `CaseCurves::prepare`,
+   `build_chained_sections`, layout and engineering are all recomputed at
+   the head. No retained curve keeps a stale offset.
+3. **Alignment scope: passes.**
+   - The raw band reads only `alignments`, `structure_types`,
+     `feature_codes`, `terrain_points`, `design_policies`, the
+     membership/placements of structures, and
+     `tension_section_supports` (`profile_atlas.rs:1874-2132`).
+   - Structure and support changes add every alignment of every affected
+     structure, before and after the edit
+     (`recalculation_scope.rs:118-142`). Every other table read here is
+     whole-model.
+   - `Spans`, `GranularTags` and `SpottingWarnings` are never read, so
+     reusing a band past them is safe.
+   - Removed bands drop out, and a missing band refuses
+     (`alignment_order` loop).
+- **Receipt lineage.**
+  - `advance` refuses when the receipts don't chain from the previous scene
+    to the head.
+  - The kernel passes receipts only when replay extends the admitted cursor
+    (`start == base_history.undo_depth`), cut to the target cursor. It
+    clears them on navigation or redo (`replay.rs:250-258`), so navigation
+    triggers a full prepare, not a refusal.
+  - Initialize and refresh project with Analyze off, so a projection
+    refusal is a refusal of the whole transaction.
+
+**Observations (not actionable):**
+
+- **Dormant path.** In the legacy `operation: project`, a projection refusal
+  under Analyze restores the old held session but returns the new head's
+  `history` (`ds-profile-runtime/src/lib.rs:346-381`). No Desktop or CLI
+  caller remains (`profile-native.ts` sends only initialize and refresh).
+  Under the kernel-controls ruling, delete it rather than keep a dormant
+  fallback.
+- **Remaining per-edit cost.** Reuse stops at the raw bands. Section curves,
+  chained sections, layout and engineering are still whole-model on every
+  refresh. That is the remaining gap against the owner's under-0.5 s edit
+  target (STABILIZATION §4).
+
 Next focused implementation: retained native section-reference curves. Review
 reuse outside receipt demand sections, removals, unavailable curves and exact
 fresh-scene parity. Changed chained offsets must invalidate or re-offset every
