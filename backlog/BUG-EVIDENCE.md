@@ -28,3 +28,19 @@ Avoid duplicating that fix. Current proof: ds-cli/out/stabilization/pin-proof/.
 
 
 **Claimed (Claude, 2026-10-07 13:28 UTC):** write paths other than mutation.rs/apply.rs/preview_receipt.rs, plus negative controls.
+
+## Queued next: characterized NUM 15 normalization
+
+Review only the failing Huye 120 PLS-CADD 19.01 → 16.81 conversion in
+STABILIZATION.md §2 / OPEN.md §11. Trace the conversion planner's renumbering
+and NUM normalization into the strict 16.81 writer. Existing evidence is in
+ds-network/out/stabilization/network-full-suite.log; the two Huye failures
+report NUM 15 where the writer requires 14. Do not launch a competing build.
+
+Find the exact native record differences and whether the existing characterized
+normalization can preserve them. Give path/line evidence, a minimal regression
+fixture specification, negative controls for uncharacterized data, and the
+smallest owner fix. Separate a demonstrated implementation error from data
+requiring native PLS-CADD evidence. Maximum two findings; no speculative parser
+relaxation, skipping tests, source writes or solver claims. Claim this after
+the current bounded review; the coding agent will implement confirmed evidence.
