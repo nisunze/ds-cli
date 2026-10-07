@@ -42,7 +42,7 @@ use std::path::{Path, PathBuf};
 const DATASET_ARG: Arg = Arg::value(
     "dataset",
     "<dataset-id>",
-    "One canonical dataset id, catalogue layer name, or retired alias (answered as its authority). Omitted: every dataset this project declares plus any it holds, even holding none yet.",
+    "Dataset id, layer or authority alias. Retired broad layers refuse. Omitted: active datasets the project declares or holds, even holding none.",
 );
 
 const PROJECT_ARG: Arg = Arg::value(
@@ -685,11 +685,35 @@ fn room_entry(id: &str, room: &Value) -> CatalogEntry {
 fn resolve_explicit(
     explicit: &str,
     resources: &[ds_project_data::ReferenceResource],
+    rooms: &BTreeMap<String, Value>,
 ) -> Result<(String, Option<Value>), Failure> {
     if explicit.is_empty() {
         return Ok((String::new(), None));
     }
-    match ds_project_data::named(resources, explicit) {
+    let found = ds_project_data::named(resources, explicit);
+    let dataset = rooms
+        .get(explicit)
+        .map(|room| room_entry(explicit, room))
+        .or_else(|| found.as_ref().map(|found| cloud_entry(found.resource)));
+    let retired_layer = match dataset.as_ref() {
+        Some(dataset) => policy::retired_dataset_layer(dataset),
+        None => {
+            ds_command_kernel::printing::context::retired_alternatives(explicit).map(|_| explicit)
+        }
+    };
+    if let Some(layer) = retired_layer {
+        let alternatives = ds_command_kernel::printing::context::retired_alternatives(layer)
+            .expect("kernel identifies only retired foundation layers");
+        return Err(Failure::invalid(
+            RETIRED.code,
+            format!(
+                "{explicit} identifies retired layer {layer}; its detailed alternatives are {}",
+                alternatives.join(", ")
+            ),
+        )
+        .remedy(RETIRED.remedy));
+    }
+    match found {
         Some(found) => Ok((
             found.resource.id.clone(),
             found.answered_as.map(|requested| {
@@ -699,21 +723,7 @@ fn resolve_explicit(
                 })
             }),
         )),
-        None => {
-            if let Some(alternatives) =
-                ds_command_kernel::printing::context::retired_alternatives(explicit)
-            {
-                return Err(Failure::invalid(
-                    RETIRED.code,
-                    format!(
-                        "{explicit} is retired; its detailed alternatives are {}",
-                        alternatives.join(", ")
-                    ),
-                )
-                .remedy(RETIRED.remedy));
-            }
-            Ok((explicit.to_owned(), None))
-        }
+        None => Ok((explicit.to_owned(), None)),
     }
 }
 
@@ -757,7 +767,7 @@ pub fn run_status(inputs: &Inputs, _context: &Context) -> Result<Value, Failure>
             json!({"read": false, "code": error.code(), "reason": error.message()}),
         ),
     };
-    let (explicit, answered_as) = resolve_explicit(&explicit, &resources)?;
+    let (explicit, answered_as) = resolve_explicit(&explicit, &resources, &rooms)?;
     let policy = buffer_policy(&[]).map_err(|error| {
         Failure::unavailable(STORE_FAILED.code, error).remedy(STORE_FAILED.remedy)
     })?;
@@ -1350,12 +1360,13 @@ pub fn run_seed(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     };
     let root = holdings_root()?;
     let resources = catalogue(lane, &project)?;
-    let (explicit, answered_as) = resolve_explicit(&explicit, &resources)?;
-    let declared = ds_project_data::declared(&resources).map_err(refused)?;
     let rooms = held_rooms(&root, &scope)?;
+    let (explicit, answered_as) = resolve_explicit(&explicit, &resources, &rooms)?;
+    let declared = ds_project_data::declared(&resources).map_err(refused)?;
     let held: Vec<SeedCandidate> = rooms
-        .keys()
-        .map(|id| SeedCandidate {
+        .iter()
+        .filter(|(id, room)| policy::retired_dataset_layer(&room_entry(id, room)).is_none())
+        .map(|(id, _)| SeedCandidate {
             id: id.clone(),
             label: String::new(),
             seeded: true,
@@ -1704,6 +1715,60 @@ pub fn render_seed(data: &Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn retained_retired_digests_refuse_without_blocking_other_historical_rooms() {
+        let rooms = BTreeMap::from([
+            (
+                "old-school-digest".into(),
+                json!({"parameters":{"layer":"elementary_school"}}),
+            ),
+            (
+                "old-power-digest".into(),
+                json!({"parameters":{"layer":"powerlines"}}),
+            ),
+            (
+                "operator-digest".into(),
+                json!({"parameters":{"layer":"operator_layer"}}),
+            ),
+        ]);
+        for (requested, alternatives) in [
+            ("old-school-digest", "primary_schools, secondary_schools"),
+            ("elementary_school", "primary_schools, secondary_schools"),
+            ("old-power-digest", "hv_line, mv_line, lv_line"),
+            ("powerlines", "hv_line, mv_line, lv_line"),
+        ] {
+            let error = resolve_explicit(requested, &[], &rooms).unwrap_err();
+            assert_eq!(error.code(), "dataset_retired");
+            assert!(error.message().contains(alternatives));
+        }
+        assert_eq!(
+            resolve_explicit("operator-digest", &[], &rooms).unwrap(),
+            ("operator-digest".into(), None)
+        );
+        let active: Vec<_> = rooms
+            .iter()
+            .filter(|(id, room)| policy::retired_dataset_layer(&room_entry(id, room)).is_none())
+            .map(|(id, _)| id.as_str())
+            .collect();
+        assert_eq!(active, ["operator-digest"]);
+        assert_eq!(rooms.len(), 3);
+        let other_country = ds_project_data::ReferenceResource {
+            id: "other-country-power-digest".into(),
+            layer: "powerlines".into(),
+            country: "Burkina Faso".into(),
+            ..Default::default()
+        };
+        assert_eq!(
+            resolve_explicit("powerlines", &[other_country], &rooms).unwrap(),
+            (
+                "other-country-power-digest".into(),
+                Some(json!({
+                    "requested":"powerlines","authority":{"id":"other-country-power-digest","layer":"powerlines"}
+                }))
+            )
+        );
+    }
 
     #[test]
     fn compact_status_keeps_cloud_discovery_without_coverage_or_query_history() {
