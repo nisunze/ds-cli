@@ -235,6 +235,29 @@ unified Plan selection.
 Codex changed Profile lasso today (ds-network `c28ee1a5`, "Select disjoint
 Plan and Profile geometry with Outside"). Reconcile with that work.
 
+## 11. One colour code for usage %
+
+**Owner, 2026-10-07:** the same value must use the same colour code.
+
+**Seen:** Nyamagabe MV Model 1 (oracle reference copy), structure 5
+(`l-s-S800-stay.012`). The Profile drawing shows 3.4% in green; the toolbar
+badge shows the same 3.4% on amber.
+
+**Cause:**
+
+- The badge picks its own colour in TypeScript from `engineering_status`
+  (`fail` → rose, `pass` → green, `unknown` → amber), in
+  `ds-web/src/lib/components/grid/GridProfileContextBar.svelte:27-29`.
+- The drawing uses the engine's colour role for the label.
+- So there are two colour authorities for one value.
+
+**Needed:**
+
+- The badge takes the same colour role as the Profile label from the
+  engine/kernel; the UI does not decide colours (PRINCIPLES.md §5).
+- The band thresholds themselves are still the owner's open choice:
+  OPEN-X.md "Usage-% colour bands".
+
 ## Reference: landed on 7 October, don't redo
 
 ds-network `720f4184` (one compact attachment box per structure), `516e29c0`;
