@@ -15,8 +15,8 @@ use ds_cli_contract::spec::{
 };
 use ds_cli_contract::{Context, Inputs};
 use ds_grid_engine::{
-    FINDING_STRUCTURE_TYPE_NOT_ALLOWED, GridCommand, StructureFinding, evaluate_structure_type,
-    report_structures,
+    FINDING_STRUCTURE_TYPE_NOT_ALLOWED, GridCommand, StructureFinding,
+    evaluate_structure_retype_batch, report_structures,
 };
 use ds_grid_model::StructureId;
 use serde_json::{Value, json};
@@ -191,14 +191,8 @@ pub fn run(inputs: &Inputs, context: &Context) -> Result<Value, Failure> {
             selected.push((row.id.clone(), "explicit"));
         }
     }
-    let mut report_identity = Value::Null;
     if let Some(finding) = inputs.value("from-finding") {
         let report = report_structures(snapshot, None).map_err(rules_error)?;
-        report_identity = json!({
-            "standard": report.standard,
-            "assumptions": report.assumptions,
-            "verification_level": report.verification_level,
-        });
         for row in &report.rows {
             if row.findings.iter().any(|f| f.finding == finding)
                 && !selected.iter().any(|(id, _)| *id == row.structure_id)
@@ -223,41 +217,33 @@ pub fn run(inputs: &Inputs, context: &Context) -> Result<Value, Failure> {
         .remedy("name at least one --structure, or a --from-finding that some structure carries")
         .next("ds dsgrid report structures"));
     }
-    if report_identity.is_null() {
-        let standard = ds_grid_engine::load_structure_rules_standard().map_err(rules_error)?;
-        report_identity = json!({
-            "standard": {
-                "schema": standard.schema,
-                "version": standard.version,
-                "issued": standard.issued,
-                "digest": standard.digest,
-            },
-            "assumptions": [{
-                "rule_id": ds_grid_engine::SINGLE_POLE_ANGLE_BAND.rule_id,
-                "value": format!("{}° <= |line angle| < {}°", ds_grid_engine::SINGLE_POLE_ANGLE_BAND.min_deg, ds_grid_engine::SINGLE_POLE_ANGLE_BAND.max_deg),
-                "source_clause": ds_grid_engine::SINGLE_POLE_ANGLE_BAND.source_clause,
-                "assumed": ds_grid_engine::SINGLE_POLE_ANGLE_BAND.assumed,
-            }],
-            "verification_level": ds_grid_engine::structure_rules::VERIFICATION_LEVEL,
-        });
-    }
-
-    // Evaluate the rule before and after for every selected structure.
-    let angles = ds_grid_engine::line_angles_by_structure(snapshot).map_err(rules_error)?;
+    // CLI and Desktop inspect the same selected batch. Route angles, standard
+    // and baseline sequence are built once, rather than once per candidate.
+    let selected_ids = selected
+        .iter()
+        .map(|(id, _)| id.clone())
+        .collect::<Vec<_>>();
+    let evaluations =
+        evaluate_structure_retype_batch(snapshot, &selected_ids, &new_type).map_err(rules_error)?;
+    let report_identity = json!({
+        "standard": evaluations.standard,
+        "assumptions": evaluations.assumptions,
+        "verification_level": evaluations.verification_level,
+    });
     let mut structures = Vec::with_capacity(selected.len());
     let mut cleared: Vec<StructureFinding> = Vec::new();
     let mut remaining: Vec<StructureFinding> = Vec::new();
     let mut created: Vec<StructureFinding> = Vec::new();
     let mut warnings = Vec::new();
     let mut planned = Vec::with_capacity(selected.len());
-    for (id, how) in &selected {
+    for ((id, how), evaluation) in selected.iter().zip(evaluations.rows) {
         let row = snapshot
             .structures
             .iter()
             .find(|row| row.id == *id)
             .expect("selected from this snapshot");
-        let before = evaluate_structure_type(snapshot, id, None).map_err(rules_error)?;
-        let after = evaluate_structure_type(snapshot, id, Some(&new_type)).map_err(rules_error)?;
+        let before = evaluation.findings_before;
+        let after = evaluation.findings_after;
         for finding in &before {
             if after.iter().any(|f| f.finding == finding.finding) {
                 remaining.push(finding.clone());
@@ -280,7 +266,7 @@ pub fn run(inputs: &Inputs, context: &Context) -> Result<Value, Failure> {
         }
         let mut entry = structure_json(row, &current_type);
         entry["selected_by"] = json!(how);
-        entry["line_angle_deg"] = json!(angles.get(id));
+        entry["line_angle_deg"] = json!(evaluation.line_angle_deg);
         entry["type_before"] = json!(current_type);
         entry["type_after"] = json!(new_type_name);
         entry["findings_before"] =

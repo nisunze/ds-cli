@@ -442,3 +442,78 @@ fn retype_with_complete_slots_persists_without_draft_warning() {
     assert_eq!(result.snapshot.tension_sections, fixture().tension_sections);
     assert_eq!(std::fs::read(&path).unwrap(), bytes);
 }
+
+#[test]
+fn selected_batch_receipt_matches_native_evaluation_and_keeps_selection_order() {
+    let model = fixture();
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("source.dsgrid");
+    let out = dir.path().join("result.dsgrid");
+    let source = pack(&model, &options()).unwrap();
+    std::fs::write(&path, &source).unwrap();
+    let parsed = parse(
+        &COMMAND,
+        &[
+            "--package",
+            path.to_str().unwrap(),
+            "--out",
+            out.to_str().unwrap(),
+            "--structure",
+            "2",
+            "--structure",
+            "1",
+            "--structure",
+            "2",
+            "--type",
+            REPLACEMENT,
+            "--dry-run",
+        ]
+        .map(str::to_owned),
+    )
+    .unwrap();
+    let receipt = run(&parsed, &context(false)).unwrap();
+    let selected = [
+        StructureId::new("str-2").unwrap(),
+        StructureId::new("str-1").unwrap(),
+    ];
+    let native =
+        ds_grid_engine::evaluate_structure_retype_batch(&model, &selected, &type_id(REPLACEMENT))
+            .unwrap();
+    assert_eq!(receipt["selection"]["explicit"], 2);
+    assert_eq!(receipt["structures"].as_array().unwrap().len(), 2);
+    assert_eq!(
+        receipt["findings"]["rule"]["standard"],
+        json!(native.standard)
+    );
+    assert_eq!(
+        receipt["findings"]["rule"]["assumptions"],
+        json!(native.assumptions)
+    );
+    for (shown, expected) in receipt["structures"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .zip(native.rows)
+    {
+        assert_eq!(shown["structure"], expected.structure_id.as_str());
+        assert_eq!(shown["line_angle_deg"], json!(expected.line_angle_deg));
+        // Compare the batch with the independent single-candidate rule path.
+        for (key, candidate) in [
+            ("findings_before", None),
+            ("findings_after", Some(type_id(REPLACEMENT))),
+        ] {
+            let findings = ds_grid_engine::evaluate_structure_type(
+                &model,
+                &expected.structure_id,
+                candidate.as_ref(),
+            )
+            .unwrap();
+            assert_eq!(
+                shown[key],
+                json!(findings.into_iter().map(|f| f.finding).collect::<Vec<_>>())
+            );
+        }
+    }
+    assert!(std::fs::read(&path).unwrap() == source);
+    assert!(!out.exists());
+}

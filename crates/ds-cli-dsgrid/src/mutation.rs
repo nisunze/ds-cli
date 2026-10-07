@@ -388,18 +388,12 @@ pub fn run(
         .collect();
     let command_count = commands.len();
 
-    let outcome: TransactionOutcome = if writing {
-        session
-            .apply_transaction_at_head(head.clone(), commands)
-            .map_err(map_command_error)?
-    } else {
-        // A dry run is the same transaction on a throwaway session: the
-        // engine's gates are exercised exactly, and the target is untouched.
-        let mut probe = session.clone();
-        probe
-            .apply_transaction_at_head(head.clone(), commands)
-            .map_err(map_command_error)?
-    };
+    // This session belongs to this invocation. Both modes exercise the same
+    // atomic engine transaction; the dry-run return below precedes all file
+    // and catalogue writes, so cloning the entire session serves no fence.
+    let outcome: TransactionOutcome = session
+        .apply_transaction_at_head(head.clone(), commands)
+        .map_err(map_command_error)?;
 
     let resulting = outcome.final_revision.revision_id.clone();
     let touched = touched_counts(&outcome);
