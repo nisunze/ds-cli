@@ -123,9 +123,8 @@ struct HeldView {
     query_scope: ds_grid_engine::recalculation_scope::RecalculationScope,
     calculated_scene: Option<Arc<ds_grid_engine::ProfileAtlasScene>>,
     calculated_base: Option<Arc<ds_grid_engine::profile_calculated_delta::CalculatedSceneBase>>,
-    /// Every scope the kernel has folded into the calculated base since the
-    /// last full calculation. Each post-edit update re-solves this union from
-    /// the current model, so undo and redo can never leave a stale section.
+    /// Edits not yet admitted into the calculated base. A complete post-edit
+    /// update clears this accumulation; refusals retain it until reconcile.
     calculated_touched: ds_grid_engine::recalculation_scope::RecalculationScope,
 }
 #[derive(Debug, Clone, Serialize)]

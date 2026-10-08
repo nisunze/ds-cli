@@ -435,12 +435,10 @@ fn delta_requests_are_closed_and_case_selection_invalidates_prepared_base() {
     assert_eq!(worker.history_state().undo_depth, 0);
 }
 
-/// Profile contract §0: an edit lands whole. A scoped post-edit update that
-/// still carries whole-model facts from an older revision is never presented
-/// as the edit's result; the runtime keeps the worker's base and the host
-/// reconciles, receiving the complete calculation as a delta from that base.
+/// Profile contract §0: Observe advances the complete retained calculation.
+/// The next edit starts from that admitted head, without another calculation.
 #[test]
-fn an_observed_edit_lands_whole_through_reconcile_never_as_a_partial_update() {
+fn observed_edits_land_whole_without_a_reconcile_job() {
     let snapshot = section_demand_fixture();
     let input = request_for(snapshot.clone());
     let mut worker = GridSession::open(snapshot);
@@ -495,42 +493,23 @@ fn an_observed_edit_lands_whole_through_reconcile_never_as_a_partial_update() {
     let result = runtime
         .execute(Request::Observe(Box::new(request)))
         .unwrap();
-    let partial = &result["calculated_update"]["reconcile_required"];
-    assert_eq!(partial["code"], "partial", "{result}");
+    let update = &result["calculated_update"];
+    assert!(update["reconcile_required"].is_null(), "{result}");
     assert!(
-        partial["section_ids"]
+        update["section_ids"]
             .as_array()
             .unwrap()
             .iter()
             .any(|id| id == section.id.as_str())
     );
-    assert!(!partial["pending_reconcile"].as_array().unwrap().is_empty());
-    assert!(result["calculated_update"]["scene_delta_json"].is_null());
-    assert_eq!(result["calculation"]["required"], true);
-    // The runtime still holds exactly the worker's base.
+    assert!(update["pending_reconcile"].as_array().unwrap().is_empty());
+    assert!(update["scene_delta_json"].is_string());
+    assert_eq!(result["calculation"]["required"], false);
+    assert_eq!(update["surface_work"]["computed_ground"], 0);
+    assert_eq!(update["reference_work"]["computed_sections"], 1);
+    assert!(runtime.held["one"].pending_receipts.is_empty());
     let prepared = prepare(&mut runtime, &worker);
-    assert_eq!(prepared["base_signature"], receiver.signature());
-
-    // The host's reconcile lands the complete calculation of this head.
-    let ticket = start(
-        &mut runtime,
-        &input,
-        &worker,
-        receiver.signature().to_string(),
-        "reconcile",
-    )
-    .unwrap();
-    ready(&mut runtime, "reconcile");
-    let admitted = runtime
-        .execute(Request::AdmitCalculation(AdmitCalculationRequest {
-            scope: "one".into(),
-            model_id: "profile-test".into(),
-            job_id: "reconcile".into(),
-            publication_id: ticket["job_id"].as_str().map(str::to_string),
-        }))
-        .unwrap();
-    assert_eq!(admitted["calculation"]["required"], false);
-    let delta = serde_json::from_str(admitted["scene_delta_json"].as_str().unwrap()).unwrap();
+    let delta = serde_json::from_str(update["scene_delta_json"].as_str().unwrap()).unwrap();
     let head = worker.current_revision();
     let whole = receiver
         .admit(
@@ -539,6 +518,7 @@ fn an_observed_edit_lands_whole_through_reconcile_never_as_a_partial_update() {
             &head.roots.engineering_input_root,
         )
         .unwrap();
+    assert_eq!(prepared["base_signature"], whole.signature());
     let fresh = Runtime::default()
         .execute(request_for(worker.snapshot().clone()))
         .unwrap();
@@ -548,6 +528,54 @@ fn an_observed_edit_lands_whole_through_reconcile_never_as_a_partial_update() {
         serde_json::to_vec(whole.scene()).unwrap(),
         serde_json::to_vec(&fresh_scene).unwrap()
     );
+    let mut receiver = whole;
+    for (i, tension) in [8000., 6500.].into_iter().enumerate() {
+        let base = worker.current_revision().revision_id.to_string();
+        worker
+            .apply_command(ds_grid_engine::CommandEnvelope::new(
+                format!("next-sag-{i}"),
+                worker.current_revision().revision_id.clone(),
+                sag(tension),
+            ))
+            .unwrap();
+        let mut request = refresh(&runtime, &input, &base, &worker);
+        request.calculated_base_signature = Some(receiver.signature().to_string());
+        let next = runtime
+            .execute(Request::Observe(Box::new(request)))
+            .unwrap();
+        assert_eq!(next["calculation"]["required"], false, "{next}");
+        assert_eq!(
+            next["calculated_update"]["reference_work"]["computed_sections"],
+            1
+        );
+        assert_eq!(
+            next["calculated_update"]["surface_work"]["computed_ground"],
+            0
+        );
+        let delta = serde_json::from_str(
+            next["calculated_update"]["scene_delta_json"]
+                .as_str()
+                .unwrap(),
+        )
+        .unwrap();
+        receiver = receiver
+            .admit(
+                &delta,
+                &worker.current_revision().revision_id,
+                &worker.current_revision().roots.engineering_input_root,
+            )
+            .unwrap();
+        let fresh = Runtime::default()
+            .execute(request_for(worker.snapshot().clone()))
+            .unwrap();
+        let fresh_scene: ds_grid_engine::ProfileAtlasScene =
+            serde_json::from_value(fresh["scene"].clone()).unwrap();
+        assert!(
+            serde_json::to_vec(receiver.scene()).unwrap()
+                == serde_json::to_vec(&fresh_scene).unwrap()
+        );
+        assert!(runtime.held["one"].pending_receipts.is_empty());
+    }
 }
 
 /// A delta is only a cheaper transport. Without its exact base it becomes

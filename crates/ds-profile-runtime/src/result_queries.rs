@@ -713,6 +713,57 @@ mod tests {
     }
 
     #[test]
+    fn signed_observation_keeps_all_queries_current_across_repeated_edits() {
+        use ds_grid_engine::profile_calculated_delta::CalculatedSceneBase;
+        let input = request_for(fixture());
+        let mut worker = GridSession::open(fixture());
+        let mut runtime = Runtime::default();
+        let initial = runtime.execute(input.clone()).unwrap();
+        let mut receiver =
+            CalculatedSceneBase::new(serde_json::from_value(initial["scene"].clone()).unwrap());
+        for (index, description) in ["first edit", "next edit"].into_iter().enumerate() {
+            let parent = worker.current_revision().revision_id.to_string();
+            describe(&mut worker, &format!("whole-query-{index}"), description);
+            let mut replay = refresh(&runtime, &input, &parent, &worker);
+            replay.calculated_base_signature = Some(receiver.signature().into());
+            let observed = runtime.execute(Request::Observe(Box::new(replay))).unwrap();
+            assert_eq!(observed["calculation"]["required"], false, "{observed}");
+            let delta = serde_json::from_str(
+                observed["calculated_update"]["scene_delta_json"]
+                    .as_str()
+                    .unwrap(),
+            )
+            .unwrap();
+            receiver = receiver
+                .admit(
+                    &delta,
+                    &worker.current_revision().revision_id,
+                    &worker.current_revision().roots.engineering_input_root,
+                )
+                .unwrap();
+            let mut fresh = Runtime::default();
+            let fresh_input = request_for(worker.snapshot().clone());
+            fresh.execute(fresh_input.clone()).unwrap();
+            for kind in [
+                QueryKind::Usage,
+                QueryKind::ViolatingSections,
+                QueryKind::Blockers,
+                QueryKind::Qualification,
+            ] {
+                let query = request(&runtime, &input.scope, kind);
+                let actual = execute(&mut runtime, query).unwrap();
+                let query = request(&fresh, &fresh_input.scope, kind);
+                let expected = execute(&mut fresh, query).unwrap();
+                assert_eq!(actual["items"], expected["items"]);
+                assert_eq!(
+                    actual["computed_revision"],
+                    worker.current_revision().revision_id.to_string()
+                );
+            }
+        }
+    }
+
+    #[test]
     fn all_query_kinds_match_fresh_typed_facts_without_solver_or_scene_mutation() {
         let input = request_for(fixture());
         let mut runtime = Runtime::default();

@@ -470,11 +470,16 @@ impl Runtime {
                 touched.spans.extend(scope.spans.iter().cloned());
                 touched.alignments.extend(scope.alignments.iter().cloned());
                 use ds_grid_engine::profile_edit_update::{
-                    ProfileEditUpdate, profile_update_after_edit,
+                    ProfileEditInputs, ProfileEditUpdate, profile_update_after_edit,
                 };
                 calculated_update = match profile_update_after_edit(
-                    held.session.snapshot(),
-                    held.session.current_revision(),
+                    ProfileEditInputs {
+                        session: &held.session,
+                        review: Arc::make_mut(&mut held.review),
+                        receipts: &held.pending_receipts,
+                        demand_cache: Some(&mut held.demand_cache),
+                        labels: &held.label_policy,
+                    },
                     &base,
                     &touched,
                     held.options.clone(),
@@ -498,10 +503,21 @@ impl Runtime {
                             serde_json::to_string(&delta).map_err(|error| error.to_string())?;
                         let update = json!({"scene_delta_json":delta_json,"base_signature":base.signature(),
                             "section_ids":section_ids,"pending_reconcile":pending_reconcile,
-                            "update_ms":update_started.elapsed().as_secs_f64()*1000.});
+                            "update_ms":update_started.elapsed().as_secs_f64()*1000.,
+                            "surface_work":held.review.surface_work(),"reference_work":held.review.reference_work(),
+                            "case_work":held.review.case_work(),"assembly_work":held.review.assembly_work()});
+                        held.result_index = Arc::new(result_queries::Index::new(
+                            &held.session,
+                            next.scene(),
+                            &held.demand_cache,
+                        ));
                         held.calculated_base = Some(Arc::new(next));
                         held.calculated_scene = None;
-                        held.calculated_touched = touched;
+                        held.calculated_touched = Default::default();
+                        held.pending_receipts.clear();
+                        held.pending_reconcile = false;
+                        held.query_scope = Default::default();
+                        scope = Default::default();
                         updated = true;
                         update
                     }
@@ -535,6 +551,29 @@ impl Runtime {
             response["metrics"] = json!({"admission_ms":admission_ms,"journal_ms":journal_ms,"replay_ms":replay_ms,
                 "authored_ms":authored_ms,"total_native_ms":started.elapsed().as_secs_f64()*1000.0,
                 "authored_delta_bytes":delta_bytes,"authored_display_delta_bytes":authored_display_delta.as_ref().map(|delta| serde_json::to_vec(delta).unwrap().len()),"applied_entries":receipts.len(),"retained_entries":entries.len()});
+            response["metrics"]["profile_update_ms"] =
+                json!(update_started.elapsed().as_secs_f64() * 1000.);
+            if updated {
+                for (prefix, work) in [
+                    ("profile_surface", json!(held.review.surface_work())),
+                    ("profile_reference", json!(held.review.reference_work())),
+                    ("profile_case", json!(held.review.case_work())),
+                    ("profile_assembly", json!(held.review.assembly_work())),
+                ] {
+                    if let Some(fields) = work.as_object() {
+                        for (name, value) in fields {
+                            if value.is_number() {
+                                response["metrics"][format!("{prefix}_{name}")] = value.clone();
+                            }
+                        }
+                    }
+                }
+                let demand = held.demand_cache.last_demand_work();
+                response["metrics"]["profile_demand_computed_cases"] = json!(demand.computed_cases);
+                response["metrics"]["profile_demand_reused_cases"] = json!(demand.reused_cases);
+                response["metrics"]["profile_demand_resolved_support_paths"] =
+                    json!(demand.resolved_support_paths);
+            }
             replay_cost.append(&mut response["metrics"]);
             return Ok(response);
         }
