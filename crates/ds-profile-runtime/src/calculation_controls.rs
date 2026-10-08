@@ -426,6 +426,7 @@ impl Runtime {
                         style_document: held.style_document.as_ref().clone(),
                         patch,
                         analyze,
+                        calculated_base_signature: None,
                     },
                 });
                 match scene_transfer {

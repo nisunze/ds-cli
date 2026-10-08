@@ -148,53 +148,63 @@ fn missing_stale_foreign_and_pending_bases_refuse_without_starting_a_worker() {
     let worker = GridSession::open(snapshot);
     let mut runtime = Runtime::default();
     runtime.execute(input.clone()).unwrap();
-    assert!(start(
-        &mut runtime,
-        &input,
-        &worker,
-        format!("sha256:{}", "0".repeat(64)),
-        "missing"
-    )
-    .unwrap_err()
-    .starts_with("profile_calculated_delta_base_unavailable:"));
+    assert!(
+        start(
+            &mut runtime,
+            &input,
+            &worker,
+            format!("sha256:{}", "0".repeat(64)),
+            "missing"
+        )
+        .unwrap_err()
+        .starts_with("profile_calculated_delta_base_unavailable:")
+    );
     let prepared = prepare(&mut runtime, &worker);
-    assert!(start(
-        &mut runtime,
-        &input,
-        &worker,
-        format!("sha256:{}", "0".repeat(64)),
-        "stale"
-    )
-    .unwrap_err()
-    .starts_with("profile_calculated_delta_stale:"));
+    assert!(
+        start(
+            &mut runtime,
+            &input,
+            &worker,
+            format!("sha256:{}", "0".repeat(64)),
+            "stale"
+        )
+        .unwrap_err()
+        .starts_with("profile_calculated_delta_stale:")
+    );
     for id in ["missing", "stale"] {
-        assert!(runtime
-            .execute(Request::CalculationStatus(CalculationJobRequest {
-                scope: "one".into(),
-                model_id: "profile-test".into(),
-                job_id: id.into(),
-            }))
-            .unwrap_err()
-            .starts_with("profile_calculation_unavailable:"));
+        assert!(
+            runtime
+                .execute(Request::CalculationStatus(CalculationJobRequest {
+                    scope: "one".into(),
+                    model_id: "profile-test".into(),
+                    job_id: id.into(),
+                }))
+                .unwrap_err()
+                .starts_with("profile_calculation_unavailable:")
+        );
     }
     let mut history = worker.history_state();
     history.undo_depth += 1;
-    assert!(runtime
-        .execute(Request::CalculatedSceneBase(CalculatedSceneBaseRequest {
-            scope: "one".into(),
-            model_id: "profile-test".into(),
-            expected_history: history,
-        }))
-        .unwrap_err()
-        .starts_with("profile_replay_stale:"));
-    assert!(runtime
-        .execute(Request::CalculatedSceneBase(CalculatedSceneBaseRequest {
-            scope: "one".into(),
-            model_id: "other".into(),
-            expected_history: worker.history_state(),
-        }))
-        .unwrap_err()
-        .starts_with("profile_replay_model_mismatch:"));
+    assert!(
+        runtime
+            .execute(Request::CalculatedSceneBase(CalculatedSceneBaseRequest {
+                scope: "one".into(),
+                model_id: "profile-test".into(),
+                expected_history: history,
+            }))
+            .unwrap_err()
+            .starts_with("profile_replay_stale:")
+    );
+    assert!(
+        runtime
+            .execute(Request::CalculatedSceneBase(CalculatedSceneBaseRequest {
+                scope: "one".into(),
+                model_id: "other".into(),
+                expected_history: worker.history_state(),
+            }))
+            .unwrap_err()
+            .starts_with("profile_replay_model_mismatch:")
+    );
     assert_eq!(
         prepare(&mut runtime, &worker)["base_signature"],
         prepared["base_signature"]
@@ -234,15 +244,17 @@ fn delta_jobs_allow_edits_and_reject_stale_results_without_losing_the_base() {
         before["computed_revision"]
     );
     assert_eq!(status(&mut runtime, "paused")["status"], "stale");
-    assert!(runtime
-        .execute(Request::AdmitCalculation(AdmitCalculationRequest {
-            scope: "one".into(),
-            model_id: "profile-test".into(),
-            job_id: "paused".into(),
-            publication_id: Some("paused".into()),
-        }))
-        .unwrap_err()
-        .starts_with("profile_calculation_stale:"));
+    assert!(
+        runtime
+            .execute(Request::AdmitCalculation(AdmitCalculationRequest {
+                scope: "one".into(),
+                model_id: "profile-test".into(),
+                job_id: "paused".into(),
+                publication_id: Some("paused".into()),
+            }))
+            .unwrap_err()
+            .starts_with("profile_calculation_stale:")
+    );
     assert!(Arc::ptr_eq(
         &retained,
         runtime.held["one"].calculated_base.as_ref().unwrap()
@@ -292,14 +304,16 @@ fn delta_publication_discard_restores_exact_base_and_keeps_authored_history() {
         }))
         .unwrap();
     assert!(result["scene_delta_json"].is_string());
-    assert!(runtime
-        .execute(Request::CalculatedSceneBase(CalculatedSceneBaseRequest {
-            scope: "one".into(),
-            model_id: "profile-test".into(),
-            expected_history: worker.history_state(),
-        }))
-        .unwrap_err()
-        .starts_with("profile_publication_pending:"));
+    assert!(
+        runtime
+            .execute(Request::CalculatedSceneBase(CalculatedSceneBaseRequest {
+                scope: "one".into(),
+                model_id: "profile-test".into(),
+                expected_history: worker.history_state(),
+            }))
+            .unwrap_err()
+            .starts_with("profile_publication_pending:")
+    );
     assert!(start(
         &mut runtime,
         &input,
@@ -337,41 +351,45 @@ fn delta_publication_discard_restores_exact_base_and_keeps_authored_history() {
     let mut foreign_input = input.clone();
     foreign_input.scope = "other".into();
     runtime.execute(foreign_input).unwrap();
-    assert!(runtime
-        .execute(Request::StartDeltaCalculation(Box::new(
-            StartDeltaCalculationRequest {
-                base_signature: original_base.signature().into(),
-                calculation: StartCalculationRequest {
-                    job_id: "foreign".into(),
-                    request: {
-                        let base = worker.current_revision().revision_id.to_string();
-                        let mut r = refresh(&runtime, &input, &base, &worker);
-                        r.scope = "other".into();
-                        r.publication_id = Some("foreign".into());
-                        r
-                    }
-                },
-            }
-        )))
-        .unwrap_err()
-        .starts_with("profile_calculated_delta_base_unavailable:"));
-    assert!(runtime
-        .execute(Request::StartDeltaCalculation(Box::new(
-            StartDeltaCalculationRequest {
-                base_signature: "sha256:bad".into(),
-                calculation: StartCalculationRequest {
-                    job_id: "malformed".into(),
-                    request: refresh(
-                        &runtime,
-                        &input,
-                        &worker.current_revision().revision_id.to_string(),
-                        &worker
-                    )
-                },
-            }
-        )))
-        .unwrap_err()
-        .starts_with("invalid_profile_view:"));
+    assert!(
+        runtime
+            .execute(Request::StartDeltaCalculation(Box::new(
+                StartDeltaCalculationRequest {
+                    base_signature: original_base.signature().into(),
+                    calculation: StartCalculationRequest {
+                        job_id: "foreign".into(),
+                        request: {
+                            let base = worker.current_revision().revision_id.to_string();
+                            let mut r = refresh(&runtime, &input, &base, &worker);
+                            r.scope = "other".into();
+                            r.publication_id = Some("foreign".into());
+                            r
+                        }
+                    },
+                }
+            )))
+            .unwrap_err()
+            .starts_with("profile_calculated_delta_base_unavailable:")
+    );
+    assert!(
+        runtime
+            .execute(Request::StartDeltaCalculation(Box::new(
+                StartDeltaCalculationRequest {
+                    base_signature: "sha256:bad".into(),
+                    calculation: StartCalculationRequest {
+                        job_id: "malformed".into(),
+                        request: refresh(
+                            &runtime,
+                            &input,
+                            &worker.current_revision().revision_id.to_string(),
+                            &worker
+                        )
+                    },
+                }
+            )))
+            .unwrap_err()
+            .starts_with("invalid_profile_view:")
+    );
     assert_eq!(
         prepare(&mut runtime, &worker)["base_signature"],
         original["base_signature"]
@@ -404,13 +422,118 @@ fn delta_requests_are_closed_and_case_selection_invalidates_prepared_base() {
             sequence: 1,
         }))
         .unwrap();
-    assert!(runtime
-        .execute(Request::CalculatedSceneBase(CalculatedSceneBaseRequest {
-            scope: "one".into(),
-            model_id: "profile-test".into(),
-            expected_history: worker.history_state(),
-        }))
-        .unwrap_err()
-        .starts_with("profile_calculated_delta_base_unavailable:"));
+    assert!(
+        runtime
+            .execute(Request::CalculatedSceneBase(CalculatedSceneBaseRequest {
+                scope: "one".into(),
+                model_id: "profile-test".into(),
+                expected_history: worker.history_state(),
+            }))
+            .unwrap_err()
+            .starts_with("profile_calculated_delta_base_unavailable:")
+    );
     assert_eq!(worker.history_state().undo_depth, 0);
+}
+
+/// Profile contract §0: an observed edit carries the kernel's post-edit
+/// update for the worker's exact base; without that base nothing advances.
+#[test]
+fn an_observed_edit_returns_the_kernel_section_update_for_the_exact_worker_base() {
+    let snapshot = section_demand_fixture();
+    let input = request_for(snapshot.clone());
+    let mut worker = GridSession::open(snapshot);
+    let mut runtime = Runtime::default();
+    let initial = runtime.execute(input.clone()).unwrap();
+    let receiver =
+        CalculatedSceneBase::new(serde_json::from_value(initial["scene"].clone()).unwrap());
+    let section = worker.snapshot().tension_sections[0].clone();
+    let sag = |tension_n: f64| ds_grid_engine::GridCommand::SetTensionSectionSagMode {
+        id: section.id.clone(),
+        sag: ds_grid_model::AuthoredSag::HorizontalTension { tension_n },
+        sag_condition: section.sag_condition,
+        sag_weather_state_id: section.sag_weather_state_id.clone(),
+        criterion_set_id: section.criterion_set_id.clone(),
+        ruling_span_m: section.ruling_span_m,
+    };
+    let base = runtime.held["one"]
+        .session
+        .current_revision()
+        .revision_id
+        .to_string();
+    worker
+        .apply_command(ds_grid_engine::CommandEnvelope::new(
+            "sag-unsigned",
+            worker.current_revision().revision_id.clone(),
+            sag(6000.),
+        ))
+        .unwrap();
+    // A host that names no worker base gets no calculated update, and the
+    // runtime base stays where explicit calculation expects it.
+    let unsigned = runtime
+        .execute(Request::Observe(Box::new(refresh(
+            &runtime, &input, &base, &worker,
+        ))))
+        .unwrap();
+    assert!(unsigned["calculated_update"].is_null());
+    assert_eq!(unsigned["calculation"]["required"], true);
+
+    let base = runtime.held["one"]
+        .session
+        .current_revision()
+        .revision_id
+        .to_string();
+    worker
+        .apply_command(ds_grid_engine::CommandEnvelope::new(
+            "sag-signed",
+            worker.current_revision().revision_id.clone(),
+            sag(7000.),
+        ))
+        .unwrap();
+    let mut request = refresh(&runtime, &input, &base, &worker);
+    request.calculated_base_signature = Some(receiver.signature().to_string());
+    let result = runtime
+        .execute(Request::Observe(Box::new(request)))
+        .unwrap();
+    let update = &result["calculated_update"];
+    let delta: ds_grid_engine::profile_calculated_delta::CalculatedSceneDelta =
+        serde_json::from_str(update["scene_delta_json"].as_str().unwrap()).unwrap();
+    assert_eq!(update["base_signature"], receiver.signature());
+    assert!(
+        update["section_ids"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|id| id == section.id.as_str())
+    );
+    assert_eq!(result["calculation"]["required"], false);
+    // The worker admits the exact delta, and the updated section equals a
+    // fresh whole-model calculation of the same head.
+    let head = worker.current_revision();
+    let admitted = receiver
+        .admit(
+            &delta,
+            &head.revision_id,
+            &head.roots.engineering_input_root,
+        )
+        .unwrap();
+    let fresh = worker
+        .profile_atlas_scene(runtime.held["one"].options.clone())
+        .unwrap();
+    let spans = |scene: &ds_grid_engine::ProfileAtlasScene| {
+        scene
+            .conductor_spans
+            .iter()
+            .filter(|span| span.section_id == *section.id.entity())
+            .map(|span| serde_json::to_string(span).unwrap())
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(spans(admitted.scene()), spans(&fresh));
+    assert_eq!(
+        runtime.held["one"]
+            .calculated_base
+            .as_ref()
+            .unwrap()
+            .signature(),
+        admitted.signature()
+    );
 }

@@ -57,6 +57,11 @@ pub struct RefreshRequest {
     pub style_document: Value,
     pub patch: DisplayPatch,
     pub analyze: bool,
+    /// The exact calculated base the host's worker holds. When it equals the
+    /// runtime's base, an observation returns the kernel's post-edit update
+    /// for the worker to admit; otherwise nothing advances.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub calculated_base_signature: Option<String>,
 }
 impl From<RefreshRequest> for Request {
     fn from(value: RefreshRequest) -> Self {
@@ -432,6 +437,71 @@ impl Runtime {
                 scope.alignments.extend(change.alignments.iter().cloned());
             }
             held.query_scope = scope.clone();
+            // The kernel decides what these edits recompute (Profile contract
+            // §0): the affected sections re-solved in the held axis as the
+            // exact delta the worker admits, or a named whole-model
+            // reconciliation. This host only carries the answer.
+            let update_started = std::time::Instant::now();
+            let mut calculated_update = Value::Null;
+            let mut updated = false;
+            let base = request.calculated_base_signature.as_ref().and_then(|_| {
+                held.calculated_base.clone().or_else(|| {
+                    held.calculated_scene.clone().map(|scene| {
+                        Arc::new(ds_grid_engine::profile_calculated_delta::CalculatedSceneBase::from_shared(scene))
+                    })
+                })
+            });
+            if let Some(base) = base.filter(|base| {
+                !pending_reconcile
+                    && request.calculated_base_signature.as_deref() == Some(base.signature())
+            }) {
+                let mut touched = held.calculated_touched.clone();
+                touched.whole_model |= scope.whole_model;
+                touched
+                    .demand_sections
+                    .extend(scope.demand_sections.iter().cloned());
+                touched.structures.extend(scope.structures.iter().cloned());
+                touched
+                    .context_sections
+                    .extend(scope.context_sections.iter().cloned());
+                touched.spans.extend(scope.spans.iter().cloned());
+                touched.alignments.extend(scope.alignments.iter().cloned());
+                use ds_grid_engine::profile_edit_update::{
+                    ProfileEditUpdate, profile_update_after_edit,
+                };
+                calculated_update = match profile_update_after_edit(
+                    held.session.snapshot(),
+                    held.session.current_revision(),
+                    &base,
+                    &touched,
+                    held.options.clone(),
+                ) {
+                    Ok(ProfileEditUpdate::Updated {
+                        base: next,
+                        delta,
+                        section_ids,
+                        pending_reconcile,
+                    }) => {
+                        let delta_json =
+                            serde_json::to_string(&delta).map_err(|error| error.to_string())?;
+                        let update = json!({"scene_delta_json":delta_json,"base_signature":base.signature(),
+                            "section_ids":section_ids,"pending_reconcile":pending_reconcile,
+                            "update_ms":update_started.elapsed().as_secs_f64()*1000.});
+                        held.calculated_base = Some(Arc::new(next));
+                        held.calculated_scene = None;
+                        held.calculated_touched = touched;
+                        updated = true;
+                        update
+                    }
+                    Ok(ProfileEditUpdate::Unchanged) => json!({"unchanged":true}),
+                    Ok(ProfileEditUpdate::ReconcileRequired { reason }) => {
+                        json!({"reconcile_required":reason})
+                    }
+                    Err(error) => {
+                        json!({"reconcile_required":{"code":"engine_refused","message":format!("{error:?}")}})
+                    }
+                };
+            }
             let computed = held.review.base_scene().map(|scene| &scene.model_revision);
             let authored_ms = authored_started.elapsed().as_secs_f64() * 1000.0;
             let delta_bytes = authored_delta.as_ref().map(|delta| {
@@ -445,10 +515,10 @@ impl Runtime {
                 "command_view":{"display":null,"review":null,"analysis":null,
                     "analysis_state":state.analysis_state(false, !held.session.snapshot().structures.is_empty()),
                     "calculation_policy":"explicit"},
-                "projection_unavailable":null, "ran":false, "deferred":true,
+                "projection_unavailable":null, "ran":false, "deferred":true, "calculated_update":calculated_update,
                 "authored_delta":authored_delta, "authored_display_delta":authored_display_delta, "authored_unavailable":authored_unavailable,
                 "calculation":{"policy":"explicit", "model_revision":request.expected_revision,
-                    "computed_revision":computed, "required":computed != Some(&request.expected_revision),
+                    "computed_revision":computed, "required":!updated && computed != Some(&request.expected_revision),
                     "scope":scope}});
             response["metrics"] = json!({"admission_ms":admission_ms,"journal_ms":journal_ms,"replay_ms":replay_ms,
                 "authored_ms":authored_ms,"total_native_ms":started.elapsed().as_secs_f64()*1000.0,

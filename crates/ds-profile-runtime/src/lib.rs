@@ -123,6 +123,10 @@ struct HeldView {
     query_scope: ds_grid_engine::recalculation_scope::RecalculationScope,
     calculated_scene: Option<Arc<ds_grid_engine::ProfileAtlasScene>>,
     calculated_base: Option<Arc<ds_grid_engine::profile_calculated_delta::CalculatedSceneBase>>,
+    /// Every scope the kernel has folded into the calculated base since the
+    /// last full calculation. Each post-edit update re-solves this union from
+    /// the current model, so undo and redo can never leave a stale section.
+    calculated_touched: ds_grid_engine::recalculation_scope::RecalculationScope,
 }
 #[derive(Debug, Clone, Serialize)]
 pub struct Projection {
@@ -461,6 +465,7 @@ impl Runtime {
                 calculated_scene: None,
                 calculated_base: previous.as_ref().filter(|_| same_model)
                     .and_then(|held| held.calculated_base.clone()),
+                calculated_touched: Default::default(),
             },
         );
         let primitives = decorations::project(&scene, &state, &rows, &label_policy);
@@ -638,6 +643,7 @@ mod transactional_projection_tests {
             style_document: input.style_document.clone(),
             patch: Default::default(),
             analyze: false,
+            calculated_base_signature: None,
         }
     }
     pub(super) fn describe(session: &mut GridSession, id: &str, text: &str) {
@@ -828,6 +834,15 @@ mod transactional_projection_tests {
         let mut runtime = Runtime::default();
         let initial = runtime.execute(input.clone()).unwrap();
         assert!(initial["scene"]["display"]["authored_structures"]["str-2"].is_object());
+        let numbers = |session: &GridSession| {
+            session
+                .snapshot()
+                .structures
+                .iter()
+                .map(|row| (row.id.to_string(), row.engineering_number.clone()))
+                .collect::<std::collections::BTreeMap<_, _>>()
+        };
+        let numbered_before = numbers(&worker);
         worker
             .apply_command(ds_grid_engine::CommandEnvelope::new(
                 "delete",
@@ -845,7 +860,23 @@ mod transactional_projection_tests {
                 &worker,
             ))))
             .unwrap();
-        assert_eq!(result["authored_display_delta"], json!({"str-2": null}));
+        // The deleted support leaves; survivors whose derived number changed
+        // carry their new label; nothing else is re-presented.
+        let renumbered = numbers(&worker)
+            .into_iter()
+            .filter(|(id, number)| numbered_before.get(id) != Some(number))
+            .map(|(id, _)| id)
+            .collect::<std::collections::BTreeSet<_>>();
+        let display = result["authored_display_delta"].as_object().unwrap();
+        assert_eq!(display["str-2"], Value::Null);
+        assert_eq!(
+            display
+                .keys()
+                .filter(|id| *id != "str-2")
+                .cloned()
+                .collect::<std::collections::BTreeSet<_>>(),
+            renumbered
+        );
         assert_eq!(result["authored_delta"]["work"]["computed_ground"], 0);
         assert!(result["scene"].is_null());
         assert_eq!(
@@ -1778,6 +1809,7 @@ mod transactional_projection_tests {
             style_document: current.style_document.clone(),
             patch: Default::default(),
             analyze: false,
+            calculated_base_signature: None,
         };
         assert!(runtime
             .execute(stale)
