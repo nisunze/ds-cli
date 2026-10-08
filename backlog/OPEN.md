@@ -49,19 +49,12 @@ logic; prefer verified shared artifacts over unnecessary recomputation. Governed
 inputs, parameters and provenance must survive artifact reclaim so computations
 can be repeated when needed. Owner inputs are in
 [OPEN-X.md](OPEN-X.md#solar-sync-migration-owner-inputs). The queue cutover
-is ruled in the sync contract: visible per-city discard and fresh runs.
+is ruled in the sync contract: simple local clean and recompute.
 
 - **Desktop recovery binding remains.** Bind its Sync Center controls to the
   shared native `ds.sync-recovery/v1` request/result, preserving explicit retry
   and digest-bound sanitation. Remove the replaced browser recovery decisions
   during the queue cutover below.
-- **The legacy governed portfolio publisher still bypasses the common store.**
-  Retire the remaining `solar_portfolio::Command::Publish` / private
-  `solar_project::publish` adapter and bind fresh governed native portfolio
-  completion to the common path. Never adopt its old files. City-batch aggregate
-  files have no governed portfolio identity and remain local deliverables; the
-  old Desktop portfolio declaration adapter names v2 while native computation
-  closes v3.
 - **Desktop still owns an IndexedDB publication queue.** Route Solar execution and
   Sync Center through the shared native runtime, expose headless queue/recovery
   commands, and remove replaced TypeScript/kernel exports after native proof and
