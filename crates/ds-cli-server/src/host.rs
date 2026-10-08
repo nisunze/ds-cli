@@ -271,6 +271,7 @@ pub fn router(app: App) -> Router {
         )
         .route("/v1/transformer-processing/:key", post(submit))
         .route("/v1/solar-processing/:key", post(submit_solar))
+        .route("/v1/sync-recovery", post(crate::sync_recovery::invoke))
         .route(
             "/v1/solar-application",
             post(crate::solar_application::invoke),
@@ -1290,6 +1291,177 @@ pub(crate) mod tests {
         let (status, value) = call(app(dir.path(), true), "GET", "/v1/jobs", None).await;
         assert_eq!(status, StatusCode::OK);
         assert_eq!(value, json!({"jobs":[],"more":false}));
+    }
+
+    #[tokio::test]
+    async fn common_sync_recovery_runs_without_a_gateway_and_is_project_and_digest_fenced() {
+        use ds_command_kernel::sync_store::recovery::SCHEMA;
+        use ds_sync_runtime::{
+            rows,
+            store::{ArtifactState, Event},
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let application = app(dir.path(), true);
+        let control = |project: &str, command: Value| {
+            serde_json::to_vec(&json!({"schema":SCHEMA,"project":project,"command":command}))
+                .unwrap()
+        };
+        let (status, empty) = call(
+            application.clone(),
+            "POST",
+            "/v1/sync-recovery",
+            Some(control(A, json!({"action":"status","limit":50}))),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{empty}");
+        assert_eq!(empty["total"], 0);
+        assert!(
+            !application.database.exists(),
+            "status must not create or migrate a store"
+        );
+        let store = ds_sync_runtime::open_store(&application.database).unwrap();
+        let fence = crate::server_sync::fence_of(application.sessions.identity());
+        let sha = "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08";
+        let fixture: ds_sync_runtime::store::ArtifactRow = serde_json::from_value(json!({
+            "scope":rows::store_scope(A),"engine":"network_reporter","operation":"export-first","variant":"default",
+            "sha256":ds_sync_runtime::inventory_digest(&mut [("xlsx".into(),sha.into())]),"size_bytes":4,"produced_at_ms":1,
+            "engine_release":format!("ds-network-reporter@0.1.0+{}","b".repeat(40)),"engine_build_manifest_sha256":"c".repeat(64),
+            "input_base_fingerprint":"a".repeat(64),"client_publish_id":"publication","outputs":[{"output_id":"xlsx","sha256":sha,"size_bytes":4}],
+            "bytes_locator":"fixture-local-path","state":"held","replay_key":"publication","updated_at_ms":1
+        })).unwrap();
+        let local = rows::local_row_from_store(&fixture);
+        let scope = rows::store_scope(A);
+        store
+            .lock()
+            .unwrap()
+            .apply(
+                &fence,
+                1,
+                Event::LocalProduced {
+                    row: rows::store_row(A, &local, 1),
+                },
+            )
+            .unwrap();
+        let receipt = ds_sync_runtime::Receipt::new("upload", "refused")
+            .about(&local.identity)
+            .for_publication(&local)
+            .failure_code(Some("ENGINE_BUILD_NOT_ADMITTED".into()));
+        store
+            .lock()
+            .unwrap()
+            .apply(
+                &fence,
+                2,
+                Event::ActionReceipt {
+                    receipt: rows::receipt_row(A, &receipt, 2),
+                },
+            )
+            .unwrap();
+        let (status, held) = call(
+            application.clone(),
+            "POST",
+            "/v1/sync-recovery",
+            Some(control(A, json!({"action":"status","limit":50}))),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(held["rows"][0]["retry_eligible"], true);
+        assert!(!held.to_string().contains("bytes_locator"));
+        let (_, other) = call(
+            application.clone(),
+            "POST",
+            "/v1/sync-recovery",
+            Some(control(
+                B,
+                json!({"action":"retry","row":local.client_publish_id}),
+            )),
+        )
+        .await;
+        assert_eq!(other["refusals"][0]["code"], "sync_row_not_found");
+        let (_, preview) = call(
+            application.clone(),
+            "POST",
+            "/v1/sync-recovery",
+            Some(control(A, json!({"action":"sanitize_preview","limit":50}))),
+        )
+        .await;
+        let mut fresh = local.clone();
+        fresh.identity.operation = "export-second".into();
+        fresh.client_publish_id = "second".into();
+        store
+            .lock()
+            .unwrap()
+            .apply(
+                &fence,
+                3,
+                Event::LocalProduced {
+                    row: rows::store_row(A, &fresh, 3),
+                },
+            )
+            .unwrap();
+        let (_, stale) = call(
+            application.clone(),
+            "POST",
+            "/v1/sync-recovery",
+            Some(control(
+                A,
+                json!({"action":"sanitize_apply","digest":preview["digest"]}),
+            )),
+        )
+        .await;
+        assert_eq!(stale["refusals"][0]["code"], "sync_sanitation_refused");
+        assert_eq!(
+            store
+                .lock()
+                .unwrap()
+                .artifact(&fence, &scope, &local.client_publish_id)
+                .unwrap()
+                .unwrap()
+                .state,
+            ArtifactState::Refused
+        );
+        let (_, retried) = call(
+            application.clone(),
+            "POST",
+            "/v1/sync-recovery",
+            Some(control(
+                A,
+                json!({"action":"retry","row":local.client_publish_id}),
+            )),
+        )
+        .await;
+        assert_eq!(retried["applied"], true);
+        assert_eq!(
+            store
+                .lock()
+                .unwrap()
+                .artifact(&fence, &scope, &local.client_publish_id)
+                .unwrap()
+                .unwrap()
+                .state,
+            ArtifactState::Held
+        );
+        assert!(
+            store
+                .lock()
+                .unwrap()
+                .snapshot(&fence, &scope)
+                .unwrap()
+                .heads
+                .is_empty()
+        );
+        let mut injected: Value =
+            serde_json::from_slice(&control(A, json!({"action":"status","limit":50}))).unwrap();
+        injected["fence"] = json!({"account":"other"});
+        let (status, refused) = call(
+            application,
+            "POST",
+            "/v1/sync-recovery",
+            Some(serde_json::to_vec(&injected).unwrap()),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(refused["code"], "sync_invalid_input");
     }
 
     /// One owner per Server, enforced by the kernel's word on who is at the

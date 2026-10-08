@@ -861,6 +861,95 @@ fn sync_sanitation_bounds_and_digest_are_checked_before_pairing() {
 }
 
 #[test]
+fn native_sync_recovery_is_project_explicit_and_validates_before_server_io() {
+    for (id, effect) in [
+        ("server.sync.status", "read_only"),
+        ("server.sync.retry", "global_write"),
+        ("server.sync.sanitize.preview", "read_only"),
+        ("server.sync.sanitize.apply", "global_write"),
+    ] {
+        let descriptor = ok(&["capabilities", id, "--output", "json"]);
+        let command = &descriptor["command"];
+        assert_eq!(command["effect"], effect);
+        assert_eq!(command["requires"], "server");
+        let project = command["inputs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|input| input["name"] == "project")
+            .unwrap();
+        assert_eq!(project["required"], true);
+        assert!(project["default"].is_null());
+    }
+    for action in [vec!["status"], vec!["sanitize", "preview"]] {
+        let mut args = vec!["server", "sync"];
+        args.extend(action);
+        args.extend(["--project", "project", "--limit", "201", "--output", "json"]);
+        assert_eq!(refusal(&args), "sync_invalid_input");
+    }
+    assert_eq!(
+        refusal(&[
+            "server",
+            "sync",
+            "retry",
+            "--project",
+            "project",
+            "--row",
+            "publication",
+            "--output",
+            "json"
+        ]),
+        "confirmation_required"
+    );
+    assert_eq!(
+        refusal(&[
+            "server",
+            "sync",
+            "retry",
+            "--project",
+            "project",
+            "--row",
+            "../publication",
+            "--yes",
+            "--output",
+            "json"
+        ]),
+        "sync_invalid_input"
+    );
+    assert_eq!(
+        refusal(&[
+            "server",
+            "sync",
+            "sanitize",
+            "apply",
+            "--project",
+            "project",
+            "--digest",
+            "not-a-digest",
+            "--yes",
+            "--output",
+            "json"
+        ]),
+        "sync_invalid_input"
+    );
+    assert_eq!(
+        refusal(&[
+            "server",
+            "sync",
+            "sanitize",
+            "apply",
+            "--project",
+            "project",
+            "--digest",
+            &"a".repeat(64),
+            "--output",
+            "json"
+        ]),
+        "confirmation_required"
+    );
+}
+
+#[test]
 fn printing_lifecycle_writes_are_registered_and_stop_before_native_authority() {
     for args in [
         vec![
