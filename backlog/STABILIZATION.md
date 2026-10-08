@@ -163,7 +163,8 @@ engineering parity.
 authored type in well under 0.5 seconds, with no whole-model package round trip
 or implicit engineering work. Only intentional calculation updates usage;
 the scoped calculation must also meet the local latency requirement. Edits stay
-dirty until explicit Save. Recalculation reaches
+dirty until explicit Save; a draft that fails package validation never blocks
+the edit, and its issues stay pending until Save (owner, 2026-10-07). Recalculation reaches
 incident and adjacent tension sections and their affected supports, spans and
 bands, stopping propagation at affected tension-section ends during interaction.
 Wider sway/downstream propagation waits for reconciliation; whole-model analysis

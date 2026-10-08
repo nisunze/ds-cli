@@ -216,167 +216,26 @@ four points. Please trace the existing split primitive and the reverse merge.
      no unresolved attachments. The reverse retype heals back to one
      section per set.
 
-### Why even successful retypes are too slow for real-time use (measured, Claude, 2026-10-07)
+## Unpaired strain ends report a one-sided wind span (residual of `4ba8ab15`)
 
-**Owner:** retypes that do work take too long to use live. The edit itself is
-cheap; what follows it reprocesses the whole model several times. Full
-timings and trace are in STABILIZATION.md §4.
+Executed 2026-10-07 on the local Gisagara Model 1 seed (revision 30,
+`ds dsgrid run --operation analyze_model_defaults`): the `4ba8ab15` factor-of-two
+wind span and 115 uplifts no longer reproduce. Paired boundaries combine both
+sides (191 of 193; median wind span 71.5 m) and uplift is the whole-support
+resultant (`structure_usage.rs:820-826, 960-985`, `390bf15d`).
 
-**Measured** on ds-server, debug builds (the only `ds` that reads today's
-schema-5 packages); Nyamagabe M1, 1.4 MB, structure 618:
-
-| Step | Time |
-| --- | --- |
-| CLI retype dry run, nothing written | 6.0–6.2 s |
-| CLI retype write | 3.9–7.3 s |
-| Open and validate only | 1.9 s (schema 5) / 5.5 s (schema 4) |
-| Whole-model `engineering_issue_layer` | 5.6 s |
-
-**What one Desktop retype triggers:**
-
-1. **The edit.** `gridCommitStructureRetype` applies it in the worker
-   (`ds-web/src/lib/grid/session.ts:749`). This part is cheap.
-4. **CLI path** (`ds-cli-dsgrid/src/mutation.rs`, `structure/retype.rs`):
-   decode the whole package (schema-4 copies re-run the 4 → 5 migration on
-   every open), compute line angles for every structure, then re-emit and hash the whole
-   package on an explicit file write.
-
-**Remaining:** Profile case election, marker assembly, layout and
-design-case clearance still require broader work. Full-scene transfer and
-installation and installed release latency remain unproven.
-
-**Owner ruling (2026-10-07):** a retype, a slide/move, or any other edit must
-not save the model. The model stays in memory in a dirty state for fast
-interaction; persistence happens only through the Save button. A retype plus
-its recalculation must take well under 0.5 s: high-performance editing, not a
-sluggish Profile. This means:
-
-- no `checkpointDsgrid()`, working checkpoint or package `pack`/validation on
-  the edit path;
-- a draft that fails package validation must not block the edit; it shows as
-  pending issues until the user saves;
-- recalculation is scoped to the affected sections, bands and spans.
-
-**Fix direction:** localize the remaining scene assembly and clearance work
-within the affected tension-section boundary.
-Acceptance (STABILIZATION.md §4): retyping 618 shows the new type and usage in
-well under a second in a release build.
-
-## Native Profile transport and localized refresh
-
-- Native case transitions/election, marker assembly and layout still process
-  the Profile broadly. Localize their work within native receipt scopes.
-
-**Remaining in this vertical:** localize terrain invalidation to the spans and
-supports whose effective ground uses the changed sample, then remaining case
-transitions/election, engineering marker assembly, layout and design clearance. Unknown broader effects remain reconciliation work,
-not a synchronous interactive solve. Preserve the owner's tension-section-end
-boundary for both CLI and user edits.
-
-**Moved from OPEN.md §12 (owner, 2026-10-07; fix with the closure findings above: usage must combine every incident side):**
-
-- `4ba8ab15` (major): screen_structure_usage takes one side at section-boundary structures: wind span ~0.5x PLS, 115 spurious uplifts (Gisagara calibration).
-
-## Exact incident-side calibration
-
-Trace the moved `4ba8ab15` finding above on the exact Gisagara calibration
-fixture. Compare native whole-support conductor vectors with the screening
-realizations at a tension-section boundary: attachment identities, authored
-facings and coordinates, cable/phase slots, each incident demand and the final
-capacity input. Identify whether the factor-of-two wind span and reported
-uplifts remain reproducible under current native aggregation, or name the
-precise stale assumption in the old finding. Preserve unknown capacity and
-longitudinal-force blockers. Give one bounded regression and its negative
-controls; no source writes, model edits, competing builds or solver approval.
-Maximum two actionable findings.
-
-### Findings: incident-side calibration for `4ba8ab15` (Claude, 2026-10-07 15:02 UTC; read-only)
-
-**Run.**
-
-- **Package:** the local Gisagara Model 1 seed
-  `~/.cache/claude-agents/seed/gisagara-mv-model1-rev3.dsgrid`: authored
-  `rev:79def71d…`, revision 30, fingerprint `fnv1a64:65d91b7dc13baa24`.
-- **Not the calibration package:** the revision-81 calibration package
-  (`b6d75f61…`) isn't on this host.
-- **Command:** `ds dsgrid run --operation analyze_model_defaults` (case
-  envelope: 7 cases, `exact_force_equivalent`). It took 4.1 s.
-- **Binary:** debug build from 10:40 today. The aggregation code is
-  unchanged since `390bf15d` (10-03). Today's `f72d28a6` only changes
-  caching.
-
-**Finding 1: neither the factor of two nor the 115 uplifts reproduce at
-paired boundaries; the old finding's assumption is stale.**
-
-- **Paired boundaries carry the full wind span.**
-  - 191 of the 193 structures with 8 incident sections (back plus ahead
-    per wire) combine both sides.
-  - Their wind spans have median 71.5 m (p25 64.1, p75 78.7). Mid-section
-    suspension types are on the same scale: `st-fab01188…` averages
-    67.0 m and `st-d4275080…` 67.6 m.
-  - The median spread across phases is 0.4%.
-  - Pairing at `str-…-6`, for example: `[163, 3]`,
-    `[163-slot-1, 3-slot-1]`, `[163-slot-2, 3-slot-2]`, `[256, 257]`.
-- **Uplift is now decided by the whole support.**
-  - 1,577 per-side upward demand case rows (`upward_load_case_count`)
-    become 35 structures with whole-support uplift, out of 300 complete
-    case states.
-  - 3,453 case states stay incomplete (no cable modulus) and remain
-    blockers. Keep those blockers, and keep the unknown-capacity
-    blockers.
-- **Stale assumption:** the old finding read one incident side's wind span
-  and negative vertical as the structure's. Uplift is now the signed
-  resultant of all incident realizations (`structure_usage.rs:820-826,
-  960-985`), and opposite strain ends join one joint (`390bf15d`).
-- **Not this defect:**
-  - The 101 low-wind-span 4-incident rows (types `st-37909e…` and
-    `st-af1099…`) belong to two-structure alignments. For example,
-    `aln-…-52` holds only `str-390`/`-391`, one 2.4 m span apart.
-  - So a 1.3 m wind span is correct there. Their ±137 m weight spans
-    fit a short span strung at full tension.
-
-**Finding 2: a residual one-sided wind span where strain-end pairing
-fails.**
-
-- **Where:** `str-…-216` (type `st-deded789…`) and `str-…-308`
-  (`st-dd93738b…`).
-- **What happens:**
-  - At `str-216` each of the 8 incident sections forms its own
-    realization: `215`, `215-slot-1/2`, `91`, `91-slot-1/2`, `376`,
-    `503`.
-  - At `str-308`, `230`, `230-slot-1/2` and `504` stay single; only
-    `[432, 433]` pairs.
-  - The structure's wind span is then one side's: 13.1–25.0 m at
-    `str-216`, 26.4–70.8 m at `str-308`.
-- **Why it can fail:**
-  - `opposite_strain_end` (`structure_usage.rs:714-754`) pairs only when
-    all of these hold:
-    - the attachments carry the same cable (`used` is filtered by
-      cable, `:802-806`);
-    - they have the same type and slot;
-    - their local coordinates are bit-identical;
-    - their orientations differ by π ± 0.001.
-  - `st-deded789…` is a three-way strain junction. Its front (1.571)
-    and back (4.712) sets share (±1.15 / 0, 0, 9.05). A tap set at
-    3.142 sits at (0.7, ±1.15, 8.05).
-- **Two possible causes, not yet told apart:**
-  - the back and ahead sections at `str-216` carry different cable ids;
-  - the continuing line uses the 3.142 tap set, which forms a
-    perpendicular pair, not an opposite one.
-- **To decide:** read `cable_id` and `attachment_point_id` of sections
-  91, 215, 376 and 503 at `str-216`.
-- **Regression test:** screen `str-216` and `str-6` on this package.
-  - `str-6` keeps its four joints.
-  - `str-216` pairs its opposite same-cable ends. Any side that remains
-    unpaired is named in a row advisory, and its one-sided wind span is
-    never reported as the structure's wind span.
-- **Negative controls:**
-  - a single-sided terminal dead-end stays one realization, with no
-    advisory;
-  - a genuine perpendicular tap keeps separate realizations;
-  - whole-support uplift and the cable-modulus and capacity blockers are
-    unchanged.
-- **Out of scope:** no solver approval, and tolerances are unchanged.
+One residual: at `str-…-216` (`st-deded789…`, a three-way strain junction) and
+`str-…-308` (`st-dd93738b…`), `opposite_strain_end`
+(`ds-grid-engine/src/structure_usage.rs:714-754`) leaves strain ends unpaired,
+so the structure reports one side's wind span (13.1–25.0 m and 26.4–70.8 m).
+First decide between differing back/ahead cable ids and the 3.142-rad tap set by
+reading `cable_id` and `attachment_point_id` of sections 91, 215, 376 and 503 at
+`str-216`. Regression: `str-6` keeps its four joints; `str-216` pairs opposite
+same-cable ends, and any side left unpaired is named in a row advisory, never
+reported as the structure's wind span. Negative controls: a single-sided
+terminal dead-end stays one realization without advisory; a perpendicular tap
+keeps separate realizations; uplift, cable-modulus and capacity blockers are
+unchanged. No solver approval; tolerances unchanged.
 
 Unrelated full CLI gate boundary: report.layout.render help is 2545 bytes against
 2480-byte allowance; Claude owns template-preview changes. Codex must leave its
@@ -396,43 +255,3 @@ single-owner operations. Prove constructor refusal followed by teardown and
 ordinary replacement/unmount without a second free. Claude owns template
 previewing; Codex leaves this component untouched to avoid overlapping edits.
 
-## Bound native replay and explicit calculation cost
-
-Live structure 40 retypes now take 1,512–1,549 ms without calculation or Save;
-988–1,026 ms remains in native history observation and 495–508 ms in commit
-and session-state refresh. Native receipts identify one affected alignment and
-four demand sections. Investigate staged replay, repeated whole-model revision
-and validation work before attributing cost to RAM, serialization or solving.
-The earlier 8,352-ms Profile refresh combined projection, transport and worker
-installation; explicit calculation still needs bounded native phase/work
-evidence before claiming a measured bottleneck or release performance. No
-template edits, competing builds or model mutations.
-
-## Focused review: Profile database transactions and dependency boundaries
-
-Read [Profile as a transactional database](../../ds-network/docs/contracts/profile-transactional-database.md)
-and [OPEN.md §14](OPEN.md#14-plan-and-profile-authoring) before the next source
-slice. Review only its proposed native write/read sets, retained indexes,
-validation evidence and expected-head durability transaction. Identify where
-local intent still clones, scans, hashes, computes, serializes or saves an
-entire model/table/scene. Do not launch a new unchanged-terrain measurement
-campaign; the contract contains the existing pain evidence.
-
-Require plural typed memberships, principal/T-off incidence and independent
-surface footprints. Shared observations never join independent triangulations;
-even a family surface must preserve corridor gaps and unsupported runs. Check
-before/after memberships for moves/deletions, neighboring triangulation
-dependencies, exact ground-basis parity and safe named wider reconciliation.
-Section calculation must retain all incident support forces while stopping
-propagation at section ends. Native queries must not calculate.
-
-Check that authored, calculated and durable heads are independent. Save must
-write changed units, atomically publish a complete manifest against its base,
-and preserve drafts/later edits on conflict or interruption. Arrow tables and
-full `.dsgrid` packing alone do not prove this. Preserve exact numeric bodies,
-history/context/publication fences, stale-result rejection and continuous picks.
-
-Maximum two demonstrated gaps per coherent slice, with source paths, a bounded
-regression fixture and negative controls. Distinguish required behavior from
-installed proof. No template edits, real project mutations or competing builds.
-Re-read `STABILIZATION.md`; the owner starts Opus manually, without agent fanout.
