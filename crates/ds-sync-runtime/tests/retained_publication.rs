@@ -274,3 +274,65 @@ fn corrupted_retained_bytes_fail_verified_reads_before_a_transfer_can_start() {
     );
     assert_eq!(snapshot.artifacts[0].sha256, row.sha256);
 }
+
+/// Server and Desktop run the same producer set: a retained Solar publication
+/// is amended, never adopted, and freed by the set's Solar producer, whose
+/// fence is derived from the host's captured identity.
+#[test]
+fn the_shared_producer_set_answers_for_retained_solar_bytes_on_every_host() {
+    let dir = tempfile::tempdir().unwrap();
+    let database = dir.path().join("store.sqlite");
+    let store = open_store(&database).unwrap();
+    let bytes = b"# Retained Solar draft";
+    let mut row = row(bytes);
+    row.identity.engine = "solar".into();
+    row.identity.operation = "report-city-a".into();
+    row.identity.variant = "apd-draft-en".into();
+    row.engine_release = "ds-solar-engine@1.2.3".into();
+    row.resource = "city-a".into();
+    row.outputs[0].output_id = "apd-draft-en".into();
+    row.outputs[0].format = "md".into();
+    row.outputs[0].content_type = "text/markdown".into();
+    row.outputs[0].filename = Some("apd-draft-en.md".into());
+    row.sha256 =
+        rows::inventory_digest(&mut [("apd-draft-en".into(), row.outputs[0].sha256.clone())]);
+    seal(&store, &row, bytes).unwrap();
+    let identity = ds_compute_runtime::HostIdentity {
+        owner: "owner-a".into(),
+        principal: ds_command_kernel::execution_context::Principal {
+            uid: fence().account,
+            lane: "canary".into(),
+            deployment: fence().deployment,
+            install_id: fence().install_id,
+        },
+    };
+    assert_eq!(
+        ds_sync_runtime::solar_producer::fence_of(&identity),
+        fence()
+    );
+    let reports = dir.path().join("report-artifacts");
+    let freed = ds_sync_runtime::with_producers(
+        &database,
+        &reports,
+        &identity,
+        "project-a",
+        None,
+        |producers| {
+            assert!(producers.inventory("project-a")?.is_empty());
+            let mut declaration = rows::open_declaration("project-a", &row);
+            producers.amend_open_declaration("project-a", &mut declaration)?;
+            assert_eq!(declaration["engine"], "solar");
+            producers.reclaim("project-a", &row)
+        },
+    )
+    .unwrap();
+    assert_eq!(freed, bytes.len() as u64);
+    let fence = fence();
+    assert!(retained::RetainedProducer {
+        store: &store,
+        fence: &fence,
+        project: "project-a",
+    }
+    .output(&row, "apd-draft-en")
+    .is_err());
+}
