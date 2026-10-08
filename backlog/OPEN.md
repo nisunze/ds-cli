@@ -298,20 +298,28 @@ they are not an invitation to replace the whole stack or add a SQL engine.
    routes, shared observations/supports, actual T-offs, bad parent graphs,
    ambiguous spatial candidates and stale previews before UI bindings.
 
-3. **Bounded terrain partitions and local ground dependencies.** Reference
-   independently reusable surfaces per principal family, with at most one
-   current admitted descriptor per alignment and bounded local pieces. Separate
-   alignments 200 m or 1 km apart must never be triangulated/interpolated
-   together. Shared point references do not merge surfaces; even connected
-   families cannot fill empty corridors, no-data or unsupported runs. Reuse
-   native route/segment indexes. Point insert/delete/move must update old/new
-   membership windows and characterized triangulation neighborhoods only;
-   uncharacterized cavities name a bounded partition rebuild or explicit wider
-   reconciliation. Do not silently replace the existing selected ground basis
-   with a different TIN. Prove fresh parity for effective ground, source/CRS/
-   datum/gaps/feature clearances, support bases, station/axis consequences and
-   unchanged partition identities. Exercise dense splits/merges and shared
-   points without scanning/rebuilding unrelated alignments.
+3. **Profile reads terrain through retained partitions.** Landed (ds-network
+   `2d2d590c`…`758c2f27`, kernel `2b4be53`, ds-cli `5367100a`): per-alignment
+   partitions with T-off family qualification and incremental `advance`, the
+   exact planar Delaunay in `ds-geo-lite`, and the footprint support query
+   (`plan_terrain_support`), explicit discard (`trim_terrain_support`) and
+   ingestion admission; see
+   [alignment terrain partitions](../../ds-network/docs/contracts/alignment-terrain-partitions.md).
+   Owner ruling, 2026-10-08: one model, two readers. The plan map shows all
+   stored terrain as GeoJSON context; the Profile is its own query engine and
+   reads only each alignment's support closure. Remaining: the session builds
+   the partition index once and `advance`s it from each transaction's write
+   set; Profile ground, structure ground, clearance and display consumers
+   read through it instead of scanning the whole table per call; structure,
+   wire and section edits never clone, hash, validate or transport untouched
+   terrain (today about 20 ms of each edit on a 44k-row model). Surface domain
+   meshes per family, with point insert/delete/move touching only old/new
+   membership windows and characterized triangulation neighbourhoods, follow;
+   they never silently replace the selected ground basis. Provider
+   acquisition commits and PLS/GIS imports still take no admission footprint.
+   Prove fresh parity for effective ground, source/CRS/datum/gaps/feature
+   clearances, support bases and station/axis consequences, and that edits do
+   no work on unrelated alignments.
 
 4. **Explicit local calculation and cached facts.** Consume the transaction
    ledger's accumulated affected dependencies across many edits, undo/redo and
