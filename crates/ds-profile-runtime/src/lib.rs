@@ -31,6 +31,8 @@ mod calculation_controls;
 pub use calculation_controls::{CalculationArguments, CalculationControlRequest};
 mod result_queries;
 mod cached_cases;
+mod calculated_transfer;
+pub use calculated_transfer::{CalculatedSceneBaseRequest, StartDeltaCalculationRequest};
 pub use result_queries::{QueryArguments, QueryCursor, QueryKind, QueryResultsRequest, QuerySource};
 
 #[derive(Debug, Clone, Deserialize)]
@@ -57,6 +59,8 @@ pub enum Request {
     ConfirmPublication(ConfirmPublicationRequest),
     DiscardPublication(DiscardPublicationRequest),
     StartCalculation(Box<StartCalculationRequest>),
+    CalculatedSceneBase(CalculatedSceneBaseRequest),
+    StartDeltaCalculation(Box<StartDeltaCalculationRequest>),
     CalculationStatus(CalculationJobRequest),
     CancelCalculation(CalculationJobRequest),
     AdmitCalculation(AdmitCalculationRequest),
@@ -115,6 +119,8 @@ struct HeldView {
     analysis_index: Option<Arc<result_queries::Index>>,
     analysis_invalidation: analysis_retention::Invalidation,
     query_scope: ds_grid_engine::recalculation_scope::RecalculationScope,
+    calculated_scene: Option<Arc<ds_grid_engine::ProfileAtlasScene>>,
+    calculated_base: Option<Arc<ds_grid_engine::profile_calculated_delta::CalculatedSceneBase>>,
 }
 #[derive(Debug, Clone, Serialize)]
 pub struct Projection {
@@ -145,6 +151,8 @@ pub struct Runtime {
     calculation_jobs: calculation_jobs::Jobs,
     /// Identity changes even when display inputs change away and back.
     calculation_contexts: BTreeMap<String, Arc<()>>,
+    /// Set only inside the private worker for an explicitly requested delta.
+    delta_transfers: BTreeMap<String, String>,
 }
 impl Runtime {
     pub fn execute(&mut self, request: impl Into<Request>) -> Result<Value, String> {
@@ -185,6 +193,12 @@ impl Runtime {
             Request::ConfirmPublication(request) => self.confirm_publication(request),
             Request::DiscardPublication(request) => self.discard_publication(request),
             Request::StartCalculation(request) => self.start_calculation(*request),
+            Request::CalculatedSceneBase(request) => self.calculated_scene_base(request),
+            Request::StartDeltaCalculation(request) => {
+                self.require_calculated_base(&request.calculation.request.scope,
+                    &request.calculation.request.model_id, &request.base_signature)?;
+                self.start_calculation_with_scene_base(request.calculation, Some(request.base_signature))
+            }
             Request::CalculationStatus(request) => self.calculation_status(request),
             Request::CancelCalculation(request) => self.cancel_calculation(request),
             Request::AdmitCalculation(request) => self.admit_calculation(request),
@@ -433,6 +447,9 @@ impl Runtime {
                 analysis_index,
                 analysis_invalidation,
                 query_scope: Default::default(),
+                calculated_scene: None,
+                calculated_base: previous.as_ref().filter(|_| same_model)
+                    .and_then(|held| held.calculated_base.clone()),
             },
         );
         let primitives = decorations::project(&scene, &state, &rows, &label_policy);
@@ -454,9 +471,9 @@ impl Runtime {
         let (authored_structures, symbols, primitives) =
             authored_display::partition(symbols, primitives, &scene);
         self.held.get_mut(&request.scope).unwrap().authored_display = authored_structures.clone();
-        let mut scene = serde_json::to_value(scene).map_err(|error| error.to_string())?;
-        scene["case_base_axis_digest"] = json!(base_axis);
-        scene["display"] = serde_json::to_value(Projection {
+        scene.case_base_axis_digest = Some(base_axis);
+        let (mut scene, scene_delta, scene_transfer_metrics) = self.transfer_calculated_scene(&request.scope, scene)?;
+        let display = serde_json::to_value(Projection {
             label_fields: label_fields(&state),
             groups: ds_command_kernel::profile_controls::groups(&state, &rows, &cables),
             style_controls: ds_command_kernel::profile_style::controls(&state, &rows),
@@ -476,6 +493,10 @@ impl Runtime {
             review_box_ink,
         })
         .unwrap();
+        let compact_display = if scene_delta.is_none() {
+            scene["display"] = display;
+            None
+        } else { Some(display) };
         // Keep analysis once on the native wire. The desktop transports that same
         // evidence alongside its held scene without serializing a second copy.
         // json! serializes borrowed expressions even when they are already
@@ -483,6 +504,11 @@ impl Runtime {
         // the complete scene and its issue payload after their first encoding.
         let mut response = json!({ "model_id":model_id, "model_revision":request.expected_revision, "history":history, "retained_asset_count":source.assets.len(), "scene":null, "analysis":null, "display_state":state, "projection_unavailable":null, "command_view":null, "ran": request.analyze });
         response["scene"] = scene;
+        if let Some(delta) = scene_delta {
+            response["scene_delta"] = delta;
+            response["display"] = compact_display.unwrap();
+        }
+        response["scene_transfer_metrics"] = scene_transfer_metrics;
         response["analysis"] = analysis.unwrap_or(Value::Null);
         response["command_view"] = command_view;
         response["calculation"] = json!({"policy":"explicit", "model_revision":request.expected_revision,

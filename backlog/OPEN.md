@@ -225,8 +225,11 @@ Recompute affected tension sections, their spans and structure usage including
 other incident forces at shared supports; stop there during interaction. Reuse
 unchanged demands, ground, case preparation, markers and layout. Keep calculation
 asynchronous and revision-fenced. Bind the native job owner
-for browser/peer calculation. Cold initialization still projects synchronously;
-calculated-scene transfer remains broad. Reject/suppress stale results without
+for browser/peer calculation. Bind explicit calculated geometry delta controls to
+CLI/MCP and the receiving native worker, including picking and publication
+rollback, then Web/Desktop transport. Full display and analysis still dominate
+the remaining response; localize their native transfer. Cold initialization still
+projects synchronously. Reject/suppress stale results without
 losing edits. Localize independent
 model-analysis design-clearance and global dependency invalidation, and affected
 analysis fact/index reconstruction; terrain, explicitly authored spans and

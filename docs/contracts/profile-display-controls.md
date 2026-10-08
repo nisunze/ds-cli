@@ -200,6 +200,65 @@ RAM cloning and complete calculated-scene transfer remain measured costs;
 background scheduling alone does not prove a faster solver. Wire encoding is
 outside these phases.
 
+The headless runtime also accepts explicit calculated geometry delta transport:
+
+- `calculated_scene_base` takes `{scope, model_id, expected_history}` and returns
+  a bounded signature receipt for the last admitted calculated scene. It checks
+  the current authored history, including undo/redo tails, while truthfully
+  reporting that scene's original computed revision/root/axis. First preparation
+  clones and hashes the typed scene; subsequent reads share its immutable base.
+  It calculates zero engineering cases and cannot change a running job's context.
+- `start_delta_calculation` takes `{base_signature, calculation:
+  StartCalculationRequest}`. An exact prepared base is mandatory. The private
+  native worker computes the same explicit calculation and uses
+  `ds_grid_engine::profile_calculated_delta` to compare the result. Ordinary
+  Start remains full-result transport.
+- Admission returns `scene:null`, closed native `scene_delta`, and a separate
+  full `display`. The geometry delta is limited to 256 KiB and 4,096 operations;
+  an oversized transition fails with `profile_calculated_delta_output_limit`
+  and requires an explicitly requested full calculation. No automatic fallback
+  or second calculation occurs. Display and analysis remain full payloads, so
+  this geometry limit is not a bound on the complete runtime response.
+
+The receiving native owner must admit the delta against its immutable calculated
+base, target revision and engineering root before installing picking/render
+state. Authored overlays cannot replace that base. The runtime still checks exact
+scope/model/history, native calculation context and publication identity; base
+signatures alone do not authorize admission. Missing/stale/malformed/foreign
+bases refuse before a worker starts. Pending publication prevents preparing or
+starting another candidate. Confirm/discard preserves the ordinary checkpoint;
+discard restores the exact prior scene base and accumulated engineering receipts
+while retaining worker-authored edits. Cached case selection invalidates the
+typed calculated transport base and requires an explicit full projection before
+preparing another one. Reads do not implicitly project or solve.
+
+`scene_transfer_ms`, `calculated_delta_bytes` and `calculated_delta` expose native
+comparison/encoding work in calculation metrics. Full transport reports delta
+bytes zero; it avoids a duplicate full serialization merely to count bytes. The
+native gates prove repeated fresh scene/display parity, paused-job editing,
+stale-result rejection, closed input/refusal paths, interleaved scopes and
+publication discard. These operations are source/headless primitives; public
+CLI/MCP, receiving worker and Web bindings remain separate owning slices.
+
+The ignored `dense_delta_job_costs_and_complete_fresh_parity` release gate compares
+ordinary and delta jobs over eight alternating sag edits, three supports, two
+tension sections and 10,001 terrain points. All admitted scenes, displays,
+analysis and command views equal the ordinary result; every scene also equals
+fresh projection. Complete result medians are 10,298,492 bytes full and 3,761,036
+bytes delta (63.48% fewer bytes). Delta geometry is 123,805 bytes; the unchanged
+full display costs 3,616,246 bytes and dominates the remaining response.
+Native capture-through-admission medians are 46.17 ms full and 28.45 ms delta;
+complete wire encoding is 13.63/2.81 ms, and wire decode plus typed scene
+decode/native delta admission is 80.35/16.59 ms. The full decode measurement
+includes a scene Value clone, stated in the receipt. Cold scene-base preparation
+is separately measured at 8.50 ms. These are native source measurements,
+excluding initial projection, IPC, worker picking, renderer paint and installed
+acceptance; they do not qualify a large connected alignment or independent
+Analyze. Receipt: `out/profile-native/calculated-transfer-runtime-cost-release.json`.
+Run the named gate through the runtime manifest with
+`DS_PROFILE_DELTA_JOB_COST_RECEIPT` pointing to a disk file. The ordinary runtime
+gate passes 82 tests, with five opt-in cost gates ignored.
+
 The ignored `dense_native_job_costs_and_fresh_parity` gate measures twelve
 alternating description edits with 10,004 terrain points, 403 supports and one
 three-support tension section. Each admitted scene and analysis equals a fresh

@@ -107,6 +107,10 @@ impl Runtime {
                 .expect("validated prepared layer");
             held.result_index = index;
             held.last_weather_sequence = request.sequence;
+            // Case patches alter the projected geometry outside a full
+            // calculated projection. Never claim the previous exact base.
+            held.calculated_scene = None;
+            held.calculated_base = None;
             self.views.insert(request.scope, state);
         }
         receipt["metrics"] = json!({"case_ms":started.elapsed().as_secs_f64()*1000.0,

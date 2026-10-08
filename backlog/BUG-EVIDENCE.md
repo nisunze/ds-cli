@@ -409,12 +409,12 @@ template edits, competing builds or model mutations.
 ## Focused review: bound explicit calculated-result transfer
 
 Read-only request before the next source slice: trace native Profile runtime
-calculation/result construction and job publication, retained calculated scene,
-worker admission/pick state and existing native scene-patch/delta controls.
-Explicit local calculations still return 8–16 MB of complete scene JSON on the
-owning release fixtures. Identify where full encoding/transfer remains and bind
-the native `profile_calculated_delta` primitive to explicit retained calculation
-controls. Require exact fresh scene,
+worker admission/pick state, public calculation controls, native scene-patch/delta
+controls and display construction. Bind the retained native calculated delta
+operations to public CLI/MCP and receiving native workers before Web bindings.
+Full display still transfers 3.62 MB on the owning release fixture and dominates
+the 3.76 MB delta response. Localize its native transfer separately from geometry
+and analysis. Require exact fresh scene,
 engineering findings and markers; distinguish affected bands/supports from
 global axis, bounds, labels and case changes. Preserve native ownership of all
 diffs, exact base/result history/revision/root/axis fences and publication

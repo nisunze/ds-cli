@@ -164,6 +164,14 @@ impl Runtime {
         &mut self,
         input: StartCalculationRequest,
     ) -> Result<Value, String> {
+        self.start_calculation_with_scene_base(input, None)
+    }
+
+    pub(super) fn start_calculation_with_scene_base(
+        &mut self,
+        input: StartCalculationRequest,
+        base_signature: Option<String>,
+    ) -> Result<Value, String> {
         let started = Instant::now();
         identity(&input.job_id)?;
         let mut request = input.request;
@@ -249,6 +257,9 @@ impl Runtime {
         }
         let worker_slot = ActiveWorker(self.calculation_jobs.active.clone());
         let mut fork = Runtime::default();
+        if let Some(signature) = base_signature {
+            fork.delta_transfers.insert(request.scope.clone(), signature);
+        }
         fork.held.insert(request.scope.clone(), held.clone());
         fork.views
             .insert(request.scope.clone(), self.views[&request.scope].clone());

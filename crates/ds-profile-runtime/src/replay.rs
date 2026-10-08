@@ -401,8 +401,9 @@ impl Runtime {
                 held.analysis_invalidation.advance(
                     pending_reconcile,
                     &receipts,
-                    held.analysis_index.as_ref().is_some_and(|index|
-                        index.same_analysis_defaults(session.snapshot())),
+                    held.analysis_index
+                        .as_ref()
+                        .is_some_and(|index| index.same_analysis_defaults(session.snapshot())),
                 );
             }
             held.session = session;
@@ -486,6 +487,9 @@ impl Runtime {
             "last_demand_terrain_geometry_reused_cases":demands.terrain_geometry_reused_cases,
             "last_demand_resolved_support_paths":demands.resolved_support_paths});
         replay_cost.append(&mut result["metrics"]);
+        if let Some(transfer) = result["scene_transfer_metrics"].as_object().cloned() {
+            result["metrics"].as_object_mut().unwrap().extend(transfer);
+        }
         Ok(result)
     }
     fn render_replayed(
