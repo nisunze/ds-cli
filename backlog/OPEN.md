@@ -51,18 +51,6 @@ can be repeated when needed. Owner inputs are in
 [OPEN-X.md](OPEN-X.md#solar-sync-migration-owner-inputs). The queue cutover
 is ruled in the sync contract: simple local clean and recompute.
 
-- **Report-job notifications no longer show publication progress.** They showed
-  it from the retired browser queue; the native store row carries
-  `client_publish_id`, which `NotificationReportJob` does not keep. Carry the
-  export's `clientPublishId` into the job and project `held`/`uploading`/
-  `published`/`conflict`/`refused` from `readDesktopSyncStore`, in
-  `ds-web/src/lib/activity/report-notification-sync.ts`.
-- **`ds desktop sync status|retry|sanitize` prose describes the retired
-  outbox.** `ds-cli/crates/ds-cli-desktop/src/sync.rs` still says the commands
-  read the "compute-artifact outbox" and requeue Network Reporter rows; the bridge
-  now answers from the native store for every engine and recovers through
-  `ds.sync-recovery/v1`. Rewrite the descriptors and prove the discovery,
-  context-budget and bridge-parity suites.
 - **Placement remains a TypeScript decision; adapter parity is unproven.** Capture
   current placement answers, replay them in the pure kernel and native/WASM
   consumers, and prove identical Solar/reporter bytes and head identity from
