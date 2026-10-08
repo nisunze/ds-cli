@@ -7,6 +7,8 @@ pub struct Engine {
     pub fingerprint_free_operations: &'static [&'static str],
     pub retained_preview_variant: Option<&'static str>,
     pub legacy_source_in_base: bool,
+    pub release_prefix: &'static str,
+    pub requires_release_commit: bool,
     pub publication: PublicationPolicy,
     dependency: Option<Dependency>,
 }
@@ -30,6 +32,8 @@ pub const ENGINES: &[Engine] = &[
         fingerprint_free_operations: &["export-combined_transformer", "export-compounded_report"],
         retained_preview_variant: Some(crate::printing::retained_preview::VARIANT),
         legacy_source_in_base: true,
+        release_prefix: "ds-network-reporter@",
+        requires_release_commit: true,
         publication: PublicationPolicy::Report,
         dependency: None,
     },
@@ -38,6 +42,8 @@ pub const ENGINES: &[Engine] = &[
         fingerprint_free_operations: &[],
         retained_preview_variant: None,
         legacy_source_in_base: true,
+        release_prefix: "ds-solar-engine@",
+        requires_release_commit: false,
         publication: PublicationPolicy::Solar,
         dependency: Some(Dependency {
             dependent_prefix: "report-",
@@ -63,6 +69,33 @@ pub fn solar_engine() -> &'static Engine {
 }
 
 impl Engine {
+    pub fn valid_producer_release(&self, release: &str) -> bool {
+        let Some(identity) = release.strip_prefix(self.release_prefix) else {
+            return false;
+        };
+        let (version, commit) = identity
+            .split_once('+')
+            .map_or((identity, None), |(version, commit)| {
+                (version, Some(commit))
+            });
+        let parts: Vec<_> = version.split('.').collect();
+        parts.len() == 3
+            && parts.iter().all(|part| {
+                !part.is_empty()
+                    && part.bytes().all(|byte| byte.is_ascii_digit())
+                    && (*part == "0" || !part.starts_with('0'))
+            })
+            && match commit {
+                Some(commit) => {
+                    commit.len() == 40
+                        && commit
+                            .bytes()
+                            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+                }
+                None => !self.requires_release_commit,
+            }
+    }
+
     pub fn requires_source(&self, operation: &str) -> bool {
         !self.fingerprint_free_operations.contains(&operation)
     }

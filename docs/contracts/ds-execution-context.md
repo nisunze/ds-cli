@@ -55,7 +55,8 @@ ExecutionContext { principal_uid, lane, deployment, install_id, // the connectio
 ```
 
 `operation` is closed: `transformer_processing`, `solar_processing`,
-`report_export`, `layer_read`, `layer_write`; `lane` is `stable` or `canary`;
+`tile_processing`, `report_export`, `layer_read`, `layer_write`, `sync_recovery`;
+`lane` is `stable` or `canary`;
 `input_sha256` is a 64-character lowercase digest. Every text field is
 non-empty, trimmed, control-free and bounded (`client` ≤ 120, `idempotency_key`
 ≤ 200). One that is not is `context_corrupt`, **named and told the rule it

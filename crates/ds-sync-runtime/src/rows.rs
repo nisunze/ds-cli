@@ -528,6 +528,7 @@ pub fn store_row(project: &str, row: &LocalRow, now: u64) -> store::ArtifactRow 
             .collect(),
         bytes_locator: row.bytes_locator.clone(),
         readable: row.readable,
+        archived: false,
         state: store::ArtifactState::Held,
         state_reason: None,
         replay_key: row.client_publish_id.clone(),

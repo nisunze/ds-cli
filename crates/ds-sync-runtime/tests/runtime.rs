@@ -24,6 +24,132 @@ use sha2::Digest;
 
 const PROJECT: &str = "p1";
 
+#[test]
+fn exact_build_admission_failures_keep_bytes_but_publish_only_after_explicit_native_retry() {
+    struct Door {
+        record: FakeGateway,
+        blocked: AtomicBool,
+        opens: AtomicUsize,
+    }
+    impl Gateway for Door {
+        fn post(
+            &self,
+            route: SyncRoute,
+            body: &serde_json::Value,
+        ) -> Result<serde_json::Value, GatewayError> {
+            if body["action"] == "open" {
+                self.opens.fetch_add(1, Ordering::SeqCst);
+                if self.blocked.load(Ordering::SeqCst) {
+                    return Err(GatewayError::refused(
+                        403,
+                        Some("ENGINE_BUILD_NOT_ADMITTED".into()),
+                        "exact producing build is not admitted",
+                    ));
+                }
+            }
+            self.record.post(route, body)
+        }
+    }
+    for mut row in [local_row(b"report bytes"), solar_row()] {
+        let mut h = Harness::new();
+        let source = "a".repeat(64);
+        row.input_base_fingerprint = Some(source.clone());
+        row.base_revision = Some(source.clone());
+        fakes::lock(&h.world)
+            .current_base
+            .insert(row.identity.operation.clone(), source);
+        h.seal(std::slice::from_ref(&row));
+        let door = Door {
+            record: FakeGateway {
+                world: h.world.clone(),
+            },
+            blocked: AtomicBool::new(true),
+            opens: AtomicUsize::new(0),
+        };
+        let producer = FakeProducer::new(h.world.clone(), vec![row.clone()]);
+        let reads = FakeReads {
+            world: h.world.clone(),
+            root: h.reads_root.clone(),
+        };
+        {
+            let host = StoreHost::new(
+                h.store.clone(),
+                fence(),
+                "worker".into(),
+                PROJECT,
+                &door,
+                &producer,
+                &reads,
+                &|| true,
+            )
+            .unwrap();
+            let first = run(&host, PROJECT, sync::Trigger::Startup).unwrap();
+            assert!(first.receipts.iter().any(
+                |receipt| receipt.failure_code.as_deref() == Some("ENGINE_BUILD_NOT_ADMITTED")
+            ));
+            assert!(fakes::lock(&h.world).reclaims.is_empty());
+        }
+        h.reopen_after_kill();
+        door.blocked.store(false, Ordering::SeqCst);
+        {
+            let host = StoreHost::new(
+                h.store.clone(),
+                fence(),
+                "restart".into(),
+                PROJECT,
+                &door,
+                &producer,
+                &reads,
+                &|| true,
+            )
+            .unwrap();
+            run(&host, PROJECT, sync::Trigger::Startup).unwrap();
+            assert_eq!(
+                door.opens.load(Ordering::SeqCst),
+                1,
+                "admission changes must not implicitly retry a terminal row"
+            );
+            assert!(fakes::lock(&h.world).reclaims.is_empty());
+        }
+        let result = h
+            .store
+            .lock()
+            .unwrap()
+            .recovery(
+                &fence(),
+                &ds_sync_runtime::rows::store_scope(PROJECT),
+                ds_sync_runtime::now_ms(),
+                ds_sync_runtime::store::recovery::Command::Retry {
+                    row: row.client_publish_id.clone(),
+                },
+            )
+            .unwrap();
+        assert!(result.applied, "{:?}", result.refusals);
+        let host = StoreHost::new(
+            h.store.clone(),
+            fence(),
+            "retry".into(),
+            PROJECT,
+            &door,
+            &producer,
+            &reads,
+            &|| true,
+        )
+        .unwrap();
+        let completed = run(&host, PROJECT, sync::Trigger::LocalChange).unwrap();
+        assert!(completed
+            .receipts
+            .iter()
+            .any(|receipt| receipt.outcome == "published"));
+        assert_eq!(door.opens.load(Ordering::SeqCst), 2);
+        assert_eq!(fakes::lock(&h.world).commits, 1);
+        assert_eq!(
+            stored_rows(&h, PROJECT)[0].client_publish_id,
+            row.client_publish_id
+        );
+    }
+}
+
 fn fence() -> Fence {
     Fence {
         account: "account-1".into(),

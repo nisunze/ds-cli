@@ -348,13 +348,22 @@ fn run_leased(
                 let receipt = bind_publication(upload(host, project, &local, identity), &local);
                 let credential_refused = receipt.outcome == "credential_refused";
                 let settled = settled_verdict(&receipt);
+                let retain_for_recovery = local
+                    .iter()
+                    .find(|row| &row.identity == identity)
+                    .is_some_and(|row| {
+                        crate::store::recovery::retain_failure_bytes(
+                            &crate::rows::store_row(project, row, host.server_now_ms()),
+                            &crate::rows::receipt_row(project, &receipt, host.server_now_ms()),
+                        )
+                    });
                 keep(host, project, &mut receipts, receipt);
                 if credential_refused {
                     break;
                 }
-                // A verdict the record passed on this publication is final:
-                // the bytes leave this machine in the pass that heard it.
-                if let Some(verdict) = settled {
+                // Terminal verdicts leave the queue immediately. Only exact
+                // recoverable authority evidence retains bytes for explicit recovery.
+                if let Some(verdict) = settled.filter(|_| !retain_for_recovery) {
                     let receipt = reclaim(host, project, &local, identity, verdict);
                     keep(host, project, &mut receipts, receipt);
                 }
