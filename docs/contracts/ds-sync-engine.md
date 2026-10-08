@@ -49,6 +49,16 @@ before uploading. The publish service still checks that the source remains
 current transactionally. Ordinary artifacts retain the output-head
 `base_revision` conflict rule.
 
+Solar city input bases use `solar_snapshot::input_base::{encode,fingerprint}`:
+Brain-compatible sorted UTF-8 objects, exact integers, binary64 floats including
+negative zero, and HTML-safe strings over the four governed sections (config's
+path manifest only). New kernel snapshots use that encoding for the body too;
+historical browser and authenticated Brain snapshot bytes remain readable.
+`tests/fixtures/solar-input-base-vectors.json` is the shared Rust/Go authority
+corpus, with the copy and numeric typing rules beside it. Report bases name exact
+verified calculation report-input bytes; portfolio bases retain membership order.
+Client snapshot transport hashes continue to name the exact submitted bytes.
+
 **No polling.** Owner, 2026-09-11: "we cannot afford passive aggressive polling
 when not needed — this should be triggered by dependencies and navigations, not
 background hammering of Firestore." So the plan answers two more questions
@@ -280,11 +290,11 @@ preflight and its answer settles the row through `sync_store::ActionReceipt`.
 
 | Desktop queue kind | Current headless Server coverage | Server-first migration obligation |
 | --- | --- | --- |
-| `calculate-<city>` / `default`: exactly `report-input` JSON | `server.solar.submit` prepared jobs, sealed at completion | Replace separate publisher with common native pass |
-| `report-<city>` / language-specific APD draft plus chart PNGs | Headless native application can generate draft/figures; common sync-store seal/publication is **missing** | Seal closed outputs in native store, calculation-digest dependency |
+| `calculate-<city>` / `default`: exactly `report-input` JSON | Prepared jobs and captured native city completion seal through the common store/pass | Bind Desktop to the same captured native completion authority |
+| `report-<city>` / language-specific APD draft plus chart PNGs | Captured native city completion retains closed draft/chart bytes through the common store/pass | Bind Desktop to the same completion; preserve calculation-digest dependency |
 | `report-<city>` / language-specific interpreted final Markdown | `solar.final.submit` exists headlessly; common sync-store publication is **missing** | Forward the final through common seal/pass before Desktop cutover |
-| `portfolio-<id>` / portfolio variant: `portfolio_result` JSON, optional draft | Server native application has portfolio provider through `SolarProjectCommand::Portfolio::Publish`; common sync-store publication is **missing** | Native store producer and membership fingerprint through common pass |
-| Explicit city batch | `enqueueSolarBatchPublication` expands into calculation and draft rows, no batch head | Headless native batch must seal every successful constituent; preserve per-city failures |
+| `portfolio-<id>` / portfolio variant: `portfolio_result` JSON, optional draft | Governed v3 native completion retains immutable outputs through the common store/pass | Migrate legacy v2 city-batch aggregate and the Solar Project command workflow |
+| Explicit city batch | Captured native completion seals successful calculation and draft constituents, with separate per-city publication errors | Bind Desktop to the same completion and remove its queue expansion |
 
 Standalone finished PDF/DOCX uploads are manual report assets, not these
 compute publications. `enqueueLocalComputePublication` is the only generic

@@ -2982,6 +2982,65 @@ fn both_engines_seal_offline_survive_restart_and_publish_only_after_reconnect() 
 }
 
 #[test]
+fn both_engines_reconcile_a_moved_base_without_reopening_the_terminal_row() {
+    use serde_json::json;
+    let base_a = json!({"_root":{},"_config":{"paths":{"city":"city"}},"00_templates":{},"01_city_inputs":{"population":100}});
+    let mut base_b = base_a.clone();
+    base_b["01_city_inputs"]["population"] = json!(101);
+    let fingerprint = ds_command_kernel::solar_snapshot::input_base::fingerprint;
+    let a = fingerprint(&base_a).unwrap();
+    let b = fingerprint(&base_b).unwrap();
+    assert_ne!(a, b);
+    for mut row in [local_row(b"report"), solar_row()] {
+        row.input_base_fingerprint = Some(a.clone());
+        row.base_revision = None;
+        // A host that already holds fresh authority B refuses before upload.
+        let grant = json!({"grant_id":"fresh","install_id":"install-1","project":PROJECT,
+            "engines":[{"name":row.identity.engine,"release":row.engine_release}],"resource":row.resource,
+            "expires_at_ms":1000000,"snapshot_base":{row.identity.operation.clone():b}});
+        let request: sync::Input = serde_json::from_value(json!({
+            "schema":sync::SCHEMA,"project":PROJECT,"install_id":"install-1","now_ms":1000,
+            "online":true,"trigger":"grant_opened","grants":[grant.clone()],"source_grants":[grant],
+            "local":[{"engine":row.identity.engine,"operation":row.identity.operation,"variant":row.identity.variant,
+                "sha256":row.sha256,"size_bytes":row.size_bytes,"produced_at_ms":row.produced_at_ms,
+                "input_base_fingerprint":a,"engine_release":row.engine_release,"resource":row.resource}]
+        })).unwrap();
+        let planned = serde_json::to_value(sync::plan(&request).unwrap()).unwrap();
+        assert!(
+            planned["actions"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|action| action["reason"] == "source_base_moved"),
+            "{planned}"
+        );
+
+        // A host without fresh authority asks Brain. The same real runtime
+        // persists its 409, survives restart, and never uploads/reopens again.
+        let mut h = Harness::new();
+        fakes::lock(&h.world)
+            .current_base
+            .insert(row.identity.operation.clone(), b.clone());
+        let pass = h.run(vec![row], sync::Trigger::Startup);
+        assert!(
+            outcomes(&pass).contains(&"upload:conflict".into()),
+            "{:?}",
+            outcomes(&pass)
+        );
+        assert_eq!(
+            stored_rows(&h, PROJECT)[0].state,
+            ds_sync_runtime::store::ArtifactState::Conflict
+        );
+        assert_eq!(fakes::lock(&h.world).opens, 1);
+        assert!(fakes::lock(&h.world).transfers.is_empty());
+        h.reopen_after_kill();
+        h.run(Vec::new(), sync::Trigger::Manual);
+        assert_eq!(fakes::lock(&h.world).opens, 1);
+        assert!(fakes::lock(&h.world).transfers.is_empty());
+    }
+}
+
+#[test]
 fn one_pass_publishes_both_engines_and_idle_recovery_makes_no_gateway_calls() {
     let h = Harness::new();
     let pass = h.run(

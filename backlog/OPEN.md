@@ -54,13 +54,10 @@ is ruled in the sync contract: visible per-city discard and fresh runs.
 - **Native recovery controls remain incomplete.** Add native retry and
   digest-bound sanitation over the common store and expose them headlessly.
   Retain terminal stale/conflict verdicts until an explicit reviewed recovery.
-- **Server common-store coverage is missing for Solar drafts/finals/portfolios.**
-  Seal and publish all closed native batch constituents through the common path
-  before Desktop cutover, retaining authored inputs and per-city failures.
-- **Fingerprint parity remains unproven.** Prove shared Solar fingerprint vectors
-  in Rust/Go and stale-input reconciliation through the store transition. Extend
-  the transactional engine adapters without adding a second admission or blob
-  verification path.
+- **Server common-store coverage remains incomplete for reviewed finals, legacy
+  v2 city-batch portfolios and the Solar Project publication workflow.** Seal
+  these closed constituents through the common path before Desktop cutover,
+  retaining authored inputs and per-city failures.
 - **Desktop still owns an IndexedDB publication queue.** Route Solar execution and
   Sync Center through the shared native runtime, expose headless queue/recovery
   commands, and remove replaced TypeScript/kernel exports after native proof and

@@ -6,6 +6,8 @@
 use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256};
 
+pub mod input_base;
+
 const MAX_BYTES: usize = 8 << 20;
 const MAX_DOCUMENTS: usize = 512;
 
@@ -119,12 +121,12 @@ fn build(root: &str, city: &str, base: &Value, source_kind: &str) -> Result<Valu
     }
     validate_sections(base)?;
     let base_value = Value::Object(base.clone());
-    let fingerprint = digest(canonical(&base_value)?.as_bytes());
+    let fingerprint = input_base::fingerprint(&base_value)?;
     let seed =
         ds_solar_contracts::digest::demand_noise_seed(city).map_err(|_| "Solar seed failed")?;
     let mut snapshot = base.clone();
     snapshot.insert("_provenance".into(), json!({"schema":3,"source_kind":source_kind,"root":root,"context":city,"demand_noise_seed":seed,"input_base_fingerprint":fingerprint}));
-    let snapshot_json = canonical(&Value::Object(snapshot))?;
+    let snapshot_json = input_base::canonical(&Value::Object(snapshot))?;
     let bytes = snapshot_json.len();
     if bytes == 0 || bytes > MAX_BYTES {
         return Err("Solar snapshot exceeds its byte limit".into());
@@ -182,9 +184,9 @@ fn validate(root: &str, city: &str, snapshot: &Value) -> Result<Value, String> {
         return Err("Solar snapshot provenance does not match this city".into());
     }
     let base = json!({"_root":body.get("_root").ok_or("Solar root missing")?,"_config":body.get("_config").ok_or("Solar config missing")?,"00_templates":body.get("00_templates").ok_or("Solar templates missing")?,"01_city_inputs":body.get("01_city_inputs").ok_or("Solar city inputs missing")?});
-    let expected = digest(canonical(&base)?.as_bytes());
+    let expected = input_base::fingerprint(&base)?;
     let declared = text(input.get("input_base_fingerprint").unwrap_or(&Value::Null)).unwrap_or("");
-    if expected != declared {
+    if expected != declared && digest(canonical(&base)?.as_bytes()) != declared {
         // Older ds-brain snapshots use Go's encoding/json ordering and exact
         // numeric spellings. Preserve their original section bytes instead of
         // reserializing them through a JavaScript-number interpretation.
@@ -292,6 +294,33 @@ mod tests {
         assert_eq!(
             canonical(&value).unwrap(),
             r#"{"2":2,"10":10,"a":0,"b":1,"e":1e+21,"html":"\u003c\u0026\u003e\u2028\u2029","nested":[{"a":1e-7,"z":9007199254740991}]}"#
+        );
+    }
+    #[test]
+    fn legacy_local_snapshot_remains_readable_without_rewriting_its_bytes() {
+        let mut base = base();
+        base["01_city_inputs"] = json!({"10":10,"2":2,"number":-0.0});
+        let fingerprint = digest(canonical(&base).unwrap().as_bytes());
+        let mut body = base;
+        body["_provenance"] = json!({"schema":3,"source_kind":"local solar input workspace","root":"r","context":"c","input_base_fingerprint":fingerprint});
+        let encoded = canonical(&body).unwrap();
+        let snapshot = json!({"snapshot_json":encoded,"snapshot_sha256":digest(encoded.as_bytes()),"snapshot_bytes":encoded.len(),"source_document_count":1,"media_downloads":[],"input_base_fingerprint":fingerprint});
+        assert_eq!(validate("r", "c", &snapshot).unwrap()["eligible"], true);
+        assert_eq!(snapshot["snapshot_json"], encoded);
+    }
+    #[test]
+    fn governed_encoding_keeps_exact_integers_and_negative_zero_in_snapshot_body() {
+        let mut base = base();
+        base["01_city_inputs"] = json!({"integer":9007199254740993u64,"zero":-0.0});
+        let mut snapshot = build("r", "c", &base, "local solar input workspace").unwrap();
+        snapshot["media_downloads"] = json!([]);
+        let body = snapshot["snapshot_json"].as_str().unwrap();
+        assert!(body.contains("9007199254740993"));
+        assert!(body.contains("\"zero\":-0"));
+        assert_eq!(validate("r", "c", &snapshot).unwrap()["eligible"], true);
+        assert_ne!(
+            input_base::fingerprint(&base).unwrap(),
+            digest(canonical(&base).unwrap().as_bytes())
         );
     }
     #[test]
