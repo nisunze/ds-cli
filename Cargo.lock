@@ -1936,6 +1936,7 @@ dependencies = [
  "anyhow",
  "base64 0.22.1",
  "chrono",
+ "ds-command-kernel",
  "ds-solar-contracts",
  "ds-solar-io",
  "ds-solar-runtime",

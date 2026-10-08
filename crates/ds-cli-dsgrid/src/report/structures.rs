@@ -125,7 +125,7 @@ type, the structure's own description, pole family / material / height / \
 class / stays read from the type name, the assembly drawing number when a \
 description carries one, REG v7 Table 14 foundation depth and width by \
 pole height, and the rule findings the engine evaluates today \
-(`structure_type_not_allowed`: a single pole carrying 10° ≤ |angle| < 60°) \
+(`structure_type_not_allowed`: an unsupported single pole carrying 10° ≤ |angle| < 60°) \
 with their rule id, source clause and an empty reason slot. Written whole \
 to CSV or XLSX with --out; the receipt carries the counts, the standard's \
 digest, the declared assumptions and a bounded page of rows. A proposal: \

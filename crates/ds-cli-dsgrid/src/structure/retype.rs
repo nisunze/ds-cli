@@ -70,8 +70,8 @@ const OWN: &[Refusal] = &[
     },
     Refusal {
         code: "structure_type_not_allowed",
-        when: "a write would leave or create a single pole carrying 10° ≤ |line angle| < 60° (REG v7 angle-pole rule, EDCL drawing -04 not recommended)",
-        remedy: "choose an H-pole type (family j, drawing W045S-A0101-11); detail lists each structure, its angle and the allowed families",
+        when: "a write would leave or create an unsupported single pole carrying 10° ≤ |line angle| < 60° (REG v7 angle-pole rule, EDCL drawing -04 not recommended)",
+        remedy: "choose an H-pole or a stayed steel strain assembly; detail lists each structure, its angle and the allowed families",
     },
     Refusal {
         code: "rule_source_missing",
@@ -150,7 +150,7 @@ in `detail.receipt` with `persisted: false`.",
         },
         Example {
             command: "ds dsgrid structure retype --model local-… --from-finding structure_type_not_allowed --type j-w-60d-S190.012 --dry-run --output json",
-            note: "Every single pole in the 10°–60° band, listed; nothing written.",
+            note: "Every unsupported single pole in the 10°–60° band, listed; nothing written.",
             runnable: false,
         },
         Example {
@@ -296,11 +296,11 @@ pub fn run(inputs: &Inputs, context: &Context) -> Result<Value, Failure> {
         return Err(Failure::invalid(
             "structure_type_not_allowed",
             format!(
-                "retyping to {new_type_name} would leave or create {} single pole(s) in the 10°–60° band",
+                "retyping to {new_type_name} would leave or create {} unsupported single pole(s) in the 10°–60° band",
                 blocking.len()
             ),
         )
-        .remedy("choose an H-pole type (family j, drawing W045S-A0101-11) for these structures")
+        .remedy("choose an H-pole or a stayed steel strain assembly for these structures")
         .detail(json!({
             "rule": report_identity,
             "created": created,
@@ -312,7 +312,7 @@ pub fn run(inputs: &Inputs, context: &Context) -> Result<Value, Failure> {
         warnings.push(json!({
             "code": code,
             "message": format!(
-                "a write would be refused: {} structure(s) would remain or become a single pole in the 10°–60° band",
+                "a write would be refused: {} structure(s) would remain or become an unsupported single pole in the 10°–60° band",
                 blocking.len()
             ),
         }));
