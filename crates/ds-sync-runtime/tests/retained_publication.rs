@@ -337,18 +337,6 @@ fn the_shared_producer_set_answers_for_retained_solar_bytes_on_every_host() {
     .is_err());
 }
 
-fn host_identity(fence: &Fence) -> ds_compute_runtime::HostIdentity {
-    ds_compute_runtime::HostIdentity {
-        owner: "owner-a".into(),
-        principal: ds_command_kernel::execution_context::Principal {
-            uid: fence.account.clone(),
-            lane: "canary".into(),
-            deployment: fence.deployment.clone(),
-            install_id: fence.install_id.clone(),
-        },
-    }
-}
-
 /// Every host restarts from one inventory read from the work itself; a
 /// passive read never creates the store, and another fence's rows are not
 /// this host's projects.
@@ -357,9 +345,8 @@ fn one_publication_inventory_reads_the_work_and_never_creates_the_store() {
     let dir = tempfile::tempdir().unwrap();
     let database = dir.path().join("store.sqlite");
     let reports = dir.path().join("report-artifacts");
-    let identity = host_identity(&fence());
     assert!(
-        ds_sync_runtime::publication_projects(&database, &reports, &identity, None)
+        ds_sync_runtime::publication_projects(&database, &reports, &fence(), None)
             .unwrap()
             .is_empty()
     );
@@ -369,17 +356,14 @@ fn one_publication_inventory_reads_the_work_and_never_creates_the_store() {
     let mut other = fence();
     other.account = "bob".into();
     assert_eq!(
-        ds_sync_runtime::publication_projects(&database, &reports, &identity, None).unwrap(),
+        ds_sync_runtime::publication_projects(&database, &reports, &fence(), None).unwrap(),
         std::collections::BTreeSet::from(["project-a".to_string()])
     );
-    assert!(ds_sync_runtime::publication_projects(
-        &database,
-        &reports,
-        &host_identity(&other),
-        None
-    )
-    .unwrap()
-    .is_empty());
+    assert!(
+        ds_sync_runtime::publication_projects(&database, &reports, &other, None)
+            .unwrap()
+            .is_empty()
+    );
 }
 
 /// Every host answers the kernel's recovery control with the same function:
