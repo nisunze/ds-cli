@@ -406,22 +406,23 @@ installation; explicit calculation still needs bounded native phase/work
 evidence before claiming a measured bottleneck or release performance. No
 template edits, competing builds or model mutations.
 
-## Focused review: Profile complete Analyze result admission and bounded queries
+## Focused review: Profile cached result source declaration and findings consumers
 
-Read-only request before the next native slice: trace runtime `analysis.rs`,
-`project_session`/`project_retained`, job capture/admission and publication
-rollback. Admit paired engine `DefaultAnalysisFacts` under the exact computed
-revision/root/envelope; never reconstruct full facts from capped analysis JSON.
-Separate model-bound analysis evidence from displayed-case Profile evidence.
+Read-only request before the next slice: read `result_queries.rs` and
+`result_queries/analysis_queries.rs` native source/kind, basis, family, bounds,
+root/history/cursor and explicit calculation contracts. Trace
+`ds-cli-map/src/profile_results.rs`/`profile_model.rs` request declarations and
+parser, Desktop results/issue transports, Issues dock and reconciliation callers.
 
-Specify explicit native query basis and bounds for design-point findings and
-support resistance qualification/failures/blockers. Trace complete counts,
-entity families, computed/authored pins, cursor identity, missing/affected
-calculation refusals, selection and case changes, history ABA and rollback.
-Name independent preservation/invalidation of model-analysis results when a
-Profile refresh occurs without Analyze. Re-read `STABILIZATION.md`; preserve
-known failure with incomplete qualification and signed loading within bounds.
+Declare the native source/kind DTO unchanged through CLI/MCP before UI bindings.
+Findings reads must consume admitted `model_analysis` facts, never invoke
+`engineeringIssueLayer`, projection, Analyze or Save. Name the former issue-layer
+DTO/predicates and complete-page differences; preserve native unknown envelope,
+known failure with incomplete qualification, signed bounds, typed refusals,
+full counts, source/cursor pinning and project/principal/client capture.
+Trace replaced worker reads and all callers before deletion. Keep explicit
+calculation and existing validation/result/download views.
 
-Maximum two findings with exact path/line evidence. Native/headless proof and
-refusals precede CLI/MCP or Web bindings. No model mutations, template/printing
-work, competing builds or solver qualification.
+Maximum two findings with exact path/line evidence. Re-read `STABILIZATION.md`.
+No model mutations, template/printing work, competing builds or solver
+qualification.

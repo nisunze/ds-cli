@@ -226,11 +226,14 @@ asynchronous and revision-fenced: expose native job tickets and bounded
 start/status/cancel controls directly through CLI/MCP, and bind the native owner
 for browser/peer calculation. Cold initialization still projects synchronously;
 calculated-scene transfer remains broad. Reject/suppress stale results without
-losing edits. Complete cached queries
-for model-bound design-clearance point findings and default-analysis resistance
-checks by admitting the engine's complete `DefaultAnalysisFacts` alongside the
-exact native calculation/report head. Localize result-index
-reconstruction/preservation and bind cached reads into findings controls. Carry only necessary computed
+losing edits. Declare the admitted model-analysis query source and design findings through
+CLI/MCP, then bind cached reads into findings controls and remove their implicit
+issue calculations and replaced worker/TypeScript adapters. Localize independent
+model-analysis invalidation and result-index reconstruction/preservation so
+unchanged facts survive Profile-only calculation after local edits. Add native
+horizontal governing-wire section/support references before assigning horizontal
+point failures to violating sections; current point refs describe the vertical
+wire and must not be reused for that attribution. Carry only necessary computed
 result/delta bytes into Profile. The Server/native owner must not depend on Svelte, browser
 state or Tauri; preserve explicit project/principal/model/session context.
 Findings reads must not solve implicitly: query admitted results or name the
