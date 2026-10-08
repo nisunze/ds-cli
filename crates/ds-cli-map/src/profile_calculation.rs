@@ -17,17 +17,17 @@ macro_rules! refusal {
     };
 }
 pub static COMMAND: Command = Command {
-    id:"map.profile.calculation", path:&["map","profile","calculation"], contract:1,
-    summary:"Start, inspect, cancel or admit a native Profile calculation.",
+    id:"map.profile.calculation", path:&["map","profile","calculation"], contract:2,
+    summary:"Prepare a scene base and control native Profile calculation jobs.",
     purpose:"Return a native job ticket immediately for an already initialized Profile. Edits, selection and cached reads remain available. Native owns captured inputs, capacity, cancellation and history/display fences. Status never calculates or installs results; Admit explicitly installs a ready current result through native publication. Cancellation discards results; noninterruptible work holds its slot until it exits. No action saves. Cold initialization and browser/peer worker migration remain separate boundaries.",
     chapter:Chapter::MapPresentation, effect:Effect::LocalUi, authority:Authority::DesktopPairing, execution:Execution::Sync,
     args:&[
         Arg::value("model","<model-id>","Exact open model from map profile view.").required(),
-        Arg::value("history","<native-json>","Exact authored history from map profile view. Required by native Start; optional for Status, Cancel and Admit. Any supplied history must still match."),
-        Arg::value("request","<native-json>","Native CalculationArguments: action start/status/cancel/admit and job_id (single-use, 1..128 bytes). Start additionally accepts display_case and analyze (default false). Native captures admitted styles, options and journal. Read the ticket with status, then explicitly admit a ready result; cancel discards it. No caller scope, principal, publication pin or journal is accepted.").required(),
+        Arg::value("history","<native-json>","Exact authored history from map profile view. Start and prepare_scene_base require it. Any supplied history must match."),
+        Arg::value("request","<native-json>","Native CalculationArguments: prepare_scene_base, or start/status/cancel/admit with job_id (single-use, 1..128 bytes). Start accepts display_case, analyze (false) and scene_transfer: {mode:full|exact_json}, or {mode:delta,base_signature}. No caller scope, principal, publication or journal. Native owns capture and admission; Save stays independent.").required(),
         crate::TARGET_ARG,crate::DESCRIPTOR_ARG,
     ],
-    output:"Start/Status/Cancel: bounded native ticket with job_id, scope, model_id, exact history, status, timing, solver_interruptible:false, runtime_worker_active and error. Admit: bounded Profile receipt with authored/computed identities, native work/timing, review/analysis counts after worker/render publication. Full calculated scene stays in Profile; it is not printed by this command. Save remains independent.",
+    output:"Prepare: bounded exact scene signature with authored history and original computed revision/root/axis, zero calculated cases. Start/Status/Cancel: bounded native ticket and timings. Admit: bounded Profile receipt after worker/render publication. Original native scene_json/scene_delta_json stays inside Profile, preserving numeric identity. Delta geometry is limited to 256 KiB/4096 operations; display and analysis remain separate full payloads. Save stays independent.",
     examples:&[Example{command:"ds map profile calculation --model <model-id> --history '<native-history>' --request '{\"action\":\"start\",\"job_id\":\"review-1\",\"analyze\":true}' --output json",note:"Read exact model/history with map profile view; poll status and explicitly admit the current ready result.",runnable:false}],
     refusals:&[
         crate::NOT_PAIRED,crate::AMBIGUOUS,crate::UNREACHABLE,crate::PAIRING_REJECTED,crate::UNSUPPORTED,crate::UNREADABLE,crate::REFUSED,
@@ -46,6 +46,9 @@ pub static COMMAND: Command = Command {
         refusal!("profile_calculation_unavailable","the job does not exist in this native scope","inspect the current Profile and use its job ticket"),
         refusal!("profile_calculation_cancelled","the result was cancelled","continue editing or explicitly start a new job"),
         refusal!("profile_calculation_failed","the native worker failed","inspect the native failure before another explicit job"),
+        refusal!("profile_calculated_delta_base_unavailable","no exact prepared scene base exists","prepare_scene_base; after case selection explicitly calculate with exact_json first"),
+        refusal!("profile_calculated_delta_stale","calculated scene signature changed","read the current scene base and explicitly start a new job"),
+        refusal!("profile_calculated_delta_output_limit","delta exceeds native geometry bounds","explicitly request exact_json; no automatic fallback occurs"),
         refusal!("profile_publication_pending","a native result awaits confirmation/discard","finish that publication before a new job"),
         refusal!("profile_publication_stale","publication identity or history differs","discard the captured result and use current Profile context"),
         refusal!("profile_publication_unavailable","no native publication exists","read the current Profile before another explicit action"),
@@ -119,6 +122,21 @@ mod tests {
             crate::PROFILE_CALCULATION.arguments,
             ["model_id", "expected_history", "request"]
         );
+        for raw in [
+            r#"{"action":"prepare_scene_base"}"#.to_string(),
+            r#"{"action":"start","job_id":"exact","scene_transfer":{"mode":"exact_json"}}"#
+                .to_string(),
+            format!(
+                r#"{{"action":"start","job_id":"delta","scene_transfer":{{"mode":"delta","base_signature":"sha256:{}"}}}}"#,
+                "a".repeat(64)
+            ),
+        ] {
+            let expected: CalculationArguments = serde_json::from_str(&raw).unwrap();
+            assert_eq!(
+                native_request(&inputs(&raw)).unwrap()["request"],
+                json!(expected)
+            );
+        }
     }
     #[test]
     fn malformed_controls_refuse_before_pairing_and_never_accept_transport_overrides() {
@@ -128,6 +146,9 @@ mod tests {
             r#"{"action":"start","job_id":"a","scope":"other"}"#,
             r#"{"action":"cancel","job_id":"a","publication_id":"forged"}"#,
             r#"{"action":"start","job_id":"a","analyze":"yes"}"#,
+            r#"{"action":"prepare_scene_base","job_id":"a"}"#,
+            r#"{"action":"start","job_id":"a","scene_transfer":{"mode":"delta","base_signature":"sha256:bad"}}"#,
+            r#"{"action":"start","job_id":"a","scene_transfer":{"mode":"exact_json","fallback":true}}"#,
         ] {
             assert_eq!(
                 native_request(&inputs(raw)).unwrap_err().code(),

@@ -106,7 +106,7 @@ pub static SET: Command = Command {
     path: &["map", "profile", "set"],
     contract: 9,
     summary: "Set the paired Profile's visual state through typed CLI inputs.",
-    purpose: "Set Profile appearance; omitted values stay. Display needs an open model; height and camera may be staged. Calculation is explicit: rebuild/analyze await a native background job while edits and observation continue. Only current history and display context can admit its result. Save is independent. First initialization remains synchronous. Display changes needing calculation refuse until rebuild/analyze. Report visibility schedules no analysis. Case selection reads prepared results and refuses unprepared cases. Combine --display-case with --action rebuild/analyze to explicitly calculate the requested case.",
+    purpose: "Set Profile appearance; omitted values stay. An open model is required except staged height/camera. Explicit rebuild/analyze runs a native background job while edits and observation continue. Only current history/display context admits results. Save is independent. First initialization is synchronous. Display changes needing calculation refuse until rebuild/analyze. Report visibility schedules no analysis. Case selection requires prepared results. Combine --display-case with --action rebuild/analyze to explicitly calculate the requested case.",
     chapter: Chapter::MapPresentation,
     effect: Effect::LocalUi,
     authority: Authority::DesktopPairing,

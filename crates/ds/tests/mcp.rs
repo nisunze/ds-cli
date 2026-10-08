@@ -3836,6 +3836,8 @@ fn profile_calculation_tickets_are_a_typed_cli_projection_with_closed_mcp_argume
         &[
             json!({"jsonrpc":"2.0","id":1,"method":"tools/list"}),
             json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"map_profile_calculation","arguments":{"model":"model-a","request":"{\"action\":\"start\",\"job_id\":\"a\"}","publication_id":"forged"}}}),
+            json!({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"map_profile_calculation","arguments":{"model":"model-a","request":"{\"action\":\"start\",\"job_id\":\"a\",\"scene_transfer\":{\"mode\":\"exact_json\",\"fallback\":true}}"}}}),
+            json!({"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"map_profile_calculation","arguments":{"model":"model-a","request":"{\"action\":\"start\",\"job_id\":\"a\",\"scene_transfer\":{\"mode\":\"delta\",\"base_signature\":\"sha256:bad\"}}"}}}),
         ],
     );
     let tools = response(&messages, 1)["result"]["tools"]
@@ -3857,11 +3859,22 @@ fn profile_calculation_tickets_are_a_typed_cli_projection_with_closed_mcp_argume
         response(&messages, 2)["result"]["structuredContent"]["error"]["code"],
         "mcp_arguments_invalid"
     );
+    for id in [3, 4] {
+        // Availability precedes nested native DTO decoding. The owning parser
+        // gate proves these malformed modes; unpaired MCP stops at its fence.
+        let refusal = response(&messages, id)["result"]["structuredContent"]["error"]["code"]
+            .as_str()
+            .unwrap();
+        assert!(
+            matches!(refusal, "invalid_profile_view" | "desktop_not_paired"),
+            "{refusal}"
+        );
+    }
     let descriptor = cli(&[
         "capabilities",
         "map.profile.calculation",
         "--output",
         "json",
     ]);
-    assert_eq!(descriptor["data"]["command"]["contract"], 1);
+    assert_eq!(descriptor["data"]["command"]["contract"], 2);
 }
