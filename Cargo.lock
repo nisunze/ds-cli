@@ -1908,6 +1908,8 @@ dependencies = [
  "ds-solar-portfolio",
  "ds-solar-project",
  "ds-solar-runtime",
+ "ds-sync-runtime",
+ "ds-sync-store",
  "rand 0.9.5",
  "rayon",
  "schemars",

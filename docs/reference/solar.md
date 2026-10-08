@@ -264,6 +264,12 @@ so `solar sync status` cannot report it and this receipt is where it is read.
 No `publication` means the application stated nothing about one, which is what
 every receipt written before it recorded the fact looks like.
 
+The native portfolio publication handoff seals immutable output bytes and its row
+in the common Server sync store. It needs no Brain connection to retain the
+completed result. Its receipt reports `held` until the common pump receives a
+publication verdict; it never reports queued bytes as an online delivery. The
+same replay key and verified bytes survive a Server restart and reconnect.
+
 `solar report export` pages one exact `apd`/`draft`, `network`, `plant`, or
 `financial` Markdown document through the named `solar.document.read` bridge
 operation. `solar report bundle` is the portable authoring path: it pages a ZIP

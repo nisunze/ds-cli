@@ -175,6 +175,11 @@ impl SolarActivity {
         }))
     }
 
+    /// The immutable common queue seal is durable before this wake is sent.
+    pub fn local_publication_completed(&self) {
+        self.wake.store(true, Ordering::Release);
+    }
+
     fn caller(&self) -> ds_sync_store::JobCaller<'_> {
         self.sessions.identity().caller(None)
     }
