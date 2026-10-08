@@ -20,8 +20,16 @@ Read the generated schema, defaults, source semantics and limits. Then read
 `data.terrain.sample` and prepare a request matching that live schema. Request
 paths resolve relative to the request file. CLI and the `ds_data` MCP router
 reach the same Rust sampler; the `datasets` typed profile exposes both commands.
-Missing installed capability follows `ds` discovery and feedback, not a
-skill-local interpolation script.
+Missing installed capability follows `ds` discovery. During coding, use the
+owning backlogs; outside coding, use the governed sighting workflow. Never
+replace a missing capability with a skill-local interpolation script.
+
+For sparse MV corridor seeding or reseeding, also use `ds-mv-corridor-ground`.
+Its footprint and domain rules prevent a dense DEM input from becoming a
+project-wide ground grid or a hull bridging unsampled routes. Local footprint
+overlap and sampling density permit bounded observation sharing; independent
+alignment families still retain independent interpolation domains. Alignment
+identity alone neither proves coverage nor requires duplicate physical points.
 
 Choose one source explicitly. A provider comparison diagnoses differences;
 it does not authorize mixing providers, correcting heights or applying a datum

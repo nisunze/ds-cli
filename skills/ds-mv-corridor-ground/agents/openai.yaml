@@ -1,0 +1,4 @@
+interface:
+  display_name: "DS MV Corridor Ground"
+  short_description: "Seed natural sparse ground along MV corridors"
+  default_prompt: "Use $ds-mv-corridor-ground to prepare reproducible MV corridor ground with adaptive density, bounded footprints and honest gaps."
