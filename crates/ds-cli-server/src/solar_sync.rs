@@ -15,7 +15,6 @@
 
 use std::{
     collections::BTreeSet,
-    io::Cursor,
     path::{Path, PathBuf},
     sync::{
         Arc, Mutex,
@@ -26,45 +25,20 @@ use std::{
 };
 
 use ds_command_kernel::compute_jobs::{EngineKind, Job};
-use ds_compute_runtime::{
-    self as runtime, CompletionObserver, HostIdentity, SolarPublication, SolarPublicationMetadata,
-};
+use ds_compute_runtime::{self as runtime, CompletionObserver, HostIdentity};
 use ds_sync_runtime::{
-    ActivityRow, LocalRow, Producer, Producers, SolarPublishOutcome, SolarPublisher,
-    TransferReceipt, VerifiedReads, reports, solar,
+    LocalRow, Producer, Producers, SolarPublishOutcome, SolarPublisher, TransferReceipt,
+    VerifiedReads, reports, solar,
 };
 
 use crate::{auth, server_sync::sessions::ServerSessions};
+use ds_sync_runtime::rows::now_ms;
+use ds_sync_runtime::solar_producer::{SolarProducer, publication, solar_jobs_in};
 use serde_json::Value;
 
 /// What the Solar producer retired (job, bytes freed) and what it offered.
 #[cfg(test)]
 type SolarObservation = (Vec<(String, u64)>, Vec<LocalRow>);
-
-/// One page of the durable queue, the store's own maximum.
-const PAGE: usize = 1000;
-
-/// How many of a project's newest durable Solar rows one projection covers.
-///
-/// A Sync Center projection is a working view, not an archive: it exists so
-/// the owner can see and publish what this host has been doing. Bounding it
-/// per project is what keeps a long-lived host — the owner may leave one
-/// running for months — answering in constant time, and keeps one busy
-/// project from deciding what another project's answer costs. A project with
-/// more rows than this says so (`more` in the activity envelope); nothing is
-/// lost, because the rows themselves stay durable and readable job by job.
-///
-/// The retention question this bound makes visible — when, if ever, a durable
-/// Solar row is removed — is an OWNER decision and is recorded as one in
-/// `docs-routes.md` §6. Nothing here deletes anything.
-///
-/// It bounds one more thing, and that is stated rather than discovered: the
-/// producer's observation of jobs the store holds NO row for — completed
-/// before the seal existed, or whose seal the store could not record — reads
-/// the same projection, so their result bytes are retired newest-first, at
-/// most this many per observation. A job sealed at completion is the store's
-/// row and is drained from the store, outside this bound.
-const PROJECTION_PER_PROJECT: usize = 512;
 
 pub struct SolarActivity {
     database: PathBuf,
@@ -79,7 +53,8 @@ pub struct SolarActivity {
     /// redirect refusal, staging, and digest proof; this host only anchors its
     /// private cache below the protected server state directory.
     reads: VerifiedReads,
-    wake: AtomicBool,
+    wake: Arc<AtomicBool>,
+    completion: ds_sync_runtime::solar_producer::SolarActivity,
     publication_failure: Mutex<Option<String>>,
 }
 
@@ -188,12 +163,19 @@ impl SolarActivity {
         let state_directory = database
             .parent()
             .ok_or("server database path has no protected state directory")?;
+        let wake = Arc::new(AtomicBool::new(false));
+        let completion = ds_sync_runtime::solar_producer::SolarActivity::new(
+            database.clone(),
+            sessions.identity().clone(),
+            wake.clone(),
+        );
         Ok(Arc::new(Self {
             sessions,
             reads: VerifiedReads::new(state_directory.join("sync-downloads")),
             database,
             sync_gate: Mutex::new(()),
-            wake: AtomicBool::new(false),
+            wake,
+            completion,
             publication_failure: Mutex::new(None),
         }))
     }
@@ -209,29 +191,10 @@ impl SolarActivity {
     /// left running for months answers this in bounded memory however much
     /// work it has done. A long queue is not an error; it is a long queue.
     fn projects(&self) -> Result<Vec<String>, String> {
-        let store = runtime::open(&self.database)?;
-        let caller = self.caller();
-        let mut projects = BTreeSet::new();
-        let mut cursor: Option<(u64, String)> = None;
-        loop {
-            let page = store
-                .jobs_page(
-                    &caller,
-                    cursor.as_ref().map(|(created, id)| (*created, id.as_str())),
-                    PAGE,
-                )
-                .map_err(|error| error.to_string())?;
-            let Some(last) = page.last() else { break };
-            cursor = Some((last.created_at_ms, last.id.clone()));
-            for job in page
+        let mut projects: BTreeSet<String> =
+            ds_sync_runtime::solar_producer::projects(&self.database, self.sessions.identity())?
                 .into_iter()
-                .filter(|job| job.engine == EngineKind::SolarPrepared)
-            {
-                if let Some(context) = job.context {
-                    projects.insert(context.project);
-                }
-            }
-        }
+                .collect();
         projects.extend(crate::server_reports::projects_with_publications(
             &self.database,
             &crate::server_sync::fence_of(self.sessions.identity()),
@@ -250,77 +213,6 @@ impl SolarActivity {
     /// report it whether or not that project's Sync Center could be read.
     pub fn projection_truncated(&self, project: &str) -> Result<bool, String> {
         Ok(self.solar_jobs_in(project)?.1)
-    }
-
-    /// The publication one completed job stands for, or `None` when its
-    /// result bytes have been reclaimed: the job row stays as evidence of
-    /// the computation, but there is nothing here to publish or to read.
-    fn publication_metadata(&self, job: &Job) -> Result<Option<SolarPublicationMetadata>, String> {
-        publication_metadata(&self.database, self.sessions.identity(), job)
-    }
-
-    /// This host's own sync fence — the native identity's account, the
-    /// lane's deployment and the registered install — read from local
-    /// state, exactly as every session of this host derives it. A seal
-    /// needs no session and no gateway.
-    fn fence(&self) -> ds_sync_runtime::store::Fence {
-        crate::server_sync::fence_of(self.sessions.identity())
-    }
-
-    /// Seal one completed prepared job's row into the sync store — the
-    /// same acknowledged step as the completion, from the compute worker's
-    /// own thread. The city's previous result on this machine is freed
-    /// through `Store::retire_job_result` and told so with a receipt; a
-    /// completion sealed BEHIND a later one of its city — a restart replays
-    /// every completed job newest first — frees its own result the same
-    /// way and the newer row stands. A result already reclaimed has nothing
-    /// to seal. A seal the store could not record is returned as the error
-    /// it is: the job is then not a publication — the next observation
-    /// retires its result bytes, and the job can be run again.
-    fn seal_completed(&self, job: &Job) -> Result<(), String> {
-        let project = job
-            .context
-            .as_ref()
-            .map(|context| context.project.as_str())
-            .ok_or("completed Solar job carries no execution context to seal under")?;
-        let Some(publication) = self.publication_metadata(job)? else {
-            return Ok(());
-        };
-        if publication.project_id != project {
-            return Err("this job's sealed input names another project than its context".into());
-        }
-        let report = publication
-            .outputs
-            .iter()
-            .find(|output| {
-                output.output_id == "report_input.json" && output.content_type == "application/json"
-            })
-            .ok_or("completed Solar result has no sealed report input JSON")?;
-        let request = solar::SealRequest {
-            project_id: project,
-            city_id: &publication.city_id,
-            job_id: &job.id,
-            completed_at_ms: job.updated_at_ms,
-            engine_release: &publication.engine_release,
-            engine_build_manifest_sha256: &publication.engine_build_manifest_sha256,
-            input_base_fingerprint: publication
-                .provenance
-                .as_ref()
-                .map(|provenance| provenance.input_base_fingerprint.as_str()),
-            report_input_sha256: &report.sha256,
-            report_input_size_bytes: report.size_bytes,
-        };
-        let store = ds_sync_runtime::open_store(&self.database)?;
-        let caller = self.sessions.identity().caller(Some(project));
-        let free = |superseded: &str| -> Result<u64, String> {
-            let mut store = store
-                .lock()
-                .map_err(|_| "The sync gate is unavailable".to_string())?;
-            store
-                .retire_job_result(&caller, superseded)
-                .map_err(|error| error.to_string())
-        };
-        solar::seal(&store, &self.fence(), &request, &free).map(|_| ())
     }
 
     /// This host's ONE producer set for a project — report + Solar, keyed by
@@ -587,17 +479,11 @@ impl CompletionObserver for SolarActivity {
     /// asked to drain it. A seal the store refused still wakes the pump —
     /// its observation retires the unsealed result — and is reported.
     fn completed(&self, job: &Job) -> Result<(), String> {
-        if job.engine != EngineKind::SolarPrepared {
-            return Ok(());
-        }
-        let sealed = self.seal_completed(job);
-        self.wake.store(true, Ordering::Release);
-        sealed
+        self.completion.completed(job)
     }
 
     fn recover(&self) -> Result<(), String> {
-        self.wake.store(true, Ordering::Release);
-        Ok(())
+        self.completion.recover()
     }
 }
 
@@ -643,290 +529,6 @@ pub fn with_producers<T>(
     ])?;
     f(&producers)
 }
-
-/// One project's newest durable Solar rows, and whether it holds more
-/// than the projection covers.
-///
-/// A projection is a bounded read of ONE project, narrowed in the query
-/// itself: a project with a hundred thousand rows costs the same as a
-/// project with ten, and no project's queue length can fail another
-/// project's answer. It never refuses for being long — the previous
-/// bound turned a busy host into a host with no Sync Center at all — it
-/// reports the truncation and the caller is told in the envelope.
-fn solar_jobs_in(
-    database: &Path,
-    identity: &HostIdentity,
-    project: &str,
-) -> Result<(Vec<Job>, bool), String> {
-    let store = runtime::open(database)?;
-    let caller = identity.caller(Some(project));
-    let mut cursor: Option<(u64, String)> = None;
-    let mut jobs = Vec::new();
-    loop {
-        let page = store
-            .jobs_page(
-                &caller,
-                cursor.as_ref().map(|(created, id)| (*created, id.as_str())),
-                PAGE,
-            )
-            .map_err(|error| error.to_string())?;
-        let Some(last) = page.last() else {
-            return Ok((jobs, false));
-        };
-        cursor = Some((last.created_at_ms, last.id.clone()));
-        for job in page
-            .into_iter()
-            .filter(|job| job.engine == EngineKind::SolarPrepared)
-        {
-            if jobs.len() == PROJECTION_PER_PROJECT {
-                return Ok((jobs, true));
-            }
-            jobs.push(job);
-        }
-    }
-}
-
-fn publication(
-    database: &Path,
-    identity: &HostIdentity,
-    job: &Job,
-) -> Result<SolarPublication, String> {
-    let store = runtime::open(database)?;
-    let caller = identity.caller(None);
-    let input = store
-        .job_input(&caller, &job.id)
-        .map_err(|error| error.to_string())?
-        .ok_or("completed Solar job lost its durable prepared input")?;
-    let result = store
-        .job_result(&caller, &job.id)
-        .map_err(|error| error.to_string())?
-        .ok_or("completed Solar job lost its durable result")?;
-    runtime::solar_publication(job, &input, &result)
-}
-
-/// The publication one completed job stands for, or `None` when its
-/// result bytes have been reclaimed: the job row stays as evidence of
-/// the computation, but there is nothing here to publish or to read.
-fn publication_metadata(
-    database: &Path,
-    identity: &HostIdentity,
-    job: &Job,
-) -> Result<Option<SolarPublicationMetadata>, String> {
-    let store = runtime::open(database)?;
-    let caller = identity.caller(None);
-    // The result first: a reclaimed result is one NULL read, and its
-    // input is not parsed for nothing on every pass.
-    let Some(result) = store
-        .job_result(&caller, &job.id)
-        .map_err(|error| error.to_string())?
-    else {
-        return Ok(None);
-    };
-    let input = store
-        .job_input(&caller, &job.id)
-        .map_err(|error| error.to_string())?
-        .ok_or("completed Solar job lost its durable prepared input")?;
-    runtime::solar_publication_metadata(job, &input, &result).map(Some)
-}
-
-/// The Solar publish ids (jobs) the store holds rows for in one project
-/// under this host's fence. What the producer's observation skips without
-/// reading a byte.
-fn sealed_jobs(
-    database: &Path,
-    identity: &HostIdentity,
-    project: &str,
-) -> Result<BTreeSet<String>, String> {
-    let store = ds_sync_store::Store::open(database).map_err(|error| error.to_string())?;
-    let snapshot = store
-        .snapshot(
-            &crate::server_sync::fence_of(identity),
-            &ds_sync_runtime::rows::store_scope(project),
-        )
-        .map_err(|error| error.to_string())?;
-    Ok(snapshot
-        .artifacts
-        .into_iter()
-        .filter(|row| row.identity.engine == solar::ENGINE)
-        .map(|row| row.replay_key)
-        .collect())
-}
-
-/// One project's Solar producer over this host's compute table. It is
-/// constructed per pass, for exactly the project whose store lease the
-/// pass holds.
-struct SolarProducer<'a> {
-    database: &'a Path,
-    identity: &'a HostIdentity,
-    project: String,
-    /// The pump's failure sentence, projected into the activity rows when
-    /// the producer runs inside the pump; a producer opened by the CLI's
-    /// manual drain has none.
-    failure: Option<&'a Mutex<Option<String>>>,
-}
-
-impl SolarProducer<'_> {
-    /// This producer's own project, bounded. A producer is opened for one
-    /// project and reads that project's rows; another project's queue is
-    /// neither read nor able to fail this pass.
-    fn solar_jobs(&self, project: &str) -> Result<Vec<Job>, String> {
-        Ok(solar_jobs_in(self.database, self.identity, project)?.0)
-    }
-
-    /// The observation: NOTHING is offered. The seal at completion is the
-    /// only way a Solar row is born; a completed job the store holds no
-    /// row for — completed before the seal existed, or whose seal the store
-    /// could not record — is not a publication, and its result bytes are
-    /// retired here (`Store::retire_job_result`; the job row stays as
-    /// evidence, and the job can be run again). A result already gone costs
-    /// one NULL read. Answers the jobs retired and their bytes.
-    fn retire_unsealed(&self, project: &str) -> Result<Vec<(String, u64)>, String> {
-        if project != self.project {
-            return Err("the Solar producer was opened for another project".into());
-        }
-        let sealed = sealed_jobs(self.database, self.identity, project)?;
-        let unsealed: Vec<String> = self
-            .solar_jobs(project)?
-            .into_iter()
-            .filter(|job| {
-                job.phase == ds_command_kernel::compute_jobs::Phase::Completed
-                    && job.engine == EngineKind::SolarPrepared
-                    && !sealed.contains(&job.id)
-            })
-            .map(|job| job.id)
-            .collect();
-        let mut retired = Vec::new();
-        if unsealed.is_empty() {
-            return Ok(retired);
-        }
-        let mut store = runtime::open(self.database)?;
-        let caller = self.identity.caller(Some(project));
-        for job_id in unsealed {
-            let freed = store
-                .retire_job_result(&caller, &job_id)
-                .map_err(|error| error.to_string())?;
-            if freed > 0 {
-                eprintln!(
-                    "solar: job {job_id} completed with no row in the sync store (no completion sealed it); its {freed}-byte result was retired — run it again to publish it"
-                );
-                retired.push((job_id, freed));
-            }
-        }
-        Ok(retired)
-    }
-}
-
-impl Producer for SolarProducer<'_> {
-    fn inventory(&self, project: &str) -> Result<Vec<LocalRow>, String> {
-        self.retire_unsealed(project)?;
-        Ok(Vec::new())
-    }
-
-    fn transfer(
-        &self,
-        row: &LocalRow,
-        output_id: &str,
-        session_uri: &str,
-    ) -> Result<TransferReceipt, String> {
-        let store = runtime::open(self.database)?;
-        let job = store
-            .job(&self.identity.caller(None), &row.client_publish_id)
-            .map_err(|error| error.to_string())?
-            .ok_or("Solar publication is no longer durable")?;
-        let publication = publication(self.database, self.identity, &job)?;
-        if publication.project_id != self.project {
-            return Err("Solar publication crosses the project fence of this pass".into());
-        }
-        if output_id != solar::OUTPUT_ID {
-            return Err("requested Solar output is not part of the closed publication".into());
-        }
-        let output = publication
-            .outputs
-            .into_iter()
-            .find(|output| {
-                output.output_id == "report_input.json" && output.content_type == "application/json"
-            })
-            .ok_or("requested Solar output is not part of the sealed publication")?;
-        if output.size_bytes > 16 * 1024 * 1024 || runtime::digest(&output.bytes) != output.sha256 {
-            return Err("Solar output bytes no longer match their sealed declaration".into());
-        }
-        let mut reader = Cursor::new(output.bytes);
-        ds_sync_runtime::transfer_verified_output(
-            output_id,
-            session_uri,
-            output.size_bytes,
-            &output.sha256,
-            &mut reader,
-        )
-    }
-
-    /// Free the bytes of a Solar publication that lost. Solar's bytes are
-    /// the completed job's `result` column in this host's own SQLite — the
-    /// sealed response with its `report_input.json` body — so the reclaim
-    /// is `Store::retire_job_result`: that column becomes NULL, and the job
-    /// row (phase, `result_sha256`, context) stays as evidence, exactly as a
-    /// report batch's directory leaves and its store row stays. Fenced by
-    /// this pass's project; a result already gone answers 0. The same
-    /// pattern on both sides — no `Ok(0)` because the bytes live elsewhere.
-    fn reclaim(&self, project: &str, row: &LocalRow) -> Result<u64, String> {
-        if project != self.project {
-            return Err("the Solar producer was opened for another project".into());
-        }
-        if row.client_publish_id.is_empty() {
-            // A replica of the head, not a publication of this producer.
-            return Ok(0);
-        }
-        let mut store = runtime::open(self.database)?;
-        let caller = self.identity.caller(Some(project));
-        store
-            .retire_job_result(&caller, &row.client_publish_id)
-            .map_err(|error| error.to_string())
-    }
-
-    fn activity(&self, project: &str) -> Result<Vec<ActivityRow>, String> {
-        let store = runtime::open(self.database)?;
-        let caller = self.identity.caller(None);
-        let mut rows = self
-            .solar_jobs(project)?
-            .into_iter()
-            .filter_map(|job| {
-                let input = store.job_input(&caller, &job.id).ok()??;
-                let scope = runtime::solar_job_scope(&job, &input).ok()?;
-                (scope.project_id == project).then(|| ActivityRow {
-                    id: job.id,
-                    engine: "solar".into(),
-                    state: match job.phase {
-                        ds_command_kernel::compute_jobs::Phase::Queued => "queued",
-                        ds_command_kernel::compute_jobs::Phase::Running => "running",
-                        ds_command_kernel::compute_jobs::Phase::Completed => "completed",
-                        ds_command_kernel::compute_jobs::Phase::Failed => "failed",
-                        ds_command_kernel::compute_jobs::Phase::Cancelled => "cancelled",
-                    }
-                    .into(),
-                    created_at_ms: job.created_at_ms,
-                    updated_at_ms: job.updated_at_ms,
-                    detail: job.error,
-                })
-            })
-            .collect::<Vec<_>>();
-        if let Some(detail) = self
-            .failure
-            .and_then(|failure| failure.lock().ok().and_then(|held| held.clone()))
-        {
-            rows.push(ActivityRow {
-                id: "solar-sync-pump".into(),
-                engine: "solar".into(),
-                state: "failed".into(),
-                created_at_ms: 0,
-                updated_at_ms: now_ms(),
-                detail: Some(detail),
-            });
-        }
-        Ok(rows)
-    }
-}
-
-use ds_cli_contract::util::now_ms;
 
 /// The only native adapter allowed to turn a sealed Solar result into a
 /// compute-artifact publication. The store owns leases, retries and receipts;

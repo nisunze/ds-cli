@@ -1977,6 +1977,7 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "ds-command-kernel",
+ "ds-compute-runtime",
  "ds-report-artifacts",
  "ds-sync-store",
  "serde",

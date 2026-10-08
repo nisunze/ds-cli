@@ -2717,6 +2717,11 @@ pub(crate) mod tests {
                 .unwrap()
         };
         let result_bytes = result(&job.id).expect("the result is durable").len() as u64;
+        let retained_input = runtime::open(&app.database)
+            .unwrap()
+            .job_input(&identity.caller(Some(A)), &job.id)
+            .unwrap()
+            .expect("the producing data and parameters are durable");
 
         let activity =
             crate::solar_sync::SolarActivity::open(app.database.clone(), app.sessions.clone())
@@ -2725,6 +2730,14 @@ pub(crate) mod tests {
         assert!(offered.is_empty(), "nothing is adopted: {offered:?}");
         assert_eq!(retired, vec![(job.id.clone(), result_bytes)]);
         assert!(result(&job.id).is_none(), "the unsealed result left");
+        assert_eq!(
+            runtime::open(&app.database)
+                .unwrap()
+                .job_input(&identity.caller(Some(A)), &job.id)
+                .unwrap(),
+            Some(retained_input),
+            "retiring computed bytes preserves the exact producing input for recomputation"
+        );
         let completed = runtime::open(&app.database)
             .unwrap()
             .job(&identity.caller(None), &job.id)
