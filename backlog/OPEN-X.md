@@ -17,6 +17,7 @@ Check existing contracts, source evidence and recorded owner choices first. Rout
 | [18. Supervised native qualification](#18-supervised-native-qualification) | 1 |
 | [22. Account and data-owner authority](#22-account-and-data-owner-authority) | 2 |
 | [25. CLI reliability and feedback](#25-cli-reliability-and-feedback) | 1 |
+| [Solar sync migration: owner inputs](#solar-sync-migration-owner-inputs) | 4 |
 | [Parked: outside stabilization](#parked-outside-stabilization) | 2 |
 | [Temporary: owner-supervised Codex handover](#temporary-owner-supervised-codex-handover-2026-10-07) | 7 |
 <!-- /toc -->
@@ -113,6 +114,27 @@ Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group A (owner decision
 ## 25. CLI reliability and feedback
 
 - **Reporting and automatic-filing policy** (spec [ds-cli-reliability-and-feedback.md](../docs/contracts/ds-cli-reliability-and-feedback.md) §9): **Input needed:** whether operators may turn SRE reporting off (spec default: on, `DS_SRE_REPORTING=off` for tests only); whether signed-out hosts report as `anonymous` (default) or hold events until sign-in; whether automatic `bug` filing stays crash-only (default) or also covers repeated identical failures; whether a user may read their own CLI events (default: platform admins only). **Boundary:** changing those defaults. All [OPEN.md block 25](OPEN.md#25-cli-reliability-reporting-and-proactive-feedback-priority) slices proceed on the defaults.
+
+## Solar sync migration: owner inputs
+
+- **Solar publication capability. Input needed:** retain no capability, reuse
+  `design.report`, or define a role-seeded `solar.publish`. **Boundary:** the
+  Solar row in ds-brain's engine authority table. Implement on today's explicit
+  value (none); independent admission and native migration proceed.
+- **Retained Desktop IndexedDB Solar queue at cutover. Input needed:** choose
+  one release of drain-only legacy queue with visible counts (recommended),
+  visible per-city discard and re-run, or native-directory re-seal. Re-seal
+  conflicts with the 2026-09-20 never-adopt-Solar ruling and needs an explicit
+  superseding ruling. **Boundary:** Phase 5 deletion of the legacy queue only;
+  native implementation and proof proceed without this answer. Never silently
+  drop or adopt pending publications.
+- **Co-located Desktop/Server store (out of scope). Input needed:** whether to
+  share one machine store and under what host/installation fence. **Boundary:**
+  unifying Desktop app-local-data and Server lane state paths; this migration
+  retains their distinct stores.
+- **Hosted web Solar (out of scope). Input needed:** authorization and release
+  conditions for opening the Cloud Run publication lane. **Boundary:** changing
+  the closed routing descriptor; parity work does not open hosted Solar.
 
 ## Parked: outside stabilization
 
