@@ -412,8 +412,9 @@ Read-only request before the next source slice: trace native Profile runtime
 calculation/result construction and job publication, retained calculated scene,
 worker admission/pick state and existing native scene-patch/delta controls.
 Explicit local calculations still return 8–16 MB of complete scene JSON on the
-owning release fixtures. Identify where typed unchanged components can remain
-retained and where full encoding/transfer occurs. Require exact fresh scene,
+owning release fixtures. Identify where full encoding/transfer remains and bind
+the native `profile_calculated_delta` primitive to explicit retained calculation
+controls. Require exact fresh scene,
 engineering findings and markers; distinguish affected bands/supports from
 global axis, bounds, labels and case changes. Preserve native ownership of all
 diffs, exact base/result history/revision/root/axis fences and publication
