@@ -83,13 +83,6 @@ is ruled in the sync contract: simple local clean and recompute.
   printing tests. These paths are unchanged by Solar sync. Leave the Profile
   findings to its owner and the remaining findings to their owning gate slices;
   proof requires the strict command to pass without lint suppression.
-- **Strict native client test Clippy has an untouched ordering diagnostic.**
-  `cargo clippy --offline --manifest-path crates/ds-client-core/Cargo.toml
-  --all-targets --no-deps -- -D warnings` reports `items_after_test_module` in
-  `crates/ds-client-core/src/project_properties.rs`: `lifecycle_projection` at
-  line 1017 follows the test module at line 575. Repair in its owning client
-  slice and prove the same strict command without suppression; this file is
-  outside the Solar publication migration.
 - **CLI release gates have unrelated baseline failures.** The Solar continuation
   vector reports `report layout render --help` at 2545 bytes against its 2480-byte
   allowance in `context_budget::command_help_is_bounded`. Its unchanged
