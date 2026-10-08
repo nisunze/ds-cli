@@ -216,6 +216,17 @@ verified remote-copy reuse for both. The old Solar caller and report-scoped
 compatibility entry remain to be retired together with their callers; these
 tests are not proof of a Server or Desktop cutover.
 
+`sync::declaration::validate` owns the closed publication request before native
+credentials attach: selected project, replay identity, registered engine,
+source fingerprint, unique output identities, allowed output metadata and
+bounded bytes. The engine table selects the declaration policy. A Solar
+calculation requires its exact snapshot digest and UUID receipt; derived
+artifacts cannot carry calculation snapshot fields. Report presentation uses
+the existing artifact inventory owner. The native client's compatibility
+entry named `report_publication` accepts either engine through this validator;
+its typed Solar adapters call that same entry, with no second validation list.
+The Server's separate publisher remains a migration boundary.
+
 The Solar migration keeps one decision family (`sync`, `sync_store`, `transfer`)
 and one native executor (`ds-sync-runtime`). The following inventory distinguishes
 the current owners from the required destination; it does not claim cutover is

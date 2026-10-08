@@ -7,7 +7,14 @@ pub struct Engine {
     pub fingerprint_free_operations: &'static [&'static str],
     pub retained_preview_variant: Option<&'static str>,
     pub legacy_source_in_base: bool,
+    pub publication: PublicationPolicy,
     dependency: Option<Dependency>,
+}
+
+#[derive(Clone, Copy)]
+pub enum PublicationPolicy {
+    Report,
+    Solar,
 }
 
 struct Dependency {
@@ -23,6 +30,7 @@ pub const ENGINES: &[Engine] = &[
         fingerprint_free_operations: &["export-combined_transformer", "export-compounded_report"],
         retained_preview_variant: Some(crate::printing::retained_preview::VARIANT),
         legacy_source_in_base: true,
+        publication: PublicationPolicy::Report,
         dependency: None,
     },
     Engine {
@@ -30,6 +38,7 @@ pub const ENGINES: &[Engine] = &[
         fingerprint_free_operations: &[],
         retained_preview_variant: None,
         legacy_source_in_base: true,
+        publication: PublicationPolicy::Solar,
         dependency: Some(Dependency {
             dependent_prefix: "report-",
             prerequisite_prefix: "calculate-",

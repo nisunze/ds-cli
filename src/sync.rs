@@ -34,6 +34,8 @@ pub use publication::{
     publication_preflight, publication_verdict, PublicationBlock, PublicationStage,
     PublicationVerdict,
 };
+#[path = "sync/declaration.rs"]
+pub mod declaration;
 #[path = "sync/engines.rs"]
 pub mod engines;
 const INPUT_BOUND: usize = 8 * 1024 * 1024;

@@ -5,7 +5,6 @@
 //! bearer, or another project. Every read and every publication is fenced to
 //! the selected project; the record asks the session's own authority.
 
-use serde::Deserialize;
 use serde_json::{json, Value};
 
 use crate::{ClientError, ErrorKind};
@@ -148,167 +147,44 @@ impl NativeSyncRequest {
     pub fn solar_calculation_open(
         declaration: SolarCalculationArtifactOpen<'_>,
     ) -> Result<Self, ClientError> {
-        for value in [
+        Self::report_publication(
             declaration.project_id,
-            declaration.client_run_id,
-            declaration.city_id,
-        ] {
-            artifact_id(value)?;
-        }
-        canonical_snapshot_receipt(declaration.snapshot_receipt_id)?;
-        bounded(declaration.engine_version)?;
-        for digest in [
-            declaration.engine_build_manifest_sha256,
-            declaration.input_base_fingerprint,
-            declaration.source_snapshot_sha256,
-            declaration.output_sha256,
-        ] {
-            sha256(digest)?;
-        }
-        if !declaration.engine_version.starts_with("ds-solar-engine@")
-            || declaration.output_size_bytes == 0
-            || declaration.output_size_bytes > 64 * 1024 * 1024
-        {
-            return Err(invalid());
-        }
-        let operation = format!("calculate-{}", declaration.city_id);
-        artifact_id(&operation)?;
-        Ok(Self {
-            operation: SyncGatewayOperation::ComputeArtifactsOpen,
-            body: json!({
-                "action": "open",
-                "project_id": declaration.project_id,
-                "client_run_id": declaration.client_run_id,
-                "engine": "solar",
-                "operation": operation,
-                "variant": "default",
+            &json!({
+                "action": "open", "project_id": declaration.project_id,
+                "client_run_id": declaration.client_run_id, "engine": "solar",
+                "operation": format!("calculate-{}", declaration.city_id), "variant": "default",
                 "engine_version": declaration.engine_version,
                 "engine_build_manifest_sha256": declaration.engine_build_manifest_sha256,
                 "input_base_fingerprint": declaration.input_base_fingerprint,
                 "source_snapshot_sha256": declaration.source_snapshot_sha256,
                 "snapshot_receipt_id": declaration.snapshot_receipt_id,
-                "outputs": [{
-                    "output_id": "report-input",
-                    "format": "json",
-                    "content_type": "application/json",
-                    "sha256": declaration.output_sha256,
-                    "size_bytes": declaration.output_size_bytes,
-                }],
+                "outputs": [{"output_id":"report-input", "format":"json",
+                    "content_type":"application/json", "sha256":declaration.output_sha256,
+                    "size_bytes":declaration.output_size_bytes}],
             }),
-        })
+        )
     }
 
     pub fn solar_calculation_finalize(
         identity: SolarCalculationArtifactFinalize<'_>,
     ) -> Result<Self, ClientError> {
-        for value in [
+        Self::report_publication(
             identity.project_id,
-            identity.work_id,
-            identity.client_run_id,
-        ] {
-            artifact_id(value)?;
-        }
-        Ok(Self {
-            operation: SyncGatewayOperation::ComputeArtifactsFinalize,
-            body: json!({
-                "action": "finalize",
-                "project_id": identity.project_id,
-                "work_id": identity.work_id,
-                "client_run_id": identity.client_run_id,
+            &json!({
+                "action":"finalize", "project_id":identity.project_id,
+                "work_id":identity.work_id, "client_run_id":identity.client_run_id,
             }),
-        })
+        )
     }
 
-    /// One report publication on the shared record's door, exactly as the
-    /// sync runtime declares it: `open` of one `export-<transformer>` run, or
-    /// `finalize` of the run `open` answered with. The shape is closed here and
-    /// fenced to the selected project; the engine build it names is provenance
-    /// the record keeps, never a credential this request carries.
+    /// One engine-neutral publication on the fixed compute-artifacts door.
+    /// The kernel validates its closed declaration before credentials attach;
+    /// the selected project and the record's admission remain authoritative.
     pub fn report_publication(selected_project: &str, body: &Value) -> Result<Self, ClientError> {
-        bounded(selected_project)?;
-        let object = body.as_object().ok_or_else(invalid)?;
-        let text = |key: &str| object.get(key).and_then(Value::as_str).ok_or_else(invalid);
-        if text("project_id")? != selected_project {
-            return Err(ClientError::new(
-                ErrorKind::InvalidInput,
-                "sync request project is not the selected project",
-            ));
-        }
-        let operation = match text("action")? {
-            "open" => {
-                const KEYS: [&str; 10] = [
-                    "action",
-                    "project_id",
-                    "client_run_id",
-                    "engine",
-                    "operation",
-                    "variant",
-                    "engine_version",
-                    "engine_build_manifest_sha256",
-                    "input_base_fingerprint",
-                    "outputs",
-                ];
-                if object.len() != KEYS.len() || !KEYS.iter().all(|key| object.contains_key(*key)) {
-                    return Err(invalid());
-                }
-                artifact_id(text("client_run_id")?)?;
-                let operation = text("operation")?;
-                artifact_id(operation)?;
-                if text("engine")? != "network_reporter"
-                    || text("variant")? != "default"
-                    || !operation.starts_with("export-")
-                {
-                    return Err(invalid());
-                }
-                bounded(text("engine_version")?)?;
-                let build = text("engine_build_manifest_sha256")?;
-                if !build.is_empty() {
-                    sha256(build)?;
-                }
-                sha256(text("input_base_fingerprint")?)?;
-                let outputs = object
-                    .get("outputs")
-                    .and_then(Value::as_array)
-                    .filter(|outputs| (1..=32).contains(&outputs.len()))
-                    .ok_or_else(invalid)?;
-                for output in outputs {
-                    let output = output.as_object().ok_or_else(invalid)?;
-                    let field = |key: &str| output.get(key).and_then(Value::as_str);
-                    const OUTPUT_KEYS: [&str; 8] = [
-                        "output_id",
-                        "format",
-                        "content_type",
-                        "sha256",
-                        "size_bytes",
-                        "filename",
-                        "paper_size",
-                        "presentation",
-                    ];
-                    if !output.keys().all(|key| OUTPUT_KEYS.contains(&key.as_str()))
-                        || output
-                            .get("size_bytes")
-                            .and_then(Value::as_u64)
-                            .is_none_or(|size| size == 0)
-                    {
-                        return Err(invalid());
-                    }
-                    artifact_id(field("output_id").ok_or_else(invalid)?)?;
-                    bounded(field("format").ok_or_else(invalid)?)?;
-                    bounded(field("content_type").ok_or_else(invalid)?)?;
-                    sha256(field("sha256").ok_or_else(invalid)?)?;
-                    report_output_metadata(output)?;
-                }
-                SyncGatewayOperation::ComputeArtifactsOpen
-            }
-            "finalize" => {
-                if object.len() != 4 {
-                    return Err(invalid());
-                }
-                artifact_id(text("work_id")?)?;
-                artifact_id(text("client_run_id")?)?;
-                SyncGatewayOperation::ComputeArtifactsFinalize
-            }
-            _ => return Err(invalid()),
+        use ds_command_kernel::sync::declaration::{validate, Action};
+        let operation = match validate(selected_project, body).map_err(|_| invalid())? {
+            Action::Open => SyncGatewayOperation::ComputeArtifactsOpen,
+            Action::Finalize => SyncGatewayOperation::ComputeArtifactsFinalize,
         };
         if serde_json::to_vec(body).map_err(|_| invalid())?.len() > MAX_BODY_BYTES {
             return Err(invalid());
@@ -362,109 +238,11 @@ impl NativeSyncRequest {
     }
 }
 
-// These additive receipt fields are authored by the renderer and already
-// transported by ds-sync-runtime. Keep their shape closed before credentials
-// are attached; the record still owns validation against its sealed inputs.
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct PrintPresentation {
-    layout_id: String,
-    layout_name: String,
-    paper_name: String,
-    orientation: String,
-    page_mm: [f64; 2],
-}
-
-fn metadata_text(value: &str, limit: usize) -> Result<(), ClientError> {
-    bounded(value)?;
-    if value.len() > limit {
-        return Err(invalid());
-    }
-    Ok(())
-}
-
-fn report_output_metadata(output: &serde_json::Map<String, Value>) -> Result<(), ClientError> {
-    if let Some(filename) = output.get("filename") {
-        let filename = filename.as_str().ok_or_else(invalid)?;
-        metadata_text(filename, 255)?;
-        if matches!(filename, "." | "..") || filename.contains(['/', '\\']) {
-            return Err(invalid());
-        }
-    }
-    let paper = output
-        .get("paper_size")
-        .map(|value| {
-            let paper = value.as_str().ok_or_else(invalid)?;
-            metadata_text(paper, 40)?;
-            Ok::<_, ClientError>(paper)
-        })
-        .transpose()?;
-    if let Some(value) = output.get("presentation") {
-        let presentation: PrintPresentation =
-            serde_json::from_value(value.clone()).map_err(|_| invalid())?;
-        metadata_text(&presentation.layout_id, 80)?;
-        metadata_text(&presentation.layout_name, 240)?;
-        if Some(presentation.paper_name.as_str()) != paper {
-            return Err(invalid());
-        }
-        let [width, height] = presentation.page_mm;
-        let orientation_valid = match presentation.orientation.as_str() {
-            "portrait" => width <= height,
-            "landscape" => width >= height,
-            _ => false,
-        };
-        if ![width, height]
-            .iter()
-            .all(|size| size.is_finite() && (50.0..=2000.0).contains(size))
-            || !orientation_valid
-        {
-            return Err(invalid());
-        }
-    }
-    Ok(())
-}
-
 fn bounded(value: &str) -> Result<(), ClientError> {
     if value.is_empty()
         || value.len() > 256
         || value.trim() != value
         || value.chars().any(char::is_control)
-    {
-        return Err(invalid());
-    }
-    Ok(())
-}
-fn artifact_id(value: &str) -> Result<(), ClientError> {
-    if value.is_empty()
-        || value.len() > 128
-        || !value.as_bytes()[0].is_ascii_alphanumeric()
-        || !value
-            .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'-')
-    {
-        return Err(invalid());
-    }
-    Ok(())
-}
-fn sha256(value: &str) -> Result<(), ClientError> {
-    if value.len() != 64
-        || !value
-            .bytes()
-            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
-    {
-        return Err(invalid());
-    }
-    Ok(())
-}
-fn canonical_snapshot_receipt(value: &str) -> Result<(), ClientError> {
-    let bytes = value.as_bytes();
-    if bytes.len() != 36
-        || !bytes.iter().enumerate().all(|(index, byte)| match index {
-            8 | 13 | 18 | 23 => *byte == b'-',
-            14 => matches!(*byte, b'1'..=b'5'),
-            19 => matches!(*byte, b'8' | b'9' | b'a' | b'b'),
-            _ => byte.is_ascii_digit() || matches!(*byte, b'a'..=b'f'),
-        })
     {
         return Err(invalid());
     }
@@ -516,7 +294,7 @@ mod tests {
             "input_base_fingerprint": "b".repeat(64),
             "outputs": [{"output_id": "xlsx", "format": "xlsx",
                 "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                "sha256": "a".repeat(64), "size_bytes": 28469}],
+                "sha256": "a".repeat(64), "size_bytes": 28469, "filename":"agatare_1.xlsx"}],
         });
         let request = NativeSyncRequest::report_publication("project-a", &open).unwrap();
         assert_eq!(
@@ -660,6 +438,10 @@ mod tests {
             output_size_bytes: 42,
         };
         let request = NativeSyncRequest::solar_calculation_open(declaration).unwrap();
+        let common = NativeSyncRequest::report_publication("project-a", request.body()).unwrap();
+        assert_eq!(common.body(), request.body());
+        assert_eq!(common.operation(), request.operation());
+        assert!(NativeSyncRequest::report_publication("project-b", request.body()).is_err());
         assert_eq!(
             request.operation(),
             SyncGatewayOperation::ComputeArtifactsOpen

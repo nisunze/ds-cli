@@ -1815,7 +1815,7 @@ fn closed_sync_gateway_executes_record_reads_and_report_publication_through_the_
         "input_base_fingerprint": "b".repeat(64),
         "outputs": [{"output_id": "xlsx", "format": "xlsx",
             "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            "sha256": "a".repeat(64), "size_bytes": 9}],
+            "sha256": "a".repeat(64), "size_bytes": 9, "filename":"tx-a.xlsx"}],
     });
     let finalize = serde_json::json!({
         "action": "finalize", "project_id": "project-a", "work_id": "work_a",
