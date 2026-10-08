@@ -453,6 +453,7 @@ impl Runtime {
             self.render_replayed(project, session, source, cache, request.analyze, &pending)?;
         let held = &self.held[&request.scope];
         let surface = held.review.surface_work().unwrap_or_default();
+        let references = held.review.reference_work().unwrap_or_default();
         let demands = held.demand_cache.last_demand_work();
         result["metrics"] = json!({"admission_ms":admission_ms,"journal_ms":journal_ms,"replay_ms":replay_ms,
             "calculation_ms":calculation_started.elapsed().as_secs_f64()*1000.0,
@@ -462,6 +463,10 @@ impl Runtime {
             "last_surface_computed_ground":surface.computed_ground,"last_surface_reused_ground":surface.reused_ground,
             "last_surface_local_terrain_point_projections":surface.local_terrain_point_projections,
             "last_surface_local_ground_rebuilds":surface.local_ground_rebuilds,
+            "last_reference_computed_sections":references.computed_sections,"last_reference_reused_sections":references.reused_sections,
+            "last_reference_terrain_checked_sections":references.terrain_checked_sections,"last_reference_terrain_reused_sections":references.terrain_reused_sections,
+            "last_reference_terrain_inspected_ground_edges":references.terrain_inspected_ground_edges,
+            "last_reference_terrain_inspected_observations":references.terrain_inspected_observations,
             "last_demand_computed_cases":demands.computed_cases,"last_demand_reused_cases":demands.reused_cases,
             "last_demand_terrain_geometry_checks":demands.terrain_geometry_checks,
             "last_demand_terrain_geometry_reused_cases":demands.terrain_geometry_reused_cases,

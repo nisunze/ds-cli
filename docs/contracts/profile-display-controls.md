@@ -320,8 +320,9 @@ revision unchanged. Refresh exposes `last_demand_terrain_geometry_checks` and
 `last_demand_terrain_geometry_reused_cases`, with the same last-consumer semantics
 as other demand counters. The native runtime gate proves exact fresh-scene parity
 and independent Save, including a rounded endpoint whose tiny interpolation
-change correctly defeats reuse. Reference/case preparation and query freshness
-remain conservatively invalidated by terrain receipts.
+change correctly defeats reuse. Terrain-only reference reuse has its separate
+native span-window fence; selected-case preparation, independent design clearance
+and query freshness retain their broader boundaries.
 
 The owning ordinary-release terrain demand receipt uses 10,017 terrain points,
 three cases and twelve edits. Six sections/seven supports: native apply median
@@ -337,6 +338,31 @@ job capture, IPC and painting; installed sub-0.5-second editing remains separate
 named cases share one immutable path per section within the last explicit walk.
 It excludes path resolutions inside fresh solving and is not a count of total
 terrain work. No derived path survives as a current fact at another revision.
+
+Explicit calculation also reports `last_reference_computed_sections`,
+`last_reference_reused_sections`, `last_reference_terrain_checked_sections`,
+`last_reference_terrain_reused_sections`, `last_reference_terrain_inspected_ground_edges`
+and `last_reference_terrain_inspected_observations`. These describe the last
+reference preparation, including index build and candidate visits, rather than
+the entire calculation. A cache hit can retain prior work counters. Observe
+does not enter the reference guard. Changed endpoint bases can reject a candidate
+before visiting ground windows; zero inspected edges does not imply no dependency
+checking. AutoSag, unavailable references, changed offsets and mixed receipts
+retain conservative preparation. Exact finite comparisons use no tolerance.
+
+The owning indexed reference receipt measures 121 supports, 120 sections and
+10,015 terrain points over twelve edits, with alternating fresh/retained order.
+Ordinary-release apply median is 12.502 ms; complete native scene calculation
+and JSON is 40.285 ms versus 44.896 ms fresh, preparing two references and
+retaining 118. About 8.27 MB matches fresh bytes. Index build/candidate visits
+inspect 39,960 edges and 20,030 observations, compared with about 2.36 million
+each in the measured linear guard. That guard was slower than fresh (46.916 ms
+versus 44.028 ms), demonstrating the need to include dependency work. See
+`ds-network/out/profile-native/terrain-reference-cost-release.json` and its
+`terrain-reference-linear-cost-release.json` comparison. Includes full current
+surface, reference/case/election, uncached usage, layout/markers and encoding;
+excludes runtime replay, independent Analyze/design-case clearance, job capture,
+IPC, worker installation and painting. Installed interaction remains unqualified.
 
 Terrain observations return `authored_delta.work.local_terrain_point_projections`
 and `local_ground_rebuilds` without calculation. These count the receipt-local

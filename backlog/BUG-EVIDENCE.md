@@ -406,20 +406,20 @@ installation; explicit calculation still needs bounded native phase/work
 evidence before claiming a measured bottleneck or release performance. No
 template edits, competing builds or model mutations.
 
-## Focused review: Profile terrain reference windows
+## Focused review: Profile selected-case section reuse
 
-Read-only request before the next slice: trace `profile_atlas/case_curves.rs`
-retained references and `projection.rs::chained_section_rows`, the exact terrain
-windows consumed by `clearance.rs::evaluate_span_clearance`, effective support
-bases, and parent/T-off station and shared-support membership. Terrain receipts
-still prepare all section references; a changed alignment also clones and chains
-its ground context broadly. Characterize bracketing knots, clipped edge minima,
-point clearances, gaps/source/run seams and signed/reversed spans before admitting
-an unchanged reference. Preserve exact fresh selected-case/scene/force parity,
-including subnanometric station consequences; no tolerance or arbitrary root
-stamping. Count dependency derivation, ground/context cloning and retained-payload
-costs, including candidate guards that avoid solves but may not reduce total time.
-Keep uncharacterized terrain/catalog/route and mixed-table changes conservative.
+Read-only request before the next slice: trace `profile_atlas/case_curves.rs::curves`
+and `case_projection.rs` base/requested-case consumers. Selected-case transition,
+span solving and clearance still visit unchanged sections on explicit local
+calculation. Characterize the actual selected case identity, direct-reference
+reuse, election changes and native reference invalidation before retaining typed
+case payloads. Bound retained case/section memory and preserve native refusal,
+unknown and cached-only reads: visibility, picking and selection must not solve.
+Prove exact fresh scenes for repeated edits, changed elected cases, requested
+cases, weather/material changes, unavailable references, deletion, undo/redo,
+parent/T-off station shifts and stale async admission. Count retained copying,
+index/election, ground and final JSON costs; fewer solves alone proves no latency
+benefit. Keep conservative fallback at uncharacterized input boundaries.
 
 Maximum two findings with exact path/line evidence. Re-read `STABILIZATION.md`.
 No model mutations, template/printing work, competing builds or solver

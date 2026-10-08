@@ -42,6 +42,7 @@ fn terrain_observe_never_solves_and_explicit_refresh_reuses_unchanged_section_de
         let initial = runtime.execute(input.clone()).unwrap();
         let base = input.expected_revision.clone();
         let before = runtime.held[&input.scope].demand_cache.last_demand_work();
+        let before_references = runtime.held[&input.scope].review.reference_work();
         worker
             .apply_command(CommandEnvelope::new(
                 "terrain-cache-edit",
@@ -62,6 +63,10 @@ fn terrain_observe_never_solves_and_explicit_refresh_reuses_unchanged_section_de
             before
         );
         assert_eq!(observed["ran"], false);
+        assert_eq!(
+            runtime.held[&input.scope].review.reference_work(),
+            before_references
+        );
         assert!(observed["scene"].is_null());
         assert_eq!(
             observed["calculation"]["computed_revision"],
@@ -76,6 +81,18 @@ fn terrain_observe_never_solves_and_explicit_refresh_reuses_unchanged_section_de
         assert_eq!(result["metrics"]["last_demand_computed_cases"], computed);
         assert_eq!(result["metrics"]["last_demand_reused_cases"], reused);
         assert_eq!(result["metrics"]["last_demand_resolved_support_paths"], 2);
+        assert_eq!(
+            result["metrics"]["last_reference_terrain_checked_sections"],
+            2
+        );
+        assert_eq!(result["metrics"]["last_reference_computed_sections"], 2);
+        assert_eq!(
+            result["metrics"]["last_reference_terrain_inspected_ground_edges"]
+                .as_u64()
+                .unwrap()
+                > 0,
+            exact_endpoint
+        );
         assert_eq!(
             result["metrics"]["last_demand_terrain_geometry_checks"],
             cases * 2
