@@ -41,6 +41,58 @@ Unfinished code that an agent can implement and prove without further owner inpu
 
 - **Move ds-network to Polars 0.55** (owner, 2026-10-07): `ds-network` pins `polars`, `polars-arrow` and `polars-io` at exactly 0.53.0 (workspace `Cargo.toml:74-76`), while ds-solar is already on 0.55.2. Rust 0.x minor versions break APIs. `polars-arrow` writes the `.dsgrid` Arrow IPC tables, so prove the emitted packages are byte-identical before and after: no package format change (schema 5 is final). Then run the ds-network, ds-cli and reporter suites and check the WASM size (`wasm-size`). Polars 2.0 is the Python release and does not apply.
 
+## Solar sync: one native artifact path (Codex)
+
+Contract: [ds-sync-engine.md §6](../docs/contracts/ds-sync-engine.md#6-where-each-publication-rule-lives).
+Solar and Network Reporter computation artifacts require identical synchronization
+logic; governed inputs, parameters and provenance must survive artifact reclaim
+so computations can be repeated. Owner inputs are in
+[OPEN-X.md](OPEN-X.md#solar-sync-migration-owner-inputs); only the legacy queue
+deletion waits for a cutover ruling.
+
+- **Native publication is still split.** `run::upload` rejects non-report rows;
+  `SolarPublisher` and the Server's Solar auth publisher use different verdicts.
+  Replace them with one engine-table-driven declaration, preflight and native
+  pass; move the Server producer/completion observer to the kernel runtime.
+  Add native dependency waits, retry and digest-bound sanitation. Prove identical
+  receipts/store states, including 401 hold/recovery, stale inputs, archive
+  refusal, cancellation/restart and a draft waiting for its calculation.
+- **Server common-store coverage is missing for Solar drafts/finals/portfolios.**
+  Seal and publish all closed native batch constituents through the common path
+  before Desktop cutover, retaining authored inputs and per-city failures.
+- **Admission and fingerprints differ by engine and lane.** Put ordered admission
+  in ds-brain's service for public and in-process cloud callers, with engine data
+  in one table and the existing blob verifier. Prove shared Solar fingerprint
+  vectors in Rust/Go and stale-input reconciliation through the store transition.
+- **Desktop still owns an IndexedDB publication queue.** Route Solar execution and
+  Sync Center through the shared native runtime, expose headless queue/recovery
+  commands, and remove replaced TypeScript/kernel exports after native proof and
+  the explicit legacy-queue ruling. Preserve verified result views/downloads and
+  unrelated asset/survey transfer consumers.
+- **Placement remains a TypeScript decision; adapter parity is unproven.** Capture
+  current placement answers, replay them in the pure kernel and native/WASM
+  consumers, and prove identical Solar/reporter bytes and head identity from
+  native and locally built Cloud Run adapters. Hosted web Solar remains closed.
+- **Strict runtime Clippy fails on an untouched report enum.**
+  `cargo clippy --offline --manifest-path crates/ds-sync-runtime/Cargo.toml
+  --all-targets --all-features -- -D warnings` reports `large_enum_variant` at
+  `src/reports.rs:307` (`SealOutcome::Sealed`, 1368 bytes versus 25). The enum is
+  identical to baseline `24a58f2`. Repair in its owning release-gate slice; do not
+  sweep unrelated report code into the Solar migration. Proof: the same strict
+  command passes without lint suppression. With that diagnostic excepted on the
+  command line, the test target also reports `single_element_loop` at
+  `crates/ds-sync-runtime/src/gateway.rs:352`; that path is likewise unchanged.
+- **Strict kernel/store Clippy has untouched baseline diagnostics.**
+  `cargo clippy --offline -p ds-command-kernel -p ds-sync-store --all-targets
+  --all-features -- -D warnings` reports `redundant_closure` and `needless_borrow`
+  in `src/profile_encoding.rs`, `type_complexity` in `src/style_legend.rs`,
+  `too_many_arguments` in `src/style_multiscale.rs` and
+  `src/printing/style_capture.rs`, `single_element_loop` in
+  `src/profile_display.rs`, and `cloned_ref_to_slice_refs` in report preview and
+  printing tests. These paths are unchanged by Solar sync. Leave the Profile
+  findings to its owner and the remaining findings to their owning gate slices;
+  proof requires the strict command to pass without lint suppression.
+
 ## 2. Green `run` and release gates
 
 - **Native engine strict Clippy gate**: `cargo clippy --locked -p ds-grid-engine --all-targets --no-deps -- -D warnings` remains blocked by baseline owning diagnostics: collapsible conditions, large error/enum variants, argument counts and presentation borrow/style issues. Current library gate reports 27 diagnostics; exact log: `ds-network/out/stabilization/profile-reference-reuse-clippy.log`. Repair coherent owning slices and rerun library-test diagnostics after the library gate admits; retain native error JSON and engineering behavior.

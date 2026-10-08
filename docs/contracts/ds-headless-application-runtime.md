@@ -307,11 +307,20 @@ an independent Tauri implementation is not an extraction.
 
 Report publication storage belongs to `crates/ds-report-artifacts` in this
 repository. Native Sync Center orchestration, report inventory, verified cache
-reads and sealed storage-session transfers belong to `ds-web/crates/ds-sync-runtime`.
-The pure kernel retains the plan and transfer state machine. Tauri supplies
-shell integration, cancellation and progress projection. Different backend
-publication protocols share the durable store and project lease; a Solar row
-must never be submitted through a report work-grant protocol.
+reads and sealed storage-session transfers belong to this repository's
+`crates/ds-sync-runtime`. The pure kernel retains the plan, record-answer verdict
+and transfer state machine. Tauri supplies shell integration, cancellation and
+progress projection. Computation artifacts have the same synchronization rules
+regardless of engine; governed input data, parameters and provenance are retained
+so derived outputs can be recomputed. Artifact reclaim never deletes those inputs.
+
+The current native executor consumes `sync::publication_verdict`; the legacy
+Server Solar publisher and Desktop TypeScript queue still await migration to
+that executor. This is not proof of Solar parity. The destination is one
+`compute_artifacts` open/transfer/finalize sequence, not the retired report
+work-grant protocol. [The sync engine](ds-sync-engine.md#6-where-each-publication-rule-lives)
+records the rule inventory and the publication kinds missing from the common
+Server path.
 
 A source development launcher must use a separate native identity/context
 store, installation identity, compute and sync database, artifact/cache root

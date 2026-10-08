@@ -23,6 +23,7 @@
 
 use ds_command_kernel::{sync, sync_store::QueueBlock};
 use serde_json::Value;
+use sync::{publication_verdict, PublicationStage as Stage, PublicationVerdict};
 
 use crate::gateway::GatewayError;
 use crate::rows::{
@@ -617,8 +618,8 @@ fn upload(
             }
         };
     }
-    let mut receipt = match answer.state.as_str() {
-        "published" => {
+    let mut receipt = match publication_verdict(Stage::Finalize, None, Some(&answer.state)) {
+        PublicationVerdict::Published => {
             // A completed publish advances the held head from its own
             // receipt, so the next trigger never re-reads what this run did.
             let mut receipt = Receipt::new("upload", "published").about(identity);
@@ -626,14 +627,14 @@ fn upload(
             receipt.head_revision = answer.head_revision;
             receipt
         }
-        "stored_stale" => Receipt::new("upload", "stored_stale")
+        PublicationVerdict::StoredStale => Receipt::new("upload", "stored_stale")
             .about(identity)
             .detail(answer.conflict.clone().unwrap_or_else(|| {
                 "the record moved past the inputs this report was computed from".to_string()
             })),
-        other => Receipt::new("upload", "failed")
+        verdict => Receipt::new("upload", verdict.outcome())
             .about(identity)
-            .detail(format!("the record left this publication {other}")),
+            .detail(format!("the record left this publication {}", answer.state)),
     };
     receipt.work_id = Some(answer.work_id);
     receipt.transfers = transfers;
@@ -642,18 +643,7 @@ fn upload(
 
 /// The verdict an upload receipt settled its row with, when it settled it.
 fn settled_verdict(receipt: &Receipt) -> Option<&'static str> {
-    match receipt.outcome.as_str() {
-        "conflict" => Some("conflict"),
-        "stored_stale" => Some("stored_stale"),
-        "refused" => Some("refused"),
-        _ => None,
-    }
-}
-
-#[derive(Clone, Copy, PartialEq)]
-enum Stage {
-    Open,
-    Finalize,
+    publication_verdict(Stage::Finalize, None, Some(&receipt.outcome)).settled()
 }
 
 /// The receipt for a call the record answered with no `data`.
@@ -672,13 +662,7 @@ fn record_refusal(
     work_id: Option<String>,
     transfers: Vec<TransferReceipt>,
 ) -> Receipt {
-    let outcome = match error.status {
-        Some(401) => "credential_refused",
-        Some(409) => "conflict",
-        Some(403) => "refused",
-        Some(400) if stage == Stage::Open => "refused",
-        _ => "failed",
-    };
+    let outcome = publication_verdict(stage, error.status, None).outcome();
     let detail = if error.credential_refused() {
         credential_refusal_detail().to_string()
     } else {
@@ -727,5 +711,87 @@ fn download(
         Err(error) => Receipt::new("download", "failed")
             .about(identity)
             .detail(error.detail),
+    }
+}
+
+#[cfg(test)]
+mod publication_tests {
+    use super::*;
+    use crate::{rows, store};
+
+    #[test]
+    fn same_record_answer_same_verdict_for_every_engine() {
+        // Run the native receipt mapping and the real store transition, not
+        // just the enum: a credential refusal must leave both rows held.
+        for (stage, status, expected, state) in [
+            (
+                Stage::Open,
+                401,
+                "credential_refused",
+                store::ArtifactState::Held,
+            ),
+            (
+                Stage::Finalize,
+                401,
+                "credential_refused",
+                store::ArtifactState::Held,
+            ),
+            (Stage::Open, 403, "refused", store::ArtifactState::Refused),
+            (Stage::Open, 409, "conflict", store::ArtifactState::Conflict),
+            (
+                Stage::Finalize,
+                409,
+                "stored_stale",
+                store::ArtifactState::Conflict,
+            ),
+            (Stage::Open, 400, "refused", store::ArtifactState::Refused),
+            (Stage::Finalize, 400, "failed", store::ArtifactState::Held),
+            (Stage::Open, 503, "failed", store::ArtifactState::Held),
+        ] {
+            for engine in ["network_reporter", "solar"] {
+                let mut row = crate::fakes::local_row(b"derived bytes");
+                row.identity.engine = engine.into();
+                let receipt = record_refusal(
+                    &row.identity,
+                    stage,
+                    GatewayError::refused(status, None, "record answer"),
+                    None,
+                    Vec::new(),
+                )
+                .for_publication(&row);
+                assert_eq!(receipt.outcome, expected);
+                assert_eq!(
+                    settled_verdict(&receipt),
+                    publication_verdict(stage, Some(status), None).settled()
+                );
+                let fence = store::Fence {
+                    account: "account".into(),
+                    deployment: "gateway".into(),
+                    install_id: "install".into(),
+                };
+                let transition = store::apply(&store::Request {
+                    schema: store::SCHEMA.into(),
+                    fence,
+                    now_ms: 2,
+                    snapshot: store::Snapshot {
+                        artifacts: vec![rows::store_row("project", &row, 1)],
+                        ..Default::default()
+                    },
+                    event: store::Event::ActionReceipt {
+                        receipt: rows::receipt_row("project", &receipt, 2),
+                    },
+                })
+                .unwrap();
+                let settled = transition
+                    .changes
+                    .iter()
+                    .find_map(|change| match change {
+                        store::RowChange::UpsertArtifact(row) => Some(row),
+                        _ => None,
+                    })
+                    .unwrap();
+                assert_eq!(settled.state, state, "{engine} {stage:?} {status}");
+            }
+        }
     }
 }

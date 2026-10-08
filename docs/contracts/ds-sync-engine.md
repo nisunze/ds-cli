@@ -182,6 +182,22 @@ means, but the batches it displaces are reported instead of dropped.
 
 ## 6. Where each publication rule lives
 
+**Owner clarification, 2026-10-08:** Solar outputs and Network Reporter
+artifacts are conceptually the same: computations produce artifacts which sync
+through the same logic. Governed source data, parameters and provenance are the
+durable authority to preserve so artifacts can be recomputed at will. Reclaiming
+derived bytes never authorizes deleting or rewriting their source inputs.
+
+`sync::publication_verdict` is the pure record-answer interpretation. HTTP 401
+holds the credential, 403 refuses the row, 409 at open conflicts and 409 at
+finalize stores stale, 400 at open refuses, and finalize 400, offline, incomplete
+transfer and 5xx hold. Successful `published` and `stored_stale` answers are
+preserved. A transport refusal takes precedence over a response's state. The
+native executor uses this function both for its receipt and for determining
+whether the receipt settled the row. The legacy Solar publisher remains until
+the common publication sequence is wired; this verdict API does not by itself
+claim Desktop or Server Solar cutover.
+
 The Solar migration keeps one decision family (`sync`, `sync_store`, `transfer`)
 and one native executor (`ds-sync-runtime`). The following inventory distinguishes
 the current owners from the required destination; it does not claim cutover is

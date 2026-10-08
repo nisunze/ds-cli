@@ -28,6 +28,9 @@ use serde_json::json;
 use std::collections::{BTreeMap, BTreeSet};
 
 pub const SCHEMA: &str = "ds.sync-plan/v1";
+#[path = "sync/publication.rs"]
+mod publication;
+pub use publication::{publication_verdict, PublicationStage, PublicationVerdict};
 const INPUT_BOUND: usize = 8 * 1024 * 1024;
 const MAX_ARTIFACTS: usize = 4096;
 const MAX_ID_LEN: usize = 128;
