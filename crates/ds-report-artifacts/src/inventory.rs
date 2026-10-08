@@ -477,6 +477,7 @@ mod tests {
             identity: Some(row(&receipt).identity),
             outcome: "committed".into(),
             detail: None,
+            failure_code: None,
             grant_id: None,
             work_id: Some("exact-work".into()),
             client_publish_id: Some(receipt.client_publish_id.clone()),

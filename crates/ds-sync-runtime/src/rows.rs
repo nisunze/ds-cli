@@ -158,6 +158,8 @@ pub struct Receipt {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub detail: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub failure_code: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub work_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub client_publish_id: Option<String>,
@@ -181,6 +183,7 @@ impl Receipt {
             identity: None,
             outcome: outcome.into(),
             detail: None,
+            failure_code: None,
             work_id: None,
             client_publish_id: None,
             head_revision: None,
@@ -202,6 +205,11 @@ impl Receipt {
 
     pub fn detail(mut self, detail: impl Into<String>) -> Self {
         self.detail = Some(detail.into());
+        self
+    }
+
+    pub fn failure_code(mut self, code: Option<String>) -> Self {
+        self.failure_code = code;
         self
     }
 }
@@ -636,6 +644,7 @@ pub fn receipt_row(project: &str, receipt: &Receipt, now: u64) -> store::Receipt
         identity: receipt.identity.clone(),
         outcome,
         detail,
+        failure_code: receipt.failure_code.clone(),
         grant_id: None,
         work_id: receipt.work_id.clone(),
         client_publish_id: receipt.client_publish_id.clone(),

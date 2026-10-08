@@ -104,6 +104,7 @@ pub fn free_superseded(
             "{loser} lost to a later computation of {} sealed on this machine ({winner})",
             identity.operation
         )),
+        failure_code: None,
         grant_id: None,
         work_id: None,
         client_publish_id: Some(loser.into()),

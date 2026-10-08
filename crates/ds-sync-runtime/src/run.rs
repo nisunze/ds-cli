@@ -307,7 +307,8 @@ fn run_leased(
                     host.record_receipt(
                         project,
                         &Receipt::new("session", "credential_refused")
-                            .detail(credential_refusal_detail()),
+                            .detail(credential_refusal_detail())
+                            .failure_code(error.code.clone()),
                     )?;
                 }
                 return Err(error.into());
@@ -630,7 +631,8 @@ fn record_refusal(
     };
     let mut receipt = Receipt::new("upload", outcome)
         .about(identity)
-        .detail(detail);
+        .detail(detail)
+        .failure_code(error.code);
     receipt.work_id = work_id;
     receipt.transfers = transfers;
     receipt
@@ -667,10 +669,12 @@ fn download(
         }
         Err(error) if error.credential_refused() => Receipt::new("download", "credential_refused")
             .about(identity)
-            .detail(credential_refusal_detail()),
+            .detail(credential_refusal_detail())
+            .failure_code(error.code),
         Err(error) => Receipt::new("download", "failed")
             .about(identity)
-            .detail(error.detail),
+            .detail(error.detail)
+            .failure_code(error.code),
     }
 }
 
@@ -678,6 +682,84 @@ fn download(
 mod publication_tests {
     use super::*;
     use crate::{rows, store};
+
+    #[test]
+    fn authority_failure_codes_survive_native_restart_without_changing_the_verdict() {
+        let directory = tempfile::tempdir().unwrap();
+        let database = directory.path().join("sync.sqlite3");
+        let fence = store::Fence {
+            account: "account".into(),
+            deployment: "gateway".into(),
+            install_id: "install".into(),
+        };
+        let mut native = ds_sync_store::Store::open(&database).unwrap();
+        let scope = rows::store_scope("project");
+        let mut expected = Vec::new();
+        for engine in sync::engines::ENGINES {
+            for (index, (stage, status, code)) in [
+                (Stage::Open, 403, Some("ENGINE_BUILD_NOT_ADMITTED")),
+                (Stage::Finalize, 409, Some("CONFLICT")),
+                (Stage::Open, 400, Some("INVALID_INPUT")),
+                (Stage::Open, 401, Some("UNAUTHENTICATED")),
+                (Stage::Open, 503, Some("SERVICE_UNAVAILABLE")),
+                (Stage::Open, 403, None),
+            ]
+            .into_iter()
+            .enumerate()
+            {
+                let mut row = crate::fakes::local_row(b"immutable derived bytes");
+                row.identity.engine = engine.name.into();
+                row.identity.operation = format!("operation-{index}");
+                row.client_publish_id = format!("{}-{index}", engine.name);
+                native
+                    .apply(
+                        &fence,
+                        1,
+                        store::Event::LocalProduced {
+                            row: rows::store_row("project", &row, 1),
+                        },
+                    )
+                    .unwrap();
+                // The same display text cannot supply or override a typed code.
+                let receipt = record_refusal(
+                    &row.identity,
+                    stage,
+                    GatewayError::refused(status, code.map(str::to_owned), "display text"),
+                    None,
+                    Vec::new(),
+                )
+                .for_publication(&row);
+                let serialized = serde_json::to_value(&receipt).unwrap();
+                assert_eq!(
+                    serialized.get("failureCode"),
+                    code.map(|value| serde_json::json!(value)).as_ref()
+                );
+                let durable = rows::receipt_row("project", &receipt, 2);
+                assert_eq!(durable.failure_code.as_deref(), code);
+                expected.push((
+                    durable.receipt_id.clone(),
+                    durable.failure_code.clone(),
+                    durable.outcome.clone(),
+                ));
+                native
+                    .apply(&fence, 2, store::Event::ActionReceipt { receipt: durable })
+                    .unwrap();
+            }
+        }
+        drop(native);
+        let reopened = ds_sync_store::Store::open(&database).unwrap();
+        let recorded = reopened.receipts(&fence, &scope, 100).unwrap();
+        assert_eq!(recorded.len(), expected.len());
+        for (id, code, outcome) in expected {
+            let actual = recorded.iter().find(|row| row.receipt_id == id).unwrap();
+            assert_eq!(actual.failure_code, code);
+            assert_eq!(actual.outcome, outcome);
+            let mut old = serde_json::to_value(actual).unwrap();
+            old.as_object_mut().unwrap().remove("failure_code");
+            let legacy: store::ReceiptRow = serde_json::from_value(old).unwrap();
+            assert_eq!(legacy.failure_code, None);
+        }
+    }
 
     #[test]
     fn a_row_without_a_fingerprint_never_reaches_the_record_for_any_fenced_engine() {

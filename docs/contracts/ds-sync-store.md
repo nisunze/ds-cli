@@ -28,7 +28,7 @@ no host re-decides a state.
 | `artifact` | scope + identity | `scope {project | personal}`, `engine`, `operation`, `variant`, `sha256`, `size_bytes`, `produced_at_ms`, `base_revision?` (output-head OCC identity), `input_base_fingerprint?` (source-input digest for a derived artifact), `engine_release`, `engine_build_manifest_sha256?`, `client_publish_id`, `acknowledged_work_id?` (exact native commit evidence), `bytes_locator` (host-opaque), `readable`, `state` (`held | uploading | published | conflict | refused`), `state_reason?`, `replay_key` (idempotency across attempts), `updated_at_ms` |
 | `head` | scope + identity | `revision` (output-head OCC identity), `head_revision` (monotonic counter), `input_base_fingerprint?` (sealed source-input digest), `sha256`, `published_at_ms`, `read_at_ms` |
 | `grant` | scope + `grant_id` | `install_id`, `engines[{name, release, manifest_sha256?}]`, `expires_at_ms`, `raw` (the signed document, opaque) |
-| `receipt` | `receipt_id` | `action`, identity, `outcome`, `detail?`, `work_id?`, `client_publish_id?` (captured publication binding), `head_revision?`, `committed_bytes?`, `at_ms` — append-only evidence |
+| `receipt` | `receipt_id` | `action`, identity, `outcome`, `detail?`, `failure_code?` (exact authority code), `work_id?`, `client_publish_id?` (captured publication binding), `head_revision?`, `committed_bytes?`, `at_ms` — append-only evidence |
 | `lease` | scope | `worker_id`, `taken_at_ms`, `expires_at_ms` |
 | `fence` | context | `account`, `deployment` (lane + origin), `install_id` — every row is stored under one fence; a row from another fence is never executed |
 
@@ -218,3 +218,10 @@ when its output bytes happen to match; it retains the new provenance and asks
 Brain for the new verdict. The engine table declares explicit preview refreshes
 and the additive legacy source-in-base projection. Neither the transition nor
 Solar's completion seal has a digest-only exception.
+
+Native gateway receipts preserve the authority's exact optional `failure_code`
+independently of display text, through open/finalize refusals and credential or
+fetch failures. Runtime results expose the same value as `failureCode`; the
+SQLite receipt uses the kernel's `failure_code` spelling. Omitted codes on old
+receipts remain absent. This additive evidence changes neither verdict mapping
+nor publication identity, and does not authorize retry or reopen a terminal row.

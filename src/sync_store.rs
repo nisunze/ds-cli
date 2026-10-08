@@ -237,6 +237,10 @@ pub struct ReceiptRow {
     pub outcome: String,
     #[serde(default)]
     pub detail: Option<String>,
+    /// The authority's exact typed refusal, independent of display text.
+    /// Older receipts omit it; recovery must never infer a code from prose.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub failure_code: Option<String>,
     #[serde(default)]
     pub grant_id: Option<String>,
     #[serde(default)]
@@ -755,6 +759,7 @@ pub fn apply(request: &Request) -> Result<Transition, String> {
                     identity: Some(identity.clone()),
                     outcome: "cancelled".into(),
                     detail: None,
+                    failure_code: None,
                     grant_id: None,
                     work_id: None,
                     client_publish_id: Some(row.client_publish_id.clone()),
@@ -1190,6 +1195,7 @@ mod tests {
             identity: Some(ident(op)),
             outcome: outcome.into(),
             detail: None,
+            failure_code: None,
             grant_id: None,
             work_id: None,
             client_publish_id: Some("k1".into()),
