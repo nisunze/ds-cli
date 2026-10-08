@@ -257,3 +257,19 @@ Candidate curation and native PLS-CADD acceptance are separate from coding the c
 - **Legacy RAM scratch**: inventory the recorded `/tmp`, `/dev/shm/ds-root-relief-20260930` and canonical-library mirror scratch before moving or retiring completed owned output. Preserve active jobs, source bytes and reusable caches; stage further work on disk. The historical 23/9.3 GB figures require a fresh measurement.
 
 - **Legacy form retirement residuals** (`fb36d55c`): resume the governed six-form campaign only when provider retention/protected tile state changes. The last receipt has zero eligible retries and 23,776 provider-held generations, with expiry reported for 9 October 2026, 09:09–11:12 SAST. Verify every remaining schema/reference/provider count reaches zero before closure; preserve all 71 normal `field_notes` entries and their exact digest. Receipt: `ds-cli/_discardable/legacy-form-purge-20261002/installed-r84-c8-segment06-phase-final.json`. Do not count overlapping tile references twice or route around provider protection.
+
+## Profile differential compute: matching Linux Desktop acceptance
+
+Build locally with two Cargo workers and verify real pole-handle drags,
+retypes, undo and another edit in the Linux Desktop on display `:10`.
+Record actual surface/reference/case/demand/assembly work, phase timings,
+complete scene parity, camera/pick continuity and publication admission.
+A source-only probe is not installed acceptance. Preserve the old running
+Desktop's four unsaved undo entries in model `local-8e19c052cf574797` and its
+exact head; do not restart or reload it without a proved history-preserving
+recovery. The bounded checkpoint at
+`ds-network/out/profile-differential/unsaved-head-before-rebuild.dsgrid`
+preserves the current authored bytes, not the undo journal. Re-read live
+history before any write. The source work is in OPEN.md §14; remove this
+acceptance item after matching native/worker artifacts and the real sequence
+are proved. Build scratch/output is `ds-network/out/profile-differential/`.
