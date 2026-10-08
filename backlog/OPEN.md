@@ -349,13 +349,16 @@ and owning tests live in `ds-network/docs/contracts/profile-transactional-databa
 and `alignment-terrain-partitions.md`. Finish these independent costs on
 canonical `run`, one proved/pushed slice at a time:
 
-- **Signing, cloning and transport after a local edit.** Retain calculated
-  arrays through native copy-on-write storage and keep signatures per row so
-  changed rows alone are hashed and compared. Preserve canonical byte order,
+- **Per-row signing and transport after a local edit.** Use the retained
+  native copy-on-write arrays and keep signatures per row so changed rows
+  alone are hashed and compared. Preserve canonical byte order,
   signed zero, delta bounds and current publication/history refusal paths.
   `profile_calculated_delta.rs::CalculatedSceneBase`, the retained projection
-  and `ds-grid-wasm/src/profile_calculated.rs` still clone or traverse unchanged
-  dense rows. The Nyamagabe lifecycle probe exposes a 647 ms native complete
+  and `ds-grid-wasm/src/profile_calculated.rs` still traverse unchanged span
+  rows and hash equal splice prefixes/suffixes. The authored view also emits
+  all 2,564 temporary connections against the consumed calculated baseline;
+  generate only the affected support/section incidence. The Nyamagabe
+  lifecycle probe exposes a 647 ms native complete
   update, 773 ms worker install and 1,241,283-byte delta for one support; do not
   substitute another full baseline for reducing these costs.
 - **Pick and geometry-preview scope.** `profile_pick_cache.register` still
@@ -382,6 +385,12 @@ canonical `run`, one proved/pushed slice at a time:
   races through native/transport tests and the matching Desktop. Do not relax
   publication, history or signed-zero checks to suppress the error. Original
   receipts are `ds-network/out/profile-differential/desktop-retype-*.json`.
+  Attribute timing and actual work to the complete transaction, including the
+  observation that first healed it: `cow-next-retype-apply.json` reports zero
+  applied replay entries and retained full authored-work counters on the later
+  CLI observation. Its successful 5.18 s completion does not identify the
+  earlier solve's work. Keep per-phase costs and actual scope observable to
+  human and agent callers without repeating the calculation.
 
 Installed Desktop acceptance belongs to `SEEDING.md`; it remains part of this
 user-requested delivery. Use two build workers, disk scratch and the warm

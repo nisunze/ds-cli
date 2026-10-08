@@ -1,103 +1,115 @@
-# Continue Profile differential compute — fresh-window handover, 2026-10-08
+# Continue Profile differential compute — fresh-window handover
 
-Paste this whole file into the next window. Continue the existing work; do not
-start from zero. The owner requested this handover because the prior
-conversation had become corrupt.
+The owner requested this handover after crashes/compaction. Read OPEN.md §14,
+“Differential compute after an edit”, in full before coding, then PRINCIPLES §6
+and the transactional Profile / alignment-terrain contracts in ds-network.
+Delete this file only when that OPEN entry is gone. Do not repeat its baseline.
 
-Read `ds-command-kernel/backlog/OPEN.md` §14, "Differential compute after an edit
-(the item to watch, owner 2026-10-08)", **in full before touching code**, including
-"Current unfinished continuation, 2026-10-08". It holds the ordered owner
-steers, original measurements, code map, exact current evidence and next work.
-Read `backlog/PRINCIPLES.md` §6 and the two owning contracts:
+The objective remains unfinished: each edit lands whole, solves its affected
+sections, reconciles at most affected alignments, retains unchanged terrain and
+other work, equals a full held-axis calculation byte for byte, and leaves a
+cheap next action. Server/kernel owns decisions shared by CLI, Web and Desktop.
+Work directly on canonical run, prove/push one coherent slice before the next.
+Claude concurrently commits Solar sync on run; preserve its edits/processes.
 
-- `ds-network/docs/contracts/profile-transactional-database.md` (§0 leads).
-- `ds-network/docs/contracts/alignment-terrain-partitions.md`.
+Current delivered slice:
+- ds-network 48349c72: native Table copy-on-write band routes, ground, terrain,
+  supports and nested samples; unchanged case/label arrays stay shared; component
+  signing uses their storage identity. ProfileAuthoredView now rebases consumed
+  temporary connections after a complete calculation.
+- ds-web 8837fa79c: whole-edit renderer admission checks the old authored base
+  and final native renderer revision/input/axis pins. Local solves may change
+  elevation-axis digest; do not require the old digest after native calculation.
+- ds-profile-runtime retains composed labels and rebases the authored comparison
+  view to the completed scene. Its new regression admits three consecutive
+  geometry edits against the previous completed receiver, with fresh byte parity.
+  Kernel commit accompanies this handover; see git log.
 
-The goal: each Profile edit lands whole, reconciling at most its affected
-alignment(s), solving only affected tension sections, retaining unchanged
-terrain and every unrelated alignment. The result equals a full calculation
-byte for byte in the held axis. The next edit costs only what it touches.
+Proof is retained in ds-network/out/profile-differential/ and the owning contract.
+39 engine/WASM tests, eight runtime transfer tests, 60 frontend tests (one skip)
+passed. Release parity sweeps at Nyamagabe indices 100/250/400 passed with no
+pending facts, zero terrain geometry checks and 128/124/128 unchanged arrays
+shared. Native updates were 630/666/630 ms; worker installs 758/781/768 ms.
+Do not remeasure these unchanged baselines; reduce the remaining costs.
 
-The server/kernel is the core shared by Web, Desktop and CLI. Much of the code
-exists; prove its wiring. Use the local Linux Desktop dev build for **real
-retypes, pole-handle drags, undo and another edit**, and watch the sections heal.
-Keep per-phase timings and actual work counters so human/assistant co-design
-is predictable and easy. After spotting an alignment, correcting a few poles
-must not repeat the whole alignment's work. Optimum spotting/typing must not
-repeat unchanged terrain, other alignments or their typing. Do not repeat the
-recorded baseline measurements instead of fixing the boundary.
+Matching optimized LOCAL DEVELOPMENT Desktop (debug assertions enabled) and
+release WASM proved real handle drag → CLI retype → undo → next drag → human
+picker retype. Completion samples: 5.26/5.18/5.40/4.74/4.28 s; 0.5 s polling.
+Camera retained; authored/scene/computed heads equal; pending calculation empty.
+Undo keeps the journal hash while moving its cursor: compare complete history,
+not only history_pin. The original timing receipt falsely timed out; the derived
+cow-next-undo-retype-corrected.json retains the exact first healed sample.
 
-Current source is **unfinished and uncommitted**, directly in canonical
-`ds-network/run` (HEAD `7ec4d9cb590f89957fc7d166ec1d1314f0aa217e` at handover):
+Prior demonstrated trap: calculation clears temporary straight connections but
+runtime retained 2,564 of them. The following edit spliced into the worker's
+empty array and refused CaseBaseUnavailable. Real CLI retype committed; its
+checkpoint was preserved, never undone to hide the failure. Actual Nyamagabe
+native repro failed before, passes after. DS_PROFILE_GEOMETRY_PACKAGE selects
+that test package; use out/profile-differential/cow-retype-committed-checkpoint.dsgrid.
+Retain its referenced assets in test emit inputs. Move horizontally; native
+aligned moves derive Z from terrain, so a supplied Z-only move is a no-op.
 
-1. `crates/ds-grid-engine/src/profile_edit_update.rs`: builder-order row merge,
-   including interleaved slot sections and rows moving across unchanged anchors.
-   Two release unit tests passed.
-2. `crates/ds-grid-wasm/tests/profile_edit_lifecycle_probe.rs`: now asserts
-   conductor byte parity. One Nyamagabe drag probe passed. Spans now match a
-   full build; the remaining reconcile differs in 13 engineering markers and
-   28 terrain clearance margins (115,528-byte delta). **Whole-scene parity is
-   still false; no sweep or installed-source acceptance has been completed.**
-3. `crates/ds-grid-engine/src/profile_atlas.rs`: last, **uncompiled** scaffold
-   `layout_scene_in(..., held_axis)` can place supplied bands at retained chain
-   positions. No scoped caller exists yet; ordinary layout passes `None`.
-   Complete it through retained surface/reference/case inputs and exact
-   per-band assembly/folds; never claim this already localizes reconciliation.
+Next slice: per-row signing/transport (first remaining OPEN bullet). Calculated
+transport still signs span fields and equal splice prefixes/suffixes. Shared
+nested sample arrays already prove unchanged bytes, including signed zero.
+Keep fresh signature equality, canonical order, bounds and publication/history
+refusals. Authored transport still regenerates all 2,564 temporary connections;
+bound it to affected incidence. The other independent OPEN costs are pick/drag
+preview scope, exact signed base across case selection, navigation scope and
+observation/publication races. A CLI observation can arrive after the async
+observer healed the head: its no-op work counts do not measure the winning solve.
+Fix transaction-wide timing/work attribution alongside that race, without reruns.
+The installed retype help still incorrectly says calculation is excluded; update
+its owning CLI discovery/reference slice when proving that timing contract.
 
-Preserve these edits. Backup:
-`ds-network/out/profile-differential/in-flight.patch`
-(SHA-256 `93fd05b1a966959e789294688e8502d417d9edcac4084d42933e9b548b93cbfa`).
-All new receipts/screenshots are in that gitignored output folder.
-The older parked retype work remains in
-`ds-network/out/parked-numbering-retype-20261008-1119/`; do not delete it.
+Live Desktop on display :10:
+- PROTECTED original: instance 7a1e02bc7f4f771164199c31cc83b021, PID 3134699,
+  model local-8e19c052cf574797, exact head
+  rev:9287c4a95405b6c3159933756e2b41d2103bb0337d6c4cf1dadc5f9f1c999502,
+  undo four, redo zero, history pin
+  d71e054fd38e286f3618dc1010ff4e585fcc65bc938128df0675f9a07bf9e9d5.
+  Never reload/restart it. Its checkpoint preserves bytes, not its journal.
+- OWN proof: instance d1df7164943ffd04cd0779f73b9c4016, PID 3775228,
+  model local-feae6e3ba260438e, exact head
+  rev:ee2fbd3209fced5fcaafe9bfab4c3d218660c2c0bdaf28e5c88df79a4b69551f,
+  undo three, redo zero. Checkpoint cow-slice-completed-checkpoint.dsgrid,
+  SHA256 f34f3f3e77f8ba505c9104924a3e04a91a9e518a6dc1005a4ec0baf84d319bd3.
+  It preserves all owned test edits, not the journal. Keep the proof window for
+  continuation; checkpoint its new head before rebuilding it.
 
-The **older installed** Linux Desktop dev build is running on display `:10`.
-Its model is `local-8e19c052cf574797`, Nyamagabe MV Model 1 test copy. A real
-drag and same-family retype of support 127 (`str-423815a32fed4309-274`) healed
-their wires/markers, with unchanged camera values. The retype receipt reported
-`profile_publication_failed` during observation while a later view showed the
-head fully healed: the duplicate-observation/publication race is unresolved.
-Preview/commit/observe/total were 30/731/4315/5076 ms. See the receipts before
-changing fences or classifying this as a solver failure.
+Use ds skills and declared installed CLI leaves, never bridge/store/API bypass.
+ds executable: ds-web/src-tauri/binaries/ds-x86_64-unknown-linux-gnu.
+Set DS_DESKTOP_DESCRIPTOR to ~/.local/share/rw.datasolutions.desktop.local-dev/
+cli-bridge.d/<exact-instance>.json. Do not use the launcher; it can close the
+protected stack. Catalog account ARiIF6tYgUTGHN4rZMm1Gez7f3t2, lane stable;
+Desktop lane local and ready project wnmajona_edcl_rural_electrification_template.
+Imported proof copies are inactive; global catalog active model stayed unchanged.
 
-At handover the RAM and computed head were
-`rev:9287c4a95405b6c3159933756e2b41d2103bb0337d6c4cf1dadc5f9f1c999502`,
-undo depth 4: **two owner edits plus this session's drag and retype remain
-unsaved**. Preserve RAM work before restarting. Re-read the live head and
-history; do not use these pins for another write. `desktop-handover.json`
-captures the exact state. No matching Desktop rebuild has installed our source.
+Build with two workers and one own heavy job at a time. Check RAM/processes
+before each. Disk TMPDIR: ds-network/out/profile-differential/tmp. Cargo target:
+~/.cache/ds-griddesign/desktop-local-dev/cargo-target. Use opt-level=3, debug=0,
+incremental=false for local dev. Local lane deliberately refuses release-profile
+Desktop; do not bypass that fence or change identity. Logs record exact build
+commands: cow-next-base-desktop-build.log and cow-next-base-wasm-build.log.
+Source scripts/desktop/solar-build-inputs.sh and prepare current Solar inputs;
+DS_SOLAR_CARGO_LOCK_PATH is ds-web/src-tauri/Cargo.lock. Tauri uses --no-watch,
+src-tauri/tauri.desktop-runtime.conf.json plus out/profile-differential/
+tauri-proof.conf.json. Staged Profile WASM SHA256 is
+8512c03d3ee3d28977a912a1fc3fcffa31b273eb1efcaac0757f27a79f910c03.
 
-`ds` is not on PATH. Read the ds skill, then use installed discovery through:
+Vite PID 3134576, port 5173, has source watching disabled. New-window stale
+transforms were safely invalidated without HMR or old-window reload:
+kill -USR1 3134576; node out/profile-differential/vite-cache-inspect.mjs --invalidate
+(run node in ds-network or use the full script path). It closes Node's inspector.
+Use DISPLAY=:10 ~/.cache/ds-xdrive/xd for real gestures/screenshots. Bare g opens
+support navigation; type 127, wait for its result, then choose it. Pencil at
+289,587; type picker at 440,587; undo 319,587. Reinspect geometry before dragging.
+The helper desktop-gesture-proof.py requires exact DS_DESKTOP_DESCRIPTOR.
 
-```bash
-ds-web/run-linux-desktop.sh --cli capabilities --search 'profile' --output json
-ds-web/run-linux-desktop.sh --cli map profile view --output json
-```
-
-`DISPLAY=:10 ~/.cache/ds-xdrive/xd` captures/clicks/drags the real Desktop.
-The successful drag was `(1115,898)` → `(1135,898)` after selecting support 127;
-positions may change, so inspect first. The retype target was
-`j-w-S325.014` / `st-02148991a07337d1` from `j-w-S190.012`.
-
-Native proof uses `CARGO_BUILD_JOBS=2`, release cache
-`/home/magese/.cache/ds-network-probe-target`, and disk scratch
-`ds-network/out/profile-differential/tmp`. The existing lifecycle probe reads
-the package named in OPEN.md through `DS_LIFECYCLE_PACKAGE`; run with
-`--release --ignored --nocapture`. The passed logs are `ordering-unit.log` and
-`ordering-nyamagabe.log`; they predate the layout scaffold.
-
-Claude/Codex are concurrently finishing Solar sync on canonical `run`, including
-`ds-command-kernel/crates/ds-client-core/`; preserve their changes, commits and
-processes. The owner specifically expects them. The Solar continuation tree
-was safely deleted after all seven heads were proved on `run` and `origin/run`.
-Registry: 0 live trees against cap 4; zero unlanded commits. Cleanup left at
-least 25% disk free, no process was killed, and this session has no remaining
-heavy job. Check live processes/RAM before each heavy job; preserve warm caches.
-
-Work on canonical `run`, no new worktrees or official goal tool. Keep each
-slice coherent; prove natively with Nyamagabe parity/work counts and then in
-the matching Linux Desktop, commit and push before the next slice. Preserve
-native history/publication/signed-zero fences and never undo the whole-landing
-lifecycle. Keep unfinished work only in the owning backlogs, delete fulfilled
-obligations, and remove this prompt once its OPEN.md entry is gone. Build
-locally; never submit a remote build or deploy `ds-system`.
+Cleanup is FINISHED: owner said stop when temporary builds are done. About
+532 GiB of inactive compiled output was removed after process/open-file checks.
+Fresh builds leave disk about 29% used / 625 GiB available. No project data,
+reports, sources, parked patches or sessions were deleted. Do not archive project
+deliverables or keep deleting to chase 75% free. Never SIGKILL another process.
+Tree registry: zero live trees, cap four, zero unlanded tree commits.
+Keep out/parked-numbering-retype-20261008-1119; its duty-retype work is separate.

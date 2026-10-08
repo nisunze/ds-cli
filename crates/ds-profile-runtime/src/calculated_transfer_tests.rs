@@ -578,6 +578,115 @@ fn observed_edits_land_whole_without_a_reconcile_job() {
     }
 }
 
+/// A complete calculation consumes temporary authored connections. The next
+/// authored splice must address that completed worker scene.
+#[test]
+fn repeated_geometry_edits_admit_authored_splices_after_complete_updates() {
+    let named_package = std::env::var_os("DS_PROFILE_GEOMETRY_PACKAGE");
+    let package = named_package.as_ref().map(|path| {
+        ds_grid_exchange::dsgrid::ingest(&std::fs::read(path).unwrap())
+            .unwrap()
+            .0
+    });
+    let snapshot = package
+        .as_ref()
+        .map(|package| package.snapshot.clone())
+        .unwrap_or_else(section_demand_fixture);
+    let assets = package.map(|package| package.assets);
+    let fixture_request = |snapshot| match assets.as_ref() {
+        Some(assets) => {
+            crate::transactional_projection_tests::request_for_with_assets(snapshot, assets.clone())
+        }
+        None => request_for(snapshot),
+    };
+    let input = fixture_request(snapshot.clone());
+    let mut worker = GridSession::open(snapshot);
+    let mut runtime = Runtime::default();
+    let initial = runtime.execute(input.clone()).unwrap();
+    let mut receiver =
+        CalculatedSceneBase::new(serde_json::from_value(initial["scene"].clone()).unwrap());
+    for i in 0..3 {
+        let row = if named_package.is_some() {
+            worker
+                .snapshot()
+                .structures
+                .iter()
+                .find(|row| row.id.as_str() == "str-423815a32fed4309-274")
+                .unwrap()
+                .clone()
+        } else {
+            worker.snapshot().structures[1].clone()
+        };
+        let base = worker.current_revision().revision_id.to_string();
+        worker
+            .apply_command(ds_grid_engine::CommandEnvelope::new(
+                format!("geometry-{i}"),
+                worker.current_revision().revision_id.clone(),
+                ds_grid_engine::GridCommand::MoveStructure {
+                    id: row.id,
+                    x_m: row.x_m + 1.,
+                    y_m: row.y_m,
+                    z_m: row.z_m,
+                    orientation_rad: row.orientation_rad,
+                },
+            ))
+            .unwrap();
+        let mut request = refresh(&runtime, &input, &base, &worker);
+        request.calculated_base_signature = Some(receiver.signature().to_string());
+        let next = runtime
+            .execute(Request::Observe(Box::new(request)))
+            .unwrap();
+        let authored: ds_grid_engine::profile_atlas::ProfileAuthoredDelta =
+            serde_json::from_value(next["authored_delta"].clone()).unwrap();
+        eprintln!(
+            "edit {i}: retained connections {}, completed connections {}, authored splices {:?}",
+            runtime.held["one"]
+                .authored
+                .as_ref()
+                .unwrap()
+                .geometry()
+                .authored_connections
+                .len(),
+            receiver.scene().authored_connections.len(),
+            authored
+                .splices
+                .iter()
+                .map(|s| (&s.path, s.start, s.delete_count, s.items.len()))
+                .collect::<Vec<_>>()
+        );
+        let visible = authored.apply_to_scene(receiver.scene()).unwrap();
+        assert_eq!(
+            visible.model_revision,
+            worker.current_revision().revision_id
+        );
+        assert_eq!(next["calculation"]["required"], false, "{next}");
+        let delta = serde_json::from_str(
+            next["calculated_update"]["scene_delta_json"]
+                .as_str()
+                .expect(&next.to_string()),
+        )
+        .unwrap();
+        receiver = receiver
+            .admit(
+                &delta,
+                &worker.current_revision().revision_id,
+                &worker.current_revision().roots.engineering_input_root,
+            )
+            .unwrap();
+        assert!(receiver.scene().authored_connections.is_empty());
+        let fresh = Runtime::default()
+            .execute(fixture_request(worker.snapshot().clone()))
+            .unwrap();
+        let fresh: ds_grid_engine::ProfileAtlasScene =
+            serde_json::from_value(fresh["scene"].clone()).unwrap();
+        assert_eq!(
+            serde_json::to_vec(receiver.scene()).unwrap(),
+            serde_json::to_vec(&fresh).unwrap()
+        );
+        assert!(runtime.held["one"].pending_receipts.is_empty());
+    }
+}
+
 /// A delta is only a cheaper transport. Without its exact base it becomes
 /// the exact full scene; a calculation is never refused for its transport.
 #[test]

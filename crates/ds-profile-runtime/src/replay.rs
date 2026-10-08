@@ -470,7 +470,7 @@ impl Runtime {
                 touched.spans.extend(scope.spans.iter().cloned());
                 touched.alignments.extend(scope.alignments.iter().cloned());
                 use ds_grid_engine::profile_edit_update::{
-                    ProfileEditInputs, ProfileEditUpdate, profile_update_after_edit,
+                    profile_update_after_edit, ProfileEditInputs, ProfileEditUpdate,
                 };
                 calculated_update = match profile_update_after_edit(
                     ProfileEditInputs {
@@ -506,6 +506,13 @@ impl Runtime {
                             "update_ms":update_started.elapsed().as_secs_f64()*1000.,
                             "surface_work":held.review.surface_work(),"reference_work":held.review.reference_work(),
                             "case_work":held.review.case_work(),"assembly_work":held.review.assembly_work()});
+                        if let Some(authored) = &mut held.authored {
+                            Arc::make_mut(authored)
+                                .rebase_after_calculation(next.scene())
+                                .map_err(|error| {
+                                    format!("profile_authored_base_unavailable: {error}")
+                                })?;
+                        }
                         held.result_index = Arc::new(result_queries::Index::new(
                             &held.session,
                             next.scene(),

@@ -386,7 +386,7 @@ impl Runtime {
         let mut label_policy = source.presentation.effective_profile_structure_labels();
         label_policy.fields = serde_json::from_value(json!(label_fields(&state)))
             .map_err(|error| error.to_string())?;
-        ds_grid_engine::profile_labels::compose_scene_structure_labels(&mut scene, &label_policy);
+        Arc::make_mut(&mut review).compose_scene_labels(&mut scene, &label_policy);
         let grid = &rows
             .iter()
             .find(|row| row.option == ds_command_kernel::profile_display::DisplayOption::Grid)
@@ -592,6 +592,12 @@ mod transactional_projection_tests {
         request_for(common::fixture())
     }
     pub(super) fn request_for(snapshot: ds_grid_model::GridModelSnapshot) -> ProjectRequest {
+        request_for_with_assets(snapshot, vec![ds_grid_exchange::AssetBytes {
+            invariant_leaf: "source-evidence.txt".into(),
+            bytes: b"retained exact evidence".to_vec(),
+        }])
+    }
+    pub(super) fn request_for_with_assets(snapshot: ds_grid_model::GridModelSnapshot, assets: Vec<ds_grid_exchange::AssetBytes>) -> ProjectRequest {
         let session = GridSession::open(snapshot);
         let (artifacts, _) = ds_grid_exchange::dsgrid::emit(
             session.snapshot(),
@@ -602,10 +608,7 @@ mod transactional_projection_tests {
                 presentation: Default::default(),
                 library_pins: vec![],
                 library_needs: vec![],
-                assets: vec![ds_grid_exchange::AssetBytes {
-                    invariant_leaf: "source-evidence.txt".into(),
-                    bytes: b"retained exact evidence".to_vec(),
-                }],
+                assets,
                 exchange_bindings: Default::default(),
             },
         )
