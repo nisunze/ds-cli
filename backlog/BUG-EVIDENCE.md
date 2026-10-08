@@ -406,21 +406,19 @@ installation; explicit calculation still needs bounded native phase/work
 evidence before claiming a measured bottleneck or release performance. No
 template edits, competing builds or model mutations.
 
-## Focused review: Profile selected-case section reuse
+## Focused review: direct Profile calculation job controls
 
-Read-only request before the next slice: trace `profile_atlas/case_curves.rs::curves`
-and `case_projection.rs` base/requested-case consumers. Selected-case transition,
-span solving and clearance still visit unchanged sections on explicit local
-calculation. Characterize the actual selected case identity, direct-reference
-reuse, election changes and native reference invalidation before retaining typed
-case payloads. Bound retained case/section memory and preserve native refusal,
-unknown and cached-only reads: visibility, picking and selection must not solve.
-Prove exact fresh scenes for repeated edits, changed elected cases, requested
-cases, weather/material changes, unavailable references, deletion, undo/redo,
-parent/T-off station shifts and stale async admission. Count retained copying,
-index/election, ground and final JSON costs; fewer solves alone proves no latency
-benefit. Keep conservative fallback at uncharacterized input boundaries.
+Read-only request before the next source slice: trace native
+`ds-profile-runtime/calculation_jobs.rs` through Desktop's native job transport,
+`ds-cli-map/profile.rs`, CLI discovery/MCP and the paired command bridge.
+Rebuild/Analyze currently awaits completion; characterize the missing direct
+start/status/cancel ticket boundary using the existing native owner. Identify
+the minimum typed inputs and captured model/history/display/project context,
+bounded receipts, cancellation and stale-result/publication fences. CLI/MCP
+must expose the same native controls before UI bindings, without implementing
+calculation policy in TypeScript or admitting caller-selected scope/principal.
 
-Maximum two findings with exact path/line evidence. Re-read `STABILIZATION.md`.
-No model mutations, template/printing work, competing builds or solver
-qualification.
+Maximum two demonstrated gaps with exact path/line evidence and owning tests.
+Preserve existing async interaction and noninterruptible-worker capacity truth;
+no automatic calculation, Save, project mutation, template work, remote builds
+or installation campaign. Re-read `STABILIZATION.md` before implementation.

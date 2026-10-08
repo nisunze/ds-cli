@@ -321,7 +321,8 @@ revision unchanged. Refresh exposes `last_demand_terrain_geometry_checks` and
 as other demand counters. The native runtime gate proves exact fresh-scene parity
 and independent Save, including a rounded endpoint whose tiny interpolation
 change correctly defeats reuse. Terrain-only reference reuse has its separate
-native span-window fence; selected-case preparation, independent design clearance
+native span-window fence. Unchanged selected-case payloads share that final
+reference scope and actual selected-case identity; independent design clearance
 and query freshness retain their broader boundaries.
 
 The owning ordinary-release terrain demand receipt uses 10,017 terrain points,
@@ -363,6 +364,30 @@ versus 44.028 ms), demonstrating the need to include dependency work. See
 surface, reference/case/election, uncached usage, layout/markers and encoding;
 excludes runtime replay, independent Analyze/design-case clearance, job capture,
 IPC, worker installation and painting. Installed interaction remains unqualified.
+
+Explicit calculation additionally reports `last_case_computed_sections`,
+`last_case_reused_sections`, `last_case_attempted_transitions`,
+`last_case_cached_sections`, `last_case_cached_samples` and
+`last_case_cache_admitted`. These describe the final selected-case preparation,
+not all election or engineering work. Admission is numeric `1` or `0`, preserving
+the metrics' numeric contract. Prepared unavailable rows count without
+attempting a transition. One actual selected case is retained within native
+16,384-section/262,144-sample logical bounds; overflow discards future reuse and
+leaves current calculated results unchanged. Internal rows do not authorize
+cached-only reads or selection. Observe preserves this work and the calculated
+revision. Cache hits can retain earlier counters, and metrics never alter
+history, query freshness or publication identity.
+
+The ordinary-release selected-case gate on the same 121-support/120-section,
+10,015-point fixture measured apply 12.362 ms and retained full-scene
+calculation/JSON 37.217 ms versus 43.991 ms fresh. Two reference and case
+sections prepare, 118 reuse, with 2,040 cached sampled points. All twelve outputs
+match fresh bytes (8.27–8.67 MB). See
+`ds-network/out/profile-native/selected-case-cost-release.json`. This includes
+election, copying, uncached usage and layout/markers; runtime replay, separate
+Analyze/design clearance, job capture, IPC, installation and painting remain
+outside the measurement. Native runtime gates preserve no-solve Observe and
+independent Save, full fresh scenes and stale async admission.
 
 Terrain observations return `authored_delta.work.local_terrain_point_projections`
 and `local_ground_rebuilds` without calculation. These count the receipt-local

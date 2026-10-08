@@ -43,6 +43,7 @@ fn terrain_observe_never_solves_and_explicit_refresh_reuses_unchanged_section_de
         let base = input.expected_revision.clone();
         let before = runtime.held[&input.scope].demand_cache.last_demand_work();
         let before_references = runtime.held[&input.scope].review.reference_work();
+        let before_cases = runtime.held[&input.scope].review.case_work();
         worker
             .apply_command(CommandEnvelope::new(
                 "terrain-cache-edit",
@@ -63,6 +64,7 @@ fn terrain_observe_never_solves_and_explicit_refresh_reuses_unchanged_section_de
             before
         );
         assert_eq!(observed["ran"], false);
+        assert_eq!(runtime.held[&input.scope].review.case_work(), before_cases);
         assert_eq!(
             runtime.held[&input.scope].review.reference_work(),
             before_references
@@ -86,6 +88,17 @@ fn terrain_observe_never_solves_and_explicit_refresh_reuses_unchanged_section_de
             2
         );
         assert_eq!(result["metrics"]["last_reference_computed_sections"], 2);
+        assert_eq!(result["metrics"]["last_case_computed_sections"], 2);
+        assert_eq!(result["metrics"]["last_case_reused_sections"], 0);
+        assert_eq!(result["metrics"]["last_case_attempted_transitions"], 2);
+        assert_eq!(result["metrics"]["last_case_cached_sections"], 2);
+        assert_eq!(result["metrics"]["last_case_cache_admitted"], 1);
+        assert!(
+            result["metrics"]["last_case_cached_samples"]
+                .as_u64()
+                .unwrap()
+                > 0
+        );
         assert_eq!(
             result["metrics"]["last_reference_terrain_inspected_ground_edges"]
                 .as_u64()

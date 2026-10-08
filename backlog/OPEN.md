@@ -214,7 +214,7 @@ measure and localize their intervals and station/axis consequences at parent/T-o
 boundaries. Dense segment splits/merges and identity reorders can still require
 large changed array ranges. Explicit terrain calculation still checks support
 bases and solver geometry across all requested sections, clones shared/chained
-ground broadly, and prepares selected-case, usage and independent design-clearance
+ground broadly, and prepares usage and independent design-clearance
 inputs beyond affected spans/supports. Distinguish actual Profile
 ground inputs from any external native triangulation evidence.
 

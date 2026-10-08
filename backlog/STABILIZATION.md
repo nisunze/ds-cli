@@ -119,7 +119,7 @@ and publication fences, bounded native metrics and fresh engineering parity.
 3. **Explicit calculation:** engineering calculation is intentional only
    (owner clarification, 2026-10-07). Repeated edits accumulate in RAM;
    neither idle time nor Save authorizes calculation. The explicit native
-   session refresh still rebuilds case transitions/election,
+   session refresh still rebuilds case election,
    engineering marker assembly and layout across the Profile, and runs separate
    design-case clearance work.
    It returns the full scene and bounded issues for worker installation.
