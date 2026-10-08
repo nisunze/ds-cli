@@ -34,10 +34,44 @@ The Gisagara preview used a 1 m discrete baseline and approximately 0.1 m
 reduction tolerance. Those values document that run; they do not certify raster
 accuracy or continuous error between queries.
 
+## Acquisition footprint and authorized trimming
+
+The finite center/side cut plan, signed corridor offsets and bounded lateral
+jitter drive eligibility. An explicitly planned possible-side range is allowed;
+all conceivable offsets are not. Use actual XY and bounded station to establish
+membership. Do not jitter measured survey points. A sampling/jitter envelope is
+an admissible extent, not proof of filled terrain. Preserve its holes and pieces.
+
+Bound provider queries, survey admission and meshing before construction.
+Account separately for bounded source metadata, raster block padding and the
+local interpolation halo. Do not mesh the whole source then clip the picture.
+For two short alignments at opposite corners of Rwanda, reads, query points,
+active observations and triangle work must follow the two local footprints,
+not their combined country-sized rectangle. One source never implies one domain.
+
+When the owner authorizes trimming an existing DEM seed, pin the current model
+and preview the minimal justified support closure. Keep actual center/side query
+support, possible-side allowances, interpolation neighbors, ground-basis IDs,
+mandatory extrema/anchors and feature-clearance witnesses. Preserve original
+source bytes and the prior revision separately, along with measured XYZ,
+source classes, route/equipment/criteria authority and retained observation IDs.
+Delete only surplus derived DEM rows from the active model through its native
+contract. Hiding a layer or retaining all rows in the loaded table is no cleanup.
+
+Read back active rows/memberships/basis and sizes, support-retention/removal
+reasons, gaps and before/source-versus-after accuracy on every admitted cut.
+Keep the native declared discrete error and engineering density tests; do not
+invent a new tolerance or silently switch the ground basis. A prior count of
+centerline memberships is evidence of over-seeding, not a target retained count.
+Any required new acquisition or basis switch remains an explicit scoped action.
+Save/publication follow their own contracts and existing user authorization.
+
 ## Review observable behavior
 
 | Case | Required result |
 | --- | --- |
+| Opposite Rwanda corners | No intervening queries/terrain/triangles; read/query/mesh work scales with local cut/offset/jitter footprints and bounded halos, allowing source block granularity. |
+| Side allowance, asymmetric corridor and lateral jitter | Membership follows actual XY in the declared bounded geometry; all needed side/neighbor support survives, with plural overlap and unchanged source Z. |
 | Independent corridors 200 m or 1 km apart | Separate bounded domains; no triangles or ground across the empty space. Distances are regression examples, not a universal split threshold. |
 | Nearby independent routes with overlapping footprints | A physical point may have plural membership; each admitted domain stays independent. Sharing cannot expand either footprint into an unsupported patch. |
 | Connected parent and T-off | Declared supported pieces/observations may be shared; family membership cannot bridge a hole, no-data or unsupported run. |

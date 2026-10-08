@@ -34,10 +34,14 @@ apply an unexplained offset or improve the source's claimed accuracy.
 
 ## Bound the ground to supported corridors
 
-Define sampling extent from actual route footprints, supported runs and source
-coverage in the characterized metric frame. A route bounding rectangle or a
-family/project convex hull is not a corridor. Keep holes, disconnected pieces,
-no-data and unsupported intervals open. Dense coverage elsewhere does not support
+Define extent from actual center/side cuts, signed corridor offsets, explicitly
+bounded possible side-profile ranges and bounded lateral observation randomness,
+plus necessary local interpolation support. Use actual XY and bounded station
+for membership; retain plural overlap. Source coverage and supported runs still
+govern admission. A centerline-distance test alone is insufficient. Bound source
+reads/query generation before triangulation: opposite-corner Rwanda alignments
+need disconnected local pieces, never their enclosing rectangle or hull. Keep
+holes, disconnected pieces, no-data and unsupported intervals open. Dense coverage elsewhere does not support
 an empty patch here. At route ends, enforce bounded station eligibility rather
 than clamping outside observations into endpoint stacks.
 

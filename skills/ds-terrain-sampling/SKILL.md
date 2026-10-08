@@ -31,6 +31,15 @@ overlap and sampling density permit bounded observation sharing; independent
 alignment families still retain independent interpolation domains. Alignment
 identity alone neither proves coverage nor requires duplicate physical points.
 
+Plan disconnected acquisition/query footprints before surface construction:
+actual center and enabled/planned side cuts, signed corridor offsets and bounded
+lateral observation randomness, with only necessary local source support.
+Possible side profiles need an explicit finite allowance. Membership uses actual
+XY and bounded station. A whole-source mesh clipped afterward is not bounded
+work. Opposite-corner alignments must not query or fill their enclosing country
+area; count source blocks/bytes, queries and triangle work, not only output rows.
+Bounded shared metadata and block/interpolation padding are separate costs.
+
 Choose one source explicitly. A provider comparison diagnoses differences;
 it does not authorize mixing providers, correcting heights or applying a datum
 offset. Survey input must declare its actual coordinate frame and keep its
