@@ -72,7 +72,7 @@ pub static COMMAND: Command = Command {
     path: &["map", "profile", "results"],
     contract: 2,
     summary: "Page cached native Profile facts without calculating.",
-    purpose: "Query admitted usage, failures, negative loading, distinct violating sections, qualification, blockers or design-point findings. The native source defaults to profile; model_analysis selects independently admitted model-bound Analyze facts and requires explicit Analyze when inputs change. Native owns predicates, counts, paging and dependency freshness. Reads never calculate, initialize, observe or save. An affected entity or unconfirmed result refuses; unaffected focused reads can retain engineering at its stated computed revision.",
+    purpose: "Query admitted usage, failures, negative loading, distinct violating sections, qualification, blockers or design-point findings. The native source defaults to profile; model_analysis selects independently admitted model-bound Analyze facts. Native owns predicates, counts, paging and dependency freshness. Reads never calculate, initialize, observe or save. Affected, global or unproved analysis dependencies require explicit Analyze; unchanged support facts may survive Profile-only calculation at their original computed revision. Unconfirmed results refuse.",
     chapter: Chapter::MapPresentation,
     effect: Effect::ReadOnly,
     authority: Authority::DesktopPairing,

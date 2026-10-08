@@ -737,9 +737,13 @@ checks. `findings` requires `model_analysis`, for example
 `{"kind":"findings","source":"model_analysis","limit":50}`. Native facts,
 complete totals, actual basis, authored/computed roots, history, source and
 qualification accompany the page. Its display case is null for model analysis.
-The source must already be admitted: reads never project or solve. Model
-engineering input changes require explicit Analyze for that source. Use the
-emitted next_cursor unchanged; it pins source, result, history and selection.
+The source must already be admitted: reads never project or solve. Affected,
+global or unproved engineering dependencies require explicit Analyze.
+Native unchanged support facts can survive local edits and Profile-only
+calculation with `unchanged_dependencies` freshness and their original computed
+revision/root. Design findings and violating-section queries remain conservative
+after changed inputs. Use the emitted next_cursor unchanged; it pins source,
+result, history and selection.
 Native limits are 200 items and 256 KiB; no full scene is transferred. `--history`
 adds an explicit caller history pin. Native refusals retain their codes.
 
