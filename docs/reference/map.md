@@ -768,10 +768,17 @@ These commands do not author structure-label fields. Use `ds dsgrid profile labe
 
 Read `map profile view` first and pin its exact `model_id` and `revision`.
 `map profile usage --model <id> --revision <rev> --structure <native-id>` reads
-one support from the native live session, including usage percentage, declared
-scope, governing cases, uplift and blockers. `--types` also returns native
-structure type choices. Selection supplies IDs; displayed pole numbers do not
-identify a revision or another model.
+one support from the retained native result index. Contract 2 returns `usage`,
+an unchanged bounded native `QueryResults` page rather than the former
+`screening` DTO. Authored/computed revisions and roots, exact history, actual
+basis, freshness and result identity accompany the typed row. Evidence text
+lists are represented by counts; read their messages with `map profile results`
+kind `blockers`. A missing or affected result returns
+`profile_calculation_required`: explicitly rebuild or analyze before retrying.
+Selection and reads never calculate or Save. `--types` also returns existing
+native structure type choices. Displayed pole numbers do not identify a
+revision or another model.
+
 
 `map profile issues --model <id> --revision <rev> --request '<native-json>'`
 queries retained native engineering findings. For example, use
