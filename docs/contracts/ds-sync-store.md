@@ -210,3 +210,11 @@ Retirement deletes only derived output BLOBs and keeps the immutable receipt as
 evidence. Authored workspaces, copied seeds and inputs are independent of this
 payload store. Old stores answer an empty retained inventory without migration
 or relabeling of legacy results; `SCHEMA_VERSION` stays at 2.
+
+Every engine uses `ArtifactRow::matches_publication` to identify a duplicate:
+equal inventory bytes, source-input fingerprint, producing release and build
+manifest. A rerun whose source or producer changed is a fresh publication even
+when its output bytes happen to match; it retains the new provenance and asks
+Brain for the new verdict. The engine table declares explicit preview refreshes
+and the additive legacy source-in-base projection. Neither the transition nor
+Solar's completion seal has a digest-only exception.

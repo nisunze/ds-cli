@@ -430,7 +430,7 @@ fn seal_with_preview(
         }
         if same_preview_run
             || (printing_preview.is_none()
-                && previous.matches_normal_report_publication(
+                && previous.matches_publication(
                     &inventory_sha256,
                     request.input_base_fingerprint,
                     request.engine_version,

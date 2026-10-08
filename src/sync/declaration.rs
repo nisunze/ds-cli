@@ -160,7 +160,8 @@ pub fn validate(project: &str, body: &Value) -> Result<Action, String> {
                             || declarations.len() != 1
                             || declarations[0].output_id != "report-input"
                             || declarations[0].format != "json"
-                            || declarations[0].size_bytes > 64 * 1024 * 1024
+                            || declarations[0].size_bytes
+                                > super::solar_declaration::REPORT_INPUT_MAX_BYTES
                         {
                             return Err(
                                 "calculation differs from its sealed snapshot and report-input"
@@ -174,6 +175,9 @@ pub fn validate(project: &str, body: &Value) -> Result<Action, String> {
                             && !matches!(variant, "aggregate-v2" | "aggregate-v3"))
                     {
                         return Err("invalid derived artifact provenance or variant".into());
+                    }
+                    if !operation.starts_with("calculate-") {
+                        super::solar_declaration::derived(operation, variant, &declarations)?;
                     }
                 }
             }
@@ -302,7 +306,8 @@ mod tests {
         assert!(validate("project-a", &report).is_err());
         let mut derived = body.clone();
         derived["operation"] = json!("report-city-a");
-        derived["variant"] = json!("configured-report");
+        derived["variant"] = json!("apd-draft-en");
+        derived["outputs"] = json!([{"output_id":"apd-draft-en","format":"md","content_type":"text/markdown","sha256":"c".repeat(64),"size_bytes":42}]);
         assert!(validate("project-a", &derived).is_err());
         derived
             .as_object_mut()
@@ -343,9 +348,46 @@ mod tests {
             "output_id":format!("plot-chart-{index}"),"format":"png","content_type":"image/png",
             "sha256":"c".repeat(64),"size_bytes":42
         })).collect::<Vec<_>>());
+        body["outputs"][0] = json!({"output_id":"portfolio-result","format":"json","content_type":"application/json","sha256":"c".repeat(64),"size_bytes":42});
         assert_eq!(validate("project-a", &body).unwrap(), Action::Open);
         let extra = json!({"output_id":"plot-extra","format":"png","content_type":"image/png","sha256":"c".repeat(64),"size_bytes":42});
         body["outputs"].as_array_mut().unwrap().push(extra);
+        assert!(validate("project-a", &body).is_err());
+    }
+    #[test]
+    fn solar_report_and_portfolio_outputs_match_the_brain_admission_vocabulary() {
+        let mut body = open(PublicationPolicy::Solar);
+        body.as_object_mut()
+            .unwrap()
+            .remove("source_snapshot_sha256");
+        body.as_object_mut().unwrap().remove("snapshot_receipt_id");
+        body["operation"] = json!("report-city-a");
+        body["variant"] = json!("network-draft-en");
+        let draft = json!({"output_id":"network-draft-en","format":"md","content_type":"text/markdown","sha256":"c".repeat(64),"size_bytes":42});
+        let plot = json!({"output_id":"plot-site-load","format":"png","content_type":"image/png","sha256":"c".repeat(64),"size_bytes":42});
+        body["outputs"] = json!([draft, plot]);
+        assert_eq!(validate("project-a", &body), Ok(Action::Open));
+        body["variant"] = json!("plant-draft-en");
+        assert!(validate("project-a", &body).is_err());
+        body["variant"] = json!("apd-final-en");
+        body["outputs"][0]["output_id"] = json!("apd-final-en");
+        assert!(validate("project-a", &body).is_err());
+        body["outputs"].as_array_mut().unwrap().pop();
+        assert_eq!(validate("project-a", &body), Ok(Action::Open));
+        body["operation"] = json!("portfolio-a");
+        body["variant"] = json!("aggregate-v3");
+        assert!(validate("project-a", &body).is_err());
+        body["outputs"] = json!([{"output_id":"portfolio-result","format":"json","content_type":"application/json","sha256":"c".repeat(64),"size_bytes":8<<20}]);
+        assert_eq!(validate("project-a", &body), Ok(Action::Open));
+        body["outputs"][0]["size_bytes"] = json!((8 << 20) + 1);
+        assert!(validate("project-a", &body).is_err());
+    }
+    #[test]
+    fn calculation_bulk_reserves_the_same_ingress_bytes_as_brain() {
+        let mut body = open(PublicationPolicy::Solar);
+        body["outputs"][0]["size_bytes"] = json!((8 << 20) - (1 << 10));
+        assert_eq!(validate("project-a", &body), Ok(Action::Open));
+        body["outputs"][0]["size_bytes"] = json!((8 << 20) - (1 << 10) + 1);
         assert!(validate("project-a", &body).is_err());
     }
 }

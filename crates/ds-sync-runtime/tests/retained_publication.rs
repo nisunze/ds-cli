@@ -203,14 +203,15 @@ fn solar_derived_outputs_use_the_same_offline_closure_and_verified_read_function
     let mut row = row(bytes);
     row.identity.engine = "solar".into();
     row.identity.operation = "report-city-a".into();
-    row.identity.variant = "draft-en".into();
+    row.identity.variant = "apd-draft-en".into();
     row.engine_release = "ds-solar-engine@1.2.3".into();
     row.resource = "city-a".into();
-    row.outputs[0].output_id = "draft-en".into();
+    row.outputs[0].output_id = "apd-draft-en".into();
     row.outputs[0].format = "md".into();
     row.outputs[0].content_type = "text/markdown".into();
-    row.outputs[0].filename = Some("draft-en.md".into());
-    row.sha256 = rows::inventory_digest(&mut [("draft-en".into(), row.outputs[0].sha256.clone())]);
+    row.outputs[0].filename = Some("apd-draft-en.md".into());
+    row.sha256 =
+        rows::inventory_digest(&mut [("apd-draft-en".into(), row.outputs[0].sha256.clone())]);
     assert!(matches!(
         seal(&store, &row, bytes).unwrap(),
         Recorded::Recorded { .. }
@@ -221,7 +222,7 @@ fn solar_derived_outputs_use_the_same_offline_closure_and_verified_read_function
         fence: &fence,
         project: "project-a",
     };
-    assert_eq!(producer.output(&row, "draft-en").unwrap(), bytes);
+    assert_eq!(producer.output(&row, "apd-draft-en").unwrap(), bytes);
     let mut declaration = rows::open_declaration("project-a", &row);
     producer
         .amend_open_declaration("project-a", &mut declaration)

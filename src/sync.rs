@@ -38,6 +38,8 @@ pub use publication::{
 pub mod declaration;
 #[path = "sync/engines.rs"]
 pub mod engines;
+#[path = "sync/solar_declaration.rs"]
+mod solar_declaration;
 const INPUT_BOUND: usize = 8 * 1024 * 1024;
 const MAX_ARTIFACTS: usize = 4096;
 const MAX_ID_LEN: usize = 128;

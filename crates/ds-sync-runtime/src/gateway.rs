@@ -226,7 +226,7 @@ fn refusal_field(body: Option<&str>, name: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::{BufRead, BufReader, Write};
+    use std::io::{BufRead, BufReader, Read, Write};
     use std::net::TcpListener;
 
     fn through_gateway(api_key: &str) -> (Result<Value, GatewayError>, String) {
@@ -248,6 +248,23 @@ mod tests {
                     break;
                 }
             }
+            // Consume the POST body before closing the socket. Closing with
+            // unread request bytes can reset a valid response nondeterministically.
+            let length = head
+                .lines()
+                .find_map(|line| {
+                    let (name, value) = line.split_once(':')?;
+                    name.eq_ignore_ascii_case("content-length")
+                        .then(|| value.trim().parse::<usize>().unwrap())
+                })
+                .expect("JSON POST content length");
+            assert!(length <= 1024);
+            let mut request = vec![0; length];
+            reader.read_exact(&mut request).unwrap();
+            assert_eq!(
+                serde_json::from_slice::<Value>(&request).unwrap(),
+                serde_json::json!({"action":"list"})
+            );
             let keyed = head
                 .to_ascii_lowercase()
                 .contains("\r\nx-api-key: gateway-key\r\n");

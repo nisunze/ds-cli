@@ -124,7 +124,7 @@ pub enum SealOutcome {
     /// The row is recorded — one acknowledged step after the completion.
     Sealed(Box<Sealed>),
     /// The store already holds this exact publication for the city (the
-    /// same job, or the same bytes). Nothing was written; the store's row
+    /// same job, or the same bytes, inputs and build). Nothing was written; the store's row
     /// is the one that stands.
     AlreadyRecorded {
         replay_key: String,
@@ -169,7 +169,16 @@ pub fn seal(
     let row = row_of(request)?;
     let previous = crate::seal::standing(store, fence, request.project_id, &row.identity)?;
     if let Some(previous) = previous.as_ref() {
-        if previous.sha256 == row.sha256 || previous.replay_key == row.client_publish_id {
+        if previous.matches_publication(
+            &row.sha256,
+            row.input_base_fingerprint
+                .as_deref()
+                .or(row.base_revision.as_deref())
+                .unwrap_or(""),
+            &row.engine_release,
+            &row.engine_build_manifest_sha256,
+        ) || previous.replay_key == row.client_publish_id
+        {
             return Ok(SealOutcome::AlreadyRecorded {
                 replay_key: previous.replay_key.clone(),
                 state: previous.state,
