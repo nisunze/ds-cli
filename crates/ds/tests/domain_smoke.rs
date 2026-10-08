@@ -950,6 +950,60 @@ fn native_sync_recovery_is_project_explicit_and_validates_before_server_io() {
 }
 
 #[test]
+fn solar_legacy_discard_is_reviewed_project_explicit_and_sync_has_no_result_publisher() {
+    for (id, effect) in [
+        ("solar.project.outbox.preview", "read_only"),
+        ("solar.project.outbox.discard", "global_write"),
+    ] {
+        let command = ok(&["capabilities", id, "--output", "json"]);
+        assert_eq!(command["command"]["effect"], effect);
+        let project = command["command"]["inputs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|input| input["name"] == "project")
+            .unwrap();
+        assert_eq!(project["required"], true);
+        assert!(project["default"].is_null());
+    }
+    let command = ok(&["capabilities", "solar.project.sync", "--output", "json"]);
+    let inputs = command["command"]["inputs"].as_array().unwrap();
+    assert!(
+        !inputs
+            .iter()
+            .any(|input| input["name"] == "run-id" || input["name"] == "inputs-only")
+    );
+    assert_eq!(
+        refusal(&[
+            "solar",
+            "project",
+            "outbox",
+            "discard",
+            "--workspace",
+            "missing",
+            "--project",
+            "project",
+            "--digest",
+            &"a".repeat(64),
+            "--output",
+            "json"
+        ]),
+        "confirmation_required"
+    );
+    let schema = ok(&[
+        "solar",
+        "application",
+        "schema",
+        "--operation",
+        "project_publication_cutover",
+        "--output",
+        "json",
+    ]);
+    assert!(schema.to_string().contains("project_id"));
+    assert!(schema.to_string().contains("discard"));
+}
+
+#[test]
 fn printing_lifecycle_writes_are_registered_and_stop_before_native_authority() {
     for args in [
         vec![

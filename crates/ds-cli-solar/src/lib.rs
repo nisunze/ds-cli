@@ -85,6 +85,8 @@ pub static DOMAIN: Domain = Domain {
         &project::STATUS,
         &project::RESULT,
         &project::OUTBOX,
+        &project::CUTOVER_PREVIEW,
+        &project::CUTOVER_DISCARD,
         &engine::COMMAND,
         &compare::COMMAND,
         &input_capture::COMMAND,

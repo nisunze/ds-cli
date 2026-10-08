@@ -40,7 +40,7 @@ const fn command(
         path,
         contract: 1,
         summary,
-        purpose: "The Rust Solar owner stores project inputs, immutable run inputs, drafts and publication intents locally. No map, Desktop, sign-in or network is required. A verified reference cache must already be available for calculation. Local project attribution grants no cloud authority.",
+        purpose: "The Rust Solar owner stores project inputs, immutable run inputs, local drafts and authored-input publication intents. No map, Desktop, sign-in or network is required. A verified reference cache must already be available for calculation. Local project attribution grants no cloud authority.",
         chapter: Chapter::Solar,
         effect,
         authority: Authority::None,
@@ -196,6 +196,21 @@ pub static OUTBOX: Command = command(
     &[WORKSPACE],
     Effect::ReadOnly,
 );
+pub static CUTOVER_PREVIEW: Command = command(
+    "solar.project.outbox.preview",
+    &["solar", "project", "outbox", "preview"],
+    "List old queued report cities that require a fresh native run.",
+    &[WORKSPACE, crate::portfolio_headless::PROJECT],
+    Effect::ReadOnly,
+);
+pub static CUTOVER_DISCARD: Command = command(
+    "solar.project.outbox.discard",
+    &["solar", "project", "outbox", "discard"],
+    "Discard reviewed old report publications and require a native rerun.",
+    &[WORKSPACE, crate::portfolio_headless::PROJECT,
+        Arg::value("digest", "<sha256>", "Complete old queue digest returned by preview.").required()],
+    Effect::GlobalWrite,
+);
 
 pub fn init(i: &Inputs, _: &Context) -> Result<Value, Failure> {
     let project = i.require("project")?;
@@ -298,6 +313,14 @@ pub fn result(i: &Inputs, _: &Context) -> Result<Value, Failure> {
 }
 pub fn outbox(i: &Inputs, _: &Context) -> Result<Value, Failure> {
     invoke(json!({"operation":"outbox","workspace":i.require("workspace")?}))
+}
+pub fn cutover_preview(i: &Inputs, _: &Context) -> Result<Value, Failure> {
+    invoke(json!({"operation":"publication_cutover","command":{"workspace":i.require("workspace")?,
+        "project_id":i.require("project")?,"action":{"action":"preview"}}}))
+}
+pub fn cutover_discard(i: &Inputs, _: &Context) -> Result<Value, Failure> {
+    invoke(json!({"operation":"publication_cutover","command":{"workspace":i.require("workspace")?,
+        "project_id":i.require("project")?,"action":{"action":"discard","digest":i.require("digest")?}}}))
 }
 
 pub(crate) fn invoke(request: Value) -> Result<Value, Failure> {
