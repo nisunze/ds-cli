@@ -338,6 +338,22 @@ include all typed cached rows before the analysis report's 2,000-row cap.
 The complete matching native usage envelope is retained; a missing envelope
 refuses these four queries rather than reporting a false zero.
 
+`map.profile.usage` contract 2 is the single-support binding of this same query
+(kind usage, one entity, one item). Its `usage` member is the unchanged native
+page, replacing the former selected `screening` receipt. Optional type choices
+remain a separate read-only library projection. The transport captures project,
+principal, client, model and revision; the native query also fences full history,
+engineering input root, entity family, result identity and publication state.
+Selection, retry and warning/result inspection do not enter a solver or Save.
+Renderer selection state only suppresses obsolete delivery; it holds no LRU of
+engineering results. Scene admission at equal authored history starts a fresh
+read so a prior calculation receipt cannot remain current by a revision-only
+cache key. Native JSON carries known failure with incomplete qualification and
+signed loading separately; the presenter does not label every result an extreme
+envelope. Query block messages separately from row evidence counts. The owning
+native refusal tests are in `result_queries.rs`; CLI declaration and Desktop
+transport/selection tests cover the matching contract and stale capture paths.
+
 Violating sections are distinct native section IDs with proven structure
 capacity contributions, displayed-case Profile clearance failure or native
 section-state failure. Contributors are counted before their 50-ID display

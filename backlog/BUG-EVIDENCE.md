@@ -406,26 +406,21 @@ installation; explicit calculation still needs bounded native phase/work
 evidence before claiming a measured bottleneck or release performance. No
 template edits, competing builds or model mutations.
 
-## Focused review: Profile selected usage and cached findings consumers
+## Focused review: Profile cached findings and complete analysis facts
 
-Read-only request before the next native slice: trace `map.profile.usage`/`issues`,
-`GridSessionClient::selectedStructureUsageScreening`/`engineeringIssueLayer` and
-owning WASM exports. The retained query owner is
-`crates/ds-profile-runtime/src/result_queries.rs`; use its exact envelope,
-entity families, computed/authored roots and cursor identity.
+Read-only request before the next native slice: trace `map.profile.issues`,
+`GridSessionClient::engineeringIssueLayer`, owning WASM issue exports, default
+analysis and `crates/ds-profile-runtime/src/result_queries.rs`. Specify the
+smallest cached-only native replacement for findings reads, with an explicit
+Analyze boundary for missing design-clearance/default-resistance facts.
+Retain facts before report caps and preserve complete qualification, signed
+loading, section contributors and native blocker identity. Distinguish
+model-bound design-clearance findings from displayed-case Profile evidence.
 
-Specify the smallest cached-only native replacement for selection-driven
-screening, then its thin CLI/Desktop transport. Preserve typed known failure
-with incomplete qualification and negative loading within allowed signed bounds.
-Name old DTO/output differences, unknown-envelope and affected-head refusals,
-wrong entity family, model/history ABA and project/principal capture. Trace all
-consumers before deleting worker/TypeScript exports; do not parse English marker
-text or rebuild engineering predicates in the renderer.
-
-For findings, identify missing design-clearance/default-resistance facts before
-caps and separate those from displayed-case Profile evidence. Querying must not
-call an issue calculation or mutate history. Name the required explicit Analyze
-boundary and native result/index preservation rules.
-
-Maximum two findings with exact path/line evidence. No source edits, model
-mutations, template/printing work, competing builds or solver qualification.
+Name missing/affected-envelope, entity-family, history ABA and publication
+refusals. Trace existing issue UI/CLI consumers and replaced DTOs before deleting
+worker/TypeScript controls. Reuse exact computed/authored root and cursor pins;
+queries must not enter projection, solve, save or mutate history. Preserve
+validation/result/download views. Maximum two findings with exact path/line
+evidence. No model mutations, template/printing work, competing builds or
+solver qualification.
