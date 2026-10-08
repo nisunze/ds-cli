@@ -261,6 +261,67 @@ Rules: [PRINCIPLES.md §6](PRINCIPLES.md#6-ds-grid-engineering).
 
 ## 14. Plan and Profile authoring
 
+### Differential compute after an edit (the item to watch, owner 2026-10-08)
+
+Ruling: [PRINCIPLES §6](PRINCIPLES.md#6-ds-grid-engineering) — an edit lands
+whole, and its reconcile is at most the edited structure's alignment. Reference
+model: Nyamagabe MV Model 1 (666 structures, 33 alignments, 2,564 spans, 56.6 MB
+full scene); timings are the dev Linux Desktop unless marked native.
+
+- **The post-edit reconcile recalculates every alignment.** After a pole drag
+  the Desktop heals the Profile by a whole-model calculation: 1.1 s native full
+  calculation plus a 280 KB delta built in 360 ms, then worker admission;
+  release to healed Profile takes about 15–25 s. The kernel's own update,
+  `ds_grid_engine::profile_edit_update::profile_update_after_edit`, re-solves
+  the 8 affected sections (118 ms native, 282 KB) but is partial, so the runtime
+  reports `reconcile_required: partial`. Against a full calculation of the same
+  head, one drag leaves differing: 14 conductor spans (order and content,
+  `conductor_spans` 2289–2302), 13 engineering markers (`engineering.markers`
+  1541–1553) and 28 terrain-point clearance margins on band 29, plus the named
+  stale families (whole-model clearance evidence, greatest-sag election, band
+  surface and structures, selection order, clearance guides). Works when the
+  kernel's update for an edit within one alignment equals the full calculation
+  byte for byte in the held axis, does no work on other alignments and no
+  terrain work without a terrain change (work counters), and returns complete so
+  no whole-model reconcile follows. Prove it with a native sweep of drags,
+  retypes, sag changes, inserts and deletes on Nyamagabe by extending
+  `ds-network/crates/ds-grid-wasm/tests/profile_edit_lifecycle_probe.rs`.
+- **The next action after a reconcile lags as if the model started from
+  scratch** (owner observation). Whole-model work done for a local action: the
+  station-move preview (`profile_scene_preview`, provisional) rebuilds
+  `raw_profile_surface` for every alignment on each drag; the worker re-signs
+  the whole calculated scene (`profileCalculatedSceneBaseJson`) after every
+  exact installation in single-threaded WASM; `CalculatedSceneBase::apply`
+  deep-clones the scene and re-hashes the entire `conductor_spans` component for
+  every admitted delta; `profile_pick_cache.register` re-indexes the whole scene
+  after each installation; the runtime computes and discards the partial
+  `profile_update_after_edit` on every observe; one drag's authored delta is
+  1.2 MB, more than its calculated delta; the host replaces and repaints the
+  whole scene after each reconcile. Works when the action after a landed edit
+  costs only what it touches, shown in the Desktop on Nyamagabe by per-phase
+  counters and timings.
+- **Display-case selection drops the calculated base.** The worker's
+  `installProfileCaseLayerBytes` clears its retained calculated scene, so the
+  reconcile after any case change transfers the exact 56.6 MB scene instead of a
+  delta. Works when a case selection leaves a signed base for the next delta.
+- **Profile camera after a reconcile (verify).** Captures after a drag and its
+  reconcile showed the zoom changing (160 % → 281 % → 118 % → 513 %) without
+  camera input from the agent; the owner may have been zooming. Reproduce with no
+  other input: the camera must stay put across edits and reconciles.
+- **Retype reconciliation is parked off `run`.** The gitignored
+  `ds-network/out/parked-numbering-retype-20261008-1119/` (`tracked.patch`,
+  `structure_numbering.rs`, `status.txt`) holds the work taken off the tree for
+  the 2026-10-08 release check; do not delete it until its remaining parts are
+  on `run`. Structure numbering from alignment order is on `run` from Codex
+  (`18eb02c9`) and stays. Not on `run`: re-binding attachments and sections
+  when a strung structure is retyped to a type with other attachment sets
+  (`structure_placement.rs` reconcile/rebind/heal; `RetypeStructure` returning
+  its splits), which in the parked tree still refused Nyamagabe structure 6's
+  duty retype with "2 back, 0 ahead" (facings 1.571 and 4.712 rad against
+  orientation 5.8574); and composed models (`linked_models`) whose parts carry
+  mixed alignment sequences. Works when a duty retype on Nyamagabe leaves no
+  unresolved attachment, re-solves only its sections, and saves.
+
 ### Profile-only continuation: atomic editing and intentional calculation
 
 Owner scope, 2026-10-07: make Profile precise, continuously usable and fast,
@@ -306,12 +367,7 @@ they are not an invitation to replace the whole stack or add a SQL engine.
    routes, shared observations/supports, actual T-offs, bad parent graphs,
    ambiguous spatial candidates and stale previews before UI bindings.
 
-3. **Profile reads terrain through retained partitions.** Landed (ds-network
-   `2d2d590c`…`758c2f27`, kernel `2b4be53`, ds-cli `5367100a`): per-alignment
-   partitions with T-off family qualification and incremental `advance`, the
-   exact planar Delaunay in `ds-geo-lite`, and the footprint support query
-   (`plan_terrain_support`), explicit discard (`trim_terrain_support`) and
-   ingestion admission; see
+3. **Profile reads terrain through retained partitions.** See
    [alignment terrain partitions](../../ds-network/docs/contracts/alignment-terrain-partitions.md).
    Owner ruling, 2026-10-08: one model, two readers. The plan map shows all
    stored terrain as GeoJSON context; the Profile is its own query engine and
@@ -413,7 +469,8 @@ AGENTS.md, PRINCIPLES.md, STABILIZATION.md, BUG-EVIDENCE.md, OPEN-X.md and
 SEEDING.md plus the contract. Use the `ds` skill and installed discovery before
 claiming a live control gap; distinguish source tests from unavailable/unpaired
 installed controls. Prove each owning slice headlessly, including refusals,
-before its UI binding. Calculation and Save remain independent explicit actions.
+before its UI binding. Save remains an explicit action; an edit lands whole
+(PRINCIPLES §6, 2026-10-08).
 
 Work directly on canonical `run`, no worktrees or official goal tool. Re-read
 focused review evidence between slices; delete fulfilled obligations and retain
