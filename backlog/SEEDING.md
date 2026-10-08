@@ -27,7 +27,7 @@ Candidate curation and native PLS-CADD acceptance are separate from coding the c
 | [11. PLS-CADD exchange round trip](#11-pls-cadd-exchange-round-trip) | 2 |
 | [12. DS Grid engineering (Codex main)](#12-ds-grid-engineering-codex-main) | 3 |
 | [13. Spotting (Codex main)](#13-spotting-codex-main) | 2 |
-| [14. Plan and Profile authoring](#14-plan-and-profile-authoring) | 5 |
+| [14. Plan and Profile authoring](#14-plan-and-profile-authoring) | 6 |
 | [15. Project deliveries](#15-project-deliveries) | 6 |
 | [16. Map data, datasets and screen styling](#16-map-data-datasets-and-screen-styling) | 6 |
 | [17. Project Work and Assets](#17-project-work-and-assets) | 5 |
@@ -164,6 +164,8 @@ Candidate curation and native PLS-CADD acceptance are separate from coding the c
 - **Installed spotting progress and Windows budget** (`6b597153`): install the landed stage/pass/alignment progress and completion-cadence ETA, then verify the whole-model flow on the actual Windows host within its truthful memory admission. The owner accepts the measured 17-minute result as useful; the former five-minute target is not a gate. Keep provisional/partial plans and unqualified strength explicit; unchanged native results and preserved source bytes matter more than an inferred capacity verdict.
 
 ## 14. Plan and Profile authoring
+
+- **Gisagara M3 corridor terrain trim** (owner-authorized, 2026-10-08): the probed dense DEM seed contains 44,358 points but only 177 corridor memberships; current active terrain has not been proven minimal. Resolve and pin the actual current local M3 head. Through native CLI/MCP, preview and remove surplus derived DEM rows from active terrain/storage/projections, retaining the support closure driven by center/possible-side cuts, finite signed corridor offsets and bounded observation randomness, local interpolation neighbors, ground-basis IDs, extrema/anchors and feature-clearance witnesses. Preserve original/source bytes and prior history separately, measured XYZ, retained IDs/classes, routes, equipment and authored engineering choices. Do not target 177 retained rows or merely hide glyphs. Save the cleaned local candidate; verify exact before/after active counts/bytes, retained/removal reasons, gaps, source/baseline error and density on every admitted center/side cut, and common profile/structure/clearance ground. Opposite-corner routes must not introduce intervening country-wide terrain/query/mesh work. Required native controls remain in OPEN.md §14; cloud publication and native engineering acceptance remain separate boundaries. See [footprint and support contract](../../ds-network/docs/contracts/alignment-terrain-partitions.md#footprint-drivers-and-support-closure-owner-clarification-2026-10-08). Delete this entry after the candidate and readback are proven.
 
 - **Native Profile control activation**: activate matching locally built native
   Desktop/CLI artifacts and their command/skill bundle; prove cached usage pages,
