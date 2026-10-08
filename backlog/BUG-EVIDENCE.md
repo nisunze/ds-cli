@@ -406,12 +406,18 @@ installation; explicit calculation still needs bounded native phase/work
 evidence before claiming a measured bottleneck or release performance. No
 template edits, competing builds or model mutations.
 
-## Focused review: bound explicit calculated-result transfer
+## Focused review: exact public calculated-result transport
 
 Read-only request before the next source slice: trace native Profile runtime
-worker admission/pick state, public calculation controls, native scene-patch/delta
-controls and display construction. Bind the retained native calculated delta
-operations to public CLI/MCP and receiving native workers before Web bindings.
+full/delta wire construction, shared calculation arguments, CLI/MCP contracts and
+the proved receiving native worker. Expose original native full-scene/delta JSON
+bodies before public delta bindings; JavaScript parsing/re-encoding changes signed
+zero and can invalidate exact component signatures. Provide explicit exact full
+initialization/calculation, bounded scene-base preparation and delta job controls
+without implicit full fallback, calculation or Save. Bind the shared closed DTO
+to CLI/MCP before Web/Desktop. Require current authored history and original
+computed identity to remain distinct; preserve context, stale-job and publication
+confirm/discard fences.
 Full display still transfers 3.62 MB on the owning release fixture and dominates
 the 3.76 MB delta response. Localize its native transfer separately from geometry
 and analysis. Require exact fresh scene,

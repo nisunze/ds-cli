@@ -226,8 +226,9 @@ other incident forces at shared supports; stop there during interaction. Reuse
 unchanged demands, ground, case preparation, markers and layout. Keep calculation
 asynchronous and revision-fenced. Bind the native job owner
 for browser/peer calculation. Bind explicit calculated geometry delta controls to
-CLI/MCP and the receiving native worker, including picking and publication
-rollback, then Web/Desktop transport. Full display and analysis still dominate
+CLI/MCP and Web/Desktop transport using the proved native receiving worker.
+Expose original native scene/delta JSON bodies so JavaScript numeric re-encoding
+cannot invalidate exact signatures. Full display and analysis still dominate
 the remaining response; localize their native transfer. Cold initialization still
 projects synchronously. Reject/suppress stale results without
 losing edits. Localize independent
