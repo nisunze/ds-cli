@@ -46,6 +46,7 @@ pub mod rows;
 pub mod run;
 pub mod seal;
 pub mod solar;
+pub mod solar_producer;
 
 #[cfg(feature = "fakes")]
 pub mod fakes;

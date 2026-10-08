@@ -93,6 +93,14 @@ evidence) and the job can be run again. The report side keeps its adoption
 (`adopted:from_producer`, once) only for batches committed before the report
 seal wrote rows — every Desktop export until 2026-09-20 and every `ds report
 project export` before its seal — and a batch sealed today is never adopted.
+The producer, completion observer, publication metadata and bounded job
+projection are owned by `ds-sync-runtime::solar_producer`. The Server supplies
+its captured `HostIdentity`, database path and completion wake; it delegates
+sealing to that native observer and uses the native producer in its one producer
+set. Neither observer nor producer depends on a session, browser or Tauri.
+Reclaim clears derived result bytes through the compute store while retaining
+the job's sealed input, context and producing provenance. The legacy Solar
+publication adapter remains a separate migration obligation.
 Both seals share one choreography
 (`seal::record`): the identity's previous result on this machine is freed
 through the producer first (`reclaimed:superseded_locally`; for Solar,

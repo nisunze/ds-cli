@@ -53,8 +53,7 @@ deletion waits for a cutover ruling.
 
 - **Native callers still select separate publication paths.** Retire
   `SolarPublisher`, the Server's Solar auth publisher and the report-scoped
-  compatibility entry in favor of the common executor and declaration builder;
-  move the Server producer/completion observer to the kernel runtime.
+  compatibility entry in favor of the common executor and declaration builder.
   Add native retry and digest-bound sanitation. Prove identical
   receipts/store states, including 401 hold/recovery, stale inputs, archive
   refusal, cancellation/restart and a draft waiting for its calculation.

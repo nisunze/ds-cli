@@ -17,6 +17,7 @@ fakes = []
 ds-report-artifacts = { path = "../ds-report-artifacts" }
 ds-command-kernel = { path = "../.." }
 ds-sync-store = { path = "../ds-sync-store" }
+ds-compute-runtime = { path = "../ds-compute-runtime" }
 chrono = "0.4"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }

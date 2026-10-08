@@ -319,7 +319,9 @@ computed artifacts.
 
 The current native executor consumes `sync::publication_verdict`; the legacy
 Server Solar publisher and Desktop TypeScript queue still await migration to
-that executor. This is not proof of Solar parity. The destination is one
+that executor. Solar's producer and completion observer now live in the shared
+`ds-sync-runtime::solar_producer`; the Server delegates to them. This is not
+proof of Solar publication parity. The destination is one
 `compute_artifacts` open/transfer/finalize sequence, not the retired report
 work-grant protocol. [The sync engine](ds-sync-engine.md#6-where-each-publication-rule-lives)
 records the rule inventory and the publication kinds missing from the common
