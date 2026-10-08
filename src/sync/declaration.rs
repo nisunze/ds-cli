@@ -374,6 +374,22 @@ mod tests {
         assert!(validate("project-a", &body).is_err());
         body["outputs"].as_array_mut().unwrap().pop();
         assert_eq!(validate("project-a", &body), Ok(Action::Open));
+        for variant in [
+            "apd-final-fr",
+            "apd-final-en",
+            "network-final-fr",
+            "network-final-en",
+            "plant-final-fr",
+            "plant-final-en",
+            "financial-final-fr",
+            "financial-final-en",
+        ] {
+            body["variant"] = json!(variant);
+            body["outputs"][0]["output_id"] = json!(variant);
+            assert_eq!(validate("project-a", &body), Ok(Action::Open));
+            body["outputs"][0]["output_id"] = json!("apd-draft-fr");
+            assert!(validate("project-a", &body).is_err());
+        }
         body["operation"] = json!("portfolio-a");
         body["variant"] = json!("aggregate-v3");
         assert!(validate("project-a", &body).is_err());

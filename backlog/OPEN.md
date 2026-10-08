@@ -54,10 +54,12 @@ is ruled in the sync contract: visible per-city discard and fresh runs.
 - **Native recovery controls remain incomplete.** Add native retry and
   digest-bound sanitation over the common store and expose them headlessly.
   Retain terminal stale/conflict verdicts until an explicit reviewed recovery.
-- **Server common-store coverage remains incomplete for reviewed finals, legacy
-  v2 city-batch portfolios and the Solar Project publication workflow.** Seal
-  these closed constituents through the common path before Desktop cutover,
-  retaining authored inputs and per-city failures.
+- **The Solar Project publication workflow still bypasses the common store.**
+  Move its closed artifact handoff to the common native path before Desktop
+  cutover, retaining authored inputs and per-city failures. City-batch aggregate
+  files have no governed portfolio identity and must remain local deliverables;
+  the old Desktop portfolio declaration adapter still names v2 while current
+  governed native computation closes v3.
 - **Desktop still owns an IndexedDB publication queue.** Route Solar execution and
   Sync Center through the shared native runtime, expose headless queue/recovery
   commands, and remove replaced TypeScript/kernel exports after native proof and

@@ -13,6 +13,16 @@ const DRAFTS: &[&str] = &[
     "financial-draft-fr",
     "financial-draft-en",
 ];
+const FINALS: &[&str] = &[
+    "apd-final-fr",
+    "apd-final-en",
+    "network-final-fr",
+    "network-final-en",
+    "plant-final-fr",
+    "plant-final-en",
+    "financial-final-fr",
+    "financial-final-en",
+];
 
 pub fn derived(operation: &str, variant: &str, outputs: &[Declaration]) -> Result<(), String> {
     if operation.starts_with("portfolio-") {
@@ -41,7 +51,7 @@ pub fn derived(operation: &str, variant: &str, outputs: &[Declaration]) -> Resul
             }
         }
     } else if operation.starts_with("report-") {
-        let final_variant = matches!(variant, "apd-final-fr" | "apd-final-en");
+        let final_variant = FINALS.contains(&variant);
         if final_variant {
             if outputs.len() != 1 || outputs[0].output_id != variant || outputs[0].format != "md" {
                 return Err("reviewed final must declare only its matching Markdown".into());
