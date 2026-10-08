@@ -5,8 +5,8 @@ description: "Use deployed `ds` as the sole DS interface: discover one live comm
 
 # Work through `ds`
 
-Use `ds` for DS data and effects. Do not substitute an API, desktop bridge,
-store, parser, repository or skill-local program.
+Use `ds` for DS data/effects; never substitute APIs, bridges, stores,
+parsers, repositories or skill-local programs.
 
 Use `--output json` for agents.
 
@@ -15,8 +15,6 @@ backlogs (OPEN.md code, OPEN-X.md decisions, SEEDING.md operations). Never
 submit feedback during coding; remove entries after proof.
 
 ## Find one command
-
-Check installed discovery.
 
 ```
 ds --version
@@ -35,7 +33,7 @@ ds capabilities <command-id> --output json
 Inspect availability, authority, effects and refusals. Use declared inputs;
 `--yes` only for the user's authorized effect.
 
-Follow returned remedies. Pair only with the desktop profile matching `ds`.
+Follow remedies; pair only with the matching `ds` desktop profile.
 Never repeat non-retryable calls, switch identity/project to force success, or
 reconstruct a refused answer.
 
@@ -44,8 +42,8 @@ reconstruct a refused answer.
 Signed out (`headless_signed_out`): run `ds account connect` (MCP: the
 `account.connect` tool), have the person approve it in their signed-in DS
 GridDesign Desktop under Account > Link a trusted device, then run it again.
-Only this signs in; never ask for an address or secret. CLI/map lane and
-principal must match; never borrow credentials, projects or lanes.
+Only this signs in; never request addresses or secrets. Match CLI/map lane and principal;
+never borrow credentials, projects or lanes.
 
 ## Through MCP
 
@@ -55,31 +53,28 @@ Follow DS envelopes and remedies; see `ds-mcp-host` for installation.
 
 ## Where `ds` stops, and who continues
 
-Hand over only at an applicable boundary; name it and return with its result:
+Name the applicable boundary and return with its result:
 
 - Native PLS-CADD — the model must be solved or accepted as the authority:
   edit in DS Grid, export, let PLS-CADD verify; `ds` never drives that UI.
 - A document renderer — a reviewed draft must become DOCX/PDF: `ds` authors
   and lints the text, installed document tools typeset it.
-- The DS GridDesign Desktop map and screen recorders — interactive geometry
-  drawing or motion capture: `ds` serves layers, tiles and still evidence only.
+- Desktop map and screen recorders — interactive geometry or motion: `ds` serves layers, tiles and still evidence only.
 - The operator — the effect needs authority `ds` will not grant: approval,
   credentials, install, deploy or refusal remedy. Report the code and remedy.
 
 ## When `ds` cannot
 
-Outside coding sessions, after ruling out a stop and trying other vocabulary,
-discover feedback:
+Outside coding, rule out a stop, try other vocabulary, then discover feedback:
 
 ```
 ds capabilities --search feedback --output json
 ds capabilities feedback.submit --output json
 ```
 
-Submit one non-secret sighting with expected behavior, evidence, impact and
-acceptance. To finish, you may filter, reshape or compare files produced or read
-through `ds` in a disposable local step; name it in the sighting. Never improvise
-DS data or effects or route around `ds` with a gap file or API call.
+Submit one non-secret sighting: expected behavior, evidence, impact, acceptance.
+You may filter/compare `ds` files in a disposable step; name it in the sighting.
+Never improvise DS data/effects or bypass `ds` with a gap file or API call.
 
 ## Narrower skills
 
@@ -99,4 +94,4 @@ DS data or effects or route around `ds` with a gap file or API call.
 - Surface and backlog — `ds-mcp-host`, `ds-workstation-setup`,
   `ds-feedback-triage`.
 
-Stops at: PLS-CADD, a renderer, Desktop or the operator, as above.
+Stops at: PLS-CADD, a document renderer, Desktop or operator; see boundaries above.
