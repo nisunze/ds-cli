@@ -51,15 +51,26 @@ can be repeated when needed. Owner inputs are in
 [OPEN-X.md](OPEN-X.md#solar-sync-migration-owner-inputs). The queue cutover
 is ruled in the sync contract: simple local clean and recompute.
 
-- **Desktop recovery binding remains.** Bind its Sync Center controls to the
-  shared native `ds.sync-recovery/v1` request/result, preserving explicit retry
-  and digest-bound sanitation. Remove the replaced browser recovery decisions
-  during the queue cutover below.
-- **Desktop still owns an IndexedDB publication queue.** Route Solar execution and
-  Sync Center through the shared native runtime, expose headless queue/recovery
-  commands, and remove replaced TypeScript/kernel exports after native proof and
-  the recorded per-city discard ruling. Preserve verified result views/downloads and
-  unrelated asset/survey transfer consumers.
+- **Dead kernel/WASM queue code remains.** ds-web stopped calling it at
+  `00a23211d`. Delete `src/compute_artifact_engine/`, `compute_artifact_queue`,
+  `compute_artifact_sync`, `compute_artifact_sanitation`, their WASM exports in
+  `src/lib.rs`, and the local-report projection behind
+  `projectProjectControlLocalReports` in `src/project_control.rs`. Keep
+  `compute_artifact_inventory` and `compute_artifact_cache` (ds-web
+  `artifact-byte-cache.ts` still uses it). Then force the vendored WASM refresh in
+  ds-web and prove `npm run check` plus the WASM parity tests.
+- **Report-job notifications no longer show publication progress.** They showed
+  it from the retired browser queue; the native store row carries
+  `client_publish_id`, which `NotificationReportJob` does not keep. Carry the
+  export's `clientPublishId` into the job and project `held`/`uploading`/
+  `published`/`conflict`/`refused` from `readDesktopSyncStore`, in
+  `ds-web/src/lib/activity/report-notification-sync.ts`.
+- **`ds desktop sync status|retry|sanitize` prose describes the retired
+  outbox.** `ds-cli/crates/ds-cli-desktop/src/sync.rs` still says the commands
+  read the "compute-artifact outbox" and requeue Network Reporter rows; the bridge
+  now answers from the native store for every engine and recovers through
+  `ds.sync-recovery/v1`. Rewrite the descriptors and prove the discovery,
+  context-budget and bridge-parity suites.
 - **Placement remains a TypeScript decision; adapter parity is unproven.** Capture
   current placement answers, replay them in the pure kernel and native/WASM
   consumers, and prove identical Solar/reporter bytes and head identity from
