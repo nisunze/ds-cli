@@ -15,6 +15,8 @@
 //! §6).
 
 mod jobs;
+mod publications;
+pub use publications::{PublicationBytes, PublicationPayload};
 
 pub use jobs::{Census, JobCaller, JobContext, Recovery};
 
@@ -560,14 +562,23 @@ impl Store {
     /// refusal is returned as the kernel spelled it, including any audit
     /// receipt that records the refused attempt without restating its row.
     pub fn apply(&mut self, fence: &Fence, now_ms: u64, event: Event) -> Result<Transition> {
-        // Acquire the writer before reading the transition's authority.
-        // Another connection cannot replace or cancel the selected row
-        // between its snapshot and this receipt's changes.
         let tx = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let transition = Self::apply_on(&tx, fence, now_ms, event)?;
+        tx.commit()?;
+        Ok(transition)
+    }
+
+    // Both ordinary receipts and atomic producer-byte seals use this one transition.
+    fn apply_on(
+        tx: &rusqlite::Transaction<'_>,
+        fence: &Fence,
+        now_ms: u64,
+        event: Event,
+    ) -> Result<Transition> {
         let scope = event_scope(&event);
-        let snapshot = Self::snapshot_on(&tx, fence, &scope)?;
+        let snapshot = Self::snapshot_on(tx, fence, &scope)?;
         // A receipt is appended once: the same receipt applied again (a
         // retried host call, a replayed log) changes nothing.
         if let Event::ActionReceipt { receipt } = &event {
@@ -598,9 +609,8 @@ impl Store {
         };
         let transition = kernel::apply(&request).map_err(Error::Kernel)?;
         for change in &transition.changes {
-            persist(&tx, fence, change)?;
+            persist(tx, fence, change)?;
         }
-        tx.commit()?;
         Ok(transition)
     }
 

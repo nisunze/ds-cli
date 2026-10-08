@@ -187,3 +187,26 @@ location) are `None` on a Server record until the Server holds survey
 entries. Whether the Server should pull a project's photos on demand, or
 the window should hand its read-through copies to the Server, is an owner
 ruling this contract does not pre-empt.
+
+## 9. Retained native publication outputs
+
+Completed native batches can retain a closed producer receipt and derived output
+BLOBs in additive `publication_payloads` / `publication_outputs` tables in this
+same file. They are fenced by account, deployment, installation, project and
+replay key. They hold bytes, not queue states: `artifacts` remains the sole queue.
+`Store::seal_publication_payload` runs the existing kernel `LocalProduced`
+transition and inserts the immutable receipt and outputs in one FULL SQLite
+transaction. A refused transition stores no payload; a failed output write rolls
+back the row and receipt. Replay cannot replace its receipt or bytes.
+
+`ds-sync-runtime::retained_publication` validates the common closed declaration,
+exact output digests, byte counts and inventory before this atomic seal, without
+a gateway or sign-in refresh. Its producer offers no inventory adoption and
+checks the retained closure and byte digest before upload or a local download.
+The same functions serve every engine. `SolarProducer` dispatches only on storage
+locator: prepared jobs retain their result column, native derived publications
+retain their payload BLOBs. Both run the same sync decisions and transfer owner.
+Retirement deletes only derived output BLOBs and keeps the immutable receipt as
+evidence. Authored workspaces, copied seeds and inputs are independent of this
+payload store. Old stores answer an empty retained inventory without migration
+or relabeling of legacy results; `SCHEMA_VERSION` stays at 2.

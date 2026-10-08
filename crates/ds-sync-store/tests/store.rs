@@ -766,3 +766,117 @@ fn late_ack_reads_replacement_after_acquiring_the_same_write_transaction() {
         1
     );
 }
+
+#[test]
+fn publication_payload_is_atomic_fenced_immutable_and_retired_without_losing_evidence() {
+    use ds_sync_store::{PublicationBytes, PublicationPayload};
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("publications.sqlite");
+    let mut store = Store::open(&path).unwrap();
+    let payload = PublicationPayload {
+        receipt: "closed receipt".into(),
+        outputs: vec![PublicationBytes {
+            output_id: "xlsx".into(),
+            bytes: vec![7; 10],
+        }],
+    };
+    assert!(store
+        .seal_publication_payload(&fence("alice"), 1, row("a", "key"), &payload)
+        .unwrap()
+        .refusals
+        .is_empty());
+    drop(store);
+    let mut store = Store::open(&path).unwrap();
+    assert_eq!(
+        store
+            .publication_output(&fence("alice"), "p", "key", "xlsx")
+            .unwrap(),
+        Some(vec![7; 10])
+    );
+    for (owner, project) in [("bob", "p"), ("alice", "other")] {
+        assert!(store
+            .publication_payload(&fence(owner), project, "key")
+            .unwrap()
+            .is_none());
+        assert!(store
+            .publication_output(&fence(owner), project, "key", "xlsx")
+            .unwrap()
+            .is_none());
+    }
+    let changed = PublicationPayload {
+        receipt: "changed receipt".into(),
+        outputs: vec![],
+    };
+    assert!(store
+        .seal_publication_payload(&fence("alice"), 2, row("a", "key"), &changed)
+        .is_err());
+    assert!(!store
+        .seal_publication_payload(&fence("alice"), 2, row("b", "key"), &payload)
+        .unwrap()
+        .refusals
+        .is_empty());
+    assert_eq!(
+        store
+            .snapshot(&fence("alice"), &scope())
+            .unwrap()
+            .artifacts
+            .len(),
+        1
+    );
+    assert_eq!(
+        store
+            .retire_publication_payload(&fence("bob"), "p", "key")
+            .unwrap(),
+        0
+    );
+    assert_eq!(
+        store
+            .retire_publication_payload(&fence("alice"), "p", "key")
+            .unwrap(),
+        10
+    );
+    assert!(store
+        .publication_output(&fence("alice"), "p", "key", "xlsx")
+        .unwrap()
+        .is_none());
+    assert_eq!(
+        store
+            .connection_for_test()
+            .query_row("SELECT receipt FROM publication_payloads", [], |r| r
+                .get::<_, String>(0))
+            .unwrap(),
+        "closed receipt"
+    );
+}
+
+#[test]
+fn failed_publication_output_insert_rolls_back_the_queue_row_and_receipt() {
+    use ds_sync_store::{PublicationBytes, PublicationPayload};
+    let dir = tempfile::tempdir().unwrap();
+    let mut store = Store::open(&dir.path().join("atomic.sqlite")).unwrap();
+    let payload = PublicationPayload {
+        receipt: "closed".into(),
+        outputs: vec![
+            PublicationBytes {
+                output_id: "duplicate".into(),
+                bytes: vec![1],
+            },
+            PublicationBytes {
+                output_id: "duplicate".into(),
+                bytes: vec![2],
+            },
+        ],
+    };
+    assert!(store
+        .seal_publication_payload(&fence("alice"), 1, row("a", "key"), &payload)
+        .is_err());
+    assert!(store
+        .snapshot(&fence("alice"), &scope())
+        .unwrap()
+        .artifacts
+        .is_empty());
+    assert!(store
+        .publication_payload(&fence("alice"), "p", "key")
+        .unwrap()
+        .is_none());
+}

@@ -137,14 +137,32 @@ pub fn record(
     previous: Option<&store::ArtifactRow>,
     free: &dyn Fn(&store::ArtifactRow) -> Result<u64, String>,
 ) -> Result<Recorded, String> {
+    record_with_payload(store, fence, project, row, previous, free, None)
+}
+
+/// The same seal with an immutable producer payload committed beside its row.
+#[allow(clippy::too_many_arguments)]
+pub fn record_with_payload(
+    store: &SharedStore,
+    fence: &store::Fence,
+    project: &str,
+    row: &LocalRow,
+    previous: Option<&store::ArtifactRow>,
+    free: &dyn Fn(&store::ArtifactRow) -> Result<u64, String>,
+    payload: Option<&ds_sync_store::PublicationPayload>,
+) -> Result<Recorded, String> {
     let now = crate::now_ms();
     let with_store = |event: store::Event| -> Result<store::Transition, String> {
         let mut store = store
             .lock()
             .map_err(|_| "The sync gate is unavailable".to_string())?;
-        store
-            .apply(fence, now, event)
-            .map_err(|error| error.to_string())
+        match (event, payload) {
+            (store::Event::LocalProduced { row }, Some(payload)) => {
+                store.seal_publication_payload(fence, now, row, payload)
+            }
+            (event, _) => store.apply(fence, now, event),
+        }
+        .map_err(|error| error.to_string())
     };
     let mut superseded = None;
     if let Some(previous) = previous {

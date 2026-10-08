@@ -8,7 +8,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use ds_command_kernel::sync;
 use ds_command_kernel::sync_store as store;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 /// The plan-and-receipts envelope this runtime answers with.
@@ -28,7 +28,7 @@ pub const MAX_ROWS: usize = 4096;
 /// variant)` and carries an inventory of outputs, so the digest that stands
 /// for it on both sides is [`inventory_digest`] over that inventory — never
 /// one output's digest, which would make a two-file head undecidable.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct LocalRow {
     pub identity: sync::Identity,
     pub sha256: String,
@@ -66,7 +66,7 @@ impl LocalRow {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct LocalOutput {
     pub filename: Option<String>,
     pub paper_size: Option<String>,

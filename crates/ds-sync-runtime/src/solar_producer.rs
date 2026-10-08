@@ -323,6 +323,22 @@ impl Producer for SolarProducer<'_> {
         let job_id = declaration["client_run_id"]
             .as_str()
             .ok_or("publication has no replay key")?;
+        let shared = crate::open_store(self.database)?;
+        let fence = fence_of(self.identity);
+        if shared
+            .lock()
+            .map_err(|_| "The sync gate is unavailable")?
+            .publication_payload(&fence, project, job_id)
+            .map_err(|e| e.to_string())?
+            .is_some()
+        {
+            return crate::retained_publication::RetainedProducer {
+                store: &shared,
+                fence: &fence,
+                project,
+            }
+            .amend_open_declaration(project, declaration);
+        }
         let store = runtime::open(self.database)?;
         let job = store
             .job(&self.identity.caller(Some(project)), job_id)
@@ -376,6 +392,16 @@ impl Producer for SolarProducer<'_> {
         output_id: &str,
         session_uri: &str,
     ) -> Result<TransferReceipt, String> {
+        if crate::retained_publication::owns(row) {
+            let shared = crate::open_store(self.database)?;
+            let fence = fence_of(self.identity);
+            return crate::retained_publication::RetainedProducer {
+                store: &shared,
+                fence: &fence,
+                project: &self.project,
+            }
+            .transfer(row, output_id, session_uri);
+        }
         let store = runtime::open(self.database)?;
         let job = store
             .job(&self.identity.caller(None), &row.client_publish_id)
@@ -419,6 +445,16 @@ impl Producer for SolarProducer<'_> {
     fn reclaim(&self, project: &str, row: &LocalRow) -> Result<u64, String> {
         if project != self.project {
             return Err("the Solar producer was opened for another project".into());
+        }
+        if crate::retained_publication::owns(row) {
+            let shared = crate::open_store(self.database)?;
+            let fence = fence_of(self.identity);
+            return crate::retained_publication::RetainedProducer {
+                store: &shared,
+                fence: &fence,
+                project,
+            }
+            .reclaim(project, row);
         }
         if row.client_publish_id.is_empty() {
             // A replica of the head, not a publication of this producer.

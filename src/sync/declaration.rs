@@ -70,8 +70,8 @@ pub fn validate(project: &str, body: &Value) -> Result<Action, String> {
             let outputs = object
                 .get("outputs")
                 .and_then(Value::as_array)
-                .filter(|outputs| (1..=32).contains(&outputs.len()))
-                .ok_or("publication must declare 1..32 outputs")?;
+                .filter(|outputs| (1..=100).contains(&outputs.len()))
+                .ok_or("publication must declare 1..100 outputs")?;
             let mut ids = BTreeSet::new();
             let mut declarations = Vec::new();
             for output in outputs {
@@ -328,5 +328,24 @@ mod tests {
         let mut changed = body;
         changed["engine"] = json!("unregistered");
         assert!(validate("project-a", &changed).is_err());
+    }
+    #[test]
+    fn portfolio_inventory_uses_the_same_hundred_output_bound_as_brain() {
+        let mut body = open(PublicationPolicy::Solar);
+        body["operation"] = json!("portfolio-a");
+        body["variant"] = json!("aggregate-v3");
+        body.as_object_mut()
+            .unwrap()
+            .remove("source_snapshot_sha256");
+        body.as_object_mut().unwrap().remove("snapshot_receipt_id");
+        body["outputs"] =
+            json!((0..100).map(|index| json!({
+            "output_id":format!("plot-chart-{index}"),"format":"png","content_type":"image/png",
+            "sha256":"c".repeat(64),"size_bytes":42
+        })).collect::<Vec<_>>());
+        assert_eq!(validate("project-a", &body).unwrap(), Action::Open);
+        let extra = json!({"output_id":"plot-extra","format":"png","content_type":"image/png","sha256":"c".repeat(64),"size_bytes":42});
+        body["outputs"].as_array_mut().unwrap().push(extra);
+        assert!(validate("project-a", &body).is_err());
     }
 }

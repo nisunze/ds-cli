@@ -41,6 +41,7 @@ mod lease;
 pub mod native_transfer;
 pub mod reads;
 pub mod retained_preview;
+pub mod retained_publication;
 pub mod routes;
 pub mod rows;
 pub mod run;
