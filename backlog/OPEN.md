@@ -57,10 +57,10 @@ is ruled in the sync contract: visible per-city discard and fresh runs.
 - **Server common-store coverage is missing for Solar drafts/finals/portfolios.**
   Seal and publish all closed native batch constituents through the common path
   before Desktop cutover, retaining authored inputs and per-city failures.
-- **Admission and fingerprints differ by engine and lane.** Put ordered admission
-  in ds-brain's service for public and in-process cloud callers, with engine data
-  in one table and the existing blob verifier. Prove shared Solar fingerprint
-  vectors in Rust/Go and stale-input reconciliation through the store transition.
+- **Fingerprint parity remains unproven.** Prove shared Solar fingerprint vectors
+  in Rust/Go and stale-input reconciliation through the store transition. Extend
+  the transactional engine adapters without adding a second admission or blob
+  verification path.
 - **Desktop still owns an IndexedDB publication queue.** Route Solar execution and
   Sync Center through the shared native runtime, expose headless queue/recovery
   commands, and remove replaced TypeScript/kernel exports after native proof and

@@ -191,6 +191,16 @@ is available when needed; preserving them does not reduce artifact synchronizati
 or justify unnecessary compute. Reclaiming derived bytes never authorizes deleting
 or rewriting their source inputs.
 
+Hybrid placement never makes calculation depend on publication admission.
+Retained prepared inputs and their declared cached dependencies can compute
+while Brain is unreachable. Completion seals the local queue without a gateway
+session; verified local results remain available for preview and download.
+A reconnect drains that same queue. The shared runtime proves this for both
+engines across a crash/restart, with zero gateway reads, opens or transfers
+while offline. Credential expiry holds publication, rather than deleting its
+bytes or requiring calculation to repeat. Acquiring a missing governed input
+still requires its declared authority; offline execution never invents it.
+
 `sync::publication_verdict` is the pure record-answer interpretation. HTTP 401
 holds the credential, 403 refuses the row, 409 at open conflicts and 409 at
 finalize stores stale, 400 at open refuses, and finalize 400, offline, incomplete
@@ -263,7 +273,7 @@ preflight and its answer settles the row through `sync_store::ActionReceipt`.
 | Solar job enumeration is project-fenced, paged, newest 512 with explicit truncation | Server `solar_jobs_in`, `publication`, `publication_metadata`, `sealed_jobs` | `ds-sync-runtime` Solar producer over `ds-compute-runtime` |
 | Losing Solar bytes are retired from job result column; job and result digest remain evidence | Server `SolarProducer::reclaim` | Shared Solar producer reclaim; native store receipt |
 | Reporter and Solar share one producer set and executor | Server `with_producers`, one project wake and `ds-sync-runtime::run`; auth forwards the common closed declaration | One native pass, one store transition and credential recovery |
-| Startup, new sealed inventory, reconnect, kernel deadline trigger the report pump; idle scan is not a gateway trigger | Server `ReportWake`; Solar pump recovery thread | Shared native scheduler; host only forwards wake/trigger facts |
+| Startup, new sealed inventory, reconnect, kernel deadline trigger the report pump; idle scan is not a gateway trigger | Server `SyncWake`; Solar pump recovery thread | Shared native scheduler; host only forwards wake/trigger facts |
 | Browser success/failure mirrors Solar result/report state; clear dirty only after all rows publish | `artifact-sync.ts::{reflectSolarResultSync,clearDirtyWhenFullyPublished}` | Native Solar application projection from durable store, rendered by UI |
 
 ### 6.1 Solar publication kinds and Server coverage

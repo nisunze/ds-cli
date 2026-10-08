@@ -2933,6 +2933,55 @@ fn a_solar_completion_sealed_behind_a_newer_one_frees_its_own_result_and_the_new
 /// head; a stale answer is a conflict with no head.
 
 #[test]
+fn both_engines_seal_offline_survive_restart_and_publish_only_after_reconnect() {
+    use ds_sync_runtime::store::ArtifactState;
+    let mut h = Harness::new();
+    let rows = vec![local_row(b"offline report"), solar_row()];
+    h.seal(&rows);
+    h.reopen_after_kill();
+    {
+        let gateway = FakeGateway {
+            world: h.world.clone(),
+        };
+        let producer = FakeProducer::new(h.world.clone(), rows.clone());
+        let reads = FakeReads {
+            world: h.world.clone(),
+            root: h.reads_root.clone(),
+        };
+        let online = || false;
+        let host = host_over(&h, &gateway, &producer, &reads, &online);
+        let pass = run(&host, PROJECT, sync::Trigger::Startup).unwrap();
+        assert_eq!(outcomes(&pass), vec!["offline:noted"]);
+    }
+    let retained = stored_rows(&h, PROJECT);
+    assert_eq!(retained.len(), 2);
+    assert!(retained
+        .iter()
+        .all(|row| row.state == ArtifactState::Held && row.readable));
+    for row in &rows {
+        let held = retained
+            .iter()
+            .find(|held| held.identity == row.identity)
+            .unwrap();
+        assert_eq!(held.client_publish_id, row.client_publish_id);
+        assert_eq!(held.sha256, row.sha256);
+    }
+    {
+        let world = fakes::lock(&h.world);
+        assert_eq!((world.opens, world.commits, world.head_reads), (0, 0, 0));
+        assert!(world.transfers.is_empty());
+    }
+    let connected = h.run(rows, sync::Trigger::Reconnect);
+    assert_eq!(
+        outcomes(&connected),
+        vec!["upload:published", "upload:published"]
+    );
+    assert!(stored_rows(&h, PROJECT)
+        .iter()
+        .all(|row| row.state == ArtifactState::Published));
+}
+
+#[test]
 fn one_pass_publishes_both_engines_and_idle_recovery_makes_no_gateway_calls() {
     let h = Harness::new();
     let pass = h.run(
