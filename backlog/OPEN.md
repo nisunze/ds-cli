@@ -228,7 +228,8 @@ for browser/peer calculation. Cold initialization still projects synchronously;
 calculated-scene transfer remains broad. Reject/suppress stale results without
 losing edits. Complete cached queries
 for model-bound design-clearance point findings and default-analysis resistance
-checks, retaining facts before their report caps. Localize result-index
+checks by admitting the engine's complete `DefaultAnalysisFacts` alongside the
+exact native calculation/report head. Localize result-index
 reconstruction/preservation and bind cached reads into findings controls. Carry only necessary computed
 result/delta bytes into Profile. The Server/native owner must not depend on Svelte, browser
 state or Tauri; preserve explicit project/principal/model/session context.

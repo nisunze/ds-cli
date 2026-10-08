@@ -406,21 +406,22 @@ installation; explicit calculation still needs bounded native phase/work
 evidence before claiming a measured bottleneck or release performance. No
 template edits, competing builds or model mutations.
 
-## Focused review: Profile cached findings and complete analysis facts
+## Focused review: Profile complete Analyze result admission and bounded queries
 
-Read-only request before the next native slice: trace `map.profile.issues`,
-`GridSessionClient::engineeringIssueLayer`, owning WASM issue exports, default
-analysis and `crates/ds-profile-runtime/src/result_queries.rs`. Specify the
-smallest cached-only native replacement for findings reads, with an explicit
-Analyze boundary for missing design-clearance/default-resistance facts.
-Retain facts before report caps and preserve complete qualification, signed
-loading, section contributors and native blocker identity. Distinguish
-model-bound design-clearance findings from displayed-case Profile evidence.
+Read-only request before the next native slice: trace runtime `analysis.rs`,
+`project_session`/`project_retained`, job capture/admission and publication
+rollback. Admit paired engine `DefaultAnalysisFacts` under the exact computed
+revision/root/envelope; never reconstruct full facts from capped analysis JSON.
+Separate model-bound analysis evidence from displayed-case Profile evidence.
 
-Name missing/affected-envelope, entity-family, history ABA and publication
-refusals. Trace existing issue UI/CLI consumers and replaced DTOs before deleting
-worker/TypeScript controls. Reuse exact computed/authored root and cursor pins;
-queries must not enter projection, solve, save or mutate history. Preserve
-validation/result/download views. Maximum two findings with exact path/line
-evidence. No model mutations, template/printing work, competing builds or
-solver qualification.
+Specify explicit native query basis and bounds for design-point findings and
+support resistance qualification/failures/blockers. Trace complete counts,
+entity families, computed/authored pins, cursor identity, missing/affected
+calculation refusals, selection and case changes, history ABA and rollback.
+Name independent preservation/invalidation of model-analysis results when a
+Profile refresh occurs without Analyze. Re-read `STABILIZATION.md`; preserve
+known failure with incomplete qualification and signed loading within bounds.
+
+Maximum two findings with exact path/line evidence. Native/headless proof and
+refusals precede CLI/MCP or Web bindings. No model mutations, template/printing
+work, competing builds or solver qualification.
