@@ -41,7 +41,7 @@ mod session;
 mod solar_artifact;
 pub use solar_artifact::SolarArtifactDownloadCall;
 mod solar_snapshot;
-pub use solar_snapshot::SolarMediaDownloadCall;
+pub use solar_snapshot::{HeldSessionSnapshotRead, SolarMediaDownloadCall};
 mod status_processing;
 mod styles;
 mod survey_delete;

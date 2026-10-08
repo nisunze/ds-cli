@@ -16,11 +16,11 @@ pub use crate::profile::{ADMIN_BOUNDS_METHOD, ADMIN_BOUNDS_PATH};
 pub use crate::profile::{DATA_DISTRIBUTION_METHOD, DATA_DISTRIBUTION_PATH};
 pub use crate::profile::{
     PROJECT_FORMS_ACTION, PROJECT_FORMS_METHOD, PROJECT_FORMS_PATH, PROJECT_FORM_EDITOR_ACTION,
-    SOLAR_SNAPSHOT_ACTION, SOLAR_SNAPSHOT_METHOD, SOLAR_SNAPSHOT_PATH,
-    SURVEY_ENTRIES_CHANGES_METHOD, SURVEY_ENTRIES_CHANGES_PATH, SURVEY_ENTRIES_SELECT_METHOD,
-    SURVEY_ENTRIES_SELECT_PATH, SURVEY_ENTRY_CREATE_METHOD, SURVEY_ENTRY_CREATE_PATH,
-    SURVEY_QUERY_METHOD, SURVEY_QUERY_PATH, TILES_METHOD, TILES_PATH, TRANSFORMER_CONTEXT_FIELDS,
-    TRANSFORMER_CONTEXT_METHOD, TRANSFORMER_CONTEXT_PATH,
+    SOLAR_SNAPSHOT_METHOD, SOLAR_SNAPSHOT_PATH, SURVEY_ENTRIES_CHANGES_METHOD,
+    SURVEY_ENTRIES_CHANGES_PATH, SURVEY_ENTRIES_SELECT_METHOD, SURVEY_ENTRIES_SELECT_PATH,
+    SURVEY_ENTRY_CREATE_METHOD, SURVEY_ENTRY_CREATE_PATH, SURVEY_QUERY_METHOD, SURVEY_QUERY_PATH,
+    TILES_METHOD, TILES_PATH, TRANSFORMER_CONTEXT_FIELDS, TRANSFORMER_CONTEXT_METHOD,
+    TRANSFORMER_CONTEXT_PATH,
 };
 pub use crate::profile::{PROJECT_REPORT_METHOD, PROJECT_REPORT_PATH};
 pub use crate::profile::{
@@ -585,20 +585,10 @@ impl SolarSnapshotCall<'_> {
         self.authority.device_id
     }
     pub fn body(&self) -> SecretRequestBody {
-        #[derive(Serialize)]
-        struct Body<'a> {
-            action: &'static str,
-            root: String,
-            template_id: &'a str,
-        }
-        SecretRequestBody(
-            serde_json::to_vec(&Body {
-                action: SOLAR_SNAPSHOT_ACTION,
-                root: format!("eds_project/{}/eds_solar", self.ds_project),
-                template_id: self.template_id,
-            })
-            .expect("a struct containing only strings always serializes"),
-        )
+        SecretRequestBody(crate::solar_snapshot::request_body(
+            self.ds_project,
+            self.template_id,
+        ))
     }
 }
 

@@ -205,6 +205,76 @@ struct MediaRefWire {
     file_name: String,
 }
 
+/// The one closed request body of a governed snapshot read: the fixed action,
+/// the project root derived from the selected project, and one city.
+pub(crate) fn request_body(ds_project: &str, template_id: &str) -> Vec<u8> {
+    #[derive(Serialize)]
+    struct Body<'a> {
+        action: &'static str,
+        root: String,
+        template_id: &'a str,
+    }
+    serde_json::to_vec(&Body {
+        action: crate::profile::SOLAR_SNAPSHOT_ACTION,
+        root: format!("eds_project/{ds_project}/eds_solar"),
+        template_id,
+    })
+    .expect("a struct containing only strings always serializes")
+}
+
+/// One governed snapshot read that a host performs under a session credential
+/// it already holds: the Desktop shell's webview-supplied bearer, which the
+/// shell attaches to its pinned gateway origin exactly as its sync door does.
+///
+/// The core fixes the method, path, action, root and body, and decodes the
+/// exact answer with the same strict decoder as a native session's read. The
+/// host chooses no route or field; it only moves bytes and returns the status
+/// and body it received.
+pub struct HeldSessionSnapshotRead {
+    ds_project: String,
+    template_id: String,
+}
+
+impl HeldSessionSnapshotRead {
+    pub fn new(ds_project: &str, template_id: &str) -> Result<Self, ClientError> {
+        validate_input(ds_project, template_id)?;
+        Ok(Self {
+            ds_project: ds_project.to_owned(),
+            template_id: template_id.to_owned(),
+        })
+    }
+    pub const fn method(&self) -> &'static str {
+        crate::profile::SOLAR_SNAPSHOT_METHOD
+    }
+    pub const fn path(&self) -> &'static str {
+        crate::profile::SOLAR_SNAPSHOT_PATH
+    }
+    pub const fn timeout_seconds(&self) -> u64 {
+        crate::SOLAR_SNAPSHOT_TIMEOUT_SECONDS
+    }
+    pub const fn response_limit(&self) -> usize {
+        crate::SOLAR_SNAPSHOT_RESPONSE_LIMIT
+    }
+    pub fn body(&self) -> crate::SecretRequestBody {
+        crate::SecretRequestBody::new(request_body(&self.ds_project, &self.template_id))
+    }
+    /// The answer to this exact read, or the same typed refusal a native
+    /// session receives for the same status.
+    pub fn decode(&self, response: TransportResponse) -> Result<SolarSnapshot, ClientError> {
+        if response.status != 200 {
+            return Err(crate::authorized::classify_solar_snapshot_error(
+                response.status,
+            ));
+        }
+        decode_snapshot(
+            response,
+            self.response_limit(),
+            &self.ds_project,
+            &self.template_id,
+        )
+    }
+}
+
 pub(crate) fn validate_input(ds_project: &str, template_id: &str) -> Result<(), ClientError> {
     if !canonical_id(ds_project) || !canonical_id(template_id) {
         return Err(ClientError::new(

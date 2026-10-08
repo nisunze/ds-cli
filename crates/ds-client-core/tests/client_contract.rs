@@ -3627,6 +3627,87 @@ fn solar_snapshot_profile_input_identity_and_response_fail_closed() {
 }
 
 #[test]
+fn held_session_snapshot_read_is_the_native_session_call_and_decoder() {
+    use ds_client_core::HeldSessionSnapshotRead;
+
+    let read = HeldSessionSnapshotRead::new("active-project", "city_1").unwrap();
+    assert_eq!((read.method(), read.path()), ("POST", "/api/v1/solar"));
+    assert_eq!(read.timeout_seconds(), 120);
+    assert_eq!(read.response_limit(), 32 * 1024 * 1024);
+    // Byte for byte the body a native session sends for the same city.
+    assert_eq!(
+        read.body().as_bytes(),
+        br#"{"action":"desktop_snapshot","root":"eds_project/active-project/eds_solar","template_id":"city_1"}"#
+    );
+
+    let envelope = solar_snapshot_envelope("eds_project/active-project/eds_solar", "city_1");
+    let snapshot = read
+        .decode(TransportResponse::new(
+            200,
+            serde_json::to_vec(&envelope).unwrap(),
+        ))
+        .unwrap();
+    assert_eq!(snapshot.ds_project(), "active-project");
+    assert_eq!(snapshot.template_id(), "city_1");
+    assert_eq!(snapshot.input_base_fingerprint(), "b".repeat(64));
+    assert_eq!(
+        snapshot.snapshot_receipt_id(),
+        "123e4567-e89b-42d3-a456-426614174000"
+    );
+    assert_eq!(
+        snapshot.document_json(),
+        envelope["data"]["snapshot_json"].as_str().unwrap()
+    );
+
+    // An answer for another project or city is never this read's answer.
+    for (root, city) in [
+        ("eds_project/other/eds_solar", "city_1"),
+        ("eds_project/active-project/eds_solar", "city_2"),
+    ] {
+        let foreign = solar_snapshot_envelope(root, city);
+        assert_eq!(
+            read.decode(TransportResponse::new(
+                200,
+                serde_json::to_vec(&foreign).unwrap()
+            ))
+            .err()
+            .expect("a foreign snapshot must be refused")
+            .kind(),
+            ErrorKind::UnreadableResponse
+        );
+    }
+    // Refusals keep the native session's typed classification.
+    for (status, kind) in [
+        (404, ErrorKind::ResourceNotFound),
+        (401, ErrorKind::AuthenticationRejected),
+        (403, ErrorKind::AuthenticationRejected),
+        (503, ErrorKind::Transient),
+    ] {
+        assert_eq!(
+            read.decode(TransportResponse::new(status, b"{}".to_vec()))
+                .err()
+                .expect("a non-success status must be refused")
+                .kind(),
+            kind,
+            "status {status}"
+        );
+    }
+    for (project, city) in [
+        ("bad project", "city_1"),
+        ("active-project", "../city"),
+        ("active-project", ""),
+    ] {
+        assert_eq!(
+            HeldSessionSnapshotRead::new(project, city)
+                .err()
+                .expect("a non-canonical id must be refused")
+                .kind(),
+            ErrorKind::InvalidInput
+        );
+    }
+}
+
+#[test]
 fn solar_snapshot_accepts_outer_json_expansion_above_twelve_mib_within_governed_lane() {
     let mut envelope = solar_snapshot_envelope("eds_project/active-project/eds_solar", "city_1");
     let mut snapshot: serde_json::Value =

@@ -914,7 +914,7 @@ fn classify_project_forms_error(status: u16) -> ClientError {
         "the project-forms service refused the verified user or selected project",
     )
 }
-fn classify_solar_snapshot_error(status: u16) -> ClientError {
+pub(crate) fn classify_solar_snapshot_error(status: u16) -> ClientError {
     if status == 404 {
         ClientError::new(
             ErrorKind::ResourceNotFound,
