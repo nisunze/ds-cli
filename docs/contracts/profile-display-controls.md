@@ -468,3 +468,23 @@ measurements of this fixture, not local-edit or dense connected-model/installed
 acceptance. Broad calculated-result transfer, independent default-analysis
 invalidation and duplicate explicit clearance work remain measurable boundaries.
 The owning receipt is `ds-network/out/profile-native/analysis-query-cost-release.json`.
+
+
+CLI `map.profile.results` and `map.profile.issues` contract 2 declare source and
+Findings via the owning closed QueryArguments DTO. The Issues binding transports
+that query and displays a bounded native page, basis and typed refusals. Opening,
+paging and focusing do not calculate. Focus verifies exact page history before
+selection. The old TypeScript layer filter, thresholds, schema assertion and
+worker cache installation were deleted. Explicit browser reconciliation remains
+a separately named native calculation until its async owner is bound.
+
+Source gates: 24 CLI Profile parser tests, 34 bridge-parity and six refusal
+coverage tests; 124 focused Web query/transport/dock/reconciliation tests;
+Web check zero errors and four pre-existing SpanCheck warnings. Staged CLI
+`1da077b5` discovers both contract-2 commands and refuses old calculation JSON
+and unknown sources. MCP discovers both typed tools and refuses undeclared
+arguments; valid calls stop at the unpaired Desktop gate on this host. This
+proves no paired nested-JSON call or installed native activation. Receipts are
+`ds-cli/out/stabilization/profile-controls/analysis-query-*` and
+`ds-web/out/profile-native/analysis-query-*`; staged CLI remains unqualified for
+installation (adjacent bundle absent and release pins deferred).

@@ -226,9 +226,7 @@ asynchronous and revision-fenced: expose native job tickets and bounded
 start/status/cancel controls directly through CLI/MCP, and bind the native owner
 for browser/peer calculation. Cold initialization still projects synchronously;
 calculated-scene transfer remains broad. Reject/suppress stale results without
-losing edits. Declare the admitted model-analysis query source and design findings through
-CLI/MCP, then bind cached reads into findings controls and remove their implicit
-issue calculations and replaced worker/TypeScript adapters. Localize independent
+losing edits. Localize independent
 model-analysis invalidation and result-index reconstruction/preservation so
 unchanged facts survive Profile-only calculation after local edits. Add native
 horizontal governing-wire section/support references before assigning horizontal
