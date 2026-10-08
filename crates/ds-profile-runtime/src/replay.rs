@@ -496,13 +496,14 @@ impl Runtime {
         let mut result = self.project_session(project, session, source, cache, receipts)?;
         if analyze {
             let held = self.held.get_mut(&scope).expect("admitted projection");
-            let analysis = analysis::analyze_with_cache(
+            let (analysis, index) = analysis::analyze_for_queries(
                 &held.session,
                 &held.options.display_case,
                 held.review.base_scene(),
                 None,
                 &mut held.demand_cache,
             );
+            held.analysis_index = Some(index);
             let state = self.views[&scope].clone();
             result["command_view"] = command_view::project(
                 &state,

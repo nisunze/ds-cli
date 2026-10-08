@@ -10,6 +10,17 @@ const MAX_ITEMS: usize = 200;
 const MAX_BYTES: usize = 256 * 1024;
 static RESULT_SEQUENCE: AtomicU64 = AtomicU64::new(1);
 
+mod analysis_queries;
+
+/// Independent admitted result sources; reading never changes the display case.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum QuerySource {
+    #[default]
+    Profile,
+    ModelAnalysis,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum QueryKind {
@@ -19,6 +30,7 @@ pub enum QueryKind {
     ViolatingSections,
     Qualification,
     Blockers,
+    Findings,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -29,6 +41,8 @@ pub struct QueryCursor {
     pub model_id: String,
     pub history: SessionHistoryState,
     pub kind: QueryKind,
+    #[serde(default)]
+    pub source: QuerySource,
     pub entity_ids: Vec<String>,
     pub offset: usize,
 }
@@ -39,6 +53,8 @@ pub struct QueryCursor {
 #[serde(deny_unknown_fields)]
 pub struct QueryArguments {
     pub kind: QueryKind,
+    #[serde(default)]
+    pub source: QuerySource,
     #[serde(default)]
     pub entity_ids: Vec<String>,
     #[serde(default = "default_limit")]
@@ -55,6 +71,8 @@ pub struct QueryResultsRequest {
     pub expected_history: SessionHistoryState,
     pub expected_engineering_input_root: String,
     pub kind: QueryKind,
+    #[serde(default)]
+    pub source: QuerySource,
     /// Empty means the complete cached corpus. IDs name native entities,
     /// never scene-marker IDs or text predicates.
     #[serde(default)]
@@ -111,7 +129,9 @@ pub(super) struct Index {
     root: String,
     case: ds_grid_engine::profile_display_case::ProfileDisplayCase,
     basis: Value,
+    source: QuerySource,
     usage_available: bool,
+    findings_available: bool,
     entities: BTreeSet<String>,
     structures: BTreeSet<String>,
     sections: BTreeSet<String>,
@@ -134,6 +154,9 @@ fn usage_fact(row: &ds_grid_engine::StructureUsageScreeningRow) -> Arc<Value> {
 }
 
 impl Index {
+    pub(super) fn at_input_root(&self, root: &str) -> bool {
+        self.root == root
+    }
     fn next_id() -> String {
         format!(
             "profile-results-{}-{}",
@@ -197,7 +220,9 @@ impl Index {
             root: scene.engineering_input_root.clone(),
             case: scene.display_case.requested.clone(),
             basis,
+            source: QuerySource::Profile,
             usage_available,
+            findings_available: false,
             structures: session
                 .snapshot()
                 .structures
@@ -239,6 +264,7 @@ impl Index {
             QueryKind::ViolatingSections,
             QueryKind::Qualification,
             QueryKind::Blockers,
+            QueryKind::Findings,
         ] {
             index.facts.insert(kind, Facts::default());
         }
@@ -379,6 +405,9 @@ impl Runtime {
         }
         request.entity_ids.sort();
         request.entity_ids.dedup();
+        if request.kind == QueryKind::Findings && request.source == QuerySource::Profile {
+            return Err("invalid_profile_query: design-point findings require source model_analysis; explicitly Analyze that source before reading it".into());
+        }
         let held = self.held.get(&request.scope).ok_or(
             "profile_results_unavailable: initialize and explicitly calculate this scope first",
         )?;
@@ -399,19 +428,39 @@ impl Runtime {
         {
             return Err("profile_query_stale: query history or authored input root changed".into());
         }
-        let index = &held.result_index;
+        let index = match request.source {
+            QuerySource::Profile => &held.result_index,
+            QuerySource::ModelAnalysis => held.analysis_index.as_ref().ok_or(
+                "profile_calculation_required: no model-bound analysis was admitted for these inputs; explicitly Analyze before reading this source",
+            )?,
+        };
+        if index.source != request.source {
+            return Err(
+                "profile_results_unavailable: native result source differs from the query".into(),
+            );
+        }
         let state_case: ds_grid_engine::profile_display_case::ProfileDisplayCase =
             serde_json::from_value(json!(self.views[&request.scope].display_case))
                 .expect("admitted case");
         if matches!(
             request.kind,
             QueryKind::ViolatingSections | QueryKind::Blockers
-        ) && state_case != index.case
+        ) && request.source == QuerySource::Profile
+            && state_case != index.case
         {
             return Err("profile_calculation_required: no result index was admitted for this displayed clearance case".into());
         }
         let scope = &held.query_scope;
         let current_inputs = index.root == revision.roots.engineering_input_root;
+        if !current_inputs && request.source == QuerySource::ModelAnalysis {
+            return Err("profile_calculation_required: model-bound analysis inputs changed; explicitly Analyze before querying this source".into());
+        }
+        if request.source == QuerySource::ModelAnalysis
+            && request.kind != QueryKind::Blockers
+            && !index.usage_available
+        {
+            return Err("profile_calculation_required: model-bound Analyze retained no admitted envelope; inspect its blockers and repair inputs before explicit Analyze".into());
+        }
         if !current_inputs {
             let affected = held.pending_reconcile
                 || scope.whole_model
@@ -445,13 +494,16 @@ impl Runtime {
         {
             return Err("profile_calculation_required: no complete matching cached usage envelope is available; inspect blockers and explicitly calculate".into());
         }
+        if request.kind == QueryKind::Findings && !index.findings_available {
+            return Err("profile_calculation_required: no complete model-bound design clearance findings were admitted; explicitly Analyze and inspect blockers".into());
+        }
         let entity_family = match request.kind {
             QueryKind::Usage
             | QueryKind::Failures
             | QueryKind::NegativeLoading
             | QueryKind::Qualification => &index.structures,
             QueryKind::ViolatingSections => &index.sections,
-            QueryKind::Blockers => &index.entities,
+            QueryKind::Blockers | QueryKind::Findings => &index.entities,
         };
         if request
             .entity_ids
@@ -468,6 +520,7 @@ impl Runtime {
                 || cursor.model_id != request.model_id
                 || cursor.history != history
                 || cursor.kind != request.kind
+                || cursor.source != request.source
                 || cursor.entity_ids != request.entity_ids
             {
                 return Err("profile_query_stale: page cursor belongs to another head, selection or result index".into());
@@ -490,7 +543,9 @@ impl Runtime {
             "engineering_input_root":revision.roots.engineering_input_root,
             "computed_revision":index.revision,"computed_engineering_input_root":index.root,
             "freshness":if current_inputs {"current_inputs"} else {"unchanged_dependencies"},
-            "result_id":index.id,"display_case":index.case,"basis":index.basis,"kind":request.kind,
+            "result_id":index.id,"source":index.source,
+            "display_case":if index.source == QuerySource::Profile {json!(index.case)} else {Value::Null},
+            "basis":index.basis,"kind":request.kind,
             "total":total,"offset":offset,"items":[],"next_cursor":null,"truncated":false});
         // Reserve room for the maximum cursor and metrics; even an unusually
         // large native envelope must refuse instead of transferring unbounded data.
@@ -500,6 +555,7 @@ impl Runtime {
             model_id: request.model_id.clone(),
             history: history.clone(),
             kind: request.kind,
+            source: request.source,
             entity_ids: request.entity_ids.clone(),
             offset,
         };
@@ -554,7 +610,7 @@ mod tests {
     use crate::transactional_projection_tests::{describe, refresh, request_for};
     use ds_grid_model::*;
 
-    fn fixture() -> GridModelSnapshot {
+    pub(super) fn fixture() -> GridModelSnapshot {
         let mut snapshot = common::fixture();
         snapshot.structures[1].z_m = 0.0; // A genuine valley support, with signed demand.
         for (i, (x_m, y_m, z_m)) in [(0.0, 0.0, 100.0), (300.0, 0.0, 0.0), (600.0, 40.0, 98.0)]
@@ -606,7 +662,7 @@ mod tests {
                 .snapshot_fingerprint();
         snapshot
     }
-    fn request(runtime: &Runtime, scope: &str, kind: QueryKind) -> QueryResultsRequest {
+    pub(super) fn request(runtime: &Runtime, scope: &str, kind: QueryKind) -> QueryResultsRequest {
         let held = &runtime.held[scope];
         QueryResultsRequest {
             scope: scope.into(),
@@ -620,11 +676,15 @@ mod tests {
                 .clone(),
             kind,
             entity_ids: vec![],
+            source: QuerySource::Profile,
             limit: 50,
             cursor: None,
         }
     }
-    fn execute(runtime: &mut Runtime, request: QueryResultsRequest) -> Result<Value, String> {
+    pub(super) fn execute(
+        runtime: &mut Runtime,
+        request: QueryResultsRequest,
+    ) -> Result<Value, String> {
         let mut wire = json!(request);
         wire["operation"] = json!("query_results");
         runtime.execute(serde_json::from_value::<Request>(wire).unwrap())

@@ -324,7 +324,10 @@ analysis generation, unchanged calculated base, and native work-count transport.
 index. It does not project, screen, assemble demand, calculate or save. The
 request carries scope/model, exact expected history and authored engineering
 input root; `kind` is `usage`, `failures`, `negative_loading`,
-`violating_sections`, `qualification` or `blockers`. Optional `entity_ids`
+`violating_sections`, `qualification`, `blockers` or `findings`. The optional
+`source` defaults natively to `profile`; `model_analysis` reads a separate
+admitted model-bound Analyze index. `findings` requires `model_analysis`.
+Optional `entity_ids`
 focuses up to 128 native identities. Empty means the full calculated corpus.
 `limit` defaults to 50 and admits 1–200. Each encoded response is at most
 256 KiB; native byte limits can end a page before its item limit.
@@ -354,8 +357,8 @@ envelope. Query block messages separately from row evidence counts. The owning
 native refusal tests are in `result_queries.rs`; CLI declaration and Desktop
 transport/selection tests cover the matching contract and stale capture paths.
 
-Violating sections are distinct native section IDs with proven structure
-capacity contributions, displayed-case Profile clearance failure or native
+With the default Profile source, violating sections are distinct native section
+IDs with proven structure capacity contributions, displayed-case Profile clearance failure or native
 section-state failure. Contributors are counted before their 50-ID display
 cap. This is Profile clearance, not the separate model-bound design clearance
 report. Qualification describes structure usage screening. Blockers cover
@@ -374,7 +377,7 @@ and unindexed displayed clearance cases refuse `profile_calculation_required`.
 Whole-model invalidation stays conservative. Querying an unconfirmed publication
 refuses; discard restores the prior index alongside its prior calculated view.
 
-`next_cursor` pins the exact result identity, scope/model, history, kind,
+`next_cursor` pins the exact result identity, scope/model, history, source, kind,
 canonical entity selection and offset. Recalculation at equal content creates
 a new identity; old pages refuse. History ABA, redo-tail replacement, release,
 foreign models and unknown entities are tested. `total` counts matching native
@@ -396,3 +399,72 @@ records before paging. The receipt is
 receipt uses the same row count with an unpinned capacity fixture and is not a
 failure-performance comparison. These are source/headless query measurements,
 excluding IPC, renderer, calculation/index construction and installed artifacts.
+
+
+## Complete cached model-bound Analyze queries
+
+Explicit Analyze admits the paired engine `DefaultAnalysisFacts`, before report
+caps, into an immutable native index beside the Profile display index. It never
+reconstructs facts from capped analysis JSON. `source: model_analysis` uses that
+index's computed revision/root, actual native default criterion/cases/basis and
+resistance/clearance classifications. The response declares its source and has
+`display_case: null`; changing or reading a prepared Profile case cannot narrow
+or relabel these design cases. Native queries default to the Profile source for
+compatibility. The existing bounded report bytes and engineering calculations
+remain unchanged; queries do not call either analysis or issue calculation.
+
+Model-analysis usage returns complete native structure screening rows with
+bounded evidence counts. Qualification additionally returns each native support
+resistance case check. Failures retain native structure fail rows and failed
+resistance checks; negative loading retains signed section weight-span witnesses
+and complete net support uplift separately. Missing resistance-input lists are
+represented by counts in check facts and by bounded native messages in blockers.
+Counts are native evidence facts, not distinct structures; an incomplete check
+never becomes a pass or zero-valued usage. Blockers also retain every unavailable
+section demand, design-clearance section/case, warning and calculation refusal.
+A missing/refused model envelope permits blocker inspection but refuses other
+queries; missing clearance findings refuse `findings`, rather than false zero.
+
+`findings` pages every native design `PointFinding`, its original typed case and
+deficits, selectable point ID and native XYZ. Its entity index also accepts exact
+reported alignment, section and incident-support references. Filtering occurs
+before query paging, not after the legacy 2,000-row report cap. Distinct violating
+sections aggregate native capacity-failure contributors and vertical governing
+wire clearance witnesses. Contributor identities are capped at 50 after complete
+counts. The clearance report's section/support references describe its vertical
+governing wire; horizontal-only failures remain point findings and are not
+attributed to that vertical section. The basis names this section scope and the
+native checked-corridor qualification. Horizontal governing-section references
+remain an explicit owning clearance boundary.
+
+Model-analysis results survive pure case selection, presentation and unchanged
+Profile refresh. New explicit Analyze creates a new result identity, including
+at equal engineering content. After authored engineering inputs change, model
+analysis queries conservatively require Analyze. Profile-only calculation cannot
+renew old model-analysis facts. Local preservation of unchanged model-analysis
+facts across such calculation remains unfinished. Source/history/root/model and
+entity-family fences, native bounds and publication confirm/discard apply to both
+indexes. Job capture shares the index; admission swaps it transactionally with
+the calculated held state, and discard restores the previous exact index.
+
+Headless gates in `result_queries/analysis_queries.rs` prove complete native
+parity beyond 2,000 point findings, independent case selection, cursor source
+refusal, missing/ambiguous envelopes, no-query math/state mutation, signed bounds,
+incomplete native failure, stale authored heads, async admit/discard and stale
+worker rejection. CLI/MCP declaration and replacing findings read bindings are
+separate owning slices. The ignored release cost gate includes wire DTO decode,
+native result construction and final JSON byte encoding; it explicitly excludes
+IPC/rendering/installed acceptance and a dense connected model.
+
+
+The ordinary-release query gate on 2026-10-08 used four placements, three strung
+supports, one tension section and 2,031 added design points. Twelve repetitions
+measured native DTO decode/query/result encoding: 50 design findings took a
+0.536 ms median and 71,715 bytes; 44 usage/resistance qualification facts took
+0.166 ms and 25,503 bytes; other query medians ranged 0.019–0.086 ms. Repeated
+explicit unchanged Analyze, including native result construction and final JSON
+encoding, took 96.707 ms and returned 7,836,915 bytes. These are source release
+measurements of this fixture, not local-edit or dense connected-model/installed
+acceptance. Broad calculated-result transfer, independent default-analysis
+invalidation and duplicate explicit clearance work remain measurable boundaries.
+The owning receipt is `ds-network/out/profile-native/analysis-query-cost-release.json`.

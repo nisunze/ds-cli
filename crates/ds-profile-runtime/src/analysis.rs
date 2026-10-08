@@ -25,20 +25,58 @@ pub(crate) fn analyze_with_cache(
     projection_error: Option<&str>,
     cache: &mut ds_grid_engine::StructureUsageScreeningCache,
 ) -> Value {
+    analyze_impl(session, display_case, scene, projection_error, cache, false).0
+}
+
+pub(crate) fn analyze_for_queries(
+    session: &GridSession,
+    display_case: &ds_grid_engine::profile_display_case::ProfileDisplayCase,
+    scene: Option<&ds_grid_engine::ProfileAtlasScene>,
+    projection_error: Option<&str>,
+    cache: &mut ds_grid_engine::StructureUsageScreeningCache,
+) -> (Value, std::sync::Arc<crate::result_queries::Index>) {
+    let (value, index) = analyze_impl(session, display_case, scene, projection_error, cache, true);
+    (
+        value,
+        index.expect("explicit native analysis always retains its facts or refusal"),
+    )
+}
+
+fn analyze_impl(
+    session: &GridSession,
+    display_case: &ds_grid_engine::profile_display_case::ProfileDisplayCase,
+    scene: Option<&ds_grid_engine::ProfileAtlasScene>,
+    projection_error: Option<&str>,
+    cache: &mut ds_grid_engine::StructureUsageScreeningCache,
+    retain: bool,
+) -> (Value, Option<std::sync::Arc<crate::result_queries::Index>>) {
+    let mut retained = None;
     let revision = session.current_revision();
     let mut blockers = Vec::new();
     if let Some(message) = projection_error {
         blockers.push(json!({"kind":"profile_projection", "message":message}));
     }
-    let report = match session.analyze_model_defaults_with_cache(
-        &DefaultAnalysisRequest {
-            expected_revision: revision.revision_id.clone(),
-            expected_engineering_input_root: revision.roots.engineering_input_root.clone(),
-            max_rows: 2000,
-        },
-        cache,
-    ) {
-        Ok(report) => {
+    let request = DefaultAnalysisRequest {
+        expected_revision: revision.revision_id.clone(),
+        expected_engineering_input_root: revision.roots.engineering_input_root.clone(),
+        max_rows: 2000,
+    };
+    let calculated = if retain {
+        session
+            .analyze_model_defaults_with_facts(&request, cache)
+            .map(|(report, facts)| (report, Some(facts)))
+    } else {
+        session
+            .analyze_model_defaults_with_cache(&request, cache)
+            .map(|report| (report, None))
+    };
+    let report = match calculated {
+        Ok((report, facts)) => {
+            if let Some(facts) = facts {
+                retained = Some(std::sync::Arc::new(
+                    crate::result_queries::Index::model_analysis(session, &report, facts),
+                ));
+            }
             for row in &report.demand_unavailable.rows {
                 blockers.push(json!({"kind":"section_demand", "entity_id":row.tension_section_id, "message":row.reason}));
             }
@@ -50,6 +88,15 @@ pub(crate) fn analyze_with_cache(
             json!({"status":"ok", "report":report})
         }
         Err(reason) => {
+            if retain {
+                retained = Some(std::sync::Arc::new(
+                    crate::result_queries::Index::unavailable_analysis(
+                        session,
+                        json!(reason),
+                        &reason.to_string(),
+                    ),
+                ));
+            }
             blockers.push(
                 json!({"kind":"model_inputs", "message":reason.to_string(), "refusal":reason}),
             );
@@ -119,7 +166,8 @@ pub(crate) fn analyze_with_cache(
     } else {
         "unknown"
     };
-    json!({"model_revision":revision.revision_id, "engineering_input_root":revision.roots.engineering_input_root,
+    let result = json!({"model_revision":revision.revision_id, "engineering_input_root":revision.roots.engineering_input_root,
         "display_case":display_case, "engineering_case_scope":"model_bound_envelope", "status":status, "report":report, "issues":issues,
-        "blockers":blockers, "blocker_count":blocker_count, "blocker_kinds":blocker_kinds, "blockers_truncated":blocker_count > blockers.len(), "section_checks":scene.map(|scene| &scene.evidence), "marker_count":scene.map_or(0, |scene| scene.engineering.markers.len()), "empty_model":session.snapshot().structures.is_empty()})
+        "blockers":blockers, "blocker_count":blocker_count, "blocker_kinds":blocker_kinds, "blockers_truncated":blocker_count > blockers.len(), "section_checks":scene.map(|scene| &scene.evidence), "marker_count":scene.map_or(0, |scene| scene.engineering.markers.len()), "empty_model":session.snapshot().structures.is_empty() });
+    (result, retained)
 }

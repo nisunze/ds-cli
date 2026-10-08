@@ -27,7 +27,7 @@ mod calculation_jobs;
 pub use calculation_jobs::{AdmitCalculationRequest, CalculationJobRequest, StartCalculationRequest};
 mod result_queries;
 mod cached_cases;
-pub use result_queries::{QueryArguments, QueryCursor, QueryKind, QueryResultsRequest};
+pub use result_queries::{QueryArguments, QueryCursor, QueryKind, QueryResultsRequest, QuerySource};
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -106,6 +106,7 @@ struct HeldView {
     pending_receipts: Vec<ds_grid_engine::CommandOutcome>,
     pending_reconcile: bool,
     result_index: Arc<result_queries::Index>,
+    analysis_index: Option<Arc<result_queries::Index>>,
     query_scope: ds_grid_engine::recalculation_scope::RecalculationScope,
 }
 #[derive(Debug, Clone, Serialize)]
@@ -360,21 +361,19 @@ impl Runtime {
             stroke.width_px = grid.width_px;
             stroke.dash_px = grid.dash_px.clone();
         }
-        let analysis = if request.analyze {
-            let value = analysis::analyze_with_cache(
-                &session,
-                &scene_options.display_case,
-                Some(&scene),
-                None,
-                &mut demand_cache,
+        let (analysis, analysis_index) = if request.analyze {
+            let (value, index) = analysis::analyze_for_queries(
+                &session, &scene_options.display_case, Some(&scene), None, &mut demand_cache,
             );
             self.analyses.insert(request.scope.clone(), value.clone());
-            Some(value)
+            (Some(value), Some(index))
         } else {
-            self.analyses
-                .get(&request.scope)
-                .filter(|value| same_model && value["model_revision"] == request.expected_revision)
-                .cloned()
+            let value = self.analyses.get(&request.scope)
+                .filter(|value| same_model && value["model_revision"] == request.expected_revision).cloned();
+            let index = previous.as_ref().filter(|_| same_model)
+                .and_then(|held| held.analysis_index.as_ref())
+                .filter(|index| index.at_input_root(&scene.engineering_input_root)).cloned();
+            (value, index)
         };
         if !same_model && !request.analyze {
             self.analyses.remove(&request.scope);
@@ -407,6 +406,7 @@ impl Runtime {
                 pending_receipts: Vec::new(),
                 pending_reconcile: false,
                 result_index,
+                analysis_index,
                 query_scope: Default::default(),
             },
         );

@@ -156,6 +156,7 @@ mod tests {
                 .engineering_input_root
                 .clone(),
             kind: QueryKind::Blockers,
+            source: QuerySource::Profile,
             entity_ids: vec![],
             limit: 1,
             cursor: None,
