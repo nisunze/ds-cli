@@ -207,75 +207,150 @@ remaining Profile package branch and print-scale screening item below are
 secondary to interactive atomic editing and calculation; do not let them become
 a campaign across other surfaces.
 
-**Remaining terrain slice: interval preparation and calculation dependencies.**
-Effective-ground segmentation,
-layout, comparison and typed cloning still visit an affected alignment broadly;
-measure and localize their intervals and station/axis consequences at parent/T-off
-boundaries. Dense segment splits/merges and identity reorders can still require
-large changed array ranges. Explicit terrain calculation still checks support
-bases and solver geometry across all requested sections, clones shared/chained
-ground broadly, and prepares usage and independent design-clearance
-inputs beyond affected spans/supports. Distinguish actual Profile
-ground inputs from any external native triangulation evidence.
+**Required contract and manual Opus execution plan (owner, 2026-10-08).**
+[Profile as a transactional database](../../ds-network/docs/contracts/profile-transactional-database.md)
+owns the complete requirements: data at rest/in motion, native transactions,
+relationship indexes, deliberate Ground scope, differential calculation/query/
+projection and changed-unit Save. Read its current-source evidence before
+coding. The following items are unfinished implementation obligations, in order;
+they are not an invitation to replace the whole stack or add a SQL engine.
 
-**Next owning slice: localized explicit calculation and cheap queries.**
-Accumulate native invalidation across many edits and undo/redo/branching. Only
-explicit section calculation, Refresh, Analyze or reconciliation may solve.
-Recompute affected tension sections, their spans and structure usage including
-other incident forces at shared supports; stop there during interaction. Reuse
-unchanged demands, ground, case preparation, markers and layout. Keep calculation
-asynchronous and revision-fenced. Bind the native job owner
-for browser/peer calculation. Bind explicit calculated geometry delta controls to
-CLI/MCP and Web/Desktop transport using the proved native receiving worker.
-Preserve original native scene/delta JSON bodies through public transport so
-JavaScript numeric re-encoding cannot invalidate exact signatures. Full display and analysis still dominate
-the remaining response; localize their native transfer. Cold initialization still
-projects synchronously. Reject/suppress stale results without
-losing edits. Localize independent
-model-analysis design-clearance and global dependency invalidation, and affected
-analysis fact/index reconstruction; terrain, explicitly authored spans and
-unproved topology/navigation still require full Analyze. Carry only
-necessary computed
-result/delta bytes into Profile. The Server/native owner must not depend on Svelte, browser
-state or Tauri; preserve explicit project/principal/model/session context.
-Findings reads must not solve implicitly: query admitted results or name the
-explicit calculation needed.
+1. **Native transaction/write-set foundation.** Start with one existing local
+   Profile edit through `ds-grid-engine::GridSession` and the retained runtime.
+   Produce exact typed record/relationship changes, old/new memberships and
+   dependency tokens at apply; retain independent authored, calculated and
+   durable heads. Introduce partition/record sharing and touched-index updates
+   in that owning path so subsequent Observe/replay does not reconstruct a
+   full snapshot merely to rediscover the write set. Replace broad validation
+   only where strict reference/uniqueness/topology evidence and retained indexes
+   prove the same refusals. Preserve exact canonical roots; do not substitute
+   a new incremental digest for an existing fingerprint. Native tests must
+   prove idempotency, stale-head/foreign-context refusal, repeated A/B edits,
+   deletion and undo/redo branch identities. Extend the same path in small
+   commits to retype, stringing, placement and deletion.
 
-**Measure and prove each slice.** Read `AGENTS.md`, PRINCIPLES.md, STABILIZATION.md
-and BUG-EVIDENCE.md first; use the `ds` skill and live command discovery. Read the
-owning native Profile contract and existing tests before changing its DTOs.
-Expose bounded native phase timings, work/reuse counts and transfer sizes through
-the CLI before attributing cost. Current live retypes take about 1.5–1.6 seconds
-without calculation; native history observation is about 1 second and commit/
-session-state refresh about 0.4–0.5 seconds. The owning receipts are under
-`ds-cli/out/stabilization/profile-controls/intentional-*.json`; they use a debug
-native Desktop and release browser WASM, not a release-performance acceptance.
-Trace duplicated apply/replay, revision hashing, validation and state projection
-before introducing parallelism. Target authored local edits and explicitly
-requested local calculation below 0.5 seconds while preserving exact engineering
-results. Test fresh-versus-incremental results, repeated A→B→A→B, undo/redo tails,
-deleted entities, attachment/topology changes, independent/T-off alignments,
-stale heads/results, interleaved contexts, cancellation and invalid RAM drafts.
-Keep Save explicit and independent from calculation. Prove CLI/native refusal
-paths before UI bindings; retain exact usage qualification, never solver approval.
+2. **Typed alignment relations and native Ground controls.** Use the existing
+   `AlignmentRow` parent graph, ground-basis references and all structure
+   placements; add compatible principal/T-off qualification and explicit
+   many-to-many terrain membership with native incidence indexes. Preserve
+   absent legacy field semantics, source bytes and schema-5 lineage. Provide
+   bounded inspect and history-pinned preview/apply through closed CLI/MCP
+   contracts. Native spatial candidates must use admitted corridors/CRS/source
+   evidence, preserve shared/ambiguous memberships and report unassigned data.
+   Bootstrap is deliberate, never an automatic rewrite on open. Admit Ground
+   scope explicitly; refuse route/terrain writes outside it. Prove independent
+   routes, shared observations/supports, actual T-offs, bad parent graphs,
+   ambiguous spatial candidates and stale previews before UI bindings.
 
-Native apply/replay still clones full snapshots, compares/stamps model-wide
-geometry inputs and validates/hashes broadly. Changed routes, alignments,
-cables, explicitly written derived geometry and invalid baseline models require
-full stored-geometry preparation. Seed opening remains broad. Measure these
-remaining boundaries separately from calculated projection/transfer and installed
-Desktop editing before claiming the local-interaction target is met.
+3. **Bounded terrain partitions and local ground dependencies.** Reference
+   independently reusable surfaces per principal family, with at most one
+   current admitted descriptor per alignment and bounded local pieces. Separate
+   alignments 200 m or 1 km apart must never be triangulated/interpolated
+   together. Shared point references do not merge surfaces; even connected
+   families cannot fill empty corridors, no-data or unsupported runs. Reuse
+   native route/segment indexes. Point insert/delete/move must update old/new
+   membership windows and characterized triangulation neighborhoods only;
+   uncharacterized cavities name a bounded partition rebuild or explicit wider
+   reconciliation. Do not silently replace the existing selected ground basis
+   with a different TIN. Prove fresh parity for effective ground, source/CRS/
+   datum/gaps/feature clearances, support bases, station/axis consequences and
+   unchanged partition identities. Exercise dense splits/merges and shared
+   points without scanning/rebuilding unrelated alignments.
 
-Code directly on canonical `run`, no worktrees, no official goal tool. Place a
-focused read-only review request in BUG-EVIDENCE.md before each source slice and
-re-read it and STABILIZATION.md between slices. Preserve Claude's template edits
-and processes; do not repair its unrelated test failures. Run two Cargo workers,
-check memory/processes before heavy jobs, use disk scratch and avoid overlapping
-large builds. Build/activate only local artifacts; no remote CI/Cloud Build.
-Commit and push each coherent owning slice before the next. Delete fulfilled
-backlog/evidence, keep durable proof in owning tests/contracts, and finish with
-an honest measured result and the exact remaining boundary. Current worktree
-registry is empty; release pins remain last.
+4. **Explicit local calculation and cached facts.** Consume the transaction
+   ledger's accumulated affected dependencies across many edits, undo/redo and
+   branching. Reuse unchanged case/demand/route/terrain preparation; solve only
+   affected requested tension sections, spans and supports. Assemble all
+   incident forces at shared supports with valid retained neighbor results;
+   missing/stale incident inputs are named dependencies, never zero. Stop
+   propagation at section ends; include actual adjacent T-off incidence without
+   solving the family. Localize independent Analyze clearance and fact/index
+   reconstruction where dependency evidence supports it; name remaining global
+   dependencies honestly. Native usage/failure/negative-loading/violation/
+   qualification/blocker pages must stay bounded and perform no calculation.
+   Bind browser/peer calculation to a separate native asynchronous job owner,
+   preserving exact history/context/read-set and publication fences. Prove fresh
+   complete engineering parity, unchanged payload identity, cancellation,
+   stale/foreign admission and picking/selection during the job.
+
+5. **Projection from changed records, then bounded transport.** Generate native
+   per-element authored and calculated display patches/tombstones from the
+   same write/dependency sets. Retain terrain, static display and pick indexes
+   until their actual inputs change. Sag/string/retype edits must carry their
+   changed curves/supports/markers rather than the whole terrain-symbol array;
+   membership bounds do not justify replacing the entire alignment. Reuse the
+   native scene/delta producer and receiving worker, preserving original Rust
+   JSON strings and exact signed-zero/base/history/result/axis/publication
+   fences. Complete closed runtime/CLI/MCP result contracts for the missing
+   display/analysis patches before Web binding. Prove full fresh projection and
+   findings parity, repeated edits, missing/tampered/oversized/stale bases,
+   rollback and native pick continuity. Global axis/band transitions must name
+   their required reconciliation rather than silently calculate or fall back.
+
+6. **Changed-unit Save transaction and recovery.** Trace native
+   `checkpoint_dsgrid` → `dsgrid::emit` → package packing and the existing local
+   checkpoint storage consumers. Replace ordinary full-package Save with a
+   native expected-head persist plan over changed authored records/chunks and
+   required relation/source references. Reuse exact unchanged objects, stage
+   missing verified bytes, then atomically publish the complete manifest/head.
+   Keep full portable `.dsgrid` materialization as an explicit export and
+   preserve strict package verification and schema 5. Result retention remains
+   separate. Prove byte/digest reuse, write-set completeness, reopen equality,
+   idempotent retry, conflict, interruption before/after head publication,
+   missing objects, invalid draft and edits made during Save. Only a durable
+   receipt clears the captured dirty work; Save never calculates or makes old
+   engineering current. No automatic Save/publication is introduced.
+
+7. **Web/Desktop transport and removal of replaced TypeScript.** Bind the proved
+   native controls/results using their declared DTOs, including a usable JSON
+   input/preview/result surface where polish is pending. Keep native explicit
+   project/principal/model/session context and refusal text. Remove only the
+   replaced TypeScript decisions, broad adapters, dead imports and tests in
+   each touched slice after tracing callers; retain interaction/presentation
+   and result download/verification. Prove request/result/refusal parity and
+   repeated retype, stringing, deletion, picking, selection and zoom at the
+   retained axis without Refresh or Save. Do not touch Claude's template slice.
+
+8. **Apply/replay cost closure and matching installation.** Use the existing
+   native phase/work counters to reduce remaining whole-snapshot cloning,
+   revision hashing, validation and projection, including cold seed/open work
+   where it blocks the Profile path. Separate a characterized local transaction
+   from explicitly larger reconciliation; never weaken engineering checks.
+   Build matching native runtime, CLI/command/skill bundle and WASM locally and
+   verify source/ABI identity before installed acceptance. Coordinate the
+   authorized Desktop restart when these bindings are ready. Use a scratch
+   representative large model for the existing SEEDING.md §14 acceptance:
+   sub-0.5-second local edits and explicit local calculation with continuous
+   interaction, durable recovery and exact engineering parity. Report remaining
+   costs and boundaries if that target is still unmet. RAM retention and small
+   native fixtures alone cannot qualify it.
+
+**Evidence and working discipline.** Current installed retype acceptance is
+unmet: debug-native Nyamagabe edits take 1,512–1,549 ms, mostly Observe/replay
+and commit/session-state. Exact source-level scene deltas still accompany full
+display/analysis; 10,001 byte-identical terrain glyphs account for 99.3% of the
+3.62 MB display during sag edits. Do not spend another slice measuring that
+unchanged payload; correct the transaction/dependency/projection boundary.
+The contract records reproduction paths and the limits of each measurement.
+Terrain/route changes, broad validation/hash/clone work, independent Analyze,
+cold initialization and changed-unit persistence need separate native proof.
+
+The owner starts Opus manually; Codex stops source coding for that interval and
+returns to independently validate/refine the resulting slices. Opus must read
+AGENTS.md, PRINCIPLES.md, STABILIZATION.md, BUG-EVIDENCE.md, OPEN-X.md and
+SEEDING.md plus the contract. Use the `ds` skill and installed discovery before
+claiming a live control gap; distinguish source tests from unavailable/unpaired
+installed controls. Prove each owning slice headlessly, including refusals,
+before its UI binding. Calculation and Save remain independent explicit actions.
+
+Work directly on canonical `run`, no worktrees or official goal tool. Re-read
+focused review evidence between slices; delete fulfilled obligations and retain
+proof in owning contracts/tests. Preserve Claude's template edits/processes.
+Use two Cargo workers, check RAM and active processes before heavy jobs, disk
+scratch and no overlapping large builds. Disk use up to 90% is authorized;
+do not repeatedly prune reusable caches. No remote CI/Cloud Build. Commit and
+push each coherent repository slice before proceeding; avoid a mixed unreviewable
+checkpoint. Deferred unrelated stabilization stays deferred.
 
 - **Share Profile print-scale screening**: `ds-grid-engine::profile_atlas_scenes` screens the same model twice for the two print scales; share native screening evidence without changing scale-specific marker projection. This secondary print optimization is not release-latency proof.
 

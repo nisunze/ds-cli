@@ -1,10 +1,12 @@
 # Bug evidence and review requests
 
-The coding Codex is the sole source writer. Claude or a reviewing Codex can
-pick up these requests without an owner relay. Review read-only; write only
-this file and [STABILIZATION.md](STABILIZATION.md). No feedback submissions,
-project mutations, publication, source edits or competing builds. Codex
-independently confirms each finding, implements it and owns proof and landing.
+The owner-assigned coding agent is the sole source writer for its slice.
+An agent assigned only to review works read-only; write only this file and
+[STABILIZATION.md](STABILIZATION.md). No feedback submissions, project
+mutations, publication, source edits or competing builds from reviewers.
+The coding agent independently confirms findings and owns proof and landing.
+The owner is assigning the Profile implementation to Opus manually; Codex
+will return to validate and refine it. Preserve Claude's separate template work.
 Request the next bounded review before finishing the current coding slice.
 The coding agent re-reads both files between slices and incorporates new
 evidence; reviewers mark a request claimed here to avoid duplicate work.
@@ -406,31 +408,31 @@ installation; explicit calculation still needs bounded native phase/work
 evidence before claiming a measured bottleneck or release performance. No
 template edits, competing builds or model mutations.
 
-## Focused review: exact public calculated-result transport
+## Focused review: Profile database transactions and dependency boundaries
 
-Read-only request before the next source slice: localize native calculated
-display transfer before binding the controls to Web/Desktop. Preserve original native
-full-scene/delta JSON strings through receiving transport; JavaScript numeric
-re-encoding changes signed zero and can invalidate exact component signatures.
-Require explicit exact initialization/calculation, read-only base preparation and
-delta jobs without implicit fallback or Save. Require current authored history and original
-computed identity to remain distinct; preserve context, stale-job and publication
-confirm/discard fences.
-Full display still transfers 3.62 MB on the owning release fixture and dominates
-the 3.77 MB delta response. Its 10,001 terrain symbols occupy 3,591,504 bytes
-(99.3%) and remain byte-identical across eight sag edits; only about 1.1 KiB of
-primitives changes. The payload inspection receipt is
-`out/profile-native/calculated-display-breakdown-debug.json`. Localize native
-display transfer separately from geometry
-and analysis. Require exact fresh scene,
-engineering findings and markers; distinguish affected bands/supports from
-global axis, bounds, labels and case changes. Preserve native ownership of all
-diffs, exact base/result history/revision/root/axis fences and publication
-confirm/discard. Stale, malformed or missing bases must refuse transactionally.
+Read [Profile as a transactional database](../../ds-network/docs/contracts/profile-transactional-database.md)
+and [OPEN.md §14](OPEN.md#14-plan-and-profile-authoring) before the next source
+slice. Review only its proposed native write/read sets, retained indexes,
+validation evidence and expected-head durability transaction. Identify where
+local intent still clones, scans, hashes, computes, serializes or saves an
+entire model/table/scene. Do not launch a new unchanged-terrain measurement
+campaign; the contract contains the existing pain evidence.
 
-Maximum two demonstrated gaps and one small owning headless slice before UI
-bindings. Measure native comparison/encoding/admission phases and result bytes;
-avoid merely moving broad work or reimplementing calculation/diff rules in
-TypeScript. Cold/unproved/global transitions may require a named full result.
-Calculation and Save remain independent. No templates, real model mutations or
-competing builds. Re-read `STABILIZATION.md` before implementation.
+Require plural typed memberships, principal/T-off incidence and independent
+surface footprints. Shared observations never join independent triangulations;
+even a family surface must preserve corridor gaps and unsupported runs. Check
+before/after memberships for moves/deletions, neighboring triangulation
+dependencies, exact ground-basis parity and safe named wider reconciliation.
+Section calculation must retain all incident support forces while stopping
+propagation at section ends. Native queries must not calculate.
+
+Check that authored, calculated and durable heads are independent. Save must
+write changed units, atomically publish a complete manifest against its base,
+and preserve drafts/later edits on conflict or interruption. Arrow tables and
+full `.dsgrid` packing alone do not prove this. Preserve exact numeric bodies,
+history/context/publication fences, stale-result rejection and continuous picks.
+
+Maximum two demonstrated gaps per coherent slice, with source paths, a bounded
+regression fixture and negative controls. Distinguish required behavior from
+installed proof. No template edits, real project mutations or competing builds.
+Re-read `STABILIZATION.md`; the owner starts Opus manually, without agent fanout.

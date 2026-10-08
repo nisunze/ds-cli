@@ -104,12 +104,16 @@ Terrain point edits still require interval segmentation and local
 calculation/station dependencies; dense segment splits/merges and identity
 reorders can require large changed array ranges.
 Full authored layout, comparison and cloning remain measurable costs despite
-retained route/ground inputs. Public job admission still transfers a full
-calculated scene until exact native delta controls are bound. Browser/peer calculation remains on its model worker; bind
+retained route/ground inputs. Web/Desktop still need exact native calculated
+delta bindings and bounded display/analysis patches. Browser/peer calculation remains on its model worker; bind
 the native job owner there so picking and selection remain available while it
 runs. Matching installed Desktop/CLI artifacts and measured
-live editing/calculation acceptance remain outstanding. Preserve exact history
-and publication fences, bounded native metrics and fresh engineering parity.
+live editing/calculation acceptance remain outstanding. Changed-unit database
+Save, alignment membership and independent bounded terrain surfaces are required
+by [OPEN.md §14](OPEN.md#14-plan-and-profile-authoring) and the
+[transactional database contract](../../ds-network/docs/contracts/profile-transactional-database.md).
+Preserve exact history and publication fences, bounded native metrics and fresh
+engineering parity.
 
 **Trace: remaining whole-model work during edits.**
 
