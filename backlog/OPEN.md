@@ -263,29 +263,111 @@ Rules: [PRINCIPLES.md §6](PRINCIPLES.md#6-ds-grid-engineering).
 
 ### Differential compute after an edit (the item to watch, owner 2026-10-08)
 
-Ruling: [PRINCIPLES §6](PRINCIPLES.md#6-ds-grid-engineering) — an edit lands
-whole, and its reconcile is at most the edited structure's alignment. Reference
-model: Nyamagabe MV Model 1 (666 structures, 33 alignments, 2,564 spans, 56.6 MB
-full scene); timings are the dev Linux Desktop unless marked native.
+Read this whole entry before coding. It carries the owner's steers, the
+reasons behind them, the code that exists, the numbers, and the traps found
+on 2026-10-08, so the next implementer starts from there rather than from
+zero. Rulings: [PRINCIPLES §6](PRINCIPLES.md#6-ds-grid-engineering).
+Contracts: [Profile as a transactional database](../../ds-network/docs/contracts/profile-transactional-database.md)
+(§0 is the leading rule) and
+[alignment terrain partitions](../../ds-network/docs/contracts/alignment-terrain-partitions.md).
+
+#### The owner's steers on 2026-10-08, in order
+
+1. **One `.dsgrid` database, two ways to query it.** The plan map shows all
+   stored terrain as GeoJSON context for line routing and corridor planning;
+   the Profile is a separate query engine optimised for performance. Same
+   data, two readers; neither re-projects the other.
+2. **Server native first.** Tauri and TypeScript are afterthoughts; the
+   behaviour lives in Rust and works headless.
+3. **Never compute what has not changed.** Terrain points carry a feature code
+   and, at most, alignment membership — no tagging system. Relationships are
+   built once and advanced from what changed; "the cost is to compute what has
+   not changed."
+4. **Structure numbers** (Codex implemented, owner approved): a permanent ID
+   never changes; numbers are dense 1..N by alignment order, then chainage; a
+   shared support has one number; any reorder, reverse, insert, move, delete,
+   restation or spotting renumbers atomically; no contradicting manual
+   override; PLS import keeps the NUM roster and export refuses stale numbers;
+   renumbering changes no geometry, topology or stringing. It must be cheap:
+   renumber from the changed structure onward; reconciliation may wait for Save
+   ("pending in RAM").
+5. **Retype warns, never blocks.** A design-rule finding warns and lets the
+   person confirm; the structure stays flagged.
+6. **Updates are section-based and alignment-based** — the furthest
+   station-dependent extent — never whole-model invalidation.
+7. **One codebase, every target; the kernel is the only contact surface.**
+   A person (Desktop/Web) and agents (CLI/MCP) co-design one live model. WASM
+   and native run the same Rust with the same results and refusals; native may
+   only be faster (Rayon). "If something that localizes compute is justified in
+   WASM, the same is justified in native." No host decides recompute scope.
+8. **Measure** the retype, the return of results and the reconstruction of
+   the whole model; the owner confirms the numbers in the Desktop.
+9. **Never undo work to make a problem go away.** A revert of the Desktop
+   section-update wiring was refused: "that Profile should not be undone…
+   solve any conflict semantically — I am not going to lose 8 hours."
+10. **One unit, user and CLI alike.** "If I drag a pole, that is it — wires
+    are invalidated, results invalidated, with no healing or recompute. That is
+    a lifecycle you are forgetting to close."
+11. **Observe the real thing.** Update the Desktop, move a pole, watch the
+    model behave, then fix the lifecycle — pins come after.
+12. **Land the action, not half of it.** "The problem is not timing — it is
+    landing an action and reconciling the Profile cleanly, not landing half an
+    action."
+13. **Whole landing is right; the scope is wrong.** "This is the desired
+    behaviour 100% — but that reconciliation should not reconcile on tension
+    section, no terrain change, and not all alignments; the maximum of what can
+    reconcile is the alignment where that structure belongs."
+14. **The next action lags** "as if the model was starting from scratch."
+15. **Do not fix it in the same breath.** "Be proud that the lifecycle thing is
+    done; the differential compute we fought for since this morning is the
+    thing to watch."
+
+#### Why a transactional, differential query engine is the way
+
+- **Scale makes whole-model work a freeze.** Nyamagabe MV Model 1 has 666
+  structures, 1,568 tension sections, 2,564 spans, 33 alignments and about 44k
+  terrain rows. Its full Profile scene is 56.6 MB and takes 1.1 s natively.
+  The browser/Desktop worker is single-threaded WASM, two to four times slower.
+  Every clone, hash, re-index, transport or repaint of the whole model per edit
+  turns into seconds. Only work proportional to the change keeps a live session
+  usable.
+- **A design is a database, not a file.** An edit is a transaction with an
+  exact write set; revision tokens, indexes and derived views advance from that
+  write set instead of being rediscovered from a full snapshot. The Profile
+  scene, its usage/clearance facts and its pick index are materialised views of
+  the model; each edit maintains them incrementally through dependency indexes
+  (support ↔ section ↔ structure ↔ alignment ↔ terrain partition). Save commits
+  changed units; a full `.dsgrid` is an explicit export.
+- **Two readers of one model.** The map reads everything as display context;
+  the Profile reads each alignment's own support closure through retained
+  partitions. A pole on one alignment cannot change another alignment's wires,
+  ground or clearances, so it must not cost them.
+- **Live co-design needs exact, shared answers.** A person and an agent edit
+  the same head. Whatever the kernel decides an edit touches must be the same
+  on every target and visible to both; a host that guesses scope diverges.
+- **Parity is what makes localisation safe.** The differential result must
+  equal a full calculation byte for byte (in the held axis). With that proof the
+  narrow computation is trustworthy; without it, it is a guess. Engineering
+  numbers never change because work was skipped.
+
+#### What is broken now
 
 - **The post-edit reconcile recalculates every alignment.** After a pole drag
   the Desktop heals the Profile by a whole-model calculation: 1.1 s native full
   calculation plus a 280 KB delta built in 360 ms, then worker admission;
-  release to healed Profile takes about 15–25 s. The kernel's own update,
-  `ds_grid_engine::profile_edit_update::profile_update_after_edit`, re-solves
-  the 8 affected sections (118 ms native, 282 KB) but is partial, so the runtime
-  reports `reconcile_required: partial`. Against a full calculation of the same
-  head, one drag leaves differing: 14 conductor spans (order and content,
-  `conductor_spans` 2289–2302), 13 engineering markers (`engineering.markers`
-  1541–1553) and 28 terrain-point clearance margins on band 29, plus the named
-  stale families (whole-model clearance evidence, greatest-sag election, band
-  surface and structures, selection order, clearance guides). Works when the
-  kernel's update for an edit within one alignment equals the full calculation
-  byte for byte in the held axis, does no work on other alignments and no
-  terrain work without a terrain change (work counters), and returns complete so
-  no whole-model reconcile follows. Prove it with a native sweep of drags,
-  retypes, sag changes, inserts and deletes on Nyamagabe by extending
-  `ds-network/crates/ds-grid-wasm/tests/profile_edit_lifecycle_probe.rs`.
+  release to healed Profile takes about 15–25 s in the dev Desktop. The kernel's
+  own update, `ds_grid_engine::profile_edit_update::profile_update_after_edit`,
+  re-solves the 8 affected sections (118 ms native, 282 KB) but is partial, so
+  the runtime reports `reconcile_required: partial`. Against a full calculation
+  of the same head, one drag leaves differing: 14 conductor spans (order and
+  content, `conductor_spans` 2289–2302), 13 engineering markers
+  (`engineering.markers` 1541–1553) and 28 terrain-point clearance margins on
+  band 29, plus the named stale families (whole-model clearance evidence,
+  greatest-sag election, band surface and structures, selection order,
+  clearance guides). Works when the kernel's update for an edit within one
+  alignment equals the full calculation byte for byte in the held axis, does no
+  work on other alignments and no terrain work without a terrain change (work
+  counters), and returns complete so no whole-model reconcile follows.
 - **The next action after a reconcile lags as if the model started from
   scratch** (owner observation). Whole-model work done for a local action: the
   station-move preview (`profile_scene_preview`, provisional) rebuilds
@@ -321,6 +403,170 @@ full scene); timings are the dev Linux Desktop unless marked native.
   orientation 5.8574); and composed models (`linked_models`) whose parts carry
   mixed alignment sequences. Works when a duty retype on Nyamagabe leaves no
   unresolved attachment, re-solves only its sections, and saves.
+
+#### Where the code stands (starting points; verify each against `run`)
+
+- **Solving is already differential; assembly is not.** The runtime's
+  calculation (`ds-profile-runtime` `render_replayed` → `ProfileReviewView::
+  scene_after_with_cache` → `profile_atlas/case_projection.rs`
+  `ProfileCaseProjection::prepare_after`) reuses band surfaces by receipt scope
+  (`ProfileSurface::prepare`, `surface_work`) and re-solves only the receipts'
+  demand sections (`CaseCurves::advance`). It then rebuilds the whole scene:
+  `build_chained_sections(.., None, ..)` for every section, `layout_scene` for
+  every band and `project_profile_engineering(_with_cache)` for every marker,
+  and `transfer_calculated_scene` hashes the new scene to build the delta. That
+  assembly and transport is the whole-model cost to remove; measure its split
+  with the runtime metrics (`calculation_ms`, surface/reference/case work)
+  before writing new code.
+- **The scoped patch to extend.** `profile_atlas.rs` `profile_scene_patch_in`
+  solves requested sections plus annotation-ownership contenders
+  (`annotation_ownership_scope`, `retain_raw_atlas_section_scope`) and lays them
+  out in the held domain; it returns spans, evidence and support rows and lists
+  `ProfileSceneStaleFact`s. `profile_edit_update.rs` turns it into a
+  `CalculatedSceneDelta`. Its `replace_sections` puts each section's fresh rows
+  at that section's first held row; where the full build interleaves sections
+  (slot sections `-slot-1`/`-slot-2` run beside their parent), that reorders
+  rows — the likely source of the 14-span difference. Replace each affected
+  contiguous block with the fresh rows in builder order instead.
+- **Scope inputs.** Every command outcome carries a `RecalculationScope`
+  (`recalculation_scope.rs`: demand/context sections, structures, spans,
+  alignments, `whole_model`); structure numbers are excluded, so renumbering
+  never invalidates engineering. The runtime keeps `calculated_touched`, the
+  union of scopes folded since the last full calculation.
+- **Data foundations.** `ds-grid-model` `Table<T>` (`table.rs`) shares untouched
+  tables copy-on-write; `GridModelSnapshot::written_tables` finds the exact
+  write set by `Arc::ptr_eq`, and session revision tokens advance over it.
+  Terrain partitions and the support closure live in `terrain_support.rs`
+  (`plan_terrain_support`, `trim_terrain_support`).
+- **Transport and fences.** `profile_calculated_delta.rs`: `CalculatedSceneBase`
+  signs per component (top-level fields, per-band fields, whole arrays such as
+  `conductor_spans`); `delta_to`, `admit`, `apply`; `check_size` (16 MiB,
+  65,536 operations) only chooses delta or exact text. Runtime
+  (`ds-command-kernel/crates/ds-profile-runtime`): `HeldView` (session, review,
+  authored view, `calculated_base`/`calculated_scene`/`calculated_touched`),
+  observe/refresh in `replay.rs`, forked calculation jobs in
+  `calculation_jobs.rs` (`start_calculation`, `start_exact_calculation`,
+  `start_delta_calculation`), publication checkpoints in `publication.rs`,
+  delta-or-exact transfer in `calculated_transfer.rs`.
+- **Worker and host.** `ds-network/crates/ds-grid-wasm` (`session.rs`,
+  `profile_calculated.rs`): `installProfileSceneJson`,
+  `installProfileAuthoredDeltaJson`, `profileCalculatedSceneBaseJson`,
+  `installProfileCalculatedDeltaJson` (`renderer_delta:false` skips the
+  visible-scene diff), `profilePublicationJson`, the pick cache.
+  `ds-web/src/lib/grid/profile-native.ts`: `nativeProfileTransport`,
+  `reconcileAfterEdit` (the automatic reconcile; superseded reconciles are not
+  errors; a busy solver is waited for), `sharedCalculatedBase`, the host's
+  `calculatedByClient` copy of the base, exact text passed through untouched.
+  `GridProfilePanel.svelte` observes on each revision; `profileReconciling`
+  drives the "Edit applied · reconciling results…" badge.
+- **Measurement tools.** `ds-network/crates/ds-grid-wasm/tests/profile_edit_lifecycle_probe.rs`
+  replays the Desktop sequence natively on a named package
+  (`DS_LIFECYCLE_PACKAGE`, `DS_LIFECYCLE_STRUCTURE_INDEX`,
+  `DS_LIFECYCLE_SHIFT_M`) and prints each phase, the delta paths and parity;
+  `ds-grid-exchange/tests/retype_duty_probe.rs` does the same for retypes. Both
+  are `#[ignore]` and run with `--ignored --nocapture` in release. Through the
+  paired Desktop, `ds map profile retype --apply` returns `timing_ms` per phase
+  and the native metrics. Nyamagabe reference package:
+  `~/.local/share/ds/layers/models/stable/ARiIF6tYgUTGHN4rZMm1Gez7f3t2/packages/local-aad500c1e08847db.dsgrid`;
+  the owner's working test copy is model `local-8e19c052cf574797`.
+- **Seeing the Desktop.** `ds-web/run-linux-desktop.sh --display :10` with
+  `DS_DEV_WATCH=0` (native or WASM changes need a relaunch; TypeScript reloads
+  live). Open a model with `./run-linux-desktop.sh --cli dsgrid profile open
+  --model <id> --account <uid>`. `~/.cache/ds-xdrive/xd` takes screenshots and
+  clicks/drags on display :10. A pole drag is: select the pole, drag the ↔
+  handle at the middle of its stick. The owner may use the display at the same
+  time.
+
+#### Measured on 2026-10-08 (Nyamagabe M1; native release unless stated)
+
+| Step | Cost |
+| --- | --- |
+| Full calculated scene | 1.10–1.16 s, 56.6 MB JSON (65 ms to serialize) |
+| Signing a full base | 138–158 ms native (single-threaded WASM is slower; not measured) |
+| Pole drag apply (worker / native session) | 25 ms / 25 ms |
+| Authored delta for one drag | 49–53 ms, 1.23 MB |
+| Kernel section update for one drag | 118 ms, 282 KB, 2 changes, 37 splices, 8 sections |
+| Same-family retype, kernel section update | 118–130 ms, 143 KB, 4 sections |
+| Worker admission of the calculated delta | 98 ms; plus 470 ms if it diffs its visible scene |
+| Reconcile delta from the patched base | 280 KB, built in 360 ms |
+| Retype apply | 30–37 ms (validation 17–20 ms) |
+| Reopen whole model / pack and save | 45–84 ms / 196–217 ms |
+| Desktop: drag release → healed Profile | about 15–25 s (dev build) |
+
+#### Traps found on 2026-10-08
+
+- **Never re-encode kernel JSON in JavaScript.** `JSON.stringify` writes `-0`
+  as `0`; Nyamagabe's scene has 10 signed zeros, so a worker base built from a
+  re-encoded scene never signs like the runtime's and no delta can apply. Pass
+  scene and delta text through untouched; wrap envelopes by string
+  concatenation.
+- **A size bound chooses the transport, never whether an edit lands.** A 256 KB
+  bound refused a single pole drag.
+- **A partial update is half an action.** Presenting it as the edit's result
+  leaves wires, markers and clearances stale with nothing left to heal them.
+- **The worker is single-threaded WASM.** Any full-scene hash, clone or
+  re-index there costs seconds and blocks picking. Let native do the heavy
+  lifting; the worker applies operations.
+- **Fences move together.** Worker and native publications begin, confirm and
+  discard as one; a refusal must discard both. A reconcile superseded by a newer
+  edit is not an error. The native solver slot is single: a cancelled job
+  finishes its phase, so retry `profile_calculation_busy`.
+- **Keep canonical trees clean and pushed.** The release check refuses dirty
+  checkouts; uncommitted work had to be parked off the tree. Another agent may
+  delete a build target mid-build (ds-solar's did); relaunch. `pkill -f`
+  matching your own shell kills it; stop a process tree by PID.
+
+#### Recommended path (small slices; prove, commit and push each)
+
+1. Measure first: the runtime metrics of one reconcile in the Desktop, the
+   probe, and `ds map profile retype --apply` timings. Name where each second
+   goes before changing code.
+2. Make `profile_update_after_edit` complete for an edit within one alignment:
+   assemble only the affected alignment(s) in the held axis — chained sections,
+   layout, terrain clearance margins under re-solved spans (reusing ground when
+   terrain did not change), markers and guides for that alignment — splice them
+   into the held scene in builder order, and re-derive the whole-model folds
+   (selection order, greatest-sag election, clearance aggregates, bounds) from
+   retained per-band facts. Anything it cannot cover (axis/domain change,
+   section roster change, election change, `whole_model`) returns a named
+   reconcile reason.
+3. Prove parity with a native sweep on Nyamagabe — drags, same-family and duty
+   retypes, sag changes, inserts, deletes and a terrain-point edit — where the
+   update equals the full calculation byte for byte, and work counters show no
+   other alignment and no terrain work without a terrain change.
+4. Return the complete update from Observe so no reconcile follows; stop
+   computing the partial update on every observe.
+5. Cut the per-action whole-model costs listed above: scope the drag preview to
+   the alignment, sign large arrays per row so admission re-hashes only spliced
+   rows, share scene arrays so admission does not deep-clone 56 MB, re-index
+   picks by band, keep a signed base across case selection, and shrink the
+   authored delta to the moved structure.
+6. Prove it in the Desktop: drag, retype, undo and drag again on Nyamagabe, with
+   timings, and leave the numbers in the owning contract.
+
+#### Session record, 2026-10-08
+
+- ds-network `758c2f27` terrain support closure (needed / protected /
+  outside / discardable; trim is a query, discard is explicit); `b47b4e63`
+  copy-on-write tables and revision tokens over the actual write set;
+  `0dd481c5` `profile_update_after_edit` and the §0 one-kernel rule in the
+  contract; `adf9953b` structure numbers never invalidate engineering facts;
+  `7ec4d9cb` the delta bound decides transport only and the worker can skip its
+  visible-scene diff. Codex: `4dd64bea` stayed steel strain assemblies,
+  `18eb02c9` structure numbers from alignment order on every edit.
+- ds-command-kernel `17d9758` Observe returns the kernel update for the worker's
+  exact base; `53ef3b9` a partial update is never an edit's result, and a delta
+  falls back to exact text.
+- ds-web `f5e3d87c0` retype warns and offers "replace anyway"; `ff888f726`
+  Desktop admits the section update, after which edits stalled and never
+  healed (causes found later: bases mismatched by re-encoded signed zeros, the
+  256 KB bound, whole-scene signing and diffing in the worker); `0dddd46ce`
+  reverted it, which the owner refused; `94c8d5fcd` reapplied it; `9966c7e34`
+  every Desktop edit lands whole (exact text, delta reconcile, automatic after
+  each edit), proven by the owner dragging poles in the Desktop.
+- Release pins: ds-cli `4df4e03f` and ds-network-reporter `e3a63aa` pin kernel
+  `7074523` and ds-network `7ec4d9cb` (solar `d84cd72`); the Server production
+  prerequisite check passed.
 
 ### Profile-only continuation: atomic editing and intentional calculation
 
