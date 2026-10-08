@@ -345,7 +345,7 @@ fn generic_cable_edit_still_severs_authority_and_reconciliation_cannot_reattach_
         GridCommand::UpdateCableDefinition {
             id: row.id.clone(),
             row,
-            curves: package.snapshot.cable_curves.clone(),
+            curves: package.snapshot.cable_curves.to_vec(),
         },
     );
     let envelope_path = fixture.root.path().join("command.json");
