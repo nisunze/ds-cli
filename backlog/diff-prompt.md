@@ -20,10 +20,10 @@ Current delivered slice:
 - ds-web 8837fa79c: whole-edit renderer admission checks the old authored base
   and final native renderer revision/input/axis pins. Local solves may change
   elevation-axis digest; do not require the old digest after native calculation.
-- ds-profile-runtime retains composed labels and rebases the authored comparison
+- ds-command-kernel f3290cf: ds-profile-runtime retains composed labels and
+  rebases the authored comparison
   view to the completed scene. Its new regression admits three consecutive
   geometry edits against the previous completed receiver, with fresh byte parity.
-  Kernel commit accompanies this handover; see git log.
 
 Proof is retained in ds-network/out/profile-differential/ and the owning contract.
 39 engine/WASM tests, eight runtime transfer tests, 60 frontend tests (one skip)
@@ -89,10 +89,13 @@ Build with two workers and one own heavy job at a time. Check RAM/processes
 before each. Disk TMPDIR: ds-network/out/profile-differential/tmp. Cargo target:
 ~/.cache/ds-griddesign/desktop-local-dev/cargo-target. Use opt-level=3, debug=0,
 incremental=false for local dev. Local lane deliberately refuses release-profile
-Desktop; do not bypass that fence or change identity. Logs record exact build
-commands: cow-next-base-desktop-build.log and cow-next-base-wasm-build.log.
-Source scripts/desktop/solar-build-inputs.sh and prepare current Solar inputs;
-DS_SOLAR_CARGO_LOCK_PATH is ds-web/src-tauri/Cargo.lock. Tauri uses --no-watch,
+Desktop; do not bypass that fence or change identity. Build logs: cow-next-base-desktop-build.log and cow-next-base-wasm-build.log.
+Source ds-web/scripts/desktop/solar-build-inputs.sh and call
+ds_prepare_solar_build_inputs /home/magese/data-solutions/ds-command-kernel;
+DS_SOLAR_CARGO_LOCK_PATH is ds-web/src-tauri/Cargo.lock. Export DISPLAY=:10,
+GDK_BACKEND=x11, LIBGL_ALWAYS_SOFTWARE=1, WEBKIT_DISABLE_DMABUF_RENDERER=1,
+DS_DESKTOP=1, DS_DESKTOP_LANE=local, VITE_DESKTOP_LOCAL_DEV=1, DS_DEV_WATCH=0.
+Run ds-web/node_modules/.bin/tauri dev from ds-web, with --no-watch,
 src-tauri/tauri.desktop-runtime.conf.json plus out/profile-differential/
 tauri-proof.conf.json. Staged Profile WASM SHA256 is
 8512c03d3ee3d28977a912a1fc3fcffa31b273eb1efcaac0757f27a79f910c03.
@@ -108,7 +111,7 @@ The helper desktop-gesture-proof.py requires exact DS_DESKTOP_DESCRIPTOR.
 
 Cleanup is FINISHED: owner said stop when temporary builds are done. About
 532 GiB of inactive compiled output was removed after process/open-file checks.
-Fresh builds leave disk about 29% used / 625 GiB available. No project data,
+Fresh builds leave disk about 29% used / 624 GiB available. No project data,
 reports, sources, parked patches or sessions were deleted. Do not archive project
 deliverables or keep deleting to chase 75% free. Never SIGKILL another process.
 Tree registry: zero live trees, cap four, zero unlanded tree commits.
