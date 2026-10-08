@@ -334,3 +334,13 @@ Owner ruling, 2026-10-08: show every affected city, discard its legacy queued
 publication, and require a fresh run. Remove the old queue in this release.
 Never re-seal or adopt those legacy Solar outputs. Retain a visible cutover
 notice with city identities before deleting the queue; governed inputs remain.
+
+The same discard-and-recompute ruling applies to the standalone Solar Project
+artifact outbox. Its Rust `ds.solar-publication-cutover/v1` control previews
+affected cities and pins the complete old queue digest; explicit discard removes
+those intents and requires a fresh native run. It never reads or adopts old
+artifact files. Authored inputs retain their revision-fenced input publication.
+Standalone project computation remains local-only; fresh native application
+completion seals new shared city/portfolio publications. The old Project
+artifact publisher and run-intent creation are removed rather than retained as
+fallbacks.
