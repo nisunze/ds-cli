@@ -225,18 +225,16 @@ unchanged demands, ground, case preparation, markers and layout. Keep calculatio
 asynchronous and revision-fenced: expose native job tickets and bounded
 start/status/cancel controls directly through CLI/MCP, and bind the native owner
 for browser/peer calculation. Cold initialization still projects synchronously;
-calculated-scene transfer remains broad. Prove matching installed artifacts and
-live interaction while it runs,
-and reject/suppress stale results without losing edits. Complete cached queries
+calculated-scene transfer remains broad. Reject/suppress stale results without
+losing edits. Complete cached queries
 for model-bound design-clearance point findings and default-analysis resistance
 checks, retaining facts before their report caps. Localize result-index
 reconstruction/preservation and bind cached reads into existing selected usage
-and findings controls. The compiled query CLI/MCP and source bindings still need
-matching native Desktop activation and live proof. Carry only necessary computed
+and findings controls. Carry only necessary computed
 result/delta bytes into Profile. The Server/native owner must not depend on Svelte, browser
 state or Tauri; preserve explicit project/principal/model/session context.
-Selection-driven usage screening and uncached display-case changes must not
-solve implicitly: query admitted results or name the explicit calculation needed.
+Selection-driven usage screening and findings reads must not solve implicitly:
+query admitted results or name the explicit calculation needed.
 
 **Measure and prove each slice.** Read `AGENTS.md`, PRINCIPLES.md, STABILIZATION.md
 and BUG-EVIDENCE.md first; use the `ds` skill and live command discovery. Read the

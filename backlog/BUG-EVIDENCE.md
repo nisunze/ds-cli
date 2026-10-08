@@ -406,23 +406,26 @@ installation; explicit calculation still needs bounded native phase/work
 evidence before claiming a measured bottleneck or release performance. No
 template edits, competing builds or model mutations.
 
-## Focused review: Profile query consumers and implicit case calculation
+## Focused review: Profile selected usage and cached findings consumers
 
-Read-only request before the next native slice: trace selection-driven usage
-screening, `map.profile.usage`/`issues` and `Runtime::case_layer` plus their
-Web/Desktop callers. The cached native query owner is in
-`crates/ds-profile-runtime/src/result_queries.rs`; use its declared envelope,
-entity families, computed/authored roots and exact cursor identity.
+Read-only request before the next native slice: trace `map.profile.usage`/`issues`,
+`GridSessionClient::selectedStructureUsageScreening`/`engineeringIssueLayer` and
+owning WASM exports. The retained query owner is
+`crates/ds-profile-runtime/src/result_queries.rs`; use its exact envelope,
+entity families, computed/authored roots and cursor identity.
 
-Identify the remaining paths that solve while selecting a structure, reading
-findings or choosing an unprepared weather case. Specify the smallest native
-cached-read or typed calculation-required replacement and the exact old
-TypeScript/worker exports it replaces. For case changes, trace explicit
-requested-case calculation, read-only prepared-layer transfer, display-context
-ABA, publication rollback and query-index case parity. For selected usage,
-retain known failure versus unknown envelope and negative loading versus signed
-bound failure, with no English-message parsing. Name caller/output differences
-and deterministic refusal controls before deleting adapters.
+Specify the smallest cached-only native replacement for selection-driven
+screening, then its thin CLI/Desktop transport. Preserve typed known failure
+with incomplete qualification and negative loading within allowed signed bounds.
+Name old DTO/output differences, unknown-envelope and affected-head refusals,
+wrong entity family, model/history ABA and project/principal capture. Trace all
+consumers before deleting worker/TypeScript exports; do not parse English marker
+text or rebuild engineering predicates in the renderer.
+
+For findings, identify missing design-clearance/default-resistance facts before
+caps and separate those from displayed-case Profile evidence. Querying must not
+call an issue calculation or mutate history. Name the required explicit Analyze
+boundary and native result/index preservation rules.
 
 Maximum two findings with exact path/line evidence. No source edits, model
 mutations, template/printing work, competing builds or solver qualification.

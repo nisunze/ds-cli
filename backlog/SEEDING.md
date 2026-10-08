@@ -165,6 +165,14 @@ Candidate curation and native PLS-CADD acceptance are separate from coding the c
 
 ## 14. Plan and Profile authoring
 
+- **Native Profile control activation**: activate matching locally built native
+  Desktop/CLI artifacts and their command/skill bundle; prove cached usage pages,
+  prepared-case reads/selection, explicit requested-case calculation and native
+  job refusals on a scratch large model. Verify source/ABI identity rather than
+  relying on development release-pin metadata. Measure installed apply,
+  observation, calculation, transfer and interaction separately; preserve
+  independent Save and continued picking/selection during calculation.
+
 - **Large-model edit lifecycle acceptance**: exercise several Plan/Profile edits, full reconciliation, guarded Done and durable recovery on a real large model. Source guards and hot-reload tests already exist; measure runtime behaviour and promote only reproduced failures to `OPEN.md`.
 
 - **Paired selection convergence acceptance**: exercise actual Plan/Profile gestures and table selection with the current native runtime, including Outside and native attribute filtering. Preserve open models and other workers; retain selection on stale principal/project/model/revision/scene results. Supplied lasso candidates do not prove an attribute query.
