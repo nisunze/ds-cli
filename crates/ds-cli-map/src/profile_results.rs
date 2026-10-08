@@ -7,12 +7,72 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
+pub(crate) const QUERY_REFUSALS: &[Refusal] = &[
+    crate::NOT_PAIRED,
+    crate::AMBIGUOUS,
+    crate::UNREACHABLE,
+    crate::PAIRING_REJECTED,
+    crate::UNSUPPORTED,
+    crate::UNREADABLE,
+    crate::REFUSED,
+    Refusal {
+        code: "profile_closed",
+        when: "no model Profile is open",
+        remedy: "open a model Profile",
+    },
+    Refusal {
+        code: "profile_selection_stale",
+        when: "the captured project, account or model session changes",
+        remedy: "read map profile view and retry in its current context",
+    },
+    Refusal {
+        code: "profile_replay_model_mismatch",
+        when: "query names another native model",
+        remedy: "use the model from map profile view",
+    },
+    Refusal {
+        code: "profile_replay_stale",
+        when: "authored edits have not reached the native held history",
+        remedy: "let native authored observation finish and retry; do not calculate to repair transport",
+    },
+    Refusal {
+        code: "invalid_profile_query",
+        when: "query JSON, source/kind combination, identities, paging offset or bounds are invalid",
+        remedy: "use native QueryArguments and the emitted next_cursor",
+    },
+    Refusal {
+        code: "profile_query_stale",
+        when: "history, root, result identity or page selection changes",
+        remedy: "restart paging at the current authored head",
+    },
+    Refusal {
+        code: "profile_results_unavailable",
+        when: "no admitted native result scope exists",
+        remedy: "explicitly rebuild or analyze the opened Profile",
+    },
+    Refusal {
+        code: "profile_calculation_required",
+        when: "requested dependencies are pending or the requested source/envelope/clearance index is unavailable",
+        remedy: "inspect blockers or repair inputs, then explicitly rebuild/analyze; Save is independent",
+    },
+    Refusal {
+        code: "profile_query_output_limit",
+        when: "one fact or the exact basis exceeds the native byte bound",
+        remedy: "use a focused request; inspect the named owning boundary without exporting a full scene",
+    },
+    Refusal {
+        code: "profile_publication_pending",
+        when: "a calculated candidate has not been admitted or discarded",
+        remedy: "wait for native publication admission or discard before querying",
+    },
+];
+
 pub static COMMAND: Command = Command {
     id: "map.profile.results",
     path: &["map", "profile", "results"],
-    contract: 1,
+    contract: 2,
     summary: "Page cached native Profile facts without calculating.",
-    purpose: "Query admitted calculated usage, failures, negative loading, distinct violating sections, qualification or blockers. Native owns predicates, counts, paging and dependency freshness. Reads never calculate, initialize, observe or save. An affected entity or unconfirmed result refuses; unaffected focused reads can retain engineering at its stated computed revision.",
+    purpose: "Query admitted usage, failures, negative loading, distinct violating sections, qualification, blockers or design-point findings. The native source defaults to profile; model_analysis selects independently admitted model-bound Analyze facts and requires explicit Analyze when inputs change. Native owns predicates, counts, paging and dependency freshness. Reads never calculate, initialize, observe or save. An affected entity or unconfirmed result refuses; unaffected focused reads can retain engineering at its stated computed revision.",
     chapter: Chapter::MapPresentation,
     effect: Effect::ReadOnly,
     authority: Authority::DesktopPairing,
@@ -21,37 +81,24 @@ pub static COMMAND: Command = Command {
         Arg::value("model", "<model-id>", "Exact open model from map profile view.").required(),
         Arg::value("revision", "<revision-id>", "Expected authored RAM revision from map profile view.").required(),
         Arg::value("history", "<native-json>", "Optional exact native history from map profile view; fences equal-content undo/redo and replaced redo tails."),
-        Arg::value("request", "<native-json>", "Native QueryArguments: kind (usage, failures, negative_loading, violating_sections, qualification, blockers), optional entity_ids, limit and cursor. Empty entity_ids means all calculated entities. Limit defaults to 50; native bounds are 1..200 and 256 KiB per page. Pass next_cursor unchanged for the next page.").required(),
+        Arg::value("request", "<native-json>", "Native QueryArguments: kind (usage, failures, negative_loading, violating_sections, qualification, blockers, findings), optional source (profile or model_analysis), entity_ids, limit and cursor. Native source defaults to profile; findings requires model_analysis and explicit Analyze. Empty entity_ids means all calculated entities. Limit defaults to 50; native bounds are 1..200 and 256 KiB per page. Pass next_cursor unchanged for the next page.").required(),
         crate::TARGET_ARG, crate::DESCRIPTOR_ARG,
     ],
-    output: "Native bounded result: history, authored/computed revisions and roots, freshness, result_id, displayed clearance case, exact usage envelope/basis, kind, total, offset, items, next_cursor, truncated and native query timing. Negative loading retains uplift_failure separately. Qualification is structure screening; blockers cover Profile and usage evidence, not every default-analysis leg. Missing usage envelope refuses instead of reporting false zero. No full scene is transferred.",
+    output: "Native bounded result: history, authored/computed revisions and roots, freshness, result_id, source, displayed case (null for model_analysis), exact native envelope/basis, kind, total, offset, items, next_cursor, truncated and native query timing. Negative loading retains uplift_failure separately. Profile qualification covers structure usage; model_analysis also retains resistance case checks, complete design findings, native demand/clearance/resistance blockers and their qualification. Counts are native facts, not necessarily distinct supports; the basis declares its exact scope. Horizontal-only design findings are not assigned to a vertical governing section. Missing usage envelope refuses instead of reporting false zero. No full scene is transferred.",
     examples: &[Example {
         command: "ds map profile results --model <model-id> --revision <revision-id> --request '{\"kind\":\"negative_loading\",\"limit\":50}' --output json",
         note: "Read the current native identities with map profile view. Explicitly rebuild/analyze if requested inputs are pending.",
         runnable: false,
     }],
-    refusals: &[
-        crate::NOT_PAIRED, crate::AMBIGUOUS, crate::UNREACHABLE, crate::PAIRING_REJECTED,
-        crate::UNSUPPORTED, crate::UNREADABLE, crate::REFUSED,
-        Refusal {code:"profile_closed",when:"no model Profile is open",remedy:"open a model Profile"},
-        Refusal {code:"profile_selection_stale",when:"the captured project, account or model session changes",remedy:"read map profile view and retry in its current context"},
-        Refusal {code:"profile_replay_model_mismatch",when:"query names another native model",remedy:"use the model from map profile view"},
-        Refusal {code:"profile_replay_stale",when:"authored edits have not reached the native held history",remedy:"let native authored observation finish and retry; do not calculate to repair transport"},
-        Refusal {code:"invalid_profile_query",when:"query JSON, identities, paging offset or bounds are invalid",remedy:"use native QueryArguments and the emitted next_cursor"},
-        Refusal {code:"profile_query_stale",when:"history, root, result identity or page selection changes",remedy:"restart paging at the current authored head"},
-        Refusal {code:"profile_results_unavailable",when:"no admitted native result scope exists",remedy:"explicitly rebuild or analyze the opened Profile"},
-        Refusal {code:"profile_calculation_required",when:"requested dependencies are pending or the matching envelope/displayed clearance index is unavailable",remedy:"inspect blockers or repair inputs, then explicitly rebuild/analyze; Save is independent"},
-        Refusal {code:"profile_query_output_limit",when:"one fact or the exact basis exceeds the native byte bound",remedy:"use a focused request; inspect the named owning boundary without exporting a full scene"},
-        Refusal {code:"profile_publication_pending",when:"a calculated candidate has not been admitted or discarded",remedy:"wait for native publication admission or discard before querying"},
-    ],
+    refusals: QUERY_REFUSALS,
     reference: Some("docs/reference/map.md"),
-    search: &["usage", "failures", "negative", "uplift", "violations", "qualification", "blockers", "cached"],
+    search: &["usage", "failures", "negative", "uplift", "violations", "qualification", "blockers", "findings", "model analysis", "cached"],
     requires: Requires::Window,
     availability: crate::paired_availability,
 };
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
-    let request = request(inputs)?;
+    let request = native_query_request(inputs)?;
     let descriptor = crate::paired(inputs.value("desktop-descriptor"))?;
     crate::invoke(
         &descriptor,
@@ -63,7 +110,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
 fn invalid(message: impl Into<String>) -> Failure {
     Failure::invalid("invalid_profile_query", message.into())
 }
-fn request(inputs: &Inputs) -> Result<Value, Failure> {
+pub(crate) fn native_query_request(inputs: &Inputs) -> Result<Value, Failure> {
     let model = inputs.require("model")?;
     let revision = inputs.require("revision")?;
     if [model, revision]
@@ -121,15 +168,35 @@ mod tests {
             "violating_sections",
             "qualification",
             "blockers",
+            "findings",
         ] {
-            let request = request(&inputs(&json!({"kind":kind}).to_string())).unwrap();
+            let source = if kind == "findings" {
+                "model_analysis"
+            } else {
+                "profile"
+            };
+            let request =
+                native_query_request(&inputs(&json!({"kind":kind,"source":source}).to_string()))
+                    .unwrap();
             assert_eq!(
                 request["request"],
-                json!({"kind":kind,"entity_ids":[],"limit":50,"cursor":null})
+                json!({"kind":kind,"source":source,"entity_ids":[],"limit":50,"cursor":null})
             );
             assert_eq!(request["model_id"], "model-a");
             assert_eq!(request["expected_revision"], "rev:a");
         }
+    }
+    #[test]
+    fn source_default_and_model_analysis_cursor_are_owned_and_transferred_without_changes() {
+        let default = native_query_request(&inputs(r#"{"kind":"usage"}"#)).unwrap();
+        assert_eq!(default["request"]["source"], "profile");
+        let history = json!({"model_revision":"rev:a","initial_revision":"rev:initial","undo_depth":1,"redo_depth":0,"history_pin":"native-history"});
+        let cursor = json!({"result_id":"native-result","scope":"one","model_id":"model-a","history":history,
+            "kind":"findings","source":"model_analysis","entity_ids":["point-a"],"offset":50});
+        let body = json!({"kind":"findings","source":"model_analysis","entity_ids":["point-a"],"limit":20,"cursor":cursor});
+        let value = native_query_request(&inputs(&body.to_string())).unwrap();
+        assert_eq!(value["request"], body);
+        assert_eq!(COMMAND.contract, 2);
     }
     #[test]
     fn unknown_fields_free_text_predicates_and_calculation_inputs_refuse_before_pairing() {
@@ -137,12 +204,14 @@ mod tests {
             "[]",
             "{}",
             r#"{"kind":"solve"}"#,
+            r#"{"kind":"findings","source":"legacy"}"#,
+            r#"{"kind":"findings","derive_structure_screening":true}"#,
             r#"{"kind":"usage","analyze":true}"#,
             r#"{"kind":"usage","query":"bad poles"}"#,
             r#"{"kind":"usage","cursor":{"offset":0}}"#,
         ] {
             assert_eq!(
-                request(&inputs(body)).unwrap_err().code(),
+                native_query_request(&inputs(body)).unwrap_err().code(),
                 "invalid_profile_query"
             );
         }

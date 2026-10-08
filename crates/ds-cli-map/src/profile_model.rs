@@ -210,20 +210,20 @@ pub static RETYPE: Command = Command {
 };
 
 pub static ISSUES: Command = Command {
-    id: "map.profile.issues", path: &["map", "profile", "issues"], contract: 1,
-    summary: "Query revision-current native engineering findings in the live model.",
-    purpose: "Uses the native retained issue cache and predicates, including clearance violations, structure failures, unknown or blocked structures and uplift cases. Exact entity_ids scope findings to selected supports or incident sections. A native uplift case is signed weight-span evidence, not a claim that every negative force component is a failure. Model/project/account fences apply; this read never changes selection, saves or exports a package.",
+    id: "map.profile.issues", path: &["map", "profile", "issues"], contract: 2,
+    summary: "Page cached native engineering findings without calculating.",
+    purpose: "Uses the same native QueryArguments and admitted result index as map profile results. Use kind findings with source model_analysis for complete model-bound design points; failures, negative_loading, qualification and blockers retain their native scope. Missing or affected results require explicit calculation; this read never invokes issue calculation, projection or Save. Native source defaults to profile. Counts, root/history/source/cursor fences, basis and bounded transfer remain native-owned.",
     chapter: Chapter::MapPresentation, effect: Effect::ReadOnly, authority: Authority::DesktopPairing,
     execution: Execution::Sync,
     args: &[
         Arg::value("model", "<model-id>", "Exact open model identity from map profile view.").required(),
         Arg::value("revision", "<revision-id>", "Expected RAM revision from map profile view.").required(),
-        Arg::value("request", "<native-json>", "Native EngineeringIssueLayerRequest, at most 64 KiB. Fields: clearance, structure_screening, derive_structure_screening, max_features_per_kind, filter. Native filter: entity_ids, nature, minimum_vertical_deficit_m, minimum_horizontal_deficit_m, minimum_structure_usage_percent. nature: clearance, vertical_clearance, horizontal_clearance, questionable_clearance, structure, structure_failure, structure_unknown, structure_blocked, uplift_case. Example: {\"derive_structure_screening\":true,\"filter\":{\"nature\":\"structure_failure\"}}. Omitted defaults are owned by Rust. Caps and truncation remain explicit.").required(),
+        Arg::value("request", "<native-json>", "Native QueryArguments, at most 64 KiB: kind, source, entity_ids, limit, cursor. Design example: {\"kind\":\"findings\",\"source\":\"model_analysis\"}. Native limit defaults to 50; pages admit at most 200 items and 256 KiB. Pass next_cursor unchanged. The former calculation/filter request is refused. Use map profile results --history for an explicit caller history fence.").required(),
         crate::TARGET_ARG, crate::DESCRIPTOR_ARG,
     ],
-    output: "model_id, revision and verbatim native issues. issues contains revision/input root, declared engineering bases, native features with exact structure/section/point identities, deficits or screening rows, unavailable bases, full-model blocking_findings, totals and per-kind truncation. Filters operate on capped evidence; inspect truncation before claiming completeness. Retained current-head source evidence is reused by the native owner.",
-    examples: &[], refusals: REFUSALS, reference: Some("docs/reference/map.md"),
-    search: &["failing", "violations", "uplift", "blocked", "selected"],
+    output: "model_id, revision and issues: the unchanged native QueryResults page, with source, exact authored/computed history and roots, actual basis/qualification, complete totals, native facts, next_cursor and truncation. No full scene or implicitly calculated issue layer is transferred. For model_analysis findings the display case is null; point section/support references describe the native vertical governing wire, not an assumed horizontal witness.",
+    examples: &[], refusals: crate::profile_results::QUERY_REFUSALS, reference: Some("docs/reference/map.md"),
+    search: &["failing", "violations", "uplift", "blocked", "selected", "cached", "design findings"],
     requires: Requires::Window, availability: crate::paired_availability,
 };
 
@@ -301,24 +301,7 @@ pub fn issues(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     )
 }
 fn issues_request(inputs: &Inputs) -> Result<Value, Failure> {
-    let raw = inputs.require("request")?;
-    if raw.len() > 65_536 {
-        return Err(Failure::invalid(
-            "invalid_profile_model_request",
-            "Native issue request exceeds 64 KiB.",
-        ));
-    }
-    let query: ds_grid_engine::EngineeringIssueLayerRequest =
-        serde_json::from_str(raw).map_err(|error| {
-            Failure::invalid(
-                "invalid_profile_model_request",
-                format!("Native issue request: {error}"),
-            )
-        })?;
-    let mut request = base(inputs)?;
-    request["request"] = serde_json::to_value(query)
-        .map_err(|error| Failure::invalid("invalid_profile_model_request", error.to_string()))?;
-    Ok(request)
+    crate::profile_results::native_query_request(inputs)
 }
 
 pub fn usage(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
@@ -450,33 +433,43 @@ mod tests {
         );
     }
     #[test]
-    fn issue_query_uses_the_native_filter_schema_and_defaults() {
-        let args = ["--model", "a", "--revision", "rev:a", "--request", "{\"derive_structure_screening\":true,\"filter\":{\"nature\":\"uplift_case\",\"entity_ids\":[\"pole-40\"]}}"].map(str::to_owned);
-        let parsed = ds_cli_contract::args::parse(&ISSUES, &args).unwrap();
-        let request = issues_request(&parsed).unwrap();
-        assert_eq!(request["request"]["filter"]["nature"], "uplift_case");
-        assert_eq!(
-            request["request"]["filter"]["entity_ids"],
-            json!(["pole-40"])
-        );
-        assert_eq!(
-            request["request"]["max_features_per_kind"],
-            ds_grid_engine::EngineeringIssueLayerRequest::default().max_features_per_kind
-        );
-        let bad_args = [
+    fn issue_query_uses_the_native_cached_source_schema_and_refuses_legacy_calculation() {
+        let args = [
             "--model",
             "a",
             "--revision",
             "rev:a",
             "--request",
-            "{\"filter\":{\"nature\":\"negative-force\"}}",
+            r#"{"kind":"findings","source":"model_analysis","entity_ids":["pole-40"]}"#,
         ]
         .map(str::to_owned);
-        let bad = ds_cli_contract::args::parse(&ISSUES, &bad_args).unwrap();
+        let parsed = ds_cli_contract::args::parse(&ISSUES, &args).unwrap();
+        let request = issues_request(&parsed).unwrap();
         assert_eq!(
-            issues_request(&bad).unwrap_err().code(),
-            "invalid_profile_model_request"
+            request["request"],
+            json!({"kind":"findings","source":"model_analysis","entity_ids":["pole-40"],"limit":50,"cursor":null})
         );
+        assert_eq!(ISSUES.contract, 2);
+        assert_eq!(ISSUES.effect, Effect::ReadOnly);
+        assert!(
+            ISSUES
+                .refusals
+                .iter()
+                .any(|refusal| refusal.code == "profile_calculation_required")
+        );
+        for body in [
+            r#"{"derive_structure_screening":true,"filter":{"nature":"uplift_case"}}"#,
+            r#"{"kind":"findings","source":"legacy"}"#,
+            r#"{"kind":"findings","analyze":true}"#,
+        ] {
+            let args =
+                ["--model", "a", "--revision", "rev:a", "--request", body].map(str::to_owned);
+            let parsed = ds_cli_contract::args::parse(&ISSUES, &args).unwrap();
+            assert_eq!(
+                issues_request(&parsed).unwrap_err().code(),
+                "invalid_profile_query"
+            );
+        }
     }
     #[test]
     fn malformed_ids_cannot_reach_pairing() {

@@ -716,27 +716,33 @@ Profile review defaults to one compact attachment box per attachment and one gov
 
 Display is the sole Profile settings surface; the legend only explains native symbols and pens. `--styles` submits a native partial style map, for example `{"ground":{"color":"#123456","width_mm":0.8,"line_type":"dotted"},"strain":{"symbol":"▲"}}`. Native option names and the symbol roles strain/suspension/junction/unknown are targets; null resets a target. Omitted fields retain authored values. Discover the native style request/schema in the view's `display.style_controls`. Rust validates colours, physical widths, line types and glyphs and emits identical CLI and drawing encodings. Opening the dock always starts at half the available Map/Profile height; previous pixel heights do not override this. Explicit resizing goes through the same native layout request.
 
-The analysis report (`analysis`) is on by default. While it is on, the Desktop runs the same native analysis as `--action analyze` once for each held model revision of an open model Profile, after the Profile settles: never during an edit, drag or weather change, never from the popout window, and never for a generic or terrain-only Profile. A newer revision supersedes a pending run, and its result fills Profile and Issues exactly as an explicit Analyze does. `ds map profile view` reports `analysis_state`, which the Rust Profile runtime decides: `due` (this revision has not been analyzed), `current` (an automatic or explicit analysis of exactly this revision is held), `off`, or `not_applicable` (the model has no structures). Weather changes neither the state nor the model-bound case envelope. `--visibility '{"analysis":false}'` keeps Analyze explicit; `true` restores the default. Analysis never changes the usage labels and attachment boxes: the native scene screens them on every projection, and an unknown mark stays until the model input its details name exists.
+The analysis report (`analysis`) is on by default as a presentation choice.
+Engineering runs only through an explicit rebuild, Analyze or other declared
+calculation action. Selection, reads, idle time, weather selection and Save do
+not calculate. `analysis_state` describes native result freshness; visibility
+only shows or hides retained results. Authored observation advances geometry
+and history independently of the computed revision. A missing prepared display
+case refuses until explicitly calculated. To prepare and display it, combine
+`--display-case` with `--action rebuild` or `--action analyze`.
+
 
 `ds map profile set --action analyze` runs the native structure, section and clearance checks on every invocation at the held model revision. It uses the complete model-bound case envelope; selecting weather changes the displayed curve, never that engineering envelope. Qualified, partial and unknown results and typed blockers remain visible in Profile and Issues. The result retains `ran`, model/revision and the bounded native analysis receipt. No engineering model or project data is changed. This action replaces the redundant `ds map profile analyze` command; headless file analysis remains `ds dsgrid run --model <file> --operation analyze_model_defaults`.
 
 `ds map profile results --model <model-id> --revision <revision-id> --request
-'{"kind":"negative_loading","limit":50}' --output json` reads admitted
-native calculated facts without calculating, observing or saving. Kinds are
-`usage`, `failures`, `negative_loading`, `violating_sections`, `qualification`
-and `blockers`. Structure queries accept structure IDs; violating sections
-accept section IDs; blockers accept structure, section or alignment IDs.
-Pass `entity_ids` for a focused read and the emitted `next_cursor` as `cursor`
-to continue. Counts precede paging; native responses stop at 200 items or
-256 KiB. `--history` optionally pins the exact history from Profile view.
-The response states authored/computed revisions, engineering roots and native
-freshness. Pending affected inputs refuse until explicit rebuild/analyze;
-unaffected focused reads can reuse prior facts. Negative loading retains
-proven `uplift_failure` separately. Qualification is structure screening;
-blockers cover Profile curve/clearance and usage evidence. Design-clearance
-and default-analysis resistance findings remain in their analysis receipt.
-An unavailable usage envelope refuses, so an empty failure page never stands
-in for unavailable calculation.
+'{"kind":"negative_loading","limit":50}'` reads a bounded native result page.
+Contract 2 accepts native `QueryArguments`: kind, source, entity_ids, limit and
+cursor. Source defaults natively to `profile`; choose `model_analysis` for the
+independently admitted model-bound Analyze envelope and support resistance
+checks. `findings` requires `model_analysis`, for example
+`{"kind":"findings","source":"model_analysis","limit":50}`. Native facts,
+complete totals, actual basis, authored/computed roots, history, source and
+qualification accompany the page. Its display case is null for model analysis.
+The source must already be admitted: reads never project or solve. Model
+engineering input changes require explicit Analyze for that source. Use the
+emitted next_cursor unchanged; it pins source, result, history and selection.
+Native limits are 200 items and 256 KiB; no full scene is transferred. `--history`
+adds an explicit caller history pin. Native refusals retain their codes.
+
 
 `ds map profile select --model <model-id> --revision <revision-id> --from <entity-id> --to <entity-id> [--mode replace|add|remove|intersect]` changes only that transient selection. The Desktop refuses a different model or revision. The native held scene resolves an inclusive range when both IDs belong to the same entity family; use the same ID for both endpoints to select one item. The default mode is `replace`. `add`, `remove` and `intersect` combine that resolved range with the current selection. The CLI sends the two IDs unchanged and returns the Desktop's selection receipt; it does not reconstruct scene order or author the model. On a local development Desktop, pass `--desktop-descriptor ~/.local/share/rw.datasolutions.desktop.local-dev/cli-bridge.d/<instance-id>.json` to address that instance directly.
 
@@ -781,14 +787,18 @@ revision or another model.
 
 
 `map profile issues --model <id> --revision <rev> --request '<native-json>'`
-queries retained native engineering findings. For example, use
-`{"derive_structure_screening":true,"filter":{"nature":"structure_failure"}}`
-or `{"derive_structure_screening":true,"filter":{"nature":"uplift_case","entity_ids":["<selected-native-id>"]}}`.
-Native issues preserve basis, unavailable inputs, full-model blockers, source
-identities, totals and truncation. Numeric screening is limited engineering
-screening; uplift-case presence is signed weight-span evidence. Inspect caps
-before claiming a complete query result. Filtering operates in Rust and
-reuses its exact-head evidence cache.
+contract 2 consumes the same native QueryArguments and result owner. Use
+`{"kind":"findings","source":"model_analysis"}` for design points,
+`{"kind":"failures","source":"model_analysis"}` for native known failures,
+or `{"kind":"blockers","source":"model_analysis"}` to inspect missing inputs.
+The `issues` member is an unchanged bounded QueryResults page. The former
+calculation/filter DTO is refused. Explicitly Analyze before retrying a missing
+or affected model-analysis source; reading and Save do not calculate. Counts
+are native facts, not always distinct supports. Incomplete qualification and
+negative loading stay separate from failure. Design point references name the
+native vertical governing wire; horizontal-only failures are not assigned to
+that section. Existing validation/result views remain independent.
+
 
 `map profile retype --model <id> --revision <rev> --structure <native-id>
 --type <native-type-id> --dry-run` returns the native REG preview. An authorized
