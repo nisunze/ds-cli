@@ -788,12 +788,12 @@ fn every_solar_command_has_one_closed_operation_owner_and_exact_arguments() {
 /// A governed portfolio publication that never queued is a fact the
 /// application owns, and `ds solar run result` reports the same one.
 ///
-/// The application publishes the aggregate from the run that sealed it, as a
-/// handoff after the local commit: the receipt is written first, the intent is
-/// queued after, and a queue failure is recorded on that already-succeeded
-/// receipt instead of undoing it. An intent that never reached the outbox has
-/// no Sync Center row, so the result receipt is the only place either surface
-/// can learn it — which is why `ds` reads it there rather than deriving a
+/// The native completion retains the aggregate in the shell's one sync store,
+/// and the run records its verdict after the local commit: the receipt is
+/// written first, and a retention failure is recorded on that already-succeeded
+/// receipt instead of undoing it. A retention that never happened has no Sync
+/// Center row, so the result receipt is the only place either surface can
+/// learn it — which is why `ds` reads it there rather than deriving a
 /// publication state of its own.
 ///
 /// What has to agree is therefore the receipt field `ds` hand-copies, the bound
@@ -827,8 +827,9 @@ fn a_failed_portfolio_publication_stays_a_sync_lane_fact_on_a_succeeded_receipt(
         "return receipt;",
     );
     assert!(
-        handoff.contains("enqueueSolarPortfolioPublication("),
-        "the governed publication must be queued after the local commit, not before it"
+        handoff.contains("report.publication_error"),
+        "the native completion's retention verdict must be read after the local commit, \
+         not before it"
     );
     assert!(
         handoff.contains("receipt.publicationError ="),

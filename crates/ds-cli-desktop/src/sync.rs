@@ -1,5 +1,5 @@
-//! Account-owned compute publication status and exact-row recovery through the
-//! paired application's Sync Center owner.
+//! Status and recovery of the paired Desktop's native publication store, through
+//! the kernel's `ds.sync-recovery/v1` control that Sync Center also sends.
 use crate::discover::Descriptor;
 use crate::ops::{self, BridgeOp, DESCRIPTOR_ARG, TARGET_ARG};
 use ds_cli_contract::{
@@ -63,8 +63,8 @@ const LIMIT_ARG: Arg = Arg {
 const REFUSALS: &[Refusal] = &[
     Refusal {
         code: "sync_sanitation_refused",
-        when: "the inspected queue changed, the owner changed, or its bounded plan is unavailable",
-        remedy: "inspect sanitation again under the intended account/project, then apply its exact unchanged digest",
+        when: "the retained snapshot or the owner changed after preview, or a live worker holds the project",
+        remedy: "preview sanitation again under the intended account and project, then apply its exact new digest",
     },
     ops::NOT_PAIRED,
     ops::AMBIGUOUS,
@@ -81,8 +81,8 @@ const REFUSALS: &[Refusal] = &[
     },
     Refusal {
         code: "sync_signed_out",
-        when: "the paired application no longer has an account that owns the queue",
-        remedy: "sign in to DS GridDesign with the account that produced the local reports",
+        when: "the paired application has no signed-in session that owns the store",
+        remedy: "sign in to DS GridDesign with the account that produced the local results",
     },
     Refusal {
         code: "sync_account_changed",
@@ -91,18 +91,13 @@ const REFUSALS: &[Refusal] = &[
     },
     Refusal {
         code: "sync_row_not_found",
-        when: "the exact row is absent or does not belong to the echoed account and project",
+        when: "the exact row is absent from this account's store for the echoed project",
         remedy: "run `ds desktop sync status --project <project-id>` and use its exact row id",
     },
     Refusal {
         code: "sync_row_not_retryable",
-        when: "the row is not an eligible retained Network Reporter admission or storage-comparison failure",
-        remedy: "follow status guidance: repair exact build admission or install the server storage-comparison fix; stale or integrity failures remain blocked",
-    },
-    Refusal {
-        code: "sync_native_store_owned",
-        when: "retry is owned by the shared native sync store on this host",
-        remedy: "inspect status, reconnect, or wake Sync Center without changing retained publication identity",
+        when: "the row has no recoverable typed authority verdict or readable immutable bytes",
+        remedy: "follow the retained verdict in status; stale, integrity and permission failures cannot be retried",
     },
 ];
 
@@ -110,14 +105,14 @@ pub static STATUS_COMMAND: Command = Command {
     id: "desktop.sync.status",
     path: &["desktop", "sync", "status"],
     contract: 1,
-    summary: "Inspect retained local compute publications across projects.",
-    purpose: "Reads the same account-owned compute-artifact outbox rendered by Sync Center. It returns exact producer release and build-manifest identities, project and native batch identity, attempts, upload progress and bounded errors. Local artifact locators and resumable upload credentials never leave the application.",
+    summary: "See which local results still wait to publish, across projects.",
+    purpose: "Reads the native publication store Sync Center renders, for every engine (Network Reporter and Solar). Each row gives its project, engine, operation, variant, state (held, uploading, published, conflict or refused) with the stored reason, and its output digests and sizes. Byte locators and upload sessions never leave the application; a project whose store cannot be read is reported unavailable, never as an empty queue.",
     chapter: Chapter::Operations,
     effect: Effect::ReadOnly,
     authority: Authority::DesktopUser,
     execution: Execution::Sync,
     args: &[PROJECT_ARG, LIMIT_ARG, TARGET_ARG, DESCRIPTOR_ARG],
-    output: "Optional project filter, queue summary, total/more and bounded path-free publication rows with exact producer identities and retry guidance.",
+    output: "Optional project filter, per-state summary, completeness with unavailable projects, total/more and bounded path-free rows.",
     examples: &[],
     refusals: REFUSALS,
     reference: None,
@@ -130,14 +125,14 @@ pub static RETRY_COMMAND: Command = Command {
     id: "desktop.sync.retry",
     path: &["desktop", "sync", "retry"],
     contract: 1,
-    summary: "Retry one recoverable retained Network Reporter failure (needs --yes).",
-    purpose: "Requeues only the exact account- and project-fenced row after its exact producer build has been admitted or the server storage-comparison bug has been repaired. The server rechecks immutable declarations and publication authority. The same client run, native batch, output declarations, byte digests and resumable progress are preserved; this command never relabels or regenerates old work.",
+    summary: "Retry one refused retained publication (needs --yes).",
+    purpose: "Sends the kernel recovery control for one exact account- and project-fenced row under the Desktop's signed-in session. Only a conflict or refusal with a typed authority verdict, readable immutable bytes and exact producer identity is requeued. The same outputs, digests and producer build are published again; old work is never regenerated or relabelled, and the server rechecks authority.",
     chapter: Chapter::Operations,
     effect: Effect::GlobalWrite,
     authority: Authority::DesktopUser,
     execution: Execution::Sync,
     args: &[REQUIRED_PROJECT_ARG, ROW_ARG, TARGET_ARG, DESCRIPTOR_ARG],
-    output: "The exact requeued receipt and the current post-drain row when retained; an explicit unknown-status note is returned if the row was removed.",
+    output: "The kernel recovery result for the row. A retry is queued, not reported as published.",
     examples: &[],
     refusals: REFUSALS,
     reference: None,
@@ -150,14 +145,14 @@ pub static SANITIZE_PREVIEW_COMMAND: Command = Command {
     id: "desktop.sync.sanitize.preview",
     path: &["desktop", "sync", "sanitize", "preview"],
     contract: 1,
-    summary: "Inspect recovery and archival of one project’s retained reports.",
-    purpose: "Uses the same sanitation owner as Sync Center. Published history and superseded terminal Network Reporter rows may be archived while all immutable local files, producer identities and queue receipts remain. Current known admission/storage-comparison failures may be requeued; active uploads, unrelated workflows and unresolved current failures remain unchanged. At most 4096 retained project rows are inspected; applying the digest covers the complete plan even when the display is truncated.",
+    summary: "Preview recovery and archival of one project’s retained results.",
+    purpose: "Uses the kernel recovery control Sync Center and `ds server sync sanitize` send. Published rows and failures fully superseded by newer local outputs are archived; recoverable failures are requeued; active uploads, unregistered engines and failures that need attention are kept. Files and producer identities are never deleted. The digest covers the complete retained snapshot even when the display is truncated.",
     chapter: Chapter::Operations,
     effect: Effect::ReadOnly,
     authority: Authority::DesktopUser,
     execution: Execution::Sync,
     args: &[REQUIRED_PROJECT_ARG, LIMIT_ARG, TARGET_ARG, DESCRIPTOR_ARG],
-    output: "Digest for the complete queue snapshot, total/more, action counts and bounded decisions. No rows or files change.",
+    output: "Digest for the complete snapshot, total/more and bounded per-row decisions with reasons. No rows or files change.",
     examples: &[],
     refusals: REFUSALS,
     reference: None,
@@ -171,7 +166,7 @@ pub static SANITIZE_APPLY_COMMAND: Command = Command {
     path: &["desktop", "sync", "sanitize", "apply"],
     contract: 1,
     summary: "Apply inspected sync sanitation without deleting files (needs --yes).",
-    purpose: "Uses the same sanitation owner as Sync Center. Published history and superseded terminal Network Reporter rows may be archived while all immutable local files, producer identities and queue receipts remain. Current known admission/storage-comparison failures may be requeued; active uploads, unrelated workflows and unresolved current failures remain unchanged. At most 4096 retained project rows are inspected; applying the digest covers the complete plan even when the display is truncated.",
+    purpose: "Applies the decisions of an unchanged preview through the kernel recovery control: archives published and fully superseded rows and requeues recoverable failures. Files and producer identities are never deleted; any change since the preview refuses.",
     chapter: Chapter::Operations,
     effect: Effect::GlobalWrite,
     authority: Authority::DesktopUser,
@@ -181,13 +176,13 @@ pub static SANITIZE_APPLY_COMMAND: Command = Command {
         Arg::value(
             "digest",
             "<sha256>",
-            "Exact complete preview digest; refuses any changed queue.",
+            "Exact complete preview digest; refuses any changed snapshot.",
         )
         .required(),
         TARGET_ARG,
         DESCRIPTOR_ARG,
     ],
-    output: "Applied decision counts and bounded rows. Recovery is queued, not reported as published; archived rows and bytes remain in history.",
+    output: "Applied decisions and bounded rows. Recovery is queued, not reported as published; archived rows and bytes remain in history.",
     examples: &[],
     refusals: REFUSALS,
     reference: None,
