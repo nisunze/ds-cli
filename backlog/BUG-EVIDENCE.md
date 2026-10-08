@@ -406,20 +406,22 @@ installation; explicit calculation still needs bounded native phase/work
 evidence before claiming a measured bottleneck or release performance. No
 template edits, competing builds or model mutations.
 
-## Focused review: localize native apply/replay geometry work
+## Focused review: bound explicit calculated-result transfer
 
-Read-only request before the next source slice: trace native
-`ds-grid-engine/session.rs::apply_command`, `stored_geometry.rs`, revision token
-advancement and post-command validation. Every command currently rebuilds all
-spans/corridors, while `recompute_stored_geometry_for_alignments` already exists.
-Characterize when receipt-derived before/after alignment families can reuse
-unchanged geometry with exact full-recompute rows, ordering, stamps and roots.
-Preserve model-wide input stamps, stale/missing derived-row repair, parent/T-off
-closure, undeclared writes, full validation and debug revision audits.
+Read-only request before the next source slice: trace native Profile runtime
+calculation/result construction and job publication, retained calculated scene,
+worker admission/pick state and existing native scene-patch/delta controls.
+Explicit local calculations still return 8–16 MB of complete scene JSON on the
+owning release fixtures. Identify where typed unchanged components can remain
+retained and where full encoding/transfer occurs. Require exact fresh scene,
+engineering findings and markers; distinguish affected bands/supports from
+global axis, bounds, labels and case changes. Preserve native ownership of all
+diffs, exact base/result history/revision/root/axis fences and publication
+confirm/discard. Stale, malformed or missing bases must refuse transactionally.
 
-Maximum two demonstrated gaps with path/line evidence, native phase/work
-measurements and minimal owning tests. Measure a representative multi-alignment
-fixture before/after; separate geometry, cloning, validation, hashing and delta
-costs. Never skip validation or relabel RAM retention as latency proof. No
-implicit calculation, Save, templates, model mutations or competing builds.
-Re-read `STABILIZATION.md` before implementation.
+Maximum two demonstrated gaps and one small owning headless slice before UI
+bindings. Measure native comparison/encoding/admission phases and result bytes;
+avoid merely moving broad work or reimplementing calculation/diff rules in
+TypeScript. Cold/unproved/global transitions may require a named full result.
+Calculation and Save remain independent. No templates, real model mutations or
+competing builds. Re-read `STABILIZATION.md` before implementation.

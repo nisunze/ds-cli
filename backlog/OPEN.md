@@ -255,6 +255,13 @@ stale heads/results, interleaved contexts, cancellation and invalid RAM drafts.
 Keep Save explicit and independent from calculation. Prove CLI/native refusal
 paths before UI bindings; retain exact usage qualification, never solver approval.
 
+Native apply/replay still clones full snapshots, compares/stamps model-wide
+geometry inputs and validates/hashes broadly. Changed routes, alignments,
+cables, explicitly written derived geometry and invalid baseline models require
+full stored-geometry preparation. Seed opening remains broad. Measure these
+remaining boundaries separately from calculated projection/transfer and installed
+Desktop editing before claiming the local-interaction target is met.
+
 Code directly on canonical `run`, no worktrees, no official goal tool. Place a
 focused read-only review request in BUG-EVIDENCE.md before each source slice and
 re-read it and STABILIZATION.md between slices. Preserve Claude's template edits

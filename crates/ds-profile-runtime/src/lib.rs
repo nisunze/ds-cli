@@ -1831,6 +1831,14 @@ mod transactional_projection_tests {
         );
         assert_eq!(work.reused_cases, cases);
         assert_eq!(result["metrics"]["replayed_entries"], 2);
+        assert_eq!(
+            result["metrics"]["replay_apply_stored_geometry_computed_span_alignments"],
+            1
+        );
+        assert_eq!(
+            result["metrics"]["replay_apply_stored_geometry_reused_span_alignments"],
+            1
+        );
         assert_eq!(result["metrics"]["applied_entries"], 1);
         assert_eq!(result["metrics"]["last_demand_computed_cases"], cases);
         assert_eq!(result["metrics"]["last_demand_reused_cases"], cases);

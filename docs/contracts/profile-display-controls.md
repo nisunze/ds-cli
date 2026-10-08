@@ -337,6 +337,30 @@ total apply. `replayed_entries` includes validated future-tail commands;
 `applied_entries` counts receipts admitted at the current cursor, and
 `retained_entries` is the complete journal length.
 
+`replay_apply_stored_geometry_computed_span_alignments`,
+`replay_apply_stored_geometry_reused_span_alignments`,
+`replay_apply_stored_geometry_computed_corridor_roots` and
+`replay_apply_stored_geometry_reused_corridor_roots` sum the native apply
+preparation/reuse counts across every validated entry, including the future
+redo tail. Corridor counts describe eligible declared buffered roots, including
+empty routes, rather than polygon-union calls. Initial seed opening still
+materializes full geometry before replay. Full post-command validation and debug
+revision audits remain required; no solver or Save occurs during replay.
+
+The stored-geometry owner proves exact full-recompute rows, stamps, order,
+validation and revisions for repeated edits, preview, stringing/sag/path changes,
+movement, deletion, atomic rollback, authored sequence and parent/shared
+memberships. Its release fixture (48 independent alignments, 576 unstrung
+supports, 10,008 terrain points) reduces median apply from 11.762 to 8.880 ms
+and geometry from 3.808 to 1.035 ms, preparing one span alignment and retaining
+47 others plus all 48 corridor geometries. The owning runtime suite passes 77
+tests with four cost gates ignored; the existing CLI transport gate passes 28
+tests and forwards metrics unchanged. These are source/headless proofs, excluding
+runtime replay from the apply benchmark, transport/paint and installed connected
+model acceptance. Full validation, cloning, hashing, initial seed materialization,
+invalid-baseline/global geometry preparation and calculated-scene bytes remain
+separate costs. Receipt: `ds-network/out/profile-native/local-apply-geometry-cost-release.json`.
+
 Explicit calculation additionally reports `calculation_ms`, including native
 scene preparation, analysis when requested, and result construction.
 `last_surface_*` counters describe the retained surface's last preparation;
