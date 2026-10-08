@@ -19,6 +19,7 @@ pub mod working_area_forms;
 #[doc(hidden)]
 pub mod server_reports;
 pub mod server_sync;
+pub mod sync_recovery;
 pub mod solar_application;
 mod solar_documents;
 #[doc(hidden)]
@@ -862,6 +863,10 @@ pub static DOMAIN: Domain = Domain {
         &TILE_SUBMIT,
         &STATUS,
         &ACTIVITY,
+        &sync_recovery::STATUS,
+        &sync_recovery::RETRY,
+        &sync_recovery::PREVIEW,
+        &sync_recovery::APPLY,
         &CANCEL,
         &RESULT,
         &INPUT,

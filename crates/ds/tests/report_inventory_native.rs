@@ -340,6 +340,7 @@ impl Fixture {
                 .collect(),
             bytes_locator: format!("network_reporter:batch:{}", receipt.batch_id),
             readable: true,
+            archived: false,
             state: ArtifactState::Held,
             state_reason: None,
             replay_key: receipt.client_publish_id.clone(),

@@ -139,13 +139,13 @@ pub fn drain(
                 // carries that cause, so the reader sees why it did not move.
                 host.local(session.project())?;
                 for row in session.rows()?.iter().filter(|row| {
-                    row.identity.engine == ds_sync_runtime::reports::ENGINE
-                        && matches!(row.state.as_str(), "held" | "uploading")
+                    matches!(row.state.as_str(), "held" | "uploading")
                 }) {
                     host.record_receipt(
                         session.project(),
                         &Receipt::new("upload", "failed")
                             .about(&row.identity)
+                            .for_publication(&ds_sync_runtime::rows::local_row_from_store(row))
                             .detail(error.clone()),
                     )?;
                 }
@@ -311,6 +311,7 @@ mod tests {
             outputs: Vec::new(),
             bytes_locator: "l".into(),
             readable: true,
+            archived: false,
             state,
             state_reason: None,
             replay_key: "k".into(),

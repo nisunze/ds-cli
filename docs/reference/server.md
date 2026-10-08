@@ -417,3 +417,25 @@ The development launcher isolates config, cache, data and Server state below
 mode to authenticate that development environment. It neither copies the
 installed Server login nor allows a development state override into installed
 Server state.
+
+## Native publication recovery
+
+`ds server sync status --project <exact-id> --output json` reads bounded,
+path-free publication history under this Server's principal, deployment and
+installation. It works offline and creates no state when the queue is absent.
+
+`ds server sync retry --project <exact-id> --row <exact-id> --yes` explicitly
+requeues a recoverable typed admission/storage-comparison failure while keeping
+its exact producing build, source fingerprint, ids and retained bytes. A live
+worker, stale source, integrity/permission refusal, absent bytes or an untyped
+legacy error refuses retry. Reconnecting or admitting a build alone does not
+reopen a terminal row.
+
+`ds server sync sanitize preview --project <exact-id> --limit 50` returns a digest
+covering the complete bounded retained snapshot, even when its display is
+truncated. Apply with `ds server sync sanitize apply --project <exact-id>
+--digest <sha256> --yes`. Changed data refuses that digest. Sanitation may archive
+published or fully superseded terminal history and explicitly retry recoverable
+current failures; it retains authored inputs, immutable files and provenance.
+These commands use the kernel's `ds.sync-recovery/v1` control and result, with no
+separate Server recovery policy or gateway publication sequence.

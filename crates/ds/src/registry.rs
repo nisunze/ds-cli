@@ -3472,6 +3472,26 @@ static SERVER_ENTRIES: &[Entry] = &[
         render: ds_cli_server::render,
     },
     Entry {
+        command: &ds_cli_server::sync_recovery::STATUS,
+        handler: ds_cli_server::sync_recovery::status,
+        render: ds_cli_server::render,
+    },
+    Entry {
+        command: &ds_cli_server::sync_recovery::RETRY,
+        handler: ds_cli_server::sync_recovery::retry,
+        render: ds_cli_server::render,
+    },
+    Entry {
+        command: &ds_cli_server::sync_recovery::PREVIEW,
+        handler: ds_cli_server::sync_recovery::preview,
+        render: ds_cli_server::render,
+    },
+    Entry {
+        command: &ds_cli_server::sync_recovery::APPLY,
+        handler: ds_cli_server::sync_recovery::apply,
+        render: ds_cli_server::render,
+    },
+    Entry {
         command: &ds_cli_server::CANCEL,
         handler: ds_cli_server::cancel,
         render: ds_cli_server::render,
