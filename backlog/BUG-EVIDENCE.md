@@ -408,9 +408,8 @@ template edits, competing builds or model mutations.
 
 ## Focused review: exact public calculated-result transport
 
-Read-only request before the next source slice: trace shared calculation
-arguments into CLI/MCP contracts and the proved receiving native worker.
-Bind the shared closed DTO to CLI/MCP before Web/Desktop. Preserve original native
+Read-only request before the next source slice: localize native calculated
+display transfer before binding the controls to Web/Desktop. Preserve original native
 full-scene/delta JSON strings through receiving transport; JavaScript numeric
 re-encoding changes signed zero and can invalidate exact component signatures.
 Require explicit exact initialization/calculation, read-only base preparation and
@@ -418,7 +417,11 @@ delta jobs without implicit fallback or Save. Require current authored history a
 computed identity to remain distinct; preserve context, stale-job and publication
 confirm/discard fences.
 Full display still transfers 3.62 MB on the owning release fixture and dominates
-the 3.76 MB delta response. Localize its native transfer separately from geometry
+the 3.77 MB delta response. Its 10,001 terrain symbols occupy 3,591,504 bytes
+(99.3%) and remain byte-identical across eight sag edits; only about 1.1 KiB of
+primitives changes. The payload inspection receipt is
+`out/profile-native/calculated-display-breakdown-debug.json`. Localize native
+display transfer separately from geometry
 and analysis. Require exact fresh scene,
 engineering findings and markers; distinguish affected bands/supports from
 global axis, bounds, labels and case changes. Preserve native ownership of all

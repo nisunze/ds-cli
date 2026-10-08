@@ -177,7 +177,7 @@ The native control gate proves closed JSON/identity inputs, missing/stale histor
 and wrong-model refusals, continued observation while a paused worker runs,
 cross-model cancel refusal, stale admission, noninterruptible worker capacity,
 full fresh calculation/Analyze parity and publication rollback without saving.
-This retained Runtime is headless. `map.profile.calculation` contract 1 carries
+This retained Runtime is headless. `map.profile.calculation` contract 2 carries
 the same closed native DTO, with the exact model and optional history supplied
 by the caller. Its paired host captures scope, account, project and model client;
 Admit uses ordinary worker/render publication and retains the original
@@ -281,6 +281,21 @@ Analyze. Receipt: `out/profile-native/exact-calculated-transfer-runtime-cost-rel
 Run the named gate through the runtime manifest with
 `DS_PROFILE_DELTA_JOB_COST_RECEIPT` pointing to a disk file. The ordinary runtime
 gate passes 86 tests, with five opt-in cost gates ignored.
+
+The same gate additionally records per-field display bytes, byte-exact field
+changes against the previous admitted result, and terrain-symbol counts. Inspection
+is outside the timed phases. The debug inspection receipt
+`out/profile-native/calculated-display-breakdown-debug.json` reproduces the
+3,616,246-byte median display: its `symbols` array is 3,591,504 bytes (99.3%),
+containing exactly 10,001 terrain glyphs. Every glyph repeats its entity identity,
+Profile coordinates, glyph and encoding. Remaining fields total about 24,742
+bytes: structure groups, primitives, controls, legends, cable pens and settings.
+Across eight alternating sag edits, only `primitives` changes, about 1.1 KiB;
+the complete terrain-symbol array remains byte-identical. This is redundant
+calculated display transport; authored observation already sends structure-only
+display changes. Exact engineering parity and stale-base fences do not require
+resending these unchanged symbols. Alignment/ground geometry is separately owned
+by the calculated-scene delta, not this display object.
 
 The ignored `dense_native_job_costs_and_fresh_parity` gate measures twelve
 alternating description edits with 10,004 terrain points, 403 supports and one

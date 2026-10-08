@@ -5,6 +5,47 @@ use crate::transactional_projection_tests::{refresh, request_for, section_demand
 use ds_grid_engine::{CommandEnvelope, GridCommand};
 use ds_grid_model::{AuthoredSag, TerrainPointId, TerrainPointRow};
 
+fn display_fields(display: &Value) -> BTreeMap<String, Vec<u8>> {
+    display
+        .as_object()
+        .unwrap()
+        .iter()
+        .map(|(key, value)| (key.clone(), serde_json::to_vec(value).unwrap()))
+        .collect()
+}
+
+fn display_breakdown(
+    display: &Value,
+    previous: &mut BTreeMap<String, Vec<u8>>,
+    terrain: &std::collections::BTreeSet<String>,
+) -> Value {
+    let fields = display_fields(display);
+    let changed = fields
+        .iter()
+        .filter(|(key, bytes)| previous.get(*key) != Some(*bytes))
+        .map(|(key, _)| key.clone())
+        .collect::<Vec<_>>();
+    let sizes = fields
+        .iter()
+        .map(|(key, bytes)| (key.clone(), bytes.len()))
+        .collect::<BTreeMap<_, _>>();
+    let symbols = display["symbols"].as_array().unwrap();
+    let mut terrain_count = 0;
+    let mut terrain_bytes = 0;
+    for symbol in symbols {
+        if terrain.contains(symbol["entity_id"].as_str().unwrap()) {
+            terrain_count += 1;
+            terrain_bytes += serde_json::to_vec(symbol).unwrap().len();
+        }
+    }
+    *previous = fields;
+    json!({"field_bytes":sizes,"changed_fields":changed,"symbols":symbols.len(),
+        "terrain_symbols":terrain_count,"terrain_symbol_item_bytes":terrain_bytes,
+        "primitives":display["primitives"].as_array().unwrap().len(),
+        "authored_structure_groups":display["authored_structures"].as_object().unwrap().len(),
+        "includes":"native JSON values; field and item sizes exclude outer keys/separators; byte-exact field comparison against prior result"})
+}
+
 #[test]
 #[ignore = "bounded native calculated transfer measurement; run alone in release"]
 fn dense_delta_job_costs_and_complete_fresh_parity() {
@@ -28,8 +69,18 @@ fn dense_delta_job_costs_and_complete_fresh_parity() {
     let mut worker = GridSession::open(snapshot);
     let mut full = Runtime::default();
     let mut delta = Runtime::default();
-    full.execute(input.clone()).unwrap();
+    let full_initial = full.execute(input.clone()).unwrap();
     let initial = delta.execute(input.clone()).unwrap();
+    let mut display_previous = [
+        display_fields(&full_initial["scene"]["display"]),
+        display_fields(&initial["scene"]["display"]),
+    ];
+    let terrain_ids = worker
+        .snapshot()
+        .terrain_points
+        .iter()
+        .map(|point| point.id.to_string())
+        .collect();
     let mut receiver =
         CalculatedSceneBase::new(serde_json::from_value(initial["scene"].clone()).unwrap());
     let cold_base = prepare(&mut delta, &worker);
@@ -56,7 +107,10 @@ fn dense_delta_job_costs_and_complete_fresh_parity() {
         let apply_ms = apply_started.elapsed().as_secs_f64() * 1000.;
         let mut pair = Vec::new();
         let mut results = Vec::new();
-        for (is_delta, runtime) in [(false, &mut full), (true, &mut delta)] {
+        for (mode_index, (is_delta, runtime)) in [(false, &mut full), (true, &mut delta)]
+            .into_iter()
+            .enumerate()
+        {
             let base_revision = runtime.held["one"]
                 .session
                 .current_revision()
@@ -141,12 +195,19 @@ fn dense_delta_job_costs_and_complete_fresh_parity() {
                     publication: pin,
                 }))
                 .unwrap();
+            let display = if is_delta {
+                &result["display"]
+            } else {
+                &result["scene"]["display"]
+            };
+            let breakdown =
+                display_breakdown(display, &mut display_previous[mode_index], &terrain_ids);
             pair.push(json!({"mode":if is_delta{"delta"}else{"full"},"observe_ms":observe_ms,"observe_bytes":observe_bytes,
                 "base_prepare_metrics":prepared.map(|p|p["metrics"].clone()),"start_with_journal_ms":start_with_journal_ms,
                 "start_metrics":ticket,"native_job_elapsed_ms":native_job_elapsed_ms,"result_bytes":wire.len(),
                 "wire_encode_ms":wire_encode_ms,"wire_decode_and_scene_admission_ms":scene_decode_or_admit_ms,
                 "calculation_metrics":result["metrics"],
-                "display_bytes":serde_json::to_vec(if is_delta{&result["display"]}else{&result["scene"]["display"]}).unwrap().len(),
+                "display_bytes":serde_json::to_vec(display).unwrap().len(),"display_breakdown":breakdown,
                 "geometry_bytes":if is_delta{result["scene_delta_json"].as_str().unwrap().len()}else{serde_json::to_vec(&result["scene"]).unwrap().len()}}));
             results.push(decoded);
         }
@@ -165,7 +226,7 @@ fn dense_delta_job_costs_and_complete_fresh_parity() {
         "tension_sections":worker.snapshot().tension_sections.len(),"edits":8,"cold_base_metrics":cold_base["metrics"],
         "samples":samples,"full_delta_fresh_scene_and_display_parity":true,
         "includes":"apply separately; Observe+result encoding; job capture+journal, serial worker, polling, publication admission; full runtime result encoding/decoding and native geometry admission",
-        "excludes":["initial projection","IPC","worker picking","renderer paint","installed acceptance","parity-only full scene reconstruction"],
+        "excludes":["initial projection","IPC","worker picking","renderer paint","installed acceptance","parity-only full scene reconstruction","display payload inspection"],
         "boundaries":["display remains full","analysis remains full","initial scene-base preparation hashes full typed scene","full decode clones scene Value"]});
     if let Some(path) = std::env::var_os("DS_PROFILE_DELTA_JOB_COST_RECEIPT") {
         std::fs::write(path, serde_json::to_vec_pretty(&receipt).unwrap()).unwrap();
