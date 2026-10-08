@@ -196,21 +196,16 @@ pub static OUTBOX: Command = command(
     &[WORKSPACE],
     Effect::ReadOnly,
 );
-pub static CUTOVER_PREVIEW: Command = command(
-    "solar.project.outbox.preview",
-    &["solar", "project", "outbox", "preview"],
-    "List old queued report cities that require a fresh native run.",
-    &[WORKSPACE, crate::portfolio_headless::PROJECT],
-    Effect::ReadOnly,
-);
-pub static CUTOVER_DISCARD: Command = command(
-    "solar.project.outbox.discard",
-    &["solar", "project", "outbox", "discard"],
-    "Discard reviewed old report publications and require a native rerun.",
-    &[WORKSPACE, crate::portfolio_headless::PROJECT,
-        Arg::value("digest", "<sha256>", "Complete old queue digest returned by preview.").required()],
-    Effect::GlobalWrite,
-);
+pub static CLEAN: Command = Command {
+    purpose: "Delete local computed runs and their publication intents. Preserve authored inputs, parameters, copied maps and reference cache. Refuse while computation is active. Run the engine again from those inputs; fresh native runs support offline publication.",
+    ..command(
+        "solar.project.clean",
+        &["solar", "project", "clean"],
+        "Clear local computed Solar runs so they can be recomputed.",
+        &[WORKSPACE, crate::portfolio_headless::PROJECT],
+        Effect::GlobalWrite,
+    )
+};
 
 pub fn init(i: &Inputs, _: &Context) -> Result<Value, Failure> {
     let project = i.require("project")?;
@@ -314,21 +309,12 @@ pub fn result(i: &Inputs, _: &Context) -> Result<Value, Failure> {
 pub fn outbox(i: &Inputs, _: &Context) -> Result<Value, Failure> {
     invoke(json!({"operation":"outbox","workspace":i.require("workspace")?}))
 }
-pub fn cutover_preview(i: &Inputs, _: &Context) -> Result<Value, Failure> {
-    invoke(json!({"operation":"publication_cutover","command":{"workspace":i.require("workspace")?,
-        "project_id":i.require("project")?,"action":{"action":"preview"}}}))
-}
-pub fn cutover_discard(i: &Inputs, _: &Context) -> Result<Value, Failure> {
-    invoke(json!({"operation":"publication_cutover","command":{"workspace":i.require("workspace")?,
-        "project_id":i.require("project")?,"action":{"action":"discard","digest":i.require("digest")?}}}))
+pub fn clean(i: &Inputs, _: &Context) -> Result<Value, Failure> {
+    invoke(json!({"operation":"clean","command":{"workspace":i.require("workspace")?,"project_id":i.require("project")?}}))
 }
 
 pub(crate) fn invoke(request: Value) -> Result<Value, Failure> {
-    let result_limit = if request["operation"] == "portfolio_publication" {
-        192 * 1024 * 1024
-    } else {
-        32 * 1024 * 1024
-    };
+    let result_limit = 32 * 1024 * 1024;
     let identity = DS_SOLAR.call_json("build-info", &[], DISCOVERY_TIMEOUT)?;
     if !identity["schemas"]
         .as_array()

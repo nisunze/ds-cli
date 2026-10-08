@@ -950,57 +950,15 @@ fn native_sync_recovery_is_project_explicit_and_validates_before_server_io() {
 }
 
 #[test]
-fn solar_legacy_discard_is_reviewed_project_explicit_and_sync_has_no_result_publisher() {
-    for (id, effect) in [
-        ("solar.project.outbox.preview", "read_only"),
-        ("solar.project.outbox.discard", "global_write"),
-    ] {
-        let command = ok(&["capabilities", id, "--output", "json"]);
-        assert_eq!(command["command"]["effect"], effect);
-        let project = command["command"]["inputs"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .find(|input| input["name"] == "project")
-            .unwrap();
-        assert_eq!(project["required"], true);
-        assert!(project["default"].is_null());
-    }
-    let command = ok(&["capabilities", "solar.project.sync", "--output", "json"]);
+fn solar_local_clean_is_project_explicit_confirmed_and_has_no_recovery_options() {
+    let command = ok(&["capabilities", "solar.project.clean", "--output", "json"]);
+    assert_eq!(command["command"]["effect"], "global_write");
     let inputs = command["command"]["inputs"].as_array().unwrap();
-    assert!(
-        !inputs
-            .iter()
-            .any(|input| input["name"] == "run-id" || input["name"] == "inputs-only")
-    );
-    assert_eq!(
-        refusal(&[
-            "solar",
-            "project",
-            "outbox",
-            "discard",
-            "--workspace",
-            "missing",
-            "--project",
-            "project",
-            "--digest",
-            &"a".repeat(64),
-            "--output",
-            "json"
-        ]),
-        "confirmation_required"
-    );
-    let schema = ok(&[
-        "solar",
-        "application",
-        "schema",
-        "--operation",
-        "project_publication_cutover",
-        "--output",
-        "json",
-    ]);
+    assert!(inputs.iter().any(|input| input["name"] == "project" && input["required"] == true));
+    assert!(!inputs.iter().any(|input| input["name"] == "digest" || input["name"] == "action"));
+    assert_eq!(refusal(&["solar", "project", "clean", "--workspace", "missing", "--project", "project", "--output", "json"]), "confirmation_required");
+    let schema = ds_cli_server::solar_application_schema(Some("project_clean")).unwrap();
     assert!(schema.to_string().contains("project_id"));
-    assert!(schema.to_string().contains("discard"));
 }
 
 #[test]
@@ -19474,4 +19432,18 @@ fn profile_calculation_discovers_native_tickets_and_refuses_transport_overrides_
     assert_ne!(result.code, 0);
     assert_eq!(result.envelope["error"]["code"], "invalid_profile_view");
     assert!(result.envelope["data"].is_null());
+}
+
+#[test]
+fn solar_portfolio_legacy_uploader_is_absent_and_native_observation_stays_discoverable() {
+    let removed = native_ds(&["capabilities", "solar.portfolio.publish", "--output", "json"]);
+    assert_ne!(removed.code, 0, "{}", removed.envelope);
+    let published = native_ds(&["capabilities", "solar.portfolio.published.read", "--output", "json"]);
+    assert_eq!(published.code, 0, "{}", published.envelope);
+    let schema = ds_cli_server::solar_application_schema(Some("portfolio_publish")).unwrap();
+    assert!(schema.to_string().contains("batch_digest"));
+    let client = include_str!("../../../../ds-command-kernel/crates/ds-client-core/src/solar_project.rs");
+    assert!(!client.contains("pub(crate) fn publish"));
+    let portfolio = include_str!("../../../../ds-command-kernel/crates/ds-client-core/src/solar_portfolio.rs");
+    assert!(!portfolio.contains("Command::Publish {"));
 }

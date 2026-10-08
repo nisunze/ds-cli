@@ -200,6 +200,10 @@ const EXPECTED: &[(&str, &str, &str)] = &[
         "headless_project",
     ),
     ("server.engine", "read_only", "none"),
+    ("server.sync.status", "read_only", "headless_user"),
+    ("server.sync.retry", "global_write", "headless_user"),
+    ("server.sync.sanitize.preview", "read_only", "headless_user"),
+    ("server.sync.sanitize.apply", "global_write", "headless_user"),
     // The native server requires its owner's headless identity. The control
     // credential only connects to that host; it grants no Desktop authority.
     ("server.serve", "local_file_write", "headless_user"),
@@ -1065,6 +1069,7 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("solar.project.result", "read_only", "none"),
     ("solar.project.status", "read_only", "none"),
     ("solar.project.outbox", "read_only", "none"),
+    ("solar.project.clean", "global_write", "none"),
     ("solar.project.sync", "global_write", "headless_project"),
     ("data.city-vectors", "local_file_write", "none"),
     ("solar.cities", "read_only", "headless_project"),
@@ -1088,11 +1093,6 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     (
         "solar.portfolio.calculate",
         "local_file_write",
-        "headless_project",
-    ),
-    (
-        "solar.portfolio.publish",
-        "global_write",
         "headless_project",
     ),
     ("solar.portfolio.analysis", "read_only", "headless_project"),
@@ -1557,10 +1557,15 @@ fn one_operation_has_one_command_id_whichever_host_executes_it() {
             .unwrap_or_else(|| {
                 panic!("`{id}` reads a job or a project and must declare --project")
             });
-        assert_eq!(
-            project["required"], false,
-            "`{id}`'s --project is optional: the saved selection is its default"
-        );
+        if id.starts_with("server.sync.") {
+            assert_eq!(project["required"], true, "`{id}` captures its explicit project");
+            assert!(project["default"].is_null());
+        } else {
+            assert_eq!(
+                project["required"], false,
+                "`{id}`'s --project is optional: the saved selection is its default"
+            );
+        }
         checked += 1;
     }
     assert!(
@@ -1694,5 +1699,29 @@ fn every_shipping_command_has_a_pinned_semantic_contract_and_safe_invocation() {
                 .contains(descriptor["summary"].as_str().expect("summary")),
             "`{id}` help did not reach its own semantic contract"
         );
+    }
+}
+
+#[test]
+fn solar_and_native_sync_semantics_cover_the_live_surface() {
+    let expected: BTreeMap<_, _> = EXPECTED.iter()
+        .filter(|(id, _, _)| id.starts_with("solar.") || id.starts_with("server.sync."))
+        .map(|(id, effect, authority)| (*id, (*effect, *authority))).collect();
+    let mut actual = BTreeMap::new();
+    for domain in ["solar", "server"] {
+        let commands = json(&["capabilities", domain, "--output", "json"]);
+        for command in commands["data"]["commands"].as_array().unwrap() {
+            let id = command["id"].as_str().unwrap();
+            if id.starts_with("solar.") || id.starts_with("server.sync.") {
+                let descriptor = json(&["capabilities", id, "--output", "json"]);
+                actual.insert(id.to_owned(), descriptor["data"]["command"].clone());
+            }
+        }
+    }
+    assert_eq!(actual.keys().map(String::as_str).collect::<BTreeSet<_>>(), expected.keys().copied().collect());
+    for (id, descriptor) in actual {
+        let (effect, authority) = expected[id.as_str()];
+        assert_eq!(descriptor["effect"], effect, "{id}");
+        assert_eq!(descriptor["authority"], authority, "{id}");
     }
 }

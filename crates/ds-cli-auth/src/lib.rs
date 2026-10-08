@@ -5639,9 +5639,7 @@ fn solar_principal_binding_sha256(uid: &str, email: &str) -> String {
     hash.update(email.as_bytes());
     format!("{:x}", hash.finalize())
 }
-pub use ds_client_core::solar_project::{
-    Command as SolarProjectCommand, Output as SolarProjectOutput,
-};
+pub use ds_client_core::solar_project::Command as SolarProjectCommand;
 enum SolarProjectProvider {
     Firebase(Box<NativeClient>),
     Device(Box<device::DeviceSession>),
