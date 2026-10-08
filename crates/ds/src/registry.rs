@@ -1309,6 +1309,11 @@ static MAP_ENTRIES: &[Entry] = &[
         render: ds_cli_map::profile::render,
     },
     Entry {
+        command: &ds_cli_map::profile_calculation::COMMAND,
+        handler: ds_cli_map::profile_calculation::run,
+        render: ds_cli_map::profile::render,
+    },
+    Entry {
         command: &ds_cli_map::profile_model::FILTER,
         handler: ds_cli_map::profile_model::filter,
         render: ds_cli_map::profile::render,

@@ -88,6 +88,7 @@ pub const PROFILE_IDS: &[&str] = &[
     "design-edit",
     "design-run",
     "map",
+    "grid-profile",
     "styles",
     "print-styles",
     "layers",
@@ -157,6 +158,7 @@ pub enum Profile {
     DesignEdit,
     DesignRun,
     Map,
+    GridProfile,
     Styles,
     PrintStyles,
     Layers,
@@ -204,6 +206,7 @@ impl Profile {
             "design-edit" => Some(Self::DesignEdit),
             "design-run" => Some(Self::DesignRun),
             "map" => Some(Self::Map),
+            "grid-profile" => Some(Self::GridProfile),
             "styles" => Some(Self::Styles),
             "print-styles" => Some(Self::PrintStyles),
             "layers" => Some(Self::Layers),
@@ -252,6 +255,7 @@ impl Profile {
             Self::DesignEdit => "design-edit",
             Self::DesignRun => "design-run",
             Self::Map => "map",
+            Self::GridProfile => "grid-profile",
             Self::Styles => "styles",
             Self::PrintStyles => "print-styles",
             Self::Layers => "layers",
@@ -471,6 +475,7 @@ impl Profile {
                     && !GRID_CLEARANCE_COMMANDS.contains(&tool.id.as_str())
             }
             Self::GridCorrections => GRID_CORRECTION_COMMANDS.contains(&tool.id.as_str()),
+            Self::GridProfile => GRID_PROFILE_COMMANDS.contains(&tool.id.as_str()),
             Self::Grid => {
                 matches!(tool.chapter, Chapter::GridModel | Chapter::Reports)
                     // Model library adoption belongs to the scoped lifecycle
@@ -540,6 +545,7 @@ impl Profile {
             Self::SurveyMigration => SURVEY_MIGRATION_COMMANDS.contains(&tool.id.as_str()),
             Self::Map => {
                 tool.chapter == Chapter::MapPresentation
+                    && tool.id != "map.profile.calculation"
                     && !STYLE_COMMANDS.contains(&tool.id.as_str())
                     && !PRINT_STYLE_COMMANDS.contains(&tool.id.as_str())
             }
@@ -603,6 +609,7 @@ impl Profile {
             Self::GridLocalModel => GRID_LOCAL_MODEL_COMMANDS,
             Self::GridClearance => GRID_CLEARANCE_COMMANDS,
             Self::GridCorrections => GRID_CORRECTION_COMMANDS,
+            Self::GridProfile => GRID_PROFILE_COMMANDS,
             Self::Survey => SURVEY_MAP_COMMANDS,
             Self::FormFactory => FORM_FACTORY_COMMANDS,
             Self::SurveyProjects => SURVEY_PROJECT_COMMANDS,
@@ -658,6 +665,7 @@ impl Profile {
             // lifecycle profile beside publication.
             Self::GridLocalModel => matches!(chapter, Chapter::GridModel | Chapter::Design),
             Self::GridClearance | Self::GridCorrections => chapter == Chapter::GridModel,
+            Self::GridProfile => matches!(chapter, Chapter::GridModel | Chapter::MapPresentation),
             Self::Pls | Self::PlsDesktop | Self::PlsLibrary | Self::LibraryGovernance => {
                 chapter == Chapter::PlsCadd
             }
@@ -724,6 +732,21 @@ const ADMIN_BOUNDS_COMMANDS: &[&str] = &[
     "data.admin-bounds.list",
     "data.admin-bounds.read",
     "data.admin-bounds.attach",
+];
+
+// The retained Profile workflow includes its own explicit native job tickets.
+// Keep the existing general map profile within its unchanged 16-tool bound.
+const GRID_PROFILE_COMMANDS: &[&str] = &[
+    "dsgrid.profile.open",
+    "map.profile.view",
+    "map.profile.set",
+    "map.profile.select",
+    "map.profile.results",
+    "map.profile.usage",
+    "map.profile.issues",
+    "map.profile.filter",
+    "map.profile.retype",
+    "map.profile.calculation",
 ];
 
 // Portable vector JSON is one bounded workflow; keep the established dataset

@@ -41,7 +41,7 @@ pub static COMMAND: Command = Command {
             required: false,
             default: Some("chapters"),
             choices: crate::surface::EXPOSURES,
-            summary: "Compact chapter routers or typed command tools.",
+            summary: "Chapter routers or typed tools.",
         },
         Arg {
             name: "profile",

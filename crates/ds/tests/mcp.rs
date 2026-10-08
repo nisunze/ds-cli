@@ -2180,6 +2180,7 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
         "design-run",
         "design-migration",
         "map",
+        "grid-profile",
         "styles",
         "print-styles",
         "layers",
@@ -3826,4 +3827,41 @@ fn manual_combination_projects_the_same_preview_through_mcp() {
             "json"
         ])
     );
+}
+
+#[test]
+fn profile_calculation_tickets_are_a_typed_cli_projection_with_closed_mcp_arguments() {
+    let (messages, _) = mcp(
+        &["--exposure", "commands", "--profile", "grid-profile"],
+        &[
+            json!({"jsonrpc":"2.0","id":1,"method":"tools/list"}),
+            json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"map_profile_calculation","arguments":{"model":"model-a","request":"{\"action\":\"start\",\"job_id\":\"a\"}","publication_id":"forged"}}}),
+        ],
+    );
+    let tools = response(&messages, 1)["result"]["tools"]
+        .as_array()
+        .unwrap();
+    let tool = tools
+        .iter()
+        .find(|tool| tool["name"] == "map_profile_calculation")
+        .expect("native Profile job leaf");
+    assert_eq!(
+        tool["inputSchema"]["properties"]["request"]["type"],
+        "string"
+    );
+    assert_eq!(
+        tool["inputSchema"]["properties"]["history"]["type"],
+        "string"
+    );
+    assert_eq!(
+        response(&messages, 2)["result"]["structuredContent"]["error"]["code"],
+        "mcp_arguments_invalid"
+    );
+    let descriptor = cli(&[
+        "capabilities",
+        "map.profile.calculation",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(descriptor["data"]["command"]["contract"], 1);
 }

@@ -18,6 +18,7 @@ pub mod outliers;
 pub mod points_along;
 pub mod print_schema;
 pub mod profile;
+pub mod profile_calculation;
 pub mod profile_model;
 pub mod profile_results;
 pub mod random_points;
@@ -68,6 +69,7 @@ pub static DOMAIN: Domain = Domain {
         &profile::SET,
         &profile::SELECT,
         &profile_results::COMMAND,
+        &profile_calculation::COMMAND,
         &profile_model::USAGE,
         &profile_model::ISSUES,
         &profile_model::FILTER,
@@ -179,7 +181,16 @@ pub const PROFILE_USAGE: BridgeOp = BridgeOp {
 };
 pub const PROFILE_RESULTS: BridgeOp = BridgeOp {
     operation: "map.profile.results",
-    arguments: &["model_id", "expected_revision", "expected_history", "request"],
+    arguments: &[
+        "model_id",
+        "expected_revision",
+        "expected_history",
+        "request",
+    ],
+};
+pub const PROFILE_CALCULATION: BridgeOp = BridgeOp {
+    operation: "map.profile.calculation",
+    arguments: &["model_id", "expected_history", "request"],
 };
 pub const PROFILE_FILTER: BridgeOp = BridgeOp {
     operation: "map.profile.filter",
@@ -425,6 +436,7 @@ pub const BRIDGE_OPS: &[&BridgeOp] = &[
     &PROFILE_SET,
     &PROFILE_SELECT,
     &PROFILE_RESULTS,
+    &PROFILE_CALCULATION,
     &PROFILE_USAGE,
     &PROFILE_ISSUES,
     &PROFILE_FILTER,

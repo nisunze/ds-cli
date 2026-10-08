@@ -19297,3 +19297,38 @@ fn retained_print_previews_are_explicit_and_opening_does_not_render() {
     ]);
     assert_eq!(refused.envelope["error"]["code"], "preview_inputs_invalid");
 }
+
+#[test]
+fn profile_calculation_discovers_native_tickets_and_refuses_transport_overrides_before_pairing() {
+    let described = native_ds(&[
+        "capabilities",
+        "map.profile.calculation",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(described.code, 0, "{}", described.envelope);
+    let command = &described.envelope["data"]["command"];
+    assert!(discoverable(command));
+    assert_eq!(command["contract"], 1);
+    assert_eq!(command["requires"], "window");
+    assert!(
+        command["purpose"]
+            .as_str()
+            .unwrap()
+            .contains("No action saves")
+    );
+    let result = native_ds(&[
+        "map",
+        "profile",
+        "calculation",
+        "--model",
+        "model-a",
+        "--request",
+        r#"{"action":"start","job_id":"a","scope":"other"}"#,
+        "--output",
+        "json",
+    ]);
+    assert_ne!(result.code, 0);
+    assert_eq!(result.envelope["error"]["code"], "invalid_profile_view");
+    assert!(result.envelope["data"].is_null());
+}

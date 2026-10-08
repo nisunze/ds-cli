@@ -2,8 +2,8 @@
 name: ds-grid-project-model
 description: Create, import, select, edit and publish DS Grid project models through the governed local-model lifecycle. Use for local `.dsgrid` working copies (including typed structure edits — describe, retype single poles to H-poles — and the structure list / staking table with REG rule findings) and immutable project versions, not PLS-CADD conversion.
 metadata:
-  ds-chapters: grid-model, design
-  ds-mcp-profile: grid-local-model
+  ds-chapters: grid-model, design, map-presentation
+  ds-mcp-profile: grid-local-model, grid-profile
 ---
 
 # Manage a DS Grid project model
@@ -61,10 +61,12 @@ operation. A `.bak` also needs `--crs` and, for multiple projects,
 warnings, revision and digest. Verify the earlier version and active local
 model did not change.
 
-## Typed edits of a working copy (structure list, descriptions, H-poles)
+## Edit a working copy
 
-A working copy is edited in place through typed commands, never by hand-built
-envelopes. Discover them first:
+Use `grid-profile` for paired Profile jobs and cached results. Discover its
+live controls. Editing, calculation and Save remain independent.
+
+Use typed working-copy commands; never build envelopes. Discover them first:
 
 ```text
 ds capabilities dsgrid.model.show --output json
@@ -73,7 +75,7 @@ ds capabilities dsgrid.structure.retype --output json
 ds capabilities dsgrid.report.structures --output json
 ```
 
-Procedure, in this order:
+Steps:
 
 1. `ds dsgrid model show --model <local-id> --output json` — read
    `head.authored_revision`; every edit below pins against it (`--revision`)
@@ -123,5 +125,4 @@ A version's package files: `dsgrid.asset.list|extract` (local package) and
 `pls-original-workspace.bak`. Attach the delivered backup with
 `dsgrid.asset.attach` before publishing; a later revision marks it `stale`.
 
-Stops at: native PLS-CADD — opening, spotting or solving a model happens in the
-application; `ds` publishes and reads the files around it.
+Stops at: native PLS-CADD engineering acceptance and solver approval.

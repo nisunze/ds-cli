@@ -44,6 +44,11 @@ Unknown and wrong-chapter ids never become argv; the refusal names the correct
 router when one exists.
 
 Specialized profiles publish conventional typed leaf tools for one workflow. The larger `grid-local-model` lifecycle instead publishes four tools: `ds_catalog`, `ds_diagnostics`, `ds_grid_model` and `ds_design`. Its exact command allowlist is unchanged; discover one command and load its canonical contract with `operation=describe` before `operation=invoke`. The routers reject commands outside that allowlist even when they share a chapter.
+
+`grid-profile` publishes the retained Profile workflow, including native job
+tickets and cached results. Its ten command leaves plus two bootstrap tools
+stay within the unchanged 16-tool bound. The general `map` profile retains its
+existing navigation controls; use `grid-profile` for direct calculation tickets.
 `vector` publishes descriptor discovery and all seven available vector runners,
 using the same `--request` JSON and dry-run previews as the web. The established
 `datasets` profile retains its four geometry primitives and its existing budget:
