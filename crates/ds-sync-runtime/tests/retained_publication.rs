@@ -336,3 +336,102 @@ fn the_shared_producer_set_answers_for_retained_solar_bytes_on_every_host() {
     .output(&row, "apd-draft-en")
     .is_err());
 }
+
+fn host_identity(fence: &Fence) -> ds_compute_runtime::HostIdentity {
+    ds_compute_runtime::HostIdentity {
+        owner: "owner-a".into(),
+        principal: ds_command_kernel::execution_context::Principal {
+            uid: fence.account.clone(),
+            lane: "canary".into(),
+            deployment: fence.deployment.clone(),
+            install_id: fence.install_id.clone(),
+        },
+    }
+}
+
+/// Every host restarts from one inventory read from the work itself; a
+/// passive read never creates the store, and another fence's rows are not
+/// this host's projects.
+#[test]
+fn one_publication_inventory_reads_the_work_and_never_creates_the_store() {
+    let dir = tempfile::tempdir().unwrap();
+    let database = dir.path().join("store.sqlite");
+    let reports = dir.path().join("report-artifacts");
+    let identity = host_identity(&fence());
+    assert!(
+        ds_sync_runtime::publication_projects(&database, &reports, &identity, None)
+            .unwrap()
+            .is_empty()
+    );
+    assert!(!database.exists(), "a passive inventory created the store");
+    let store = open_store(&database).unwrap();
+    seal(&store, &row(b"retained"), b"retained").unwrap();
+    let mut other = fence();
+    other.account = "bob".into();
+    assert_eq!(
+        ds_sync_runtime::publication_projects(&database, &reports, &identity, None).unwrap(),
+        std::collections::BTreeSet::from(["project-a".to_string()])
+    );
+    assert!(ds_sync_runtime::publication_projects(
+        &database,
+        &reports,
+        &host_identity(&other),
+        None
+    )
+    .unwrap()
+    .is_empty());
+}
+
+/// Every host answers the kernel's recovery control with the same function:
+/// status reads without creating the store, and an unknown row is refused
+/// rather than guessed.
+#[test]
+fn one_recovery_execution_reads_without_creating_and_refuses_unknown_rows() {
+    use ds_sync_runtime::store::recovery::{Command, Control, SCHEMA};
+    let dir = tempfile::tempdir().unwrap();
+    let database = dir.path().join("store.sqlite");
+    let control = |command| Control {
+        schema: SCHEMA.into(),
+        project: "project-a".into(),
+        command,
+    };
+    let status = ds_sync_runtime::recover(
+        &database,
+        &fence(),
+        control(Command::Status { limit: 50 }),
+        1,
+    )
+    .unwrap();
+    assert_eq!(status.total, 0);
+    assert!(!database.exists(), "a status read created the store");
+    let store = open_store(&database).unwrap();
+    let held = row(b"retained");
+    seal(&store, &held, b"retained").unwrap();
+    drop(store);
+    let status = ds_sync_runtime::recover(
+        &database,
+        &fence(),
+        control(Command::Status { limit: 50 }),
+        2,
+    )
+    .unwrap();
+    assert_eq!(status.total, 1);
+    let unknown = ds_sync_runtime::recover(
+        &database,
+        &fence(),
+        control(Command::Retry {
+            row: "no-such-row".into(),
+        }),
+        3,
+    )
+    .unwrap();
+    assert!(!unknown.applied);
+    assert_eq!(unknown.refusals[0].code, "sync_row_not_found");
+    assert!(ds_sync_runtime::recover(
+        &database,
+        &fence(),
+        control(Command::Status { limit: 0 }),
+        4
+    )
+    .is_err());
+}

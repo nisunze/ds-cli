@@ -67,7 +67,7 @@ pub use native_transfer::{
     drive_verified_output, transfer_verified_output, validated_storage_session,
     NativeTransferOutcome, NativeTransferProgress, NativeTransferResult, SessionRefusal,
 };
-pub use producers::with_producers;
+pub use producers::{publication_projects, recover, with_producers};
 pub use reads::VerifiedReads;
 pub use routes::{Route, SyncRoute, COMPUTE_ARTIFACTS};
 pub use rows::{
