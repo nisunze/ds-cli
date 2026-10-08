@@ -395,6 +395,16 @@ impl Runtime {
                 .as_ref()
                 .map(|display| authored_display::delta(&held.authored_display, display));
             let held = self.held.get_mut(&request.scope).expect("admitted base");
+            if held.session.current_revision().roots.engineering_input_root
+                != session.current_revision().roots.engineering_input_root
+            {
+                held.analysis_invalidation.advance(
+                    pending_reconcile,
+                    &receipts,
+                    held.analysis_index.as_ref().is_some_and(|index|
+                        index.same_analysis_defaults(session.snapshot())),
+                );
+            }
             held.session = session;
             held.demand_cache = cache;
             held.pending_receipts = pending;
@@ -516,6 +526,7 @@ impl Runtime {
                 &mut held.demand_cache,
             );
             held.analysis_index = Some(index);
+            held.analysis_invalidation = Default::default();
             let state = self.views[&scope].clone();
             result["command_view"] = command_view::project(
                 &state,

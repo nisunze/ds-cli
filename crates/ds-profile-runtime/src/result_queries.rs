@@ -130,6 +130,7 @@ pub(super) struct Index {
     case: ds_grid_engine::profile_display_case::ProfileDisplayCase,
     basis: Value,
     source: QuerySource,
+    default_selection: Option<ds_grid_engine::default_analysis::ModelAnalysisDefaultsKey>,
     usage_available: bool,
     findings_available: bool,
     entities: BTreeSet<String>,
@@ -154,8 +155,13 @@ fn usage_fact(row: &ds_grid_engine::StructureUsageScreeningRow) -> Arc<Value> {
 }
 
 impl Index {
-    pub(super) fn at_input_root(&self, root: &str) -> bool {
-        self.root == root
+    pub(super) fn same_analysis_defaults(
+        &self,
+        snapshot: &ds_grid_model::GridModelSnapshot,
+    ) -> bool {
+        self.default_selection.is_some()
+            && ds_grid_engine::default_analysis::model_analysis_defaults_key(snapshot).ok()
+                == self.default_selection
     }
     fn next_id() -> String {
         format!(
@@ -221,6 +227,7 @@ impl Index {
             case: scene.display_case.requested.clone(),
             basis,
             source: QuerySource::Profile,
+            default_selection: None,
             usage_available,
             findings_available: false,
             structures: session
@@ -453,7 +460,22 @@ impl Runtime {
         let scope = &held.query_scope;
         let current_inputs = index.root == revision.roots.engineering_input_root;
         if !current_inputs && request.source == QuerySource::ModelAnalysis {
-            return Err("profile_calculation_required: model-bound analysis inputs changed; explicitly Analyze before querying this source".into());
+            let support_facts = matches!(
+                request.kind,
+                QueryKind::Usage
+                    | QueryKind::Failures
+                    | QueryKind::NegativeLoading
+                    | QueryKind::Qualification
+                    | QueryKind::Blockers
+            );
+            if !index.usage_available
+                || !support_facts
+                || !held
+                    .analysis_invalidation
+                    .permits_supports(&request.entity_ids, &index.structures)
+            {
+                return Err("profile_calculation_required: requested model-analysis dependencies changed or are unproved; explicitly Analyze before reading them".into());
+            }
         }
         if request.source == QuerySource::ModelAnalysis
             && request.kind != QueryKind::Blockers
@@ -461,7 +483,7 @@ impl Runtime {
         {
             return Err("profile_calculation_required: model-bound Analyze retained no admitted envelope; inspect its blockers and repair inputs before explicit Analyze".into());
         }
-        if !current_inputs {
+        if !current_inputs && request.source == QuerySource::Profile {
             let affected = held.pending_reconcile
                 || scope.whole_model
                 || (request.entity_ids.is_empty()

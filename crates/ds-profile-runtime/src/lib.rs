@@ -13,6 +13,7 @@ mod label_lanes;
 mod symbols;
 use ds_grid_engine::{GridSession, ProfileAtlasOptions};
 mod analysis;
+mod analysis_retention;
 pub use analysis::analyze;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -112,6 +113,7 @@ struct HeldView {
     pending_reconcile: bool,
     result_index: Arc<result_queries::Index>,
     analysis_index: Option<Arc<result_queries::Index>>,
+    analysis_invalidation: analysis_retention::Invalidation,
     query_scope: ds_grid_engine::recalculation_scope::RecalculationScope,
 }
 #[derive(Debug, Clone, Serialize)]
@@ -370,18 +372,30 @@ impl Runtime {
             stroke.width_px = grid.width_px;
             stroke.dash_px = grid.dash_px.clone();
         }
+        let mut analysis_invalidation = previous.as_ref().filter(|_| same_model)
+            .map(|held| held.analysis_invalidation.clone()).unwrap_or_default();
+        if let Some(held) = previous.as_ref().filter(|_| same_model) {
+            if held.session.current_revision().roots.engineering_input_root != scene.engineering_input_root {
+                analysis_invalidation.advance(
+                    false,
+                    receipts,
+                    held.analysis_index.as_ref().is_some_and(|index|
+                        index.same_analysis_defaults(session.snapshot())),
+                );
+            }
+        }
         let (analysis, analysis_index) = if request.analyze {
             let (value, index) = analysis::analyze_for_queries(
                 &session, &scene_options.display_case, Some(&scene), None, &mut demand_cache,
             );
             self.analyses.insert(request.scope.clone(), value.clone());
+            analysis_invalidation = Default::default();
             (Some(value), Some(index))
         } else {
             let value = self.analyses.get(&request.scope)
                 .filter(|value| same_model && value["model_revision"] == request.expected_revision).cloned();
             let index = previous.as_ref().filter(|_| same_model)
-                .and_then(|held| held.analysis_index.as_ref())
-                .filter(|index| index.at_input_root(&scene.engineering_input_root)).cloned();
+                .and_then(|held| held.analysis_index.as_ref()).cloned();
             (value, index)
         };
         if !same_model && !request.analyze {
@@ -417,6 +431,7 @@ impl Runtime {
                 pending_reconcile: false,
                 result_index,
                 analysis_index,
+                analysis_invalidation,
                 query_scope: Default::default(),
             },
         );

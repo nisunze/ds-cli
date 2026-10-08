@@ -552,13 +552,53 @@ qualification. Missing horizontal refs cannot be inferred from the vertical wire
 
 Model-analysis results survive pure case selection, presentation and unchanged
 Profile refresh. New explicit Analyze creates a new result identity, including
-at equal engineering content. After authored engineering inputs change, model
-analysis queries conservatively require Analyze. Profile-only calculation cannot
-renew old model-analysis facts. Local preservation of unchanged model-analysis
-facts across such calculation remains unfinished. Source/history/root/model and
+at equal engineering content. Independent support invalidation accumulates
+native section/support receipts across edits and Profile-only calculation;
+only explicit Analyze clears it. The immutable index and its computed
+revision/root remain retained, without reconstructing or relabelling its facts.
+The native default-selection identity must still match: criterion/cases and
+the elected placed-capacity weight-span basis cannot drift during a local edit.
+That readonly identity is checked during changed-root admission, never on reads.
+
+Focused usage, failures, negative loading, qualification and structure blockers
+may read support IDs outside that invalidation with `unchanged_dependencies`
+freshness. Shared endpoints require fresh adjacent incident force assembly;
+unchanged support facts beyond the tension-section end survive. Basis counts
+and classifications still describe the original computed model, not a renewed
+whole-model verdict. Profile-only calculation cannot renew affected analysis.
+Whole-model reads, design findings, violating sections, section/point/alignment
+blockers, terrain changes, explicitly authored spans, uncharacterized tables,
+unavailable defaults and lost/navigation lineage conservatively require Analyze.
+Derived span companions of characterized support/section edits are admitted by
+their native receipt; caller-authored spans cannot borrow that fence.
+
+Source/history/root/model and
 entity-family fences, native bounds and publication confirm/discard apply to both
 indexes. Job capture shares the index; admission swaps it transactionally with
 the calculated held state, and discard restores the previous exact index.
+
+The retention gates prove four alternating sag edits, local movement, represented
+neighbor-section forces, complete fresh support-fact parity through native
+pages, accumulated invalidation across Profile-only calculation, undo/redo and
+branching, default/terrain/weather/package refusals, and async confirm/discard.
+The complete runtime suite passes 77 tests with four cost gates ignored; the
+engineering owner's recalculation/default-selection suite passes 13 tests with
+one cost gate ignored. Existing Web transport displays authored/computed
+revisions and native freshness; its request/result shape is unchanged.
+
+The ordinary-release retained-analysis gate uses 505 supports, two sections and
+10,008 terrain points across twelve local sag edits. Median native apply is
+5.431 ms; Observe DTO decode/native work/result JSON encoding is 25.344 ms;
+Profile-only calculation with the same wire work is 168.152 ms. The independent
+index retains 28,192 category facts without reconstruction. A 50-support usage
+page takes 0.281 ms and 45,247 bytes; qualification takes 0.288 ms and 46,812
+bytes (550 complete selected facts before paging); blockers take 0.105 ms and
+15,995 bytes (1,200 selected facts). Selected detached-support failures/negative
+loading are empty, so their 0.023-ms timings do not qualify failure-heavy reads.
+The full calculated result remains 16,294,643 bytes. These source/headless
+measurements exclude journal capture before DTO decode, async capture/scheduling,
+IPC, worker picking, renderer paint and installed large-model acceptance.
+The receipt is `ds-command-kernel/out/profile-native/analysis-retention-cost-release.json`.
 
 Headless gates in `result_queries/analysis_queries.rs` prove complete native
 parity beyond 2,000 point findings, independent case selection, cursor source

@@ -406,20 +406,20 @@ installation; explicit calculation still needs bounded native phase/work
 evidence before claiming a measured bottleneck or release performance. No
 template edits, competing builds or model mutations.
 
-## Focused review: preserve unaffected model-analysis facts
+## Focused review: localize native apply/replay geometry work
 
-Read-only request before the next source slice: trace `HeldView.analysis_index`,
-native receipt invalidation and `result_queries/analysis_queries.rs` through
-Observe, Profile-only Refresh, explicit Analyze and job publication/rollback.
-An old analysis currently refuses every changed input root and is dropped by
-Profile-only calculation. Identify the smallest native dependency fence that
-retains independently computed, unchanged facts with their original computed
-revision, without relabelling old engineering as current or solving on reads.
+Read-only request before the next source slice: trace native
+`ds-grid-engine/session.rs::apply_command`, `stored_geometry.rs`, revision token
+advancement and post-command validation. Every command currently rebuilds all
+spans/corridors, while `recompute_stored_geometry_for_alignments` already exists.
+Characterize when receipt-derived before/after alignment families can reuse
+unchanged geometry with exact full-recompute rows, ordering, stamps and roots.
+Preserve model-wide input stamps, stale/missing derived-row repair, parent/T-off
+closure, undeclared writes, full validation and debug revision audits.
 
-Trace section ends, adjacent incident support forces, horizontal-governing wire
-references, terrain points/corridors, alignment dependencies, topology changes,
-undo/redo/branching and global blockers. Require exact fresh-fact parity for
-admitted unchanged selections and conservative refusal for unproved scopes.
-Maximum two demonstrated gaps with path/line evidence and owning tests; no
-implicit calculation, Save, project mutation, templates or competing builds.
+Maximum two demonstrated gaps with path/line evidence, native phase/work
+measurements and minimal owning tests. Measure a representative multi-alignment
+fixture before/after; separate geometry, cloning, validation, hashing and delta
+costs. Never skip validation or relabel RAM retention as latency proof. No
+implicit calculation, Save, templates, model mutations or competing builds.
 Re-read `STABILIZATION.md` before implementation.

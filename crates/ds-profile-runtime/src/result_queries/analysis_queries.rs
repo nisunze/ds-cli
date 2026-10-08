@@ -4,6 +4,10 @@ use super::*;
 use ds_grid_engine::support_resistance::{SupportResistanceCheck, SupportResistanceOutcome};
 use ds_grid_engine::{DefaultAnalysisFacts, DefaultAnalysisReport};
 
+#[cfg(test)]
+#[path = "analysis_retention_tests.rs"]
+mod retention_tests;
+
 fn resistance_fact(check: &SupportResistanceCheck) -> Arc<Value> {
     let mut value = json!(check);
     value.as_object_mut().unwrap().remove("missing_inputs");
@@ -32,6 +36,7 @@ impl Index {
             case: Default::default(),
             basis,
             source: QuerySource::ModelAnalysis,
+            default_selection: None,
             usage_available: false,
             findings_available: false,
             entities: structures
@@ -109,6 +114,10 @@ impl Index {
             "design_clearance_section_scope":"native_independent_vertical_and_horizontal_wires",
             "negative_loading_scope":"signed_section_weight_span_or_complete_net_support_uplift"});
         let mut index = Self::empty_analysis(session, basis);
+        index.default_selection = Some(
+            ds_grid_engine::default_analysis::model_analysis_defaults_key(session.snapshot())
+                .expect("admitted model-bound defaults"),
+        );
         index.usage_available = facts.structures.len() == session.snapshot().structures.len();
         index.findings_available = clearance.is_some();
         let mut sections = BTreeMap::<String, Value>::new();
@@ -295,7 +304,7 @@ mod tests {
     use crate::transactional_projection_tests::{describe, refresh, request_for};
     use ds_grid_model::*;
 
-    fn configured_fixture(point_count: usize) -> GridModelSnapshot {
+    pub(super) fn configured_fixture(point_count: usize) -> GridModelSnapshot {
         let mut session = GridSession::open(fixture());
         let standard =
             ds_grid_engine::feature_code_standard::FeatureCodeStandard::bundled().unwrap();
@@ -350,12 +359,16 @@ mod tests {
         }
         snapshot
     }
-    fn query(runtime: &Runtime, input: &ProjectRequest, kind: QueryKind) -> QueryResultsRequest {
+    pub(super) fn query(
+        runtime: &Runtime,
+        input: &ProjectRequest,
+        kind: QueryKind,
+    ) -> QueryResultsRequest {
         let mut query = request(runtime, &input.scope, kind);
         query.source = QuerySource::ModelAnalysis;
         query
     }
-    fn native(
+    pub(super) fn native(
         runtime: &Runtime,
         input: &ProjectRequest,
     ) -> (DefaultAnalysisReport, DefaultAnalysisFacts) {
@@ -785,7 +798,7 @@ mod tests {
         assert!(execute(&mut runtime, before)
             .unwrap_err()
             .starts_with("profile_query_stale:"));
-        for id in ["finding-0", "str-1", "detached"] {
+        for id in ["finding-0", "str-1"] {
             let mut read = query(&runtime, &input, QueryKind::Blockers);
             read.entity_ids = vec![id.into()];
             assert!(execute(&mut runtime, read)
@@ -801,8 +814,11 @@ mod tests {
         calc.publication_id = Some("profile-only".into());
         let projected = runtime.execute(calc).unwrap();
         assert!(
-            runtime.held[&input.scope].analysis_index.is_none(),
-            "Profile-only refresh cannot renew old model-analysis facts"
+            Arc::ptr_eq(
+                &index,
+                runtime.held[&input.scope].analysis_index.as_ref().unwrap()
+            ),
+            "Profile-only refresh retains the exact independently computed index"
         );
         runtime
             .execute(Request::DiscardPublication(DiscardPublicationRequest {

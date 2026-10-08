@@ -228,8 +228,9 @@ asynchronous and revision-fenced. Bind the native job owner
 for browser/peer calculation. Cold initialization still projects synchronously;
 calculated-scene transfer remains broad. Reject/suppress stale results without
 losing edits. Localize independent
-model-analysis invalidation and result-index reconstruction/preservation so
-unchanged facts survive Profile-only calculation after local edits. Carry only
+model-analysis design-clearance and global dependency invalidation, and affected
+analysis fact/index reconstruction; terrain, explicitly authored spans and
+unproved topology/navigation still require full Analyze. Carry only
 necessary computed
 result/delta bytes into Profile. The Server/native owner must not depend on Svelte, browser
 state or Tauri; preserve explicit project/principal/model/session context.
