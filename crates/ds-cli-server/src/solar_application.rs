@@ -23,9 +23,6 @@ struct NativeReferences {
     project: String,
     owner: String,
     auth: Arc<dyn ds_compute_runtime::Authorizer>,
-    database: PathBuf,
-    identity: ds_compute_runtime::HostIdentity,
-    activity: Option<Arc<crate::solar_sync::SolarActivity>>,
     session: Mutex<Option<ds_cli_auth::NamedSolarProjectSession>>,
 }
 impl NativeReferences {
@@ -145,53 +142,36 @@ impl ds_solar_native::SnapshotProvider for NativeReferences {
     }
 }
 
-impl ds_solar_native::PublicationProvider for NativeReferences {
-    fn retain(&self, publication: ds_solar_native::sync::Publication) -> Result<Value, String> {
-        use ds_sync_runtime::Producer;
-        self.auth.authorize(&self.owner)?;
-        if publication.project != self.project || self.identity.owner != self.owner {
-            return Err("Solar publication crosses its captured owner or project".into());
+/// The Server binds the one completion retention its Desktop binds too
+/// (`ds_solar_native::sync::CommonRetention`). Its authority is the Server
+/// owner, rechecked around every retention against the captured session
+/// identity; a retention wakes the Server's publication pump.
+fn retention(
+    auth: Arc<dyn ds_compute_runtime::Authorizer>,
+    owner: String,
+    database: PathBuf,
+    identity: ds_compute_runtime::HostIdentity,
+    project: &str,
+    activity: Option<Arc<crate::solar_sync::SolarActivity>>,
+) -> ds_solar_native::sync::CommonRetention {
+    let captured = identity.owner.clone();
+    let retention = ds_solar_native::sync::CommonRetention::new(
+        database,
+        identity,
+        project,
+        Arc::new(move || {
+            auth.authorize(&owner)?;
+            if captured != owner {
+                return Err("Solar publication crosses its captured owner or project".into());
+            }
+            Ok(())
+        }),
+    );
+    match activity {
+        Some(activity) => {
+            retention.with_completion(Arc::new(move || activity.local_publication_completed()))
         }
-        let store = ds_sync_runtime::open_store(&self.database)?;
-        let fence = ds_sync_runtime::solar_producer::fence_of(&self.identity);
-        let producer = ds_sync_runtime::solar_producer::SolarProducer {
-            database: &self.database,
-            identity: &self.identity,
-            project: self.project.clone(),
-            failure: None,
-        };
-        let receipt = ds_solar_native::sync::retain(
-            &store,
-            &fence,
-            publication,
-            &|previous| {
-                producer.reclaim(
-                    &self.project,
-                    &ds_sync_runtime::rows::local_row_from_store(previous),
-                )
-            },
-        )?;
-        if let Some(activity) = &self.activity {
-            activity.local_publication_completed();
-        }
-        self.auth.authorize(&self.owner)?;
-        Ok(receipt)
-    }
-    fn observe(&self, publication: &ds_solar_native::sync::Publication) -> Result<Value, String> {
-        self.auth.authorize(&self.owner)?;
-        if publication.project != self.project || self.identity.owner != self.owner {
-            return Err("Solar publication crosses its captured owner or project".into());
-        }
-        let store = ds_sync_runtime::open_store(&self.database)?;
-        let receipt = ds_solar_native::sync::recorded(
-            &store,
-            &ds_sync_runtime::solar_producer::fence_of(&self.identity),
-            publication,
-        )?;
-        if let Some(activity) = &self.activity {
-            activity.local_publication_completed();
-        }
-        Ok(receipt)
+        None => retention,
     }
 }
 
@@ -254,9 +234,6 @@ pub(crate) async fn invoke(
             project: context.project.clone(),
             owner: app.connection.owner.clone(),
             auth: app.auth.clone(),
-            database: app.database.clone(),
-            identity: app.sessions.identity().clone(),
-            activity: app.activity.clone(),
             session: Mutex::new(None),
         });
         let application_directory = parent.join("solar-application").join(identity);
@@ -272,7 +249,14 @@ pub(crate) async fn invoke(
             .with_report_renderer(renderer)
             .with_reference_provider(producer.clone())
             .with_media_provider(producer.clone())
-            .with_publication_provider(producer.clone())
+            .with_publication_provider(Arc::new(retention(
+                app.auth.clone(),
+                app.connection.owner.clone(),
+                app.database.clone(),
+                app.sessions.identity().clone(),
+                &context.project,
+                app.activity.clone(),
+            )))
             .with_snapshot_provider(producer);
         ds_solar_native::application::execute(host, &context.project, &body)
             .map(Json)
@@ -283,9 +267,11 @@ pub(crate) async fn invoke(
 
 #[cfg(test)]
 mod publication_tests {
+    //! The Server's binding of the shared retention. The retention itself —
+    //! offline sealing, replay after restart, refused bytes and new-build
+    //! provenance — is proven where it lives, in `ds_solar_native::sync`.
     use super::*;
     use ds_solar_native::PublicationProvider;
-    use ds_sync_runtime::Producer;
     use std::sync::atomic::{AtomicBool, Ordering};
     struct LocalAuth(Arc<AtomicBool>);
     impl ds_compute_runtime::Authorizer for LocalAuth {
@@ -297,27 +283,18 @@ mod publication_tests {
             }
         }
     }
-    fn adapter(path: PathBuf, authorized: Arc<AtomicBool>) -> NativeReferences {
-        NativeReferences {
-            lane: "canary".into(),
-            project: "project-a".into(),
-            owner: "owner-a".into(),
-            auth: Arc::new(LocalAuth(authorized)),
-            database: path,
-            identity: ds_compute_runtime::HostIdentity {
-                owner: "owner-a".into(),
-                principal: ds_command_kernel::execution_context::Principal {
-                    uid: "account-a".into(),
-                    lane: "canary".into(),
-                    deployment: "https://gateway.example".into(),
-                    install_id: "install-a".into(),
-                },
+    fn identity(owner: &str) -> ds_compute_runtime::HostIdentity {
+        ds_compute_runtime::HostIdentity {
+            owner: owner.into(),
+            principal: ds_command_kernel::execution_context::Principal {
+                uid: "account-a".into(),
+                lane: "canary".into(),
+                deployment: "https://gateway.example".into(),
+                install_id: "install-a".into(),
             },
-            activity: None,
-            session: Mutex::new(None),
         }
     }
-    fn publication(project: &str, build: &str) -> ds_solar_native::sync::Publication {
+    fn publication() -> ds_solar_native::sync::Publication {
         let bytes = b"# sealed Solar draft".to_vec();
         let output = ds_sync_runtime::LocalOutput {
             filename: None,
@@ -331,13 +308,13 @@ mod publication_tests {
         };
         ds_solar_native::sync::close(
             ds_solar_native::sync::Source {
-                project,
+                project: "project-a",
                 run: "report-run-a",
                 operation: "report-city-a",
                 variant: "network-draft-en",
                 resource: "city-a",
                 release: "ds-solar-engine@1.2.3",
-                manifest: build,
+                manifest: &"a".repeat(64),
                 input_base: &"b".repeat(64),
             },
             vec![(output, bytes)],
@@ -345,136 +322,61 @@ mod publication_tests {
         .unwrap()
     }
     #[test]
-    fn server_retains_offline_and_replays_after_restart_without_opening_a_gateway_session() {
+    fn the_server_retains_under_its_captured_owner_without_a_gateway() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("server.sqlite");
-        let authorized = Arc::new(AtomicBool::new(true));
-        let host = adapter(path.clone(), authorized.clone());
-        assert!(
-            host.observe(&publication("project-a", &"a".repeat(64)))
-                .unwrap_err()
-                .contains("publication_not_sealed")
+        let host = retention(
+            Arc::new(LocalAuth(Arc::new(AtomicBool::new(true)))),
+            "owner-a".into(),
+            path.clone(),
+            identity("owner-a"),
+            "project-a",
+            None,
         );
-        let receipt = host
-            .retain(publication("project-a", &"a".repeat(64)))
-            .unwrap();
+        let receipt = host.retain(publication()).unwrap();
         assert_eq!(receipt["state"], "held");
-        assert!(host.session.lock().unwrap().is_none());
-        drop(host);
-        let host = adapter(path, authorized);
-        let retried = host
-            .retain(publication("project-a", &"a".repeat(64)))
-            .unwrap();
-        assert_eq!(receipt, retried);
+        assert_eq!(receipt, host.observe(&publication()).unwrap());
+        let store = ds_sync_runtime::open_store(&path).unwrap();
+        let fence = ds_sync_runtime::solar_producer::fence_of(&identity("owner-a"));
         assert_eq!(
-            receipt,
-            host.observe(&publication("project-a", &"a".repeat(64)))
-                .unwrap()
-        );
-        assert!(host.session.lock().unwrap().is_none());
-        let store = ds_sync_runtime::open_store(&host.database).unwrap();
-        let fence = ds_sync_runtime::solar_producer::fence_of(&host.identity);
-        let rows = store
-            .lock()
-            .unwrap()
-            .snapshot(&fence, &ds_sync_runtime::rows::store_scope("project-a"))
-            .unwrap()
-            .artifacts;
-        assert_eq!(rows.len(), 1);
-        let row = ds_sync_runtime::rows::local_row_from_store(&rows[0]);
-        assert_eq!(
-            ds_sync_runtime::retained_publication::RetainedProducer {
-                store: &store,
-                fence: &fence,
-                project: "project-a"
-            }
-            .output(&row, "network-draft-en")
-            .unwrap(),
-            b"# sealed Solar draft"
-        );
-        let mut declaration = ds_sync_runtime::rows::open_declaration("project-a", &row);
-        ds_sync_runtime::solar_producer::SolarProducer {
-            database: &host.database,
-            identity: &host.identity,
-            project: "project-a".into(),
-            failure: None,
-        }
-        .amend_open_declaration("project-a", &mut declaration)
-        .unwrap();
-    }
-    #[test]
-    fn refused_owner_project_or_corrupted_payload_cannot_create_a_publication() {
-        let dir = tempfile::tempdir().unwrap();
-        let authorized = Arc::new(AtomicBool::new(false));
-        let host = adapter(dir.path().join("server.sqlite"), authorized.clone());
-        assert!(
-            host.retain(publication("project-a", &"a".repeat(64)))
-                .is_err()
-        );
-        assert!(!host.database.exists());
-        authorized.store(true, Ordering::SeqCst);
-        assert!(
-            host.retain(publication("project-b", &"a".repeat(64)))
-                .is_err()
-        );
-        assert!(!host.database.exists());
-        let mut invalid = publication("project-a", &"a".repeat(64));
-        invalid.outputs[0].bytes[0] = b'!';
-        assert!(host.retain(invalid).is_err());
-        let store = ds_sync_runtime::open_store(&host.database).unwrap();
-        assert!(
             store
                 .lock()
                 .unwrap()
-                .snapshot(
-                    &ds_sync_runtime::solar_producer::fence_of(&host.identity),
-                    &ds_sync_runtime::rows::store_scope("project-a")
-                )
+                .snapshot(&fence, &ds_sync_runtime::rows::store_scope("project-a"))
                 .unwrap()
                 .artifacts
-                .is_empty()
+                .len(),
+            1
         );
-        assert!(host.session.lock().unwrap().is_none());
     }
     #[test]
-    fn identical_bytes_from_a_new_build_keep_their_new_provenance_in_the_common_queue() {
+    fn a_changed_server_owner_or_foreign_session_identity_retains_nothing() {
         let dir = tempfile::tempdir().unwrap();
-        let host = adapter(
-            dir.path().join("server.sqlite"),
-            Arc::new(AtomicBool::new(true)),
+        let path = dir.path().join("server.sqlite");
+        let refused = retention(
+            Arc::new(LocalAuth(Arc::new(AtomicBool::new(false)))),
+            "owner-a".into(),
+            path.clone(),
+            identity("owner-a"),
+            "project-a",
+            None,
         );
-        let old = host
-            .retain(publication("project-a", &"a".repeat(64)))
-            .unwrap();
-        let current = host
-            .retain(publication("project-a", &"c".repeat(64)))
-            .unwrap();
-        assert_ne!(old["client_publish_id"], current["client_publish_id"]);
-        let store = ds_sync_runtime::open_store(&host.database).unwrap();
-        let fence = ds_sync_runtime::solar_producer::fence_of(&host.identity);
-        let rows = store
-            .lock()
-            .unwrap()
-            .snapshot(&fence, &ds_sync_runtime::rows::store_scope("project-a"))
-            .unwrap()
-            .artifacts;
-        assert_eq!(rows.len(), 1);
-        assert_eq!(
-            rows[0].engine_build_manifest_sha256.as_deref(),
-            Some("c".repeat(64).as_str())
+        assert!(refused.retain(publication()).is_err());
+        assert!(!path.exists());
+        let foreign = retention(
+            Arc::new(LocalAuth(Arc::new(AtomicBool::new(true)))),
+            "owner-a".into(),
+            path.clone(),
+            identity("owner-b"),
+            "project-a",
+            None,
         );
         assert!(
-            store
-                .lock()
-                .unwrap()
-                .publication_payload(
-                    &fence,
-                    "project-a",
-                    old["client_publish_id"].as_str().unwrap()
-                )
-                .unwrap()
-                .is_none()
+            foreign
+                .retain(publication())
+                .unwrap_err()
+                .contains("captured owner")
         );
-        assert!(host.session.lock().unwrap().is_none());
+        assert!(!path.exists());
     }
 }

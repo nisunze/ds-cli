@@ -233,10 +233,11 @@ pub async fn invoke(State(app): State<crate::host::App>, bytes: Bytes) -> Respon
             })
             .map_err(super::failure)?,
         };
-        if result.applied && !result.changes.is_empty() {
-            if let Some(activity) = &app.activity {
-                activity.local_publication_completed();
-            }
+        if result.applied
+            && !result.changes.is_empty()
+            && let Some(activity) = &app.activity
+        {
+            activity.local_publication_completed();
         }
         app.auth
             .authorize(&app.connection.owner)

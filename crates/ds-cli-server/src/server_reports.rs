@@ -138,9 +138,11 @@ pub fn drain(
                 // publication is attempted. Each queued row stays held and
                 // carries that cause, so the reader sees why it did not move.
                 host.local(session.project())?;
-                for row in session.rows()?.iter().filter(|row| {
-                    matches!(row.state.as_str(), "held" | "uploading")
-                }) {
+                for row in session
+                    .rows()?
+                    .iter()
+                    .filter(|row| matches!(row.state.as_str(), "held" | "uploading"))
+                {
                     host.record_receipt(
                         session.project(),
                         &Receipt::new("upload", "failed")

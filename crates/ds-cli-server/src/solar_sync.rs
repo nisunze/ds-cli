@@ -28,11 +28,15 @@ use ds_command_kernel::compute_jobs::{EngineKind, Job};
 use ds_compute_runtime::{self as runtime, CompletionObserver, HostIdentity};
 #[cfg(test)]
 use ds_sync_runtime::LocalRow;
-use ds_sync_runtime::{Producer, Producers, VerifiedReads, reports, solar};
+#[cfg(test)]
+use ds_sync_runtime::Producer;
+use ds_sync_runtime::{Producers, VerifiedReads, solar};
 
 use crate::{auth, server_sync::sessions::ServerSessions};
 use ds_sync_runtime::rows::now_ms;
-use ds_sync_runtime::solar_producer::{SolarProducer, solar_jobs_in};
+#[cfg(test)]
+use ds_sync_runtime::solar_producer::SolarProducer;
+use ds_sync_runtime::solar_producer::solar_jobs_in;
 use serde_json::Value;
 
 /// What the Solar producer retired (job, bytes freed) and what it offered.
@@ -447,13 +451,12 @@ impl CompletionObserver for SolarActivity {
     }
 }
 
-/// This host's ONE producer set for a project — report + Solar, keyed by
-/// engine (`ds_sync_runtime::Producers`) — so every host opened over the
-/// store (the report drain, the Solar pump, a Sync Center read, a cancel,
-/// `ds report outbox drain`) adopts, moves and frees a row through the
-/// producer that owns its bytes. Before this a lost Solar row observed by
-/// the report pass was "freed" with 0 by the report producer, and the store
-/// cleared its locator while the result stayed in the compute table.
+/// This Server's paths into the one core producer set
+/// (`ds_sync_runtime::with_producers`) that its Desktop runs too: report +
+/// Solar, keyed by engine, so every host opened over the store (the report
+/// drain, the Solar pump, a Sync Center read, a cancel, `ds report outbox
+/// drain`) adopts, moves and frees a row through the producer that owns its
+/// bytes, and a lost Solar row is never "freed" with 0 by the report producer.
 pub fn with_producers<T>(
     database: &Path,
     identity: &HostIdentity,
@@ -462,32 +465,7 @@ pub fn with_producers<T>(
     f: impl FnOnce(&Producers<'_>) -> Result<T, String>,
 ) -> Result<T, String> {
     let root = crate::server_reports::root(database)?;
-    let upload =
-        |handle: ds_report_artifacts::SealedArtifactHandle, output_id: &str, session_uri: &str| {
-            ds_sync_runtime::transfer_verified_output(
-                output_id,
-                session_uri,
-                handle.size_bytes,
-                &handle.sha256,
-                handle.file,
-            )
-        };
-    let report = reports::ReportProducer {
-        root: &root,
-        project,
-        upload: &upload,
-    };
-    let solar = SolarProducer {
-        database,
-        identity,
-        project: project.to_owned(),
-        failure,
-    };
-    let producers = Producers::new(vec![
-        (reports::ENGINE, &report as &dyn Producer),
-        (solar::ENGINE, &solar as &dyn Producer),
-    ])?;
-    f(&producers)
+    ds_sync_runtime::with_producers(database, &root, identity, project, failure, f)
 }
 
 #[cfg(test)]

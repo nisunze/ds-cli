@@ -19,11 +19,11 @@ pub mod working_area_forms;
 #[doc(hidden)]
 pub mod server_reports;
 pub mod server_sync;
-pub mod sync_recovery;
 pub mod solar_application;
 mod solar_documents;
 #[doc(hidden)]
 pub mod solar_sync;
+pub mod sync_recovery;
 use ds_cli_contract::{
     Context, Failure, Inputs,
     outcome::ExitClass,
