@@ -45,15 +45,6 @@ pub enum Command {
         snapshot_json: String,
         fingerprint: String,
     },
-    Publish {
-        city: String,
-        client_run_id: String,
-        engine_version: String,
-        build_manifest: String,
-        fingerprint: String,
-        calculation: Output,
-        reports: Vec<Output>,
-    },
 }
 fn sha(s: &str) -> bool {
     s.len() == 64
@@ -154,63 +145,6 @@ impl Command {
                     || format!("{:x}", Sha256::digest(snapshot_json.as_bytes())) != *fingerprint
                 {
                     return Err(invalid());
-                }
-            }
-            Self::Publish {
-                city,
-                client_run_id,
-                engine_version,
-                build_manifest,
-                fingerprint,
-                calculation,
-                reports,
-            } => {
-                if !sha(build_manifest) {
-                    return Err(ClientError::new(ErrorKind::InvalidInput,
-                        "Draft publication requires a release engine build manifest; keep inputs synced separately and rerun with an admitted release engine"));
-                }
-                if !id(city)
-                    || !id(client_run_id)
-                    || !sha(build_manifest)
-                    || !sha(fingerprint)
-                    || engine_version.is_empty()
-                    || engine_version.len() > 128
-                    || calculation.id != "report-input"
-                    || calculation.format != "json"
-                    || calculation.content_type != "application/json"
-                    || reports.len() > 99
-                {
-                    return Err(invalid());
-                }
-                if std::iter::once(calculation)
-                    .chain(reports)
-                    .map(|o| o.bytes.len())
-                    .sum::<usize>()
-                    > 128 * 1024 * 1024
-                {
-                    return Err(invalid());
-                }
-                let mut unique = std::collections::BTreeSet::new();
-                for output in std::iter::once(calculation).chain(reports) {
-                    if !id(&output.id)
-                        || !unique.insert(&output.id)
-                        || output.bytes.is_empty()
-                        || output.bytes.len() > 64 * 1024 * 1024
-                    {
-                        return Err(invalid());
-                    }
-                    if output.id == "report-input" {
-                        continue;
-                    }
-                    let draft = draft_id(&output.id)
-                        && output.format == "md"
-                        && output.content_type == "text/markdown";
-                    let chart = output.id.starts_with("plot-")
-                        && output.format == "png"
-                        && output.content_type == "image/png";
-                    if !draft && !chart {
-                        return Err(invalid());
-                    }
                 }
             }
         }
@@ -455,56 +389,6 @@ pub(crate) fn run<T: AuthorizedTransport>(
             }
             Ok(receipt)
         }
-        Command::Publish {
-            city,
-            client_run_id,
-            engine_version,
-            build_manifest,
-            fingerprint,
-            calculation,
-            reports,
-        } => {
-            let snapshot =
-                crate::authorized::solar_snapshot(profile, transport, authority, project, city)?;
-            if snapshot.input_base_fingerprint() != fingerprint {
-                return Err(conflict());
-            }
-            let calculate = publish(
-                profile,
-                transport,
-                authority,
-                project,
-                client_run_id,
-                engine_version,
-                build_manifest,
-                &format!("calculate-{city}"),
-                "default",
-                fingerprint,
-                Some((snapshot.snapshot_sha256(), snapshot.snapshot_receipt_id())),
-                &[calculation],
-            )?;
-            let mut receipts = vec![calculate];
-            let report_fingerprint = format!("{:x}", Sha256::digest(&calculation.bytes));
-            for draft in reports.iter().filter(|o| draft_id(&o.id)) {
-                let mut outputs = vec![draft];
-                outputs.extend(reports.iter().filter(|o| o.id.starts_with("plot-")));
-                receipts.push(publish(
-                    profile,
-                    transport,
-                    authority,
-                    project,
-                    client_run_id,
-                    engine_version,
-                    build_manifest,
-                    &format!("report-{city}"),
-                    &draft.id,
-                    &report_fingerprint,
-                    None,
-                    &outputs,
-                )?);
-            }
-            Ok(json!({"project_id":project,"city_id":city,"publications":receipts}))
-        }
     }
 }
 #[allow(clippy::too_many_arguments)]
@@ -606,18 +490,4 @@ pub(crate) fn validate_upload_uri(uri: &str) -> Result<(), ClientError> {
         return Err(unreadable());
     }
     Ok(())
-}
-
-fn draft_id(id: &str) -> bool {
-    matches!(
-        id,
-        "apd-draft-fr"
-            | "apd-draft-en"
-            | "network-draft-fr"
-            | "network-draft-en"
-            | "plant-draft-fr"
-            | "plant-draft-en"
-            | "financial-draft-fr"
-            | "financial-draft-en"
-    )
 }

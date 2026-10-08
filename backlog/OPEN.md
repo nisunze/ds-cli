@@ -55,12 +55,13 @@ is ruled in the sync contract: visible per-city discard and fresh runs.
   shared native `ds.sync-recovery/v1` request/result, preserving explicit retry
   and digest-bound sanitation. Remove the replaced browser recovery decisions
   during the queue cutover below.
-- **The Solar Project publication workflow still bypasses the common store.**
-  Move its closed artifact handoff to the common native path before Desktop
-  cutover, retaining authored inputs and per-city failures. City-batch aggregate
-  files have no governed portfolio identity and must remain local deliverables;
-  the old Desktop portfolio declaration adapter still names v2 while current
-  governed native computation closes v3.
+- **The legacy governed portfolio publisher still bypasses the common store.**
+  Retire the remaining `solar_portfolio::Command::Publish` / private
+  `solar_project::publish` adapter and bind fresh governed native portfolio
+  completion to the common path. Never adopt its old files. City-batch aggregate
+  files have no governed portfolio identity and remain local deliverables; the
+  old Desktop portfolio declaration adapter names v2 while native computation
+  closes v3.
 - **Desktop still owns an IndexedDB publication queue.** Route Solar execution and
   Sync Center through the shared native runtime, expose headless queue/recovery
   commands, and remove replaced TypeScript/kernel exports after native proof and
