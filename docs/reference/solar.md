@@ -270,6 +270,14 @@ completed result. Its receipt reports `held` until the common pump receives a
 publication verdict; it never reports queued bytes as an online delivery. The
 same replay key and verified bytes survive a Server restart and reconnect.
 
+Native city preparation also retains its authenticated publication claim under
+the exact prepared input digest. Calculation uses the prepared weather and PV
+inputs and that local claim without fetching Brain. Completion seals the
+calculation and every selected draft with its charts through the same function
+as portfolios. Missing or substituted claims appear as publication errors;
+successful computation and verified local downloads remain available. Drafts
+wait for the exact calculation report input they describe.
+
 `solar report export` pages one exact `apd`/`draft`, `network`, `plant`, or
 `financial` Markdown document through the named `solar.document.read` bridge
 operation. `solar report bundle` is the portable authoring path: it pages a ZIP

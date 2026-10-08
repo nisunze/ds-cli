@@ -136,13 +136,18 @@ impl ds_solar_native::SnapshotProvider for NativeReferences {
             snapshot_json: snapshot.document_json().into(),
             input_base_fingerprint: snapshot.input_base_fingerprint().into(),
             captured_at: snapshot.firestore_read_time().into(),
+            publication: Some(ds_solar_native::CapturedPublication {
+                source_snapshot_sha256: snapshot.snapshot_sha256().into(),
+                snapshot_receipt_id: snapshot.snapshot_receipt_id().into(),
+                snapshot_receipt_expires_at: snapshot.snapshot_receipt_expires_at().into(),
+            }),
         })
     }
 }
 
 impl ds_solar_native::PublicationProvider for NativeReferences {
     fn retain(&self, publication: ds_solar_native::sync::Publication) -> Result<Value, String> {
-        use ds_sync_runtime::{Producer, seal::Recorded};
+        use ds_sync_runtime::Producer;
         self.auth.authorize(&self.owner)?;
         if publication.project != self.project || self.identity.owner != self.owner {
             return Err("Solar publication crosses its captured owner or project".into());
@@ -155,14 +160,10 @@ impl ds_solar_native::PublicationProvider for NativeReferences {
             project: self.project.clone(),
             failure: None,
         };
-        let requested = publication.row.client_publish_id.clone();
-        let sealed = ds_sync_runtime::retained_publication::seal(
+        let receipt = ds_solar_native::sync::retain(
             &store,
             &fence,
-            &self.project,
-            &publication.row,
-            publication.declaration,
-            publication.outputs,
+            publication,
             &|previous| {
                 producer.reclaim(
                     &self.project,
@@ -170,23 +171,11 @@ impl ds_solar_native::PublicationProvider for NativeReferences {
                 )
             },
         )?;
-        let (key, state) = match sealed {
-            Recorded::Recorded { row, .. } => (row.client_publish_id, row.state),
-            Recorded::AlreadyRecorded { replay_key, state } => (replay_key, state),
-            Recorded::Refused(refusal) => {
-                return Err(format!("{}: {}", refusal.code, refusal.detail));
-            }
-        };
         if let Some(activity) = &self.activity {
             activity.local_publication_completed();
         }
         self.auth.authorize(&self.owner)?;
-        Ok(ds_solar_native::sync::receipt(
-            &self.project,
-            &requested,
-            &key,
-            state,
-        ))
+        Ok(receipt)
     }
     fn observe(&self, publication: &ds_solar_native::sync::Publication) -> Result<Value, String> {
         self.auth.authorize(&self.owner)?;
