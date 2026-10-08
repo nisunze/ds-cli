@@ -30,7 +30,12 @@ use std::collections::{BTreeMap, BTreeSet};
 pub const SCHEMA: &str = "ds.sync-plan/v1";
 #[path = "sync/publication.rs"]
 mod publication;
-pub use publication::{publication_verdict, PublicationStage, PublicationVerdict};
+pub use publication::{
+    publication_preflight, publication_verdict, PublicationBlock, PublicationStage,
+    PublicationVerdict,
+};
+#[path = "sync/engines.rs"]
+pub mod engines;
 const INPUT_BOUND: usize = 8 * 1024 * 1024;
 const MAX_ARTIFACTS: usize = 4096;
 const MAX_ID_LEN: usize = 128;
@@ -233,6 +238,18 @@ pub struct Input {
     pub local: Vec<LocalArtifact>,
     #[serde(default)]
     pub remote: Vec<RemoteHead>,
+    /// Output declarations of published heads in this same project. A
+    /// dependency is satisfied only by an output of a head in `remote`.
+    #[serde(default)]
+    pub published_outputs: Vec<PublishedOutput>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct PublishedOutput {
+    pub identity: Identity,
+    pub output_id: String,
+    pub sha256: String,
 }
 
 /// Whether the remote heads must be re-read for this trigger.
@@ -297,6 +314,7 @@ pub struct Summary {
     pub conflicts: usize,
     pub refused: usize,
     pub in_sync: usize,
+    pub waiting_on_dependency: usize,
 }
 
 #[derive(Debug, Serialize)]
@@ -614,7 +632,10 @@ pub fn plan(input: &Input) -> Result<Plan, String> {
             "a sync plan needs a project, or `personal`".into()
         });
     }
-    if input.local.len() > MAX_ARTIFACTS || input.remote.len() > MAX_ARTIFACTS {
+    if input.local.len() > MAX_ARTIFACTS
+        || input.remote.len() > MAX_ARTIFACTS
+        || input.published_outputs.len() > MAX_ARTIFACTS * 32
+    {
         return Err("sync inventories exceed their bound".into());
     }
     let mut plan = Plan {
@@ -698,8 +719,8 @@ pub fn plan(input: &Input) -> Result<Plan, String> {
             if let Some(computed) = &artifact.input_base_fingerprint {
                 let differs = remote.get(&identity).is_none_or(|head| {
                     head.sha256 != artifact.sha256
-                        || (identity.engine == "network_reporter"
-                            && identity.variant == crate::printing::retained_preview::VARIANT
+                        || (engines::engine(&identity.engine)
+                            .is_some_and(|engine| engine.refreshes_equal_bytes(&identity.variant))
                             && artifact.produced_at_ms > head.published_at_ms)
                 });
                 // Ordering, decided here and nowhere else. A drain that has
@@ -730,6 +751,25 @@ pub fn plan(input: &Input) -> Result<Plan, String> {
                     }
                 }
                 if artifact.readable && differs {
+                    if let Some((prerequisite, output_id)) = engines::engine(&identity.engine)
+                        .and_then(|engine| engine.prerequisite(&identity))
+                    {
+                        let mut declarations = input.published_outputs.iter().filter(|output| {
+                            output.identity == prerequisite && output.output_id == output_id
+                        });
+                        let published = remote.contains_key(&prerequisite)
+                            && declarations.next().is_some_and(|output| {
+                                valid_sha256(&output.sha256) && output.sha256 == *computed
+                            })
+                            && declarations.next().is_none();
+                        if !published {
+                            actions.push(Action::Nothing {
+                                identity: identity.clone(),
+                                reason: "waiting_on_dependency",
+                            });
+                            continue;
+                        }
+                    }
                     let scope = artifact.scope();
                     let granted = input.source_grants.iter().rev().find(|grant| {
                         grant.snapshot_base.contains_key(&identity.operation)
@@ -853,6 +893,12 @@ pub fn plan(input: &Input) -> Result<Plan, String> {
             Action::Download { .. } => plan.summary.downloads += 1,
             Action::Conflict { .. } => plan.summary.conflicts += 1,
             Action::Refused { .. } => plan.summary.refused += 1,
+            Action::Nothing {
+                reason: "waiting_on_dependency",
+                ..
+            } => {
+                plan.summary.waiting_on_dependency += 1;
+            }
             Action::Nothing { .. } => plan.summary.in_sync += 1,
             Action::OpenGrant { .. } | Action::Offline => {}
         }
@@ -969,6 +1015,7 @@ mod tests {
             source_grants: vec![],
             local,
             remote,
+            published_outputs: Vec::new(),
         }
     }
     /// A derived artifact — a report — with its source fingerprint pinned.
@@ -1016,6 +1063,89 @@ mod tests {
             .actions
             .iter()
             .any(|action| matches!(action, Action::Upload { .. })));
+    }
+
+    #[test]
+    fn a_solar_report_waits_for_its_calculation() {
+        let mut report = derived("report-city_1", SHA_A, 1_001);
+        report.identity.engine = engines::solar_engine().name.into();
+        report.identity.variant = "APD-English".into();
+        let mut calculation = head_at("calculate-city_1", SHA_B, 1_000);
+        calculation.identity.engine = report.identity.engine.clone();
+        let output = PublishedOutput {
+            identity: calculation.identity.clone(),
+            output_id: "report-input".into(),
+            sha256: "f".repeat(64),
+        };
+        let mut request = input(vec![report], vec![calculation], None);
+        let waiting = plan(&request).unwrap();
+        assert_eq!(waiting.summary.uploads, 0);
+        assert_eq!(waiting.summary.in_sync, 0);
+        assert_eq!(waiting.summary.waiting_on_dependency, 1);
+        assert_eq!(waiting.wake, Wake::Event);
+        assert!(waiting.actions.iter().any(|action| matches!(
+            action,
+            Action::Nothing {
+                reason: "waiting_on_dependency",
+                ..
+            }
+        )));
+
+        // A head counter or inventory hash is not the report-input output.
+        request.published_outputs = vec![PublishedOutput {
+            sha256: SHA_B.into(),
+            ..output.clone()
+        }];
+        assert_eq!(plan(&request).unwrap().summary.waiting_on_dependency, 1);
+        request.published_outputs = vec![output.clone()];
+        assert_eq!(plan(&request).unwrap().summary.uploads, 1);
+        assert_eq!(plan(&request).unwrap().summary.waiting_on_dependency, 0);
+
+        // Ambiguous output declarations and other cities do not satisfy it.
+        request.published_outputs.push(output.clone());
+        assert_eq!(plan(&request).unwrap().summary.waiting_on_dependency, 1);
+        request.published_outputs = vec![PublishedOutput {
+            identity: Identity {
+                operation: "calculate-city_2".into(),
+                ..output.identity.clone()
+            },
+            ..output.clone()
+        }];
+        assert_eq!(plan(&request).unwrap().summary.waiting_on_dependency, 1);
+        request.published_outputs = vec![output];
+        request.remote.clear();
+        assert_eq!(plan(&request).unwrap().summary.waiting_on_dependency, 1);
+    }
+
+    #[test]
+    fn shared_computed_artifacts_are_downloaded_without_an_upload_grant() {
+        for engine in engines::ENGINES {
+            let mut head = head_at("calculate-resource", SHA_A, 1_000);
+            head.identity.engine = engine.name.into();
+            let request = input(vec![], vec![head.clone()], Some(grant(1)));
+            let reuse = plan(&request).unwrap();
+            assert_eq!(reuse.summary.downloads, 1);
+            assert_eq!(reuse.summary.uploads, 0);
+            assert!(!reuse
+                .actions
+                .iter()
+                .any(|action| matches!(action, Action::OpenGrant { .. })));
+            assert!(reuse.actions.iter().any(|action| matches!(
+                action,
+                Action::Download {
+                    reason: "absent_locally",
+                    ..
+                }
+            )));
+
+            let mut cached = derived("calculate-resource", SHA_A, 1_000);
+            cached.identity = head.identity.clone();
+            let cached = plan(&input(vec![cached], vec![head], None)).unwrap();
+            assert_eq!(cached.summary.in_sync, 1);
+            assert_eq!(cached.summary.uploads, 0);
+            assert_eq!(cached.summary.downloads, 0);
+            assert_eq!(cached.wake, Wake::Event);
+        }
     }
 
     fn kinds(plan: &Plan) -> Vec<String> {

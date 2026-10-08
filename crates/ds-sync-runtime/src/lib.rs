@@ -70,6 +70,6 @@ pub use rows::{
     inventory_digest, now_ms, server_time_ms, LocalOutput, LocalRow, Receipt, Reclaimed,
     RecordAnswer, RemoteOutput, RemoteRow, SyncRun, TransferReceipt, MAX_ROWS, SCHEMA,
 };
-pub use run::{plan, plan_once, run, SyncHost, DEFAULT_TRIGGER, REPORT_ENGINE};
+pub use run::{plan, plan_once, run, SyncHost, DEFAULT_TRIGGER};
 
 pub mod reports;

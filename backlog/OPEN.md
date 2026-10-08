@@ -45,16 +45,17 @@ Unfinished code that an agent can implement and prove without further owner inpu
 
 Contract: [ds-sync-engine.md §6](../docs/contracts/ds-sync-engine.md#6-where-each-publication-rule-lives).
 Solar and Network Reporter computation artifacts require identical synchronization
-logic; governed inputs, parameters and provenance must survive artifact reclaim
-so computations can be repeated. Owner inputs are in
+logic; prefer verified shared artifacts over unnecessary recomputation. Governed
+inputs, parameters and provenance must survive artifact reclaim so computations
+can be repeated when needed. Owner inputs are in
 [OPEN-X.md](OPEN-X.md#solar-sync-migration-owner-inputs); only the legacy queue
 deletion waits for a cutover ruling.
 
-- **Native publication is still split.** `run::upload` rejects non-report rows;
-  `SolarPublisher` and the Server's Solar auth publisher use different verdicts.
-  Replace them with one engine-table-driven declaration, preflight and native
-  pass; move the Server producer/completion observer to the kernel runtime.
-  Add native dependency waits, retry and digest-bound sanitation. Prove identical
+- **Native callers still select separate publication paths.** Retire
+  `SolarPublisher`, the Server's Solar auth publisher and the report-scoped
+  compatibility entry in favor of the common executor and declaration builder;
+  move the Server producer/completion observer to the kernel runtime.
+  Add native retry and digest-bound sanitation. Prove identical
   receipts/store states, including 401 hold/recovery, stale inputs, archive
   refusal, cancellation/restart and a draft waiting for its calculation.
 - **Server common-store coverage is missing for Solar drafts/finals/portfolios.**

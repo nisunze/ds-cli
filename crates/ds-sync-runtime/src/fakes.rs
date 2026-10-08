@@ -213,11 +213,11 @@ fn refused(status: u16, code: &str, message: impl Into<String>) -> GatewayError 
 }
 
 impl FakeWorld {
-    fn head_of(&self, operation: &str) -> Option<&Value> {
+    fn head_of(&self, engine: &Value, operation: &str, variant: &Value) -> Option<&Value> {
         self.record.iter().find(|head| {
-            head["engine"] == "network_reporter"
+            head["engine"] == *engine
                 && head["operation"] == operation
-                && head["variant"] == "default"
+                && head["variant"] == *variant
         })
     }
 
@@ -229,7 +229,11 @@ impl FakeWorld {
             return Err(refused(403, "INSUFFICIENT_PERMISSIONS", reason.clone()));
         }
         let operation = body["operation"].as_str().unwrap_or_default().to_string();
-        if self.refuse_open_resource.as_deref() == operation.strip_prefix("export-") {
+        if self
+            .refuse_open_resource
+            .as_deref()
+            .is_some_and(|resource| operation.strip_prefix("export-") == Some(resource))
+        {
             return Err(refused(
                 503,
                 "SERVICE_UNAVAILABLE",
@@ -265,7 +269,7 @@ impl FakeWorld {
             ));
         }
         let head_revision = self
-            .head_of(&operation)
+            .head_of(&body["engine"], &operation, &body["variant"])
             .and_then(|head| head["head_revision"].as_i64())
             .unwrap_or_default();
         let never_commit = self.never_commit;
@@ -369,14 +373,14 @@ impl FakeWorld {
             })
             .collect();
         self.record.retain(|head| {
-            !(head["engine"] == "network_reporter"
+            !(head["engine"] == opened["engine"]
                 && head["operation"] == operation.as_str()
-                && head["variant"] == "default")
+                && head["variant"] == opened["variant"])
         });
         self.record.push(json!({
-            "engine": "network_reporter",
+            "engine": opened["engine"],
             "operation": operation,
-            "variant": "default",
+            "variant": opened["variant"],
             "head_revision": revision,
             "input_base_fingerprint": declared,
             "updated_at": "2026-09-11T10:00:00Z",

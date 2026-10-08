@@ -536,9 +536,10 @@ pub fn local_row_from_store(row: &store::ArtifactRow) -> LocalRow {
         produced_at_ms: row.produced_at_ms,
         base_revision: row.base_revision.clone(),
         input_base_fingerprint: row.input_base_fingerprint.clone().or_else(|| {
-            // Additive migration for report rows written before the store
-            // gained the explicit source-input field.
-            (row.identity.engine == "network_reporter")
+            // Additive reading of sealed rows written before producers used
+            // the explicit source field. This never adopts producer jobs.
+            sync::engines::engine(&row.identity.engine)
+                .is_some_and(|engine| engine.legacy_source_in_base)
                 .then(|| row.base_revision.clone())
                 .flatten()
         }),

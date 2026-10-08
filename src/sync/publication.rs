@@ -1,6 +1,44 @@
 //! One interpretation of the record's answer, independent of producing engine.
 use serde::{Deserialize, Serialize};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PublicationBlock {
+    EngineUnavailable,
+    MissingSource,
+}
+
+impl PublicationBlock {
+    pub fn verdict(self) -> PublicationVerdict {
+        match self {
+            Self::EngineUnavailable => PublicationVerdict::Held,
+            Self::MissingSource => PublicationVerdict::Refused,
+        }
+    }
+
+    pub fn detail(self) -> &'static str {
+        match self {
+            Self::EngineUnavailable => "this publication has no registered engine policy; its bytes remain held",
+            Self::MissingSource => "this publication names no source inputs, so the record cannot tell whether it is current; produce it again",
+        }
+    }
+}
+
+/// Source admission is engine-table data, evaluated before any gateway call.
+/// An aggregate may have device-local inputs without a server source fence.
+pub fn publication_preflight(
+    identity: &super::Identity,
+    input_base_fingerprint: Option<&str>,
+) -> Result<(), PublicationBlock> {
+    let engine =
+        super::engines::engine(&identity.engine).ok_or(PublicationBlock::EngineUnavailable)?;
+    if engine.requires_source(&identity.operation)
+        && input_base_fingerprint.is_none_or(str::is_empty)
+    {
+        return Err(PublicationBlock::MissingSource);
+    }
+    Ok(())
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PublicationStage {
@@ -79,6 +117,28 @@ pub fn publication_verdict(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_row_without_a_fingerprint_is_refused_for_every_fenced_engine() {
+        for engine in crate::sync::engines::ENGINES {
+            let identity = crate::sync::Identity {
+                engine: engine.name.into(),
+                operation: "individual-resource".into(),
+                variant: "default".into(),
+            };
+            for source in [None, Some("")] {
+                assert!(publication_preflight(&identity, source).is_err());
+            }
+            assert!(publication_preflight(&identity, Some("fenced-inputs")).is_ok());
+            for operation in engine.fingerprint_free_operations {
+                let aggregate = crate::sync::Identity {
+                    operation: (*operation).into(),
+                    ..identity.clone()
+                };
+                assert!(publication_preflight(&aggregate, None).is_ok());
+            }
+        }
+    }
 
     #[test]
     fn record_answers_have_one_verdict_and_only_publication_verdicts_settle() {

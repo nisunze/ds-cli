@@ -311,8 +311,11 @@ reads and sealed storage-session transfers belong to this repository's
 `crates/ds-sync-runtime`. The pure kernel retains the plan, record-answer verdict
 and transfer state machine. Tauri supplies shell integration, cancellation and
 progress projection. Computation artifacts have the same synchronization rules
-regardless of engine; governed input data, parameters and provenance are retained
-so derived outputs can be recomputed. Artifact reclaim never deletes those inputs.
+regardless of engine. Prefer downloading and verifying a valid shared artifact,
+including another user's result, over recomputing it. Retain governed input data,
+authored parameters and provenance so recomputation remains available when needed.
+Artifact reclaim never deletes those inputs or reduces the obligation to sync
+computed artifacts.
 
 The current native executor consumes `sync::publication_verdict`; the legacy
 Server Solar publisher and Desktop TypeScript queue still await migration to

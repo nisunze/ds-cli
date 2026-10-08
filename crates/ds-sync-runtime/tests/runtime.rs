@@ -1524,6 +1524,85 @@ fn report_pass_does_not_send_solar_through_the_report_door() {
 }
 
 #[test]
+fn computed_artifacts_from_another_machine_are_reused_for_every_engine() {
+    for engine in sync::engines::ENGINES {
+        let h = Harness::new();
+        let bytes = b"shared verified computation";
+        let (operation, output_id) = if engine.name == sync::engines::solar_engine().name {
+            ("calculate-city_1", "report-input")
+        } else {
+            ("export-tx_1", "xlsx")
+        };
+        let mut head = record_head(bytes, 3, fakes::FINGERPRINT);
+        head["engine"] = serde_json::json!(engine.name);
+        head["operation"] = serde_json::json!(operation);
+        head["outputs"][0]["output_id"] = serde_json::json!(output_id);
+        {
+            let mut world = fakes::lock(&h.world);
+            world.record = vec![head];
+            world
+                .objects
+                .insert(fakes::download_url(operation, output_id), bytes.to_vec());
+        }
+        let downloaded = h.run(vec![], sync::Trigger::Startup);
+        assert_eq!(downloaded.plan.summary.downloads, 1);
+        assert_eq!(downloaded.plan.summary.uploads, 0);
+        assert_eq!(downloaded.replanned.summary.downloads, 0);
+        let cached = h.run(vec![], sync::Trigger::LocalChange);
+        assert_eq!(cached.plan.summary.downloads, 0);
+        assert_eq!(cached.plan.summary.uploads, 0);
+        let world = fakes::lock(&h.world);
+        assert_eq!(world.downloads.len(), 1, "the verified cache is reused");
+        assert_eq!(world.opens, 0);
+        assert_eq!(world.commits, 0);
+        assert!(world.transfers.is_empty());
+        assert!(
+            stored_rows(&h, PROJECT).is_empty(),
+            "a shared replica never becomes a local producer publication"
+        );
+        assert_eq!(
+            std::fs::read(
+                h.reads_root
+                    .join(PROJECT)
+                    .join(engine.name)
+                    .join(format!("{operation}/default/{output_id}"))
+            )
+            .unwrap(),
+            bytes
+        );
+    }
+}
+
+#[test]
+fn the_common_executor_publishes_every_registered_engine() {
+    for engine in sync::engines::ENGINES {
+        let h = Harness::new();
+        let mut row = if engine.name == sync::engines::solar_engine().name {
+            solar_row()
+        } else {
+            local_row(b"report")
+        };
+        row.input_base_fingerprint = Some(fakes::FINGERPRINT.into());
+        fakes::lock(&h.world)
+            .current_base
+            .insert(row.identity.operation.clone(), fakes::FINGERPRINT.into());
+        let result = h.run(vec![row.clone()], sync::Trigger::Startup);
+        assert_eq!(outcomes(&result), vec!["upload:published"]);
+        let stored = stored_rows(&h, PROJECT);
+        assert_eq!(
+            stored[0].state,
+            ds_sync_runtime::store::ArtifactState::Published
+        );
+        let world = fakes::lock(&h.world);
+        assert_eq!(world.opens, 1);
+        assert_eq!(world.commits, 1);
+        assert_eq!(world.declarations[0]["engine"], engine.name);
+        assert_eq!(world.record[0]["engine"], engine.name);
+        assert_eq!(world.record[0]["operation"], row.identity.operation);
+    }
+}
+
+#[test]
 fn head_inventory_walks_service_default_pages_without_truncation() {
     use ds_sync_runtime::SyncHost;
     let h = Harness::new();
@@ -1660,20 +1739,24 @@ fn a_source_that_moves_between_open_and_finalize_is_stored_stale_and_reclaimed()
 /// A report that names no source inputs can never be fenced against the
 /// record; it is refused locally and never declared.
 #[test]
-fn a_report_with_no_source_fingerprint_is_refused_without_asking_the_record() {
-    let h = Harness::new();
-    let mut row = local_row(b"unfenceable");
-    row.input_base_fingerprint = None;
-    let result = h.run(vec![row], sync::Trigger::Startup);
-    assert_eq!(
-        outcomes(&result),
-        vec!["upload:refused", "reclaimed:refused"]
-    );
-    assert!(result.receipts[0]
-        .detail
-        .as_deref()
-        .is_some_and(|detail| detail.contains("names no source inputs")));
-    assert_eq!(fakes::lock(&h.world).opens, 0, "the record was not asked");
+fn a_row_without_a_fingerprint_is_refused_for_every_fenced_engine() {
+    for engine in sync::engines::ENGINES {
+        let h = Harness::new();
+        let mut row = local_row(b"unfenceable");
+        row.identity.engine = engine.name.into();
+        row.input_base_fingerprint = None;
+        row.base_revision = None;
+        let result = h.run(vec![row], sync::Trigger::Startup);
+        assert_eq!(
+            outcomes(&result),
+            vec!["upload:refused", "reclaimed:refused"]
+        );
+        assert!(result.receipts[0]
+            .detail
+            .as_deref()
+            .is_some_and(|detail| detail.contains("names no source inputs")));
+        assert_eq!(fakes::lock(&h.world).opens, 0, "the record was not asked");
+    }
 }
 
 /// A declaration the project's current inputs do not produce is refused on

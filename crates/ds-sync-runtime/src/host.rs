@@ -382,7 +382,7 @@ impl<'a> StoreHost<'a> {
         let mut receipts = Vec::new();
         for row in local.into_iter().filter(|row| {
             row.readable
-                && row.identity.engine == "solar"
+                && row.identity.engine == sync::engines::solar_engine().name
                 && row.identity.variant == "default"
                 && row.identity.operation.starts_with("calculate-")
         }) {

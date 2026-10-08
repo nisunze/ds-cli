@@ -183,10 +183,13 @@ means, but the batches it displaces are reported instead of dropped.
 ## 6. Where each publication rule lives
 
 **Owner clarification, 2026-10-08:** Solar outputs and Network Reporter
-artifacts are conceptually the same: computations produce artifacts which sync
-through the same logic. Governed source data, parameters and provenance are the
-durable authority to preserve so artifacts can be recomputed at will. Reclaiming
-derived bytes never authorizes deleting or rewriting their source inputs.
+artifacts are conceptually the same: computations produce artifacts which must
+sync through the same logic. Prefer downloading and verifying a valid shared
+artifact, including one another user computed, over repeating that computation.
+Preserve governed source data, authored parameters and provenance so recomputation
+is available when needed; preserving them does not reduce artifact synchronization
+or justify unnecessary compute. Reclaiming derived bytes never authorizes deleting
+or rewriting their source inputs.
 
 `sync::publication_verdict` is the pure record-answer interpretation. HTTP 401
 holds the credential, 403 refuses the row, 409 at open conflicts and 409 at
@@ -197,6 +200,21 @@ native executor uses this function both for its receipt and for determining
 whether the receipt settled the row. The legacy Solar publisher remains until
 the common publication sequence is wired; this verdict API does not by itself
 claim Desktop or Server Solar cutover.
+
+`sync::engines` holds the native source-fence and dependency policy. Only the
+two exact reporter aggregate operations are source-fence-free; individual
+exports and Solar publications require source inputs. An unavailable engine
+policy holds its bytes. A Solar report waits on the published calculation's
+exact `report-input` output hash in this project's observed heads. Missing,
+wrong-city, mismatched or ambiguous declarations answer
+`nothing:waiting_on_dependency`, counted separately from `in_sync`, with an
+event wake. A counter or inventory hash cannot satisfy that dependency.
+
+The common native upload executor now accepts either engine and calls that
+preflight. Source tests prove common open/transfer/finalize execution and
+verified remote-copy reuse for both. The old Solar caller and report-scoped
+compatibility entry remain to be retired together with their callers; these
+tests are not proof of a Server or Desktop cutover.
 
 The Solar migration keeps one decision family (`sync`, `sync_store`, `transfer`)
 and one native executor (`ds-sync-runtime`). The following inventory distinguishes

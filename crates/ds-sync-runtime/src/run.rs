@@ -31,10 +31,6 @@ use crate::rows::{
     Reclaimed, RecordAnswer, RemoteRow, SyncRun, TransferReceipt, MAX_ROWS, SCHEMA,
 };
 
-/// The engine whose publications this loop performs. Every other engine's
-/// rows are published by that engine's own pump over the same store.
-pub const REPORT_ENGINE: &str = "network_reporter";
-
 /// The trigger a caller that names none is taken to mean.
 ///
 /// "Sync now" is the only honest default: a call that arrived without a reason
@@ -158,6 +154,16 @@ pub fn plan_once(
         source_grants: Vec::new(),
         local: local.iter().map(kernel_local).collect(),
         remote: remote.iter().map(kernel_remote).collect(),
+        published_outputs: remote
+            .iter()
+            .flat_map(|head| {
+                head.outputs.iter().map(|output| sync::PublishedOutput {
+                    identity: head.identity.clone(),
+                    output_id: output.output_id.clone(),
+                    sha256: output.sha256.clone(),
+                })
+            })
+            .collect(),
     };
     sync::plan(&input)
 }
@@ -200,15 +206,19 @@ pub fn run(host: &dyn SyncHost, project: &str, trigger: sync::Trigger) -> Result
     run_scoped(host, project, trigger, None)
 }
 
-/// Drive report publication without submitting Solar rows through it. Both
-/// pumps retain the same project store and lease. Remote head observations
-/// remain complete; only the input to this pass is scoped.
+/// Compatibility report-scoped view of the common executor while native
+/// callers migrate. Remote observations retain the complete project heads.
 pub fn run_reports(
     host: &dyn SyncHost,
     project: &str,
     trigger: sync::Trigger,
 ) -> Result<SyncRun, String> {
-    run_scoped(host, project, trigger, Some(REPORT_ENGINE))
+    run_scoped(
+        host,
+        project,
+        trigger,
+        Some(sync::engines::report_engine().name),
+    )
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -561,22 +571,12 @@ fn upload(
             .about(identity)
             .detail("the planned row is no longer in the local inventory");
     };
-    if row.identity.engine != REPORT_ENGINE {
-        return Receipt::new("upload", "failed")
-            .about(identity)
-            .detail("this pass publishes reports; the row's own engine pump publishes it");
-    }
-    // The fence is the source the report was computed from. A row that names
-    // none can never be checked against the record, so it is refused here,
-    // before it asks anything of the record.
-    if row
-        .input_base_fingerprint
-        .as_deref()
-        .is_none_or(str::is_empty)
+    if let Err(block) =
+        sync::publication_preflight(&row.identity, row.input_base_fingerprint.as_deref())
     {
-        return Receipt::new("upload", "refused")
+        return Receipt::new("upload", block.verdict().outcome())
             .about(identity)
-            .detail("this report names no source inputs, so the record cannot tell whether it is current; export it again");
+            .detail(block.detail());
     }
     let mut answer = match host.open_publication(&open_declaration(project, row)) {
         Ok(answer) => answer,
@@ -718,6 +718,41 @@ fn download(
 mod publication_tests {
     use super::*;
     use crate::{rows, store};
+
+    #[test]
+    fn a_row_without_a_fingerprint_never_reaches_the_record_for_any_fenced_engine() {
+        for engine in sync::engines::ENGINES {
+            let mut row = crate::fakes::local_row(b"derived bytes");
+            row.identity.engine = engine.name.into();
+            row.input_base_fingerprint = None;
+            assert_eq!(
+                sync::publication_preflight(&row.identity, None),
+                Err(sync::PublicationBlock::MissingSource)
+            );
+        }
+        let mut unknown = crate::fakes::local_row(b"owned by another producer");
+        unknown.identity.engine = "unregistered".into();
+        let block = sync::publication_preflight(&unknown.identity, None).unwrap_err();
+        assert_eq!(block.verdict(), PublicationVerdict::Held);
+    }
+
+    #[test]
+    fn engine_names_live_only_in_the_engine_table() {
+        for (path, source) in [
+            ("run.rs", include_str!("run.rs")),
+            ("host.rs", include_str!("host.rs")),
+            ("sync.rs", include_str!("../../../src/sync.rs")),
+        ] {
+            let production = source.split("#[cfg(test)]").next().unwrap();
+            for engine in sync::engines::ENGINES {
+                assert!(
+                    !production.contains(&format!("\"{}\"", engine.name)),
+                    "{path}"
+                );
+            }
+            assert!(!production.contains("REPORT_ENGINE"), "{path}");
+        }
+    }
 
     #[test]
     fn same_record_answer_same_verdict_for_every_engine() {
