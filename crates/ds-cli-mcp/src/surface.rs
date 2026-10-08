@@ -1242,6 +1242,7 @@ const DESIGN_RUN_COMMANDS: &[&str] = &[
 const SOLAR_APPLICATION_COMMANDS: &[&str] = &["solar.application", "solar.application.schema"];
 const SOLAR_RUN_COMMANDS: &[&str] = &[
     "solar.engine",
+    "solar.project.clean",
     // Preserve the established end-to-end run profile. Native governed input
     // handoffs get their own narrow profile because adding them here would
     // exceed the bounded leaf-tool surface and silently change existing hosts.
@@ -1301,7 +1302,6 @@ const DESIGN_MIGRATION_COMMANDS: &[&str] = &["design.migrate.plan", "design.migr
 
 const SOLAR_PORTFOLIO_BATCH_COMMANDS: &[&str] = &[
     "solar.portfolio.calculate",
-    "solar.portfolio.publish",
     "solar.portfolio.published.read",
     "solar.portfolio.batch.start",
     "solar.portfolio.batch.status",

@@ -81,14 +81,14 @@ profile. The source and calculation closures remain unchanged. Destinations
 must be new files under a private directory. A finished local document remains
 `publication: not_requested`.
 
-`portfolio_publish` publishes all result, draft and chart outputs declared by
-one selected native portfolio batch. The standalone portfolio publication
-command does the same for a closed project portfolio directory. Current
-governed membership is checked before upload and fenced at finalization.
-An immutable publication identity pins the source run and exact output bytes;
-repeating that plan resumes the same work. An earlier result-only publication
-cannot be mistaken for the complete bundle. Require the published receipt and
-its output count before claiming online delivery.
+`portfolio_publish` observes publication of one selected fresh native portfolio
+batch. Native completion seals its result, drafts and chart bytes into the common
+sync store; an offline run retains those bytes for reconnect. The observation
+cannot adopt a historical directory or enqueue old results. The legacy standalone
+portfolio publisher is removed: recompute through `portfolio_start` or
+`portfolio_calculate`. Current governed membership is fenced by common admission.
+Require a published receipt before claiming online delivery; queued output is
+still local.
 
 Use `solar portfolio published read` with an explicit project, portfolio and
 source run to inspect the current published aggregate without Desktop. Native
@@ -652,13 +652,11 @@ The owning [shared-network contract](../../../ds-solar/docs/contracts/shared-net
 describes inheritance, source refresh, legacy adoption and calculation storage.
 A standalone project draft is local-only; it does not enqueue a shared result.
 
-`solar project outbox preview --workspace DIR --project PROJECT` lists cities
-with retired report publications and returns their complete queue digest.
-`solar project outbox discard --workspace DIR --project PROJECT --digest DIGEST
---yes` removes those intents and requires fresh native computation. It neither
-recovers old outputs nor modifies authored inputs. Discover `solar application
-schema` for native prepare/calculate controls; the same cutover JSON is exposed
-as `project_publication_cutover`.
+`solar project clean --workspace DIR --project PROJECT --yes` clears local
+computed runs and their publication intents. Authored inputs, parameters, copied
+maps and reference cache remain. Active computation refuses cleanup. Recompute
+from the engine and current inputs; fresh native runs retain outputs offline and
+publish on reconnect. The same owner JSON control is `project_clean`.
 
 ## Sealed portfolio dashboards
 

@@ -1081,13 +1081,8 @@ static SOLAR_ENTRIES: &[Entry] = &[
         render: ds_cli_solar::project::render,
     },
     Entry {
-        command: &ds_cli_solar::project::CUTOVER_PREVIEW,
-        handler: ds_cli_solar::project::cutover_preview,
-        render: ds_cli_solar::project::render,
-    },
-    Entry {
-        command: &ds_cli_solar::project::CUTOVER_DISCARD,
-        handler: ds_cli_solar::project::cutover_discard,
+        command: &ds_cli_solar::project::CLEAN,
+        handler: ds_cli_solar::project::clean,
         render: ds_cli_solar::project::render,
     },
     Entry {
@@ -1184,11 +1179,6 @@ static SOLAR_ENTRIES: &[Entry] = &[
         command: &ds_cli_solar::portfolio_headless::CALCULATE,
         handler: ds_cli_solar::portfolio_headless::calculate,
         render: ds_cli_solar::workflow::render,
-    },
-    Entry {
-        command: &ds_cli_solar::portfolio_headless::PUBLISH,
-        handler: ds_cli_solar::portfolio_headless::publish,
-        render: ds_cli_solar::portfolio_headless::render_publication,
     },
     Entry {
         command: &ds_cli_solar::portfolio_headless::PUBLISHED_READ,

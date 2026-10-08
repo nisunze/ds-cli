@@ -30,9 +30,8 @@ identities. Inspect any closed artifacts before retrying the same exact intent.
 Calculation and verified online publication remain separate operations.
 
 For typed MCP, use `solar-portfolio-batch` for calculation/publication and
-`solar-delivery` for the governed catalog. Discover `solar.portfolio.list`, `solar.portfolio.calculate` and
-`solar.portfolio.publish` through live descriptors. The headless catalog uses
-an explicit project and lane without changing the selected project. Retain
+`solar-delivery` for the governed catalog. Discover `solar.portfolio.list` and `solar.portfolio.calculate` through live
+descriptors. The headless catalog uses an explicit project and lane without changing the selected project. Retain
 the exact portfolio id, ordered cities, and membership revision it returns.
 
 Calculation consumes an already verified project city-batch directory and
@@ -45,12 +44,12 @@ Choose a new output directory and run id using the calculation descriptor.
 The owner derives assumptions from sealed city artifacts and emits the
 portfolio result, French APD draft, charts, and closed batch.
 
-The calculation receipt says `publication: not_requested`. Publish the same
-closed output through the discovered publication command only when authorized.
-It rechecks governed membership and sends the exact sealed result, declared
-drafts and chart bytes. For native application runs, discover `portfolio_publish`
-and retain its exact batch id and digest. Require its output count along with
-the published receipt; a historical result-only publication does not prove the
+Standalone calculation receipts say `publication: not_requested`; those local
+files are not adopted for publication. Recompute through the native application
+for publication. Fresh native completion retains its bytes in the common sync
+store even while offline. Discover `portfolio_publish` to observe the sealed
+native batch, retaining its exact batch id and digest. Require its output count
+along with the published receipt; a historical result-only publication does not prove the
 complete bundle was delivered.
 Require a verified online publication receipt before claiming synchronization:
 a successful local calculation is separate from publication and is reported

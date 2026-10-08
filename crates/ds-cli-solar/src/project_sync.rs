@@ -15,7 +15,7 @@ pub static COMMAND: Command = Command {
     path: &["solar", "project", "sync"],
     contract: 3,
     summary: "Publish authored Solar city inputs without Desktop.",
-    purpose: "Publish queued authored city inputs and copied maps under the restored native principal and explicit project. Old result publications are never adopted: inspect project outbox preview, discard its exact digest, then compute a fresh native application result. --background starts this same fixed input worker; --watch retries transient connectivity failures. Local drafts remain available.",
+    purpose: "Publish queued authored city inputs and copied maps under the restored native principal and explicit project. Use project clean to clear local computed runs, then compute again from the engine and current inputs. --background starts this same fixed input worker; --watch retries transient connectivity failures. Local drafts remain available.",
     chapter: Chapter::Solar,
     effect: Effect::GlobalWrite,
     authority: Authority::HeadlessProject,

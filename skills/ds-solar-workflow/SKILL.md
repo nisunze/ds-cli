@@ -137,12 +137,11 @@ repeating it preserves existing edits. Use the city read/write and network seed
 form commands to compose the inputs, then `solar.project.run`.
 These use a private local workspace and existing
 verified reference cache; no Desktop or cloud access is required. Inspect
-`solar.project.result` and `solar.project.outbox` before discussing publication.
-Discover `solar.project.sync` for native authenticated background publication;
-pass its explicit project and lane, and follow its confirmation contract.
-Detached workers retain that project and leave saved selection unchanged. Never treat a
-local result as published, substitute current inputs for a captured run, or
-automatically rebase a cloud conflict.
+`solar.project.result` for local outputs. Discover `solar.project.sync` for
+input publication under an explicit project and lane. Never automatically
+rebase a conflict. Use `solar.project.clean` to clear computed runs while
+keeping inputs and parameters, then recompute. Fresh native runs retain outputs
+offline for reconnect publication; old results are never adopted.
 
 Stops at: the document lane — a sealed city result continues in
 `ds-solar-final-authoring` and the installed document tools.
