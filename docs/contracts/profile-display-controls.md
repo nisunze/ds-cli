@@ -220,11 +220,19 @@ The headless runtime also accepts explicit calculated geometry delta transport:
   `ds_grid_engine::profile_calculated_delta` to compare the result. Ordinary
   Start remains full-result transport.
 - Admission returns `scene:null`, original native `scene_delta_json`, and a separate
-  full `display`. The geometry delta is limited to 256 KiB and 4,096 operations;
-  an oversized transition fails with `profile_calculated_delta_output_limit`
-  and requires an explicitly requested full calculation. No automatic fallback
-  or second calculation occurs. Display and analysis remain full payloads, so
-  this geometry limit is not a bound on the complete runtime response.
+  full `display`. The geometry delta is limited to 16 MiB and 65,536 operations
+  (one pole drag on Nyamagabe is ~280 KB). Beyond that, or when the retained
+  base moved on during the job, admission returns the exact full scene text
+  (`scene_json`) instead: a delta is only a cheaper transport, and a
+  calculation is never refused for it. No second calculation occurs. Display
+  and analysis remain full payloads, so this geometry limit is not a bound on
+  the complete runtime response.
+- Observe carries the kernel's post-edit update only when it is complete. A
+  scoped update that still names pending whole-model facts is reported as
+  `calculated_update.reconcile_required.code: "partial"` with the re-solved
+  section ids; the runtime base stays where the worker's is and
+  `calculation.required` stays true. The host then reconciles at once (Profile
+  contract §0: an edit lands whole).
 
 The receiving native owner must admit the delta against its immutable calculated
 base, target revision and engineering root before installing picking/render

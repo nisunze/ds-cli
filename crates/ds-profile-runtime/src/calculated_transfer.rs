@@ -109,13 +109,18 @@ impl Runtime {
         let requested = self.delta_transfers.remove(scope);
         let exact_requested = self.exact_transfers.remove(scope);
         let held = self.held.get_mut(scope).expect("admitted projected scope");
-        let (wire, exact, delta, bytes) = if let Some(signature) = requested {
+        // A delta is only a cheaper transport of the same result. When the
+        // base moved on or the delta outgrows its bound, the host receives the
+        // exact full scene instead; the calculation still lands whole.
+        let transfer = requested.as_deref().and_then(|signature| {
             let base = held
                 .calculated_base
                 .as_ref()
-                .filter(|base| base.signature() == signature)
-                .ok_or("profile_calculated_delta_stale: calculation lost its exact scene base")?;
-            let (next, delta) = base.delta_to(scene)?;
+                .filter(|base| base.signature() == signature)?;
+            base.delta_to(scene.clone()).ok()
+        });
+        let exact_requested = exact_requested || (requested.is_some() && transfer.is_none());
+        let (wire, exact, delta, bytes) = if let Some((next, delta)) = transfer {
             let delta = serde_json::to_string(&delta).map_err(|error| error.to_string())?;
             let bytes = delta.len();
             held.calculated_base = Some(Arc::new(next));

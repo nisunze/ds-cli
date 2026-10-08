@@ -455,6 +455,9 @@ impl Runtime {
                 !pending_reconcile
                     && request.calculated_base_signature.as_deref() == Some(base.signature())
             }) {
+                // The worker holds exactly this base; keep it rather than
+                // re-sign the same scene on the next edit.
+                held.calculated_base = Some(base.clone());
                 let mut touched = held.calculated_touched.clone();
                 touched.whole_model |= scope.whole_model;
                 touched
@@ -476,6 +479,15 @@ impl Runtime {
                     &touched,
                     held.options.clone(),
                 ) {
+                    // An update that carries whole-model facts from an older
+                    // revision is half an edit. It is never presented as the
+                    // edit's result: the base stays, and the host reconciles.
+                    Ok(ProfileEditUpdate::Updated {
+                        section_ids,
+                        pending_reconcile,
+                        ..
+                    }) if !pending_reconcile.is_empty() => json!({"reconcile_required":{
+                        "code":"partial","section_ids":section_ids,"pending_reconcile":pending_reconcile}}),
                     Ok(ProfileEditUpdate::Updated {
                         base: next,
                         delta,
