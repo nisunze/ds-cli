@@ -46,12 +46,82 @@ const REFUSALS: &[Refusal] = &[
     },
 ];
 
+const USAGE_REFUSALS: &[Refusal] = &[
+    crate::NOT_PAIRED,
+    crate::AMBIGUOUS,
+    crate::UNREACHABLE,
+    crate::PAIRING_REJECTED,
+    crate::UNSUPPORTED,
+    crate::UNREADABLE,
+    crate::REFUSED,
+    Refusal {
+        code: "profile_closed",
+        when: "no model Profile is open",
+        remedy: "open a model Profile and read map profile view",
+    },
+    Refusal {
+        code: "profile_selection_stale",
+        when: "the captured Profile ownership changed",
+        remedy: "read map profile view and retry with its current model and revision",
+    },
+    Refusal {
+        code: "invalid_profile_model_request",
+        when: "an identity or request shape is invalid",
+        remedy: "use the declared native model and support identities",
+    },
+    Refusal {
+        code: "profile_model_refused",
+        when: "the optional read-only library projection refuses",
+        remedy: "inspect the native library refusal",
+    },
+    Refusal {
+        code: "invalid_profile_query",
+        when: "the native usage query is invalid",
+        remedy: "use a placed support from the current Profile",
+    },
+    Refusal {
+        code: "profile_query_stale",
+        when: "the native query history or input root changed",
+        remedy: "read current Profile history before retrying",
+    },
+    Refusal {
+        code: "profile_calculation_required",
+        when: "the support result is absent or affected by pending edits",
+        remedy: "explicitly calculate the current Profile; reading and Save do not calculate",
+    },
+    Refusal {
+        code: "profile_results_unavailable",
+        when: "no retained native result scope is available",
+        remedy: "explicitly initialize/calculate the Profile",
+    },
+    Refusal {
+        code: "profile_query_output_limit",
+        when: "the native fact exceeds the bounded response",
+        remedy: "inspect the native output-limit detail; use a narrower result query",
+    },
+    Refusal {
+        code: "profile_replay_stale",
+        when: "worker authored history has not been observed",
+        remedy: "observe the current authored head before querying",
+    },
+    Refusal {
+        code: "profile_replay_model_mismatch",
+        when: "the captured native result belongs to another model",
+        remedy: "read the current Profile model and retry",
+    },
+    Refusal {
+        code: "profile_publication_pending",
+        when: "a calculated candidate awaits admission or discard",
+        remedy: "confirm or discard the exact outstanding native result",
+    },
+];
+
 pub static USAGE: Command = Command {
     id: "map.profile.usage",
     path: &["map", "profile", "usage"],
-    contract: 1,
-    summary: "Read native usage for one support in the live dirty Profile.",
-    purpose: "Reads the held native session without exporting a package or saving. Returns the engineering classification, screening percentage, governing cases, uplift and blockers verbatim; unavailable basis stays explicit. The model and revision, account and project are fenced across the read.",
+    contract: 2,
+    summary: "Read cached native usage for one support in the live dirty Profile.",
+    purpose: "Reads one support through the retained native Profile usage query without calculation, exporting a package or saving. A missing or affected result refuses until explicit calculation. The native page carries exact authored/computed history and inputs, qualification, governing cases and signed loading. --types adds the existing read-only native library choices. The model, history, account and project are fenced across the read.",
     chapter: Chapter::MapPresentation,
     effect: Effect::ReadOnly,
     authority: Authority::DesktopPairing,
@@ -82,9 +152,9 @@ pub static USAGE: Command = Command {
         crate::TARGET_ARG,
         crate::DESCRIPTOR_ARG,
     ],
-    output: "model_id, revision, structure_id, structure_number and native screening {classification, model_revision, request, row, unavailable}. row.screening_usage_percent is a percentage, not a ratio. --types adds native structure_types entries with structure_type_id and label. No screenshot or saved package is used.",
+    output: "model_id, revision, structure_id, structure_number and usage: the unchanged bounded native QueryResults page for kind usage. It carries authored/computed revisions and roots, exact history, result identity, basis, items and freshness. Row evidence text arrays are represented by counts; read blockers with map profile results. --types adds existing native structure_types choices. No calculation or Save occurs.",
     examples: &[],
-    refusals: REFUSALS,
+    refusals: USAGE_REFUSALS,
     reference: Some("docs/reference/map.md"),
     search: &["capacity", "percentage", "uplift", "governing", "blockers"],
     requires: Requires::Window,
@@ -334,6 +404,29 @@ mod tests {
             &args.iter().map(|v| (*v).into()).collect::<Vec<_>>(),
         )
         .unwrap()
+    }
+    #[test]
+    fn usage_is_a_cached_native_query_with_explicit_calculation_refusals() {
+        assert_eq!(USAGE.contract, 2);
+        assert_eq!(USAGE.effect, Effect::ReadOnly);
+        assert!(USAGE.purpose.contains("without calculation"));
+        assert!(
+            USAGE
+                .output
+                .contains("unchanged bounded native QueryResults")
+        );
+        for code in [
+            "profile_calculation_required",
+            "profile_query_stale",
+            "profile_results_unavailable",
+            "profile_query_output_limit",
+            "profile_publication_pending",
+        ] {
+            assert!(
+                USAGE.refusals.iter().any(|refusal| refusal.code == code),
+                "{code}"
+            );
+        }
     }
     #[test]
     fn usage_passes_exact_native_support_and_live_revision() {
