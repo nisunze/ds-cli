@@ -330,17 +330,19 @@ operator's verified result views or downloads.
 
 ### Legacy Desktop queue cutover
 
-Owner ruling, 2026-10-08: show every affected city, discard its legacy queued
-publication, and require a fresh run. Remove the old queue in this release.
-Never re-seal or adopt those legacy Solar outputs. Retain a visible cutover
-notice with city identities before deleting the queue; governed inputs remain.
+Owner ruling, 2026-10-08: clear local computation and recompute from the engine,
+parameters and input data. Do not inspect, migrate, recover or adopt old results.
+`ds.solar-local-clean/v1` accepts only workspace and explicit project. The Rust
+owner refuses an active computation, clears derived runs and result publication
+intents, and preserves authored inputs, parameters, copied maps and references.
+There is no historical inventory, preview digest or result repair operation.
+Standalone Project sync publishes inputs only. Fresh native completion retains
+new city/portfolio outputs through the common store even offline; reconnect
+publishes those bytes without recomputation.
 
-The same discard-and-recompute ruling applies to the standalone Solar Project
-artifact outbox. Its Rust `ds.solar-publication-cutover/v1` control previews
-affected cities and pins the complete old queue digest; explicit discard removes
-those intents and requires a fresh native run. It never reads or adopts old
-artifact files. Authored inputs retain their revision-fenced input publication.
-Standalone project computation remains local-only; fresh native application
-completion seals new shared city/portfolio publications. The old Project
-artifact publisher and run-intent creation are removed rather than retained as
-fallbacks.
+The legacy standalone governed portfolio publisher is also removed. Neither the
+native client nor the standalone process accepts historical portfolio bytes for
+upload. Standalone portfolio calculations remain local deliverables. Recompute
+through the native application: fresh completion retains the immutable v3 bundle
+in the common store, including offline completion. `portfolio_publish` observes
+that completion seal; it cannot create one by reading an old output directory.

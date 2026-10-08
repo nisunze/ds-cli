@@ -1,18 +1,12 @@
 //! Closed Solar synchronization. Credentials never enter a local workspace.
 use crate::{
     authorized::{classify_tile_error, Authority},
-    AuthorizedTransport, ClientError, ClientProfile, ErrorKind, SolarProjectCall, UploadBytesCall,
+    AuthorizedTransport, ClientError, ClientProfile, ErrorKind, SolarProjectCall,
 };
 use ds_command_kernel::is_solar_id as id;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 
-pub struct Output {
-    pub id: String,
-    pub format: String,
-    pub content_type: String,
-    pub bytes: Vec<u8>,
-}
 pub enum Command {
     ListCities,
     ReadMedia {
@@ -390,87 +384,6 @@ pub(crate) fn run<T: AuthorizedTransport>(
             Ok(receipt)
         }
     }
-}
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn publish<T: AuthorizedTransport>(
-    profile: &ClientProfile,
-    transport: &mut T,
-    authority: Authority<'_>,
-    project: &str,
-    run: &str,
-    version: &str,
-    build: &str,
-    operation: &str,
-    variant: &str,
-    base: &str,
-    snapshot: Option<(&str, &str)>,
-    outputs: &[&Output],
-) -> Result<Value, ClientError> {
-    let declarations:Vec<_>=outputs.iter().map(|o|json!({"output_id":o.id,"format":o.format,"content_type":o.content_type,"sha256":format!("{:x}",Sha256::digest(&o.bytes)),"size_bytes":o.bytes.len()})).collect();
-    let mut request = json!({"action":"open","project_id":project,"client_run_id":run,"engine":"solar","operation":operation,"variant":variant,"engine_version":version,"engine_build_manifest_sha256":build,"input_base_fingerprint":base,"outputs":declarations});
-    if let Some((sha, receipt)) = snapshot {
-        request["source_snapshot_sha256"] = json!(sha);
-        request["snapshot_receipt_id"] = json!(receipt);
-    }
-    let opened = call(profile, transport, authority, true, request)?;
-    let work = opened["work_id"]
-        .as_str()
-        .filter(|s| id(s))
-        .ok_or_else(unreadable)?;
-    if opened["state"] == "stored_stale" {
-        return Err(conflict());
-    }
-    if opened["state"] == "published" && opened["head_revision"].as_i64().is_some_and(|n| n > 0) {
-        return Ok(
-            json!({"work_id":work,"operation":operation,"variant":variant,"state":"published"}),
-        );
-    }
-    if opened["state"] != "pending" {
-        return Err(unreadable());
-    }
-    let uploads = opened["outputs"].as_array().ok_or_else(unreadable)?;
-    if uploads.len() != outputs.len() {
-        return Err(unreadable());
-    }
-    let mut seen = std::collections::BTreeSet::new();
-    for upload in uploads {
-        let output_id = upload["output_id"].as_str().ok_or_else(unreadable)?;
-        if !seen.insert(output_id) {
-            return Err(unreadable());
-        }
-        let output = outputs
-            .iter()
-            .find(|o| o.id == output_id)
-            .ok_or_else(unreadable)?;
-        if upload["object_generation"].as_i64().is_some_and(|n| n > 0) {
-            continue;
-        }
-        let uri = upload["session_uri"].as_str().ok_or_else(unreadable)?;
-        validate_upload_uri(uri)?;
-        let mut reader = std::io::Cursor::new(&output.bytes);
-        let response = transport.upload_bytes(UploadBytesCall {
-            uri,
-            size: output.bytes.len() as u64,
-            reader: &mut reader,
-        })?;
-        crate::project_data::uploaded(response)?;
-    }
-    let finalized = call(
-        profile,
-        transport,
-        authority,
-        true,
-        json!({"action":"finalize","project_id":project,"client_run_id":run,"work_id":work}),
-    )?;
-    if finalized["work_id"] != work {
-        return Err(unreadable());
-    }
-    if finalized["state"] != "published"
-        || !finalized["head_revision"].as_i64().is_some_and(|n| n > 0)
-    {
-        return Err(conflict());
-    }
-    Ok(json!({"work_id":work,"operation":operation,"variant":variant,"state":"published"}))
 }
 pub(crate) fn validate_upload_uri(uri: &str) -> Result<(), ClientError> {
     let u = url::Url::parse(uri).map_err(|_| unreadable())?;
