@@ -9,7 +9,7 @@ use crate::server_sync::ServerSyncSession;
 use ds_sync_runtime::{
     Reads, Receipt, Reclaimed, SyncHost, SyncRun, Trigger,
     kernel_sync::{Action, Summary, Wake},
-    store::{ArtifactRow, Fence},
+    store::ArtifactRow,
 };
 use std::path::Path;
 
@@ -45,29 +45,11 @@ pub struct Pass {
 }
 
 /// Where this host's committed report batches live: beside the store.
-pub(crate) fn root(database: &Path) -> Result<std::path::PathBuf, String> {
+pub fn root(database: &Path) -> Result<std::path::PathBuf, String> {
     Ok(database
         .parent()
         .ok_or("server database has no state directory")?
         .join("report-artifacts"))
-}
-
-/// Which projects hold report publications on this host: the store's rows
-/// under this fence, plus any project whose batches are on disk with no
-/// row yet — sealed before the seal wrote its row — so a pass visits and
-/// adopts them. A Server that serves several projects must be able to find
-/// its pending work without being told which project it is "on".
-pub fn projects_with_publications(
-    database: &Path,
-    fence: &Fence,
-) -> Result<std::collections::BTreeSet<String>, String> {
-    let store = ds_sync_runtime::open_store(database)?;
-    let mut projects: std::collections::BTreeSet<String> =
-        ds_sync_runtime::projects_of_fence(&store, fence)?
-            .into_iter()
-            .collect();
-    projects.extend(ds_sync_runtime::reports::projects(&root(database)?, None)?);
-    Ok(projects)
 }
 
 fn fingerprint(rows: &[ArtifactRow]) -> Result<String, String> {

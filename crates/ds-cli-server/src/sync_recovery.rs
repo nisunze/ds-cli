@@ -10,7 +10,7 @@ use ds_cli_contract::{
     spec::{Arg, Command, Effect, Execution, Refusal},
 };
 use ds_command_kernel::sync_store::{
-    Fence, Scope,
+    Fence,
     recovery::{self, Control},
 };
 use serde_json::Value;
@@ -206,33 +206,8 @@ pub async fn invoke(State(app): State<crate::host::App>, bytes: Bytes) -> Respon
             now,
         )?;
         let fence: Fence = crate::server_sync::fence_of(app.sessions.identity());
-        let scope = Scope::Project {
-            project: control.project,
-        };
-        let write = matches!(
-            &control.command,
-            recovery::Command::Retry { .. } | recovery::Command::SanitizeApply { .. }
-        );
-        let mut store = if write {
-            Some(ds_sync_store::Store::open(&app.database).map_err(super::failure)?)
-        } else {
-            ds_sync_store::Store::open_read_only(&app.database).map_err(super::failure)?
-        };
-        let result = match store.as_mut() {
-            Some(store) => store
-                .recovery(&fence, &scope, now, control.command)
-                .map_err(super::failure)?,
-            None => recovery::resolve(recovery::Request {
-                schema: recovery::SCHEMA.into(),
-                fence,
-                scope,
-                now_ms: now,
-                entries: Vec::new(),
-                lease: None,
-                command: control.command,
-            })
-            .map_err(super::failure)?,
-        };
+        let result = ds_sync_runtime::recover(&app.database, &fence, control, now)
+            .map_err(super::failure)?;
         if result.applied
             && !result.changes.is_empty()
             && let Some(activity) = &app.activity

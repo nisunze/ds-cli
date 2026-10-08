@@ -745,9 +745,11 @@ pub fn project_scopes(app: &App, project: Option<&str>) -> Result<Vec<String>, S
         .filter(|held| project.is_none_or(|named| named == held))
         .collect();
     scopes.extend(
-        crate::server_reports::projects_with_publications(
+        ds_sync_runtime::publication_projects(
             &app.database,
+            &crate::server_reports::root(&app.database)?,
             &crate::server_sync::fence_of(app.sessions.identity()),
+            None,
         )?
         .into_iter()
         .filter(|held| project.is_none_or(|named| named == held)),

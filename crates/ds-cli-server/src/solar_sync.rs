@@ -14,7 +14,6 @@
 //! browser cache, temporary request file or second queue.
 
 use std::{
-    collections::BTreeSet,
     path::{Path, PathBuf},
     sync::{
         Arc, Mutex,
@@ -195,13 +194,16 @@ impl SolarActivity {
     /// left running for months answers this in bounded memory however much
     /// work it has done. A long queue is not an error; it is a long queue.
     fn projects(&self) -> Result<Vec<String>, String> {
-        let mut projects: BTreeSet<String> =
-            ds_sync_runtime::solar_producer::projects(&self.database, self.sessions.identity())?
-                .into_iter()
-                .collect();
-        projects.extend(crate::server_reports::projects_with_publications(
+        let identity = self.sessions.identity();
+        let mut projects = ds_sync_runtime::publication_projects(
             &self.database,
-            &crate::server_sync::fence_of(self.sessions.identity()),
+            &crate::server_reports::root(&self.database)?,
+            &crate::server_sync::fence_of(identity),
+            None,
+        )?;
+        projects.extend(ds_sync_runtime::solar_producer::projects(
+            &self.database,
+            identity,
         )?);
         Ok(projects.into_iter().collect())
     }

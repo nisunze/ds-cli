@@ -553,10 +553,16 @@ pub fn drain(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let reads = ds_sync_runtime::VerifiedReads::new(state.join("sync-downloads"));
 
     let mut passes = Vec::new();
-    // The store's projects under this fence, plus any project whose batches
-    // are on disk with no row yet, so the pass adopts them.
-    let mut projects = ds_cli_server::server_reports::projects_with_publications(&database, &fence)
-        .map_err(unreadable)?;
+    // The core's one publication inventory: the store's projects under this
+    // fence, plus any project whose batches are on disk with no row yet, so
+    // the pass adopts them.
+    let mut projects = ds_sync_runtime::publication_projects(
+        &database,
+        &ds_cli_server::server_reports::root(&database).map_err(unreadable)?,
+        &fence,
+        None,
+    )
+    .map_err(unreadable)?;
     // Naming a project is "Sync now" for it: the pass runs even with nothing
     // queued here, reads the record and pulls what this machine lacks.
     if let Some(wanted) = &wanted {
