@@ -241,6 +241,12 @@ struct TerrainSamplingRegularityParams {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
+struct TerrainSupportParams {
+    footprint: ds_grid_engine::terrain_support::TerrainSupportFootprint,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct SurfaceConsistencyParams {
     query: ds_grid_engine::SurfaceObservation,
     references: Vec<ds_grid_engine::SurfaceObservation>,
@@ -734,6 +740,15 @@ fn dispatch(
                         .unwrap_or(ds_grid_engine::projection::DEFAULT_PROFILE_CORRIDOR_M),
                 )
                 .map_err(|error| engine_error(operation_id, error))?,
+            )
+        }
+        "plan_terrain_support" => {
+            let request: TerrainSupportParams = parse(operation_id, params)?;
+            serialize(
+                operation_id,
+                session
+                    .plan_terrain_support(&request.footprint)
+                    .map_err(|error| engine_error(operation_id, error))?,
             )
         }
         "surface_consistency" => {
