@@ -292,9 +292,14 @@ preflight and its answer settles the row through `sync_store::ActionReceipt`.
 | --- | --- | --- |
 | `calculate-<city>` / `default`: exactly `report-input` JSON | Prepared jobs and captured native city completion seal through the common store/pass | Bind Desktop to the same captured native completion authority |
 | `report-<city>` / language-specific APD draft plus chart PNGs | Captured native city completion retains closed draft/chart bytes through the common store/pass | Bind Desktop to the same completion; preserve calculation-digest dependency |
-| `report-<city>` / language-specific interpreted final Markdown | `solar.final.submit` exists headlessly; common sync-store publication is **missing** | Forward the final through common seal/pass before Desktop cutover |
-| `portfolio-<id>` / portfolio variant: `portfolio_result` JSON, optional draft | Governed v3 native completion retains immutable outputs through the common store/pass | Migrate legacy v2 city-batch aggregate and the Solar Project command workflow |
+| `report-<city>` / language-specific interpreted final Markdown | Fresh native reviewed import seals APD, network, plant and financial finals in both languages through the common store/pass | Bind Desktop to the same completion and preserve exact calculation-digest dependency |
+| `portfolio-<id>` / portfolio variant: `portfolio_result` JSON, optional draft | Governed v3 native completion retains immutable outputs through the common store/pass | Replace the old Desktop v2 declaration adapter; migrate the Solar Project command workflow |
 | Explicit city batch | Captured native completion seals successful calculation and draft constituents, with separate per-city publication errors | Bind Desktop to the same completion and remove its queue expansion |
+
+A city batch's aggregate files have no governed portfolio identity. They remain
+local deliverables and never become an invented `portfolio-<run>` publication.
+Current governed portfolio computation closes v3; historical unsealed portfolio
+closures require a fresh run under the same no-adoption rule as city batches.
 
 Standalone finished PDF/DOCX uploads are manual report assets, not these
 compute publications. `enqueueLocalComputePublication` is the only generic
