@@ -228,10 +228,8 @@ for browser/peer calculation. Cold initialization still projects synchronously;
 calculated-scene transfer remains broad. Reject/suppress stale results without
 losing edits. Localize independent
 model-analysis invalidation and result-index reconstruction/preservation so
-unchanged facts survive Profile-only calculation after local edits. Add native
-horizontal governing-wire section/support references before assigning horizontal
-point failures to violating sections; current point refs describe the vertical
-wire and must not be reused for that attribution. Carry only necessary computed
+unchanged facts survive Profile-only calculation after local edits. Carry only
+necessary computed
 result/delta bytes into Profile. The Server/native owner must not depend on Svelte, browser
 state or Tauri; preserve explicit project/principal/model/session context.
 Findings reads must not solve implicitly: query admitted results or name the

@@ -406,21 +406,20 @@ installation; explicit calculation still needs bounded native phase/work
 evidence before claiming a measured bottleneck or release performance. No
 template edits, competing builds or model mutations.
 
-## Focused review: Profile horizontal governing span ownership
+## Focused review: Profile terrain calculation dependencies
 
-Read-only request before the next slice: trace native `clearance_report.rs`
-`PointAccumulator`, point findings, vertical/horizontal case choice and support
-references, then `result_queries/analysis_queries.rs` entity and violating-section
-indices. Read the existing multi-case, signed-clearance and source/cursor tests.
+Read-only request before the next slice: trace `recalculation_scope.rs`,
+`structure_usage_cache.rs`, physical `SupportPathResolver` ground inputs,
+retained Profile ground/ref/case ownership and actual terrain-point receipts.
+Read the native terrain splice and multi-section cache parity gates.
 
-Horizontal findings must retain their own actual governing section and incident
-supports. Never copy the vertical governing span into that evidence. Preserve
-all numeric values, case roles, tie behavior, missing-case qualification and
-vertical references. Additive result fields need no package/report schema bump;
-old optional evidence without a horizontal reference must remain unattributed.
-Native queries may index these new refs and attribute horizontal failures only
-from them. Prove different vertical/horizontal governing sections, same-section
-deduplication, missing refs and complete fresh-projection/query parity.
+Terrain point receipts still set whole_model and clear all section demands and
+reference curves. Characterize the actual effective-ground interpolation and
+support/span consequences before narrowing that scope. Preserve fresh projection
+and signed incident-force parity, before/after membership and gap/source fallback
+semantics, parent/T-off and shared-support boundaries. Cost accounting must include
+any new scope derivation; broad before/after projection is not a free optimization.
+Keep uncharacterized terrain/catalog/route changes conservative.
 
 Maximum two findings with exact path/line evidence. Re-read `STABILIZATION.md`.
 No model mutations, template/printing work, competing builds or solver

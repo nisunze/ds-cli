@@ -106,7 +106,7 @@ impl Index {
             "qualification_scope":"model_bound_structure_usage_and_support_resistance",
             "clearance_scope":"model_bound_design_cases","count_unit":"native_fact",
             "clearance_complete_for_checked_corridors":report.clearance.as_ref().map(|clearance| clearance.complete_for_checked_corridors),
-            "design_clearance_section_scope":"native_governing_vertical_wire",
+            "design_clearance_section_scope":"native_independent_vertical_and_horizontal_wires",
             "negative_loading_scope":"signed_section_weight_span_or_complete_net_support_uplift"});
         let mut index = Self::empty_analysis(session, basis);
         index.usage_available = facts.structures.len() == session.snapshot().structures.len();
@@ -184,35 +184,44 @@ impl Index {
                 facts.insert(Some(finding.terrain_point_id.clone()), value);
                 // Exact native references allow a selected section, alignment or
                 // incident support to retrieve its point findings without a scan.
-                for id in std::iter::once(Some(finding.alignment_id.as_str()))
-                    .chain(std::iter::once(finding.section_id.as_deref()))
-                    .chain(std::iter::once(
-                        finding
-                            .from_structure
-                            .as_ref()
-                            .map(|row| row.structure_id.as_str()),
-                    ))
-                    .chain(std::iter::once(
-                        finding
-                            .to_structure
-                            .as_ref()
-                            .map(|row| row.structure_id.as_str()),
-                    ))
-                    .flatten()
-                {
+                let horizontal = finding.horizontal_span.as_ref();
+                let refs: BTreeSet<_> = [
+                    Some(finding.alignment_id.as_str()),
+                    finding.section_id.as_deref(),
+                    finding
+                        .from_structure
+                        .as_ref()
+                        .map(|row| row.structure_id.as_str()),
+                    finding
+                        .to_structure
+                        .as_ref()
+                        .map(|row| row.structure_id.as_str()),
+                    horizontal.map(|span| span.section_id.as_str()),
+                    horizontal.map(|span| span.from_structure.structure_id.as_str()),
+                    horizontal.map(|span| span.to_structure.structure_id.as_str()),
+                ]
+                .into_iter()
+                .flatten()
+                .collect();
+                for id in refs {
                     facts.by_entity.entry(id.into()).or_default().push(position);
                 }
-                // The report's section_id identifies the vertical governing
-                // wire. A horizontal-only failure cannot be assigned to it.
+                // Attribute each failed axis only to its actual native wire.
+                // One point contributes once when both axes govern in a section.
+                let mut failing_sections = BTreeSet::new();
                 if finding.vertical_violation {
-                    if let Some(section) = &finding.section_id {
-                        add_section_contributor(
-                            &mut sections,
-                            section,
-                            "design_clearance_point",
-                            &finding.terrain_point_id,
-                        );
-                    }
+                    failing_sections.extend(finding.section_id.as_deref());
+                }
+                if finding.horizontal_violation {
+                    failing_sections.extend(horizontal.map(|span| span.section_id.as_str()));
+                }
+                for section in failing_sections {
+                    add_section_contributor(
+                        &mut sections,
+                        section,
+                        "design_clearance_point",
+                        &finding.terrain_point_id,
+                    );
                 }
             }
             for row in &report.sections_unavailable {
@@ -584,6 +593,7 @@ mod tests {
         for finding in &mut facts.clearance.as_mut().unwrap().findings {
             // Simulate an authoritative horizontal-only witness. Its section_id
             // is the vertical wire reference, not the failed horizontal wire.
+            finding.horizontal_span = None; // no source horizontal wire evidence
             finding.vertical_violation = false;
             finding.horizontal_violation = true;
             finding.vertical_deficit_m = None;
@@ -614,7 +624,113 @@ mod tests {
             .all(|item| item["fact"]["design_clearance_point_count"].is_null()));
         assert_eq!(
             sections["basis"]["design_clearance_section_scope"],
-            "native_governing_vertical_wire"
+            "native_independent_vertical_and_horizontal_wires"
+        );
+    }
+    #[test]
+    fn model_analysis_indexes_actual_horizontal_spans_without_vertical_attribution_or_double_counts(
+    ) {
+        let mut snapshot = configured_fixture(0);
+        snapshot.structures[1].z_m = 100.0;
+        snapshot
+            .terrain_points
+            .iter_mut()
+            .for_each(|point| point.z_m = 100.0);
+        snapshot.tension_sections[0].sag = AuthoredSag::CatenaryConstant { c_m: 1200.0 };
+        let mut horizontal = snapshot.tension_sections[0].clone();
+        horizontal.id = TensionSectionId::new("horizontal-section").unwrap();
+        horizontal.sag = AuthoredSag::CatenaryConstant { c_m: 3600.0 };
+        snapshot.tension_sections.push(horizontal);
+        snapshot.attachment_points[1].local_x_m = snapshot.attachment_points[0].local_x_m;
+        for mut support in snapshot.tension_section_supports.clone() {
+            support.section_id = TensionSectionId::new("horizontal-section").unwrap();
+            support.attachment_point_id = Some(AttachmentPointId::new("ap-right").unwrap());
+            snapshot.tension_section_supports.push(support);
+        }
+        for i in 0..3 {
+            snapshot.terrain_points.push(TerrainPointRow {
+                id: TerrainPointId::new(format!("axes-{i}")).unwrap(),
+                x_m: 150.0,
+                y_m: 1.5,
+                z_m: 100.0,
+                feature_class: "BUILDING".into(),
+                description: Some("h=2".into()),
+                required_clearance_m: None,
+                source_id: None,
+            });
+        }
+        let mut input = request_for(snapshot);
+        input.analyze = true;
+        let mut runtime = Runtime::default();
+        runtime.execute(input.clone()).unwrap();
+        let (report, mut facts) = native(&runtime, &input);
+        let native_findings = &facts.clearance.as_ref().unwrap().findings;
+        let point = native_findings
+            .iter()
+            .find(|finding| finding.terrain_point_id == "axes-0")
+            .unwrap();
+        assert!(point.vertical_violation && point.horizontal_violation);
+        assert_eq!(point.section_id.as_deref(), Some("query-section"));
+        assert_eq!(
+            point.horizontal_span.as_ref().unwrap().section_id,
+            "horizontal-section"
+        );
+        let mut read = query(&runtime, &input, QueryKind::Findings);
+        read.entity_ids = vec!["axes-0".into()];
+        let page = execute(&mut runtime, read).unwrap();
+        assert_eq!(page["total"], 1);
+        assert_eq!(page["items"][0]["fact"]["finding"], json!(point));
+        // Native horizontal section and incident support refs resolve the same
+        // original findings; shared vertical/horizontal refs never duplicate a row.
+        for id in ["horizontal-section", "str-1", "str-2"] {
+            let mut read = query(&runtime, &input, QueryKind::Findings);
+            read.entity_ids = vec![id.into()];
+            let page = execute(&mut runtime, read).unwrap();
+            let ids: BTreeSet<_> = page["items"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|row| row["entity_id"].as_str().unwrap())
+                .collect();
+            assert_eq!(ids.len(), page["total"].as_u64().unwrap() as usize);
+            assert!(ids.contains("axes-0"));
+        }
+        // Isolate point contributions from native capacity findings. Simulate
+        // one both-axis point in the same actual section and one horizontal-only
+        // point, retaining the native reported horizontal span.
+        facts
+            .clearance
+            .as_mut()
+            .unwrap()
+            .findings
+            .retain(|finding| finding.terrain_point_id.starts_with("axes-"));
+        let findings = &mut facts.clearance.as_mut().unwrap().findings;
+        findings[0].section_id = Some("horizontal-section".into());
+        findings[1].vertical_violation = false;
+        let held = runtime.held.get_mut(&input.scope).unwrap();
+        held.analysis_index = Some(Arc::new(Index::model_analysis(
+            &held.session,
+            &report,
+            facts,
+        )));
+        let read = query(&runtime, &input, QueryKind::ViolatingSections);
+        let page = execute(&mut runtime, read).unwrap();
+        let rows = page["items"].as_array().unwrap();
+        let horizontal = rows
+            .iter()
+            .find(|row| row["entity_id"] == "horizontal-section")
+            .unwrap();
+        assert_eq!(
+            horizontal["fact"]["design_clearance_point_count"], 3,
+            "shared axis counts one point, horizontal-only point still counts"
+        );
+        let vertical = rows
+            .iter()
+            .find(|row| row["entity_id"] == "query-section")
+            .unwrap();
+        assert_eq!(
+            vertical["fact"]["design_clearance_point_count"], 1,
+            "horizontal-only point does not use its vertical ref"
         );
     }
     #[test]

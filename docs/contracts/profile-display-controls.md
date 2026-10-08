@@ -429,13 +429,12 @@ queries; missing clearance findings refuse `findings`, rather than false zero.
 deficits, selectable point ID and native XYZ. Its entity index also accepts exact
 reported alignment, section and incident-support references. Filtering occurs
 before query paging, not after the legacy 2,000-row report cap. Distinct violating
-sections aggregate native capacity-failure contributors and vertical governing
-wire clearance witnesses. Contributor identities are capped at 50 after complete
-counts. The clearance report's section/support references describe its vertical
-governing wire; horizontal-only failures remain point findings and are not
-attributed to that vertical section. The basis names this section scope and the
-native checked-corridor qualification. Horizontal governing-section references
-remain an explicit owning clearance boundary.
+sections aggregate native capacity-failure contributors and each failed axis's
+actual governing wire clearance witnesses. Contributor identities are capped at
+50 after complete counts. Top-level section/support references describe the
+vertical wire; optional horizontal_span supplies independent horizontal refs.
+The basis names the independent-axis scope and native checked-corridor
+qualification. Missing horizontal refs cannot be inferred from the vertical wire.
 
 Model-analysis results survive pure case selection, presentation and unchanged
 Profile refresh. New explicit Analyze creates a new result identity, including
@@ -488,3 +487,20 @@ proves no paired nested-JSON call or installed native activation. Receipts are
 `ds-cli/out/stabilization/profile-controls/analysis-query-*` and
 `ds-web/out/profile-native/analysis-query-*`; staged CLI remains unqualified for
 installation (adjacent bundle absent and release pins deferred).
+
+
+Model-analysis Findings now retain the optional native `horizontal_span` with
+its own section, both support refs, attachment IDs and plan span. The native
+entity index includes these refs. ViolatingSections attributes each failed axis
+only to its actual governing section; a point failing both axes in one section
+contributes once. The basis declares
+`design_clearance_section_scope:native_independent_vertical_and_horizontal_wires`.
+Missing legacy horizontal refs remain unattributed and do not borrow vertical
+refs. Model/context/history/root/cursor and bounded transfer fences are unchanged.
+
+Headless runtime gates: 53 unit and 13 integration tests pass (three cost gates
+explicitly ignored). Actual native report/index parity proves different governing
+sections and incident-support indexing. Negative controls prove absent horizontal
+refs do not infer a section and a horizontal-only failure does not use its
+vertical reference; shared-axis counts remain distinct points. Owning logs are
+`ds-network/out/profile-native/horizontal-governing-{span,query}-*.log`.
