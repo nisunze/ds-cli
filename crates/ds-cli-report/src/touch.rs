@@ -1,7 +1,7 @@
 //! Reconcile the named project's report publications before a CLI/MCP touch.
 //!
 //! The Server and the CLI use one store, one project lease and the same
-//! `run_reports` pass. `Manual` is the kernel's always-read trigger: each
+//! `ds-sync-runtime::run` pass. `Manual` is the kernel's always-read trigger: each
 //! command gets its own remote-head observation, with no freshness timer.
 
 #[cfg(target_os = "linux")]

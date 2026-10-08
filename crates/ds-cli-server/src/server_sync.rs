@@ -206,34 +206,6 @@ impl ServerSyncSession {
             .map_err(|error| error.to_string())
     }
 
-    /// Bind this host to the exact Solar engine release that will produce its
-    /// rows. The signed install heartbeat happens here and is renewed before
-    /// every gateway request; a connection secret never names an install.
-    pub fn register_solar_engine(
-        &self,
-        version: &str,
-        release: &str,
-    ) -> Result<(), ds_cli_auth::sync::SolarPublicationError> {
-        self.gateway
-            .register_engine_for_solar(ds_cli_auth::sync::NativeEngineAddition::solar(
-                version, release,
-            ))
-    }
-
-    /// Publish one already-verified prepared Solar result through the
-    /// compute-artifact authority. The closure receives only its minted object
-    /// session, so runtime output bytes cannot acquire a control-plane bearer.
-    pub fn publish_solar_calculation(
-        &self,
-        declaration: ds_cli_auth::SolarCalculationArtifactOpen<'_>,
-        guard: &dyn Fn() -> Result<(), String>,
-        transfer: impl FnOnce(&str) -> Result<ds_sync_runtime::TransferReceipt, String>,
-    ) -> Result<ds_cli_auth::sync::SolarPublicationReceipt, ds_cli_auth::sync::SolarPublicationError>
-    {
-        self.gateway
-            .publish_solar_calculation(declaration, guard, transfer)
-    }
-
     /// Construct a shared StoreHost for one caller-owned producer and read
     /// cache. The closure prevents the borrowed seams from escaping into a
     /// second queue or transport surface.

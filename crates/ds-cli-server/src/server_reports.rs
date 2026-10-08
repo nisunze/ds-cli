@@ -76,7 +76,6 @@ fn fingerprint(rows: &[ArtifactRow]) -> Result<String, String> {
     // seal, receipt or reclaim changes it; nothing on disk does.
     let rows = rows
         .iter()
-        .filter(|row| row.identity.engine == ds_sync_runtime::reports::ENGINE)
         .map(|row| {
             serde_json::json!({
                 "engine": row.identity.engine,
@@ -111,7 +110,7 @@ pub fn drain(
     trigger: Trigger,
 ) -> Result<Pass, String> {
     session.with_host_for_project(session.project(), producer, reads, |host| {
-        let result = ds_sync_runtime::run::run_reports(host, session.project(), trigger);
+        let result = ds_sync_runtime::run(host, session.project(), trigger);
         match result {
             Ok(run) => Ok(pass(inventory(session)?, run)),
             Err(error) => {

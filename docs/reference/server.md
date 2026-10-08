@@ -380,6 +380,14 @@ command catalog, including `--project`. Starting the foreground host is a
 terminal/service operation and is excluded from MCP so it cannot block a tool
 response indefinitely.
 
+Server calculations and Reporter exports drain through the same native
+`ds-sync-runtime::run` and durable sync-store transitions. One project scheduler
+observes both engines. A publication 401 holds that project's queue and retains
+its replay keys and readable bytes; reconnect or a manual pass with a valid
+credential resumes it. Offline execution over retained prepared inputs remains
+local: publication admission never runs inside a compute worker. Derived Solar
+batch publication coverage is still being migrated to this common store.
+
 `server activity` reads the server's shared Sync Center state, including native
 job lifecycle and artifact publication receipts, grouped by project. It uses the
 same protected connection and native identity as other Server commands; it

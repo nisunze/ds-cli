@@ -26,14 +26,13 @@ use std::{
 
 use ds_command_kernel::compute_jobs::{EngineKind, Job};
 use ds_compute_runtime::{self as runtime, CompletionObserver, HostIdentity};
-use ds_sync_runtime::{
-    LocalRow, Producer, Producers, SolarPublishOutcome, SolarPublisher, TransferReceipt,
-    VerifiedReads, reports, solar,
-};
+#[cfg(test)]
+use ds_sync_runtime::LocalRow;
+use ds_sync_runtime::{Producer, Producers, VerifiedReads, reports, solar};
 
 use crate::{auth, server_sync::sessions::ServerSessions};
 use ds_sync_runtime::rows::now_ms;
-use ds_sync_runtime::solar_producer::{SolarProducer, publication, solar_jobs_in};
+use ds_sync_runtime::solar_producer::{SolarProducer, solar_jobs_in};
 use serde_json::Value;
 
 /// What the Solar producer retired (job, bytes freed) and what it offered.
@@ -46,9 +45,6 @@ pub struct SolarActivity {
     /// publication for one project and a report drain for another are two
     /// sessions on one host, not one session that switches.
     sessions: Arc<ServerSessions>,
-    /// Native engine registration and its following gateway pass are one
-    /// release-attributed action, even when compute workers finish together.
-    sync_gate: Mutex<()>,
     /// Shared Sync Center reader. It owns the object-ticket origin pin,
     /// redirect refusal, staging, and digest proof; this host only anchors its
     /// private cache below the protected server state directory.
@@ -66,11 +62,11 @@ pub struct SolarSyncPump {
     worker: Option<thread::JoinHandle<()>>,
 }
 
-/// The shared runtime owns report retry truth. This host only remembers the
+/// The shared runtime owns publication retry truth. This host only remembers the
 /// last sealed producer observation and translates the runtime's typed wake
 /// decision into the existing background thread's next trigger.
 #[derive(Default)]
-struct ReportWake {
+struct SyncWake {
     startup: bool,
     fingerprint: Option<String>,
     retry_eligible: bool,
@@ -79,7 +75,7 @@ struct ReportWake {
     wake_at_ms: Option<u64>,
 }
 
-impl ReportWake {
+impl SyncWake {
     /// A project's scheduler before its first observation: one startup pass
     /// is owed, and nothing else is known yet.
     fn at_startup() -> Self {
@@ -173,7 +169,6 @@ impl SolarActivity {
             sessions,
             reads: VerifiedReads::new(state_directory.join("sync-downloads")),
             database,
-            sync_gate: Mutex::new(()),
             wake,
             completion,
             publication_failure: Mutex::new(None),
@@ -326,12 +321,11 @@ impl SolarActivity {
         let stop = Arc::new(AtomicBool::new(false));
         let worker_stop = stop.clone();
         let worker = thread::spawn(move || {
-            let mut last_recovery = Instant::now() - Duration::from_secs(30);
-            let mut last_report_recovery = Instant::now() - Duration::from_secs(30);
-            // One report scheduler per project. A project that is offline or
+            let mut last_sync_recovery = Instant::now() - Duration::from_secs(30);
+            // One publication scheduler per project. A project that is offline or
             // holding a retry keeps its own deadline; it never sets another
             // project's, and it never drains another project's queue.
-            let mut reports: std::collections::BTreeMap<String, ReportWake> =
+            let mut projects: std::collections::BTreeMap<String, SyncWake> =
                 std::collections::BTreeMap::new();
             let mut reconnect_generation = auth::gateway_reconnect_generation();
             while !worker_stop.load(Ordering::Acquire) {
@@ -340,23 +334,9 @@ impl SolarActivity {
                 reconnect_generation = observed_generation;
                 let network_returned = generation_changed && auth::gateway_reachable();
                 let woken = activity.wake.swap(false, Ordering::AcqRel) || network_returned;
-                let recovery_due = last_recovery.elapsed() >= Duration::from_secs(30);
-                let report_recovery_due = last_report_recovery.elapsed() >= Duration::from_secs(30);
+                let sync_recovery_due = last_sync_recovery.elapsed() >= Duration::from_secs(30);
                 let now = now_ms();
 
-                if woken || recovery_due {
-                    // The receipt records the actionable Solar state. Keep
-                    // stderr token-free and bounded if its authority work fails.
-                    match activity.publish_pending() {
-                        Ok(()) => activity.clear_publication_failure(),
-                        Err(error) => activity.note_publication_failure(&error),
-                    }
-                    last_recovery = Instant::now();
-                }
-
-                // Reports are a separate shared-runtime producer. A completed
-                // Solar job never turns into a report `Manual` sync or a remote
-                // head poll; only report inventory and runtime wake facts can.
                 let scopes = match activity.projects() {
                     Ok(scopes) => scopes,
                     Err(error) => {
@@ -366,19 +346,20 @@ impl SolarActivity {
                 };
                 let mut observed = false;
                 for project in scopes {
-                    let wake = reports
+                    let wake = projects
                         .entry(project.clone())
-                        .or_insert_with(ReportWake::at_startup);
+                        .or_insert_with(SyncWake::at_startup);
                     if network_returned {
                         wake.reconnect_pending = true;
                     }
-                    if !wake.needs_observation(now, report_recovery_due) {
+                    if !woken && !wake.needs_observation(now, sync_recovery_due) {
                         continue;
                     }
                     observed = true;
                     let pass = activity.sessions.session(&project).and_then(|session| {
                         let inventory = crate::server_reports::inventory(&session)?;
-                        let Some(trigger) = wake.trigger(&inventory, now, report_recovery_due)
+                        let Some(trigger) =
+                            wake.trigger(&inventory, now, sync_recovery_due || woken)
                         else {
                             return Ok(None);
                         };
@@ -394,7 +375,10 @@ impl SolarActivity {
                             .map(Some)
                     });
                     match pass {
-                        Ok(Some(pass)) => wake.applied(pass),
+                        Ok(Some(pass)) => {
+                            activity.clear_publication_failure();
+                            wake.applied(pass);
+                        }
                         Ok(None) => {}
                         Err(error) => {
                             wake.failed();
@@ -406,7 +390,7 @@ impl SolarActivity {
                     // Every actual observation consumes this recovery slot. A
                     // failed startup or expired deadline retries at the next
                     // bounded local recovery, never in the next 100ms loop.
-                    last_report_recovery = Instant::now();
+                    last_sync_recovery = Instant::now();
                 }
                 for _ in 0..10 {
                     if worker_stop.load(Ordering::Acquire) || activity.wake.load(Ordering::Acquire)
@@ -421,35 +405,6 @@ impl SolarActivity {
             stop,
             worker: Some(worker),
         }
-    }
-
-    /// Drain every project's pending Solar publications, each through its own
-    /// session and its own store lease. One project's failure is recorded and
-    /// the next project is still drained: a held publication in one project
-    /// never stops another's.
-    fn publish_pending(&self) -> Result<(), String> {
-        let _gate = self
-            .sync_gate
-            .lock()
-            .map_err(|_| "Solar Sync Center activity gate is unavailable")?;
-        let mut first_error = None;
-        for project in self.projects()? {
-            let publisher = SolarComputeArtifactsPublisher {
-                activity: self,
-                project: project.clone(),
-            };
-            let pass = self.with_producers(&project, |producers| {
-                self.sessions.session(&project).and_then(|session| {
-                    session.with_host_for_project(&project, producers, &self.reads, |host| {
-                        host.run_solar_publications(&publisher).map(|_| ())
-                    })
-                })
-            });
-            if let Err(error) = pass {
-                first_error.get_or_insert(error);
-            }
-        }
-        first_error.map_or(Ok(()), Err)
     }
 
     /// One bounded sentence for the operator, whatever went wrong.
@@ -530,119 +485,6 @@ pub fn with_producers<T>(
     f(&producers)
 }
 
-/// The only native adapter allowed to turn a sealed Solar result into a
-/// compute-artifact publication. The store owns leases, retries and receipts;
-/// this object only declares the fixed Solar shape and streams its one output.
-struct SolarComputeArtifactsPublisher<'a> {
-    activity: &'a SolarActivity,
-    project: String,
-}
-
-impl SolarPublisher for SolarComputeArtifactsPublisher<'_> {
-    fn publish_solar(
-        &self,
-        row: &LocalRow,
-        guard: &dyn Fn() -> Result<(), String>,
-        transfer: &dyn Fn(&str, &str) -> Result<TransferReceipt, String>,
-    ) -> Result<SolarPublishOutcome, String> {
-        let store = runtime::open(&self.activity.database)?;
-        let job = store
-            .job(&self.activity.caller(), &row.client_publish_id)
-            .map_err(|error| error.to_string())?
-            .ok_or("Solar publication is no longer durable")?;
-        let publication = publication(
-            &self.activity.database,
-            self.activity.sessions.identity(),
-            &job,
-        )?;
-        let Some(provenance) = publication.provenance.as_ref() else {
-            return Ok(SolarPublishOutcome::Blocked {
-                detail: "Solar publication has no sealed snapshot provenance".into(),
-            });
-        };
-        if publication.project_id != self.project
-            || provenance.project_id != publication.project_id
-            || provenance.template_id != publication.city_id
-            || row.identity != solar::identity_of(&publication.city_id)
-            || row.outputs.len() != 1
-            || row.outputs[0].output_id != solar::OUTPUT_ID
-            || row.outputs[0].content_type != "application/json"
-        {
-            return Ok(SolarPublishOutcome::Blocked {
-                detail: "Solar publication no longer matches its sealed project, city, or output"
-                    .into(),
-            });
-        }
-        let (_, version) = publication
-            .engine_release
-            .rsplit_once('@')
-            .ok_or("Solar publication has no engine release version")?;
-        let session = self
-            .activity
-            .sessions
-            .session(&self.project)
-            .map_err(|error| format!("this project has no Sync Center session: {error}"))?;
-        match session.register_solar_engine(version, &publication.engine_release) {
-            Ok(()) => {}
-            Err(ds_cli_auth::sync::SolarPublicationError::Blocked(detail)) => {
-                return Ok(SolarPublishOutcome::Blocked { detail });
-            }
-            Err(ds_cli_auth::sync::SolarPublicationError::StoredStale(detail)) => {
-                return Ok(SolarPublishOutcome::StoredStale {
-                    work_id: None,
-                    detail,
-                });
-            }
-            Err(ds_cli_auth::sync::SolarPublicationError::Retryable(detail)) => {
-                return Err(detail);
-            }
-        }
-        let receipt = session.publish_solar_calculation(
-            ds_cli_auth::SolarCalculationArtifactOpen {
-                project_id: &publication.project_id,
-                client_run_id: &row.client_publish_id,
-                city_id: &publication.city_id,
-                engine_version: &publication.engine_release,
-                engine_build_manifest_sha256: &publication.engine_build_manifest_sha256,
-                input_base_fingerprint: &provenance.input_base_fingerprint,
-                source_snapshot_sha256: &provenance.source_snapshot_sha256,
-                snapshot_receipt_id: &provenance.snapshot_receipt_id,
-                output_sha256: &row.outputs[0].sha256,
-                output_size_bytes: row.outputs[0].size_bytes,
-            },
-            guard,
-            |session_uri| transfer(solar::OUTPUT_ID, session_uri),
-        );
-        match receipt {
-            Ok(receipt) if receipt.state == "published" => Ok(SolarPublishOutcome::Published {
-                work_id: receipt.work_id,
-                head_revision: i64::try_from(receipt.head_revision)
-                    .map_err(|_| "Solar artifact head revision exceeds native range")?,
-            }),
-            Ok(receipt) if receipt.state == "stored_stale" => {
-                Ok(SolarPublishOutcome::StoredStale {
-                    work_id: Some(receipt.work_id),
-                    detail: "Solar snapshot changed before publication finalized".into(),
-                })
-            }
-            Ok(_) => Ok(SolarPublishOutcome::Blocked {
-                detail: "Solar compute artifact authority returned an invalid terminal state"
-                    .into(),
-            }),
-            Err(ds_cli_auth::sync::SolarPublicationError::Blocked(detail)) => {
-                Ok(SolarPublishOutcome::Blocked { detail })
-            }
-            Err(ds_cli_auth::sync::SolarPublicationError::StoredStale(detail)) => {
-                Ok(SolarPublishOutcome::StoredStale {
-                    work_id: None,
-                    detail,
-                })
-            }
-            Err(ds_cli_auth::sync::SolarPublicationError::Retryable(detail)) => Err(detail),
-        }
-    }
-}
-
 #[cfg(test)]
 mod report_wake_tests {
     use super::*;
@@ -655,7 +497,7 @@ mod report_wake_tests {
 
     #[test]
     fn event_wake_does_not_rescan_an_idle_report_inventory() {
-        let wake = ReportWake {
+        let wake = SyncWake {
             startup: false,
             fingerprint: Some("same".into()),
             retry_eligible: false,
@@ -669,7 +511,7 @@ mod report_wake_tests {
 
     #[test]
     fn startup_is_once_then_idle_report_inventory_never_creates_a_gateway_trigger() {
-        let mut wake = ReportWake::at_startup();
+        let mut wake = SyncWake::at_startup();
         assert_eq!(
             wake.trigger(&inventory("first"), 10, true),
             Some(ds_sync_runtime::Trigger::Startup)
@@ -681,7 +523,7 @@ mod report_wake_tests {
 
     #[test]
     fn sealed_inventory_change_and_retained_work_are_local_change_triggers() {
-        let mut wake = ReportWake {
+        let mut wake = SyncWake {
             startup: false,
             fingerprint: Some("old".into()),
             retry_eligible: false,
@@ -703,7 +545,7 @@ mod report_wake_tests {
 
     #[test]
     fn reconnect_requires_a_successful_post_offline_observation() {
-        let mut wake = ReportWake {
+        let mut wake = SyncWake {
             startup: false,
             fingerprint: Some("same".into()),
             retry_eligible: false,
@@ -730,7 +572,7 @@ mod report_wake_tests {
 
     #[test]
     fn a_proven_gateway_return_triggers_reconnect_without_waiting_for_recovery() {
-        let wake = ReportWake {
+        let wake = SyncWake {
             startup: false,
             fingerprint: Some("same".into()),
             retry_eligible: true,
@@ -747,7 +589,7 @@ mod report_wake_tests {
 
     #[test]
     fn offline_recovery_and_kernel_deadline_are_explicit_typed_triggers() {
-        let wake = ReportWake {
+        let wake = SyncWake {
             startup: false,
             fingerprint: Some("same".into()),
             retry_eligible: false,
@@ -759,7 +601,7 @@ mod report_wake_tests {
             wake.trigger(&inventory("same"), 10, true),
             Some(ds_sync_runtime::Trigger::LocalChange)
         );
-        let wake = ReportWake {
+        let wake = SyncWake {
             startup: false,
             fingerprint: Some("same".into()),
             retry_eligible: false,

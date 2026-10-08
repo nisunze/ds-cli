@@ -87,7 +87,6 @@ pub use ds_client_core::{
     PrintContextKind, SurveyEntriesRead, SurveyEntriesReadRequest, SurveyEntry, SurveyEntryMedia,
     SurveyPhoto, SurveyThumbnail,
 };
-pub use ds_client_core::{SolarCalculationArtifactFinalize, SolarCalculationArtifactOpen};
 pub use profile::Lane;
 
 /// The remedy the transformer-context route's own rejection carries.
