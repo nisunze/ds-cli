@@ -168,7 +168,8 @@ Candidate curation and native PLS-CADD acceptance are separate from coding the c
 - **Native Profile control activation**: activate matching locally built native
   Desktop/CLI artifacts and their command/skill bundle; prove cached usage pages,
   prepared-case reads/selection, explicit requested-case calculation and native
-  job refusals on a scratch large model. Verify source/ABI identity rather than
+  job tickets/refusals through CLI and the `grid-profile` MCP workflow on a
+  scratch large model. Verify source/ABI identity rather than
   relying on development release-pin metadata. Measure installed apply,
   observation, calculation, transfer and interaction separately; preserve
   independent Save and continued picking/selection during calculation.

@@ -239,7 +239,7 @@ schema-5 packages); Nyamagabe M1, 1.4 MB, structure 618:
    every open), compute line angles for every structure, then re-emit and hash the whole
    package on an explicit file write.
 
-**Remaining:** Profile case transitions/election, marker assembly, layout and
+**Remaining:** Profile case election, marker assembly, layout and
 design-case clearance still require broader work. Full-scene transfer and
 installation and installed release latency remain unproven.
 
@@ -406,19 +406,20 @@ installation; explicit calculation still needs bounded native phase/work
 evidence before claiming a measured bottleneck or release performance. No
 template edits, competing builds or model mutations.
 
-## Focused review: direct Profile calculation job controls
+## Focused review: preserve unaffected model-analysis facts
 
-Read-only request before the next source slice: trace native
-`ds-profile-runtime/calculation_jobs.rs` through Desktop's native job transport,
-`ds-cli-map/profile.rs`, CLI discovery/MCP and the paired command bridge.
-Rebuild/Analyze currently awaits completion; characterize the missing direct
-start/status/cancel ticket boundary using the existing native owner. Identify
-the minimum typed inputs and captured model/history/display/project context,
-bounded receipts, cancellation and stale-result/publication fences. CLI/MCP
-must expose the same native controls before UI bindings, without implementing
-calculation policy in TypeScript or admitting caller-selected scope/principal.
+Read-only request before the next source slice: trace `HeldView.analysis_index`,
+native receipt invalidation and `result_queries/analysis_queries.rs` through
+Observe, Profile-only Refresh, explicit Analyze and job publication/rollback.
+An old analysis currently refuses every changed input root and is dropped by
+Profile-only calculation. Identify the smallest native dependency fence that
+retains independently computed, unchanged facts with their original computed
+revision, without relabelling old engineering as current or solving on reads.
 
-Maximum two demonstrated gaps with exact path/line evidence and owning tests.
-Preserve existing async interaction and noninterruptible-worker capacity truth;
-no automatic calculation, Save, project mutation, template work, remote builds
-or installation campaign. Re-read `STABILIZATION.md` before implementation.
+Trace section ends, adjacent incident support forces, horizontal-governing wire
+references, terrain points/corridors, alignment dependencies, topology changes,
+undo/redo/branching and global blockers. Require exact fresh-fact parity for
+admitted unchanged selections and conservative refusal for unproved scopes.
+Maximum two demonstrated gaps with path/line evidence and owning tests; no
+implicit calculation, Save, project mutation, templates or competing builds.
+Re-read `STABILIZATION.md` before implementation.

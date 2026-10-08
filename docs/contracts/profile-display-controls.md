@@ -171,14 +171,31 @@ The native control gate proves closed JSON/identity inputs, missing/stale histor
 and wrong-model refusals, continued observation while a paused worker runs,
 cross-model cancel refusal, stale admission, noninterruptible worker capacity,
 full fresh calculation/Analyze parity and publication rollback without saving.
-This retained Runtime is headless; authenticated project/principal capture and
-paired CLI/MCP transport are separate host boundaries.
+This retained Runtime is headless. `map.profile.calculation` contract 1 carries
+the same closed native DTO, with the exact model and optional history supplied
+by the caller. Its paired host captures scope, account, project and model client;
+Admit uses ordinary worker/render publication and retains the original
+presentation cache inputs. Start/Status/Cancel never publish a scene. The focused
+`grid-profile` MCP workflow publishes ten commands plus two bootstrap tools;
+the general map profile retains its existing 16-tool bound.
+
+Source gates prove native refusals before transport, CLI/MCP closed arguments
+and discovery, bridge-key parity, changed context refusal, ticket-only reads,
+continued observation, native publication identity and stale/missing-base
+admission without implicit initialization. The paired binding has 122 focused
+Web tests and zero type-check errors (four existing markup warnings). Matching
+installed Desktop/CLI and receipt-bound skill activation remains operational
+acceptance; these source gates do not qualify the old staged executable or
+installed large-model latency. Authenticated service-owned project/principal
+capture remains a separate boundary.
 
 The admitted result adds `job_start_ms` (capture/fork/thread launch),
 `job_worker_ms` (native calculation/serialization on the fork), and
 `job_elapsed_ms` (capture through admission, including scheduling and polling).
 The existing `publication_checkpoint_ms` measures admission rollback staging.
 These are native phases, excluding transport, worker picking and painting.
+Public-control DTO normalization and retained-journal encoding precede
+`job_start_ms`; that timing does not measure their cost.
 RAM cloning and complete calculated-scene transfer remain measured costs;
 background scheduling alone does not prove a faster solver. Wire encoding is
 outside these phases.

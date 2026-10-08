@@ -107,7 +107,7 @@ Full authored layout, comparison and cloning remain measurable costs despite
 retained route/ground inputs. Native job admission still transfers a full
 calculated scene. Browser/peer calculation remains on its model worker; bind
 the native job owner there so picking and selection remain available while it
-runs. Matching installed Desktop/CLI artifacts, native job controls and measured
+runs. Matching installed Desktop/CLI artifacts and measured
 live editing/calculation acceptance remain outstanding. Preserve exact history
 and publication fences, bounded native metrics and fresh engineering parity.
 

@@ -224,8 +224,7 @@ explicit section calculation, Refresh, Analyze or reconciliation may solve.
 Recompute affected tension sections, their spans and structure usage including
 other incident forces at shared supports; stop there during interaction. Reuse
 unchanged demands, ground, case preparation, markers and layout. Keep calculation
-asynchronous and revision-fenced: expose native job tickets and bounded
-start/status/cancel controls directly through CLI/MCP, and bind the native owner
+asynchronous and revision-fenced. Bind the native job owner
 for browser/peer calculation. Cold initialization still projects synchronously;
 calculated-scene transfer remains broad. Reject/suppress stale results without
 losing edits. Localize independent
