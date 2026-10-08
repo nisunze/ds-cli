@@ -129,13 +129,15 @@ pub const SOLAR_PROCESSING: &str = "solar_processing";
 pub const REPORT_EXPORT: &str = "report_export";
 pub const LAYER_READ: &str = "layer_read";
 pub const LAYER_WRITE: &str = "layer_write";
-pub const OPERATIONS: [&str; 6] = [
+pub const SYNC_RECOVERY: &str = "sync_recovery";
+pub const OPERATIONS: [&str; 7] = [
     TRANSFORMER_PROCESSING,
     SOLAR_PROCESSING,
     TILE_PROCESSING,
     REPORT_EXPORT,
     LAYER_READ,
     LAYER_WRITE,
+    SYNC_RECOVERY,
 ];
 
 // ── The refusal vocabulary (closed) ─────────────────────────────────────
@@ -2337,6 +2339,7 @@ mod tests {
         assert_eq!(REFUSALS.len(), 9);
         let unique: std::collections::BTreeSet<&str> = REFUSALS.into_iter().collect();
         assert_eq!(unique.len(), REFUSALS.len(), "a code is listed twice");
-        assert_eq!(OPERATIONS.len(), 6);
+        assert_eq!(OPERATIONS.len(), 7);
+        assert!(OPERATIONS.contains(&SYNC_RECOVERY));
     }
 }

@@ -19,6 +19,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 
+pub mod recovery;
+
 pub const SCHEMA: &str = "ds.sync-store/v1";
 const INPUT_BOUND: usize = 16 * 1024 * 1024;
 const MAX_ROWS: usize = 8192;
@@ -135,6 +137,9 @@ pub struct ArtifactRow {
     pub bytes_locator: String,
     #[serde(default = "default_true")]
     pub readable: bool,
+    /// Explicit history housekeeping never deletes producer bytes or provenance.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub archived: bool,
     pub state: ArtifactState,
     #[serde(default)]
     pub state_reason: Option<String>,
@@ -178,6 +183,10 @@ impl ArtifactRow {
 
 fn default_true() -> bool {
     true
+}
+
+fn is_false(value: &bool) -> bool {
+    !*value
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -503,6 +512,7 @@ pub fn apply(request: &Request) -> Result<Transition, String> {
             }
             let mut next = row.clone();
             next.state = ArtifactState::Held;
+            next.archived = false;
             next.acknowledged_work_id = None;
             next.state_reason = None;
             next.transfer_state = None;
@@ -909,6 +919,9 @@ pub fn queue_status(
         .collect();
     let mut projects: Vec<QueuedProject> = Vec::new();
     for row in rows {
+        if row.archived {
+            continue;
+        }
         let Scope::Project {
             project: project_id,
         } = &row.scope
@@ -974,7 +987,22 @@ pub fn queue_status(
                 // Reclaimable only while the bytes are still here: a
                 // `reclaimed` receipt clears the locator and the readable
                 // flag. A row without readable bytes holds nothing to free.
-                if row.readable && !row.bytes_locator.is_empty() {
+                let attempt = receipts.iter().find(|receipt| {
+                    receipt.scope == row.scope
+                        && receipt.identity.as_ref() == Some(&row.identity)
+                        && receipt.client_publish_id.as_deref()
+                            == Some(row.client_publish_id.as_str())
+                        && receipt.action == "upload"
+                });
+                if recovery::retry_eligible(row, attempt) {
+                    entry.held_batches += 1;
+                    entry.held_bytes = entry.held_bytes.saturating_add(row.size_bytes);
+                    if entry.reasons.len() < MAX_REPORTED_REASONS {
+                        entry.reasons.push(
+                            "Explicit native recovery required for retained publication".into(),
+                        );
+                    }
+                } else if row.readable && !row.bytes_locator.is_empty() {
                     entry.reclaimable_batches += 1;
                     entry.reclaimable_bytes =
                         entry.reclaimable_bytes.saturating_add(row.size_bytes);
@@ -1180,6 +1208,7 @@ mod tests {
             }],
             bytes_locator: "loc".into(),
             readable: true,
+            archived: false,
             state: ArtifactState::Held,
             state_reason: None,
             replay_key: key.into(),

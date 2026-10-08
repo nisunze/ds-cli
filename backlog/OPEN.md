@@ -51,9 +51,10 @@ can be repeated when needed. Owner inputs are in
 [OPEN-X.md](OPEN-X.md#solar-sync-migration-owner-inputs). The queue cutover
 is ruled in the sync contract: visible per-city discard and fresh runs.
 
-- **Native recovery controls remain incomplete.** Add native retry and
-  digest-bound sanitation over the common store and expose them headlessly.
-  Retain terminal stale/conflict verdicts until an explicit reviewed recovery.
+- **Desktop recovery binding remains.** Bind its Sync Center controls to the
+  shared native `ds.sync-recovery/v1` request/result, preserving explicit retry
+  and digest-bound sanitation. Remove the replaced browser recovery decisions
+  during the queue cutover below.
 - **The Solar Project publication workflow still bypasses the common store.**
   Move its closed artifact handoff to the common native path before Desktop
   cutover, retaining authored inputs and per-city failures. City-batch aggregate
@@ -95,6 +96,14 @@ is ruled in the sync contract: visible per-city discard and fresh runs.
   line 1017 follows the test module at line 575. Repair in its owning client
   slice and prove the same strict command without suppression; this file is
   outside the Solar publication migration.
+- **CLI release gates have unrelated baseline failures.** The Solar continuation
+  vector reports `report layout render --help` at 2545 bytes against its 2480-byte
+  allowance in `context_budget::command_help_is_bounded`. Its unchanged
+  `domain_smoke` assertions expect 44 map window commands instead of 46, omit
+  `map.profile.calculation` and `map.profile.results` from the coverage set, and
+  expect one Profile calculation example instead of two. Repair these in their
+  owning CLI/Profile slices and prove the full context-budget/domain-smoke suites;
+  the four new native recovery commands must retain their derived budgets.
 
 ## 2. Green `run` and release gates
 

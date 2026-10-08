@@ -16,6 +16,7 @@
 
 mod jobs;
 mod publications;
+mod recovery;
 pub use publications::{PublicationBytes, PublicationPayload};
 
 pub use jobs::{Census, JobCaller, JobContext, Recovery};
@@ -466,7 +467,15 @@ impl Store {
     pub fn queue(&self, fence: &Fence, project: Option<&str>, now_ms: u64) -> Result<QueueStatus> {
         let rows = self.artifacts_of_fence(fence)?;
         let leases = self.leases_of_fence(fence)?;
-        let receipts = self.latest_delivery_receipts(fence, &rows, project)?;
+        let mut receipts = self.latest_delivery_receipts(fence, &rows, project)?;
+        for row in rows
+            .iter()
+            .filter(|row| matches!(row.state, ArtifactState::Conflict | ArtifactState::Refused))
+        {
+            if let Some(attempt) = self.last_publication_attempt(fence, row)? {
+                receipts.push(attempt);
+            }
+        }
         Ok(kernel::queue_status(
             &rows, &leases, &receipts, project, now_ms,
         ))

@@ -250,6 +250,7 @@ fn row(op: &str, key: &str) -> ArtifactRow {
         }],
         bytes_locator: "batch:1".into(),
         readable: true,
+        archived: false,
         state: ArtifactState::Held,
         state_reason: None,
         replay_key: key.into(),

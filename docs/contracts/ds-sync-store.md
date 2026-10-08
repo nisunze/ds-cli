@@ -225,3 +225,38 @@ fetch failures. Runtime results expose the same value as `failureCode`; the
 SQLite receipt uses the kernel's `failure_code` spelling. Omitted codes on old
 receipts remain absent. This additive evidence changes neither verdict mapping
 nor publication identity, and does not authorize retry or reopen a terminal row.
+
+## Explicit native recovery
+
+`sync_store::recovery::Control` is the closed public JSON request: schema
+`ds.sync-recovery/v1`, explicit `project`, and `command` (`status`, `retry`,
+`sanitize_preview`, or `sanitize_apply`). Hosts inject their captured owner,
+deployment and installation fence and read durable facts; callers cannot supply
+a fence, snapshot, producer label or local path. The pure owner returns the same
+path-free result on every host. Read-only status/preview neither create a store
+nor migrate it. Apply reads and persists in one IMMEDIATE SQLite transaction.
+
+Retry preserves publication id, replay key, output inventory, source fingerprint,
+producer release, exact manifest and immutable payload. A complete readable row
+with an exact typed `ENGINE_BUILD_NOT_ADMITTED` refusal may be retried explicitly.
+The historical exact typed storage-comparison conflict is also recoverable.
+Unregistered engines, incomplete provenance, prose-only errors, cancellation,
+stale source, integrity and permission failures are refused. Recovery uses the
+engine table's release identity data and never overrides Brain's next verdict.
+The common runtime retains recoverable bytes while leaving their row terminal;
+restart or newly admitted builds never reopen it implicitly. The queue counts
+these bytes as held, not reclaimable. A live project lease refuses mutation.
+
+Sanitation hashes the complete fenced artifact history, standing identities,
+latest bound publication attempts and lease, independent of display truncation.
+Any changed snapshot refuses its earlier digest. Published history and terminal
+rows fully superseded by a readable standing output inventory may be archived;
+partial inventories cannot archive unselected outputs. Active publications and
+unresolved current failures remain. Explicit archival sets an additive
+`artifact.archived` flag; it deletes no file, payload, input, head or provenance.
+Archived rows remain inspectable and are never readopted as legacy producer work.
+
+Recovery uses the explicit `execution_context::SYNC_RECOVERY` operation. The
+headless Server's owner-only local transport binds it without opening a gateway
+session. A committed change wakes the existing common publication pump; the pump
+rechecks authority and bytes through its ordinary publication sequence.

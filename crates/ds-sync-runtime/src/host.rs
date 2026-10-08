@@ -190,6 +190,15 @@ impl<'a> StoreHost<'a> {
         &self.fence
     }
 
+    fn retained_for_recovery(&self, row: &store::ArtifactRow) -> Result<bool, String> {
+        self.with_store(|store| {
+            let attempt = store
+                .last_publication_attempt(&self.fence, row)
+                .map_err(|error| error.to_string())?;
+            Ok(store::recovery::retry_eligible(row, attempt.as_ref()))
+        })
+    }
+
     pub fn worker_id(&self) -> &str {
         &self.worker_id
     }
@@ -411,10 +420,20 @@ impl SyncHost for StoreHost<'_> {
         // earlier failed reclaim, must not leave them orphaned.
         let mut to_free: Vec<(LocalRow, String)> = Vec::new();
         for row in &held {
-            let known = snapshot.artifacts.iter().find(|stored| {
+            let standing = snapshot.artifacts.iter().find(|stored| {
                 stored.replay_key == row.client_publish_id
                     || (stored.identity == row.identity && stored.sha256 == row.sha256)
             });
+            let historical = if standing.is_none() {
+                self.with_store(|store| {
+                    store
+                        .artifact(&self.fence, &store_scope(project), &row.client_publish_id)
+                        .map_err(|error| error.to_string())
+                })?
+            } else {
+                None
+            };
+            let known = standing.or(historical.as_ref());
             match known {
                 None => {
                     let recorded = self.apply(store::Event::LocalProduced {
@@ -444,7 +463,11 @@ impl SyncHost for StoreHost<'_> {
                         .push(receipt);
                     adopted = true;
                 }
-                Some(stored) if matches!(stored.state.as_str(), "conflict" | "refused") => {
+                Some(stored)
+                    if !stored.archived
+                        && matches!(stored.state.as_str(), "conflict" | "refused")
+                        && !self.retained_for_recovery(stored)? =>
+                {
                     to_free.push((row.clone(), stored.state.as_str().to_string()));
                 }
                 Some(_) => {}
@@ -458,7 +481,10 @@ impl SyncHost for StoreHost<'_> {
         // asked about again; a failed reclaim leaves it, and the next pass
         // tries again in the open.
         for stored in &snapshot.artifacts {
-            if !matches!(stored.state.as_str(), "conflict" | "refused") {
+            if stored.archived
+                || !matches!(stored.state.as_str(), "conflict" | "refused")
+                || self.retained_for_recovery(stored)?
+            {
                 continue;
             }
             if !(stored.readable && !stored.bytes_locator.is_empty()) {
@@ -481,7 +507,9 @@ impl SyncHost for StoreHost<'_> {
         let mut rows: Vec<LocalRow> = snapshot
             .artifacts
             .iter()
-            .filter(|stored| !matches!(stored.state.as_str(), "conflict" | "refused"))
+            .filter(|stored| {
+                !stored.archived && !matches!(stored.state.as_str(), "conflict" | "refused")
+            })
             .map(local_row_from_store)
             .collect();
         for stored in &snapshot.heads {
