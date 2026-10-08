@@ -5,8 +5,8 @@
 //! the Sync Center exists to answer — upload, download, conflict, nothing — and
 //! says when to look again. It is pure: hosts perform IO (list local artifacts,
 //! read remote heads, call `work/open`, move bytes, call `work/publish`);
-//! `compute_artifact_engine` decides how one publication proceeds and
-//! `transfer` decides how bytes move. Nothing here is personal: the plan is
+//! the native sync runtime carries one publication through and `transfer`
+//! decides how bytes move. Nothing here is personal: the plan is
 //! keyed by project and artifact identity, and the credential is a work grant
 //! bound to an install and a project, never to an account.
 //!

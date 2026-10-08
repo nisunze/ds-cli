@@ -110,8 +110,9 @@ computes nothing.
 ## 3. Hard rules
 
 1. **No second decider.** No TypeScript, no host code, no server code re-derives
-   upload/download/conflict/freshness. `compute_artifact_engine` decides how a
-   publication proceeds; `transfer` decides how bytes move; nothing else decides.
+   upload/download/conflict/freshness. `sync::plan` and the native runtime
+   decide how a publication proceeds; `transfer` decides how bytes move;
+   nothing else decides.
 2. **Project data, not personal.** No account identity keys a sync row; the
    grant is bound to install + project; membership is the server's grant.
 3. **No fallback.** One transport path per host. Unavailable transport is a
@@ -247,36 +248,37 @@ The Server uses the common executor over its combined producer set.
 
 The Solar migration keeps one decision family (`sync`, `sync_store`, `transfer`)
 and one native executor (`ds-sync-runtime`). The following inventory distinguishes
-the current owners from the required destination; it does not claim cutover is
-complete. Engine authority is data in one table on each side. Producer adapters
+the current owners from the required destination. The browser publication queue
+and its kernel modules were deleted on 2026-10-08; rows whose two columns differ
+are still migrating. Engine authority is data in one table on each side. Producer adapters
 supply bytes and declarations, never verdicts. ds-brain rechecks every local
 preflight and its answer settles the row through `sync_store::ActionReceipt`.
 
 | Rule | Current owner / observable behavior | Required home |
 | --- | --- | --- |
-| Matching owner, project, engine reader; nonempty unique inventory and bounded input | `compute_artifact_engine::validate_row`, `ComputeArtifactDrainPlan::new`; browser rejects malformed/cross-account rows | `sync_store` fence and inventory validation; common engine table |
-| Archived rows never enter a drain | `compute_artifact_engine::validate_row`, queue `next` | `sync_store` retained-history projection |
-| Exact producing release, build digest, reporter batch and publish id | engine `start`; `artifact-sync.ts` enqueue validates native receipts | Common declaration validation, with release validators in the engine table; retain producer provenance |
-| Explicit recovery for terminal rows | engine `start` accepts only pending/syncing | `sync_store` retry transition; conflicts and stored-stale are not automatic retry |
-| One lease and attempt count, clock bounds, renewal and expiry | engine `apply` persists browser worker lease before each IO effect | Native project lease and `sync_store` receipts; preserve installation/account/project fences |
-| Persist before IO, compare-and-swap, identity changes and cancellation stop the attempt | `artifact-sync-row.ts`, `artifact-sync-kernel.ts`, browser storage transition; native `StoreHost` active/cancel fences | `sync_store` transaction plus native host guard before each effect and receipt |
-| Prepare final bytes; digest/size must match receipt, nonzero bounded bytes | engine `transition::Bytes`, browser engine-owned locator readers | Producer verified reads; common inventory validator and `transfer` integrity checks |
-| Closed output inventory, generated reporter filenames, declaration field whitelist | engine `opening`; native `rows::{open_declaration,finalize_declaration}`; Solar auth builder | One native builder from row plus `compute_artifact_inventory`; engine-table declaration data |
-| Open work id/head and output target inventory must match; duplicate/undeclared targets refused | engine `Opened`, native gateway decoder | Native decoder plus common publication sequence; no engine-specific target parser |
-| Restart reuses run id, work id and bytes; one expired-session reopen budget | engine `next`, `Probed`; native uploader reopens once | Native common sequence and `transfer` session facts |
-| Probe keeps session when progress is inconclusive; bounded safe cause messages | engine `transition::describe_probe_cause`; browser transfer port | `transfer` typed causes, native receipt rendering |
-| Committed offset cannot exceed declared length; verify local bytes before resume | engine `Bytes` and `Probed`; `artifact-transfer.ts` | `transfer` plus native producer verified stream |
-| Finalize only after all outputs commit; response work id/head must match | engine `Uploaded` / `Finalized`; native `run::upload` | One native publication sequence and decoder |
-| Published advances held head; stored-stale preserves server verdict; unknown state is held | engine `Finalized`; native `run::upload` / `settled_verdict` | Pure `sync::publication_verdict`, `sync_store::ActionReceipt` |
-| Integrity conflict; terminal/authority/API/transport failure classes; redacted bounded messages and failure code | engine `failure`; `artifact-sync-row.ts` transport facts | Common native verdict function and safe typed receipts |
+| Matching owner, project, engine reader; nonempty unique inventory and bounded input | `sync_store` fence; `sync::declaration` inventory validation | `sync_store` fence and inventory validation; common engine table |
+| Archived rows never enter a drain | `sync_store` retained history (`recovery` archive) | `sync_store` retained-history projection |
+| Exact producing release, build digest, reporter batch and publish id | `sync::declaration` with release validators in `sync::engines`; producers retain provenance | Common declaration validation, with release validators in the engine table; retain producer provenance |
+| Explicit recovery for terminal rows | `sync_store::recovery` retry; conflicts and stored-stale are not retried automatically | `sync_store` retry transition; conflicts and stored-stale are not automatic retry |
+| One lease and attempt count, clock bounds, renewal and expiry | `ds-sync-runtime` lease and `sync_store` receipts under installation/account/project fences | Native project lease and `sync_store` receipts; preserve installation/account/project fences |
+| Persist before IO, compare-and-swap, identity changes and cancellation stop the attempt | `sync_store` transaction; native `StoreHost` active/cancel fences and host guard | `sync_store` transaction plus native host guard before each effect and receipt |
+| Prepare final bytes; digest/size must match receipt, nonzero bounded bytes | Producer verified reads; `compute_artifact_inventory` and `transfer` integrity checks | Producer verified reads; common inventory validator and `transfer` integrity checks |
+| Closed output inventory, generated reporter filenames, declaration field whitelist | Native `rows::{open_declaration,finalize_declaration}` from the row plus `compute_artifact_inventory` | One native builder from row plus `compute_artifact_inventory`; engine-table declaration data |
+| Open work id/head and output target inventory must match; duplicate/undeclared targets refused | Native gateway decoder | Native decoder plus common publication sequence; no engine-specific target parser |
+| Restart reuses run id, work id and bytes; one expired-session reopen budget | Native `run` sequence; `transfer` session facts | Native common sequence and `transfer` session facts |
+| Probe keeps session when progress is inconclusive; bounded safe cause messages | `transfer::Cause`; native receipt rendering | `transfer` typed causes, native receipt rendering |
+| Committed offset cannot exceed declared length; verify local bytes before resume | `transfer` plus the producer's verified stream | `transfer` plus native producer verified stream |
+| Finalize only after all outputs commit; response work id/head must match | Native `run::upload` and its decoder | One native publication sequence and decoder |
+| Published advances held head; stored-stale preserves server verdict; unknown state is held | `sync::publication_verdict`, `sync_store::ActionReceipt` | Pure `sync::publication_verdict`, `sync_store::ActionReceipt` |
+| Integrity conflict; terminal/authority/API/transport failure classes; redacted bounded messages and failure code | Native `run` verdicts and typed receipts | Common native verdict function and safe typed receipts |
 | 401 pauses entire project pass, 403 refuses, 400 open refuses, finalize byte visibility failure holds, offline/5xx hold | Native `run::record_refusal`; Solar `classify_solar_error` currently terminally blocks 401 and finalize 400 | Common verdict function for every engine; working sign-in clears credential hold |
-| Same project/run report waits for calculation; failed pass never spins | `compute_artifact_queue::{new,next,settle}`; dependency keyed by project/run/operation | `sync::plan` dependency facts and `waiting_on_dependency`; native pass receipts |
-| Terminal old reporter row must not strand a newer inventory; transient failure fences stream | Queue `next` / `settle` | `sync` / `sync_store` publication selection and pass ordering |
-| Retry backoff starts at 2 s, capped at 5 min; lease-busy wake; no autonomous retry of terminal result | engine `failure::retry_delay`, browser retry wakes | `transfer` / native wake projection; `sync_store` retry eligibility |
-| Exact retained reporter build-admission or historical storage-comparison failure can retry; no fuzzy error matching | `compute_artifact_sync::assess` | `sync_store` assessment against native retained receipt, engine-table release validator |
-| Sanitation sorts/validates snapshot, hashes owner/project/row fingerprints; apply must match preview digest | `compute_artifact_sanitation`, `artifact-sanitation.ts` | `sync_store` preview/apply under native fence and exact snapshot digest |
-| Archive published or fully superseded failed inventory; partial replacement cannot archive unseen outputs | Sanitation latest-by-operation/variant/output rule | `sync_store` retained history; preserve provenance and locally owned bytes |
-| Sanitation keeps active, unresolved, archived and other-workflow rows; retry only eligible retained failures | Sanitation decision ordering | `sync_store` native eligibility and history projection |
+| Same project/run report waits for calculation; failed pass never spins | `sync::plan` dependency facts (`waiting_on_dependency`); native pass receipts | `sync::plan` dependency facts and `waiting_on_dependency`; native pass receipts |
+| Terminal old reporter row must not strand a newer inventory; transient failure fences stream | `sync` / `sync_store` publication selection | `sync` / `sync_store` publication selection and pass ordering |
+| Retry backoff starts at 2 s, capped at 5 min; lease-busy wake; no autonomous retry of terminal result | `transfer` backoff; `sync_store` retry eligibility | `transfer` / native wake projection; `sync_store` retry eligibility |
+| Exact retained reporter build-admission or historical storage-comparison failure can retry; no fuzzy error matching | `sync_store::recovery` retry against the retained receipt | `sync_store` assessment against native retained receipt, engine-table release validator |
+| Sanitation sorts/validates snapshot, hashes owner/project/row fingerprints; apply must match preview digest | `sync_store::recovery` sanitize preview/apply under the native fence | `sync_store` preview/apply under native fence and exact snapshot digest |
+| Archive published or fully superseded failed inventory; partial replacement cannot archive unseen outputs | `sync_store::recovery` sanitation | `sync_store` retained history; preserve provenance and locally owned bytes |
+| Sanitation keeps active, unresolved, archived and other-workflow rows; retry only eligible retained failures | `sync_store::recovery` decision ordering | `sync_store` native eligibility and history projection |
 | Digest-pinned cache identity includes owner/origin/project/locator/digest/size; immutable reads need no TTL | `compute_artifact_cache::Identity`, `artifact-byte-cache.ts` | Native verified read/cache ownership; retain display download capability |
 | Cache file 128 MiB, total 256 MiB, bounded unique inventory; oldest-first eviction | `compute_artifact_cache::Retain` | Native read-store retention under its own fence; never delete producer-owned bytes |
 | Solar completes durably before sealing, no session needed; never adopt unsealed legacy Solar jobs | Server `SolarActivity::seal_completed`, `solar::seal`; `SolarProducer::retire_unsealed` | Shared native completion observer and producer; keep the no-adoption ruling |
@@ -284,7 +286,7 @@ preflight and its answer settles the row through `sync_store::ActionReceipt`.
 | Losing Solar bytes are retired from job result column; job and result digest remain evidence | Server `SolarProducer::reclaim` | Shared Solar producer reclaim; native store receipt |
 | Reporter and Solar share one producer set and executor | Server `with_producers`, one project wake and `ds-sync-runtime::run`; auth forwards the common closed declaration | One native pass, one store transition and credential recovery |
 | Startup, new sealed inventory, reconnect, kernel deadline trigger the report pump; idle scan is not a gateway trigger | Server `SyncWake`; Solar pump recovery thread | Shared native scheduler; host only forwards wake/trigger facts |
-| Browser success/failure mirrors Solar result/report state; clear dirty only after all rows publish | `artifact-sync.ts::{reflectSolarResultSync,clearDirtyWhenFullyPublished}` | Native Solar application projection from durable store, rendered by UI |
+| Browser success/failure mirrors Solar result/report state; clear dirty only after all rows publish | The Solar stages read the native store (`readDesktopSyncStore`); the browser mirror is deleted | Native Solar application projection from durable store, rendered by UI |
 
 ### 6.1 Solar publication kinds and Server coverage
 
@@ -320,13 +322,12 @@ publisher. Hosted web Solar remains closed by the routing descriptor. Future
 hosted publication must use the same service admission, without a new door.
 
 `transfer-host.ts` also serves `api/uploadQueue.ts` (assets) and
-`api/survey-media-upload.ts`; these consumers stay. `artifact-transfer.ts` also
-serves `desktop/gateway-transfer.ts` and must be traced at cutover before removing
-its non-publication transport exports. `api/computeArtifacts.ts` supplies
-read/list/download to `solar/published-documents.ts` and engine types to
-`assets/origins.ts`; retain display/download. Its open/finalize calls are used by
-`artifact-sync-row.ts` only. Removing compute publication never removes the
-operator's verified result views or downloads.
+`api/survey-media-upload.ts`; these consumers stay. The publication-only
+`artifact-transfer.ts`, `desktop/gateway-transfer.ts` and the open/finalize client
+were deleted with the queue (ds-web `00a23211d`). `api/computeArtifacts.ts` keeps
+the engine types and error class; read/list/download stay in
+`api/computeArtifactDiscovery.ts`. Removing compute publication never removes
+the operator's verified result views or downloads.
 
 ### Legacy Desktop queue cutover
 

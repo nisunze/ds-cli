@@ -49,7 +49,7 @@ ds-command-kernel    │              ds-client-core
   zero IO,           │                typed operation bodies (§3)
   zero HTTP          │                     ▲
   ├── transfer  ◀────┴─────────────────────┤        (protocol, §4)
-  ├── compute_artifact_engine              │        (already owned)
+  ├── sync / sync_store                    │        (already owned)
   └── failure classification               │        (typed causes, §5)
         ▲                 ▲                │
         │                 │                │
@@ -157,7 +157,7 @@ test in `ds-command-kernel`.
    must not be conflated with "unknown".
 3. **200/201** → the object is already complete. Finalize only; never re-send.
 4. **404/410** → the session is *proven* expired. Reopen at most once per row
-   (the existing `reopens` budget in `compute_artifact_engine`).
+   (the native runtime's one reopen budget, `ds-sync-runtime` `run`).
 5. **Ambiguous acknowledgement** (socket closed after the bytes were written,
    read timeout after the last byte, empty/malformed status) → **probe**, never
    restart, never assume success, never assume failure.
@@ -304,8 +304,9 @@ Read the two sides together:
   Every distinct cause — an offline-mode refusal, a DNS failure, a TLS failure,
   a platform refusal with no status, a 403, a malformed `Range` — collapses
   into the single token `error`.
-- `ds-command-kernel/src/compute_artifact_engine/transition.rs:153` maps that
-  token through a catch-all `_ => Err(retry(…))`.
+- `ds-command-kernel/src/compute_artifact_engine/transition.rs:153` (deleted
+  2026-10-08 with the browser queue) mapped that token through a catch-all
+  `_ => Err(retry(…))`.
 
 The result is a permanent, uninformative retry loop that establishes nothing.
 The cause of the Stable failure has **not** been established and this contract

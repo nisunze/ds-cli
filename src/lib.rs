@@ -116,7 +116,6 @@ pub fn assets_preview_wasm(bytes: &[u8], request: &[u8]) -> Result<String, wasm_
     assets::evaluate_with_bytes(bytes, request)
         .map_err(|error| wasm_bindgen::JsValue::from_str(&error))
 }
-pub mod compute_artifact_sync;
 pub mod compute_jobs;
 pub mod execution_context;
 #[cfg(feature = "wasm")]
@@ -306,21 +305,7 @@ pub fn map_active_view_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValu
 pub fn connectivity_command_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
     connectivity::evaluate(input).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
 }
-#[cfg(feature = "wasm")]
-#[wasm_bindgen::prelude::wasm_bindgen(js_name = computeArtifactRetryAssessment)]
-pub fn compute_artifact_retry_assessment_wasm(
-    input: &[u8],
-) -> Result<String, wasm_bindgen::JsValue> {
-    compute_artifact_sync::evaluate(input).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
-}
-pub mod compute_artifact_sanitation;
 pub mod reconciliation;
-#[cfg(feature = "wasm")]
-#[wasm_bindgen::prelude::wasm_bindgen(js_name = computeArtifactSanitation)]
-pub fn compute_artifact_sanitation_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
-    compute_artifact_sanitation::evaluate(input)
-        .map_err(|error| wasm_bindgen::JsValue::from_str(&error))
-}
 #[cfg(feature = "wasm")]
 #[wasm_bindgen::prelude::wasm_bindgen(js_name = reconciliationCommand)]
 pub fn reconciliation_command_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
@@ -419,12 +404,11 @@ pub fn survey_evaluate_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValu
 
 pub use project_control::{
     plan_project_control_artifact_download, plan_project_control_bulk_action,
-    plan_project_control_report_download, plan_project_control_rooms,
-    project_project_control_local_reports, ProjectControlError, RoomAvailability,
-    RoomMaterializationPlan, MAX_PROJECT_CONTROL_INPUT_BYTES, MAX_PROJECT_CONTROL_OUTBOX_ROWS,
+    plan_project_control_report_download, plan_project_control_rooms, ProjectControlError,
+    RoomAvailability, RoomMaterializationPlan, MAX_PROJECT_CONTROL_INPUT_BYTES,
     MAX_PROJECT_CONTROL_ROOMS, PROJECT_CONTROL_ARTIFACT_DOWNLOAD_SCHEMA,
-    PROJECT_CONTROL_BULK_PLAN_SCHEMA, PROJECT_CONTROL_REPORT_CATALOG_SCHEMA,
-    PROJECT_CONTROL_REPORT_PLAN_SCHEMA, PROJECT_CONTROL_ROOM_PLAN_SCHEMA,
+    PROJECT_CONTROL_BULK_PLAN_SCHEMA, PROJECT_CONTROL_REPORT_PLAN_SCHEMA,
+    PROJECT_CONTROL_ROOM_PLAN_SCHEMA,
 };
 
 pub use solar_network_seed::{
@@ -913,10 +897,10 @@ mod wasm {
     use super::{
         plan_project_control_artifact_download, plan_project_control_bulk_action,
         plan_project_control_report_download, plan_project_control_rooms, plan_solar_network_seed,
-        plan_solar_portfolio_mutation, project_project_control_local_reports,
-        solar_portfolio_membership_identity, validate_firebase_id_token,
-        validate_firebase_login_response, validate_solar_portfolio_catalog,
-        validate_solar_portfolio_mutation_receipt, validate_solar_portfolio_result,
+        plan_solar_portfolio_mutation, solar_portfolio_membership_identity,
+        validate_firebase_id_token, validate_firebase_login_response,
+        validate_solar_portfolio_catalog, validate_solar_portfolio_mutation_receipt,
+        validate_solar_portfolio_result,
     };
 
     #[wasm_bindgen(js_name = solarReportImages)]
@@ -969,12 +953,6 @@ mod wasm {
     #[wasm_bindgen(js_name = planProjectControlArtifactDownload)]
     pub fn project_control_artifact_download(input_json: &[u8]) -> Result<String, JsValue> {
         plan_project_control_artifact_download(input_json)
-            .map_err(|error| JsValue::from_str(&error.to_string()))
-    }
-
-    #[wasm_bindgen(js_name = projectProjectControlLocalReports)]
-    pub fn project_control_local_reports(input_json: &[u8]) -> Result<String, JsValue> {
-        project_project_control_local_reports(input_json)
             .map_err(|error| JsValue::from_str(&error.to_string()))
     }
 
@@ -1693,23 +1671,6 @@ pub fn compute_artifact_inventory_wasm(input: &[u8]) -> Result<String, wasm_bind
     compute_artifact_inventory::evaluate(input)
         .map_err(|error| wasm_bindgen::JsValue::from_str(&error))
 }
-
-pub mod compute_artifact_engine;
-#[cfg(feature = "wasm")]
-#[wasm_bindgen::prelude::wasm_bindgen(js_name = computeArtifactTransition)]
-pub fn compute_artifact_transition_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
-    compute_artifact_engine::evaluate(input)
-        .map_err(|error| wasm_bindgen::JsValue::from_str(&error))
-}
-
-#[cfg(feature = "wasm")]
-#[wasm_bindgen::prelude::wasm_bindgen(js_name = computeArtifactFailure)]
-pub fn compute_artifact_failure_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
-    compute_artifact_engine::failure::evaluate(input)
-        .map_err(|error| wasm_bindgen::JsValue::from_str(&error))
-}
-
-pub mod compute_artifact_queue;
 
 /// The resumable byte-transfer protocol, owned once for every host.
 ///
