@@ -110,42 +110,6 @@ pub trait Reads {
     ) -> Result<(), String>;
 }
 
-/// The per-engine publication seam for an authority that does not use the
-/// Network Reporter work-grant protocol. It still runs under the one shared
-/// [`StoreHost`] lease and writes the same artifact receipts and head state.
-///
-/// Solar's backend contract is `compute_artifacts.open/upload/finalize`; the
-/// injected adapter owns only those closed calls. It receives a transfer
-/// closure from the host, so bytes retain the producer's existing transport.
-pub trait SolarPublisher {
-    fn publish_solar(
-        &self,
-        row: &LocalRow,
-        guard: &dyn Fn() -> Result<(), String>,
-        transfer: &dyn Fn(&str, &str) -> Result<TransferReceipt, String>,
-    ) -> Result<SolarPublishOutcome, String>;
-}
-
-/// The three durable outcomes a Solar artifact publication can establish.
-/// A blocked row is explicit and terminal; a transport error remains an error
-/// so the shared store keeps the row held for a later pump wake.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum SolarPublishOutcome {
-    Published {
-        work_id: String,
-        head_revision: i64,
-    },
-    /// A 409 can be returned before the service names a work id. It is still
-    /// a terminal conflict for this sealed local row, so the id is optional.
-    StoredStale {
-        work_id: Option<String>,
-        detail: String,
-    },
-    Blocked {
-        detail: String,
-    },
-}
-
 /// The one seam, implemented over the durable store.
 pub struct StoreHost<'a> {
     store: SharedStore,
@@ -358,101 +322,6 @@ impl<'a> StoreHost<'a> {
         }))
     }
 
-    /// Drain only prepared Solar calculation rows through their real
-    /// compute-artifact protocol. The shared SQLite store remains the only
-    /// queue: inventory first records local production, the project lease
-    /// serializes the pump, and each outcome is retained as an ordinary sync
-    /// receipt that advances or blocks the same artifact row every host sees.
-    pub fn run_solar_publications(
-        &self,
-        publisher: &dyn SolarPublisher,
-    ) -> Result<Vec<Receipt>, String> {
-        if let Some(holder) = self.take_lease(&self.project)? {
-            return Ok(vec![Receipt::new("lease", "held").detail(holder)]);
-        }
-        struct Release<'a>(&'a StoreHost<'a>);
-        impl Drop for Release<'_> {
-            fn drop(&mut self) {
-                self.0.release_lease(&self.0.project);
-            }
-        }
-        let _lease = Release(self);
-        let local = self.local(&self.project)?;
-        let snapshot = self.snapshot()?;
-        let mut receipts = Vec::new();
-        for row in local.into_iter().filter(|row| {
-            row.readable
-                && row.identity.engine == sync::engines::solar_engine().name
-                && row.identity.variant == "default"
-                && row.identity.operation.starts_with("calculate-")
-        }) {
-            let terminal = snapshot.artifacts.iter().any(|stored| {
-                stored.identity == row.identity
-                    && stored.replay_key == row.client_publish_id
-                    && matches!(stored.state.as_str(), "published" | "conflict" | "refused")
-            });
-            if terminal {
-                continue;
-            }
-            // The open response may say `already_exists`, in which case no
-            // transfer closure runs. Recheck the authority fence before every
-            // publisher call, not only before a streamed upload.
-            let guard = || {
-                self.ensure_active()?;
-                (!self.publication_cancelled(&row)?)
-                    .then_some(())
-                    .ok_or_else(|| {
-                        "Solar publication was cancelled while awaiting authority".to_string()
-                    })
-            };
-            guard()?;
-            let transfer = |output_id: &str, session_uri: &str| {
-                guard()?;
-                self.producer.transfer(&row, output_id, session_uri)
-            };
-            let receipt = match publisher.publish_solar(&row, &guard, &transfer) {
-                Ok(SolarPublishOutcome::Published {
-                    work_id,
-                    head_revision,
-                }) => {
-                    let mut receipt = Receipt::new("upload", "published").about(&row.identity);
-                    receipt.work_id = Some(work_id);
-                    receipt.head_revision = Some(head_revision);
-                    receipt.revision = row.base_revision.clone();
-                    receipt
-                }
-                Ok(SolarPublishOutcome::StoredStale { work_id, detail }) => {
-                    let mut receipt = Receipt::new("upload", "stored_stale")
-                        .about(&row.identity)
-                        .detail(detail);
-                    receipt.work_id = work_id;
-                    receipt
-                }
-                Ok(SolarPublishOutcome::Blocked { detail }) => Receipt::new("upload", "refused")
-                    .about(&row.identity)
-                    .detail(detail),
-                Err(error) => Receipt::new("upload", "failed")
-                    .about(&row.identity)
-                    .detail(error),
-            };
-            let receipt = receipt.for_publication(&row);
-            // A remote finalize may have happened just before a local
-            // revocation. Keep the row held in that case; a later idempotent
-            // pass reconciles it rather than recording a receipt under a
-            // credential that is no longer active.
-            // Cancellation races are never turned back into an upload receipt.
-            // A remote idempotent finalize may already have succeeded; leave
-            // the local cancelled state for an explicit later reconciliation.
-            if self.publication_cancelled(&row)? {
-                continue;
-            }
-            self.ensure_active()?;
-            self.record_receipt(&self.project, &receipt)?;
-            receipts.push(receipt);
-        }
-        Ok(receipts)
-    }
-
     /// Free one row the store already holds as lost, and keep the evidence.
     /// Never silent: a batch already gone is a `reclaimed` receipt of 0
     /// bytes, which is what tells the store the row names nothing here any
@@ -493,15 +362,6 @@ impl<'a> StoreHost<'a> {
             .map_err(|_| "sync housekeeping receipts unavailable".to_string())?
             .push(receipt);
         Ok(())
-    }
-
-    fn publication_cancelled(&self, row: &LocalRow) -> Result<bool, String> {
-        Ok(self.snapshot()?.artifacts.iter().any(|stored| {
-            stored.identity == row.identity
-                && stored.replay_key == row.client_publish_id
-                && stored.state.as_str() == "refused"
-                && stored.state_reason.as_deref() == Some("cancelled")
-        }))
     }
 }
 

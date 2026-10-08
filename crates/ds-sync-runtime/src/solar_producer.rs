@@ -312,6 +312,59 @@ impl SolarProducer<'_> {
 }
 
 impl Producer for SolarProducer<'_> {
+    fn amend_open_declaration(
+        &self,
+        project: &str,
+        declaration: &mut serde_json::Value,
+    ) -> Result<(), String> {
+        if project != self.project {
+            return Err("Solar declaration crosses its producer project".into());
+        }
+        let job_id = declaration["client_run_id"]
+            .as_str()
+            .ok_or("publication has no replay key")?;
+        let store = runtime::open(self.database)?;
+        let job = store
+            .job(&self.identity.caller(Some(project)), job_id)
+            .map_err(|error| error.to_string())?
+            .ok_or("Solar publication is no longer durable")?;
+        let publication = publication(self.database, self.identity, &job)?;
+        let provenance = publication
+            .provenance
+            .as_ref()
+            .ok_or("Solar publication has no sealed snapshot provenance")?;
+        if publication.project_id != project
+            || provenance.project_id != project
+            || provenance.template_id != publication.city_id
+            || declaration["operation"] != format!("calculate-{}", publication.city_id)
+            || declaration["engine_version"] != publication.engine_release
+            || declaration["engine_build_manifest_sha256"]
+                != publication.engine_build_manifest_sha256
+            || declaration["input_base_fingerprint"] != provenance.input_base_fingerprint
+        {
+            return Err("Solar declaration differs from its sealed provenance".into());
+        }
+        let output = publication
+            .outputs
+            .iter()
+            .find(|output| output.output_id == "report_input.json")
+            .ok_or("Solar result has no sealed report input")?;
+        let outputs = declaration["outputs"]
+            .as_array()
+            .ok_or("Solar declaration has no inventory")?;
+        if outputs.len() != 1
+            || outputs[0]["output_id"] != solar::OUTPUT_ID
+            || outputs[0]["sha256"] != output.sha256
+            || outputs[0]["size_bytes"] != output.size_bytes
+            || outputs[0]["content_type"] != output.content_type
+        {
+            return Err("Solar declaration differs from its sealed output".into());
+        }
+        declaration["source_snapshot_sha256"] = provenance.source_snapshot_sha256.clone().into();
+        declaration["snapshot_receipt_id"] = provenance.snapshot_receipt_id.clone().into();
+        ds_command_kernel::sync::declaration::validate(project, declaration).map(|_| ())
+    }
+
     fn inventory(&self, project: &str) -> Result<Vec<LocalRow>, String> {
         self.retire_unsealed(project)?;
         Ok(Vec::new())

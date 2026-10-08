@@ -151,8 +151,7 @@ pub use survey_query::{
     SurveyQueryRequest, SurveyQueryResult, SurveyQueryRow,
 };
 pub use sync_gateway::{
-    InstallHeartbeat, InstallHeartbeatWithoutAddition, NativeSyncRequest,
-    SolarCalculationArtifactFinalize, SolarCalculationArtifactOpen, SyncGatewayOperation,
+    InstallHeartbeat, InstallHeartbeatWithoutAddition, NativeSyncRequest, SyncGatewayOperation,
 };
 pub use tiles::{
     TileCatalog, TileCatalogEntry, TileMutation, TileOperationResult, TileOperationStatus,

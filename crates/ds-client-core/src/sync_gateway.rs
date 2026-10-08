@@ -64,30 +64,6 @@ pub struct NativeSyncRequest {
     body: Value,
 }
 
-/// The only Solar calculation declaration a native Server may publish. The
-/// caller supplies durable sealed facts; this type fixes the engine,
-/// operation family, variant, and single `report-input` output that ds-brain
-/// admits for a calculation head.
-pub struct SolarCalculationArtifactOpen<'a> {
-    pub project_id: &'a str,
-    pub client_run_id: &'a str,
-    pub city_id: &'a str,
-    pub engine_version: &'a str,
-    pub engine_build_manifest_sha256: &'a str,
-    pub input_base_fingerprint: &'a str,
-    pub source_snapshot_sha256: &'a str,
-    pub snapshot_receipt_id: &'a str,
-    pub output_sha256: &'a str,
-    pub output_size_bytes: u64,
-}
-
-/// The exact idempotent identity returned by an opened Solar artifact run.
-pub struct SolarCalculationArtifactFinalize<'a> {
-    pub project_id: &'a str,
-    pub work_id: &'a str,
-    pub client_run_id: &'a str,
-}
-
 impl NativeSyncRequest {
     pub fn heartbeat(identity: InstallHeartbeat<'_>) -> Result<Self, ClientError> {
         for value in [
@@ -144,43 +120,10 @@ impl NativeSyncRequest {
         })
     }
 
-    pub fn solar_calculation_open(
-        declaration: SolarCalculationArtifactOpen<'_>,
-    ) -> Result<Self, ClientError> {
-        Self::report_publication(
-            declaration.project_id,
-            &json!({
-                "action": "open", "project_id": declaration.project_id,
-                "client_run_id": declaration.client_run_id, "engine": "solar",
-                "operation": format!("calculate-{}", declaration.city_id), "variant": "default",
-                "engine_version": declaration.engine_version,
-                "engine_build_manifest_sha256": declaration.engine_build_manifest_sha256,
-                "input_base_fingerprint": declaration.input_base_fingerprint,
-                "source_snapshot_sha256": declaration.source_snapshot_sha256,
-                "snapshot_receipt_id": declaration.snapshot_receipt_id,
-                "outputs": [{"output_id":"report-input", "format":"json",
-                    "content_type":"application/json", "sha256":declaration.output_sha256,
-                    "size_bytes":declaration.output_size_bytes}],
-            }),
-        )
-    }
-
-    pub fn solar_calculation_finalize(
-        identity: SolarCalculationArtifactFinalize<'_>,
-    ) -> Result<Self, ClientError> {
-        Self::report_publication(
-            identity.project_id,
-            &json!({
-                "action":"finalize", "project_id":identity.project_id,
-                "work_id":identity.work_id, "client_run_id":identity.client_run_id,
-            }),
-        )
-    }
-
     /// One engine-neutral publication on the fixed compute-artifacts door.
     /// The kernel validates its closed declaration before credentials attach;
     /// the selected project and the record's admission remain authoritative.
-    pub fn report_publication(selected_project: &str, body: &Value) -> Result<Self, ClientError> {
+    pub fn publication(selected_project: &str, body: &Value) -> Result<Self, ClientError> {
         use ds_command_kernel::sync::declaration::{validate, Action};
         let operation = match validate(selected_project, body).map_err(|_| invalid())? {
             Action::Open => SyncGatewayOperation::ComputeArtifactsOpen,
@@ -296,7 +239,7 @@ mod tests {
                 "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 "sha256": "a".repeat(64), "size_bytes": 28469, "filename":"agatare_1.xlsx"}],
         });
-        let request = NativeSyncRequest::report_publication("project-a", &open).unwrap();
+        let request = NativeSyncRequest::publication("project-a", &open).unwrap();
         assert_eq!(
             request.operation(),
             SyncGatewayOperation::ComputeArtifactsOpen
@@ -305,13 +248,13 @@ mod tests {
         let finalize = json!({"action": "finalize", "project_id": "project-a",
             "work_id": "work_abc", "client_run_id": "publish-76ab72a6-6b1d-4095-a54e-139232b5152c"});
         assert_eq!(
-            NativeSyncRequest::report_publication("project-a", &finalize)
+            NativeSyncRequest::publication("project-a", &finalize)
                 .unwrap()
                 .operation(),
             SyncGatewayOperation::ComputeArtifactsFinalize
         );
 
-        assert!(NativeSyncRequest::report_publication("project-b", &open).is_err());
+        assert!(NativeSyncRequest::publication("project-b", &open).is_err());
         let mut solar = open.clone();
         solar["engine"] = json!("solar");
         let mut extra = open.clone();
@@ -326,7 +269,7 @@ mod tests {
         list["action"] = json!("list");
         for refused in [solar, extra, unfenced, aggregate, empty, list] {
             assert!(
-                NativeSyncRequest::report_publication("project-a", &refused).is_err(),
+                NativeSyncRequest::publication("project-a", &refused).is_err(),
                 "{refused}"
             );
         }
@@ -346,7 +289,7 @@ mod tests {
         });
         // Current non-print outputs carry a filename without print metadata.
         assert_eq!(
-            NativeSyncRequest::report_publication("project-a", &open)
+            NativeSyncRequest::publication("project-a", &open)
                 .unwrap()
                 .body(),
             &open
@@ -357,12 +300,12 @@ mod tests {
             "orientation":"landscape", "page_mm":[1189,841],
         });
         assert_eq!(
-            NativeSyncRequest::report_publication("project-a", &open)
+            NativeSyncRequest::publication("project-a", &open)
                 .unwrap()
                 .body(),
             &open
         );
-        assert!(NativeSyncRequest::report_publication("project-b", &open).is_err());
+        assert!(NativeSyncRequest::publication("project-b", &open).is_err());
         for (path, value) in [
             ("/outputs/0/filename", json!("../report.pdf")),
             ("/outputs/0/filename", json!("report\\escape.pdf")),
@@ -381,7 +324,7 @@ mod tests {
             let mut refused = open.clone();
             *refused.pointer_mut(path).unwrap() = value;
             assert!(
-                NativeSyncRequest::report_publication("project-a", &refused).is_err(),
+                NativeSyncRequest::publication("project-a", &refused).is_err(),
                 "{path}: {refused}"
             );
         }
@@ -394,7 +337,7 @@ mod tests {
                 .unwrap()
                 .insert("authority_grant_id".into(), json!("grant_a"));
             assert!(
-                NativeSyncRequest::report_publication("project-a", &refused).is_err(),
+                NativeSyncRequest::publication("project-a", &refused).is_err(),
                 "{path}"
             );
         }
@@ -403,7 +346,7 @@ mod tests {
             .as_object_mut()
             .unwrap()
             .remove("paper_size");
-        assert!(NativeSyncRequest::report_publication("project-a", &missing_paper).is_err());
+        assert!(NativeSyncRequest::publication("project-a", &missing_paper).is_err());
     }
 
     #[test]
@@ -425,23 +368,12 @@ mod tests {
 
     #[test]
     fn solar_calculation_declaration_has_no_work_grant_or_output_vocabulary_escape() {
-        let declaration = SolarCalculationArtifactOpen {
-            project_id: "project-a",
-            client_run_id: "solar-job-a",
-            city_id: "city-a",
-            engine_version: "ds-solar-engine@1.2.3",
-            engine_build_manifest_sha256: &"a".repeat(64),
-            input_base_fingerprint: &"b".repeat(64),
-            source_snapshot_sha256: &"c".repeat(64),
-            snapshot_receipt_id: "550e8400-e29b-41d4-a716-446655440000",
-            output_sha256: &"d".repeat(64),
-            output_size_bytes: 42,
-        };
-        let request = NativeSyncRequest::solar_calculation_open(declaration).unwrap();
-        let common = NativeSyncRequest::report_publication("project-a", request.body()).unwrap();
+        let declaration = json!({"project_id": "project-a", "client_run_id": "solar-job-a", "engine_version": "ds-solar-engine@1.2.3", "engine_build_manifest_sha256": &"a".repeat(64), "snapshot_receipt_id": "550e8400-e29b-41d4-a716-446655440000", "engine": "solar", "operation": format!("calculate-{}", "city-a"), "variant": "default", "action": "open", "input_base_fingerprint": &"b".repeat(64), "source_snapshot_sha256": &"c".repeat(64), "outputs": [{"output_id": "report-input", "format": "json", "content_type": "application/json", "sha256": &"d".repeat(64), "size_bytes": 42}]});
+        let request = NativeSyncRequest::publication("project-a", &declaration).unwrap();
+        let common = NativeSyncRequest::publication("project-a", request.body()).unwrap();
         assert_eq!(common.body(), request.body());
         assert_eq!(common.operation(), request.operation());
-        assert!(NativeSyncRequest::report_publication("project-b", request.body()).is_err());
+        assert!(NativeSyncRequest::publication("project-b", request.body()).is_err());
         assert_eq!(
             request.operation(),
             SyncGatewayOperation::ComputeArtifactsOpen
@@ -461,35 +393,13 @@ mod tests {
 
     #[test]
     fn solar_calculation_requires_release_and_snapshot_receipts() {
-        let request = SolarCalculationArtifactOpen {
-            project_id: "project-a",
-            client_run_id: "solar-job-a",
-            city_id: "city-a",
-            engine_version: "ds-solar-engine@development",
-            engine_build_manifest_sha256: "",
-            input_base_fingerprint: &"b".repeat(64),
-            source_snapshot_sha256: &"c".repeat(64),
-            snapshot_receipt_id: "receipt-a",
-            output_sha256: &"d".repeat(64),
-            output_size_bytes: 42,
-        };
-        assert!(NativeSyncRequest::solar_calculation_open(request).is_err());
+        let request = json!({"project_id": "project-a", "client_run_id": "solar-job-a", "engine_version": "ds-solar-engine@development", "engine_build_manifest_sha256": "", "snapshot_receipt_id": "receipt-a", "engine": "solar", "operation": format!("calculate-{}", "city-a"), "variant": "default", "action": "open", "input_base_fingerprint": &"b".repeat(64), "source_snapshot_sha256": &"c".repeat(64), "outputs": [{"output_id": "report-input", "format": "json", "content_type": "application/json", "sha256": &"d".repeat(64), "size_bytes": 42}]});
+        assert!(NativeSyncRequest::publication("project-a", &request).is_err());
     }
 
     #[test]
     fn solar_calculation_accepts_the_snapshot_authoritys_uuid_v5_receipt() {
-        let request = SolarCalculationArtifactOpen {
-            project_id: "project-a",
-            client_run_id: "solar-job-a",
-            city_id: "city-a",
-            engine_version: "ds-solar-engine@1.2.3",
-            engine_build_manifest_sha256: &"a".repeat(64),
-            input_base_fingerprint: &"b".repeat(64),
-            source_snapshot_sha256: &"c".repeat(64),
-            snapshot_receipt_id: "21c655a1-1037-52ce-a601-e9c7e3734d53",
-            output_sha256: &"d".repeat(64),
-            output_size_bytes: 42,
-        };
-        assert!(NativeSyncRequest::solar_calculation_open(request).is_ok());
+        let request = json!({"project_id": "project-a", "client_run_id": "solar-job-a", "engine_version": "ds-solar-engine@1.2.3", "engine_build_manifest_sha256": &"a".repeat(64), "snapshot_receipt_id": "21c655a1-1037-52ce-a601-e9c7e3734d53", "engine": "solar", "operation": format!("calculate-{}", "city-a"), "variant": "default", "action": "open", "input_base_fingerprint": &"b".repeat(64), "source_snapshot_sha256": &"c".repeat(64), "outputs": [{"output_id": "report-input", "format": "json", "content_type": "application/json", "sha256": &"d".repeat(64), "size_bytes": 42}]});
+        assert!(NativeSyncRequest::publication("project-a", &request).is_ok());
     }
 }

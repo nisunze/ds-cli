@@ -56,8 +56,8 @@ pub use ds_command_kernel::sync_store as store;
 pub use gateway::{BearerGateway, Gateway, GatewayError, UnavailableGateway};
 pub use guard::run_contained;
 pub use host::{
-    open_store, projects_of_fence, ActivityRow, Producer, Producers, Reads, SharedStore,
-    SolarPublishOutcome, SolarPublisher, StoreHost, StoreOnlyProducer, LEASE_TTL_MS,
+    open_store, projects_of_fence, ActivityRow, Producer, Producers, Reads, SharedStore, StoreHost,
+    StoreOnlyProducer, LEASE_TTL_MS,
 };
 #[cfg(feature = "fakes")]
 pub use native_transfer::drive_loopback_output;

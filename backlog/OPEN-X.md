@@ -121,13 +121,6 @@ Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group A (owner decision
   `design.report`, or define a role-seeded `solar.publish`. **Boundary:** the
   Solar row in ds-brain's engine authority table. Implement on today's explicit
   value (none); independent admission and native migration proceed.
-- **Retained Desktop IndexedDB Solar queue at cutover. Input needed:** choose
-  one release of drain-only legacy queue with visible counts (recommended),
-  visible per-city discard and re-run, or native-directory re-seal. Re-seal
-  conflicts with the 2026-09-20 never-adopt-Solar ruling and needs an explicit
-  superseding ruling. **Boundary:** Phase 5 deletion of the legacy queue only;
-  native implementation and proof proceed without this answer. Never silently
-  drop or adopt pending publications.
 - **Co-located Desktop/Server store (out of scope). Input needed:** whether to
   share one machine store and under what host/installation fence. **Boundary:**
   unifying Desktop app-local-data and Server lane state paths; this migration

@@ -1828,8 +1828,8 @@ fn closed_sync_gateway_executes_record_reads_and_report_publication_through_the_
             &record,
         )
         .unwrap(),
-        NativeSyncRequest::report_publication("project-a", &open).unwrap(),
-        NativeSyncRequest::report_publication("project-a", &finalize).unwrap(),
+        NativeSyncRequest::publication("project-a", &open).unwrap(),
+        NativeSyncRequest::publication("project-a", &finalize).unwrap(),
     ] {
         assert_eq!(
             client.sync_gateway(&request, NOW).unwrap(),

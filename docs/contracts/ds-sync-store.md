@@ -99,8 +99,8 @@ its captured `HostIdentity`, database path and completion wake; it delegates
 sealing to that native observer and uses the native producer in its one producer
 set. Neither observer nor producer depends on a session, browser or Tauri.
 Reclaim clears derived result bytes through the compute store while retaining
-the job's sealed input, context and producing provenance. The legacy Solar
-publication adapter remains a separate migration obligation.
+the job's sealed input, context and producing provenance. Server publication uses the common native executor and verdict mapping;
+credential refusal holds either engine until an accepted session resumes it.
 Both seals share one choreography
 (`seal::record`): the identity's previous result on this machine is freed
 through the producer first (`reclaimed:superseded_locally`; for Solar,

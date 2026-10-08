@@ -17,8 +17,8 @@ use ds_sync_runtime::fakes::{
 use ds_sync_runtime::store::Fence;
 use ds_sync_runtime::{
     kernel_sync as sync, open_store, projects_of_fence, run, Gateway, GatewayError, LocalOutput,
-    LocalRow, Producer, Producers, SharedStore, SolarPublishOutcome, SolarPublisher, StoreHost,
-    SyncHost, SyncRoute, SyncRun, TransferReceipt,
+    LocalRow, Producer, Producers, SharedStore, StoreHost, SyncHost, SyncRoute, SyncRun,
+    TransferReceipt,
 };
 use sha2::Digest;
 
@@ -43,11 +43,15 @@ impl Harness {
     fn new() -> Self {
         let dir = tempfile::tempdir().expect("temp dir");
         let store = open_store(&dir.path().join("sync").join("store.sqlite")).expect("open store");
+        let world = fakes::world();
+        fakes::lock(&world)
+            .current_base
+            .insert("calculate-city-1".into(), fakes::FINGERPRINT.into());
         Harness {
             reads_root: dir.path().join("sync-downloads"),
             _dir: dir,
             store,
-            world: fakes::world(),
+            world,
         }
     }
 
@@ -182,197 +186,6 @@ fn solar_row() -> LocalRow {
         outputs: vec![output],
         bytes_locator: "solar:prepared:job:solar-job-1".into(),
     }
-}
-
-struct ScriptedSolarPublisher {
-    result: Result<SolarPublishOutcome, String>,
-    calls: AtomicUsize,
-}
-
-impl ScriptedSolarPublisher {
-    fn new(result: Result<SolarPublishOutcome, String>) -> Self {
-        Self {
-            result,
-            calls: AtomicUsize::new(0),
-        }
-    }
-}
-
-impl SolarPublisher for ScriptedSolarPublisher {
-    fn publish_solar(
-        &self,
-        _row: &LocalRow,
-        guard: &dyn Fn() -> Result<(), String>,
-        transfer: &dyn Fn(&str, &str) -> Result<TransferReceipt, String>,
-    ) -> Result<SolarPublishOutcome, String> {
-        self.calls.fetch_add(1, Ordering::SeqCst);
-        guard()?;
-        let receipt = transfer("report-input", "https://storage.example.test/solar-upload")?;
-        assert_eq!(receipt.output_id, "report-input");
-        self.result.clone()
-    }
-}
-
-fn solar_host<'a>(
-    harness: &'a Harness,
-    gateway: &'a dyn ds_sync_runtime::Gateway,
-    producer: &'a FakeProducer,
-    reads: &'a FakeReads,
-    online: &'a dyn Fn() -> bool,
-) -> StoreHost<'a> {
-    StoreHost::new(
-        harness.store.clone(),
-        fence(),
-        "solar-pump".into(),
-        PROJECT,
-        gateway,
-        producer,
-        reads,
-        online,
-    )
-    .expect("solar host")
-}
-
-#[test]
-fn solar_publication_records_terminal_receipts_and_does_not_reopen_them() {
-    for (result, expected_state) in [
-        (
-            Ok(SolarPublishOutcome::Published {
-                work_id: "work-1".into(),
-                head_revision: 4,
-            }),
-            "published",
-        ),
-        (
-            Ok(SolarPublishOutcome::StoredStale {
-                work_id: None,
-                detail: "the project input changed".into(),
-            }),
-            "conflict",
-        ),
-        (
-            Ok(SolarPublishOutcome::Blocked {
-                detail: "sealed provenance is absent".into(),
-            }),
-            "refused",
-        ),
-    ] {
-        let harness = Harness::new();
-        let gateway = FakeGateway {
-            world: harness.world.clone(),
-        };
-        let producer = FakeProducer::new(harness.world.clone(), vec![solar_row()]);
-        let reads = FakeReads {
-            world: harness.world.clone(),
-            root: harness.reads_root.clone(),
-        };
-        let online = || true;
-        let publisher = ScriptedSolarPublisher::new(result);
-        let host = solar_host(&harness, &gateway, &producer, &reads, &online);
-        let receipts = host.run_solar_publications(&publisher).expect("first pump");
-        assert_eq!(receipts.len(), 1);
-        assert_eq!(publisher.calls.load(Ordering::SeqCst), 1);
-        assert_eq!(
-            host.store_read().expect("store read")["artifacts"][0]["state"],
-            expected_state
-        );
-        if expected_state == "published" {
-            let read = host.store_read().expect("published head read");
-            assert_eq!(read["heads"][0]["revision"], fakes::FINGERPRINT);
-            assert_eq!(read["heads"][0]["head_revision"], 4);
-        }
-        drop(host);
-
-        // A fresh host is the restart path. No terminal publication returns to
-        // the adapter even though its completed compute row is still present.
-        let reopened = solar_host(&harness, &gateway, &producer, &reads, &online);
-        let second = reopened
-            .run_solar_publications(&publisher)
-            .expect("restart pump");
-        assert!(second.is_empty());
-        assert_eq!(publisher.calls.load(Ordering::SeqCst), 1);
-    }
-}
-
-#[test]
-fn solar_transport_failure_is_held_and_retried_by_a_fresh_pump() {
-    let harness = Harness::new();
-    let gateway = FakeGateway {
-        world: harness.world.clone(),
-    };
-    let producer = FakeProducer::new(harness.world.clone(), vec![solar_row()]);
-    let reads = FakeReads {
-        world: harness.world.clone(),
-        root: harness.reads_root.clone(),
-    };
-    let online = || true;
-    let failed = ScriptedSolarPublisher::new(Err("authority temporarily unavailable".into()));
-    let first = solar_host(&harness, &gateway, &producer, &reads, &online);
-    let receipts = first
-        .run_solar_publications(&failed)
-        .expect("failed pass records");
-    assert_eq!(receipts[0].outcome, "failed");
-    drop(first);
-
-    let succeeding = ScriptedSolarPublisher::new(Ok(SolarPublishOutcome::Published {
-        work_id: "work-after-retry".into(),
-        head_revision: 5,
-    }));
-    let restarted = solar_host(&harness, &gateway, &producer, &reads, &online);
-    let receipts = restarted
-        .run_solar_publications(&succeeding)
-        .expect("retry pump");
-    assert_eq!(receipts[0].outcome, "published");
-    assert_eq!(
-        restarted.store_read().expect("store read")["artifacts"][0]["state"],
-        "published"
-    );
-}
-
-#[test]
-fn solar_cancellation_racing_a_publication_keeps_the_cancelled_row_refused() {
-    struct CancellingPublisher<'a> {
-        host: &'a StoreHost<'a>,
-    }
-    impl SolarPublisher for CancellingPublisher<'_> {
-        fn publish_solar(
-            &self,
-            row: &LocalRow,
-            guard: &dyn Fn() -> Result<(), String>,
-            transfer: &dyn Fn(&str, &str) -> Result<TransferReceipt, String>,
-        ) -> Result<SolarPublishOutcome, String> {
-            guard()?;
-            let _ = transfer("report-input", "https://storage.example.test/solar-upload")?;
-            self.host.cancel(&row.identity)?;
-            Ok(SolarPublishOutcome::Published {
-                work_id: "remote-work".into(),
-                head_revision: 7,
-            })
-        }
-    }
-
-    let harness = Harness::new();
-    let gateway = FakeGateway {
-        world: harness.world.clone(),
-    };
-    let producer = FakeProducer::new(harness.world.clone(), vec![solar_row()]);
-    let reads = FakeReads {
-        world: harness.world.clone(),
-        root: harness.reads_root.clone(),
-    };
-    let online = || true;
-    let host = solar_host(&harness, &gateway, &producer, &reads, &online);
-    let publisher = CancellingPublisher { host: &host };
-    assert!(host
-        .run_solar_publications(&publisher)
-        .expect("race is handled")
-        .is_empty());
-    let state = host.store_read().expect("store read")["artifacts"][0]["state"].clone();
-    assert_eq!(state, "refused");
-    assert!(host
-        .run_solar_publications(&publisher)
-        .expect("cancelled rows stay terminal")
-        .is_empty());
 }
 
 // ---------------------------------------------------------------------------
@@ -752,21 +565,22 @@ fn an_accepted_heads_read_clears_the_old_session_block_without_an_upload() {
     )
     .unwrap();
 
-    assert!(ds_sync_runtime::run::run_reports(&host, PROJECT, sync::Trigger::Manual).is_err());
+    assert!(ds_sync_runtime::run(&host, PROJECT, sync::Trigger::Manual).is_err());
     assert!(host.credential_block(PROJECT).unwrap().is_some());
     door.refused.store(false, Ordering::SeqCst);
-    let recovered =
-        ds_sync_runtime::run::run_reports(&host, PROJECT, sync::Trigger::Manual).unwrap();
-    assert_eq!(outcomes(&recovered), vec!["session:connected"]);
-    assert_eq!(door.calls.load(Ordering::SeqCst), 2);
+    let recovered = ds_sync_runtime::run(&host, PROJECT, sync::Trigger::Manual).unwrap();
+    assert_eq!(
+        outcomes(&recovered),
+        vec!["session:connected", "upload:published"]
+    );
+    assert_eq!(door.calls.load(Ordering::SeqCst), 4);
     assert_eq!(
         stored_rows(&h, PROJECT)[0].state,
-        ArtifactState::Held,
-        "the Solar row is still queued"
+        ArtifactState::Published,
+        "the Solar row recovers through the common executor"
     );
     assert!(host.credential_block(PROJECT).unwrap().is_none());
-    let local_change =
-        ds_sync_runtime::run::run_reports(&host, PROJECT, sync::Trigger::LocalChange).unwrap();
+    let local_change = ds_sync_runtime::run(&host, PROJECT, sync::Trigger::LocalChange).unwrap();
     assert!(!outcomes(&local_change).contains(&"session:blocked".to_string()));
 }
 
@@ -1451,76 +1265,6 @@ fn a_corrupted_replica_is_fetched_again_without_publishing_it() {
     assert_eq!(repaired.plan.summary.uploads, 0);
     assert_eq!(std::fs::read(&file).unwrap(), vec![5; 100]);
     assert_eq!(fakes::lock(&h.world).downloads.len(), 2);
-}
-
-#[test]
-fn report_pass_does_not_send_solar_through_the_report_door() {
-    let harness = Harness::new();
-    let gateway = FakeGateway {
-        world: harness.world.clone(),
-    };
-    let rows = vec![local_row(b"report"), solar_row()];
-    harness.seal(&rows);
-    let producer = FakeProducer::new(harness.world.clone(), rows);
-    let reads = FakeReads {
-        world: harness.world.clone(),
-        root: harness.reads_root.clone(),
-    };
-    let host = StoreHost::new(
-        harness.store.clone(),
-        fence(),
-        "reports".into(),
-        PROJECT,
-        &gateway,
-        &producer,
-        &reads,
-        &|| true,
-    )
-    .unwrap();
-    let result = ds_sync_runtime::run::run_reports(&host, PROJECT, sync::Trigger::Startup).unwrap();
-    assert!(result
-        .receipts
-        .iter()
-        .any(|receipt| receipt.action == "upload" && receipt.outcome == "published"));
-    assert!(result.receipts.iter().all(|receipt| receipt
-        .identity
-        .as_ref()
-        .is_none_or(|identity| identity.engine == "network_reporter")));
-    let snapshot = host.store_read().unwrap();
-    let solar = snapshot["artifacts"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|row| row["engine"] == "solar")
-        .unwrap();
-    assert_eq!(solar["state"], "held");
-
-    // Local recovery ticks must not turn a completed report into a remote
-    // refresh or another publication, even with a held Solar row beside it.
-    let before = {
-        let world = fakes::lock(&harness.world);
-        (
-            world.head_reads,
-            world.opens,
-            world.commits,
-            world.transfers.len(),
-        )
-    };
-    for _ in 0..3 {
-        let recovery =
-            ds_sync_runtime::run::run_reports(&host, PROJECT, sync::Trigger::LocalChange).unwrap();
-        assert!(!recovery.plan.refresh_remote.needed);
-    }
-    let world = fakes::lock(&harness.world);
-    assert_eq!(
-        (
-            world.head_reads,
-            world.opens,
-            world.commits,
-            world.transfers.len()
-        ),
-        before
-    );
 }
 
 #[test]
@@ -2905,7 +2649,7 @@ fn a_batch_the_store_does_not_know_is_adopted_once_with_a_receipt() {
 
 // ---------------------------------------------------------------------------
 // Solar rows: the seven invariants, over the same store and the same host,
-// through the Solar publication path (`run_solar_publications`). A Solar
+// through the common publication executor. A Solar
 // row is sealed at the job's completion (`solar::seal`), under the host's
 // local fence; the producer holds NO inventory of its own here — the
 // store's rows are the inventory — and its transfer reads the row it is
@@ -2975,93 +2719,8 @@ fn freed() -> Freed {
     Arc::new(Mutex::new(Vec::new()))
 }
 
-/// A host over the store with an EMPTY producer inventory: what the store
-/// holds is what is published.
-fn solar_pump<'a>(
-    h: &'a Harness,
-    gateway: &'a dyn ds_sync_runtime::Gateway,
-    producer: &'a FakeProducer,
-    reads: &'a FakeReads,
-    online: &'a dyn Fn() -> bool,
-    worker: &str,
-    project: &str,
-) -> StoreHost<'a> {
-    StoreHost::new(
-        h.store.clone(),
-        fence(),
-        worker.into(),
-        project,
-        gateway,
-        producer,
-        reads,
-        online,
-    )
-    .expect("solar host")
-}
-
-fn solar_outcomes(receipts: &[ds_sync_runtime::Receipt]) -> Vec<String> {
-    receipts
-        .iter()
-        .map(|receipt| format!("{}:{}", receipt.action, receipt.outcome))
-        .collect()
-}
-
 /// The seal is one acknowledged step after the completion: the row is in
 /// the queue before any pump has run, and the pump adopts nothing.
-#[test]
-fn a_solar_seal_records_the_row_at_completion_and_the_pump_adopts_nothing() {
-    use ds_sync_runtime::store::ArtifactState;
-    let h = Harness::new();
-    let freed = freed();
-    let SolarSeal::Sealed(sealed) = solar_seal(&h, PROJECT, "city-1", "job-1", b"first", &freed)
-    else {
-        panic!("first seal")
-    };
-    assert_eq!(sealed.row.state, ArtifactState::Held);
-    assert_eq!(sealed.row.replay_key, "job-1");
-    assert_eq!(sealed.row.bytes_locator, "solar:prepared:job:job-1");
-    assert_eq!(sealed.row.identity, solar::identity_of("city-1"));
-    assert!(sealed.superseded.is_none());
-    let queue = h
-        .store
-        .lock()
-        .unwrap()
-        .queue(&fence(), Some(PROJECT), 2_000)
-        .unwrap();
-    assert_eq!(
-        queue.queued_batches, 1,
-        "queued with no pump and no session"
-    );
-    assert_eq!(queue.queued_bytes, b"first".len() as u64);
-
-    let gateway = FakeGateway {
-        world: h.world.clone(),
-    };
-    let producer = FakeProducer::new(h.world.clone(), Vec::new());
-    let reads = FakeReads {
-        world: h.world.clone(),
-        root: h.reads_root.clone(),
-    };
-    let online = || true;
-    let publisher = ScriptedSolarPublisher::new(Ok(SolarPublishOutcome::Published {
-        work_id: "work-1".into(),
-        head_revision: 1,
-    }));
-    let host = solar_pump(&h, &gateway, &producer, &reads, &online, "pump", PROJECT);
-    let receipts = host.run_solar_publications(&publisher).unwrap();
-    assert_eq!(solar_outcomes(&receipts), vec!["upload:published"]);
-    assert!(receipts[0].client_publish_id.is_some());
-    assert_eq!(
-        stored_rows(&h, PROJECT)[0].acknowledged_work_id,
-        receipts[0].work_id
-    );
-    assert!(
-        !host_receipt_actions(&h).contains(&"adopted".to_string()),
-        "a sealed row is not adopted: {:?}",
-        host_receipt_actions(&h)
-    );
-    assert_eq!(stored_rows(&h, PROJECT)[0].state, ArtifactState::Published);
-}
 
 /// A city computed again on this machine: the new seal frees the result
 /// it supersedes through the producer, says so, and the row is the new
@@ -3247,558 +2906,293 @@ fn a_solar_completion_sealed_behind_a_newer_one_frees_its_own_result_and_the_new
 /// Invariant (1), Solar: a pump killed after the seal, after the transfer,
 /// or before the acknowledgement, then restarted against the same store,
 /// neither duplicates nor loses the publication.
-#[test]
-fn invariant_1_solar_a_pump_killed_after_seal_after_transfer_or_before_ack_resumes_without_duplicating(
-) {
-    use ds_sync_runtime::store::ArtifactState;
-    let gateway_of = |h: &Harness| FakeGateway {
-        world: h.world.clone(),
-    };
-    let reads_of = |h: &Harness| FakeReads {
-        world: h.world.clone(),
-        root: h.reads_root.clone(),
-    };
-    let online = || true;
-    // (a) Killed after the seal, before any pump: the row is held in the
-    // store and the next process publishes it once.
-    let h = Harness::new();
-    solar_seal(
-        &h,
-        PROJECT,
-        "city-1",
-        "job-1",
-        b"sealed then killed",
-        &freed(),
-    );
-    assert_eq!(stored_rows(&h, PROJECT)[0].state, ArtifactState::Held);
-    let gateway = gateway_of(&h);
-    let producer = FakeProducer::new(h.world.clone(), Vec::new());
-    let reads = reads_of(&h);
-    let publisher = ScriptedSolarPublisher::new(Ok(SolarPublishOutcome::Published {
-        work_id: "work-1".into(),
-        head_revision: 1,
-    }));
-    let resumed = solar_pump(&h, &gateway, &producer, &reads, &online, "pump#2", PROJECT);
-    let receipts = resumed.run_solar_publications(&publisher).unwrap();
-    assert_eq!(solar_outcomes(&receipts), vec!["upload:published"]);
-    assert_eq!(publisher.calls.load(Ordering::SeqCst), 1);
-
-    // (b) Killed after the transfer, before the acknowledgement: the bytes
-    // went up, the authority never answered, the row is held with the
-    // failure as its reason and nothing is published.
-    let h = Harness::new();
-    solar_seal(
-        &h,
-        PROJECT,
-        "city-1",
-        "job-1",
-        b"transferred then killed",
-        &freed(),
-    );
-    let gateway = gateway_of(&h);
-    let producer = FakeProducer::new(h.world.clone(), Vec::new());
-    let reads = reads_of(&h);
-    let dying = ScriptedSolarPublisher::new(Err("the authority went away".into()));
-    let first = solar_pump(&h, &gateway, &producer, &reads, &online, "pump#1", PROJECT);
-    let receipts = first.run_solar_publications(&dying).unwrap();
-    assert_eq!(solar_outcomes(&receipts), vec!["upload:failed"]);
-    assert_eq!(
-        fakes::lock(&h.world).transfers.len(),
-        1,
-        "the bytes went up"
-    );
-    let rows = stored_rows(&h, PROJECT);
-    assert_eq!(rows.len(), 1);
-    assert_eq!(rows[0].state, ArtifactState::Held);
-    assert!(rows[0]
-        .state_reason
-        .as_deref()
-        .is_some_and(|reason| reason.contains("went away")));
-    drop(first);
-    // The restart: the authority is back. Published once, one row, one head.
-    let publisher = ScriptedSolarPublisher::new(Ok(SolarPublishOutcome::Published {
-        work_id: "work-1".into(),
-        head_revision: 1,
-    }));
-    let second = solar_pump(&h, &gateway, &producer, &reads, &online, "pump#2", PROJECT);
-    let receipts = second.run_solar_publications(&publisher).unwrap();
-    assert_eq!(solar_outcomes(&receipts), vec!["upload:published"]);
-    let rows = stored_rows(&h, PROJECT);
-    assert_eq!(rows.len(), 1, "one row, not two");
-    assert_eq!(rows[0].state, ArtifactState::Published);
-    let read = second.store_read().unwrap();
-    assert_eq!(read["heads"].as_array().unwrap().len(), 1);
-    assert_eq!(read["heads"][0]["head_revision"], 1);
-    // (c) A third pump finds nothing to do.
-    let third = solar_pump(&h, &gateway, &producer, &reads, &online, "pump#3", PROJECT);
-    assert!(third.run_solar_publications(&publisher).unwrap().is_empty());
-    assert_eq!(publisher.calls.load(Ordering::SeqCst), 1);
-}
 
 /// Invariant (2), Solar: the same completed job sealed twice is one row
 /// (`already_recorded`), published once, and a later pump answers nothing.
-#[test]
-fn invariant_2_solar_the_same_job_sealed_twice_is_one_row_and_published_once() {
-    let h = Harness::new();
-    let freed = freed();
-    assert!(matches!(
-        solar_seal(&h, PROJECT, "city-1", "job-1", b"published twice", &freed),
-        SolarSeal::Sealed(_)
-    ));
-    // A retried completion projection of the same job: already recorded.
-    let again = solar_seal(&h, PROJECT, "city-1", "job-1", b"published twice", &freed);
-    assert!(
-        matches!(again, SolarSeal::AlreadyRecorded { ref replay_key, .. } if replay_key == "job-1")
-    );
-    assert!(freed.lock().unwrap().is_empty());
-    assert_eq!(stored_rows(&h, PROJECT).len(), 1);
-    let gateway = FakeGateway {
-        world: h.world.clone(),
-    };
-    let producer = FakeProducer::new(h.world.clone(), Vec::new());
-    let reads = FakeReads {
-        world: h.world.clone(),
-        root: h.reads_root.clone(),
-    };
-    let online = || true;
-    let publisher = ScriptedSolarPublisher::new(Ok(SolarPublishOutcome::Published {
-        work_id: "work-1".into(),
-        head_revision: 1,
-    }));
-    let host = solar_pump(&h, &gateway, &producer, &reads, &online, "pump", PROJECT);
-    assert_eq!(
-        solar_outcomes(&host.run_solar_publications(&publisher).unwrap()),
-        vec!["upload:published"]
-    );
-    assert!(host.run_solar_publications(&publisher).unwrap().is_empty());
-    // Sealed once more after publication — the observer replayed — the
-    // published row stands and nothing is re-queued.
-    assert!(matches!(
-        solar_seal(&h, PROJECT, "city-1", "job-1", b"published twice", &freed),
-        SolarSeal::AlreadyRecorded {
-            state: ds_sync_runtime::store::ArtifactState::Published,
-            ..
-        }
-    ));
-    assert_eq!(publisher.calls.load(Ordering::SeqCst), 1);
-    assert_eq!(fakes::lock(&h.world).transfers.len(), 1);
-    assert_eq!(stored_rows(&h, PROJECT).len(), 1);
-}
 
 /// Invariant (3), Solar: two pumps over one store and one project — one
 /// holds the lease and publishes, the other records that it is held, names
 /// the holder and leaves; once released, the next pump finds nothing left.
-#[test]
-fn invariant_3_solar_two_pumps_one_store_one_project_one_holds_the_lease_the_other_leaves() {
-    struct NestedPump<'a> {
-        h: &'a Harness,
-        gateway: &'a FakeGateway,
-        producer: &'a FakeProducer,
-        reads: &'a FakeReads,
-        other_receipts: Mutex<Vec<ds_sync_runtime::Receipt>>,
-        calls: AtomicUsize,
-    }
-    impl SolarPublisher for NestedPump<'_> {
-        fn publish_solar(
-            &self,
-            _row: &LocalRow,
-            guard: &dyn Fn() -> Result<(), String>,
-            transfer: &dyn Fn(&str, &str) -> Result<TransferReceipt, String>,
-        ) -> Result<SolarPublishOutcome, String> {
-            self.calls.fetch_add(1, Ordering::SeqCst);
-            guard()?;
-            // While this pump holds the lease, a second pump over the same
-            // store and project tries to drain.
-            let online = || true;
-            let other = solar_pump(
-                self.h,
-                self.gateway,
-                self.producer,
-                self.reads,
-                &online,
-                "pump#other",
-                PROJECT,
-            );
-            let inner = ScriptedSolarPublisher::new(Ok(SolarPublishOutcome::Published {
-                work_id: "work-other".into(),
-                head_revision: 9,
-            }));
-            let receipts = other.run_solar_publications(&inner).unwrap();
-            assert_eq!(
-                inner.calls.load(Ordering::SeqCst),
-                0,
-                "the other published nothing"
-            );
-            *self.other_receipts.lock().unwrap() = receipts;
-            let _ = transfer("report-input", "https://storage.example.test/solar-upload")?;
-            Ok(SolarPublishOutcome::Published {
-                work_id: "work-1".into(),
-                head_revision: 1,
-            })
-        }
-    }
-    let h = Harness::new();
-    solar_seal(&h, PROJECT, "city-1", "job-1", b"leased", &freed());
-    let gateway = FakeGateway {
-        world: h.world.clone(),
-    };
-    let producer = FakeProducer::new(h.world.clone(), Vec::new());
-    let reads = FakeReads {
-        world: h.world.clone(),
-        root: h.reads_root.clone(),
-    };
-    let online = || true;
-    let publisher = NestedPump {
-        h: &h,
-        gateway: &gateway,
-        producer: &producer,
-        reads: &reads,
-        other_receipts: Mutex::new(Vec::new()),
-        calls: AtomicUsize::new(0),
-    };
-    let holder = solar_pump(
-        &h,
-        &gateway,
-        &producer,
-        &reads,
-        &online,
-        "pump#holder",
-        PROJECT,
-    );
-    let receipts = holder.run_solar_publications(&publisher).unwrap();
-    assert_eq!(solar_outcomes(&receipts), vec!["upload:published"]);
-    assert_eq!(publisher.calls.load(Ordering::SeqCst), 1);
-    let other = publisher.other_receipts.lock().unwrap();
-    assert_eq!(solar_outcomes(&other), vec!["lease:held"]);
-    assert!(
-        other[0]
-            .detail
-            .as_deref()
-            .is_some_and(|detail| detail.contains("lease_held") && detail.contains("pump#holder")),
-        "the holder is named: {:?}",
-        other[0].detail
-    );
-    drop(other);
-    drop(holder);
-    // Released: the next pump drains, and there is nothing left to drain.
-    let next = solar_pump(
-        &h,
-        &gateway,
-        &producer,
-        &reads,
-        &online,
-        "pump#next",
-        PROJECT,
-    );
-    let inner = ScriptedSolarPublisher::new(Ok(SolarPublishOutcome::Published {
-        work_id: "work-next".into(),
-        head_revision: 2,
-    }));
-    assert!(next.run_solar_publications(&inner).unwrap().is_empty());
-    assert_eq!(fakes::lock(&h.world).transfers.len(), 1);
-}
 
 /// Invariant (4), Solar: two projects' rows interleave in one store, and
 /// each pump publishes under its own scope only.
-#[test]
-fn invariant_4_solar_two_projects_rows_interleave_and_each_pump_publishes_its_own_scope_only() {
-    use ds_sync_runtime::store::ArtifactState;
-    const OTHER: &str = "p2";
-    let h = Harness::new();
-    let freed = freed();
-    solar_seal(&h, PROJECT, "city-1", "job-p1-a", b"ours, first", &freed);
-    solar_seal(&h, OTHER, "city-1", "job-p2", b"theirs", &freed);
-    solar_seal(&h, PROJECT, "city-2", "job-p1-b", b"ours, second", &freed);
-    // The same city name in two projects is two identities under two
-    // scopes: nothing was superseded across the fence of a project.
-    assert!(freed.lock().unwrap().is_empty());
-    let queue = h
-        .store
-        .lock()
-        .unwrap()
-        .queue(&fence(), None, 2_000)
-        .unwrap();
-    assert_eq!(queue.queued_batches, 3);
-    assert_eq!(queue.projects.len(), 2);
-
-    let gateway = FakeGateway {
-        world: h.world.clone(),
-    };
-    let producer = FakeProducer::new(h.world.clone(), Vec::new());
-    let reads = FakeReads {
-        world: h.world.clone(),
-        root: h.reads_root.clone(),
-    };
-    let online = || true;
-    let publisher = ScriptedSolarPublisher::new(Ok(SolarPublishOutcome::Published {
-        work_id: "work".into(),
-        head_revision: 1,
-    }));
-    let ours = solar_pump(&h, &gateway, &producer, &reads, &online, "pump#p1", PROJECT);
-    let receipts = ours.run_solar_publications(&publisher).unwrap();
-    assert_eq!(
-        solar_outcomes(&receipts),
-        vec!["upload:published", "upload:published"]
-    );
-    assert!(stored_rows(&h, PROJECT)
-        .iter()
-        .all(|row| row.state == ArtifactState::Published));
-    assert_eq!(stored_rows(&h, OTHER)[0].state, ArtifactState::Held);
-    assert_eq!(publisher.calls.load(Ordering::SeqCst), 2);
-
-    let theirs = solar_pump(&h, &gateway, &producer, &reads, &online, "pump#p2", OTHER);
-    let receipts = theirs.run_solar_publications(&publisher).unwrap();
-    assert_eq!(solar_outcomes(&receipts), vec!["upload:published"]);
-    assert_eq!(stored_rows(&h, OTHER)[0].state, ArtifactState::Published);
-    assert_eq!(publisher.calls.load(Ordering::SeqCst), 3);
-    let queue = h
-        .store
-        .lock()
-        .unwrap()
-        .queue(&fence(), None, 3_000)
-        .unwrap();
-    assert_eq!(queue.queued_batches, 0);
-    assert_eq!(queue.held_batches, 3);
-}
 
 /// Invariant (5), Solar: a row sealed under one fence is invisible to a
 /// pump under another account, deployment or install of the same file —
 /// not read, not published, not counted — while the whole file's queue
 /// still counts it for a status with no identity to name a fence.
-#[test]
-fn invariant_5_solar_a_row_sealed_under_one_fence_is_invisible_to_every_other_fence() {
-    use ds_sync_runtime::store::ArtifactState;
-    let h = Harness::new();
-    solar_seal(&h, PROJECT, "city-1", "job-1", b"fenced", &freed());
-    let other_fences = [
-        Fence {
-            account: "account-2".into(),
-            ..fence()
-        },
-        Fence {
-            deployment: "https://canary.example.com".into(),
-            ..fence()
-        },
-        Fence {
-            install_id: "install-2".into(),
-            ..fence()
-        },
-    ];
-    let gateway = FakeGateway {
-        world: h.world.clone(),
-    };
-    let producer = FakeProducer::new(h.world.clone(), Vec::new());
-    let reads = FakeReads {
-        world: h.world.clone(),
-        root: h.reads_root.clone(),
-    };
-    let online = || true;
-    let publisher = ScriptedSolarPublisher::new(Ok(SolarPublishOutcome::Published {
-        work_id: "work".into(),
-        head_revision: 1,
-    }));
-    for other in &other_fences {
-        let host = StoreHost::new(
-            h.store.clone(),
-            other.clone(),
-            "pump#other".into(),
-            PROJECT,
-            &gateway,
-            &producer,
-            &reads,
-            &online,
-        )
-        .unwrap();
-        assert!(host.run_solar_publications(&publisher).unwrap().is_empty());
-        assert!(host.store_read().unwrap()["artifacts"]
-            .as_array()
-            .unwrap()
-            .is_empty());
-        let queue = h.store.lock().unwrap().queue(other, None, 2_000).unwrap();
-        assert_eq!(queue.queued_batches, 0);
-    }
-    assert_eq!(publisher.calls.load(Ordering::SeqCst), 0);
-    assert_eq!(
-        h.store
-            .lock()
-            .unwrap()
-            .queue_all(None, 2_000)
-            .unwrap()
-            .queued_batches,
-        1,
-        "the file holds it; the fence decides who drains it"
-    );
-    let mine = solar_pump(
-        &h,
-        &gateway,
-        &producer,
-        &reads,
-        &online,
-        "pump#mine",
-        PROJECT,
-    );
-    assert_eq!(
-        solar_outcomes(&mine.run_solar_publications(&publisher).unwrap()),
-        vec!["upload:published"]
-    );
-    assert_eq!(stored_rows(&h, PROJECT)[0].state, ArtifactState::Published);
-    // A Solar row sealed under another fence never supersedes this one.
-    let SolarSeal::Sealed(theirs) = solar_seal_under(
-        &h,
-        &other_fences[0],
-        PROJECT,
-        "city-1",
-        "job-other",
-        b"another account's",
-        &freed(),
-    ) else {
-        panic!("sealed under the other fence")
-    };
-    assert!(theirs.superseded.is_none());
-    assert_eq!(stored_rows(&h, PROJECT)[0].replay_key, "job-1");
-}
 
 /// Invariant (6), Solar: a pump that loses its authority between the
 /// transfer and the acknowledgement records nothing — the row stays held,
 /// never published — and the next pump resumes it; a cancellation racing
 /// the publication keeps the row refused (`solar_cancellation_racing_...`).
-#[test]
-fn invariant_6_solar_a_pump_aborted_between_receipts_leaves_the_row_held_and_the_next_resumes() {
-    use ds_sync_runtime::store::ArtifactState;
-    use std::sync::atomic::AtomicBool;
-    struct AbortingPublisher(Arc<AtomicBool>, AtomicUsize);
-    impl SolarPublisher for AbortingPublisher {
-        fn publish_solar(
-            &self,
-            _row: &LocalRow,
-            guard: &dyn Fn() -> Result<(), String>,
-            transfer: &dyn Fn(&str, &str) -> Result<TransferReceipt, String>,
-        ) -> Result<SolarPublishOutcome, String> {
-            self.1.fetch_add(1, Ordering::SeqCst);
-            guard()?;
-            let _ = transfer("report-input", "https://storage.example.test/solar-upload")?;
-            // The abort: the host's authority is gone from here on.
-            self.0.store(false, Ordering::SeqCst);
-            Ok(SolarPublishOutcome::Published {
-                work_id: "work-1".into(),
-                head_revision: 1,
-            })
-        }
-    }
-    let h = Harness::new();
-    solar_seal(
-        &h,
-        PROJECT,
-        "city-1",
-        "job-1",
-        b"aborted mid-pass",
-        &freed(),
-    );
-    let allowed = Arc::new(AtomicBool::new(true));
-    let gateway = FakeGateway {
-        world: h.world.clone(),
-    };
-    let producer = FakeProducer::new(h.world.clone(), Vec::new());
-    let reads = FakeReads {
-        world: h.world.clone(),
-        root: h.reads_root.clone(),
-    };
-    let online = || allowed.load(Ordering::SeqCst);
-    let publisher = AbortingPublisher(allowed.clone(), AtomicUsize::new(0));
-    let host = solar_pump(&h, &gateway, &producer, &reads, &online, "pump#1", PROJECT);
-    let error = host
-        .run_solar_publications(&publisher)
-        .expect_err("the pass is fenced before it acknowledges");
-    assert!(error.contains("unavailable"), "{error}");
-    assert_eq!(publisher.1.load(Ordering::SeqCst), 1);
-    let rows = stored_rows(&h, PROJECT);
-    assert_eq!(rows.len(), 1);
-    assert_eq!(rows[0].state, ArtifactState::Held, "held, never published");
-    assert!(host.store_read().unwrap()["heads"]
-        .as_array()
-        .unwrap()
-        .is_empty());
-    drop(host);
-
-    allowed.store(true, Ordering::SeqCst);
-    let publisher = ScriptedSolarPublisher::new(Ok(SolarPublishOutcome::Published {
-        work_id: "work-1".into(),
-        head_revision: 1,
-    }));
-    let resumed = solar_pump(&h, &gateway, &producer, &reads, &online, "pump#2", PROJECT);
-    assert_eq!(
-        solar_outcomes(&resumed.run_solar_publications(&publisher).unwrap()),
-        vec!["upload:published"]
-    );
-    assert_eq!(stored_rows(&h, PROJECT)[0].state, ArtifactState::Published);
-    assert_eq!(stored_rows(&h, PROJECT).len(), 1);
-}
 
 /// Invariant (7), Solar: `published` is set only from the authority's
 /// own published receipt, never from transport success. A transfer that
 /// succeeds while the authority never commits leaves the row held and no
 /// head; a stale answer is a conflict with no head.
+
 #[test]
-fn invariant_7_solar_transfer_success_without_a_published_receipt_leaves_the_row_held() {
-    use ds_sync_runtime::store::ArtifactState;
+fn one_pass_publishes_both_engines_and_idle_recovery_makes_no_gateway_calls() {
     let h = Harness::new();
-    solar_seal(
-        &h,
-        PROJECT,
-        "city-1",
-        "job-1",
-        b"uploaded, never committed",
-        &freed(),
-    );
-    let gateway = FakeGateway {
-        world: h.world.clone(),
-    };
-    let producer = FakeProducer::new(h.world.clone(), Vec::new());
-    let reads = FakeReads {
-        world: h.world.clone(),
-        root: h.reads_root.clone(),
-    };
-    let online = || true;
-    let never = ScriptedSolarPublisher::new(Err("the authority never answered".into()));
-    let host = solar_pump(&h, &gateway, &producer, &reads, &online, "pump#1", PROJECT);
-    assert_eq!(
-        solar_outcomes(&host.run_solar_publications(&never).unwrap()),
-        vec!["upload:failed"]
+    let pass = h.run(
+        vec![local_row(b"report"), solar_row()],
+        sync::Trigger::Startup,
     );
     assert_eq!(
-        fakes::lock(&h.world).transfers.len(),
-        1,
-        "the transport succeeded"
+        pass.receipts
+            .iter()
+            .filter(|r| r.action == "upload" && r.outcome == "published")
+            .count(),
+        2
     );
-    let rows = stored_rows(&h, PROJECT);
-    assert_eq!(rows[0].state, ArtifactState::Held);
-    assert!(host.store_read().unwrap()["heads"]
-        .as_array()
-        .unwrap()
-        .is_empty());
-    // Still queued.
+    assert!(stored_rows(&h, PROJECT)
+        .iter()
+        .all(|r| r.state == ds_sync_runtime::store::ArtifactState::Published));
+    let before = {
+        let w = fakes::lock(&h.world);
+        (w.opens, w.commits, w.head_reads)
+    };
+    let idle = h.run(Vec::new(), sync::Trigger::LocalChange);
+    assert_eq!(outcomes(&idle), vec!["nothing:in_sync", "nothing:in_sync"]);
+    let w = fakes::lock(&h.world);
+    assert_eq!((w.opens, w.commits, w.head_reads), before);
+}
+
+#[test]
+fn both_engines_share_stale_archive_transfer_and_restart_verdicts() {
+    use ds_sync_runtime::store::ArtifactState;
+    for row in [local_row(b"report"), solar_row()] {
+        for (case, state) in [
+            ("stale_open", ArtifactState::Conflict),
+            ("stale_finalize", ArtifactState::Conflict),
+            ("archive", ArtifactState::Refused),
+            ("transport", ArtifactState::Held),
+            ("unacknowledged", ArtifactState::Held),
+        ] {
+            let mut h = Harness::new();
+            {
+                let mut w = fakes::lock(&h.world);
+                match case {
+                    "stale_open" => {
+                        w.current_base
+                            .insert(row.identity.operation.clone(), "changed".into());
+                    }
+                    "stale_finalize" => w.publish_state = Some("stored_stale".into()),
+                    "archive" => w.refuse_open = Some("project archived".into()),
+                    "transport" => w.transfer_mode = TransferMode::Failed,
+                    "unacknowledged" => w.refuse_publish = Some("connection lost".into()),
+                    _ => unreachable!(),
+                }
+            }
+            h.run(vec![row.clone()], sync::Trigger::Startup);
+            assert_eq!(stored_rows(&h, PROJECT)[0].state, state, "{case}");
+            h.reopen_after_kill();
+            let opens = fakes::lock(&h.world).opens;
+            {
+                let mut w = fakes::lock(&h.world);
+                w.transfer_mode = TransferMode::Complete;
+                w.refuse_publish = None;
+            }
+            let resumed = h.run(Vec::new(), sync::Trigger::Manual);
+            if state == ArtifactState::Held {
+                assert!(
+                    outcomes(&resumed).contains(&"upload:published".into()),
+                    "{case}: {:?}",
+                    outcomes(&resumed)
+                );
+                assert_eq!(stored_rows(&h, PROJECT)[0].state, ArtifactState::Published);
+            } else {
+                assert_eq!(
+                    fakes::lock(&h.world).opens,
+                    opens,
+                    "terminal row reopened: {case}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn a_sealed_solar_row_uses_the_common_executor_after_a_crash_without_adoption() {
+    let mut h = Harness::new();
+    let freed = freed();
+    solar_seal(&h, PROJECT, "city-1", "job-1", b"first", &freed);
     assert_eq!(
         h.store
             .lock()
             .unwrap()
-            .queue(&fence(), Some(PROJECT), 2_000)
+            .queue(&fence(), Some(PROJECT), 2000)
             .unwrap()
             .queued_batches,
         1
     );
-    // A stale answer: terminal, and still no head.
-    let stale = ScriptedSolarPublisher::new(Ok(SolarPublishOutcome::StoredStale {
-        work_id: Some("work-stale".into()),
-        detail: "the snapshot changed".into(),
-    }));
-    assert_eq!(
-        solar_outcomes(&host.run_solar_publications(&stale).unwrap()),
-        vec!["upload:stored_stale"]
-    );
-    assert_eq!(stored_rows(&h, PROJECT)[0].state, ArtifactState::Conflict);
-    assert!(host.store_read().unwrap()["heads"]
-        .as_array()
-        .unwrap()
-        .is_empty());
-    assert!(host.run_solar_publications(&stale).unwrap().is_empty());
+    h.reopen_after_kill();
+    let pass = h.run(Vec::new(), sync::Trigger::Startup);
+    assert_eq!(outcomes(&pass), vec!["upload:published"]);
+    let row = &stored_rows(&h, PROJECT)[0];
+    assert_eq!(row.replay_key, "job-1");
+    assert_eq!(row.state, ds_sync_runtime::store::ArtifactState::Published);
+    assert_eq!(row.acknowledged_work_id, pass.receipts[0].work_id);
+    let commits = fakes::lock(&h.world).commits;
+    h.run(Vec::new(), sync::Trigger::Manual);
+    assert_eq!(fakes::lock(&h.world).commits, commits);
+}
+
+#[test]
+fn the_executor_has_no_engine_selection_or_separate_publisher() {
+    let source = include_str!("../src/run.rs");
+    for engine in sync::engines::ENGINES {
+        assert!(!source
+            .split("#[cfg(test)]")
+            .next()
+            .unwrap()
+            .contains(engine.name));
+    }
+    for source in [
+        include_str!("../src/host.rs"),
+        include_str!("../src/lib.rs"),
+    ] {
+        assert!(!source.contains(concat!("Solar", "Publisher")));
+        assert!(!source.contains(concat!("SolarPublish", "Outcome")));
+    }
+}
+
+#[test]
+fn both_engines_hold_401_at_open_and_finalize_and_recover_with_the_same_replay_key() {
+    struct Door {
+        record: FakeGateway,
+        stage: &'static str,
+        refused: AtomicBool,
+    }
+    impl Gateway for Door {
+        fn post(
+            &self,
+            route: SyncRoute,
+            body: &serde_json::Value,
+        ) -> Result<serde_json::Value, GatewayError> {
+            if body["action"] == self.stage && self.refused.load(Ordering::SeqCst) {
+                return Err(GatewayError::refused(401, None, "expired credential"));
+            }
+            self.record.post(route, body)
+        }
+    }
+    for row in [local_row(b"report"), solar_row()] {
+        for stage in ["open", "finalize"] {
+            let h = Harness::new();
+            h.seal(std::slice::from_ref(&row));
+            let door = Door {
+                record: FakeGateway {
+                    world: h.world.clone(),
+                },
+                stage,
+                refused: AtomicBool::new(true),
+            };
+            let producer = FakeProducer::new(h.world.clone(), Vec::new());
+            let reads = FakeReads {
+                world: h.world.clone(),
+                root: h.reads_root.clone(),
+            };
+            let host = StoreHost::new(
+                h.store.clone(),
+                fence(),
+                "common-pump".into(),
+                PROJECT,
+                &door,
+                &producer,
+                &reads,
+                &|| true,
+            )
+            .unwrap();
+            let first = run(&host, PROJECT, sync::Trigger::Startup).unwrap();
+            assert!(outcomes(&first).contains(&"upload:credential_refused".into()));
+            assert_eq!(
+                stored_rows(&h, PROJECT)[0].state,
+                ds_sync_runtime::store::ArtifactState::Held
+            );
+            assert!(host.credential_block(PROJECT).unwrap().is_some());
+            let before = fakes::lock(&h.world).opens;
+            let blocked = run(&host, PROJECT, sync::Trigger::LocalChange).unwrap();
+            assert!(outcomes(&blocked).contains(&"session:blocked".into()));
+            assert_eq!(fakes::lock(&h.world).opens, before);
+            door.refused.store(false, Ordering::SeqCst);
+            let recovered = run(&host, PROJECT, sync::Trigger::Manual).unwrap();
+            assert!(outcomes(&recovered).contains(&"upload:published".into()));
+            let stored = &stored_rows(&h, PROJECT)[0];
+            assert_eq!(stored.replay_key, row.client_publish_id);
+            assert_eq!(
+                stored.state,
+                ds_sync_runtime::store::ArtifactState::Published
+            );
+            assert!(host.credential_block(PROJECT).unwrap().is_none());
+            assert_eq!(fakes::lock(&h.world).commits, 1);
+        }
+    }
+}
+
+#[test]
+fn both_engines_keep_a_cancellation_that_races_remote_finalize() {
+    struct Door {
+        record: FakeGateway,
+        store: SharedStore,
+        row: LocalRow,
+    }
+    impl Gateway for Door {
+        fn post(
+            &self,
+            route: SyncRoute,
+            body: &serde_json::Value,
+        ) -> Result<serde_json::Value, GatewayError> {
+            if body["action"] == "finalize" {
+                self.store
+                    .lock()
+                    .unwrap()
+                    .apply(
+                        &fence(),
+                        ds_sync_runtime::now_ms(),
+                        ds_sync_runtime::store::Event::Cancel {
+                            scope: ds_sync_runtime::rows::store_scope(PROJECT),
+                            identity: self.row.identity.clone(),
+                            expected_replay_key: Some(self.row.client_publish_id.clone()),
+                        },
+                    )
+                    .unwrap();
+            }
+            self.record.post(route, body)
+        }
+    }
+    for row in [local_row(b"report"), solar_row()] {
+        let h = Harness::new();
+        h.seal(std::slice::from_ref(&row));
+        let door = Door {
+            record: FakeGateway {
+                world: h.world.clone(),
+            },
+            store: h.store.clone(),
+            row: row.clone(),
+        };
+        let producer = FakeProducer::new(h.world.clone(), Vec::new());
+        let reads = FakeReads {
+            world: h.world.clone(),
+            root: h.reads_root.clone(),
+        };
+        let host = StoreHost::new(
+            h.store.clone(),
+            fence(),
+            "common-pump".into(),
+            PROJECT,
+            &door,
+            &producer,
+            &reads,
+            &|| true,
+        )
+        .unwrap();
+        run(&host, PROJECT, sync::Trigger::Startup).unwrap();
+        let stored = &stored_rows(&h, PROJECT)[0];
+        assert_eq!(stored.state, ds_sync_runtime::store::ArtifactState::Refused);
+        assert_eq!(stored.state_reason.as_deref(), Some("cancelled"));
+        let opens = fakes::lock(&h.world).opens;
+        run(&host, PROJECT, sync::Trigger::LocalChange).unwrap();
+        assert_eq!(fakes::lock(&h.world).opens, opens);
+    }
 }

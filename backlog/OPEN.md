@@ -48,15 +48,12 @@ Solar and Network Reporter computation artifacts require identical synchronizati
 logic; prefer verified shared artifacts over unnecessary recomputation. Governed
 inputs, parameters and provenance must survive artifact reclaim so computations
 can be repeated when needed. Owner inputs are in
-[OPEN-X.md](OPEN-X.md#solar-sync-migration-owner-inputs); only the legacy queue
-deletion waits for a cutover ruling.
+[OPEN-X.md](OPEN-X.md#solar-sync-migration-owner-inputs). The queue cutover
+is ruled in the sync contract: visible per-city discard and fresh runs.
 
-- **Native callers still select separate publication paths.** Retire
-  `SolarPublisher`, the Server's Solar auth publisher and the report-scoped
-  compatibility entry in favor of the common executor and declaration builder.
-  Add native retry and digest-bound sanitation. Prove identical
-  receipts/store states, including 401 hold/recovery, stale inputs, archive
-  refusal, cancellation/restart and a draft waiting for its calculation.
+- **Native recovery controls remain incomplete.** Add native retry and
+  digest-bound sanitation over the common store and expose them headlessly.
+  Retain terminal stale/conflict verdicts until an explicit reviewed recovery.
 - **Server common-store coverage is missing for Solar drafts/finals/portfolios.**
   Seal and publish all closed native batch constituents through the common path
   before Desktop cutover, retaining authored inputs and per-city failures.
@@ -67,7 +64,7 @@ deletion waits for a cutover ruling.
 - **Desktop still owns an IndexedDB publication queue.** Route Solar execution and
   Sync Center through the shared native runtime, expose headless queue/recovery
   commands, and remove replaced TypeScript/kernel exports after native proof and
-  the explicit legacy-queue ruling. Preserve verified result views/downloads and
+  the recorded per-city discard ruling. Preserve verified result views/downloads and
   unrelated asset/survey transfer consumers.
 - **Placement remains a TypeScript decision; adapter parity is unproven.** Capture
   current placement answers, replay them in the pure kernel and native/WASM

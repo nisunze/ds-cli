@@ -197,9 +197,9 @@ finalize stores stale, 400 at open refuses, and finalize 400, offline, incomplet
 transfer and 5xx hold. Successful `published` and `stored_stale` answers are
 preserved. A transport refusal takes precedence over a response's state. The
 native executor uses this function both for its receipt and for determining
-whether the receipt settled the row. The legacy Solar publisher remains until
-the common publication sequence is wired; this verdict API does not by itself
-claim Desktop or Server Solar cutover.
+whether the receipt settled the row. All native callers use the common publication sequence and verdict mapping.
+A 401 holds Solar exactly like a report; a successful signed-in retry resumes
+the same durable replay key. Desktop producer coverage remains a separate boundary.
 
 `sync::engines` holds the native source-fence and dependency policy. Only the
 two exact reporter aggregate operations are source-fence-free; individual
@@ -212,9 +212,8 @@ event wake. A counter or inventory hash cannot satisfy that dependency.
 
 The common native upload executor now accepts either engine and calls that
 preflight. Source tests prove common open/transfer/finalize execution and
-verified remote-copy reuse for both. The old Solar caller and report-scoped
-compatibility entry remain to be retired together with their callers; these
-tests are not proof of a Server or Desktop cutover.
+verified remote-copy reuse for both. Native hosts now call that executor without engine scoping. Server calculations
+use it; complete Desktop and derived-output coverage must be proved separately.
 
 `sync::declaration::validate` owns the closed publication request before native
 credentials attach: selected project, replay identity, registered engine,
@@ -222,10 +221,9 @@ source fingerprint, unique output identities, allowed output metadata and
 bounded bytes. The engine table selects the declaration policy. A Solar
 calculation requires its exact snapshot digest and UUID receipt; derived
 artifacts cannot carry calculation snapshot fields. Report presentation uses
-the existing artifact inventory owner. The native client's compatibility
-entry named `report_publication` accepts either engine through this validator;
-its typed Solar adapters call that same entry, with no second validation list.
-The Server's separate publisher remains a migration boundary.
+the existing artifact inventory owner. The native client's `publication` entry
+accepts either engine through this validator; there is no report-scoped entry or typed Solar publication adapter.
+The Server uses the common executor over its combined producer set.
 
 The Solar migration keeps one decision family (`sync`, `sync_store`, `transfer`)
 and one native executor (`ds-sync-runtime`). The following inventory distinguishes
@@ -264,7 +262,7 @@ preflight and its answer settles the row through `sync_store::ActionReceipt`.
 | Solar completes durably before sealing, no session needed; never adopt unsealed legacy Solar jobs | Server `SolarActivity::seal_completed`, `solar::seal`; `SolarProducer::retire_unsealed` | Shared native completion observer and producer; keep the no-adoption ruling |
 | Solar job enumeration is project-fenced, paged, newest 512 with explicit truncation | Server `solar_jobs_in`, `publication`, `publication_metadata`, `sealed_jobs` | `ds-sync-runtime` Solar producer over `ds-compute-runtime` |
 | Losing Solar bytes are retired from job result column; job and result digest remain evidence | Server `SolarProducer::reclaim` | Shared Solar producer reclaim; native store receipt |
-| Reporter and Solar share a producer set, but Solar still has a second publisher | Server `with_producers`; `SolarSyncPump`, `SolarComputeArtifactsPublisher`, auth `publish_solar_calculation`; host `run_solar_publications` | One native `run` pass over `Producers`; remove second publisher after callers migrate |
+| Reporter and Solar share one producer set and executor | Server `with_producers`, one project wake and `ds-sync-runtime::run`; auth forwards the common closed declaration | One native pass, one store transition and credential recovery |
 | Startup, new sealed inventory, reconnect, kernel deadline trigger the report pump; idle scan is not a gateway trigger | Server `ReportWake`; Solar pump recovery thread | Shared native scheduler; host only forwards wake/trigger facts |
 | Browser success/failure mirrors Solar result/report state; clear dirty only after all rows publish | `artifact-sync.ts::{reflectSolarResultSync,clearDirtyWhenFullyPublished}` | Native Solar application projection from durable store, rendered by UI |
 
@@ -304,3 +302,10 @@ read/list/download to `solar/published-documents.ts` and engine types to
 `assets/origins.ts`; retain display/download. Its open/finalize calls are used by
 `artifact-sync-row.ts` only. Removing compute publication never removes the
 operator's verified result views or downloads.
+
+### Legacy Desktop queue cutover
+
+Owner ruling, 2026-10-08: show every affected city, discard its legacy queued
+publication, and require a fresh run. Remove the old queue in this release.
+Never re-seal or adopt those legacy Solar outputs. Retain a visible cutover
+notice with city identities before deleting the queue; governed inputs remain.

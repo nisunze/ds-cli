@@ -203,52 +203,13 @@ pub fn plan(
 /// record must be re-read for that trigger, the record is read at most once,
 /// and then the actions run. Nothing here waits, sleeps or schedules.
 pub fn run(host: &dyn SyncHost, project: &str, trigger: sync::Trigger) -> Result<SyncRun, String> {
-    run_scoped(host, project, trigger, None)
-}
-
-/// Compatibility report-scoped view of the common executor while native
-/// callers migrate. Remote observations retain the complete project heads.
-pub fn run_reports(
-    host: &dyn SyncHost,
-    project: &str,
-    trigger: sync::Trigger,
-) -> Result<SyncRun, String> {
-    run_scoped(
-        host,
-        project,
-        trigger,
-        Some(sync::engines::report_engine().name),
-    )
-}
-
-#[allow(clippy::too_many_arguments)]
-fn scoped_plan(
-    host: &dyn SyncHost,
-    project: &str,
-    trigger: sync::Trigger,
-    read_at: Option<u64>,
-    local: &[LocalRow],
-    remote: &[RemoteRow],
-    engine: Option<&str>,
-) -> Result<sync::Plan, String> {
-    let local: Vec<_> = local
-        .iter()
-        .filter(|row| engine.is_none_or(|engine| row.identity.engine == engine))
-        .cloned()
-        .collect();
-    let remote: Vec<_> = remote
-        .iter()
-        .filter(|row| engine.is_none_or(|engine| row.identity.engine == engine))
-        .cloned()
-        .collect();
-    plan_once(host, project, trigger, read_at, &local, &remote)
+    run_scoped(host, project, trigger)
 }
 
 fn run_scoped(
     host: &dyn SyncHost,
     project: &str,
     trigger: sync::Trigger,
-    engine: Option<&str>,
 ) -> Result<SyncRun, String> {
     if trigger == sync::Trigger::LocalChange {
         if let Some(block) = host.credential_block(project)? {
@@ -263,8 +224,8 @@ fn run_scoped(
                 block.detail
             )));
             let (remote, read_at) = host.held_heads(project)?;
-            let plan = scoped_plan(host, project, trigger, read_at, &local, &remote, engine)?;
-            let replanned = scoped_plan(host, project, trigger, read_at, &local, &remote, engine)?;
+            let plan = plan_once(host, project, trigger, read_at, &local, &remote)?;
+            let replanned = plan_once(host, project, trigger, read_at, &local, &remote)?;
             let reclaimed = Reclaimed::from_receipts(&receipts);
             return Ok(SyncRun {
                 schema: SCHEMA,
@@ -284,8 +245,8 @@ fn run_scoped(
         let mut receipts = host.take_receipts(project);
         receipts.push(Receipt::new("lease", "held").detail(holder));
         let (remote, read_at) = host.held_heads(project)?;
-        let plan = scoped_plan(host, project, trigger, read_at, &local, &remote, engine)?;
-        let replanned = scoped_plan(host, project, trigger, read_at, &local, &remote, engine)?;
+        let plan = plan_once(host, project, trigger, read_at, &local, &remote)?;
+        let replanned = plan_once(host, project, trigger, read_at, &local, &remote)?;
         let reclaimed = Reclaimed::from_receipts(&receipts);
         return Ok(SyncRun {
             schema: SCHEMA,
@@ -304,7 +265,7 @@ fn run_scoped(
         }
     }
     let _lease = Release(host, project);
-    run_leased(host, project, trigger, engine)
+    run_leased(host, project, trigger)
 }
 
 /// Keep one receipt: in the store first, then in the run's answer. A store
@@ -323,7 +284,6 @@ fn run_leased(
     host: &dyn SyncHost,
     project: &str,
     trigger: sync::Trigger,
-    engine: Option<&str>,
 ) -> Result<SyncRun, String> {
     let mut local = host.local(project)?;
     // What the host freed while observing — rows the store had already
@@ -331,7 +291,7 @@ fn run_leased(
     // effect of reading the inventory.
     let mut receipts: Vec<Receipt> = host.take_receipts(project);
     let (mut remote, mut read_at) = host.held_heads(project)?;
-    let mut plan = scoped_plan(host, project, trigger, read_at, &local, &remote, engine)?;
+    let mut plan = plan_once(host, project, trigger, read_at, &local, &remote)?;
 
     // The plan decides whether this trigger needs the record; it is honoured
     // exactly once per run, because a second read in the same pass could only
@@ -370,7 +330,7 @@ fn run_leased(
         local = host.local(project)?;
         receipts.extend(host.take_receipts(project));
         read_at = Some(at);
-        plan = scoped_plan(host, project, trigger, read_at, &local, &remote, engine)?;
+        plan = plan_once(host, project, trigger, read_at, &local, &remote)?;
     }
 
     for action in &plan.actions {
@@ -472,7 +432,7 @@ fn run_leased(
     local = host.local(project)?;
     receipts.extend(host.take_receipts(project));
     let (remote, read_at) = host.held_heads(project)?;
-    let replanned = scoped_plan(host, project, trigger, read_at, &local, &remote, engine)?;
+    let replanned = plan_once(host, project, trigger, read_at, &local, &remote)?;
     let reclaimed = Reclaimed::from_receipts(&receipts);
     Ok(SyncRun {
         schema: SCHEMA,
