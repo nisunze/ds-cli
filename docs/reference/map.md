@@ -796,8 +796,9 @@ calculation/filter DTO is refused. Explicitly Analyze before retrying a missing
 or affected model-analysis source; reading and Save do not calculate. Counts
 are native facts, not always distinct supports. Incomplete qualification and
 negative loading stay separate from failure. Design point references name the
-native vertical governing wire; horizontal-only failures are not assigned to
-that section. Existing validation/result views remain independent.
+native vertical governing wire. Optional horizontal_span retains independent
+horizontal section/support/attachment references. Each failed axis uses its own
+actual wire; absent horizontal refs cannot be inferred from the vertical wire. Existing validation/result views remain independent.
 
 
 `map profile retype --model <id> --revision <rev> --structure <native-id>
