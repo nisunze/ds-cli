@@ -98,6 +98,10 @@ is ruled in the sync contract: simple local clean and recompute.
   expect one Profile calculation example instead of two. Repair these in their
   owning CLI/Profile slices and prove the full context-budget/domain-smoke suites;
   the four new native recovery commands must retain their derived budgets.
+  `cargo test -p ds --test semantic_coverage` also fails because that unchanged
+  inventory omits both Profile commands. Solar and native sync have a separate
+  exact semantic inventory proof; add the two Profile entries in their owning
+  slice and prove the full suite.
 
 ## 2. Green `run` and release gates
 
