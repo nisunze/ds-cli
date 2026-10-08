@@ -319,6 +319,16 @@ Contracts: [Profile as a transactional database](../../ds-network/docs/contracts
 15. **Do not fix it in the same breath.** "Be proud that the lifecycle thing is
     done; the differential compute we fought for since this morning is the
     thing to watch."
+16. **The server/kernel is the core of Web, Desktop and CLI.** Use the local
+    Linux Desktop dev build for real structure retypes and handle drags. Observe
+    the affected sections healing and rebuilding; much of the code already
+    exists and its wiring must be proved, not assumed (owner, 2026-10-08).
+17. **Time predictable human/assistant co-design.** Keep per-phase timings and
+    actual work counters with the parity proof. After spotting an alignment,
+    moving or retyping a few structures must not repeat its unchanged work.
+    Optimum spotting/typing on one alignment must retain unchanged terrain,
+    other alignments and their typing; those repeated costs were unacceptable
+    in earlier iterations (owner, 2026-10-08).
 
 #### Why a transactional, differential query engine is the way
 
@@ -565,6 +575,74 @@ Contracts: [Profile as a transactional database](../../ds-network/docs/contracts
 - Release pins: ds-cli `4df4e03f` and ds-network-reporter `e3a63aa` pin kernel
   `7074523` and ds-network `7ec4d9cb` (solar `d84cd72`); the Server production
   prerequisite check passed.
+
+#### Current unfinished continuation, 2026-10-08
+
+Owner requested a fresh window before further coding. Continue the existing
+canonical `ds-network/run` edits; no source commit or matching Desktop install
+has been made for them. Do not mistake the following native proof for complete
+differential compute or installed acceptance.
+
+- `profile_edit_update.rs`: `replace_sections` now merges fresh rows in builder
+  order around unchanged anchors, including interleaved slot sections, row
+  movement across an unchanged anchor, missing and retired evidence. Two native
+  unit tests pass. `profile_edit_lifecycle_probe.rs` now asserts full conductor
+  byte parity. One Nyamagabe probe (index 100, +5 m) passes: all conductor spans
+  match; whole-scene parity remains false. The remaining reconcile delta is
+  **115,528 bytes: 13 `engineering.markers` rows and 28
+  `bands.29.terrain_points` rows**, versus 14 differing conductor spans before
+  this correction. It remains partial and still triggers a whole reconcile.
+  This is not yet a sweep over edit kinds or alignments.
+- `profile_atlas.rs`: unfinished `layout_scene_in(..., held_axis)` scaffold can
+  place supplied bands at retained chain positions. Ordinary `layout_scene`
+  delegates with `None`; there is **no scoped caller yet**. This last edit has
+  not been compiled or tested. Complete admission and folds before using it:
+  validate roster/station extents, use retained surface and reference/case
+  inputs, assemble affected alignment rows/markers/margins in builder order,
+  maintain complete selection/election/extent/guide facts and return named
+  wider-reconciliation reasons. Do not replace retained inputs with a fresh
+  whole-scene preparation.
+- Native proof logs and a backup of the in-flight source diff live in
+  `ds-network/out/profile-differential/` (gitignored). Use two Cargo workers and
+  the existing release cache `/home/magese/.cache/ds-network-probe-target`;
+  scratch is `out/profile-differential/tmp`. `ordering-unit.log` and
+  `ordering-nyamagabe.log` name the passed gates. These gates predate the
+  `profile_atlas.rs` scaffold; rerun after completing it.
+- The **existing** local Linux Desktop remains running on display `:10`,
+  model `local-8e19c052cf574797`. A real handle drag of support 127
+  (`str-423815a32fed4309-274`) from `(1115,898)` to `(1135,898)` healed its wires
+  and usage markers. A native same-family retype from `j-w-S190.012` to
+  `j-w-S325.014` (`st-02148991a07337d1`) also healed. Its CLI receipt reported
+  `profile_publication_failed` during observation, while a subsequent view
+  showed authored and computed revisions equal. **The publication/duplicate
+  observation race is unresolved**: inspect the original failure and both
+  worker/native begin/confirm/discard fences before blaming the solver.
+  Retype timings: preview 30 ms, commit/session refresh 731 ms, observation
+  4,315 ms, total 5,076 ms. Receipts: `desktop-retype-{preview,apply,after}.json`
+  and screenshots in the same output directory. They exercised the older
+  installed build, not the new source correction.
+- Camera stayed exactly `zoom=19.022812012499532`,
+  `pan_x=11531.602049471421`, `pan_y=-210.09885954849096` across those edits.
+  At handover the RAM head and scene were
+  `rev:9287c4a95405b6c3159933756e2b41d2103bb0337d6c4cf1dadc5f9f1c999502`,
+  undo depth 4 (two owner edits preceded this session). **Unsaved RAM work
+  exists; preserve it before a restart.** `desktop-handover.json` holds the
+  exact history. Re-read live state rather than reusing these pins.
+- `ds` is absent from PATH. Use the deployed/staged local CLI via
+  `ds-web/run-linux-desktop.sh --cli ...`; installed discovery was checked for
+  `map.profile.calculation`, `map.profile.retype`, `map.profile.usage`,
+  `map.profile.select` and `map.profile.set`. The retype/calculate help still
+  carries some older explicit-calculation wording; behavior must be verified.
+- The owner-authorized Solar continuation tree was deleted after all seven
+  heads were proved on both `run` and `origin/run`; the registry has **0 / 4**
+  live trees and no unlanded commits. Cleanup reached at least **25% disk
+  free** by removing unused completed examples and old test executables;
+  incremental directories had already disappeared during concurrent cleanup.
+  No process was killed. Preserve the remaining warm caches.
+- Claude/Codex Solar sync work now proceeds on canonical `run`, including
+  `ds-command-kernel/crates/ds-client-core/`. Preserve its changes and processes;
+  the owner explicitly expects those concurrent commits. No heavy job from
+  this session remains. Check live RAM/processes before each new heavy job.
 
 ### Profile-only continuation: atomic editing and intentional calculation
 
