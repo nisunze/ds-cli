@@ -35,6 +35,8 @@ pub mod spatial_predicate;
 #[cfg(feature = "geojson")]
 pub mod viewport;
 
+#[cfg(feature = "tin")]
+pub mod exact_delaunay;
 #[cfg(feature = "line_corridor")]
 pub mod line_corridor;
 pub mod operations;

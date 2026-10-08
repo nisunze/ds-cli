@@ -127,6 +127,32 @@ The independent meridian-arc/law-of-cosines test remains in
 `tests/geo_lite_drift.rs::canonical_haversine_matches_an_independent_yardstick`.
 Snapshot hashes are not a substitute for numerical or packet parity.
 
+### Exact planar Delaunay (`tin` capability)
+
+`exact_delaunay::ExactDelaunay<K>` triangulates keyed integer plan points
+(terrain callers use millimetres from a local origin; magnitudes up to 2^29).
+Orientation and in-circle predicates are exact in `i128`; exactly cocircular
+sets are resolved by simulation of simplicity on the lifted coordinate in key
+order. The triangulation is therefore a pure function of the vertex set:
+insertion replaces only its conflict cavity, removal only the removed vertex's
+star (retriangulated from the Delaunay triangulation of its link), and any
+insert/remove order equals a fresh build of the final set. A symbolic infinite
+vertex closes the hull, so no artificial super-triangle alters hull triangles.
+Collinear sets hold no triangle; duplicate positions and out-of-range
+coordinates refuse. The primitive decides no terrain footprint, density,
+source or gap admission; its callers own those rules. The historical
+float-predicate `terrain_delaunay`/`projected_tin` core is unchanged.
+
+`tests/exact_delaunay_contract.rs` proves exact in-circle against an
+independent lifted determinant, the perturbed cocircular diagonal against an
+explicitly perturbed determinant, order independence on a cocircular grid,
+2,000 random insert/remove steps equal to fresh builds with full invariant
+audits (`verify`: closed manifold, orientation, Euler count, perturbed empty
+circles), collinear and hull-edge splits, extreme coordinates and local cavity
+sizes. Ordinary release on ds-server, 2026-10-08: 20,000 scattered points build
+in 55 ms and a 44,100-point cocircular grid in 335 ms; one local insert or
+removal on either costs 0.01–0.07 ms.
+
 ## 2. What is snapshotted
 
 10 remaining files, pinned per file by `vendor/ds-geo-lite/MANIFEST.json`:
