@@ -25,6 +25,9 @@ pub use publication::{ConfirmPublicationRequest, DiscardPublicationRequest, Publ
 mod replay_cost;
 mod calculation_jobs;
 pub use calculation_jobs::{AdmitCalculationRequest, CalculationJobRequest, StartCalculationRequest};
+#[path = "calculation_controls.rs"]
+mod calculation_controls;
+pub use calculation_controls::{CalculationArguments, CalculationControlRequest};
 mod result_queries;
 mod cached_cases;
 pub use result_queries::{QueryArguments, QueryCursor, QueryKind, QueryResultsRequest, QuerySource};
@@ -56,6 +59,7 @@ pub enum Request {
     CalculationStatus(CalculationJobRequest),
     CancelCalculation(CalculationJobRequest),
     AdmitCalculation(AdmitCalculationRequest),
+    CalculationControl(CalculationControlRequest),
     QueryResults(QueryResultsRequest),
     Release(ReleaseRequest),
     CaseLayer(CaseRequest),
@@ -100,6 +104,7 @@ struct HeldView {
     authored: Option<Arc<ds_grid_engine::profile_atlas::ProfileAuthoredView>>,
     authored_display: authored_display::Groups,
     options: ProfileAtlasOptions,
+    style_document: Arc<Value>,
     rows: Vec<DisplayRow>,
     label_policy: ds_grid_model::StructureLabelPolicy,
     last_weather_sequence: u64,
@@ -141,7 +146,10 @@ pub struct Runtime {
 }
 impl Runtime {
     pub fn execute(&mut self, request: impl Into<Request>) -> Result<Value, String> {
-        let request = request.into();
+        let request = match request.into() {
+            Request::CalculationControl(input) => self.prepare_calculation_control(input)?,
+            request => request,
+        };
         let changed_context = match &request {
             Request::Project(r) => Some(r.scope.clone()),
             Request::Initialize(r) => Some(r.scope.clone()),
@@ -178,6 +186,7 @@ impl Runtime {
             Request::CalculationStatus(request) => self.calculation_status(request),
             Request::CancelCalculation(request) => self.cancel_calculation(request),
             Request::AdmitCalculation(request) => self.admit_calculation(request),
+            Request::CalculationControl(_) => unreachable!("calculation controls normalize before execution"),
             Request::QueryResults(request) => self.query_results(request),
             Request::Release(request) => self.release(request),
             Request::CaseLayer(request) => self.case_layer(request),
@@ -400,6 +409,7 @@ impl Runtime {
                 authored,
                 authored_display: Default::default(),
                 options: scene_options.clone(),
+                style_document: Arc::new(request.style_document.clone()),
                 rows: rows.clone(),
                 label_policy: label_policy.clone(),
                 last_weather_sequence,

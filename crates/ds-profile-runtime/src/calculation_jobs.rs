@@ -143,7 +143,7 @@ impl Drop for ActiveWorker {
     }
 }
 
-fn identity(id: &str) -> Result<(), String> {
+pub(super) fn identity(id: &str) -> Result<(), String> {
     if id.is_empty() || id.len() > 128 || id.chars().any(char::is_control) {
         return Err("invalid_profile_view: invalid calculation identity".into());
     }
@@ -318,6 +318,13 @@ impl Runtime {
         self.calculation_jobs.used_ids.insert(input.job_id.clone());
         self.calculation_jobs.entries.insert(input.job_id, job);
         Ok(receipt)
+    }
+
+    pub(super) fn calculation_publication(
+        &self,
+        request: &CalculationJobRequest,
+    ) -> Result<String, String> {
+        Ok(self.lookup_job(request)?.publication_id.clone())
     }
 
     fn lookup_job(&self, request: &CalculationJobRequest) -> Result<&Job, String> {

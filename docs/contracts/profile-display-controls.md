@@ -155,6 +155,25 @@ within a Runtime lifetime, with a bounded 16,384-ID ledger. No job writes or
 packs a model. First initialization still projects synchronously; these controls
 address calculation in an already retained editable Profile.
 
+`calculation_control` accepts `{scope, model_id, expected_history?, request}`.
+Its shared native `CalculationArguments` is a closed action DTO: `start` takes
+`job_id`, optional `display_case` and `analyze` (default false); `status`,
+`cancel` and `admit` take only `job_id`. Start requires exact observed history.
+Rust captures the admitted options, style document and retained native journal;
+callers cannot replace scope, project, publication pin or calculation inputs
+inside the action. The single-use job ID owns its native publication ID.
+Admit retrieves that pin from the native job and normalizes into ordinary
+publication admission before executing. Hosts still confirm/discard after
+worker/render installation. Status/cancel return bounded receipts without
+calculating or transferring scenes. Save remains independent.
+
+The native control gate proves closed JSON/identity inputs, missing/stale history
+and wrong-model refusals, continued observation while a paused worker runs,
+cross-model cancel refusal, stale admission, noninterruptible worker capacity,
+full fresh calculation/Analyze parity and publication rollback without saving.
+This retained Runtime is headless; authenticated project/principal capture and
+paired CLI/MCP transport are separate host boundaries.
+
 The admitted result adds `job_start_ms` (capture/fork/thread launch),
 `job_worker_ms` (native calculation/serialization on the fork), and
 `job_elapsed_ms` (capture through admission, including scheduling and polling).
