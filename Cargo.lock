@@ -1942,6 +1942,7 @@ dependencies = [
  "ds-solar-runtime",
  "fs2",
  "rusqlite",
+ "schemars",
  "serde",
  "serde_json",
  "sha2 0.10.9",

@@ -611,15 +611,16 @@ exact reference data. `project result --run-id ID`, `project status` and
 `project outbox` inspect local state without Desktop or authentication.
 
 `project sync --project <exact-project> --lane stable --background --yes` launches the fixed native
-uploader. It binds to the explicit workspace project, native principal and audience;
+input publisher. It binds to the explicit workspace project, native principal and audience;
 saved selection is unchanged and detached workers retain that project;
 queues survive failure. Omit `--background` to drain once or use `--watch` to
 watch for new work. The worker exits after 12 hours or a permanent refusal.
 A reviewed city conflict can be rebased with `project sync rebase --sequence N
 --expected-cloud FINGERPRINT`; this does not publish until `sync --yes`.
 
-Cloud publication needs the server's `project_commit` route and admitted Solar
-release build. It never gates local drafts. Existing paired commands and
+Input publication needs the server's `project_commit` route. Shared result
+publication comes from a fresh native application run with an admitted release
+build; standalone local drafts remain usable offline. Existing paired commands and
 governed portfolio membership are separate from this explicit local workspace.
 
 ### Headless governed replacement seeds
@@ -649,9 +650,15 @@ refusal. Only source references and operator overrides are saved and synced.
 
 The owning [shared-network contract](../../../ds-solar/docs/contracts/shared-network-assets.md)
 describes inheritance, source refresh, legacy adoption and calculation storage.
-A completed local draft is distinct from its pending cloud publication.
+A standalone project draft is local-only; it does not enqueue a shared result.
 
-`solar project sync --project <exact-project> --run-id <closed-run>` publishes that run and pending inputs while retaining other queued draft runs. This is useful after a development run is replaced by a released engine; it never acknowledges or deletes the earlier run. Do not combine it with `--inputs-only` or `--background`.
+`solar project outbox preview --workspace DIR --project PROJECT` lists cities
+with retired report publications and returns their complete queue digest.
+`solar project outbox discard --workspace DIR --project PROJECT --digest DIGEST
+--yes` removes those intents and requires fresh native computation. It neither
+recovers old outputs nor modifies authored inputs. Discover `solar application
+schema` for native prepare/calculate controls; the same cutover JSON is exposed
+as `project_publication_cutover`.
 
 ## Sealed portfolio dashboards
 

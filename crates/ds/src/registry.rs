@@ -1081,6 +1081,16 @@ static SOLAR_ENTRIES: &[Entry] = &[
         render: ds_cli_solar::project::render,
     },
     Entry {
+        command: &ds_cli_solar::project::CUTOVER_PREVIEW,
+        handler: ds_cli_solar::project::cutover_preview,
+        render: ds_cli_solar::project::render,
+    },
+    Entry {
+        command: &ds_cli_solar::project::CUTOVER_DISCARD,
+        handler: ds_cli_solar::project::cutover_discard,
+        render: ds_cli_solar::project::render,
+    },
+    Entry {
         command: &ds_cli_solar::engine::COMMAND,
         handler: ds_cli_solar::engine::run,
         render: ds_cli_solar::engine::render,
