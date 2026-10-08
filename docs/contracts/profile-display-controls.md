@@ -311,6 +311,33 @@ construction, before host transport, worker installation and painting. Debug
 revision phases include the full-snapshot incremental-token audit; the guard
 is unchanged. Metrics never alter journal, authored or engineering identity.
 
+Terrain-only native receipts retain candidate demand cases until explicit
+calculation resolves their current support geometry. Bit-identical finite
+support/attachment coordinates and effective ground admit reuse; unavailable
+paths or any coordinate change require fresh solving. Observe advances only
+invalidation and authored geometry, leaving demand counters and calculated
+revision unchanged. Refresh exposes `last_demand_terrain_geometry_checks` and
+`last_demand_terrain_geometry_reused_cases`, with the same last-consumer semantics
+as other demand counters. The native runtime gate proves exact fresh-scene parity
+and independent Save, including a rounded endpoint whose tiny interpolation
+change correctly defeats reuse. Reference/case preparation and query freshness
+remain conservatively invalidated by terrain receipts.
+
+The owning ordinary-release terrain demand receipt uses 10,017 terrain points,
+three cases and twelve edits. Six sections/seven supports: native apply median
+10.853 ms; checked calculation and final JSON 1.443 ms versus 1.459 ms fresh.
+120 sections/121 supports: apply 12.253 ms; checked calculation and final JSON
+5.847 ms versus 6.155 ms fresh, solving six cases and reusing 354. Every report
+matches fresh bytes. The guard avoids solves but the six-section total benefit
+is negligible. See `ds-network/out/profile-native/terrain-demand-geometry-cost-release.json`.
+This excludes runtime replay, Profile reference/case/layout, design clearance,
+job capture, IPC and painting; installed sub-0.5-second editing remains separate.
+
+`last_demand_resolved_support_paths` counts actual geometry-guard resolutions;
+named cases share one immutable path per section within the last explicit walk.
+It excludes path resolutions inside fresh solving and is not a count of total
+terrain work. No derived path survives as a current fact at another revision.
+
 Terrain observations return `authored_delta.work.local_terrain_point_projections`
 and `local_ground_rebuilds` without calculation. These count the receipt-local
 path, not fresh preparations. Explicit calculation also exposes these as

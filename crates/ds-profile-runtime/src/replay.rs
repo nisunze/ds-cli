@@ -462,7 +462,10 @@ impl Runtime {
             "last_surface_computed_ground":surface.computed_ground,"last_surface_reused_ground":surface.reused_ground,
             "last_surface_local_terrain_point_projections":surface.local_terrain_point_projections,
             "last_surface_local_ground_rebuilds":surface.local_ground_rebuilds,
-            "last_demand_computed_cases":demands.computed_cases,"last_demand_reused_cases":demands.reused_cases});
+            "last_demand_computed_cases":demands.computed_cases,"last_demand_reused_cases":demands.reused_cases,
+            "last_demand_terrain_geometry_checks":demands.terrain_geometry_checks,
+            "last_demand_terrain_geometry_reused_cases":demands.terrain_geometry_reused_cases,
+            "last_demand_resolved_support_paths":demands.resolved_support_paths});
         replay_cost.append(&mut result["metrics"]);
         Ok(result)
     }

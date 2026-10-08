@@ -212,8 +212,9 @@ Effective-ground segmentation,
 layout, comparison and typed cloning still visit an affected alignment broadly;
 measure and localize their intervals and station/axis consequences at parent/T-off
 boundaries. Dense segment splits/merges and identity reorders can still require
-large changed array ranges. Explicit terrain invalidation still clears broad demand/reference
-results rather than only affected spans/supports. Distinguish actual Profile
+large changed array ranges. Explicit terrain calculation still prepares broad
+reference/clearance inputs and checks solver geometry across all requested
+sections rather than deriving only affected span/support dependencies. Distinguish actual Profile
 ground inputs from any external native triangulation evidence.
 
 **Next owning slice: localized explicit calculation and cheap queries.**

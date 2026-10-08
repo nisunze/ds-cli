@@ -1720,7 +1720,7 @@ mod transactional_projection_tests {
         assert!(runtime.held.contains_key("other-0"));
         assert_eq!(runtime.held.len(), 8);
     }
-    fn section_demand_fixture() -> ds_grid_model::GridModelSnapshot {
+    pub(super) fn section_demand_fixture() -> ds_grid_model::GridModelSnapshot {
         use ds_grid_model::*;
         let mut snapshot = common::fixture();
         snapshot.tension_sections.push(TensionSectionRow {
@@ -2254,3 +2254,6 @@ mod transactional_projection_tests {
         assert_eq!(retained["bytes"], prepared["bytes"]);
     }
 }
+
+#[cfg(test)]
+mod terrain_demand_tests;
