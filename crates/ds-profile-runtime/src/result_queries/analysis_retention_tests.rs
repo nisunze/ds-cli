@@ -393,6 +393,7 @@ fn profile_only_async_admission_and_discard_preserve_independent_analysis_fences
                 job_id: job_id.into(),
                 display_case: None,
                 analyze: false,
+                scene_transfer: Default::default(),
             }))
             .unwrap();
         let deadline = Instant::now() + Duration::from_secs(10);

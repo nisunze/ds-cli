@@ -17,6 +17,9 @@ pub struct CalculatedSceneBaseRequest {
 #[path = "calculated_transfer_cost.rs"]
 mod cost;
 #[cfg(test)]
+#[path = "exact_transfer_tests.rs"]
+mod exact_tests;
+#[cfg(test)]
 #[path = "calculated_transfer_tests.rs"]
 mod tests;
 
@@ -57,7 +60,7 @@ impl Runtime {
         if rebuilt {
             let scene = held.calculated_scene.as_ref()
                 .ok_or("profile_calculated_delta_base_unavailable: explicit full calculated projection is required after case selection or unavailable projection")?;
-            held.calculated_base = Some(Arc::new(CalculatedSceneBase::new(scene.as_ref().clone())));
+            held.calculated_base = Some(Arc::new(CalculatedSceneBase::from_shared(scene.clone())));
         }
         let base = held.calculated_base.as_ref().unwrap();
         Ok(
@@ -101,35 +104,45 @@ impl Runtime {
         &mut self,
         scope: &str,
         scene: ds_grid_engine::ProfileAtlasScene,
-    ) -> Result<(Value, Option<Value>, Value), String> {
+    ) -> Result<(Value, Option<String>, Option<String>, Value), String> {
         let started = Instant::now();
         let requested = self.delta_transfers.remove(scope);
+        let exact_requested = self.exact_transfers.remove(scope);
         let held = self.held.get_mut(scope).expect("admitted projected scope");
-        let (wire, delta, bytes) = if let Some(signature) = requested {
+        let (wire, exact, delta, bytes) = if let Some(signature) = requested {
             let base = held
                 .calculated_base
                 .as_ref()
                 .filter(|base| base.signature() == signature)
                 .ok_or("profile_calculated_delta_stale: calculation lost its exact scene base")?;
             let (next, delta) = base.delta_to(scene)?;
-            let bytes = serde_json::to_vec(&delta)
-                .map_err(|error| error.to_string())?
-                .len();
-            let delta = serde_json::to_value(delta).map_err(|error| error.to_string())?;
+            let delta = serde_json::to_string(&delta).map_err(|error| error.to_string())?;
+            let bytes = delta.len();
             held.calculated_base = Some(Arc::new(next));
             held.calculated_scene = None;
-            (Value::Null, Some(delta), bytes)
+            (Value::Null, None, Some(delta), bytes)
         } else {
             let scene = Arc::new(scene);
-            let wire = serde_json::to_value(scene.as_ref()).map_err(|error| error.to_string())?;
+            let (wire, exact) = if exact_requested {
+                (
+                    Value::Null,
+                    Some(serde_json::to_string(scene.as_ref()).map_err(|error| error.to_string())?),
+                )
+            } else {
+                (
+                    serde_json::to_value(scene.as_ref()).map_err(|error| error.to_string())?,
+                    None,
+                )
+            };
             held.calculated_scene = Some(scene);
             held.calculated_base = None;
             // Full payload byte encoding remains with the host. Do not add a
             // second complete serialization solely for disposable telemetry.
-            (wire, None, 0)
+            (wire, exact, None, 0)
         };
         let metrics = json!({"scene_transfer_ms":started.elapsed().as_secs_f64()*1000.,
-            "calculated_delta_bytes":bytes,"calculated_delta":usize::from(delta.is_some())});
-        Ok((wire, delta, metrics))
+            "calculated_delta_bytes":bytes,"calculated_delta":usize::from(delta.is_some()),
+            "exact_scene_bytes":exact.as_ref().map_or(0, String::len)});
+        Ok((wire, exact, delta, metrics))
     }
 }

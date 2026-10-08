@@ -107,8 +107,8 @@ fn explicit_delta_jobs_preserve_complete_fresh_geometry_display_and_publication(
             }))
             .unwrap();
         assert!(result["scene"].is_null());
-        assert!(result["scene_delta"].is_object());
-        let delta = serde_json::from_value(result["scene_delta"].clone()).unwrap();
+        assert!(result["scene_delta_json"].is_string());
+        let delta = serde_json::from_str(result["scene_delta_json"].as_str().unwrap()).unwrap();
         receiver = receiver
             .admit(
                 &delta,
@@ -291,7 +291,7 @@ fn delta_publication_discard_restores_exact_base_and_keeps_authored_history() {
             publication_id: Some("discard".into()),
         }))
         .unwrap();
-    assert!(result["scene_delta"].is_object());
+    assert!(result["scene_delta_json"].is_string());
     assert!(runtime
         .execute(Request::CalculatedSceneBase(CalculatedSceneBaseRequest {
             scope: "one".into(),
@@ -304,7 +304,8 @@ fn delta_publication_discard_restores_exact_base_and_keeps_authored_history() {
         &mut runtime,
         &input,
         &worker,
-        result["scene_delta"]["result_signature"]
+        serde_json::from_str::<Value>(result["scene_delta_json"].as_str().unwrap()).unwrap()
+            ["result_signature"]
             .as_str()
             .unwrap()
             .into(),

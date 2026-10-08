@@ -104,8 +104,8 @@ Terrain point edits still require interval segmentation and local
 calculation/station dependencies; dense segment splits/merges and identity
 reorders can require large changed array ranges.
 Full authored layout, comparison and cloning remain measurable costs despite
-retained route/ground inputs. Native job admission still transfers a full
-calculated scene. Browser/peer calculation remains on its model worker; bind
+retained route/ground inputs. Public job admission still transfers a full
+calculated scene until exact native delta controls are bound. Browser/peer calculation remains on its model worker; bind
 the native job owner there so picking and selection remain available while it
 runs. Matching installed Desktop/CLI artifacts and measured
 live editing/calculation acceptance remain outstanding. Preserve exact history

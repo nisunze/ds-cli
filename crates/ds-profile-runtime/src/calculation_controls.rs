@@ -5,6 +5,19 @@ use ds_command_kernel::profile_display::DisplayCase;
 use ds_grid_engine::SessionHistoryState;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "mode", rename_all = "snake_case", deny_unknown_fields)]
+pub enum CalculationTransfer {
+    Full {},
+    ExactJson {},
+    Delta { base_signature: String },
+}
+impl Default for CalculationTransfer {
+    fn default() -> Self {
+        Self::Full {}
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
 pub enum CalculationArguments {
     Start {
@@ -13,7 +26,10 @@ pub enum CalculationArguments {
         display_case: Option<DisplayCase>,
         #[serde(default)]
         analyze: bool,
+        #[serde(default)]
+        scene_transfer: CalculationTransfer,
     },
+    PrepareSceneBase {},
     Status {
         job_id: String,
     },
@@ -54,6 +70,7 @@ mod tests {
                 job_id: id.into(),
                 display_case: Some(DisplayCase::SagReference),
                 analyze,
+                scene_transfer: Default::default(),
             },
         )
     }
@@ -293,11 +310,29 @@ mod tests {
 
 impl CalculationArguments {
     pub fn validate(&self) -> Result<(), String> {
+        if let Self::PrepareSceneBase {} = self {
+            return Ok(());
+        }
+        if let Self::Start {
+            scene_transfer: CalculationTransfer::Delta { base_signature },
+            ..
+        } = self
+        {
+            if base_signature.len() != 71
+                || !base_signature.starts_with("sha256:")
+                || !base_signature[7..]
+                    .bytes()
+                    .all(|byte| byte.is_ascii_hexdigit())
+            {
+                return Err("invalid_profile_view: invalid calculated scene base signature".into());
+            }
+        }
         let job_id = match self {
             Self::Start { job_id, .. }
             | Self::Status { job_id }
             | Self::Cancel { job_id }
             | Self::Admit { job_id } => job_id,
+            Self::PrepareSceneBase {} => unreachable!(),
         };
         calculation_jobs::identity(job_id)
     }
@@ -361,6 +396,7 @@ impl Runtime {
                 job_id,
                 display_case,
                 analyze,
+                scene_transfer,
             } => {
                 if input.expected_history.is_none() {
                     return Err(
@@ -375,7 +411,7 @@ impl Runtime {
                 patch.display_case = display_case;
                 let journal_json = serde_json::to_string(&held.session.retained_journal())
                     .map_err(|error| format!("profile_replay_invalid: {error}"))?;
-                Request::StartCalculation(Box::new(StartCalculationRequest {
+                let start = Box::new(StartCalculationRequest {
                     job_id,
                     request: RefreshRequest {
                         scope: input.scope,
@@ -391,8 +427,19 @@ impl Runtime {
                         patch,
                         analyze,
                     },
-                }))
+                });
+                match scene_transfer {
+                    CalculationTransfer::Full {} => Request::StartCalculation(start),
+                    CalculationTransfer::ExactJson {} => Request::StartExactCalculation(start),
+                    CalculationTransfer::Delta {base_signature} => Request::StartDeltaCalculation(Box::new(StartDeltaCalculationRequest {
+                        base_signature,calculation:*start,
+                    })),
+                }
             }
+            CalculationArguments::PrepareSceneBase {} => Request::CalculatedSceneBase(CalculatedSceneBaseRequest {
+                scope:input.scope,model_id:input.model_id,
+                expected_history:input.expected_history.ok_or("profile_replay_stale: scene-base preparation requires exact observed history")?,
+            }),
             CalculationArguments::Status { job_id } => {
                 Request::CalculationStatus(reference(job_id))
             }

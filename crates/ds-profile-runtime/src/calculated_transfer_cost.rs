@@ -116,7 +116,8 @@ fn dense_delta_job_costs_and_complete_fresh_parity() {
             let mut decoded: Value = serde_json::from_slice(&wire).unwrap();
             let scene_decode_or_admit_ms;
             if is_delta {
-                let change = serde_json::from_value(decoded["scene_delta"].take()).unwrap();
+                let change =
+                    serde_json::from_str(decoded["scene_delta_json"].as_str().unwrap()).unwrap();
                 receiver = receiver
                     .admit(
                         &change,
@@ -146,7 +147,7 @@ fn dense_delta_job_costs_and_complete_fresh_parity() {
                 "wire_encode_ms":wire_encode_ms,"wire_decode_and_scene_admission_ms":scene_decode_or_admit_ms,
                 "calculation_metrics":result["metrics"],
                 "display_bytes":serde_json::to_vec(if is_delta{&result["display"]}else{&result["scene"]["display"]}).unwrap().len(),
-                "geometry_bytes":serde_json::to_vec(if is_delta{&result["scene_delta"]}else{&result["scene"]}).unwrap().len()}));
+                "geometry_bytes":if is_delta{result["scene_delta_json"].as_str().unwrap().len()}else{serde_json::to_vec(&result["scene"]).unwrap().len()}}));
             results.push(decoded);
         }
         assert_eq!(results[0]["scene"], results[1]["scene"]);
@@ -165,7 +166,7 @@ fn dense_delta_job_costs_and_complete_fresh_parity() {
         "samples":samples,"full_delta_fresh_scene_and_display_parity":true,
         "includes":"apply separately; Observe+result encoding; job capture+journal, serial worker, polling, publication admission; full runtime result encoding/decoding and native geometry admission",
         "excludes":["initial projection","IPC","worker picking","renderer paint","installed acceptance","parity-only full scene reconstruction"],
-        "boundaries":["display remains full","analysis remains full","initial scene-base preparation clones and hashes full typed scene","full decode clones scene Value"]});
+        "boundaries":["display remains full","analysis remains full","initial scene-base preparation hashes full typed scene","full decode clones scene Value"]});
     if let Some(path) = std::env::var_os("DS_PROFILE_DELTA_JOB_COST_RECEIPT") {
         std::fs::write(path, serde_json::to_vec_pretty(&receipt).unwrap()).unwrap();
     }

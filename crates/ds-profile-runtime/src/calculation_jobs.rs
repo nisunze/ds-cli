@@ -164,13 +164,14 @@ impl Runtime {
         &mut self,
         input: StartCalculationRequest,
     ) -> Result<Value, String> {
-        self.start_calculation_with_scene_base(input, None)
+        self.start_calculation_with_transfer(input, None, false)
     }
 
-    pub(super) fn start_calculation_with_scene_base(
+    pub(super) fn start_calculation_with_transfer(
         &mut self,
         input: StartCalculationRequest,
         base_signature: Option<String>,
+        exact_json: bool,
     ) -> Result<Value, String> {
         let started = Instant::now();
         identity(&input.job_id)?;
@@ -257,8 +258,12 @@ impl Runtime {
         }
         let worker_slot = ActiveWorker(self.calculation_jobs.active.clone());
         let mut fork = Runtime::default();
+        if exact_json {
+            fork.exact_transfers.insert(request.scope.clone());
+        }
         if let Some(signature) = base_signature {
-            fork.delta_transfers.insert(request.scope.clone(), signature);
+            fork.delta_transfers
+                .insert(request.scope.clone(), signature);
         }
         fork.held.insert(request.scope.clone(), held.clone());
         fork.views

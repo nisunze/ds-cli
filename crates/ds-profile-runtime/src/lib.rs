@@ -28,7 +28,7 @@ mod calculation_jobs;
 pub use calculation_jobs::{AdmitCalculationRequest, CalculationJobRequest, StartCalculationRequest};
 #[path = "calculation_controls.rs"]
 mod calculation_controls;
-pub use calculation_controls::{CalculationArguments, CalculationControlRequest};
+pub use calculation_controls::{CalculationArguments, CalculationControlRequest, CalculationTransfer};
 mod result_queries;
 mod cached_cases;
 mod calculated_transfer;
@@ -51,6 +51,7 @@ pub struct ProjectRequest {
 pub enum Request {
     Project(Box<ProjectRequest>),
     Initialize(Box<InitializeRequest>),
+    InitializeExact(Box<InitializeRequest>),
     Refresh(Box<RefreshRequest>),
     /// Replay authored RAM edits without projecting or calculating engineering.
     Observe(Box<RefreshRequest>),
@@ -59,6 +60,7 @@ pub enum Request {
     ConfirmPublication(ConfirmPublicationRequest),
     DiscardPublication(DiscardPublicationRequest),
     StartCalculation(Box<StartCalculationRequest>),
+    StartExactCalculation(Box<StartCalculationRequest>),
     CalculatedSceneBase(CalculatedSceneBaseRequest),
     StartDeltaCalculation(Box<StartDeltaCalculationRequest>),
     CalculationStatus(CalculationJobRequest),
@@ -153,6 +155,7 @@ pub struct Runtime {
     calculation_contexts: BTreeMap<String, Arc<()>>,
     /// Set only inside the private worker for an explicitly requested delta.
     delta_transfers: BTreeMap<String, String>,
+    exact_transfers: std::collections::BTreeSet<String>,
 }
 impl Runtime {
     pub fn execute(&mut self, request: impl Into<Request>) -> Result<Value, String> {
@@ -162,7 +165,7 @@ impl Runtime {
         };
         let changed_context = match &request {
             Request::Project(r) => Some(r.scope.clone()),
-            Request::Initialize(r) => Some(r.scope.clone()),
+            Request::Initialize(r) | Request::InitializeExact(r) => Some(r.scope.clone()),
             Request::Refresh(r) | Request::Present(r) => Some(r.scope.clone()),
             Request::CaseLayer(r) if r.select => Some(r.scope.clone()),
             Request::DiscardPublication(r) => Some(r.scope.clone()),
@@ -187,17 +190,25 @@ impl Runtime {
         match request {
             Request::Project(request) => self.project(*request),
             Request::Initialize(request) => self.initialize(*request),
+            Request::InitializeExact(request) => {
+                let scope = request.scope.clone();
+                self.exact_transfers.insert(scope.clone());
+                let result = self.initialize(*request);
+                self.exact_transfers.remove(&scope);
+                result
+            }
             Request::Refresh(request) => self.refresh(*request, true),
             Request::Observe(request) => self.refresh(*request, false),
             Request::Present(request) => self.present(*request),
             Request::ConfirmPublication(request) => self.confirm_publication(request),
             Request::DiscardPublication(request) => self.discard_publication(request),
             Request::StartCalculation(request) => self.start_calculation(*request),
+            Request::StartExactCalculation(request) => self.start_calculation_with_transfer(*request, None, true),
             Request::CalculatedSceneBase(request) => self.calculated_scene_base(request),
             Request::StartDeltaCalculation(request) => {
                 self.require_calculated_base(&request.calculation.request.scope,
                     &request.calculation.request.model_id, &request.base_signature)?;
-                self.start_calculation_with_scene_base(request.calculation, Some(request.base_signature))
+                self.start_calculation_with_transfer(request.calculation, Some(request.base_signature), false)
             }
             Request::CalculationStatus(request) => self.calculation_status(request),
             Request::CancelCalculation(request) => self.cancel_calculation(request),
@@ -472,7 +483,7 @@ impl Runtime {
             authored_display::partition(symbols, primitives, &scene);
         self.held.get_mut(&request.scope).unwrap().authored_display = authored_structures.clone();
         scene.case_base_axis_digest = Some(base_axis);
-        let (mut scene, scene_delta, scene_transfer_metrics) = self.transfer_calculated_scene(&request.scope, scene)?;
+        let (mut scene, exact_scene, scene_delta, scene_transfer_metrics) = self.transfer_calculated_scene(&request.scope, scene)?;
         let display = serde_json::to_value(Projection {
             label_fields: label_fields(&state),
             groups: ds_command_kernel::profile_controls::groups(&state, &rows, &cables),
@@ -493,7 +504,7 @@ impl Runtime {
             review_box_ink,
         })
         .unwrap();
-        let compact_display = if scene_delta.is_none() {
+        let compact_display = if scene_delta.is_none() && exact_scene.is_none() {
             scene["display"] = display;
             None
         } else { Some(display) };
@@ -504,9 +515,14 @@ impl Runtime {
         // the complete scene and its issue payload after their first encoding.
         let mut response = json!({ "model_id":model_id, "model_revision":request.expected_revision, "history":history, "retained_asset_count":source.assets.len(), "scene":null, "analysis":null, "display_state":state, "projection_unavailable":null, "command_view":null, "ran": request.analyze });
         response["scene"] = scene;
+        if let Some(exact) = exact_scene {
+            response["scene_json"] = json!(exact);
+        }
         if let Some(delta) = scene_delta {
-            response["scene_delta"] = delta;
-            response["display"] = compact_display.unwrap();
+            response["scene_delta_json"] = json!(delta);
+        }
+        if let Some(display) = compact_display {
+            response["display"] = display;
         }
         response["scene_transfer_metrics"] = scene_transfer_metrics;
         response["analysis"] = analysis.unwrap_or(Value::Null);

@@ -46,7 +46,7 @@ impl Runtime {
     pub(super) fn execute_with_publication(&mut self, request: Request) -> Result<Value, String> {
         let immediate = None;
         let binding = match &request {
-            Request::Initialize(r) => Some((&r.scope, &r.publication_id)),
+            Request::Initialize(r) | Request::InitializeExact(r) => Some((&r.scope, &r.publication_id)),
             Request::Refresh(r) | Request::Observe(r) | Request::Present(r) => {
                 Some((&r.scope, &r.publication_id))
             }

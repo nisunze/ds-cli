@@ -159,6 +159,12 @@ address calculation in an already retained editable Profile.
 Its shared native `CalculationArguments` is a closed action DTO: `start` takes
 `job_id`, optional `display_case` and `analyze` (default false); `status`,
 `cancel` and `admit` take only `job_id`. Start requires exact observed history.
+Start also accepts the closed `scene_transfer` object: `{"mode":"full"}`
+(the compatible default), `{"mode":"exact_json"}`, or
+`{"mode":"delta","base_signature":"sha256:…"}`. `prepare_scene_base` takes
+no action fields and requires exact observed history; it reads the original
+computed scene identity without calculating. Unknown fields, modes and malformed
+signatures refuse. Exact and delta modes retain the same job and publication fences.
 Rust captures the admitted options, style document and retained native journal;
 callers cannot replace scope, project, publication pin or calculation inputs
 inside the action. The single-use job ID owns its native publication ID.
@@ -206,14 +212,14 @@ The headless runtime also accepts explicit calculated geometry delta transport:
   a bounded signature receipt for the last admitted calculated scene. It checks
   the current authored history, including undo/redo tails, while truthfully
   reporting that scene's original computed revision/root/axis. First preparation
-  clones and hashes the typed scene; subsequent reads share its immutable base.
+  hashes the shared typed scene; subsequent reads share its immutable base.
   It calculates zero engineering cases and cannot change a running job's context.
 - `start_delta_calculation` takes `{base_signature, calculation:
   StartCalculationRequest}`. An exact prepared base is mandatory. The private
   native worker computes the same explicit calculation and uses
   `ds_grid_engine::profile_calculated_delta` to compare the result. Ordinary
   Start remains full-result transport.
-- Admission returns `scene:null`, closed native `scene_delta`, and a separate
+- Admission returns `scene:null`, original native `scene_delta_json`, and a separate
   full `display`. The geometry delta is limited to 256 KiB and 4,096 operations;
   an oversized transition fails with `profile_calculated_delta_output_limit`
   and requires an explicitly requested full calculation. No automatic fallback
@@ -237,27 +243,44 @@ comparison/encoding work in calculation metrics. Full transport reports delta
 bytes zero; it avoids a duplicate full serialization merely to count bytes. The
 native gates prove repeated fresh scene/display parity, paused-job editing,
 stale-result rejection, closed input/refusal paths, interleaved scopes and
-publication discard. These operations are source/headless primitives; public
-CLI/MCP, receiving worker and Web bindings remain separate owning slices.
+publication discard. The receiving native worker is proved independently;
+public CLI/MCP and Web bindings remain separate owning slices.
+
+`initialize_exact` accepts the ordinary closed InitializeRequest and returns
+`scene:null`, original native `scene_json` and separate `display`. Explicit
+`start_exact_calculation` (or shared Start with `mode:exact_json`) returns the
+same exact form at admission. Legacy full transport remains compatible.
+`scene_json` and `scene_delta_json` are opaque JSON strings from Rust, without a
+second object copy. Hosts frame these strings directly into native receiving
+requests. JavaScript may parse them for rendering, but must never re-encode
+their numeric payload for admission: that changes signed zero and invalidates
+exact signatures. `exact_scene_bytes` counts the already encoded full string.
+Full display and analysis remain independently transferred objects.
+
+The exact-transport gates cover initialization failure/rollback, read-only
+preparation, explicit exact/full/delta jobs, four alternating authored edits
+with complete fresh geometry/display parity, closed input refusals and signed-zero
+full/delta envelope round trips. An unavailable or oversized delta does not
+silently initialize, fall back or calculate twice.
 
 The ignored `dense_delta_job_costs_and_complete_fresh_parity` release gate compares
 ordinary and delta jobs over eight alternating sag edits, three supports, two
 tension sections and 10,001 terrain points. All admitted scenes, displays,
 analysis and command views equal the ordinary result; every scene also equals
-fresh projection. Complete result medians are 10,298,492 bytes full and 3,761,036
-bytes delta (63.48% fewer bytes). Delta geometry is 123,805 bytes; the unchanged
+fresh projection. Complete result medians are 10,298,525 bytes full and 3,769,643
+bytes delta (63.40% fewer bytes). Delta geometry is 123,805 bytes; the unchanged
 full display costs 3,616,246 bytes and dominates the remaining response.
-Native capture-through-admission medians are 46.17 ms full and 28.45 ms delta;
-complete wire encoding is 13.63/2.81 ms, and wire decode plus typed scene
-decode/native delta admission is 80.35/16.59 ms. The full decode measurement
+Native capture-through-admission medians are 46.10 ms full and 27.41 ms delta;
+complete wire encoding is 13.76/3.03 ms, and wire decode plus typed scene
+decode/native delta admission is 81.19/16.74 ms. The full decode measurement
 includes a scene Value clone, stated in the receipt. Cold scene-base preparation
-is separately measured at 8.50 ms. These are native source measurements,
+is separately measured at 7.70 ms. These are native source measurements,
 excluding initial projection, IPC, worker picking, renderer paint and installed
 acceptance; they do not qualify a large connected alignment or independent
-Analyze. Receipt: `out/profile-native/calculated-transfer-runtime-cost-release.json`.
+Analyze. Receipt: `out/profile-native/exact-calculated-transfer-runtime-cost-release.json`.
 Run the named gate through the runtime manifest with
 `DS_PROFILE_DELTA_JOB_COST_RECEIPT` pointing to a disk file. The ordinary runtime
-gate passes 82 tests, with five opt-in cost gates ignored.
+gate passes 86 tests, with five opt-in cost gates ignored.
 
 The ignored `dense_native_job_costs_and_fresh_parity` gate measures twelve
 alternating description edits with 10,004 terrain points, 403 supports and one

@@ -408,14 +408,13 @@ template edits, competing builds or model mutations.
 
 ## Focused review: exact public calculated-result transport
 
-Read-only request before the next source slice: trace native Profile runtime
-full/delta wire construction, shared calculation arguments, CLI/MCP contracts and
-the proved receiving native worker. Expose original native full-scene/delta JSON
-bodies before public delta bindings; JavaScript parsing/re-encoding changes signed
-zero and can invalidate exact component signatures. Provide explicit exact full
-initialization/calculation, bounded scene-base preparation and delta job controls
-without implicit full fallback, calculation or Save. Bind the shared closed DTO
-to CLI/MCP before Web/Desktop. Require current authored history and original
+Read-only request before the next source slice: trace shared calculation
+arguments into CLI/MCP contracts and the proved receiving native worker.
+Bind the shared closed DTO to CLI/MCP before Web/Desktop. Preserve original native
+full-scene/delta JSON strings through receiving transport; JavaScript numeric
+re-encoding changes signed zero and can invalidate exact component signatures.
+Require explicit exact initialization/calculation, read-only base preparation and
+delta jobs without implicit fallback or Save. Require current authored history and original
 computed identity to remain distinct; preserve context, stale-job and publication
 confirm/discard fences.
 Full display still transfers 3.62 MB on the owning release fixture and dominates

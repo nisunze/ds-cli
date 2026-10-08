@@ -227,8 +227,8 @@ unchanged demands, ground, case preparation, markers and layout. Keep calculatio
 asynchronous and revision-fenced. Bind the native job owner
 for browser/peer calculation. Bind explicit calculated geometry delta controls to
 CLI/MCP and Web/Desktop transport using the proved native receiving worker.
-Expose original native scene/delta JSON bodies so JavaScript numeric re-encoding
-cannot invalidate exact signatures. Full display and analysis still dominate
+Preserve original native scene/delta JSON bodies through public transport so
+JavaScript numeric re-encoding cannot invalidate exact signatures. Full display and analysis still dominate
 the remaining response; localize their native transfer. Cold initialization still
 projects synchronously. Reject/suppress stale results without
 losing edits. Localize independent
