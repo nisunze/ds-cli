@@ -871,6 +871,26 @@ as any Settings replacement does. `--part` names one document; a named part
 the source lacks is `network_documents_source_missing`. The authority is the
 source's membership and `project.edit` on the destination.
 
+One Settings sheet travels on its own with `--sheet <key>` (not with
+`--part`), for a sheet such as `layer_mapping` that a template project holds
+and the destination lacks:
+
+```text
+ds design config copy plan  --project <dst> --source-project <template> --sheet layer_mapping
+ds design config copy apply --project <dst> --source-project <template> --sheet layer_mapping --expected-plan <plan_sha256> --yes
+```
+
+The kernel admits the key only when the source holds it and its configuration
+groups declare it (`config_sheet_unknown`, `config_sheet_not_admitted`), and
+validates the value exactly as `design config save` would. The plan names the
+outcome (`create` when the destination lacks the sheet), both sides' SHA-256,
+how many other destination sheets are kept, and the `plan_sha256`. The apply
+re-decides the plan against fresh reads (`config_copy_plan_changed` if either
+sheet moved), writes only that sheet through the destination's Settings save
+and verifies a fresh read-back. `design config save` still refuses a sheet the
+project does not hold; only this reviewed copy creates one. The authority is a
+Settings read of the source and Settings edit on the destination.
+
 `ds auth project create --from-template` runs exactly this copy (both parts)
 after creating the project.
 
