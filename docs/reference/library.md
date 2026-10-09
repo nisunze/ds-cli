@@ -199,11 +199,14 @@ does not grant it. Later changes to a library head never reinterpret pinned mode
 
 ### Exact membership in a release
 
-`library.model.match` answers which members of one exact release carry a
-model's native definitions: fence the `--model` and the `--release`
-(`.dsgrid-library` or `.dsgrid-template`) by their exact digests, and each
-model resource is reported as `exact_member` (the member's invariant leaf, the
-canonical code, and the elements it backs), `ambiguous_members` (several
+`library.model.match` answers which library members carry a model's native
+definitions. Fence the `--model` by its digest and name exactly one source:
+one exact `--release` (`.dsgrid-library` or `.dsgrid-template`) with
+`--expected-library-sha256`, or `--native-dir`, a folder of native library
+files such as a canonical structure library (read whole, at most 20000 files
+and 2 GiB; symlinks refuse; the report names the inventory digest it
+compared). Each model resource is reported as `exact_member` (the member's
+invariant leaf or file name, the canonical code, and what it backs), `ambiguous_members` (several
 differently named members carry the bytes; none is chosen), `no_exact_member`
 or `project_evidence` (route, terrain and project settings). Matching is by
 SHA-256 and length only, so a designer's renamed copy of a canonical file

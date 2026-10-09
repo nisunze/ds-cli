@@ -269,32 +269,75 @@ pub static SHOW: Command = command(
     SEARCH,
 );
 
-pub static MATCH: Command = command(
-    "library.model.match",
-    &["library", "model", "match"],
-    "Name the release members holding a model's exact native bytes.",
-    "Resolves each native definition a model carries (for example a project PLS type such as S190_1p_strain_12.012) to the members of one exact release with identical bytes, whatever their names: exact_member names the canonical member and the elements it backs, ambiguous_members lists several without choosing, no_exact_member says no member carries those bytes, and project_evidence marks route, terrain and settings. Names never map anything; byte identity is not engineering equivalence or approval.",
-    &[
+const MATCH_REFUSALS: &[Refusal] = &[
+    REFUSALS[0],
+    REFUSALS[5],
+    REFUSALS[9],
+    REFUSALS[10],
+    REFUSALS[11],
+    REFUSALS[12],
+    REFUSALS[13],
+    Refusal {
+        code: "source_symlink_refused",
+        when: "the native library folder contains a symlink",
+        remedy: "point --native-dir at a folder of real files",
+    },
+];
+
+/// Native files one folder match reads; the whole folder is read before matching.
+const MAX_NATIVE_FILES: usize = 20_000;
+const MAX_NATIVE_BYTES: u64 = 2 * 1024 * 1024 * 1024;
+
+pub static MATCH: Command = Command {
+    id: "library.model.match",
+    path: &["library", "model", "match"],
+    contract: 1,
+    summary: "Name the library members holding a model's exact native bytes.",
+    purpose: "Resolves each native definition a model carries (for example a project PLS type such as S190_1p_strain_12.012) to the members with identical bytes, whatever their names, in one exact release (--release) or in a native library folder such as a canonical structure library (--native-dir): exact_member names the canonical member and what it backs, ambiguous_members lists several without choosing, no_exact_member says nothing carries those bytes, and project_evidence marks route, terrain and settings. Names never map anything; byte identity is not engineering equivalence or approval.",
+    chapter: Chapter::GridModel,
+    effect: Effect::ReadOnly,
+    authority: Authority::None,
+    execution: Execution::Sync,
+    args: &[
         MODEL,
         EXPECTED,
-        RELEASE,
+        Arg::value(
+            "release",
+            "<path.dsgrid-library>",
+            "One exact library release (.dsgrid-library or .dsgrid-template); or use --native-dir.",
+        ),
         Arg::value(
             "expected-library-sha256",
             "<sha256:hex>",
-            "Exact release bundle SHA-256.",
-        )
-        .required(),
+            "Exact release bundle SHA-256; required with --release.",
+        ),
+        Arg::value(
+            "native-dir",
+            "<dir>",
+            "A folder of native library files, read whole (at most 20000 files, 2 GiB); or use --release.",
+        ),
         Arg::value("offset", "<n>", "First resource row, 0..5000.").default("0"),
         Arg::value("limit", "<n>", "Resource rows, 1..5000.").default("25"),
     ],
-    &[Example {
-        command: "ds library model match --model ./project-head.dsgrid --expected-sha256 sha256:<model> --release ./canonical.dsgrid-template --expected-library-sha256 sha256:<release> --output json",
-        note: "Cite only exact_member rows as verified membership.",
-        runnable: false,
-    }],
-    Effect::ReadOnly,
-    SEARCH_FOR_MATCH,
-);
+    output: "Per model resource its status, the matching members (release member or folder file name and path) and the elements it backs; exact, ambiguous, unmatched and project_evidence counts; the release pin or the folder inventory digest compared. solver_approval is always false.",
+    examples: &[
+        Example {
+            command: "ds library model match --model ./project-head.dsgrid --expected-sha256 sha256:<model> --release ./canonical.dsgrid-template --expected-library-sha256 sha256:<release> --output json",
+            note: "Cite only exact_member rows as verified membership.",
+            runnable: false,
+        },
+        Example {
+            command: "ds library model match --model ./project-head.dsgrid --expected-sha256 sha256:<model> --native-dir ./canonical/structures --output json",
+            note: "The same exact-byte rule against a folder of canonical native files.",
+            runnable: false,
+        },
+    ],
+    refusals: MATCH_REFUSALS,
+    reference: Some("docs/reference/library.md"),
+    search: SEARCH_FOR_MATCH,
+    requires: Requires::Server,
+    availability: || Availability::Available,
+};
 
 /// A declared term must say what the id or summary does not already say.
 const SEARCH_FOR_MATCH: &[&str] = &["canonical code", "member code", "membership"];
@@ -320,37 +363,115 @@ fn page(inputs: &Inputs) -> Result<(usize, usize), Failure> {
     Ok((offset, limit))
 }
 
+/// One page of resource rows plus the counts every match reports.
+fn match_page(rows: Vec<Value>, offset: usize, limit: usize, mut head: Value) -> Value {
+    let total = rows.len();
+    let end = offset.saturating_add(limit).min(total);
+    head["resources"] = json!(
+        rows.into_iter()
+            .skip(offset)
+            .take(limit)
+            .collect::<Vec<_>>()
+    );
+    head["total_resources"] = json!(total);
+    head["solver_approval"] = json!(false);
+    head["more"] = if end < total {
+        json!({ "offset": end })
+    } else {
+        Value::Null
+    };
+    head
+}
+
+/// Every regular file below `dir`, by `/`-separated relative path, bounded.
+fn native_folder(dir: &str) -> Result<Vec<(String, Vec<u8>)>, Failure> {
+    let root = Path::new(dir);
+    if !root.is_dir() {
+        return Err(Failure::invalid(
+            "library_path_not_found",
+            format!("`{dir}` is not a readable folder"),
+        )
+        .remedy("use the intended existing native library folder"));
+    }
+    let mut files = Vec::new();
+    crate::seed::collect_tree(root, root, "", &mut files)?;
+    let bytes = files
+        .iter()
+        .map(|(_, bytes)| bytes.len() as u64)
+        .sum::<u64>();
+    if files.len() > MAX_NATIVE_FILES || bytes > MAX_NATIVE_BYTES {
+        return Err(Failure::invalid(
+            "library_file_too_large",
+            format!(
+                "`{dir}` holds {} files and {bytes} bytes; a match reads at most {MAX_NATIVE_FILES} files and {MAX_NATIVE_BYTES} bytes",
+                files.len()
+            ),
+        )
+        .remedy("point --native-dir at the library folder itself, not a whole drive"));
+    }
+    Ok(files)
+}
+
 pub fn match_members(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     let (offset, limit) = page(inputs)?;
+    let source = (
+        inputs.value("release"),
+        inputs.value("expected-library-sha256"),
+        inputs.value("native-dir"),
+    );
     let model = crate::read(inputs.require("model")?)?;
-    let release = crate::read(inputs.require("release")?)?;
-    let report = ds_grid_exchange::library_match::match_release_members(
-        &model,
-        inputs.require("expected-sha256")?,
-        &release,
-        inputs.require("expected-library-sha256")?,
-    )
-    .map_err(owner_error)?;
-    let total = report.resources.len();
-    let end = offset.saturating_add(limit).min(total);
-    let resources = report
-        .resources
-        .into_iter()
-        .skip(offset)
-        .take(limit)
-        .collect::<Vec<_>>();
-    Ok(json!({
-        "model_digest": report.model_digest,
-        "release": report.release,
-        "exact": report.exact,
-        "ambiguous": report.ambiguous,
-        "unmatched": report.unmatched,
-        "project_evidence": report.project_evidence,
-        "resources": resources,
-        "total_resources": total,
-        "solver_approval": false,
-        "more": if end < total { json!({"offset": end}) } else { Value::Null },
-    }))
+    let expected = inputs.require("expected-sha256")?;
+    match source {
+        (Some(release), Some(release_digest), None) => {
+            let release = crate::read(release)?;
+            let report = ds_grid_exchange::library_match::match_release_members(
+                &model,
+                expected,
+                &release,
+                release_digest,
+            )
+            .map_err(owner_error)?;
+            Ok(match_page(
+                report.resources.iter().map(|row| json!(row)).collect(),
+                offset,
+                limit,
+                json!({
+                    "model_digest": report.model_digest,
+                    "release": report.release,
+                    "exact": report.exact,
+                    "ambiguous": report.ambiguous,
+                    "unmatched": report.unmatched,
+                    "project_evidence": report.project_evidence,
+                }),
+            ))
+        }
+        (None, None, Some(dir)) => {
+            let files = native_folder(dir)?;
+            let report =
+                ds_grid_exchange::library_match::match_native_members(&model, expected, &files)
+                    .map_err(owner_error)?;
+            Ok(match_page(
+                report.resources.iter().map(|row| json!(row)).collect(),
+                offset,
+                limit,
+                json!({
+                    "model_digest": report.model_digest,
+                    "native_dir": dir,
+                    "native_files": report.native_files,
+                    "native_inventory_digest": report.native_inventory_digest,
+                    "exact": report.exact,
+                    "ambiguous": report.ambiguous,
+                    "unmatched": report.unmatched,
+                    "project_evidence": report.project_evidence,
+                }),
+            ))
+        }
+        _ => Err(Failure::invalid(
+            "library_selection_invalid",
+            "name exactly one source: --release with --expected-library-sha256, or --native-dir",
+        )
+        .remedy("pass --release and --expected-library-sha256, or --native-dir alone")),
+    }
 }
 
 fn owner_error(message: String) -> Failure {

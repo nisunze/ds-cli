@@ -567,4 +567,59 @@ fn project_native_types_resolve_to_canonical_members_by_exact_bytes() {
         assert_eq!(row["status"], status);
         assert_eq!(row["members"][0]["invariant_leaf"], member);
     }
+
+    // The same exact-byte rule against a folder of canonical native files.
+    let folder = dir.path().join("canonical").join("structures");
+    std::fs::create_dir_all(&folder).unwrap();
+    std::fs::write(folder.join("hp-m1-strain.012"), native).unwrap();
+    let local = imported("S190_1p_strain_12.012", native);
+    let local_path = dir.path().join("local.dsgrid");
+    std::fs::write(&local_path, &local).unwrap();
+    let folder_arg = dir.path().join("canonical");
+    let matched = invoke(
+        &[
+            "library",
+            "model",
+            "match",
+            "--model",
+            local_path.to_str().unwrap(),
+            "--expected-sha256",
+            &bundle_digest(&local),
+            "--native-dir",
+            folder_arg.to_str().unwrap(),
+        ],
+        true,
+    );
+    assert_eq!(matched["data"]["native_files"], 1);
+    let row = matched["data"]["resources"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|row| row["media"] == "structure_definition")
+        .unwrap()
+        .clone();
+    assert_eq!(row["status"], "exact_member");
+    assert_eq!(row["files"][0]["file_name"], "hp-m1-strain.012");
+    assert_eq!(row["files"][0]["path"], "structures/hp-m1-strain.012");
+
+    // Exactly one source: a release and a folder together refuse.
+    let refused = invoke(
+        &[
+            "library",
+            "model",
+            "match",
+            "--model",
+            local_path.to_str().unwrap(),
+            "--expected-sha256",
+            &bundle_digest(&local),
+            "--native-dir",
+            folder_arg.to_str().unwrap(),
+            "--release",
+            release_path.to_str().unwrap(),
+            "--expected-library-sha256",
+            &bundle_digest(&release),
+        ],
+        false,
+    );
+    assert_eq!(refused["error"]["code"], "library_selection_invalid");
 }

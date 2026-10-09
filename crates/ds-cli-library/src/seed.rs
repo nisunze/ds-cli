@@ -180,7 +180,7 @@ pub static COMMAND: Command = Command {
     availability: || Availability::Available,
 };
 
-fn collect_tree(
+pub(crate) fn collect_tree(
     base: &Path,
     current: &Path,
     prefix: &str,
