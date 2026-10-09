@@ -97,3 +97,25 @@ Why — the painful history:
 - Forgotten trees were the largest thing on the box: five already-merged lanes held **194 GB**; deleting them took the disk from 83% to 63%.
 - Every later investigation re-read those trees, mistook them for live work and paid again to settle what was already settled.
 - A registry of trees (`git_trees/gittrees-index.json`, 2026-10-04) did not stop the loss. On 2026-10-05 the owner ruled: code directly in each canonical checkout on `run`, no worktrees, no feature branches. A commit on a branch counts as zero; only `run` counts.
+
+## 9. Desktop tiling and data sources (owner, 2026-10-09)
+
+- Windows and Linux Desktop must generate survey, design and personal/project
+  tiles locally through shared native Rust, hosted by ds-network-reporter.
+  Replace Tippecanoe and external PMTiles conversion; remove ordinary Web tiling
+  controls and cloud build dispatch. Web retains map, status and download reads.
+- Survey reads use governed BigQuery snapshots. Current saved design authority
+  remains Firestore and DS Grid; BigQuery is not a design transaction gate.
+  This corrects the earlier blanket prohibition on Firestore for design.
+- Complete unfiltered survey loads and all-transformer report preparation may
+  automatically tile stale complete snapshots. Readers can contribute local
+  compute; shared publication remains authenticated, revision/coverage/lease
+  fenced. Partial visibility never authorizes a project-wide replacement.
+- Reusable Parquet/GeoParquet snapshots serve local analytics and tiles. Keep
+  Polars first; no DuckDB adoption without measured need and a later decision.
+  Future large cross-project BigQuery tables mirror full design snapshots with
+  project IDs and tags, never recover canonical data from display tiles.
+- The cloud API and special resource-selected dataset jobs are expert-owned.
+  Finish independent native code while coordinating that explicit integration
+  boundary. The [implementation plan](../docs/desktop-native-tiling-migration-plan.md)
+  defines the serial slices and whole-product acceptance.

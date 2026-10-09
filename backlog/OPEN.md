@@ -22,7 +22,7 @@ Unfinished code that an agent can implement and prove without further owner inpu
 | [13. Spotting (Codex main)](#13-spotting-codex-main) | 8 |
 | [14. Plan and Profile authoring](#14-plan-and-profile-authoring) | 1 |
 | [15. Project delivery code](#15-project-delivery-code) | 2 |
-| [16. Map data, datasets and screen styling](#16-map-data-datasets-and-screen-styling) | 9 |
+| [16. Map data, datasets and screen styling](#16-map-data-datasets-and-screen-styling) | 10 |
 | [17. Project Work and Assets](#17-project-work-and-assets) | 7 |
 | [18. Global DS Grid library](#18-global-ds-grid-library) | 1 |
 | [19. Country neutrality and duplicated rules](#19-country-neutrality-and-duplicated-rules) | 2 |
@@ -573,6 +573,16 @@ Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group A, to be fixed to
 - **Clearance report case identity**: the Gisagara M3 report prints `vertical at — (null °C)` although its vertical case is 75 °C. Fix the producer/report projection from the exact selected case; never patch the label to a per-model constant.
 
 ## 16. Map data, datasets and screen styling
+
+- **Desktop native tiling and reusable snapshots:** Windows routes ordinary
+  tiling to cloud and the shared runtime invokes Tippecanoe/external conversion;
+  complete report/survey snapshots do not provide the required automatic native
+  build and governed publication path. Implement the [2026-10-09 plan](../docs/desktop-native-tiling-migration-plan.md):
+  shared Rust generation through reporter/CLI/MCP, Parquet/GeoParquet and Polars,
+  real Windows proof, complete-snapshot triggers, Web-control/legacy deletion
+  and revision-fenced publication integration. Coordinate the expert-owned
+  source/publication APIs and special cloud jobs; no new owner input is needed
+  for independent native code. Whole-path acceptance is in the plan's matrix.
 
 - `33003988` (minor): Wetlands dataset download fails with HTTP 422 after 12 attempts, then succeeds unprompted, so a one-shot install reports a false permanent failure.
 

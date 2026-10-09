@@ -1,5 +1,23 @@
 # Shared native tiling
 
+## Governing migration direction, 2026-10-09
+
+The owner has superseded the Windows/cloud placement and external-tool target
+below: Windows and Linux Desktop must tile locally through a shared Rust engine
+hosted by `ds-network-reporter`; Tippecanoe and external PMTiles conversion are
+to be removed from that path. Hosted Web consumes existing outputs and loses
+ordinary tiling controls/dispatch. Survey acquisition uses governed BigQuery
+snapshots; saved design uses current Firestore/DS Grid authority without a
+BigQuery transaction gate. Reusable Parquet/GeoParquet snapshots feed local
+reports, tiles and Polars analytics. Cloud API/publication and special dataset
+jobs are expert-owned. See the executable sequence, protocol handoff and full
+acceptance in [the migration plan](../desktop-native-tiling-migration-plan.md).
+
+The sections below describe the implementation baseline, not acceptance of the
+new direction. Replace them with the proven contract as each slice lands.
+
+## Implementation baseline
+
 Tiling belongs to the Rust server product. Web adapters call a container;
 Linux Server and Desktop execute the same native owner. Source acquisition and
 verified publication can use online services. Browser code does not compile
