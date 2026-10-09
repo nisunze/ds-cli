@@ -637,6 +637,8 @@ struct State {
     rejected: u64,
     last_flush_ms: Option<u64>,
     last_flush: Option<String>,
+    /// The last [`JOURNAL_ENTRIES`] invocations, oldest first (contract §4).
+    journal: Vec<JournalEntry>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -750,6 +752,7 @@ pub fn record(
     with_state(store, |state| {
         state.prune(now_ms);
         roll_day(state, invocation, now_ms);
+        journal(state, invocation, now_ms);
         let Some(event) = event else {
             let action = action_id(&invocation.action);
             if state.rollup.contains_key(&action) || state.rollup.len() < MAX_ROLLUP_COMMANDS {
@@ -1084,4 +1087,139 @@ impl<T: crate::Transport> EventSink for TransportSink<'_, T> {
             self.bearer_token,
         )))
     }
+}
+
+// ---------------------------------------------------------------------------
+// The invocation journal and the feedback draft (contract §4)
+// ---------------------------------------------------------------------------
+
+/// The journal keeps this many invocations.
+pub const JOURNAL_ENTRIES: usize = 50;
+/// A draft covers at most this many invocations.
+pub const MAX_DRAFTS: usize = 10;
+
+/// One journalled invocation, under the same privacy rules as an event:
+/// flag names, codes and ids, never a value or a message.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct JournalEntry {
+    pub at_ms: u64,
+    pub action: String,
+    pub flags: Vec<String>,
+    pub result_class: String,
+    pub error_code: Option<String>,
+    pub latency_ms: u64,
+    pub request_id: Option<String>,
+    /// The event id an SRE row of this invocation carries (`user_action_id`).
+    pub invocation_id: String,
+    pub release: String,
+    pub lane: String,
+    pub host_kind: String,
+    pub platform: String,
+    pub agent: Option<String>,
+}
+
+fn journal(state: &mut State, invocation: &Invocation, now_ms: u64) {
+    let error_code = match &invocation.termination {
+        Termination::Ok => None,
+        Termination::Error { code, .. } => token(code, MAX_ID_CHARS),
+        Termination::Crashed { .. } => Some("panic".to_string()),
+    };
+    state.journal.push(JournalEntry {
+        at_ms: now_ms,
+        action: action_id(&invocation.action),
+        flags: flag_names(&invocation.flags),
+        result_class: invocation.result_class().token().to_string(),
+        error_code,
+        latency_ms: invocation.latency_ms,
+        request_id: invocation.request_id.as_deref().and_then(id_text),
+        invocation_id: id_text(&invocation.invocation_id).unwrap_or_default(),
+        release: id_text(&invocation.release).unwrap_or_default(),
+        lane: token(&invocation.lane, 32).unwrap_or_default(),
+        host_kind: invocation.host_kind.token().to_string(),
+        platform: invocation.platform.token().to_string(),
+        agent: invocation
+            .agent
+            .as_deref()
+            .map(agent_text)
+            .filter(|agent| !agent.is_empty()),
+    });
+    let excess = state.journal.len().saturating_sub(JOURNAL_ENTRIES);
+    state.journal.drain(..excess);
+}
+
+/// The journal, newest first.
+pub fn journal_entries(
+    store: &mut dyn ReporterStore,
+) -> Result<Vec<JournalEntry>, ReporterStoreError> {
+    store.acquire()?;
+    let state = store.load().map(State::decode);
+    store.release();
+    let mut entries = state?.journal;
+    entries.reverse();
+    Ok(entries)
+}
+
+/// Ready `feedback.submit` payloads for the newest `n` failed, crashed or
+/// refused invocations, newest first. Each carries the title, component, kind,
+/// severity guess, evidence and context; its `detail` names the two things
+/// only the caller can add: what it expected and what would show it works.
+pub fn draft(entries: &[JournalEntry], n: usize) -> Vec<Value> {
+    entries
+        .iter()
+        .filter(|entry| entry.result_class != ResultClass::Ok.token())
+        .take(n.clamp(1, MAX_DRAFTS))
+        .map(draft_one)
+        .collect()
+}
+
+fn draft_one(entry: &JournalEntry) -> Value {
+    let code = entry.error_code.as_deref().unwrap_or("no_code");
+    let (kind, severity) = match entry.result_class.as_str() {
+        "crashed" => ("bug", "major"),
+        "failed" => ("bug", "minor"),
+        _ => ("friction", "minor"),
+    };
+    let domain = entry.action.split('.').next().unwrap_or("ds");
+    let mut evidence = vec![
+        format!(
+            "ds {} ended {} with {code}",
+            entry.action, entry.result_class
+        ),
+        format!("release {}, lane {}", entry.release, entry.lane),
+        format!("latency {} ms", entry.latency_ms),
+    ];
+    if !entry.flags.is_empty() {
+        evidence.push(format!("flags {}", entry.flags.join(" ")));
+    }
+    if let Some(request_id) = &entry.request_id {
+        evidence.push(format!("request id {request_id}"));
+    }
+    let mut payload = json!({
+        "title": bounded(
+            &format!("ds {} {}: {code}", entry.action, entry.result_class),
+            200,
+        ),
+        "component": format!("ds-cli/{domain}"),
+        "kind": kind,
+        "severity": severity,
+        "evidence": evidence,
+        "context": {
+            "sre_event": entry.invocation_id,
+            "host_kind": entry.host_kind,
+            "lane": entry.lane,
+            "platform": entry.platform,
+        },
+        "detail": format!(
+            "Expected: <what you expected>. Observed: ds {} ended {} with {code}. \
+             Acceptance: <what would show it works>.",
+            entry.action, entry.result_class
+        ),
+        "needs": ["detail: expected behaviour", "detail: acceptance condition"],
+    });
+    if let Some(agent) = &entry.agent {
+        payload["agent"] = json!(agent);
+    } else if let Some(needs) = payload["needs"].as_array_mut() {
+        needs.push(json!("agent: the reporting agent's name"));
+    }
+    payload
 }

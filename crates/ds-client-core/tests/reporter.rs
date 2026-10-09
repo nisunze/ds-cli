@@ -620,3 +620,107 @@ fn every_field_sent_is_a_store_field() {
     let id = reporter::new_invocation_id();
     assert!(id.starts_with("inv_") && id.len() == 36, "{id}");
 }
+
+/// §4 and the kernel half of §7.6: the journal keeps the last 50 invocations
+/// and no value; a draft names everything except what only the caller knows —
+/// what it expected and what would show it works.
+#[test]
+fn the_journal_keeps_fifty_and_a_draft_needs_only_expectation_and_acceptance() {
+    let mut store = MemoryStore::default();
+    let mut offline = Sink::new(Gateway::Unreachable);
+    for index in 0..60 {
+        finish_invocation(
+            true,
+            &mut store,
+            &mut offline,
+            &ok("project.list"),
+            T0 + index,
+        );
+    }
+    let mut failed = invocation(
+        "data.vector.buffer",
+        Termination::Error {
+            class: "failed".into(),
+            code: "vector_engine_empty".into(),
+            message: "SENTINEL-DRAFT could not be read".into(),
+            retryable: false,
+        },
+    );
+    failed.request_id = Some("req-draft".into());
+    failed.flags = vec!["--source".into(), "--radius-m".into()];
+    failed.argument_values = vec!["SENTINEL-DRAFT".into()];
+    finish_invocation(true, &mut store, &mut offline, &failed, T0 + 100);
+
+    let entries = reporter::journal_entries(&mut store).unwrap();
+    assert_eq!(entries.len(), reporter::JOURNAL_ENTRIES);
+    assert_eq!(entries[0].action, "data.vector.buffer", "newest first");
+    assert_eq!(entries[0].result_class, "failed");
+    assert_eq!(
+        entries[0].error_code.as_deref(),
+        Some("vector_engine_empty")
+    );
+
+    let drafts = reporter::draft(&entries, 3);
+    assert_eq!(
+        drafts.len(),
+        1,
+        "only failed, crashed and refused endings are drafted"
+    );
+    let draft = &drafts[0];
+    assert_eq!(draft["kind"], "bug");
+    assert_eq!(draft["severity"], "minor");
+    assert_eq!(draft["component"], "ds-cli/data");
+    assert_eq!(draft["agent"], "claude-code");
+    assert_eq!(draft["context"]["sre_event"], failed.invocation_id.as_str());
+    assert_eq!(draft["context"]["lane"], "canary");
+    let evidence: Vec<&str> = draft["evidence"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|line| line.as_str().unwrap())
+        .collect();
+    assert!(evidence.contains(&"request id req-draft"), "{evidence:?}");
+    assert!(
+        evidence.contains(&"flags --source --radius-m"),
+        "{evidence:?}"
+    );
+    // Inside feedback.submit's bounds: title, evidence count and length, context.
+    assert!(draft["title"].as_str().unwrap().chars().count() <= 200);
+    assert!(evidence.len() <= 20 && evidence.iter().all(|line| line.len() <= 500));
+    assert!(draft["context"].as_object().unwrap().len() <= 24);
+    assert!(draft["detail"]
+        .as_str()
+        .unwrap()
+        .contains("Expected: <what you expected>"));
+    let text = draft.to_string();
+    assert!(!text.contains("SENTINEL"), "{text}");
+
+    let refused = invocation(
+        "feedback.submit",
+        Termination::Error {
+            class: "invalid_input".into(),
+            code: "confirmation_required".into(),
+            message: String::new(),
+            retryable: false,
+        },
+    );
+    finish_invocation(true, &mut store, &mut offline, &refused, T0 + 200);
+    let entries = reporter::journal_entries(&mut store).unwrap();
+    let drafts = reporter::draft(&entries, 3);
+    assert_eq!(drafts.len(), 2);
+    assert_eq!(
+        drafts[0]["kind"], "friction",
+        "a refusal drafts as friction"
+    );
+}
+
+#[test]
+fn a_state_document_from_before_the_journal_still_reads() {
+    let mut store = MemoryStore {
+        document: Some(br#"{"schema":"ds.sre-reporter/v1","outbox":[],"dropped":3}"#.to_vec()),
+        ..MemoryStore::default()
+    };
+    let status = status(&mut store, true).unwrap();
+    assert_eq!(status.dropped, 3);
+    assert!(reporter::journal_entries(&mut store).unwrap().is_empty());
+}
