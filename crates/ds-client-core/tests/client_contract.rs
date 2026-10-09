@@ -13943,3 +13943,57 @@ fn print_binding_uses_captured_authority_and_refuses_a_rehashed_other_principal(
         );
     }
 }
+
+/// A `ds` reliability event rides the one fixed ingest call: the gateway key
+/// always, the bearer only when the host holds one (a signed-out host reports
+/// as `anonymous`), and the answer maps onto keep-or-drop.
+#[test]
+fn reliability_event_rides_the_fixed_ingest_with_an_optional_bearer() {
+    use ds_client_core::reporter::{
+        send_outcome, SendFailure, SreClientEventCall, CLIENT_EVENT_PATH,
+        CLIENT_EVENT_RESPONSE_LIMIT,
+    };
+
+    let profile = profile(DeploymentLane::Canary);
+    let event = json!({"source": "cli_command", "action": "data.vector.buffer"});
+    let anonymous = SreClientEventCall::new(&profile, &event, None);
+    assert_eq!(anonymous.gateway_origin(), profile.gateway_origin());
+    assert_eq!(anonymous.path(), CLIENT_EVENT_PATH);
+    assert_eq!(anonymous.method(), "POST");
+    assert_eq!(anonymous.content_type(), "application/json");
+    assert_eq!(anonymous.response_limit(), CLIENT_EVENT_RESPONSE_LIMIT);
+    assert!(anonymous.timeout() <= std::time::Duration::from_millis(1_500));
+    assert!(!anonymous.gateway_api_key().is_empty());
+    assert_eq!(anonymous.bearer_token(), None);
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(anonymous.body()).unwrap(),
+        event
+    );
+    assert_eq!(
+        SreClientEventCall::new(&profile, &event, Some("id-token")).bearer_token(),
+        Some("id-token")
+    );
+    assert_eq!(
+        SreClientEventCall::new(&profile, &event, Some("")).bearer_token(),
+        None,
+        "an empty bearer is no bearer"
+    );
+
+    for (answer, expected) in [
+        (Ok(202), Ok(())),
+        (Ok(204), Ok(())),
+        (Ok(400), Err(SendFailure::Rejected)),
+        (Ok(403), Err(SendFailure::Rejected)),
+        (Ok(408), Err(SendFailure::Unreachable)),
+        (Ok(429), Err(SendFailure::Unreachable)),
+        (Ok(503), Err(SendFailure::Unreachable)),
+        (Err(TransportError::TimedOut), Err(SendFailure::Unreachable)),
+        (
+            Err(TransportError::Unreachable),
+            Err(SendFailure::Unreachable),
+        ),
+    ] {
+        let answer = answer.map(|status| TransportResponse::new(status, Vec::new()));
+        assert_eq!(send_outcome(answer), expected);
+    }
+}

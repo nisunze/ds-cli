@@ -986,3 +986,102 @@ pub fn finish_invocation(
     }
     Some(recorded)
 }
+
+// ---------------------------------------------------------------------------
+// The fixed send
+// ---------------------------------------------------------------------------
+
+/// The ingest path of `domains.sre.client_request_event`.
+pub const CLIENT_EVENT_PATH: &str = "/api/v1/sre/requests";
+/// The registry's response ceiling for that operation.
+pub const CLIENT_EVENT_RESPONSE_LIMIT: usize = 64 * 1024;
+
+/// One reporter body on the fixed ingest call.
+///
+/// The bearer is optional on purpose: ds-brain mounts the ingest with optional
+/// authentication and attributes a body without one to `anonymous` (contract
+/// §3.2, OPEN-X §25 default), so a signed-out host still reports. The gateway
+/// key is the guard. The deadline is the exit budget, not the registry's ten
+/// seconds: reporting never holds a command's exit longer than that.
+pub struct SreClientEventCall<'a> {
+    profile: &'a crate::ClientProfile,
+    body: Vec<u8>,
+    bearer_token: Option<&'a str>,
+}
+
+impl<'a> SreClientEventCall<'a> {
+    pub fn new(
+        profile: &'a crate::ClientProfile,
+        event: &Value,
+        bearer_token: Option<&'a str>,
+    ) -> Self {
+        Self {
+            profile,
+            body: serde_json::to_vec(event).expect("a reporter event serializes"),
+            bearer_token: bearer_token.filter(|token| !token.is_empty()),
+        }
+    }
+    pub fn gateway_origin(&self) -> &str {
+        self.profile.gateway_origin()
+    }
+    pub const fn path(&self) -> &'static str {
+        CLIENT_EVENT_PATH
+    }
+    pub const fn method(&self) -> &'static str {
+        "POST"
+    }
+    pub const fn content_type(&self) -> &'static str {
+        "application/json"
+    }
+    pub const fn response_limit(&self) -> usize {
+        CLIENT_EVENT_RESPONSE_LIMIT
+    }
+    pub const fn timeout(&self) -> Duration {
+        SEND_BUDGET
+    }
+    pub fn gateway_api_key(&self) -> &str {
+        self.profile.gateway_api_key()
+    }
+    pub const fn client_id(&self) -> &'static str {
+        self.profile.client_id()
+    }
+    pub fn bearer_token(&self) -> Option<&str> {
+        self.bearer_token
+    }
+    pub fn body(&self) -> &[u8] {
+        &self.body
+    }
+}
+
+/// How the ingest's answer maps onto [`SendFailure`]: 2xx is delivered; no
+/// answer, a timeout, 408, 429 or a 5xx is kept for later; any other 4xx is a
+/// body the store will never accept.
+pub fn send_outcome(
+    answer: Result<crate::TransportResponse, crate::TransportError>,
+) -> Result<(), SendFailure> {
+    match answer {
+        Ok(response) if (200..300).contains(&response.status) => Ok(()),
+        Ok(response) if matches!(response.status, 408 | 429) || response.status >= 500 => {
+            Err(SendFailure::Unreachable)
+        }
+        Ok(_) => Err(SendFailure::Rejected),
+        Err(_) => Err(SendFailure::Unreachable),
+    }
+}
+
+/// The [`EventSink`] a host builds from its [`crate::Transport`] and profile.
+pub struct TransportSink<'a, T: crate::Transport> {
+    pub profile: &'a crate::ClientProfile,
+    pub transport: &'a mut T,
+    pub bearer_token: Option<&'a str>,
+}
+
+impl<T: crate::Transport> EventSink for TransportSink<'_, T> {
+    fn send(&mut self, event: &Value) -> Result<(), SendFailure> {
+        send_outcome(self.transport.sre_client_event(SreClientEventCall::new(
+            self.profile,
+            event,
+            self.bearer_token,
+        )))
+    }
+}

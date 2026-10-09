@@ -2989,6 +2989,13 @@ pub trait Transport {
     fn feedback(&mut self, _call: FeedbackCall<'_>) -> Result<TransportResponse, TransportError> {
         Err(TransportError::Unreachable)
     }
+    /// One `ds` reliability event ([`crate::reporter`]); its bearer is optional.
+    fn sre_client_event(
+        &mut self,
+        _call: crate::reporter::SreClientEventCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        Err(TransportError::Unreachable)
+    }
     fn shared_assets(
         &mut self,
         _call: SharedAssetsCall<'_>,
