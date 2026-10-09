@@ -12,7 +12,15 @@
 //! What is retried is decided by the caller's own transient classification and
 //! only ever for requests that are safe to send again. A definitive answer (a
 //! 401/403, a validation refusal) and a non-idempotent write are never retried.
-use std::time::Duration;
+//!
+//! A blink is quick. A failed attempt that waited longer than the schedule's
+//! stall bound ([`WEAK_NETWORK_STALL`]) ran into a deadline, and asking again
+//! would wait that whole deadline again: three more 120-second waits turned
+//! one stalled transformer read into an eight-minute hang, and a curve wrapped
+//! around a call that had already run its own curve multiplied the waits
+//! again, so one `auth_transient` refusal took 10 to 30 minutes to arrive. A
+//! stall is returned as it came, within one deadline, for the caller to name.
+use std::time::{Duration, Instant};
 
 use ds_command_kernel::retry::PAUSES_MS;
 
@@ -25,21 +33,44 @@ pub const WEAK_NETWORK_DELAYS: [Duration; 3] = [
     Duration::from_millis(PAUSES_MS[2]),
 ];
 
-/// A bounded retry schedule: one pause before each retry, and no retry after
-/// the last pause is spent.
+/// The longest a failed attempt may wait and still count as a blink.
+///
+/// It sits above the native connect deadline (10 seconds), so a refused or
+/// dropped connect is still asked again, and below the sum of the field pauses
+/// (23 seconds), so a call that already spent a whole curve is itself a stall
+/// to any curve wrapped around it: nested curves never multiply.
+pub const WEAK_NETWORK_STALL: Duration = Duration::from_secs(20);
+
+/// A bounded retry schedule: one pause before each retry, no retry after the
+/// last pause is spent, and no retry of an attempt that stalled.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct WeakNetwork {
     delays: &'static [Duration],
+    stall: Duration,
 }
 
 impl WeakNetwork {
     /// The field policy every native caller uses.
     pub const FIELD: Self = Self::new(&WEAK_NETWORK_DELAYS);
 
-    /// A schedule with these pauses. Hosts use [`Self::FIELD`]; a test uses
-    /// zero-length pauses to prove the retry without waiting for it.
+    /// A schedule with these pauses and the field stall bound. Hosts use
+    /// [`Self::FIELD`]; a test uses zero-length pauses to prove the retry
+    /// without waiting for it.
     pub const fn new(delays: &'static [Duration]) -> Self {
-        Self { delays }
+        Self {
+            delays,
+            stall: WEAK_NETWORK_STALL,
+        }
+    }
+
+    /// This schedule with another stall bound. Hosts keep the field bound; a
+    /// test shrinks it to prove a stall is not asked again without waiting
+    /// for a real deadline.
+    pub const fn with_stall(self, stall: Duration) -> Self {
+        Self {
+            delays: self.delays,
+            stall,
+        }
     }
 
     /// The most retries this schedule spends after the first attempt.
@@ -47,16 +78,24 @@ impl WeakNetwork {
         self.delays.len()
     }
 
-    /// Run `attempt` until its outcome is not a blink or the pauses run out.
+    /// The longest a failed attempt may wait and still be asked again.
+    pub const fn stall(&self) -> Duration {
+        self.stall
+    }
+
+    /// Run `attempt` until its outcome is not a blink, the attempt stalled,
+    /// or the pauses run out.
     ///
-    /// Returns the last outcome — success, a definitive refusal, or the final
-    /// blink — with the number of retries spent on the way, so a caller can
-    /// say honestly that it retried.
+    /// Returns the last outcome — success, a definitive refusal, a stall, or
+    /// the final blink — with the number of retries spent on the way, so a
+    /// caller can say honestly that it retried.
     pub fn run<T>(&self, mut attempt: impl FnMut() -> T, blinked: impl Fn(&T) -> bool) -> (T, u8) {
         let mut retries = 0_usize;
         loop {
+            let started = Instant::now();
             let outcome = attempt();
-            if retries >= self.delays.len() || !blinked(&outcome) {
+            let stalled = started.elapsed() >= self.stall;
+            if retries >= self.delays.len() || stalled || !blinked(&outcome) {
                 return (outcome, u8::try_from(retries).unwrap_or(u8::MAX));
             }
             std::thread::sleep(self.delays[retries]);
@@ -117,6 +156,77 @@ mod tests {
             |outcome| outcome.is_err(),
         );
         assert_eq!((outcome, retries, calls.get()), (Err(4), 3, 4));
+    }
+
+    #[test]
+    fn a_blink_that_stalled_is_returned_without_asking_again() {
+        // A read that waited out its deadline: asked again, it would wait the
+        // whole deadline again, three more times.
+        let stalls = WeakNetwork::new(&[Duration::ZERO; 3]).with_stall(Duration::from_millis(40));
+        let calls = Cell::new(0);
+        let (outcome, retries) = stalls.run(
+            || {
+                calls.set(calls.get() + 1);
+                std::thread::sleep(Duration::from_millis(50));
+                Err::<(), _>("timed out")
+            },
+            |outcome| outcome.is_err(),
+        );
+        assert_eq!((outcome, retries, calls.get()), (Err("timed out"), 0, 1));
+
+        // The same schedule still asks a quick blink again.
+        let calls = Cell::new(0);
+        let (outcome, retries) = stalls.run(
+            || {
+                calls.set(calls.get() + 1);
+                if calls.get() < 2 {
+                    Err("reset")
+                } else {
+                    Ok("room")
+                }
+            },
+            |outcome| outcome.is_err(),
+        );
+        assert_eq!((outcome, retries, calls.get()), (Ok("room"), 1, 2));
+    }
+
+    #[test]
+    fn a_curve_wrapped_around_a_spent_curve_does_not_multiply_it() {
+        // The field proportions in miniature: the inner pauses sum past the
+        // outer stall bound, as 2 + 6 + 15 seconds sum past 20.
+        static INNER_PAUSES: [Duration; 3] = [Duration::from_millis(5); 3];
+        let inner = WeakNetwork::new(&INNER_PAUSES);
+        let outer = WeakNetwork::new(&[Duration::ZERO; 3]).with_stall(Duration::from_millis(12));
+        let calls = Cell::new(0);
+        let (outcome, outer_retries) = outer.run(
+            || {
+                inner
+                    .run(
+                        || {
+                            calls.set(calls.get() + 1);
+                            Err::<(), _>("unreachable")
+                        },
+                        |outcome| outcome.is_err(),
+                    )
+                    .0
+            },
+            |outcome| outcome.is_err(),
+        );
+        // One inner curve of four attempts, never four curves of four.
+        assert_eq!(
+            (outcome, outer_retries, calls.get()),
+            (Err("unreachable"), 0, 4)
+        );
+    }
+
+    #[test]
+    fn the_field_stall_bound_sits_below_one_spent_curve() {
+        assert_eq!(WeakNetwork::FIELD.stall(), WEAK_NETWORK_STALL);
+        assert_eq!(WEAK_NETWORK_STALL.as_secs(), 20);
+        let spent: Duration = WEAK_NETWORK_DELAYS.iter().sum();
+        assert!(spent > WeakNetwork::FIELD.stall(), "{spent:?}");
+        // Every host and test schedule keeps the field bound unless it asks.
+        assert_eq!(NOW.stall(), WEAK_NETWORK_STALL);
     }
 
     #[test]
