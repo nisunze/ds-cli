@@ -671,6 +671,13 @@ impl DeltaPage {
             }
         }
         for (layer, chunks) in &self.retired_chunks {
+            count = count.saturating_add(chunks.len());
+            if count > MAX_CHUNKS {
+                return Err(refuse(
+                    RefusalCode::SnapshotBudgetExceeded,
+                    "delta exceeds total changed/retired chunk bound",
+                ));
+            }
             if !identifier(layer) || chunks.iter().any(|digest| !sha256(digest)) {
                 return Err(refuse(
                     RefusalCode::SnapshotInvalid,
@@ -693,4 +700,166 @@ impl DeltaPage {
         }
         Ok(())
     }
+}
+
+/// A complete ordered delta, validated before its native store changes any
+/// head. The store separately verifies row-level deletions and actual bytes.
+pub struct DeltaPlan<'a> {
+    pub manifest: &'a Manifest,
+    pub tombstones: Vec<Tombstone>,
+}
+
+pub fn assemble_delta<'a>(
+    base: &Manifest,
+    pages: &'a [DeltaPage],
+) -> Result<DeltaPlan<'a>, Refusal> {
+    base.validate(&base.context)?;
+    base.verify_sha256()?;
+    if pages.is_empty() || pages.len() > MAX_CHUNKS {
+        return Err(refuse(
+            RefusalCode::SnapshotIncomplete,
+            "delta requires bounded ordered pages",
+        ));
+    }
+    let first = &pages[0];
+    let mut chunks: BTreeMap<&str, BTreeMap<&str, &Chunk>> = base
+        .layers
+        .iter()
+        .map(|layer| {
+            (
+                layer.name.as_str(),
+                layer
+                    .chunks
+                    .iter()
+                    .map(|chunk| (chunk.sha256.as_str(), chunk))
+                    .collect(),
+            )
+        })
+        .collect();
+    let mut changed = BTreeSet::new();
+    let mut retired = BTreeSet::new();
+    let mut deleted = BTreeSet::new();
+    let mut tombstones = Vec::new();
+    for (index, page) in pages.iter().enumerate() {
+        page.validate(base, index as u64)?;
+        if page.batch_id != first.batch_id || page.target != first.target {
+            return Err(refuse(
+                RefusalCode::SnapshotMovingHead,
+                "delta pages changed batch or target",
+            ));
+        }
+        if page.terminal_manifest.is_some() != (index + 1 == pages.len()) {
+            return Err(refuse(
+                RefusalCode::SnapshotIncomplete,
+                "delta terminal page must be last",
+            ));
+        }
+        for (layer, hashes) in &page.retired_chunks {
+            let held = chunks.get_mut(layer.as_str()).ok_or_else(|| {
+                refuse(
+                    RefusalCode::SnapshotResnapshotRequired,
+                    "delta changed layer inventory",
+                )
+            })?;
+            for hash in hashes {
+                if !retired.insert((layer.as_str(), hash.as_str()))
+                    || held.remove(hash.as_str()).is_none()
+                {
+                    return Err(refuse(
+                        RefusalCode::SnapshotStaleDelta,
+                        "retired chunk is repeated or absent",
+                    ));
+                }
+            }
+        }
+        for (layer, additions) in &page.changed_chunks {
+            let held = chunks.get_mut(layer.as_str()).ok_or_else(|| {
+                refuse(
+                    RefusalCode::SnapshotResnapshotRequired,
+                    "delta changed layer inventory",
+                )
+            })?;
+            for chunk in additions {
+                if !changed.insert((layer.as_str(), chunk.sha256.as_str()))
+                    || held.insert(&chunk.sha256, chunk).is_some()
+                {
+                    return Err(refuse(
+                        RefusalCode::SnapshotInvalid,
+                        "changed chunk is repeated or already held",
+                    ));
+                }
+            }
+        }
+        for tombstone in &page.tombstones {
+            if !chunks.contains_key(tombstone.layer.as_str())
+                || !deleted.insert((tombstone.layer.as_str(), tombstone.object_id.as_str()))
+            {
+                return Err(refuse(
+                    RefusalCode::SnapshotInvalid,
+                    "tombstone layer is absent or ID repeats across pages",
+                ));
+            }
+            tombstones.push(tombstone.clone());
+        }
+        if changed.len() > MAX_CHUNKS || retired.len() > MAX_CHUNKS || deleted.len() > MAX_CHUNKS {
+            return Err(refuse(
+                RefusalCode::SnapshotBudgetExceeded,
+                "assembled delta exceeds change bounds",
+            ));
+        }
+    }
+    let manifest = pages
+        .last()
+        .and_then(|page| page.terminal_manifest.as_ref())
+        .ok_or_else(|| {
+            refuse(
+                RefusalCode::SnapshotIncomplete,
+                "delta has no terminal receipt",
+            )
+        })?;
+    manifest.verify_sha256()?;
+    if manifest.layers.len() != base.layers.len() {
+        return Err(refuse(
+            RefusalCode::SnapshotResnapshotRequired,
+            "delta changed layer inventory",
+        ));
+    }
+    for layer in &manifest.layers {
+        let old = base
+            .layers
+            .iter()
+            .find(|old| old.name == layer.name)
+            .ok_or_else(|| {
+                refuse(
+                    RefusalCode::SnapshotResnapshotRequired,
+                    "delta changed layer inventory",
+                )
+            })?;
+        if layer.geometry != old.geometry
+            || layer.crs != old.crs
+            || layer.schema_sha256 != old.schema_sha256
+            || layer.stable_id_column != old.stable_id_column
+            || layer.revision_column != old.revision_column
+        {
+            return Err(refuse(
+                RefusalCode::SnapshotResnapshotRequired,
+                "delta changed layer schema",
+            ));
+        }
+        let actual: BTreeMap<&str, &Chunk> = layer
+            .chunks
+            .iter()
+            .map(|chunk| (chunk.sha256.as_str(), chunk))
+            .collect();
+        if chunks.get(layer.name.as_str()) != Some(&actual) {
+            return Err(refuse(
+                RefusalCode::SnapshotIncomplete,
+                "terminal manifest differs from accumulated chunk changes",
+            ));
+        }
+    }
+    Ok(DeltaPlan {
+        manifest,
+        tombstones,
+    })
 }

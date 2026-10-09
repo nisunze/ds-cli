@@ -158,6 +158,7 @@ impl Store {
             CREATE TABLE IF NOT EXISTS authority(id INTEGER PRIMARY KEY CHECK(id=1),context TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS chunks(sha TEXT PRIMARY KEY,layer TEXT NOT NULL,schema_sha TEXT NOT NULL,bytes INTEGER NOT NULL,rows INTEGER NOT NULL);
             CREATE TABLE IF NOT EXISTS objects(chunk TEXT NOT NULL,id TEXT NOT NULL,revision TEXT NOT NULL,row_sha TEXT NOT NULL,ordinal INTEGER NOT NULL,PRIMARY KEY(chunk,id));
+            CREATE INDEX IF NOT EXISTS objects_by_id ON objects(id,chunk);
             CREATE TABLE IF NOT EXISTS manifests(sha TEXT PRIMARY KEY,body TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS members(manifest TEXT NOT NULL,layer TEXT NOT NULL,chunk TEXT NOT NULL,PRIMARY KEY(manifest,layer,chunk));
             CREATE TABLE IF NOT EXISTS head(id INTEGER PRIMARY KEY CHECK(id=1),sha TEXT NOT NULL);").map_err(storage)?;
@@ -227,6 +228,39 @@ impl Store {
         inputs: &BTreeMap<String, PathBuf>,
         expected_head: Option<&str>,
         cancelled: &dyn Fn() -> bool,
+    ) -> Result<Admission> {
+        self.admit_checked(manifest, inputs, expected_head, cancelled, None)
+    }
+
+    /// Ordered source deltas replace chunks against an exact immutable base.
+    /// All removed object IDs require final tombstones before the head changes.
+    pub fn apply_delta(
+        &self,
+        pages: &[policy::DeltaPage],
+        inputs: &BTreeMap<String, PathBuf>,
+        cancelled: &dyn Fn() -> bool,
+    ) -> Result<Admission> {
+        let first = pages
+            .first()
+            .ok_or_else(|| storage("delta pages are empty"))?;
+        let base = self.pin(&first.base_manifest_sha256)?;
+        let plan = policy::assemble_delta(base.manifest(), pages)?;
+        self.admit_checked(
+            plan.manifest,
+            inputs,
+            Some(&first.base_manifest_sha256),
+            cancelled,
+            Some(&plan.tombstones),
+        )
+    }
+
+    fn admit_checked(
+        &self,
+        manifest: &Manifest,
+        inputs: &BTreeMap<String, PathBuf>,
+        expected_head: Option<&str>,
+        cancelled: &dyn Fn() -> bool,
+        tombstones: Option<&[policy::Tombstone]>,
     ) -> Result<Admission> {
         let started = Instant::now();
         manifest.validate(&self.context)?;
@@ -443,6 +477,14 @@ impl Store {
                     .map_err(storage)?;
             }
         }
+        if let Some(tombstones) = tombstones {
+            validate_deletions(
+                &transaction,
+                expected_head.ok_or_else(|| storage("delta base is absent"))?,
+                &manifest.manifest_sha256,
+                tombstones,
+            )?;
+        }
         if logical_digest(&transaction, &manifest.manifest_sha256)? != manifest.logical_data_sha256
         {
             return Err(storage("snapshot logical data digest differs"));
@@ -615,6 +657,34 @@ fn logical_digest(connection: &Connection, manifest: &str) -> Result<String> {
     Ok(format!("{:x}", hash.finalize()))
 }
 
+fn validate_deletions(
+    connection: &Connection,
+    base: &str,
+    target: &str,
+    tombstones: &[policy::Tombstone],
+) -> Result<()> {
+    let declared: BTreeSet<(&str, &str)> = tombstones
+        .iter()
+        .map(|t| (t.layer.as_str(), t.object_id.as_str()))
+        .collect();
+    for (layer, id) in &declared {
+        let exists: bool = connection.query_row("SELECT EXISTS(SELECT 1 FROM members m JOIN objects o ON o.chunk=m.chunk WHERE m.manifest=?1 AND m.layer=?2 AND o.id=?3)",params![target,layer,id],|row|row.get(0)).map_err(storage)?;
+        if exists {
+            return Err(storage("tombstoned object remains in terminal snapshot"));
+        }
+    }
+    let mut statement = connection.prepare("SELECT m.layer,o.id FROM members m JOIN objects o ON o.chunk=m.chunk WHERE m.manifest=?1 AND NOT EXISTS(SELECT 1 FROM members n JOIN objects p ON p.chunk=n.chunk WHERE n.manifest=?2 AND n.layer=m.layer AND p.id=o.id)").map_err(storage)?;
+    let mut removed = statement.query(params![base, target]).map_err(storage)?;
+    while let Some(row) = removed.next().map_err(storage)? {
+        let layer: String = row.get(0).map_err(storage)?;
+        let id: String = row.get(1).map_err(storage)?;
+        if !declared.contains(&(layer.as_str(), id.as_str())) {
+            return Err(storage("removed live object has no delta tombstone"));
+        }
+    }
+    Ok(())
+}
+
 fn sync_directory(path: &Path) -> Result<()> {
     #[cfg(unix)]
     File::open(path)
@@ -718,7 +788,7 @@ mod tests {
             let reader = ArtifactReader::open(&path, 128).unwrap();
             schema_sha = schema_digest(reader.schema()).unwrap();
             let hash = digest_file(&path).unwrap();
-            chunks.push(json!({"sha256":hash,"bytes":fs::metadata(&path).unwrap().len(),"rows":part.len(),"artifact":format!("chunk-{}",chunks.len())}));
+            chunks.push(json!({"sha256":hash,"bytes":fs::metadata(&path).unwrap().len(),"rows":part.len(),"artifact":format!("chunk-{hash}")}));
             inputs.insert(hash, path);
             features.extend(part);
         }
@@ -832,6 +902,173 @@ mod tests {
                 .visit_layer("poles", None, &|| false, &mut |_| Ok(()))
                 .unwrap(),
             2
+        );
+    }
+
+    fn delta(
+        base: &Manifest,
+        target: &Manifest,
+        tombstones: Vec<policy::Tombstone>,
+    ) -> Vec<policy::DeltaPage> {
+        let old: BTreeSet<String> = base.layers[0]
+            .chunks
+            .iter()
+            .map(|chunk| chunk.sha256.clone())
+            .collect();
+        let new: BTreeSet<String> = target.layers[0]
+            .chunks
+            .iter()
+            .map(|chunk| chunk.sha256.clone())
+            .collect();
+        let first = policy::DeltaPage {
+            context: base.context.clone(),
+            batch_id: format!("batch-{}", target.revision.change_cursor),
+            base_manifest_sha256: base.manifest_sha256.clone(),
+            from: base.revision.clone(),
+            target: target.revision.clone(),
+            page: 0,
+            next_page: Some(1),
+            changed_chunks: BTreeMap::new(),
+            retired_chunks: BTreeMap::from([(
+                "poles".into(),
+                old.difference(&new).cloned().collect(),
+            )]),
+            tombstones,
+            terminal_manifest: None,
+        };
+        let last = policy::DeltaPage {
+            page: 1,
+            next_page: None,
+            retired_chunks: BTreeMap::new(),
+            tombstones: Vec::new(),
+            changed_chunks: BTreeMap::from([(
+                "poles".into(),
+                target.layers[0]
+                    .chunks
+                    .iter()
+                    .filter(|chunk| !old.contains(&chunk.sha256))
+                    .cloned()
+                    .collect(),
+            )]),
+            terminal_manifest: Some(target.clone()),
+            ..first.clone()
+        };
+        vec![first, last]
+    }
+
+    #[test]
+    fn ordered_delta_deletion_restore_and_move_match_complete_artifacts() {
+        let workspace = fixture();
+        let root = workspace.path();
+        let store = Store::open(root, context(), SourceKind::Survey).unwrap();
+        let (first, inputs) = snapshot(
+            root,
+            vec![vec![point("p1", 1.0, "r1")], vec![point("p2", 10.0, "r1")]],
+            "head-1",
+        );
+        store.admit(&first, &inputs, None, &|| false).unwrap();
+        let (deleted, _) = snapshot(root, vec![vec![point("p2", 10.0, "r1")]], "head-2");
+        let pages = delta(&first, &deleted, Vec::new());
+        assert!(store
+            .apply_delta(&pages, &BTreeMap::new(), &|| false)
+            .unwrap_err()
+            .reason
+            .contains("no delta tombstone"));
+        assert_eq!(store.head().unwrap().unwrap(), first);
+        let pages = delta(
+            &first,
+            &deleted,
+            vec![policy::Tombstone {
+                layer: "poles".into(),
+                object_id: "p1".into(),
+                object_revision: "r2".into(),
+            }],
+        );
+        let receipt = store
+            .apply_delta(&pages, &BTreeMap::new(), &|| false)
+            .unwrap();
+        assert_eq!((receipt.imported_chunks, receipt.reused_chunks), (0, 1));
+        assert!(
+            !store
+                .apply_delta(&pages, &BTreeMap::new(), &|| false)
+                .unwrap()
+                .changed
+        );
+        let mut base = deleted;
+        for (head, x, revision) in [("head-3", 4.0, "r3"), ("head-4", 5.0, "r4")] {
+            let expected = vec![point("p1", x, revision), point("p2", 10.0, "r1")];
+            let (target, mut input) = snapshot(
+                root,
+                expected
+                    .iter()
+                    .cloned()
+                    .map(|feature| vec![feature])
+                    .collect(),
+                head,
+            );
+            for chunk in &base.layers[0].chunks {
+                input.remove(&chunk.sha256);
+            }
+            let receipt = store
+                .apply_delta(&delta(&base, &target, Vec::new()), &input, &|| false)
+                .unwrap();
+            assert_eq!((receipt.imported_chunks, receipt.reused_chunks), (1, 1));
+            let mut observed = Vec::new();
+            store
+                .pin(&target.manifest_sha256)
+                .unwrap()
+                .visit_layer("poles", None, &|| false, &mut |feature| {
+                    observed.push(feature);
+                    Ok(())
+                })
+                .unwrap();
+            assert_eq!(observed, expected);
+            assert_eq!(store.head().unwrap().unwrap(), target);
+            base = target;
+        }
+    }
+
+    #[test]
+    fn malformed_delta_assembly_never_changes_a_native_head() {
+        let workspace = fixture();
+        let root = workspace.path();
+        let store = Store::open(root, context(), SourceKind::Survey).unwrap();
+        let (base, input) = snapshot(root, vec![vec![point("p1", 1.0, "r1")]], "head-1");
+        store.admit(&base, &input, None, &|| false).unwrap();
+        let (target, input) = snapshot(root, vec![vec![point("p1", 2.0, "r2")]], "head-2");
+        let valid = delta(&base, &target, Vec::new());
+        for kind in 0..5 {
+            let mut bad = valid.clone();
+            match kind {
+                0 => bad.reverse(),
+                1 => {
+                    bad[1].batch_id = "other-batch".into();
+                }
+                2 => {
+                    bad[0].retired_chunks.clear();
+                }
+                3 => {
+                    bad[1].changed_chunks.clear();
+                }
+                _ => {
+                    bad[1].tombstones.push(policy::Tombstone {
+                        layer: "poles".into(),
+                        object_id: "p1".into(),
+                        object_revision: "r3".into(),
+                    });
+                }
+            }
+            assert!(
+                store.apply_delta(&bad, &input, &|| false).is_err(),
+                "case {kind}"
+            );
+            assert_eq!(store.head().unwrap().unwrap(), base);
+        }
+        assert!(
+            store
+                .apply_delta(&valid, &input, &|| false)
+                .unwrap()
+                .changed
         );
     }
 

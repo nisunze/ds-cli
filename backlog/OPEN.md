@@ -590,8 +590,9 @@ Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group A, to be fixed to
   autonomous code. Whole-path acceptance is in the plan's matrix.
 
   Active: **2 — finish immutable columnar store** around
-  `ds-layer-store::project_snapshot::Store`: ordered persisted delta pages, exact
-  replacement/tombstone validation, spatial indexes/Polars projection and filter
+  `ds-layer-store::project_snapshot::Store`: persist/resume acquisition pages and
+  replay receipts across base retention around the existing ordered
+  `assemble_delta`/`apply_delta` transaction; spatial indexes/Polars projection and filter
   pushdown, persisted local masks, recovery estimates and bounded retention policy.
   Prove actual Windows ACL/locking/crash recovery; the helper MSVC compile check
   is not Windows execution. Extend the existing chunk/head/pin implementation

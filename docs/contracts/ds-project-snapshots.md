@@ -113,10 +113,36 @@ only unreferenced chunks and abandoned owned staging files are removed under the
 catalogue lock. A refresh can promote a new head while an old reader remains pinned.
 
 Proof commands: `cargo test --locked --manifest-path crates/ds-layer-store/Cargo.toml
---lib` (106 tests, including real Parquet admission/masks/recovery/retention and
+--lib` (108 tests, including real Parquet admission/masks/recovery/retention and
 privacy refusal); the Windows helper additionally passes an MSVC target metadata
 check. The latter is not Windows runtime, locking, filesystem durability or
 packaging acceptance. Acquisition adapters, ordered delta application, spatial
 index/Polars projection, persisted masks and deployed callers remain distinct
 obligations in OPEN section 16; full streaming local masks alone do not satisfy
 that performance matrix.
+
+## Ordered differential application
+
+`assemble_delta` validates the complete ordered page set against an exact base
+manifest: one batch/target, contiguous pages, one final terminal receipt, bounded
+changes/tombstones and an unchanged layer schema/inventory. Retiring absent or
+repeated chunks, repeating changed chunks, or a terminal manifest inconsistent
+with accumulated replacements refuses. Both base and terminal manifest identities
+must verify. Layer inventory/schema changes require explicit resnapshot recovery.
+
+`Store::apply_delta` pins the base and applies the plan in the same atomic
+admission transaction. Before advancing the head it checks every removed live
+object ID has a final tombstone and no tombstoned ID remains in the target.
+A stable-ID move is a replacement rather than deletion; restoring a previously
+removed ID is an addition. Replaying an identical completed delta against a still
+retained base is a no-op. A stale base, malformed page, missing tombstone or
+corrupt input leaves the current head/cursor untouched. Opaque revision ordering
+and source attestation remain the authenticated source protocol's responsibility;
+local structural/byte checks never substitute for source authorization.
+
+Owning native tests execute deletion, restoration and movement from actual
+Parquet artifacts, compare retained results with full logical source features,
+assert unchanged chunk reuse, and prove malformed batches cannot advance a head.
+Persisted page-by-page acquisition/resume and replay receipts surviving base
+retention remain acquisition integration obligations; this door accepts an
+already acquired complete bounded page set.
