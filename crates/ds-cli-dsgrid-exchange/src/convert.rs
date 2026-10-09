@@ -29,7 +29,8 @@ use ds_cli_contract::spec::{
 };
 use ds_cli_contract::{Context, Inputs};
 use ds_grid_exchange::conversion::{
-    ConversionError, ConversionOutcome, ConversionPlan, execute_conversion, plan_conversion,
+    ConversionError, ConversionOutcome, ConversionPlan, OutcomeStatus, execute_conversion,
+    plan_conversion,
 };
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -53,7 +54,9 @@ Source bytes are re-digested against the plan's pins before anything is \
 written, so a source that changed since planning stops the run. Existing \
 output paths are never overwritten. A kmz or shp is a client GIS file: it \
 leaves out tension_sections and terrain_points unless --include-layer names \
-them, and its engine report is written beside it, never inside.",
+them, and its engine report is written beside it, never inside. A conversion \
+that runs but does not complete is not a success: it fails as \
+conversion_failed or conversion_partial after writing its exchange report.",
     chapter: Chapter::GridModel,
     effect: Effect::LocalFileWrite,
     authority: Authority::None,
@@ -113,7 +116,7 @@ const fn args() -> [Arg; request::SHARED_ARGS.len() + 1] {
     out
 }
 
-static REFUSALS: [Refusal; 17] = refusals::splice(&[
+static REFUSALS: [Refusal; 19] = refusals::splice(&[
     sources::SHARED_REFUSALS,
     request::REQUEST_REFUSALS,
     CONVERT_REFUSALS,
@@ -152,6 +155,16 @@ const CONVERT_REFUSALS: &[Refusal] = &[
         code: "report_unserializable",
         when: "the exchange report could not be encoded",
         remedy: "report this: the artifacts were written, but their evidence document was not",
+    },
+    Refusal {
+        code: "conversion_failed",
+        when: "the plan ran but no source produced its target artifact",
+        remedy: "read each source's detail and the exchange report written under --out; resolve the named cause, plan again and convert into a new directory",
+    },
+    Refusal {
+        code: "conversion_partial",
+        when: "the plan ran and some sources converted while others failed",
+        remedy: "the written artifacts and the exchange report stay as evidence; resolve each failed source's detail and convert those sources into a new directory",
     },
 ];
 
@@ -194,7 +207,40 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let written = materialize(&out_dir, &outcome)?;
     let report_path = write_report(&out_dir, &plan, &outcome, &source_paths)?;
 
-    Ok(project(&plan, &outcome, written, &report_path))
+    finish(
+        &outcome.status,
+        project(&plan, &outcome, written, &report_path),
+    )
+}
+
+/// Only a completed outcome is a success.
+///
+/// A conversion that ran and failed, wholly or for some sources, has already
+/// written what it produced and the exchange report: those are the evidence a
+/// reader needs. The envelope still has to say the work did not happen, or a
+/// caller (and every reliability report built on the exit class) would count
+/// a backup that was never written as delivered.
+fn finish(status: &OutcomeStatus, answer: Value) -> Result<Value, Failure> {
+    let failure = match status {
+        OutcomeStatus::Completed => return Ok(answer),
+        OutcomeStatus::Failed => Failure::failed(
+            "conversion_failed",
+            "the conversion ran but no source produced its target artifact",
+        )
+        .remedy(
+            "read each source's detail and the exchange report under --out; resolve the named cause, plan again and convert into a new directory",
+        ),
+        OutcomeStatus::PartiallyCompleted => Failure::failed(
+            "conversion_partial",
+            "the conversion ran but only some sources produced their target artifacts",
+        )
+        .remedy(
+            "keep the written artifacts and report as evidence; resolve each failed source's detail and convert those sources into a new directory",
+        ),
+    };
+    Err(failure
+        .next("ds dsgrid-exchange plan --source <path> --target <format>")
+        .detail(answer))
 }
 
 /// Map the engine's typed refusal onto this command's stable codes.
@@ -455,4 +501,61 @@ pub fn render(data: &Value) -> String {
     render::list(&mut out, "LOSSES", &data["losses"]);
     render::list(&mut out, "WARNINGS", &data["warnings"]);
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use ds_cli_contract::outcome::ExitClass;
+
+    use super::*;
+
+    fn answer(status: &str) -> Value {
+        json!({
+            "plan_id": "plan:pinned",
+            "status": status,
+            "target": "pls_backup",
+            "written": [],
+            "written_count": 0,
+            "report": "/out/exchange-report.json",
+            "per_source": [{
+                "source_index": 0,
+                "name": "model.dsgrid",
+                "status": "failed",
+                "detail": "strict workspace export failed: 2 difference(s) fall outside this release's characterized export edit classes",
+            }],
+        })
+    }
+
+    /// A conversion that ran without producing what was asked for answers
+    /// with a failure envelope, never `ok` (the PLS `.bak` export that wrote
+    /// nothing used to report success). The written evidence travels in the
+    /// detail, and both codes are declared on the command.
+    #[test]
+    fn only_a_completed_outcome_is_a_success() {
+        let completed = finish(&OutcomeStatus::Completed, answer("completed")).unwrap();
+        assert_eq!(completed["status"], "completed");
+
+        for (status, code) in [
+            (OutcomeStatus::Failed, "conversion_failed"),
+            (OutcomeStatus::PartiallyCompleted, "conversion_partial"),
+        ] {
+            let failure = finish(&status, answer(&token(&status))).unwrap_err();
+            assert_eq!(failure.code(), code);
+            assert_eq!(failure.class(), ExitClass::Failed);
+            assert!(
+                failure
+                    .remedy_text()
+                    .is_some_and(|remedy| !remedy.is_empty())
+            );
+            let detail = failure
+                .detail_value()
+                .expect("the outcome travels as detail");
+            assert_eq!(detail["report"], "/out/exchange-report.json");
+            assert_eq!(detail["per_source"][0]["status"], "failed");
+            assert!(
+                COMMAND.refusals.iter().any(|refusal| refusal.code == code),
+                "{code} is not declared"
+            );
+        }
+    }
 }

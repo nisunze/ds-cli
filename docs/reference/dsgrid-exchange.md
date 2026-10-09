@@ -220,7 +220,7 @@ outcome together. The pair is the evidence: the plan says what was promised,
 the outcome says what happened, and a reader comparing them needs both in one
 file.
 
-Three rules hold, and they are the reason this is safe to hand to an agent:
+Four rules hold, and they are the reason this is safe to hand to an agent:
 
 - **The plan is re-pinned.** A source edited between `plan` and `convert`
   fails with `source_digest_mismatch` rather than converting bytes nobody
@@ -235,6 +235,12 @@ Three rules hold, and they are the reason this is safe to hand to an agent:
 - **It never overwrites.** An existing output path is `output_exists`, a
   `conflict`. There is deliberately no `--force`: the remedy is a new
   directory, which keeps the previous conversion's evidence intact.
+- **Only a completed run is a success.** When the plan runs but no source
+  produces its target artifact the answer is `conversion_failed`; when only
+  some do, `conversion_partial`. Both are `failed` envelopes written after
+  the artifacts that were produced and `exchange-report.json`, and their
+  detail carries the same per-source status, written list and report path a
+  completed run returns.
 
 `convert` is `local_file_write`, not `artifact_write`, so it does not require
 `--yes`. It writes into a directory the caller named, and publishes nothing.
