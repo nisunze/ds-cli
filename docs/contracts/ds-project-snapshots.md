@@ -50,3 +50,11 @@ must record requests, transfer, source work, cloud invocations and latency.
 Owning tests: `tests/project_snapshot.rs` proves source policy, zero data,
 filtered/restricted scope, pagination, moving heads, mirror lag, context fences,
 upload identity, chunk counts, closed schemas and cursor-bound delta refusal.
+
+Native GeoParquet consumers use the canonical `ds-geo-lite::wkb::geometry_from_wkb`
+codec with an explicit node budget. It preserves polygon rings and multipart
+geometry, admits either WKB byte order, and refuses truncation, trailing bytes,
+non-finite coordinates, mismatched multipart types, extended dimensions, excessive
+nesting and declared counts exceeding the remaining input or budget. It does not
+assert CRS or geometric validity; those remain source admission and exact-mask
+responsibilities. The compatibility envelope reader is not an admission validator.

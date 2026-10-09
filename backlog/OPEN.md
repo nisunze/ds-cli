@@ -615,8 +615,9 @@ Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group A, to be fixed to
   service/repository after tracing and replacing/retiring its non-tiling consumers;
   remove its deployment/gateway bindings. Combined and simple report generation
   becomes PC-only for ordinary users; keep central artifact publication/download.
-  Enforce remote report generation for verified developers only at the API,
-  with ordinary compute menus read-only and labelled as migrating to PC.
+  Development deployment must prove developer-only remote report admission
+  from ds-brain `docs/contracts/remote-report-admission.md`; ordinary compute
+  menus remain to be made read-only and labelled as migrating to PC.
   Remote tiling is removed for everyone, including developers.
 
 - `33003988` (minor): a second install of the same dataset while the first is still downloading reopens the same `.part`; on Windows every attempt fails at once with "open existing partial download safely", the bridge reports 422, and the first download finishes on its own, so a one-shot install reports a false permanent failure. **Proof:** a concurrent second request for the same destination is told the download is in flight, and the one-shot wetlands install completes.

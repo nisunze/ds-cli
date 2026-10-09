@@ -1,4 +1,4 @@
-//! GeoJSON geometry to little-endian 2D WKB.
+//! Canonical 2D WKB encoding and bounded native decoding.
 //!
 //! Canonical codec shared by cleaning and columnar output. The byte layout is
 //! part of the streaming contract the browser already reads, so it is fixed:
@@ -13,6 +13,123 @@ pub fn geometry_to_wkb(geometry: &Value) -> Option<Vec<u8>> {
     let mut out = Vec::new();
     write_geometry(&mut out, kind, coordinates).ok()?;
     Some(out)
+}
+
+/// Decode one complete 2D WKB geometry for native columnar consumers.
+///
+/// Unlike the compatibility envelope reader this refuses partial, non-finite,
+/// extended-dimensional and trailing data. `max_nodes` bounds the combined
+/// number of geometries, rings and coordinates, including empty parts. CRS
+/// and geometric validity remain the source/mask authority's responsibility.
+pub fn geometry_from_wkb(wkb: &[u8], max_nodes: usize) -> Result<Value, String> {
+    let mut decoder = GeometryDecoder {
+        bytes: wkb,
+        cursor: 0,
+        remaining: max_nodes,
+    };
+    let geometry = decoder.geometry(0, None)?;
+    if decoder.cursor != wkb.len() {
+        return Err("WKB has trailing bytes".into());
+    }
+    Ok(geometry)
+}
+
+struct GeometryDecoder<'a> {
+    bytes: &'a [u8],
+    cursor: usize,
+    remaining: usize,
+}
+
+impl GeometryDecoder<'_> {
+    fn admit(&mut self, count: usize) -> Result<(), String> {
+        self.remaining = self
+            .remaining
+            .checked_sub(count)
+            .ok_or("WKB node budget exceeded")?;
+        Ok(())
+    }
+
+    fn count(&mut self, order: u8, minimum_bytes: usize) -> Result<usize, String> {
+        let count =
+            read_u32(self.bytes, &mut self.cursor, order).ok_or("truncated WKB count")? as usize;
+        if count > self.remaining || count > (self.bytes.len() - self.cursor) / minimum_bytes {
+            return Err("WKB count exceeds node budget or remaining bytes".into());
+        }
+        Ok(count)
+    }
+
+    fn point(&mut self, order: u8) -> Result<Value, String> {
+        self.admit(1)?;
+        let x = read_f64(self.bytes, &mut self.cursor, order).ok_or("truncated WKB coordinate")?;
+        let y = read_f64(self.bytes, &mut self.cursor, order).ok_or("truncated WKB coordinate")?;
+        if !x.is_finite() || !y.is_finite() {
+            return Err("WKB coordinates must be finite".into());
+        }
+        Ok(serde_json::json!([x, y]))
+    }
+
+    fn line(&mut self, order: u8) -> Result<Value, String> {
+        let count = self.count(order, 16)?;
+        let mut points = Vec::with_capacity(count);
+        for _ in 0..count {
+            points.push(self.point(order)?);
+        }
+        Ok(Value::Array(points))
+    }
+
+    fn geometry(&mut self, depth: usize, expected: Option<u32>) -> Result<Value, String> {
+        if depth > MAX_WKB_DEPTH {
+            return Err("WKB nesting limit exceeded".into());
+        }
+        self.admit(1)?;
+        let order = *self.bytes.get(self.cursor).ok_or("truncated WKB header")?;
+        self.cursor += 1;
+        if order > 1 {
+            return Err("invalid WKB byte order".into());
+        }
+        let code = read_u32(self.bytes, &mut self.cursor, order).ok_or("truncated WKB type")?;
+        if expected.is_some_and(|kind| kind != code) {
+            return Err("WKB multipart member type mismatch".into());
+        }
+        let (kind, coordinates) = match code {
+            1 => ("Point", self.point(order)?),
+            2 => ("LineString", self.line(order)?),
+            3 => {
+                let count = self.count(order, 4)?;
+                self.admit(count)?;
+                let mut rings = Vec::with_capacity(count);
+                for _ in 0..count {
+                    rings.push(self.line(order)?);
+                }
+                ("Polygon", Value::Array(rings))
+            }
+            4..=7 => {
+                let count = self.count(order, 5)?;
+                let mut parts = Vec::with_capacity(count);
+                for _ in 0..count {
+                    let part = self.geometry(depth + 1, (code != 7).then_some(code - 3))?;
+                    parts.push(if code == 7 {
+                        part
+                    } else {
+                        part["coordinates"].clone()
+                    });
+                }
+                if code == 7 {
+                    return Ok(
+                        serde_json::json!({"type":"GeometryCollection", "geometries":parts}),
+                    );
+                }
+                let kind = match code {
+                    4 => "MultiPoint",
+                    5 => "MultiLineString",
+                    _ => "MultiPolygon",
+                };
+                (kind, Value::Array(parts))
+            }
+            _ => return Err("unsupported WKB geometry type or dimensions".into()),
+        };
+        Ok(serde_json::json!({"type":kind, "coordinates":coordinates}))
+    }
 }
 
 fn write_geometry(out: &mut Vec<u8>, kind: &str, coords: &Value) -> Result<(), String> {
@@ -117,9 +234,8 @@ fn point_coords(value: &Value) -> Result<(f64, f64), String> {
 /// The coordinate of a WKB point.
 ///
 /// Only `Point` is decoded, and completely: a point has exactly one unambiguous
-/// answer. Nothing here decodes the compound geometries — a partial reader that
-/// silently returns the first vertex of a polygon would be worse than no reader,
-/// so callers needing those read the WKB themselves.
+/// answer. Native compound-geometry consumers use [`geometry_from_wkb`],
+/// which checks complete consumption and a caller-supplied resource budget.
 pub fn point_xy(wkb: &[u8]) -> Option<(f64, f64)> {
     if wkb.len() < 21 || wkb[0] != 1 {
         return None;
@@ -263,6 +379,79 @@ fn read_f64(wkb: &[u8], cursor: &mut usize, order: u8) -> Option<f64> {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn native_decoder_preserves_holes_and_multipart_geometry() {
+        let fixtures = [
+            json!({"type":"Point","coordinates":[30.0,-2.0]}),
+            json!({"type":"LineString","coordinates":[[1.0,2.0],[3.0,4.0]]}),
+            json!({"type":"Polygon","coordinates":[[[0.0,0.0],[9.0,0.0],[9.0,9.0],[0.0,0.0]],[[1.0,1.0],[2.0,1.0],[2.0,2.0],[1.0,1.0]]]}),
+            json!({"type":"MultiPoint","coordinates":[[1.0,2.0],[3.0,4.0]]}),
+            json!({"type":"MultiLineString","coordinates":[[[1.0,2.0],[3.0,4.0]],[]]}),
+            json!({"type":"MultiPolygon","coordinates":[[[[0.0,0.0],[2.0,0.0],[2.0,2.0],[0.0,0.0]]],[]]}),
+        ];
+        for geometry in fixtures {
+            let bytes = geometry_to_wkb(&geometry).unwrap();
+            assert_eq!(geometry_from_wkb(&bytes, 100).unwrap(), geometry);
+            for end in 0..bytes.len() {
+                assert!(geometry_from_wkb(&bytes[..end], 100).is_err());
+            }
+            assert!(geometry_from_wkb(&bytes, 1).is_err());
+            let mut trailing = bytes;
+            trailing.push(0);
+            assert!(geometry_from_wkb(&trailing, 100).is_err());
+        }
+    }
+
+    #[test]
+    fn native_decoder_rejects_nonfinite_wrong_types_and_hostile_counts() {
+        let mut point = vec![0];
+        point.extend_from_slice(&1_u32.to_be_bytes());
+        point.extend_from_slice(&30_f64.to_be_bytes());
+        point.extend_from_slice(&(-2_f64).to_be_bytes());
+        assert_eq!(
+            geometry_from_wkb(&point, 2).unwrap()["coordinates"],
+            json!([30.0, -2.0])
+        );
+        for bad in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+            point[5..13].copy_from_slice(&bad.to_be_bytes());
+            assert!(geometry_from_wkb(&point, 2).is_err());
+        }
+        let valid = geometry_to_wkb(&json!({"type":"Point","coordinates":[1.0,2.0]})).unwrap();
+        let mut multi = vec![1];
+        multi.extend_from_slice(&5_u32.to_le_bytes()); // MultiLineString cannot contain Point.
+        multi.extend_from_slice(&1_u32.to_le_bytes());
+        multi.extend_from_slice(&valid);
+        assert!(geometry_from_wkb(&multi, 100).is_err());
+        multi[5..9].copy_from_slice(&u32::MAX.to_le_bytes());
+        assert!(geometry_from_wkb(&multi, usize::MAX).is_err());
+        let mut invalid_order = valid;
+        invalid_order[0] = 2;
+        assert!(geometry_from_wkb(&invalid_order, 100).is_err());
+    }
+
+    #[test]
+    fn native_decoder_bounds_nested_empty_collections() {
+        let mut bytes = vec![1];
+        bytes.extend_from_slice(&7_u32.to_le_bytes());
+        bytes.extend_from_slice(&0_u32.to_le_bytes());
+        assert_eq!(
+            geometry_from_wkb(&bytes, 1).unwrap(),
+            json!({"type":"GeometryCollection","geometries":[]})
+        );
+        for _ in 0..40 {
+            let mut outer = vec![1];
+            outer.extend_from_slice(&7_u32.to_le_bytes());
+            outer.extend_from_slice(&1_u32.to_le_bytes());
+            outer.extend(bytes);
+            bytes = outer;
+        }
+        assert!(
+            geometry_from_wkb(&bytes, 100)
+                .unwrap_err()
+                .contains("nesting")
+        );
+    }
 
     #[test]
     fn truncated_blob_retains_its_read_prefix_during_relocation() {
