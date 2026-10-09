@@ -30,7 +30,7 @@ Candidate curation and native PLS-CADD acceptance are separate from coding the c
 | [14. Plan and Profile authoring](#14-plan-and-profile-authoring) | 6 |
 | [15. Project deliveries](#15-project-deliveries) | 6 |
 | [16. Map data, datasets and screen styling](#16-map-data-datasets-and-screen-styling) | 6 |
-| [17. Project Work and Assets](#17-project-work-and-assets) | 5 |
+| [17. Project Work and Assets](#17-project-work-and-assets) | 6 |
 | [18. Global DS Grid library](#18-global-ds-grid-library) | 3 |
 | [21. Windows native release](#21-windows-native-release) | 8 |
 | [22. Operations](#22-operations) | 3 |
@@ -213,6 +213,8 @@ Candidate curation and native PLS-CADD acceptance are separate from coding the c
 - **EDCL `Customer_meter` has no geometry** (ds-network `POLARS-BENCHMARK-HANDOVER.md`, benchmark closed): Datum holds only `.cpg/.dbf/.shx`. Find the `.shp` or decide it is an attribute table joined on a key; never migrate from the tile pyramid `gs://edcl/edcl_geo_raw_tiles_19_a/`.
 
 ## 17. Project Work and Assets
+
+- **Shared canvas installed Desktop acceptance** (`ds-web 38d1cebe4`, `ds-network 96bb3d23/76260439`): native tests, matching WASM and local browser component checks pass; qualify the matching signed-in Linux Desktop separately. Verify one task's details, menu and staged deletion across Plan/Board; workflow drag/connect/Arrange plus portable JSON and native validation/run; Architecture chapter properties/Arrange; cross-page connection preferences; and the collapsed Survey moments Filters button. Capture interaction timings and preserve explicit project/revision context. The existing open Desktop session and another worker's Windows staging were deliberately preserved; fixture screenshots/timings are not installed or authenticated project acceptance. Contract: `ds-web/docs/specs/RUST_WASM_CANVAS_GEOMETRY_MIGRATION_CONTRACT.md`. Remaining source interaction migration is in `OPEN.md` §17.
 
 - **Authenticated Server and Dashboard acceptance** (`84f68d8d`, `1352e52e`): install matching Desktop artifacts, verify an authorized fresh production Server snapshot and independently verify the affected Project Work Dashboard. Published Web source/asset checks already passed; the old LAN cached snapshot does not prove current server state. Receipts: `ds-web/_discardable/hosting-stabilization-close-final/`.
 
