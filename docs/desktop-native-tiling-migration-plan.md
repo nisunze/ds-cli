@@ -37,6 +37,15 @@ remains a reusable native crate, not a second reporter implementation. Remove
 Tippecanoe and the external PMTiles conversion command from the migrated path.
 Do not merely wrap those executables in Rust.
 
+**Selected implementation: VersaTiles Rust libraries**, embedded behind
+`ds-tile-runtime` and consumed by `ds-network-reporter`. This is an owner decision,
+not an open Martin-versus-VersaTiles evaluation. Do not introduce Martin, a
+separate tile server, DuckDB or a new bespoke tile engine for this migration.
+DS owns its typed contracts, source acquisition, policy, budgets, jobs, cache and
+publication; VersaTiles supplies tile processing and PMTiles container machinery.
+Do not expose arbitrary VersaTiles pipeline expressions or network sources to
+callers. Construct the admitted local pipeline from validated DS request types.
+
 Parquet is reusable canonical snapshot data; PMTiles is a lossy display
 derivative. Future BigQuery mirrors must ingest the full snapshot, never decode
 PMTiles to recover original data. Keep Polars as the first analytics engine;
@@ -120,8 +129,29 @@ an admitted cached snapshot offline; online publication requires fresh authority
 Evolve `ds-tile-runtime` into the pure native tile-generation owner. Replace
 `TippecanoeOptions` with versioned engine options; translate any retained legacy
 input deliberately and delete the translation when its named callers migrate.
-Use portable Rust dependencies; audit crate capabilities/licenses before choosing
-them. A PMTiles writer alone does not replace a vector tiler.
+Pin one exact VersaTiles release/revision and its required Rust crates in the
+owning Cargo manifests/locks; audit licensing and feature/dependency closure.
+Use the minimal vector/container features, excluding unnecessary HTTP serving,
+cloud clients, raster/GDAL and alternative analytics dependencies. Confirm the
+selected pin contains the required APIs; upstream `main` documentation is not
+proof of a released dependency's behavior. A PMTiles writer alone does not
+replace a vector tiler.
+
+Qualify the selected libraries on actual Windows and Linux before switching
+production callers. Explicitly override automatic zoom selection and point
+reduction to the DS policy; never allow oversized tiles to be silently dropped
+by a streaming writer. Convert such omissions into a typed failure, or implement
+the missing bounded behavior in the owning adapter/upstream contribution. Keep
+stable source IDs as declared properties when MVT's numeric feature ID cannot
+represent them; prove uniqueness and lossless lookup. Validate multipart/holes,
+clipping, geometry/attribute preservation, memory, cancellation and deterministic
+PMTiles using section 9. If qualification finds a gap, report the exact gap and
+finish independent work; do not silently switch engines, reinstate Tippecanoe
+or claim qualification passed. A change of selected engine needs an owner decision.
+
+Reference documentation (implementation must verify against its pinned source):
+[VersaTiles pipeline](https://github.com/versatiles-org/versatiles-rs/blob/main/versatiles_pipeline/README.md),
+[Rust integration](https://docs.rs/versatiles/latest/versatiles/).
 
 Required algorithm contract:
 
@@ -279,8 +309,9 @@ remote CI builds or deployment under this plan alone.
    digests, private local catalogue, recovery and bounded retention. Prove
    schema/geometry roundtrip, nulls, IDs, tags, deletions, interrupted download,
    wrong lane/account/project, corruption, Windows locks/ACLs and offline reuse.
-3. **Pure Rust generator.** Replace external generation/conversion inside the
-   owning runtime. Prove geometry/MVT semantics and independently decoded PMTiles;
+3. **VersaTiles native generator.** Qualify the pinned Rust libraries and replace
+   external generation/conversion inside the owning runtime. Prove geometry/MVT
+   semantics and independently decoded PMTiles;
    deterministic shuffled input, cross-platform byte identity, cancellation,
    bounded dense data and invalid inputs. Retain baseline artifacts as test
    fixtures where lawful, not the obsolete executable as a shipped fallback.
@@ -349,8 +380,11 @@ absorbed by those contracts and no implementation work remains.
 > other agents' work. Treat the source matrix and 2026-10-09 owner ruling as
 > authoritative: survey through governed BigQuery snapshots; design through
 > current saved Firestore/DS Grid authority; no design-BigQuery transaction gate.
-> Replace Tippecanoe and external conversion with the shared Rust tile engine,
-> expose it through ds-network-reporter and the DS CLI/MCP, support actual Windows
+> Replace Tippecanoe and external conversion with pinned VersaTiles Rust libraries
+> behind the shared ds-tile-runtime owner; Martin and a bespoke engine are not
+> alternatives to evaluate. Qualify Windows, explicit zoom/point policy and
+> oversized-tile refusal before switching callers. Keep DS contracts authoritative.
+> Expose it through ds-network-reporter and the DS CLI/MCP, support actual Windows
 > native generation, add complete-snapshot report/survey triggers, reusable
 > Parquet/GeoParquet and Polars workflows, and remove Web generation controls and
 > replaced code. Coordinate the exact source/lease/publication protocol with the

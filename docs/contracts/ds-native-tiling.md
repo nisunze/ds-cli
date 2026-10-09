@@ -16,6 +16,19 @@ acceptance in [the migration plan](../desktop-native-tiling-migration-plan.md).
 The sections below describe the implementation baseline, not acceptance of the
 new direction. Replace them with the proven contract as each slice lands.
 
+### Selected engine: VersaTiles Rust libraries
+
+Owner decision, 2026-10-09: embed pinned VersaTiles vector-processing and PMTiles
+container libraries behind `ds-tile-runtime`, hosted by `ds-network-reporter`.
+Martin and a bespoke tile engine are not parallel options. DS retains source,
+authorization, completeness, freshness, budget, job and publication authority.
+Expose typed DS requests, not arbitrary upstream pipelines or network sources.
+Qualify actual Windows/Linux builds, geometry/attribute preservation, explicit
+zoom/point policy, bounded memory and deterministic output. Silent oversized-tile
+dropping is forbidden. Qualification gaps require a named fix/refusal; they do
+not authorize an engine switch or a Tippecanoe fallback. Details and proof are
+in section 4 of the migration plan; this selection does not claim it is installed.
+
 ## Implementation baseline
 
 Tiling belongs to the Rust server product. Web adapters call a container;

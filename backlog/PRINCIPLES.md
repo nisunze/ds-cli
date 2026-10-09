@@ -102,6 +102,10 @@ Why — the painful history:
 
 - Windows and Linux Desktop must generate survey, design and personal/project
   tiles locally through shared native Rust, hosted by ds-network-reporter.
+  The selected dependency is pinned VersaTiles Rust libraries behind
+  ds-tile-runtime; Martin and a bespoke engine are not alternative tracks.
+  Prove actual Windows operation and explicit DS data/zoom/budget policy; no
+  silent tile/feature dropping or fallback to an unselected engine.
   Replace Tippecanoe and external PMTiles conversion; remove ordinary Web tiling
   controls and cloud build dispatch. Web retains map, status and download reads.
 - Survey reads use governed BigQuery snapshots. Current saved design authority
