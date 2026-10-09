@@ -23,7 +23,7 @@ Unfinished code that an agent can implement and prove without further owner inpu
 | [14. Plan and Profile authoring](#14-plan-and-profile-authoring) | 1 |
 | [15. Project delivery code](#15-project-delivery-code) | 2 |
 | [16. Map data, datasets and screen styling](#16-map-data-datasets-and-screen-styling) | 9 |
-| [17. Project Work and Assets](#17-project-work-and-assets) | 7 |
+| [17. Project Work and Assets](#17-project-work-and-assets) | 8 |
 | [18. Global DS Grid library](#18-global-ds-grid-library) | 1 |
 | [19. Country neutrality and duplicated rules](#19-country-neutrality-and-duplicated-rules) | 2 |
 | [21. Windows release code](#21-windows-release-code) | 6 |
@@ -593,6 +593,8 @@ Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group A, to be fixed to
 - Never-landed (owner 2026-10-02, land adapted to run): Rust-owned selection: ds-network landed (one `RegionPredicate`, selector region clause; merge `78ed4a5`). The ds-web half (`slice/rust-owned-selection` `e6ee69e4`: `ds map design` selects through the WASM kernel) lands after a vendored WASM rebuild and its gate.
 
 ## 17. Project Work and Assets
+
+- **Canvas interaction migration — remaining Plan boundary** (owner canvas request, 2026-10-09): shared native connector routing and explicit arrangement do not complete the retained Plan interaction migration. `ds-web/src/lib/project-work/paper-canvas.ts` still assembles containment, undated-root parking (`paperAutoLayout`), dependency ports and card hit regions in TypeScript. Move those spatial decisions into the existing domain-neutral `ds-network/crates/ds-canvas-graph` owner while retaining canonical PM hierarchy/calendar inputs, authored placement, accessible controls and the shared Plan/Board task facts/menu. Trace selection/drag/fit consumers before replacing adapters; delete replaced arithmetic after native/WASM parity and Plan interaction tests. Do not reopen the completed shared route/Arrange algorithms or change task semantics. Authority: `ds-web/docs/specs/RUST_WASM_CANVAS_GEOMETRY_MIGRATION_CONTRACT.md` and `ds-network/docs/contracts/canvas-geometry-authority.md`.
 
 - `e9b5858d`, `40b53f7f` (blocker): paired Desktop assets ingest fails with a rejected upload request (browser refusal or 422), so a document cannot be attached to a work task.
 
