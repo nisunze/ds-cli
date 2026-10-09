@@ -9176,6 +9176,68 @@ fn settings_invalid_mutations_never_reach_a_write() {
     }
 }
 
+#[test]
+fn a_sheet_copy_creates_only_the_reviewed_sheet_and_a_moved_plan_never_writes() {
+    use ds_client_core::ProjectConfigurationChange as Change;
+    use serde_json::json;
+    let source = json!({
+        "groups":{"header_mapping":{"label":"Header Mapping","sheets":["layer_mapping"]}},
+        "sheets":{"layer_mapping":[{"layer":"lv_poles","source_layer":"Poles"}]}
+    });
+    let destination = json!({"groups":{},"sheets":{"cust_category":[{"clean_name":"household"}]}});
+    let plan = ds_command_kernel::design_config::plan_sheet_copy(
+        "project_a",
+        "template_project",
+        &source,
+        &destination,
+        "layer_mapping",
+    )
+    .unwrap();
+    let reviewed = plan.plan["plan_sha256"].as_str().unwrap().to_owned();
+    for (expected_plan, writes) in [(reviewed.clone(), true), ("0".repeat(64), false)] {
+        let transport = FixtureTransport::with_sign_in(SIGN_IN);
+        let mut readback = destination.clone();
+        readback["sheets"]["layer_mapping"] = plan.value.clone();
+        for response in [&destination, &json!({"success":true}), &readback] {
+            transport
+                .0
+                .lock()
+                .unwrap()
+                .configurations
+                .push_back(TransportResponse::new(
+                    200,
+                    serde_json::to_vec(response).unwrap(),
+                ));
+        }
+        let mut client = signed_in(transport.clone(), MemoryStore::default());
+        let change = Change::CopySheet {
+            sheet: "layer_mapping".into(),
+            source_project: "template_project".into(),
+            source: source.clone(),
+            expected_plan_sha256: expected_plan,
+        };
+        let result = client.feeder_configuration("project_a", Some(&change), NOW);
+        let state = transport.0.lock().unwrap();
+        if writes {
+            let saved = result.unwrap();
+            assert_eq!(saved.summary["saved"], true);
+            assert_eq!(
+                saved.document["sheets"]["cust_category"],
+                destination["sheets"]["cust_category"]
+            );
+            assert_eq!(
+                state.configuration_bodies,
+                vec![
+                    json!({"action":"save_config","eds_project_id":"project_a","sheet_name":"layer_mapping","data":plan.value})
+                ]
+            );
+        } else {
+            assert_eq!(result.unwrap_err().kind(), ErrorKind::InvalidInput);
+            assert!(state.configuration_bodies.is_empty());
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Saved Transformer Status selections — the browser's grammar, headlessly
 // ---------------------------------------------------------------------------

@@ -205,6 +205,22 @@ pub(crate) fn feeder_configuration<T: AuthorizedTransport>(
                 ds_command_kernel::design_config::save_sheet(&document, sheet, &value)
             }),
         ))),
+        Some(ProjectConfigurationChange::CopySheet {
+            sheet,
+            source_project,
+            source,
+            expected_plan_sha256,
+        }) => Some(Some((
+            sheet.as_str(),
+            ds_command_kernel::design_config::copy_sheet(
+                project,
+                source_project,
+                source,
+                &document,
+                sheet,
+                expected_plan_sha256,
+            ),
+        ))),
         _ => None,
     };
     if let Some(mutation) = settings_change {

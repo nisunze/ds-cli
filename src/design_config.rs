@@ -383,3 +383,6 @@ pub use projection::{bounded_page, read_sheet};
 
 mod catalog;
 pub use catalog::{alias_map, canonical, catalog_hazards};
+
+mod sheet_copy;
+pub use sheet_copy::{copy_sheet, plan_sheet_copy, SheetCopy, SHEET_COPY_SCHEMA};

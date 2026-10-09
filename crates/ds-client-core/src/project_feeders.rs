@@ -35,6 +35,16 @@ pub enum ProjectConfigurationChange {
         source: String,
         target: String,
     },
+    /// One admitted sheet from `source_project`'s configuration, read by the
+    /// caller under its own authority, written into this project only while
+    /// the kernel re-decides the reviewed plan (`design_config::copy_sheet`)
+    /// against the fresh destination read.
+    CopySheet {
+        sheet: String,
+        source_project: String,
+        source: Value,
+        expected_plan_sha256: String,
+    },
     FeederLimits {
         minimum: f64,
         maximum: f64,

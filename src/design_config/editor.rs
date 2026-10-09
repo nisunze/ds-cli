@@ -203,6 +203,14 @@ pub enum Request {
         parameter: String,
         raw: Value,
     },
+    /// Plan one admitted sheet copied from another project's configuration.
+    SheetCopyPlan {
+        project: String,
+        source_project: String,
+        source: Value,
+        destination: Value,
+        sheet_key: String,
+    },
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -455,6 +463,16 @@ pub fn apply(request: Request) -> Result<Value, String> {
             parameter,
             raw,
         } => set_parameter(&document, &sheet_key, &parameter, &raw)?,
+        SheetCopyPlan {
+            project,
+            source_project,
+            source,
+            destination,
+            sheet_key,
+        } => {
+            super::plan_sheet_copy(&project, &source_project, &source, &destination, &sheet_key)?
+                .plan
+        }
     })
 }
 
