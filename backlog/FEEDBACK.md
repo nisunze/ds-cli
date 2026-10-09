@@ -8,9 +8,9 @@ Reports are grouped by the live repository that owns the code, then by component
 
 | Repository | Total | Blocker | Major | Minor | Waiting | Untracked |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| [ds-cli](#ds-cli) | 94 | 11 | 63 | 20 | 58 | 61 |
-| [ds-network](#ds-network) | 73 | 18 | 51 | 4 | 36 | 26 |
-| [ds-network-reporter](#ds-network-reporter) | 29 | 1 | 22 | 6 | 21 | 16 |
+| [ds-cli](#ds-cli) | 95 | 11 | 64 | 20 | 59 | 61 |
+| [ds-network](#ds-network) | 75 | 18 | 52 | 5 | 38 | 26 |
+| [ds-network-reporter](#ds-network-reporter) | 28 | 1 | 21 | 6 | 20 | 16 |
 | [ds-web](#ds-web) | 34 | 6 | 26 | 2 | 24 | 16 |
 | [ds-command-kernel](#ds-command-kernel) | 4 | 0 | 3 | 1 | 4 | 0 |
 | [ds-brain](#ds-brain) | 7 | 0 | 6 | 1 | 5 | 3 |
@@ -21,6 +21,7 @@ Reports are grouped by the live repository that owns the code, then by component
 
 | Component | ID | Sev | Kind | Title | State | Backlog |
 | --- | --- | --- | --- | --- | --- | --- |
+| ds-cli/grid-corrections | `43dee9a0` | major | bug | Guarded corrections reject editable profile fields without a characterized scope | waiting: release of ds-network@a4e19701 (guarded correction scope for EditProfileProperties); then replay the guarded correction on the installed ds | SEEDING.md (installed acceptance) |
 | ds pls desktop (windows native controller) | `34b98f7e` | minor | idea | Add a characterized 'cable edit' workflow (open, set creep model and shift, save) with its dialogs catalogued | open | **untracked** |
 | ds-cli | `d4dacd51` | major | obstacle | Fill-in/upgrade report 2026-09-30: combined ds CLI/MCP gaps (transformer summary, tags, spatial reads, Drive writes, survey, assets, feedback) | waiting: replay of items 6 (kernel f6fedb3) and 7 (ds-cli dff85ebc) on stable b4783c2c/b12041b6; items 1-5, 8, 9 open | **untracked** |
 | ds-cli | `46dec14e` | major | friction | ds caps that force manual manoeuvring for one 10k-point layer: map draw max 10000 features, data inspect --rows max 5000 with no paging, prepared local layers invisible to the running app | waiting: SRE mode: addition parked until the owner says go | OPEN.md §16 |
@@ -120,6 +121,8 @@ Reports are grouped by the live repository that owns the code, then by component
 
 | Component | ID | Sev | Kind | Title | State | Backlog |
 | --- | --- | --- | --- | --- | --- | --- |
+| ds-network / retype | `d8529cff` | minor | friction | Retype keeps material-specific staking facts (E-STEEL on a wooden H-pole) | waiting: release of ds-network@a8191cd1 (earthing re-derived or cleared on material change); then replay a wooden H-pole retype on the installed ds | SEEDING.md (installed acceptance) |
+| ds-network / dsgrid structure staking facts | `dacfa967` | major | obstacle | No typed command to correct a transformer's load reference (kVA) or other staking facts; network_role shape undiscoverable | waiting: release of ds-cli@81139a88 (typed staking-fact correction findable from capability search); then confirm the installed search returns it | SEEDING.md (installed acceptance) |
 | ds-grid pls-cadd interop | `9073e4d4` | major | obstacle | No ds what-if for structure-type swaps on a PLS-CADD backup (clearance + uplift + strength) | open | **untracked** |
 | ds-grid-engine + ds report plan-profile (dev build dc11d663) | `2c544caa` | blocker | bug | Gisagara Rev3 PLS .bak cannot print as MV booklet on dev desktop host: print refused, PLS ingest refused, atlas renumbers PLS structures | open | **untracked** |
 | ds-grid-engine/alignments | `8363a4fc` | blocker | bug | Reversing an MV alignment needs a governed section rebuild and attachment-set remap | waiting: install of canary 0.1.7-r79+ carrying ds-network@9afcd2f, then Model 2 exact-set restring and fresh PLS-CADD 16.81 Restore/Open with zero phase prompts; Model 1 native negative control | OPEN.md §12 |
@@ -209,7 +212,6 @@ Reports are grouped by the live repository that owns the code, then by component
 | ds-network-reporter/printing-context | `c7958c2b` | major | bug | Gisagara Desktop Reporter export rejects printing context: map expected string | waiting: a fresh Gisagara Desktop Reporter export through a receipt sealed by deployed ds-brain 25499cef (carries dd8238e8) | **untracked** |
 | ds-network-reporter/printouts | `b99bb1d1` | minor | idea | Name printouts from transformer.title() and put paper size at folder level | waiting: report packaging naming convention implemented and proven on a Stable Windows batch | **untracked** |
 | ds-network-reporter/reports | `42f3abd1` | major | obstacle | Standalone combined-transformer A0/A3 PDFs are unavailable | waiting: Reporter combined task needs standalone A0/A3 PDF outputs and a governed CLI path to provide cached canonical layer projections plus network | OPEN.md §7 |
-| ds-network-reporter/voltage-drop | `159282a4` | major | bug | Voltage-drop PDF export leaves reserved/refused transformers without a governed report | waiting: release of ds-network-reporter@026e441, then a Gisagara per-transformer voltage-drop export (PDF or typed refusal each) | OPEN.md §10 |
 | ds-network-reporter/voltage-drop a4 report | `e538e632` | minor | bug | A4 voltage-drop report title block shows project "gisagara" and carries no governed project logos | open: logo half settled by the owner ruling of 2026-10-05 and reporter 026e441 (no logos); remaining: the A4 title block prints the project id because ds-cli crates/ds-cli-design/src/lv/project_run.rs:703 sends project_label: run.project; it should print the governed project display label | **untracked** |
 | ds-network-reporter/voltage-drop-pdf | `a23fa674` | major | bug | Kibungo delivered voltage-drop A4 PDF prints internal layout overflow diagnostic | waiting: a cloud-computed report (Cloud Run reporter 035418e carries 4ee6240) or install of canary 0.1.7-r79+, then a fresh Kibungo print and G: replacement verification | **untracked** |
 | ds-printing/lv | `ef954b7c` | major | bug | Standalone LV A0 print loses categorical network styling | waiting: governed layout and installed print acceptance | SEEDING.md §6 |
