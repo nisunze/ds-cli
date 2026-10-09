@@ -36,14 +36,16 @@ pub static COMMAND: Command = Command {
     id: "feedback.submit",
     path: &["feedback", "submit"],
     contract: 2,
-    summary: "Report an observed product gap to the shared feedback backlog.",
+    summary: "Report product friction, failures, gaps and ideas as feedback.",
     purpose: "\
 Submits one agent-authored sighting using the native signed-in user without Desktop or a selected project. It reaches the same deduplicated backlog as the `fb` shortcut; \
-it does not create a local gap file or a second issue channel. Use only after \
-live capability discovery confirms the task is unsupported or materially broken. \
-First distinguish a clear-contract agent mistake from an unclear CLI/MCP \
-contract, a code defect, and a genuinely new capability; include one valid \
-negative control so a later fix does not regress working behavior.",
+it does not create a local gap file or a second issue channel. Outside coding \
+sessions, file as soon as it happens, unasked: friction, confusing help or \
+refusal text, wrong or surprising output, slow steps and workarounds, and ideas, \
+as well as failures and missing capabilities; repeats merge into occurrences. \
+Distinguish a clear-contract agent mistake from an unclear CLI/MCP contract, a \
+code defect, and a genuinely new capability. Coding sessions fix findings or use \
+their owning backlogs instead.",
     chapter: Chapter::Operations,
     effect: Effect::GlobalWrite,
     authority: Authority::HeadlessUser,
@@ -52,7 +54,7 @@ negative control so a later fix does not regress working behavior.",
         Arg::value(
             "title",
             "<text>",
-            "One-line observed gap; at most 200 characters.",
+            "One-line observation; at most 200 characters.",
         )
         .required(),
         Arg::value(
@@ -67,7 +69,11 @@ negative control so a later fix does not regress working behavior.",
             "Owning repository or area; at most 200 characters.",
         )
         .required(),
-        Arg::value("kind", "<kind>", "Classification for the shared backlog.")
+        Arg::value(
+            "kind",
+            "<kind>",
+            "bug: a defect, with one working negative control; obstacle: a missing capability; else friction, idea or question.",
+        )
             .choices(&["obstacle", "bug", "friction", "idea", "question"])
             .default("obstacle"),
         Arg::value("severity", "<severity>", "Observed impact.")

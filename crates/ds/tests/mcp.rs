@@ -655,6 +655,8 @@ fn no_published_mcp_text_names_a_terminal_sign_in() {
         "notification reached",
         "negative control",
         "official feedback",
+        "Report as you go",
+        "Coding sessions never submit feedback",
     ] {
         assert!(
             instructions.contains(expected),

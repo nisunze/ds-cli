@@ -16,13 +16,19 @@ submit → (a coding session addresses the gap) → list → close
 
 ## `submit`
 
-Records an agent's observed product gap. Both adapters pin `reporter_kind` to
-`agent`; project selection is not authority for feedback.
+Records an agent's sighting of the product. Both adapters pin `reporter_kind`
+to `agent`; project selection is not authority for feedback.
 
-Submit only after live `ds capabilities` discovery establishes that a
-capability is absent or broken. Include bounded non-secret evidence, the
-expected behavior, and an observable acceptance condition. Repeated sightings
-of the same OPEN gap are deliberately merged by the feedback service.
+Outside coding sessions, submit as soon as a sighting happens, without being
+asked: friction, confusing help or refusal text, wrong or surprising output,
+slow steps and workarounds, and ideas, as well as failures and missing
+capabilities. Choose the kind: `bug` for a defect, with one working negative
+control; `obstacle` for a missing capability; `friction`, `idea` or `question`
+otherwise. Include bounded non-secret evidence, the expected behavior, and an
+observable acceptance condition. Repeated sightings of the same OPEN report are
+deliberately merged by the feedback service, so filing twice is cheap. Coding
+sessions never submit; they fix findings or record unfinished work in the
+owning backlogs ([PRINCIPLES.md §4](../../../ds-command-kernel/backlog/PRINCIPLES.md#4-report-as-you-go-owner-2026-10-07)).
 
 A settled report is never merged into. Once a report is `resolved` or
 `wont_fix`, the next sighting of the same obstacle becomes a NEW report whose

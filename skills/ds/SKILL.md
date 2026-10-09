@@ -1,23 +1,37 @@
 ---
 name: ds
-description: "Use deployed `ds` as the sole DS interface: discover one live command, follow its contract, hand over at a named boundary, report confirmed gaps. Required before every DS task."
+description: "Use deployed `ds` as the sole DS interface: discover one live command, follow its contract, hand over at a named boundary, and report friction, failures and gaps as you go, unasked. Required before every DS task."
 ---
 
 # Work through `ds`
 
 Use `ds` for DS data/effects; never substitute APIs, bridges, stores,
-parsers, repositories or skill-local programs.
+parsers, repositories or skill-local programs. Use `--output json` for agents.
 
-Use `--output json` for agents.
+## Report as you go
 
-Coding sessions: fix findings or record unfinished work only in the owning
-backlogs (OPEN.md code, OPEN-X.md decisions, SEEDING.md operations). Never
-submit feedback during coding; remove entries after proof.
+Outside coding, file a `feedback.submit` sighting (expected behavior, evidence,
+impact, acceptance) at once, unasked, when:
+
+1. a command failed, crashed or refused past its remedy;
+2. finding it took a second search, or the user's words missed it;
+3. help, refusal or skill text disagreed with what it did;
+4. output was wrong, incomplete, surprising or needed post-processing;
+5. a step was slow or needed a workaround;
+6. a capability was missing;
+7. an idea would have saved the user steps.
+
+One sighting per distinct gap; repeats merge, so never filing is the failure.
+Ask no permission; include no secrets or customer data. End by listing
+the report ids, one per line.
+
+Coding sessions: never submit feedback; fix findings or record unfinished work
+in the owning backlogs (OPEN.md code, OPEN-X.md decisions, SEEDING.md
+operations); remove entries after proof.
 
 ## Find one command
 
 ```
-ds --version
 ds doctor --output json
 ds capabilities --output json
 ds capabilities <domain> --output json
@@ -31,29 +45,26 @@ ds capabilities <command-id> --output json
 ```
 
 Inspect availability, authority, effects and refusals. Use declared inputs;
-`--yes` only for the user's authorized effect.
-
-Follow remedies; pair only with the matching `ds` desktop profile.
-Never repeat non-retryable calls, switch identity/project to force success, or
-reconstruct a refused answer.
+`--yes` only for the user's authorized effect. Follow remedies; pair only with
+the matching desktop profile. Never repeat non-retryable calls, switch
+identity/project to force success, or reconstruct a refused answer.
 
 ## Recover identity
 
-Signed out (`headless_signed_out`): run `ds account connect` (MCP: the
-`account.connect` tool), have the person approve it in their signed-in DS
+Signed out (`headless_signed_out`): run `ds account connect` (MCP:
+`account.connect`), have the person approve it in their signed-in DS
 GridDesign Desktop under Account > Link a trusted device, then run it again.
-Only this signs in; never request addresses or secrets. Match CLI/map lane and principal;
-never borrow credentials, projects or lanes.
+Only this signs in; never request addresses or secrets, or borrow credentials,
+projects or lanes; match the CLI/map lane and principal.
 
 ## Through MCP
 
-Use `ds_catalog` and chapter routers: select, `describe`, invoke. Set
-`confirm: true` only when required. Typed profiles advertise leaf tools.
-Follow DS envelopes and remedies; see `ds-mcp-host` for installation.
+`ds_catalog`, then a chapter router: select, `describe`, invoke; `confirm: true`
+only when required. Setup and typed profiles: `ds-mcp-host`.
 
 ## Where `ds` stops, and who continues
 
-Name the applicable boundary and return with its result:
+Name the boundary and return with its result:
 
 - Native PLS-CADD — the model must be solved or accepted as the authority:
   edit in DS Grid, export, let PLS-CADD verify; `ds` never drives that UI.
@@ -65,28 +76,18 @@ Name the applicable boundary and return with its result:
 
 ## When `ds` cannot
 
-Outside coding, rule out a stop, try other vocabulary, then discover feedback:
-
-```
-ds capabilities --search feedback --output json
-ds capabilities feedback.submit --output json
-```
-
-Submit one non-secret sighting: expected behavior, evidence, impact, acceptance.
-You may filter/compare `ds` files in a disposable step; name it in the sighting.
-Never improvise DS data/effects or bypass `ds` with a gap file or API call.
+Rule out a stop, try other vocabulary, then report as you go. You may
+filter/compare `ds` files in a disposable step; name it in the sighting. Never
+improvise DS data/effects or bypass `ds` with a gap file or API call.
 
 ## Narrower skills
 
-- Project and data — `ds-project-context` (context), `ds-project-work` (tasks and records), `ds-assets`
-  (documents), `ds-survey-lifecycle` (coverage, capture, forms),
-  `ds-dirty-categories` (category seeds), `ds-cloud-datasets` (parcels,
-  customers in a boundary; seeded per project).
-- Maps — `ds-map-composition` (print hierarchy, relief), `ds-map-local-data`
-  (temporary layers, viewport), `ds-style-composite` (two-field cartography).
-- Local geometry — `ds-vector-tools` (GeoJSON measurement, zones, sampling, crossings).
-- Terrain — `ds-terrain-sampling` (native sampled curves),
-  `ds-mv-corridor-ground` (sparse MV corridor seeds and bounded footprints).
+- Project and data — `ds-project-context`, `ds-project-work`, `ds-assets`,
+  `ds-survey-lifecycle`, `ds-dirty-categories`, `ds-cloud-datasets` (parcels,
+  customers in a boundary).
+- Maps — `ds-map-composition`, `ds-map-local-data`, `ds-style-composite`.
+- Geometry and terrain — `ds-vector-tools`, `ds-terrain-sampling`,
+  `ds-mv-corridor-ground`.
 - Design and delivery — `ds-grid-spotting`, `ds-lv-design-revision`,
   `ds-lv-voltage-drop`, `ds-pls-cadd-terrain-roundtrip`,
   `ds-pls-cadd-backup-delivery`, `ds-pls-cadd-native-dialogs`,
@@ -94,4 +95,4 @@ Never improvise DS data/effects or bypass `ds` with a gap file or API call.
 - Surface and backlog — `ds-mcp-host`, `ds-workstation-setup`,
   `ds-feedback-triage`.
 
-Stops at: PLS-CADD, a document renderer, Desktop or operator; see boundaries above.
+Stops at: PLS-CADD, a document renderer, Desktop or operator (above).
