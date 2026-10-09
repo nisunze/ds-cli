@@ -14,7 +14,7 @@ Impact: **security** = exposed artifacts; **lost** = overwritten or unpublished 
 
 | # | Slice | OPEN.md | Repos | Impact | After |
 | ---: | --- | --- | --- | --- | --- |
-| 1 | Credential-free artifact URLs: authorized short-lived signed downloads (`c9df4098`) | [§1](OPEN.md#1-source-integration-and-release-code), [§7](OPEN.md#7-report-compute-export-and-combined-output) | ds-brain, kernel | **security** — listed reports remain readable by bearer URL | — |
+| 1 | Credential-free artifact URLs: report and drafting objects behind signed reads only (storage rules, every consumer on `sign_url`); kernel `artifact_identity` accepts `storage.cloud.google.com` locators (`c9df4098`) | [§1](OPEN.md#1-source-integration-and-release-code), [§7](OPEN.md#7-report-compute-export-and-combined-output) | ds-apis-tf, kernel, consumers (ds-web, field) | **security** — listed reports remain readable by URL with no credential | — |
 | 2 | Reproduced source gates and final native source pins: Grid/LV tests, profile-review marker, formatting, Web/CLI/Solar/reporter checks | [§2](OPEN.md#2-green-run-and-release-gates), [§1](OPEN.md#1-source-integration-and-release-code) | network, kernel, ds-cli, ds-web, ds-solar, reporter | blocked — repair each owning gate; pin coherent release sources | — |
 
 ## Priority 1 — `ds` reliability and proactive feedback
@@ -23,10 +23,9 @@ Proceed on the specification defaults; [OPEN-X §25](OPEN-X.md#25-cli-reliabilit
 
 | # | Slice | OPEN.md | Repos | Impact | After |
 | ---: | --- | --- | --- | --- | --- |
-| 6 | Wire CLI and MCP; `ds doctor`; `next.feedback` in envelopes | [§25](OPEN.md#25-cli-reliability-reporting-and-proactive-feedback-priority) | kernel, ds-cli | CLI failures never reach SRE; envelopes do not point to feedback | — |
-| 7 | Invocation journal and `ds feedback draft --last` | [§25](OPEN.md#25-cli-reliability-reporting-and-proactive-feedback-priority) | ds-cli | makes filing one step | 6 |
-| 8 | Automatic bug on crash; link closed feedback to SRE events so it stops reappearing | [§25](OPEN.md#25-cli-reliability-reporting-and-proactive-feedback-priority), [§22](OPEN.md#22-operations-product-code) | kernel, ds-cli, ds-brain | crashes become reports without anyone asking | 6 |
-| 9 | Render the `ds` client row in `ds sre overview` text output | [§25](OPEN.md#25-cli-reliability-reporting-and-proactive-feedback-priority) | ds-cli | owner sees CLI health at a glance | 6 |
+| 6 | CLI/MCP reporting residue: Desktop and Server set `DS_CLI_HOST_KIND` (every event says headless); feedback reference doc matches the real error envelope | [§25](OPEN.md#25-cli-reliability-reporting-and-proactive-feedback-priority) | ds-cli, ds-web | SRE events misname their host; docs describe a field that does not exist | — |
+| 7 | `ds feedback draft --last` completes a submit: component from the command registry owner, agent passed from MCP `clientInfo`, submit-shaped context; the `ds` skill names the command | [§25](OPEN.md#25-cli-reliability-reporting-and-proactive-feedback-priority) | kernel, ds-cli | makes filing one step | 6 |
+| 8 | Closed feedback reappears as open SRE work: the overview must read settled automatic reports and treat older events as addressed | [§22](OPEN.md#22-operations-product-code) | kernel, ds-cli | owner sees settled crashes as open | 6 |
 
 ## Priority 2 — First-release controls
 
@@ -43,14 +42,11 @@ Proceed on the specification defaults; [OPEN-X §25](OPEN-X.md#25-cli-reliabilit
 | # | Slice | OPEN.md | Repos | Impact | After |
 | ---: | --- | --- | --- | --- | --- |
 | 15 | Self-healing publication: dead-process outbox lock (`d50cc39d`); headless export never reaches cloud (`74bdd848`); shared-publication replacement (`fd5bce6a`); bounded cloud-head reads | [§8](OPEN.md#8-sync-publication-and-edge-outbox), [§7](OPEN.md#7-report-compute-export-and-combined-output) | kernel (sync runtime), ds-cli | **lost** — computed reports silently unpublished | — |
-| 16 | Preserve authored LV designs: headless save without reprocessing (`6ed42257`), batch process overwrites approved poles and cables (`38bd5091`), non-destructive topology for legacy designs (`00ad9848`), keep supplied line numbers (`4bad5ef3`) | [§9](OPEN.md#9-lv-processing-sizing-and-headless-intake) | network, kernel, ds-cli | **lost** — approved design facts overwritten | — |
-| 17 | LV span REG maximum never flagged; EDCL rejected three designs (`8b2d9545`) | [§9](OPEN.md#9-lv-processing-sizing-and-headless-intake) | network | **wrong** — client rejection | — |
-| 18 | Transformer protection sizing: frozen/existing transformers unchecked (`4070556f`), `minimum_tr_size` leaves protection on the smaller row (`571c4b57`), 15 kV fuse ignored (`dcacdb90`) | [§9](OPEN.md#9-lv-processing-sizing-and-headless-intake) | network (sizing), reporter | **wrong** — protection does not match selected size/voltage | — |
-| 19 | Combined output: no partial archive on refusal (`4151b6b7`); Desktop/headless MV parity; true combined A0/A3 PDFs and workbook (`42f3abd1`) | [§7](OPEN.md#7-report-compute-export-and-combined-output) | kernel, reporter, ds-brain | **wrong** — incomplete output published | — |
-| 20 | Deleted-transformer backup read and restore CLI over the landed ds-brain actions (`81ae43eb`) | [§7](OPEN.md#7-report-compute-export-and-combined-output) | ds-cli | **lost** — a deleted transformer cannot be restored through the CLI | — |
-| 23 | Project data never renders: uploads have no layer class, styles or tiles (`011ae5a6`) | [§16](OPEN.md#16-map-data-datasets-and-screen-styling) | kernel, ds-web | blocked — uploaded data unusable on the map | — |
-| 24 | Task attachment route (`e01cf456`) | [§17](OPEN.md#17-project-work-and-assets) | ds-cli, ds-brain | blocked — documents cannot reach tasks | — |
-| 25 | Headless LV intake: Northern Hub upload (`14fd08e8`), Gisagara standards columns (`2adfa7d2`), 10-character DBF names (`83f3712b`), legacy unfenced rooms (`007c1624`), `Existing` → `existing_status` migration (`7f5ac170`) | [§9](OPEN.md#9-lv-processing-sizing-and-headless-intake) | kernel, ds-cli, ds-brain | blocked — client data cannot enter headlessly | 16 for preservation-sensitive writes |
+| 16 | Preserve authored LV designs: headless save of a supplied design fenced on the saved head (`6ed42257`); analysis-only topology for legacy designs without node ids (`00ad9848`, `47136650`) | [§9](OPEN.md#9-lv-processing-sizing-and-headless-intake) | network, kernel, ds-cli | **lost** — approved design facts overwritten or refused | — |
+| 18 | Kept approved networks skip the process-time protection and span-length audit (`4070556f`) | [§9](OPEN.md#9-lv-processing-sizing-and-headless-intake) | network | **wrong** — a frozen transformer's protection mismatch is not warned at process time | — |
+| 19 | Combined output: Desktop/headless MV parity; true combined A0/A3 PDFs and workbook (`42f3abd1`) | [§7](OPEN.md#7-report-compute-export-and-combined-output) | kernel, reporter, ds-brain | **wrong** — incomplete output published | — |
+| 23 | Project-data tile output is listed by neither `ds tile list` nor `ds tile status`; the upload receipt says ready before it exists (`011ae5a6`) | [§16](OPEN.md#16-map-data-datasets-and-screen-styling) | kernel, ds-cli | **wrong** — readiness claimed before the output exists | — |
+| 25 | Headless LV intake: Northern Hub upload (`14fd08e8`), 10-character DBF names (`83f3712b`), legacy unfenced rooms (`007c1624`), `Existing` → `existing_status` migration (`7f5ac170`) | [§9](OPEN.md#9-lv-processing-sizing-and-headless-intake) | kernel, ds-cli, ds-brain, ds-web | blocked — client data cannot enter headlessly | 16 for preservation-sensitive writes |
 | 26 | Vector skip naming: kernel `vector_ops`/WASM parity and frozen packet refreeze (ds-cli gate red) | [§16](OPEN.md#16-map-data-datasets-and-screen-styling) | kernel, network, ds-cli | **wrong** — kernel/WASM vector ops count dropped features as processed | — |
 | 27 | PLS restore acceptance: catalogued exit prompt and exact restored bytes (`1086e058`, `6f346aa3`); export-plan/convert admission parity (`e258b287`) | [§11](OPEN.md#11-pls-cadd-exchange-round-trip), [stabilization B](STABILIZATION.md#moved-from-openmd-and-open-xmd-related-work-fix-together-owner-2026-10-07) | network, ds-cli | **wrong** — a dialog count reported as success | — |
 
@@ -72,14 +68,14 @@ Windows owns OPEN.md blocks 12–13 and their engineering consumers. This track 
 
 | # | Slice | OPEN.md | Repos | Impact | After |
 | ---: | --- | --- | --- | --- | --- |
-| 35 | MV map-inputs rereads the whole project: six minutes per capture (`f48bd93c`) | [stabilization E](STABILIZATION.md#e-printing-templates-previews-and-booklets-with-13-and-14) | reporter, kernel | slow | — |
+| 35 | MV map-inputs still reads without bound: data-distribution catalogue, print-context acquisition and proof print styles (`f48bd93c`) | [stabilization E](STABILIZATION.md#e-printing-templates-previews-and-booklets-with-13-and-14) | reporter, kernel | slow | — |
 | 36 | Combined report waits on serial publication (`69f60e82`) | [§7](OPEN.md#7-report-compute-export-and-combined-output) | kernel, ds-brain | slow | 15 |
-| 37 | Print sets too large: 481 MB / 714 MB PDFs (`e2cd543e`) | [stabilization E](STABILIZATION.md#e-printing-templates-previews-and-booklets-with-13-and-14) | reporter | slow; delivery size | — |
+| 37 | Print sets too large (`e2cd543e`): simplify context-vector paths; project-owned raster context PPI/quality profile | [stabilization E](STABILIZATION.md#e-printing-templates-previews-and-booklets-with-13-and-14) | reporter | slow; delivery size | — |
 | 38 | MV booklet owner integration without the Python bridge | [stabilization E](STABILIZATION.md#e-printing-templates-previews-and-booklets-with-13-and-14) | reporter, ds-cli | blocked — delivery still depends on a retired bridge | — |
-| 39 | Script-removal gaps: execute download plan with SHA-256 manifest; district from artifacts; MV/LV orphan join | [§7](OPEN.md#7-report-compute-export-and-combined-output) | kernel, ds-cli | blocked for agents | — |
-| 40 | Data install: wetlands 422, bulk install 504, ground data never indexed; 10k caps and paging (`46dec14e`) | [§16](OPEN.md#16-map-data-datasets-and-screen-styling) | kernel, ds-cli, ds-web | blocked/slow | — |
-| 41 | Voltage-drop analysis/Reporter one input digest | [§10](OPEN.md#10-voltage-drop) | network, reporter | **wrong** when stale | — |
-| 42 | Typed single-sheet configuration copy (`d76f6e55`); template fixtures | [§3](OPEN.md#3-template-creation-code) | kernel, ds-cli | blocked for new projects | — |
+| 39 | Script-removal gaps: source uploads in download fetch; district from artifacts | [§7](OPEN.md#7-report-compute-export-and-combined-output) | kernel, ds-cli | blocked for agents | — |
+| 40 | Data install: transient download failures not typed retryable and bulk install stops at the first failure (`33003988`); ground data never indexed (`dbe4d17e`); 10k map draw cap and prepared local layers not loaded live (`46dec14e`) | [§16](OPEN.md#16-map-data-datasets-and-screen-styling) | kernel, ds-cli, ds-web | blocked/slow | — |
+| 41 | Voltage-drop one input digest: Reporter admits the saved analysis and binds its `inputs_digest`; per-job `analysis` member documented | [§10](OPEN.md#10-voltage-drop) | reporter, ds-cli | **wrong** when stale | — |
+| 42 | Template fixtures and selectable-copy UI binding | [§3](OPEN.md#3-template-creation-code) | kernel, ds-cli, ds-web | debt — outlier fixtures missing | — |
 
 ## Priority 5 — Remaining wider changes
 
@@ -91,7 +87,7 @@ Windows owns OPEN.md blocks 12–13 and their engineering consumers. This track 
 | 46 | Sidebar gateway bypasses and one Rust communication authority | [§23](OPEN.md#23-kernel-controls-json-ui-and-typescript-retirement) | debt |
 | 47 | Never-landed work: verify ancestry and adapt archive-group readers (§7) | [§7](OPEN.md#7-report-compute-export-and-combined-output) | debt — finished work not on `run` |
 | 48 | Remaining PLS exchange fidelity items and the comparison harness | [§11](OPEN.md#11-pls-cadd-exchange-round-trip) | **wrong** in edge cases |
-| 49 | PM/Assets lifecycle, Board navigation, Assets index latency, server monitor | [§17](OPEN.md#17-project-work-and-assets), [§22](OPEN.md#22-operations-product-code) | slow |
+| 49 | PM/Assets lifecycle, Board navigation, Assets index latency | [§17](OPEN.md#17-project-work-and-assets) | slow |
 
 ## Not now
 
