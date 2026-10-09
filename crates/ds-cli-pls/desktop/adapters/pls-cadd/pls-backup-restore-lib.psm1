@@ -605,6 +605,20 @@ function Test-PlsRestoredTree {
         if ($Scope -eq 'Full') { return $true }
         return $_.role -in @('project_core', 'engineering_library')
     })
+    # Name every absent member at once, never only the first: a native Restore
+    # dialog can report every file restored while most of them are gone
+    # (feedback 1086e058: 88 reported, 10 present), and the operator needs the
+    # exact missing paths, not a count.
+    $missing = @($members | Where-Object {
+        $memberPath = Join-Path $rootFull ([string] $_.relative_path)
+        if ($_.kind -eq 'directory') {
+            return -not (Test-Path -LiteralPath $memberPath -PathType Container)
+        }
+        return -not (Test-Path -LiteralPath $memberPath)
+    } | ForEach-Object { [string] $_.relative_path })
+    if ($missing.Count -ne 0) {
+        throw "Restored member(s) missing: $($missing.Count) of $($members.Count) backup member(s) are absent below ${rootFull}: $($missing -join ', ')"
+    }
     $expectedFiles = @{}
     $expectedDirectories = @{ '.' = $true }
     $verified = New-Object System.Collections.ArrayList

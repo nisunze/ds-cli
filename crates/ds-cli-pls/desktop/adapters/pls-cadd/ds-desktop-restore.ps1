@@ -8,7 +8,7 @@ param(
     [string] $ProjectFileName
 )
 # ds pls desktop restore - one fresh native PLS-CADD Restore of a .bak into a new folder, open,
-# exit without saving, then the post-close Protected tree check. Exactly the proven pair
+# exit without saving, then the post-close Full and Protected tree checks. Exactly the proven pair
 # interim/pls-restore-open-interim.ps1 then interim/pls-close-interim.ps1 (the order its
 # -CloseAfter runs them in); the close result is kept rather than printed.
 . (Join-Path $PSScriptRoot 'ds-desktop-lib.ps1')
@@ -24,6 +24,9 @@ Invoke-DsEntry $ResultPath 'restore' {
     $closeOutput = & (Join-Path $here 'interim\pls-close-interim.ps1') -ProcessId ([int] $opened.restore.process_id) `
         -EvidenceDirectory $EvidenceDirectory -RestoreDirectory $RestoreDirectory 2>$null
     $close = ($closeOutput | Out-String) | ConvertFrom-Json
+    if ($null -eq $close.post_close_full -or $close.post_close_full.failed) {
+        throw "Restored tree verification failed after close: $($close.post_close_full.message)"
+    }
     if ($null -eq $close.post_close_protected -or $close.post_close_protected.failed) {
         throw "Restored tree verification failed after close: $($close.post_close_protected.message)"
     }

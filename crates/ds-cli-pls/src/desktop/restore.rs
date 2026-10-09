@@ -28,7 +28,7 @@ pub static COMMAND: Command = Command {
     path: &["pls", "desktop", "restore"],
     contract: 1,
     summary: "Restore a .bak natively in PLS-CADD into a new folder and verify it.",
-    purpose: "Proves a backup opens where it will be reviewed: PLS-CADD 16.81 restores it through its own Restore dialogs into a new folder, every file restored and none skipped, answers only catalogued open prompts, opens the project, exits without saving, and checks the restored files against the backup's protected members. The restored workspace stays in --into for further work. Use qualify for the two-restore acceptance of a submission.",
+    purpose: "Proves a backup opens where it will be reviewed: PLS-CADD 16.81 restores it through its own Restore dialogs into a new folder, every file restored and none skipped, answers only catalogued open prompts, opens the project, exits without saving, then checks every restored file against the backup, naming each missing path, and the protected members again. A dialog's file count is never taken as success. The restored workspace stays in --into for further work. Use qualify for the two-restore acceptance of a submission.",
     chapter: Chapter::PlsCadd,
     effect: Effect::LocalFileWrite,
     authority: Authority::None,
@@ -50,7 +50,7 @@ pub static COMMAND: Command = Command {
         SOURCE_ROOT_ARG,
         PROJECT_FILE_ARG,
     ],
-    output: "The receipt path and driver bundle digest, the restored project and folder, the backup's digests, container and member counts, the files present before open, the prompts answered, and the post-close protected check: files verified and digest against the backup's.",
+    output: "The receipt path and driver bundle digest, the restored project and folder, the backup's digests, container and member counts, the files present before open, the prompts answered, the post-close full check (every backup file verified, with its digest) and the post-close protected check: files verified and digest against the backup's.",
     examples: &[Example {
         command: r"ds pls desktop restore --bak 'G:\Shared drives\Pro\Working\cap6.bak' --into 'G:\Shared drives\Pro\Working\restore-cap6' --output json",
         note: "Needs the Windows desktop with PLS-CADD 16.81 and no PLS-CADD already open.",
@@ -186,6 +186,31 @@ fn shape(receipt_path: &str, receipt: &Value, close: &Value) -> Result<Value, Fa
     shaped["open_prompts"] = Value::Array(prompts);
     shaped["repairs"] = json!(receipt["repairs"].as_array().map_or(0, Vec::len));
     shaped["closed"] = close["status"].clone();
+    // A restore is reported only when every backup file was verified after
+    // close; a Restore dialog's count is not evidence (feedback 1086e058).
+    let full = &close["post_close_full"];
+    let verified = full["verified_files"].as_u64();
+    let expected = full["expected_members"].as_u64();
+    if full.get("failed").and_then(Value::as_bool) == Some(true)
+        || verified.is_none()
+        || verified != expected
+    {
+        return Err(Failure::failed(
+            RESTORED_TREE_MISMATCH.code,
+            "the restored folder was not verified file by file against the backup after close",
+        )
+        .remedy(RESTORED_TREE_MISMATCH.remedy)
+        .detail(json!({
+            "verified_files": full["verified_files"],
+            "expected_files": full["expected_members"],
+            "message": full["message"],
+            "receipt": receipt_path,
+        })));
+    }
+    shaped["post_close_full"] = json!({
+        "verified_files": full["verified_files"],
+        "verified_digest": full["verified_digest"],
+    });
     shaped["post_close_protected"] = json!({
         "verified_files": close["post_close_protected"]["verified_files"],
         "verified_digest": close["post_close_protected"]["verified_digest"],
@@ -196,9 +221,10 @@ fn shape(receipt_path: &str, receipt: &Value, close: &Value) -> Result<Value, Fa
 
 pub fn render(data: &Value) -> String {
     format!(
-        "PLS-CADD native restore\n  project  {}\n  files    {} present before open · {} protected verified after close\n  receipt  {}\n",
+        "PLS-CADD native restore\n  project  {}\n  files    {} present before open · {} verified after close ({} protected)\n  receipt  {}\n",
         data["project"].as_str().unwrap_or(""),
         data["files_present_before_open"],
+        data["post_close_full"]["verified_files"],
         data["post_close_protected"]["verified_files"],
         data["receipt"].as_str().unwrap_or(""),
     )
@@ -220,6 +246,11 @@ mod tests {
             "status": "closed_without_saving",
             "process_id": 22496,
             "frame_title_before": "PLS-CADD - example.xyz - 1 - [Profile View]",
+            "post_close_full": {
+                "verified_files": 46,
+                "verified_digest": "4f".repeat(32),
+                "expected_members": 46,
+            },
             "post_close_protected": {
                 "verified_files": 9,
                 "verified_digest": "9f".repeat(32),
@@ -254,13 +285,41 @@ mod tests {
                 "pp_paging_no_progress"
             ]
         );
+        assert_eq!(data["post_close_full"]["verified_files"], 46);
         assert_eq!(data["post_close_protected"]["verified_files"], 9);
         assert_eq!(data["closed"], "closed_without_saving");
         assert!(
             data.get("log_tail").is_none(),
             "the log tail stays in the receipt"
         );
-        assert!(render(&data).contains("46 present before open"));
+        assert!(render(&data).contains("46 present before open · 46 verified after close"));
+    }
+
+    /// Feedback 1086e058: PLS-CADD's Restore dialog reported 88 files restored
+    /// while 10 remained. A dialog count is not success: the result exists
+    /// only when the post-close check verified every backup file.
+    #[test]
+    fn a_restore_without_every_backup_file_verified_after_close_is_refused() {
+        let receipt = parse_document(RESTORE_OPEN.as_bytes()).expect("the recorded receipt parses");
+        let mut short = close();
+        short["post_close_full"]["verified_files"] = json!(10);
+        short["post_close_full"]["expected_members"] = json!(88);
+        let mut failed = close();
+        failed["post_close_full"] = json!({
+            "failed": true,
+            "message": r"Restored member(s) missing: 78 of 88 backup member(s) are absent below G:\r: cables\acsr 70-12mm2",
+        });
+        let mut absent = close();
+        absent.as_object_mut().unwrap().remove("post_close_full");
+        for close in [short, failed, absent] {
+            let refusal = shape(r"G:\ev\restore-open.json", &receipt, &close).unwrap_err();
+            assert_eq!(refusal.code(), "restored_tree_mismatch");
+            assert!(COMMAND.refusals.iter().any(|r| r.code == refusal.code()));
+            assert_eq!(
+                refusal.detail_value().unwrap()["receipt"],
+                r"G:\ev\restore-open.json"
+            );
+        }
     }
 
     #[test]

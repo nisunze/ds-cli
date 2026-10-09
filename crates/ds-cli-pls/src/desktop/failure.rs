@@ -126,6 +126,7 @@ pub(crate) const MESSAGE_RULES: &[(Kind, &[&str])] = &[
     (
         Kind::RestoredTreeMismatch,
         &[
+            "Restored member(s) missing",
             "Restored member length mismatch",
             "Restored member digest mismatch",
             "Restored directory missing",
@@ -529,6 +530,15 @@ mod tests {
             ),
             (
                 "Restored tree verification failed after close: Restored member digest mismatch: a.xyz",
+                Kind::RestoredTreeMismatch,
+            ),
+            // Feedback 1086e058: the dialog said 88 restored; the tree held 10.
+            (
+                r"Restored member(s) missing: 78 of 88 backup member(s) are absent below G:\r: attachments\a.dxf, cables\acsr 70-12mm2",
+                Kind::RestoredTreeMismatch,
+            ),
+            (
+                r"Restored tree verification failed after close: Restored member(s) missing: 1 of 9 backup member(s) are absent below G:\r: structures\pole.012",
                 Kind::RestoredTreeMismatch,
             ),
             (

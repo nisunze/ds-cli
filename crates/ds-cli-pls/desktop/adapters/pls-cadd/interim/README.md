@@ -11,7 +11,7 @@ changed driver makes them refuse instead of drifting. Codex: integrate the patch
 |---|---|
 | `pls-interim-loader.ps1` | dot-source; loads driver + lib functions, applies the patches below |
 | `pls-restore-open-interim.ps1` | one fresh native Restore + open; leaves PLS open for report driving |
-| `pls-close-interim.ps1` | exit without saving + post-close Protected tree check |
+| `pls-close-interim.ps1` | exit without saving + post-close Full (every backup member, each missing path named) and Protected tree checks |
 
 | patch | defect | status |
 |---|---|---|
@@ -20,7 +20,7 @@ changed driver makes them refuse instead of drifting. Codex: integrate the patch
 | C3c | final `Restore Backup of <leaf>` Yes was a posted BM_CLICK that leaves the modal stacked | fixed upstream 88c0885; **native-verified 2026-09-23** (IDYES opened the Iter3 restore) |
 | C3d | pre-open `Full` byte check while the Yes dialog is up | fixed upstream 88c0885 (presence check pre-open, `Full` after open) |
 | C3e | inventory assumed the `.xyz` parent was the only source root; real backups span several | Production inventory and qualifier now accept an explicit `-SourceRoot`, validate every native path under it, and allow implied intermediate directories; Windows contract and native retest pending. |
-| C3f | the post-open `Full` check hashed the `.xyz` that the open project locks ("being used by another process", seen on the Gisagara control) | Production two-restore qualifier now verifies Full and Protected after each native close; Windows contract and native retest pending. The interim open-only helper still uses post-close Protected verification. |
+| C3f | the post-open `Full` check hashed the `.xyz` that the open project locks ("being used by another process", seen on the Gisagara control) | Production two-restore qualifier now verifies Full and Protected after each native close; Windows contract and native retest pending. The interim open-only helper now runs the same post-close Full check, naming every missing member (feedback 1086e058), then Protected. |
 
 For C3e, the full check now derives only the intermediate folders required by recorded
 member paths. Extra files and unrelated directories still fail.

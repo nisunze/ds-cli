@@ -96,7 +96,7 @@ pub static BUNDLE: &[Script] = &[
     ),
     script!(
         "adapters/pls-cadd/ds-desktop-restore.ps1",
-        "8b87402aab2648ac7225b08ea342efaf5f7399c04089f1bfe6d4089cba24e8e2"
+        "1f8530177492f439fb9a060d8ed73d36528e5298062fded5cd8840f2d8f32420"
     ),
     script!(
         "adapters/pls-cadd/ds-desktop-sheets-pdf.ps1",
@@ -104,7 +104,7 @@ pub static BUNDLE: &[Script] = &[
     ),
     script!(
         "adapters/pls-cadd/interim/README.md",
-        "9a278a49ce423a02616a2753d173531b6dfe67820272ee4f51726438d6d7be8b"
+        "a9ff8a65751a64582c06c09176a9e5a92e8ef7042a8abe27d64a2aaf81cb0b5d"
     ),
     script!(
         "adapters/pls-cadd/interim/pls-backup-open-interim.ps1",
@@ -112,7 +112,7 @@ pub static BUNDLE: &[Script] = &[
     ),
     script!(
         "adapters/pls-cadd/interim/pls-close-interim.ps1",
-        "1f520968b57002364153e1b16aaa6971f6d0445cbfccb9a2fad1337e2e065a1a"
+        "707e2109d66935cd37dab69f0cf493666405b65ddf67876e1e00f983cc8ca96f"
     ),
     script!(
         "adapters/pls-cadd/interim/pls-interim-loader.ps1",
@@ -136,7 +136,7 @@ pub static BUNDLE: &[Script] = &[
     ),
     script!(
         "adapters/pls-cadd/pls-backup-restore-lib.psm1",
-        "be6535c87fe737bbd81616d800063d22bd89f992c074e9c1e7b662f07add44dc"
+        "0cb8b3c5acb50b67fde4caf14c78f4e47ee0dcc66cde55988fbee0fbd7cf9fce"
     ),
     script!(
         "adapters/pls-cadd/pls-backup-restore-profile.psd1",
