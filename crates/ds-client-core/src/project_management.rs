@@ -56,6 +56,129 @@ const MAX_PROJECT_NOTE_ID_BYTES: usize = 256;
 /// The most commands one saved draft may carry — ds-brain's own batch bound,
 /// republished per project as `field_model.max_batch_commands`.
 pub const MAX_BATCH_COMMANDS: usize = 200;
+/// The largest file one task attachment may carry — ds-brain's
+/// `maxPMAttachmentBytes` (100 MiB).
+pub const MAX_ATTACHMENT_BYTES: usize = 100 << 20;
+/// A stored attachment name is at most this many UTF-8 bytes.
+const MAX_ATTACHMENT_NAME_BYTES: usize = 255;
+
+/// One file a task attachment uploads, checked once when it is made: a plain
+/// file name, 1 byte to 100 MiB, and a media type (given, or named from the
+/// file extension the way a browser names `File.type`). `Debug` prints the
+/// size, never the bytes.
+#[derive(Clone, PartialEq)]
+pub struct AttachmentFile {
+    name: String,
+    content_type: String,
+    bytes: Vec<u8>,
+}
+
+impl std::fmt::Debug for AttachmentFile {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AttachmentFile")
+            .field("name", &self.name)
+            .field("content_type", &self.content_type)
+            .field("bytes", &self.bytes.len())
+            .finish()
+    }
+}
+
+impl AttachmentFile {
+    pub fn new(
+        name: &str,
+        content_type: Option<&str>,
+        bytes: Vec<u8>,
+    ) -> Result<Self, ClientError> {
+        let invalid = |message: &'static str| ClientError::new(ErrorKind::InvalidInput, message);
+        let name = name.trim();
+        if name.is_empty()
+            || name.len() > MAX_ATTACHMENT_NAME_BYTES
+            || name == "."
+            || name == ".."
+            || name
+                .chars()
+                .any(|c| c.is_control() || matches!(c, '/' | '\\'))
+        {
+            return Err(invalid(
+                "a task attachment needs a plain file name of at most 255 UTF-8 bytes",
+            ));
+        }
+        if bytes.is_empty() || bytes.len() > MAX_ATTACHMENT_BYTES {
+            return Err(invalid("a task attachment is from 1 byte to 100 MiB"));
+        }
+        let content_type = match content_type.map(str::trim) {
+            Some(given) => {
+                let lowered = given.to_ascii_lowercase();
+                let valid = !lowered.is_empty()
+                    && lowered.len() <= 200
+                    && lowered.split_once('/').is_some_and(|(kind, sub)| {
+                        !kind.is_empty() && !sub.is_empty() && !sub.contains('/')
+                    })
+                    && !lowered
+                        .chars()
+                        .any(|c| c.is_whitespace() || c.is_control() || c == ';');
+                if !valid {
+                    return Err(invalid(
+                        "a task attachment content type is one `type/subtype`",
+                    ));
+                }
+                lowered
+            }
+            None => attachment_media_type(name).to_owned(),
+        };
+        Ok(Self {
+            name: name.to_owned(),
+            content_type,
+            bytes,
+        })
+    }
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+    pub fn content_type(&self) -> &str {
+        &self.content_type
+    }
+    pub fn len(&self) -> usize {
+        self.bytes.len()
+    }
+    pub fn is_empty(&self) -> bool {
+        self.bytes.is_empty()
+    }
+    /// Lowercase hex SHA-256 of the bytes this attachment uploads.
+    pub fn sha256(&self) -> String {
+        use sha2::{Digest, Sha256};
+        format!("{:x}", Sha256::digest(&self.bytes))
+    }
+}
+
+/// The media type a browser would name for this file extension; anything
+/// unrecognised is `application/octet-stream`, as the server defaults it.
+fn attachment_media_type(name: &str) -> &'static str {
+    let extension = name
+        .rsplit_once('.')
+        .map(|(_, extension)| extension.to_ascii_lowercase())
+        .unwrap_or_default();
+    match extension.as_str() {
+        "pdf" => "application/pdf",
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        "tif" | "tiff" => "image/tiff",
+        "csv" => "text/csv",
+        "txt" => "text/plain",
+        "md" => "text/markdown",
+        "json" => "application/json",
+        "geojson" => "application/geo+json",
+        "zip" => "application/zip",
+        "xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "pptx" => "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        "kml" => "application/vnd.google-earth.kml+xml",
+        "kmz" => "application/vnd.google-earth.kmz",
+        _ => "application/octet-stream",
+    }
+}
 
 /// One governed project-management action.
 #[derive(Debug, Clone, PartialEq)]
@@ -160,6 +283,15 @@ pub enum Command {
         hours: f64,
         note: Option<String>,
     },
+    /// Attach one file to one task through the task attachment routes, as one
+    /// command: `start_attachment_upload` reserves the row and mints one
+    /// resumable session, the bytes go straight to storage, and
+    /// `finalize_attachment_upload` makes ds-brain verify the stored object
+    /// (size and type) before the row turns `ready`.
+    TaskAttach {
+        task_id: String,
+        file: AttachmentFile,
+    },
 }
 
 fn command_id_valid(id: &str) -> bool {
@@ -210,6 +342,7 @@ impl Command {
             Self::Admit { .. } => "task_admit",
             Self::DeclineAdmission { .. } => "task_decline_admission",
             Self::LogHours { .. } => "task_log_hours",
+            Self::TaskAttach { .. } => "start_attachment_upload",
         }
     }
 
@@ -219,6 +352,12 @@ impl Command {
         let invalid = |message: &'static str| ClientError::new(ErrorKind::InvalidInput, message);
         match self {
             Self::Graph | Self::Assignees => Ok(()),
+            Self::TaskAttach { task_id, .. } => {
+                if !project_note_id_valid(task_id) {
+                    return Err(invalid("a task attachment names one stable task id"));
+                }
+                Ok(())
+            }
             Self::PublicProjects {
                 status,
                 cursor,
@@ -384,6 +523,15 @@ impl Command {
         let mut payload = json!({ "action": self.action(), "ds_project": project });
         match self {
             Self::Graph | Self::Assignees => {}
+            Self::TaskAttach { task_id, file } => {
+                payload["data"] = json!({
+                    "linked_entity_type": "task",
+                    "linked_entity_id": task_id,
+                    "original_name": file.name,
+                    "content_type": file.content_type,
+                    "size_bytes": file.bytes.len(),
+                });
+            }
             Self::PublicProjects {
                 status,
                 cursor,
@@ -609,6 +757,131 @@ fn readable_project(project: &str) -> Result<&str, ClientError> {
     Ok(trimmed)
 }
 
+/// Send one payload on the PM route and return the envelope's non-null `data`.
+fn send<T: AuthorizedTransport>(
+    profile: &ClientProfile,
+    transport: &mut T,
+    authority: Authority<'_>,
+    payload: Value,
+) -> Result<Value, ClientError> {
+    let response = transport.project_management(ProjectManagementCall {
+        profile,
+        authority: authority.call(),
+        payload,
+    })?;
+    if response.status != 200 {
+        return Err(refusal(response.status, &response.body));
+    }
+    if response.body.len() > MAX_RESPONSE_BYTES {
+        return Err(refused());
+    }
+    let body: Value = serde_json::from_slice(&response.body).map_err(|_| refused())?;
+    if body["success"] != true {
+        return Err(refused());
+    }
+    let data = body.get("data").cloned().unwrap_or(Value::Null);
+    if data.is_null() {
+        return Err(refused());
+    }
+    Ok(data)
+}
+
+/// The reserved attachment row and its upload session, checked against what
+/// was asked: the same task, an `uploading` row with a positive version, and
+/// a resumable session URI on the storage upload host.
+fn started_attachment<'a>(
+    started: &'a Value,
+    task_id: &str,
+) -> Result<(&'a str, i64, &'a str), ClientError> {
+    let item = &started["item"];
+    let id = item["id"]
+        .as_str()
+        .filter(|id| project_note_id_valid(id))
+        .ok_or_else(refused)?;
+    let version = item["version"]
+        .as_i64()
+        .filter(|version| *version >= 1)
+        .ok_or_else(refused)?;
+    if item["linked_entity_type"] != "task"
+        || item["linked_entity_id"] != task_id
+        || item["state"] != "uploading"
+    {
+        return Err(refused());
+    }
+    let uri = started["session_uri"].as_str().ok_or_else(refused)?;
+    crate::solar_project::validate_upload_uri(uri).map_err(|_| refused())?;
+    Ok((id, version, uri))
+}
+
+/// The finalized row, accepted only when ds-brain verified the stored object
+/// as this attachment on this task.
+fn ready_attachment(
+    finalized: &Value,
+    attachment_id: &str,
+    task_id: &str,
+    file: &AttachmentFile,
+) -> Result<Value, ClientError> {
+    let item = &finalized["item"];
+    if item["id"] != attachment_id
+        || item["state"] != "ready"
+        || item["linked_entity_type"] != "task"
+        || item["linked_entity_id"] != task_id
+        || item["size_bytes"].as_u64() != Some(file.bytes.len() as u64)
+    {
+        return Err(ClientError::new(
+            ErrorKind::UnreadableResponse,
+            "project management did not verify the uploaded attachment as ready on this task",
+        ));
+    }
+    Ok(item.clone())
+}
+
+/// `start_attachment_upload` → the bytes to the resumable session →
+/// `finalize_attachment_upload`. The session URI is transport authority: it
+/// is spent here and never returned.
+fn attach_to_task<T: AuthorizedTransport>(
+    profile: &ClientProfile,
+    transport: &mut T,
+    authority: Authority<'_>,
+    project: &str,
+    start: Value,
+    task_id: &str,
+    file: &AttachmentFile,
+) -> Result<Value, ClientError> {
+    let started = send(profile, transport, authority, start)?;
+    let (attachment_id, version, uri) = started_attachment(&started, task_id)?;
+    let mut reader = std::io::Cursor::new(file.bytes.as_slice());
+    let uploaded = transport.upload_bytes(crate::UploadBytesCall {
+        uri,
+        size: file.bytes.len() as u64,
+        reader: &mut reader,
+    })?;
+    if !matches!(uploaded.status, 200 | 201) {
+        return Err(ClientError::new(
+            ErrorKind::Transient,
+            "the attachment bytes did not reach storage; the reserved row stays uploading and is reclaimed on your next attachment",
+        ));
+    }
+    let finalized = send(
+        profile,
+        transport,
+        authority,
+        json!({
+            "action": "finalize_attachment_upload",
+            "ds_project": project,
+            "id": attachment_id,
+            "expected_version": version,
+        }),
+    )?;
+    let item = ready_attachment(&finalized, attachment_id, task_id, file)?;
+    Ok(json!({
+        "item": item,
+        "bytes": file.bytes.len(),
+        "sha256": file.sha256(),
+        "content_type": file.content_type,
+    }))
+}
+
 /// Send one governed action for one project and return its `data`.
 pub(crate) fn run<T: AuthorizedTransport>(
     profile: &ClientProfile,
@@ -629,25 +902,18 @@ pub(crate) fn run<T: AuthorizedTransport>(
         readable_project(project)?
     };
     command.validate()?;
-    let response = transport.project_management(ProjectManagementCall {
-        profile,
-        authority: authority.call(),
-        payload: command.payload(project),
-    })?;
-    if response.status != 200 {
-        return Err(refusal(response.status, &response.body));
+    if let Command::TaskAttach { task_id, file } = command {
+        return attach_to_task(
+            profile,
+            transport,
+            authority,
+            project,
+            command.payload(project),
+            task_id,
+            file,
+        );
     }
-    if response.body.len() > MAX_RESPONSE_BYTES {
-        return Err(refused());
-    }
-    let body: Value = serde_json::from_slice(&response.body).map_err(|_| refused())?;
-    if body["success"] != true {
-        return Err(refused());
-    }
-    let data = body.get("data").cloned().unwrap_or(Value::Null);
-    if data.is_null() {
-        return Err(refused());
-    }
+    let data = send(profile, transport, authority, command.payload(project))?;
     // ds-brain answers `{success, data}`, and the graph sits under `data.graph`
     // when it is wrapped and IS the data when it is not. The browser reads it
     // the same way (`response.graph ?? response`, `api/pm.ts:119-121`).
@@ -691,7 +957,8 @@ pub(crate) fn run<T: AuthorizedTransport>(
         | Command::RequestAdmission { .. }
         | Command::Admit { .. }
         | Command::DeclineAdmission { .. }
-        | Command::LogHours { .. } => data,
+        | Command::LogHours { .. }
+        | Command::TaskAttach { .. } => data,
     };
     Ok(graph)
 }
@@ -1116,5 +1383,222 @@ mod tests {
             readable_project("  arjgpydw_nyam  ").expect("a padded project still reads"),
             "arjgpydw_nyam",
         );
+    }
+
+    /// A transport that answers the attachment start, the byte upload and the
+    /// finalize in turn, recording what was sent.
+    struct AttachTransport {
+        started: Value,
+        upload_status: u16,
+        finalized: Value,
+        payloads: Vec<Value>,
+        uploaded: Vec<(String, Vec<u8>)>,
+    }
+    macro_rules! no_other_call {
+        ($name:ident, $call:ident) => {
+            fn $name(
+                &mut self,
+                _: crate::$call<'_>,
+            ) -> Result<crate::TransportResponse, crate::TransportError> {
+                panic!("a task attachment made an unrelated call")
+            }
+        };
+    }
+    impl AuthorizedTransport for AttachTransport {
+        no_other_call!(list_projects, ProjectListCall);
+        no_other_call!(transformer_context, TransformerContextCall);
+        no_other_call!(project_forms, ProjectFormsCall);
+        no_other_call!(project_form_editor, ProjectFormEditorCall);
+        no_other_call!(solar_snapshot, SolarSnapshotCall);
+        no_other_call!(survey_query, SurveyQueryCall);
+        no_other_call!(survey_entries_select, SurveyEntriesSelectCall);
+        no_other_call!(survey_entries_changes, SurveyEntriesChangesCall);
+        no_other_call!(survey_entry_create, SurveyEntryCreateCall);
+        no_other_call!(project_data, ProjectDataCall);
+        no_other_call!(survey_control, SurveyControlCall);
+        no_other_call!(styles, StylesCall);
+        no_other_call!(layers, LayersCall);
+        no_other_call!(tiles, TileCall);
+        no_other_call!(project_report, ProjectReportCall);
+        fn upload_bytes(
+            &mut self,
+            mut call: crate::UploadBytesCall<'_>,
+        ) -> Result<crate::TransportResponse, crate::TransportError> {
+            let mut bytes = Vec::new();
+            call.reader()
+                .read_to_end(&mut bytes)
+                .expect("upload reader");
+            assert_eq!(bytes.len() as u64, call.size());
+            self.uploaded.push((call.uri().to_owned(), bytes));
+            Ok(crate::TransportResponse::new(
+                self.upload_status,
+                Vec::new(),
+            ))
+        }
+        fn project_management(
+            &mut self,
+            call: ProjectManagementCall<'_>,
+        ) -> Result<crate::TransportResponse, crate::TransportError> {
+            let data = match call.payload["action"].as_str() {
+                Some("start_attachment_upload") => self.started.clone(),
+                Some("finalize_attachment_upload") => self.finalized.clone(),
+                other => panic!("unexpected PM action {other:?}"),
+            };
+            self.payloads.push(call.payload);
+            Ok(crate::TransportResponse::new(
+                200,
+                serde_json::to_vec(&json!({"success": true, "data": data})).unwrap(),
+            ))
+        }
+    }
+
+    const SESSION: &str =
+        "https://storage.googleapis.com/upload/storage/v1/b/bucket/o?uploadType=resumable&upload_id=abc";
+
+    fn attach_transport(state: &str, size: usize) -> AttachTransport {
+        let row = |state: &str| {
+            json!({"id": "att-1", "version": 1, "linked_entity_type": "task",
+                   "linked_entity_id": "task-7", "state": state, "size_bytes": size})
+        };
+        AttachTransport {
+            started: json!({"item": row("uploading"), "session_uri": SESSION}),
+            upload_status: 200,
+            finalized: json!({"item": row(state)}),
+            payloads: Vec::new(),
+            uploaded: Vec::new(),
+        }
+    }
+
+    fn attach(transport: &mut AttachTransport, file: AttachmentFile) -> Result<Value, ClientError> {
+        let profile = crate::data_distribution::tests::profile_for_tests();
+        run(
+            &profile,
+            transport,
+            crate::authorized::Authority {
+                bearer_token: "bearer",
+                uid: "uid",
+                email: "user@example.com",
+                device_id: None,
+            },
+            "project-a",
+            &Command::TaskAttach {
+                task_id: "task-7".into(),
+                file,
+            },
+        )
+    }
+
+    use std::io::Read as _;
+
+    #[test]
+    fn task_attach_starts_uploads_the_exact_bytes_and_finalizes_the_reserved_row() {
+        let bytes = b"%PDF-1.7 field plan".to_vec();
+        let file = AttachmentFile::new("field plan.pdf", None, bytes.clone()).unwrap();
+        let mut transport = attach_transport("ready", bytes.len());
+        let receipt = attach(&mut transport, file.clone()).expect("attached");
+        assert_eq!(
+            transport.payloads[0],
+            json!({"action": "start_attachment_upload", "ds_project": "project-a",
+                   "data": {"linked_entity_type": "task", "linked_entity_id": "task-7",
+                            "original_name": "field plan.pdf", "content_type": "application/pdf",
+                            "size_bytes": bytes.len()}})
+        );
+        assert_eq!(
+            transport.uploaded,
+            vec![(SESSION.to_owned(), bytes.clone())]
+        );
+        assert_eq!(
+            transport.payloads[1],
+            json!({"action": "finalize_attachment_upload", "ds_project": "project-a",
+                   "id": "att-1", "expected_version": 1})
+        );
+        assert_eq!(receipt["item"]["state"], "ready");
+        assert_eq!(receipt["sha256"], file.sha256());
+        assert_eq!(receipt["bytes"], bytes.len());
+        assert!(
+            !receipt.to_string().contains("upload_id"),
+            "the session never leaves the door"
+        );
+    }
+
+    #[test]
+    fn task_attach_refuses_an_unverified_row_a_foreign_session_and_a_failed_upload() {
+        let bytes = b"PK\x03\x04".to_vec();
+        let file = AttachmentFile::new("pack.zip", None, bytes.clone()).unwrap();
+        let mut unverified = attach_transport("failed", bytes.len());
+        assert_eq!(
+            attach(&mut unverified, file.clone()).unwrap_err().kind(),
+            ErrorKind::UnreadableResponse
+        );
+        let mut foreign = attach_transport("ready", bytes.len());
+        foreign.started["session_uri"] = json!("https://example.com/upload?upload_id=abc");
+        assert_eq!(
+            attach(&mut foreign, file.clone()).unwrap_err().kind(),
+            ErrorKind::UnreadableResponse
+        );
+        assert!(
+            foreign.uploaded.is_empty(),
+            "no byte leaves for a foreign session"
+        );
+        let mut other_task = attach_transport("ready", bytes.len());
+        other_task.started["item"]["linked_entity_id"] = json!("task-8");
+        assert!(attach(&mut other_task, file.clone()).is_err());
+        assert!(other_task.uploaded.is_empty());
+        let mut failed = attach_transport("ready", bytes.len());
+        failed.upload_status = 503;
+        assert_eq!(
+            attach(&mut failed, file).unwrap_err().kind(),
+            ErrorKind::Transient
+        );
+        assert_eq!(
+            failed.payloads.len(),
+            1,
+            "an incomplete upload is never finalized"
+        );
+    }
+
+    #[test]
+    fn attachment_files_are_bounded_named_plainly_and_typed() {
+        assert_eq!(
+            AttachmentFile::new("Plan.XLSX", None, vec![1])
+                .unwrap()
+                .content_type(),
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        );
+        assert_eq!(
+            AttachmentFile::new("survey.dat", None, vec![1])
+                .unwrap()
+                .content_type(),
+            "application/octet-stream"
+        );
+        assert_eq!(
+            AttachmentFile::new("a.bin", Some("Image/PNG"), vec![1])
+                .unwrap()
+                .content_type(),
+            "image/png"
+        );
+        for bad in ["", "  ", "../a.pdf", "a\\b.pdf", ".", "..", "a\u{0}.pdf"] {
+            assert!(AttachmentFile::new(bad, None, vec![1]).is_err(), "{bad:?}");
+        }
+        assert!(AttachmentFile::new(&"n".repeat(256), None, vec![1]).is_err());
+        assert!(AttachmentFile::new("a.pdf", None, Vec::new()).is_err());
+        assert!(AttachmentFile::new("a.pdf", None, vec![0; MAX_ATTACHMENT_BYTES + 1]).is_err());
+        for bad in ["pdf", "a/b/c", "text/plain; charset=utf-8", "a /b"] {
+            assert!(
+                AttachmentFile::new("a.pdf", Some(bad), vec![1]).is_err(),
+                "{bad:?}"
+            );
+        }
+        let debug = format!(
+            "{:?}",
+            AttachmentFile::new("a.pdf", None, vec![7; 4]).unwrap()
+        );
+        assert!(debug.contains("bytes: 4"), "{debug}");
+        assert!(Command::TaskAttach {
+            task_id: "a/b".into(),
+            file: AttachmentFile::new("a.pdf", None, vec![1]).unwrap()
+        }
+        .validate()
+        .is_err());
     }
 }

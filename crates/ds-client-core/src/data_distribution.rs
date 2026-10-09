@@ -921,7 +921,7 @@ impl Write for DigestingSink<'_> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::{
         ClientProfile, ClientProfileInput, DeploymentLane, ProjectListCall, RefreshCall,
@@ -1529,7 +1529,7 @@ mod tests {
         }
     }
 
-    fn profile_for_tests() -> ClientProfile {
+    pub(crate) fn profile_for_tests() -> ClientProfile {
         // Only used to prove the default trait methods refuse; the bundle path
         // never touches a profile.
         ClientProfile::validate(ClientProfileInput {
