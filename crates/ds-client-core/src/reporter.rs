@@ -782,11 +782,24 @@ pub fn record(
         }) {
             let occurrences = open.event["occurrences"].as_u64().unwrap_or(1) + 1;
             open.event["occurrences"] = json!(occurrences);
+            let event_id = open.event["user_action_id"].as_str().map(str::to_string);
+            // The ending lives in that event now: the journal's draft and a
+            // report queued by this ending name the event that will exist.
+            if let Some(id) = &event_id {
+                if let Some(entry) = state.journal.last_mut() {
+                    entry.invocation_id = id.clone();
+                }
+                if automatic == AutomaticReporting::Queued {
+                    if let Some(report) = state.automatic.last_mut() {
+                        report.payload["context"]["sre_event"] = json!(id);
+                    }
+                }
+            }
             return Recorded {
                 result_class,
                 queued: false,
                 coalesced: true,
-                event_id: open.event["user_action_id"].as_str().map(str::to_string),
+                event_id,
                 automatic,
             };
         }

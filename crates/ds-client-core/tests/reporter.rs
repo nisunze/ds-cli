@@ -906,3 +906,27 @@ fn an_internal_error_is_filed_automatically_and_a_transport_failure_is_not() {
     );
     assert!(!backlog.submitted[0].to_string().contains("SENTINEL"));
 }
+
+/// A repeat folded into an earlier event's occurrences is journalled under
+/// that event's id, so its draft names an SRE event that exists.
+#[test]
+fn a_coalesced_ending_is_drafted_under_the_event_that_holds_it() {
+    let mut store = MemoryStore::default();
+    let mut offline = Sink::new(Gateway::Unreachable);
+    let first = failure("data.vector.buffer", "gateway_unreachable");
+    let second = failure("data.vector.buffer", "gateway_unreachable");
+    finish_invocation(true, &mut store, &mut offline, &first, T0).unwrap();
+    let repeat = finish_invocation(true, &mut store, &mut offline, &second, T0 + 1_000).unwrap();
+    assert!(repeat.coalesced);
+    assert_eq!(
+        repeat.event_id.as_deref(),
+        Some(first.invocation_id.as_str())
+    );
+    let entries = reporter::journal_entries(&mut store).unwrap();
+    assert_eq!(entries[0].invocation_id, first.invocation_id);
+    let drafts = reporter::draft(&entries, 1);
+    assert_eq!(
+        drafts[0]["context"]["sre_event"],
+        first.invocation_id.as_str()
+    );
+}
