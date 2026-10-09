@@ -23,10 +23,8 @@ Proceed on the specification defaults; [OPEN-X §25](OPEN-X.md#25-cli-reliabilit
 
 | # | Slice | OPEN.md | Repos | Impact | After |
 | ---: | --- | --- | --- | --- | --- |
-| 3 | Teach the duty: `ds` skill "Report as you go", `feedback.submit` wording, MCP `FEEDBACK_GUIDANCE` | [§25](OPEN.md#25-cli-reliability-reporting-and-proactive-feedback-priority) | ds-cli | owner asks for feedback constantly; text-only, cheapest win | — |
-| 5 | Reporter in `ds-client-core`: classify, sanitize, outbox, dedupe, rollup | [§25](OPEN.md#25-cli-reliability-reporting-and-proactive-feedback-priority) | kernel | as above | — |
-| 6 | Wire CLI and MCP; `ds doctor`; `next.feedback` in envelopes | [§25](OPEN.md#25-cli-reliability-reporting-and-proactive-feedback-priority) | ds-cli | as above | 5 |
-| 7 | Invocation journal and `ds feedback draft --last` | [§25](OPEN.md#25-cli-reliability-reporting-and-proactive-feedback-priority) | kernel, ds-cli | makes filing one step | 6 |
+| 6 | Wire CLI and MCP; `ds doctor`; `next.feedback` in envelopes | [§25](OPEN.md#25-cli-reliability-reporting-and-proactive-feedback-priority) | kernel, ds-cli | CLI failures never reach SRE; envelopes do not point to feedback | — |
+| 7 | Invocation journal and `ds feedback draft --last` | [§25](OPEN.md#25-cli-reliability-reporting-and-proactive-feedback-priority) | ds-cli | makes filing one step | 6 |
 | 8 | Automatic bug on crash; link closed feedback to SRE events so it stops reappearing | [§25](OPEN.md#25-cli-reliability-reporting-and-proactive-feedback-priority), [§22](OPEN.md#22-operations-product-code) | kernel, ds-cli, ds-brain | crashes become reports without anyone asking | 6 |
 | 9 | Render the `ds` client row in `ds sre overview` text output | [§25](OPEN.md#25-cli-reliability-reporting-and-proactive-feedback-priority) | ds-cli | owner sees CLI health at a glance | 6 |
 

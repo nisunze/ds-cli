@@ -70,9 +70,9 @@ list.
      people's names.
    - **Owner gives:** whether signed-in read-only access needs a new grant,
      since no such control exists.
-7. **Printing slices queued:** STABILIZATION §13 (Front matter purpose,
-   subject per purpose), §14 (preview map context) and §15.3 (hairline
-   dividers break the editor canvas). **Owner picks** the order.
+7. **Printing slices queued:** STABILIZATION §13 (grouped catalogue read and
+   Desktop rendering) and §14 (preview map context). **Owner picks** the
+   order.
 
 Backups of the reclassified layouts are in
 `~/.cache/claude-build-tmp/rwt/reclass/`. `printing-settings-offline.test.ts`

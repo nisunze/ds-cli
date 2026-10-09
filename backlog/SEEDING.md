@@ -34,6 +34,7 @@ Candidate curation and native PLS-CADD acceptance are separate from coding the c
 | [18. Global DS Grid library](#18-global-ds-grid-library) | 3 |
 | [21. Windows native release](#21-windows-native-release) | 8 |
 | [22. Operations](#22-operations) | 5 |
+| [25. CLI reliability and feedback](#25-cli-reliability-and-feedback) | 2 |
 <!-- /toc -->
 
 ## 1. Deployment and template rollout
@@ -281,3 +282,9 @@ Candidate curation and native PLS-CADD acceptance are separate from coding the c
 - **`ds` client event store live readback**: deploy locally built ds-brain and its bulk twin; POST one `cli_command` and one `cli_rollup` body to `/api/v1/sre/requests`. Installed `ds sre events --source cli_command` shows the client fields, `--source cli_rollup` shows one row per command, and `ds_sre.requests` has the `ds` columns. After the deploy, a `platform=flutter` `client_runtime` body lands under `ds-sre/ds-field/requests` with `service=ds-field`.
 
 - **`ds` client row in the SRE overview**: once the CLI/MCP reporter wiring (`OPEN.md` block 25, [ORDER.md](ORDER.md) row 6) has landed and ds-brain plus its bulk twin are deployed, installed `ds sre overview` shows `ds_client` available with non-zero invocations.
+
+## 25. CLI reliability and feedback
+
+- **Unprompted product-use feedback**: after a release containing ds-cli `c3e34205` is installed (installed skill copies on this box still carry the old description), a blind low-powered agent given a product-use task that hits seeded friction files a feedback report without being asked and lists its id at the end (spec [ds-cli-reliability-and-feedback.md](../docs/contracts/ds-cli-reliability-and-feedback.md) §7.7). A coding-session trial uses only the owning backlogs.
+
+- **Installed reporting readback**: installed `ds` run against an unreachable gateway, then online, does not yet show the event with the same `request_id` through `ds sre events --source cli_command` (spec §7.1). It must, once the [OPEN.md block 25](OPEN.md#25-cli-reliability-reporting-and-proactive-feedback-priority) wiring is installed and ds-brain plus its bulk twin are deployed.

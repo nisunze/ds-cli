@@ -334,8 +334,11 @@ the current layout contract, see below):
   - DS Grid MV, Open Buildings and contours go through
     `retainedDerivedPrintContext(..., transformer, design, ...)` (`:255`).
   - A district or overview sheet covers far more than that buffer. Its
-    context outside the buffer is never staged. This compounds §13: these
-    templates preview against an LV transformer (`agahehe`).
+    context outside the buffer is never staged. This compounds §13: the
+    kernel's subject rule (transformer, `mv_models`, extent) exists, but
+    overview and extent previews still have no native renderer
+    (`print_preview_extent_unavailable`), so the extent subject gets no
+    context of its own.
 - **Failures degrade silently into warnings.**
   - Any catalog or derived context error becomes a warning, and the preview
     renders without that layer. Only survey and local layers stop the preview
@@ -351,8 +354,11 @@ the current layout contract, see below):
 
 **Needed:**
 
-1. **Kernel: context extent follows the §13 subject and the sheet.** The
-   context extent is the map viewport's coverage for that subject:
+1. **Kernel: context extent follows the sheet's subject.** The kernel's
+   subject rule (transformer, `mv_models`, extent; see §13) exists,
+   but overview and extent previews have no native renderer
+   (`print_preview_extent_unavailable`). The context extent is the map
+   viewport's coverage for that subject:
    - one transformer's design plus buffer;
    - the MV model's corridor;
    - the project or district extent.
