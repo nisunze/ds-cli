@@ -589,6 +589,36 @@ Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group A, to be fixed to
   Maintain the moving remaining plan here; no new owner input is needed for
   autonomous code. Whole-path acceptance is in the plan's matrix.
 
+  Active: **2 — immutable columnar store**, private account/lane/
+  audience/project fencing, verified chunks, atomic cursor/delta application,
+  exact local work-area masks, recovery, retention and Windows ACL/locking proof.
+  Source adapters must consume the shared snapshot contract through the real
+  authenticated source/delta protocol in slice 6; current production acquisition
+  has not migrated. Use installed `/usr/bin/ds-canary` for development acceptance;
+  never resume the paused stable release. Next independent slice: **3** pinned
+  VersaTiles native generation and fidelity/
+  determinism/budget/cancellation qualification; **4** reporter task and durable
+  native jobs plus actual Windows execution; **5** existing CLI/MCP and Desktop
+  controls/automatic triggers with report independence; **6** real governed
+  source/delta/lease/upload/independent verification/CAS publication APIs and
+  central readback; **7** ALL cloud generation, obsolete custom BigQuery explorer/
+  tiling and external-tool/fallback deletion with consumer tracing; **8** matching
+  development packaging, installed discovery and Windows/Linux real-map matrix.
+  Every slice is proved, committed and pushed on canonical `run` before the next.
+  Acceptance retains before/after cold/warm/delta/report/area request counts,
+  source work/billed bytes where observable, transfer, cloud invocations, latency
+  and peak memory/disk. Assert zero cloud tiling, unchanged source downloads,
+  mask-induced remote calls and redundant cross-PC compute; never claim live
+  publication or Windows proof from fixtures/Linux alone. Sync Center describes
+  project compute contributors and central publication, never PC tile serving.
+  Owner extension during implementation: archive the entire ds-vector-tiler
+  service/repository after tracing and replacing/retiring its non-tiling consumers;
+  remove its deployment/gateway bindings. Combined and simple report generation
+  becomes PC-only for ordinary users; keep central artifact publication/download.
+  Enforce remote report generation for verified developers only at the API,
+  with ordinary compute menus read-only and labelled as migrating to PC.
+  Remote tiling is removed for everyone, including developers.
+
 - `33003988` (minor): a second install of the same dataset while the first is still downloading reopens the same `.part`; on Windows every attempt fails at once with "open existing partial download safely", the bridge reports 422, and the first download finishes on its own, so a one-shot install reports a false permanent failure. **Proof:** a concurrent second request for the same destination is told the download is in flight, and the one-shot wetlands install completes.
 
 - `dbe4d17e` (major): Ground data download never settles: DEM/wetlands/powerlines bundles expand but are never indexed; status complete stays false.

@@ -99,14 +99,22 @@ behind hidden flags. Re-thought expert-only CLI workflows, bigger rented
 containers, custom jobs and new cloud-compute endpoints are OUT OF SCOPE. They
 are not required to close this migration and must not be implemented here.
 
+Owner extension during implementation, 2026-10-09: retire and archive the entire
+`ds-vector-tiler` repository/service after tracing and replacing its remaining
+consumers; the earlier non-tiling-service preservation exception is superseded.
+Combined and simple reports become PC-generated project artifacts, with governed
+central publication/download retained. Remote report generation is restricted to
+server-authorized developers only; ordinary users see read-only migrating-to-PC
+controls. Enforce this at the API authority boundary, not just in menus. Remote
+tiling is removed for everyone. Do not resume or publish the paused stable release.
+
 This deletion does not remove governed survey BigQuery reads, the future full
 design analytics export schema, local Polars workflows, existing published
 reference-tile downloads, or unrelated BigQuery-backed application features.
 Keep central source/freshness/upload/publication APIs needed for PC contribution;
-they coordinate and distribute data, not generate tiles. Keep unrelated current
-ds-vector-tiler building/elevation/exchange endpoints unless their own consumers
-are deliberately migrated in a separately assigned slice. Demoting tiling is
-not authority to indiscriminately delete that whole service.
+they coordinate and distribute data, not generate tiles. Trace and migrate or
+explicitly retire remaining building/elevation/exchange consumers before
+archiving ds-vector-tiler; do not leave dangling gateway routes.
 
 ## 2. Starting points to inspect, not rewrite blindly
 
@@ -419,8 +427,9 @@ not just Web buttons. Inventory and retire worker routes `/vector_tile`,
 and `/global_tiles/tile`, their callers, queue/retry dispatch and gateway bindings.
 Trace custom BigQuery table/dataset explorer-to-tiling consumers across ds-web,
 ds-cli, ds-brain, ds-vector-tiler and gateway/deployment configuration. Remove
-retired worker resources only after distinguishing them from remaining non-tiling
-endpoints. Keep central published-archive reads and contribution coordination.
+retired worker resources after replacing/retiring the remaining non-tiling
+consumers, then archive ds-vector-tiler under the owner's implementation extension.
+Keep central published-archive reads and contribution coordination.
 Prove old requests cannot silently enqueue cloud builds. Future expert special
 jobs and their new endpoints are not retained admission stubs. Real shared
 publication cannot be called complete against a fixture or undeployed endpoint.

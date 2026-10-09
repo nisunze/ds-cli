@@ -100,6 +100,14 @@ Why — the painful history:
 
 ## 9. Desktop tiling and data sources (owner, 2026-10-09)
 
+Implementation extension, 2026-10-09: archive and retire ds-vector-tiler entirely,
+after tracing and replacing/retiring its remaining consumers and deployment
+bindings. Combined and simple reports become PC-generated for ordinary users;
+governed central artifact publication and downloads remain. Remote report
+generation is permitted only to server-authorized developers. Ordinary controls
+remain read-only while migrating to PC. Remote tiling is removed for everyone.
+This work must not resume or publish the separately paused stable release.
+
 - Windows and Linux Desktop must generate survey, design and personal/project
   tiles locally through shared native Rust, hosted by ds-network-reporter.
   The selected dependency is pinned VersaTiles Rust libraries behind
