@@ -312,6 +312,8 @@ pub fn reconciliation_command_wasm(input: &[u8]) -> Result<String, wasm_bindgen:
     reconciliation::evaluate(input).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
 }
 pub mod city_vectors;
+/// MV line ends without a transformer and transformers without MV.
+pub mod mv_lv_orphans;
 mod project_control;
 pub mod project_dataset_cache;
 #[cfg(feature = "wasm")]
