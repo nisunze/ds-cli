@@ -605,17 +605,12 @@ Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group A, to be fixed to
   Maintain the moving remaining plan here; no new owner input is needed for
   autonomous code. Whole-path acceptance is in the plan's matrix.
 
-  Active: **3 — qualify pinned native VersaTiles generation** in
-  `ds-network::ds-native-tiles`, before switching production callers. Use the
-  checked lower-level geometry API, explicit no-reduction policy, bounded
-  admission, a durable checked sink and full coordinate/payload readback.
-  Windows execution, dependency/license closure and cross-platform byte parity
-  remain acceptance obligations. Upstream container dependencies still include
-  raster codecs, SQLite and TLS with defaults disabled; do not claim a minimal
-  vector-only dependency closure. Remaining **2 — immutable columnar store** around
-  `ds-layer-store::project_snapshot::Store`: persist/resume acquisition pages and
-  replay receipts across base retention around the existing ordered
-  `assemble_delta`/`apply_delta` transaction; spatial indexes/Polars projection and filter
+  Active: **3 — multi-layer native generation** in
+  `ds-network::ds-native-tiles`: canonical layer ordering, separate schemas and
+  layer-scoped stable IDs, aggregate budgets, complete per-layer diagnostics
+  and independently decoded deterministic archives. Source/chunk-file transport
+  remains a separate integration boundary from the durable metadata journal.
+  Remaining **2 — store integration** around `ds-layer-store::project_snapshot::Store`: spatial indexes/Polars projection and filter
   pushdown, persisted local masks, recovery estimates and bounded retention policy.
   Prove actual Windows ACL/locking/crash recovery; the helper MSVC compile check
   is not Windows execution. Extend the existing chunk/head/pin implementation
@@ -624,15 +619,23 @@ Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group A, to be fixed to
   Source adapters must consume the shared snapshot contract through the real
   authenticated source/delta protocol in slice 6; current production acquisition
   has not migrated. Use installed `/usr/bin/ds-canary` for development acceptance;
-  never resume the paused stable release. VersaTiles v4.15.0 qualification
-  requires checked lower-level geometry generation (explicit no-reduction policy),
-  canonical stable IDs as properties, bounded source/vertex/zoom admission,
-  fallible tile encoding, a write_all/fsync sink and full coordinate/payload
-  readback: upstream streaming can suppress errors/oversize tiles, and its
-  PMTiles writer deduplicates by a 64-bit hash without byte comparison. Actual
-  Windows/link/license and cross-platform byte parity remain unproved.
-  **4** reporter task and durable
-  native jobs plus actual Windows execution; **5** existing CLI/MCP and Desktop
+  never resume the paused stable release. Remaining **3 — engine
+  qualification/integration** extends `ds-network/crates/ds-native-tiles/CONTRACT.md`:
+  buffered clipping and representative concave/boundary/hole/sliver fidelity,
+  multiple canonical layers, bounded Parquet ingestion and larger-project RSS,
+  actual Windows execution/link/privacy, third-party notices and cross-platform
+  byte parity before switching production callers. Do not replace the existing
+  checked writer/readback or reintroduce external tools. Upstream container
+  dependencies still include raster codecs, SQLite and TLS with defaults disabled;
+  do not claim a vector-only dependency closure.
+  **4** reporter task and durable native jobs plus actual Windows execution.
+  Resolve the native SQLite link boundary: VersaTiles container resolves
+  `rusqlite 0.40.2/libsqlite3-sys 0.38.2`, reporter currently uses
+  `0.32.1/0.30.1`; two `links=sqlite3` owners cannot coexist in one executable.
+  Keep CLI/Desktop generation behind the reporter process boundary, remove
+  replaced MBTiles/SQLite code from `ds-tile-runtime`, and align only the owning
+  reporter dependency rather than upgrading unrelated durable stores.
+  **5** existing CLI/MCP and Desktop
   controls/automatic triggers with report independence; **6** real governed
   source/delta/lease/upload/independent verification/CAS publication APIs and
   central readback. Reuse existing survey read authority, but do not treat

@@ -1,6 +1,8 @@
 //! Verified immutable columnar snapshots. This store has no network transport:
 //! local reads and work-area changes cannot acquire data or check remote freshness.
+mod delta_acquisition;
 use crate::{private, snapshot_privacy};
+pub use delta_acquisition::{DeltaAcquisition, DeltaAcquisitionState};
 use ds_columnar::{batch_to_features, digest_file, schema_digest, ArtifactReader};
 use ds_command_kernel::project_snapshot::{
     self as policy, Context, Manifest, Refusal, RefusalCode, SourceKind,
@@ -162,6 +164,7 @@ impl Store {
             CREATE TABLE IF NOT EXISTS manifests(sha TEXT PRIMARY KEY,body TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS members(manifest TEXT NOT NULL,layer TEXT NOT NULL,chunk TEXT NOT NULL,PRIMARY KEY(manifest,layer,chunk));
             CREATE TABLE IF NOT EXISTS head(id INTEGER PRIMARY KEY CHECK(id=1),sha TEXT NOT NULL);").map_err(storage)?;
+        delta_acquisition::schema(&connection)?;
         Ok(connection)
     }
 
@@ -240,17 +243,30 @@ impl Store {
         inputs: &BTreeMap<String, PathBuf>,
         cancelled: &dyn Fn() -> bool,
     ) -> Result<Admission> {
-        let first = pages
-            .first()
-            .ok_or_else(|| storage("delta pages are empty"))?;
-        let base = self.pin(&first.base_manifest_sha256)?;
+        check_cancelled(cancelled)?;
+        let completed = delta_acquisition::Completed::from_pages(self, pages)?;
+        if let Some(receipt) = self.replay_delta(&completed)? {
+            return Ok(receipt);
+        }
+        let first = &pages[0];
+        let base = match self.pin(&first.base_manifest_sha256) {
+            Ok(base) => base,
+            Err(error) => {
+                // A concurrent exact batch may have committed and its base
+                // been retained away between early replay and pin acquisition.
+                if let Some(receipt) = self.replay_delta(&completed)? {
+                    return Ok(receipt);
+                }
+                return Err(error);
+            }
+        };
         let plan = policy::assemble_delta(base.manifest(), pages)?;
         self.admit_checked(
             plan.manifest,
             inputs,
             Some(&first.base_manifest_sha256),
             cancelled,
-            Some(&plan.tombstones),
+            Some((&plan.tombstones, &completed)),
         )
     }
 
@@ -260,8 +276,10 @@ impl Store {
         inputs: &BTreeMap<String, PathBuf>,
         expected_head: Option<&str>,
         cancelled: &dyn Fn() -> bool,
-        tombstones: Option<&[policy::Tombstone]>,
+        delta: Option<(&[policy::Tombstone], &delta_acquisition::Completed)>,
     ) -> Result<Admission> {
+        let tombstones = delta.map(|(tombstones, _)| tombstones);
+        let completed = delta.map(|(_, completed)| completed);
         let started = Instant::now();
         manifest.validate(&self.context)?;
         manifest.verify_sha256()?;
@@ -297,6 +315,12 @@ impl Store {
         let _lock = self.lock(true)?;
         let mut connection = self.connection()?;
         let head = Self::head_digest(&connection)?;
+        if let Some(completed) = completed {
+            if let Some(receipt) = delta_acquisition::replay(&connection, completed)? {
+                return Ok(receipt);
+            }
+            delta_acquisition::check_pending(&connection, completed)?;
+        }
         let mut receipt = Admission {
             manifest_sha256: manifest.manifest_sha256.clone(),
             changed: false,
@@ -307,6 +331,12 @@ impl Store {
             elapsed_ms: 0,
         };
         if head.as_deref() == Some(&manifest.manifest_sha256) {
+            if completed.is_some() {
+                return Err(refusal(
+                    RefusalCode::SnapshotStaleDelta,
+                    "target head exists without this exact completed delta receipt",
+                ));
+            }
             receipt.elapsed_ms = started.elapsed().as_millis().min(u64::MAX as u128) as u64;
             return Ok(receipt);
         }
@@ -505,6 +535,9 @@ impl Store {
                 [&manifest.manifest_sha256],
             )
             .map_err(storage)?;
+        if let Some(completed) = completed {
+            delta_acquisition::commit(&transaction, completed)?;
+        }
         transaction.commit().map_err(storage)?;
         receipt.changed = true;
         receipt.elapsed_ms = started.elapsed().as_millis().min(u64::MAX as u128) as u64;
@@ -520,6 +553,7 @@ impl Store {
         let _catalog = self.lock(true)?;
         let mut connection = self.connection()?;
         let head = Self::head_digest(&connection)?;
+        let pending_bases = delta_acquisition::pending_bases(&connection)?;
         let candidates = connection
             .prepare("SELECT sha FROM manifests ORDER BY sha")
             .map_err(storage)?
@@ -532,6 +566,10 @@ impl Store {
         let mut pins = Vec::new();
         for digest in candidates {
             if head.as_deref() == Some(&digest) || keep.contains(&digest) {
+                continue;
+            }
+            if pending_bases.contains(&digest) {
+                receipt.pinned_manifests += 1;
                 continue;
             }
             let path = self.root.join("pins").join(&digest);
@@ -954,6 +992,274 @@ mod tests {
             ..first.clone()
         };
         vec![first, last]
+    }
+
+    #[test]
+    fn delta_metadata_reopens_revalidates_files_and_replays_after_base_retention() {
+        let workspace = fixture();
+        let root = workspace.path();
+        let store = Store::open(root, context(), SourceKind::Survey).unwrap();
+        let (base, files) = snapshot(root, vec![vec![point("p1", 1.0, "r1")]], "base");
+        store.admit(&base, &files, None, &|| false).unwrap();
+        let (target, files) = snapshot(root, vec![vec![point("p1", 2.0, "r2")]], "target");
+        let pages = delta(&base, &target, vec![]);
+        let batch = &pages[0].batch_id;
+        assert!(store.stage_delta_page(&pages[1]).is_err());
+        let first = store.stage_delta_page(&pages[0]).unwrap();
+        assert_eq!(first.state, DeltaAcquisitionState::Acquiring);
+        assert_eq!(store.stage_delta_page(&pages[0]).unwrap(), first);
+        let mut conflict = pages[0].clone();
+        conflict.retired_chunks.clear();
+        assert!(store.stage_delta_page(&conflict).is_err());
+        assert_eq!(store.pending_delta(batch).unwrap().unwrap(), first);
+        assert!(store.finish_delta(batch, &files, &|| false).is_err());
+        drop(store);
+        let store = Store::open(root, context(), SourceKind::Survey).unwrap();
+        assert_eq!(
+            store.pending_delta_pages(batch).unwrap(),
+            vec![pages[0].clone()]
+        );
+        let ready = store.stage_delta_page(&pages[1]).unwrap();
+        assert_eq!(ready.state, DeltaAcquisitionState::Ready);
+        assert!(store
+            .finish_delta(batch, &BTreeMap::new(), &|| false)
+            .is_err());
+        assert!(store.finish_delta(batch, &files, &|| true).is_err());
+        let cancellation_checks = std::cell::Cell::new(0usize);
+        assert!(store
+            .finish_delta(batch, &files, &|| {
+                let n = cancellation_checks.get() + 1;
+                cancellation_checks.set(n);
+                n >= 5
+            })
+            .is_err());
+        assert!(cancellation_checks.get() >= 5);
+        assert_eq!(store.pending_delta(batch).unwrap().unwrap(), ready);
+        assert_eq!(store.head().unwrap().unwrap(), base);
+        assert!(
+            store
+                .finish_delta(batch, &files, &|| false)
+                .unwrap()
+                .changed
+        );
+        assert!(store.pending_delta(batch).unwrap().is_none());
+        assert!(store.stage_delta_page(&pages[0]).is_err());
+        store.retain(&BTreeSet::new()).unwrap();
+        assert!(store.pin(&base.manifest_sha256).is_err());
+        // A receipt is sufficient after the base is retired; no file reads.
+        assert!(
+            !store
+                .apply_delta(&pages, &BTreeMap::new(), &|| false)
+                .unwrap()
+                .changed
+        );
+        let mut mismatch = pages.clone();
+        mismatch[0].retired_chunks.clear();
+        assert!(store.apply_delta(&mismatch, &files, &|| false).is_err());
+        assert_eq!(store.head().unwrap().unwrap(), target);
+        let (advanced, files) = snapshot(root, vec![vec![point("p1", 3.0, "r3")]], "advanced");
+        store
+            .admit(&advanced, &files, Some(&target.manifest_sha256), &|| false)
+            .unwrap();
+        assert!(store
+            .apply_delta(&pages, &BTreeMap::new(), &|| false)
+            .is_err());
+        assert_eq!(store.head().unwrap().unwrap(), advanced);
+    }
+
+    #[test]
+    fn pending_delta_limits_discard_and_retention_are_metadata_only() {
+        let workspace = fixture();
+        let root = workspace.path();
+        let store = Store::open(root, context(), SourceKind::Survey).unwrap();
+        let (base, files) = snapshot(root, vec![vec![point("p1", 1.0, "r1")]], "base");
+        store.admit(&base, &files, None, &|| false).unwrap();
+        let (target, files) = snapshot(root, vec![vec![point("p1", 2.0, "r2")]], "target");
+        let pages = delta(&base, &target, vec![]);
+        for i in 0..8 {
+            let mut page = pages[0].clone();
+            page.batch_id = format!("pending-{i}");
+            store.stage_delta_page(&page).unwrap();
+        }
+        let mut extra = pages[0].clone();
+        extra.batch_id = "overflow".into();
+        assert!(store.stage_delta_page(&extra).is_err());
+        let mut oversized = pages[1].clone();
+        oversized.batch_id = "pending-0".into();
+        oversized.changed_chunks.get_mut("poles").unwrap()[0].artifact = "x".repeat(1024 * 1024);
+        assert!(store.stage_delta_page(&oversized).is_err());
+        let mut high_index = pages[0].clone();
+        high_index.page = u64::MAX;
+        assert!(store.stage_delta_page(&high_index).is_err());
+        assert!(store.discard_delta("pending-7").unwrap());
+        assert!(!store.discard_delta("pending-7").unwrap());
+        store
+            .admit(&target, &files, Some(&base.manifest_sha256), &|| false)
+            .unwrap();
+        let retained = store.retain(&BTreeSet::new()).unwrap();
+        assert_eq!(retained.pinned_manifests, 1);
+        assert!(store.pin(&base.manifest_sha256).is_ok());
+        // An ordinary admission cannot create an unearned delta receipt.
+        assert!(store.apply_delta(&pages, &files, &|| false).is_err());
+        for i in 0..7 {
+            assert!(store.discard_delta(&format!("pending-{i}")).unwrap());
+        }
+        store.retain(&BTreeSet::new()).unwrap();
+        assert!(store.pin(&base.manifest_sha256).is_err());
+        assert!(files.values().all(|path| path.exists()));
+        assert_eq!(store.head().unwrap().unwrap(), target);
+    }
+
+    #[test]
+    fn simultaneous_delta_callers_commit_one_receipt_without_rollback() {
+        use std::sync::{Arc, Barrier};
+        let workspace = fixture();
+        let root = workspace.path();
+        let store = Store::open(root, context(), SourceKind::Survey).unwrap();
+        let (base, files) = snapshot(root, vec![vec![point("p1", 1.0, "r1")]], "base");
+        store.admit(&base, &files, None, &|| false).unwrap();
+        let (target, files) = snapshot(root, vec![vec![point("p1", 2.0, "r2")]], "target");
+        let pages = delta(&base, &target, vec![]);
+        let barrier = Arc::new(Barrier::new(2));
+        let mut threads = Vec::new();
+        for _ in 0..2 {
+            let root = root.to_owned();
+            let pages = pages.clone();
+            let files = files.clone();
+            let barrier = barrier.clone();
+            threads.push(std::thread::spawn(move || {
+                let store = Store::open(&root, context(), SourceKind::Survey).unwrap();
+                barrier.wait();
+                store
+                    .apply_delta(&pages, &files, &|| false)
+                    .unwrap()
+                    .changed
+            }));
+        }
+        let changed: usize = threads
+            .into_iter()
+            .map(|t| usize::from(t.join().unwrap()))
+            .sum();
+        assert_eq!(changed, 1);
+        assert_eq!(store.head().unwrap().unwrap(), target);
+        let _lock = store.lock(false).unwrap();
+        let c = store.connection().unwrap();
+        assert_eq!(
+            c.query_row("SELECT count(*) FROM delta_receipts", [], |r| r
+                .get::<_, u64>(0))
+                .unwrap(),
+            1
+        );
+        assert_eq!(
+            c.query_row("SELECT count(*) FROM delta_receipt_pages", [], |r| r
+                .get::<_, u64>(0))
+                .unwrap(),
+            2
+        );
+    }
+
+    #[test]
+    fn completed_delta_receipt_history_is_bounded() {
+        let workspace = fixture();
+        let root = workspace.path();
+        let store = Store::open(root, context(), SourceKind::Survey).unwrap();
+        let (mut base, files) = snapshot(root, vec![vec![point("p1", 1.0, "r1")]], "base");
+        store.admit(&base, &files, None, &|| false).unwrap();
+        let mut oldest = Vec::new();
+        for i in 0..65 {
+            // Only the acquisition revision changes; no repeated file import.
+            let (target, files) = snapshot(
+                root,
+                vec![vec![point("p1", 1.0, "r1")]],
+                &format!("head-{i}"),
+            );
+            let pages = delta(&base, &target, vec![]);
+            if i == 0 {
+                oldest = pages.clone();
+            }
+            assert!(
+                store
+                    .apply_delta(&pages, &files, &|| false)
+                    .unwrap()
+                    .changed
+            );
+            base = target;
+        }
+        assert!(store
+            .apply_delta(&oldest, &BTreeMap::new(), &|| false)
+            .is_err());
+        let _lock = store.lock(false).unwrap();
+        let c = store.connection().unwrap();
+        assert_eq!(
+            c.query_row("SELECT count(*) FROM delta_receipts", [], |r| r
+                .get::<_, u64>(0))
+                .unwrap(),
+            64
+        );
+        assert_eq!(
+            c.query_row("SELECT count(*) FROM delta_receipt_pages", [], |r| r
+                .get::<_, u64>(0))
+                .unwrap(),
+            128
+        );
+    }
+
+    #[test]
+    fn staged_page_count_is_bounded_and_duplicate_tombstones_do_not_poison_cursor() {
+        let workspace = fixture();
+        let root = workspace.path();
+        let store = Store::open(root, context(), SourceKind::Survey).unwrap();
+        let (base, files) = snapshot(root, vec![vec![point("p1", 1.0, "r1")]], "base");
+        store.admit(&base, &files, None, &|| false).unwrap();
+        let (target, _) = snapshot(root, vec![vec![point("p1", 2.0, "r2")]], "target");
+        let mut page = delta(&base, &target, vec![])[0].clone();
+        page.retired_chunks.clear();
+        let tombstone = policy::Tombstone {
+            layer: "poles".into(),
+            object_id: "missing".into(),
+            object_revision: "r2".into(),
+        };
+        page.tombstones = vec![tombstone.clone()];
+        store.stage_delta_page(&page).unwrap();
+        page.page = 1;
+        page.next_page = Some(2);
+        assert!(store.stage_delta_page(&page).is_err());
+        assert_eq!(
+            store
+                .pending_delta(&page.batch_id)
+                .unwrap()
+                .unwrap()
+                .next_page,
+            Some(1)
+        );
+        page.tombstones.clear();
+        for i in 1..255 {
+            page.page = i;
+            page.next_page = Some(i + 1);
+            store.stage_delta_page(&page).unwrap();
+        }
+        let before = store.pending_delta(&page.batch_id).unwrap().unwrap();
+        page.page = 255;
+        page.next_page = Some(256);
+        assert_eq!(
+            store.stage_delta_page(&page).unwrap_err().code,
+            RefusalCode::SnapshotBudgetExceeded
+        );
+        assert_eq!(
+            store.pending_delta(&page.batch_id).unwrap().unwrap(),
+            before
+        );
+        page.page = 256;
+        page.next_page = Some(257);
+        assert_eq!(
+            store.stage_delta_page(&page).unwrap_err().code,
+            RefusalCode::SnapshotBudgetExceeded
+        );
+        assert_eq!(
+            store.pending_delta(&page.batch_id).unwrap().unwrap(),
+            before
+        );
+        assert_eq!(store.head().unwrap().unwrap(), base);
     }
 
     #[test]

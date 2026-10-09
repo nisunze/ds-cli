@@ -134,8 +134,9 @@ must verify. Layer inventory/schema changes require explicit resnapshot recovery
 admission transaction. Before advancing the head it checks every removed live
 object ID has a final tombstone and no tombstoned ID remains in the target.
 A stable-ID move is a replacement rather than deletion; restoring a previously
-removed ID is an addition. Replaying an identical completed delta against a still
-retained base is a no-op. A stale base, malformed page, missing tombstone or
+removed ID is an addition. Replaying an identical completed delta while its
+target remains head is a no-op, including after base retention. A stale base,
+malformed page, missing tombstone or
 corrupt input leaves the current head/cursor untouched. Opaque revision ordering
 and source attestation remain the authenticated source protocol's responsibility;
 local structural/byte checks never substitute for source authorization.
@@ -143,6 +144,35 @@ local structural/byte checks never substitute for source authorization.
 Owning native tests execute deletion, restoration and movement from actual
 Parquet artifacts, compare retained results with full logical source features,
 assert unchanged chunk reuse, and prove malformed batches cannot advance a head.
-Persisted page-by-page acquisition/resume and replay receipts surviving base
-retention remain acquisition integration obligations; this door accepts an
-already acquired complete bounded page set.
+
+`stage_delta_page` journals ordered metadata in the private SQLite catalogue.
+`pending_delta` reports acquisition metadata and its next page; `pending_delta_pages`
+returns the exact checked page prefix after reopen. An exact duplicate page is
+idempotent. Conflicting identities, duplicate payloads and out-of-order pages
+refuse without changing the prefix or head. The terminal page makes metadata
+ready, not downloaded or verified. `finish_delta` passes caller-owned chunk paths
+through full admission and tombstone verification again. Failure or cancellation
+preserves both journal and head. `discard_delta` removes only pending metadata.
+Neither API stores download state or owns the caller's files. Transport and
+persistent chunk-download resumption remain separate integration obligations.
+
+Admission commits all per-page digest receipts, the new head and pending metadata
+removal in one SQLite transaction. Complete-page replay checks every page digest,
+page count, batch/base/target and authority identity. It checks both before pinning
+the base and again under the exclusive catalogue lock; simultaneous identical
+callers yield one promotion and one no-op. An existing target without the exact
+recorded batch refuses; replay after head advances refuses rather than rolling
+back. `finish_delta` requires pending pages; after successful completion retry
+with `apply_delta` and the complete original pages. Staging a completed batch
+refuses and never repopulates its pending journal.
+
+Limits are 8 pending batches, 256 pages per batch, 1 MiB serialized per page,
+16 MiB per batch and 32 MiB across all pending metadata. Prefix change operations
+also have a 100,000-operation bound. The completed receipt history keeps the most
+recent 64 batches and at most 256 page digests each. Replay recovery is bounded:
+after receipt expiry an old batch has no permanent idempotence guarantee and
+cannot mint a receipt merely because its target exists. Retention protects every
+pending base even after an independent admission changes head; explicit discard
+releases that protection. All catalogue accesses use catalogue-before-pin lock
+ordering, and finalization releases its read lock before admission's exclusive
+lock. SQLite uses the existing private catalogue and FULL synchronous WAL policy.
