@@ -9,35 +9,35 @@ Unfinished code that an agent can implement and prove without further owner inpu
 | Area | Remaining entries |
 | --- | ---: |
 | [1. Source integration and release code](#1-source-integration-and-release-code) | 3 |
-| [2. Green `run` and release gates](#2-green-run-and-release-gates) | 3 |
-| [3. Template creation code](#3-template-creation-code) | 2 |
+| [2. Green `run` and release gates](#2-green-run-and-release-gates) | 8 |
+| [3. Template creation code](#3-template-creation-code) | 1 |
 | [4. Print template and style code](#4-print-template-and-style-code) | 0 |
-| [5. Print renderer and booklet code](#5-print-renderer-and-booklet-code) | 0 |
-| [7. Report compute, export and combined output](#7-report-compute-export-and-combined-output) | 11 |
-| [8. Sync, publication and edge outbox](#8-sync-publication-and-edge-outbox) | 4 |
-| [9. LV processing, sizing and headless intake](#9-lv-processing-sizing-and-headless-intake) | 13 |
-| [10. Voltage drop](#10-voltage-drop) | 2 |
-| [11. PLS-CADD exchange round trip](#11-pls-cadd-exchange-round-trip) | 9 |
+| [5. Print renderer and booklet code](#5-print-renderer-and-booklet-code) | 2 |
+| [7. Report compute, export and combined output](#7-report-compute-export-and-combined-output) | 13 |
+| [8. Sync, publication and edge outbox](#8-sync-publication-and-edge-outbox) | 5 |
+| [9. LV processing, sizing and headless intake](#9-lv-processing-sizing-and-headless-intake) | 8 |
+| [10. Voltage drop](#10-voltage-drop) | 3 |
+| [11. PLS-CADD exchange round trip](#11-pls-cadd-exchange-round-trip) | 13 |
 | [12. DS Grid engineering (Codex main)](#12-ds-grid-engineering-codex-main) | 11 |
 | [13. Spotting (Codex main)](#13-spotting-codex-main) | 8 |
 | [14. Plan and Profile authoring](#14-plan-and-profile-authoring) | 1 |
 | [15. Project delivery code](#15-project-delivery-code) | 2 |
-| [16. Map data, datasets and screen styling](#16-map-data-datasets-and-screen-styling) | 7 |
-| [17. Project Work and Assets](#17-project-work-and-assets) | 5 |
-| [18. Global DS Grid library](#18-global-ds-grid-library) | 1 |
+| [16. Map data, datasets and screen styling](#16-map-data-datasets-and-screen-styling) | 8 |
+| [17. Project Work and Assets](#17-project-work-and-assets) | 7 |
+| [18. Global DS Grid library](#18-global-ds-grid-library) | 2 |
 | [19. Country neutrality and duplicated rules](#19-country-neutrality-and-duplicated-rules) | 2 |
 | [21. Windows release code](#21-windows-release-code) | 5 |
-| [22. Operations product code](#22-operations-product-code) | 2 |
-| [23. Kernel controls, JSON UI and TypeScript retirement](#23-kernel-controls-json-ui-and-typescript-retirement) | 4 |
+| [22. Operations product code](#22-operations-product-code) | 1 |
+| [23. Kernel controls, JSON UI and TypeScript retirement](#23-kernel-controls-json-ui-and-typescript-retirement) | 5 |
 | [24. Owner feature requests (CLI-first, after stabilization)](#24-owner-feature-requests-cli-first-after-stabilization) | 4 |
-| [25. CLI reliability reporting and proactive feedback (priority)](#25-cli-reliability-reporting-and-proactive-feedback-priority) | 5 |
+| [25. CLI reliability reporting and proactive feedback (priority)](#25-cli-reliability-reporting-and-proactive-feedback-priority) | 3 |
 <!-- /toc -->
 
 ## 1. Source integration and release code
 
 - **In progress:** `wasm-size` (take back the network WASM growth).
 
-- **Security `c9df4098`**: yes, short-lived signed URLs via ds-brain replace Firebase download-token URLs (code tonight; deploy with ds-brain).
+- **Security `c9df4098`: signed reads only.** ds-apis-tf `infra/default_bucket.storage.rules` still has `allow get: if !isServerOwnedName(...)` (legacy public read), so `report_lv`/`lv_drafting` project objects stay readable by URL. Put them behind signed reads only and prove the ds-web/Desktop/field/kernel consumers use `sign_url`; make kernel `artifact_identity` accept `https://storage.cloud.google.com/<bucket>/<object>` as ds-brain `artifact_reference.go` already does. Deploy, token revocation and the anonymous-GET refusal are in [SEEDING.md](SEEDING.md).
 
 - **Move ds-network to Polars 0.55** (owner, 2026-10-07): `ds-network` pins `polars`, `polars-arrow` and `polars-io` at exactly 0.53.0 (workspace `Cargo.toml:74-76`), while ds-solar is already on 0.55.2. Rust 0.x minor versions break APIs. `polars-arrow` writes the `.dsgrid` Arrow IPC tables, so prove the emitted packages are byte-identical before and after: no package format change (schema 5 is final). Then run the ds-network, ds-cli and reporter suites and check the WASM size (`wasm-size`). Polars 2.0 is the Python release and does not apply.
 
@@ -70,14 +70,12 @@ is ruled in the sync contract: simple local clean and recompute.
   in `src/profile_encoding.rs`, `type_complexity` in `src/style_legend.rs`,
   `too_many_arguments` in `src/style_multiscale.rs` and
   `src/printing/style_capture.rs`, `single_element_loop` in
-  `src/profile_display.rs`, and `cloned_ref_to_slice_refs` in report preview and
+  `src/profile_display.rs`, a diagnostic at `src/sync_store.rs:176`, and `cloned_ref_to_slice_refs` in report preview and
   printing tests. These paths are unchanged by Solar sync. Leave the Profile
   findings to its owner and the remaining findings to their owning gate slices;
   proof requires the strict command to pass without lint suppression.
-- **CLI release gates have unrelated baseline failures.** The Solar continuation
-  vector reports `report layout render --help` at 2545 bytes against its 2480-byte
-  allowance in `context_budget::command_help_is_bounded`. Its unchanged
-  `domain_smoke` assertions expect 44 map window commands instead of 46, omit
+- **CLI release gates have unrelated baseline failures.** The unchanged
+  `domain_smoke` assertions omit
   `map.profile.calculation` and `map.profile.results` from the coverage set, and
   expect one Profile calculation example instead of two. Repair these in their
   owning CLI/Profile slices and prove the full context-budget/domain-smoke suites;
@@ -93,6 +91,16 @@ is ruled in the sync contract: simple local clean and recompute.
 
 - **Native engine strict Clippy gate**: `cargo clippy --locked -p ds-grid-engine --all-targets --no-deps -- -D warnings` remains blocked by baseline owning diagnostics: collapsible conditions, large error/enum variants, argument counts and presentation borrow/style issues. Current library gate reports 27 diagnostics; exact log: `ds-network/out/stabilization/profile-reference-reuse-clippy.log`. Repair coherent owning slices and rerun library-test diagnostics after the library gate admits; retain native error JSON and engineering behavior.
 
+- **ds-cli contract suites red (wave 3, 2026-10-09)**: observed red, some possibly from then-uncommitted work: `context_budget::command_help_is_bounded` (`ds doctor --help` 1426 > 1380 bytes; `ds report layout list --help` 3083 > 3020); `contract` (`design.download.fetch` summary 73 > 70 chars); `refusal_coverage` (two `Failure::invalid/conflict(code, …)` sites in `ds-cli-auth/src/device.rs`, and ds-web `src/lib/desktop/cli-sync-center.ts:126` and `cli-assets-args.ts:29` mint refusal codes that are not literals); `lens_core_boundary` (`ds-cli-map/src/profile_calculation.rs` uses a paired availability without `Requires::Window`; window commands 46/45 against a ceiling of 44); `clippy -p ds-cli-design -D warnings` (`lv/voltage_drop.rs:186` `type_complexity`). Re-run each on `run` and fix those still red in their owning files. **Proof:** the full `ds` test suites and that clippy pass.
+
+- **ds-web test gates red on `run`**: `gateway-bypass-gate` (`src/lib/api/client.ts` has 6 remote call sites against a reviewed budget of 5); `native-tools-page.test.ts` (2 failures since `a8d3e98f`: `projectUploadsRoute` now returns `/projects/<p>/data?view=import…`); `src/lib/solar/snapshot-kernel.test.ts` byte parity (kernel `cba2603` changed the governed Solar snapshot fingerprint and key order); `projects-api.test.ts` "composes all-project listing from deterministic lifecycle buckets", even run alone; `svelte-check` errors in `src/tests/setup.ts` (`CanvasFreeGraph`, `canvasGraphAutoArrange`, `CanvasFreeCardGeometry` missing from the vendored `ds_network_wasm`). Fix each in its owning slice (reduce the bypass, update tests to the current contract, refresh the vendored WASM); never raise the budget to pass.
+
+- **ds-network WASM export inventory stale**: `docs/contracts/wasm-public-surface.json` records 251 exports while `ds-network-wasm` carries 256 `#[wasm_bindgen]` items, so `documented_wasm_export_inventory_count_matches_source` fails. Its generator `scripts/generate-wasm-surface-inventory.py` is Python (owner: no Python); replace it with Rust or shell, regenerate, then delete the `lv_voltage_drop` export, which has no JS/TS caller in ds-web.
+
+- **Kernel vendored-drift and literal-ratchet tests red**: `tests/geo_lite_drift` `vendored_bytes_match_live_ds_network` fails on vendored `canvas/free_layout.rs` drifting from ds-network `ds-canvas`; the template literal ratchet counts 12 against baseline 10 because `crates/ds-client-core/src/sre.rs:572` and `:613` (`ef40648`) add the token `"service"`. Resync the vendor copy and remove or name the literals; never raise the baseline.
+
+- **ds-network differential receipts**: `network::differential::tests::recorded_transformers_manual_and_auto_process_outputs_are_byte_identical` was red because the `renumber_lines` process setting adds `"renumber_lines":true,` to `settings_used` (lv-differential-wingwa, auto=true). With that setting on `run`, regenerate the recorded receipts if the test is still red and prove the suite.
+
 - **Stabilization after the 7 October test sweep** (owner, 2026-10-07): the full list is in [STABILIZATION.md](STABILIZATION.md). It may touch any other backlog surface it intersects.
 
 - **National ID and phone in external reports: not urgent, no code now** (owner, 2026-10-07): DS does handle national IDs. Reporter `a69402e` hides `nid`, `national_id` and phone from every external report projection, but that restriction came from the datasolutions.rw product context and was not meant for everything. Kernel `3e23208` overstated it as a general "personal identity never prints" rule, and reporter `ac7e740` aligned the XLSX and as-built schedule tests with `a69402e`, so the former XLSX test failure is green. Implement no identity removal or restoration until the owner scopes it; correct the `3e23208` wording when this is taken up.
@@ -100,8 +108,6 @@ is ruled in the sync contract: simple local clean and recompute.
 ## 3. Template creation code
 
 - **Template creation fixtures and UI binding**: complete representative transformer-outlier fixtures and any missing selectable-copy UI binding over the declared CLI contract. Keep explicit template identity and copy choices in the owner; Tchad layout contents and project parameters belong in [SEEDING.md](SEEDING.md#3-template-projects).
-
-- **Typed single-sheet configuration copy** (`d76f6e55`): expose a reviewable plan/apply operation with source READ and destination WRITE authorization. Installed stable exposes `layer_mapping` in `arjgpydw_survey_test` but omits it from `wnmajona_edcl_rural_electrification_template`; existing-sheet editing refuses that absent destination sheet. Validate admitted sheet identity/schema, create only the selected sheet, preserve unrelated destination sheets and read back the result. Prove an existing `cust_category` copy and unknown-sheet refusal as controls. Do not relax arbitrary-sheet validation or substitute whole-network configuration copying.
 
 ## 4. Print template and style code
 
@@ -111,15 +117,17 @@ Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group E (printing templ
 
 Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group E (printing templates, previews and booklets).
 
+- **Dead retired renderer in the reporter**: ds-network-reporter `src/print_iterations.rs` still holds a `cfg(test)`-only retired renderer (`render_transformer_svg_legacy`, `compose_svg` and helpers, about 2,000 lines) reachable only from its own tests. Delete it with its tests in a dead-code slice; keep live renderer coverage.
+
+- **Long diagonal leaders on vertical structure labels** (cosmetic): on supports whose top sits near the profile envelope top, vertical labels get leaders up to 27 mm long (real Nyamagabe scene), running from the support top down to the label base. They cross no furniture. Shorten them without moving labels into furniture.
+
 ## 7. Report compute, export and combined output
 
-- **Product gaps left by the ds-work script removal** (old drivers: `git show f3809be:skills/_scripts/<name>.py`): (1) run a download plan: fetch the listed artefacts byte-exact with a sha256 manifest (`ds design download plan` only previews; was `fetch-download-plan.py`); (2) find a room's district from its artefacts when `design tag enrich-preview` returns `not_located` (was `find-districts-from-artefacts.py`); (3) MV/LV orphan join: the kernel join landed (ds-command-kernel `src/mv_lv_orphans.rs`, `fef9493` + `382a697`; schema `ds.mv-lv-orphans/v1`). Remaining: a `ds` CLI/MCP door over `mv_lv_orphans` (MV GeoJSON plus transformer points or `ds design status` JSON; `--tolerance-m`, `--junction-m`, `--exclude-prefix`, `--limit`, optional `--out` orphan GeoJSON; closed `Code` enum mapped to documented refusals; a `domain_smoke` assertion) (was `mv-lv-orphans.py`).
+- **Product gaps left by the ds-work script removal** (old drivers: `git show f3809be:skills/_scripts/<name>.py`): (1) `ds design download fetch` fetches only `plan.filtered_urls` (reports, prints, archives); the retired `fetch-download-plan.py` also fetched each in-scope row's source uploads (`rows[].source_entries`/`source_files`: draft/sketch/process). Fetch those through the same signer into the manifest, and accept the `storage.cloud.google.com` locator form, which the retired script rewrote and which now refuses the whole plan; (2) find a room's district from its artefacts when `design tag enrich-preview` returns `not_located` (was `find-districts-from-artefacts.py`).
 
-- **Combined reports can publish incomplete output** (`4151b6b7`): a `combined_inputs_not_current` refusal must leave no externally visible partial archive. Desktop and headless combined outputs must agree on MV content and explicit project context (`a9b76d47`, `155d4782`, `70f507fc`, `72155a40`, `655b5a0d`).
+- **Combined output parity**: Desktop and headless combined outputs must agree on MV content and explicit project context (`a9b76d47`, `155d4782`, `70f507fc`, `72155a40`, `655b5a0d`).
 
 - **Northern Hub true combined output is unavailable** (`42f3abd1`): the available combined transformer task emits workbook/geospatial data but no A0/A3 PDFs, while `report project combined` is a compounded ZIP. Expose and prove true combined A0/A3 PDFs and workbook without presenting a compounded archive as combined.
-
-- **Deleted LV transformer restore has no CLI** (`81ae43eb`): ds-brain serves `read_transformer_backup` (verified receipt plus a 15-minute generation-pinned download) and `restore_deleted_transformer` (exact generation+sha256 pin; refuses `transformer_exists`/`history_diverged`) on `/report` (ds-brain `6fc25cb`, `01785fc`, `5dd52c9d`; `docs/contracts/transformer-retirement.md`). The kernel client is `DeletedBackupRequest` in `ds-client-core` (`8c102d6`). Add the `ds design transformer` commands over it (explicit `--project`, backup read/download, restore-deleted with the read pins), MCP exposure and closed refusal mapping.
 
 - `74bdd848` (blocker): Headless export computed 113 valid reports, but none reached cloud publication; the project remained stale and Combined Report empty.
 
@@ -131,7 +139,13 @@ Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group E (printing templ
 
 - `1849f4a3` (major): Group successful report warnings so engineering blockers stay actionable.
 
-- `c9df4098` (major): design download plan lists artefact URLs but no ds verb executes it; every listed report and drafting artefact is readable by URL without any credential.
+- `c9df4098` (major): listed report and drafting artefacts remain readable by URL with no credential (legacy public read in ds-apis-tf `infra/default_bucket.storage.rules`); the code is the §1 signed-reads slice.
+
+- `7e3067c9` (major): the governed compounded report for `czgmdwth_gisagara` (all 94 active participants) refused `report_no_individual_artifacts` with `missing_individual_artifact_count` 94 and `reporter_request_failed`. Make the service reporter fan-out produce or reuse fresh individual XLSX/GIS artifacts with exact source pins, name genuine row failures, and expose the nested non-secret reporter cause (transport, capacity or refused input). The deployed replay follows in SEEDING.md.
+
+- `ae4fe689`: reporter combined quantities let a `fill_in` name prefix override explicit `new_transformer` authority. The explicit field must win; prove with a `fill_in_*` transformer whose `new_transformer` says otherwise.
+
+- `9d0f28da` (major): installed ds-canary 0.1.6 refuses `report project settings --project czgmdwth_gisagara --lane stable` and `report layout get` with `auth_response_unreadable`, although all 31 config sheets read through `design config sheets`; the closed-contract break sits in the report-settings read (printing catalogue or receipt decode). Reproduce on a native-profile build of current source, fix the decode, and prove both reads plus a typed refusal for a genuinely unreadable response.
 
 - Never-landed (owner 2026-10-02, land adapted to run): Generic archive-group readers: kernel, ds-cli (890bac3) and ds-web (54a65730) read the `group_count`/`groups` ds-brain writes, not `district_count` only.
 
@@ -141,41 +155,35 @@ Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group E (printing templ
 
 - `d50cc39d` (blocker): Edge compute without a visible, self-healing publication: 593 sealed report artifacts (379 MB) stuck in the Desktop pending-upload outbox behind a dead-process lock since 2026-09-18; nobody was told.
 
+- `6ffc5d52` (blocker): when report admission fails before queueing, Sync Center loses the failure. It must stay visible after restart with producer, revision and retry guidance, retain its files and receipts, and recover without duplicate publication (ds-web/kernel sync lifecycle). ds-web `a78f5ab44` only removed the "all delivered" wording.
+
 - Expose cloud-conflict review as bounded JSON for both DS Grid and LV, with exact local/base/cloud identity, before/after facts, complete change counts, explicit omitted details and useful resolution choices. Existing Grid CLI comparison lists changed IDs but lacks field values; the Grid menu lists revision/digest pins without a content review. Preserve working copies and current head/digest overwrite guards. Advice must distinguish two-way differences from a merge proved against an actual base; provide the same native review facts through CLI/MCP and the JSON view.
 
 - **Bounded cloud-head reads**: the affected `fill_in_gishubi` cloud-head read produced no output for more than ten minutes. Provide a bounded result or named stalled-acquisition refusal while preserving retained local artifacts. Reproduction receipts: `ds-command-kernel/_discardable/artifact-inventory-refresh/root-installed-publications-stalled.json`; publication recovery is tracked in [SEEDING.md](SEEDING.md#8-sync-publication-and-edge-outbox).
 
 ## 9. LV processing, sizing and headless intake
 
-- `8b2d9545` (major): LV spans longer than the cable REG maximum are never flagged, and generated poles target max plus tolerance (47 m for 3x70, REG 44 m); EDCL rejected three designs on span length.
+- `4070556f` (major): a kept approved network skips the process-time protection (and span-length) audit: ds-network `keep_approved_network` (`network/mod.rs`) returns the supplied network without `sizing::audit_transformer_protection` or `quick_build::audit_lv_span_lengths`, so a frozen transformer whose saved DB cable, breaker or fuse disagrees with its size ships no `transformer_protection_mismatch` warning (the report-time Engineering Review still flags it). **Proof:** a `native_lv_preservation_contract` case where a kept job carries the same mismatch warning as an unkept control.
 
-- `38bd5091` (major): LV batch process changes approved poles and cable sizes despite preservation settings.
-
-- `4bad5ef3` (major): LV processing always renumbers LV line numbers; no setting keeps supplied line_number.
-
-- `4070556f` (major): Sizing: frozen or existing transformers keep a saved DB cable, LV breaker and MV fuse that is never checked against their size, so mismatched protection ships silently.
-
-- `571c4b57` (major): Sizing: minimum_tr_size raises transfo_size but DB cable, LV breaker and MV fuse stay on the smaller demand row, so issued reports break REG Tables 12 and 13.
-
-- `dcacdb90` (minor): Sizing: only the 30 kV MV fuse is ever used; mv_fuze_15_kv_amp in transfo_sizes is ignored, so 15 kV networks get about half the REG fuse rating.
-
-- `00ad9848` (major): Legacy saved LV designs need a non-destructive topology analysis for voltage-drop reports. Full processing changes approved assignments, pole identities, spans and cable sizes; keep saved design bytes intact or refuse where connections cannot be reconstructed.
+- `00ad9848`, `47136650` (major): saved LV designs whose spans or nodes lack processor node ids are refused for voltage drop ("saved span has no from_node_id", "saved topology has no LV spans to prove feature ids"). Add an analysis-only topology derivation (or a topology patch preview plus a save door) on a copy, with exact source-digest proof and a typed ambiguity refusal. Saved designs that carry node ids already get non-destructive VD through `keep_network_as_drawn`.
 
 - `007c1624` (major): Legacy (unfenced) transformer rooms cannot be read headlessly: lv project-export refuses, features select scans 0, location path resolves nothing, no headless migrate.
 
-- `6ed42257` (blocker): No headless way to save a supplied LV design as a new transformer version without reprocessing it.
+- `6ed42257` (blocker): `design.lv.project-save` requires the request source layers to equal the exported saved-head digest (ds-cli `crates/ds-cli-design/src/lv/project_save.rs` `source_layers_for_fence` refuses with `fast_lv_save_input_invalid`; kernel `crates/ds-client-core/src/transformer_save.rs` digest check), so a client-supplied design that differs from the head is refused. Add a governed supplied-layers save fenced on the exported head version/digest, carrying the kept-as-drawn rows, with a dry-run diff against the head.
 
-- `2adfa7d2` (major): Gisagara cannot publish lv_poles standards columns through known-columns route.
+- `09de401e` (minor): after `design migrate apply --overwrite`, every overwritten head carries one more feature property key than its source (agasharu 61 vs 60, agatare 38 vs 37, akamana 38 vs 37; the fresh copy upgrade_agacyamu 65 vs 65). Find what survives from the replaced head in ds-brain design-migrate. **Proof:** pinned preview `properties_before` is equal on source and destination.
 
 - `7f5ac170` (major): No migration from the deprecated struct_type 'Existing' marker to existing_status across a project's transformers.
 
-- `83f3712b` (major): Supplied shapefiles with 10-character DBF field names are not mapped back to canonical LV fields.
+- `83f3712b` (major): DBF-truncated field names: (a) dropped empty export columns are not reported; (b) ds-web duplicates the truncation mapping in TypeScript (`src/lib/design/columns.ts` `suggestDesignColumnHeader`, used by `upload-inspect.ts`): expose ds-network `restore_dbf_truncated_columns` through WASM and delete the TS and its tests; (c) the headless `ds design intake upload --mode lv-process` path does not run the native restore (fold into `14fd08e8`).
 
 - `14fd08e8` (major): Headless LV intake cannot upload to Northern Hub.
 
 ## 10. Voltage drop
 
-- **Analysis/Reporter input binding**: make producer topology, saved voltage-drop JSON and Reporter use the same graph/input digest, with typed stale/missing refusals or a reviewable difference. Complete any missing direct-artifact discovery or saved-JSON-only report bindings. Source reproduction, paper QA and file replacement belong in [SEEDING.md](SEEDING.md#10-voltage-drop).
+- **Analysis/Reporter input binding** (reporter, ds-cli): (1) reporter `src/exports/voltage_drop.rs` `admit_engine_result` must admit `jobs[0].analysis` with `jobs[0].layers` through `admit_analysis(transformer, analysis, layers)` and record `analysis.inputs_digest` instead of `summary.inputs_digest`, so a standalone result and a saved analysis bind one digest; (2) ds-cli `docs/reference/design.md`: document the additive per-job `analysis` member in the `ds.lv-voltage-drop.result/v1` example and prose; (3) direct-artifact discovery only after a reproduced failing case. Release acceptance is in [SEEDING.md](SEEDING.md#10-voltage-drop).
+
+- **Report title block names the project by its id** (`e538e632`): ds-brain `network_reporter_input_receipt.go:407` labels `printing_context.project` with `project_data.project_name` ("gisagara") instead of the display name. Use the display name and prove it in the receipt test. The governed logo source is an owner decision.
 
 - **Voltage-drop export contract text still describes the old A4 behaviour** (ds-cli, residue of reporter `026e441`; feedback `159282a4`, `e538e632`): the `report export` purpose (`crates/ds-cli-report/src/export.rs:51`) still says it prints reserved/incomplete/refused status on A4 and that governed identity supplies logos, and `docs/reference/report.md:126-129` still promises A4 status pages and logos on every A4 title block. Restate both: A4 prints only calculated analysis, without logos; non-calculated analysis is refused with `voltage_drop_pdf_not_calculated`; the combined A3 overview covers reserved and refused transformers. Regenerate ds-web `src/lib/tools/native-catalog.generated.json`. Optionally drop stale status-document wording in `crates/ds-cli-style/src/a4_seed.rs` and the stale test comment at reporter `src/exports/voltage_drop_pdf.rs:738`. **Proof:** the discovery and doc-contract tests pass and the regenerated catalogue matches the new text.
 
@@ -189,7 +197,7 @@ Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group E (printing templ
 
 - **Old `.dsgrid` revisions**: refused with a named code once the old readers go; `ds grid model upgrade` republishes every published head.
 
-- **8. PLS-CADD comparison harness and exchange fidelity**: a repeatable harness (DS Grid vs PLS-CADD on the pinned revisions, through the installed `ds pls desktop` verbs) whose outputs are committed tests. Keep the exchange suite green (612 ds-grid-exchange, 432 ds-io, 488 ds-network at `f1a8e02`). Exchange items: `7a836b7a`/`9f2316b3`/`6405185d` Repair Wizard; `e258b287`; `f27c69f1` Model 2 merges 76 of 709 sections; `732fcd12` two criterion sets; `3724e4ce` ACSR member; `91331096` Method-2 signed wind cases; `9817e17e` export re-authors CRI/cable files; `0a653e07` ACSR cable extra line; `de849b9b` 1 m alignment gap; `7ce604c5` duplicate weather labels; `8f312f23` immutable source provenance; `b3bdc857`, `b1a2b25c`, `2b8cd4ae`, `ec73ef89`, `c45dc437`/`e37d99d5`, `90cf2311`.
+- **8. PLS-CADD comparison harness and exchange fidelity**: a repeatable harness (DS Grid vs PLS-CADD on the pinned revisions, through the installed `ds pls desktop` verbs) whose outputs are committed tests. Keep the exchange suite green (612 ds-grid-exchange, 432 ds-io, 488 ds-network at `f1a8e02`). Exchange items: `7a836b7a`/`9f2316b3`/`6405185d` Repair Wizard; `e258b287`; `f27c69f1` Model 2 merges 76 of 709 sections; `732fcd12` two criterion sets; `3724e4ce` ACSR member; `91331096` Method-2 signed wind cases; `9817e17e` export re-authors CRI/cable files; `0a653e07` ACSR cable extra line; `de849b9b` 1 m alignment gap; `8f312f23` immutable source provenance; `b3bdc857`, `b1a2b25c`, `2b8cd4ae`, `ec73ef89`, `c45dc437`/`e37d99d5`, `90cf2311`.
 
 - **Restore failure reproduction** (`7a836b7a`): repair the affected DS-authored backup only from its exact source and native Restore evidence. Include the known clean Gisagara round-trip as a positive control; relative `FILENAME=.\` headers alone are not an established Repair Wizard trigger.
 
@@ -197,7 +205,15 @@ Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group E (printing templ
 
 - `c45dc437` (major): A characterized PLS-CADD 19.01 DON v68 backup cannot normalize to 16.81: direct v68 comment writing is rightly refused, while deferring it exposes a 12-to-15 criterion-case binding mismatch. Preserve the native writer refusal and prove stage-two parity, restored workspace identity, and the 16.20 negative control.
 
-- `90cf2311` (minor): Whole-model PLS workspace export of Model 2 refuses on earthing before any cable or capacity edit can be proved.
+- `90cf2311` (minor): a bounded PLS workspace export of only the members an edit touches (e.g. the Model 2 cables folder for a creep check) is not possible without first earthing every existing structure. The refusal already names every unearthed structure and its remedy.
+
+- `7ce604c5` (major): the duplicate-weather-label refusal names labels and ids but says to rename all but one state without saying which to keep. In a workspace export with a preserved source CRI, renaming the carried legacy state (e.g. High wind 50 C / 980.8 Pa) still fails with `carried weather row "High wind" does not match any model weather state` (`pls_cadd_library.rs:2467`). The refusal must say which state matches the carried source CRI row (keep its label) and which to rename, or the carried-row check must explain the mismatch.
+
+- `3a302e54` (major): PLS export can write a blank final weather case, so PLS-CADD stops on open (`wc_name_to_index couldnt find weather case`). The final-after-load weather cases are still unaddressed; write them from the model or refuse by name. Windows restore/readback acceptance is in SEEDING.md §21.
+
+- **Imported PLS structure orientation** (needs characterization): a structure's `orientation_rad` is its travel bearing (e.g. 5.0776 rad at Nyamagabe `str-423815a32fed4309-420`), but the imported PLS STRUCT puts its transverse offset in `local_x`; `placed_local_xy` rotates local x by orientation, so imported transverse phase offsets would be placed along the line, and `resolve_directional_strain` reads PLS strain azimuths (1.571/4.712) as transverse and refuses. Compare ds-grid-exchange `pls_cadd_workspace.rs` attachment import with ds-grid-engine `projection.rs` `placed_local_xy` and `structure_placement.rs` `resolve_directional_strain`; prove placement against a PLS reference.
+
+- **`linked_models` suite red**: ds-grid-exchange `tests/linked_models.rs` fails 6 of 9 on `run` with "stored checkpoint differs from its graph baseline" (composite verify). Find the regression and prove the suite.
 
 ## 12. DS Grid engineering (Codex main)
 
@@ -633,25 +649,31 @@ Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group A, to be fixed to
   menus remain to be made read-only and labelled as migrating to PC.
   Remote tiling is removed for everyone, including developers.
 
-- `33003988` (minor): a second install of the same dataset while the first is still downloading reopens the same `.part`; on Windows every attempt fails at once with "open existing partial download safely", the bridge reports 422, and the first download finishes on its own, so a one-shot install reports a false permanent failure. **Proof:** a concurrent second request for the same destination is told the download is in flight, and the one-shot wetlands install completes.
+- `33003988` (minor): in-flight and transient dataset-download refusals reach the CLI as `desktop_refused`/failed with `retryable: false`. Give them a typed retryable code with a stated wait (a `cliRefusal` in ds-web reference-data TS, the refusal declared in ds-cli-desktop `data.rs`, regenerated ds-web `native-catalog.generated.json`), and stop truncating the nested cause (ds-cli-desktop `bridge.rs` `bounded()` keeps only the first line, at most 160 chars).
 
-- `dbe4d17e` (major): Ground data download never settles: DEM/wetlands/powerlines bundles expand but are never indexed; status complete stays false.
+- `b98643ff` (major): a bulk `data.rwanda.install` stops at the first failed dataset and returns no installed list: `seedReferenceCatalog` in ds-web `src/lib/reference-data/resources.ts` and the loop in `src/lib/reference-data/commands.ts` throw at once. Continue past a failure and name which datasets landed and which failed, moving that orchestration (planning, install loop, refusal mapping) from TypeScript into the kernel.
 
-- `011ae5a6` (blocker): Project data does not render on the map: a ready map data upload has no layer class, no styles and no tiles (today's upload and the April one alike); rendering project data must need no server.
+- `dbe4d17e` (major): Ground data never settles: (a) datasets with no published bundle must be reported as unpublished, not as incomplete downloads; (b) the Data panel re-runs acquisition on every visit and must settle to complete=true once everything publishable is held; (c) once the named cause is reproduced (SEEDING.md §16), fix why expanded DEM/wetlands/powerlines bundles are never indexed.
+
+- `011ae5a6` (blocker): a project-data tile output is listed by neither `ds tile list` nor `ds tile status` (this needs a new row type in the closed client decoder), and the upload receipt says ready before that output exists.
 
 - `cf92af6c` (major): No way to measure staked-out LV line length by district or sector: survey aggregates count only, entries carry no admin fields, and geometry selection has no pagination.
 
-- `46dec14e` (major): ds caps that force manual manoeuvring for one 10k-point layer: map draw max 10000 features, data inspect --rows max 5000 with no paging, prepared local layers invisible to the running app.
+- `46dec14e` (major): one 10k-point layer still needs manual manoeuvring: (1) the map draw cap of 10,000 features (`MAX_LAYER_FEATURES` in ds-cli-map and ds-web `cli-map.ts`, held equal by bridge parity) should become the same byte bound as `map local register` (64 MiB), or `data convert` should emit GeoJSON directly, so one 10,748-point shapefile becomes one visible layer in two `ds` calls with no scripting; (2) the running app does not load prepared local layers live, and `map view` / `map local list` do not say whether a prepared layer is loaded; (3) the ds-cli-data `lib.rs` `--source` help still says "zipped Shapefile"; (4) regenerate ds-web `src/lib/tools/native-catalog.generated.json`, whose `data.inspect` entry lacks the `offset` argument.
 
 - **Vector skip parity:** the ds-network runner now names engine-empty drops (`8e56edcb`: `engine_empty`, `no_station`, `no_buffer`, `skipped_features`). The kernel portable `vector_ops` (`src/vector_ops*.rs`, WASM `vectorProcess`) still counts such features as processed and does not name them; ds-cli `domain_smoke` `vector_cli_file_and_json_packets_match_the_kernel_and_frozen_native_baseline` is red on `run` (packet 4: processed 0 vs frozen 2; `skipped` lacks `no_station`). Make `vector_ops` name the same drops, refreeze `ds-command-kernel/tests/fixtures/vector_processing_packets.json`, and turn kernel `tests/vector_processing.rs` and that ds-cli test green.
 
 ## 17. Project Work and Assets
 
-- `e01cf456` (major): Creating a free-standing PM task with two attachments takes eight commands across two domains and still fails; task attachment needs a working CLI route.
+- `e01cf456` (major): one command must create an inbox task with two files attached and return their ids (`pm task create --attach <file>`, repeatable), with `--detach`, and a scheduled task must be able to return to unscheduled. `ds pm task attach` attaches only one file per call. The feedback parks these as additions under SRE mode; confirm the owner's go in OPEN-X.md before coding.
 
 - **Board and navigation failures**: fix the Windows production Board API error and local Web go/return navigation from exact authenticated route/request evidence. Preserve explicit project context and persistent attachment state; an unauthenticated 401 does not prove signed-in behaviour.
 
-- Add a geometry-presence filter to shared task filtering and make project overview aggregate the canonical PM tasks, records and notes, including items without geometry.
+- **Project overview aggregation**: make the project overview (the existing `/projects/[id]` page; drawer entry `overview` / `mom_nav_project_overview`) aggregate the canonical PM tasks, records and notes, including items without geometry: a kernel/CLI read first, which the page then renders.
+
+- **Assets list stale after ingest**: on canary 0.1.6 (`it_rwanda`), a plain `ds assets list --folder X` right after `ds assets ingest` leaves the new row out until `--refresh`; the client's own write does not invalidate its index. Reproduce on current source and invalidate the index on a successful ingest.
+
+- **Stale PM doc comment**: kernel `src/project_management/reads.rs` still cites the deleted `filterProjectWorkTableRows` (`views.ts:174-188`) as the Table's search box; the Table now calls this kernel rule directly. Correct the comment.
 
 - **Shared PM/Assets lifecycle and interaction**: implement consistent offline-first state and active/testing/archive scope across PM, Assets, overview and governance. Provide the missing dense governance/Installations interaction through native hit/snap or typed CLI proposals; keep engineering and graph decisions in Rust/server contracts. Project theme values are operational parameters in SEEDING.md.
 
@@ -659,19 +681,20 @@ Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group A, to be fixed to
 
 ## 18. Global DS Grid library
 
+- `9e9f6527` (minor): a library read of an existing global release returns no member assets inventory (replayed 2026-10-09), so the explorer has no member inventory or preview. Migrate the legacy release assets inventory and provide an authority-owned bounded member preview through `ds`.
 
 - Global DS Grid example forks still use server-derived legacy publication claims without the native manifest ID/revision. The current-schema publication fence refuses that source before writing a head; repair the owning fork producer through explicit current-package migration and exact native claims. No compatibility/default reader or unverified metadata fallback.
 
 ## 19. Country neutrality and duplicated rules
 
 - **No single-country assumptions** ([PRINCIPLES.md §7](PRINCIPLES.md#7-no-single-country-assumptions); country scout 2026-10-02, ~223 findings). The worst are fallbacks that turn a Chad input into a Rwanda one. Queued Sol slices, started as capacity frees:
-  - **CRS from the project, never Rwanda TM by default**: ds-io no-`.prj` and PLS import/writeback defaults; ds-brain country->CRS (Web Mercator for non-Rwanda) and the `looksProjectedCRS` refusal of real UTM `.prj`; reporter X/Y, print rectangles and collisions; WASM origin (30,-2)/32736; ds-web edit-projection policy -> kernel. Print graticule (`TmRwanda` default), MV booklet "Republic of Rwanda"/"EDCL" defaults and the fixed Rwanda MV context bbox go to the print slices.
-  - **Country identity**: a required ISO-3166 `country_code` on the project; missing country never becomes "Rwanda"; one alias table; the reporter receipt digest per country; no `network_template` fallback to `master`.
+  - **CRS from the project, never Rwanda TM by default**: ds-io no-`.prj` and PLS import/writeback defaults; ds-brain country->CRS (Web Mercator for non-Rwanda; switching to auto UTM needs an inventory of stored project CRS first); reporter X/Y, print rectangles and collisions; WASM origin (30,-2)/32736; ds-web edit-projection policy -> kernel. Print graticule (`TmRwanda` default) and the fixed Rwanda MV context bbox go to the print slices; reporter `print_graticule::render_project` hard-codes `GraticuleCrs::TmRwanda` as the metric class and ignores the kernel `Graticule.crs`, leaving the `Wgs84` arms of `auto_interval`/`label` and `ANGULAR_STEPS_S` test-only: rename the class to a metric one or delete it there.
+  - **Country identity**: a required ISO-3166 `country_code` on the project; missing country never becomes "Rwanda"; one alias table; the reporter receipt digest per country; project creation (ds-brain `project_template_service.go` / `models.DefaultNetworkTemplate`) still defaults `network_template` to `"master"`.
   - **Solar generic** (after `solar-int`), reading the existing **Solar templates** (ds-brain `POST /api/v1/solar`, `internal/models/solar.go`: `_root`, `_config`, numbered sheets; kernel `solar_snapshot.rs`) as the only source, with no new settings invented: household `kind`/reference category instead of `Pauvre/Moyenne/Riche`; template currency and exchange rate (no XAF/600 constants); required `report_language`; `report_profile` for benchmarks, term sheet and standards; BOQ item roles.
   - **Report i18n** (after `print-lv`): project `report_locale` and a message catalogue for the reporter (sheets, headers, InfoTable, legends, the voltage-drop HTML report); one header-alias function built from the template.
-  - **Vocabulary leftovers**: ds-web static EDCL `S100...S255` list merged into every project (can blank `struct_type` for ADERM values); `"ABC Terminal Assembly"` injected on tapping poles; `existing` accepting English aliases only; `rule_edcl` defaults in ds-brain `config_service.go` and the kernel `design_config`.
+  - **Vocabulary leftovers**: `"ABC Terminal Assembly"` injected on tapping poles; `existing` accepting English aliases only; legacy unnamed `lv_poles_rules` rows are still named `rule_edcl` (ds-brain `defaultRuleSetName`, kernel `DEFAULT_RULE_SET`, ds-network).
   - **Voltage classes**: the 30 kV-only MV clearance class and fuse columns keyed 15/30 kV (Codex main for DS Grid `structure_rules`/`clearance_criteria`).
-  - **Guards**: rename invariance and parameter perturbation cover BOTH template systems (Network Template and Solar templates); the Chad conformance fixture `td-aderm-conformance` (from `arjgpydw_aderm_loc7`, `beinamar_02`, ds-solar `aderm_*` cities) beside the Rwanda peer; rename invariance (slice `template-invariance`); token-leak checks (a Chad run has no `Rwanda|EDCL|REG|NIX|RWF|Kigali`, a Rwanda run no `XAF|ADERM|OHADA|Tchad`); a per-repo literal ratchet. Chad DEM source curation is in [SEEDING.md](SEEDING.md#16-map-data-datasets-and-screen-styling); use its declared Copernicus GLO-30 source rather than reopening the recorded choice.
+  - **Guards**: rename invariance and parameter perturbation cover BOTH template systems (Network Template and Solar templates); the Chad conformance fixture `td-aderm-conformance` (from `arjgpydw_aderm_loc7`, `beinamar_02`, ds-solar `aderm_*` cities) beside the Rwanda peer; rename invariance (slice `template-invariance`); a run-level token-leak check (a Chad run has no `Rwanda|EDCL|REG|NIX|RWF|Kigali`, a Rwanda run no `XAF|ADERM|OHADA|Tchad`); a per-repo literal ratchet. Chad DEM source curation is in [SEEDING.md](SEEDING.md#16-map-data-datasets-and-screen-styling); use its declared Copernicus GLO-30 source rather than reopening the recorded choice.
 
 - **Duplicated rules queued behind running slices** (scout 2026-10-02; slices `dedup-numbers`, `dead-code`, `contract-docs` take the rest):
   - Transformer sizing twice: reporter `exports/transformer_sizing.rs` vs ds-network `network/sizing.rs` (category fallback is alphabetical; `minimum_tr_size` read three ways). ds-network exposes its size selection, the reporter renders it. After `tchad-rules`.
@@ -695,9 +718,7 @@ Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group A, to be fixed to
 
 ## 22. Operations product code
 
-- **Server monitor projection**: provide accurate per-agent CPU/memory/task facts and a sortable Processes table. The publisher’s polling frequency and watchdog timer recovery are operational configuration in [SEEDING.md](SEEDING.md#22-operations).
-
-- **Feedback and SRE closure are not linked**: SRE request events are immutable and the current incident feed has no close action. Define the actionable auto-report lifecycle so a proven, closed feedback issue no longer reappears as open SRE work, while retaining request-event evidence.
+- **Feedback and SRE closure are not linked** (kernel, ds-cli): kernel `ds-client-core` `sre.rs` `read_ds_client`/`project_ds_client` and the ds-cli-sre overview must read settled automatic reports and present a command+code as addressed when its newest event is older than the close of its newest settled report, keeping the counts as evidence (contract §5.3a step 4).
 
 ## 23. Kernel controls, JSON UI and TypeScript retirement
 
@@ -708,6 +729,8 @@ Rules: [PRINCIPLES.md §5](PRINCIPLES.md#5-kernel-cli-and-ui-owner-2026-10-07) �
 - **Sidebar gateway bypasses** (ds-web `docs/layer-domain-claude-handoff.md`): Tiles/Files (`api/userData.ts`, `api/projectData.ts`), global tiles, survey pipeline/reports, basemap, Design section, PM context and drawer chrome still call API Gateway from TypeScript. One complete vertical each: kernel decides, native/WASM parity, negative controls, retired TS deleted. Then the local sketch-layer lifecycle (`docs/prompts/claude-local-sketch-layer-lifecycle.md`) and authenticated browser-to-Server transport (loopback/SSH only today).
 
 - **One Rust communication authority** (`docs/prompts/rust-communications-refactor.md`): every request to API Gateway goes through one shared Rust client (identity/lane, auth, retries, cancellation, resumable transfer, durable scheduling) and the TypeScript copies go. The transfer protocol landed 2026-09-10; live acceptance and the remaining TS callers are unverified.
+
+- **Project expiry countdown is shown nowhere**: ds-web `ProjectExpiryChip.svelte` has been unmounted since `92c874ca` (2026-08-21), while ds-web `CLAUDE.md` says the header chip carries the expiry countdown. Mount it again over the existing expiry read (or correct the doc if the owner retired it), with a render test.
 
 - **Project and instance isolation** (`docs/prompts/claude-project-instance-isolation.md`; contract `project-and-instance-isolation-contract.md`): after the Server execution context: live Desktop instance discovery and CLI/MCP routing that refuses stale or ambiguous targets; generation-fenced UI session state; multi-principal authority and fair capacity across Solar, printing and a third operation on one Server.
 
@@ -733,12 +756,8 @@ Rules: [PRINCIPLES.md §5](PRINCIPLES.md#5-kernel-cli-and-ui-owner-2026-10-07) �
 
 Priority ([PRINCIPLES.md §3–4](PRINCIPLES.md#4-report-as-you-go-owner-2026-10-07)). Contract: [docs/contracts/ds-cli-reliability-and-feedback.md](../docs/contracts/ds-cli-reliability-and-feedback.md). Owner questions (opt-out, signed-out hosts, automatic-filing scope, read access) are in [OPEN-X.md block 25](OPEN-X.md#25-cli-reliability-and-feedback); slices below proceed on the spec's defaults. Land each slice on `run` before the next.
 
-- **Wire CLI and MCP (ds-cli):** ds-cli implements `Transport::sre_client_event` and an owner-only, on-disk `ReporterStore` in the DS state directory (never `/tmp` or `/dev/shm`); calls `reporter::finish_invocation` once per CLI process and once per MCP tool call, with the MCP send off the request path; `ds doctor` shows reporting state, outbox size and last flush from `reporter::status`; every `failed`, `crashed` or repeated-`refused` error envelope carries `next.feedback` (the `ds feedback draft --last` command and the SRE event id; the field is ds-client-core-owned, spec §6). **Proof:** ds-cli tests show byte-identical stdout, stderr, envelope and exit code with reporting on or off, online or offline (spec §7.5). The installed readback is in [SEEDING.md block 25](SEEDING.md#25-cli-reliability-and-feedback).
+- **Wire CLI and MCP (ds-cli):** (1) ds-cli `docs/reference/feedback.md:57-58` still says `error.feedback` carries the draft and `sre_event`; the code puts `ds feedback draft --last` as the last `error.next` and carries no event id. Fix the text. (2) Nothing sets `DS_CLI_HOST_KIND`, so every event reports `host_kind=headless`; Desktop and Server must set it (spec §3.2). (3) Optional: bound `reporter::file_automatic` by `SEND_BUDGET`. The installed readback is in [SEEDING.md block 25](SEEDING.md#25-cli-reliability-and-feedback).
 
-- **Invocation journal and `ds feedback draft --last` (ds-cli):** (a) ds-cli provides `ds feedback draft --last [--n N] --output json`, reading the journal from the on-disk owner-only reporter store. (b) The draft's `component` is the owning repository from the command registry (spec §4), not the current `ds-cli/<domain>` placeholder. (c) The draft maps onto `feedback.submit`'s real inputs (`context` as repeated `key=value`; `agent` filled when known), so after a failure `ds feedback submit --yes` accepts it once the caller adds only expectation and acceptance; today a CLI invocation without `--agent` drafts with `needs: agent`. (d) Once the command exists, name `ds feedback draft --last` in MCP `FEEDBACK_GUIDANCE` and in the `ds` skill "Report as you go" section (spec §5.4). The journal is written only inside `record()`, so with `DS_SRE_REPORTING=off` `draft --last` has nothing to return; decide that with the [OPEN-X block 25](OPEN-X.md#25-cli-reliability-and-feedback) opt-out question. Touch ds-command-kernel only if the draft shape changes. **Proof:** spec §7.6.
+- **`ds feedback draft --last` completeness (kernel, ds-cli):** (a) the draft `component` must be the owning repository from the command registry (spec §4): kernel `reporter.rs` `draft_one` still emits `ds-cli/{domain}`, and ds-cli-contract `Command` has no owner field. (b) A CLI draft without `DS_CLI_AGENT` still lists `needs: agent` while `feedback.submit` requires `--agent`; the MCP adapter (ds-cli-mcp `tools.rs` `run_bounded`) never passes `clientInfo.name` to the child as `DS_CLI_AGENT`; the JSON draft's `context` is an object, not the repeated `key=value` input submit takes (only the human render maps it). (c) The `ds` skill (`ds-cli/skills/ds/SKILL.md`, "Report as you go") does not name `ds feedback draft --last`. Signed-in installed acceptance (spec §7.6) is in SEEDING.md block 25.
 
 - **`ds capabilities --search` does not find `feedback.submit` (ds-cli, text only):** `ds capabilities --search 'report a bug'`, `'report a problem'` and `'file a bug'` return no `feedback.submit` (its search list is empty); only `feedback`, `friction` and `idea` find it. **Proof:** all three phrases return `feedback.submit`; the discovery tests pass.
-
-- **Automatic bug on crash:** a `crashed` invocation files one `bug` report as `ds (automatic)` with the SRE event id; repeats raise occurrences. **Proof:** spec §7.3 with a test-only panic hook.
-
-- **SRE overview row, CLI rendering (ds-cli):** `ds sre overview` already returns `ds_client` in JSON (ds-client-core `ef40648`; ds-sre `REQUEST_EVENT_STORE_CONTRACT.md` §7.8; ds-brain `d8b8f04` service filter). Render it as a text line in `crates/ds-cli-sre/src/overview.rs` (fault rate, crashes, refusals, top failing, most refused; `available=false` shows the reason; a null fault ratio shows unknown), declare `ds_client` in the command output and `docs/reference/sre.md`, with render tests for available, unavailable and quiet windows.
