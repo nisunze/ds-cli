@@ -223,7 +223,7 @@ pub static ISSUES: Command = Command {
     ],
     output: "model_id, revision and issues: the unchanged native QueryResults page, with source, exact authored/computed history and roots, actual basis/qualification, complete totals, native facts, next_cursor and truncation. No full scene or implicitly calculated issue layer is transferred. For model_analysis findings the display case is null; top-level point section/support references describe the native vertical governing wire; optional horizontal_span retains independent horizontal section/support/attachment references.",
     examples: &[], refusals: crate::profile_results::QUERY_REFUSALS, reference: Some("docs/reference/map.md"),
-    search: &["failing", "violations", "uplift", "blocked", "selected", "cached", "design findings"],
+    search: &["failing", "violations", "uplift", "blocked", "selected", "design findings"],
     requires: Requires::Window, availability: crate::paired_availability,
 };
 

@@ -92,7 +92,7 @@ pub static COMMAND: Command = Command {
     }],
     refusals: QUERY_REFUSALS,
     reference: Some("docs/reference/map.md"),
-    search: &["usage", "failures", "negative", "uplift", "violations", "qualification", "blockers", "findings", "model analysis", "cached"],
+    search: &["usage", "failures", "negative", "uplift", "violations", "qualification", "blockers", "findings", "model analysis"],
     requires: Requires::Window,
     availability: crate::paired_availability,
 };
