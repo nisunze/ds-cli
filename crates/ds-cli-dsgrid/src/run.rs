@@ -15,6 +15,7 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use ds_grid_engine::TaggedAlignmentLengthsRequest;
 use ds_grid_engine::descriptor::operation_descriptors;
+use ds_grid_engine::spotting::progress::{EtaReducer, NoObserver, Observer, ProgressEvent};
 use ds_grid_engine::{
     EffectClass, EngineeringAttributeEvidence, GridSession, NetworkCalculationRequest,
     OperationDescriptor, ProfileAtlasOptions, ResultStore, SectionDemandsRequest,
@@ -83,6 +84,10 @@ project_profile_atlas returns attachment boxes, usage labels and native summarie
             "Cap every returned JSON collection outside a digest-sealed plan.",
         )
         .default(package::DEFAULT_LIMIT),
+        Arg::switch(
+            "progress",
+            "Stream native spotting progress and ETA as JSON lines on stderr; stopping the read-only run is safe.",
+        ),
     ],
     output: "\
 The exact source package identity and authored revision, engine and operation \
@@ -202,6 +207,41 @@ fn available() -> Availability {
     Availability::Available
 }
 
+/// Native spotting progress, one JSON line per engine event on stderr, so the
+/// answer stays alone on stdout. The engine emits the events and owns the
+/// ETA reducer; this host only supplies the monotonic elapsed time, as the
+/// progress contract asks. `dsgrid run` persists nothing, so interrupting the
+/// process after any event is a safe cancellation.
+struct StderrProgress {
+    started: std::time::Instant,
+    eta: std::sync::Mutex<EtaReducer>,
+}
+
+impl StderrProgress {
+    fn start() -> Self {
+        Self {
+            started: std::time::Instant::now(),
+            eta: std::sync::Mutex::new(EtaReducer::default()),
+        }
+    }
+}
+
+impl Observer for StderrProgress {
+    fn on_progress(&self, event: ProgressEvent) {
+        use std::io::Write;
+        let elapsed_ms = u64::try_from(self.started.elapsed().as_millis()).unwrap_or(u64::MAX);
+        let eta = self
+            .eta
+            .lock()
+            .ok()
+            .map(|mut reducer| reducer.observe(&event, elapsed_ms));
+        let line = json!({"progress": event, "elapsed_ms": elapsed_ms, "eta": eta});
+        // A progress line that cannot be written is not worth failing the
+        // run for: the answer still arrives on stdout.
+        let _ = writeln!(std::io::stderr().lock(), "{line}");
+    }
+}
+
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct AlignmentParams {
@@ -303,7 +343,19 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         .model
         .presentation
         .effective_profile_structure_labels();
-    let result = dispatch(operation_id, &params, &session, &evidence, &profile_labels)?;
+    let progress = inputs.switch("progress").then(StderrProgress::start);
+    let observer: &(dyn Observer + Sync) = match &progress {
+        Some(progress) => progress,
+        None => &NoObserver,
+    };
+    let result = dispatch_with(
+        operation_id,
+        &params,
+        &session,
+        &evidence,
+        &profile_labels,
+        observer,
+    )?;
     let (result, truncated) = bound_result(result, limit);
 
     let mut answer = json!({
@@ -464,12 +516,33 @@ fn parse<T: DeserializeOwned>(operation_id: &str, params: &Value) -> Result<T, F
     })
 }
 
+#[cfg(test)]
 fn dispatch(
     operation_id: &str,
     params: &Value,
     session: &GridSession,
     evidence: &EngineeringAttributeEvidence,
     profile_labels: &StructureLabelPolicy,
+) -> Result<Value, Failure> {
+    dispatch_with(
+        operation_id,
+        params,
+        session,
+        evidence,
+        profile_labels,
+        &NoObserver,
+    )
+}
+
+/// Run one admitted operation. `progress` observes the native spotting
+/// planners only; it never changes a result.
+fn dispatch_with(
+    operation_id: &str,
+    params: &Value,
+    session: &GridSession,
+    evidence: &EngineeringAttributeEvidence,
+    profile_labels: &StructureLabelPolicy,
+    progress: &(dyn Observer + Sync),
 ) -> Result<Value, Failure> {
     match operation_id {
         "profile_properties" => {
@@ -825,13 +898,14 @@ fn dispatch(
             };
             serialize(
                 operation_id,
-                ds_grid_engine::spotting::batch::plan_whole_model_for_alignments(
+                ds_grid_engine::spotting::batch::plan_whole_model_for_alignments_observed(
                     session.snapshot(),
                     session.current_revision(),
                     &settings,
                     alignment_ids.as_deref(),
                     memory_budget_bytes,
                     max_workers,
+                    progress,
                 )
                 .map_err(|error| engine_error(operation_id, error))?,
             )
@@ -849,10 +923,11 @@ fn dispatch(
             }
             serialize(
                 operation_id,
-                ds_grid_engine::spotting::batch::plan_optimum_spotting_batch(
+                ds_grid_engine::spotting::batch::plan_optimum_spotting_batch_observed(
                     session.snapshot(),
                     session.current_revision(),
                     &request,
+                    progress,
                 )
                 .map_err(|error| engine_error(operation_id, error))?,
             )
@@ -861,9 +936,13 @@ fn dispatch(
             let request: SpottingPlanRequest = parse(operation_id, params)?;
             serialize(
                 operation_id,
-                session
-                    .plan_optimum_spotting(&request)
-                    .map_err(|error| spotting_error(operation_id, error))?,
+                ds_grid_engine::spotting::plan_optimum_spotting_observed(
+                    session.snapshot(),
+                    session.current_revision(),
+                    &request,
+                    progress,
+                )
+                .map_err(|error| spotting_error(operation_id, error))?,
             )
         }
         // The descriptor admission check makes this unreachable. Keep the

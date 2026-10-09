@@ -36,11 +36,11 @@ commands retain their explicitly declared authority below.
 
 ## Library identity across edits
 
-Typed mutations, command-envelope apply and spotting visualization previews
-retain the source package's exact library pins and element needs, assets and
-exchange bindings. The native emitter verifies the retained release cache and
-definitions before exposing new bytes. Editing a placed instance does not
-detach its library or confer solver approval. A change that contradicts an
+Typed mutations, command-envelope apply, spotting receipt applies and
+visualization previews retain the source package's exact library pins and
+element needs, assets and exchange bindings. The native emitter verifies the
+retained release cache and definitions before exposing new bytes. Editing a placed
+instance does not detach its library or confer solver approval. A change that contradicts an
 exact pinned definition must satisfy the native library contract; silently
 dropping the pin is never an edit remedy. Dry runs leave source bytes intact.
 
@@ -403,7 +403,33 @@ read, reports `staged: false` and `persisted: false`, and recursively bounds
 large arrays with exact `more.truncated` receipts. A spotting plan sealed by
 its `plan_digest` is never shortened: cutting its rejected rows would leave a
 plan no digest-verified apply can check. Size it with the request's
-`max_reported_rejections` instead. `ds dsgrid validate` always
+`max_reported_rejections` instead.
+
+A long spotting run can be watched: `--progress` streams the planner's own
+progress events (stage, alignment, pass, work counters and its ETA estimate,
+plus the elapsed milliseconds) as one JSON line each on stderr. The sealed
+plans on stdout are the same with or without it, and because `dsgrid run`
+writes nothing, interrupting the process after any event is a safe
+cancellation.
+
+A whole-model run (`plan_whole_model_spotting`) can carry far more diagnostic
+rows than the 16 MiB `--params` bound admits, so its plans are not handed back
+through `spotting_layout_application`. Land the receipt itself:
+
+```text
+ds dsgrid spotting apply-receipt --model model.dsgrid --receipt whole-model.json --receipt-sha256 <sha256> --dry-run --output json
+ds dsgrid spotting apply-receipt --model model.dsgrid --receipt whole-model.json --receipt-sha256 <sha256> --out spotted.dsgrid --output json
+```
+
+The receipt is the exact `dsgrid run` output, plain or `.json.zst`, pinned by
+its file SHA-256 and bounded at 512 MiB. It must name this exact package and
+revision and hold every requested alignment's plan; the engine re-verifies
+each plan digest and builds one `apply_spotting_layouts` revision under the
+application's own journal identity. Nothing is re-planned or trimmed. A
+receipt that withholds rows refuses `receipt_truncated`: `dsgrid spotting
+preview-receipt` can still show it as a visualization-only package.
+
+`ds dsgrid validate` always
 reports the authored revision. The cheap inspect path exposes it on demand
 with `--include authored-revision`, which deliberately decodes the model.
 

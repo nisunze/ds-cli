@@ -34,6 +34,7 @@ pub mod alignment;
 pub mod analyse;
 pub mod apply;
 pub mod apply_batch;
+pub mod apply_receipt;
 pub mod asset;
 pub mod backup;
 mod command_shape;
@@ -57,6 +58,7 @@ pub mod reconcile_cable_source;
 pub mod replace_structure;
 pub mod report;
 pub mod run;
+mod spotting_receipt;
 pub mod structure;
 pub mod template;
 pub mod validate;
@@ -101,6 +103,7 @@ pub static DOMAIN: Domain = Domain {
         &describe::COMMAND,
         &run::COMMAND,
         &preview_receipt::COMMAND,
+        &apply_receipt::COMMAND,
         &apply::COMMAND,
         &reconcile_cable_source::COMMAND,
         &apply_batch::COMMAND,

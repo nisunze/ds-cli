@@ -731,6 +731,13 @@ const EXPECTED: &[(&str, &str, &str)] = &[
         "local_file_write",
         "none",
     ),
+    // A complete receipt lands as one new package revision; the base
+    // package is never written.
+    (
+        "dsgrid.spotting.apply-receipt",
+        "local_file_write",
+        "none",
+    ),
     ("dsgrid.template.apply", "local_file_write", "none"),
     ("dsgrid.template.compile", "local_file_write", "none"),
     ("dsgrid.template.inspect", "read_only", "none"),

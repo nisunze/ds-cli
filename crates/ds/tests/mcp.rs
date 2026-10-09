@@ -2233,7 +2233,9 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
             // engine identity remains beside export so a delivery can name
             // the binary that produced it.
             // One retained-source cable reconciliation leaf.
-            "grid" => 33,
+            // 2026-10-09: `dsgrid spotting apply-receipt` lands a complete
+            // whole-model spotting receipt; its truncated sibling only previews.
+            "grid" => 34,
             // Seventeen working-copy leaves plus bootstrap: the four
             // 2026-09-21 leaves (`dsgrid model forget`, `dsgrid structure
             // admin-refresh`, `dsgrid profile labels set|show`) were routed

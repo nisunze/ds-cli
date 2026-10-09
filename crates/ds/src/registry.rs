@@ -295,6 +295,11 @@ static DSGRID_ENTRIES: &[Entry] = &[
         render: ds_cli_dsgrid::preview_receipt::render,
     },
     Entry {
+        command: &ds_cli_dsgrid::apply_receipt::COMMAND,
+        handler: ds_cli_dsgrid::apply_receipt::run,
+        render: ds_cli_dsgrid::apply_receipt::render,
+    },
+    Entry {
         command: &ds_cli_dsgrid::apply::COMMAND,
         handler: ds_cli_dsgrid::apply::run,
         render: ds_cli_dsgrid::apply::render,

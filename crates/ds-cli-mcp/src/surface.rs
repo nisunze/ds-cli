@@ -313,7 +313,11 @@ impl Profile {
             // report.engine is the reporter identity needed to prove a
             // local export, while the new deprecated ZIP alias is excluded.
             // Exact retained-source cable reconciliation adds one file-authoring leaf.
-            Self::Grid => 33,
+            // 2026-10-09: `dsgrid spotting apply-receipt` lands a complete
+            // whole-model spotting receipt beside the preview of a truncated
+            // one; without it a valid proposal whose diagnostics exceed the
+            // 16 MiB params bound had no apply path in this profile.
+            Self::Grid => 34,
             // The two reference-form commands add manual/shared seeding to
             // this input workflow; the legacy planner remains discoverable.
             // City creation adds the missing editable draft entry point,
@@ -473,6 +477,7 @@ impl Profile {
                     // `grid` profile `ds-grid-spotting` names; it is not a
                     // native-model read or edit.
                     && tool.id != "dsgrid.spotting.preview-receipt"
+                    && tool.id != "dsgrid.spotting.apply-receipt"
                     // The working-copy family became authority-free on
                     // 2026-09-18 when it stopped asking an application for
                     // this machine's catalogue. It is still a different job

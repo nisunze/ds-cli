@@ -1,12 +1,11 @@
 //! Materialize a visualization-only DS Grid package from a pinned spotting receipt.
 //!
-//! The normal digest-verified apply route remains unchanged. This adapter accepts
-//! exact compressed receipt bytes, binds them to a source package/revision, and
-//! lets the engine skip only digest recomputation for CLI-truncated rejected rows.
-//! The isolated output is for visualization and review, not engineering approval.
-
-use std::io::Read;
-use std::path::Path;
+//! The digest-verified engineering route for a complete receipt is `dsgrid
+//! spotting apply-receipt`. This adapter accepts exact compressed receipt
+//! bytes, binds them to a source package/revision, and lets the engine skip
+//! only digest recomputation for CLI-truncated rejected rows. The isolated
+//! output is for visualization and review, not engineering approval. The
+//! receipt gate both doors share is [`crate::spotting_receipt`].
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
@@ -14,18 +13,23 @@ use ds_cli_contract::spec::{
 };
 use ds_cli_contract::{Context, Inputs};
 use ds_grid_engine::{
-    CommandEnvelope, GridCommand, GridSession, SpottingLayoutApplyRequest, SpottingPlan,
+    CommandEnvelope, GridCommand, GridSession, SpottingLayoutApplyRequest,
     spotting_layout_preview_application,
 };
 use ds_grid_exchange::{PackOptions, dsgrid};
-use serde::Deserialize;
 use serde_json::{Value, json};
-use sha2::{Digest, Sha256};
 
+use crate::spotting_receipt::{
+    self, ReceiptBounds, ReceiptEncoding, RunReceipt, sha256_hex, verify_complete_batch,
+    verify_revision, verify_source_package,
+};
 use crate::{apply, package};
 
-const MAX_RECEIPT_BYTES: u64 = 16 * 1024 * 1024;
-const MAX_EXPANDED_RECEIPT_BYTES: u64 = 256 * 1024 * 1024;
+/// A truncated receipt is small by construction: its rejected rows were cut.
+const BOUNDS: ReceiptBounds = ReceiptBounds {
+    file_bytes: 16 * 1024 * 1024,
+    expanded_bytes: 256 * 1024 * 1024,
+};
 const PREVIEW_KIND: &str = "visualization_preview_from_truncated_diagnostics";
 
 pub static COMMAND: Command = Command {
@@ -36,9 +40,9 @@ pub static COMMAND: Command = Command {
     purpose: "\
 Reads one exact-byte-pinned DS spotting receipt whose only truncation is in \
 diagnostic rejected rows, verifies its source package identity and revision, \
-and writes a new isolated .dsgrid visualization preview. The normal plan \
-digest-verified apply path remains unchanged. This output is not engineering- \
-proved or publishable.",
+and writes a new isolated .dsgrid visualization preview. A complete receipt \
+lands its digest-verified plans through `ds dsgrid spotting apply-receipt`. \
+This output is not engineering-proved or publishable.",
     chapter: Chapter::GridModel,
     effect: Effect::LocalFileWrite,
     authority: Authority::None,
@@ -88,7 +92,7 @@ the artifact is not engineering-proved or publishable.",
         Refusal {
             code: "receipt_not_found",
             when: "receipt path does not name a regular file",
-            remedy: "pass one compressed .json.zst receipt file",
+            remedy: "pass one spotting receipt file",
         },
         Refusal {
             code: "receipt_too_large",
@@ -118,7 +122,7 @@ the artifact is not engineering-proved or publishable.",
         Refusal {
             code: "receipt_truncation_scope",
             when: "receipt has no CLI truncation or truncates beyond diagnostic rejected rows",
-            remedy: "use a receipt whose only truncation is plan rejected.rows",
+            remedy: "use a receipt whose only truncation is plan rejected.rows; apply a complete one with dsgrid spotting apply-receipt",
         },
         Refusal {
             code: "receipt_model_mismatch",
@@ -181,67 +185,6 @@ fn available() -> Availability {
     Availability::Available
 }
 
-#[derive(Deserialize)]
-struct RunReceipt {
-    v: u32,
-    command: String,
-    status: String,
-    data: RunReceiptData,
-}
-#[derive(Deserialize)]
-struct RunReceiptData {
-    source: ReceiptSource,
-    operation: ReceiptOperation,
-    staged: bool,
-    persisted: bool,
-    result: ReceiptResult,
-    #[serde(default)]
-    more: ReceiptMore,
-}
-#[derive(Deserialize)]
-struct ReceiptSource {
-    model_id: String,
-    package_revision: u64,
-    authored_revision: String,
-    package_sha256: String,
-}
-#[derive(Deserialize)]
-struct ReceiptOperation {
-    id: String,
-}
-#[derive(Deserialize)]
-struct ReceiptResult {
-    operation_id: String,
-    model_revision: String,
-    batch: ReceiptBatch,
-}
-#[derive(Deserialize)]
-struct ReceiptBatch {
-    operation_id: String,
-    model_revision: String,
-    requested_alignments: usize,
-    completed_plans: usize,
-    refused_requests: usize,
-    items: Vec<ReceiptPlanItem>,
-}
-#[derive(Deserialize)]
-struct ReceiptPlanItem {
-    plan: SpottingPlan,
-}
-#[derive(Default, Deserialize)]
-struct ReceiptMore {
-    #[serde(default)]
-    truncated: Vec<ReceiptTruncation>,
-}
-#[derive(Deserialize)]
-struct ReceiptTruncation {
-    field: String,
-    total: usize,
-    shown: usize,
-    withheld: usize,
-    limit: usize,
-}
-
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let model_path = inputs.require("model")?;
     let receipt_path = inputs.require("receipt")?;
@@ -253,30 +196,15 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let model = package::decode(model_path, &model_bytes)?;
     apply::validate_output_path(out_path)?;
 
-    let receipt_bytes = read_receipt_bytes(receipt_path)?;
-    let receipt_sha = verify_receipt_sha256(&receipt_bytes, expected_receipt_sha)?;
-    let receipt = decode_receipt(&receipt_bytes, receipt_path)?;
-    validate_receipt_provenance(&receipt)?;
-
-    let source_package_sha = format!("sha256:{}", sha256_hex(&model_bytes));
-    if receipt.data.source.model_id != model.manifest.model.model_id.as_str()
-        || receipt.data.source.package_revision != model.manifest.model.model_revision
-        || receipt.data.source.package_sha256 != source_package_sha
-    {
-        return Err(Failure::conflict(
-            "receipt_model_mismatch",
-            "receipt does not name this exact model package",
-        )
-        .remedy("use the exact base package named by the receipt")
-        .detail(json!({
-            "receipt_model_id": receipt.data.source.model_id,
-            "model_id": model.manifest.model.model_id.as_str(),
-            "receipt_package_revision": receipt.data.source.package_revision,
-            "package_revision": model.manifest.model.model_revision,
-            "receipt_package_sha256": receipt.data.source.package_sha256,
-            "package_sha256": source_package_sha,
-        })));
-    }
+    let pinned = spotting_receipt::read_pinned(
+        receipt_path,
+        expected_receipt_sha,
+        ReceiptEncoding::Compressed,
+        BOUNDS,
+    )?;
+    validate_truncation_scope(&pinned.receipt)?;
+    let (receipt, receipt_sha) = (pinned.receipt, pinned.sha256);
+    let source_package_sha = verify_source_package(&receipt, &model, &model_bytes)?;
 
     let source_model_id = model.manifest.model.model_id.clone();
     let source_package_revision = model.manifest.model.model_revision;
@@ -285,37 +213,9 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let exchange_bindings = model.exchange_bindings.clone();
     let mut session = GridSession::open(model.snapshot);
     let current_revision = session.current_revision().revision_id.clone();
+    verify_revision(&receipt, current_revision.as_str())?;
+    verify_complete_batch(&receipt)?;
     let batch = &receipt.data.result.batch;
-    if receipt.data.source.authored_revision != current_revision.as_str()
-        || receipt.data.result.model_revision != current_revision.as_str()
-        || batch.model_revision != current_revision.as_str()
-        || batch
-            .items
-            .iter()
-            .any(|item| item.plan.model_revision != current_revision)
-    {
-        return Err(Failure::conflict("receipt_revision_mismatch", "receipt plans were authored against another model revision")
-            .remedy("use the exact base package revision named by the receipt")
-            .detail(json!({"receipt_revision": receipt.data.source.authored_revision, "model_revision": current_revision.as_str()})));
-    }
-
-    if batch.requested_alignments == 0
-        || batch.completed_plans != batch.requested_alignments
-        || batch.refused_requests != 0
-        || batch.items.len() != batch.completed_plans
-    {
-        return Err(Failure::conflict(
-            "receipt_incomplete",
-            "whole-model batch is missing plans or contains refused alignments",
-        )
-        .remedy("use a complete successful whole-model proposal receipt")
-        .detail(json!({
-            "requested_alignments": batch.requested_alignments,
-            "completed_plans": batch.completed_plans,
-            "refused_requests": batch.refused_requests,
-            "plan_items": batch.items.len(),
-        })));
-    }
 
     let request = SpottingLayoutApplyRequest {
         plans: batch.items.iter().map(|item| item.plan.clone()).collect(),
@@ -502,24 +402,12 @@ pub fn render(data: &Value) -> String {
     serde_json::to_string_pretty(data).unwrap_or_else(|_| data.to_string())
 }
 
-fn validate_receipt_provenance(receipt: &RunReceipt) -> Result<(), Failure> {
-    if receipt.v != 1
-        || receipt.command != "dsgrid.run"
-        || receipt.status != "ok"
-        || receipt.data.staged
-        || receipt.data.persisted
-        || receipt.data.operation.id != "plan_whole_model_spotting"
-        || receipt.data.result.operation_id != "plan_whole_model_spotting"
-        || receipt.data.result.batch.operation_id != "plan_optimum_spotting_batch"
-    {
-        return Err(Failure::invalid(
-            "receipt_invalid",
-            "receipt is not a successful read-only whole-model spotting proposal",
-        )
-        .remedy("use one successful dsgrid.run whole-model spotting receipt"));
-    }
-    if receipt.data.more.truncated.is_empty()
-        || receipt.data.more.truncated.iter().any(|entry| {
+/// A preview reads only a receipt whose diagnostic rejected rows were cut:
+/// a complete receipt has its digest-verified door, `apply-receipt`.
+fn validate_truncation_scope(receipt: &RunReceipt) -> Result<(), Failure> {
+    let truncated = &receipt.data.more.truncated;
+    if truncated.is_empty()
+        || truncated.iter().any(|entry| {
             !entry.field.starts_with("result.batch.items[")
                 || !entry.field.ends_with(".plan.rejected.rows")
                 || entry.total <= entry.shown
@@ -527,129 +415,17 @@ fn validate_receipt_provenance(receipt: &RunReceipt) -> Result<(), Failure> {
                 || entry.limit != entry.shown
         })
     {
-        return Err(Failure::invalid("receipt_truncation_scope", "receipt must truncate diagnostic rejected rows only")
-            .remedy("use a receipt whose only truncation is diagnostic plan rejected.rows")
-            .detail(json!({
-                "truncation_count": receipt.data.more.truncated.len(),
-                "fields": receipt.data.more.truncated.iter().map(|entry| &entry.field).collect::<Vec<_>>(),
-            })));
+        return Err(Failure::invalid(
+            "receipt_truncation_scope",
+            "receipt must truncate diagnostic rejected rows only",
+        )
+        .remedy(
+            "use a receipt whose only truncation is plan rejected.rows; apply a complete one with dsgrid spotting apply-receipt",
+        )
+        .detail(json!({
+            "truncation_count": truncated.len(),
+            "fields": truncated.iter().map(|entry| &entry.field).collect::<Vec<_>>(),
+        })));
     }
     Ok(())
-}
-
-fn read_receipt_bytes(raw_path: &str) -> Result<Vec<u8>, Failure> {
-    let path = Path::new(raw_path);
-    let metadata = std::fs::metadata(path).map_err(|error| {
-        Failure::invalid("receipt_not_found", format!("cannot read '{raw_path}'"))
-            .remedy("pass one compressed .json.zst receipt file")
-            .detail(json!({"detail": error.kind().to_string()}))
-    })?;
-    if !metadata.is_file() {
-        return Err(
-            Failure::invalid("receipt_not_found", format!("'{raw_path}' is not a file"))
-                .remedy("pass one compressed .json.zst receipt file"),
-        );
-    }
-    if metadata.len() > MAX_RECEIPT_BYTES {
-        return Err(Failure::invalid(
-            "receipt_too_large",
-            "compressed receipt is above the read bound",
-        )
-        .remedy("use one bounded spotting receipt")
-        .detail(json!({"byte_len": metadata.len(), "max_byte_len": MAX_RECEIPT_BYTES})));
-    }
-    std::fs::read(path).map_err(|error| {
-        Failure::failed("receipt_unreadable", format!("cannot read '{raw_path}'"))
-            .remedy("check the path and preserve the original receipt")
-            .detail(json!({"detail": error.kind().to_string()}))
-    })
-}
-
-fn decode_receipt(bytes: &[u8], path: &str) -> Result<RunReceipt, Failure> {
-    let decoder = zstd::stream::read::Decoder::new(bytes).map_err(|error| {
-        Failure::invalid(
-            "receipt_invalid",
-            format!("'{path}' is not a readable Zstandard receipt"),
-        )
-        .remedy("preserve the original compressed DS receipt")
-        .detail(json!({"detail": error.to_string()}))
-    })?;
-    let mut limited = decoder.take(MAX_EXPANDED_RECEIPT_BYTES + 1);
-    let mut expanded = Vec::new();
-    limited.read_to_end(&mut expanded).map_err(|error| {
-        Failure::invalid("receipt_invalid", "compressed receipt could not be decoded")
-            .remedy("preserve the original compressed DS receipt")
-            .detail(json!({"detail": error.to_string()}))
-    })?;
-    if expanded.len() as u64 > MAX_EXPANDED_RECEIPT_BYTES {
-        return Err(Failure::invalid(
-            "receipt_too_large",
-            "expanded receipt is above the read bound",
-        )
-        .remedy("use one bounded spotting receipt")
-        .detail(json!({"byte_len": expanded.len(), "max_byte_len": MAX_EXPANDED_RECEIPT_BYTES})));
-    }
-    serde_json::from_slice(&expanded).map_err(|error| {
-        Failure::invalid("receipt_invalid", "expanded bytes are not a DS CLI receipt")
-            .remedy("use one successful dsgrid.run whole-model spotting receipt")
-            .detail(json!({"detail": error.to_string()}))
-    })
-}
-
-fn normalize_sha256(raw: &str) -> Result<String, Failure> {
-    let hex = raw.strip_prefix("sha256:").unwrap_or(raw);
-    if !ds_cli_contract::util::is_sha256_hex(hex, ds_cli_contract::util::HexCase::Any) {
-        return Err(Failure::invalid(
-            "receipt_digest_invalid",
-            "expected receipt digest is not SHA-256 hex",
-        )
-        .remedy("copy the raw receipt SHA-256 from its manifest"));
-    }
-    Ok(hex.to_ascii_lowercase())
-}
-
-fn verify_receipt_sha256(bytes: &[u8], expected: &str) -> Result<String, Failure> {
-    let expected = normalize_sha256(expected)?;
-    let actual = sha256_hex(bytes);
-    if actual != expected {
-        return Err(Failure::conflict(
-            "receipt_digest_mismatch",
-            "compressed receipt bytes do not match the expected SHA-256",
-        )
-        .remedy("use the receipt whose bytes match the manifest digest")
-        .detail(json!({"expected": expected, "actual": actual})));
-    }
-    Ok(actual)
-}
-
-fn sha256_hex(bytes: &[u8]) -> String {
-    Sha256::digest(bytes)
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::verify_receipt_sha256;
-    use sha2::{Digest, Sha256};
-
-    #[test]
-    fn verifies_exact_compressed_receipt_bytes_before_preview() {
-        let compressed_receipt = b"exact zstd receipt bytes";
-        let expected = Sha256::digest(compressed_receipt)
-            .iter()
-            .map(|byte| format!("{byte:02x}"))
-            .collect::<String>();
-        assert_eq!(
-            verify_receipt_sha256(compressed_receipt, &expected).unwrap(),
-            expected
-        );
-        assert_eq!(
-            verify_receipt_sha256(compressed_receipt, &"0".repeat(64))
-                .unwrap_err()
-                .code(),
-            "receipt_digest_mismatch"
-        );
-    }
 }
