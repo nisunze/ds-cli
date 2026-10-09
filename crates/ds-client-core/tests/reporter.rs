@@ -724,3 +724,185 @@ fn a_state_document_from_before_the_journal_still_reads() {
     assert_eq!(status.dropped, 3);
     assert!(reporter::journal_entries(&mut store).unwrap().is_empty());
 }
+
+struct Backlog {
+    online: bool,
+    submitted: Vec<Value>,
+}
+
+impl reporter::ReportSink for Backlog {
+    fn submit(&mut self, payload: &Value) -> Result<(), SendFailure> {
+        if !self.online {
+            return Err(SendFailure::Unreachable);
+        }
+        self.submitted.push(payload.clone());
+        Ok(())
+    }
+}
+
+fn crash(action: &str) -> Invocation {
+    let mut crashed = invocation(
+        action,
+        Termination::Crashed {
+            message: "SENTINEL-PANIC at /home/sentinel/private.geojson".into(),
+        },
+    );
+    crashed.argument_values = vec!["SENTINEL-VALUE".into()];
+    crashed
+}
+
+/// §5.3 and §7.3: a crash queues one automatic `bug` report as `ds
+/// (automatic)` with the SRE event id; a repeat raises its count and queues
+/// nothing new; a signed-out or offline host keeps it; the next signed-in send
+/// files it once and nothing waits afterwards. No value or message is in it.
+#[test]
+fn a_crash_files_one_automatic_bug_and_a_repeat_only_raises_its_count() {
+    let mut store = MemoryStore::default();
+    let mut offline = Sink::new(Gateway::Unreachable);
+    let first = crash("data.vector.buffer");
+    let recorded = finish_invocation(true, &mut store, &mut offline, &first, T0).unwrap();
+    assert_eq!(recorded.result_class, ResultClass::Crashed);
+    assert_eq!(recorded.automatic, reporter::AutomaticReporting::Queued);
+    let again = finish_invocation(
+        true,
+        &mut store,
+        &mut offline,
+        &crash("data.vector.buffer"),
+        T0 + 1_000,
+    )
+    .unwrap();
+    assert_eq!(
+        again.automatic,
+        reporter::AutomaticReporting::Raised { occurrences: 2 }
+    );
+    let other = finish_invocation(
+        true,
+        &mut store,
+        &mut offline,
+        &failure("data.vector.buffer", "gateway_unreachable"),
+        T0 + 2_000,
+    )
+    .unwrap();
+    assert_eq!(
+        other.automatic,
+        reporter::AutomaticReporting::None,
+        "only a crash is filed by ds itself"
+    );
+    assert_eq!(status(&mut store, true).unwrap().automatic_reports, 1);
+
+    let mut signed_out = Backlog {
+        online: false,
+        submitted: Vec::new(),
+    };
+    let kept = reporter::file_automatic(&mut store, &mut signed_out).unwrap();
+    assert!(kept.offline);
+    assert_eq!((kept.filed, kept.kept), (0, 1));
+    assert!(reporter::has_automatic(&mut store).unwrap());
+
+    let mut backlog = Backlog {
+        online: true,
+        submitted: Vec::new(),
+    };
+    let filed = reporter::file_automatic(&mut store, &mut backlog).unwrap();
+    assert_eq!((filed.filed, filed.kept), (1, 0));
+    assert!(!reporter::has_automatic(&mut store).unwrap());
+    let report = &backlog.submitted[0];
+    assert_eq!(report["agent"], reporter::AUTOMATIC_AGENT);
+    assert_eq!(report["kind"], "bug");
+    assert_eq!(report["severity"], "major");
+    assert_eq!(report["title"], "ds data.vector.buffer crashed: panic");
+    assert_eq!(report["context"]["sre_event"], first.invocation_id.as_str());
+    assert!(
+        report.get("needs").is_none(),
+        "nothing is left to the caller"
+    );
+    assert!(report["detail"]
+        .as_str()
+        .unwrap()
+        .starts_with("Expected: ds data.vector.buffer answers"));
+    assert!(report["evidence"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|line| line
+            .as_str()
+            .unwrap()
+            .starts_with("happened 2 times since ")));
+    let text = report.to_string();
+    for sentinel in ["SENTINEL", "sentinel", "private.geojson"] {
+        assert!(!text.contains(sentinel), "`{sentinel}` in {text}");
+    }
+    // The event keeps the sanitized message (§3.3); no argument value or path
+    // reaches the stored document.
+    let stored = String::from_utf8(store.document.clone().unwrap()).unwrap();
+    for sentinel in ["SENTINEL-VALUE", "private.geojson", "/home/"] {
+        assert!(!stored.contains(sentinel), "`{sentinel}` in {stored}");
+    }
+
+    // A crash after the report was filed queues it again; the backlog merges
+    // the same title into that report's occurrences.
+    let later = finish_invocation(
+        true,
+        &mut store,
+        &mut offline,
+        &crash("data.vector.buffer"),
+        T0 + 60_000,
+    )
+    .unwrap();
+    assert_eq!(later.automatic, reporter::AutomaticReporting::Queued);
+    reporter::file_automatic(&mut store, &mut backlog).unwrap();
+    assert_eq!(backlog.submitted[1]["title"], backlog.submitted[0]["title"]);
+}
+
+/// §5.4: a failed or crashed envelope names the draft command and its SRE
+/// event id; an answer or a refusal names nothing.
+#[test]
+fn only_a_failure_or_crash_envelope_points_to_a_feedback_draft() {
+    let pointer = reporter::next_feedback(ResultClass::Failed, "inv_0123").unwrap();
+    assert_eq!(pointer["draft"], "ds feedback draft --last");
+    assert_eq!(pointer["sre_event"], "inv_0123");
+    assert!(reporter::next_feedback(ResultClass::Crashed, "inv_0123").is_some());
+    assert!(reporter::next_feedback(ResultClass::Refused, "inv_0123").is_none());
+    assert!(reporter::next_feedback(ResultClass::Ok, "inv_0123").is_none());
+}
+
+/// §5.3: an `internal` error is filed by `ds` itself as well; a transport
+/// failure or a refusal is not.
+#[test]
+fn an_internal_error_is_filed_automatically_and_a_transport_failure_is_not() {
+    let mut store = MemoryStore::default();
+    let mut offline = Sink::new(Gateway::Unreachable);
+    let internal = invocation(
+        "dsgrid.describe",
+        Termination::Error {
+            class: "internal".into(),
+            code: "descriptor_unreadable".into(),
+            message: "SENTINEL could not be described".into(),
+            retryable: false,
+        },
+    );
+    let recorded = finish_invocation(true, &mut store, &mut offline, &internal, T0).unwrap();
+    assert_eq!(recorded.result_class, ResultClass::Failed);
+    assert_eq!(recorded.automatic, reporter::AutomaticReporting::Queued);
+    let transport = finish_invocation(
+        true,
+        &mut store,
+        &mut offline,
+        &failure("dsgrid.describe", "gateway_unreachable"),
+        T0 + 1,
+    )
+    .unwrap();
+    assert_eq!(transport.automatic, reporter::AutomaticReporting::None);
+
+    let mut backlog = Backlog {
+        online: true,
+        submitted: Vec::new(),
+    };
+    reporter::file_automatic(&mut store, &mut backlog).unwrap();
+    assert_eq!(backlog.submitted.len(), 1);
+    assert_eq!(
+        backlog.submitted[0]["title"],
+        "ds dsgrid.describe failed: descriptor_unreadable"
+    );
+    assert!(!backlog.submitted[0].to_string().contains("SENTINEL"));
+}

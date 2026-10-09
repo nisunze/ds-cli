@@ -1,7 +1,8 @@
 # `ds` reliability reporting and proactive feedback
 
-**Status:** specification, owner direction 2026-10-07 — **priority**. No code
-yet. Implementation slices and proofs are in
+**Status:** specification, owner direction 2026-10-07 — **priority**. The
+reporter (§3) is `crates/ds-client-core/src/reporter.rs`; `ds` wires it in
+`ds-cli/crates/ds/src/reliability.rs`. Remaining slices and proofs are in
 [`backlog/OPEN.md` block 25](../../backlog/OPEN.md#25-cli-reliability-reporting-and-proactive-feedback-priority).
 Open owner questions are in §9.
 
@@ -123,6 +124,17 @@ a failing command and asserts none appears in the event.
 - **No recursion.** The reporter never reports its own send failure.
 - **Tests and CI** set `DS_SRE_REPORTING=off`; development builds report on
   lane `local`.
+- **How the code reads this section.** A `ds` error envelope's class decides
+  the result class: `internal`, `failed` and `unavailable` (transport errors,
+  timeouts, missing owners) are `failed`; `invalid_input`, `unauthorized` and
+  `conflict` (signed out, stale view) are `refused`; a gateway 5xx is `failed`
+  whatever its class. The send carries the gateway key and no bearer, so the
+  store attributes it to `anonymous`. The state is one document,
+  `$XDG_STATE_HOME/ds/reliability.json` (else `~/.local/state/ds`), behind a
+  create-new lock. A process an MCP adapter runs for one tool call
+  (`DS_CLI_SURFACE=mcp`) and a discovery command (`doctor`, `capabilities`,
+  `version`, which promise no network) only record; the adapter's own process
+  sends every 60 s and at its exit, and any other invocation sends at exit.
 
 ### 3.5 Visibility
 
@@ -182,6 +194,16 @@ report (the existing `invalid_text` contract).
   and the SRE event id. Repeats merge into that report's occurrences.
 - Nothing else is filed automatically: a refusal or a slow call needs a
   person's or agent's expectation to be a useful report.
+- **How the code reads this section.** `reporter::record` queues the report in
+  the same state document (`automatic`, at most 20, one per command and code;
+  a repeat raises its `occurrences`). `reporter::file_automatic` submits each
+  through `feedback.submit` as the signed-in user, holding the state lock only
+  to read and to settle; signed out or offline, the report waits for a later
+  invocation, and a body the backlog refuses is dropped. A report sent after
+  repeats carries `happened N times since <day>`; the backlog merges a later
+  identical title into the same report's occurrences. A development build
+  crashes on purpose when `DS_CLI_TEST_PANIC` names the command id (§7.3); a
+  release build has no such hook.
 
 ### 5.4 Where the duty is taught
 
@@ -190,7 +212,7 @@ report (the existing `invalid_text` contract).
 | `ds` skill | A "Report as you go" section near the top, before "Find one command", with the §5.1 list and §5.2; the "When `ds` cannot" section points to it. The skill description names feedback as a primary duty. |
 | `feedback.submit` contract | Replace "use only after live capability discovery confirms…" with: file friction, confusion, slowness and ideas as well as gaps; distinguish kinds; include a negative control for `bug`. |
 | MCP initialize instructions | A `FEEDBACK_GUIDANCE` constant beside `REGRESSION_GUIDANCE`: file sightings unprompted, use `ds feedback draft --last`, list ids at the end. |
-| Error envelopes | Every `failed`, `crashed` or repeated `refused` envelope carries `next.feedback`: the `ds feedback draft --last` command and the SRE event id. |
+| Error envelopes | Every `failed`, `crashed` or repeated `refused` envelope carries `next.feedback`: the `ds feedback draft --last` command and the SRE event id. Implemented as `error.feedback` (`draft`, `sre_event`) beside the existing `error.next` command list, on `failed` and `crashed` endings (`reporter::next_feedback`); present whether reporting is on or off, so the answer never depends on the switch. A repeated refusal carries none yet: deciding "repeated" would read local state into the answer. |
 | Narrow skills | Their "Stops at" lines keep pointing to `ds`; no per-skill copies of the duty. |
 
 ## 6. Ownership

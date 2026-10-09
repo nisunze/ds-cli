@@ -639,6 +639,9 @@ struct State {
     last_flush: Option<String>,
     /// The last [`JOURNAL_ENTRIES`] invocations, oldest first (contract §4).
     journal: Vec<JournalEntry>,
+    /// Crash reports `ds` files by itself, waiting for a signed-in send
+    /// (contract §5.3). One per crashing command; repeats raise its count.
+    automatic: Vec<AutomaticReport>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -737,6 +740,8 @@ pub struct Recorded {
     pub coalesced: bool,
     /// The event's id (`user_action_id`) when one was queued or coalesced.
     pub event_id: Option<String>,
+    /// What a crash did to the automatic bug report (contract §5.3).
+    pub automatic: AutomaticReporting,
 }
 
 /// Record one finished invocation: an `ok` ending is counted into today's
@@ -753,6 +758,7 @@ pub fn record(
         state.prune(now_ms);
         roll_day(state, invocation, now_ms);
         journal(state, invocation, now_ms);
+        let automatic = queue_automatic(state, invocation, now_ms);
         let Some(event) = event else {
             let action = action_id(&invocation.action);
             if state.rollup.contains_key(&action) || state.rollup.len() < MAX_ROLLUP_COMMANDS {
@@ -763,6 +769,7 @@ pub fn record(
                 queued: false,
                 coalesced: false,
                 event_id: None,
+                automatic,
             };
         };
         let key = format!(
@@ -780,6 +787,7 @@ pub fn record(
                 queued: false,
                 coalesced: true,
                 event_id: open.event["user_action_id"].as_str().map(str::to_string),
+                automatic,
             };
         }
         let held_until = state
@@ -801,6 +809,7 @@ pub fn record(
             queued: true,
             coalesced: false,
             event_id,
+            automatic,
         }
     })
 }
@@ -927,6 +936,8 @@ pub struct ReporterStatus {
     pub last_flush: Option<String>,
     pub rollup_day: Option<String>,
     pub rollup_commands: usize,
+    /// Automatic crash reports waiting for a signed-in send.
+    pub automatic_reports: usize,
 }
 
 impl ReporterStatus {
@@ -943,6 +954,7 @@ impl ReporterStatus {
             "last_flush": self.last_flush,
             "rollup_day": self.rollup_day,
             "rollup_commands": self.rollup_commands,
+            "automatic_reports": self.automatic_reports,
         })
     }
 }
@@ -967,6 +979,7 @@ pub fn status(
         last_flush: state.last_flush.clone(),
         rollup_day: state.rollup_day.clone(),
         rollup_commands: state.rollup.len(),
+        automatic_reports: state.automatic.len(),
     })
 }
 
@@ -1222,4 +1235,194 @@ fn draft_one(entry: &JournalEntry) -> Value {
         needs.push(json!("agent: the reporting agent's name"));
     }
     payload
+}
+
+// ---------------------------------------------------------------------------
+// What a failure envelope points to, and what `ds` files by itself (§5.3, §5.4)
+// ---------------------------------------------------------------------------
+
+/// The command a failure envelope names so its reader can file the sighting.
+pub const DRAFT_COMMAND: &str = "ds feedback draft --last";
+/// The agent an automatic crash report is filed as.
+pub const AUTOMATIC_AGENT: &str = "ds (automatic)";
+/// Crash reports waiting for a send, at most; the oldest is dropped first.
+pub const MAX_AUTOMATIC_REPORTS: usize = 20;
+
+/// The `feedback` member a failure envelope carries: for a `failed` or
+/// `crashed` ending, the draft command and this invocation's SRE event id.
+/// An answer or a refusal carries none: a refusal is the contract working.
+pub fn next_feedback(class: ResultClass, invocation_id: &str) -> Option<Value> {
+    matches!(class, ResultClass::Failed | ResultClass::Crashed).then(|| {
+        json!({
+            "draft": DRAFT_COMMAND,
+            "sre_event": id_text(invocation_id),
+        })
+    })
+}
+
+/// What one recorded ending did to the automatic crash reports.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AutomaticReporting {
+    /// Not a crash or an internal error.
+    None,
+    /// A crash or internal error with no pending report of its command and
+    /// code: one bug report waits.
+    Queued,
+    /// A repeat: the pending report's count rose to this.
+    Raised { occurrences: u64 },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct AutomaticReport {
+    /// `(action, error_code)` of the crash.
+    key: String,
+    first_ms: u64,
+    occurrences: u64,
+    /// The `feedback.submit` payload, from the journalled invocation.
+    payload: Value,
+}
+
+/// A panic or abort, or an `internal` error: the endings `ds` files by itself
+/// (contract §5.3). Any other failure or refusal needs a person's expectation.
+fn files_automatically(invocation: &Invocation) -> bool {
+    match &invocation.termination {
+        Termination::Crashed { .. } => true,
+        Termination::Error { class, .. } => class == "internal",
+        Termination::Ok => false,
+    }
+}
+
+fn queue_automatic(state: &mut State, invocation: &Invocation, now_ms: u64) -> AutomaticReporting {
+    if !files_automatically(invocation) {
+        return AutomaticReporting::None;
+    }
+    let Some(entry) = state.journal.last() else {
+        return AutomaticReporting::None;
+    };
+    let key = format!(
+        "{}\u{1f}{}",
+        entry.action,
+        entry.error_code.as_deref().unwrap_or_default()
+    );
+    if let Some(pending) = state
+        .automatic
+        .iter_mut()
+        .find(|pending| pending.key == key)
+    {
+        pending.occurrences += 1;
+        return AutomaticReporting::Raised {
+            occurrences: pending.occurrences,
+        };
+    }
+    let payload = automatic_payload(entry);
+    state.automatic.push(AutomaticReport {
+        key,
+        first_ms: now_ms,
+        occurrences: 1,
+        payload,
+    });
+    let excess = state.automatic.len().saturating_sub(MAX_AUTOMATIC_REPORTS);
+    state.automatic.drain(..excess);
+    AutomaticReporting::Queued
+}
+
+/// The draft of the crashing invocation, completed: `ds` itself states what
+/// was expected and what would show the crash is gone.
+fn automatic_payload(entry: &JournalEntry) -> Value {
+    let mut payload = draft_one(entry);
+    payload["agent"] = json!(AUTOMATIC_AGENT);
+    payload["detail"] = json!(format!(
+        "Expected: ds {action} answers or refuses with a declared code. Observed: it \
+         ended {class} with {code} (the message never leaves the machine). \
+         Acceptance: the same invocation no longer ends this way. Filed automatically \
+         by ds.",
+        action = entry.action,
+        class = entry.result_class,
+        code = entry.error_code.as_deref().unwrap_or("no_code"),
+    ));
+    if let Some(object) = payload.as_object_mut() {
+        object.remove("needs");
+    }
+    payload
+}
+
+/// The host's submit of one `feedback.submit` payload as the signed-in user.
+/// A signed-out host, no network or a 5xx is [`SendFailure::Unreachable`]: the
+/// report waits for a later invocation. A body the backlog refuses is
+/// [`SendFailure::Rejected`]: dropped, never retried.
+pub trait ReportSink {
+    fn submit(&mut self, payload: &Value) -> Result<(), SendFailure>;
+}
+
+/// What one [`file_automatic`] did.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct FiledReports {
+    pub filed: usize,
+    pub rejected: usize,
+    /// Reports still waiting afterwards.
+    pub kept: usize,
+    pub offline: bool,
+}
+
+/// Submit every waiting crash report, oldest first. The state lease is held
+/// only to read and to settle, never across a submit, so a slow sign-in never
+/// blocks another `ds` process. A crash recorded meanwhile stays waiting: only
+/// the occurrences that were submitted are settled. The feedback backlog
+/// merges a repeated report into its occurrences, so a report filed again
+/// after a later crash raises the same report's count.
+pub fn file_automatic(
+    store: &mut dyn ReporterStore,
+    sink: &mut dyn ReportSink,
+) -> Result<FiledReports, ReporterStoreError> {
+    let pending = with_state(store, |state| state.automatic.clone())?;
+    let mut settled: Vec<(String, u64)> = Vec::new();
+    let mut outcome = FiledReports::default();
+    for report in &pending {
+        let mut payload = report.payload.clone();
+        if report.occurrences > 1 {
+            if let Some(evidence) = payload["evidence"].as_array_mut() {
+                evidence.push(json!(format!(
+                    "happened {} times since {}",
+                    report.occurrences,
+                    utc_day(report.first_ms)
+                )));
+            }
+        }
+        match sink.submit(&payload) {
+            Ok(()) => {
+                outcome.filed += 1;
+                settled.push((report.key.clone(), report.occurrences));
+            }
+            Err(SendFailure::Rejected) => {
+                outcome.rejected += 1;
+                settled.push((report.key.clone(), report.occurrences));
+            }
+            Err(SendFailure::Unreachable) => {
+                outcome.offline = true;
+                break;
+            }
+        }
+    }
+    outcome.kept = with_state(store, |state| {
+        for (key, submitted) in &settled {
+            if let Some(index) = state.automatic.iter().position(|report| &report.key == key) {
+                let report = &mut state.automatic[index];
+                report.occurrences = report.occurrences.saturating_sub(*submitted);
+                if report.occurrences == 0 {
+                    state.automatic.remove(index);
+                }
+            }
+        }
+        state.rejected += outcome.rejected as u64;
+        state.automatic.len()
+    })?;
+    Ok(outcome)
+}
+
+/// Whether a crash report waits for a send.
+pub fn has_automatic(store: &mut dyn ReporterStore) -> Result<bool, ReporterStoreError> {
+    store.acquire()?;
+    let state = store.load().map(State::decode);
+    store.release();
+    Ok(!state?.automatic.is_empty())
 }
