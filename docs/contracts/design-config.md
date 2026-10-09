@@ -59,3 +59,23 @@ at 1–100; cell/metadata previews are depth/width/string bounded and mark
 `truncated`. `more` reports omitted page items. Complete sheet export is an
 explicit host file action. Rule sets are paged by rows, never as a single
 unbounded nested item. Inspection previews must never be submitted as saves.
+
+## One sheet copied from another project
+
+`design_config::plan_sheet_copy` / op `sheet_copy_plan` decides copying one
+Settings sheet from a source project's configuration read into a destination's;
+`copy_sheet` re-decides it and returns the value to write only while the
+`plan_sha256` the caller reviewed still holds (`config_copy_plan_changed`).
+The key is admitted only when the source holds it AND its configuration
+`groups` declare it (`config_sheet_unknown`, `config_sheet_not_admitted`), so
+attached overlays and stray keys never travel. The value passes exactly the
+validation an edit passes: `save_sheet` against the destination's own sheet,
+or against the source's model for that sheet when the destination lacks it.
+`save_sheet` itself still refuses a sheet the document does not hold; only this
+reviewed copy creates one. The plan names `create | replace | identical`, both
+sides' key-order independent SHA-256 and row counts, the declaring `group` and
+how many other destination sheets are kept, and binds both project ids. Hosts
+read both configurations under the caller's own authority (source READ), write
+through the destination's Settings save (destination WRITE) and verify a fresh
+read-back; ds-client-core does this as `ProjectConfigurationChange::CopySheet`
+behind `ds design config copy plan|apply --sheet <key>`.
