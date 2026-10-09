@@ -24,8 +24,8 @@ use ds_network::network::native_fast_lv::{
     decode_native_fast_lv_request, native_fast_lv_job_input,
 };
 use ds_network::network::process_lv_transformer_with_voltage_drop;
-use ds_network::network::voltage_drop::VoltageDropRun;
 use ds_network::network::voltage_drop::params::METHOD;
+use ds_network::network::voltage_drop::{VoltageDropAnalysis, VoltageDropRun};
 use serde_json::{Map, Value, json};
 
 use super::artifact::{VOLTAGE_DROP_RESULT, ensure_absent, sha256, write_new};
@@ -178,11 +178,19 @@ pub static COMMAND: Command = Command {
     availability: || Availability::Available,
 };
 
-/// One transformer's outcome: processed layers and an optional calculation.
-/// A reserved nature has layers with `tr.vd_summary` and no calculation.
+/// One transformer's outcome: processed layers, an optional calculation and
+/// the producer's analysis envelope. A reserved nature has layers with
+/// `tr.vd_summary` and no calculation.
 struct Solved {
     transformer_name: String,
-    outcome: Result<(Map<String, Value>, Option<VoltageDropRun>), String>,
+    outcome: Result<
+        (
+            Map<String, Value>,
+            Option<VoltageDropRun>,
+            Option<VoltageDropAnalysis>,
+        ),
+        String,
+    >,
 }
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
@@ -460,7 +468,7 @@ fn solve(job: NativeFastLvJobV1) -> Solved {
     let outcome = match catch_unwind(AssertUnwindSafe(|| {
         process_lv_transformer_with_voltage_drop(input)
     })) {
-        Ok(Ok((output, run))) => Ok((output.gdfs, run)),
+        Ok(Ok((output, run))) => Ok((output.gdfs, run, output.voltage_drop)),
         Ok(Err(error)) => Err(error.to_string()),
         Err(_) => Err("local processing panicked".to_string()),
     };
@@ -474,7 +482,7 @@ fn solve(job: NativeFastLvJobV1) -> Solved {
 /// outlook schedule, never the layers, the per-customer results or an error
 /// text.
 fn row(job: &Solved) -> Value {
-    let Ok((layers, run)) = &job.outcome else {
+    let Ok((layers, run, _)) = &job.outcome else {
         return json!({ "transformer_name": job.transformer_name, "ok": false });
     };
     let Some(run) = run else {
@@ -532,15 +540,24 @@ fn encode(solved: Vec<Solved>, scenario: &Value) -> Result<Vec<u8>, Failure> {
             Value::String(job.transformer_name),
         );
         entry.insert("ok".into(), Value::Bool(job.outcome.is_ok()));
+        if let Ok((_, _, Some(analysis))) = &job.outcome {
+            // The producer's exact envelope: the same three binding digests a
+            // process save stores, so this result and the saved analysis name
+            // one input digest for a report to bind.
+            entry.insert(
+                "analysis".into(),
+                serde_json::to_value(analysis).map_err(encoding)?,
+            );
+        }
         match job.outcome {
-            Ok((layers, Some(run))) => {
+            Ok((layers, Some(run), _)) => {
                 let report = serde_json::to_value(&run.report).map_err(encoding)?;
                 let sizing = serde_json::to_value(&run.sizing).map_err(encoding)?;
                 entry.insert("report".into(), report);
                 entry.insert("sizing".into(), sizing);
                 entry.insert("layers".into(), Value::Object(layers));
             }
-            Ok((layers, None)) => {
+            Ok((layers, None, _)) => {
                 let summary = layers["tr"]["features"][0]["properties"]["vd_summary"].clone();
                 entry.insert("vd_summary".into(), summary);
                 entry.insert("layers".into(), Value::Object(layers));
@@ -760,6 +777,28 @@ mod tests {
             assert!(properties["vd_pct"].is_number(), "{properties}");
         }
         assert!(first.get("error").is_none());
+        // The producer's exact analysis envelope rides beside the layers it
+        // binds: one input digest for this result and a saved analysis.
+        let analysis = &first["analysis"];
+        assert_eq!(analysis["schema"], "ds.lv-voltage-drop.analysis/v1");
+        assert_eq!(analysis["status"], "calculated");
+        assert_eq!(analysis["run"]["report"], first["report"]);
+        assert_eq!(
+            analysis["summary"],
+            first["layers"]["tr"]["features"][0]["properties"]["vd_summary"]
+        );
+        for key in [
+            "inputs_digest",
+            "analysis_inputs_digest",
+            "processed_digest",
+        ] {
+            assert!(
+                analysis[key]
+                    .as_str()
+                    .is_some_and(|digest| digest.len() == 64),
+                "{key}"
+            );
+        }
         assert_eq!(document["jobs"][1]["transformer_name"], "T1");
 
         let text = render(&receipt);
