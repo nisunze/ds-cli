@@ -854,16 +854,20 @@ fn a_crash_files_one_automatic_bug_and_a_repeat_only_raises_its_count() {
     assert_eq!(backlog.submitted[1]["title"], backlog.submitted[0]["title"]);
 }
 
-/// §5.4: a failed or crashed envelope names the draft command and its SRE
-/// event id; an answer or a refusal names nothing.
+/// §5.4: a failed or crashed envelope names the draft command; an answer or
+/// a refusal names nothing.
 #[test]
 fn only_a_failure_or_crash_envelope_points_to_a_feedback_draft() {
-    let pointer = reporter::next_feedback(ResultClass::Failed, "inv_0123").unwrap();
-    assert_eq!(pointer["draft"], "ds feedback draft --last");
-    assert_eq!(pointer["sre_event"], "inv_0123");
-    assert!(reporter::next_feedback(ResultClass::Crashed, "inv_0123").is_some());
-    assert!(reporter::next_feedback(ResultClass::Refused, "inv_0123").is_none());
-    assert!(reporter::next_feedback(ResultClass::Ok, "inv_0123").is_none());
+    assert_eq!(
+        reporter::next_feedback(ResultClass::Failed),
+        Some("ds feedback draft --last")
+    );
+    assert_eq!(
+        reporter::next_feedback(ResultClass::Crashed),
+        Some(reporter::DRAFT_COMMAND)
+    );
+    assert_eq!(reporter::next_feedback(ResultClass::Refused), None);
+    assert_eq!(reporter::next_feedback(ResultClass::Ok), None);
 }
 
 /// §5.3: an `internal` error is filed by `ds` itself as well; a transport

@@ -1261,16 +1261,13 @@ pub const AUTOMATIC_AGENT: &str = "ds (automatic)";
 /// Crash reports waiting for a send, at most; the oldest is dropped first.
 pub const MAX_AUTOMATIC_REPORTS: usize = 20;
 
-/// The `feedback` member a failure envelope carries: for a `failed` or
-/// `crashed` ending, the draft command and this invocation's SRE event id.
-/// An answer or a refusal carries none: a refusal is the contract working.
-pub fn next_feedback(class: ResultClass, invocation_id: &str) -> Option<Value> {
-    matches!(class, ResultClass::Failed | ResultClass::Crashed).then(|| {
-        json!({
-            "draft": DRAFT_COMMAND,
-            "sre_event": id_text(invocation_id),
-        })
-    })
+/// The `next` command a failure envelope names so its reader can file the
+/// sighting: for a `failed` or `crashed` ending only. A refusal is the
+/// contract working and names none. The SRE event id stays in the journal the
+/// draft reads, never in the answer, so a failed answer is the same with
+/// reporting on or off and through MCP or the CLI.
+pub fn next_feedback(class: ResultClass) -> Option<&'static str> {
+    matches!(class, ResultClass::Failed | ResultClass::Crashed).then_some(DRAFT_COMMAND)
 }
 
 /// What one recorded ending did to the automatic crash reports.
