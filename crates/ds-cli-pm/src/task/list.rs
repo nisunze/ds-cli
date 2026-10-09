@@ -9,7 +9,9 @@ use ds_cli_contract::spec::{
     Arg, ArgKind, Authority, Chapter, Command, Effect, Example, Execution, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
-use ds_command_kernel::project_management::reads::{PlacementFilter, TaskListFilter};
+use ds_command_kernel::project_management::reads::{
+    GeometryFilter, PlacementFilter, TaskListFilter,
+};
 use serde_json::Value;
 
 use crate::{LANE_ARG, LIMIT_ARG, PAGE_ARG};
@@ -69,6 +71,16 @@ const PLACEMENT_ARG: Arg = Arg {
     summary: "Plan rows, the unplaced inbox, or both.",
 };
 
+const GEOMETRY_ARG: Arg = Arg {
+    name: "geometry",
+    kind: ArgKind::Value,
+    value: "<presence>",
+    required: false,
+    default: Some("any"),
+    choices: &["any", "with", "without"],
+    summary: "Tasks drawn on the map, tasks with no map geometry, or both.",
+};
+
 pub static COMMAND: Command = Command {
     id: "pm.task.list",
     path: &["pm", "task", "list"],
@@ -91,6 +103,7 @@ credential, no window.",
         ASSIGNEE_ARG,
         DISCIPLINE_ARG,
         PLACEMENT_ARG,
+        GEOMETRY_ARG,
         BLOCKED_ARG,
         LIMIT_ARG,
         PAGE_ARG,
@@ -142,6 +155,12 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             _ => PlacementFilter::Any,
         },
         blocked_on_correspondence: inputs.switch("blocked-on-correspondence"),
+        // `any` is the default and matches everything.
+        geometry: match inputs.value("geometry") {
+            Some("with") => GeometryFilter::With,
+            Some("without") => GeometryFilter::Without,
+            _ => GeometryFilter::Any,
+        },
         page_size: match inputs.value("limit") {
             Some(limit) => crate::integer(limit, "limit", 1, crate::MAX_PAGE_SIZE)?,
             None => 50,
