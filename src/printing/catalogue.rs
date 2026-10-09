@@ -16,13 +16,43 @@ pub enum Purpose {
     MvModel,
     Project,
     VoltageDrop,
+    /// Booklet front matter (cover, naming, key map, ...); it previews against
+    /// the DS Grid MV model(s) its booklet prints.
+    FrontMatter,
 }
+
+/// The page roles Front matter holds, in booklet order.
+pub const FRONT_MATTER_ROLES: [PageRole; 9] = [
+    PageRole::Cover,
+    PageRole::Naming,
+    PageRole::SheetIndex,
+    PageRole::KeyMap,
+    PageRole::KeyPlan,
+    PageRole::Legend,
+    PageRole::GeneralNotes,
+    PageRole::LegendNotes,
+    PageRole::Revisions,
+];
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct Classification {
     pub purpose: Purpose,
     pub role: PageRole,
+}
+
+impl Classification {
+    /// A pair the document itself may carry. Only the purposes with a closed
+    /// role set refuse here; every stored pair of the older purposes still loads.
+    pub fn admit(&self) -> Result<(), String> {
+        if self.purpose == Purpose::FrontMatter && !FRONT_MATTER_ROLES.contains(&self.role) {
+            return Err(
+                "print_classification_invalid: Front matter holds only cover, naming, sheet index, key map, key plan, legend, general notes, legend and notes, or revisions pages"
+                    .into(),
+            );
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -49,6 +79,14 @@ pub enum Location {
         revision_id: String,
         content_sha256: String,
         html_sha256: String,
+    },
+    /// A governed standard page held by the project (`report.standard.get
+    /// --kind standard`), pinned to the revision the catalogue listed.
+    GovernedStandard {
+        project_id: String,
+        id: String,
+        template_id: String,
+        revision_id: String,
     },
 }
 
@@ -87,8 +125,52 @@ fn digest(value: &Value) -> Option<String> {
         .map(str::to_owned)
 }
 
-/// Admit only the project-owned A4 family from the existing governed catalogue.
-/// Standard booklet documents have a different consumer and remain outside this slice.
+/// One governed standard page under Front matter. Pages of other roles keep
+/// their existing consumer (the governed LV set) and stay out of the catalogue.
+fn standard_entry(project: &str, row: &Value) -> Result<Option<Entry>, String> {
+    let role: PageRole = serde_json::from_value(row["role"].clone())
+        .map_err(|_| "print_catalogue_invalid: standard page role unknown")?;
+    if !FRONT_MATTER_ROLES.contains(&role) {
+        return Ok(None);
+    }
+    let id = row["id"]
+        .as_str()
+        .filter(|id| identifier(id))
+        .ok_or("print_catalogue_invalid: standard page id invalid")?;
+    let template_id = row["template_id"]
+        .as_str()
+        .filter(|id| identifier(id))
+        .ok_or("print_catalogue_invalid: standard page template missing")?;
+    let revision_id =
+        digest(&row["revision_id"]).ok_or("print_catalogue_invalid: standard page pin missing")?;
+    let label = ROLES
+        .iter()
+        .find(|(r, _)| *r == role)
+        .map_or("Page", |(_, label)| *label);
+    Ok(Some(Entry {
+        row: Row {
+            id: id.into(),
+            name: format!("{label} · {template_id}"),
+            paper: serde_json::from_value(
+                json!({"size": row["paper"], "orientation": row["orientation"]}),
+            )
+            .ok(),
+            classification: Some(Classification {
+                purpose: Purpose::FrontMatter,
+                role,
+            }),
+        },
+        location: Location::GovernedStandard {
+            project_id: project.into(),
+            id: id.into(),
+            template_id: template_id.into(),
+            revision_id,
+        },
+    }))
+}
+
+/// Admit the project-owned A4 family and the governed front-matter pages from
+/// the existing governed catalogue.
 fn governed_entries(project: &str, capture: &Value) -> Result<Vec<Entry>, String> {
     let rows = capture["documents"]
         .as_array()
@@ -104,9 +186,13 @@ fn governed_entries(project: &str, capture: &Value) -> Result<Vec<Entry>, String
         );
     }
     let mut entries = Vec::new();
+    let mut standard = Vec::new();
     for row in rows {
         match row["kind"].as_str() {
-            Some("standard") => continue,
+            Some("standard") => {
+                standard.extend(standard_entry(project, row)?);
+                continue;
+            }
             Some("a4") => {}
             _ => return Err("print_catalogue_invalid: unknown governed document kind".into()),
         }
@@ -149,6 +235,7 @@ fn governed_entries(project: &str, capture: &Value) -> Result<Vec<Entry>, String
     if entries.len() > 1 {
         return Err("print_catalogue_invalid: duplicate bound A4 document".into());
     }
+    entries.extend(standard);
     Ok(entries)
 }
 
@@ -231,7 +318,8 @@ pub struct Catalogue {
     pub roles: Vec<Choice<PageRole>>,
 }
 
-const PURPOSES: [(Purpose, &str); 4] = [
+const PURPOSES: [(Purpose, &str); 5] = [
+    (Purpose::FrontMatter, "Front matter"),
     (Purpose::LvTransformer, "LV Sheets"),
     (Purpose::MvModel, "MV Sheets"),
     (Purpose::Project, "Overview Sheets"),
@@ -362,6 +450,7 @@ mod tests {
         assert_eq!(
             out["purposes"],
             json!([
+                {"value":"front_matter","label":"Front matter"},
                 {"value":"lv_transformer","label":"LV Sheets"},
                 {"value":"mv_model","label":"MV Sheets"},
                 {"value":"project","label":"Overview Sheets"},
@@ -415,6 +504,62 @@ mod tests {
         let response = json!({"scope":"project","project_id":"project_one","kind":"a4","id":A4_ID,
             "revision_id":content,"content_sha256":content,"html_sha256":html_pin,"html":html,"html_available":true,"document":document});
         (catalogue, response)
+    }
+
+    #[test]
+    fn governed_front_matter_pages_list_under_front_matter_with_their_pins() {
+        let pin = "a".repeat(64);
+        let capture = json!({"scope":"project","project_id":"project_one","schema":"ds.printing-standard-catalog/v1","documents":[
+            {"kind":"standard","id":"mv-cover-a3","template_id":"mv-booklet-a3-v1","role":"cover","paper":"A3","orientation":"landscape","revision_id":pin,"content_sha256":pin,"bound":false},
+            {"kind":"standard","id":"mv-naming-a3","template_id":"mv-booklet-a3-v1","role":"naming","paper":"A3","orientation":"landscape","revision_id":pin,"bound":false},
+            {"kind":"standard","id":"lv-network-a0","template_id":"lv-transformer-a0-v1","role":"network","paper":"A0","orientation":"landscape","revision_id":pin,"bound":false}
+        ]});
+        let out = serde_json::to_value(
+            project(Vec::new(), Some("project_one"), Some(capture.clone())).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(out["groups"].as_array().unwrap().len(), 1);
+        let group = &out["groups"][0];
+        assert_eq!(
+            (group["purpose"].as_str(), group["label"].as_str()),
+            (Some("front_matter"), Some("Front matter"))
+        );
+        assert_eq!(group["roles"][0]["role"], "cover");
+        assert_eq!(group["roles"][1]["role"], "naming");
+        let cover = &group["roles"][0]["templates"][0];
+        assert_eq!(cover["name"], "Cover · mv-booklet-a3-v1");
+        assert_eq!(
+            cover["paper"],
+            json!({"size":"A3","orientation":"landscape"})
+        );
+        assert_eq!(
+            cover["location"],
+            json!({"kind":"governed_standard","project_id":"project_one","id":"mv-cover-a3","template_id":"mv-booklet-a3-v1","revision_id":pin})
+        );
+        // An unpinned or unknown-role page refuses the capture instead of guessing.
+        for broken in [
+            json!({"revision_id": null}),
+            json!({"role": "frontispiece"}),
+            json!({"template_id": ""}),
+        ] {
+            let mut changed = capture.clone();
+            for (key, value) in broken.as_object().unwrap() {
+                changed["documents"][0][key] = value.clone();
+            }
+            assert!(project(Vec::new(), Some("project_one"), Some(changed)).is_err());
+        }
+    }
+
+    #[test]
+    fn front_matter_admits_only_front_matter_roles() {
+        let layout = serde_json::to_value(super::super::default_layout()).unwrap();
+        let run = |classification: Value| {
+            super::super::evaluate(&serde_json::to_vec(&json!({"op":"set_classification","layout":layout,"classification":classification})).unwrap())
+        };
+        assert!(run(json!({"purpose":"front_matter","role":"key_map"})).is_ok());
+        assert!(run(json!({"purpose":"front_matter","role":"plan_profile"}))
+            .unwrap_err()
+            .starts_with("print_classification_invalid"));
     }
 
     #[test]

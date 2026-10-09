@@ -1109,6 +1109,9 @@ pub(super) fn validate_with_semantic_layers(
     if semantic_layers.iter().any(|id| !identifier(id)) {
         return Err("invalid semantic print layer key".into());
     }
+    if let Some(classification) = &layout.classification {
+        classification.admit()?;
+    }
     if let Some(style) = &layout.attribution {
         style.validate()?;
     }

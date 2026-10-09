@@ -26,8 +26,12 @@ to a project named geographic view when an export is prepared; editor pan/zoom
 is not part of this document.
 
 An optional explicit `classification` owns catalogue organization:
-`{purpose: "lv_transformer" | "mv_model" | "project" | "voltage_drop", role: PageRole}`.
-The shared page-role vocabulary includes `overview` and `report`. Omission is
+`{purpose: "lv_transformer" | "mv_model" | "project" | "voltage_drop" | "front_matter", role: PageRole}`.
+The shared page-role vocabulary includes `overview` and `report`. Front matter
+holds only the booklet roles (cover, naming, sheet index, key map, key plan,
+legend, general notes, legend and notes, revisions); validation refuses any
+other role under it with `print_classification_invalid`. The purpose is
+additive: documents classified under the four older purposes load unchanged. Omission is
 Unclassified and serializes without this field; names, paper and the retired
 `project_overview` flag never classify a layout. `set_classification` sets an
 exact pair or clears it with null without changing any other layout content.
@@ -64,11 +68,18 @@ the closed intent grammar. The native renderer can validate the same Layout.
 
 `template_catalogue` accepts custom-layout row facts and, optionally, the exact
 project-scoped `report.standard.list` capture with its explicit `project_id`.
-Every projected entry has a tagged storage `location`: `layout` or
-`governed_html`. The bound `voltage-drop-a4-v1` document is organized under
-Voltage drop / Report by its governed A4 contract. It is an HTML document;
-its paper does not make it a canvas Layout. Unknown custom layouts remain
-Unclassified. Governed booklet documents retain their existing consumer.
+Every projected entry has a tagged storage `location`: `layout`,
+`governed_html` or `governed_standard`. The bound `voltage-drop-a4-v1` document
+is organized under Voltage drop / Report by its governed A4 contract. It is an
+HTML document; its paper does not make it a canvas Layout. Governed standard
+pages whose role is a front-matter role are listed under Front matter, named by
+role and template, with a `governed_standard` location pinned to the project,
+page id, template id and listed `revision_id` (read it with
+`report.standard.get --kind standard`). A standard page without a known role,
+template id or 64-hex revision pin refuses the capture rather than being
+guessed. Standard pages of other roles keep their existing consumer (the
+governed LV set) and stay out of the catalogue. Unknown custom layouts remain
+Unclassified.
 
 `read_governed_template` admits the exact `report.standard.get` response against
 the selected HTML location's captured project, revision, content and HTML pins.
