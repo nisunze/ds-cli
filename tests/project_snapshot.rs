@@ -18,6 +18,30 @@ fn document() -> Value {
 fn decode(value: Value) -> Manifest {
     serde_json::from_value(value).unwrap()
 }
+
+#[test]
+fn manifest_identity_binds_all_captured_fields_and_refuses_mutation() {
+    let mut manifest = decode(document());
+    assert_eq!(
+        manifest.verify_sha256().unwrap_err().code,
+        RefusalCode::SnapshotCorrupt
+    );
+    manifest.manifest_sha256 = manifest.computed_sha256().unwrap();
+    manifest.verify_sha256().unwrap();
+    let digest = manifest.manifest_sha256.clone();
+    manifest.created_at_ms += 1;
+    assert_ne!(digest, manifest.computed_sha256().unwrap());
+    assert_eq!(
+        manifest.verify_sha256().unwrap_err().code,
+        RefusalCode::SnapshotCorrupt
+    );
+    manifest.created_at_ms -= 1;
+    manifest.context.principal = "other".into();
+    assert_ne!(digest, manifest.computed_sha256().unwrap());
+    manifest.context.principal = "reader".into();
+    manifest.layers[0].chunks[0].artifact = "replacement".into();
+    assert_ne!(digest, manifest.computed_sha256().unwrap());
+}
 fn code(value: Value) -> RefusalCode {
     let manifest = decode(value);
     manifest.validate(&manifest.context).unwrap_err().code

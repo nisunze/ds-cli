@@ -597,7 +597,14 @@ Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group A, to be fixed to
   has not migrated. Use installed `/usr/bin/ds-canary` for development acceptance;
   never resume the paused stable release. Next independent slice: **3** pinned
   VersaTiles native generation and fidelity/
-  determinism/budget/cancellation qualification; **4** reporter task and durable
+  determinism/budget/cancellation qualification. VersaTiles v4.15.0 qualification
+  requires checked lower-level geometry generation (explicit no-reduction policy),
+  canonical stable IDs as properties, bounded source/vertex/zoom admission,
+  fallible tile encoding, a write_all/fsync sink and full coordinate/payload
+  readback: upstream streaming can suppress errors/oversize tiles, and its
+  PMTiles writer deduplicates by a 64-bit hash without byte comparison. Actual
+  Windows/link/license and cross-platform byte parity remain unproved.
+  **4** reporter task and durable
   native jobs plus actual Windows execution; **5** existing CLI/MCP and Desktop
   controls/automatic triggers with report independence; **6** real governed
   source/delta/lease/upload/independent verification/CAS publication APIs and

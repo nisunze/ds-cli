@@ -263,6 +263,31 @@ impl Revision {
     }
 }
 impl Manifest {
+    /// Canonical identity of all captured fields except the identity itself.
+    /// This verifies a claim's consistency, not its server attestation.
+    pub fn computed_sha256(&self) -> Result<String, Refusal> {
+        use sha2::{Digest, Sha256};
+        let mut value = serde_json::to_value(self)
+            .map_err(|_| refuse(RefusalCode::SnapshotInvalid, "cannot encode snapshot"))?;
+        value["manifest_sha256"] = serde_json::Value::String(String::new());
+        value.sort_all_objects();
+        let bytes = serde_json::to_vec(&value)
+            .map_err(|_| refuse(RefusalCode::SnapshotInvalid, "cannot encode snapshot"))?;
+        let mut hash = Sha256::new();
+        hash.update(b"ds.project-snapshot-manifest/v1\0");
+        hash.update(bytes);
+        Ok(format!("{:x}", hash.finalize()))
+    }
+
+    pub fn verify_sha256(&self) -> Result<(), Refusal> {
+        if self.computed_sha256()? != self.manifest_sha256 {
+            return Err(refuse(
+                RefusalCode::SnapshotCorrupt,
+                "snapshot manifest digest differs",
+            ));
+        }
+        Ok(())
+    }
     /// Structural admission only. Authenticity and byte verification belong to
     /// the source transport, local store and independent central verifier.
     pub fn validate(&self, expected: &Context) -> Result<(), Refusal> {

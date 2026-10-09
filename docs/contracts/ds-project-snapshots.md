@@ -58,3 +58,11 @@ non-finite coordinates, mismatched multipart types, extended dimensions, excessi
 nesting and declared counts exceeding the remaining input or budget. It does not
 assert CRS or geometric validity; those remain source admission and exact-mask
 responsibilities. The compatibility envelope reader is not an admission validator.
+
+Manifest byte identity uses SHA-256 over `ds.project-snapshot-manifest/v1` plus
+one NUL byte and compact UTF-8 JSON of the entire manifest with
+`manifest_sha256` set to the empty string. Object keys are recursively sorted;
+array order is preserved. Observation time and opaque artifact handles are bound
+as well as source/context fields. `computed_sha256` and `verify_sha256` own this
+algorithm. Verification is distinct from structural admission and never makes a
+locally created receipt an authenticated publication authority.
