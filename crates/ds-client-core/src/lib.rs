@@ -21,6 +21,7 @@ pub use device_approval::{
 };
 pub use transport::{DeviceApproveCall, DEVICE_APPROVE_RESPONSE_LIMIT};
 mod error;
+pub mod reporter;
 pub mod weak_network;
 pub use weak_network::{WeakNetwork, WEAK_NETWORK_DELAYS};
 pub mod gateway;
