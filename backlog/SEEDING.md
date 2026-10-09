@@ -287,6 +287,8 @@ Candidate curation and native PLS-CADD acceptance are separate from coding the c
 
 ## 16. Map data, datasets and screen styling
 
+- **Developer-only remote report admission**: deploy the locally built development ds-brain artifact carrying `ecd03a4f` and its preceding admission gate, then prove authenticated ordinary users (including non-developer administrators) cannot dispatch simple/combined reports or trigger pre-dispatch cleanup; developers retain existing authorized report generation. Prove native status/cache/sign/download and PC publication still work through their existing gates. Source contract/tests: `ds-brain/docs/contracts/remote-report-admission.md`. No deployment has been performed by this coding slice; do not resume or publish the separately paused stable release.
+
 - **Cache catalogue installation and Desktop acceptance** (`de978fdf`): install the pinned CLI/kernel cache correction, then verify the paired Desktop on `czgmdwth_gisagara` under matching identity/project context. Installed stable already reports all 44 held rows ready, including 121,270 buildings and 826,669 contours, but still lists two retired Rwanda school/powerline rooms beside their replacements. Prove those historical rooms are absent from active overview/automatic seeding, exact retired digests refuse with named alternatives, retained bytes remain intact and valid other-country layers still work. The current paired Desktop check refuses `auth_context_mismatch`; do not substitute a different project or source-only test for its acceptance.
 
 - **Chad elevation**: Copernicus GLO-30 (open, 30 m) as the Chad DEM source.
@@ -301,7 +303,7 @@ Candidate curation and native PLS-CADD acceptance are separate from coding the c
 
 - **Windows one-shot wetlands install** (`33003988`): on a Windows Desktop release carrying ds-web `e8e49c55a` and `5e565c197`, a one-shot wetlands install completes. The retryable and concurrent-request refusals remain code in `OPEN.md` block 16.
 
-- **Project data rendering** (`011ae5a6`): deploy ds-brain (`6ee51742`, `166156dd`) and ds-vector-tiler `3f28002`, then (1) `ds style list --project arjgpydw_nyam --query pd/` lists 11 `pd/` editors with no 'no layers declaration' warning, (2) `ds map data list` shows `total_features` for a new upload, (3) a re-uploaded GeoJSON probe yields a layer named after the file, (4) `ds map evidence capture --scope map` on a paired Desktop shows STEG/BADEA over Nyamagabe.
+- **Project data rendering** (`011ae5a6`): after the native upload/publication replacement in OPEN.md §16 is implemented and installed, prove (1) `ds style list --project arjgpydw_nyam --query pd/` lists 11 `pd/` editors with no 'no layers declaration' warning, (2) `ds map data list` shows `total_features` for a new upload, (3) a re-uploaded GeoJSON probe yields a layer named after the file, (4) `ds map evidence capture --scope map` on a paired Desktop shows STEG/BADEA over Nyamagabe.
 
 - **Ground data status cause** (`dbe4d17e`): on a Desktop build carrying kernel `c5f3c54` and ds-web `9f5fcb85f`, run `ds desktop data rwanda status` on the `czgmdwth_gisagara` state and record the named cause for `rwanda-dem-10m`, wetlands and powerlines.
 

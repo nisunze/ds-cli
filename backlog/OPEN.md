@@ -605,13 +605,15 @@ Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group A, to be fixed to
   Maintain the moving remaining plan here; no new owner input is needed for
   autonomous code. Whole-path acceptance is in the plan's matrix.
 
-  Active: **3 — multi-layer native generation** in
-  `ds-network::ds-native-tiles`: canonical layer ordering, separate schemas and
-  layer-scoped stable IDs, aggregate budgets, complete per-layer diagnostics
-  and independently decoded deterministic archives. Source/chunk-file transport
-  remains a separate integration boundary from the durable metadata journal.
+  Active: **2 — persisted local work-area views** around
+  `ds-layer-store::project_snapshot::Store`: bounded private masks, compare-and-set
+  revisions, captured views over pinned snapshots and exact native spatial results
+  without network or source/head mutation. Source/chunk-file transport remains
+  separate from the durable metadata journal.
   Remaining **2 — store integration** around `ds-layer-store::project_snapshot::Store`: spatial indexes/Polars projection and filter
-  pushdown, persisted local masks, recovery estimates and bounded retention policy.
+  pushdown, recovery estimates and bounded retention policy. Complete persisted
+  local-mask semantics in this slice; later CLI/report/map consumers must share
+  these captured views rather than interpreting the mask as source completeness.
   Prove actual Windows ACL/locking/crash recovery; the helper MSVC compile check
   is not Windows execution. Extend the existing chunk/head/pin implementation
   described in `docs/contracts/ds-project-snapshots.md`, do not replace it or
@@ -622,7 +624,7 @@ Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group A, to be fixed to
   never resume the paused stable release. Remaining **3 — engine
   qualification/integration** extends `ds-network/crates/ds-native-tiles/CONTRACT.md`:
   buffered clipping and representative concave/boundary/hole/sliver fidelity,
-  multiple canonical layers, bounded Parquet ingestion and larger-project RSS,
+  bounded Parquet ingestion and larger-project streaming/RSS,
   actual Windows execution/link/privacy, third-party notices and cross-platform
   byte parity before switching production callers. Do not replace the existing
   checked writer/readback or reintroduce external tools. Upstream container
@@ -657,9 +659,9 @@ Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group A, to be fixed to
   service/repository after tracing and replacing/retiring its non-tiling consumers;
   remove its deployment/gateway bindings. Combined and simple report generation
   becomes PC-only for ordinary users; keep central artifact publication/download.
-  Development deployment must prove developer-only remote report admission
-  from ds-brain `docs/contracts/remote-report-admission.md`; ordinary compute
-  menus remain to be made read-only and labelled as migrating to PC.
+  Ordinary compute menus remain to be made read-only and labelled as migrating
+  to PC; installed developer-only remote report admission is operational
+  acceptance in SEEDING.md §16, not a missing authority implementation.
   Remote tiling is removed for everyone, including developers.
 
 - `33003988` (minor): in-flight and transient dataset-download refusals reach the CLI as `desktop_refused`/failed with `retryable: false`. Give them a typed retryable code with a stated wait (a `cliRefusal` in ds-web reference-data TS, the refusal declared in ds-cli-desktop `data.rs`, regenerated ds-web `native-catalog.generated.json`), and stop truncating the nested cause (ds-cli-desktop `bridge.rs` `bounded()` keeps only the first line, at most 160 chars).
