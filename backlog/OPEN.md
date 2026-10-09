@@ -9,7 +9,7 @@ Unfinished code that an agent can implement and prove without further owner inpu
 | Area | Remaining entries |
 | --- | ---: |
 | [1. Source integration and release code](#1-source-integration-and-release-code) | 3 |
-| [2. Green `run` and release gates](#2-green-run-and-release-gates) | 2 |
+| [2. Green `run` and release gates](#2-green-run-and-release-gates) | 3 |
 | [3. Template creation code](#3-template-creation-code) | 2 |
 | [4. Print template and style code](#4-print-template-and-style-code) | 0 |
 | [5. Print renderer and booklet code](#5-print-renderer-and-booklet-code) | 0 |
@@ -88,6 +88,8 @@ is ruled in the sync contract: simple local clean and recompute.
   slice and prove the full suite.
 
 ## 2. Green `run` and release gates
+
+- **Workspace formatting gate**: `cargo fmt --all --check` from `ds-cli` fails on committed Profile runtime formatting (`calculated_transfer_tests.rs`, `lib.rs`, `publication.rs`), the Network engine module order, and CLI Solar code/tests (`portfolio_headless.rs`, `project.rs`, `domain_smoke.rs`, `semantic_coverage.rs`). Format only those owning files, preserving concurrent edits, then prove the same workspace check. Exact diagnostics: `ds-web/out/windows-readiness-20261009/cli-fmt.log`.
 
 - **Native engine strict Clippy gate**: `cargo clippy --locked -p ds-grid-engine --all-targets --no-deps -- -D warnings` remains blocked by baseline owning diagnostics: collapsible conditions, large error/enum variants, argument counts and presentation borrow/style issues. Current library gate reports 27 diagnostics; exact log: `ds-network/out/stabilization/profile-reference-reuse-clippy.log`. Repair coherent owning slices and rerun library-test diagnostics after the library gate admits; retain native error JSON and engineering behavior.
 
