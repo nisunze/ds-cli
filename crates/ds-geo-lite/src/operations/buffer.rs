@@ -925,4 +925,75 @@ mod tests {
             assert_simple(&ring);
         }
     }
+
+    // Owner ruling 2026-09-27: what BigQuery refuses, a DS door refuses. A
+    // buffer ring is the input of the next DS reader (elevation extract,
+    // placement exclusions), so it must pass the same shared admission, which
+    // also refuses a ring that touches itself. Feedback 5dc0e8a1: 2 m corridors
+    // around bent Gisagara M3 conductors came back with crossing edges and every
+    // DS reader refused them.
+    #[cfg(feature = "overlay")]
+    #[test]
+    fn buffer_rings_pass_the_shared_geometry_admission() {
+        let scale = crate::types::EARTH_RADIUS_M * std::f64::consts::PI / 180.0;
+        let at = |xy: &[(f64, f64)]| -> Vec<Coord> {
+            xy.iter()
+                .map(|&(x, y)| Coord::new(29.81 + x / scale, -2.61 + y / scale))
+                .collect()
+        };
+        let lines: [&[(f64, f64)]; 7] = [
+            &[(0., 0.), (50., 0.), (93.301270189, 25.)],
+            &[(0., 0.), (50., 0.), (50., 50.)],
+            &[(0., 0.), (50., 0.), (25., 43.301270189)],
+            &[(0., 0.), (50., 0.), (0.759612349, 8.682408883)],
+            &[(0., 0.), (50., 0.), (0., 0.)],
+            &[(0., 0.), (50., 0.), (50., 1.), (100., 1.)],
+            &[(0., 0.), (20., 0.), (20., 20.), (40., 20.)],
+        ];
+        let polygons: [&[(f64, f64)]; 2] = [
+            &[
+                (0., 0.),
+                (50., 0.),
+                (50., 20.),
+                (20., 20.),
+                (20., 50.),
+                (0., 50.),
+            ],
+            &[(0., 0.), (120., 0.), (160., 70.), (60., 130.), (-20., 60.)],
+        ];
+        let mut route = vec![Coord::new(29.8469, -2.6256)];
+        for leg in 0..200 {
+            let bearing = if leg % 2 == 0 { 60.0 } else { 120.0 };
+            route.push(destination(*route.last().unwrap(), bearing, 25.0));
+        }
+        let admit = |ring: &[Coord], what: &str| {
+            let coordinates: Vec<[f64; 2]> = ring.iter().map(|c| [c.lng, c.lat]).collect();
+            let geometry = serde_json::json!({"type": "Polygon", "coordinates": [coordinates]});
+            if let Err(refusal) = crate::admission::admit_geometry(&geometry) {
+                panic!("{what}: buffer ring refused by admission: {refusal:?}");
+            }
+        };
+        for r in [0.5, 2.0, 20.0, 100.0] {
+            for (index, xy) in lines.iter().enumerate() {
+                admit(
+                    &buffer_line(&at(xy), r, 8),
+                    &format!("line {index} at {r} m"),
+                );
+                admit(
+                    &buffer_line(&at(xy), r, 32),
+                    &format!("line {index} at {r} m/32"),
+                );
+            }
+            for (index, xy) in polygons.iter().enumerate() {
+                admit(
+                    &buffer_polygon(&at(xy), r, 8),
+                    &format!("polygon {index} at {r} m"),
+                );
+            }
+            admit(
+                &buffer_line(&route, r, 8),
+                &format!("zigzag route at {r} m"),
+            );
+        }
+    }
 }
