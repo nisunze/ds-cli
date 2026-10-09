@@ -124,7 +124,12 @@ Why — the painful history:
   chunks. Work areas are local masks over retained snapshots; cached-area changes
   must not redownload source data or stale complete project tiles. Acquire only
   missing coverage, preserve atomic revisions and prove request/byte economics.
-- The cloud API and special resource-selected dataset jobs are expert-owned.
-  Finish independent native code while coordinating that explicit integration
-  boundary. The [implementation plan](../docs/desktop-native-tiling-migration-plan.md)
+- A PC contributes compute to a project; it is not a personal project asset
+  or owner of results. Sync Center explains this role. Credentials/queues stay
+  principal-fenced. PCs never serve tiles; consumers read central publication.
+  Claim/coalesce automatic compute before expensive work across contributors.
+- Cut cloud cost and unnecessary reads as measurable latency/UX requirements.
+  Remove ALL current cloud generation and obsolete custom BigQuery tiling/explorer
+  paths. Future expert container/custom-job APIs are outside this migration.
+  Implement/prove minimal central source, lease and publication coordination. The [implementation plan](../docs/desktop-native-tiling-migration-plan.md)
   defines the serial slices and whole-product acceptance.

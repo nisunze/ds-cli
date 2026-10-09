@@ -9,12 +9,34 @@ to be removed from that path. Hosted Web consumes existing outputs and loses
 ordinary tiling controls/dispatch. Survey acquisition uses governed BigQuery
 snapshots; saved design uses current Firestore/DS Grid authority without a
 BigQuery transaction gate. Reusable Parquet/GeoParquet snapshots feed local
-reports, tiles and Polars analytics. Cloud API/publication and special dataset
-jobs are expert-owned. See the executable sequence, protocol handoff and full
+reports, tiles and Polars analytics. Retire ALL current cloud tile generation
+and obsolete custom BigQuery tiling/explorer paths. Future expert CLI-driven
+container/custom-job APIs are outside this migration. See the executable sequence,
+minimal central coordination protocol and full
 acceptance in [the migration plan](../desktop-native-tiling-migration-plan.md).
 
 The sections below describe the implementation baseline, not acceptance of the
 new direction. Replace them with the proven contract as each slice lands.
+
+### Project compute contribution and central consumption
+
+Owner ruling, 2026-10-09: a PC is a compute contributor to a project, not a
+personal project asset or owner of its results. Hardware ownership does not change;
+project outputs and their visibility remain under project authority. Contribution
+grants no additional permissions. Credentials, staging and queues remain
+principal-fenced. Sync Center must explain this role and distinguish computation,
+pending delivery, verification and centrally committed publication; local completion
+or upload alone is not synchronized delivery. A producer may be recorded for bounded
+diagnostics, never as a personal results library or special read path.
+
+PCs generate candidates and upload for central verification/publication; they never
+serve tiles through localhost, LAN or generated local files. Web/Desktop maps read
+central project generations, available when the contributing PC is offline.
+Automatic work claims/coalesces project compute before expensive generation.
+Reducing cloud cost and unnecessary reads is required acceptance: measure source
+requests/bytes, compute and latency; unchanged refresh transfers no source rows,
+and cached work-area changes make no network calls. Verification must not recreate
+the removed cloud compute/read cost through unconditional retiling/full rereads.
 
 ### Selected engine: VersaTiles Rust libraries
 

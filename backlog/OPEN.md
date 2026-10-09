@@ -581,9 +581,13 @@ Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group A, to be fixed to
   shared Rust generation through reporter/CLI/MCP, Parquet/GeoParquet and Polars,
   cheap revision freshness, differential reads and local work-area masks,
   real Windows proof, complete-snapshot triggers, Web-control/legacy deletion
-  and revision-fenced publication integration. Coordinate the expert-owned
-  source/publication APIs and special cloud jobs; no new owner input is needed
-  for independent native code. Whole-path acceptance is in the plan's matrix.
+  and revision-fenced central publication. Treat PCs as project compute contributors,
+  never personal result owners or tile servers; explain this in Sync Center.
+  Claim/coalesce project work, implement minimal source/lease/publication APIs,
+  remove ALL cloud generation and obsolete custom BigQuery tiling/explorer, and
+  measure read/cost/latency savings. Future expert jobs are outside scope.
+  Maintain the moving remaining plan here; no new owner input is needed for
+  autonomous code. Whole-path acceptance is in the plan's matrix.
 
 - `33003988` (minor): a second install of the same dataset while the first is still downloading reopens the same `.part`; on Windows every attempt fails at once with "open existing partial download safely", the bridge reports 422, and the first download finishes on its own, so a one-shot install reports a false permanent failure. **Proof:** a concurrent second request for the same destination is told the download is in flight, and the one-shot wetlands install completes.
 

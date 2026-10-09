@@ -1,8 +1,10 @@
 # Desktop native tiling and reusable project snapshots
 
 Owner direction: 2026-10-09. Status: implementation plan, not a claim of shipped
-behavior. Implement serially on canonical `run`. This plan governs the desktop
-migration; the cloud API and special-job implementation is assigned to an expert.
+behavior. Implement serially on canonical `run`. This plan migrates project
+tiling to a pool of user PCs and removes all current cloud tile generation.
+Future CLI-driven large-container/custom-job APIs are a separate expert project,
+not an implementation track, dependency or exception in this migration.
 
 ## 1. Decisions and scope
 
@@ -24,13 +26,23 @@ it does not authorize moving survey reads back to Firestore. Native clients use
 their protected DS user context and fixed API contracts, never Firestore SDKs,
 ADC, service accounts or direct database credentials.
 
-Windows and Linux Desktop build project and personal tiles locally with native
+Windows and Linux Desktop compute project tiles, including admitted personal
+uploads in their project/visibility scope, locally with native
 Rust. Provide the same platform-independent engine on macOS; prove its supported
 build before advertising availability. Linux Server consumes the same owner.
 Web displays and downloads existing tiles/data but has no generate/regenerate
-control and does not automatically request cloud tiling. Remove ordinary
-project/personal cloud tiling dispatch. An expert owns explicitly governed large
-dataset jobs, their resource selection, cloud worker and API deployment.
+control and does not request cloud tiling. Remove ALL existing cloud tile
+generation, including custom BigQuery table/dataset tiling and its explorer
+surfaces. No dormant cloud fallback or retained special-dataset build admission.
+
+PCs are compute contributors, never tile servers. A job produces a private
+candidate, uploads it through the governed project publication protocol, and
+the shared catalogue points to the centrally stored verified archive. Web and
+Desktop consume that archive through the existing central storage/distribution
+path. Do not add localhost tile HTTP endpoints, VersaTiles serving, a PC-backed
+map source, LAN/peer serving or direct generated-file map consumption. A PC may
+go offline after upload without affecting other users. Offline candidates remain
+pending artifacts; consumers retain the last centrally published generation.
 
 `ds-network-reporter` hosts the desktop typed tiling process. The shared algorithm
 remains a reusable native crate, not a second reporter implementation. Remove
@@ -51,6 +63,51 @@ derivative. Future BigQuery mirrors must ingest the full snapshot, never decode
 PMTiles to recover original data. Keep Polars as the first analytics engine;
 DuckDB is not a dependency or prerequisite of this migration.
 
+### 1.1. Economic and user-experience acceptance
+
+Cloud cost must be low enough for the app to remain bearable to operate. Cutting
+unnecessary reads is a first-release requirement, not optional performance
+polish. The same changes must reduce repeated network waits, source acquisition
+latency, time to useful data and UI stalls. Moving CPU to PCs while leaving
+repeated full database scans/downloads is not success.
+
+Measure a baseline before replacement and compare the same admitted revision and
+workload afterward. Record source requests, scanned/billed BigQuery bytes where
+available, Firestore design read counts where available, transferred bytes,
+cloud compute invocations, local peak memory/disk, acquisition/report latency
+and work-area query latency. Distinguish observed metrics from unavailable billing
+evidence; do not invent currency savings. Repeated warm refresh, report opening
+and area changes are mandatory scenarios, not just the first cold acquisition.
+
+Required outcomes: zero cloud tile-generation jobs; zero source-data downloads
+for unchanged warm refresh; zero remote data/freshness calls caused solely by a
+cached-area mask change; changed-only acquisition for normal refresh; shared
+leases/coalescing so multiple PCs do not trigger redundant expensive work; and
+central artifact reads that never depend on a user's PC serving traffic. Reuse
+source manifests and cached validation evidence during publication; do not turn
+verification into unconditional full source downloads or another cloud tiling
+job. Central storage, authentication and bounded verification still have costs;
+report those honestly. Preserve correct data and authorization while reducing
+work, rather than hiding staleness or dropping features to improve a benchmark.
+
+### 1.2. Explicit removal and future-work boundary
+
+Delete current custom BigQuery table/dataset tile-generation, arbitrary dataset
+explorer and related obsolete UI/CLI/MCP/API orchestration, adapters, tests,
+permissions and documentation after tracing consumers. Do not carry them forward
+behind hidden flags. Re-thought expert-only CLI workflows, bigger rented
+containers, custom jobs and new cloud-compute endpoints are OUT OF SCOPE. They
+are not required to close this migration and must not be implemented here.
+
+This deletion does not remove governed survey BigQuery reads, the future full
+design analytics export schema, local Polars workflows, existing published
+reference-tile downloads, or unrelated BigQuery-backed application features.
+Keep central source/freshness/upload/publication APIs needed for PC contribution;
+they coordinate and distribute data, not generate tiles. Keep unrelated current
+ds-vector-tiler building/elevation/exchange endpoints unless their own consumers
+are deliberately migrated in a separately assigned slice. Demoting tiling is
+not authority to indiscriminately delete that whole service.
+
 ## 2. Starting points to inspect, not rewrite blindly
 
 At planning time the kernel checkout is `81f4b0f6a0dd9a130dfd9326031be54fc03f9b64`.
@@ -66,7 +123,7 @@ on these repositories. Preserve their bytes and stage only your own changes.
 | Reporter | `src/bin/ds-report.rs`, `src/tasks.rs`, `src/combined_tasks.rs`: named process commands, schemas and report artifacts |
 | CLI | `ds tile` declarations/dispatch, `ds data`, `ds report`, MCP projection and `skills/ds-tiling` in `ds-cli`; discover exact modules with `rg` |
 | Desktop/Web | `src/lib/compute/runtime-control.ts`, `src/lib/desktop/cli-tile.ts`, `src/lib/api/pipeline.ts`, `src/lib/components/layers/PipelineTiles.svelte`, upload dialogs and report/load callers in `ds-web` |
-| Cloud expert | `ds-brain/internal/services/tile_orchestrator.go`, source APIs, upload/publication grants; `ds-vector-tiler/src/{main,tiler}.rs` and special jobs |
+| Central coordination / cloud retirement | `ds-brain/internal/services/tile_orchestrator.go`, source/freshness and upload/publication grants; `ds-vector-tiler/src/{main,tiler}.rs`, gateway bindings and worker deployment callers |
 
 Reuse the existing durable job store, native credential boundary, private cache
 and archive verifier. The current `tile.generate` descriptor dispatches a cloud
@@ -95,8 +152,9 @@ schemas, CLI/MCP descriptors and UI request/result views. Minimum fields:
   published project snapshot.
 
 An empty filter string is not proof of completeness. The API must attest the
-whole authorized output scope. A reader who sees only a subset can tile that
-subset privately, but cannot replace a project-wide archive. Include all
+whole authorized output scope. A reader who sees only a subset can compute a
+scoped candidate, but cannot replace a project-wide archive or serve it from a
+PC. Only its admitted centrally published scope may become a map source. Include all
 relevant enabled survey forms, all report transformers, MV/DS Grid layers and
 tag projections required by the output. A complete LV report alone does not
 prove complete design coverage when its snapshot lacks MV layers.
@@ -132,7 +190,7 @@ again just because the user reopened it, refreshed a report or moved a work area
 
 Extend the snapshot contract with a server-issued source epoch, revision vector,
 change cursor, coverage revision and immutable chunk manifest. Chunk identities
-bind bytes, not timestamps or local paths. The expert provides a cheap conditional
+bind bytes, not timestamps or local paths. The central source owner provides a cheap conditional
 freshness operation over maintained source/mirror metadata; it must not count or
 scan all Firestore documents or BigQuery rows for every PC's freshness check.
 Coalesce checks across views/jobs and honor bounded revalidation/backoff policy.
@@ -284,22 +342,27 @@ snapshot acquisition/report preparation; it must not decide completeness itself.
 | Report preparation loaded all transformers with no filter | Reuse its complete saved design snapshot; acquire only missing output layers through the admitted snapshot API; check freshness |
 | Survey load finished with no filter and complete coverage | Reuse the acquired survey snapshot; check freshness |
 | Explicit desktop/CLI tile request | Plan required complete acquisition, reuse matching local data, then build under admitted budgets |
-| Personal/project upload parsed and validated locally | Retain original bytes, create columnar projection and local tiles for its actual visibility scope |
-| Filtered/partial/unsaved data | Permit explicitly scoped local tiles; the subset cannot replace complete shared output. An independently attested complete unmasked disk snapshot may still supply a project job |
+| Personal/project upload parsed and validated locally | Retain original bytes and columnar projection; compute a candidate for governed central publication in its project/visibility scope, never PC serving |
+| Filtered/partial/unsaved data | Permit explicitly scoped candidate computation; the subset cannot replace complete shared output or become a PC-backed map source. An independently attested complete unmasked disk snapshot may still supply a project job |
 | Work-area mask changes inside disk coverage | Query locally, issue no data/freshness request solely for the mask change, and retain complete project tile freshness |
 | Hosted Web load/report | Read existing artifacts/status; do not dispatch a build |
 
 Use a key per project/owner, output kind, scope, revision and engine/options.
 Coalesce concurrent triggers and reuse existing jobs. A fresh current artifact
 is a no-op. "Last computer to load" means an eligible reader can claim stale
-work; it is not last-writer-wins. Allow local generation independently of a
-shared-publication lease, but only a lease holder uploads the shared candidate.
+work; it is not last-writer-wins. Automatic triggers claim project-scoped compute work before expensive generation,
+coalescing the same source revision across PCs with bounded renewable leases.
+Lease loss cancels unnecessary work; expiry admits another eligible contributor.
+Explicit offline/diagnostic generation may stage a candidate without a lease,
+but cannot publish or serve it; only the current admitted lease holder uploads
+and commits a shared candidate.
 
 Separate report success from tile success. Reports finish normally while a
 background tile job can be queued, running, ready locally, waiting for network,
 published, superseded, cancelled or failed. Retain bounded actionable diagnostics
 and retry via existing job controls. No hidden remote fallback when the PC lacks
-resources; the user can reduce budgets, retry on another PC or ask the expert.
+resources; the user can reduce budgets or retry on another eligible PC. Future
+expert cloud jobs are outside this migration, not an available fallback.
 
 Desktop gets a manual plan/generate/cancel/status surface backed by the same
 kernel and native CLI/MCP contract; JSON input/result is acceptable. Report/load
@@ -307,11 +370,15 @@ triggers use only the existing admitted source scope and background policy, neve
 a new implicit access grant. Local computation is read-derived; shared publication
 requires the delegated server authority described below.
 
-## 6. Expert handoff: source and publication APIs
+## 6. Central coordination protocol and retirement boundary
 
-This is a required protocol, not permission for the desktop implementer to rewrite
-the cloud stack. Agree versioned Rust wire types/fixtures first, deliver the client
-adapter and a test server against them, and give the expert these exact obligations:
+This is required central coordination, not a new cloud tile-compute API. Reuse
+existing authority/storage contracts and implement the minimal missing source,
+delta, lease and publication adapters in their owning repositories. Agree
+versioned wire types/fixtures with the backend owner first and implement/prove
+both ends, or name the exact separately assigned integration boundary. Mock
+servers are development evidence only; future expert compute APIs cannot become
+a prerequisite. Deployment follows existing authorization separately.
 
 | Semantic operation | Required result/effect |
 | --- | --- |
@@ -329,11 +396,14 @@ grant, as directed by the owner; it does not grant editing source data, arbitrar
 catalogue writes, access to hidden rows or cross-project publication. The server
 checks complete coverage against its own source receipt, not client row counts.
 Validate MVT layer/attribute bounds and hostile archives; a client digest is not
-proof of safe content or faithful derivation. The expert must implement a
+proof of safe content or faithful derivation. The publication owner must implement a
 verification scheme against the admitted canonical snapshot, covering geometry,
 IDs and allowed attributes; counts, client-reported engine identity and sampled
-checks alone cannot confer shared-publication authority. Use deterministic
-independent verification/recomputation where required and measure its cost.
+checks alone cannot confer shared-publication authority. Use independent,
+source-bound validation and retained source receipts; measure its cost. Do not
+regenerate tiles on cloud workers as the default verification mechanism: that
+would reintroduce the retired compute path. If validation is insufficient,
+refuse shared promotion with its exact reason rather than accept untrusted bytes.
 An unverified candidate remains local/staged, never the shared catalogue head.
 A newer source head or competing committed generation
 refuses stale publication and preserves the last good archive. On ambiguous
@@ -343,14 +413,17 @@ Backend metadata/credential/lease storage is not the project data acquisition
 policy. This plan does not migrate authentication or all control metadata out
 of Firestore. Minimize project data reads by reusing exact snapshots.
 
-The expert removes automatic cloud tiling triggers and closes ordinary project
-build admission on the backend, not just its UI button. Existing archive reads
-remain usable. Keep only an explicit privileged special-dataset job admission,
-with dataset revision, cost/resource plan, memory/CPU limits, identity, destination,
-status, cancellation and publication receipt. Cloud workers should consume the
-same Rust engine; no duplicated tile algorithm. Expert-owned API/deployment work
-does not block independent native code, but real shared publication cannot be
-called complete against a fixture or an undeployed endpoint.
+Remove every current cloud tile-generation trigger and backend build admission,
+not just Web buttons. Inventory and retire worker routes `/vector_tile`,
+`/tile_dataset`, `/tile_design/firestore`, `/tile_survey/firestore`, `/tile_upload`
+and `/global_tiles/tile`, their callers, queue/retry dispatch and gateway bindings.
+Trace custom BigQuery table/dataset explorer-to-tiling consumers across ds-web,
+ds-cli, ds-brain, ds-vector-tiler and gateway/deployment configuration. Remove
+retired worker resources only after distinguishing them from remaining non-tiling
+endpoints. Keep central published-archive reads and contribution coordination.
+Prove old requests cannot silently enqueue cloud builds. Future expert special
+jobs and their new endpoints are not retained admission stubs. Real shared
+publication cannot be called complete against a fixture or undeployed endpoint.
 
 ## 7. Parquet analytics and later BigQuery estate
 
@@ -390,7 +463,7 @@ remote CI builds or deployment under this plan alone.
 
 1. **Contracts and source adapters.** Reproduce current `ds tile` routing and
    snapshot/report acquisition behavior. Define snapshot/completeness/freshness,
-   budgets and typed refusals. Coordinate expert protocol fixtures. Prove source
+   budgets and typed refusals. Coordinate source/publication owner protocol fixtures. Prove source
    policy: survey cannot select Firestore; design requires no BigQuery. Prove
    filtered/paged/permission-limited/moving-head and zero-row cases.
 2. **Columnar snapshot store.** Implement immutable manifests, batch readers,
@@ -414,14 +487,17 @@ remote CI builds or deployment under this plan alone.
    snapshot discovery controls where absent. Implement automatic report/load
    triggers and Desktop manual controls, using one kernel decision. Prove cold,
    fresh and stale caches, filtered input, concurrent loads and report independence.
-6. **Real API integration.** Expert deploys the agreed source/publication protocol;
+6. **Real API integration.** Implement and prove the minimal agreed source, delta,
+   compute-lease and publication protocol in its existing owning services;
    prove an authorized Windows reader obtains a complete snapshot, builds, uploads,
    commits and reads the exact shared generation. Prove stale revision, lease loss,
    restricted reader, revoked user, offline queue and ambiguous completion. Keep
    only operational installation/deployment/acceptance in SEEDING once code lands.
 7. **Web retirement and dependency deletion.** Remove Web tiling buttons, handlers,
    auto-dispatch, bypasses, dead imports and tests. Desktop controls remain native.
-   Coordinate backend refusal of ordinary cloud build dispatch with the expert.
+   Remove ALL cloud tile-generation dispatch/admission, custom BigQuery
+   table/dataset tiling and obsolete BigQuery explorer paths. Preserve governed
+   survey reads, non-tiling workers and central published-archive consumers.
    Remove Tippecanoe/external conversion tooling, workstation installers, package
    checks, obsolete options and cloud-routing fallbacks after tracing consumers.
    Update placement tests, schemas, docs, skills, release pins and discovery.
@@ -432,10 +508,42 @@ remote CI builds or deployment under this plan alone.
 
 Do not stop at engine unit tests or a Linux-only prepared-input command. The
 acceptance boundary is the whole Windows acquisition -> automatic native build ->
-verified shared publication -> Web/Desktop consumption path, plus private local
-uploads and reusable Parquet analytics. If expert integration is outstanding,
+verified central publication -> Web/Desktop central consumption path, plus
+project-scoped upload contributions and reusable Parquet analytics. No PC serves
+tiles. If separately assigned coordination integration is outstanding,
 name its exact protocol/deployment boundary and retain local deliverables; never
 claim the migration complete. No new owner decision is needed for routine code.
+
+### Project compute pool: ownership and Sync Center
+
+Owner ruling, 2026-10-09: **a PC is a compute contributor to a project, not a
+personal project asset or an owner of the results.** This describes its DS role,
+not ownership of the physical hardware. Eligible authorized PCs contribute
+interchangeable compute; publication, visibility and lifecycle belong to the
+project. Contributing CPU grants no additional data rights. Credentials, local
+staging and account-owned queues remain principal-fenced; they are not pooled.
+
+Sync Center must explain this role in its visible introduction. Its native view
+must identify the project, source revision, coverage and freshness, and distinguish
+waiting for compute, claimed by another contributor, computing, pending upload,
+verification/refusal and centrally committed publication. Local completion or
+upload alone is not synchronized delivery. Producer identity may support bounded
+diagnostics, never a personal results library, ownership or a special read path.
+PCs never serve tiles; map clients consume the centrally published generation,
+which remains available after the contributing PC goes offline.
+
+### 8.1. Moving execution plan
+
+At implementation start, create the live sequence in the coding agent's plan
+tool and maintain the durable remaining obligations in OPEN.md section 16's
+tiling entry. Seed it from the eight slices above. Name the active slice, next
+independent slice and exact blocking boundary; refresh after each material
+finding and each tested push. Remove fulfilled residuals instead of accumulating
+checked boxes or a completed-work archive. Tests, owning contracts, commits and
+bounded acceptance receipts retain proof. Operational deployment/install work
+moves to SEEDING only once its code exists; actual owner decisions alone belong
+in OPEN-X. Do not create a fourth backlog or park difficult code as an owner
+question. Keep measured cost/read/latency criteria in the live acceptance plan.
 
 ## 9. Acceptance matrix and deletion evidence
 
@@ -443,8 +551,8 @@ claim the migration complete. No new owner decision is needed for routine code.
 | --- | --- |
 | Windows reader, complete survey | BigQuery snapshot receipt; zero direct Firestore survey reads; native archive and shared readback at the admitted revision |
 | Windows report, all transformers | Exact saved Firestore/DS Grid design revision; complete output coverage; report succeeds; background tiles published or visibly pending |
-| Partial/filtered/restricted snapshot | Private scoped output works; shared project replacement refused; current catalogue unchanged |
-| Local personal/project upload | Original bytes retained, GeoParquet query works, local map displays native tiles; no cloud build |
+| Partial/filtered/restricted snapshot | Scoped candidate works; unauthorized shared project replacement refused; no local serving; current catalogue unchanged |
+| Personal/project upload contribution | Original bytes retained, GeoParquet query works, candidate centrally published at its admitted visibility and consumed through the central path; no PC tile server or cloud tile build |
 | Fresh, empty, stale, corrupted | Correct distinct result; fresh no-op; valid empty output replaces stale data through admitted commit; corruption rebuilt |
 | Two PCs / source edit during job | One publication lease; obsolete candidate cannot win; old good generation remains available |
 | Offline/cancel/crash/logout | No partial promotion or credential crossover; retry/recovery and retained report/snapshot behavior proven |
@@ -456,11 +564,15 @@ claim the migration complete. No new owner decision is needed for routine code.
 | Cached work-area changes | Shrink/expand/clear/revisit within retained coverage produces correct exact spatial results with zero data requests/downloads; full snapshot and project tile freshness unchanged |
 | Missing area and moving features | Only missing admitted coverage transfers; overlap deduplicates; moved/deleted features leave/enter views correctly; partial coverage cannot masquerade as complete |
 | Hosted Web | No build controls or build requests on load/report/upload; map/status/download of existing outputs still work |
+| Cloud retirement and obsolete explorers | All six inventoried worker build routes and all traced custom BQ tiling/explorer callers retired; old API/CLI calls cannot dispatch compute; no fallback or new expert-job endpoints |
+| PC compute pool, central consumption | Two PCs contribute without serving any tile URL; shut down the contributing PC and verify another Desktop/Web still consumes the committed central archive |
+| App economics and latency | Before/after cold/warm/delta/report/area metrics record source work, transfer and latency; zero cloud tiling, zero unchanged-data download and zero mask-induced remote calls are asserted |
 | Packaging | Real Windows native execution with external tiling tools absent; one installed CLI/MCP/reporter contract and matching skills |
 
 Final source searches must account for every remaining Tippecanoe, external
-PMTiles command and ordinary cloud-dispatch reference. Delete replaced callers,
-adapters, installers and dormant fallbacks, not unrelated expert APIs or PMTiles
+PMTiles command, all cloud tile-dispatch and custom BQ tiling/explorer references.
+Delete replaced callers,
+adapters, installers and dormant fallbacks, not unrelated non-tiling APIs or PMTiles
 readers. Migrate `docs/contracts/ds-native-tiling.md` to the implemented truth and
 update the owning contracts in other touched repositories. Delete fulfilled
 OPEN entries; retain proof in owning tests/contracts and project receipts, never
@@ -469,30 +581,42 @@ absorbed by those contracts and no implementation work remains.
 
 ## 10. Prompt for the ds-server implementation agent
 
-> Read `ds-command-kernel/docs/desktop-native-tiling-migration-plan.md` and the
-> repository instructions. Implement the native desktop track completely on
-> canonical `run`, one tested/committed/pushed vertical at a time, preserving
-> other agents' work. Treat the source matrix and 2026-10-09 owner ruling as
-> authoritative: survey through governed BigQuery snapshots; design through
-> current saved Firestore/DS Grid authority; no design-BigQuery transaction gate.
-> Replace Tippecanoe and external conversion with pinned VersaTiles Rust libraries
-> behind the shared ds-tile-runtime owner; Martin and a bespoke engine are not
-> alternatives to evaluate. Qualify Windows, explicit zoom/point policy and
-> oversized-tile refusal before switching callers. Keep DS contracts authoritative.
-> Expose it through ds-network-reporter and the DS CLI/MCP, support actual Windows
-> native generation, add complete-snapshot report/survey triggers, reusable
-> Parquet/GeoParquet and Polars workflows, and remove Web generation controls and
-> replaced code. Implement cheap revision freshness, cursor/tombstone differential
-> acquisition and immutable chunk reuse for survey/design. Treat work areas as
-> local masks over retained disk coverage; prove zero redownloads for cached
-> area changes and unchanged refreshes. Coordinate the exact source, delta, lease
-> and publication protocol with the
-> cloud expert; do not implement or deploy their cloud work without assignment.
-> Finish all independent native work and prove Windows through owning tests and
-> real native artifacts, not owner hand-testing. Complete shared-publication
-> integration when the expert protocol is available; report any exact remaining
-> integration boundary candidly. Do not stop after a plan, mocked publication,
-> Linux-only success or parallel legacy implementation. Follow the acceptance
-> matrix, package matching discovery/skills/pins, and delete fulfilled backlogs.
-> Do not resume or publish the separately paused stable release without the
-> owner's instruction.
+Implement `ds-command-kernel/docs/desktop-native-tiling-migration-plan.md` completely,
+following its standing contracts and repository instructions on canonical `run`.
+Maintain a moving execution plan and the remaining obligations in OPEN.md section
+16; prove, commit and push one owning vertical before starting the next. Preserve
+other agents' edits and synchronize Windows/server checkouts safely.
+
+A PC contributes compute to a project; it is not a personal project asset or owner
+of outputs. Never serve tiles from a PC, localhost, LAN or generated local file.
+Generate candidates natively, upload and verify through central project authority,
+and let Web/Desktop consume centrally published artifacts even when the producer
+PC is offline. Make that role clear in Sync Center; keep credentials and queues
+principal-fenced. Claim/coalesce automatic compute across PCs before heavy work.
+
+Embed pinned VersaTiles Rust libraries in the shared ds-tile-runtime through
+ds-network-reporter and typed DS CLI/MCP controls. Remove Tippecanoe/external
+conversion. Prove actual Windows-native and Linux builds, fidelity, determinism,
+bounded resources, cancellation and explicit oversized-tile refusal. Survey reads
+use governed BigQuery snapshots; current design uses saved Firestore/DS Grid,
+without a BigQuery transaction gate. Reuse Parquet/GeoParquet snapshots with Polars.
+Implement cheap revision freshness, cursor/tombstone deltas and immutable chunk
+reuse. Work areas mask retained disk data locally: cached-area changes make zero
+network calls; unchanged refresh transfers zero source rows and triggers no build.
+Only complete authorized snapshots may replace complete project tiles. Keep
+report success independent of background tiling.
+
+Cut cloud cost and unnecessary reads as acceptance requirements; measure request,
+byte, compute and latency changes against the same workloads. Implement and prove
+minimal existing source/lease/publication coordination, without unconditional cloud
+retiling or full rereads as verification. Remove ALL current cloud tile generation,
+Web tiling buttons/dispatch, obsolete custom BigQuery tiling and BigQuery explorer,
+and traced replaced dependencies, permissions, tests and dormant fallbacks. Future
+expert CLI-driven large-container/custom-job APIs are outside scope; do not retain
+or create them as a fallback. Preserve non-tiling services and central consumers.
+
+Follow the whole-path acceptance matrix, prove refusals and installed discovery,
+and update owning contracts/skills/pins. Do not claim completion with mocks,
+Linux-only proof or remaining cloud generation. Delete fulfilled backlog items;
+keep only genuine unresolved owner input in OPEN-X and operational acceptance in
+SEEDING. Do not resume or publish the separately paused stable release.
