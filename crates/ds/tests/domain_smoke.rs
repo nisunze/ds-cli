@@ -1219,7 +1219,10 @@ fn capabilities_requires_separates_the_window_from_the_server() {
     assert_eq!(window["tier"], "requires");
     assert_eq!(window["requires"], "window");
     assert_eq!(window["domain"], "map");
-    assert_eq!(window["matched"], 44, "map's window commands");
+    // 46 since the paired Profile gained `map.profile.results` (8a776a32) and
+    // `map.profile.calculation` (3355763b): both read or drive the live
+    // Profile in the window, behind `paired_availability`.
+    assert_eq!(window["matched"], 46, "map's window commands");
     let ids: Vec<&str> = window["results"]
         .as_array()
         .expect("results")
@@ -1232,7 +1235,7 @@ fn capabilities_requires_separates_the_window_from_the_server() {
         "moving the camera is the window's own work: {ids:?}"
     );
     assert_eq!(window["more"]["shown"], 5);
-    assert_eq!(window["more"]["matched"], 44);
+    assert_eq!(window["more"]["matched"], 46);
 
     // Survey moved to the server. If a survey command ever needs the window
     // again, this is where it is noticed.
