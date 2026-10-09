@@ -14,27 +14,27 @@ Candidate curation and native PLS-CADD acceptance are separate from coding the c
 
 | Area | Remaining entries |
 | --- | ---: |
-| [1. Deployment and template rollout](#1-deployment-and-template-rollout) | 14 |
-| [2. Release acceptance](#2-release-acceptance) | 1 |
-| [3. Template projects](#3-template-projects) | 2 |
-| [4. Print templates, styles and seed](#4-print-templates-styles-and-seed) | 3 |
+| [1. Deployment and template rollout](#1-deployment-and-template-rollout) | 17 |
+| [2. Release acceptance](#2-release-acceptance) | 2 |
+| [3. Template projects](#3-template-projects) | 5 |
+| [4. Print templates, styles and seed](#4-print-templates-styles-and-seed) | 6 |
 | [5. Print sheet content and legibility](#5-print-sheet-content-and-legibility) | 6 |
-| [6. Print acceptance on live projects](#6-print-acceptance-on-live-projects) | 3 |
-| [7. Report compute, export and combined output](#7-report-compute-export-and-combined-output) | 5 |
-| [8. Sync, publication and edge outbox](#8-sync-publication-and-edge-outbox) | 3 |
-| [9. LV processing, sizing and headless intake](#9-lv-processing-sizing-and-headless-intake) | 3 |
-| [10. Voltage drop](#10-voltage-drop) | 5 |
-| [11. PLS-CADD exchange round trip](#11-pls-cadd-exchange-round-trip) | 2 |
+| [6. Print acceptance on live projects](#6-print-acceptance-on-live-projects) | 14 |
+| [7. Report compute, export and combined output](#7-report-compute-export-and-combined-output) | 7 |
+| [8. Sync, publication and edge outbox](#8-sync-publication-and-edge-outbox) | 4 |
+| [9. LV processing, sizing and headless intake](#9-lv-processing-sizing-and-headless-intake) | 7 |
+| [10. Voltage drop](#10-voltage-drop) | 11 |
+| [11. PLS-CADD exchange round trip](#11-pls-cadd-exchange-round-trip) | 6 |
 | [12. DS Grid engineering (Codex main)](#12-ds-grid-engineering-codex-main) | 3 |
 | [13. Spotting (Codex main)](#13-spotting-codex-main) | 2 |
-| [14. Plan and Profile authoring](#14-plan-and-profile-authoring) | 6 |
+| [14. Plan and Profile authoring](#14-plan-and-profile-authoring) | 7 |
 | [15. Project deliveries](#15-project-deliveries) | 6 |
-| [16. Map data, datasets and screen styling](#16-map-data-datasets-and-screen-styling) | 9 |
-| [17. Project Work and Assets](#17-project-work-and-assets) | 8 |
+| [16. Map data, datasets and screen styling](#16-map-data-datasets-and-screen-styling) | 12 |
+| [17. Project Work and Assets](#17-project-work-and-assets) | 11 |
 | [18. Global DS Grid library](#18-global-ds-grid-library) | 3 |
-| [21. Windows native release](#21-windows-native-release) | 8 |
+| [21. Windows native release](#21-windows-native-release) | 10 |
 | [22. Operations](#22-operations) | 5 |
-| [25. CLI reliability and feedback](#25-cli-reliability-and-feedback) | 2 |
+| [25. CLI reliability and feedback](#25-cli-reliability-and-feedback) | 6 |
 <!-- /toc -->
 
 ## 1. Deployment and template rollout
@@ -49,7 +49,13 @@ Candidate curation and native PLS-CADD acceptance are separate from coding the c
 
 - **Production data migrations**: inventory, back up and dry-run `network_config`, project forms, survey entries, memberships, archive registry, Solar v3, tiles, uploads/GCS, transformers, retirements and survey media. Seed project country and explicit category/meter metadata from authority; fence writes to reviewed versions and preserve project access.
 
-- **Signed download rollout** (`download-signed`): verify the deployed brain contract, apply the reviewed version-fenced token-revocation migration, then release matching reporter/kernel/web/CLI consumers. Keep token-bearing legacy URLs out of newly delivered artifacts.
+- **Signed download rollout** (`download-signed`, `c9df4098`): deploy a locally built ds-brain carrying `2b5f8752`; once the signed-read storage rules in `OPEN.md` §1 land, apply them through the owner's ds-apis-tf path; apply the reviewed version-fenced revocation of legacy Firebase download tokens; prove an anonymous GET of a listed report URL is refused; replay `ds design download fetch` with an installed ds carrying ds-cli `9d298014`; release matching reporter/kernel/web/CLI consumers, then close `c9df4098`. Keep token-bearing legacy URLs out of newly delivered artifacts.
+
+- **Current canary on ds-server**: installed `ds-canary` 0.1.6 (2026-09-29, `507d1b7e`) cannot read current printing layouts on its closed contract (`classification` and newer fields; `report layout get` and `report project settings` return `auth_response_unreadable`). This blocks the Rwanda Template logo/title-block seeding of 11 layouts (§3) and most feedback acceptance replays, among them the rows waiting on canary 0.1.7-r79+ (`86d184cf`, `1f2430c7`, `c7664961`, `641143eb`, `fee42145`, `defcbef3`, `e3aa68bd`, `a65872eb`, `d798669f`, `349c3130`, `190d8eaf`, `8363a4fc`, `b3bdc857`, `d8863709`, `7bf636c2`, `df1f53ae`, `6226c0bb`, `3d1c735c`, `f6c511f5`, `34ad2bea`, `4ba8ab15`, `5acb6a57`, `3a302e54`, `c668908d`, `11bce3aa`, `9d0f28da`). Install a current canary release on ds-server, then replay each filed acceptance and close what passes.
+
+- **Bulk reporter lane**: `ds-network-reporter-bulk` (serves `export_combined` and `zip_bundle`) runs `276d3d0e` (2026-09-30), which lacks `32d5119`, `f4ff759`, `c89ea93`, `f26cd35`, `91f2ee3`, `5f12b6d` and `28a7d35`. Redeploy it from a local build before any cloud check of combined or bundled outputs; until then accept through a single-transformer export on the non-bulk reporter (`035418e`) or an installed canary 0.1.7-r79+.
+
+- **Design migrate overwrite replay** (`09de401e`): deploy ds-brain bulk carrying `5010e542`, run `migrate apply --overwrite` then `migrate plan --overwrite` from `arjgpydw_survey_test` to `arjgpydw_huye2` and expect identical=N, moving=0; then close `09de401e`. The extra feature-property key on overwritten heads is code, not this acceptance.
 
 - **Data-dependent consumer activation**: complete the reviewed authored electrical metadata and named-rule-set migration before enabling consumers that reject missing metadata. Check the held source state instead of assuming a fallback removal has already shipped.
 
@@ -71,16 +77,24 @@ Candidate curation and native PLS-CADD acceptance are separate from coding the c
 
 - **Unobserved platform gates**: run the current Windows Field gate, Storage-emulator rules and shellcheck at the pinned source. An unrun check is an acceptance task; promote a concrete failing source check to `OPEN.md` only after reproducing it.
 
+- **Reporter pin for end-pole names** (`8b2d9545`): the reporter's native source pin must include ds-network `822a22de` before Engineering Review rows for spans saved without node ids name their end poles instead of `? → ?`; verify on the installed release.
+
 ## 3. Template projects
 
 - **Rwanda Template as a read-only demonstration project** (owner, 2026-10-07; `wnmajona_edcl_rural_electrification_template`): signed-in users read it for tutorials and demonstrations. Replace logos rather than anonymizing them. Title blocks get fictitious companies and account numbers, and the people's names on every transformer sheet become gibberish Latin. Claude is doing this.
   - **Logos ready:** `outputs/rwanda-template-seed-20261007/logos/generated/` (each ≤ 200 KB, under the 350,000-character base64 bound at `src/printing/mod.rs:1446`). Asset `rwanda` → Republic of Calventa; `edcl` → Velmora Grid Authority; `afdb` → Quenara Development Fund; `cjic` → Tallowind Lineworks; `ccce` → Orvanex Engineering.
-  - **Steps:** back up each of the 12 layouts (`report layout get`). Replace `assets` and the `title_block` and text values. Persist with `report layout update --expected-revision`. Then read back and render one LV sheet and one MV sheet.
+  - **Steps:** back up each of the 11 layouts still to seed (`report layout get`): `a0-landscape-gisagara-cjic`, `a0-landscape-huye-cjic-review`, `a3-landscape-gisagara-cjic`, `a3-landscape-rwanda-project-lv`, `a3-local-layer-review`, `mv-a3-plan-profile-template`, `nyamagabe-district-mv-a3-core-v0`, `nyaruguru-district-mv-a3-landscape-core-v0`, `project-overview-a0`, `project-overview-a3`, `transformer-focus-a0`. Replace `assets` and the `title_block` and text values. Persist with `report layout update --expected-revision`. Then read back and render one LV sheet and one MV sheet.
   - **Owner ruling, 2026-10-07:** seed the Rwanda Template itself, accepting that projects created from it (`auth project create --from-template`) start with the fictitious logos. Change title-block text only: people's names to gibberish Latin, company names, contract and account numbers. Transformer names and customer data stay unchanged.
   - **Read-only for all signed-in users:** no such grant appears in the ds-cli reference; access is per membership. If none exists, record the gap in STABILIZATION.md.
-  - **Blocked on tooling:** installed `ds-canary` (2026-09-29) refuses 10 of the 12 layouts on its closed contract, as in §6 Gisagara. Install a current canary (ds-web `./linux-server-deploy.sh canary --install`), then apply. Delete the `outputs/` folder once seeded.
+  - **Blocked on tooling:** installed `ds-canary` 0.1.6 (`507d1b7e`) returns `auth_response_unreadable` on `report.layout.get` for 11 of the template's 13 layouts, and its `report.project.export` refuses the `classification` field, so neither the update nor the render can run (the dev `report.layout.render` refuses `print_renderer_defaults_missing`). Install a current canary (§1 **Current canary on ds-server**; ds-web `./linux-server-deploy.sh canary --install`), then apply. Delete the `outputs/` folder once seeded.
 
 - **Template Tchad contents and copy acceptance**: verify the person can choose a source template and explicit copy contents through the live CLI. Complete the `a3-landscape-aderm-lv` layout, project parameters and CRS, then exercise representative dense/outlier transformer copies without changing unrelated project contents.
+
+- **Single-sheet copy acceptance** (`d76f6e55`): install a release whose embedded pins carry ds-command-kernel >= `8c049ef` and ds-cli >= `33065e06`. Run `ds design config copy plan --project wnmajona_edcl_rural_electrification_template --source-project arjgpydw_survey_test --sheet layer_mapping`, apply with `--expected-plan <plan_sha256> --yes`, then read `layer_mapping` back. Controls: `--sheet cust_category` (replace, then identical) and an unknown sheet refusing `config_sheet_unknown`. Then close `d76f6e55`.
+
+- **Template-project `lv_lines` propagation** (`1f2430c7`): on installed canary >= 0.1.7-r79, run `ds design config save --project <template project> --sheet lv_lines` with readback, copy it into a target project with `ds design config copy plan|apply --part network_config` (or `--sheet lv_lines` once ds-cli >= `33065e06` is released) and read it back. Close `1f2430c7`: the global template store is retired (ds-brain `897b801f`); template projects are edited with `design config save` and propagated by `design config copy`.
+
+- **Chad pole vocabulary cleanup**: after deploying ds-brain >= `b8b056c2` (full emulator deploy gate) and releasing ds-web >= `fbff7a754`, remove the Rwanda S100–S255 and 400–1250daN rows and their `struct_type` known-domain values from `lv_poles_struct_type` in `arjgpydw_aderm_loc7`, `it_tchad` and `tchad_loc_7` with `ds design config save`, then read back. Before that deploy, the old service re-seeds them on every read.
 
 ## 4. Print templates, styles and seed
 
@@ -88,13 +102,19 @@ Candidate curation and native PLS-CADD acceptance are separate from coding the c
 
 - **Template policy and seed documents**: author the MV submission issue-date/version policy as project metadata, verify distinct seeded LV context pens and seed the A3 voltage-drop overview through the available governed document route. Preserve exact source/revision pins and unrelated layouts. If a required document cannot be authored through the live contract, record that specific missing code capability in `OPEN.md`. Author MV context legend words in the governed template if the existing titles need tuning; the renderer reads held titles and the template-literal ratchet forbids replacing them with Rust literals.
 
-- **Print style revision governance acceptance** (`f012845d`): deploy a locally built ds-brain containing `2c8e7db` and install a `ds` containing ds-cli `eea923ef`, then replay `ds style print versions list|read|compare|restore` on one governed `_print` ref and close feedback `f012845d`.
+- **Print style revision governance acceptance** (`f012845d`): deploy a locally built ds-brain containing `2c8e7db` and install a `ds` containing ds-cli `eea923ef`, then replay `ds style print versions list|read|compare|restore` on one governed `_print` ref, produce a PDF receipt that pins style revisions and close feedback `f012845d`.
+
+- **Grouped layout catalogue acceptance**: installed `ds report layout list --catalogue` lists the district maps under Overview, the governed pages under Front matter and only the A3 plan-and-profile sheet under MV Sheets; an MV preview picks a DS Grid model, never `agahehe`.
+
+- **Print templates panel acceptance**: on the live Desktop, the rebuilt Print templates panel reads the grouped native catalogue JSON and shows preview pages, while template save/copy/delete still work.
+
+- **Plan-profile title identity**: author `title_country`/`title_employer` values in the low-level plan-profile configs rather than relying on implicit Rwanda print defaults.
 
 ## 5. Print sheet content and legibility
 
 - **MV booklet composition** (`f0e9c2ed`, `290bf404`, `46f54c67`): use project-owned cover, naming, key-map and plan/profile documents; include the district/project A0 overview and project statistics where requested. Inspect A3 landscape front matter and external pages at print scale, with no internal review labels. Verify exact source/member pins and publication after the native integration in `OPEN.md` is ready.
 
-- **Print title and issue identity** (`db129935`, `04ced625`): inspect individual and combined Northern Hub A0 sheets using layout revision `6a1f5f27`; keep submission version independent of model draft revision.
+- **Print title and issue identity** (`db129935`, `04ced625`): inspect individual and combined Northern Hub A0 sheets using layout revision `6a1f5f27`; keep submission version independent of model draft revision. Cloud-computed combined A0 PDFs need the bulk lane redeployed first (§1 **Bulk reporter lane**; it lacks `28a7d35`) or r79+.
 
 - **Project print context** (`86d184cf`): acquire and verify buildings, administrative boundaries, LV/MV poles and settlements for the actual project-sheet extent. Inspect carried/omitted layers and coverage on the installed build; missing held data is a preparation task. Report a consumer that omits valid held data as a code defect.
 
@@ -112,6 +132,28 @@ Candidate curation and native PLS-CADD acceptance are separate from coding the c
 
 - **Gisagara A0 acceptance** (`7da49ff8`, `fe036819`): install a matching CLI/render engine accepting the current layout's `classification` field; installed `b12041b6` rejects the one-transformer `agahehe` export before rendering. The approved read-only source diagnostic of revision `eb38900b` confirms hidden diagnostic layers/labels, no diagnostic legend entries, four `cable_size` LV colours and independent existing-blue/proposed-red MV pens, but is not deployed preview/PDF acceptance. Resolve the intended pole encoding: the current authored document uses `cable_size`, while the filed acceptance names `struct_type`; preserve authored choices until settled. Render and inspect preview and final PDF for diagnostic exclusion and categorical legends without altering underlying project QA data. Promote only a reproduced remaining renderer/control defect to OPEN.md.
 
+- **A0 contour index labels** (`5828fac5`): on an installed build, replay the Northern Hub `bukane` A0 preview (`report.project.export --preview-layout`) with `contours_index.visible=true` and `label.visible=true`; the sheet renders, any shrunk text carries a `print_text_fitted` warning and paper text reads at print size.
+
+- **Profile labels after an elevation break** (`778a9f4d`): on an installed build, re-render the Nyamagabe Model 1 booklet with `--profile-elevation-breaks on --break-support-context once --label-orientation vertical`; on the sheet holding structures 158 and 159, labels sit beside their structures and no leader crosses the PROFILE H scale bar.
+
+- **Clearance hairs** (`7bc05e22`): on an installed renderer, cross-check Model 1 spans 53–57 on a freshly computed scene's plan/profile print, then close `7bc05e22`.
+
+- **Print set size** (`e2cd543e`): on an installed build, re-render the Gisagara 96-page A3 MV and 86-page A0 LV combined sets, record sizes against 481 MB and 714 MB, and check schedules, contours, MV/LV strokes, title block and pagination at print size.
+
+- **MV capture reuse** (`f48bd93c`): on an installed release, capture Northern Hub, then render a second sheet with `--reuse-capture` in about a minute; switch the ds-work delivery runner's district-capture reuse to `--reuse-capture`.
+
+- **Fallback legend swatch** (`e3886c36`): on reporter `035418e` (single-transformer, non-bulk) or canary 0.1.7-r79+, a categorical LV pole legend prints `Unspecified`; then close.
+
+- **Key-map credit** (`0daacb10`): a key-map PDF through the non-bulk reporter or r79+ has one credit per page; then close.
+
+- **Single DS credit audit** (`b4324cb0`, `99139c70`, `a64d35e8`): audit MV and LV single and combined PDFs page by page for one DS credit; combined PDFs need the bulk lane redeployed (§1) or r79+. Then close.
+
+- **Furniture over structure labels** (`5c722c70`): re-render the Nyaruguru MV Model 2 A3 booklet with `--context-pages` on r79+; sheets 46 and 92 show no north-arrow/legend overlap. Then close.
+
+- **Key-map label override** (`78c0467d`): render a key map using the layout label display override through the non-bulk reporter or r79+; then close.
+
+- **Monochrome ink mode** (`f41debca`): through the non-bulk reporter or r79+, export the monochrome A3 for `zimebnlu_northern_hub` `upgrade_janja` and check a district map's ink mode; then close.
+
 ## 7. Report compute, export and combined output
 
 - **Nyamagabe saved-room export acceptance** (`17b05932`): verify the saved-only projection and held-cache refresh on the 23 affected re-saved transformers at the current installed revision, then prove exact exports and published artifacts. One prior successful export does not cover the set.
@@ -122,7 +164,11 @@ Candidate curation and native PLS-CADD acceptance are separate from coding the c
 
 - **Desktop printing export acceptance** (`88c03fbd`): on an installed Desktop release containing ds-web `501afad30`, `desktop.printing.export` of a saved Northern Hub transformer (A0 PDF/KMZ/XLSX/SHP) returns artifact receipts; then close feedback `88c03fbd`.
 
-- **Deleted-transformer restore deployment and replay** (`81ae43eb`): deploy a locally built ds-brain containing `6fc25cb`..`5dd52c9d`; once the CLI lands (`OPEN.md` block 7), replay backup read and restore-deleted on an integration project and close `81ae43eb`.
+- **Deleted-transformer restore deployment and replay** (`81ae43eb`): deploy a locally built ds-brain containing `6fc25cb`..`5dd52c9d`; install a ds carrying ds-cli `9d298014` (design transformer backup / restore-deleted), replay backup read and restore-deleted on an integration project and close `81ae43eb`.
+
+- **Gisagara Desktop Reporter export** (`c7958c2b`): with ds-brain `25499cef` deployed (it carries `dd8238e8`, which moves `project_params` out of `printing_context`) and a reporter carrying `9d67ef4`, a fresh `czgmdwth_gisagara` Desktop Reporter export succeeds; any remaining non-text value is refused as `printing_context.<key>`. If it still fails, capture the exact request and promote it to OPEN.md.
+
+- **Combined export of a held non-active project** (`655b5a0d`): on a Desktop release carrying ds-web `680ae8440`, the combined export for a held non-active project succeeds; then close `655b5a0d`.
 
 ## 8. Sync, publication and edge outbox
 
@@ -132,11 +178,21 @@ Candidate curation and native PLS-CADD acceptance are separate from coding the c
 
 - **Retained-artifact and publication acceptance**: verify the affected Desktop’s six `fill_in_gishubi` outputs survive refresh, install the matching Web/Desktop projection and regenerate required stale-input exports from current pins without reprocessing approved geometry. Prove exact cloud heads and bytes; queue zero is insufficient. Keep held/pending/stale/published distinct. Evidence remains in `ds-command-kernel/_discardable/artifact-inventory-refresh/`; the stalled head-read code gap is in `OPEN.md` block 8.
 
+- **Report failure after restart** (`6ffc5d52`, part 1): on a Desktop release carrying ds-web `a78f5ab44`, replay the filed restart acceptance. Keeping a pre-admission failure visible with producer, revision and retry guidance is code, not this acceptance.
+
 ## 9. LV processing, sizing and headless intake
 
 - **Country rule-set seeding**: seed the authoritative Tchad/ADERM inputs beside REG and verify the selected rule set drives LV design, voltage drop and service sizing. Keep representative Rwanda and Chad fixtures; do not replace missing rule values with another country’s data. Consumer hardcoding remains code work in `OPEN.md` block 19.
 
-- **15 kV fuse defaults**: confirm REG Table 13 against authority, then correct the governed network template’s 15 kV values through `ds`. Recheck the current project-owned template rather than assuming the retired `eds_networks/master` path is still authority.
+- **15 kV fuse defaults** (`dcacdb90`): confirm REG Table 13 against authority, then through `ds` correct the governed network template’s 15 kV column at 100, 250, 315, 500 and 630 kVA, add the 75 and 450 kVA rows, and add `mv_fuze_15_kv_amp` and `mv_fuse_voltage_kv` to the `tr` known columns of any 15 kV project; then release and close `dcacdb90`. Recheck the current project-owned template rather than assuming the retired `eds_networks/master` path is still authority.
+
+- **Keep supplied line numbers** (`4bad5ef3`): once a released ds carries ds-network `5de44201` and kernel `9accf8d` and ds-brain `9a15ce53` is deployed, replay `jabiro.json` with `renumber_lines=false` and close the feedback with the replay evidence.
+
+- **Rating corrections** (`25d2115f`): after a release carrying ds-network `2e3a0ff9`, fenced project-save and read back the `fill_in_sokofi` and `rugarama` rating corrections, and review `rugarama`'s approved 3x35 spans against its 3x70/3x50 lines and poles. Whether a rating pin may rewrite approved derived cells is in OPEN-X.md §15.
+
+- **Supplied LV design save** (`6ed42257`): after the supplied-layers save door in `OPEN.md` §9 ships, save `incoming/jabiro` to `zimebnlu_northern_hub`, compare bytes and record it with `design.version.begin`.
+
+- **Truncated DBF field names** (`83f3712b`): after the release pins include `e79caa5a` and `85879bfa`, run the installed acceptance on `correct-lv-shapefiles.zip`.
 
 - **Unicode source reproduction** (`f7732067`): current Linux Unicode fixtures and `bukane` v3 export preserve characters. Obtain the original affected host/build, corrupt request bytes and approved v2 source pin, then reproduce the exact export before alleging a remaining code fault.
 
@@ -150,13 +206,33 @@ Candidate curation and native PLS-CADD acceptance are separate from coding the c
 
 - **Owner input needed for LV saved-analysis acceptance:** installed `ds 1841da8d` now exposes the read-only `design.lv.analysis-read`. `ds design lv analysis-read --project czgmdwth_gisagara --transformer agahehe --out /home/magese/data-solutions/ds-cli/_discardable/lv-saved-analysis-installed-1841da8/agahehe.saved-analysis.zip --output json` exits 5 with `lv_analysis_missing`: saved version 3, content digest `7e1b072c508e04de90db48fc20dad49077dc6317eaad00d5c28bd3731d237bc2`, `analysis_state: missing`, `processed: false`, `saved: false`, and no partial ZIP. Supply an authentic current analysis run/save receipt or explicitly approve a reprocessing candidate; do not reprocess approved geometry for acceptance or reconstruct legacy `vd_summary`. Still prove current `ds.lv-voltage-drop.analysis/v1` identity, stale-read/Firestore-size refusal, saved-JSON-only Reporter A4/A0 rendering, web save/preview/download and combined coverage. Exact command/output/SHA: `ds-cli/_discardable/lv-saved-analysis-installed-1841da8/verification.json`; older input-only evidence remains in `ds-cli/_discardable/lv-saved-analysis-acceptance-20261001/`.
 
-- **Voltage-drop paper and delivered-file acceptance**: verify one DS credit per page, readable Unicode labels, valid table/font settings and complete rows without overflow. After fresh release proof, replace the old Kibungo G: copy and classify the two Impinga2 apparent line cuts as source topology or drawing. Preserve exact artifact pins; valid-settings overflow is a code issue, not permission to alter engineering data.
+- **Voltage-drop paper and delivered-file acceptance** (`a23fa674`): verify one DS credit per page, readable Unicode labels, valid table/font settings and complete rows without overflow. After fresh release proof, replace the old Kibungo G: copy and classify the two Impinga2 apparent line cuts as source topology or drawing. Preserve exact artifact pins; valid-settings overflow is a code issue, not permission to alter engineering data.
+
+- **Kept-as-drawn VD on agahehe** (`00ad9848`): after the release pins move to ds-network `62b0168f`, accept kept-as-drawn voltage drop on `agahehe` through installed `ds`.
+
+- **Butezi saved-project VD** (`47136650`): after a release carrying ds-network `62b0168f`, render `voltage_drop` from the saved Butezi project.
+
+- **Shared customer/pole refusal** (`3c9c8add`): on a release carrying ds-network `ff5260f0`, replay `design.lv.voltage-drop` for `arjgpydw_nyam` `rugusa`, `mata_tububuru`, `nyarugano`, `cyanika_kagarama` and `rwampara` (expect a refused analysis naming the shared customer/pole ids, verdict incomplete) and the `karambi`/`agahehe` controls (sections equal spans), then close `3c9c8add`.
+
+- **Reinforcement verdict** (`11bce3aa`): install canary >= 0.1.7-r79 (ds-network `d3991c2f`, reporter `dcf39c1`), re-adopt the governed A4 standard, then render `pu_annah_farming` at design year 5: it prints as failing as drawn with a required, unapplied new circuit, and Rubona still complies with `reinforcement_required` false. Then close `11bce3aa`.
+
+- **Saved-analysis A4 render** (`9172efeb`): render a saved analysis (`fill_in_kanto2` or any) to A4 through the non-bulk cloud reporter `035418e` or canary >= 0.1.7-r79; it prints, and a genuinely changed summary still refuses `voltage_drop_result_stale`. Then close `9172efeb`.
+
+- **Gisagara per-transformer VD export** (`159282a4`): after a release of ds-network-reporter `026e441`, the Gisagara per-transformer export returns a PDF or a typed refusal for each transformer.
 
 ## 11. PLS-CADD exchange round trip
 
 - **Old project revisions**: upgrade only explicitly reviewed published heads through `ds grid model upgrade`, verify exact output and source retention, then republish through the governed project lifecycle. Reader retirement and named old-schema refusals remain code work in `OPEN.md` block 11.
 
 - **Stage-two qualification gate** (`e37d99d5`): rerun and close the filed full-workspace gate after the separate characterized 19.01/V68 case `c45dc437` is repaired. The oracle correction is already on `run`; no further oracle patch is implied by this acceptance task.
+
+- **Model 2 whole-workspace export replay** (`90cf2311`): replay the real Model 2 PLS export once a package is saved with the current schema (m2-r18 is schema v3, its migration is refused and its manifest declares no complete table registry).
+
+- **Model 2 FINAL backup replay** (`7ce604c5`): after the duplicate-weather-label fix in `OPEN.md` §11 and with a schema-current package, replay the Model-2-FINAL `pls-bak` export.
+
+- **Uncharacterized edit forecast** (`e258b287`): install the release carrying ds-network `99ea9e35`, replay the filed model's export plan, then accept native Restore on PLS-CADD. The `gisagara` rev `67c72f3f` package is refused first by `immutable_structure_unsourced` and a missing snapshot content digest, so the cable/cable_curves replay needs a schema-current package.
+
+- **Retype staking facts** (`d8529cff`, optional): on an installed release, replay the 89-structure steel to `j-w-60d` retype and check that material-specific staking facts are dropped.
 
 ## 12. DS Grid engineering (Codex main)
 
@@ -193,11 +269,13 @@ Candidate curation and native PLS-CADD acceptance are separate from coding the c
 
 - **Selected-case runtime acceptance**: after the native transport and UI bindings in OPEN.md are complete, install matching sources/WASM and verify real criterion/case/weight-basis selection, scene invalidation, usage/uplift/clearance markers and responsive popout display on the affected Windows model.
 
+- **Two-instance retire and recreate** (`5400e80f`): on a Desktop release carrying ds-web `c94f2f143` and `c87de0ea1`, replay the filed two-instance retire-and-recreate acceptance; then close `5400e80f`.
+
 ## 15. Project deliveries
 
 - **Model 2 engineering delivery** (`732fcd12`, `e343d5ac`): review the three alignment-17 surveyed-ground deficits (maximum 0.075160 m) between fixed tap 262 and transformer 263, endpoint capacity, Restore/re-sag/strength and uplift. Field-check unsurveyed alignment 8 and the moved support site. Preserve criteria, direction and pole families; a cleared-ground sag trial is not strength acceptance.
 
-- **Staking is incomplete** (`dacfa967`): transformer kVA remains blank for about 25 poles because surveyed transformers did not match within 30 m; supply a typed correction and verify the issued staking values.
+- **Staking is incomplete** (`dacfa967`): transformer kVA remains blank for about 25 poles because surveyed transformers did not match within 30 m; apply the corrections through `ds dsgrid apply` `edit_profile_properties` (`staking.load_ref`) and verify the issued staking values.
 
 - **Gisagara M3 delivery, in progress (2026-10-05)**: `~/projects/gisagara/m3-spotting-20261005/work/m3-05-inserts.dsgrid` (rev 55) carries the 75 °C maximum-conductor case, OSM road/river crossings with their feature codes, wood+steel spotting with the relative cost ladder, and 0 vertical/horizontal clearance violations over 429 points. Done but unreviewed: `usage-05.json` (`screen_structure_usage`, all seven structural cases, conventional weight span). Next: review usage and retype, `number_structures_by_chainage`, strict PLS export (may hit the corpus whole-design defect below), receipts and residue (REG consecutive-limit warnings, catalogue costs, OSM attribution). Prepare the reviewed candidate and receipts; publication authorization is separated into [OPEN-X.md](OPEN-X.md#15-project-scope-and-engineering-choices). The clearance report header prints `vertical at — (null °C)` although the vertical case is 75 °C.
 
@@ -221,7 +299,13 @@ Candidate curation and native PLS-CADD acceptance are separate from coding the c
 
 - **EDCL `Customer_meter` has no geometry** (ds-network `POLARS-BENCHMARK-HANDOVER.md`, benchmark closed): Datum holds only `.cpg/.dbf/.shx`. Find the `.shp` or decide it is an attribute table joined on a key; never migrate from the tile pyramid `gs://edcl/edcl_geo_raw_tiles_19_a/`.
 
-- **Windows one-shot wetlands install** (`33003988`): once the concurrent-request refusal lands (`OPEN.md` block 16), a one-shot wetlands install completes on the Windows Desktop.
+- **Windows one-shot wetlands install** (`33003988`): on a Windows Desktop release carrying ds-web `e8e49c55a` and `5e565c197`, a one-shot wetlands install completes. The retryable and concurrent-request refusals remain code in `OPEN.md` block 16.
+
+- **Project data rendering** (`011ae5a6`): deploy ds-brain (`6ee51742`, `166156dd`) and ds-vector-tiler `3f28002`, then (1) `ds style list --project arjgpydw_nyam --query pd/` lists 11 `pd/` editors with no 'no layers declaration' warning, (2) `ds map data list` shows `total_features` for a new upload, (3) a re-uploaded GeoJSON probe yields a layer named after the file, (4) `ds map evidence capture --scope map` on a paired Desktop shows STEG/BADEA over Nyamagabe.
+
+- **Ground data status cause** (`dbe4d17e`): on a Desktop build carrying kernel `c5f3c54` and ds-web `9f5fcb85f`, run `ds desktop data rwanda status` on the `czgmdwth_gisagara` state and record the named cause for `rwanda-dem-10m`, wetlands and powerlines.
+
+- **Line buffer validity** (`5dc0e8a1`): recover the input receipts (`output/gisagara-elevation-overlap-2026-10-03`, not on this box), install canary 0.1.7-r79+ on ds-server, rerun the exact Model 3 2 m `ds data vector buffer` and validate the output with `ds data inspect` and `ds data elevation extract`.
 
 - **Windows shapefile drop acceptance** (`ad44f3a0`): on a Desktop release carrying ds-web `a3f1feb9`, dropping a `.shp` with its sidecars beside it imports in one drop, and a truly bare `.shp` is refused by name without freezing.
 
@@ -243,7 +327,13 @@ Candidate curation and native PLS-CADD acceptance are separate from coding the c
 
 - **Assets ingest and task attachment acceptance** (`e9b5858d`, `40b53f7f`): an account holding `assets.ingest` runs installed `ds assets ingest` then `ds assets attach --task`, and the document shows on the task.
 
-- **Desktop PM attachment origin and model-version link deployment** (`e2f26a13`, `287c6b9b`): the Desktop PM attachment origin fix (ds-brain `e2f26a13`) takes effect only after a ds-brain deploy; a ds-brain containing it also carries `287c6b9b` (PM links to exact DS Grid model catalog revisions).
+- **Desktop PM attachment origin and model-version link deployment** (`e2f26a13`, `287c6b9b`): the Desktop PM attachment origin fix (ds-brain `e2f26a13`) and the personal-note attachment origin (ds-brain `1f70fb11`) take effect only after a ds-brain deploy; a ds-brain containing them also carries `287c6b9b` (PM links to exact DS Grid model catalog revisions). Accept with a Desktop PM attachment and a Desktop note upload.
+
+- **Task attachments** (`e01cf456`): install a ds carrying ds-cli `9d298014`, then on an integration project create a task, attach two files with `ds pm task attach` and confirm `ds pm task read` lists both ready attachments.
+
+- **Finish action and Gantt assignee** (`3cb5e3c5`, `a255fd6f`): on a Web Hosting or Desktop release carrying ds-web `0623e0a80` and `ca46dd4ef`, verify Finish in the Plan inspector and card menu, Gantt detail and row menus and Board/Table task menu, plus the Gantt row assignee dropdown with refresh and keyboard use; then close both.
+
+- **Plan free-card composition** (`59607488`): on a release carrying ds-web `67b95cbb0` and ds-network `b224e6dc`, run the filed visual check; then close `59607488`.
 
 ## 18. Global DS Grid library
 
@@ -271,9 +361,13 @@ Candidate curation and native PLS-CADD acceptance are separate from coding the c
 
 - **Desktop and LAN delivery**: locally build/install the current matching Desktop with photo/multipage previews, compact scrollable panels, export selection and layer controls; prove paired Plan selection/drag and Server-screen behaviour. Preserve supervised LAN workers and open models. Hosting publication alone does not update Desktop, and package installation alone does not prove running workers restarted.
 
+- **PLS-CADD readback of filed exports** (`8363a4fc`, `6226c0bb`, `3a302e54`, `b3bdc857`, `34ad2bea`, `df1f53ae`, `4ba8ab15`): after the Linux canary r79+ export of each filed case, Restore and read it back in PLS-CADD 16.81 on Windows before closing. The code parts of `3a302e54` and `b3bdc857` are in `OPEN.md` §11.
+
+- **Classification-aware Windows release** (`6e322426`): on a Windows/stable release carrying kernel `0e4389f`, read report project settings and export A0 for `ruhuha`, `upgrade_mbeho` and `zihare`; then close `6e322426`.
+
 ## 22. Operations
 
-- **Monitor service configuration**: inspect the status publisher’s repeated gcloud polling and the non-firing `ds-server-watchdog.timer`; adjust supported scheduling/configuration and verify freshness without killing other agents’ processes. Open an owning-code failure only if valid configuration cannot deliver the declared status.
+- **Monitor service live figures**: on the running status publisher, verify the per-agent CPU/memory/task figures and the sortable Processes table against live processes, without killing other agents’ processes. Open an owning-code failure only if valid configuration cannot deliver the declared status.
 
 - **Legacy RAM scratch**: inventory the recorded `/tmp`, `/dev/shm/ds-root-relief-20260930` and canonical-library mirror scratch before moving or retiring completed owned output. Preserve active jobs, source bytes and reusable caches; stage further work on disk. The historical 23/9.3 GB figures require a fresh measurement.
 
@@ -281,10 +375,18 @@ Candidate curation and native PLS-CADD acceptance are separate from coding the c
 
 - **`ds` client event store live readback**: deploy locally built ds-brain and its bulk twin; POST one `cli_command` and one `cli_rollup` body to `/api/v1/sre/requests`. Installed `ds sre events --source cli_command` shows the client fields, `--source cli_rollup` shows one row per command, and `ds_sre.requests` has the `ds` columns. After the deploy, a `platform=flutter` `client_runtime` body lands under `ds-sre/ds-field/requests` with `service=ds-field`.
 
-- **`ds` client row in the SRE overview**: once the CLI/MCP reporter wiring (`OPEN.md` block 25, [ORDER.md](ORDER.md) row 6) has landed and ds-brain plus its bulk twin are deployed, installed `ds sre overview` shows `ds_client` available with non-zero invocations.
+- **`ds` client row in the SRE overview**: once ds-brain ingest plus its bulk twin are deployed and installed clients emit events, installed `ds sre overview` shows the `ds_client` line available with non-zero invocations.
 
 ## 25. CLI reliability and feedback
 
 - **Unprompted product-use feedback**: after a release containing ds-cli `c3e34205` is installed (installed skill copies on this box still carry the old description), a blind low-powered agent given a product-use task that hits seeded friction files a feedback report without being asked and lists its id at the end (spec [ds-cli-reliability-and-feedback.md](../docs/contracts/ds-cli-reliability-and-feedback.md) §7.7). A coding-session trial uses only the owning backlogs.
 
 - **Installed reporting readback**: installed `ds` run against an unreachable gateway, then online, does not yet show the event with the same `request_id` through `ds sre events --source cli_command` (spec §7.1). It must, once the [OPEN.md block 25](OPEN.md#25-cli-reliability-reporting-and-proactive-feedback-priority) wiring is installed and ds-brain plus its bulk twin are deployed.
+
+- **Online reporting invariance** (spec §7.5): through installed `ds` while online, a command's output is byte-identical with reporting on or off. The owning tests prove this only offline (no profile).
+
+- **Feedback draft acceptance** (spec §7.6): on a signed-in installed `ds`, `ds feedback draft --last` after a failed command yields a draft that `ds feedback submit` accepts.
+
+- **Automatic crash report** (spec §7.3): against the live backlog, a second crash raises the automatic report's occurrences to 2. `DS_CLI_TEST_PANIC` is debug-only, so this needs a signed-in development build with a packaged profile (or a reworded §7.3).
+
+- **Feedback component refusal** (`9ab57db2`): on a release carrying ds-command-kernel `47a8dd6` and ds-cli `1c64a6b8`, installed `ds feedback submit --component ds-grid-engine/sag` refuses `feedback_component_unknown` while `ds-cli/feedback` is still accepted; then close `9ab57db2`.
