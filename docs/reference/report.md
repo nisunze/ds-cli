@@ -1277,9 +1277,10 @@ SHA-256, the capture must belong to the same project and signed-in principal
 (`report_reused_capture_invalid` otherwise), and the project's live active
 transformers must be exactly the pinned set (`report_reused_capture_stale`
 otherwise). The result reports `transformer_contexts.reused: true` with the
-pinned path and digest. Each native acquisition step is bounded at 180 seconds;
-a read that answers nothing is refused as `report_source_acquisition_stalled`
-instead of leaving the capture idle.
+pinned path and digest. The inventory, configuration, project directory, style,
+MV model and transformer context reads are each bounded at 180 seconds; a read
+that answers nothing is refused as `report_source_acquisition_stalled` instead
+of leaving the capture idle.
 The request is a portable, editable print capture, not a model version.
 After visual review, `map.design.attach-print --scope mv` uploads a PDF or PNG
 through the existing report-artifact service to `mv_data`, without Desktop or

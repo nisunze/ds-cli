@@ -315,11 +315,25 @@ pub fn run(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
     };
     let identity = inventory.identity();
     let project = inventory.project_id();
-    let config = ds_cli_auth::feeder_configuration_for_project(lane, project)?;
+    let config = {
+        let (lane, project) = (lane.to_owned(), project.to_owned());
+        bounded(
+            "the feeder configuration read",
+            ACQUISITION_STEP_BOUND,
+            move || ds_cli_auth::feeder_configuration_for_project(&lane, &project),
+        )?
+    };
     if config.identity() != identity || config.project_id() != project {
         return Err(invalid("configuration scope changed"));
     }
-    let directory = ds_cli_auth::project_directory(lane)?;
+    let directory = {
+        let lane = lane.to_owned();
+        bounded(
+            "the project directory read",
+            ACQUISITION_STEP_BOUND,
+            move || ds_cli_auth::project_directory(&lane),
+        )?
+    };
     if directory.identity() != identity {
         return Err(invalid("project CRS discovery scope changed"));
     }
@@ -339,11 +353,20 @@ pub fn run(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
         .map_err(invalid)?;
     let receipt = InputReceipt::from_config(&config.result().document).map_err(invalid)?;
     let server_sheets_sha256 = receipt.sheets_sha256.clone();
-    let styles = ds_cli_auth::style_governance(
-        lane,
-        project,
-        &ds_command_kernel::style_governance::Command::Table,
-    )?;
+    let styles = {
+        let (lane, project) = (lane.to_owned(), project.to_owned());
+        bounded(
+            "the style governance read",
+            ACQUISITION_STEP_BOUND,
+            move || {
+                ds_cli_auth::style_governance(
+                    &lane,
+                    &project,
+                    &ds_command_kernel::style_governance::Command::Table,
+                )
+            },
+        )?
+    };
     let snapshot: ds_command_kernel::style_resolution::Snapshot =
         serde_json::from_value(styles).map_err(invalid)?;
     if snapshot.project_id != project {
@@ -362,7 +385,12 @@ pub fn run(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
     let sheets = receipt.sheets().map_err(invalid)?;
     let renderer_defaults = printing::renderer_defaults::resolve(&snapshot).map_err(invalid)?;
     printing::style_overrides::preflight(&layout, &sheets["printing_styles"]).map_err(invalid)?;
-    let mut models = super::mv_context::load(lane, identity, project)?;
+    let mut models = {
+        let (lane, identity, project) = (lane.to_owned(), identity.clone(), project.to_owned());
+        bounded("the MV model read", ACQUISITION_STEP_BOUND, move || {
+            super::mv_context::load(&lane, &identity, &project)
+        })?
+    };
     if let Some(path) = i.value("mv-model") {
         models.push(super::mv_context::load_local(path)?);
     }
