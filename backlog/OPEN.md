@@ -589,9 +589,14 @@ Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group A, to be fixed to
   Maintain the moving remaining plan here; no new owner input is needed for
   autonomous code. Whole-path acceptance is in the plan's matrix.
 
-  Active: **2 — immutable columnar store**, private account/lane/
-  audience/project fencing, verified chunks, atomic cursor/delta application,
-  exact local work-area masks, recovery, retention and Windows ACL/locking proof.
+  Active: **2 — finish immutable columnar store** around
+  `ds-layer-store::project_snapshot::Store`: ordered persisted delta pages, exact
+  replacement/tombstone validation, spatial indexes/Polars projection and filter
+  pushdown, persisted local masks, recovery estimates and bounded retention policy.
+  Prove actual Windows ACL/locking/crash recovery; the helper MSVC compile check
+  is not Windows execution. Extend the existing chunk/head/pin implementation
+  described in `docs/contracts/ds-project-snapshots.md`, do not replace it or
+  infer analytical pushdown from its initial streaming local-mask door.
   Source adapters must consume the shared snapshot contract through the real
   authenticated source/delta protocol in slice 6; current production acquisition
   has not migrated. Use installed `/usr/bin/ds-canary` for development acceptance;

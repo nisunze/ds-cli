@@ -66,3 +66,57 @@ array order is preserved. Observation time and opaque artifact handles are bound
 as well as source/context fields. `computed_sha256` and `verify_sha256` own this
 algorithm. Verification is distinct from structural admission and never makes a
 locally created receipt an authenticated publication authority.
+
+## Native immutable storage
+
+`ds-layer-store::project_snapshot::Store` owns retained chunks and its SQLite
+catalogue; there is no network client in this boundary. Its namespace hashes the
+entire captured context plus source kind. The catalogue rechecks that authority.
+A store needs an absolute base with trusted directory ancestors. The new
+`snapshot_privacy` helper fails closed on insecure owners/modes, symlinks,
+reparse points, multiply linked files or unsupported privacy semantics. It does
+not chmod workspace ancestors. Unix entries are 0700/0600; Windows directory
+creation supplies a protected current-user-only DACL at creation. Files may
+inherit that owner-only ACL. System, Administrators and the exactly resolved
+TrustedInstaller identity are trusted only for ancestor substitution checks.
+
+`admit` takes already acquired local files keyed by declared SHA-256 and an
+expected head. It bounds chunks to 64 MiB, snapshots to 64 GiB/5 million rows,
+and reads 128-row batches with a 100,000-node geometry limit per feature.
+It checks byte hashes/counts, actual schema/layer/row coverage, stable ID and
+object revision columns, geographic geometry admission and duplicate live IDs.
+The logical digest derives from actual decoded Parquet rows. No cursor/head
+advances until all validation and durable chunk writes finish; one FULL-sync
+SQLite transaction advances the manifest and head together. Errors/cancellation
+retain the old head. Verified orphan chunks from interruption can recover locally.
+
+Logical row identity is SHA-256 over `ds.snapshot-feature/v1` plus NUL and the
+compact recursively key-sorted JSON feature returned by `batch_to_features`.
+All normalized scalar properties, including nulls, ID and complete geometry are
+bound. The snapshot logical digest hashes `ds.snapshot-logical-rows/v1` plus
+NUL, followed by rows sorted by layer and stable ID using binary UTF-8 order.
+Each row contributes layer, stable ID, object revision and its lowercase feature
+hash, each prefixed by its UTF-8 byte length as little-endian u64. Thus chunk
+layout/compaction does not change logical identity. Duplicate IDs per layer refuse.
+
+A repeated current manifest performs no import or chunk verification. A changed
+manifest reuses indexed unchanged chunks without re-decoding/reimporting them;
+it currently rehashes those local bytes for integrity. Admission reports imported
+chunks/bytes, reused chunks, locally verified reuse bytes and elapsed milliseconds.
+These are local measurements, not cloud read or billing evidence.
+
+`pin` captures an immutable manifest behind a shared process lock. Streaming
+`visit_layer` validates retained bytes, then applies the existing exact area
+predicate locally; it cannot check remote freshness or acquire source data.
+`retain` preserves the current head, explicit keep-set and every pinned manifest;
+only unreferenced chunks and abandoned owned staging files are removed under the
+catalogue lock. A refresh can promote a new head while an old reader remains pinned.
+
+Proof commands: `cargo test --locked --manifest-path crates/ds-layer-store/Cargo.toml
+--lib` (106 tests, including real Parquet admission/masks/recovery/retention and
+privacy refusal); the Windows helper additionally passes an MSVC target metadata
+check. The latter is not Windows runtime, locking, filesystem durability or
+packaging acceptance. Acquisition adapters, ordered delta application, spatial
+index/Polars projection, persisted masks and deployed callers remain distinct
+obligations in OPEN section 16; full streaming local masks alone do not satisfy
+that performance matrix.

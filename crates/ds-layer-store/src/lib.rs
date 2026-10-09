@@ -214,6 +214,8 @@ pub mod local_models;
 pub mod prepared;
 pub mod private;
 pub mod project_dataset_cache;
+pub mod project_snapshot;
+mod snapshot_privacy;
 pub mod reference_cache;
 pub mod scoped;
 pub mod visibility;
