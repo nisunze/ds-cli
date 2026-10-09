@@ -51,7 +51,7 @@ pub static COMMAND: Command = Command {
     path: &["dsgrid", "structure", "staking-enrich"],
     contract: 1,
     summary: "Preview or apply structure functions, earthing and transformer loads.",
-    purpose: "Derive meaningful structure functions and material earthing from the exact structure family, then join each transformer to a unique nearby surveyed transformer name and kVA. Ordinary LINE supports remain without a Comment 1 proposal. Existing authored load references win; ambiguous and distant survey matches stay unknown and are reported. The inclusive engineering-number selection is revision-gated and bounded. Dry-run and write exercise the same typed engine command.",
+    purpose: "Derive meaningful structure functions and material earthing from the exact structure family, then join each transformer to a unique nearby surveyed transformer name and kVA. Ordinary LINE supports remain without a Comment 1 proposal. Existing authored load references win (correct one with an edit_profile_properties envelope through `ds dsgrid apply`); ambiguous and distant survey matches stay unknown and are reported. The inclusive engineering-number selection is revision-gated and bounded. Dry-run and write exercise the same typed engine command.",
     chapter: Chapter::GridModel,
     effect: Effect::LocalFileWrite,
     authority: Authority::None,
