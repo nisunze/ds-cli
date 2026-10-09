@@ -42,6 +42,16 @@ pub(crate) const ACTION_INVENTORY: &str = "transformer_inventory";
 pub(crate) const ACTION_LIST_STATUS: &str = "list_transformers_status";
 pub(crate) const ACTION_RETIRE: &str = "retire_transformer";
 pub(crate) const ACTION_RESTORE: &str = "restore_transformer";
+/// Deleted-transformer recovery: read one verified delete backup, or create the
+/// deleted working document again from it. Like `export_reports_only` below,
+/// ds-brain serves both on the fixed `/report` route while they are not
+/// declared in [`crate::PROJECT_REPORT_ACTIONS`]; declaring them would be a
+/// client-profile schema bump (a release event), so the core sends them on the
+/// same route without widening the profile identity.
+pub(crate) const ACTION_READ_DELETED_BACKUP: &str = "read_transformer_backup";
+pub(crate) const ACTION_RESTORE_DELETED: &str = "restore_deleted_transformer";
+/// The authorized signer for stored objects a status read or listing named.
+pub(crate) const ACTION_SIGN_URL: &str = "sign_url";
 /// The cloud individual-report computation. It is one of the four browser-lane
 /// `/report` actions the routing descriptor names as served by ds-brain but
 /// not yet declared in [`crate::PROJECT_REPORT_ACTIONS`]; declaring it there
@@ -265,6 +275,9 @@ pub(crate) enum ProjectReportOperation<'a> {
     ListStatus(&'a TransformerSet),
     Retire(&'a RetirementRequest),
     Restore(&'a RetirementRequest),
+    ReadDeletedBackup(&'a DeletedBackupRequest),
+    RestoreDeleted(&'a DeletedBackupRequest),
+    SignUrls(&'a ArtifactDownloadRequest),
     /// The kernel-built material propagation request, sent whole.
     MaterialPropagation(&'a Value),
 }
@@ -279,6 +292,9 @@ impl ProjectReportOperation<'_> {
             Self::ListStatus(_) => ACTION_LIST_STATUS,
             Self::Retire(_) => ACTION_RETIRE,
             Self::Restore(_) => ACTION_RESTORE,
+            Self::ReadDeletedBackup(_) => ACTION_READ_DELETED_BACKUP,
+            Self::RestoreDeleted(_) => ACTION_RESTORE_DELETED,
+            Self::SignUrls(_) => ACTION_SIGN_URL,
             Self::MaterialPropagation(_) => ACTION_PROPAGATE_MATERIALS,
         }
     }
@@ -364,6 +380,22 @@ impl ProjectReportOperation<'_> {
             }
             Self::Restore(request) => {
                 body.insert("transformers".into(), names_value(&request.transformers));
+            }
+            Self::ReadDeletedBackup(request) | Self::RestoreDeleted(request) => {
+                body.insert("transformers".into(), names_value(&request.transformers));
+                body.insert("backup".into(), request.backup_value());
+            }
+            Self::SignUrls(request) => {
+                body.insert(
+                    "paths".into(),
+                    Value::Array(
+                        request
+                            .identities
+                            .iter()
+                            .map(|identity| Value::String(identity.locator()))
+                            .collect(),
+                    ),
+                );
             }
             Self::MaterialPropagation(request) => {
                 body.insert("material_propagation".into(), (*request).clone());
@@ -1845,6 +1877,706 @@ pub(crate) fn decode_retirement_receipt(
 }
 
 // ---------------------------------------------------------------------------
+// Deleted-transformer recovery
+// ---------------------------------------------------------------------------
+
+/// One deleted transformer's verified delete backup: the transformer and the
+/// backup object its ledger row names, and — to restore — the exact generation
+/// and SHA-256 a read returned. Built only through [`Self::read`] and
+/// [`Self::restore`], which hold the bounds ds-brain enforces.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeletedBackupRequest {
+    transformers: TransformerSet,
+    object: String,
+    generation: Option<i64>,
+    sha256: Option<String>,
+}
+
+fn sha256_hex(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+}
+
+impl DeletedBackupRequest {
+    fn new(
+        transformer: String,
+        object: String,
+        generation: Option<i64>,
+        sha256: Option<String>,
+    ) -> Result<Self, ClientError> {
+        let invalid = |message: &'static str| ClientError::new(ErrorKind::InvalidInput, message);
+        let transformers = TransformerSet::new([transformer])?;
+        if transformers.len() != 1 {
+            return Err(invalid(
+                "a backup read or restore names exactly one transformer",
+            ));
+        }
+        if !bounded(&object, 1024, false) || object.contains('\\') {
+            return Err(invalid(
+                "a backup object is the ledger's transformers/… .dsgrid key, at most 1024 characters",
+            ));
+        }
+        if generation.is_some_and(|generation| generation <= 0) {
+            return Err(invalid("a backup generation is a positive integer"));
+        }
+        if sha256.as_deref().is_some_and(|digest| !sha256_hex(digest)) {
+            return Err(invalid("a backup sha256 is 64 lowercase hex characters"));
+        }
+        Ok(Self {
+            transformers,
+            object,
+            generation,
+            sha256,
+        })
+    }
+
+    /// Read one backup: the live generation, or the pinned one.
+    pub fn read(
+        transformer: String,
+        object: String,
+        generation: Option<i64>,
+        sha256: Option<String>,
+    ) -> Result<Self, ClientError> {
+        Self::new(transformer, object, generation, sha256)
+    }
+
+    /// Restore from one backup, pinned exactly as a read returned it.
+    pub fn restore(
+        transformer: String,
+        object: String,
+        generation: i64,
+        sha256: String,
+    ) -> Result<Self, ClientError> {
+        Self::new(transformer, object, Some(generation), Some(sha256))
+    }
+
+    pub fn transformer(&self) -> &str {
+        &self.transformers.names()[0]
+    }
+    pub fn object(&self) -> &str {
+        &self.object
+    }
+    pub const fn generation(&self) -> Option<i64> {
+        self.generation
+    }
+    pub fn sha256(&self) -> Option<&str> {
+        self.sha256.as_deref()
+    }
+
+    fn backup_value(&self) -> Value {
+        let mut backup = Map::new();
+        backup.insert("object".into(), Value::String(self.object.clone()));
+        if let Some(generation) = self.generation {
+            backup.insert("generation".into(), Value::from(generation));
+        }
+        if let Some(sha256) = &self.sha256 {
+            backup.insert("sha256".into(), Value::String(sha256.clone()));
+        }
+        Value::Object(backup)
+    }
+}
+
+/// A verified delete backup as ds-brain read it, and — when fetched — its
+/// exact bytes, checked against the receipt's length and SHA-256. The
+/// short-lived signed locator is spent inside the core and never returned.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeletedBackupRead {
+    name: String,
+    source_revision: i64,
+    layers: Vec<String>,
+    backup: RetirementBackup,
+    expires_at: String,
+    download_url: String,
+    bytes: Option<Vec<u8>>,
+}
+
+impl DeletedBackupRead {
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+    pub const fn source_revision(&self) -> i64 {
+        self.source_revision
+    }
+    pub fn layers(&self) -> &[String] {
+        &self.layers
+    }
+    pub fn backup(&self) -> &RetirementBackup {
+        &self.backup
+    }
+    pub fn expires_at(&self) -> &str {
+        &self.expires_at
+    }
+    /// The verified `.dsgrid` bytes, when the read was asked to fetch them.
+    pub fn bytes(&self) -> Option<&[u8]> {
+        self.bytes.as_deref()
+    }
+}
+
+/// The working document ds-brain created again from a verified backup.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeletedTransformerRestoration {
+    name: String,
+    state: String,
+    restored_at: i64,
+    restored_by: String,
+    source_revision: i64,
+    version: i64,
+    layers: Vec<String>,
+    backup: RetirementBackup,
+}
+
+impl DeletedTransformerRestoration {
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+    pub fn state(&self) -> &str {
+        &self.state
+    }
+    pub const fn restored_at(&self) -> i64 {
+        self.restored_at
+    }
+    pub fn restored_by(&self) -> &str {
+        &self.restored_by
+    }
+    pub const fn source_revision(&self) -> i64 {
+        self.source_revision
+    }
+    pub const fn version(&self) -> i64 {
+        self.version
+    }
+    pub fn layers(&self) -> &[String] {
+        &self.layers
+    }
+    pub fn backup(&self) -> &RetirementBackup {
+        &self.backup
+    }
+}
+
+#[derive(Deserialize)]
+struct DeletedBackupReadWire {
+    eds_project_id: String,
+    action: String,
+    name: String,
+    source_revision: i64,
+    #[serde(default)]
+    layers: Vec<String>,
+    backup: BackupWire,
+    download_url: String,
+    expires_at: String,
+}
+
+#[derive(Deserialize)]
+struct RestorationWire {
+    name: String,
+    state: String,
+    restored_at: i64,
+    restored_by: String,
+    source_revision: i64,
+    version: i64,
+    #[serde(default)]
+    layers: Vec<String>,
+    backup: BackupWire,
+}
+
+#[derive(Deserialize)]
+struct DeletedRestoreWire {
+    eds_project_id: String,
+    action: String,
+    restoration: RestorationWire,
+}
+
+fn layers_bounded(layers: &[String]) -> bool {
+    layers.len() <= 256 && layers.iter().all(|layer| bounded(layer, 128, false))
+}
+
+/// The backup the server verified must be the one that was asked for: the
+/// same object, and the pinned generation and digest when they were pinned.
+fn backup_matches(backup: &RetirementBackup, request: &DeletedBackupRequest) -> bool {
+    let object = request
+        .object
+        .strip_prefix(&format!("gs://{}/", backup.bucket))
+        .unwrap_or(&request.object);
+    backup.object == object
+        && request
+            .generation
+            .is_none_or(|generation| generation == backup.generation)
+        && request
+            .sha256
+            .as_deref()
+            .is_none_or(|digest| digest == backup.sha256)
+}
+
+pub(crate) fn decode_deleted_backup_read(
+    response: TransportResponse,
+    limit: usize,
+    project: &str,
+    request: &DeletedBackupRequest,
+) -> Result<DeletedBackupRead, ClientError> {
+    let wire: DeletedBackupReadWire = decode(response, limit)?;
+    let backup = decode_backup(Some(wire.backup))?.ok_or_else(unreadable)?;
+    if wire.eds_project_id != project
+        || wire.action != ACTION_READ_DELETED_BACKUP
+        || wire.name != request.transformer()
+        || wire.source_revision < 0
+        || !layers_bounded(&wire.layers)
+        || !bounded(&wire.expires_at, 64, false)
+        || !backup_matches(&backup, request)
+    {
+        return Err(unreadable());
+    }
+    // The locator is checked once here, so no other host or object is ever
+    // fetched with it.
+    crate::grid_models::signed_object_locator(
+        &wire.download_url,
+        &backup.bucket,
+        &backup.object,
+        usize::try_from(backup.byte_length).map_err(|_| unreadable())?,
+    )
+    .map_err(|_| unreadable())?;
+    Ok(DeletedBackupRead {
+        name: wire.name,
+        source_revision: wire.source_revision,
+        layers: wire.layers,
+        backup,
+        expires_at: wire.expires_at,
+        download_url: wire.download_url,
+        bytes: None,
+    })
+}
+
+pub(crate) fn decode_deleted_restoration(
+    response: TransportResponse,
+    limit: usize,
+    project: &str,
+    request: &DeletedBackupRequest,
+) -> Result<DeletedTransformerRestoration, ClientError> {
+    let wire: DeletedRestoreWire = decode(response, limit)?;
+    let restoration = wire.restoration;
+    let backup = decode_backup(Some(restoration.backup))?.ok_or_else(unreadable)?;
+    if wire.eds_project_id != project
+        || wire.action != ACTION_RESTORE_DELETED
+        || restoration.name != request.transformer()
+        || !matches!(restoration.state.as_str(), "active" | "retired")
+        || restoration.restored_at <= 0
+        || !bounded(&restoration.restored_by, 320, false)
+        || restoration.source_revision < 0
+        || restoration.version <= 0
+        || !layers_bounded(&restoration.layers)
+        || !backup_matches(&backup, request)
+    {
+        return Err(unreadable());
+    }
+    Ok(DeletedTransformerRestoration {
+        name: restoration.name,
+        state: restoration.state,
+        restored_at: restoration.restored_at,
+        restored_by: restoration.restored_by,
+        source_revision: restoration.source_revision,
+        version: restoration.version,
+        layers: restoration.layers,
+        backup,
+    })
+}
+
+/// The recovery actions' closed refusal vocabulary, carried with the status:
+/// ds-brain answers `{error_code, detail}` for each typed refusal and
+/// `{detail}` for a capability or input refusal.
+pub(crate) fn deleted_backup_refusal(response: &TransportResponse) -> ClientError {
+    #[derive(Deserialize)]
+    struct Wire {
+        #[serde(default)]
+        error_code: Option<String>,
+        #[serde(default)]
+        detail: Option<String>,
+    }
+    let wire: Option<Wire> = (response.body.len() <= 64 * 1024)
+        .then(|| serde_json::from_slice(&response.body).ok())
+        .flatten();
+    let code = wire.as_ref().and_then(|wire| {
+        wire.error_code.as_deref().filter(|code| {
+            matches!(
+                *code,
+                "backup_pin_invalid"
+                    | "special_document"
+                    | "backup_not_found"
+                    | "backup_unverified"
+                    | "backup_identity_mismatch"
+                    | "transformer_exists"
+                    | "history_diverged"
+                    | "backup_unavailable"
+                    | "failed"
+            )
+        })
+    });
+    let detail = wire
+        .as_ref()
+        .and_then(|wire| wire.detail.as_deref())
+        .filter(|detail| detail.chars().count() <= MAX_TEXT_CHARS);
+    let (kind, message) = match response.status {
+        400 | 404 | 409 | 422 => (
+            ErrorKind::InvalidInput,
+            "the deleted transformer's backup was refused",
+        ),
+        401 | 403 => (
+            ErrorKind::AuthenticationRejected,
+            "reading or restoring a deleted transformer's backup needs transformer.delete",
+        ),
+        _ => (
+            ErrorKind::Transient,
+            "deleted-transformer recovery is temporarily unavailable",
+        ),
+    };
+    ClientError::with_service_refusal(
+        kind,
+        message,
+        crate::ServiceRefusal::new(response.status, code, detail),
+    )
+}
+
+/// Read one verified delete backup, and fetch its exact bytes when asked.
+pub(crate) fn deleted_backup_read<T: crate::AuthorizedTransport>(
+    profile: &crate::ClientProfile,
+    transport: &mut T,
+    authority: crate::authorized::Authority<'_>,
+    ds_project: &str,
+    request: &DeletedBackupRequest,
+    fetch: bool,
+) -> Result<DeletedBackupRead, ClientError> {
+    let response = transport.project_report(crate::ProjectReportCall {
+        profile,
+        ds_project,
+        operation: ProjectReportOperation::ReadDeletedBackup(request),
+        authority: authority.call(),
+    })?;
+    if response.status != 200 {
+        return Err(deleted_backup_refusal(&response));
+    }
+    let mut read = decode_deleted_backup_read(
+        response,
+        crate::PROJECT_REPORT_RESPONSE_LIMIT,
+        ds_project,
+        request,
+    )?;
+    if fetch {
+        fetch_deleted_backup(transport, &mut read)?;
+    }
+    Ok(read)
+}
+
+/// Create the deleted working document again from one pinned backup.
+pub(crate) fn deleted_backup_restore<T: crate::AuthorizedTransport>(
+    profile: &crate::ClientProfile,
+    transport: &mut T,
+    authority: crate::authorized::Authority<'_>,
+    ds_project: &str,
+    request: &DeletedBackupRequest,
+) -> Result<DeletedTransformerRestoration, ClientError> {
+    if request.generation.is_none() || request.sha256.is_none() {
+        return Err(ClientError::new(
+            ErrorKind::InvalidInput,
+            "a restoration pins the backup generation and sha256 exactly as a read returned them",
+        ));
+    }
+    let response = transport.project_report(crate::ProjectReportCall {
+        profile,
+        ds_project,
+        operation: ProjectReportOperation::RestoreDeleted(request),
+        authority: authority.call(),
+    })?;
+    if response.status != 200 {
+        return Err(deleted_backup_refusal(&response));
+    }
+    decode_deleted_restoration(
+        response,
+        crate::PROJECT_REPORT_RESPONSE_LIMIT,
+        ds_project,
+        request,
+    )
+}
+
+/// Fetch the verified backup's bytes through the signed-object transport and
+/// admit them only at the receipt's exact length and SHA-256.
+pub(crate) fn fetch_deleted_backup<T: crate::AuthorizedTransport>(
+    transport: &mut T,
+    read: &mut DeletedBackupRead,
+) -> Result<(), ClientError> {
+    use sha2::{Digest, Sha256};
+    let size = usize::try_from(read.backup.byte_length).map_err(|_| unreadable())?;
+    let call = crate::grid_models::signed_object_locator(
+        &read.download_url,
+        &read.backup.bucket,
+        &read.backup.object,
+        size,
+    )?;
+    let mut response = transport.grid_model_bytes(call)?;
+    if response.status != 200
+        || response.body.len() != size
+        || format!("{:x}", Sha256::digest(&response.body)) != read.backup.sha256
+    {
+        return Err(ClientError::new(
+            ErrorKind::UnreadableResponse,
+            "the fetched backup bytes do not match the verified receipt's length and SHA-256",
+        ));
+    }
+    read.bytes = Some(std::mem::take(&mut response.body));
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Authorized artifact downloads
+// ---------------------------------------------------------------------------
+
+/// The most stored objects one download may fetch.
+pub const MAX_ARTIFACT_DOWNLOADS: usize = 200;
+
+/// One stored object a download plan listed, by its durable identity.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ArtifactIdentity {
+    bucket: String,
+    object: String,
+}
+
+impl ArtifactIdentity {
+    pub fn bucket(&self) -> &str {
+        &self.bucket
+    }
+    /// The object path inside the bucket; also the file's place under a
+    /// download directory, so two artifacts never share a name.
+    pub fn object(&self) -> &str {
+        &self.object
+    }
+    /// `gs://bucket/object`.
+    pub fn locator(&self) -> String {
+        format!("gs://{}/{}", self.bucket, self.object)
+    }
+}
+
+fn percent_decoded(value: &str) -> Option<String> {
+    let bytes = value.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index] == b'%' {
+            let hex = std::str::from_utf8(bytes.get(index + 1..index + 3)?).ok()?;
+            out.push(u8::from_str_radix(hex, 16).ok()?);
+            index += 3;
+        } else {
+            out.push(bytes[index]);
+            index += 1;
+        }
+    }
+    String::from_utf8(out).ok()
+}
+
+/// The durable identity behind a listed artifact locator: `gs://bucket/object`,
+/// a storage URL `https://storage.googleapis.com/bucket/object?…`, or a legacy
+/// Firebase URL `https://firebasestorage.googleapis.com/v0/b/bucket/o/<object>?…`.
+/// Any bearer query is dropped: only the identity is ever sent for signing.
+pub fn artifact_identity(locator: &str) -> Option<ArtifactIdentity> {
+    let (bucket, object) = if let Some(rest) = locator.strip_prefix("gs://") {
+        let (bucket, object) = rest.split_once('/')?;
+        (bucket.to_owned(), object.to_owned())
+    } else {
+        let url = url::Url::parse(locator).ok()?;
+        if url.scheme() != "https" || url.port().is_some() || !url.username().is_empty() {
+            return None;
+        }
+        match url.host_str()? {
+            "storage.googleapis.com" => {
+                let path = percent_decoded(url.path().strip_prefix('/')?)?;
+                let (bucket, object) = path.split_once('/')?;
+                (bucket.to_owned(), object.to_owned())
+            }
+            "firebasestorage.googleapis.com" => {
+                let rest = url.path().strip_prefix("/v0/b/")?;
+                let (bucket, object) = rest.split_once("/o/")?;
+                (percent_decoded(bucket)?, percent_decoded(object)?)
+            }
+            _ => return None,
+        }
+    };
+    let plain = |part: &str| {
+        !part.is_empty()
+            && part != "."
+            && part != ".."
+            && !part.contains('\\')
+            && !part.chars().any(char::is_control)
+    };
+    (plain(&bucket)
+        && !bucket.contains('/')
+        && bucket.len() <= 222
+        && object.len() <= 1024
+        && object.split('/').all(plain))
+    .then_some(ArtifactIdentity { bucket, object })
+}
+
+/// The distinct stored objects one download fetches, in plan order.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ArtifactDownloadRequest {
+    identities: Vec<ArtifactIdentity>,
+}
+
+impl ArtifactDownloadRequest {
+    /// Every locator must name a stored object; one that does not is refused
+    /// by name rather than skipped.
+    pub fn new<I, S>(locators: I) -> Result<Self, ClientError>
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<str>,
+    {
+        let mut identities: Vec<ArtifactIdentity> = Vec::new();
+        for locator in locators {
+            let locator = locator.as_ref();
+            let identity = artifact_identity(locator).ok_or_else(|| {
+                ClientError::new(
+                    ErrorKind::InvalidInput,
+                    "a listed artifact locator does not name one stored object",
+                )
+            })?;
+            if !identities.contains(&identity) {
+                identities.push(identity);
+            }
+        }
+        if identities.is_empty() || identities.len() > MAX_ARTIFACT_DOWNLOADS {
+            return Err(ClientError::new(
+                ErrorKind::InvalidInput,
+                "one download fetches 1 through 200 listed artifacts",
+            ));
+        }
+        Ok(Self { identities })
+    }
+    pub fn identities(&self) -> &[ArtifactIdentity] {
+        &self.identities
+    }
+}
+
+/// One fetched artifact: its identity, exact bytes and their SHA-256.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ArtifactFile {
+    pub identity: ArtifactIdentity,
+    pub bytes: Vec<u8>,
+    pub sha256: String,
+}
+
+/// What one download did with each identity, in request order.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ArtifactOutcome {
+    /// Fetched and handed to the sink; the SHA-256 of the exact bytes.
+    Fetched { bytes: u64, sha256: String },
+    /// The signer declined to sign it for this caller, with its reason.
+    Refused { reason: String },
+    /// Signed, but the bytes did not arrive whole.
+    Failed { reason: String },
+}
+
+#[derive(Deserialize)]
+struct SignWire {
+    #[serde(default)]
+    urls: std::collections::BTreeMap<String, String>,
+    #[serde(default)]
+    refused: std::collections::BTreeMap<String, String>,
+    mode: String,
+}
+
+fn decode_signed(
+    response: TransportResponse,
+    request: &ArtifactDownloadRequest,
+) -> Result<Vec<Result<String, String>>, ClientError> {
+    let wire: SignWire = decode(response, crate::PROJECT_REPORT_RESPONSE_LIMIT)?;
+    if wire.mode != "signed" || wire.urls.len() + wire.refused.len() != request.identities.len() {
+        return Err(unreadable());
+    }
+    request
+        .identities
+        .iter()
+        .map(|identity| {
+            let key = identity.locator();
+            match (wire.urls.get(&key), wire.refused.get(&key)) {
+                (Some(url), None) => {
+                    crate::grid_models::signed_object_locator(
+                        url,
+                        &identity.bucket,
+                        &identity.object,
+                        crate::grid_models::MAX_BYTES,
+                    )
+                    .map_err(|_| unreadable())?;
+                    Ok(Ok(url.clone()))
+                }
+                (None, Some(reason)) if bounded(reason, 512, false) => Ok(Err(reason.clone())),
+                _ => Err(unreadable()),
+            }
+        })
+        .collect()
+}
+
+/// Sign every identity through ds-brain's authorized `sign_url` boundary
+/// (membership-checked, one-hour V4 GETs), then fetch each signed object and
+/// hand its exact bytes and SHA-256 to `sink` one at a time, so a large plan
+/// never sits in memory. A fresh signature is spent here and never returned.
+/// `sign_url` is a native `/report` action outside the declared profile
+/// vocabulary, sent on the fixed route like `export_reports_only`.
+pub(crate) fn download_artifacts<T: crate::AuthorizedTransport>(
+    profile: &crate::ClientProfile,
+    transport: &mut T,
+    authority: crate::authorized::Authority<'_>,
+    ds_project: &str,
+    request: &ArtifactDownloadRequest,
+    sink: &mut dyn FnMut(ArtifactFile) -> Result<(), ClientError>,
+) -> Result<Vec<(ArtifactIdentity, ArtifactOutcome)>, ClientError> {
+    use sha2::{Digest, Sha256};
+    let response = transport.project_report(crate::ProjectReportCall {
+        profile,
+        ds_project,
+        operation: ProjectReportOperation::SignUrls(request),
+        authority: authority.call(),
+    })?;
+    if response.status != 200 {
+        return Err(deleted_backup_refusal(&response));
+    }
+    let signed = decode_signed(response, request)?;
+    let mut outcomes = Vec::with_capacity(signed.len());
+    for (identity, signed) in request.identities.iter().zip(signed) {
+        let outcome = match signed {
+            Err(reason) => ArtifactOutcome::Refused { reason },
+            Ok(url) => {
+                let call = crate::grid_models::signed_object_locator(
+                    &url,
+                    &identity.bucket,
+                    &identity.object,
+                    crate::grid_models::MAX_BYTES,
+                )?;
+                match transport.grid_model_bytes(call) {
+                    Ok(mut response) if response.status == 200 && !response.body.is_empty() => {
+                        let bytes = std::mem::take(&mut response.body);
+                        let sha256 = format!("{:x}", Sha256::digest(&bytes));
+                        let size = bytes.len() as u64;
+                        sink(ArtifactFile {
+                            identity: identity.clone(),
+                            bytes,
+                            sha256: sha256.clone(),
+                        })?;
+                        ArtifactOutcome::Fetched {
+                            bytes: size,
+                            sha256,
+                        }
+                    }
+                    Ok(response) => ArtifactOutcome::Failed {
+                        reason: format!("storage answered HTTP {}", response.status),
+                    },
+                    Err(error) => ArtifactOutcome::Failed {
+                        reason: format!("{error:?}"),
+                    },
+                }
+            }
+        };
+        outcomes.push((identity.clone(), outcome));
+    }
+    Ok(outcomes)
+}
+
+// ---------------------------------------------------------------------------
 // Shared bounds
 // ---------------------------------------------------------------------------
 
@@ -1931,5 +2663,498 @@ mod composition_tests {
             json!({"transformers":["combined_transformer"]})
         )
         .is_err());
+    }
+}
+
+#[cfg(test)]
+mod deleted_backup_tests {
+    use super::*;
+    use serde_json::json;
+    use sha2::{Digest, Sha256};
+
+    const BUCKET: &str = "ds-backups";
+    const OBJECT: &str = "transformers/1788000000-p1-tx_a.dsgrid";
+
+    fn ok(body: Value) -> TransportResponse {
+        TransportResponse {
+            status: 200,
+            body: serde_json::to_vec(&body).unwrap(),
+        }
+    }
+
+    fn receipt(bytes: &[u8]) -> Value {
+        json!({"bucket": BUCKET, "object": OBJECT, "generation": 17,
+               "sha256": format!("{:x}", Sha256::digest(bytes)), "byte_length": bytes.len()})
+    }
+
+    fn read_body(bytes: &[u8], url: &str) -> Value {
+        json!({"eds_project_id": "p1", "action": "read_transformer_backup", "name": "tx_a",
+               "source_revision": 4, "layers": ["lv_poles", "lv_lines"], "backup": receipt(bytes),
+               "download_url": url, "expires_at": "2026-10-09T10:15:00Z"})
+    }
+
+    fn signed() -> String {
+        format!(
+            "https://storage.googleapis.com/{BUCKET}/{OBJECT}?X-Goog-Signature=abc&generation=17"
+        )
+    }
+
+    #[test]
+    fn recovery_rides_the_fixed_route_without_widening_the_declared_profile_actions() {
+        assert!(!crate::PROJECT_REPORT_ACTIONS.contains(&ACTION_READ_DELETED_BACKUP));
+        assert!(!crate::PROJECT_REPORT_ACTIONS.contains(&ACTION_RESTORE_DELETED));
+        let read = DeletedBackupRequest::read("tx_a".into(), OBJECT.into(), None, None).unwrap();
+        let body: Value =
+            serde_json::from_slice(&ProjectReportOperation::ReadDeletedBackup(&read).body("p1"))
+                .unwrap();
+        assert_eq!(
+            body,
+            json!({"action": "read_transformer_backup", "eds_project_id": "p1",
+                   "transformers": ["tx_a"], "backup": {"object": OBJECT}})
+        );
+        let digest = "a".repeat(64);
+        let restore =
+            DeletedBackupRequest::restore("tx_a".into(), OBJECT.into(), 17, digest.clone())
+                .unwrap();
+        let body: Value =
+            serde_json::from_slice(&ProjectReportOperation::RestoreDeleted(&restore).body("p1"))
+                .unwrap();
+        assert_eq!(body["action"], "restore_deleted_transformer");
+        assert_eq!(
+            body["backup"],
+            json!({"object": OBJECT, "generation": 17, "sha256": digest})
+        );
+    }
+
+    #[test]
+    fn requests_hold_the_servers_bounds_before_a_round_trip() {
+        for (object, generation, sha) in [
+            ("", None, None),
+            (" transformers/a.dsgrid", None, None),
+            ("transformers\\a.dsgrid", None, None),
+            (OBJECT, Some(0), None),
+            (OBJECT, None, Some("ABC")),
+        ] {
+            assert!(
+                DeletedBackupRequest::read(
+                    "tx_a".into(),
+                    object.into(),
+                    generation,
+                    sha.map(Into::into)
+                )
+                .is_err(),
+                "{object:?} {generation:?} {sha:?}"
+            );
+        }
+        assert!(DeletedBackupRequest::read(String::new(), OBJECT.into(), None, None).is_err());
+    }
+
+    #[test]
+    fn a_read_is_admitted_only_for_the_asked_object_and_an_exact_storage_locator() {
+        let bytes = b"native dsgrid bytes".to_vec();
+        let request = DeletedBackupRequest::read("tx_a".into(), OBJECT.into(), None, None).unwrap();
+        let read =
+            decode_deleted_backup_read(ok(read_body(&bytes, &signed())), 1 << 20, "p1", &request)
+                .expect("verified read");
+        assert_eq!(read.backup().generation(), 17);
+        assert_eq!(read.layers(), ["lv_poles", "lv_lines"]);
+        assert!(read.bytes().is_none());
+        assert!(!format!("{:?}", read.backup()).contains("Signature"));
+        let gs = DeletedBackupRequest::read(
+            "tx_a".into(),
+            format!("gs://{BUCKET}/{OBJECT}"),
+            Some(17),
+            None,
+        )
+        .unwrap();
+        assert!(
+            decode_deleted_backup_read(ok(read_body(&bytes, &signed())), 1 << 20, "p1", &gs)
+                .is_ok()
+        );
+        for url in [
+            format!("https://example.com/{BUCKET}/{OBJECT}?sig=1"),
+            format!("https://storage.googleapis.com/{BUCKET}/transformers/other.dsgrid?sig=1"),
+            format!("https://storage.googleapis.com/other/{OBJECT}?sig=1"),
+            format!("http://storage.googleapis.com/{BUCKET}/{OBJECT}?sig=1"),
+        ] {
+            assert_eq!(
+                decode_deleted_backup_read(ok(read_body(&bytes, &url)), 1 << 20, "p1", &request)
+                    .unwrap_err()
+                    .kind(),
+                ErrorKind::UnreadableResponse,
+                "{url}"
+            );
+        }
+        let pinned_elsewhere =
+            DeletedBackupRequest::read("tx_a".into(), OBJECT.into(), Some(18), None).unwrap();
+        assert!(decode_deleted_backup_read(
+            ok(read_body(&bytes, &signed())),
+            1 << 20,
+            "p1",
+            &pinned_elsewhere
+        )
+        .is_err());
+        assert!(decode_deleted_backup_read(
+            ok(read_body(&bytes, &signed())),
+            1 << 20,
+            "p2",
+            &request
+        )
+        .is_err());
+    }
+
+    struct BackupBytes {
+        status: u16,
+        body: Vec<u8>,
+        calls: usize,
+    }
+    macro_rules! no_other_call {
+        ($name:ident, $call:ident) => {
+            fn $name(
+                &mut self,
+                _: crate::$call<'_>,
+            ) -> Result<crate::TransportResponse, crate::TransportError> {
+                panic!("a backup fetch made an unrelated call")
+            }
+        };
+    }
+    impl crate::AuthorizedTransport for BackupBytes {
+        no_other_call!(list_projects, ProjectListCall);
+        no_other_call!(transformer_context, TransformerContextCall);
+        no_other_call!(project_forms, ProjectFormsCall);
+        no_other_call!(project_form_editor, ProjectFormEditorCall);
+        no_other_call!(solar_snapshot, SolarSnapshotCall);
+        no_other_call!(survey_query, SurveyQueryCall);
+        no_other_call!(survey_entries_select, SurveyEntriesSelectCall);
+        no_other_call!(survey_entries_changes, SurveyEntriesChangesCall);
+        no_other_call!(survey_entry_create, SurveyEntryCreateCall);
+        no_other_call!(project_data, ProjectDataCall);
+        no_other_call!(upload_bytes, UploadBytesCall);
+        no_other_call!(survey_control, SurveyControlCall);
+        no_other_call!(styles, StylesCall);
+        no_other_call!(layers, LayersCall);
+        no_other_call!(tiles, TileCall);
+        no_other_call!(project_report, ProjectReportCall);
+        fn grid_model_bytes(
+            &mut self,
+            call: crate::grid_models::DownloadCall<'_>,
+        ) -> Result<crate::TransportResponse, crate::TransportError> {
+            self.calls += 1;
+            assert_eq!(call.url(), signed());
+            Ok(crate::TransportResponse::new(
+                self.status,
+                self.body.clone(),
+            ))
+        }
+    }
+
+    #[test]
+    fn fetched_backup_bytes_are_admitted_only_at_the_receipts_length_and_digest() {
+        let bytes = b"native dsgrid bytes".to_vec();
+        let request = DeletedBackupRequest::read("tx_a".into(), OBJECT.into(), None, None).unwrap();
+        let decode = || {
+            decode_deleted_backup_read(ok(read_body(&bytes, &signed())), 1 << 20, "p1", &request)
+                .unwrap()
+        };
+        let mut good = BackupBytes {
+            status: 200,
+            body: bytes.clone(),
+            calls: 0,
+        };
+        let mut read = decode();
+        fetch_deleted_backup(&mut good, &mut read).expect("verified bytes");
+        assert_eq!(read.bytes(), Some(bytes.as_slice()));
+        let mut altered = bytes.clone();
+        altered[0] ^= 1;
+        for (status, body) in [
+            (200, altered),
+            (200, bytes[1..].to_vec()),
+            (403, bytes.clone()),
+        ] {
+            let mut transport = BackupBytes {
+                status,
+                body,
+                calls: 0,
+            };
+            let mut read = decode();
+            assert!(fetch_deleted_backup(&mut transport, &mut read).is_err());
+            assert!(read.bytes().is_none());
+            assert_eq!(transport.calls, 1);
+        }
+    }
+
+    #[test]
+    fn a_restoration_is_the_asked_transformer_from_the_pinned_backup() {
+        let bytes = b"native dsgrid bytes".to_vec();
+        let backup = receipt(&bytes);
+        let digest = backup["sha256"].as_str().unwrap().to_owned();
+        let request =
+            DeletedBackupRequest::restore("tx_a".into(), OBJECT.into(), 17, digest).unwrap();
+        let body = |state: &str, generation: i64| {
+            let mut backup = backup.clone();
+            backup["generation"] = json!(generation);
+            json!({"eds_project_id": "p1", "action": "restore_deleted_transformer",
+                   "restoration": {"name": "tx_a", "state": state, "restored_at": 1788000000000_i64,
+                                   "restored_by": "owner@example.com", "source_revision": 4,
+                                   "version": 5, "layers": ["lv_poles"], "backup": backup}})
+        };
+        let restored = decode_deleted_restoration(ok(body("active", 17)), 1 << 20, "p1", &request)
+            .expect("restored");
+        assert_eq!(restored.version(), 5);
+        assert_eq!(restored.backup().generation(), 17);
+        assert!(
+            decode_deleted_restoration(ok(body("retired", 17)), 1 << 20, "p1", &request).is_ok()
+        );
+        assert!(
+            decode_deleted_restoration(ok(body("deleted", 17)), 1 << 20, "p1", &request).is_err()
+        );
+        assert!(
+            decode_deleted_restoration(ok(body("active", 18)), 1 << 20, "p1", &request).is_err()
+        );
+    }
+
+    #[test]
+    fn recovery_refusals_keep_the_closed_code_and_the_servers_sentence() {
+        let refused = |status: u16, body: &str| {
+            deleted_backup_refusal(&TransportResponse {
+                status,
+                body: body.as_bytes().to_vec(),
+            })
+        };
+        let exists = refused(
+            409,
+            r#"{"error_code":"transformer_exists","detail":"a transformer document with this name exists"}"#,
+        );
+        assert_eq!(exists.kind(), ErrorKind::InvalidInput);
+        assert_eq!(
+            exists.service_refusal().unwrap().code(),
+            Some("transformer_exists")
+        );
+        let denied = refused(403, r#"{"detail":"requires transformer.delete"}"#);
+        assert_eq!(denied.kind(), ErrorKind::AuthenticationRejected);
+        assert_eq!(denied.service_refusal().unwrap().code(), None);
+        let unknown = refused(422, r#"{"error_code":"made_up","detail":"x"}"#);
+        assert_eq!(unknown.service_refusal().unwrap().code(), None);
+        assert_eq!(refused(503, "").kind(), ErrorKind::Transient);
+    }
+}
+
+#[cfg(test)]
+mod artifact_download_tests {
+    use super::*;
+    use serde_json::json;
+    use sha2::{Digest, Sha256};
+
+    const BUCKET: &str = "ds-prod.firebasestorage.app";
+
+    #[test]
+    fn identities_come_from_gs_storage_and_legacy_firebase_locators_without_their_bearer_query() {
+        let gs =
+            artifact_identity(&format!("gs://{BUCKET}/p1/report_lv/TX 1/report.xlsx")).unwrap();
+        assert_eq!(gs.object(), "p1/report_lv/TX 1/report.xlsx");
+        let signed = artifact_identity(&format!(
+            "https://storage.googleapis.com/{BUCKET}/p1/report_lv/TX%201/report.xlsx?X-Goog-Signature=abc"
+        ))
+        .unwrap();
+        assert_eq!(signed, gs);
+        let firebase = artifact_identity(&format!(
+            "https://firebasestorage.googleapis.com/v0/b/{BUCKET}/o/p1%2Freport_lv%2FTX%201%2Freport.xlsx?alt=media&token=secret"
+        ))
+        .unwrap();
+        assert_eq!(firebase, gs);
+        assert!(!firebase.locator().contains("token"));
+        for bad in [
+            "",
+            "gs://bucket",
+            "gs://bucket/a/../b.pdf",
+            "gs://bucket//b.pdf",
+            "http://storage.googleapis.com/bucket/a.pdf",
+            "https://example.com/bucket/a.pdf",
+            "https://storage.googleapis.com/bucket/a%ZZ.pdf",
+            "file:///etc/passwd",
+        ] {
+            assert!(artifact_identity(bad).is_none(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn a_request_names_each_object_once_and_refuses_an_unusable_or_unbounded_plan() {
+        let one = format!("gs://{BUCKET}/p1/a.pdf");
+        let request = ArtifactDownloadRequest::new([one.clone(), one.clone()]).unwrap();
+        assert_eq!(request.identities().len(), 1);
+        assert!(ArtifactDownloadRequest::new(Vec::<String>::new()).is_err());
+        assert!(ArtifactDownloadRequest::new([one.clone(), "nope".into()]).is_err());
+        let many: Vec<String> = (0..=MAX_ARTIFACT_DOWNLOADS)
+            .map(|index| format!("gs://{BUCKET}/p1/{index}.pdf"))
+            .collect();
+        assert!(ArtifactDownloadRequest::new(many).is_err());
+        let body: Value =
+            serde_json::from_slice(&ProjectReportOperation::SignUrls(&request).body("p1")).unwrap();
+        assert_eq!(
+            body,
+            json!({"action": "sign_url", "eds_project_id": "p1", "paths": [one]})
+        );
+        assert!(!crate::PROJECT_REPORT_ACTIONS.contains(&ACTION_SIGN_URL));
+    }
+
+    struct SignAndFetch {
+        signed: Value,
+        objects: std::collections::BTreeMap<String, (u16, Vec<u8>)>,
+        fetched: Vec<String>,
+    }
+    macro_rules! no_other_call {
+        ($name:ident, $call:ident) => {
+            fn $name(
+                &mut self,
+                _: crate::$call<'_>,
+            ) -> Result<crate::TransportResponse, crate::TransportError> {
+                panic!("an artifact download made an unrelated call")
+            }
+        };
+    }
+    impl crate::AuthorizedTransport for SignAndFetch {
+        no_other_call!(list_projects, ProjectListCall);
+        no_other_call!(transformer_context, TransformerContextCall);
+        no_other_call!(project_forms, ProjectFormsCall);
+        no_other_call!(project_form_editor, ProjectFormEditorCall);
+        no_other_call!(solar_snapshot, SolarSnapshotCall);
+        no_other_call!(survey_query, SurveyQueryCall);
+        no_other_call!(survey_entries_select, SurveyEntriesSelectCall);
+        no_other_call!(survey_entries_changes, SurveyEntriesChangesCall);
+        no_other_call!(survey_entry_create, SurveyEntryCreateCall);
+        no_other_call!(project_data, ProjectDataCall);
+        no_other_call!(upload_bytes, UploadBytesCall);
+        no_other_call!(survey_control, SurveyControlCall);
+        no_other_call!(styles, StylesCall);
+        no_other_call!(layers, LayersCall);
+        no_other_call!(tiles, TileCall);
+        fn project_report(
+            &mut self,
+            call: crate::ProjectReportCall<'_>,
+        ) -> Result<crate::TransportResponse, crate::TransportError> {
+            assert_eq!(call.operation.action(), "sign_url");
+            Ok(crate::TransportResponse::new(
+                200,
+                serde_json::to_vec(&self.signed).unwrap(),
+            ))
+        }
+        fn grid_model_bytes(
+            &mut self,
+            call: crate::grid_models::DownloadCall<'_>,
+        ) -> Result<crate::TransportResponse, crate::TransportError> {
+            self.fetched.push(call.url().to_owned());
+            let (status, body) = self.objects.get(call.url()).cloned().expect("signed url");
+            Ok(crate::TransportResponse::new(status, body))
+        }
+    }
+
+    fn signed_url(object: &str) -> String {
+        format!("https://storage.googleapis.com/{BUCKET}/{object}?X-Goog-Signature=fresh")
+    }
+
+    type Downloaded = (
+        Result<Vec<(ArtifactIdentity, ArtifactOutcome)>, ClientError>,
+        Vec<ArtifactFile>,
+    );
+
+    fn download(transport: &mut SignAndFetch, request: &ArtifactDownloadRequest) -> Downloaded {
+        let profile = crate::data_distribution::tests::profile_for_tests();
+        let mut files = Vec::new();
+        let outcome = download_artifacts(
+            &profile,
+            transport,
+            crate::authorized::Authority {
+                bearer_token: "bearer",
+                uid: "uid",
+                email: "user@example.com",
+                device_id: None,
+            },
+            "p1",
+            request,
+            &mut |file| {
+                files.push(file);
+                Ok(())
+            },
+        );
+        (outcome, files)
+    }
+
+    #[test]
+    fn every_listed_artifact_is_signed_fetched_byte_exact_refused_or_failed_by_name() {
+        let report = b"PK\x03\x04 workbook".to_vec();
+        let gs = |object: &str| format!("gs://{BUCKET}/{object}");
+        let request = ArtifactDownloadRequest::new([
+            gs("p1/report_lv/tx_a/report.xlsx"),
+            gs("p1/report_lv/tx_b/report.xlsx"),
+            gs("other/report_lv/tx_c/report.xlsx"),
+        ])
+        .unwrap();
+        let mut transport = SignAndFetch {
+            signed: json!({"mode": "signed",
+                "urls": {gs("p1/report_lv/tx_a/report.xlsx"): signed_url("p1/report_lv/tx_a/report.xlsx"),
+                         gs("p1/report_lv/tx_b/report.xlsx"): signed_url("p1/report_lv/tx_b/report.xlsx")},
+                "refused": {gs("other/report_lv/tx_c/report.xlsx"): "not a member of the project"}}),
+            objects: [
+                (
+                    signed_url("p1/report_lv/tx_a/report.xlsx"),
+                    (200, report.clone()),
+                ),
+                (
+                    signed_url("p1/report_lv/tx_b/report.xlsx"),
+                    (404, Vec::new()),
+                ),
+            ]
+            .into_iter()
+            .collect(),
+            fetched: Vec::new(),
+        };
+        let (outcomes, files) = download(&mut transport, &request);
+        let outcomes = outcomes.expect("download");
+        let digest = format!("{:x}", Sha256::digest(&report));
+        assert_eq!(
+            outcomes[0].1,
+            ArtifactOutcome::Fetched {
+                bytes: report.len() as u64,
+                sha256: digest.clone()
+            }
+        );
+        assert!(
+            matches!(&outcomes[1].1, ArtifactOutcome::Failed { reason } if reason.contains("404"))
+        );
+        assert_eq!(
+            outcomes[2].1,
+            ArtifactOutcome::Refused {
+                reason: "not a member of the project".into()
+            }
+        );
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].bytes, report);
+        assert_eq!(files[0].sha256, digest);
+        assert_eq!(
+            transport.fetched.len(),
+            2,
+            "a refused identity is never fetched"
+        );
+    }
+
+    #[test]
+    fn a_signer_answer_that_omits_an_identity_or_signs_another_object_is_unreadable() {
+        let gs = format!("gs://{BUCKET}/p1/a.pdf");
+        let request = ArtifactDownloadRequest::new([gs.clone()]).unwrap();
+        for signed in [
+            json!({"mode": "signed", "urls": {}}),
+            json!({"mode": "signed", "urls": {gs.clone(): signed_url("p1/b.pdf")}}),
+            json!({"mode": "signed", "urls": {gs.clone(): "https://example.com/p1/a.pdf"}}),
+            json!({"mode": "unsigned", "urls": {gs.clone(): signed_url("p1/a.pdf")}}),
+        ] {
+            let mut transport = SignAndFetch {
+                signed,
+                objects: Default::default(),
+                fetched: Vec::new(),
+            };
+            let (outcome, files) = download(&mut transport, &request);
+            assert_eq!(outcome.unwrap_err().kind(), ErrorKind::UnreadableResponse);
+            assert!(files.is_empty() && transport.fetched.is_empty());
+        }
     }
 }

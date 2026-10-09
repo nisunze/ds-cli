@@ -2308,6 +2308,84 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         )
     }
 
+    /// Read one deleted transformer's verified delete backup, fetching its
+    /// exact bytes when `fetch` is set.
+    pub fn deleted_transformer_backup(
+        &mut self,
+        ds_project: &str,
+        request: &crate::DeletedBackupRequest,
+        fetch: bool,
+        now_epoch_seconds: u64,
+    ) -> Result<crate::DeletedBackupRead, ClientError> {
+        crate::authorized::validate_project_report(ds_project)?;
+        self.ensure_fresh_session(now_epoch_seconds)?;
+        let session = self.session.as_ref().ok_or_else(signed_out)?;
+        crate::project_report::deleted_backup_read(
+            &self.profile,
+            &mut self.transport,
+            crate::authorized::Authority {
+                bearer_token: &session.id_token,
+                uid: &session.stored.uid,
+                email: &session.stored.email,
+                device_id: None,
+            },
+            ds_project,
+            request,
+            fetch,
+        )
+    }
+
+    /// Sign the listed artifacts through the authorized signer and hand each
+    /// fetched object's exact bytes and SHA-256 to `sink`, one at a time.
+    pub fn download_artifacts(
+        &mut self,
+        ds_project: &str,
+        request: &crate::ArtifactDownloadRequest,
+        sink: &mut dyn FnMut(crate::ArtifactFile) -> Result<(), ClientError>,
+        now_epoch_seconds: u64,
+    ) -> Result<Vec<(crate::ArtifactIdentity, crate::ArtifactOutcome)>, ClientError> {
+        crate::authorized::validate_project_report(ds_project)?;
+        self.ensure_fresh_session(now_epoch_seconds)?;
+        let session = self.session.as_ref().ok_or_else(signed_out)?;
+        crate::project_report::download_artifacts(
+            &self.profile,
+            &mut self.transport,
+            crate::authorized::Authority {
+                bearer_token: &session.id_token,
+                uid: &session.stored.uid,
+                email: &session.stored.email,
+                device_id: None,
+            },
+            ds_project,
+            request,
+            sink,
+        )
+    }
+
+    /// Create a deleted transformer again from one pinned, verified backup.
+    pub fn restore_deleted_transformer(
+        &mut self,
+        ds_project: &str,
+        request: &crate::DeletedBackupRequest,
+        now_epoch_seconds: u64,
+    ) -> Result<crate::DeletedTransformerRestoration, ClientError> {
+        crate::authorized::validate_project_report(ds_project)?;
+        self.ensure_fresh_session(now_epoch_seconds)?;
+        let session = self.session.as_ref().ok_or_else(signed_out)?;
+        crate::project_report::deleted_backup_restore(
+            &self.profile,
+            &mut self.transport,
+            crate::authorized::Authority {
+                bearer_token: &session.id_token,
+                uid: &session.stored.uid,
+                email: &session.stored.email,
+                device_id: None,
+            },
+            ds_project,
+            request,
+        )
+    }
+
     fn ensure_fresh_session(&mut self, now_epoch_seconds: u64) -> Result<(), ClientError> {
         let needs_refresh = self.session.as_ref().is_none_or(|session| {
             session.id_token.is_empty()

@@ -2242,6 +2242,69 @@ impl DeviceApiAuthorization<'_> {
             request,
         )
     }
+
+    /// Read one deleted transformer's verified delete backup, fetching its
+    /// exact bytes when `fetch` is set.
+    pub fn deleted_transformer_backup<T: AuthorizedTransport>(
+        &self,
+        transport: &mut T,
+        ds_project: &str,
+        request: &crate::DeletedBackupRequest,
+        fetch: bool,
+        now: u64,
+    ) -> Result<crate::DeletedBackupRead, ClientError> {
+        crate::authorized::validate_project_report(ds_project)?;
+        self.ensure_active(now)?;
+        crate::project_report::deleted_backup_read(
+            self.profile,
+            transport,
+            self.authority(),
+            ds_project,
+            request,
+            fetch,
+        )
+    }
+
+    /// Sign the listed artifacts through the authorized signer and hand each
+    /// fetched object's exact bytes and SHA-256 to `sink`, one at a time.
+    pub fn download_artifacts<T: AuthorizedTransport>(
+        &self,
+        transport: &mut T,
+        ds_project: &str,
+        request: &crate::ArtifactDownloadRequest,
+        sink: &mut dyn FnMut(crate::ArtifactFile) -> Result<(), ClientError>,
+        now: u64,
+    ) -> Result<Vec<(crate::ArtifactIdentity, crate::ArtifactOutcome)>, ClientError> {
+        crate::authorized::validate_project_report(ds_project)?;
+        self.ensure_active(now)?;
+        crate::project_report::download_artifacts(
+            self.profile,
+            transport,
+            self.authority(),
+            ds_project,
+            request,
+            sink,
+        )
+    }
+
+    /// Create a deleted transformer again from one pinned, verified backup.
+    pub fn restore_deleted_transformer<T: AuthorizedTransport>(
+        &self,
+        transport: &mut T,
+        ds_project: &str,
+        request: &crate::DeletedBackupRequest,
+        now: u64,
+    ) -> Result<crate::DeletedTransformerRestoration, ClientError> {
+        crate::authorized::validate_project_report(ds_project)?;
+        self.ensure_active(now)?;
+        crate::project_report::deleted_backup_restore(
+            self.profile,
+            transport,
+            self.authority(),
+            ds_project,
+            request,
+        )
+    }
 }
 
 pub struct DeviceProtectedCall<'a> {

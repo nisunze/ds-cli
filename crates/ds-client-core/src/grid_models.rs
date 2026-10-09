@@ -624,6 +624,49 @@ pub(crate) fn locator<'a>(
     }
     Ok(DownloadCall { url, size })
 }
+
+/// A short-lived signed read of one exact storage object the server named by
+/// bucket and object — a verified delete backup or a listed report artifact.
+/// The locator must be an https URL on the storage host whose path is exactly
+/// that bucket and object, with no credentials or fragment; `size` bounds the
+/// read. It travels the same signed-object byte transport as a model package.
+pub(crate) fn signed_object_locator<'a>(
+    url: &'a str,
+    bucket: &str,
+    object: &str,
+    size: usize,
+) -> Result<DownloadCall<'a>, ClientError> {
+    let u = url::Url::parse(url).map_err(|_| bad())?;
+    if url.len() > 8192
+        || u.scheme() != "https"
+        || u.host_str() != Some("storage.googleapis.com")
+        || u.port().is_some()
+        || !u.username().is_empty()
+        || u.password().is_some()
+        || u.fragment().is_some()
+        || size == 0
+        || size > MAX_BYTES
+        || bucket.is_empty()
+        || bucket.contains('/')
+        || object.is_empty()
+        || object
+            .split('/')
+            .any(|p| p.is_empty() || p == "." || p == "..")
+    {
+        return Err(bad());
+    }
+    let mut expected = url::Url::parse("https://storage.googleapis.com/").map_err(|_| bad())?;
+    expected
+        .path_segments_mut()
+        .map_err(|_| bad())?
+        .clear()
+        .push(bucket)
+        .extend(object.split('/'));
+    if u.path() != expected.path() {
+        return Err(bad());
+    }
+    Ok(DownloadCall { url, size })
+}
 pub(crate) fn run<T: AuthorizedTransport>(
     profile: &ClientProfile,
     transport: &mut T,

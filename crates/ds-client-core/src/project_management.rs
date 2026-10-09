@@ -1488,8 +1488,6 @@ mod tests {
         )
     }
 
-    use std::io::Read as _;
-
     #[test]
     fn task_attach_starts_uploads_the_exact_bytes_and_finalizes_the_reserved_row() {
         let bytes = b"%PDF-1.7 field plan".to_vec();
