@@ -1,6 +1,8 @@
 //! Native source acquisition only; overview projection and extents are kernel-owned.
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Arg, Authority, Chapter, Command, Effect, Execution, Requires};
+use ds_cli_contract::spec::{
+    Arg, Authority, Chapter, Command, Effect, Execution, Refusal, Requires,
+};
 use ds_cli_contract::{Context, Inputs};
 use ds_command_kernel::{printing, report_export::InputReceipt};
 use serde_json::{Value, json};
@@ -58,11 +60,16 @@ pub static COMMAND: Command = Command {
             "seed",
             "Acquire missing map context through the dataset owner; may incur provider cost.",
         ),
+        Arg::value(
+            "reuse-capture",
+            "<out-dir>",
+            "Earlier capture of this project whose pinned transformer sources are reused.",
+        ),
         super::LANE_ARG,
     ],
     output: "Project, transformer count, new LV line, pole, service cable and customer feature counts, exact MV model provenance, source revisions, omitted context, and render request path.",
     examples: &[],
-    refusals: super::export::REFUSALS,
+    refusals: REFUSALS,
     reference: Some("docs/reference/report.md"),
     search: &[],
     requires: Requires::Server,
@@ -95,6 +102,160 @@ fn read_context_batch<T>(
         }
     }
     read()
+}
+
+/// A native project read that answers nothing used to leave the capture idle
+/// for many minutes with no JSON. Each acquisition step now has a bound and a
+/// stalled step is refused by name; the abandoned read ends with the process.
+const ACQUISITION_STEP_BOUND: std::time::Duration = std::time::Duration::from_secs(180);
+const ACQUISITION_STALLED: Refusal = Refusal {
+    code: "report_source_acquisition_stalled",
+    when: "a native project read answered nothing within 180 seconds",
+    remedy: "retry once the store answers, or pass --reuse-capture",
+};
+const REUSED_CAPTURE_INVALID: Refusal = Refusal {
+    code: "report_reused_capture_invalid",
+    when: "--reuse-capture is not a digest-verified capture of this project and principal",
+    remedy: "pass an earlier --out-dir of this project, or omit --reuse-capture",
+};
+const REUSED_CAPTURE_STALE: Refusal = Refusal {
+    code: "report_reused_capture_stale",
+    when: "the active transformers differ from the pinned capture",
+    remedy: "capture once without --reuse-capture, then reuse it",
+};
+const REFUSALS: &[Refusal] = &super::joined::<{ super::export::REFUSALS.len() + 3 }>(&[
+    super::export::REFUSALS,
+    &[
+        ACQUISITION_STALLED,
+        REUSED_CAPTURE_INVALID,
+        REUSED_CAPTURE_STALE,
+    ],
+]);
+
+/// Run one acquisition step on its own thread and refuse it by name when it
+/// answers nothing within `bound`.
+fn bounded<T: Send + 'static>(
+    step: &str,
+    bound: std::time::Duration,
+    read: impl FnOnce() -> Result<T, Failure> + Send + 'static,
+) -> Result<T, Failure> {
+    let stalled = |what: &str| {
+        Failure::unavailable(ACQUISITION_STALLED.code, format!("{step} {what}"))
+            .remedy(ACQUISITION_STALLED.remedy)
+    };
+    let (send, receive) = std::sync::mpsc::sync_channel(1);
+    std::thread::Builder::new()
+        .name("map-inputs-acquisition".into())
+        .spawn(move || {
+            let _ = send.send(read());
+        })
+        .map_err(|error| stalled(&format!("could not start: {error}")))?;
+    match receive.recv_timeout(bound) {
+        Ok(result) => result,
+        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => Err(stalled(&format!(
+            "answered nothing within {} s",
+            bound.as_secs()
+        ))),
+        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+            Err(stalled("ended without an answer"))
+        }
+    }
+}
+
+/// The transformer sources a fresh capture read, pinned beside its request so
+/// a later sheet of the same delivery reuses them instead of rereading every
+/// room. `sources.json` names this file and its SHA-256.
+const CONTEXTS_FILE: &str = "transformer-contexts.json";
+const CONTEXTS_SCHEMA: &str = "ds.report-map-inputs.transformer-contexts/v1";
+const CAPTURE_MAX_BYTES: u64 = 2 * 1024 * 1024 * 1024;
+
+fn principal_sha256(uid: &str) -> String {
+    ds_command_kernel::report_export::sha256_hex(uid.as_bytes())
+}
+
+fn reuse_invalid(message: impl std::fmt::Display) -> Failure {
+    Failure::invalid(REUSED_CAPTURE_INVALID.code, message.to_string())
+        .remedy(REUSED_CAPTURE_INVALID.remedy)
+}
+
+fn read_bounded(path: &std::path::Path) -> Result<Vec<u8>, Failure> {
+    let mut bytes = Vec::new();
+    std::fs::File::open(path)
+        .map_err(|error| reuse_invalid(format!("open `{}`: {error}", path.display())))?
+        .take(CAPTURE_MAX_BYTES + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|error| reuse_invalid(format!("read `{}`: {error}", path.display())))?;
+    if bytes.len() as u64 > CAPTURE_MAX_BYTES {
+        return Err(reuse_invalid(format!("`{}` exceeds 2 GiB", path.display())));
+    }
+    Ok(bytes)
+}
+
+/// Read a prior capture's pinned transformer sources: its `sources.json`
+/// names the file and SHA-256, the bytes must match, and the capture must
+/// belong to this project and principal and hold exactly `active`.
+fn reused_contexts(
+    dir: &std::path::Path,
+    project: &str,
+    uid: &str,
+    active: &[String],
+) -> Result<(Value, PathBuf, String), Failure> {
+    let receipt: Value = serde_json::from_slice(&read_bounded(&dir.join("sources.json"))?)
+        .map_err(|error| reuse_invalid(format!("sources.json: {error}")))?;
+    let pinned = &receipt["transformer_contexts"];
+    let (Some(path), Some(sha256)) = (pinned["path"].as_str(), pinned["sha256"].as_str()) else {
+        return Err(reuse_invalid(
+            "sources.json names no pinned transformer capture; capture once without --reuse-capture",
+        ));
+    };
+    let path = PathBuf::from(path);
+    let bytes = read_bounded(&path)?;
+    if ds_command_kernel::report_export::sha256_hex(&bytes) != sha256 {
+        return Err(reuse_invalid(format!(
+            "`{}` no longer has the SHA-256 its capture recorded",
+            path.display()
+        )));
+    }
+    let document: Value = serde_json::from_slice(&bytes).map_err(reuse_invalid)?;
+    if document["schema"] != CONTEXTS_SCHEMA
+        || document["project"] != project
+        || receipt["project"] != project
+    {
+        return Err(reuse_invalid(format!(
+            "the pinned capture is not a {CONTEXTS_SCHEMA} capture of project {project}"
+        )));
+    }
+    if document["principal_sha256"] != principal_sha256(uid).as_str() {
+        return Err(reuse_invalid(
+            "the pinned capture was read by another principal",
+        ));
+    }
+    let mut pinned_names = document["transformers"]
+        .as_array()
+        .ok_or_else(|| reuse_invalid("the pinned capture lists no transformers"))?
+        .iter()
+        .map(|row| row["transformer"].as_str().map(str::to_owned))
+        .collect::<Option<Vec<_>>>()
+        .ok_or_else(|| reuse_invalid("a pinned transformer row has no name"))?;
+    let mut current = active.to_vec();
+    pinned_names.sort();
+    current.sort();
+    if pinned_names != current {
+        let added = current
+            .iter()
+            .filter(|name| pinned_names.binary_search(name).is_err())
+            .count();
+        let removed = pinned_names
+            .iter()
+            .filter(|name| current.binary_search(name).is_err())
+            .count();
+        return Err(Failure::conflict(
+            REUSED_CAPTURE_STALE.code,
+            format!("{added} active transformers are not in the pinned capture and {removed} pinned transformers are no longer active"),
+        )
+        .remedy(REUSED_CAPTURE_STALE.remedy));
+    }
+    Ok((document, path, sha256.to_owned()))
 }
 fn parse_bounds(raw: &str, name: &str, max_span: f64) -> Result<[f64; 4], Failure> {
     let bounds = ds_cli_contract::args::bbox(raw).map_err(|error| invalid(error.message()))?;
@@ -144,8 +305,14 @@ pub fn run(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
     }
     let lane = i.require("lane")?;
     let requested = super::transformer_set(i)?;
-    let inventory =
-        ds_cli_auth::transformer_inventory_for_project(lane, i.require("project")?, &requested)?;
+    let inventory = {
+        let (lane, project) = (lane.to_owned(), i.require("project")?.to_owned());
+        bounded(
+            "the transformer inventory read",
+            ACQUISITION_STEP_BOUND,
+            move || ds_cli_auth::transformer_inventory_for_project(&lane, &project, &requested),
+        )?
+    };
     let identity = inventory.identity();
     let project = inventory.project_id();
     let config = ds_cli_auth::feeder_configuration_for_project(lane, project)?;
@@ -214,31 +381,62 @@ pub fn run(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
         })
         .map(|row| row.name().to_owned())
         .collect::<Vec<_>>();
-    // A large district can contain hundreds of active transformers. Refresh
-    // the same fenced native project context between bounded groups so a
-    // long acquisition does not expire its authentication lease mid-batch.
-    for names in active.chunks(16) {
-        let contexts = read_context_batch(
-            || ds_cli_auth::transformer_contexts_for_project(lane, project, names),
-            std::thread::sleep,
-        )?;
-        if contexts.identity() != identity || contexts.project_id() != project {
-            return Err(invalid("transformer context scope changed"));
-        }
-        for (name, response) in names.iter().zip(contexts.into_result()) {
-            let snapshot = &response;
-            if snapshot.ds_project() != project || snapshot.transformer_name() != name {
-                return Err(invalid("transformer scope changed"));
+    // A fresh capture reads every active room and pins those sources beside
+    // its request; `--reuse-capture` reuses a pinned capture of the same
+    // project and principal, verified by SHA-256 and by the live active set.
+    let (contexts, contexts_pin) = if let Some(dir) = i.value("reuse-capture") {
+        let (document, path, sha256) =
+            reused_contexts(std::path::Path::new(dir), project, identity.uid(), &active)?;
+        (document, Some((path, sha256)))
+    } else {
+        let mut rows = Vec::with_capacity(active.len());
+        // A large district can contain hundreds of active transformers. Refresh
+        // the same fenced native project context between bounded groups so a
+        // long acquisition does not expire its authentication lease mid-batch.
+        for names in active.chunks(16) {
+            let contexts = {
+                let (lane, project, names) = (lane.to_owned(), project.to_owned(), names.to_vec());
+                bounded(
+                    "a transformer context read",
+                    ACQUISITION_STEP_BOUND,
+                    move || {
+                        read_context_batch(
+                            || {
+                                ds_cli_auth::transformer_contexts_for_project(
+                                    &lane, &project, &names,
+                                )
+                            },
+                            std::thread::sleep,
+                        )
+                    },
+                )?
+            };
+            if contexts.identity() != identity || contexts.project_id() != project {
+                return Err(invalid("transformer context scope changed"));
             }
-            sources
-                .transformer(
-                    name,
-                    &serde_json::to_value(snapshot.layers()).map_err(invalid)?,
-                )
-                .map_err(invalid)?;
-            revisions.push(json!({"transformer":name,"version":snapshot.metadata().version(),"content_digest":snapshot.metadata().content_digest()}));
+            for (name, response) in names.iter().zip(contexts.into_result()) {
+                let snapshot = &response;
+                if snapshot.ds_project() != project || snapshot.transformer_name() != name {
+                    return Err(invalid("transformer scope changed"));
+                }
+                rows.push(json!({"transformer":name,"version":snapshot.metadata().version(),"content_digest":snapshot.metadata().content_digest(),"layers":serde_json::to_value(snapshot.layers()).map_err(invalid)?}));
+            }
         }
+        (
+            json!({"schema":CONTEXTS_SCHEMA,"project":project,"principal_sha256":principal_sha256(identity.uid()),"transformers":rows}),
+            None,
+        )
+    };
+    for row in contexts["transformers"].as_array().into_iter().flatten() {
+        let name = row["transformer"].as_str().unwrap_or_default();
+        sources.transformer(name, &row["layers"]).map_err(invalid)?;
+        revisions.push(json!({"transformer":name,"version":row["version"],"content_digest":row["content_digest"]}));
     }
+    let contexts_bytes = match contexts_pin {
+        Some(_) => None,
+        None => Some(serde_json::to_vec(&contexts).map_err(invalid)?),
+    };
+    drop(contexts);
     let network = sources.layers();
     let design_layer_counts = ["tr", "lv_lines", "lv_poles", "service_cables", "customers"]
         .into_iter()
@@ -365,6 +563,21 @@ pub fn run(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
     };
     std::fs::create_dir_all(&out).map_err(invalid)?;
     let out = out.canonicalize().map_err(invalid)?;
+    let transformer_contexts = match (contexts_bytes, contexts_pin) {
+        (_, Some((path, sha256))) => json!({"path":path,"sha256":sha256,"reused":true}),
+        (bytes, None) => {
+            let bytes = bytes.unwrap_or_default();
+            let path = out.join(CONTEXTS_FILE);
+            std::fs::OpenOptions::new()
+                .create_new(true)
+                .write(true)
+                .open(&path)
+                .map_err(invalid)?
+                .write_all(&bytes)
+                .map_err(invalid)?;
+            json!({"path":path,"sha256":ds_command_kernel::report_export::sha256_hex(&bytes),"reused":false})
+        }
+    };
     let render_layers = if let Some([w, s, e, n]) = focus_bounds.or(area_bounds) {
         let margin = 0.002;
         sources
@@ -399,7 +612,7 @@ pub fn run(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
         .map_err(invalid)?
         .write_all(&data)
         .map_err(invalid)?;
-    let result = json!({"project":project,"transformer_count":revisions.len(),"design_layer_counts":design_layer_counts,"sources":revisions,"mv_models":super::mv_context::provenance(&models),"area_bounds":area_bounds,"render_extent":extent,"omitted":context.omitted.iter().map(|o|json!({"layer":o.layer,"reason":o.reason})).collect::<Vec<_>>(),"warnings":context.warnings,"request":path,"sha256":ds_command_kernel::report_export::sha256_hex(&data)});
+    let result = json!({"project":project,"transformer_count":revisions.len(),"design_layer_counts":design_layer_counts,"sources":revisions,"transformer_contexts":transformer_contexts,"mv_models":super::mv_context::provenance(&models),"area_bounds":area_bounds,"render_extent":extent,"omitted":context.omitted.iter().map(|o|json!({"layer":o.layer,"reason":o.reason})).collect::<Vec<_>>(),"warnings":context.warnings,"request":path,"sha256":ds_command_kernel::report_export::sha256_hex(&data)});
     std::fs::write(
         out.join("sources.json"),
         serde_json::to_vec_pretty(&result).map_err(invalid)?,
@@ -410,7 +623,11 @@ pub fn run(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_bounds, read_context_batch, read_layout};
+    use super::{
+        ACQUISITION_STALLED, CONTEXTS_SCHEMA, REFUSALS, REUSED_CAPTURE_INVALID,
+        REUSED_CAPTURE_STALE, bounded, parse_bounds, principal_sha256, read_context_batch,
+        read_layout, reused_contexts,
+    };
     use ds_cli_contract::outcome::Failure;
 
     #[test]
@@ -476,6 +693,108 @@ mod tests {
         );
         assert_eq!(result.unwrap_err().code(), "auth_transient");
         assert_eq!(calls, 3);
+    }
+
+    #[test]
+    fn a_stalled_acquisition_step_is_refused_by_name_and_documented() {
+        // f48bd93c: a read that never answers used to hang the capture with
+        // no JSON. It is refused by name within its bound instead.
+        let error = bounded(
+            "the inventory read",
+            std::time::Duration::from_millis(50),
+            || {
+                std::thread::sleep(std::time::Duration::from_secs(5));
+                Ok(())
+            },
+        )
+        .unwrap_err();
+        assert_eq!(error.code(), ACQUISITION_STALLED.code);
+        assert!(
+            error
+                .message()
+                .contains("the inventory read answered nothing"),
+            "{error:?}"
+        );
+        assert!(error.remedy_text().is_some());
+        let answered = bounded("a read", std::time::Duration::from_secs(5), || Ok(7)).unwrap();
+        assert_eq!(answered, 7);
+        let refused = bounded::<()>("a read", std::time::Duration::from_secs(5), || {
+            Err(Failure::unauthorized("auth_rejected", "denied"))
+        })
+        .unwrap_err();
+        assert_eq!(refused.code(), "auth_rejected");
+        for code in [
+            ACQUISITION_STALLED.code,
+            REUSED_CAPTURE_INVALID.code,
+            REUSED_CAPTURE_STALE.code,
+            "report_inputs_invalid",
+        ] {
+            assert!(
+                REFUSALS.iter().any(|refusal| refusal.code == code),
+                "{code}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_reused_capture_is_digest_pinned_to_its_project_principal_and_active_rooms() {
+        let root = tempfile::tempdir().unwrap();
+        let capture = root.path().join("sheet-001");
+        std::fs::create_dir(&capture).unwrap();
+        let write = |document: &serde_json::Value| {
+            let bytes = serde_json::to_vec(document).unwrap();
+            let path = capture.join("transformer-contexts.json");
+            std::fs::write(&path, &bytes).unwrap();
+            let sha256 = ds_command_kernel::report_export::sha256_hex(&bytes);
+            std::fs::write(
+                capture.join("sources.json"),
+                serde_json::to_vec(&serde_json::json!({"project":"p1","transformer_contexts":{"path":path,"sha256":sha256,"reused":false}})).unwrap(),
+            )
+            .unwrap();
+            path
+        };
+        let document = serde_json::json!({"schema":CONTEXTS_SCHEMA,"project":"p1","principal_sha256":principal_sha256("uid-a"),"transformers":[
+            {"transformer":"tr-b","version":3,"content_digest":"d-b","layers":{}},
+            {"transformer":"tr-a","version":1,"content_digest":"d-a","layers":{}}]});
+        let path = write(&document);
+        let active = ["tr-a".to_owned(), "tr-b".to_owned()];
+        let (reused, pinned, _) = reused_contexts(&capture, "p1", "uid-a", &active).unwrap();
+        assert_eq!(pinned, path);
+        assert_eq!(reused["transformers"][0]["content_digest"], "d-b");
+        // Another project, another principal or a changed room set is refused.
+        assert_eq!(
+            reused_contexts(&capture, "p2", "uid-a", &active)
+                .unwrap_err()
+                .code(),
+            REUSED_CAPTURE_INVALID.code
+        );
+        assert_eq!(
+            reused_contexts(&capture, "p1", "uid-b", &active)
+                .unwrap_err()
+                .code(),
+            REUSED_CAPTURE_INVALID.code
+        );
+        let grown = ["tr-a".to_owned(), "tr-b".to_owned(), "tr-c".to_owned()];
+        let stale = reused_contexts(&capture, "p1", "uid-a", &grown).unwrap_err();
+        assert_eq!(stale.code(), REUSED_CAPTURE_STALE.code);
+        assert!(
+            stale.message().starts_with("1 active transformers"),
+            "{stale:?}"
+        );
+        // Bytes that no longer match the recorded digest are not reused.
+        std::fs::write(&path, b"{}").unwrap();
+        let tampered = reused_contexts(&capture, "p1", "uid-a", &active).unwrap_err();
+        assert_eq!(tampered.code(), REUSED_CAPTURE_INVALID.code);
+        assert!(tampered.message().contains("SHA-256"), "{tampered:?}");
+        // A directory that never pinned a capture names the repair.
+        let empty = root.path().join("empty");
+        std::fs::create_dir(&empty).unwrap();
+        assert_eq!(
+            reused_contexts(&empty, "p1", "uid-a", &active)
+                .unwrap_err()
+                .code(),
+            REUSED_CAPTURE_INVALID.code
+        );
     }
 
     #[test]

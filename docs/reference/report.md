@@ -1268,6 +1268,18 @@ from the emitted capture. The command reports `area_bounds` and
 `render_extent` for review. `--area-bounds` and `--focus-bounds` are mutually
 exclusive. Leave both off for an overview fitted to the complete project.
 Read its omissions before passing the emitted request to `report.layout.render`.
+A fresh capture also pins every transformer source it read in
+`transformer-contexts.json` and names that file and its SHA-256 under
+`transformer_contexts` in `sources.json`. For the next sheet of the same
+delivery, `--reuse-capture <earlier-out-dir>` reuses those pinned sources
+instead of rereading every room: the bytes must still match the recorded
+SHA-256, the capture must belong to the same project and signed-in principal
+(`report_reused_capture_invalid` otherwise), and the project's live active
+transformers must be exactly the pinned set (`report_reused_capture_stale`
+otherwise). The result reports `transformer_contexts.reused: true` with the
+pinned path and digest. Each native acquisition step is bounded at 180 seconds;
+a read that answers nothing is refused as `report_source_acquisition_stalled`
+instead of leaving the capture idle.
 The request is a portable, editable print capture, not a model version.
 After visual review, `map.design.attach-print --scope mv` uploads a PDF or PNG
 through the existing report-artifact service to `mv_data`, without Desktop or
