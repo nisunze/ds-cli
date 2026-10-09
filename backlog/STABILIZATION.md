@@ -263,7 +263,7 @@ point (§11). Every computation must animate the toolbar's status button.
   point within the first seconds. Read `ds map profile view` repeatedly to
   time when the selection, the scene and the analysis settle.
 
-### 13. Print templates: grouped catalogue read and Desktop rendering
+### 13. Print templates: subject-aware preview and the remaining Desktop read
 
 **Owner, 2026-10-07:** the catalogue and previews already work in the CLI. The
 Desktop should only list, group and render them from that JSON, writing little
@@ -272,43 +272,34 @@ beyond small pen settings. Delete the TypeScript that does more than that.
 **Evidence** (read-only):
 
 - **The Desktop does more than read.**
-  - It reads layouts and governed pages straight from ds-brain:
-    `/api/v1/printing` (`ds-web/src/lib/printing/shared.ts:153`) and
-    `/api/v1/printing/standard` (`ds-web/src/lib/printing/governed.ts:18`).
-  - It runs its own cache and read plan, then sends the rows through WASM
-    `template_catalogue` (`ds-web/src/lib/printing/catalogue.ts:25`).
+  - Its print-setup list still reads ds-brain directly: `listSetups` through
+    `brain('/api/v1/printing')` (`ds-web/src/lib/printing/shared.ts`), with
+    its own `readList` `persistentGet`/`persistentSet` cache and lifecycle
+    read plan. Its consumers are `src/lib/assets/sources.ts`
+    `readPrintSetups` and `src/lib/components/design/ProjectConfig.svelte`.
   - It orchestrates transformer previews in the 2,117-line
     `PrintingSetup.svelte` (`:469-547`).
-  - No `ds report layout catalogue` (grouped JSON) command was found in
-    `ds-cli/docs/reference/report.md`. The CLI has `report.layout.list`,
-    `report.standard.list` and `report.layout.render`, plus `report.project.export
-    --preview-layout` for previews.
 - **Overview previews.** Overview (project, extent) templates have no native
   preview renderer yet (`print_preview_extent_unavailable`; ties to §14
   Needed 1).
 
 **Needed** (one slice each; prove each slice through `ds` before the next):
 
-4. **CLI/MCP.** Add one grouped catalogue read and a subject-aware preview
-   (transformer, `mv_models` or extent), so the Desktop and agents read the
-   same JSON.
+4. **CLI/MCP: subject-aware preview.**
+   - A native extent (overview) preview renderer; today it is refused with
+     `print_preview_extent_unavailable` (see §14 Needed 1).
+   - `report.project.export --preview-layout` must apply the kernel subject
+     rule (`preview::plan` / `expected_subject`). Today it accepts any draft
+     layout around a transformer, and so does the Desktop `printing.preview`
+     bridge (ds-web `src/lib/printing/prepare.ts` `previewCliPrinting`).
 5. **Desktop.**
-   - The Print templates panel renders the catalogue from that JSON: groups,
-     entries, subjects and preview pages.
-   - Delete the direct ds-brain reads (`src/lib/printing/shared.ts`
-     `/api/v1/printing`, `src/lib/printing/governed.ts`
-     `/api/v1/printing/standard`) and the TypeScript catalogue cache and read
-     plan.
-   - Keep pen-setting writes.
-
-**Proof:**
-
-- The catalogue read shows the district maps under Overview, the governed
-  pages under Front matter, and only the A3 landscape plan-and-profile sheet
-  under MV Sheets (role "Plan and profile"). `mv_model` / `network` rows are
-  flagged `print_classification_mv_requires_plan_profile` and listed as
-  Unclassified.
-- An MV preview chooses a DS Grid MV model and never `agahehe`.
+   - Retire the remaining direct ds-brain read in `src/lib/printing/shared.ts`
+     (`listSetups`, its list cache and its lifecycle read plan). It serves
+     `sources.ts` `readPrintSetups` and `ProjectConfig.svelte`, which a hosted
+     browser reaches without a native door, so they need a non-door owner
+     first.
+   - The Print templates panel shows preview pages from the native JSON.
+   - Template writes (save/copy/delete) stay as kept writes.
 
 ### 14. Print previews miss map context
 
@@ -346,11 +337,6 @@ the current layout contract, see below):
   - The warnings are appended to the preview status (`PrintingSetup.svelte:570`).
   - Offline, an unheld catalog layer fails with "This layer is not available
     offline" (`:242`).
-- **Two contract sentences to reconcile.**
-  - `docs/printing.md:282` says "a read or preview never acquires providers".
-  - `docs/printing.md:389-391` lets `preview_context_preparation` prepare
-    missing inputs online, before the read-only render. The kernel and
-    TypeScript follow the second sentence.
 
 **Needed:**
 
@@ -363,7 +349,13 @@ the current layout contract, see below):
    - the MV model's corridor;
    - the project or district extent.
 
-   Never use a fixed transformer buffer for MV or overview sheets.
+   Never use a fixed transformer buffer for MV or overview sheets. The
+   subject rule is not enforced on every preview door: ds-cli
+   `report.project.export --preview-layout` and the Desktop
+   `printing.preview` bridge (ds-web `src/lib/printing/prepare.ts`
+   `previewCliPrinting`) skip `preview::plan`. Both still run
+   `prepareDraftTransformerPrintContext` with the fixed `buffer_m ?? 200`
+   transformer context for any draft layout, MV or overview included.
 2. **Native: one context acquisition behind `ds`.** The CLI's export path and
    the Desktop preview call the same native preparation, which returns layers
    plus a typed omission per missing layer. Delete the TypeScript loop and
@@ -371,7 +363,6 @@ the current layout contract, see below):
 3. **Preview status: name every omission.** List each missing layer with its
    reason: hidden by the layout, unheld offline, empty in the extent, or
    failed. A degraded preview is labelled degraded, never shown as complete.
-4. Reconcile the two `docs/printing.md` sentences in the same slice.
 
 **Reproduce once a current canary is installed:**
 
@@ -402,15 +393,19 @@ The MV preview landed and is proven headlessly (`ds report plan-profile
    NULL table (`crates/ds-sync-store/src/lib.rs:202`). An upgrade from the
    installed canary will hit the same failure. Decide what legacy rows without
    an account become, then prove it on a copy of a v1 store.
-2. **The MV global-default fallback can't work.** With no project MV selection,
-   `printing_inputs` fetches the global default layout with
-   `printing(lane, true, None, …)` (ds-cli
-   `crates/ds-cli-report/src/project/mv_setup.rs:112-129`). That call has
-   been refused since `b9d9e52a` ("Global printing runtime scope is retired").
-   `mv-setup resolve` therefore fails with a misleading message for every
-   project without its own selection (Rwanda Template, `arjgpydw_nyam`).
-   The Template now holds its own copy, `mv-a3-plan-profile-template`;
-   selecting it is blocked by defect 1.
+2. **The retired MV global default still shows in help and the kernel.**
+   - ds-cli `crates/ds-cli-report/src/project/mv_setup.rs`: the RESOLVE
+     descriptor still says "otherwise resolve the exact approved global MV
+     template pinned by governed printing defaults" (purpose, line 43) and
+     "project or global lineage" (output). The built
+     `ds report project mv-setup resolve --help` prints this, contradicting
+     the `mv_print_setup_missing` refusal. Say there is no global default.
+   - Check, then retire, the kernel's dormant global branch in
+     `src/printing/mv.rs`: `uses_global_default`/`effective_selection` read
+     `printing_defaults`, `resolve()` reads `global_printing_setups` (which no
+     caller fills) and applies the `report_context` override, and `inspect()`
+     uses the same path. `mv_preview.rs:82` uses `effective_selection` for
+     issue identity.
 
 ## Moved from OPEN.md and OPEN-X.md: related work, fix together (owner, 2026-10-07)
 
@@ -434,8 +429,6 @@ decisions keep their **Input needed** and **Boundary**.
 
 - Complete the CLI's revision-pinned Profile edit bridge for a full human/CLI edit cycle without inferring or overwriting the person's choice. Native camera/selection paths are source-tested. An incompatible retype yields exact unresolved attachments, but the CLI's package-backed copy cannot persist that invalid draft (`package_emit_failed`); wire the new pinned native draft checkpoint through the local catalogue while keeping strict export/publication gates. Keep cloud working revisions synchronized without a version bump during ordinary iterations; make bumping a version intentional, and never upload local-dev compute artifacts. Implement scoped proposals, explicit decision/checkpoint handling and an HTML modification-note asset; prove revision fences and refusal paths with fixtures. The human demonstration, chosen changes and review of the resulting notes are in [OPEN-X.md](OPEN-X.md#14-profile-display-and-supervised-editing).
 
-- `d8529cff` (minor): Retype keeps material-specific staking facts (E-STEEL on a wooden H-pole).
-
 - **Remaining native selection controls across editing contexts** (owner, 2026-10-07): migrate LV's existing lasso predicate/layer preferences and selection refinements to declared kernel/CLI controls, retaining exact project/model/revision/selection fences. LV currently admits Within/Intersects through its existing session owner; finish native Outside parity and geographic editing admission. Keep applicable controls in the shared visible live selection toolbar; do not restore buried right-click Selection/Lasso menus. MV selected-row filtering must remain native and bounded to the captured current selection.
 
 - **Nyamagabe LV transformer editing opens a generic map menu** (`d654bfcc`): prove the affected installed session can select the design transformer with a cold index, then move, edit, save and reload it without changing another transformer.
@@ -448,9 +441,9 @@ Owner decisions (from OPEN-X.md §14):
 
 ### B. PLS-CADD `.bak` export (with outputs/pls-bak-export-plan-20261007/PLS-BAK-EXPORT-PLAN.md and BUG-EVIDENCE.md NUM)
 
-- `e258b287` (blocker): PLS export plan accepts unsupported edited model but convert cannot emit backup. Complete the model-menu `.bak` export vertical in the seven bounded slices diagnosed in `outputs/pls-bak-export-plan-20261007/PLS-BAK-EXPORT-PLAN.md`: engine plan-time library admission and unpinned/qualification warnings; truthful CLI failed/partial outcomes; Restore/report gates; composition pin preservation or refusal; native flow with pinned-plan UI preview/apply; shared version intents; exact per-pin cloud state. This advances the existing §11, §18, §23 and §25 items without another gap list. Each slice needs owning tests and a real filed-model replay through `ds` before landing; byte verification never implies native Restore or solver approval.
+- `e258b287` (blocker): PLS export plan accepts unsupported edited model but convert cannot emit backup. Complete the model-menu `.bak` export vertical in the remaining bounded slices of `outputs/pls-bak-export-plan-20261007/PLS-BAK-EXPORT-PLAN.md`: library admission and unpinned/qualification warnings; truthful CLI failed/partial outcomes; Restore/report gates; composition pin preservation or refusal; pinned-plan UI preview/apply; shared version intents; exact per-pin cloud state. This advances the existing §11, §18, §23 and §25 items without another gap list. Each slice needs owning tests and a real filed-model replay through `ds` before landing; byte verification never implies native Restore or solver approval. The gisagara rev-67c72f3f replay cannot exercise the plan-time edit-class forecast on current `run`: the dev `ds` plan is blocked first by `immutable_structure_unsourced` (45 structure files) and by "manifest records no snapshot content digest" (46 of 47 tables), so the cable/cable_curves replay needs a schema-current package.
 
-- `4af28da3` (minor): Model 2 package cannot export: 'preserved PLS source version could not be inspected'.
+- `4af28da3` (minor): on the real Model 2 package (`drive/DS Grid Models/model2-nyamagabe-nyaruguru/Nyamagabe&Nyaruguru.1.dsgrid`), the current `run` plan refuses with "preserved PLS source version could not be inspected for export: the package manifest records no snapshot content digest". The package declares 44 table digests against the 47-table registry that `13c3a98c` requires (Gisagara rev-67c72f3f declares 46). The message wrongly says no digest exists and gives no remedy: name the registry mismatch (N of 47 tables) and the remedy, e.g. upgrade or re-import with the current `ds`.
 
 - `8f6e3ff1` (major): Alignment-revised .dsgrid cannot return to PLS-CADD: export refuses on pre-existing PLS-POLE 20.01 library members, sync has no writer for the edit class.
 
@@ -477,17 +470,13 @@ Moved from OPEN.md §2, §4, §5 and §7. Operational print seeding stays in
 
 - **KMZ style resolution**: move the 30 Grid and 47 transformer KMZ tuples from `ds_kml::governed_document` into the sole governed style resolver and its declarative seed.
 
-- **Absent-field country defaults**: remove implicit Rwanda/EDCL print defaults from owning code after checking stored project layouts. Require authored country/branding metadata; issue-date/version values, distinct LV context pens and A3 overview seeding belong in [SEEDING.md](SEEDING.md#4-print-templates-styles-and-seed).
+- **Absent-field country defaults**: remove the implicit Rwanda print defaults still in code. (1) Kernel `src/printing/mod.rs`: `GraticuleCrs` has `#[default] TmRwanda` and `Graticule::default()` sets `crs` `TmRwanda`, so an absent graticule `crs` prints Rwanda TM. (2) ds-web `PrintingSetup.svelte:1222` `refreshContextCatalog` calls `referenceCatalogStatus(projectId, "Rwanda")` whatever the project's country. Authored values belong in [SEEDING.md](SEEDING.md#4-print-templates-styles-and-seed).
 
 - **MV booklet owner integration** (`f0e9c2ed`, `290bf404`, `46f54c67`): complete any missing native cover → naming → key-map → plan/profile integration that still needs the ds-work Python bridge. Resolve project-native PLS types to exact canonical DS members or return missing mappings. Runtime-gate the structure-description offset correction and restore held-model preview/background preparation on new installations. Final page composition and real project delivery belong in [SEEDING.md](SEEDING.md#5-print-sheet-content-and-legibility).
 
-- **Print sets are too large** (`e2cd543e`): Gisagara's 96-page A3 MV booklet is 481 MB and 86-page A0 LV combined PDF is 714 MB. Reduce repeated vector resources and paths while preserving legible schedules, linework, pagination and supported georeferencing; keep any raster context settings in project-owned output JSON.
+- **Print sets are too large** (`e2cd543e`): Gisagara's 96-page A3 MV booklet is 481 MB and 86-page A0 LV combined PDF is 714 MB. Text is embedded as subset fonts, and objects and resources are compressed and deduplicated; what remains: (1) simplify context-vector paths where engineering detail is preserved; (2) a small project-owned JSON output profile for raster context image target PPI and quality, leaving vector linework and text intact.
 
-- **MV map-inputs repeatedly reads the whole project** (`f48bd93c`): each Northern Hub plan/profile capture rereads 180 transformer contexts and takes about six minutes; the command does not read native server state, so a state-dir flag alone cannot cure it. Add bounded, digest-pinned source reuse and a named failure for stalled acquisition. The delivery runner's pinned district-capture reuse must become a governed DS path.
-
-- `5828fac5` (minor): A0 contour index labels fail renderer with text paper wider than frame.
-
-- `778a9f4d` (minor): Plan & profile: labels after an elevation break drawn in the top band with leader lines crossing the scale bar.
+- **MV map-inputs still has unbounded reads** (`f48bd93c`): the data-distribution catalogue and print-context acquisition (`read_print_context` with `&mut hosts`), and `export::complete_proof_print_styles`, are not bounded or named on a stall. `--reuse-capture` checks freshness only against the live active transformer names, because inventory rows carry no version or digest.
 
 - `8de3e8e0` (major): Batch transformer export needs a declarative JSON job for layout, naming and packaging.
 

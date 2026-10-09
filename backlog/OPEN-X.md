@@ -13,13 +13,14 @@ Check existing contracts, source evidence and recorded owner choices first. Rout
 | [12. Engineering acceptance and material authority](#12-engineering-acceptance-and-material-authority) | 2 |
 | [13. Between-angle policy](#13-between-angle-policy) | 1 |
 | [14. Profile display and supervised editing](#14-profile-display-and-supervised-editing) | 0 |
-| [15. Project scope and engineering choices](#15-project-scope-and-engineering-choices) | 3 |
+| [15. Project scope and engineering choices](#15-project-scope-and-engineering-choices) | 4 |
+| [17. Project Work and Assets](#17-project-work-and-assets) | 1 |
 | [18. Supervised native qualification](#18-supervised-native-qualification) | 1 |
 | [22. Account and data-owner authority](#22-account-and-data-owner-authority) | 2 |
-| [25. CLI reliability and feedback](#25-cli-reliability-and-feedback) | 1 |
+| [25. CLI reliability and feedback](#25-cli-reliability-and-feedback) | 2 |
 | [Solar sync migration: owner inputs](#solar-sync-migration-owner-inputs) | 4 |
 | [Parked: outside stabilization](#parked-outside-stabilization) | 2 |
-| [Temporary: owner-supervised Codex handover](#temporary-owner-supervised-codex-handover-2026-10-07) | 7 |
+| [Temporary: owner-supervised Codex handover](#temporary-owner-supervised-codex-handover-2026-10-07) | 6 |
 <!-- /toc -->
 
 ## Temporary: owner-supervised Codex handover (2026-10-07)
@@ -60,19 +61,16 @@ list.
 4. **Select the Template's MV setup** (after step 3). Run `report project
    mv-setup set` for `mv-a3-plan-profile-template` at its current revision.
    **Owner gives:** `external_version` and the fixed `issue_date`.
-5. **MV global-default fallback** (STABILIZATION §15.2). **Owner decides:**
-   retire the global fallback, so every project selects its own MV setup, or
-   read the default from a template project.
-6. **Finish the Rwanda Template seed** (SEEDING §3; data only, no code).
+5. **Finish the Rwanda Template seed** (SEEDING §3; data only, no code).
    - Replace the logos and title-block text on the remaining LV layouts with
      the generated set in `outputs/rwanda-template-seed-20261007/logos/`.
    - Use fictitious companies and account numbers, and gibberish-Latin
      people's names.
    - **Owner gives:** whether signed-in read-only access needs a new grant,
      since no such control exists.
-7. **Printing slices queued:** STABILIZATION §13 (grouped catalogue read and
-   Desktop rendering) and §14 (preview map context). **Owner picks** the
-   order.
+6. **Printing slices queued:** STABILIZATION §13 (subject-aware preview and
+   the remaining Desktop read) and §14 (preview map context). **Owner picks**
+   the order.
 
 Backups of the reclassified layouts are in
 `~/.cache/claude-build-tmp/rwt/reclass/`. `printing-settings-offline.test.ts`
@@ -101,6 +99,12 @@ Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group A (owner decision
 
 - **Gisagara M3 publication go-ahead**: the retained rev-55 delivery explicitly requires the owner’s go before publication. **Input needed:** publication authorization for the exact reviewed candidate after usage, strict export and residue checks are complete. **Boundary:** publishing that candidate. Agents finish the concrete reviewable delivery and evidence in [SEEDING.md block 15](SEEDING.md#15-project-deliveries) before requesting this decision.
 
+- **Rating pin vs approval** (`25d2115f`; ds-network `4e02f2ad`): an approved transformer whose rating pin selects another size is kept as drawn with an `approved_network_kept` warning. **Input needed:** whether an authoritative `tr_size`/`plan_kva` (or `ex_tr_size`) pin on an approved transformer may rewrite its approved derived cells `transfo_size` and `main_cable_size`. **Boundary:** ds-network sizing and the LV preservation fence. Affects Gisagara `ruhuha`, `zihare`, `upgrade_kimana` and `updrade_bazenga` (plus the 42 wnmajona transformers named in `4e02f2ad`).
+
+## 17. Project Work and Assets
+
+- **Assets Explorer page** (ds-web): the Explorer cluster (`AssetsPage`, `AssetsExplorer`, `AssetsToolbar`, `AssetsAddressBar`, `AssetsDetailsList`, `AssetsListRow`, `AssetsNavigationPane`, `AssetsTreeNode`) has been unreachable since `66e3dd78`, yet `docs/project-assets-contract.md` §8.2 still rules that the page is an Explorer. **Input needed:** restore the Explorer page or retire it. **Boundary:** the §8.2 ruling and that component cluster; agents neither delete nor rewire it before the decision.
+
 ## 18. Supervised native qualification
 
 - **Unknown PLS-CADD Error Log**: the Windows handoff preserved an unclassified Error Log, reported in process 23884, with screenshot/text under `q11-gisagara-m1-v31\unknown-error-log\`. **Input needed:** operator classification of the actual preserved dialog and the authorized next native action. **Boundary:** resuming that blocked PLS-CADD session; never dismiss an unknown dialog blindly. The complete candidate evidence, trust state and remaining native gates stay in [SEEDING.md block 18](SEEDING.md#18-global-ds-grid-library). Managed library lifecycle and export-admission coding continues independently in [OPEN.md block 18](OPEN.md#18-global-ds-grid-library).
@@ -114,6 +118,8 @@ Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group A (owner decision
 ## 25. CLI reliability and feedback
 
 - **Reporting and automatic-filing policy** (spec [ds-cli-reliability-and-feedback.md](../docs/contracts/ds-cli-reliability-and-feedback.md) §9): **Input needed:** whether operators may turn SRE reporting off (spec default: on, `DS_SRE_REPORTING=off` for tests only); whether signed-out hosts report as `anonymous` (default) or hold events until sign-in; whether automatic `bug` filing stays crash-only (default) or also covers repeated identical failures; whether a user may read their own CLI events (default: platform admins only). **Boundary:** changing those defaults. All [OPEN.md block 25](OPEN.md#25-cli-reliability-reporting-and-proactive-feedback-priority) slices proceed on the defaults.
+
+- **Feedback pointer on a repeated refusal**: contract §5.4 says a repeated refusal "names none yet", because a `next.feedback` that depends on local state conflicts with §3.4 (envelopes byte-identical with reporting on or off). **Input needed:** drop the §3.4 byte-identity requirement for this case, or allow refusal answers that depend on local state. **Boundary:** contract §5.4 of [ds-cli-reliability-and-feedback.md](../docs/contracts/ds-cli-reliability-and-feedback.md).
 
 ## Solar sync migration: owner inputs
 
