@@ -61,7 +61,7 @@ latest note, and the id and version a close must carry.",
         Arg::value(
             "cursor",
             "<token>",
-            "Read the difference since this token the backlog issued.",
+            "Read the difference since this token; an --all read's token pages every match once, watermark untouched.",
         ),
         Arg::switch(
             "all",
