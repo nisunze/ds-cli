@@ -616,6 +616,30 @@ or a closed `refusal`: `not_found`, `already_retired`, `not_retired`,
 collision docs are never retired), `governance_locked`, `not_owner`, `failed`.
 Contract: ds-brain `docs/contracts/transformer-retirement.md`.
 
+### Restoring a deleted transformer
+
+Deletion removes the working document after writing one verified native
+`.dsgrid` delete backup; the backup ledger names its object. Two commands
+recover it, both needing `transformer.delete`:
+
+```bash
+ds design transformer backup --project <exact-id> --transformer TX-1 \
+  --object transformers/<ledger-object>.dsgrid --out ./TX-1.dsgrid --output json
+ds design transformer restore-deleted --project <exact-id> --transformer TX-1 \
+  --object transformers/<ledger-object>.dsgrid --generation <n> --sha256 <hex> --yes
+```
+
+`backup` reads the live (or `--generation`-pinned) backup, which ds-brain
+verifies and requires to name this project and transformer, and returns its
+source revision, layers and exact receipt; `--out` saves the bytes only when
+their length and SHA-256 match. `restore-deleted` takes that receipt's
+generation and SHA-256 and recreates the document in one transaction; it
+refuses `transformer_exists` when any document holds the name (a retired one
+comes back with `restore`) and `history_diverged` when a later transformer of
+the same name rebuilt the version history. Other refusals: `backup_pin_invalid`,
+`backup_not_found`, `backup_unverified`, `backup_identity_mismatch`,
+`backup_unavailable`, `special_document`.
+
 ## Where design collaboration is
 
 Governed collaboration is not on disk and is not reachable with a credential
@@ -1393,6 +1417,15 @@ of `download_state`. `available_in_archive` names verified ZIP members and
 the containing download URL; it never invents standalone member URLs.
 `--format pdf` includes a ZIP when its indexed members contain matching PDFs.
 Unknown archive coverage is explicit and does not justify regeneration.
+
+`design.download.fetch` executes that plan for the same `--project`,
+`--transformer` and `--format`: each listed object is signed afresh through
+the report service's authorized signer (project membership checked, short
+lived), fetched, and written under a new or empty `--out-dir` at its stored
+object path, with `manifest.json` naming every file's `gs://` identity, bytes
+and SHA-256. A bearer link the plan carried is never used. Objects the signer
+refuses or storage fails are listed in the manifest and the command answers
+`download_incomplete`; at most 200 objects per run.
 
 ### Governed design history
 
