@@ -29,6 +29,19 @@ dropping is forbidden. Qualification gaps require a named fix/refusal; they do
 not authorize an engine switch or a Tippecanoe fallback. Details and proof are
 in section 4 of the migration plan; this selection does not claim it is installed.
 
+### Differential source refresh and local work areas
+
+Owner requirement, 2026-10-09: revision/coverage metadata drives cheap freshness;
+survey/design refresh acquires cursor-bound changes and deletions, reusing
+unchanged immutable Parquet chunks. Unchanged refresh performs no source-row
+download or tile rebuild. Work areas filter retained disk snapshots locally;
+changing a mask inside cached coverage performs no data request and does not
+change the underlying complete snapshot or project tile freshness. Missing
+coverage alone is acquired. Cursor gaps, source/schema/access changes require
+explicit bounded recovery, never silent full downloads or false completeness.
+The protocol, atomicity and measurable acceptance are in sections 3.1/3.2 of
+the migration plan; this is required migration work, not a shipped capability.
+
 ## Implementation baseline
 
 Tiling belongs to the Rust server product. Web adapters call a container;

@@ -124,6 +124,91 @@ chmod assumptions. Bound disk use, protect artifacts in use, retain last good
 snapshots and remove abandoned staging after recovery. Local builds may reuse
 an admitted cached snapshot offline; online publication requires fresh authority.
 
+### 3.1. Cheap freshness and differential acquisition
+
+Owner requirement, 2026-10-09: survey and design refresh must reuse durable local
+data and acquire only changes. A warm load must not download a complete project
+again just because the user reopened it, refreshed a report or moved a work area.
+
+Extend the snapshot contract with a server-issued source epoch, revision vector,
+change cursor, coverage revision and immutable chunk manifest. Chunk identities
+bind bytes, not timestamps or local paths. The expert provides a cheap conditional
+freshness operation over maintained source/mirror metadata; it must not count or
+scan all Firestore documents or BigQuery rows for every PC's freshness check.
+Coalesce checks across views/jobs and honor bounded revalidation/backoff policy.
+Show locally cached, checking, current-at-revision, changed, mirror-behind and
+offline-unverified states distinctly. Wall-clock age alone never proves freshness.
+
+For an admitted previous snapshot, request the delta from its exact cursor to a
+pinned target revision. The response carries changed/new chunks or object batches,
+stable IDs, object revisions, deletion tombstones, changed schema/tag/coverage
+metadata, next cursor and a terminal completeness receipt. Survey deltas follow
+the governed BigQuery mirror's change/deletion ledger; design deltas follow saved
+Firestore/DS Grid revision manifests. Neither client polls the database directly.
+Server ordering must cover equal timestamps, delayed mirror writes, deletions,
+restores and geometry movement. A timestamp-only `updated_at > last_time` query
+is not an adequate change protocol. Avoid one remote read per unchanged object.
+
+Apply deltas transactionally into a new immutable manifest that reuses unchanged
+Parquet chunks. Persist the new cursor only after all pages/chunks and tombstones
+are durable and verified. Retry the same batch idempotently; out-of-order/stale
+responses cannot roll back the head. Readers/report/tile jobs pin one manifest
+while refresh prepares the next. Compact bounded delta fragments locally without
+redownloading or rewriting all unchanged data for every edit. Maintain ID and
+spatial indexes and before/after geometry bounds as changes land.
+
+An expired cursor, changed source epoch, incompatible schema, missing deletion
+history or changed access scope returns a typed resnapshot requirement with its
+reason and estimated cost. Reuse verified unchanged chunks where still admitted;
+acquire only missing authorized coverage. A complete reacquisition is a visible,
+bounded recovery path, never the ordinary silent refresh. Revoked/restricted
+access invalidates the affected local catalogue/view and shared eligibility;
+cached data cannot retain authority after a known revocation.
+
+Delta-derived snapshots retain complete status only when their base coverage was
+complete and the server attests continuous change coverage through the target.
+Validate the logical full-data digest independently of chunk/compaction layout.
+Tile/report freshness binds that effective data digest plus its actual schema,
+tags/vocabulary and processing dependencies. An unchanged refresh causes no data
+transfer, tile rebuild or report recomputation. Changed partitions may invalidate
+only their dependent native work; do not promise partial PMTiles mutation unless
+the immutable archive writer proves it. Rebuilding an archive locally must still
+reuse the existing full local data instead of downloading it again.
+
+### 3.2. Work area is a local view over retained coverage
+
+Store acquired data independently of the active work-area mask. The work area,
+form/transformer selection and attribute filters are typed local query predicates
+over the disk snapshot and its spatial/row-group indexes. Use Polars projection
+and predicate pushdown plus the existing native exact spatial predicate; a bbox
+index narrows candidates but does not replace exact geometry selection.
+
+Changing, shrinking, clearing or revisiting a work area already covered on disk
+performs no source-data request/download and does not mutate/delete the underlying
+snapshot. Refresh checks are separate from mask changes, so dragging a work area
+cannot issue repeated remote freshness or data queries. Map, table, report and
+analytics consumers share the pinned source snapshot but may have different views.
+Return the source revision, view predicate and coverage in each result.
+
+If local coverage is partial, compute the exact missing coverage first and fetch
+only admitted missing partitions/objects against a consistent revision. Merge
+and deduplicate by stable ID/revision; do not re-fetch the overlap. A moved feature
+must enter/leave masked views correctly using the change feed, including objects
+whose old position was inside but new position is outside the area. Keep coverage
+receipts separate from the current mask; an uncovered region is not an empty one.
+Do not infer project completeness from the union of arbitrary area queries
+without a server coverage attestation. Do not eagerly download the whole project
+merely to display one uncached area; explicit whole-project tiling acquisition is
+a separate admitted plan with visible cost.
+
+A work-area-filtered view over a complete current disk snapshot may reuse that
+underlying complete snapshot for automatic project tiling. The job uses its
+unmasked complete source, never the visible subset; a view-only mask change does
+not stale project tiles or replace them with cropped data. Preserve existing
+unsaved authored edits as a separate revision; incoming remote deltas must not
+overwrite them. Route conflicts through the existing revision/reconciliation
+owner rather than last-write-wins.
+
 ## 4. Rust tile engine and reporter process
 
 Evolve `ds-tile-runtime` into the pure native tile-generation owner. Replace
@@ -200,7 +285,8 @@ snapshot acquisition/report preparation; it must not decide completeness itself.
 | Survey load finished with no filter and complete coverage | Reuse the acquired survey snapshot; check freshness |
 | Explicit desktop/CLI tile request | Plan required complete acquisition, reuse matching local data, then build under admitted budgets |
 | Personal/project upload parsed and validated locally | Retain original bytes, create columnar projection and local tiles for its actual visibility scope |
-| Filtered/partial/unsaved data | Permit explicitly scoped local tiles; never schedule replacement of the complete shared output |
+| Filtered/partial/unsaved data | Permit explicitly scoped local tiles; the subset cannot replace complete shared output. An independently attested complete unmasked disk snapshot may still supply a project job |
+| Work-area mask changes inside disk coverage | Query locally, issue no data/freshness request solely for the mask change, and retain complete project tile freshness |
 | Hosted Web load/report | Read existing artifacts/status; do not dispatch a build |
 
 Use a key per project/owner, output kind, scope, revision and engine/options.
@@ -230,6 +316,8 @@ adapter and a test server against them, and give the expert these exact obligati
 | Semantic operation | Required result/effect |
 | --- | --- |
 | Snapshot plan/acquire | Recheck user/project access; attest selection coverage; issue pinned snapshot manifest and bounded authenticated download handles for the source matrix in section 1 |
+| Conditional snapshot freshness | Compare admitted epoch/revision/coverage token against maintained metadata; unchanged returns no row/chunk payload and performs no full source scan |
+| Snapshot delta / missing coverage | Issue continuous cursor-bound upserts, tombstones and changed chunks to a pinned target; return completeness or a typed recovery requirement; reuse authorized unchanged chunks |
 | Tile freshness | Return current published source vector/digest, engine/options identity, visibility scope and catalogue generation; distinguish stale, absent, empty and inaccessible |
 | Claim/renew/release | Atomically fence one publication lease to principal/project/output/snapshot/expiry; losing a lease never changes the current archive |
 | Candidate upload admission | Issue exact scoped staging destination and expected digests/lengths, not arbitrary bucket/path write privileges |
@@ -306,7 +394,9 @@ remote CI builds or deployment under this plan alone.
    policy: survey cannot select Firestore; design requires no BigQuery. Prove
    filtered/paged/permission-limited/moving-head and zero-row cases.
 2. **Columnar snapshot store.** Implement immutable manifests, batch readers,
-   digests, private local catalogue, recovery and bounded retention. Prove
+   digests, private local catalogue, differential refresh, local spatial views,
+   recovery and bounded retention. Implement sections 3.1/3.2 as first-release
+   requirements, not a later optimization. Prove
    schema/geometry roundtrip, nulls, IDs, tags, deletions, interrupted download,
    wrong lane/account/project, corruption, Windows locks/ACLs and offline reuse.
 3. **VersaTiles native generator.** Qualify the pinned Rust libraries and replace
@@ -360,6 +450,11 @@ claim the migration complete. No new owner decision is needed for routine code.
 | Offline/cancel/crash/logout | No partial promotion or credential crossover; retry/recovery and retained report/snapshot behavior proven |
 | Geometry and zooms | Points, lines, holes/multipart polygons, boundaries, large features, attribute types, layer names and IDs independently decoded; real map evidence at low/high zoom |
 | Memory/disk | Recorded budgets and measurements for small project, dense project and larger streaming fixture; deterministic refusal instead of OOM |
+| Unchanged warm refresh | Metadata revalidation only; zero source-row/chunk download bytes, zero full-source scans, zero tile rebuilds and zero report recomputation |
+| Incremental survey/design refresh | Insert/update/delete/restore and geometry-move fixtures match a fresh complete snapshot at the same revision; only changed/missing chunks transfer; record request counts, bytes and source work |
+| Delta recovery and concurrency | Duplicate/equal-time/out-of-order pages, interrupted apply, source epoch reset, cursor expiry, schema/tag/access changes preserve atomicity and produce the declared recovery/refusal |
+| Cached work-area changes | Shrink/expand/clear/revisit within retained coverage produces correct exact spatial results with zero data requests/downloads; full snapshot and project tile freshness unchanged |
+| Missing area and moving features | Only missing admitted coverage transfers; overlap deduplicates; moved/deleted features leave/enter views correctly; partial coverage cannot masquerade as complete |
 | Hosted Web | No build controls or build requests on load/report/upload; map/status/download of existing outputs still work |
 | Packaging | Real Windows native execution with external tiling tools absent; one installed CLI/MCP/reporter contract and matching skills |
 
@@ -387,7 +482,11 @@ absorbed by those contracts and no implementation work remains.
 > Expose it through ds-network-reporter and the DS CLI/MCP, support actual Windows
 > native generation, add complete-snapshot report/survey triggers, reusable
 > Parquet/GeoParquet and Polars workflows, and remove Web generation controls and
-> replaced code. Coordinate the exact source/lease/publication protocol with the
+> replaced code. Implement cheap revision freshness, cursor/tombstone differential
+> acquisition and immutable chunk reuse for survey/design. Treat work areas as
+> local masks over retained disk coverage; prove zero redownloads for cached
+> area changes and unchanged refreshes. Coordinate the exact source, delta, lease
+> and publication protocol with the
 > cloud expert; do not implement or deploy their cloud work without assignment.
 > Finish all independent native work and prove Windows through owning tests and
 > real native artifacts, not owner hand-testing. Complete shared-publication

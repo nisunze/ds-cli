@@ -119,6 +119,11 @@ Why — the painful history:
   Polars first; no DuckDB adoption without measured need and a later decision.
   Future large cross-project BigQuery tables mirror full design snapshots with
   project IDs and tags, never recover canonical data from display tiles.
+- Freshness uses cheap maintained revision/coverage metadata. Survey/design
+  refresh reads only cursor-bound changes/deletions and reuses unchanged disk
+  chunks. Work areas are local masks over retained snapshots; cached-area changes
+  must not redownload source data or stale complete project tiles. Acquire only
+  missing coverage, preserve atomic revisions and prove request/byte economics.
 - The cloud API and special resource-selected dataset jobs are expert-owned.
   Finish independent native code while coordinating that explicit integration
   boundary. The [implementation plan](../docs/desktop-native-tiling-migration-plan.md)

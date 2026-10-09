@@ -579,6 +579,7 @@ Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group A, to be fixed to
   complete report/survey snapshots do not provide the required automatic native
   build and governed publication path. Implement the [2026-10-09 plan](../docs/desktop-native-tiling-migration-plan.md):
   shared Rust generation through reporter/CLI/MCP, Parquet/GeoParquet and Polars,
+  cheap revision freshness, differential reads and local work-area masks,
   real Windows proof, complete-snapshot triggers, Web-control/legacy deletion
   and revision-fenced publication integration. Coordinate the expert-owned
   source/publication APIs and special cloud jobs; no new owner input is needed
