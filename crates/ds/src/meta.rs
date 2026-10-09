@@ -720,7 +720,8 @@ an unfamiliar machine.",
 Counts of available and unavailable commands, one entry per unavailable \
 command with its reason and remedy, build identity including linked ds-network \
 compile-time provenance, and agent skill bundle and \
-install status, and shell reach. With --all, every command.",
+install status, shell reach, and reliability reporting state (switch, outbox \
+size, last flush). With --all, every command.",
     examples: &[
         Example {
             command: "ds doctor",
@@ -780,6 +781,7 @@ fn doctor(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         "build": build::identity(),
         "shell": ds_cli_shell::report(),
         "skills": ds_cli_skills::doctor_report(build::SOURCE_SHA),
+        "reporting": crate::reliability::doctor_report(),
     });
     if all {
         report["commands"] = Value::Array(listed);
@@ -860,6 +862,17 @@ fn render_doctor(data: &Value) -> String {
     }
     if let Some(remedy) = shell["remedy"].as_str() {
         out.push_str(&format!("  remedy: {remedy}\n"));
+    }
+    let reporting = &data["reporting"];
+    if reporting["enabled"] == true {
+        out.push_str(&format!(
+            "\nreliability reporting: on ({}), outbox {} event(s), last flush {}\n",
+            reporting["lane"].as_str().unwrap_or("unknown"),
+            reporting["outbox_events"].as_u64().unwrap_or(0),
+            reporting["last_flush"].as_str().unwrap_or("none"),
+        ));
+    } else {
+        out.push_str("\nreliability reporting: off\n");
     }
     out
 }

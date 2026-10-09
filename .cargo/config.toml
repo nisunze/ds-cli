@@ -1,0 +1,6 @@
+# Tests and CI never report to SRE (ds-command-kernel
+# docs/contracts/ds-cli-reliability-and-feedback.md §3.4). Cargo hands this to
+# every test process and the `ds` children they start; a value already in the
+# environment wins, so a test that proves reporting sets it explicitly.
+[env]
+DS_SRE_REPORTING = "off"

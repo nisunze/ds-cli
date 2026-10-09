@@ -22,6 +22,16 @@ const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 // outlast the short gateway request bound on a constrained server connection.
 const GRID_MODEL_BYTES_TIMEOUT: Duration = Duration::from_secs(600);
 static CORRELATION_SEQUENCE: AtomicU64 = AtomicU64::new(1);
+/// The last correlation id this process sent: a reliability event names it as
+/// its `request_id`, which joins the ds-brain rows of the same request.
+static LAST_CORRELATION_ID: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+
+pub(crate) fn last_correlation_id() -> Option<String> {
+    LAST_CORRELATION_ID
+        .lock()
+        .ok()
+        .and_then(|last| last.clone())
+}
 
 #[derive(Default)]
 pub struct NativeTransport;
@@ -822,6 +832,43 @@ impl Transport for NativeTransport {
         bearer.zeroize();
         let response = result.map_err(classify)?;
         bounded(response, call.response_limit())
+    }
+    fn sre_client_event(
+        &mut self,
+        call: ds_client_core::reporter::SreClientEventCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        let (request_id, action_id) = correlation_headers();
+        let url = format!(
+            "{}{}",
+            local_go::api_origin(call.gateway_origin())?,
+            call.path()
+        );
+        let mut bearer = call.bearer_token().map(|token| format!("Bearer {token}"));
+        let mut request = local_go::api_agent()?
+            .post(url)
+            .header("Accept", call.content_type())
+            .header("Content-Type", call.content_type())
+            .header("X-App-Id", call.client_id())
+            .header("X-Request-Id", &request_id)
+            .header("X-DS-Action-Id", &action_id)
+            .header("x-api-key", call.gateway_api_key());
+        if let Some(value) = bearer.as_deref() {
+            request = request
+                .header("Authorization", value)
+                .header("X-Forwarded-Authorization", value);
+        }
+        let result = request
+            .config()
+            .max_redirects(0)
+            .http_status_as_error(false)
+            .timeout_connect(Some(call.timeout().min(CONNECT_TIMEOUT)))
+            .timeout_global(Some(call.timeout()))
+            .build()
+            .send(call.body());
+        if let Some(value) = bearer.as_mut() {
+            value.zeroize();
+        }
+        bounded(result.map_err(classify)?, call.response_limit())
     }
     fn shared_assets(
         &mut self,
@@ -2445,6 +2492,9 @@ fn correlation_id() -> String {
 
 fn correlation_headers() -> (String, String) {
     let request_id = correlation_id();
+    if let Ok(mut last) = LAST_CORRELATION_ID.lock() {
+        *last = Some(request_id.clone());
+    }
     (request_id.clone(), request_id)
 }
 

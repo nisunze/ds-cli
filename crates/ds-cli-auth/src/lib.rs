@@ -13,6 +13,7 @@ pub mod link_approval;
 mod local_go;
 mod profile;
 mod project_template;
+pub mod reliability;
 mod saved_a4;
 mod saved_preview_read;
 mod state;
@@ -6862,6 +6863,22 @@ pub fn feedback(
             "The backlog is too large to enumerate completely in one answer",
         )
         .remedy("Close reports; the backlog refuses rather than answering partially"),
+        "feedback_component_unknown" => {
+            let owner = match command {
+                ds_client_core::feedback::Command::Submit { component, .. } => {
+                    ds_client_core::feedback::legacy_owner(component)
+                }
+                _ => None,
+            };
+            let message = match owner {
+                Some(owner) => format!("--component is a legacy label; {owner} owns it now"),
+                None => "--component names no live repository".to_string(),
+            };
+            Failure::invalid("feedback_component_unknown", message).remedy(format!(
+                "start --component with a live repository, optionally /area: {}",
+                ds_client_core::feedback::LIVE_REPOSITORIES.join(", ")
+            ))
+        }
         _ => map_client(error),
     };
     command.validate().map_err(convert)?;
@@ -8434,3 +8451,40 @@ impl NamedSolarProjectSession {
 }
 
 pub mod messaging;
+
+#[cfg(test)]
+mod feedback_component_tests {
+    use super::*;
+
+    fn submit(component: &str) -> FeedbackCommand {
+        serde_json::from_value(serde_json::json!({
+            "operation": "submit",
+            "title": "t",
+            "detail": "d",
+            "component": component,
+            "kind": "bug",
+            "severity": "minor",
+            "agent": "a",
+        }))
+        .expect("a submit command")
+    }
+
+    /// FEEDBACK `9ab57db2`: the kernel refuses a component that names no live
+    /// repository before anything is sent, and the refusal lists the live
+    /// repositories and, for a legacy label, the repository that owns it.
+    #[test]
+    fn a_retired_component_is_refused_with_its_owner_and_the_live_list() {
+        let failure = feedback("stable", &submit("ds-grid-engine/sag")).unwrap_err();
+        assert_eq!(failure.code(), "feedback_component_unknown");
+        assert!(
+            failure.message().contains("ds-network owns it"),
+            "{failure}"
+        );
+        let remedy = failure.remedy_text().unwrap_or_default();
+        assert!(remedy.contains("ds-cli") && remedy.contains("ds-network-reporter"));
+
+        let invented = feedback("stable", &submit("platform")).unwrap_err();
+        assert_eq!(invented.code(), "feedback_component_unknown");
+        assert_eq!(invented.message(), "--component names no live repository");
+    }
+}

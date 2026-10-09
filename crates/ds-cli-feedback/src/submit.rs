@@ -26,6 +26,11 @@ const INVALID_EVIDENCE: Refusal = Refusal {
     when: "evidence has too many entries or an entry exceeds its bound",
     remedy: "send at most 20 bounded observations; repeat --evidence for distinct facts",
 };
+const COMPONENT_UNKNOWN: Refusal = Refusal {
+    code: "feedback_component_unknown",
+    when: "--component does not start with a live repository (a retired or invented label)",
+    remedy: "start --component with the owning live repository, optionally /area, as the refusal lists",
+};
 const INVALID_CONTEXT: Refusal = Refusal {
     code: "invalid_context",
     when: "context is not a unique bounded key=value pair",
@@ -66,7 +71,7 @@ their owning backlogs instead.",
         Arg::value(
             "component",
             "<repository[/area]>",
-            "Owning repository or area; at most 200 characters.",
+            "Owning live repository, optionally /area; at most 200 characters.",
         )
         .required(),
         Arg::value(
@@ -116,10 +121,11 @@ report, and the report's current occurrence count.",
         runnable: false,
     }],
     refusals: &crate::native_refusals::<
-        7,
-        { 7 + ds_cli_auth::PROJECT_STATUS_COMMAND.refusals.len() },
+        8,
+        { 8 + ds_cli_auth::PROJECT_STATUS_COMMAND.refusals.len() },
     >([
         INVALID_TEXT,
+        COMPONENT_UNKNOWN,
         INVALID_EVIDENCE,
         INVALID_CONTEXT,
         crate::NOT_FOUND,

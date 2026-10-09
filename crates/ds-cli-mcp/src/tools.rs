@@ -1169,6 +1169,9 @@ fn run_bounded(
     command
         .args(argv)
         .env("DS_CLI_NONINTERACTIVE", "1")
+        // The child records its reliability event and leaves the send to this
+        // long-lived process, off the request path.
+        .env("DS_CLI_SURFACE", "mcp")
         .env_remove("DS_CLI_SCHEMA_ONLY");
     // This server's own stdin is the JSON-RPC channel; the child gets none.
     let mut child = command

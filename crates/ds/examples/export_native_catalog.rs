@@ -9,6 +9,8 @@ mod meta;
 mod native_catalog;
 #[path = "../src/registry.rs"]
 mod registry;
+#[path = "../src/reliability.rs"]
+mod reliability;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut args = std::env::args().skip(1);

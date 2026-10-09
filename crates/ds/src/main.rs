@@ -21,6 +21,7 @@ mod build;
 mod meta;
 mod native_catalog;
 mod registry;
+mod reliability;
 
 use std::process::ExitCode;
 
@@ -32,9 +33,27 @@ use ds_cli_contract::{Context, help};
 fn main() -> ExitCode {
     console_utf8();
     let argv: Vec<String> = std::env::args().skip(1).collect();
-    match run(&argv) {
-        Ok(()) => ExitCode::SUCCESS,
-        Err((class, ())) => ExitCode::from(class.code()),
+    let started = std::time::Instant::now();
+    // The answer is written inside `run`; reliability reporting happens after
+    // it and never changes it. A panic is reported, then resumed unchanged, so
+    // its message and exit code are exactly what they were.
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| run(&argv))) {
+        Ok(result) => {
+            reliability::report(&argv, started, None);
+            match result {
+                Ok(()) => ExitCode::SUCCESS,
+                Err((class, ())) => ExitCode::from(class.code()),
+            }
+        }
+        Err(payload) => {
+            let message = payload
+                .downcast_ref::<&str>()
+                .map(|message| (*message).to_string())
+                .or_else(|| payload.downcast_ref::<String>().cloned())
+                .unwrap_or_else(|| "panic".to_string());
+            reliability::report(&argv, started, Some(message));
+            std::panic::resume_unwind(payload)
+        }
     }
 }
 
@@ -251,6 +270,7 @@ fn run(argv: &[String]) -> Result<(), (ExitClass, ())> {
         .iter()
         .find(|entry| entry.command.path == [first.as_str()])
     {
+        reliability::resolved(entry.command);
         if globals.help {
             return show_command_help(globals.output, entry.command);
         }
@@ -303,6 +323,10 @@ fn run(argv: &[String]) -> Result<(), (ExitClass, ())> {
         );
     };
 
+    reliability::resolved(entry.command);
+    if reliability::ADAPTER_COMMANDS.contains(&entry.command.id) {
+        reliability::spawn_adapter_flusher();
+    }
     if globals.help {
         return show_command_help(globals.output, entry.command);
     }
@@ -431,6 +455,7 @@ fn finish(
     data: serde_json::Value,
     render: fn(&serde_json::Value) -> String,
 ) -> Result<(), (ExitClass, ())> {
+    reliability::ended(command.id, command.contract, None);
     output
         .success(command.id, command.contract, data, |data| {
             let mut answer = render(data);
@@ -474,6 +499,9 @@ fn emit_failure(
 ) -> Result<(), (ExitClass, ())> {
     let joined = declared_remedy(refusals, failure);
     let failure = joined.as_ref().unwrap_or(failure);
+    let pointed = reliability::with_feedback(failure);
+    let failure = pointed.as_ref().unwrap_or(failure);
+    reliability::ended(command, contract, Some(failure));
     let _ = output.failure(command, contract, failure);
     Err((failure.class(), ()))
 }
