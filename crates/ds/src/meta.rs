@@ -704,9 +704,8 @@ cannot run here, each with the concrete thing that would fix it. Availability \
 checks are domain-local and cheap. Doctor also verifies the packaged agent \
 skill bundle and reports whether each supported user skill directory has the \
 matching install, and whether `ds` is reachable from this shell and from a \
-new one. Its build object includes the compile-time ds-network source pin or \
-the explicit development-unpinned state; it does not introspect linked Rust \
-code at runtime. It starts no engine and probes no network. Use it first on \
+new one. Its build identity carries the compile-time ds-network pin, or says \
+it is unpinned. It starts no engine and probes no network. Use it first on \
 an unfamiliar machine.",
     chapter: Chapter::Catalog,
     effect: Effect::Discovery,
@@ -717,11 +716,10 @@ an unfamiliar machine.",
         "List available commands too, not just blocked ones.",
     )],
     output: "\
-Counts of available and unavailable commands, one entry per unavailable \
-command with its reason and remedy, build identity including linked ds-network \
-compile-time provenance, and agent skill bundle and \
-install status, shell reach, and reliability reporting state (switch, outbox \
-size, last flush). With --all, every command.",
+Counts of available and unavailable commands, each unavailable one with its \
+reason and remedy; build identity with ds-network compile-time provenance; \
+skill bundle and install status; shell reach; reliability reporting (switch, \
+outbox size, last flush). With --all, every command.",
     examples: &[
         Example {
             command: "ds doctor",

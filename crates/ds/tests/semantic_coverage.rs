@@ -802,6 +802,8 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("dsgrid.criteria.clearance.set", "local_file_write", "none"),
     ("dsgrid.analyse.clearance", "read_only", "none"),
     ("feedback.close", "global_write", "headless_user"),
+    // Reads only this machine's ds journal: no account, no network.
+    ("feedback.draft", "read_only", "none"),
     ("feedback.list", "read_only", "headless_user"),
     ("feedback.note", "global_write", "headless_user"),
     ("feedback.submit", "global_write", "headless_user"),

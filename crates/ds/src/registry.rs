@@ -3381,6 +3381,11 @@ static FEEDBACK_ENTRIES: &[Entry] = &[
         handler: ds_cli_feedback::close::run,
         render: ds_cli_feedback::close::render,
     },
+    Entry {
+        command: &ds_cli_feedback::draft::COMMAND,
+        handler: ds_cli_feedback::draft::run,
+        render: ds_cli_feedback::draft::render,
+    },
 ];
 
 /// The shell domain lists its commands in the order a person needs them:

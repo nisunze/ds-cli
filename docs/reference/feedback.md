@@ -36,6 +36,30 @@ A settled report is never merged into. Once a report is `resolved` or
 link, not a merge: both histories survive, and the closure that was already
 proven is not undone.
 
+## `draft`
+
+```bash
+ds feedback draft --last [--n 3] --output json
+```
+
+Turns the newest failed, crashed or refused invocations in this machine's `ds`
+journal into ready `submit` payloads (ds-command-kernel
+`docs/contracts/ds-cli-reliability-and-feedback.md` §4). The kernel's
+`reporter::draft` builds them from the journal of the last 50 invocations:
+title, component, kind (`bug` for failed or crashed, `friction` for refused),
+severity guess, evidence (command id, error code, release, request id) and
+context with the `sre_event` id. Add what you expected and what would show it
+works to `detail`, then `submit`. The journal holds command ids, flag names,
+codes and ids only — never a value, path or message — and is read locally, with
+no account and no network. With `DS_SRE_REPORTING=off` nothing is journalled
+and `drafts` is empty with `reporting: off`.
+
+A `failed` or `crashed` error envelope points here: `error.feedback` carries
+`draft` (this command) and `sre_event` (the invocation's SRE event id). A crash
+or an `internal` error is also filed by `ds` itself as one `bug` report from
+`ds (automatic)`, sent as the signed-in user when one is available; repeats
+raise that report's occurrences.
+
 ## `list`
 
 Reads the backlog the `fb` tab shows, as a DIFFERENCE.

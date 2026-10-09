@@ -58,7 +58,7 @@ const PROJECT_WORK_GUIDANCE: &str = "For substantive delivery on a named DS proj
 // `docs/contracts/ds-cli-reliability-and-feedback.md` §5): a sighting is filed
 // when it happens, never only when someone asks; coding sessions use their
 // owning backlogs instead.
-const FEEDBACK_GUIDANCE: &str = "Report as you go: outside coding sessions, file a feedback.submit sighting as soon as it happens, unasked, when a command failed, crashed or refused past its remedy; finding it took a second search or the user's words missed it; help, refusal or skill text disagreed with what it did; output was wrong, incomplete or surprising; a step was slow or needed a workaround; a capability was missing; or an idea would save the user steps. One sighting per distinct gap with expected behavior, evidence and acceptance, never secrets or customer data; repeats merge into occurrences. Ask no permission, and list the report ids at the end of the task. Coding sessions never submit feedback; they fix findings or record unfinished work in the owning backlogs.";
+const FEEDBACK_GUIDANCE: &str = "Report as you go: outside coding sessions, file a feedback.submit sighting (feedback.draft --last drafts it from the last failure) as soon as it happens, unasked, when a command failed, crashed or refused past its remedy; finding it took a second search or the user's words missed it; help, refusal or skill text disagreed with what it did; output was wrong, incomplete or surprising; a step was slow or needed a workaround; a capability was missing; or an idea would save the user steps. One sighting per distinct gap with expected behavior, evidence and acceptance, never secrets or customer data; repeats merge into occurrences. Ask no permission, and list the report ids at the end of the task. Coding sessions never submit feedback; they fix findings or record unfinished work in the owning backlogs.";
 const REGRESSION_GUIDANCE: &str = "For reported regressions, replay the exact command against installed `ds` and a negative control, compare the last working result, then distinguish a code defect, unclear CLI/MCP guidance, a missing authorized capability, and misuse of a clear contract. Fix or clarify only the demonstrated gap; note or close official feedback with evidence and remove resolved work from `ds-command-kernel/backlog/OPEN.md` when that checkout is available.";
 const BOOKLET_GUIDANCE: &str = "For MV plan/profile booklets, read the receipt-verified `ds-printout` skill and its booklet reference before rendering. Use the governed A3 landscape cover and naming template at `ds-work/standards/mv-plan-profile/frontmatter`, with exact project-owned parties, contract, logos, model, version and date. Use canonical structure examples only with proved member mapping; otherwise use exact placed native names without an equivalence claim. Omit unknown facts and keep unresolved findings in the internal receipt. If the template or project facts are inaccessible through the declared DS surface, report the gap and stop the booklet job; do not redraw a cover or borrow another project's branding. Assemble cover, naming, project key map, then numbered sheets, preserving A3 landscape and `DS GridDesign by datasolutions.rw` on every page. Inspect a complete representative PDF at paper size and verify online bytes before claiming delivery. If the live `ds` contract cannot perform an atomic booklet job, report that product gap; local assembly is not a governed project publication.";
 /// Word for word `ds_cli_auth::SIGNED_OUT_REMEDY`. Spelled here because this
@@ -352,8 +352,13 @@ impl Profile {
             // operator workflow as the local tile references beside it — one
             // host's own layers — so it is not a second profile.
             Self::Layers => 19,
-            // Sixteen leaves plus both bootstrap tools. The one that raised
-            // this from seventeen on 2026-09-18 is `ds feedback note`: with
+            // Seventeen leaves plus both bootstrap tools. The one that raised
+            // this from eighteen on 2026-10-09 is `ds feedback draft --last`:
+            // every failed envelope names it as its next command, so a profile
+            // that can submit a report but not draft one from the failure it
+            // just saw would send the caller to a tool it does not publish.
+            // The one that raised this from seventeen on 2026-09-18 is
+            // `ds feedback note`: with
             // three feedback verbs the only way to say anything about a report
             // was to close it, so a report parked on a deploy or a ruling left
             // no record and every later visit re-read its full text to
@@ -366,7 +371,7 @@ impl Profile {
             // that says which exist. A profile that could refuse an operation
             // for ambiguity and not publish the answer to it would not be a
             // smaller surface, only a stuck one.
-            Self::Operations => 18,
+            Self::Operations => 19,
             // Fourteen background-report leaves plus two bootstrap tools.
             // Project output settings and canonical MV setup live in the
             // focused Printing profile. Raised from the

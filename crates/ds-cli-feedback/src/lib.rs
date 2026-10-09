@@ -35,6 +35,7 @@
 //! backlog stays a human triage decision in the `fb` tab.
 
 pub mod close;
+pub mod draft;
 pub mod list;
 pub mod note;
 pub mod submit;
@@ -50,6 +51,7 @@ pub static DOMAIN: Domain = Domain {
         &list::COMMAND,
         &note::COMMAND,
         &close::COMMAND,
+        &draft::COMMAND,
     ],
 };
 

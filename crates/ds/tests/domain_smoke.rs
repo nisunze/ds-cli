@@ -12159,6 +12159,7 @@ fn feedback_is_one_confirmed_shared_write() {
             ("feedback.list", "read_only"),
             ("feedback.note", "global_write"),
             ("feedback.close", "global_write"),
+            ("feedback.draft", "read_only"),
         ]
     );
     for command in commands {
@@ -12203,6 +12204,92 @@ fn feedback_is_one_confirmed_shared_write() {
         NATIVE_AUTH_CODES.contains(&code.as_str()),
         "a valid feedback report ended in `{code}`, not a native authentication outcome"
     );
+
+    // FEEDBACK 9ab57db2: a report names a live repository; a retired label is
+    // refused before anything is sent, with the repository that owns it.
+    let mut retired = confirmed.clone();
+    retired[7] = "ds-grid-engine/sag";
+    let refused = native_ds(&retired);
+    assert_eq!(
+        refused.envelope["error"]["code"],
+        "feedback_component_unknown"
+    );
+    assert!(
+        refused.envelope["error"]["message"]
+            .as_str()
+            .is_some_and(|message| message.contains("ds-network owns it")),
+        "{}",
+        refused.stdout
+    );
+}
+
+/// `ds feedback draft --last` turns the newest journalled refusal into a ready
+/// report: the command id and code, never a value; with reporting off nothing
+/// is journalled and the answer says so instead of looking like a quiet day.
+#[test]
+fn feedback_draft_turns_the_last_refusal_into_a_ready_report() {
+    let state = temp_root("feedback-draft-state");
+    let run = |args: &[&str], reporting: &str| {
+        let output = Command::new(env!("CARGO_BIN_EXE_ds"))
+            .args(args)
+            .env("NO_COLOR", "1")
+            .env("XDG_STATE_HOME", &state)
+            .env("DS_SRE_REPORTING", reporting)
+            .env_remove("DS_NATIVE_CLIENT_PROFILE_BUNDLE")
+            .env_remove("DS_CLI_SURFACE")
+            .env_remove("DS_CLI_AGENT")
+            .output()
+            .expect("ds runs");
+        serde_json::from_slice::<Value>(&output.stdout).unwrap_or(Value::Null)
+    };
+    let draft = ["feedback", "draft", "--last", "--output", "json"];
+    let off = run(&draft, "off");
+    assert_eq!(off["data"]["reporting"], "off");
+    assert_eq!(off["data"]["drafts"], json!([]));
+
+    let refused = run(
+        &[
+            "feedback",
+            "submit",
+            "--title",
+            "VALUE-TITLE",
+            "--detail",
+            "VALUE-DETAIL",
+            "--component",
+            "ds-cli",
+            "--agent",
+            "VALUE-AGENT",
+            "--output",
+            "json",
+        ],
+        "on",
+    );
+    assert_eq!(refused["error"]["code"], "confirmation_required");
+    let answer = run(&draft, "on");
+    let drafts = answer["data"]["drafts"].as_array().expect("drafts");
+    assert_eq!(drafts.len(), 1, "{answer}");
+    assert_eq!(
+        drafts[0]["title"],
+        "ds feedback.submit refused: confirmation_required"
+    );
+    assert_eq!(drafts[0]["component"], "ds-cli/feedback");
+    assert_eq!(drafts[0]["kind"], "friction");
+    assert!(
+        drafts[0]["context"]["sre_event"]
+            .as_str()
+            .is_some_and(|id| id.starts_with("inv_"))
+    );
+    assert!(!answer.to_string().contains("VALUE-"), "{answer}");
+    assert!(
+        run(
+            &[
+                "feedback", "draft", "--last", "--n", "11", "--output", "json"
+            ],
+            "on"
+        )["error"]["code"]
+            == "invalid_count"
+    );
+    let _ = std::fs::remove_dir_all(&state);
 }
 
 /// The backlog is read as a DIFFERENCE, and the discipline lives in the API.
