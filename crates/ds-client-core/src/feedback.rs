@@ -62,6 +62,57 @@ pub enum Command {
 fn invalid() -> ClientError {
     ClientError::new(ErrorKind::InvalidInput, "Invalid bounded feedback request")
 }
+/// The live repositories a report may name as its owner: the workspace's live
+/// stack. A component is `<repository>` or `<repository>/<area>`, so triage by
+/// repository needs no hand-made mapping.
+pub const LIVE_REPOSITORIES: &[&str] = &[
+    "ds-apis-tf",
+    "ds-brain",
+    "ds-cli",
+    "ds-command-kernel",
+    "ds-integration",
+    "ds-network",
+    "ds-network-reporter",
+    "ds-solar",
+    "ds-solar-weather",
+    "ds-sre",
+    "ds-vector-tiler",
+    "ds-web",
+    "ds-work",
+    "simple_notes",
+];
+
+/// Label prefixes earlier reports used, and the live repository that owns each.
+pub const LEGACY_COMPONENTS: &[(&str, &str)] = &[
+    ("ds-grid", "ds-network"),
+    ("dsgrid", "ds-network"),
+    ("ds/grid-", "ds-network"),
+    ("ds/pls-library", "ds-network"),
+    ("ds-report", "ds-network-reporter"),
+    ("ds-printing", "ds-network-reporter"),
+    ("ds-desktop", "ds-web"),
+    ("ds pls desktop", "ds-cli"),
+];
+
+/// The refusal a component that names no live repository gets.
+pub const COMPONENT_UNKNOWN: &str = "feedback_component_unknown";
+
+/// The live repository a component names: its text before the first `/`.
+pub fn component_repository(component: &str) -> Option<&'static str> {
+    let leading = component.split('/').next().unwrap_or_default();
+    LIVE_REPOSITORIES
+        .iter()
+        .copied()
+        .find(|repository| *repository == leading)
+}
+
+/// The live repository a legacy label belongs to, for the refusal's remedy.
+pub fn legacy_owner(component: &str) -> Option<&'static str> {
+    LEGACY_COMPONENTS
+        .iter()
+        .find(|(prefix, _)| component.starts_with(prefix))
+        .map(|(_, owner)| *owner)
+}
 fn unreadable() -> ClientError {
     ClientError::new(
         ErrorKind::UnreadableResponse,
@@ -167,10 +218,14 @@ impl Command {
                     && expected_version.is_none_or(|v| v > 0 && v <= i64::MAX as u64)
             }
         };
-        if valid {
-            Ok(())
-        } else {
-            Err(invalid())
+        if !valid {
+            return Err(invalid());
+        }
+        match self {
+            Self::Submit { component, .. } if component_repository(component).is_none() => {
+                Err(ClientError::new(ErrorKind::InvalidInput, COMPONENT_UNKNOWN))
+            }
+            _ => Ok(()),
         }
     }
 }
@@ -543,5 +598,59 @@ pub(crate) fn run<T: AuthorizedTransport>(
                 "note_count": note_count,
             }))
         }
+    }
+}
+
+#[cfg(test)]
+mod component_tests {
+    use super::*;
+
+    fn submit(component: &str) -> Command {
+        Command::Submit {
+            title: "t".into(),
+            detail: "d".into(),
+            component: component.into(),
+            kind: "bug".into(),
+            severity: "minor".into(),
+            agent: "a".into(),
+            model: None,
+            client: None,
+            evidence: Vec::new(),
+            context: BTreeMap::new(),
+        }
+    }
+
+    /// FEEDBACK `9ab57db2`: a report names a live repository, optionally with
+    /// an area; a retired or invented label is refused, and a legacy label's
+    /// refusal can name the repository that owns it.
+    #[test]
+    fn a_report_names_a_live_repository_or_is_refused() {
+        for live in [
+            "ds-cli",
+            "ds-cli/feedback",
+            "ds-network/spotting",
+            "simple_notes",
+        ] {
+            assert!(submit(live).validate().is_ok(), "{live} is accepted");
+        }
+        for unknown in [
+            "ds-grid",
+            "ds-grid-engine/sag",
+            "platform",
+            "ds",
+            "ds-desktop/x",
+        ] {
+            let error = submit(unknown).validate().unwrap_err();
+            assert_eq!(error.to_string(), COMPONENT_UNKNOWN, "{unknown}");
+        }
+        assert_eq!(legacy_owner("ds-grid-engine"), Some("ds-network"));
+        assert_eq!(legacy_owner("ds-report-pdf"), Some("ds-network-reporter"));
+        assert_eq!(legacy_owner("ds pls desktop (windows)"), Some("ds-cli"));
+        assert_eq!(legacy_owner("platform"), None);
+        // A component the bounds already refuse keeps its bounded refusal.
+        assert_ne!(
+            submit(" ds-cli").validate().unwrap_err().to_string(),
+            COMPONENT_UNKNOWN
+        );
     }
 }
