@@ -37,19 +37,46 @@ const SKIPPED_SAMPLES: usize = 20;
 /// A refusal a caller can branch on: a stable code, what happened, the fix.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Refusal {
-    pub code: &'static str,
+    pub code: Code,
     pub message: String,
     pub remedy: &'static str,
 }
 
-pub const DISTANCE_OUT_OF_RANGE: &str = "orphans_distance_out_of_range";
-pub const LIMIT_OUT_OF_RANGE: &str = "orphans_limit_out_of_range";
-pub const MV_MALFORMED: &str = "orphans_mv_malformed";
-pub const MV_EMPTY: &str = "orphans_mv_empty";
-pub const TRANSFORMERS_MALFORMED: &str = "orphans_transformers_malformed";
-pub const TRANSFORMERS_EMPTY: &str = "orphans_transformers_empty";
+/// The closed refusal vocabulary. A host maps it exhaustively, so a code the
+/// kernel grows cannot reach a caller undeclared.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Code {
+    DistanceOutOfRange,
+    LimitOutOfRange,
+    MvMalformed,
+    MvEmpty,
+    TransformersMalformed,
+    TransformersEmpty,
+}
 
-fn refuse(code: &'static str, message: impl Into<String>, remedy: &'static str) -> Refusal {
+impl Code {
+    pub const ALL: [Code; 6] = [
+        Code::DistanceOutOfRange,
+        Code::LimitOutOfRange,
+        Code::MvMalformed,
+        Code::MvEmpty,
+        Code::TransformersMalformed,
+        Code::TransformersEmpty,
+    ];
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Code::DistanceOutOfRange => "orphans_distance_out_of_range",
+            Code::LimitOutOfRange => "orphans_limit_out_of_range",
+            Code::MvMalformed => "orphans_mv_malformed",
+            Code::MvEmpty => "orphans_mv_empty",
+            Code::TransformersMalformed => "orphans_transformers_malformed",
+            Code::TransformersEmpty => "orphans_transformers_empty",
+        }
+    }
+}
+
+fn refuse(code: Code, message: impl Into<String>, remedy: &'static str) -> Refusal {
     Refusal {
         code,
         message: message.into(),
@@ -81,7 +108,7 @@ pub fn limit(raw: Option<usize>) -> Result<usize, Refusal> {
         None => Ok(DEFAULT_LIMIT),
         Some(n) if (1..=MAX_LIMIT).contains(&n) => Ok(n),
         Some(n) => Err(refuse(
-            LIMIT_OUT_OF_RANGE,
+            Code::LimitOutOfRange,
             format!("limit {n} is outside 1..={MAX_LIMIT}"),
             "Pass a limit between 1 and 5000, or omit it for 50.",
         )),
@@ -159,7 +186,7 @@ fn distance_valid(value: f64, allow_zero: bool) -> bool {
 pub fn join(request: &Request<'_>) -> Result<Outcome, Refusal> {
     if !distance_valid(request.tolerance_m, false) || !distance_valid(request.junction_m, true) {
         return Err(refuse(
-            DISTANCE_OUT_OF_RANGE,
+            Code::DistanceOutOfRange,
             format!(
                 "tolerance {} m and junction {} m must be finite; tolerance above 0, junction at least 0, both at most {MAX_DISTANCE_M} m",
                 request.tolerance_m, request.junction_m
@@ -172,7 +199,7 @@ pub fn join(request: &Request<'_>) -> Result<Outcome, Refusal> {
     for document in request.mv {
         let features = features(document.document).ok_or_else(|| {
             refuse(
-                MV_MALFORMED,
+                Code::MvMalformed,
                 format!(
                     "{} is not a GeoJSON FeatureCollection or Feature",
                     document.source
@@ -186,7 +213,7 @@ pub fn join(request: &Request<'_>) -> Result<Outcome, Refusal> {
     }
     if lines.is_empty() {
         return Err(refuse(
-            MV_EMPTY,
+            Code::MvEmpty,
             "no MV document holds a usable LineString or MultiLineString",
             "Pass the MV alignments as GeoJSON lines with WGS84 coordinates.",
         ));
@@ -195,7 +222,7 @@ pub fn join(request: &Request<'_>) -> Result<Outcome, Refusal> {
         read_transformers(request.transformers, request.exclude_prefixes, &mut skipped)?;
     if transformers.is_empty() {
         return Err(refuse(
-            TRANSFORMERS_EMPTY,
+            Code::TransformersEmpty,
             "no transformer could be located",
             "Pass named GeoJSON points, or `ds design status --output json` for a project whose rows carry metadata.spatial.representative_point.",
         ));
@@ -398,7 +425,7 @@ fn read_transformers(
     } else {
         let features = features(document).ok_or_else(|| {
             refuse(
-                TRANSFORMERS_MALFORMED,
+                Code::TransformersMalformed,
                 "the transformer input is neither GeoJSON points nor a `ds design status` envelope",
                 "Pass named GeoJSON points or the JSON `ds design status --output json` writes.",
             )
@@ -841,13 +868,13 @@ mod tests {
             .err()
             .map(|r| r.code)
         };
-        assert_eq!(request(0.0, &trs), Some(DISTANCE_OUT_OF_RANGE));
-        assert_eq!(request(f64::NAN, &trs), Some(DISTANCE_OUT_OF_RANGE));
+        assert_eq!(request(0.0, &trs), Some(Code::DistanceOutOfRange));
+        assert_eq!(request(f64::NAN, &trs), Some(Code::DistanceOutOfRange));
         assert_eq!(
             request(30.0, &json!({"rows": []})),
-            Some(TRANSFORMERS_MALFORMED)
+            Some(Code::TransformersMalformed)
         );
-        assert_eq!(request(30.0, &points(&[])), Some(TRANSFORMERS_EMPTY));
+        assert_eq!(request(30.0, &points(&[])), Some(Code::TransformersEmpty));
         let empty = json!({"type": "FeatureCollection", "features": []});
         let documents = [MvDocument {
             source: "m",
@@ -862,10 +889,10 @@ mod tests {
         })
         .err()
         .map(|r| r.code);
-        assert_eq!(refused, Some(MV_EMPTY));
+        assert_eq!(refused, Some(Code::MvEmpty));
         assert_eq!(
             limit(Some(0)).err().map(|r| r.code),
-            Some(LIMIT_OUT_OF_RANGE)
+            Some(Code::LimitOutOfRange)
         );
         assert_eq!(limit(None), Ok(DEFAULT_LIMIT));
     }
