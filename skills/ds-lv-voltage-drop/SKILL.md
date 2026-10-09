@@ -20,7 +20,10 @@ dramatise what the result states.
    `ds capabilities design.lv.voltage-drop --output json`. Use only declared
    inputs.
 3. The input is a saved transformer with its project seeds, as the LV project
-   export command writes it. Nothing is written to the project.
+   export command writes it. Nothing is written to the project. To check the
+   saved design exactly as drawn, set `keep_network_as_drawn: true` in the
+   request's settings: no row is redrawn and the result says so in
+   `network_kept_as_drawn`.
 4. A processed transformer already carries its results (`vd_*` columns and
    `vd_summary` on `tr`). Read the structured voltage-drop result through the
    declared `ds` command; its provenance says whether it reports the saved

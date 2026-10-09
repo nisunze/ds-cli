@@ -40,7 +40,7 @@ pub static COMMAND: Command = Command {
         )
         .required(),
     ],
-    output: "Input/result SHA-256, output path and bytes, engine/runtime, worker count and ordered job statuses with preservation counts. A job that would change approved rows keeps them exactly as supplied, still returns its voltage-drop analysis, and names the withheld drafting in an approved_network_kept warning. Full layers and diagnostics go to --out.",
+    output: "Input/result SHA-256, output path and bytes, engine/runtime, worker count and ordered job statuses with preservation counts. A job that would change approved rows keeps them exactly as supplied, still returns its voltage-drop analysis, and names the withheld drafting in an approved_network_kept warning. The setting keep_network_as_drawn keeps every supplied row exactly as drawn (network_kept_as_drawn), so a supplied design saves without redrawing; renumber_lines=false keeps supplied line numbers. Full layers and diagnostics go to --out.",
     examples: &[Example {
         command: "ds design lv process --input ./fast-lv-request.json --out ./fast-lv-result.json --output json",
         note: "Run the closed local batch without a Desktop session or project identity.",
@@ -307,5 +307,60 @@ mod tests {
                             .contains("lv_poles: @missing 1")
                 })
         );
+    }
+
+    #[test]
+    fn a_supplied_network_kept_as_drawn_comes_back_row_for_row() {
+        let dir = tempfile::tempdir().unwrap();
+        let input_path = dir.path().join("request.json");
+        let output_path = dir.path().join("result.json");
+        let mut source: Value = serde_json::from_slice(include_bytes!(
+            "../../../../../ds-command-kernel/crates/ds-client-core/tests/fixtures/native-lv-save-request.json"
+        )).unwrap();
+        source["jobs"][0]["settings"]["keep_network_as_drawn"] = json!(true);
+        std::fs::write(&input_path, serde_json::to_vec(&source).unwrap()).unwrap();
+        let parsed = ds_cli_contract::parse(
+            &COMMAND,
+            &[
+                "--input".into(),
+                input_path.to_string_lossy().into_owned(),
+                "--out".into(),
+                output_path.to_string_lossy().into_owned(),
+            ],
+        )
+        .unwrap();
+        let receipt = run(
+            &parsed,
+            &Context {
+                confirmed: false,
+                output: ds_cli_contract::Output::resolve(
+                    ds_cli_contract::Format::Json,
+                    false,
+                    true,
+                ),
+            },
+        )
+        .unwrap();
+        assert_eq!(receipt["failed"], 0, "{receipt}");
+        let result: Value = serde_json::from_slice(&std::fs::read(output_path).unwrap()).unwrap();
+        let output = &result["jobs"][0]["output"];
+        assert!(
+            output["warnings"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|warning| warning["code"] == "network_kept_as_drawn"),
+            "{}",
+            output["warnings"]
+        );
+        for (layer, supplied) in source["jobs"][0]["gdfs"].as_object().unwrap() {
+            let supplied = supplied["features"].as_array().unwrap();
+            let kept = output["gdfs"][layer]["features"].as_array().unwrap();
+            assert_eq!(kept.len(), supplied.len(), "{layer}");
+            for (row, authored) in kept.iter().zip(supplied) {
+                assert_eq!(row["id"], authored["id"], "{layer}");
+                assert_eq!(row["geometry"], authored["geometry"], "{layer}");
+            }
+        }
     }
 }
