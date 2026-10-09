@@ -728,4 +728,47 @@ mod tests {
         unknown["template"]["is_template"] = json!(true);
         assert!(serde_json::from_value::<Input>(unknown).is_err());
     }
+
+    /// Token-leak guard (backlog OPEN.md 19): the plan carries only what the
+    /// template and the request hold, so a Chad template plans a Chad project
+    /// with no Rwanda identity, and a Rwanda template none of Chad's.
+    #[test]
+    fn a_plan_carries_no_other_countrys_identity() {
+        fn leaks(plan: &Plan, pattern: &[&str]) -> Vec<String> {
+            let text = serde_json::to_string(plan).unwrap().to_lowercase();
+            pattern
+                .iter()
+                .filter(|token| text.contains(&token.to_lowercase()))
+                .map(|token| token.to_string())
+                .collect()
+        }
+        let mut chad = input(TEMPLATE_STATE);
+        chad.template.project = "it_tchad".into();
+        chad.template.display_name = Some("Localites 7".into());
+        chad.template.country = Some("Chad".into());
+        chad.template.client = Some("ADERM".into());
+        chad.template.network_template = Some("tchad".into());
+        chad.template.project_params = json!({"project_type":"new_build","crs":{"mode":"utm","utm_zone":33,"utm_hemisphere":"north"}});
+        chad.request.location = Some("Mongo".into());
+        for setup in &mut chad.printing_setups {
+            setup.id = setup.id.replace("gisagara-cjic", "aderm-loc7");
+        }
+        let rwanda_tokens = [
+            "Rwanda",
+            "EDCL",
+            "\"REG\"",
+            "NIX",
+            "RWF",
+            "Kigali",
+            "tm_rwanda",
+        ];
+        assert_eq!(leaks(&plan(&chad), &rwanda_tokens), Vec::<String>::new());
+        // Control: the Rwanda template's own identity does travel.
+        assert!(!leaks(&plan(&input(TEMPLATE_STATE)), &rwanda_tokens).is_empty());
+        let chad_tokens = ["XAF", "ADERM", "OHADA", "Tchad"];
+        assert_eq!(
+            leaks(&plan(&input(TEMPLATE_STATE)), &chad_tokens),
+            Vec::<String>::new()
+        );
+    }
 }
