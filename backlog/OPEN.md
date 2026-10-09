@@ -605,7 +605,14 @@ Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group A, to be fixed to
   Maintain the moving remaining plan here; no new owner input is needed for
   autonomous code. Whole-path acceptance is in the plan's matrix.
 
-  Active: **2 — finish immutable columnar store** around
+  Active: **3 — qualify pinned native VersaTiles generation** in
+  `ds-network::ds-native-tiles`, before switching production callers. Use the
+  checked lower-level geometry API, explicit no-reduction policy, bounded
+  admission, a durable checked sink and full coordinate/payload readback.
+  Windows execution, dependency/license closure and cross-platform byte parity
+  remain acceptance obligations. Upstream container dependencies still include
+  raster codecs, SQLite and TLS with defaults disabled; do not claim a minimal
+  vector-only dependency closure. Remaining **2 — immutable columnar store** around
   `ds-layer-store::project_snapshot::Store`: persist/resume acquisition pages and
   replay receipts across base retention around the existing ordered
   `assemble_delta`/`apply_delta` transaction; spatial indexes/Polars projection and filter
@@ -617,9 +624,7 @@ Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group A, to be fixed to
   Source adapters must consume the shared snapshot contract through the real
   authenticated source/delta protocol in slice 6; current production acquisition
   has not migrated. Use installed `/usr/bin/ds-canary` for development acceptance;
-  never resume the paused stable release. Next independent slice: **3** pinned
-  VersaTiles native generation and fidelity/
-  determinism/budget/cancellation qualification. VersaTiles v4.15.0 qualification
+  never resume the paused stable release. VersaTiles v4.15.0 qualification
   requires checked lower-level geometry generation (explicit no-reduction policy),
   canonical stable IDs as properties, bounded source/vertex/zoom admission,
   fallible tile encoding, a write_all/fsync sink and full coordinate/payload
@@ -630,7 +635,12 @@ Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group A, to be fixed to
   native jobs plus actual Windows execution; **5** existing CLI/MCP and Desktop
   controls/automatic triggers with report independence; **6** real governed
   source/delta/lease/upload/independent verification/CAS publication APIs and
-  central readback; **7** ALL cloud generation, obsolete custom BigQuery explorer/
+  central readback. Reuse existing survey read authority, but do not treat
+  `SurveyEntriesChangesService` as snapshot continuity: it returns geometry and
+  selected columns, validates all scoped rows on each page, and the mirror sync
+  currently DELETEs tombstones. Implement maintained epoch/change/deletion
+  evidence and full typed source properties before adapting that route; a
+  timestamp-fenced page is not a retained change ledger. **7** ALL cloud generation, obsolete custom BigQuery explorer/
   tiling and external-tool/fallback deletion with consumer tracing; **8** matching
   development packaging, installed discovery and Windows/Linux real-map matrix.
   Every slice is proved, committed and pushed on canonical `run` before the next.
