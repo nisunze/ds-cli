@@ -36,6 +36,17 @@ impl HeldSessionPrintingRead {
         })
     }
 
+    /// One of the project's printing setups with its revision, as
+    /// `report.layout.get` reads it.
+    pub fn setup(project: &str, id: &str) -> Result<Self, ClientError> {
+        let request = PrintingRequest::Get { id: id.to_owned() };
+        request.validate_for(project)?;
+        Ok(Self {
+            project: project.to_owned(),
+            read: Read::Setups(request),
+        })
+    }
+
     /// One read of the project's governed documents, as
     /// `report.standard.list|get` reads them.
     pub fn governed(project: &str, request: PrintingStandardRequest) -> Result<Self, ClientError> {
@@ -147,6 +158,13 @@ mod tests {
         let listed = read.decode(ok(json!({"setups": []}))).unwrap();
         assert_eq!(listed["setups"], json!([]));
         assert!(HeldSessionPrintingRead::setups("").is_err());
+        let one = HeldSessionPrintingRead::setup("project_one", "mv-a3").unwrap();
+        let body: Value = serde_json::from_slice(one.body().as_bytes()).unwrap();
+        assert_eq!(
+            body,
+            json!({"action":"get","id":"mv-a3","scope":"project","project_id":"project_one"})
+        );
+        assert!(HeldSessionPrintingRead::setup("project_one", "../x").is_err());
     }
 
     #[test]

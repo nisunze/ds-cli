@@ -313,7 +313,9 @@ not an LLM's last temporary recipe. Keep MV front matter, ordered pages, issue
 fields and general presentation in the same project printing library, editable
 and previewable through the native CLI/MCP surface. New-install preparation
 must schedule the existing idempotent context owners in the background under
-a captured principal/project; a read or preview never acquires providers.
+a captured principal/project. A read and the read-only render never acquire
+providers; only a preview's preparation step may, online, before that render
+(`preview_context_preparation` below).
 
 The preferred MV reference is the October 1 Nyamagabe Model 1 A3 booklet:
 `Nyamagabe-MV-Model1-Plan-and-Profile-A3.pdf`, 100 A3 landscape pages,
