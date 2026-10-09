@@ -11,7 +11,7 @@ use serde_json::Value;
 pub const PRINTING_STANDARD_PATH: &str = "/api/v1/printing/standard";
 pub const PRINTING_STANDARD_RESPONSE_LIMIT: usize = 4 * 1024 * 1024;
 pub const PRINTING_STANDARD_CATALOG_SCHEMA: &str = "ds.printing-standard-catalog/v1";
-const PRINTING_STANDARD_TIMEOUT_SECONDS: u64 = 60;
+pub(crate) const PRINTING_STANDARD_TIMEOUT_SECONDS: u64 = 60;
 const MAX_CATALOG_ROWS: usize = 72;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

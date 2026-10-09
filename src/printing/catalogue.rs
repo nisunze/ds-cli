@@ -492,10 +492,130 @@ pub fn project(
     })
 }
 
+/// Why a host could not read the governed documents, by its own refusal code.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GovernedUnread {
+    pub code: String,
+    pub message: String,
+}
+
+/// The one grouped catalogue read (`report.layout.list --catalogue`) that the
+/// CLI and the Desktop door both answer: the printing list's `setups` and, when
+/// it could be read, the project's governed documents (`report.standard.list`).
+/// A governed read that failed keeps the custom layouts listed and names the
+/// refusal under `governed`; it never hides the setups the list returned.
+pub fn from_listing(
+    listed: &Value,
+    project: &str,
+    governed: Result<Value, GovernedUnread>,
+) -> Result<Value, String> {
+    let rows = listed["setups"]
+        .as_array()
+        .ok_or("print_catalogue_invalid: the printing list carried no setups")?
+        .iter()
+        .map(|setup| {
+            serde_json::from_value(json!({
+                "id": setup["id"],
+                "name": setup["name"],
+                "paper": setup["paper"],
+                "classification": setup["classification"],
+            }))
+            .map_err(|error| format!("print_catalogue_invalid: {error}"))
+        })
+        .collect::<Result<Vec<Row>, _>>()?;
+    let (capture, status) = match governed {
+        Ok(capture) => (Some(capture), json!({"read": true})),
+        Err(unread) => (
+            None,
+            json!({"read": false, "code": unread.code, "message": unread.message}),
+        ),
+    };
+    let mut out = serde_json::to_value(self::project(rows, Some(project), capture)?)
+        .map_err(|error| error.to_string())?;
+    out["project_id"] = json!(project);
+    out["governed"] = status;
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
+
+    fn listed() -> Value {
+        json!({"setups": [
+            {"id":"mv-a3-plan-profile-template","name":"A3 LANDSCAPE · MV PLAN AND PROFILE · TEMPLATE","revision":"r1","layout":null,
+             "paper":{"orientation":"landscape","size":"A3"},"classification":{"purpose":"mv_model","role":"plan_profile"}},
+            {"id":"nyaruguru-district-mv-a3-landscape-core-v0","name":"A3 LANDSCAPE · NYARUGURU MV DISTRICT MAP · v0","revision":"r2","layout":null,
+             "paper":{"orientation":"landscape","size":"A3"},"classification":{"purpose":"mv_model","role":"network"}},
+            {"id":"project-overview-a3","name":"Project overview · A3","revision":"r3","layout":null,
+             "paper":{"orientation":"landscape","size":"A3"},"classification":{"purpose":"project","role":"overview"}},
+            {"id":"print-legacy","name":"A0-Landscape HuYE","revision":"r4","layout":null,"paper":null}
+        ]})
+    }
+
+    #[test]
+    fn the_listing_groups_front_matter_mv_and_overview_sheets_from_one_read() {
+        let pin = "a".repeat(64);
+        let governed = json!({"scope":"project","project_id":"template_project","schema":"ds.printing-standard-catalog/v1","documents":[
+            {"kind":"standard","id":"mv-cover-a3","template_id":"mv-booklet-a3-v1","role":"cover","paper":"A3","orientation":"landscape","revision_id":pin,"bound":false}
+        ]});
+        let out = from_listing(&listed(), "template_project", Ok(governed)).unwrap();
+        assert_eq!(out["project_id"], "template_project");
+        assert_eq!(out["governed"], json!({"read": true}));
+        let labels: Vec<&str> = out["groups"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|group| group["label"].as_str().unwrap())
+            .collect();
+        assert_eq!(
+            labels,
+            [
+                "Front matter",
+                "MV Sheets",
+                "Overview Sheets",
+                "Unclassified"
+            ]
+        );
+        let front = &out["groups"][0]["roles"][0]["templates"][0];
+        assert_eq!(front["location"]["kind"], "governed_standard");
+        assert_eq!(front["subject"], "mv_models");
+        let mv = &out["groups"][1]["roles"][0];
+        assert_eq!(mv["role"], "plan_profile");
+        assert_eq!(mv["templates"].as_array().unwrap().len(), 1);
+        assert_eq!(
+            out["groups"][2]["roles"][0]["templates"][0]["subject"],
+            "extent"
+        );
+        let unclassified = out["groups"][3]["roles"][0]["templates"]
+            .as_array()
+            .unwrap();
+        assert_eq!(unclassified.len(), 2);
+        let district = unclassified
+            .iter()
+            .find(|t| t["id"] == "nyaruguru-district-mv-a3-landscape-core-v0")
+            .unwrap();
+        assert_eq!(
+            district["mismatch"]["code"],
+            "print_classification_mv_requires_plan_profile"
+        );
+    }
+
+    #[test]
+    fn an_unread_governed_catalogue_keeps_the_layouts_and_names_the_refusal() {
+        let unread = GovernedUnread {
+            code: "print_standard_route_unavailable".into(),
+            message: "this deployment does not serve the governed printing read".into(),
+        };
+        let out = from_listing(&listed(), "template_project", Err(unread.clone())).unwrap();
+        assert_eq!(out["governed"]["read"], false);
+        assert_eq!(out["governed"]["code"], "print_standard_route_unavailable");
+        assert_eq!(out["groups"][0]["label"], "MV Sheets");
+        assert!(from_listing(&json!({}), "template_project", Err(unread))
+            .unwrap_err()
+            .starts_with("print_catalogue_invalid"));
+    }
 
     #[test]
     fn explicit_groups_do_not_classify_legacy_names_or_paper() {

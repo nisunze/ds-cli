@@ -92,6 +92,18 @@ landscape, is listed as Unclassified with `mismatch: {code:
 reclassified. Every admitted entry carries the preview `subject` its purpose
 previews against (`transformer`, `mv_models` or `extent`).
 
+`catalogue::from_listing` is the one grouped catalogue read
+(`report.layout.list --scope project --project <id> --catalogue`). It takes the
+printing list's `setups` and, when it could be read, the project's governed
+`report.standard.list` capture, and returns the `template_catalogue` groups with
+`project_id` and `governed: {read: true}` or `{read: false, code, message}`. A
+governed read that failed keeps the custom layouts listed. ds-cli and the
+Desktop door (`ds_invoke` `report.layout.list`) both answer it: the Desktop
+shell performs the two reads that `ds_client_core::HeldSessionPrintingRead`
+plans, under its session credential, so the Print templates panel renders the
+same JSON a terminal reads and keeps no catalogue cache of its own. The panel's
+A4 source read is `report.standard.get` through the same door.
+
 `read_governed_template` admits the exact `report.standard.get` response against
 the selected HTML location's captured project, revision, content and HTML pins.
 It returns the original governed HTML bytes. It neither injects example data

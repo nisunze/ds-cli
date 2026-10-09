@@ -218,6 +218,8 @@ pub use printing::{
 };
 pub use transport::PrintingCall;
 
+pub mod held_printing;
+pub use held_printing::HeldSessionPrintingRead;
 pub mod printing_capture;
 pub mod printing_standard;
 pub use printing_standard::{
