@@ -9,7 +9,9 @@
 //! `geometry` and `links`. They are decoded by `$lib/work-context/geometry` and
 //! `$lib/work-context/link` — a different module with its own contract — and no
 //! projection in this crate reads either. Porting half of them would be worse
-//! than porting neither.
+//! than porting neither. The one exception is geometry PRESENCE
+//! ([`work_geometry_present`], the browser's own validity rule), which
+//! `task_list` filters on; the geometry value itself is still not ported.
 //!
 //! `decodeProjectGraph` also returns `workEpisodes`, `records`, `attachments`
 //! and `intelligenceArtifacts` as empty lists unconditionally (wire.ts:35-39):
@@ -267,6 +269,11 @@ pub struct CanonicalProjectTask {
     pub awaiting_correspondence_count: i64,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub blocked_record_ids: Vec<String>,
+    /// Whether the task carries a map geometry the browser would draw
+    /// ([`work_geometry_present`]). Presence only: the geometry itself stays
+    /// with `$lib/work-context/geometry`. Not serialized — a filter fact.
+    #[serde(skip)]
+    pub has_geometry: bool,
     /// Task proposals (ds-brain docs/contracts/task-proposals.md). The
     /// estimate is the proposer's statement, absent when never stated; the
     /// log is what assignees declared; `actual_hours` is the server's sum;
@@ -1203,6 +1210,55 @@ fn decode_task_assignment(raw: &Map<String, Value>) -> Assignment {
     }
 }
 
+/// Positions a drawable work geometry may hold (`decodeWorkGeometry`'s
+/// `maxPositions`, work-context/geometry.ts:6).
+const WORK_GEOMETRY_MAX_POSITIONS: usize = 2_000;
+
+/// `decodeWorkGeometry(value) !== undefined` (work-context/geometry.ts:6-25):
+/// a Point, a LineString of 2..=2000 positions, or one closed ring of
+/// 4..=2000 positions, every position a finite in-range `[lng, lat]`.
+/// Anything else is no geometry, exactly as the browser draws nothing.
+pub fn work_geometry_present(value: Option<&Value>) -> bool {
+    fn position(value: &Value) -> bool {
+        let Some([lng, lat]) = value
+            .as_array()
+            .map(Vec::as_slice)
+            .and_then(|pair| <&[Value; 2]>::try_from(pair).ok())
+        else {
+            return false;
+        };
+        let in_range = |value: &Value, bound: f64| {
+            value
+                .as_f64()
+                .is_some_and(|number| number.is_finite() && (-bound..=bound).contains(&number))
+        };
+        in_range(lng, 180.0) && in_range(lat, 90.0)
+    }
+    let Some(raw) = value.and_then(Value::as_object) else {
+        return false;
+    };
+    let coordinates = raw.get("coordinates");
+    match raw.get("type").and_then(Value::as_str) {
+        Some("Point") => coordinates.is_some_and(position),
+        Some("LineString") => coordinates.and_then(Value::as_array).is_some_and(|line| {
+            (2..=WORK_GEOMETRY_MAX_POSITIONS).contains(&line.len()) && line.iter().all(position)
+        }),
+        Some("Polygon") => coordinates
+            .and_then(Value::as_array)
+            .filter(|rings| rings.len() == 1)
+            .and_then(|rings| rings[0].as_array())
+            .is_some_and(|ring| {
+                (4..=WORK_GEOMETRY_MAX_POSITIONS).contains(&ring.len())
+                    && ring.iter().all(position)
+                    && ring
+                        .first()
+                        .map(|first| (first[0].as_f64(), first[1].as_f64()))
+                        == ring.last().map(|last| (last[0].as_f64(), last[1].as_f64()))
+            }),
+        _ => false,
+    }
+}
+
 /// `decodeTask(envelope)` (wire.ts:116-192).
 ///
 /// A task arrives as three top maps. `data` is what a command authored and is
@@ -1356,6 +1412,7 @@ fn decode_task_fields(envelope: &Map<String, Value>, draft: bool) -> Option<Cano
         blockers: decode_blockers(raw.get("blockers")),
         awaiting_correspondence_count: integer(raw.get("awaiting_correspondence_count")).max(0),
         blocked_record_ids: texts(raw.get("blocked_record_ids")),
+        has_geometry: work_geometry_present(raw.get("geometry")),
         estimated_hours: optional_finite(raw.get("estimated_hours")).filter(|hours| *hours >= 0.0),
         estimated_days: optional_integer(raw.get("estimated_days")).filter(|days| *days >= 0),
         actual_hours: {
@@ -1482,6 +1539,39 @@ mod tests {
 
     fn one_task(envelope: Value) -> CanonicalProjectTask {
         decode_task(envelope.as_object().expect("envelope is an object")).expect("task decodes")
+    }
+
+    #[test]
+    fn geometry_presence_follows_the_browser_decoder() {
+        let present = |value: Value| work_geometry_present(Some(&value));
+        assert!(present(
+            json!({"type": "Point", "coordinates": [30.06, -1.95]})
+        ));
+        assert!(present(
+            json!({"type": "LineString", "coordinates": [[30, -2], [30.1, -2]]})
+        ));
+        // Closure is numeric, as `first[0] === last[0]` is in the browser.
+        assert!(present(
+            json!({"type": "Polygon", "coordinates": [[[30, -2], [30.1, -2], [30.1, -1.9], [30.0, -2.0]]]})
+        ));
+        assert!(!present(
+            json!({"type": "Polygon", "coordinates": [[[30, -2], [30.1, -2], [30.1, -1.9], [30.2, -2]]]})
+        ));
+        assert!(!present(
+            json!({"type": "Polygon", "coordinates": [[[30, -2], [30.1, -2], [30, -2]]]})
+        ));
+        assert!(!present(json!({"type": "Point", "coordinates": [190, 0]})));
+        assert!(!present(
+            json!({"type": "Point", "coordinates": [30, -2, 5]})
+        ));
+        assert!(!present(
+            json!({"type": "LineString", "coordinates": [[30, -2]]})
+        ));
+        assert!(!present(
+            json!({"type": "MultiPoint", "coordinates": [[30, -2]]})
+        ));
+        assert!(!present(json!(null)));
+        assert!(!work_geometry_present(None));
     }
 
     fn task_with(data: Value) -> CanonicalProjectTask {

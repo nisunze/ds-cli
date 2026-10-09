@@ -167,6 +167,16 @@ pub enum PlacementFilter {
     Inbox,
 }
 
+/// `--geometry any|with|without`: whether a task carries a map geometry the
+/// browser would draw (`wire::work_geometry_present`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum GeometryFilter {
+    #[default]
+    Any,
+    With,
+    Without,
+}
+
 /// What `ds pm task list` filters on. Every member optional; an absent one
 /// matches everything.
 #[derive(Debug, Clone, Default)]
@@ -182,6 +192,7 @@ pub struct TaskListFilter {
     /// `computed.awaiting_correspondence_count > 0` (correspondence.md
     /// `task_list --blocked-on-correspondence`: a graph filter, no action).
     pub blocked_on_correspondence: bool,
+    pub geometry: GeometryFilter,
     pub page: i64,
     pub page_size: i64,
 }
@@ -196,11 +207,11 @@ pub struct TaskListReply {
     pub tasks: Vec<TaskRow>,
 }
 
-/// `listCliWorkTasks` (cli-pm.ts:456-491) less the session: the same
-/// text filter as the Table's search box (`filterProjectWorkTableRows`,
-/// views.ts:174-188), then the state, discipline, holder and placement
-/// narrowings, then one bounded page.
-pub fn task_list(graph: &CanonicalProjectGraph, filter: &TaskListFilter) -> TaskListReply {
+/// The rows a filter keeps, with their display WBS, in table order.
+fn matching_rows<'g>(
+    graph: &'g CanonicalProjectGraph,
+    filter: &TaskListFilter,
+) -> Vec<(String, &'g CanonicalProjectTask)> {
     let needle = filter.query.trim().to_lowercase();
     let assignee = filter.assignee.as_ref().map(|email| email.to_lowercase());
     let holds = |task: &CanonicalProjectTask, email: &str| {
@@ -220,7 +231,7 @@ pub fn task_list(graph: &CanonicalProjectGraph, filter: &TaskListFilter) -> Task
                 .iter()
                 .any(|entry| entry.to_lowercase() == email)
     };
-    let matched: Vec<TaskRow> = table_rows(graph)
+    table_rows(graph)
         .into_iter()
         .filter(|(wbs, task)| {
             if needle.is_empty() {
@@ -259,6 +270,21 @@ pub fn task_list(graph: &CanonicalProjectGraph, filter: &TaskListFilter) -> Task
         .filter(|(_, task)| {
             !filter.blocked_on_correspondence || task.awaiting_correspondence_count > 0
         })
+        .filter(|(_, task)| match filter.geometry {
+            GeometryFilter::Any => true,
+            GeometryFilter::With => task.has_geometry,
+            GeometryFilter::Without => !task.has_geometry,
+        })
+        .collect()
+}
+
+/// `listCliWorkTasks` (cli-pm.ts:456-491) less the session: the same
+/// text filter as the Table's search box (`filterProjectWorkTableRows`,
+/// views.ts:174-188), then the state, discipline, holder, placement and
+/// geometry narrowings, then one bounded page.
+pub fn task_list(graph: &CanonicalProjectGraph, filter: &TaskListFilter) -> TaskListReply {
+    let matched: Vec<TaskRow> = matching_rows(graph, filter)
+        .into_iter()
         .map(|(wbs, task)| task_row(&wbs, task))
         .collect();
     let (tasks, bounds) = page(&matched, filter.page, filter.page_size);
@@ -268,6 +294,16 @@ pub fn task_list(graph: &CanonicalProjectGraph, filter: &TaskListFilter) -> Task
         bounds,
         tasks,
     }
+}
+
+/// Every matching task id in table order, unpaged: the Table and Board
+/// narrow their own row set with the same rule `ds pm task list` applies,
+/// then window it themselves. The page members of the filter are ignored.
+pub fn task_list_ids(graph: &CanonicalProjectGraph, filter: &TaskListFilter) -> Vec<String> {
+    matching_rows(graph, filter)
+        .into_iter()
+        .map(|(_, task)| task.id.clone())
+        .collect()
 }
 
 // ── one task ────────────────────────────────────────────────────────────
@@ -1071,6 +1107,48 @@ mod tests {
             }),
             vec!["a2"]
         );
+    }
+
+    #[test]
+    fn geometry_presence_narrows_to_the_tasks_the_map_would_draw() {
+        let g = decode_project_graph(
+            &json!({
+                "project_id": "p", "revision": 1,
+                "permissions": {"view": true},
+                "tasks": [
+                    task("point", None, "0100", json!({"geometry": {"type": "Point", "coordinates": [30.06, -1.95]}})),
+                    task("ring", None, "0200", json!({"geometry": {"type": "Polygon", "coordinates": [[[30, -2], [30.1, -2], [30.1, -1.9], [30.0, -2.0]]]}})),
+                    task("bare", None, "0300", json!({})),
+                    task("open", None, "0400", json!({"geometry": {"type": "Polygon", "coordinates": [[[30, -2], [30.1, -2], [30.1, -1.9], [30.2, -2]]]}})),
+                    task("outside", None, "0500", json!({"geometry": {"type": "Point", "coordinates": [190, 0]}})),
+                    task("short", None, "0600", json!({"geometry": {"type": "LineString", "coordinates": [[30, -2]]}})),
+                ],
+            }),
+            "p",
+        );
+        let ids = |geometry: GeometryFilter| -> Vec<String> {
+            task_list(
+                &g,
+                &TaskListFilter {
+                    geometry,
+                    page_size: 50,
+                    ..Default::default()
+                },
+            )
+            .tasks
+            .into_iter()
+            .map(|row| row.id)
+            .collect()
+        };
+        // A ring closes numerically (30 == 30.0), as the browser compares it.
+        assert_eq!(ids(GeometryFilter::With), vec!["point", "ring"]);
+        // An unclosed ring, an out-of-range position and a one-point line are
+        // no geometry, exactly as `decodeWorkGeometry` draws nothing.
+        assert_eq!(
+            ids(GeometryFilter::Without),
+            vec!["bare", "open", "outside", "short"]
+        );
+        assert_eq!(ids(GeometryFilter::Any).len(), 6);
     }
 
     #[test]

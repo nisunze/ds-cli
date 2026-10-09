@@ -273,6 +273,91 @@ fn plan(request: PlanRequest) -> Result<PlanReply, String> {
 /// Evaluate one request. `action: "plan"` folds a canonical graph into the
 /// Project Work plan: the dashboard, the phases, the attention list, the
 /// recently updated tasks, the permissions and the vocabulary.
+/// `task.list`: the Table and Board's filter controls, answered by the same
+/// rule as `ds pm task list` ([`reads::task_list_ids`]). Choice tokens are the
+/// CLI's own (`--placement`, `--geometry`); an unknown one is refused.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct TaskListRequest {
+    #[allow(dead_code)]
+    schema: String,
+    #[allow(dead_code)]
+    action: String,
+    #[serde(default)]
+    ds_project: String,
+    graph: Value,
+    #[serde(default = "browser::wire_format")]
+    graph_format: String,
+    #[serde(default)]
+    query: String,
+    #[serde(default)]
+    state: Option<String>,
+    #[serde(default)]
+    assignee: Option<String>,
+    #[serde(default)]
+    discipline: Option<String>,
+    #[serde(default)]
+    placement: Option<String>,
+    #[serde(default)]
+    blocked_on_correspondence: bool,
+    #[serde(default)]
+    geometry: Option<String>,
+}
+
+#[derive(Serialize)]
+struct TaskListIdsReply {
+    schema: &'static str,
+    project: String,
+    revision: i64,
+    total: usize,
+    ids: Vec<String>,
+}
+
+fn task_list_ids(request: TaskListRequest) -> Result<TaskListIdsReply, String> {
+    use reads::{GeometryFilter, PlacementFilter, TaskListFilter};
+    let placement = match request.placement.as_deref() {
+        None | Some("any") => PlacementFilter::Any,
+        Some("wbs") => PlacementFilter::Wbs,
+        Some("inbox") => PlacementFilter::Inbox,
+        Some(other) => {
+            return Err(format!(
+                "Unsupported placement `{other}`: any, wbs or inbox."
+            ))
+        }
+    };
+    let geometry = match request.geometry.as_deref() {
+        None | Some("any") => GeometryFilter::Any,
+        Some("with") => GeometryFilter::With,
+        Some("without") => GeometryFilter::Without,
+        Some(other) => {
+            return Err(format!(
+                "Unsupported geometry `{other}`: any, with or without."
+            ))
+        }
+    };
+    let graph = browser::graph(&request.graph, &request.ds_project, &request.graph_format)?;
+    let ids = reads::task_list_ids(
+        &graph,
+        &TaskListFilter {
+            query: request.query,
+            state: request.state,
+            assignee: request.assignee,
+            discipline: request.discipline,
+            placement,
+            blocked_on_correspondence: request.blocked_on_correspondence,
+            geometry,
+            ..TaskListFilter::default()
+        },
+    );
+    Ok(TaskListIdsReply {
+        schema: SCHEMA,
+        project: graph.project_id.clone(),
+        revision: graph.revision,
+        total: ids.len(),
+        ids,
+    })
+}
+
 pub fn evaluate(input: &[u8]) -> Result<String, String> {
     if input.len() > MAX_INPUT_BYTES {
         return Err("Project management request exceeds its bound.".into());
@@ -303,6 +388,11 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
             let _ = (&request.schema, &request.action);
             serde_json::to_string(&hierarchy::timeline_hierarchy(&request.tasks))
                 .map_err(|e| e.to_string())
+        }
+        "task.list" => {
+            let request: TaskListRequest = serde_json::from_slice(input)
+                .map_err(|error| format!("Invalid project management request: {error}"))?;
+            serde_json::to_string(&task_list_ids(request)?).map_err(|error| error.to_string())
         }
         "task.create" | "task.update" | "task.assign" | "task.respond" | "task.sort-key"
         | "task.owner-write" | "command.encode" => wasm_writes::evaluate(input),
@@ -421,6 +511,42 @@ mod tests {
     fn run(request: Value) -> Result<Value, String> {
         evaluate(&serde_json::to_vec(&request).expect("request serialises"))
             .map(|reply| serde_json::from_str(&reply).expect("reply parses"))
+    }
+
+    #[test]
+    fn browser_task_filter_is_the_cli_rule_over_the_held_graph() {
+        let graph = json!({"projectId": "p", "revision": 4, "tasks": [
+            {"id": "mapped", "title": "Survey span", "discipline": "Survey",
+             "geometry": {"type": "Point", "coordinates": [30.06, -1.95]},
+             "responsibleEmail": "Lead@ds.rw"},
+            {"id": "desk", "title": "Write report", "discipline": "Design", "placement": "inbox"},
+            {"id": "mapped2", "title": "Stake poles", "discipline": "Survey",
+             "geometry": {"type": "LineString", "coordinates": [[30, -2], [30.1, -2]]}}
+        ], "permissions": {"view": true}});
+        let ids = |filter: Value| -> Value {
+            let mut request = json!({"schema": SCHEMA, "action": "task.list",
+                "graph_format": "canonical", "graph": graph.clone()});
+            for (key, value) in filter.as_object().unwrap() {
+                request[key] = value.clone();
+            }
+            run(request).unwrap()["ids"].clone()
+        };
+        assert_eq!(ids(json!({})), json!(["desk", "mapped", "mapped2"]));
+        assert_eq!(
+            ids(json!({"geometry": "with"})),
+            json!(["mapped", "mapped2"])
+        );
+        assert_eq!(ids(json!({"geometry": "without"})), json!(["desk"]));
+        assert_eq!(
+            ids(json!({"discipline": "Survey", "query": "stake"})),
+            json!(["mapped2"])
+        );
+        // The holder match is the CLI's: case-insensitive.
+        assert_eq!(ids(json!({"assignee": "lead@DS.rw"})), json!(["mapped"]));
+        assert_eq!(ids(json!({"placement": "inbox"})), json!(["desk"]));
+        let refused = run(json!({"schema": SCHEMA, "action": "task.list",
+            "graph_format": "canonical", "graph": graph, "geometry": "some"}));
+        assert!(refused.unwrap_err().contains("Unsupported geometry"));
     }
 
     /// 2026-09-18T00:00:00Z. Every stamp in the fixture is stated as an offset
