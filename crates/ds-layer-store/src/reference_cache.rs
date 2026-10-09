@@ -22,6 +22,11 @@ const BUNDLE_INDEX_FILE: &str = "bundle-index.sqlite";
 const INDEX_BUILD_FILE: &str = "spatial-index.building.sqlite";
 const LOCATION_FILE: &str = "reference-query-cache-location.json";
 const OWNED_ROOT: &str = "rw.datasolutions.desktop.shared";
+/// Why the last install of this exact version failed. It lives in the version
+/// directory, so a completed publish (which replaces that directory) and a
+/// removal both retire it with the version.
+const LAST_FAILURE_FILE: &str = "last-install-failure.txt";
+const LAST_FAILURE_MAX_BYTES: usize = 2048;
 
 #[derive(Debug)]
 struct CacheSummary {
@@ -877,6 +882,7 @@ fn execute_locked(dir: &Path, identity: &Identity, request: Value) -> Result<Val
                 let summary = scan_pages(dir, identity)?;
                 if summary.terminal {
                     ensure_index(dir, identity, &summary)?;
+                    let _ = fs::remove_file(dir.join(LAST_FAILURE_FILE));
                 }
             }
             Ok(json!({"stored":true}))
@@ -888,8 +894,12 @@ fn execute_locked(dir: &Path, identity: &Identity, request: Value) -> Result<Val
             };
             if !summary.terminal {
                 let (download_bytes, index_bytes, disk_bytes) = installed_sizes(dir)?;
+                let message = match last_install_failure(dir) {
+                    Some(failure) => format!("the last install failed: {failure}"),
+                    None => summary.message,
+                };
                 return Ok(
-                    json!({"ready":false,"features":summary.features,"bytes":summary.bytes,"download_bytes":download_bytes,"index_bytes":index_bytes,"disk_bytes":disk_bytes,"message":summary.message}),
+                    json!({"ready":false,"features":summary.features,"bytes":summary.bytes,"download_bytes":download_bytes,"index_bytes":index_bytes,"disk_bytes":disk_bytes,"message":message}),
                 );
             }
             ensure_index(dir, identity, &summary)?;
@@ -918,6 +928,48 @@ fn execute_locked(dir: &Path, identity: &Identity, request: Value) -> Result<Val
         }
         _ => Err("unsupported reference cache operation".into()),
     }
+}
+
+/// Record why an install of this exact version failed, so its status names the
+/// cause instead of the generic "download this resource" (feedback dbe4d17e:
+/// wetlands and powerlines bundles were downloaded and expanded, never indexed,
+/// and every later status read "missing" with no reason). A version that is
+/// already complete keeps no note.
+pub fn record_install_failure(root: &Path, identity: &Identity, error: &str) -> Result<(), String> {
+    let mut text = error.trim().to_string();
+    if text.is_empty() {
+        return Ok(());
+    }
+    if text.len() > LAST_FAILURE_MAX_BYTES {
+        let mut end = LAST_FAILURE_MAX_BYTES;
+        while !text.is_char_boundary(end) {
+            end -= 1;
+        }
+        text.truncate(end);
+    }
+    let lock = resource_lock(root, identity)?;
+    lock.lock_exclusive().map_err(|e| e.to_string())?;
+    let dir = directory(root, identity)?;
+    if completed_summary(&dir, identity).is_some() {
+        return Ok(());
+    }
+    let mut temp = tempfile::NamedTempFile::new_in(&dir).map_err(|e| e.to_string())?;
+    temp.write_all(text.as_bytes()).map_err(|e| e.to_string())?;
+    temp.as_file().sync_all().map_err(|e| e.to_string())?;
+    temp.persist(dir.join(LAST_FAILURE_FILE))
+        .map_err(|e| e.error.to_string())?;
+    Ok(())
+}
+
+fn last_install_failure(dir: &Path) -> Option<String> {
+    let path = dir.join(LAST_FAILURE_FILE);
+    let metadata = fs::symlink_metadata(&path).ok()?;
+    if linked(&metadata) || !metadata.is_file() || metadata.len() > LAST_FAILURE_MAX_BYTES as u64 {
+        return None;
+    }
+    let text = fs::read_to_string(path).ok()?;
+    let text = text.trim();
+    (!text.is_empty()).then(|| text.to_string())
 }
 
 /// Promote an already verified, indexed bundle on the same filesystem. Nothing
@@ -994,6 +1046,46 @@ mod tests {
             false
         );
     }
+    // Feedback dbe4d17e: wetlands and powerlines were downloaded and expanded
+    // but never indexed, and status answered "missing" with no cause.
+    #[test]
+    fn a_failed_install_is_named_by_status_until_the_version_completes() {
+        let root = tempfile::tempdir().unwrap();
+        let identity: Identity =
+            serde_json::from_value(request("status")["identity"].clone()).unwrap();
+        record_install_failure(
+            root.path(),
+            &identity,
+            "geographic dataset expanded size, digest, or feature count mismatch",
+        )
+        .unwrap();
+        let status = execute_at(root.path(), request("status")).unwrap();
+        assert_eq!(status["ready"], false);
+        assert_eq!(
+            status["message"],
+            "the last install failed: geographic dataset expanded size, digest, or feature count mismatch"
+        );
+        record_install_failure(root.path(), &identity, &"é".repeat(3000)).unwrap();
+        let long = execute_at(root.path(), request("status")).unwrap();
+        let failure = long["message"]
+            .as_str()
+            .unwrap()
+            .strip_prefix("the last install failed: ")
+            .unwrap();
+        assert!(failure.len() <= LAST_FAILURE_MAX_BYTES && failure.starts_with('é'));
+        install(root.path(), 0, page(1, 0, false)).unwrap();
+        let ready = execute_at(root.path(), request("status")).unwrap();
+        assert_eq!(ready["ready"], true);
+        assert!(ready.get("message").is_none(), "{ready}");
+        record_install_failure(root.path(), &identity, "a late failure").unwrap();
+        assert_eq!(
+            execute_at(root.path(), request("status")).unwrap()["ready"],
+            true
+        );
+        #[cfg(unix)]
+        crate::private::assert_private_tree(root.path());
+    }
+
     #[test]
     fn interrupted_download_resumes_and_queries_after_reopen() {
         let root = tempfile::tempdir().unwrap();
