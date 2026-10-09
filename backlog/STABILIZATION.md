@@ -263,63 +263,14 @@ point (§11). Every computation must animate the toolbar's status button.
   point within the first seconds. Read `ds map profile view` repeatedly to
   time when the selection, the scene and the analysis settle.
 
-### 13. Print templates: wrong MV/Overview grouping, missing Front matter, transformer-only subject
+### 13. Print templates: grouped catalogue read and Desktop rendering
 
-**Owner, 2026-10-07:**
+**Owner, 2026-10-07:** the catalogue and previews already work in the CLI. The
+Desktop should only list, group and render them from that JSON, writing little
+beyond small pen settings. Delete the TypeScript that does more than that.
 
-- MV Sheets → Network should list plan-and-profile A3 landscape only.
-- Overview Sheets should hold the maps.
-- A **Front matter** category is missing even though its pages are defined.
-  Front matter can select DS Grid MV model(s).
-- The catalogue and previews already work in the CLI. The Desktop should only
-  list, group and render them from that JSON, writing little beyond small pen
-  settings. Delete the TypeScript that does more than that.
+**Evidence** (read-only):
 
-**Evidence** (read-only; data from installed `ds-canary report layout list
---scope project --project wnmajona_edcl_rural_electrification_template`):
-
-- **Data.** The project holds 12 custom layouts.
-  - The two district maps are stored as `mv_model / network`:
-    - `nyamagabe-district-mv-a3-core-v0` (A3 portrait, rev `38eabe5e…`);
-    - `nyaruguru-district-mv-a3-landscape-core-v0` (A3 landscape, rev
-      `f4564fbd…`).
-
-    Both are inherited from `arjgpydw_nyam`. This is why they show under MV
-    Sheets → Network.
-  - `project-overview-a0/a3` are `project / overview`. `transformer-focus-a0`
-    and `a3-landscape-rwanda-project-lv` are `lv_transformer / network`.
-  - Seven layouts are unclassified. No plan-and-profile layout is among the 12.
-  - The plan-and-profile A3 landscape sheet isn't a Layout at all. It is a
-    reporter engine configuration, `ds.grid-plan-profile-print/v3`, rendered
-    by `report.plan-profile-config` (`ds-cli/docs/reference/report.md:1150`).
-    `catalogue::Location` has only `layout` and `governed_html`
-    (`catalogue.rs:40-53`), so the catalogue cannot list it.
-- **Grouping follows stored classification only.**
-  - `template_catalogue` groups by `classification` alone
-    (`src/printing/catalogue.rs:258-340`). Names and paper never classify
-    (`docs/printing.md:28-37`).
-  - Nothing restricts `mv_model / network` to an A3 landscape plan-and-profile
-    sheet. `set_classification` accepts any pair.
-- **Front matter is defined but never listed.**
-  - `Purpose` has four values: `lv_transformer`, `mv_model`, `project`,
-    `voltage_drop` (`catalogue.rs:14-19`). The front-matter roles (Cover,
-    Naming, SheetIndex, KeyMap, KeyPlan, Legend, GeneralNotes, LegendNotes,
-    Revisions) exist only as roles under one of those purposes
-    (`catalogue.rs:241-249`).
-  - The governed front-matter pages come from `report.standard.list` as
-    `kind: standard`. The catalogue drops every one of them:
-    `Some("standard") => continue` (`catalogue.rs:109`). The contract says
-    "Governed booklet documents retain their existing consumer"
-    (`docs/printing.md:71`).
-- **The preview subject is always an LV transformer.**
-  - A preview is "one transformer rendered" (`docs/printing.md:537`).
-  - `printing::preview::plan` refuses a non-transformer with
-    `print_preview_not_a_transformer` (`src/printing/preview.rs:150-160`).
-  - The Desktop picker lists only printable transformers
-    (`ds-web/src/lib/components/printing/PrintingSetup.svelte:246-254`). In
-    the owner's screenshot, an MV template previews against LV transformer
-    `agahehe`.
-  - No subject exists for a DS Grid MV model or a map extent.
 - **The Desktop does more than read.**
   - It reads layouts and governed pages straight from ds-brain:
     `/api/v1/printing` (`ds-web/src/lib/printing/shared.ts:153`) and
@@ -332,48 +283,31 @@ point (§11). Every computation must animate the toolbar's status button.
     `ds-cli/docs/reference/report.md`. The CLI has `report.layout.list`,
     `report.standard.list` and `report.layout.render`, plus `report.project.export
     --preview-layout` for previews.
+- **Overview previews.** Overview (project, extent) templates have no native
+  preview renderer yet (`print_preview_extent_unavailable`; ties to §14
+  Needed 1).
 
 **Needed** (one slice each; prove each slice through `ds` before the next):
 
-1. **Kernel: Front matter purpose.**
-   - Add `front_matter` to `Purpose`, labelled "Front matter", holding the
-     front-matter roles.
-   - Project the governed `kind: standard` pages under it instead of skipping
-     them.
-   - The change is additive. Check older readers against PRINCIPLES §2: no
-     breaking bump.
-2. **Kernel: subject follows purpose.**
-   - `lv_transformer` previews against one transformer.
-   - `mv_model` and `front_matter` preview against one or more DS Grid MV
-     models.
-   - `project` previews against a map or project extent.
-   - `preview::plan` takes the subject and refuses a mismatch with a keyed
-     reason. This replaces the transformer-only rule.
-3. **Kernel: MV Network admission.**
-   - Give the catalogue a storage location for the plan-and-profile print
-     configuration, so it can be listed under MV → Network.
-   - `mv_model / network` admits only that A3 landscape sheet.
-     `set_classification` refuses anything else, and the catalogue flags
-     stored mismatches.
-4. **CLI/MCP.** Add one grouped catalogue read and a subject-aware preview, so
-   the Desktop and agents read the same JSON.
+4. **CLI/MCP.** Add one grouped catalogue read and a subject-aware preview
+   (transformer, `mv_models` or extent), so the Desktop and agents read the
+   same JSON.
 5. **Desktop.**
-   - The Print templates panel renders that JSON: groups, entries, subjects
-     and preview pages.
-   - Delete the replaced TypeScript: the direct ds-brain reads, the
-     catalogue cache and read plan, and the transformer-only subject logic.
+   - The Print templates panel renders the catalogue from that JSON: groups,
+     entries, subjects and preview pages.
+   - Delete the direct ds-brain reads (`src/lib/printing/shared.ts`
+     `/api/v1/printing`, `src/lib/printing/governed.ts`
+     `/api/v1/printing/standard`) and the TypeScript catalogue cache and read
+     plan.
    - Keep pen-setting writes.
-6. **Data (seeding, not code).** Reclassify the two district maps in the
-   Rwanda Template to `project / overview` with `report.layout.edit`
-   `set_classification` and `report.layout.update`. The Template's seeding
-   does this (`SEEDING.md`).
 
 **Proof:**
 
-- `ds report layout list` and the new catalogue read show:
-  - the district maps under Overview;
-  - the front-matter pages under Front matter;
-  - only plan-and-profile A3 landscape under MV → Network.
+- The catalogue read shows the district maps under Overview, the governed
+  pages under Front matter, and only the A3 landscape plan-and-profile sheet
+  under MV Sheets (role "Plan and profile"). `mv_model` / `network` rows are
+  flagged `print_classification_mv_requires_plan_profile` and listed as
+  Unclassified.
 - An MV preview chooses a DS Grid MV model and never `agahehe`.
 
 ### 14. Print previews miss map context
@@ -452,7 +386,7 @@ then `DS_NATIVE_CLIENT_PROFILE_BUNDLE=<out>`.
 
 The MV preview landed and is proven headlessly (`ds report plan-profile
 --preview-layout`, kernel `55014fc`/`c34fadb`, ds-cli `7a490bad`, ds-web
-`dabd6e34d`). Three defects remain:
+`dabd6e34d`). Two defects remain:
 
 1. **Sync-store migration fails on a legacy store.** Every project mutation
    behind the report-reconciliation gate refuses on this machine, for example
@@ -471,13 +405,6 @@ The MV preview landed and is proven headlessly (`ds report plan-profile
    project without its own selection (Rwanda Template, `arjgpydw_nyam`).
    The Template now holds its own copy, `mv-a3-plan-profile-template`;
    selecting it is blocked by defect 1.
-3. **Hairline dividers break the template editor canvas.** The approved MV
-   layout draws 0.16 mm divider rectangles (`divider-5`…`divider-9`).
-   ds-network `crates/ds-canvas/src/free_layout.rs:121-129` refuses any
-   rectangle under the placement minimum, so opening that template shows
-   "canvas rectangles must fit the finite scene bounds". Exempt
-   non-interactive hairlines from placement, or size their hit target
-   separately from their ink.
 
 ## Moved from OPEN.md and OPEN-X.md: related work, fix together (owner, 2026-10-07)
 
@@ -542,8 +469,6 @@ Owner decisions (from OPEN-X.md §14):
 Moved from OPEN.md §2, §4, §5 and §7. Operational print seeding stays in
 [SEEDING.md](SEEDING.md) §4–§6. Combined-output entries stay in OPEN.md §7.
 
-- **Printing toolbar test**: `src/tests/printing-toolbar.test.ts` fails to locate the toolbar closing markup in current `PrintingSetup.svelte`. Repair the test boundary and verify narrow-width controls; `TemplateCatalogue.browser.test.ts` passes.
-
 - **KMZ style resolution**: move the 30 Grid and 47 transformer KMZ tuples from `ds_kml::governed_document` into the sole governed style resolver and its declarative seed.
 
 - **Absent-field country defaults**: remove implicit Rwanda/EDCL print defaults from owning code after checking stored project layouts. Require authored country/branding metadata; issue-date/version values, distinct LV context pens and A3 overview seeding belong in [SEEDING.md](SEEDING.md#4-print-templates-styles-and-seed).
@@ -559,8 +484,6 @@ Moved from OPEN.md §2, §4, §5 and §7. Operational print seeding stays in
 - `778a9f4d` (minor): Plan & profile: labels after an elevation break drawn in the top band with leader lines crossing the scale bar.
 
 - `8de3e8e0` (major): Batch transformer export needs a declarative JSON job for layout, naming and packaging.
-
-- `88c03fbd` (major): Desktop printing export rejects current reporter result field.
 
 ## Reference: landed on 7 October, don't redo
 

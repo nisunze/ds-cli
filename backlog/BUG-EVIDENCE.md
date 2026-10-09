@@ -241,17 +241,3 @@ Unrelated full CLI gate boundary: report.layout.render help is 2545 bytes agains
 2480-byte allowance; Claude owns template-preview changes. Codex must leave its
 source and tests unchanged. Continue owning controls/transport checks; do not
 claim the unrestricted workspace suite passed until that owner closes it.
-
-## Printing teardown frees an already released WASM handle — Claude-owned slice
-
-Owner's live local Desktop stack ends in `CanvasLayoutSession.free` and
-`PrintingSetup.svelte` mount teardown: `null pointer passed to rust`.
-Independently verified source boundary: `placeBooklet` and `install` free the
-current `session` before calling the fallible replacement constructor, without
-first clearing the held reference. If construction refuses, mount teardown
-still sees the freed handle and frees it again. Native layout refusal must stay
-visible; release ownership before destruction and make replacement/teardown
-single-owner operations. Prove constructor refusal followed by teardown and
-ordinary replacement/unmount without a second free. Claude owns template
-previewing; Codex leaves this component untouched to avoid overlapping edits.
-

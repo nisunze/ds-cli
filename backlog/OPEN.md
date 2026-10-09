@@ -13,24 +13,24 @@ Unfinished code that an agent can implement and prove without further owner inpu
 | [3. Template creation code](#3-template-creation-code) | 2 |
 | [4. Print template and style code](#4-print-template-and-style-code) | 0 |
 | [5. Print renderer and booklet code](#5-print-renderer-and-booklet-code) | 0 |
-| [7. Report compute, export and combined output](#7-report-compute-export-and-combined-output) | 12 |
+| [7. Report compute, export and combined output](#7-report-compute-export-and-combined-output) | 11 |
 | [8. Sync, publication and edge outbox](#8-sync-publication-and-edge-outbox) | 4 |
 | [9. LV processing, sizing and headless intake](#9-lv-processing-sizing-and-headless-intake) | 13 |
-| [10. Voltage drop](#10-voltage-drop) | 1 |
+| [10. Voltage drop](#10-voltage-drop) | 2 |
 | [11. PLS-CADD exchange round trip](#11-pls-cadd-exchange-round-trip) | 9 |
 | [12. DS Grid engineering (Codex main)](#12-ds-grid-engineering-codex-main) | 11 |
 | [13. Spotting (Codex main)](#13-spotting-codex-main) | 8 |
 | [14. Plan and Profile authoring](#14-plan-and-profile-authoring) | 1 |
 | [15. Project delivery code](#15-project-delivery-code) | 2 |
-| [16. Map data, datasets and screen styling](#16-map-data-datasets-and-screen-styling) | 10 |
-| [17. Project Work and Assets](#17-project-work-and-assets) | 7 |
+| [16. Map data, datasets and screen styling](#16-map-data-datasets-and-screen-styling) | 7 |
+| [17. Project Work and Assets](#17-project-work-and-assets) | 5 |
 | [18. Global DS Grid library](#18-global-ds-grid-library) | 1 |
 | [19. Country neutrality and duplicated rules](#19-country-neutrality-and-duplicated-rules) | 2 |
-| [21. Windows release code](#21-windows-release-code) | 6 |
+| [21. Windows release code](#21-windows-release-code) | 5 |
 | [22. Operations product code](#22-operations-product-code) | 2 |
-| [23. Kernel controls, JSON UI and TypeScript retirement](#23-kernel-controls-json-ui-and-typescript-retirement) | 5 |
+| [23. Kernel controls, JSON UI and TypeScript retirement](#23-kernel-controls-json-ui-and-typescript-retirement) | 4 |
 | [24. Owner feature requests (CLI-first, after stabilization)](#24-owner-feature-requests-cli-first-after-stabilization) | 4 |
-| [25. CLI reliability reporting and proactive feedback (priority)](#25-cli-reliability-reporting-and-proactive-feedback-priority) | 7 |
+| [25. CLI reliability reporting and proactive feedback (priority)](#25-cli-reliability-reporting-and-proactive-feedback-priority) | 6 |
 <!-- /toc -->
 
 ## 1. Source integration and release code
@@ -113,17 +113,15 @@ Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group E (printing templ
 
 ## 7. Report compute, export and combined output
 
-- **Product gaps left by the ds-work script removal** (old drivers: `git show f3809be:skills/_scripts/<name>.py`): (1) run a download plan: fetch the listed artefacts byte-exact with a sha256 manifest (`ds design download plan` only previews; was `fetch-download-plan.py`); (2) find a room's district from its artefacts when `design tag enrich-preview` returns `not_located` (was `find-districts-from-artefacts.py`); (3) MV/LV orphan join: MV tips without a transformer and transformers without MV, within a tolerance (was `mv-lv-orphans.py`).
+- **Product gaps left by the ds-work script removal** (old drivers: `git show f3809be:skills/_scripts/<name>.py`): (1) run a download plan: fetch the listed artefacts byte-exact with a sha256 manifest (`ds design download plan` only previews; was `fetch-download-plan.py`); (2) find a room's district from its artefacts when `design tag enrich-preview` returns `not_located` (was `find-districts-from-artefacts.py`); (3) MV/LV orphan join: the kernel join landed (ds-command-kernel `src/mv_lv_orphans.rs`, `fef9493` + `382a697`; schema `ds.mv-lv-orphans/v1`). Remaining: a `ds` CLI/MCP door over `mv_lv_orphans` (MV GeoJSON plus transformer points or `ds design status` JSON; `--tolerance-m`, `--junction-m`, `--exclude-prefix`, `--limit`, optional `--out` orphan GeoJSON; closed `Code` enum mapped to documented refusals; a `domain_smoke` assertion) (was `mv-lv-orphans.py`).
 
 - **Combined reports can publish incomplete output** (`4151b6b7`): a `combined_inputs_not_current` refusal must leave no externally visible partial archive. Desktop and headless combined outputs must agree on MV content and explicit project context (`a9b76d47`, `155d4782`, `70f507fc`, `72155a40`, `655b5a0d`).
 
 - **Northern Hub true combined output is unavailable** (`42f3abd1`): the available combined transformer task emits workbook/geospatial data but no A0/A3 PDFs, while `report project combined` is a compounded ZIP. Expose and prove true combined A0/A3 PDFs and workbook without presenting a compounded archive as combined.
 
-- **Model and transformer retirement lack complete restoration** (`b1b3eec5`, `81ae43eb`): verify exact backup before retirement, expose a governed CLI restore and backup read, and refuse tombstones without a recoverable backup.
+- **Deleted LV transformer restore has no CLI** (`81ae43eb`): ds-brain serves `read_transformer_backup` (verified receipt plus a 15-minute generation-pinned download) and `restore_deleted_transformer` (exact generation+sha256 pin; refuses `transformer_exists`/`history_diverged`) on `/report` (ds-brain `6fc25cb`, `01785fc`, `5dd52c9d`; `docs/contracts/transformer-retirement.md`). The kernel client is `DeletedBackupRequest` in `ds-client-core` (`8c102d6`). Add the `ds design transformer` commands over it (explicit `--project`, backup read/download, restore-deleted with the read pins), MCP exposure and closed refusal mapping.
 
 - `74bdd848` (blocker): Headless export computed 113 valid reports, but none reached cloud publication; the project remained stale and Combined Report empty.
-
-- `56749e69` (blocker): Desktop report rejects reporter output containing survey_layers_omitted.
 
 - `f6597311` (major): map design batch report: CLI advertises --file-level/--combine-per-group the Desktop rejects, and it needs an unprepared report_archive grouping.
 
@@ -178,6 +176,8 @@ Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group E (printing templ
 ## 10. Voltage drop
 
 - **Analysis/Reporter input binding**: make producer topology, saved voltage-drop JSON and Reporter use the same graph/input digest, with typed stale/missing refusals or a reviewable difference. Complete any missing direct-artifact discovery or saved-JSON-only report bindings. Source reproduction, paper QA and file replacement belong in [SEEDING.md](SEEDING.md#10-voltage-drop).
+
+- **Voltage-drop export contract text still describes the old A4 behaviour** (ds-cli, residue of reporter `026e441`; feedback `159282a4`, `e538e632`): the `report export` purpose (`crates/ds-cli-report/src/export.rs:51`) still says it prints reserved/incomplete/refused status on A4 and that governed identity supplies logos, and `docs/reference/report.md:126-129` still promises A4 status pages and logos on every A4 title block. Restate both: A4 prints only calculated analysis, without logos; non-calculated analysis is refused with `voltage_drop_pdf_not_calculated`; the combined A3 overview covers reserved and refused transformers. Regenerate ds-web `src/lib/tools/native-catalog.generated.json`. Optionally drop stale status-document wording in `crates/ds-cli-style/src/a4_seed.rs` and the stale test comment at reporter `src/exports/voltage_drop_pdf.rs:738`. **Proof:** the discovery and doc-contract tests pass and the regenerated catalogue matches the new text.
 
 ## 11. PLS-CADD exchange round trip
 
@@ -584,32 +584,21 @@ Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group A, to be fixed to
   source/publication APIs and special cloud jobs; no new owner input is needed
   for independent native code. Whole-path acceptance is in the plan's matrix.
 
-- `33003988` (minor): Wetlands dataset download fails with HTTP 422 after 12 attempts, then succeeds unprompted, so a one-shot install reports a false permanent failure.
-
-- `b98643ff` (major): desktop data rwanda install without --resource times out at the Desktop frontend (504), so the documented default bulk path cannot complete the catalogue.
+- `33003988` (minor): a second install of the same dataset while the first is still downloading reopens the same `.part`; on Windows every attempt fails at once with "open existing partial download safely", the bridge reports 422, and the first download finishes on its own, so a one-shot install reports a false permanent failure. **Proof:** a concurrent second request for the same destination is told the download is in flight, and the one-shot wetlands install completes.
 
 - `dbe4d17e` (major): Ground data download never settles: DEM/wetlands/powerlines bundles expand but are never indexed; status complete stays false.
 
 - `011ae5a6` (blocker): Project data does not render on the map: a ready map data upload has no layer class, no styles and no tiles (today's upload and the April one alike); rendering project data must need no server.
 
-- `ad44f3a0` (blocker): Desktop refuses a bare .shp dropped on the map and then freezes; the only working path is zip -> ds data convert -> GeoJSON -> local layer, split in two.
-
 - `cf92af6c` (major): No way to measure staked-out LV line length by district or sector: survey aggregates count only, entries carry no admin fields, and geometry selection has no pagination.
 
 - `46dec14e` (major): ds caps that force manual manoeuvring for one 10k-point layer: map draw max 10000 features, data inspect --rows max 5000 with no paging, prepared local layers invisible to the running app.
 
-- Vector runner (ds-network `crates/ds-network/src/vector/runner.rs`): a feature whose operation yields no geometry is dropped without a reason. Proven 2026-10-04: `ds data vector buffer` over the Gisagara M3 conductors reported processed 121, produced 115, `skipped: {}`. The kernel cause is fixed (`535a50a`); the runner must still name every dropped feature in `skipped`.
-
-- Never-landed (owner 2026-10-02, land adapted to run): Rust-owned selection: ds-network landed (one `RegionPredicate`, selector region clause; merge `78ed4a5`). The ds-web half (`slice/rust-owned-selection` `e6ee69e4`: `ds map design` selects through the WASM kernel) lands after a vendored WASM rebuild and its gate.
+- **Vector skip parity:** the ds-network runner now names engine-empty drops (`8e56edcb`: `engine_empty`, `no_station`, `no_buffer`, `skipped_features`). The kernel portable `vector_ops` (`src/vector_ops*.rs`, WASM `vectorProcess`) still counts such features as processed and does not name them; ds-cli `domain_smoke` `vector_cli_file_and_json_packets_match_the_kernel_and_frozen_native_baseline` is red on `run` (packet 4: processed 0 vs frozen 2; `skipped` lacks `no_station`). Make `vector_ops` name the same drops, refreeze `ds-command-kernel/tests/fixtures/vector_processing_packets.json`, and turn kernel `tests/vector_processing.rs` and that ds-cli test green.
 
 ## 17. Project Work and Assets
 
-
-- `e9b5858d`, `40b53f7f` (blocker): paired Desktop assets ingest fails with a rejected upload request (browser refusal or 422), so a document cannot be attached to a work task.
-
 - `e01cf456` (major): Creating a free-standing PM task with two attachments takes eight commands across two domains and still fails; task attachment needs a working CLI route.
-
-- Never-landed (owner 2026-10-02, land adapted to run): PM links to exact DS Grid model versions, validated at write (ds-brain 5e8707b/3cb94c8, kernel d051b7a/675fdda, ds-cli 58f870d/3e3db28, ds-web cc3c670), adapted to run's catalog versions and approval instead of the retired open/freeze markers.
 
 - **Board and navigation failures**: fix the Windows production Board API error and local Web go/return navigation from exact authenticated route/request evidence. Preserve explicit project context and persistent attachment state; an unauthenticated 401 does not prove signed-in behaviour.
 
@@ -651,8 +640,6 @@ Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group A, to be fixed to
 
 - **Retire the interim PLS drivers**: verify the preserved `integrate/pls` deletion (`561f27e`) and integrate its remaining source removal on canonical `run` only after the Windows product toolkit is installed. Preserve any unique consumer/driver edits; do not assume the old worktree path still exists.
 
-- **Solar design runs refused** (ADERM 20 Localités, every city at Network Costs): ds-web sends `concurrency: 0` ("automatic"); ds-solar native refuses anything outside 1..=32 since the Tauri extraction (`ebfb8be`). Slice `solar-ui` also removes Solar TypeScript that re-decides kernel results.
-
 - **Windows source integration**: when its owning Codex is idle, inspect the preserved Windows ds-cli, kernel, brain, Web and simple_notes edits and integrate unique changes into canonical `run` with their owning gates. Reconcile the parked `simple_notes:salvage/release-config-port` work. The earlier file/count inventory must be refreshed; preserve occupied checkouts and the separate PLS-CADD process.
 
 - `7519c28b` (major): Windows headless PDF report promotion fails with Access is denied.
@@ -668,8 +655,6 @@ Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group A, to be fixed to
 Rules: [PRINCIPLES.md §5](PRINCIPLES.md#5-kernel-cli-and-ui-owner-2026-10-07) — migrate touched controls one vertical at a time; complicated TypeScript goes to the CLI and its UI becomes JSON; result renderers and their downloads stay.
 
 - **First-release native controls and JSON UI**: move demonstrated UI-only or duplicated control decisions into the owning Rust kernel/native slice, expose and prove them through CLI/MCP, then bind Web/Desktop to that same authority. Supply a JSON input editor and native read-only preview/result where polished controls are not ready; apply must remain explicit, project/principal/revision fenced and faithful to authored choices. Render the owner’s validation, refusals and results without TypeScript recomputation or hidden defaults. Prove headless behavior and UI/native request/result parity, then delete replaced TypeScript control logic, direct gateway bypasses, obsolete adapters/tests/imports and dead code in that slice. Keep only useful presentation/transport/interaction code; preserve unrelated work. Durable contracts and tests live with their owner.
-
-- **Style family landed?** (ds-web `docs/layer-domain-record.md`): finished 2026-09-11 on `fable/style-document` (kernel `01e4a94`..`88cb15c`, ds-web `1263b601`..`605009ee`), recorded as not merged. Check ancestry on `run`; land or retire.
 
 - **Sidebar gateway bypasses** (ds-web `docs/layer-domain-claude-handoff.md`): Tiles/Files (`api/userData.ts`, `api/projectData.ts`), global tiles, survey pipeline/reports, basemap, Design section, PM context and drawer chrome still call API Gateway from TypeScript. One complete vertical each: kernel decides, native/WASM parity, negative controls, retired TS deleted. Then the local sketch-layer lifecycle (`docs/prompts/claude-local-sketch-layer-lifecycle.md`) and authenticated browser-to-Server transport (loopback/SSH only today).
 
@@ -701,8 +686,6 @@ Priority ([PRINCIPLES.md §3–4](PRINCIPLES.md#4-report-as-you-go-owner-2026-10
 
 - **Teach the product-use duty (ds-cli, text only):** teach reporting outside coding sessions in the `ds` skill and MCP guidance; coding sessions must solve findings or use the owning backlogs, never submit feedback. Rewrite the `feedback.submit` description so product-use friction, confusion, slowness and ideas are filed as well as gaps. **Proof:** discovery and MCP tests pass; a blind product-use trial files seeded friction, while a coding trial uses only the owning backlogs (spec §7.7).
 
-- **Store accepts `ds` events (ds-sre, ds-brain):** amend the request-event store contract with `source = "cli_command"` and `cli_rollup` and the fields in spec §3.2; ds-brain stamps `service = "ds"` from the source instead of the hard-coded `ds-web` (`internal/services/sre_event_store.go` `RecordClientRequestEvent`) and `ds sre events --source` filters them. **Proof:** brain unit tests plus the full emulator suite; a posted `cli_command` row reads back through `ds sre events --source cli_command`.
-
 - **Reporter in `ds-client-core` (ds-command-kernel):** result classification (`failed` / `crashed` / `refused`), sanitizer, one event per invocation over `domains.sre.client_request_event`, bounded on-disk outbox, 30 s dedupe and per-minute cap, daily success rollup, no recursion, `DS_SRE_REPORTING=off` for tests. **Proof:** spec §7.1–7.5 as kernel tests (transport failure through outbox and flush, refusal not an SLI failure, privacy sentinels, byte-identical output on/off and online/offline).
 
 - **Wire CLI and MCP (ds-cli):** one event per CLI process and per MCP tool call; `ds doctor` shows reporting state, outbox size and last flush; error envelopes carry `next.feedback`. **Proof:** installed `ds` against an unreachable gateway, then online, shows the event with the same `request_id`.
@@ -711,4 +694,4 @@ Priority ([PRINCIPLES.md §3–4](PRINCIPLES.md#4-report-as-you-go-owner-2026-10
 
 - **Automatic bug on crash:** a `crashed` invocation files one `bug` report as `ds (automatic)` with the SRE event id; repeats raise occurrences. **Proof:** spec §7.3 with a test-only panic hook.
 
-- **SRE overview row (ds-sre, ds-brain):** `ds` client fault rate, top failing and most-refused commands. **Proof:** `ds sre overview` shows the row after the slices above emit events.
+- **SRE overview row, CLI rendering (ds-cli):** `ds sre overview` already returns `ds_client` in JSON (ds-client-core `ef40648`; ds-sre `REQUEST_EVENT_STORE_CONTRACT.md` §7.8; ds-brain `d8b8f04` service filter). Render it as a text line in `crates/ds-cli-sre/src/overview.rs` (fault rate, crashes, refusals, top failing, most refused; `available=false` shows the reason; a null fault ratio shows unknown), declare `ds_client` in the command output and `docs/reference/sre.md`, with render tests for available, unavailable and quiet windows.

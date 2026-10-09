@@ -17,10 +17,10 @@ Candidate curation and native PLS-CADD acceptance are separate from coding the c
 | [1. Deployment and template rollout](#1-deployment-and-template-rollout) | 14 |
 | [2. Release acceptance](#2-release-acceptance) | 1 |
 | [3. Template projects](#3-template-projects) | 2 |
-| [4. Print templates, styles and seed](#4-print-templates-styles-and-seed) | 2 |
+| [4. Print templates, styles and seed](#4-print-templates-styles-and-seed) | 3 |
 | [5. Print sheet content and legibility](#5-print-sheet-content-and-legibility) | 6 |
 | [6. Print acceptance on live projects](#6-print-acceptance-on-live-projects) | 3 |
-| [7. Report compute, export and combined output](#7-report-compute-export-and-combined-output) | 2 |
+| [7. Report compute, export and combined output](#7-report-compute-export-and-combined-output) | 5 |
 | [8. Sync, publication and edge outbox](#8-sync-publication-and-edge-outbox) | 3 |
 | [9. LV processing, sizing and headless intake](#9-lv-processing-sizing-and-headless-intake) | 3 |
 | [10. Voltage drop](#10-voltage-drop) | 5 |
@@ -29,11 +29,11 @@ Candidate curation and native PLS-CADD acceptance are separate from coding the c
 | [13. Spotting (Codex main)](#13-spotting-codex-main) | 2 |
 | [14. Plan and Profile authoring](#14-plan-and-profile-authoring) | 6 |
 | [15. Project deliveries](#15-project-deliveries) | 6 |
-| [16. Map data, datasets and screen styling](#16-map-data-datasets-and-screen-styling) | 6 |
-| [17. Project Work and Assets](#17-project-work-and-assets) | 6 |
+| [16. Map data, datasets and screen styling](#16-map-data-datasets-and-screen-styling) | 9 |
+| [17. Project Work and Assets](#17-project-work-and-assets) | 8 |
 | [18. Global DS Grid library](#18-global-ds-grid-library) | 3 |
 | [21. Windows native release](#21-windows-native-release) | 8 |
-| [22. Operations](#22-operations) | 3 |
+| [22. Operations](#22-operations) | 5 |
 <!-- /toc -->
 
 ## 1. Deployment and template rollout
@@ -74,7 +74,7 @@ Candidate curation and native PLS-CADD acceptance are separate from coding the c
 
 - **Rwanda Template as a read-only demonstration project** (owner, 2026-10-07; `wnmajona_edcl_rural_electrification_template`): signed-in users read it for tutorials and demonstrations. Replace logos rather than anonymizing them. Title blocks get fictitious companies and account numbers, and the people's names on every transformer sheet become gibberish Latin. Claude is doing this.
   - **Logos ready:** `outputs/rwanda-template-seed-20261007/logos/generated/` (each ≤ 200 KB, under the 350,000-character base64 bound at `src/printing/mod.rs:1446`). Asset `rwanda` → Republic of Calventa; `edcl` → Velmora Grid Authority; `afdb` → Quenara Development Fund; `cjic` → Tallowind Lineworks; `ccce` → Orvanex Engineering.
-  - **Steps:** back up each of the 12 layouts (`report layout get`). Replace `assets` and the `title_block` and text values. Persist with `report layout update --expected-revision`. Reclassify the two district maps to `project / overview` ([STABILIZATION.md](STABILIZATION.md) §13 step 6). Then read back and render one LV sheet and one MV sheet.
+  - **Steps:** back up each of the 12 layouts (`report layout get`). Replace `assets` and the `title_block` and text values. Persist with `report layout update --expected-revision`. Then read back and render one LV sheet and one MV sheet.
   - **Owner ruling, 2026-10-07:** seed the Rwanda Template itself, accepting that projects created from it (`auth project create --from-template`) start with the fictitious logos. Change title-block text only: people's names to gibberish Latin, company names, contract and account numbers. Transformer names and customer data stay unchanged.
   - **Read-only for all signed-in users:** no such grant appears in the ds-cli reference; access is per membership. If none exists, record the gap in STABILIZATION.md.
   - **Blocked on tooling:** installed `ds-canary` (2026-09-29) refuses 10 of the 12 layouts on its closed contract, as in §6 Gisagara. Install a current canary (ds-web `./linux-server-deploy.sh canary --install`), then apply. Delete the `outputs/` folder once seeded.
@@ -86,6 +86,8 @@ Candidate curation and native PLS-CADD acceptance are separate from coding the c
 - **Obsolete styles**: inventory and back up the exact documents, review a dry-run retirement plan, then delete through the governed API.
 
 - **Template policy and seed documents**: author the MV submission issue-date/version policy as project metadata, verify distinct seeded LV context pens and seed the A3 voltage-drop overview through the available governed document route. Preserve exact source/revision pins and unrelated layouts. If a required document cannot be authored through the live contract, record that specific missing code capability in `OPEN.md`. Author MV context legend words in the governed template if the existing titles need tuning; the renderer reads held titles and the template-literal ratchet forbids replacing them with Rust literals.
+
+- **Print style revision governance acceptance** (`f012845d`): deploy a locally built ds-brain containing `2c8e7db` and install a `ds` containing ds-cli `eea923ef`, then replay `ds style print versions list|read|compare|restore` on one governed `_print` ref and close feedback `f012845d`.
 
 ## 5. Print sheet content and legibility
 
@@ -114,6 +116,12 @@ Candidate curation and native PLS-CADD acceptance are separate from coding the c
 - **Nyamagabe saved-room export acceptance** (`17b05932`): verify the saved-only projection and held-cache refresh on the 23 affected re-saved transformers at the current installed revision, then prove exact exports and published artifacts. One prior successful export does not cover the set.
 
 - **Reporter memory and publication qualification** (`ac272198`, `cb758ad5`): reproduce the failed Nyamagabe individual and combined exports with the current native/local compute path and truthful memory admission. Verify usable resource limits and exact cloud publication. If supported configuration cannot complete the bounded workload, file the measured owning-code failure; do not treat an old 1 GiB service configuration alone as a new implementation requirement.
+
+- **Desktop report export acceptance** (`56749e69`): a successful Burere Stable Windows export on a Desktop release carrying ds-web `501afad30`.
+
+- **Desktop printing export acceptance** (`88c03fbd`): on an installed Desktop release containing ds-web `501afad30`, `desktop.printing.export` of a saved Northern Hub transformer (A0 PDF/KMZ/XLSX/SHP) returns artifact receipts; then close feedback `88c03fbd`.
+
+- **Deleted-transformer restore deployment and replay** (`81ae43eb`): deploy a locally built ds-brain containing `6fc25cb`..`5dd52c9d`; once the CLI lands (`OPEN.md` block 7), replay backup read and restore-deleted on an integration project and close `81ae43eb`.
 
 ## 8. Sync, publication and edge outbox
 
@@ -212,6 +220,12 @@ Candidate curation and native PLS-CADD acceptance are separate from coding the c
 
 - **EDCL `Customer_meter` has no geometry** (ds-network `POLARS-BENCHMARK-HANDOVER.md`, benchmark closed): Datum holds only `.cpg/.dbf/.shx`. Find the `.shp` or decide it is an attribute table joined on a key; never migrate from the tile pyramid `gs://edcl/edcl_geo_raw_tiles_19_a/`.
 
+- **Windows one-shot wetlands install** (`33003988`): once the concurrent-request refusal lands (`OPEN.md` block 16), a one-shot wetlands install completes on the Windows Desktop.
+
+- **Windows shapefile drop acceptance** (`ad44f3a0`): on a Desktop release carrying ds-web `a3f1feb9`, dropping a `.shp` with its sidecars beside it imports in one drop, and a truly bare `.shp` is refused by name without freezing.
+
+- **Default Rwanda bulk install acceptance** (`b98643ff`): `ds desktop data rwanda install` with no `--resource` completes on a Desktop release carrying ds-web `7baf29ce1`.
+
 ## 17. Project Work and Assets
 
 - **Signed-in packaged Desktop canvas lifecycle acceptance**: isolated Linux WebKitGTK gates prove the existing canvas components, native geometry, two-direction Plan/Board staged deletion, drag preservation, Workflow validation/dry run, Architecture properties/Arrange/styles and collapsed Moments filters. Qualify the matching installed Tauri shell, IPC and authenticated persistent project effects separately, preserving explicit project/revision fences. The installed CLI currently refuses authenticated commands with `native_profile_not_configured`; install the matching release including its digest-pinned `ds-client-profiles/catalog.json` before this gate. Do not borrow another Desktop session's credentials or change its state. Contract and renderer timing boundary: `ds-web/docs/specs/RUST_WASM_CANVAS_GEOMETRY_MIGRATION_CONTRACT.md`.
@@ -225,6 +239,10 @@ Candidate curation and native PLS-CADD acceptance are separate from coding the c
 - **Remaining Assets formats**: prove image/HTML/mail/media previews, ingestion and Desktop parity at the matching release. PDF display/download, workbook switching, drawer restoration and LAN PDF height already have receipts in `ds-web/_discardable/lan-refresh/`; remove completed format claims after affected-session proof.
 
 - **Project theme parameters**: choose and apply the existing project-owned theme values consistently across PM, Assets, overview and governance. Verify the installed surfaces consume the declared values; ignored admitted settings are code defects, while the visual choices remain here.
+
+- **Assets ingest and task attachment acceptance** (`e9b5858d`, `40b53f7f`): an account holding `assets.ingest` runs installed `ds assets ingest` then `ds assets attach --task`, and the document shows on the task.
+
+- **Desktop PM attachment origin and model-version link deployment** (`e2f26a13`, `287c6b9b`): the Desktop PM attachment origin fix (ds-brain `e2f26a13`) takes effect only after a ds-brain deploy; a ds-brain containing it also carries `287c6b9b` (PM links to exact DS Grid model catalog revisions).
 
 ## 18. Global DS Grid library
 
@@ -259,3 +277,7 @@ Candidate curation and native PLS-CADD acceptance are separate from coding the c
 - **Legacy RAM scratch**: inventory the recorded `/tmp`, `/dev/shm/ds-root-relief-20260930` and canonical-library mirror scratch before moving or retiring completed owned output. Preserve active jobs, source bytes and reusable caches; stage further work on disk. The historical 23/9.3 GB figures require a fresh measurement.
 
 - **Legacy form retirement residuals** (`fb36d55c`): resume the governed six-form campaign only when provider retention/protected tile state changes. The last receipt has zero eligible retries and 23,776 provider-held generations, with expiry reported for 9 October 2026, 09:09–11:12 SAST. Verify every remaining schema/reference/provider count reaches zero before closure; preserve all 71 normal `field_notes` entries and their exact digest. Receipt: `ds-cli/_discardable/legacy-form-purge-20261002/installed-r84-c8-segment06-phase-final.json`. Do not count overlapping tile references twice or route around provider protection.
+
+- **`ds` client event store live readback**: deploy locally built ds-brain and its bulk twin; POST one `cli_command` and one `cli_rollup` body to `/api/v1/sre/requests`. Installed `ds sre events --source cli_command` shows the client fields, `--source cli_rollup` shows one row per command, and `ds_sre.requests` has the `ds` columns. After the deploy, a `platform=flutter` `client_runtime` body lands under `ds-sre/ds-field/requests` with `service=ds-field`.
+
+- **`ds` client row in the SRE overview**: once the CLI/MCP reporter wiring (`OPEN.md` block 25, [ORDER.md](ORDER.md) row 6) has landed and ds-brain plus its bulk twin are deployed, installed `ds sre overview` shows `ds_client` available with non-zero invocations.
