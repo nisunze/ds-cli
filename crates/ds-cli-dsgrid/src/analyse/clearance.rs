@@ -214,6 +214,8 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         "clearance_voltage_kv": report.clearance_voltage_kv,
         "vertical_case": report.vertical_case,
         "horizontal_case": report.horizontal_case,
+        "evaluated_vertical_cases": report.evaluated_vertical_cases,
+        "evaluated_horizontal_cases": report.evaluated_horizontal_cases,
         "corridor_half_width_m": report.corridor_half_width_m,
         "definitions": report.definitions,
         "alignments": report.alignments,
@@ -282,20 +284,51 @@ pub(crate) fn map_error(error: ClearanceReportError) -> Failure {
     }
 }
 
+/// The exact cases the report evaluated for one role. The engine's envelope
+/// list is the authority; its legacy singular basis exists only when one case
+/// applies. A role the report did not evaluate says so — never a null
+/// temperature or wind under a dash.
+fn evaluated_case_identity(data: &Value, role: &str, quantity: fn(&Value) -> String) -> String {
+    let listed = data
+        .get(format!("evaluated_{role}_cases"))
+        .and_then(Value::as_array)
+        .filter(|cases| !cases.is_empty())
+        .cloned()
+        .or_else(|| {
+            data.get(format!("{role}_case"))
+                .filter(|case| case.is_object())
+                .map(|case| vec![case.clone()])
+        });
+    match listed {
+        Some(cases) => cases
+            .iter()
+            .map(|case| {
+                format!(
+                    "{} ({})",
+                    case["weather_label"].as_str().unwrap_or("?"),
+                    quantity(case)
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(", "),
+        None => "— (not evaluated)".to_string(),
+    }
+}
+
 pub fn render(data: &Value) -> String {
     let mut out = format!(
-        "clearance report ({})  set {}  voltage {} kV\nvertical at {} ({} °C)  horizontal at {} ({} Pa)\nchecked {} point(s); vertical violations {}, horizontal {}, questionable {}; unresolved {}, outside spans {}\n",
+        "clearance report ({})  set {}  voltage {} kV\nvertical at {}  horizontal at {}\nchecked {} point(s); vertical violations {}, horizontal {}, questionable {}; unresolved {}, outside spans {}\n",
         data["verification_level"].as_str().unwrap_or("proposal"),
         data["criterion_set_id"].as_str().unwrap_or("?"),
         data["clearance_voltage_kv"],
-        data["vertical_case"]["weather_label"]
-            .as_str()
-            .unwrap_or("—"),
-        data["vertical_case"]["temperature_c"],
-        data["horizontal_case"]["weather_label"]
-            .as_str()
-            .unwrap_or("—"),
-        data["horizontal_case"]["wind_pressure_pa"],
+        evaluated_case_identity(data, "vertical", |case| format!(
+            "{} °C",
+            case["temperature_c"]
+        )),
+        evaluated_case_identity(data, "horizontal", |case| format!(
+            "{} Pa",
+            case["wind_pressure_pa"]
+        )),
         data["points_checked"],
         data["vertical_violations"],
         data["horizontal_violations"],
@@ -361,4 +394,56 @@ pub fn render(data: &Value) -> String {
         }
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn case(label: &str, temperature_c: f64, wind_pressure_pa: f64) -> Value {
+        json!({
+            "analysis_case_id": format!("case-{label}"),
+            "weather_label": label,
+            "temperature_c": temperature_c,
+            "wind_pressure_pa": wind_pressure_pa,
+            "condition": "after_creep",
+        })
+    }
+
+    fn header(data: Value) -> String {
+        render(&data).lines().nth(1).unwrap().to_string()
+    }
+
+    #[test]
+    fn header_names_each_evaluated_case_without_a_singular_basis() {
+        // Gisagara M3 rev 55 printed `vertical at — (null °C)`: several
+        // evaluated cases leave the legacy singular basis absent.
+        let line = header(json!({
+            "vertical_case": null,
+            "horizontal_case": case("High wind", 25.0, 551.7),
+            "evaluated_vertical_cases": [
+                case("Maximum Conductor Temperature", 75.0, 0.0),
+                case("Every day", 20.0, 0.0),
+            ],
+            "evaluated_horizontal_cases": [case("High wind", 25.0, 551.7)],
+        }));
+        assert_eq!(
+            line,
+            "vertical at Maximum Conductor Temperature (75.0 °C), Every day (20.0 °C)  horizontal at High wind (551.7 Pa)"
+        );
+        assert!(!line.contains("null"));
+    }
+
+    #[test]
+    fn header_keeps_a_singular_basis_and_names_an_unevaluated_role() {
+        let line = header(json!({
+            "vertical_case": case("Maximum Conductor Temperature", 75.0, 0.0),
+            "horizontal_case": null,
+            "evaluated_horizontal_cases": [],
+        }));
+        assert_eq!(
+            line,
+            "vertical at Maximum Conductor Temperature (75.0 °C)  horizontal at — (not evaluated)"
+        );
+    }
 }
