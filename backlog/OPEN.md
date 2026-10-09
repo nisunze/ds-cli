@@ -605,9 +605,9 @@ Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group A, to be fixed to
   Maintain the moving remaining plan here; no new owner input is needed for
   autonomous code. Whole-path acceptance is in the plan's matrix.
 
-  Next owning vertical: **3 — native container dependency closure** before the
-  reporter task can link: qualify the narrow SQLite/MBTiles feature boundary
-  described below without upgrading unrelated stores. Source/chunk-file transport
+  Next owning vertical: **3 — remaining native dependency closure**: remove
+  unused raster codecs and network/TLS from the admitted local vector/container
+  path, preserving the pinned upstream algorithms. Source/chunk-file transport
   remains separate from the durable metadata journal and persisted local views.
   Remaining **2 — store integration** around `ds-layer-store::project_snapshot::Store`: spatial indexes/Polars projection and filter
   pushdown, recovery estimates and bounded retention policy.
@@ -628,20 +628,18 @@ Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group A, to be fixed to
   bounded Parquet ingestion and larger-project streaming/RSS,
   actual Windows execution/link/privacy, third-party notices and cross-platform
   byte parity before switching production callers. Do not replace the existing
-  checked writer/readback or reintroduce external tools. Upstream container
-  dependencies still include raster codecs, SQLite and TLS with defaults disabled;
+  checked writer/readback or reintroduce external tools. Container/core
+  dependencies still include raster codecs and TLS with defaults disabled;
   do not claim a vector-only dependency closure.
   **4** reporter task and durable native jobs plus actual Windows execution.
-  Resolve the native SQLite link boundary: VersaTiles container resolves
-  `rusqlite 0.40.2/libsqlite3-sys 0.38.2`, reporter currently uses
-  `0.32.1/0.30.1`; two `links=sqlite3` owners cannot coexist in one executable.
+  Prove actual reporter executable linking with the admitted native dependency
+  and its existing print/report tests; metadata resolution alone is insufficient.
   Keep CLI/Desktop generation behind the reporter process boundary and remove
-  replaced MBTiles/SQLite code from `ds-tile-runtime`. Reporter also reaches
-  `ds-layer-store` 0.32 through its `ds-report-host` dev dependency and
-  `ds-project-data`; changing only reporter's own SQLite version is insufficient.
-  Qualify a narrow pinned upstream container feature split that excludes unused
-  MBTiles/SQLite, or another explicitly owned process/test isolation boundary;
-  do not upgrade unrelated durable stores to hide the link conflict.
+  replaced MBTiles/SQLite code from `ds-tile-runtime`. Preserve the existing
+  reporter/Store SQLite and kernel time pins; use the pinned container feature
+  boundary and reproducible actual-consumer resolution gate in
+  `ds-network/crates/ds-native-tiles/CONTRACT.md`, rather than upgrading unrelated
+  stores or restoring MBTiles dependencies.
   **5** existing CLI/MCP and Desktop
   controls/automatic triggers with report independence; **6** real governed
   source/delta/lease/upload/independent verification/CAS publication APIs and
