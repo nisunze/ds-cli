@@ -917,11 +917,12 @@ mod tests {
     #[test]
     fn the_model_carries_every_engine_default_and_group() {
         let m = model(&catalog(), None).unwrap();
-        assert_eq!(m.keys.len(), 38);
+        assert_eq!(m.keys.len(), 39);
         assert_eq!(m.groups.len(), 11);
-        assert_eq!(m.base_settings.len(), 38);
+        assert_eq!(m.base_settings.len(), 39);
         assert!(m.base_settings.contains_key("weld_tolerance"));
         assert_eq!(m.base_settings["renumber_lines"], b(true));
+        assert_eq!(m.base_settings["keep_network_as_drawn"], b(false));
         // Every qualified process now calculates voltage drop; the engine no
         // longer offers it as a setting.
         assert!(!m.base_settings.contains_key("calculate_voltage_drop"));

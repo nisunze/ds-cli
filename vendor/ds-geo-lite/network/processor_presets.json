@@ -5,7 +5,8 @@
       "label": "Network Build",
       "settings": [
         "build_network",
-        "detect_non_snapping_lv_lines"
+        "detect_non_snapping_lv_lines",
+        "keep_network_as_drawn"
       ]
     },
     {
@@ -122,6 +123,7 @@
     "export_reports_for_download": "Export Report",
     "extend_service_cables": "Extend generated service cables",
     "include_in_combined_reports": "Add to Combined",
+    "keep_network_as_drawn": "Keep network as drawn",
     "join_lv_cables_of_same_size": "Join same-size LV lines",
     "keep_flying_stay": "Keep flying stay",
     "keep_lv_lines_length": "Keep LV line length",
@@ -281,6 +283,11 @@
           "key": "build_network"
         }
       ]
+    },
+    {
+      "default": false,
+      "key": "keep_network_as_drawn",
+      "label": "Keep network as drawn"
     },
     {
       "default": true,

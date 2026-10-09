@@ -91,10 +91,10 @@
     {
       "vendored": "network/processor_presets.json",
       "partial": false,
-      "sha256": "2b1e60c3666195d01ff355e7cc3b7b2c827f6410827e97d036a2798c426fc1c8",
-      "source_commit": "5de44201748d26730cc22572e7adfb80572ee130",
+      "sha256": "7b6ec92ccf6dc2bc4a7a51e195955313dd95980a776dba64693884f66aab16a4",
+      "source_commit": "62b0168f85015cad918e711b779ef580548f8aa9",
       "sources": [
-        { "path": "crates/ds-network/src/network/processor_presets.json", "sha256": "2b1e60c3666195d01ff355e7cc3b7b2c827f6410827e97d036a2798c426fc1c8" }
+        { "path": "crates/ds-network/src/network/processor_presets.json", "sha256": "7b6ec92ccf6dc2bc4a7a51e195955313dd95980a776dba64693884f66aab16a4" }
       ]
     }
   ]
