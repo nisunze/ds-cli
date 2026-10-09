@@ -222,9 +222,11 @@ pub struct SheetSettings {
     pub drawing_revision: String,
     #[serde(default)]
     pub drawing_date: String,
-    #[serde(default = "default_country")]
+    /// Authored per project; absent is empty, never a country's name.
+    #[serde(default)]
     pub title_country: String,
-    #[serde(default = "default_employer")]
+    /// Authored per project; absent is empty, never a client's name.
+    #[serde(default)]
     pub title_employer: String,
     #[serde(default)]
     pub title_consultant: String,
@@ -247,12 +249,6 @@ fn default_buffer_m() -> f64 {
 }
 fn default_drawing_revision() -> String {
     "v0".into()
-}
-fn default_country() -> String {
-    "Republic of Rwanda".into()
-}
-fn default_employer() -> String {
-    "EDCL".into()
 }
 
 impl SheetSettings {
@@ -286,8 +282,8 @@ impl SheetSettings {
             break_support_context: BreakSupportContext::default(),
             drawing_revision: default_drawing_revision(),
             drawing_date: String::new(),
-            title_country: default_country(),
-            title_employer: default_employer(),
+            title_country: String::new(),
+            title_employer: String::new(),
             title_consultant: String::new(),
             title_contractor: String::new(),
             title_programme: String::new(),
@@ -356,5 +352,24 @@ impl SheetSettings {
             );
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod country_neutral_tests {
+    use super::*;
+
+    /// No country or client is implied: an absent title field stays empty, so a
+    /// Chad sheet never prints another country's name (PRINCIPLES section 7).
+    #[test]
+    fn absent_title_parties_stay_empty_instead_of_a_country_default() {
+        let fresh = SheetSettings::new(SheetFormat::Simple, "Project");
+        assert!(fresh.title_country.is_empty() && fresh.title_employer.is_empty());
+        let decoded: SheetSettings = serde_json::from_value(serde_json::json!({
+            "format": "simple", "project_title": "Project", "sheet_title": "MV plan & profile"
+        }))
+        .unwrap();
+        assert_eq!(decoded.title_country, "");
+        assert_eq!(decoded.title_employer, "");
     }
 }
