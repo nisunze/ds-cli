@@ -605,15 +605,17 @@ Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group A, to be fixed to
   Maintain the moving remaining plan here; no new owner input is needed for
   autonomous code. Whole-path acceptance is in the plan's matrix.
 
-  Active: **2 — persisted local work-area views** around
-  `ds-layer-store::project_snapshot::Store`: bounded private masks, compare-and-set
-  revisions, captured views over pinned snapshots and exact native spatial results
-  without network or source/head mutation. Source/chunk-file transport remains
-  separate from the durable metadata journal.
+  Active: **2 — prepared exact local predicates** in the existing native geometry
+  owner, reused by `ds-layer-store::project_snapshot::Pin` rather than reparsing a
+  captured area for every feature. Source/chunk-file transport remains separate
+  from the durable metadata journal and persisted local views.
   Remaining **2 — store integration** around `ds-layer-store::project_snapshot::Store`: spatial indexes/Polars projection and filter
-  pushdown, recovery estimates and bounded retention policy. Complete persisted
-  local-mask semantics in this slice; later CLI/report/map consumers must share
-  these captured views rather than interpreting the mask as source completeness.
+  pushdown, recovery estimates and bounded retention policy. Existing
+  `Pin::visit_layer` hashes/scans the full layer and `selects_area` reparses the
+  mask per feature: add a prepared exact predicate in the existing geometry owner
+  before claiming responsive larger-area queries. Later CLI/report/map consumers
+  must share the captured persisted views rather than interpreting the mask as
+  source completeness.
   Prove actual Windows ACL/locking/crash recovery; the helper MSVC compile check
   is not Windows execution. Extend the existing chunk/head/pin implementation
   described in `docs/contracts/ds-project-snapshots.md`, do not replace it or
@@ -634,9 +636,13 @@ Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group A, to be fixed to
   Resolve the native SQLite link boundary: VersaTiles container resolves
   `rusqlite 0.40.2/libsqlite3-sys 0.38.2`, reporter currently uses
   `0.32.1/0.30.1`; two `links=sqlite3` owners cannot coexist in one executable.
-  Keep CLI/Desktop generation behind the reporter process boundary, remove
-  replaced MBTiles/SQLite code from `ds-tile-runtime`, and align only the owning
-  reporter dependency rather than upgrading unrelated durable stores.
+  Keep CLI/Desktop generation behind the reporter process boundary and remove
+  replaced MBTiles/SQLite code from `ds-tile-runtime`. Reporter also reaches
+  `ds-layer-store` 0.32 through its `ds-report-host` dev dependency and
+  `ds-project-data`; changing only reporter's own SQLite version is insufficient.
+  Qualify a narrow pinned upstream container feature split that excludes unused
+  MBTiles/SQLite, or another explicitly owned process/test isolation boundary;
+  do not upgrade unrelated durable stores to hide the link conflict.
   **5** existing CLI/MCP and Desktop
   controls/automatic triggers with report independence; **6** real governed
   source/delta/lease/upload/independent verification/CAS publication APIs and

@@ -113,11 +113,11 @@ only unreferenced chunks and abandoned owned staging files are removed under the
 catalogue lock. A refresh can promote a new head while an old reader remains pinned.
 
 Proof commands: `cargo test --locked --manifest-path crates/ds-layer-store/Cargo.toml
---lib` (108 tests, including real Parquet admission/masks/recovery/retention and
+--lib` (including real Parquet admission/masks/recovery/retention and
 privacy refusal); the Windows helper additionally passes an MSVC target metadata
 check. The latter is not Windows runtime, locking, filesystem durability or
-packaging acceptance. Acquisition adapters, ordered delta application, spatial
-index/Polars projection, persisted masks and deployed callers remain distinct
+packaging acceptance. Acquisition adapters, spatial
+index/Polars projection, predicate pushdown and deployed callers remain distinct
 obligations in OPEN section 16; full streaming local masks alone do not satisfy
 that performance matrix.
 
@@ -173,6 +173,67 @@ recent 64 batches and at most 256 page digests each. Replay recovery is bounded:
 after receipt expiry an old batch has no permanent idempotence guarantee and
 cannot mint a receipt merely because its target exists. Retention protects every
 pending base even after an independent admission changes head; explicit discard
-releases that protection. All catalogue accesses use catalogue-before-pin lock
-ordering, and finalization releases its read lock before admission's exclusive
-lock. SQLite uses the existing private catalogue and FULL synchronous WAL policy.
+releases that protection. Delta admission uses catalogue-before-pin ordering, and finalization releases
+its read lock before admission's exclusive lock. Local view capture accepts an
+already held immutable pin and takes a catalogue read lock; retention's exclusive
+catalogue lock only tries pin locks nonblockingly, so it cannot wait on that pin
+while capture waits on the catalogue. SQLite uses the existing private catalogue and FULL synchronous WAL policy.
+
+
+## Persisted local work-area views
+
+`set_work_area(name, area, expected_revision)` stores a named local Polygon or
+MultiPolygon admitted by `reference_cache::validate_area` (including its accepted
+Feature wrapper); `None` persists an explicitly cleared predicate. Clearing is
+distinct from `remove_work_area`, which removes the saved predicate with revision
+CAS and never removes data. An absent mask cannot implicitly become an all-data
+query: create or clear it explicitly before capture. No mask operation changes
+head, source revision, source/chunk bytes, acquisition evidence or tile inputs,
+and none performs download, refresh or a remote freshness check.
+
+The private SQLite catalogue admits at most 128 masks, names up to 256 UTF-8
+bytes (nonempty, trimmed, without controls), each named-mask body at most 256 KiB
+and 4 MiB across stored bodies. Input traversal caps depth at 32 and JSON nodes
+at 25,000 before recursive serialization/geometry validation. Per-mask byte
+counting and total catalogue admission precede incoming owned JSON copies and
+hashing. Serialized bodies are canonical compact JSON of `[name,area]` with all
+object keys sorted recursively; `content_sha256` hashes
+`ds.snapshot-work-area-content/v1` plus NUL and those exact bytes.
+
+The revision separately binds namespace, canonical content and a durable
+increasing namespace generation. The clock persists independently of mask rows;
+removal and every changed update advance it in the same FULL-sync transaction
+as the mutation. Integrity checksum, missing/negative/regressed clock and signed
+SQLite integer overflow checks refuse without repairing/resetting state. Mask
+revision hashes `ds.snapshot-work-area-revision/v1` plus NUL and the canonical
+JSON tuple `[namespace_sha256,content_sha256,generation]`. `expected_revision=None`
+is create-only for an absent name. Existing names require their exact current
+revision **before** any identical-content no-op. Stale edits, even same-payload
+retries, return `SnapshotStaleView`; callers reread before recovering. A→B→A and
+removal/recreation retain equal content digests but never reuse revisions. A
+current-revision duplicate leaves the generation and body unchanged.
+
+`capture_view(name,pin)` refuses pins from another physical store or any other
+principal, lane, audience, project, visibility or source namespace. The returned
+`LocalView` owns the immutable mask and source pin. Changes to a saved mask or
+head, moves/deletions in later deltas, and retention cannot alter its query.
+It performs no mutable head lookup at read time. Its `visit_layer` delegates to
+`Pin::visit_layer` and the existing exact intersects predicate; a cleared mask
+selects all **retained** rows. Successful reads return mask content/revision/
+generation, predicate, pinned manifest and source revision, context, read source,
+selection, acquisition filter, unchanged acquisition/coverage evidence, layer,
+observed row count and local elapsed milliseconds. Filtered source scope and
+mirror-behind evidence stay explicit, including when the observed row count is
+zero. No local predicate establishes completeness or proves an uncovered area
+empty.
+
+Persistence is not spatial pushdown: each query currently hashes/scans retained
+layer chunks and decodes Parquet rows; the existing intersects helper reparses
+the area per feature. Projection, reusable parsed predicates, spatial/Polars
+pushdown, missing-coverage acquisition and deployed caller integration remain
+separate obligations. Owning real-Parquet tests prove reopen/shrink/expand/
+clear/revisit, unchanged source bytes/head, two-writer CAS, generation ABA and
+recreation fences, old captured views across source moves/deletions, partial
+coverage evidence, namespace refusals, malformed/byte/count/depth budgets and
+clock corruption/overflow refusal. Linux tests do not establish native Windows
+execution, account ACL behavior or cross-platform replacement durability.

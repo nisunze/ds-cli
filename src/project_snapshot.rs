@@ -183,6 +183,7 @@ pub enum RefusalCode {
     SnapshotInvalid,
     SnapshotSourcePolicy,
     SnapshotContextMismatch,
+    SnapshotStaleView,
     SnapshotIncomplete,
     SnapshotMovingHead,
     SnapshotCorrupt,

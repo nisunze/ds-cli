@@ -1,6 +1,7 @@
 //! Verified immutable columnar snapshots. This store has no network transport:
 //! local reads and work-area changes cannot acquire data or check remote freshness.
 mod delta_acquisition;
+mod local_view;
 use crate::{private, snapshot_privacy};
 pub use delta_acquisition::{DeltaAcquisition, DeltaAcquisitionState};
 use ds_columnar::{batch_to_features, digest_file, schema_digest, ArtifactReader};
@@ -8,6 +9,7 @@ use ds_command_kernel::project_snapshot::{
     self as policy, Context, Manifest, Refusal, RefusalCode, SourceKind,
 };
 use fs2::FileExt;
+pub use local_view::{LocalReadReceipt, LocalView, ViewPredicate, WorkArea, WorkAreaUpdate};
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::Serialize;
 use serde_json::Value;
@@ -165,6 +167,7 @@ impl Store {
             CREATE TABLE IF NOT EXISTS members(manifest TEXT NOT NULL,layer TEXT NOT NULL,chunk TEXT NOT NULL,PRIMARY KEY(manifest,layer,chunk));
             CREATE TABLE IF NOT EXISTS head(id INTEGER PRIMARY KEY CHECK(id=1),sha TEXT NOT NULL);").map_err(storage)?;
         delta_acquisition::schema(&connection)?;
+        local_view::schema(&connection, &self.namespace_sha256()?)?;
         Ok(connection)
     }
 
@@ -992,6 +995,422 @@ mod tests {
             ..first.clone()
         };
         vec![first, last]
+    }
+
+    fn local_area(limit: f64) -> Value {
+        json!({"type":"Polygon","coordinates":[[[-limit,-limit],[limit,-limit],[limit,limit],[-limit,limit],[-limit,-limit]]]})
+    }
+    fn read_local(view: &LocalView) -> (Vec<Value>, LocalReadReceipt) {
+        let mut features = Vec::new();
+        let receipt = view
+            .visit_layer("poles", &|| false, &mut |f| {
+                features.push(f);
+                Ok(())
+            })
+            .unwrap();
+        (features, receipt)
+    }
+
+    #[test]
+    fn saved_local_masks_reopen_shrink_expand_clear_and_revisit_without_source_changes() {
+        let workspace = fixture();
+        let root = workspace.path();
+        let store = Store::open(root, context(), SourceKind::Survey).unwrap();
+        let (base, files) = snapshot(
+            root,
+            vec![vec![point("p1", 1.0, "r1"), point("p2", 10.0, "r1")]],
+            "base",
+        );
+        store.admit(&base, &files, None, &|| false).unwrap();
+        let chunk = store
+            .root
+            .join("chunks")
+            .join(&base.layers[0].chunks[0].sha256);
+        let before = fs::read(&chunk).unwrap();
+        let mut mask = store
+            .set_work_area("desk", Some(&local_area(12.0)), None)
+            .unwrap()
+            .mask;
+        assert_eq!(
+            read_local(
+                &store
+                    .capture_view("desk", store.pin(&base.manifest_sha256).unwrap())
+                    .unwrap()
+            )
+            .0
+            .len(),
+            2
+        );
+        drop(store);
+        let store = Store::open(root, context(), SourceKind::Survey).unwrap();
+        assert_eq!(store.work_area("desk").unwrap().unwrap(), mask);
+        for (area, count) in [
+            (Some(local_area(2.0)), 1),
+            (Some(local_area(12.0)), 2),
+            (None, 2),
+            (Some(local_area(2.0)), 1),
+        ] {
+            mask = store
+                .set_work_area("desk", area.as_ref(), Some(&mask.revision))
+                .unwrap()
+                .mask;
+            let view = store
+                .capture_view("desk", store.pin(&base.manifest_sha256).unwrap())
+                .unwrap();
+            let (_, receipt) = read_local(&view);
+            assert_eq!(receipt.rows, count);
+            assert_eq!(receipt.work_area, mask);
+            assert_eq!(receipt.source_revision, base.revision);
+            assert_eq!(receipt.acquisition, base.acquisition);
+            assert_eq!(receipt.selection, base.selection);
+            assert_eq!(
+                receipt.predicate,
+                if area.is_some() {
+                    ViewPredicate::Intersects
+                } else {
+                    ViewPredicate::AllRetainedRows
+                }
+            );
+        }
+        assert_eq!(store.head().unwrap().unwrap(), base);
+        assert_eq!(fs::read(chunk).unwrap(), before);
+        assert_eq!(
+            base.layers[0].chunks[0].sha256,
+            digest_file(files.values().next().unwrap()).unwrap()
+        );
+        assert!(store.remove_work_area("desk", &mask.revision).unwrap());
+        assert!(store.work_area("desk").unwrap().is_none());
+        assert!(store
+            .capture_view("desk", store.pin(&base.manifest_sha256).unwrap())
+            .is_err());
+    }
+
+    #[test]
+    fn captured_local_view_survives_mask_changes_source_moves_deletions_and_retention() {
+        let workspace = fixture();
+        let root = workspace.path();
+        let store = Store::open(root, context(), SourceKind::Survey).unwrap();
+        let (base, files) = snapshot(
+            root,
+            vec![vec![point("p1", 1.0, "r1"), point("p2", 10.0, "r1")]],
+            "base",
+        );
+        store.admit(&base, &files, None, &|| false).unwrap();
+        let first = store
+            .set_work_area("desk", Some(&local_area(2.0)), None)
+            .unwrap()
+            .mask;
+        let captured = store
+            .capture_view("desk", store.pin(&base.manifest_sha256).unwrap())
+            .unwrap();
+        let expanded = store
+            .set_work_area("desk", Some(&local_area(25.0)), Some(&first.revision))
+            .unwrap()
+            .mask;
+        let (target, files) = snapshot(root, vec![vec![point("p1", 20.0, "r2")]], "target");
+        let pages = delta(
+            &base,
+            &target,
+            vec![policy::Tombstone {
+                layer: "poles".into(),
+                object_id: "p2".into(),
+                object_revision: "r2".into(),
+            }],
+        );
+        store.apply_delta(&pages, &files, &|| false).unwrap();
+        assert_eq!(store.retain(&BTreeSet::new()).unwrap().pinned_manifests, 1);
+        let (old, receipt) = read_local(&captured);
+        assert_eq!(old, vec![point("p1", 1.0, "r1")]);
+        assert_eq!(receipt.work_area, first);
+        assert_eq!(receipt.manifest_sha256, base.manifest_sha256);
+        let new = store
+            .capture_view("desk", store.pin(&target.manifest_sha256).unwrap())
+            .unwrap();
+        let (moved, receipt) = read_local(&new);
+        assert_eq!(moved, vec![point("p1", 20.0, "r2")]);
+        assert_eq!(receipt.work_area, expanded);
+        assert_eq!(receipt.source_revision, target.revision);
+        let shrinking = store
+            .set_work_area("desk", Some(&local_area(2.0)), Some(&expanded.revision))
+            .unwrap()
+            .mask;
+        let empty = store
+            .capture_view("desk", store.pin(&target.manifest_sha256).unwrap())
+            .unwrap();
+        assert_eq!(read_local(&empty).1.rows, 0);
+        assert_eq!(read_local(&new).0, moved);
+        assert_eq!(empty.work_area(), &shrinking);
+        assert!(new.visit_layer("poles", &|| true, &mut |_| Ok(())).is_err());
+        assert_eq!(store.head().unwrap().unwrap(), target);
+    }
+
+    #[test]
+    fn local_view_receipt_preserves_filtered_scope_and_refuses_cross_namespace_pins() {
+        let workspace = fixture();
+        let root = workspace.path();
+        let store = Store::open(root, context(), SourceKind::Survey).unwrap();
+        let (mut partial, files) = snapshot(root, vec![vec![point("p1", 1.0, "r1")]], "partial");
+        partial.selection = policy::SelectionScope::Filtered;
+        partial.acquisition_filter = Some("opaque-filter".into());
+        partial.acquisition.whole_authorized_scope = false;
+        partial.acquisition.mirror_behind = true;
+        partial.manifest_sha256 = partial.computed_sha256().unwrap();
+        store.admit(&partial, &files, None, &|| false).unwrap();
+        store
+            .set_work_area("desk", Some(&local_area(0.5)), None)
+            .unwrap();
+        let (_, receipt) = read_local(
+            &store
+                .capture_view("desk", store.pin(&partial.manifest_sha256).unwrap())
+                .unwrap(),
+        );
+        assert_eq!(receipt.rows, 0);
+        assert_eq!(receipt.selection, policy::SelectionScope::Filtered);
+        assert_eq!(receipt.acquisition_filter, partial.acquisition_filter);
+        assert_eq!(receipt.acquisition, partial.acquisition);
+        assert_eq!(receipt.source_revision.coverage, partial.revision.coverage);
+        let mut variants = Vec::new();
+        let mut other = context();
+        other.principal = "other".into();
+        variants.push((other, SourceKind::Survey));
+        let mut other = context();
+        other.lane = policy::Lane::Stable;
+        variants.push((other, SourceKind::Survey));
+        let mut other = context();
+        other.owner = policy::Owner::Project {
+            project_id: "other".into(),
+        };
+        variants.push((other, SourceKind::Survey));
+        let mut other = context();
+        other.visibility = "other".into();
+        variants.push((other, SourceKind::Survey));
+        variants.push((context(), SourceKind::SavedDesign));
+        let mut other = context();
+        other.audience = "other".into();
+        variants.push((other, SourceKind::Survey));
+        for (ctx, source) in variants {
+            let other = Store::open(root, ctx, source).unwrap();
+            assert!(other.work_area("desk").unwrap().is_none());
+            assert_eq!(
+                other
+                    .capture_view("desk", store.pin(&partial.manifest_sha256).unwrap())
+                    .err()
+                    .unwrap()
+                    .code,
+                RefusalCode::SnapshotContextMismatch
+            );
+        }
+    }
+
+    #[test]
+    fn local_mask_cas_rejects_aba_recreation_and_two_writer_races() {
+        use std::sync::{Arc, Barrier};
+        let workspace = fixture();
+        let root = workspace.path();
+        let store = Store::open(root, context(), SourceKind::Survey).unwrap();
+        let a = store
+            .set_work_area("desk", Some(&local_area(2.0)), None)
+            .unwrap()
+            .mask;
+        assert!(
+            !store
+                .set_work_area("desk", Some(&local_area(2.0)), Some(&a.revision))
+                .unwrap()
+                .changed
+        );
+        assert_eq!(
+            store
+                .set_work_area("desk", Some(&local_area(2.0)), None)
+                .unwrap_err()
+                .code,
+            RefusalCode::SnapshotStaleView
+        );
+        let b = store
+            .set_work_area("desk", None, Some(&a.revision))
+            .unwrap()
+            .mask;
+        let again = store
+            .set_work_area("desk", Some(&local_area(2.0)), Some(&b.revision))
+            .unwrap()
+            .mask;
+        assert_eq!(a.content_sha256, again.content_sha256);
+        assert_ne!(a.revision, again.revision);
+        assert_eq!(
+            store
+                .set_work_area("desk", Some(&local_area(2.0)), Some(&a.revision))
+                .unwrap_err()
+                .code,
+            RefusalCode::SnapshotStaleView
+        );
+        assert!(store.remove_work_area("desk", &a.revision).is_err());
+        store.remove_work_area("desk", &again.revision).unwrap();
+        drop(store);
+        let store = Store::open(root, context(), SourceKind::Survey).unwrap();
+        let recreated = store
+            .set_work_area("desk", Some(&local_area(2.0)), None)
+            .unwrap()
+            .mask;
+        assert_ne!(again.revision, recreated.revision);
+        assert!(recreated.generation > again.generation);
+        let barrier = Arc::new(Barrier::new(2));
+        let mut threads = Vec::new();
+        for limit in [3.0, 4.0] {
+            let root = root.to_owned();
+            let barrier = barrier.clone();
+            let expected = recreated.revision.clone();
+            threads.push(std::thread::spawn(move || {
+                let store = Store::open(&root, context(), SourceKind::Survey).unwrap();
+                barrier.wait();
+                store.set_work_area("desk", Some(&local_area(limit)), Some(&expected))
+            }));
+        }
+        let results: Vec<_> = threads.into_iter().map(|t| t.join().unwrap()).collect();
+        assert_eq!(results.iter().filter(|r| r.is_ok()).count(), 1);
+        assert_eq!(
+            results
+                .iter()
+                .filter(|r| matches!(r,Err(e) if e.code==RefusalCode::SnapshotStaleView))
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn local_mask_budgets_malformed_inputs_and_clock_failure_are_atomic() {
+        let workspace = fixture();
+        let root = workspace.path();
+        let store = Store::open(root, context(), SourceKind::Survey).unwrap();
+        let first = store.set_work_area("desk", None, None).unwrap().mask;
+        for bad in [
+            json!({"type":"LineString","coordinates":[[0,0],[1,1]]}),
+            json!({"type":"Polygon","coordinates":[]}),
+        ] {
+            assert!(store
+                .set_work_area("desk", Some(&bad), Some(&first.revision))
+                .is_err());
+        }
+        assert!(store.set_work_area(&"x".repeat(257), None, None).is_err());
+        let mut deep = Value::Null;
+        for _ in 0..34 {
+            deep = json!([deep]);
+        }
+        assert_eq!(
+            store
+                .set_work_area("deep", Some(&deep), None)
+                .unwrap_err()
+                .code,
+            RefusalCode::SnapshotBudgetExceeded
+        );
+        let too_large = json!({"type":"Feature","geometry":local_area(2.0),"properties":{"padding":"x".repeat(300_000)}});
+        assert_eq!(
+            store
+                .set_work_area("large", Some(&too_large), None)
+                .unwrap_err()
+                .code,
+            RefusalCode::SnapshotBudgetExceeded
+        );
+        let large = json!({"type":"Feature","geometry":local_area(2.0),"properties":{"padding":"x".repeat(250_000)}});
+        for i in 0..16 {
+            store
+                .set_work_area(&format!("mask-{i}"), Some(&large), None)
+                .unwrap();
+        }
+        assert_eq!(
+            store
+                .set_work_area("overflow", Some(&large), None)
+                .unwrap_err()
+                .code,
+            RefusalCode::SnapshotBudgetExceeded
+        );
+        for i in 0..16 {
+            let key = format!("mask-{i}");
+            let mask = store.work_area(&key).unwrap().unwrap();
+            store.remove_work_area(&key, &mask.revision).unwrap();
+        }
+        for i in 0..127 {
+            store
+                .set_work_area(&format!("clear-{i}"), None, None)
+                .unwrap();
+        }
+        assert_eq!(
+            store
+                .set_work_area("overflow", None, None)
+                .unwrap_err()
+                .code,
+            RefusalCode::SnapshotBudgetExceeded
+        );
+        assert_eq!(store.work_area("desk").unwrap().unwrap(), first);
+        let _lock = store.lock(true).unwrap();
+        let c = store.connection().unwrap();
+        c.execute(
+            "UPDATE local_work_area_clock SET generation=?1,sha=?2 WHERE id=1",
+            params![
+                i64::MAX,
+                local_view::clock_digest(&store.namespace_sha256().unwrap(), i64::MAX as u64)
+                    .unwrap()
+            ],
+        )
+        .unwrap();
+        drop(c);
+        drop(_lock);
+        assert_eq!(
+            store
+                .set_work_area("desk", Some(&local_area(2.0)), Some(&first.revision))
+                .unwrap_err()
+                .code,
+            RefusalCode::SnapshotBudgetExceeded
+        );
+        assert_eq!(store.work_area("desk").unwrap().unwrap(), first);
+    }
+
+    #[test]
+    fn local_mask_corrupt_clock_refuses_without_repair_or_mask_mutation() {
+        let workspace = fixture();
+        let root = workspace.path();
+        let store = Store::open(root, context(), SourceKind::Survey).unwrap();
+        let first = store.set_work_area("desk", None, None).unwrap().mask;
+        let _lock = store.lock(true).unwrap();
+        let c = store.connection().unwrap();
+        c.execute(
+            "UPDATE local_work_area_clock SET generation=0 WHERE id=1",
+            [],
+        )
+        .unwrap();
+        drop(_lock);
+        assert_eq!(
+            store
+                .set_work_area("desk", Some(&local_area(2.0)), Some(&first.revision))
+                .unwrap_err()
+                .code,
+            RefusalCode::SnapshotCorrupt
+        );
+        assert_eq!(
+            c.query_row(
+                "SELECT revision FROM local_work_areas WHERE name='desk'",
+                [],
+                |r| r.get::<_, String>(0)
+            )
+            .unwrap(),
+            first.revision
+        );
+        assert_eq!(
+            c.query_row(
+                "SELECT generation FROM local_work_area_clock WHERE id=1",
+                [],
+                |r| r.get::<_, u64>(0)
+            )
+            .unwrap(),
+            0
+        );
+        c.execute("DELETE FROM local_work_area_clock WHERE id=1", [])
+            .unwrap();
+        assert!(Store::open(root, context(), SourceKind::Survey).is_err());
+        assert_eq!(
+            c.query_row("SELECT count(*) FROM local_work_area_clock", [], |r| r
+                .get::<_, u64>(0))
+                .unwrap(),
+            0
+        );
     }
 
     #[test]
