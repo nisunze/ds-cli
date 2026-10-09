@@ -205,6 +205,26 @@ report (the existing `invalid_text` contract).
   crashes on purpose when `DS_CLI_TEST_PANIC` names the command id (§7.3); a
   release build has no such hook.
 
+### 5.3a Lifecycle of an automatic report
+
+The SRE event is evidence and never changes; the feedback report is the unit
+of work. The two meet on the command id, the error code and `sre_event`.
+
+1. **Open.** The first crash or `internal` error of one command and code files
+   one report (§5.3). Later ones raise its occurrences while it is unsettled.
+2. **Closed.** A coding session proves the fix and closes the report
+   (`resolved`, with the evidence) through `ds feedback close`.
+3. **Recurred.** A matching ending after the close is a new sighting: the
+   backlog files a NEW report whose `supersedes` names the closed one, so a
+   proven closure is never reopened and a regression is never hidden.
+4. **SRE view.** Events stay in the store for their full retention. Open SRE
+   work is a command and code whose newest event is newer than the close of
+   its newest settled report, or which has no settled report; the `ds_client`
+   overview row must present the others as addressed, with their counts kept as
+   evidence. Not implemented yet: the overview reads events only and still
+   lists a closed crash among `top_failing` until its events age out of the
+   seven-day window.
+
 ### 5.4 Where the duty is taught
 
 | Surface | Change |
