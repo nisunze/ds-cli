@@ -117,8 +117,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         );
     }
 
-    let bytes = crate::read_source(&source)?;
-    let name = crate::file_name(&source);
+    let (name, bytes) = crate::inspect::read_geometry_source(&source)?;
     let separator = inputs.value("separator").map(str::to_string);
 
     // A source that already carries geometry needs no coordinate columns; a
