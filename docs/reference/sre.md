@@ -27,10 +27,24 @@ The result has exactly these top-level fields:
 - bounded `services`, `service_ops`, `stale`, `incidents`, `error_catalog`
 - exact owner collection counts in `totals`
 - per-collection truncation booleans in `more`
+- `ds_client`, the `ds` CLI and MCP row
 
 `incidents` is the owner's incident feed and is currently unpopulated. An empty
 array is therefore not evidence that an external incident-management system has
 no open incidents.
+
+`ds_client` is computed by `ds-client-core::sre` from the request-event store,
+not by the cloud overview: one more `query_table` read of the last seven days
+with `service = "ds"` (ds-sre `REQUEST_EVENT_STORE_CONTRACT.md` §7.8). Every
+`ds` row stands for `occurrences` invocations — `cli_command` rows carry the
+failed, crashed and refused ones, `cli_rollup` rows the daily successes — so
+`invocations`, `failures`, `crashes`, `refusals` and `fault_ratio_pct` are
+occurrence-weighted. A refusal is the contract working and never a fault.
+`top_failing` and `most_refused` name at most five command ids each, with
+`more` beside them; `complete` is false when the window scan saturated, and
+`fault_ratio_pct` is null when nothing ran. A window that cannot be read
+answers `available: false` with its `reason`; the rest of the overview is
+still returned.
 
 ## Events
 
@@ -64,6 +78,11 @@ Every projected event string is capped at 128 Unicode characters, except
 `error_message`, which is capped at 1,000. Each row's `truncated_fields` array
 names every clipped field, and `error_message_truncated` remains a convenient
 dedicated signal.
+
+`ds` client rows (`--source cli_command` or `cli_rollup`, service `ds`) also
+carry `host_kind`, `os`, `contract`, `result_class`, `error_class`, `retryable`,
+`agent`, `occurrences` and `flags` — flag names only, at most 64; these are
+null on every other source.
 
 The event window arrives as a stream closed by its own row-count summary. A
 window that ends without that summary, reports its own scan as failed, or
