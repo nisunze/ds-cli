@@ -605,9 +605,14 @@ Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group A, to be fixed to
   Maintain the moving remaining plan here; no new owner input is needed for
   autonomous code. Whole-path acceptance is in the plan's matrix.
 
-  Next owning vertical: **3 — remaining native dependency closure**: remove
-  unused raster codecs and network/TLS from the admitted local vector/container
-  path, preserving the pinned upstream algorithms. Source/chunk-file transport
+  Next owning vertical: **3 — local-only container I/O closure**: remove unused
+  HTTP/TLS from the admitted local vector/container path, preserving the pinned
+  upstream algorithms. `versatiles_core::io::data_reader_http` and container
+  registry HTTP dispatch currently select reqwest/TLS unconditionally. Container
+  URL-only references can use the underlying URL type independently of HTTP.
+  Keep one exact Core type identity across geometry, container and direct callers
+  when introducing a pinned optional HTTP boundary; disabled URL I/O must refuse
+  before network work or filesystem fallback. Source/chunk-file transport
   remains separate from the durable metadata journal and persisted local views.
   Remaining **2 — store integration** around `ds-layer-store::project_snapshot::Store`: spatial indexes/Polars projection and filter
   pushdown, recovery estimates and bounded retention policy.
@@ -629,8 +634,8 @@ Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group A, to be fixed to
   actual Windows execution/link/privacy, third-party notices and cross-platform
   byte parity before switching production callers. Do not replace the existing
   checked writer/readback or reintroduce external tools. Container/core
-  dependencies still include raster codecs and TLS with defaults disabled;
-  do not claim a vector-only dependency closure.
+  dependencies still include TLS with defaults disabled; do not claim a
+  credential-free dependency graph itself establishes an offline-only closure.
   **4** reporter task and durable native jobs plus actual Windows execution.
   Prove actual reporter executable linking with the admitted native dependency
   and its existing print/report tests; metadata resolution alone is insufficient.
