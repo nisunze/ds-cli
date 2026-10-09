@@ -149,16 +149,17 @@ impl Store {
         for suffix in ["-wal", "-shm", "-journal"] {
             let mut name = path.as_os_str().to_owned();
             name.push(suffix);
-            guard_file_if_present(Path::new(&name))?;
+            guard_sqlite_sidecar_if_present(Path::new(&name))?;
         }
         private::prepare_file(&path).map_err(storage)?;
         snapshot_privacy::file(&path).map_err(storage)?;
         let connection =
             Connection::open(crate::sqlite_path(&path).map_err(storage)?).map_err(storage)?;
+        persist_sqlite_sidecars(&connection)?;
         connection
             .busy_timeout(Duration::from_secs(10))
             .map_err(storage)?;
-        connection.execute_batch("PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;
+        connection.execute_batch("PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA journal_size_limit=4194304;
             CREATE TABLE IF NOT EXISTS authority(id INTEGER PRIMARY KEY CHECK(id=1),context TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS chunks(sha TEXT PRIMARY KEY,layer TEXT NOT NULL,schema_sha TEXT NOT NULL,bytes INTEGER NOT NULL,rows INTEGER NOT NULL);
             CREATE TABLE IF NOT EXISTS objects(chunk TEXT NOT NULL,id TEXT NOT NULL,revision TEXT NOT NULL,row_sha TEXT NOT NULL,ordinal INTEGER NOT NULL,PRIMARY KEY(chunk,id));
@@ -241,6 +242,18 @@ impl Store {
     /// Ordered source deltas replace chunks against an exact immutable base.
     /// All removed object IDs require final tombstones before the head changes.
     pub fn apply_delta(
+        &self,
+        pages: &[policy::DeltaPage],
+        inputs: &BTreeMap<String, PathBuf>,
+        cancelled: &dyn Fn() -> bool,
+    ) -> Result<Admission> {
+        let started = Instant::now();
+        let mut receipt = self.apply_delta_checked(pages, inputs, cancelled)?;
+        receipt.elapsed_ms = started.elapsed().as_millis().min(u64::MAX as u128) as u64;
+        Ok(receipt)
+    }
+
+    fn apply_delta_checked(
         &self,
         pages: &[policy::DeltaPage],
         inputs: &BTreeMap<String, PathBuf>,
@@ -660,6 +673,72 @@ fn guard_file_if_present(path: &Path) -> Result<()> {
     }
 }
 
+fn persist_sqlite_sidecars(connection: &Connection) -> Result<()> {
+    // Bundled SQLite's Unix and Windows VFS implement this control. Set it
+    // before any WAL/schema access, then verify it: the last Store connection
+    // must retain WAL/SHM rather than racing another reader's privacy checks.
+    for value in [1, -1] {
+        let mut enabled = value;
+        // SAFETY: the live Connection owns the handle for this synchronous
+        // control call; SQLite reads/writes exactly one native C integer.
+        let code = unsafe {
+            rusqlite::ffi::sqlite3_file_control(
+                connection.handle(),
+                c"main".as_ptr(),
+                rusqlite::ffi::SQLITE_FCNTL_PERSIST_WAL,
+                (&mut enabled as *mut std::os::raw::c_int).cast(),
+            )
+        };
+        if code != rusqlite::ffi::SQLITE_OK || enabled != 1 {
+            return Err(storage(format!(
+                "SQLite persistent WAL control failed: {code}/{enabled}"
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn guard_sqlite_sidecar_if_present(path: &Path) -> Result<()> {
+    guard_sqlite_sidecar_if_present_checked(path, snapshot_privacy::file)
+}
+
+fn guard_sqlite_sidecar_if_present_checked(
+    path: &Path,
+    mut verify: impl FnMut(&Path) -> std::result::Result<(), String>,
+) -> Result<()> {
+    let mut last_error = String::new();
+    for _ in 0..16 {
+        match fs::symlink_metadata(path) {
+            Ok(metadata) => {
+                // An initially observed dangling link refuses even if it is
+                // subsequently removed. Never follow it to test absence.
+                if metadata.file_type().is_symlink() {
+                    return Err(storage(
+                        "snapshot privacy: symbolic link is not a private file",
+                    ));
+                }
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+            Err(error) => return Err(storage(error)),
+        }
+        match verify(path) {
+            Ok(()) => return Ok(()),
+            Err(error) => last_error = error,
+        }
+        // A concurrent SQLite close can unlink a sidecar before open or after
+        // open (the verifier then sees nlink=0). A new sidecar may already have
+        // replaced it. Only strict no-follow absence passes here; an existing
+        // replacement gets the full privacy checks again, with bounded retries.
+        match fs::symlink_metadata(path) {
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+            Ok(metadata) if metadata.file_type().is_symlink() => return Err(storage(last_error)),
+            Ok(_) => {}
+            Err(error) => return Err(storage(error)),
+        }
+    }
+    Err(storage(last_error))
+}
+
 fn object_value<'a>(feature: &'a Value, column: &str) -> Result<&'a str> {
     let value = if column == ds_columnar::FEATURE_ID_COLUMN {
         &feature["id"]
@@ -749,9 +828,18 @@ impl Pin {
         cancelled: &dyn Fn() -> bool,
         visitor: &mut dyn FnMut(Value) -> std::result::Result<(), String>,
     ) -> Result<u64> {
-        if let Some(area) = area {
+        let predicate = if let Some(area) = area {
             ds_command_kernel::reference_cache::validate_area(area).map_err(storage)?;
-        }
+            Some(
+                ds_command_kernel::reference_cache::PreparedArea::new(
+                    area,
+                    ds_command_kernel::reference_cache::AreaSelection::Intersects,
+                )
+                .map_err(storage)?,
+            )
+        } else {
+            None
+        };
         let layer = self
             .manifest
             .layers
@@ -770,10 +858,8 @@ impl Pin {
             while let Some(batch) = reader.next_batch().map_err(storage)? {
                 check_cancelled(cancelled)?;
                 for feature in batch_to_features(&batch, MAX_GEOMETRY_NODES).map_err(storage)? {
-                    if let Some(area) = area {
-                        if !ds_command_kernel::reference_cache::intersects_area(&feature, area)
-                            .map_err(storage)?
-                        {
+                    if let Some(predicate) = &predicate {
+                        if !predicate.selects(&feature).map_err(storage)? {
                             continue;
                         }
                     }
@@ -1000,6 +1086,129 @@ mod tests {
     fn local_area(limit: f64) -> Value {
         json!({"type":"Polygon","coordinates":[[[-limit,-limit],[limit,-limit],[limit,limit],[-limit,limit],[-limit,-limit]]]})
     }
+
+    #[cfg(unix)]
+    #[test]
+    fn optional_sidecar_guard_handles_unlink_without_accepting_links_or_public_files() {
+        use std::os::unix::fs::{symlink, PermissionsExt};
+        let workspace = fixture();
+        let path = workspace.path().join("catalog.sqlite-wal");
+        let create = || {
+            private::open_options()
+                .write(true)
+                .create_new(true)
+                .open(&path)
+                .unwrap();
+        };
+        create();
+        guard_sqlite_sidecar_if_present_checked(&path, |path| {
+            fs::remove_file(path).unwrap();
+            snapshot_privacy::file(path)
+        })
+        .unwrap();
+        assert!(fs::symlink_metadata(&path).is_err());
+        create();
+        let mut calls = 0;
+        guard_sqlite_sidecar_if_present_checked(&path, |path| {
+            calls += 1;
+            if calls == 1 {
+                fs::remove_file(path).unwrap();
+                private::open_options()
+                    .write(true)
+                    .create_new(true)
+                    .open(path)
+                    .unwrap();
+                Err("snapshot privacy: prior opened sidecar was unlinked".into())
+            } else {
+                snapshot_privacy::file(path)
+            }
+        })
+        .unwrap();
+        assert_eq!(calls, 2);
+        fs::remove_file(&path).unwrap();
+        create();
+        assert!(guard_sqlite_sidecar_if_present_checked(&path, |path| {
+            fs::remove_file(path).unwrap();
+            symlink("missing-target", path).unwrap();
+            snapshot_privacy::file(path)
+        })
+        .is_err());
+        // The initial dangling link must refuse even if a checker would remove
+        // it. The verification callback must never be reached for that entry.
+        assert!(
+            guard_sqlite_sidecar_if_present_checked(&path, |_| panic!("link was admitted"))
+                .is_err()
+        );
+        fs::remove_file(&path).unwrap();
+        create();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o640)).unwrap();
+        assert!(guard_sqlite_sidecar_if_present(&path).is_err());
+        assert_eq!(
+            fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+            0o640
+        );
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
+        fs::hard_link(&path, workspace.path().join("alias")).unwrap();
+        assert!(guard_sqlite_sidecar_if_present(&path).is_err());
+    }
+
+    #[test]
+    fn concurrent_sqlite_sidecar_lifecycles_keep_shared_snapshot_reads_valid() {
+        use std::sync::{Arc, Barrier};
+        let workspace = fixture();
+        let root = workspace.path();
+        let store = Store::open(root, context(), SourceKind::Survey).unwrap();
+        let (base, files) = snapshot(root, vec![vec![point("p1", 1.0, "r1")]], "base");
+        store.admit(&base, &files, None, &|| false).unwrap();
+        let barrier = Arc::new(Barrier::new(4));
+        let mut threads = Vec::new();
+        for _ in 0..4 {
+            let root = root.to_owned();
+            let barrier = barrier.clone();
+            let expected = base.manifest_sha256.clone();
+            threads.push(std::thread::spawn(move || {
+                let store = Store::open(&root, context(), SourceKind::Survey).unwrap();
+                barrier.wait();
+                for _ in 0..64 {
+                    assert_eq!(store.head().unwrap().unwrap().manifest_sha256, expected);
+                    assert!(store.pending_delta("absent").unwrap().is_none());
+                }
+            }));
+        }
+        for thread in threads {
+            thread.join().unwrap();
+        }
+        assert_eq!(store.head().unwrap().unwrap(), base);
+    }
+    #[cfg(unix)]
+    #[test]
+    fn sqlite_sidecars_persist_with_private_identity_after_last_connection_closes() {
+        use std::os::unix::fs::MetadataExt;
+        let workspace = fixture();
+        let store = Store::open(workspace.path(), context(), SourceKind::Survey).unwrap();
+        let paths = [
+            store.root.join("catalog.sqlite-wal"),
+            store.root.join("catalog.sqlite-shm"),
+        ];
+        let identities: Vec<_> = paths
+            .iter()
+            .map(|path| {
+                snapshot_privacy::file(path).unwrap();
+                let m = fs::symlink_metadata(path).unwrap();
+                (m.dev(), m.ino())
+            })
+            .collect();
+        for _ in 0..32 {
+            assert!(store.head().unwrap().is_none());
+            for (path, identity) in paths.iter().zip(&identities) {
+                snapshot_privacy::file(path).unwrap();
+                let m = fs::symlink_metadata(path).unwrap();
+                assert_eq!((m.dev(), m.ino()), *identity);
+            }
+        }
+        assert!(fs::metadata(&paths[0]).unwrap().len() <= 4 * 1024 * 1024);
+    }
+
     fn read_local(view: &LocalView) -> (Vec<Value>, LocalReadReceipt) {
         let mut features = Vec::new();
         let receipt = view

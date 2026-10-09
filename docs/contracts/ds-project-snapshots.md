@@ -104,6 +104,23 @@ manifest reuses indexed unchanged chunks without re-decoding/reimporting them;
 it currently rehashes those local bytes for integrity. Admission reports imported
 chunks/bytes, reused chunks, locally verified reuse bytes and elapsed milliseconds.
 These are local measurements, not cloud read or billing evidence.
+`apply_delta` measures its entire successful call, including page canonicalization,
+pin acquisition and either replay check; an exact replay still reports zero
+imported/reused bytes and chunks. `finish_delta` additionally includes its pending
+page read and revalidation in its whole-call successful receipt timing.
+
+Every Store connection enables and query-verifies SQLite `PERSIST_WAL` before
+schema access. WAL/SHM remain private after the last connection closes, avoiding
+last-reader unlink/recreate races without serializing readers. A 4 MiB journal
+size setting is a post-checkpoint retention target, not a hard byte bound while
+transactions or readers hold WAL; completed checkpoints permit truncation.
+Optional-sidecar privacy guards also
+handle legacy overlapping handles: strict no-follow absence may pass, extant
+replacements undergo full privacy verification again with bounded retries, and
+observed symbolic links or exhausted verification refuse. Permanent catalogue,
+lock and pin privacy guards retain their strict checks. Linux tests prove
+sidecar inode persistence and concurrent connection lifecycles; they do not
+establish Windows execution.
 
 `pin` captures an immutable manifest behind a shared process lock. Streaming
 `visit_layer` validates retained bytes, then applies the existing exact area
@@ -228,9 +245,12 @@ zero. No local predicate establishes completeness or proves an uncovered area
 empty.
 
 Persistence is not spatial pushdown: each query currently hashes/scans retained
-layer chunks and decodes Parquet rows; the existing intersects helper reparses
-the area per feature. Projection, reusable parsed predicates, spatial/Polars
-pushdown, missing-coverage acquisition and deployed caller integration remain
+layer chunks and decodes Parquet rows. It validates the captured area at query
+admission, then reuses the geometry owner's immutable `PreparedArea` for every row.
+The one-shot `selects_area` delegates to the same owner; holes, boundary touching,
+centroid/intersects selection and malformed-feature behavior do not fork. A
+later mutation of the input JSON cannot change a prepared predicate. Projection,
+spatial/Polars pushdown, missing-coverage acquisition and deployed caller integration remain
 separate obligations. Owning real-Parquet tests prove reopen/shrink/expand/
 clear/revisit, unchanged source bytes/head, two-writer CAS, generation ABA and
 recreation fences, old captured views across source moves/deletions, partial

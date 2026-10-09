@@ -605,15 +605,14 @@ Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group A, to be fixed to
   Maintain the moving remaining plan here; no new owner input is needed for
   autonomous code. Whole-path acceptance is in the plan's matrix.
 
-  Active: **2 — prepared exact local predicates** in the existing native geometry
-  owner, reused by `ds-layer-store::project_snapshot::Pin` rather than reparsing a
-  captured area for every feature. Source/chunk-file transport remains separate
-  from the durable metadata journal and persisted local views.
+  Next owning vertical: **3 — native container dependency closure** before the
+  reporter task can link: qualify the narrow SQLite/MBTiles feature boundary
+  described below without upgrading unrelated stores. Source/chunk-file transport
+  remains separate from the durable metadata journal and persisted local views.
   Remaining **2 — store integration** around `ds-layer-store::project_snapshot::Store`: spatial indexes/Polars projection and filter
-  pushdown, recovery estimates and bounded retention policy. Existing
-  `Pin::visit_layer` hashes/scans the full layer and `selects_area` reparses the
-  mask per feature: add a prepared exact predicate in the existing geometry owner
-  before claiming responsive larger-area queries. Later CLI/report/map consumers
+  pushdown, recovery estimates and bounded retention policy.
+  `Pin::visit_layer` still hashes/scans full layer chunks; prepared predicates do
+  not establish spatial/columnar pushdown. Later CLI/report/map consumers
   must share the captured persisted views rather than interpreting the mask as
   source completeness.
   Prove actual Windows ACL/locking/crash recovery; the helper MSVC compile check

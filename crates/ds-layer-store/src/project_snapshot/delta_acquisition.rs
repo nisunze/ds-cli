@@ -519,11 +519,14 @@ impl Store {
         inputs: &BTreeMap<String, PathBuf>,
         cancelled: &dyn Fn() -> bool,
     ) -> Result<Admission> {
+        let started = Instant::now();
         check_cancelled(cancelled)?;
         let pages = self.pending_delta_pages(batch)?;
         if pages.last().is_none_or(|p| p.terminal_manifest.is_none()) {
             return Err(invalid("pending delta is absent or incomplete"));
         }
-        self.apply_delta(&pages, inputs, cancelled)
+        let mut receipt = self.apply_delta(&pages, inputs, cancelled)?;
+        receipt.elapsed_ms = started.elapsed().as_millis().min(u64::MAX as u128) as u64;
+        Ok(receipt)
     }
 }

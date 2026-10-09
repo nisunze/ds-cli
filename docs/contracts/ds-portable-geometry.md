@@ -34,6 +34,12 @@ crate. Kernel → Network and Network → the whole application kernel remain
 forbidden. Kernel native/WASM builds must work with Network absent. This moves
 no engineering analysis, voltage, terrain, strength or optimization code.
 
+`spatial_predicate::PreparedArea` retains one parsed Polygon/MultiPolygon and
+its named `AreaSelection` for a bounded local query. `selects_area` delegates to
+that same implementation. Preparation owns its geometry, so later input JSON
+changes do not alter selection. It avoids repeated area parsing, preserves exact
+hole/boundary and centroid semantics, and makes no coverage/freshness claim.
+
 Admission (including the BigQuery corpus), exact spatial predicates, region
 algebra, measurement and viewport extents are now canonical Lite modules.
 Network keeps compatibility module paths and calls this same implementation.

@@ -217,20 +217,40 @@ pub fn selects_area(
     area: &Value,
     selection: AreaSelection,
 ) -> Result<bool, String> {
-    let area = parsed_area(area)?;
-    let geometry = match geometry_value(feature) {
-        Ok(value) => {
-            let mut count = 0;
-            parse_geometry(value, &mut count)?
-        }
-        Err(_) => return Ok(false),
-    };
-    Ok(match selection {
-        AreaSelection::Intersects => geometry.intersects(&area),
-        AreaSelection::CentroidInside => {
-            centroid_of(&geometry).is_some_and(|centre| centre.intersects(&area))
-        }
-    })
+    PreparedArea::new(area, selection)?.selects(feature)
+}
+
+/// One immutable parsed area shared by all rows of a local query. Preparation
+/// retains the same area admission and selection semantics as `selects_area`;
+/// it establishes neither source coverage nor freshness.
+pub struct PreparedArea {
+    area: Geometry<f64>,
+    selection: AreaSelection,
+}
+
+impl PreparedArea {
+    pub fn new(area: &Value, selection: AreaSelection) -> Result<Self, String> {
+        Ok(Self {
+            area: parsed_area(area)?,
+            selection,
+        })
+    }
+
+    pub fn selects(&self, feature: &Value) -> Result<bool, String> {
+        let geometry = match geometry_value(feature) {
+            Ok(value) => {
+                let mut count = 0;
+                parse_geometry(value, &mut count)?
+            }
+            Err(_) => return Ok(false),
+        };
+        Ok(match self.selection {
+            AreaSelection::Intersects => geometry.intersects(&self.area),
+            AreaSelection::CentroidInside => {
+                centroid_of(&geometry).is_some_and(|centre| centre.intersects(&self.area))
+            }
+        })
+    }
 }
 
 /// True only when the entire query polygon is held. Holes and disconnected
@@ -269,6 +289,39 @@ mod tests {
 
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn prepared_area_keeps_holes_boundaries_selection_and_captured_geometry() {
+        let mut area = json!({"type":"Polygon","coordinates":[
+            [[0.,0.],[4.,0.],[4.,4.],[0.,4.],[0.,0.]],
+            [[1.,1.],[3.,1.],[3.,3.],[1.,3.],[1.,1.]]
+        ]});
+        let intersects = PreparedArea::new(&area, AreaSelection::Intersects).unwrap();
+        let centroid = PreparedArea::new(&area, AreaSelection::CentroidInside).unwrap();
+        let inside = json!({"type":"Point","coordinates":[0.5,0.5]});
+        let hole = json!({"type":"Point","coordinates":[2.,2.]});
+        let edge = json!({"type":"Point","coordinates":[0.,0.5]});
+        let crossing = json!({"type":"Polygon","coordinates":[
+            [[-1.,0.2],[0.1,0.2],[0.1,0.4],[-1.,0.4],[-1.,0.2]]
+        ]});
+        for prepared in [&intersects, &centroid] {
+            assert!(prepared.selects(&inside).unwrap());
+            assert!(!prepared.selects(&hole).unwrap());
+            assert!(prepared.selects(&edge).unwrap());
+            assert!(!prepared
+                .selects(&json!({"type":"Feature","geometry":null}))
+                .unwrap());
+            assert!(prepared
+                .selects(&json!({"type":"Point","coordinates":[]}))
+                .is_err());
+        }
+        assert!(intersects.selects(&crossing).unwrap());
+        assert!(!centroid.selects(&crossing).unwrap());
+        area["coordinates"] = json!([[[10., 10.], [11., 10.], [11., 11.], [10., 11.], [10., 10.]]]);
+        assert!(intersects.selects(&inside).unwrap());
+        assert!(!selects_area(&inside, &area, AreaSelection::Intersects).unwrap());
+        assert!(PreparedArea::new(&inside, AreaSelection::Intersects).is_err());
+    }
 
     #[test]
     fn polygon_and_multipolygon_are_exact_area_selectors() {
@@ -317,11 +370,9 @@ mod tests {
     #[test]
     fn open_and_non_area_selectors_are_refused() {
         assert!(validate_area(&json!({"type":"Point","coordinates":[0.,0.]})).is_err());
-        assert!(
-            validate_area(
-                &json!({"type":"Polygon","coordinates":[[[0.,0.],[1.,0.],[1.,1.],[0.,1.]]]})
-            )
-            .is_err()
-        );
+        assert!(validate_area(
+            &json!({"type":"Polygon","coordinates":[[[0.,0.],[1.,0.],[1.,1.],[0.,1.]]]})
+        )
+        .is_err());
     }
 }
