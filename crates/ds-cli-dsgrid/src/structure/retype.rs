@@ -111,11 +111,12 @@ Retype selected structures to one model type through native `retype_structure`, 
 as one revision of an explicit working copy or one new package. REG v7 uses \
 each structure's alignment angle: dry-run lists cleared, remaining and created \
 findings; writes that leave or create `structure_type_not_allowed` are refused. \
-`--from-finding structure_type_not_allowed` selects all carriers. Missing used \
-slots are native drafts: sections/supports survive, exact (set, slot) matches \
-rebound and unmatched attachments clear. Repair them explicitly before full \
-validation, export or publication. Package persistence requires a valid \
-snapshot; a draft write may fail `package_emit_failed` with `detail.receipt`.",
+`--from-finding structure_type_not_allowed` selects all carriers. Exact (set, \
+slot) matches rebound; a duty change splits or rejoins sets through the new \
+type's characterized sets; otherwise unmatched attachments clear as a native \
+draft. Repair those explicitly before full validation, export or \
+publication. Package persistence requires a valid snapshot; a draft write may \
+fail `package_emit_failed` with `detail.receipt`.",
     chapter: Chapter::GridModel,
     effect: Effect::LocalFileWrite,
     authority: Authority::None,
