@@ -1,6 +1,6 @@
 //! Explicit template organization shared by native and web consumers.
 //! Names, paper formats and retired layout fields never decide classification.
-use super::{page_role::PageRole, PaperSpec};
+use super::{page_role::PageRole, preview::SubjectKind, PaperSpec};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -53,6 +53,45 @@ impl Classification {
         }
         Ok(())
     }
+
+    /// What authoring may set on `layout`. MV Sheets hold only the A3 landscape
+    /// plan-and-profile sheet: `mv_model / plan_profile` on a layout carrying an
+    /// MV plan and profile setup, whose own validation fixes the A3 landscape
+    /// page. Stored pairs are not re-judged on load; the catalogue flags them.
+    pub fn admit_for(&self, layout: &super::Layout) -> Result<(), String> {
+        self.admit()?;
+        if self.purpose == Purpose::MvModel
+            && (self.role != PageRole::PlanProfile || layout.mv.is_none())
+        {
+            return Err(format!("print_classification_invalid: {MV_ADMISSION}"));
+        }
+        Ok(())
+    }
+}
+
+const MV_ADMISSION: &str = "MV Sheets hold only the A3 landscape plan-and-profile sheet (mv_model / plan_profile on a layout carrying an MV plan and profile setup); classify district and overview maps as project / overview";
+
+/// Why a stored classification is listed as Unclassified instead of under its purpose.
+#[derive(Debug, Serialize)]
+pub struct Mismatch {
+    pub code: &'static str,
+    pub message: &'static str,
+    pub stored: Classification,
+}
+
+/// An MV Sheets row that is not the A3 landscape plan-and-profile sheet.
+fn stored_mismatch(row: &Row) -> Option<Mismatch> {
+    let stored = row.classification?;
+    // A row without saved paper cannot be judged by it; its role still decides.
+    let a3_landscape = row.paper.is_none_or(|paper| {
+        paper.size == super::Paper::A3 && paper.orientation == super::Orientation::Landscape
+    });
+    (stored.purpose == Purpose::MvModel && (stored.role != PageRole::PlanProfile || !a3_landscape))
+        .then_some(Mismatch {
+            code: "print_classification_mv_requires_plan_profile",
+            message: MV_ADMISSION,
+            stored,
+        })
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -95,6 +134,28 @@ pub struct Entry {
     #[serde(flatten)]
     pub row: Row,
     pub location: Location,
+    /// What a preview of this template renders against, by its admitted purpose.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subject: Option<SubjectKind>,
+    /// A stored classification the catalogue does not admit under its purpose.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mismatch: Option<Mismatch>,
+}
+
+impl Entry {
+    fn new(row: Row, location: Location) -> Self {
+        let mismatch = stored_mismatch(&row);
+        let subject = match (&mismatch, row.classification) {
+            (None, Some(classification)) => Some(SubjectKind::of(classification.purpose)),
+            _ => None,
+        };
+        Self {
+            row,
+            location,
+            subject,
+            mismatch,
+        }
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -147,8 +208,8 @@ fn standard_entry(project: &str, row: &Value) -> Result<Option<Entry>, String> {
         .iter()
         .find(|(r, _)| *r == role)
         .map_or("Page", |(_, label)| *label);
-    Ok(Some(Entry {
-        row: Row {
+    Ok(Some(Entry::new(
+        Row {
             id: id.into(),
             name: format!("{label} · {template_id}"),
             paper: serde_json::from_value(
@@ -160,13 +221,13 @@ fn standard_entry(project: &str, row: &Value) -> Result<Option<Entry>, String> {
                 role,
             }),
         },
-        location: Location::GovernedStandard {
+        Location::GovernedStandard {
             project_id: project.into(),
             id: id.into(),
             template_id: template_id.into(),
             revision_id,
         },
-    }))
+    )))
 }
 
 /// Admit the project-owned A4 family and the governed front-matter pages from
@@ -210,8 +271,8 @@ fn governed_entries(project: &str, capture: &Value) -> Result<Vec<Entry>, String
         {
             return Err("print_catalogue_invalid: A4 schema or paper differs".into());
         }
-        entries.push(Entry {
-            row: Row {
+        entries.push(Entry::new(
+            Row {
                 id: A4_ID.into(),
                 name: A4_NAME.into(),
                 paper: Some(PaperSpec {
@@ -223,14 +284,14 @@ fn governed_entries(project: &str, capture: &Value) -> Result<Vec<Entry>, String
                     role: PageRole::Report,
                 }),
             },
-            location: Location::GovernedHtml {
+            Location::GovernedHtml {
                 project_id: project.into(),
                 id: A4_ID.into(),
                 revision_id: content_sha256.clone(),
                 content_sha256,
                 html_sha256,
             },
-        });
+        ));
     }
     if entries.len() > 1 {
         return Err("print_catalogue_invalid: duplicate bound A4 document".into());
@@ -365,10 +426,8 @@ pub fn project(
                 "print_catalogue_invalid: unique bounded id and template name required".into(),
             );
         }
-        entries.push(Entry {
-            location: Location::Layout { id: row.id.clone() },
-            row,
-        });
+        let location = Location::Layout { id: row.id.clone() };
+        entries.push(Entry::new(row, location));
     }
     if let Some(capture) = governed {
         entries.extend(governed_entries(
@@ -377,11 +436,11 @@ pub fn project(
         )?);
     }
     for entry in entries {
-        let key = entry
-            .row
-            .classification
-            .map(|c| (Some(c.purpose), Some(c.role)))
-            .unwrap_or((None, None));
+        // A stored mismatch is listed as Unclassified, flagged, never under its purpose.
+        let key = match (&entry.mismatch, entry.row.classification) {
+            (None, Some(c)) => (Some(c.purpose), Some(c.role)),
+            _ => (None, None),
+        };
         grouped.entry(key).or_default().push(entry);
     }
     let mut groups = Vec::new();
@@ -548,6 +607,75 @@ mod tests {
             }
             assert!(project(Vec::new(), Some("project_one"), Some(changed)).is_err());
         }
+    }
+
+    #[test]
+    fn mv_sheets_hold_only_the_a3_landscape_plan_and_profile_sheet() {
+        let rows = serde_json::from_value(json!([
+            {"id":"district","name":"Nyaruguru MV district map","paper":{"size":"A3","orientation":"landscape"},"classification":{"purpose":"mv_model","role":"network"}},
+            {"id":"portrait","name":"Nyamagabe MV district map","paper":{"size":"A3","orientation":"portrait"},"classification":{"purpose":"mv_model","role":"plan_profile"}},
+            {"id":"pp","name":"MV plan and profile","paper":{"size":"A3","orientation":"landscape"},"classification":{"purpose":"mv_model","role":"plan_profile"}},
+            {"id":"overview","name":"Project overview","paper":{"size":"A3","orientation":"landscape"},"classification":{"purpose":"project","role":"overview"}}
+        ]))
+        .unwrap();
+        let out = serde_json::to_value(project(rows, None, None).unwrap()).unwrap();
+        let mv = &out["groups"][0];
+        assert_eq!(mv["purpose"], "mv_model");
+        assert_eq!(mv["roles"].as_array().unwrap().len(), 1);
+        assert_eq!(mv["roles"][0]["role"], "plan_profile");
+        let sheets = mv["roles"][0]["templates"].as_array().unwrap();
+        assert_eq!(sheets.len(), 1);
+        assert_eq!(sheets[0]["id"], "pp");
+        assert_eq!(sheets[0]["subject"], "mv_models");
+        assert!(sheets[0].get("mismatch").is_none());
+        assert_eq!(
+            out["groups"][1]["roles"][0]["templates"][0]["subject"],
+            "extent"
+        );
+        // Stored mismatches stay listed, flagged, as Unclassified.
+        let unclassified = &out["groups"][2];
+        assert_eq!(unclassified["label"], "Unclassified");
+        let flagged = unclassified["roles"][0]["templates"].as_array().unwrap();
+        assert_eq!(flagged.len(), 2);
+        for template in flagged {
+            assert_eq!(
+                template["mismatch"]["code"],
+                "print_classification_mv_requires_plan_profile"
+            );
+            assert_eq!(template["mismatch"]["stored"]["purpose"], "mv_model");
+            assert!(template.get("subject").is_none());
+        }
+        // Authoring admits MV Sheets only for a layout carrying an MV setup.
+        let set = |layout: &Value, classification: Value| {
+            super::super::evaluate(
+                &serde_json::to_vec(&json!({"op":"set_classification","layout":layout,"classification":classification}))
+                    .unwrap(),
+            )
+        };
+        let plain = serde_json::to_value(super::super::default_layout()).unwrap();
+        for role in ["network", "plan_profile"] {
+            assert!(set(&plain, json!({"purpose":"mv_model","role":role}))
+                .unwrap_err()
+                .starts_with("print_classification_invalid: MV Sheets hold only"));
+        }
+        assert!(set(&plain, json!({"purpose":"project","role":"overview"})).is_ok());
+        let mv_layout: Value = serde_json::from_str(include_str!(
+            "../../tests/fixtures/mv-global-canonical.json"
+        ))
+        .unwrap();
+        let classified: Value = serde_json::from_str(
+            &set(
+                &mv_layout,
+                json!({"purpose":"mv_model","role":"plan_profile"}),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            classified["layout"]["classification"],
+            json!({"purpose":"mv_model","role":"plan_profile"})
+        );
+        assert!(set(&mv_layout, json!({"purpose":"mv_model","role":"network"})).is_err());
     }
 
     #[test]

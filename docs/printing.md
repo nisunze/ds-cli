@@ -81,6 +81,17 @@ guessed. Standard pages of other roles keep their existing consumer (the
 governed LV set) and stay out of the catalogue. Unknown custom layouts remain
 Unclassified.
 
+MV Sheets hold only the A3 landscape plan-and-profile sheet. `set_classification`
+admits `mv_model` only as `mv_model / plan_profile` on a layout carrying an MV
+plan and profile setup (whose validation fixes the A3 landscape page) and
+refuses anything else with `print_classification_invalid`; district and
+overview maps are `project / overview`. A stored pair is not re-judged on load:
+a stored `mv_model` row with another role, or with saved paper other than A3
+landscape, is listed as Unclassified with `mismatch: {code:
+"print_classification_mv_requires_plan_profile", message, stored}` until it is
+reclassified. Every admitted entry carries the preview `subject` its purpose
+previews against (`transformer`, `mv_models` or `extent`).
+
 `read_governed_template` admits the exact `report.standard.get` response against
 the selected HTML location's captured project, revision, content and HTML pins.
 It returns the original governed HTML bytes. It neither injects example data
@@ -567,9 +578,26 @@ them. The host save paths are the boundary; ds-brain admits only pdf, png and
 jpeg in a stored selection.
 
 `printing::preview::plan` answers whether the editor may preview right now,
-from facts: the draft, the chosen transformer as `printable_transformers`
-listed it, the governed print styles the host holds, online and native-engine
-readiness. Refusals are keyed (`printing_preview_no_transformer`,
+from facts: the draft, the chosen `subject`, the governed print styles the
+host holds, online and native-engine readiness. The subject follows the
+layout's purpose (`expected_subject`): LV sheets and voltage-drop reports
+preview against one transformer as `printable_transformers` listed it
+(`{"subject":"transformer","name",...}`; the legacy `transformer` fact reads as
+that subject); MV sheets and front matter against one or more DS Grid MV models
+(`{"subject":"mv_models","model_ids":[...]}`); overview sheets against a map
+extent (`{"subject":"extent","bbox":[w,s,e,n]}` or the project extent). An
+unclassified layout carrying an MV setup reads as an MV sheet, any other as a
+transformer sheet. A subject of another kind is refused with
+`printing_preview_subject_mismatch` naming the expected and given kinds; an MV
+template never previews against an LV transformer. The plan names the expected
+`subject` and the canonical `render_command` for it (`report.project.export`
+for a transformer, `report.plan-profile` for MV models); no native renderer
+previews an extent yet, so an extent subject is refused with
+`printing_preview_extent_unavailable` rather than rendered around a
+transformer. Refusals are keyed (`printing_preview_no_transformer`,
+`printing_preview_no_mv_model`, `printing_preview_no_extent`,
+`printing_preview_subject_mismatch`, `printing_preview_mv_model_invalid`,
+`printing_preview_extent_invalid`, `printing_preview_extent_unavailable`,
 `printing_preview_not_a_transformer`, `printing_preview_room_unavailable`,
 `printing_preview_native_unavailable`, `printing_style_unavailable`); a dirty
 held room is a note, not a refusal. A room this device does not hold is

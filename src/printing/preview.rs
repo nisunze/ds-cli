@@ -15,6 +15,7 @@
 //! reads for that transformer is one the engine may print, and which server
 //! version it carries. The host hands the room's facts as it found them;
 //! this module never fetches a missing room.
+use super::catalogue::Purpose;
 use super::Layout;
 use crate::report_formats::PrintArtifactFormat;
 use schemars::JsonSchema;
@@ -36,12 +37,105 @@ pub struct Transformer {
     pub dirty: Option<bool>,
 }
 
+/// What a preview renders the template against. The layout's purpose decides
+/// which kind it must be (`expected_subject`): one printable LV transformer,
+/// one or more DS Grid MV models, or a map extent.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "subject", rename_all = "snake_case", deny_unknown_fields)]
+pub enum Subject {
+    /// One transformer, as `printable_transformers` listed it.
+    Transformer {
+        name: String,
+        #[serde(default)]
+        kind: String,
+        #[serde(default)]
+        cached: Option<bool>,
+        #[serde(default)]
+        dirty: Option<bool>,
+    },
+    /// The DS Grid MV models the sheet prints, in the order chosen.
+    MvModels { model_ids: Vec<String> },
+    /// The project extent, or an explicit WGS84 `[west, south, east, north]`.
+    Extent {
+        #[serde(default)]
+        bbox: Option<[f64; 4]>,
+    },
+}
+
+/// The kind of subject a template previews against.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum SubjectKind {
+    Transformer,
+    MvModels,
+    Extent,
+}
+
+impl SubjectKind {
+    pub fn key(self) -> &'static str {
+        match self {
+            Self::Transformer => "transformer",
+            Self::MvModels => "mv_models",
+            Self::Extent => "extent",
+        }
+    }
+    /// The purpose's subject: MV sheets and front matter preview against MV
+    /// models, overview sheets against an extent, LV sheets and voltage-drop
+    /// reports against one transformer.
+    pub fn of(purpose: Purpose) -> Self {
+        match purpose {
+            Purpose::MvModel | Purpose::FrontMatter => Self::MvModels,
+            Purpose::Project => Self::Extent,
+            Purpose::LvTransformer | Purpose::VoltageDrop => Self::Transformer,
+        }
+    }
+    /// The canonical command that renders a preview for this subject.
+    pub fn render_command(self) -> Option<&'static str> {
+        match self {
+            Self::Transformer => Some(TRANSFORMER_PREVIEW_COMMAND),
+            Self::MvModels => Some(super::mv_preview::COMMAND_ID),
+            Self::Extent => None,
+        }
+    }
+}
+
+impl Subject {
+    pub fn kind(&self) -> SubjectKind {
+        match self {
+            Self::Transformer { .. } => SubjectKind::Transformer,
+            Self::MvModels { .. } => SubjectKind::MvModels,
+            Self::Extent { .. } => SubjectKind::Extent,
+        }
+    }
+}
+
+/// The canonical command that previews a layout against one transformer.
+pub const TRANSFORMER_PREVIEW_COMMAND: &str = "report.project.export";
+/// The most MV models one preview names.
+pub const MAX_PREVIEW_MODELS: usize = 64;
+
+/// The subject `layout` previews against. Its classification decides; an
+/// unclassified layout keeps the legacy reading: an MV plan-and-profile setup
+/// previews against MV models, anything else against a transformer.
+pub fn expected_subject(layout: &Layout) -> SubjectKind {
+    match layout.classification {
+        Some(classification) => SubjectKind::of(classification.purpose),
+        None if layout.mv.is_some() => SubjectKind::MvModels,
+        None => SubjectKind::Transformer,
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Facts {
     pub layout: Layout,
+    /// The legacy transformer fact; read as a transformer `subject` when no
+    /// subject is given.
     #[serde(default)]
     pub transformer: Option<Transformer>,
+    /// What the preview renders against; it must be the layout's `expected_subject`.
+    #[serde(default)]
+    pub subject: Option<Subject>,
     #[serde(default)]
     pub available_style_refs: Vec<String>,
     #[serde(default)]
@@ -85,6 +179,10 @@ pub struct Plan {
     pub raster: Raster,
     /// Every governed print style the render needs, in layout order.
     pub print_style_refs: Vec<String>,
+    /// What this layout previews against, decided by its purpose.
+    pub subject: SubjectKind,
+    /// The canonical command that renders that preview, when one exists.
+    pub render_command: Option<String>,
 }
 
 /// The least a page is rasterised at: legible on a screen when the whole
@@ -144,39 +242,121 @@ pub fn plan(facts: &Facts) -> Result<Plan, String> {
             ));
         }
     }
-    match &facts.transformer {
-        None => refusals.push(refusal(
-            "print_preview_no_transformer",
-            "printing_preview_no_transformer",
-            &[],
+    let expected = expected_subject(&facts.layout);
+    // The legacy `transformer` fact is a transformer subject.
+    let subject = facts.subject.clone().or_else(|| {
+        facts.transformer.as_ref().map(|t| Subject::Transformer {
+            name: t.name.clone(),
+            kind: t.kind.clone(),
+            cached: t.cached,
+            dirty: t.dirty,
+        })
+    });
+    match &subject {
+        None => refusals.push(match expected {
+            SubjectKind::Transformer => refusal(
+                "print_preview_no_transformer",
+                "printing_preview_no_transformer",
+                &[],
+            ),
+            SubjectKind::MvModels => refusal(
+                "print_preview_no_mv_model",
+                "printing_preview_no_mv_model",
+                &[],
+            ),
+            SubjectKind::Extent => {
+                refusal("print_preview_no_extent", "printing_preview_no_extent", &[])
+            }
+        }),
+        Some(chosen) if chosen.kind() != expected => refusals.push(refusal(
+            "print_preview_subject_mismatch",
+            "printing_preview_subject_mismatch",
+            &[
+                ("expected", expected.key()),
+                ("subject", chosen.kind().key()),
+            ],
         )),
-        Some(transformer) => {
-            if crate::report_export::reportable_transformer(&transformer.name).is_err()
-                || !matches!(transformer.kind.as_str(), "" | "individual" | "transformer")
+        Some(Subject::Transformer {
+            name,
+            kind,
+            cached,
+            dirty,
+        }) => {
+            if crate::report_export::reportable_transformer(name).is_err()
+                || !matches!(kind.as_str(), "" | "individual" | "transformer")
             {
                 refusals.push(refusal(
                     "print_preview_not_a_transformer",
                     "printing_preview_not_a_transformer",
-                    &[("name", &transformer.name)],
+                    &[("name", name)],
                 ));
             }
             // A preview reads the room this device holds; it never downloads
             // one, online or not. Holding a room is the Design/Status page's
             // download action, so the remedy is to download the design first.
-            if transformer.cached == Some(false) {
+            if *cached == Some(false) {
                 refusals.push(refusal(
                     "print_preview_room_unavailable",
                     "printing_preview_room_unavailable",
-                    &[("name", &transformer.name)],
+                    &[("name", name)],
                 ));
             }
-            if transformer.dirty == Some(true) {
+            if *dirty == Some(true) {
                 notes.push(refusal(
                     "print_preview_dirty_room",
                     "printing_preview_dirty_room",
-                    &[("name", &transformer.name)],
+                    &[("name", name)],
                 ));
             }
+        }
+        Some(Subject::MvModels { model_ids }) => {
+            let mut seen = std::collections::BTreeSet::new();
+            if model_ids.is_empty() {
+                refusals.push(refusal(
+                    "print_preview_no_mv_model",
+                    "printing_preview_no_mv_model",
+                    &[],
+                ));
+            } else if model_ids.len() > MAX_PREVIEW_MODELS
+                || model_ids.iter().any(|id| {
+                    id.is_empty()
+                        || id.len() > 200
+                        || id.chars().any(char::is_control)
+                        || !seen.insert(id)
+                })
+            {
+                refusals.push(refusal(
+                    "print_preview_mv_model_invalid",
+                    "printing_preview_mv_model_invalid",
+                    &[],
+                ));
+            }
+        }
+        Some(Subject::Extent { bbox }) => {
+            let valid = bbox.is_none_or(|[w, s, e, n]| {
+                [w, s, e, n].iter().all(|v| v.is_finite())
+                    && (-180. ..=180.).contains(&w)
+                    && (-180. ..=180.).contains(&e)
+                    && (-90. ..=90.).contains(&s)
+                    && (-90. ..=90.).contains(&n)
+                    && w < e
+                    && s < n
+            });
+            refusals.push(if valid {
+                // No native renderer previews an extent yet; say so rather
+                // than render the sheet around some transformer.
+                refusal(
+                    "print_preview_extent_unavailable",
+                    "printing_preview_extent_unavailable",
+                    &[],
+                )
+            } else {
+                refusal(
+                    "print_preview_extent_invalid",
+                    "printing_preview_extent_invalid",
+                    &[],
+                )
+            });
         }
     }
     if !facts.native_ready {
@@ -190,11 +370,16 @@ pub fn plan(facts: &Facts) -> Result<Plan, String> {
         ready: refusals.is_empty(),
         refusals,
         notes,
-        transformer: facts.transformer.as_ref().map(|t| t.name.clone()),
+        transformer: match &subject {
+            Some(Subject::Transformer { name, .. }) => Some(name.clone()),
+            _ => None,
+        },
         output_id: format!("svg__{}", facts.layout.id),
         format: crate::report_export::preview::FORMAT,
         raster: raster(facts.layout.page_mm, facts.screen_px_per_mm),
         print_style_refs: refs,
+        subject: expected,
+        render_command: expected.render_command().map(str::to_owned),
     })
 }
 
@@ -309,11 +494,123 @@ mod tests {
                 cached: Some(true),
                 dirty: Some(false),
             }),
+            subject: None,
             available_style_refs: vec!["master/lv_lines_print".into()],
             online: true,
             native_ready: true,
             screen_px_per_mm: None,
         }
+    }
+
+    fn classified(purpose: &str, role: &str) -> Facts {
+        let mut f = facts();
+        f.layout.classification =
+            Some(serde_json::from_value(json!({"purpose": purpose, "role": role})).unwrap());
+        f
+    }
+
+    #[test]
+    fn the_subject_follows_the_purpose_and_a_mismatch_is_refused_by_key() {
+        // An MV sheet never previews against a transformer.
+        let mv = plan(&classified("mv_model", "plan_profile")).unwrap();
+        assert!(!mv.ready);
+        assert_eq!(mv.subject, SubjectKind::MvModels);
+        assert_eq!(mv.render_command.as_deref(), Some("report.plan-profile"));
+        assert_eq!(mv.refusals[0].code, "print_preview_subject_mismatch");
+        assert_eq!(mv.refusals[0].params["expected"], "mv_models");
+        assert_eq!(mv.refusals[0].params["subject"], "transformer");
+        // Front matter previews against the booklet's MV models.
+        let mut f = classified("front_matter", "cover");
+        f.transformer = None;
+        f.subject = Some(Subject::MvModels {
+            model_ids: vec!["model-a".into(), "model-b".into()],
+        });
+        let front = plan(&f).unwrap();
+        assert!(front.ready, "{:?}", front.refusals);
+        assert_eq!(front.transformer, None);
+        // Absent, empty or repeated models are named.
+        f.subject = None;
+        assert_eq!(
+            plan(&f).unwrap().refusals[0].code,
+            "print_preview_no_mv_model"
+        );
+        f.subject = Some(Subject::MvModels { model_ids: vec![] });
+        assert_eq!(
+            plan(&f).unwrap().refusals[0].code,
+            "print_preview_no_mv_model"
+        );
+        f.subject = Some(Subject::MvModels {
+            model_ids: vec!["a".into(), "a".into()],
+        });
+        assert_eq!(
+            plan(&f).unwrap().refusals[0].code,
+            "print_preview_mv_model_invalid"
+        );
+        // An overview sheet previews against an extent, which no renderer draws yet.
+        let mut o = classified("project", "overview");
+        o.transformer = None;
+        o.subject = Some(Subject::Extent {
+            bbox: Some([29.0, -2.9, 29.6, -2.3]),
+        });
+        let overview = plan(&o).unwrap();
+        assert_eq!(overview.subject, SubjectKind::Extent);
+        assert_eq!(overview.render_command, None);
+        let codes: Vec<&str> = overview.refusals.iter().map(|r| r.code.as_str()).collect();
+        assert_eq!(codes, ["print_preview_extent_unavailable"]);
+        o.subject = Some(Subject::Extent {
+            bbox: Some([29.6, -2.9, 29.0, -2.3]),
+        });
+        assert_eq!(
+            plan(&o).unwrap().refusals[0].code,
+            "print_preview_extent_invalid"
+        );
+        o.subject = None;
+        assert_eq!(
+            plan(&o).unwrap().refusals[0].code,
+            "print_preview_no_extent"
+        );
+        // LV sheets keep the transformer subject, legacy or explicit.
+        let lv = plan(&classified("lv_transformer", "network")).unwrap();
+        assert!(lv.ready && lv.subject == SubjectKind::Transformer);
+        assert_eq!(lv.render_command.as_deref(), Some("report.project.export"));
+        let mut explicit = classified("voltage_drop", "report");
+        explicit.transformer = None;
+        explicit.subject = Some(Subject::Transformer {
+            name: "agahehe".into(),
+            kind: "transformer".into(),
+            cached: Some(true),
+            dirty: None,
+        });
+        let explicit = plan(&explicit).unwrap();
+        assert!(explicit.ready, "{:?}", explicit.refusals);
+        assert_eq!(explicit.transformer.as_deref(), Some("agahehe"));
+        // An unclassified layout carrying an MV setup reads as an MV sheet.
+        let legacy: Layout = serde_json::from_str(include_str!(
+            "../../tests/fixtures/mv-global-canonical.json"
+        ))
+        .unwrap();
+        assert_eq!(expected_subject(&legacy), SubjectKind::MvModels);
+        assert_eq!(expected_subject(&facts().layout), SubjectKind::Transformer);
+    }
+
+    #[test]
+    fn subjects_read_the_documented_json_and_nothing_more() {
+        let layout = super::super::default_layout();
+        let f: Facts = serde_json::from_value(json!({"layout": layout,
+            "subject": {"subject": "mv_models", "model_ids": ["m1"]}}))
+        .unwrap();
+        assert_eq!(
+            f.subject,
+            Some(Subject::MvModels {
+                model_ids: vec!["m1".into()]
+            })
+        );
+        assert!(serde_json::from_value::<Facts>(json!({"layout": layout,
+            "subject": {"subject": "mv_models", "model_ids": ["m1"], "extra": 1}}))
+        .is_err());
+        assert!(serde_json::from_value::<Facts>(json!({"layout": layout,
+            "subject": {"subject": "district"}}))
+        .is_err());
     }
 
     #[test]

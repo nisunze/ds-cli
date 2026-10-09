@@ -2927,6 +2927,9 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
             classification,
         } => {
             let mut layout = upgrade(layout)?;
+            if let Some(classification) = &classification {
+                classification.admit_for(&layout)?;
+            }
             layout.classification = classification;
             validate(&layout)?;
             json!({"layout":layout})
