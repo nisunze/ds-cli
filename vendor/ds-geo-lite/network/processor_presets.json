@@ -64,7 +64,8 @@
       "label": "Renumbering",
       "settings": [
         "renumber_poles",
-        "renumber_houses"
+        "renumber_houses",
+        "renumber_lines"
       ]
     },
     {
@@ -134,6 +135,7 @@
     "pull_customers_from_hh_table": "Pull customers from survey table",
     "remove_inline_vertex": "Remove weak angles",
     "renumber_houses": "Renumber houses",
+    "renumber_lines": "Renumber LV lines",
     "renumber_poles": "Renumber poles",
     "size_transformer_kva": "Size transformer kVA",
     "weak_angle_threshold_deg": "Angle threshold",
@@ -388,6 +390,18 @@
       "default": true,
       "key": "renumber_houses",
       "label": "Renumber houses",
+      "value_when_hidden": false,
+      "visible_when": [
+        {
+          "equals": true,
+          "key": "build_network"
+        }
+      ]
+    },
+    {
+      "default": true,
+      "key": "renumber_lines",
+      "label": "Renumber LV lines",
       "value_when_hidden": false,
       "visible_when": [
         {
