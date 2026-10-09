@@ -110,21 +110,21 @@ pub(crate) fn resolve_project(
 }
 
 fn printing_inputs(lane: &str, project: &str, sheets: &Value) -> Result<Value, Failure> {
-    if !mv::uses_global_default(sheets) {
-        return super::settings::sheets_with_printing_catalogue(lane, project, sheets, None);
+    if mv::uses_global_default(sheets) {
+        return Err(failure(unselected()));
     }
-    let selection = mv::effective_selection(sheets).map_err(failure)?;
-    let setup = ds_cli_auth::printing(
-        lane,
-        true,
-        None,
-        &ds_cli_auth::PrintingRequest::Get {
-            id: selection.layout_id,
-        },
-    )?;
-    let mut sheets = sheets.clone();
-    sheets["global_printing_setups"] = json!([setup]);
-    Ok(sheets)
+    super::settings::sheets_with_printing_catalogue(lane, project, sheets, None)
+}
+/// A project without its own MV selection. The global printing runtime scope
+/// is retired (template projects are ordinary projects), so no approved global
+/// default can be fetched: the project selects an adopted setup of its own.
+fn unselected() -> mv::Refusal {
+    mv::Refusal {
+        code: "mv_print_setup_missing".into(),
+        message_key: "mv_print_setup_missing".into(),
+        field: mv::SETTING.into(),
+        remedy: "Copy the approved MV setup into this project (ds report layout copy), then select its exact revision with ds report project mv-setup set; there is no global default.".into(),
+    }
 }
 /// The server-issued configuration sheets and authenticated project CRS
 /// capture every MV print or preview starts from, fenced to one identity.
@@ -271,6 +271,15 @@ pub fn render(value: &Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn a_project_without_its_own_mv_selection_is_refused_before_any_read() {
+        // No mv_printing_setup row: the retired global default is never fetched.
+        let refused = printing_inputs("canary", "project_one", &json!({"project_settings": []}))
+            .expect_err("no global fallback");
+        assert_eq!(refused.code(), REFUSAL.code);
+        assert!(refused.message().starts_with("mv_print_setup_missing"));
+        assert!(!refused.message().contains("Global printing runtime scope"));
+    }
     #[test]
     fn descriptors_declare_project_identity_mutation_confirmation_and_discovery() {
         assert!(SET.arg("project").unwrap().required);

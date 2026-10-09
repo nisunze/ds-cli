@@ -520,6 +520,31 @@ protected native identity and never read the saved selection. Legacy global
 scope is refused before authentication. `--lane canary|stable` selects its
 credential lane.
 
+`report.layout.list --scope project --project <exact-id> --catalogue` is the one
+grouped catalogue read the Desktop and agents share. It reads the setups and
+the project's governed documents (`report.standard.list`) and returns the
+command-kernel `template_catalogue`: purpose groups (Front matter, LV Sheets,
+MV Sheets, Overview Sheets, Voltage Drop, Unclassified) → page roles →
+templates, with the classification choices. Each entry carries its storage
+`location` (`layout`, `governed_html` or `governed_standard`), the preview
+`subject` its purpose previews against (`transformer`, `mv_models` or
+`extent`) and, for a stored classification the kernel does not admit (an MV
+Sheets row that is not the A3 landscape plan-and-profile sheet), a `mismatch`
+listed under Unclassified. `governed` says whether the governed documents were
+read; a refused read keeps the custom layouts and names the refusal code. The
+Desktop's Print templates panel renders this same JSON, read through its own
+door (`ds_invoke` `report.layout.list`), and keeps no catalogue cache.
+
+A preview's subject follows the template's purpose. `report.layout.edit` with
+`{"op":"preview_plan","facts":{"layout":…,"subject":…}}` returns the kernel's
+plan: the expected `subject`, the canonical `render_command`
+(`report.project.export --preview-layout` for one transformer,
+`report.plan-profile --preview-layout` for DS Grid MV models) and keyed
+refusals. A subject of another kind is refused with
+`print_preview_subject_mismatch`; MV and front-matter templates never preview
+against an LV transformer, and an overview extent has no native preview yet
+(`print_preview_extent_unavailable`).
+
 `report.standard.list --project <exact-id>` reads that project's owned standard
 pages (`kind: standard`) and A4 voltage-drop document (`kind: a4`). Missing
 project documents stay absent; neither a global default nor saved project
@@ -1101,8 +1126,10 @@ The selection schema is returned by `report layout schema` as `mv_selection`:
 `external_version` (an approved simple number such as `Version 1`, `v1` or `1`),
 and an explicit calendar `issue_date` (`YYYY-MM-DD`). Neither field derives
 from the model hash or export date. Project settings holds exactly one
-`mv_printing_setup` row. The printing drawer offers the same intentional
-selection and exact-base save; it never chooses a default layout or issue.
+`mv_printing_setup` row; a project without one is refused with the keyed
+`mv_print_setup_missing` (there is no global default to fall back to). The
+printing drawer offers the same intentional selection and exact-base save; it
+never chooses a default layout or issue.
 The receipt reports configured documents with `ready:false`: actual geometry
 and held PDF bytes are admitted by the reporter before destination output.
 

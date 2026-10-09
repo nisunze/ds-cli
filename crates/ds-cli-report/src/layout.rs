@@ -502,7 +502,7 @@ pub static RENDER: Command = Command {
     path: &["report", "layout", "render"],
     contract: 1,
     summary: "Print captured maps with collision and clipping diagnostics.",
-    purpose: "Headlessly render a ds.print-layout-export/v1 capture, including render-request.json from report.project.map-inputs. Supports MV/LV maps with held context, PDF/PNG/SVG/JPEG. out_dir must not exist; keep the request outside it. Schema: report tasks --task render_print_layout. Governed LV defaults and override schema: report layout schema standards. Use report export --task lv-standard for a complete set with its front matter. Composition: report layout commands.",
+    purpose: "Headlessly render a ds.print-layout-export/v1 capture (render-request.json from report.project.map-inputs): MV/LV maps with held context as PDF/PNG/SVG/JPEG. out_dir must not exist; keep the request outside it. Schemas: report tasks --task render_print_layout, report layout schema standards. Full LV set with front matter: report export --task lv-standard. Composition: report layout commands.",
     chapter: Chapter::Reports,
     effect: Effect::LocalFileWrite,
     authority: Authority::None,
@@ -511,7 +511,7 @@ pub static RENDER: Command = Command {
     output: "Artifacts and bounded print_diagnostics: affected pages, furniture overlaps/clipping (mm), omitted rows and labels. Mechanical checks are not visual approval.",
     examples: &[Example {
         command: "ds report layout render --request city-a3.json --output json",
-        note: "Render a prepared city map; discover its request schema with ds report tasks --task render_print_layout.",
+        note: "Render a prepared city map; its request schema: ds report tasks --task render_print_layout.",
         runnable: false,
     }],
     refusals: REFUSALS,
@@ -525,16 +525,24 @@ pub static LIST: Command = Command {
     path: &["report", "layout", "list"],
     contract: 1,
     summary: "List printing setups held by the named project.",
-    purpose: "Printing commands delegate to their owning Rust and native client contracts. Shared templates live in ds-brain; project scope names its project with --project. Geometry stays in ds-network and document validation in ds-command-kernel.",
+    purpose: "List the print templates (printing setups) the named project holds; shared templates live in ds-brain. --catalogue groups them with the project's governed documents as the Desktop lists them: Front matter, LV, MV and Overview sheets, Voltage Drop, Unclassified.",
     chapter: Chapter::Reports,
     effect: Effect::LocalAuthState,
     authority: Authority::HeadlessUser,
     execution: Execution::Sync,
-    args: &[SCOPE, PROJECT, LANE],
-    output: "The authoritative layout, schema, shared setup receipt or artifact manifest.",
+    args: &[
+        SCOPE,
+        PROJECT,
+        LANE,
+        Arg::switch(
+            "catalogue",
+            "Group setups and governed documents by sheet purpose and page role; each entry names its location, preview subject and any classification mismatch.",
+        ),
+    ],
+    output: "The project's setups; with --catalogue the kernel's purpose → role → template groups, the classification choices and whether the governed documents were read.",
     examples: &[Example {
-        command: "ds report layout list --output json",
-        note: "See command arguments and report.layout.schema before invocation.",
+        command: "ds report layout list --scope project --project <exact-id> --catalogue --output json",
+        note: "Needs a restored session; without --catalogue it returns the raw setups.",
         runnable: false,
     }],
     refusals: REFUSALS,
@@ -924,12 +932,40 @@ fn session_refusal(code: &str) -> Failure {
     }
 }
 pub fn list(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
-    ds_cli_auth::printing(
-        i.require("lane")?,
+    let lane = i.require("lane")?;
+    let listed = ds_cli_auth::printing(
+        lane,
         i.require("scope")? == "global",
         i.value("project"),
         &ds_cli_auth::PrintingRequest::List {},
-    )
+    )?;
+    if !i.switch("catalogue") {
+        return Ok(listed);
+    }
+    // printing() refused above without an explicit project.
+    let project = i.require("project")?;
+    let governed = ds_cli_auth::printing_standard(
+        lane,
+        project,
+        &ds_cli_auth::PrintingStandardRequest::List {},
+    );
+    catalogue(&listed, project, governed)
+}
+/// The kernel's grouped catalogue over one project's listed setups and,
+/// when it could be read, its governed documents (the same projection the
+/// Desktop door answers). A governed read that fails leaves the custom
+/// layouts listed and names the refusal.
+fn catalogue(
+    listed: &Value,
+    project: &str,
+    governed: Result<Value, Failure>,
+) -> Result<Value, Failure> {
+    use ds_command_kernel::printing::catalogue::{GovernedUnread, from_listing};
+    let governed = governed.map_err(|failure| GovernedUnread {
+        code: failure.code().to_owned(),
+        message: failure.message().to_owned(),
+    });
+    from_listing(listed, project, governed).map_err(invalid)
 }
 pub fn get(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
     ds_cli_auth::printing(
@@ -1217,6 +1253,80 @@ pub fn render(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn listed() -> Value {
+        json!({"setups": [
+            {"id":"mv-a3-plan-profile-template","name":"A3 LANDSCAPE · MV PLAN AND PROFILE · TEMPLATE","revision":"r1","layout":null,
+             "paper":{"orientation":"landscape","size":"A3"},"classification":{"purpose":"mv_model","role":"plan_profile"}},
+            {"id":"nyaruguru-district-mv-a3-landscape-core-v0","name":"A3 LANDSCAPE · NYARUGURU MV DISTRICT MAP · v0","revision":"r2","layout":null,
+             "paper":{"orientation":"landscape","size":"A3"},"classification":{"purpose":"mv_model","role":"network"}},
+            {"id":"project-overview-a3","name":"Project overview · A3","revision":"r3","layout":null,
+             "paper":{"orientation":"landscape","size":"A3"},"classification":{"purpose":"project","role":"overview"}},
+            {"id":"print-legacy","name":"A0-Landscape HuYE","revision":"r4","layout":null,"paper":null}
+        ]})
+    }
+
+    #[test]
+    fn the_catalogue_groups_front_matter_mv_and_overview_sheets_from_one_read() {
+        let pin = "a".repeat(64);
+        let governed = json!({"scope":"project","project_id":"template_project","schema":"ds.printing-standard-catalog/v1","documents":[
+            {"kind":"standard","id":"mv-cover-a3","template_id":"mv-booklet-a3-v1","role":"cover","paper":"A3","orientation":"landscape","revision_id":pin,"bound":false}
+        ]});
+        let out = catalogue(&listed(), "template_project", Ok(governed)).unwrap();
+        assert_eq!(out["project_id"], "template_project");
+        assert_eq!(out["governed"], json!({"read": true}));
+        let labels: Vec<&str> = out["groups"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|group| group["label"].as_str().unwrap())
+            .collect();
+        assert_eq!(
+            labels,
+            [
+                "Front matter",
+                "MV Sheets",
+                "Overview Sheets",
+                "Unclassified"
+            ]
+        );
+        let front = &out["groups"][0]["roles"][0]["templates"][0];
+        assert_eq!(front["location"]["kind"], "governed_standard");
+        assert_eq!(front["subject"], "mv_models");
+        let mv = &out["groups"][1]["roles"][0];
+        assert_eq!(mv["role"], "plan_profile");
+        assert_eq!(mv["templates"].as_array().unwrap().len(), 1);
+        assert_eq!(mv["templates"][0]["id"], "mv-a3-plan-profile-template");
+        assert_eq!(
+            out["groups"][2]["roles"][0]["templates"][0]["subject"],
+            "extent"
+        );
+        let unclassified = out["groups"][3]["roles"][0]["templates"]
+            .as_array()
+            .unwrap();
+        assert_eq!(unclassified.len(), 2);
+        let district = unclassified
+            .iter()
+            .find(|t| t["id"] == "nyaruguru-district-mv-a3-landscape-core-v0")
+            .unwrap();
+        assert_eq!(
+            district["mismatch"]["code"],
+            "print_classification_mv_requires_plan_profile"
+        );
+    }
+
+    #[test]
+    fn a_failed_governed_read_keeps_the_layouts_and_names_the_refusal() {
+        let refused = Failure::failed(
+            "print_standard_route_unavailable",
+            "this deployment does not serve the governed printing read",
+        );
+        let out = catalogue(&listed(), "template_project", Err(refused)).unwrap();
+        assert_eq!(out["governed"]["read"], false);
+        assert_eq!(out["governed"]["code"], "print_standard_route_unavailable");
+        assert_eq!(out["groups"][0]["label"], "MV Sheets");
+        assert!(catalogue(&json!({}), "template_project", Ok(Value::Null)).is_err());
+    }
 
     #[test]
     fn save_receipt_names_one_heading_change_without_echoing_embedded_assets() {
