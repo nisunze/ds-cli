@@ -103,6 +103,12 @@ fn lifecycle_is_discoverable_and_preserves_native_evidence() {
     assert_eq!(shown["data"]["managed_export_allowed"], true);
     assert_eq!(shown["data"]["solver_approval"], false);
     assert_eq!(shown["data"]["members"][0]["status"], "exact_native_bytes");
+    let adoption = &shown["data"]["releases"][0];
+    assert_eq!(adoption["pinned"], true);
+    assert_eq!(adoption["bundle_digest"], release_digest);
+    assert_eq!(adoption["pin"], attached["data"]["library_pin"]);
+    assert_eq!(adoption["captured_from"]["source_model_digest"], digest);
+    assert_eq!(adoption["captured_from"]["solver_approval"], false);
     let before = ds_grid_exchange::unpack(&source).unwrap();
     let after = ds_grid_exchange::unpack(&std::fs::read(&adopted).unwrap()).unwrap();
     assert_eq!(after.snapshot, before.snapshot);
@@ -171,7 +177,23 @@ fn lifecycle_is_discoverable_and_preserves_native_evidence() {
         ],
         true,
     );
-    let detached = ds_grid_exchange::unpack(&std::fs::read(&detached).unwrap()).unwrap();
+    let detached_bytes = std::fs::read(&detached).unwrap();
+    let history = invoke(
+        &[
+            "library",
+            "model",
+            "show",
+            "--model",
+            &detached_path,
+            "--expected-sha256",
+            &bundle_digest(&detached_bytes),
+        ],
+        true,
+    );
+    assert_eq!(history["data"]["pins"], serde_json::json!([]));
+    assert_eq!(history["data"]["releases"][0]["pinned"], false);
+    assert_eq!(history["data"]["releases"][0]["pin"], *pin);
+    let detached = ds_grid_exchange::unpack(&detached_bytes).unwrap();
     assert!(detached.manifest.model.library_pins.is_empty());
     assert_eq!(detached.assets, after.assets);
     assert_eq!(std::fs::read(&model).unwrap(), source);

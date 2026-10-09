@@ -253,7 +253,7 @@ pub static SHOW: Command = command(
     "library.model.show",
     &["library", "model", "show"],
     "Read model library pins, native equivalence and export admission.",
-    "Verifies the exact package and its immutable cached releases, then reports per-resource exact_native_bytes or no_cloud_equivalent and managed-export admission. Byte equivalence never implies solver approval, strength-case coverage or engineering acceptance.",
+    "Verifies the exact package and its immutable cached releases, then reports per-resource exact_native_bytes or no_cloud_equivalent, managed-export admission, and each cached release (pinned or retained after detach) with the exact model revision or clone source it came from. Byte equivalence never implies solver approval, strength-case coverage or engineering acceptance.",
     &[
         MODEL,
         EXPECTED,
@@ -397,7 +397,7 @@ pub fn show(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
         .take(limit)
         .collect::<Vec<_>>();
     Ok(
-        json!({"model_digest":report.model_digest,"pins":report.pins,"members":members,"total_members":total,"managed_export_allowed":report.managed_export_allowed,"solver_approval":false,"more":if end<total {json!({"offset":end})} else {Value::Null}}),
+        json!({"model_digest":report.model_digest,"pins":report.pins,"releases":report.releases,"members":members,"total_members":total,"managed_export_allowed":report.managed_export_allowed,"solver_approval":false,"more":if end<total {json!({"offset":end})} else {Value::Null}}),
     )
 }
 pub fn render(data: &Value) -> String {

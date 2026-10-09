@@ -173,8 +173,19 @@ Same names with different definitions refuse `no_cloud_equivalent`.
 
 `show` reports exact release pins, per-native-resource equivalence and managed
 export admission. Page resource rows with `--offset` and `--limit`. Missing
-equivalents block a managed PLS-CADD export; an exact native-byte match still
-does not prove strength-case coverage or native solver acceptance.
+equivalents block a managed PLS-CADD export, and the export plan names them as
+blockers before any convert runs; an exact native-byte match still does not
+prove strength-case coverage or native solver acceptance.
+
+`show` also lists every release the model carries in its exact-byte cache as
+`releases`: the pinned adoptions first, then releases retained after a detach
+(`pinned: false`). Each names its bundle digest, element count, the exact model
+revision its definitions were `captured_from` (model id, revision, package
+digest, content root, source systems) and, for a deliberate clone, every
+`cloned_from` source pin and bundle digest. These records are read from the
+release's own immutable evidence and serialize identically on every host; a
+present but unreadable record is listed in `unreadable_evidence`, never
+skipped.
 
 `clone` requires a distinct library identity and retains exact definitions and
 native bytes. `detach` requires the whole immutable pin including `--content-root`
