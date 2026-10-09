@@ -2104,7 +2104,8 @@ fn local_model_scoped_routers_reach_every_allowed_verb_and_preserve_refusals() {
     );
     assert_eq!(
         allowed.len(),
-        61, // Five provider-neutral model-library lifecycle verbs added.
+        64, // Five provider-neutral model-library lifecycle verbs, then exact
+        // membership (match) and the explicit update plan and apply.
         "review every added lifecycle verb; do not hide it from disclosure"
     );
     for (index, id) in allowed.iter().enumerate() {

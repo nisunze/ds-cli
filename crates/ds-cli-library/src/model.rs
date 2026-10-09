@@ -269,6 +269,90 @@ pub static SHOW: Command = command(
     SEARCH,
 );
 
+pub static MATCH: Command = command(
+    "library.model.match",
+    &["library", "model", "match"],
+    "Name the release members holding a model's exact native bytes.",
+    "Resolves each native definition a model carries (for example a project PLS type such as S190_1p_strain_12.012) to the members of one exact release with identical bytes, whatever their names: exact_member names the canonical member and the elements it backs, ambiguous_members lists several without choosing, no_exact_member says no member carries those bytes, and project_evidence marks route, terrain and settings. Names never map anything; byte identity is not engineering equivalence or approval.",
+    &[
+        MODEL,
+        EXPECTED,
+        RELEASE,
+        Arg::value(
+            "expected-library-sha256",
+            "<sha256:hex>",
+            "Exact release bundle SHA-256.",
+        )
+        .required(),
+        Arg::value("offset", "<n>", "First resource row, 0..5000.").default("0"),
+        Arg::value("limit", "<n>", "Resource rows, 1..5000.").default("25"),
+    ],
+    &[Example {
+        command: "ds library model match --model ./project-head.dsgrid --expected-sha256 sha256:<model> --release ./canonical.dsgrid-template --expected-library-sha256 sha256:<release> --output json",
+        note: "Cite only exact_member rows as verified membership.",
+        runnable: false,
+    }],
+    Effect::ReadOnly,
+    SEARCH_FOR_MATCH,
+);
+
+/// A declared term must say what the id or summary does not already say.
+const SEARCH_FOR_MATCH: &[&str] = &["canonical code", "member code", "membership"];
+
+fn page(inputs: &Inputs) -> Result<(usize, usize), Failure> {
+    let number = |key: &str, default: &str| {
+        inputs
+            .value(key)
+            .unwrap_or(default)
+            .parse::<usize>()
+            .map_err(|_| {
+                Failure::invalid("library_selection_invalid", "paging must be a whole number")
+            })
+    };
+    let offset = number("offset", "0")?;
+    let limit = number("limit", "25")?;
+    if offset > 5000 || !(1..=5000).contains(&limit) {
+        return Err(Failure::invalid(
+            "library_selection_invalid",
+            "paging is outside 0..5000",
+        ));
+    }
+    Ok((offset, limit))
+}
+
+pub fn match_members(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
+    let (offset, limit) = page(inputs)?;
+    let model = crate::read(inputs.require("model")?)?;
+    let release = crate::read(inputs.require("release")?)?;
+    let report = ds_grid_exchange::library_match::match_release_members(
+        &model,
+        inputs.require("expected-sha256")?,
+        &release,
+        inputs.require("expected-library-sha256")?,
+    )
+    .map_err(owner_error)?;
+    let total = report.resources.len();
+    let end = offset.saturating_add(limit).min(total);
+    let resources = report
+        .resources
+        .into_iter()
+        .skip(offset)
+        .take(limit)
+        .collect::<Vec<_>>();
+    Ok(json!({
+        "model_digest": report.model_digest,
+        "release": report.release,
+        "exact": report.exact,
+        "ambiguous": report.ambiguous,
+        "unmatched": report.unmatched,
+        "project_evidence": report.project_evidence,
+        "resources": resources,
+        "total_resources": total,
+        "solver_approval": false,
+        "more": if end < total { json!({"offset": end}) } else { Value::Null },
+    }))
+}
+
 fn owner_error(message: String) -> Failure {
     let prefix = message.split(':').next().unwrap_or("");
     match prefix {

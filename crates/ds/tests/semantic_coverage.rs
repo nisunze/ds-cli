@@ -18,6 +18,10 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("library.model.detach", "local_file_write", "none"),
     ("library.model.clone", "local_file_write", "none"),
     ("library.model.show", "read_only", "none"),
+    ("library.model.match", "read_only", "none"),
+    ("library.model.impact-plan", "read_only", "none"),
+    // Writes new follower revisions into a fresh directory; no cloud head moves.
+    ("library.model.impact-apply", "local_file_write", "none"),
     // Messaging is account-wide; brain checks canonical membership per request.
     ("messaging.acknowledge", "global_write", "headless_user"),
     ("messaging.config", "read_only", "headless_user"),

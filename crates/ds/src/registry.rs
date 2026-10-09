@@ -592,6 +592,21 @@ static LIBRARY_ENTRIES: &[Entry] = &[
         render: ds_cli_library::model::render,
     },
     Entry {
+        command: &ds_cli_library::model::MATCH,
+        handler: ds_cli_library::model::match_members,
+        render: ds_cli_library::model::render,
+    },
+    Entry {
+        command: &ds_cli_library::impact::PLAN,
+        handler: ds_cli_library::impact::plan,
+        render: ds_cli_library::impact::render,
+    },
+    Entry {
+        command: &ds_cli_library::impact::APPLY,
+        handler: ds_cli_library::impact::apply,
+        render: ds_cli_library::impact::render,
+    },
+    Entry {
         command: &ds_cli_library::pack::COMMAND,
         handler: ds_cli_library::pack::run,
         render: ds_cli_library::pack::render,

@@ -326,3 +326,245 @@ fn ordinary_cli_edits_preserve_exact_library_pins_and_offline_admission() {
     }
     assert_eq!(std::fs::read(&model).unwrap(), attached.bytes);
 }
+
+/// A new release revises no model by itself: the plan names the follower and
+/// its changed definition, a wrong plan id writes nothing, the reviewed plan
+/// writes the follower's new revision, and a follower that moved since the
+/// plan is refused by name.
+#[test]
+fn library_update_is_planned_then_applied_through_ds() {
+    use ds_grid_exchange::model_library::{attach_model_library, create_model_library};
+    use ds_grid_exchange::package::{PackOptions, pack};
+    use ds_grid_model::EntityId;
+
+    let scratch = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../out");
+    let dir = tempfile::tempdir_in(scratch).unwrap();
+    let blank = create_blank_model(&BlankModelRequest::default()).unwrap();
+    let native = include_bytes!(
+        "../../../../ds-network/fixtures/pls-public/humble-pole/workspace/structures/hp-m1-strain.012"
+    );
+    let source = import_structure_package(&blank.bytes, "hp-m1-strain.012", native, None, None)
+        .unwrap()
+        .bytes;
+    let release = |model: &[u8], version: &str| {
+        create_model_library(
+            model,
+            &bundle_digest(model),
+            EntityId::new("shared-poles").unwrap(),
+            EntityId::new(version).unwrap(),
+        )
+        .unwrap()
+    };
+    let r1 = release(&source, "r1");
+    let follower = attach_model_library(
+        &source,
+        &bundle_digest(&source),
+        &r1,
+        &bundle_digest(&r1),
+        &[],
+    )
+    .unwrap()
+    .bytes;
+    let mut revised = ds_grid_exchange::unpack(&source).unwrap();
+    revised.snapshot.structure_types[0].description = Some("Reviewed release two".into());
+    let revised = pack(
+        &revised.snapshot,
+        &PackOptions {
+            model_id: revised.manifest.model.model_id,
+            model_revision: revised.manifest.model.model_revision + 1,
+            presentation: revised.manifest.model.presentation,
+            coordinate_system: revised.manifest.model.coordinate_system,
+            library_pins: vec![],
+            library_needs: vec![],
+            assets: revised.assets,
+            exchange_bindings: revised.exchange_bindings,
+        },
+    )
+    .unwrap();
+    let r2 = release(&revised, "r2");
+    let follower_path = dir.path().join("pinned.dsgrid");
+    let release_path = dir.path().join("shared-poles-r2.dsgrid-library");
+    std::fs::write(&follower_path, &follower).unwrap();
+    std::fs::write(&release_path, &r2).unwrap();
+    let release_arg = release_path.to_str().unwrap();
+    let release_digest = bundle_digest(&r2);
+    let follower_arg = format!(
+        "{}={}",
+        bundle_digest(&follower),
+        follower_path.to_str().unwrap()
+    );
+    for name in ["impact-plan", "impact-apply"] {
+        let descriptor = invoke(&["capabilities", &format!("library.model.{name}")], true);
+        assert_eq!(descriptor["data"]["command"]["chapter"], "grid-model");
+        assert_eq!(descriptor["data"]["command"]["authority"], "none");
+    }
+
+    let plan = invoke(
+        &[
+            "library",
+            "model",
+            "impact-plan",
+            "--release",
+            release_arg,
+            "--expected-library-sha256",
+            &release_digest,
+            "--follower",
+            &follower_arg,
+        ],
+        true,
+    );
+    assert_eq!(plan["data"]["applicable"], 1);
+    assert_eq!(plan["data"]["cloud_write"], false);
+    let planned = &plan["data"]["followers"][0];
+    assert_eq!(planned["status"], "applicable");
+    assert_eq!(planned["current_pin"]["revision_id"], "r1");
+    assert_eq!(planned["proposed_pin"]["revision_id"], "r2");
+    assert!(
+        planned["elements"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|element| element["change"] == "changed")
+    );
+    let plan_id = plan["data"]["plan_id"].as_str().unwrap().to_owned();
+
+    let apply = |plan_id: &str, out: &std::path::Path, ok: bool| {
+        invoke(
+            &[
+                "library",
+                "model",
+                "impact-apply",
+                "--release",
+                release_arg,
+                "--expected-library-sha256",
+                &release_digest,
+                "--follower",
+                &follower_arg,
+                "--plan-id",
+                plan_id,
+                "--out-dir",
+                out.to_str().unwrap(),
+            ],
+            ok,
+        )
+    };
+    let unreviewed = dir.path().join("unreviewed");
+    let refused = apply(&format!("sha256:{}", "0".repeat(64)), &unreviewed, false);
+    assert_eq!(refused["error"]["code"], "impact_plan_mismatch");
+    assert!(!unreviewed.exists());
+
+    let applied = apply(&plan_id, &dir.path().join("following-r2"), true);
+    assert_eq!(applied["data"]["complete"], true);
+    assert_eq!(applied["data"]["applied"], 1);
+    let row = &applied["data"]["followers"][0];
+    assert_eq!(row["outcome"], "applied");
+    let bytes = std::fs::read(row["written"].as_str().unwrap()).unwrap();
+    assert_eq!(row["resulting_digest"], bundle_digest(&bytes));
+    let after = ds_grid_exchange::unpack(&bytes).unwrap();
+    assert_eq!(
+        after.manifest.model.library_pins[0].revision_id.as_str(),
+        "r2"
+    );
+    assert_eq!(
+        after.snapshot.structure_types[0].description.as_deref(),
+        Some("Reviewed release two")
+    );
+    assert_eq!(std::fs::read(&follower_path).unwrap(), follower);
+
+    // An intervening edit moves the follower off its reviewed head.
+    std::fs::write(&follower_path, &bytes).unwrap();
+    let stale = apply(&plan_id, &dir.path().join("stale"), false);
+    assert_eq!(stale["error"]["code"], "impact_apply_incomplete");
+    assert_eq!(stale["error"]["detail"]["complete"], false);
+    assert_eq!(
+        stale["error"]["detail"]["followers"][0]["outcome"],
+        "refused"
+    );
+    assert_eq!(
+        stale["error"]["detail"]["followers"][0]["planned_status"],
+        "stale_head"
+    );
+    assert!(
+        std::fs::read_dir(dir.path().join("stale"))
+            .unwrap()
+            .next()
+            .is_none()
+    );
+}
+
+/// A project-native type resolves to the canonical member carrying the same
+/// bytes, by bytes alone; an edited file resolves to nothing.
+#[test]
+fn project_native_types_resolve_to_canonical_members_by_exact_bytes() {
+    use ds_grid_exchange::model_library::create_model_library;
+    use ds_grid_model::EntityId;
+
+    let scratch = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../out");
+    let dir = tempfile::tempdir_in(scratch).unwrap();
+    let native = include_bytes!(
+        "../../../../ds-network/fixtures/pls-public/humble-pole/workspace/structures/hp-m1-strain.012"
+    );
+    let imported = |name: &str, bytes: &[u8]| {
+        let blank = create_blank_model(&BlankModelRequest::default()).unwrap();
+        import_structure_package(&blank.bytes, name, bytes, None, None)
+            .unwrap()
+            .bytes
+    };
+    let canonical_model = imported("hp-m1-strain.012", native);
+    let release = create_model_library(
+        &canonical_model,
+        &bundle_digest(&canonical_model),
+        EntityId::new("canonical-structures").unwrap(),
+        EntityId::new("r1").unwrap(),
+    )
+    .unwrap();
+    let release_path = dir.path().join("canonical.dsgrid-library");
+    std::fs::write(&release_path, &release).unwrap();
+    let mut edited_bytes = native.to_vec();
+    edited_bytes.extend_from_slice(b"\r\n");
+    for (name, bytes, status, member) in [
+        (
+            "S190_1p_strain_12.012",
+            native.to_vec(),
+            "exact_member",
+            serde_json::json!("hp-m1-strain.012"),
+        ),
+        (
+            "hp-m1-strain.012",
+            edited_bytes,
+            "no_exact_member",
+            Value::Null,
+        ),
+    ] {
+        let project = imported(name, &bytes);
+        let path = dir.path().join(format!("{}.dsgrid", status));
+        std::fs::write(&path, &project).unwrap();
+        let matched = invoke(
+            &[
+                "library",
+                "model",
+                "match",
+                "--model",
+                path.to_str().unwrap(),
+                "--expected-sha256",
+                &bundle_digest(&project),
+                "--release",
+                release_path.to_str().unwrap(),
+                "--expected-library-sha256",
+                &bundle_digest(&release),
+            ],
+            true,
+        );
+        assert_eq!(matched["data"]["solver_approval"], false);
+        let row = matched["data"]["resources"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|row| row["media"] == "structure_definition")
+            .unwrap()
+            .clone();
+        assert_eq!(row["invariant_leaf"], name);
+        assert_eq!(row["status"], status);
+        assert_eq!(row["members"][0]["invariant_leaf"], member);
+    }
+}

@@ -8,6 +8,7 @@ pub mod catalog;
 pub mod global_catalog;
 pub mod global_download;
 pub mod global_member;
+pub mod impact;
 pub mod model;
 pub mod open;
 pub mod pack;
@@ -46,6 +47,9 @@ pub static DOMAIN: Domain = Domain {
         &model::DETACH,
         &model::CLONE,
         &model::SHOW,
+        &model::MATCH,
+        &impact::PLAN,
+        &impact::APPLY,
         &pack::COMMAND,
         &unpack::COMMAND,
         &seed::COMMAND,

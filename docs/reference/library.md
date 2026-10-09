@@ -197,6 +197,51 @@ project authorization and the reviewed expected head. Deliberate cross-project
 adoption uses the destination project's own authorization; a library identity
 does not grant it. Later changes to a library head never reinterpret pinned models.
 
+### Exact membership in a release
+
+`library.model.match` answers which members of one exact release carry a
+model's native definitions: fence the `--model` and the `--release`
+(`.dsgrid-library` or `.dsgrid-template`) by their exact digests, and each
+model resource is reported as `exact_member` (the member's invariant leaf, the
+canonical code, and the elements it backs), `ambiguous_members` (several
+differently named members carry the bytes; none is chosen), `no_exact_member`
+or `project_evidence` (route, terrain and project settings). Matching is by
+SHA-256 and length only, so a designer's renamed copy of a canonical file
+resolves to the canonical member while an edited file with the canonical name
+resolves to nothing. Cite only `exact_member` rows as verified membership;
+identical bytes are not engineering equivalence, strength coverage or approval.
+
+### Library updates: plan, then apply
+
+A new release of a library revises no model by itself. `library.model.impact-plan`
+is read-only: name the proposed `--release` with its
+`--expected-library-sha256`, and each follower as `--follower
+sha256:<digest>=<path.dsgrid>`, the digest being the exact head you observed
+(1..64 followers). Per follower the plan reports `applicable`,
+`already_current`, `not_following`, `stale_head` (the bytes moved) or `blocked`,
+the current and proposed pins, each required element whose definition changes
+with row-level before/after values (unchanged elements are counted), the native
+bytes the release brings, the engineering input root before and after, the
+resulting revision and named blockers: `no_cloud_equivalent` when the release
+drops a required element, `library_identity_conflict` when a release identity
+is reused with different bytes or a proposed row clashes with one outside the
+replaced closure, `propagation_refused` when the result would not reopen.
+
+`library.model.impact-apply` takes the same release and follower arguments and
+the reviewed `--plan-id`; any other plan id refuses with `impact_plan_mismatch`
+and writes nothing. It writes one new revision per applicable follower into a
+fresh `--out-dir` (`follower-NN.dsgrid`), replacing only the closure the old pin
+supplied, retaining the old native bytes and release as history, and rebuilding
+stored computed geometry only when its input pin moved. A follower whose bytes
+moved since the plan is refused by name; when any follower is refused or left
+unprocessed the command fails with `impact_apply_incomplete` and its detail is
+the full receipt, so a partial apply never reads as complete. Results bound to
+the old engineering input root remain historical evidence; recompute through
+the engine before review. Publish each written revision with
+`dsgrid.publish-version` under its own project and expected head. Which
+projects follow a library is project metadata outside model state; neither the
+plan nor the apply grants solver or engineering approval.
+
 
 Indexed governed member byte readback uses `library global download --kind library-asset --library-id <id> --release-id <id> --relative-path <exact-inventory-path> --expected-digest <64-lowercase-hex> --out <fresh-file>`. The authenticated resolver selects the exact immutable inventory entry; its signed generation-bound delivery is checked for the fixed storage origin, content-addressed object, byte length and SHA-256. JSON exposes the verified pin and generation, never the signed URL. Missing legacy indexes remain a named refusal; paths are never inferred from file names or summary counts.
 
