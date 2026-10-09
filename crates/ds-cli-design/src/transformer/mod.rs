@@ -19,6 +19,7 @@
 //!
 //! Contract: ds-brain `docs/contracts/transformer-retirement.md`.
 
+pub mod backup;
 pub mod dashboard;
 pub mod inventory;
 pub mod restore;

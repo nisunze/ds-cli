@@ -309,6 +309,253 @@ pub fn render_download_plan(data: &Value) -> String {
     out
 }
 
+// ── download fetch ──────────────────────────────────────────────────────
+
+const OUT_DIR_ARG: Arg = Arg::value(
+    "out-dir",
+    "<dir>",
+    "New or empty directory the artifacts and manifest.json are written to.",
+)
+.required();
+
+pub const DOWNLOAD_DIR_INVALID: Refusal = Refusal {
+    code: "download_dir_invalid",
+    when: "--out-dir exists and is not an empty directory, or a file under it could not be written",
+    remedy: "pass a new or empty directory; nothing already there is overwritten",
+};
+pub const DOWNLOAD_TOO_LARGE: Refusal = Refusal {
+    code: "download_too_large",
+    when: "the plan lists more than 200 artifacts, or a listed locator does not name one stored object",
+    remedy: "narrow the plan with --transformer or --format and fetch in parts",
+};
+pub const DOWNLOAD_INCOMPLETE: Refusal = Refusal {
+    code: "download_incomplete",
+    when: "the signer refused, or storage failed, at least one listed artifact; the fetched ones and manifest.json are kept",
+    remedy: "read `refused` and `failed` in manifest.json; check project membership, then fetch the rest again into a new directory",
+};
+
+const FETCH_REFUSALS: &[Refusal] = &[
+    crate::transformer::NATIVE_PROFILE,
+    crate::transformer::NATIVE_PROFILE_DIGEST,
+    crate::transformer::NATIVE_PROFILE_UNSAFE,
+    crate::transformer::HEADLESS_SIGNED_OUT,
+    crate::transformer::HEADLESS_NO_PROJECT,
+    crate::transformer::PROJECT_CONTEXT_STALE,
+    crate::transformer::AUTH_REJECTED,
+    crate::transformer::AUTH_TRANSIENT,
+    crate::transformer::AUTH_UNREADABLE,
+    PLAN_INVALID,
+    DOWNLOAD_DIR_INVALID,
+    DOWNLOAD_TOO_LARGE,
+    DOWNLOAD_INCOMPLETE,
+];
+
+pub static DOWNLOAD_FETCH: Command = Command {
+    id: "design.download.fetch",
+    path: &["design", "download", "fetch"],
+    contract: 1,
+    summary: "Download a plan's artifacts byte-exact with a SHA-256 manifest.",
+    purpose: "Executes `ds design download plan` for the same --project, --transformer and --format: every listed report, print and archive object is signed afresh by the report service's authorized signer (project membership checked, short-lived), fetched, and written under --out-dir at its stored object path, with manifest.json naming each file's identity, size and SHA-256. Nothing is fetched by a bearer link the plan carried. Refused or failed objects are named in the manifest and the command reports `download_incomplete`. At most 200 artifacts per run; this never regenerates reports.",
+    chapter: Chapter::Design,
+    effect: Effect::LocalFileWrite,
+    authority: Authority::HeadlessProject,
+    execution: Execution::Sync,
+    args: &[
+        TRANSFORMER_ARG,
+        FORMAT_ARG,
+        crate::PROJECT_ARG,
+        OUT_DIR_ARG,
+        LANE_ARG,
+    ],
+    output: "\
+Lane and project, `out_dir`, counts (listed, fetched, refused, failed, bytes), \
+and the manifest: one row per fetched file (identity `gs://bucket/object`, \
+relative path, bytes, sha256) plus `refused` and `failed` rows with reasons.",
+    examples: &[Example {
+        command: "ds design download fetch --project <id> --format xlsx --out-dir ./reports --output json",
+        note: "`manifest.json` in --out-dir carries every file's SHA-256.",
+        runnable: false,
+    }],
+    refusals: FETCH_REFUSALS,
+    reference: Some("docs/reference/design.md"),
+    search: &[
+        "download reports",
+        "fetch download plan",
+        "download artefacts",
+        "sha256 manifest",
+    ],
+    requires: Requires::Server,
+    availability: ds_cli_auth::native_availability,
+};
+
+fn dir_invalid(message: impl Into<String>) -> Failure {
+    Failure::invalid(DOWNLOAD_DIR_INVALID.code, message).remedy(DOWNLOAD_DIR_INVALID.remedy)
+}
+
+/// A new or empty directory, created here; nothing in it is ever replaced.
+fn fresh_dir(path: &std::path::Path) -> Result<(), Failure> {
+    match std::fs::read_dir(path) {
+        Ok(mut entries) => {
+            if entries.next().is_some() {
+                return Err(dir_invalid(format!(
+                    "--out-dir {} is not empty",
+                    path.display()
+                )));
+            }
+            Ok(())
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => std::fs::create_dir_all(path)
+            .map_err(|error| dir_invalid(format!("--out-dir could not be created: {error}"))),
+        Err(error) => Err(dir_invalid(format!(
+            "--out-dir is not a directory: {error}"
+        ))),
+    }
+}
+
+pub fn run_download_fetch(inputs: &Inputs, context: &Context) -> Result<Value, Failure> {
+    let out_dir = std::path::PathBuf::from(inputs.require("out-dir")?);
+    if out_dir.exists()
+        && std::fs::read_dir(&out_dir)
+            .map(|mut e| e.next().is_some())
+            .unwrap_or(true)
+    {
+        return Err(dir_invalid(format!(
+            "--out-dir {} exists and is not an empty directory",
+            out_dir.display()
+        )));
+    }
+    let planned = run_download_plan(inputs, context)?;
+    let project = planned["project"]["ds_project"]
+        .as_str()
+        .or_else(|| inputs.value("project"))
+        .unwrap_or_default()
+        .to_owned();
+    let listed: Vec<String> = planned["plan"]["filtered_urls"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .map(str::to_owned)
+        .collect();
+    let mut out = json!({"lane": planned["lane"], "project": planned["project"]});
+    out["out_dir"] = json!(out_dir.display().to_string());
+    if listed.is_empty() {
+        out["counts"] = json!({"listed": 0, "fetched": 0, "refused": 0, "failed": 0, "bytes": 0});
+        out["files"] = json!([]);
+        return Ok(out);
+    }
+    let request = ds_client_core::ArtifactDownloadRequest::new(&listed).map_err(|error| {
+        Failure::invalid(DOWNLOAD_TOO_LARGE.code, error.to_string())
+            .remedy(DOWNLOAD_TOO_LARGE.remedy)
+    })?;
+    fresh_dir(&out_dir)?;
+    let mut write_error: Option<String> = None;
+    let mut sink = |file: ds_client_core::ArtifactFile| -> Result<(), ds_client_core::ClientError> {
+        let path = out_dir.join(file.identity.object());
+        let written = path
+            .parent()
+            .map_or(Ok(()), std::fs::create_dir_all)
+            .and_then(|()| {
+                let mut handle = std::fs::OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .open(&path)?;
+                std::io::Write::write_all(&mut handle, &file.bytes)
+            });
+        if let Err(error) = written {
+            write_error = Some(format!("{}: {error}", path.display()));
+            // The real cause is `write_error`, reported before any mapped error.
+            return Err(ds_client_core::ClientError::from(
+                ds_client_core::TransportError::Unreachable,
+            ));
+        }
+        Ok(())
+    };
+    let downloaded = ds_cli_auth::device::download_artifacts_for_project(
+        inputs.require("lane")?,
+        &project,
+        &request,
+        &mut sink,
+    );
+    if let Some(error) = write_error {
+        return Err(dir_invalid(error));
+    }
+    let downloaded = downloaded?;
+    let mut files = Vec::new();
+    let mut refused = Vec::new();
+    let mut failed = Vec::new();
+    let mut total: u64 = 0;
+    for (identity, outcome) in downloaded.result() {
+        match outcome {
+            ds_client_core::ArtifactOutcome::Fetched { bytes, sha256 } => {
+                total += bytes;
+                files.push(
+                    json!({"identity": identity.locator(), "path": identity.object(),
+                                  "bytes": bytes, "sha256": sha256}),
+                );
+            }
+            ds_client_core::ArtifactOutcome::Refused { reason } => {
+                refused.push(json!({"identity": identity.locator(), "reason": reason}));
+            }
+            ds_client_core::ArtifactOutcome::Failed { reason } => {
+                failed.push(json!({"identity": identity.locator(), "reason": reason}));
+            }
+        }
+    }
+    let manifest = json!({
+        "schema": "ds.design-download/v1",
+        "project_id": project,
+        "lane": downloaded.lane(),
+        "files": files,
+        "refused": refused,
+        "failed": failed,
+    });
+    std::fs::write(
+        out_dir.join("manifest.json"),
+        serde_json::to_vec_pretty(&manifest).expect("a JSON manifest encodes"),
+    )
+    .map_err(|error| dir_invalid(format!("manifest.json could not be written: {error}")))?;
+    let counts = json!({"listed": request.identities().len(), "fetched": files.len(),
+                        "refused": refused.len(), "failed": failed.len(), "bytes": total});
+    if !refused.is_empty() || !failed.is_empty() {
+        return Err(Failure::unavailable(
+            DOWNLOAD_INCOMPLETE.code,
+            format!(
+                "{} of {} listed artifacts were not downloaded; see manifest.json",
+                refused.len() + failed.len(),
+                request.identities().len()
+            ),
+        )
+        .remedy(DOWNLOAD_INCOMPLETE.remedy)
+        .detail(
+            json!({"out_dir": out_dir.display().to_string(), "counts": counts,
+                       "refused": refused, "failed": failed}),
+        ));
+    }
+    out["counts"] = counts;
+    out["files"] = Value::Array(files);
+    Ok(out)
+}
+
+pub fn render_download_fetch(data: &Value) -> String {
+    let counts = &data["counts"];
+    let mut out = format!(
+        "{} of {} artifact(s) · {} bytes → {}\n",
+        counts["fetched"],
+        counts["listed"],
+        counts["bytes"],
+        data["out_dir"].as_str().unwrap_or("?"),
+    );
+    for file in data["files"].as_array().into_iter().flatten() {
+        out.push_str(&format!(
+            "  {}  {}\n",
+            file["sha256"].as_str().unwrap_or("?"),
+            file["path"].as_str().unwrap_or("?"),
+        ));
+    }
+    out
+}
+
 // ── conflict list / check ───────────────────────────────────────────────
 
 pub static CONFLICT_LIST: Command = Command {

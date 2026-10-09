@@ -1214,6 +1214,35 @@ impl<T: ds_client_core::Transport> DeviceSession<T> {
     ) -> Result<RetirementReceipt, ClientError> {
         fixed_device_call!(self, transformer_retirement, project, action, request)
     }
+    pub fn deleted_transformer_backup(
+        &mut self,
+        project: &str,
+        request: &ds_client_core::DeletedBackupRequest,
+        fetch: bool,
+    ) -> Result<ds_client_core::DeletedBackupRead, ClientError> {
+        fixed_device_call!(self, deleted_transformer_backup, project, request, fetch)
+    }
+    pub fn restore_deleted_transformer(
+        &mut self,
+        project: &str,
+        request: &ds_client_core::DeletedBackupRequest,
+    ) -> Result<ds_client_core::DeletedTransformerRestoration, ClientError> {
+        fixed_device_call!(self, restore_deleted_transformer, project, request)
+    }
+    pub fn download_artifacts(
+        &mut self,
+        project: &str,
+        request: &ds_client_core::ArtifactDownloadRequest,
+        sink: &mut dyn FnMut(ds_client_core::ArtifactFile) -> Result<(), ClientError>,
+    ) -> Result<
+        Vec<(
+            ds_client_core::ArtifactIdentity,
+            ds_client_core::ArtifactOutcome,
+        )>,
+        ClientError,
+    > {
+        fixed_device_call!(self, download_artifacts, project, request, sink)
+    }
 }
 
 /// Decode durable device authority and refresh one short-lived access JWT.
@@ -1673,6 +1702,98 @@ pub fn render(value: &Value) -> String {
         return format!("{} device(s)", devices.len());
     }
     "device authorization updated".to_owned()
+}
+
+// ---------------------------------------------------------------------------
+// Explicit-project recovery and download doors: the device credential when one
+// is restored, otherwise the signed-in user — the same choice every other
+// named-project call makes.
+// ---------------------------------------------------------------------------
+
+/// The deleted-transformer recovery refusals ds-brain names, kept by code;
+/// anything else maps as every other named-project call does.
+fn map_recovery(error: ClientError) -> Failure {
+    let message = error.to_string();
+    let code = error
+        .service_refusal()
+        .and_then(|refusal| refusal.code())
+        .unwrap_or_default();
+    match code {
+        "backup_pin_invalid" => Failure::invalid("backup_pin_invalid", message),
+        "backup_not_found" => Failure::invalid("backup_not_found", message),
+        "backup_unverified" => Failure::invalid("backup_unverified", message),
+        "backup_identity_mismatch" => Failure::invalid("backup_identity_mismatch", message),
+        "special_document" => Failure::invalid("special_document", message),
+        "backup_unavailable" => Failure::unavailable("backup_unavailable", message),
+        "transformer_exists" => Failure::conflict("transformer_exists", message),
+        "history_diverged" => Failure::conflict("history_diverged", message),
+        _ if error.kind() == ds_client_core::ErrorKind::UnreadableResponse
+            && message.contains("backup bytes") =>
+        {
+            Failure::invalid("backup_unverified", message)
+        }
+        _ => super::map_client(error),
+    }
+}
+
+/// Read one deleted transformer's verified delete backup in the caller's
+/// explicit project, fetching its exact bytes when `fetch` is set.
+pub fn deleted_transformer_backup_for_project(
+    lane_value: &str,
+    project: &str,
+    request: &ds_client_core::DeletedBackupRequest,
+    fetch: bool,
+) -> Result<super::HeadlessNamedProject<ds_client_core::DeletedBackupRead>, Failure> {
+    super::headless_named_project_with(
+        lane_value,
+        project,
+        map_recovery,
+        |device, project| device.deleted_transformer_backup(project, request, fetch),
+        |client, project| client.deleted_transformer_backup(project, request, fetch, super::now()),
+    )
+}
+
+/// Recreate a deleted transformer from one pinned backup in the caller's
+/// explicit project.
+pub fn restore_deleted_transformer_for_project(
+    lane_value: &str,
+    project: &str,
+    request: &ds_client_core::DeletedBackupRequest,
+) -> Result<super::HeadlessNamedProject<ds_client_core::DeletedTransformerRestoration>, Failure> {
+    super::headless_named_project_with(
+        lane_value,
+        project,
+        map_recovery,
+        |device, project| device.restore_deleted_transformer(project, request),
+        |client, project| client.restore_deleted_transformer(project, request, super::now()),
+    )
+}
+
+/// The outcome of one authorized artifact download, in request order.
+pub type ArtifactOutcomes = Vec<(
+    ds_client_core::ArtifactIdentity,
+    ds_client_core::ArtifactOutcome,
+)>;
+
+/// Sign the listed artifacts of the caller's explicit project through the
+/// authorized signer and hand each fetched object to `sink`, one at a time.
+pub fn download_artifacts_for_project(
+    lane_value: &str,
+    project: &str,
+    request: &ds_client_core::ArtifactDownloadRequest,
+    sink: &mut dyn FnMut(ds_client_core::ArtifactFile) -> Result<(), ClientError>,
+) -> Result<super::HeadlessNamedProject<ArtifactOutcomes>, Failure> {
+    // Only one of the two providers runs; the cell lets both closures name
+    // the one sink.
+    let sink = std::cell::RefCell::new(sink);
+    super::headless_named_project(
+        lane_value,
+        project,
+        |device, project| device.download_artifacts(project, request, &mut **sink.borrow_mut()),
+        |client, project| {
+            client.download_artifacts(project, request, &mut **sink.borrow_mut(), super::now())
+        },
+    )
 }
 
 #[cfg(test)]

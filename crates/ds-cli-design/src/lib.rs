@@ -200,6 +200,7 @@ pub static DOMAIN: Domain = Domain {
         &activities::read::COMMAND,
         &preview::BULK_PLAN,
         &preview::DOWNLOAD_PLAN,
+        &preview::DOWNLOAD_FETCH,
         &versions::STATUS,
         &versions::LIST,
         &versions::SHOW,
@@ -215,6 +216,8 @@ pub static DOMAIN: Domain = Domain {
         &transformer::inventory::COMMAND,
         &transformer::retire::COMMAND,
         &transformer::restore::COMMAND,
+        &transformer::backup::BACKUP,
+        &transformer::backup::RESTORE_DELETED,
     ],
 };
 

@@ -36,6 +36,25 @@ neither promises line densification or polygon overlay. Check `skipped`,
 all produced results, but cannot include source features excluded by a bound.
 Use the shipped `ds-vector-tools` skill for this local workflow.
 
+## `mv-lv-orphans`
+
+`data mv-lv-orphans` joins MV lines to transformers within `--tolerance-m`,
+offline and with no project. `--mv` takes GeoJSON lines (repeat per file, for
+example the files `ds dsgrid project geojson` writes); `--transformers` takes
+named GeoJSON points or the JSON `ds design status --output json` wrote, whose
+individual rows carry `metadata.spatial.representative_point` (a row without
+one is skipped as `no_location`; a point taken from the room extent rather than
+a transformer layer says `location: extent_centre`). A line end within
+`--junction-m` (default 1 m) of another MV line is a junction; every other end
+is a tip. Tips and transformers farther than the tolerance from their partner
+are orphans, and alignments none of whose tips reaches a transformer are listed
+in `alignments_ending_at_no_transformer`. `--exclude-prefix` keeps transformers
+such as fill-in placeholders as tip targets but never judges them. Distances
+are geodesic metres; no projection or country is assumed. Counts are complete,
+each list is bounded by `--limit` and reported in `more`, `skipped` counts every
+dropped feature by reason, and `--out` writes every orphan as a point for
+`ds map local register`.
+
 ## `admin-bounds attach`
 
 Writes a new CSV, TSV, or GeoJSON elevation-point file carrying `province`,

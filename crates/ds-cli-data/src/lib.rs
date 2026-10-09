@@ -21,6 +21,7 @@ pub mod elevation;
 pub mod elevation_compare;
 pub mod foundation;
 pub mod inspect;
+pub mod mv_lv_orphans;
 pub mod point_cloud;
 pub mod project_cache;
 pub mod spatial;
@@ -35,6 +36,7 @@ pub static DOMAIN: Domain = Domain {
         &inspect::COMMAND,
         &convert::COMMAND,
         &conversion_matrix::COMMAND,
+        &mv_lv_orphans::COMMAND,
         &elevation::COMMAND,
         &elevation_compare::COMMAND,
         &terrain_sampling::DESCRIBE,

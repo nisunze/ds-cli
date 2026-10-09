@@ -132,6 +132,20 @@ refuses it. A moved plan needs a new review and revision. Reuse the same
 Likewise, retry a lost delete response with the exact original task, revision
 and command id; do not create a second id for the same intended deletion.
 
+### Attaching a file to a task
+
+```bash
+ds pm task attach --project <exact-id> --task T-0007 --file ./crossing-survey.pdf --yes --output json
+```
+
+One command puts one local file (1 byte to 100 MiB) on an existing task: the
+server reserves an attachment row, the bytes go straight to storage, and the
+server checks the stored size and type before the row turns `ready`. Only a
+ready row on the named task is reported, with the local `sha256`. The media
+type is named from the file extension unless `--content-type` gives one. An
+interrupted upload leaves the row `uploading`; your next attachment in the
+project reclaims it. There is no Assets ingest or separate link step.
+
 ## Assignment is a request, not a decree
 
 The three rules are the engine's, and this domain does not flatten them:
@@ -324,6 +338,8 @@ what a person may set is a waiver, with a reason, and it is not withdrawn.
 | `model_link_invalid` | a model or revision id is not an exact catalog id, neither `--revision` nor `--version` was given, or the item holds 128 links |
 | `model_version_not_found` | the project's catalog has no such model, revision or version |
 | `model_version_mismatch` | `--version` disagrees with the catalog version of `--revision` |
+| `attachment_file_invalid` | `--file` is unreadable, empty, above 100 MiB or unnamed, or `--content-type` is not one `type/subtype` |
+| `attachment_unverified` | the server did not verify a ready attachment on the named task; read the task before repeating |
 
 `--start 01-09-2026` is refused here rather than at the engine on purpose: a
 transposed day and month is the commonest scheduling mistake there is, and

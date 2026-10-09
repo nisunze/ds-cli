@@ -11219,6 +11219,157 @@ fn pm_validates_its_own_inputs_before_any_round_trip() {
     );
 }
 
+/// Deleted-transformer recovery and the plan executor are Server commands
+/// that refuse their own inputs before any credential is restored, then need
+/// the signed-in native user; restoring is a confirmed write.
+#[test]
+fn deleted_transformer_recovery_and_download_fetch_check_inputs_before_the_native_user() {
+    for (id, effect) in [
+        ("design.transformer.backup", "read_only"),
+        ("design.transformer.restore-deleted", "global_write"),
+        ("design.download.fetch", "local_file_write"),
+    ] {
+        let command = ok(&["capabilities", id, "--output", "json"])["command"].clone();
+        assert_eq!(command["requires"], "server", "{id}");
+        assert_eq!(command["authority"], "headless_project", "{id}");
+        assert_eq!(command["effect"], effect, "{id}");
+    }
+    let root = temp_root("recovery");
+    std::fs::create_dir_all(&root).expect("temp root");
+    let taken = root.join("taken.dsgrid");
+    std::fs::write(&taken, b"keep").expect("existing file");
+    let object = "transformers/1788000000-p1-TX-1.dsgrid";
+    let backup = |extra: &[&str]| {
+        let mut argv = vec![
+            "design",
+            "transformer",
+            "backup",
+            "--project",
+            "p1",
+            "--transformer",
+            "TX-1",
+            "--object",
+            object,
+            "--output",
+            "json",
+        ];
+        argv.extend_from_slice(extra);
+        native_refusal(&argv)
+    };
+    assert_eq!(backup(&["--generation", "0"]), "backup_pin_invalid");
+    assert_eq!(backup(&["--sha256", "ABC"]), "backup_pin_invalid");
+    assert_eq!(
+        backup(&["--out", taken.to_str().expect("utf-8")]),
+        "output_exists"
+    );
+    assert_eq!(backup(&[]), "headless_signed_out");
+    assert_eq!(std::fs::read(&taken).expect("kept"), b"keep");
+    let digest = "a".repeat(64);
+    let restore = |yes: bool, sha: &str| {
+        let mut argv = vec![
+            "design",
+            "transformer",
+            "restore-deleted",
+            "--project",
+            "p1",
+            "--transformer",
+            "TX-1",
+            "--object",
+            object,
+            "--generation",
+            "17",
+            "--sha256",
+            sha,
+            "--output",
+            "json",
+        ];
+        if yes {
+            argv.push("--yes");
+        }
+        native_refusal(&argv)
+    };
+    assert_eq!(restore(false, &digest), "confirmation_required");
+    assert_eq!(restore(true, "nothex"), "backup_pin_invalid");
+    assert_eq!(restore(true, &digest), "headless_signed_out");
+    let fetch = |dir: &std::path::Path| {
+        native_refusal(&[
+            "design",
+            "download",
+            "fetch",
+            "--project",
+            "p1",
+            "--out-dir",
+            dir.to_str().expect("utf-8"),
+            "--output",
+            "json",
+        ])
+    };
+    assert_eq!(fetch(&root), "download_dir_invalid");
+    let empty = root.join("empty");
+    assert_eq!(fetch(&empty), "headless_signed_out");
+    assert!(
+        !empty.exists(),
+        "nothing is created before the plan is read"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// `ds pm task attach` is one confirmed write on a Server: it stops at the
+/// confirmation gate, names a missing or empty file before any credential is
+/// restored, and only then needs the signed-in native user.
+#[test]
+fn pm_task_attach_is_one_confirmed_write_that_checks_its_file_first() {
+    let command = ok(&["capabilities", "pm.task.attach", "--output", "json"])["command"].clone();
+    assert_eq!(command["requires"], "server", "{command}");
+    assert_eq!(command["authority"], "headless_project");
+    assert_eq!(command["effect"], "global_write");
+    let root = temp_root("pm-attach");
+    std::fs::create_dir_all(&root).expect("temp root");
+    let empty = root.join("empty.pdf");
+    std::fs::write(&empty, b"").expect("empty file");
+    let plan = root.join("crossing survey.pdf");
+    std::fs::write(&plan, b"%PDF-1.7 crossing").expect("file");
+    let attach = |file: &std::path::Path, yes: bool| {
+        let mut argv = vec![
+            "pm".to_string(),
+            "task".into(),
+            "attach".into(),
+            "--task".into(),
+            "T-1".into(),
+            "--file".into(),
+            file.to_str().expect("utf-8").into(),
+            "--output".into(),
+            "json".into(),
+        ];
+        if yes {
+            argv.push("--yes".into());
+        }
+        argv
+    };
+    let refused = |argv: Vec<String>, native: bool| {
+        let argv: Vec<&str> = argv.iter().map(String::as_str).collect();
+        if native {
+            native_pm_refusal(&argv)
+        } else {
+            pm_refusal(&argv)
+        }
+    };
+    assert_eq!(
+        refused(attach(&plan, false), false),
+        "confirmation_required"
+    );
+    assert_eq!(
+        refused(attach(&root.join("absent.pdf"), true), true),
+        "attachment_file_invalid"
+    );
+    assert_eq!(
+        refused(attach(&empty, true), true),
+        "attachment_file_invalid"
+    );
+    assert_eq!(refused(attach(&plan, true), true), "headless_signed_out");
+    let _ = std::fs::remove_dir_all(&root);
+}
+
 #[test]
 fn every_work_write_refuses_without_confirmation() {
     // Project Management is shared state governed by ds-brain. Every write
@@ -16246,6 +16397,113 @@ fn vector_json_input_bounds_and_refusals_preserve_complete_output_claims() {
     assert_eq!(crossing["against_features"], 2);
     assert_eq!(crossing["produced"], 1);
     assert!(crossing["more"].as_str().unwrap().contains("--against"));
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// The retired ds-work orphan script, answered by the shipped executable.
+///
+/// A backbone with a T-off starting on it has one junction and three tips.
+/// Two tips reach a transformer; the backbone's source end does not, and a
+/// stray transformer about 111 m from every line is an orphan at 30 m but not
+/// at 150 m. A fill-in placeholder is located but never judged.
+#[test]
+fn mv_lv_orphans_names_the_ends_and_transformers_beyond_tolerance() {
+    let root = temp_root("mv-lv-orphans");
+    std::fs::create_dir_all(&root).expect("temp root");
+    let mv = root.join("model.geojson");
+    let transformers = root.join("transformers.geojson");
+    let line = |id: &str, coordinates: Value| {
+        json!({"type": "Feature", "properties": {"alignment_id": id},
+               "geometry": {"type": "LineString", "coordinates": coordinates}})
+    };
+    std::fs::write(
+        &mv,
+        json!({"type": "FeatureCollection", "features": [
+            line("backbone", json!([[30.0, -2.0], [30.002, -2.0], [30.004, -2.0]])),
+            line("t-off", json!([[30.002, -2.0], [30.002, -1.997]])),
+        ]})
+        .to_string(),
+    )
+    .expect("mv fixture");
+    let point = |name: &str, lon: f64, lat: f64| {
+        json!({"type": "Feature", "properties": {"name": name},
+               "geometry": {"type": "Point", "coordinates": [lon, lat]}})
+    };
+    std::fs::write(
+        &transformers,
+        json!({"type": "FeatureCollection", "features": [
+            point("east", 30.004, -1.9999),
+            point("north", 30.002, -1.9969),
+            point("stray", 30.001, -2.001),
+            point("fill_in_far", 30.05, -2.05),
+        ]})
+        .to_string(),
+    )
+    .expect("transformer fixture");
+    let mv = mv.to_str().expect("utf-8 path");
+    let transformers = transformers.to_str().expect("utf-8 path");
+    let out = root.join("orphans.geojson");
+    let receipt = ok(&[
+        "data",
+        "mv-lv-orphans",
+        "--mv",
+        mv,
+        "--transformers",
+        transformers,
+        "--tolerance-m",
+        "30",
+        "--exclude-prefix",
+        "fill_in_",
+        "--out",
+        out.to_str().expect("utf-8 path"),
+        "--output",
+        "json",
+    ]);
+    let counts = &receipt["counts"];
+    assert_eq!(counts["junctions"], 1, "{receipt}");
+    assert_eq!(counts["tips"], 3, "{receipt}");
+    assert_eq!(counts["orphan_tips"], 1, "{receipt}");
+    assert_eq!(receipt["orphan_tips"][0]["alignment"], "backbone");
+    assert_eq!(receipt["orphan_tips"][0]["end"], "start");
+    assert_eq!(counts["transformers_excluded"], 1, "{receipt}");
+    assert_eq!(counts["orphan_transformers"], 1, "{receipt}");
+    let stray = &receipt["orphan_transformers"][0];
+    assert_eq!(stray["name"], "stray");
+    let distance = stray["distance_to_mv_m"].as_f64().expect("distance");
+    assert!((110.0..112.5).contains(&distance), "{distance}");
+    let written: Value =
+        serde_json::from_slice(&std::fs::read(&out).expect("orphans written")).expect("geojson");
+    assert_eq!(written["features"].as_array().map(Vec::len), Some(2));
+    let wide = ok(&[
+        "data",
+        "mv-lv-orphans",
+        "--mv",
+        mv,
+        "--transformers",
+        transformers,
+        "--tolerance-m",
+        "150",
+        "--exclude-prefix",
+        "fill_in_",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(wide["counts"]["orphan_transformers"], 0, "{wide}");
+    assert_eq!(
+        refusal(&[
+            "data",
+            "mv-lv-orphans",
+            "--mv",
+            transformers,
+            "--transformers",
+            transformers,
+            "--tolerance-m",
+            "30",
+            "--output",
+            "json",
+        ]),
+        "orphans_mv_empty"
+    );
     let _ = std::fs::remove_dir_all(&root);
 }
 

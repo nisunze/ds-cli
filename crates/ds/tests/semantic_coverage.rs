@@ -38,6 +38,7 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("data.vector.describe", "read_only", "none"),
     ("data.vector.outliers", "local_file_write", "none"),
     ("data.vector.random-points-area", "local_file_write", "none"),
+    ("data.mv-lv-orphans", "local_file_write", "none"),
     // Exact effect and authority reviewed from the integrated CLI descriptors.
     ("assets.download", "read_only", "headless_project"),
     (
@@ -660,6 +661,11 @@ const EXPECTED: &[(&str, &str, &str)] = &[
         "local_auth_state",
         "headless_project",
     ),
+    (
+        "design.download.fetch",
+        "local_file_write",
+        "headless_project",
+    ),
     ("design.version.status", "read_only", "headless_project"),
     (
         "design.conflict.list",
@@ -695,6 +701,12 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ),
     (
         "design.transformer.restore",
+        "global_write",
+        "headless_project",
+    ),
+    ("design.transformer.backup", "read_only", "headless_project"),
+    (
+        "design.transformer.restore-deleted",
         "global_write",
         "headless_project",
     ),
@@ -1469,6 +1481,7 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("pm.record.thread", "read_only", "headless_project"),
     ("pm.record.update", "global_write", "headless_project"),
     ("pm.task.assign", "global_write", "headless_project"),
+    ("pm.task.attach", "global_write", "headless_project"),
     ("pm.task.admit", "global_write", "headless_project"),
     ("pm.task.block", "global_write", "headless_project"),
     ("pm.task.create", "global_write", "headless_project"),

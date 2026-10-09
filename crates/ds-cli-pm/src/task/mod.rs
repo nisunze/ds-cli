@@ -18,6 +18,7 @@
 //! and decide again", never a silent overwrite of somebody's plan.
 
 pub mod assign;
+pub mod attach;
 pub mod block;
 pub mod create;
 pub mod delete;

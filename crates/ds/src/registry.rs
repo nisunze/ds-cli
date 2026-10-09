@@ -2079,6 +2079,11 @@ static DATA_ENTRIES: &[Entry] = &[
         render: ds_cli_data::conversion_matrix::render,
     },
     Entry {
+        command: &ds_cli_data::mv_lv_orphans::COMMAND,
+        handler: ds_cli_data::mv_lv_orphans::run,
+        render: ds_cli_data::mv_lv_orphans::render,
+    },
+    Entry {
         command: &ds_cli_data::elevation::COMMAND,
         handler: ds_cli_data::elevation::run,
         render: ds_cli_data::elevation::render,
@@ -2377,6 +2382,11 @@ static WORK_ENTRIES: &[Entry] = &[
         command: &ds_cli_pm::task::assign::COMMAND,
         handler: ds_cli_pm::task::assign::run,
         render: ds_cli_pm::task::assign::render,
+    },
+    Entry {
+        command: &ds_cli_pm::task::attach::COMMAND,
+        handler: ds_cli_pm::task::attach::run,
+        render: ds_cli_pm::task::attach::render,
     },
     Entry {
         command: &ds_cli_pm::task::respond::COMMAND,
@@ -3067,6 +3077,11 @@ static DESIGN_ENTRIES: &[Entry] = &[
         render: ds_cli_design::preview::render_download_plan,
     },
     Entry {
+        command: &ds_cli_design::preview::DOWNLOAD_FETCH,
+        handler: ds_cli_design::preview::run_download_fetch,
+        render: ds_cli_design::preview::render_download_fetch,
+    },
+    Entry {
         command: &ds_cli_design::versions::LIST,
         handler: ds_cli_design::versions::list,
         render: ds_cli_design::versions::render,
@@ -3140,6 +3155,16 @@ static DESIGN_ENTRIES: &[Entry] = &[
         command: &ds_cli_design::transformer::restore::COMMAND,
         handler: ds_cli_design::transformer::restore::run,
         render: ds_cli_design::transformer::restore::render,
+    },
+    Entry {
+        command: &ds_cli_design::transformer::backup::BACKUP,
+        handler: ds_cli_design::transformer::backup::run_backup,
+        render: ds_cli_design::transformer::backup::render_backup,
+    },
+    Entry {
+        command: &ds_cli_design::transformer::backup::RESTORE_DELETED,
+        handler: ds_cli_design::transformer::backup::run_restore_deleted,
+        render: ds_cli_design::transformer::backup::render_restore_deleted,
     },
 ];
 
