@@ -158,6 +158,10 @@ pub struct MergeRequest {
     /// it. Every field name reachable inside one is kept.
     #[serde(default)]
     pub styles: BTreeMap<String, Value>,
+    /// Current governed nature assignments for this read-only view. None leaves
+    /// saved values untouched; Some clears values on unassigned transformers.
+    #[serde(default)]
+    pub transformer_natures: Option<BTreeMap<String, String>>,
     #[serde(default)]
     pub source: Option<String>,
 }
@@ -740,6 +744,12 @@ pub fn merge(request: MergeRequest) -> Result<Merged, String> {
         .unwrap_or(PINNED_SOURCE_NAME)
         .to_owned();
 
+    let natures = request.transformer_natures.as_ref().map(|values| {
+        values
+            .iter()
+            .map(|(name, value)| (canonical(name), value))
+            .collect::<BTreeMap<_, _>>()
+    });
     let hidden: BTreeSet<String> = request.hidden.iter().map(|name| canonical(name)).collect();
 
     // The keep-set, per class: what that class's style document reads, plus
@@ -826,6 +836,15 @@ pub fn merge(request: MergeRequest) -> Result<Merged, String> {
                 for field in &keep {
                     if field == PINNED_TRANSFORMER_PROPERTY {
                         continue;
+                    }
+                    if class_name == ANCHOR_LAYER && field == "transformer_nature" {
+                        if let Some(natures) = &natures {
+                            if let Some(value) = natures.get(&canonical(&room.name)) {
+                                kept.insert(field.clone(), (*value).clone());
+                                seen_after.insert(field.clone());
+                            }
+                            continue;
+                        }
                     }
                     if let Some(value) = properties.and_then(|bag| bag.get(field)) {
                         kept.insert(field.clone(), scalar(value));
@@ -1015,6 +1034,31 @@ mod tests {
             "geometry": {"type": "Point", "coordinates": [30.0, -1.9]},
             "properties": properties,
         })
+    }
+
+    #[test]
+    fn governed_nature_is_projected_for_the_view_without_mutating_saved_rooms() {
+        let rooms = json!([{ "name":"tx", "layers":{"tr":{"features":[point("p", json!({"transformer_nature":"old"}))]}} }]);
+        let run = |natures: Value| {
+            merge(merge_request(json!({"schema":SCHEMA,"rooms":rooms,
+            "keep":["transformer_nature"],"transformer_natures":natures})))
+            .unwrap()
+        };
+        assert_eq!(
+            run(json!({"tx":"upgrade"})).layers[0].features[0].properties["transformer_nature"],
+            "upgrade"
+        );
+        assert!(!run(json!({})).layers[0].features[0]
+            .properties
+            .contains_key("transformer_nature"));
+        assert_eq!(
+            run(Value::Null).layers[0].features[0].properties["transformer_nature"],
+            "old"
+        );
+        assert_eq!(
+            rooms[0]["layers"]["tr"]["features"][0]["properties"]["transformer_nature"],
+            "old"
+        );
     }
 
     // ── 1. what to fetch ────────────────────────────────────────────────

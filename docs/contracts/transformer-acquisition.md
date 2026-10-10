@@ -19,6 +19,10 @@ observed revisions and class inventories through the same planner, shares
 concurrent reads using a per-room OS file lock, and compares the captured room
 under the room/index lock before publication. A late response cannot replace a
 newer held room. It never substitutes a projected context for saved bytes.
+Native pinned views read governed transformer nature once per requested set only
+when an authored style consumes it. The kernel projects assigned values and clears
+unassigned values in the view; the exact saved cache remains untouched. Missing
+definitions preserve saved values. This metadata read never reacquires geometry.
 A pin receipt distinguishes actual acquisition counts from hypothetical `--held`
 planning counts; local retention failures remain explicit. Missing legacy
 saved digests require refresh, and unavailable reads cannot bless stale bytes.
@@ -65,3 +69,15 @@ freshness, and reports never wait for tiling.
 Owning proof: kernel pinned-context and Project Control tests; ds-web's
 `transformer-acquisition.test.ts`, `transformer-acquisition-boundary.test.ts`,
 room executor, report preparation, pinning and authored-style materialization tests.
+
+## Measured headless acceptance
+
+The locally built CLI on Gisagara `agahehe` returned six classes and 435
+features, including 76 `lv_poles`, on both cold and warm acquisition (2026-10-10).
+The cold invocation took 17.782 s and fetched one room. The next invocation took
+7.853 s, reused that room and fetched zero room geometry. Both returned no
+per-transformer failures. These are end-to-end connected CLI measurements,
+including authenticated status/style reads; they are not browser cache latency
+or a claim of zero total API calls. The proof command is `ds design pinned preview --project czgmdwth_gisagara
+--transformer agahehe --lane canary --output json`, built from CLI `174a137c`
+and kernel `65ad6b6`. Owning tests retain the acquisition assertions; installed Desktop map acceptance is separate.
