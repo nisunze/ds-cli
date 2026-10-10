@@ -14,7 +14,7 @@ Unfinished code that an agent can implement and prove without further owner inpu
 | [4. Print template and style code](#4-print-template-and-style-code) | 0 |
 | [5. Print renderer and booklet code](#5-print-renderer-and-booklet-code) | 2 |
 | [7. Report compute, export and combined output](#7-report-compute-export-and-combined-output) | 13 |
-| [8. Sync, publication and edge outbox](#8-sync-publication-and-edge-outbox) | 5 |
+| [8. Sync, publication and edge outbox](#8-sync-publication-and-edge-outbox) | 6 |
 | [9. LV processing, sizing and headless intake](#9-lv-processing-sizing-and-headless-intake) | 8 |
 | [10. Voltage drop](#10-voltage-drop) | 3 |
 | [11. PLS-CADD exchange round trip](#11-pls-cadd-exchange-round-trip) | 12 |
@@ -23,7 +23,7 @@ Unfinished code that an agent can implement and prove without further owner inpu
 | [14. Plan and Profile authoring](#14-plan-and-profile-authoring) | 1 |
 | [15. Project delivery code](#15-project-delivery-code) | 2 |
 | [16. Map data, datasets and screen styling](#16-map-data-datasets-and-screen-styling) | 8 |
-| [17. Project Work and Assets](#17-project-work-and-assets) | 7 |
+| [17. Project Work and Assets](#17-project-work-and-assets) | 8 |
 | [18. Global DS Grid library](#18-global-ds-grid-library) | 2 |
 | [19. Country neutrality and duplicated rules](#19-country-neutrality-and-duplicated-rules) | 2 |
 | [21. Windows release code](#21-windows-release-code) | 5 |
@@ -150,6 +150,8 @@ Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group E (printing templ
 - Never-landed (owner 2026-10-02, land adapted to run): Generic archive-group readers: kernel, ds-cli (890bac3) and ds-web (54a65730) read the `group_count`/`groups` ds-brain writes, not `district_count` only.
 
 ## 8. Sync, publication and edge outbox
+
+- **Cross-process native publication wake without polling** (owner 2026-10-10): Desktop sync runs on auth/startup, intentional navigation/refresh, reconnect, visible return and native/local producer events. Deliver seals/recovery transitions from independent CLI/MCP/native producers into that existing wake path using an owned IPC/filesystem event; schedule retained retry work only at the kernel's deadline. Preserve account/install/project fences, coalescing and headless publication. Do not restore idle thirty-second queue scans or use report-activity timers to discover work. Prove an external sealed result wakes the primary and duplicate wake events do not duplicate publication.
 
 - `fd5bce6a` (blocker): Gisagara A0 contour reports cannot replace shared project publications.
 
@@ -612,9 +614,10 @@ Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group A, to be fixed to
   immutable output. Do not mistake a ready handoff for a scheduled/completed job.
   complete survey acquisition must schedule the same owner locally. No standalone
   vector-tiling API or custom dataset/explorer replacement is admitted. Next
-  independent vertical: migrate the remaining Brain/gateway consumers to the
-  reporter's six closed geospatial adapters, remove their old tiler dispatch and
-  custom tiling surfaces, then retire/archive ds-vector-tiler. Preserve original
+  independent vertical: retire/archive the old tiler repository and deployed
+  services after the coordinated replacement cutover. Brain/gateway adapter and
+  standalone/custom dispatch removal is source-proven; deployment/retirement
+  remains in SEEDING §22. Preserve original
   upload bytes and exact source generations, mirror leases and central reads.
   The optional HTTP/TLS dependency closure is outside this critical integration
   path; no local generator request may select a remote source.
@@ -631,7 +634,8 @@ Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group A, to be fixed to
   Source adapters must consume the shared snapshot contract through the real
   authenticated source/delta protocol in slice 6; current production acquisition
   has not migrated. Use installed `/usr/bin/ds-canary` for development acceptance;
-  never resume the paused stable release. Remaining **3 — engine
+  the separately paused stable release remains outside scope, except the
+  explicitly authorized 2026-10-10 named sprint in SEEDING §22. Remaining **3 — engine
   qualification/integration** extends `ds-network/crates/ds-native-tiles/CONTRACT.md`:
   buffered clipping and representative concave/boundary/hole/sliver fidelity,
   bounded Parquet ingestion and larger-project streaming/RSS,
@@ -691,6 +695,8 @@ Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group A, to be fixed to
 - **Vector skip parity:** the ds-network runner now names engine-empty drops (`8e56edcb`: `engine_empty`, `no_station`, `no_buffer`, `skipped_features`). The kernel portable `vector_ops` (`src/vector_ops*.rs`, WASM `vectorProcess`) still counts such features as processed and does not name them; ds-cli `domain_smoke` `vector_cli_file_and_json_packets_match_the_kernel_and_frozen_native_baseline` is red on `run` (packet 4: processed 0 vs frozen 2; `skipped` lacks `no_station`). Make `vector_ops` name the same drops, refreeze `ds-command-kernel/tests/fixtures/vector_processing_packets.json`, and turn kernel `tests/vector_processing.rs` and that ds-cli test green.
 
 ## 17. Project Work and Assets
+
+- **Account-wide push and one background receiver — required before the deployment sprint** (owner 2026-10-10): no timer-driven data reads or repeated bounded Gateway long polls. Navigation, explicit refresh, canonical mutations/producer commits and actual push invalidations drive reads. Project conversations remain the same authorized project groups in every workspace; task assignment/message notifications from project X must reach the addressed user while viewing Y without silently switching navigation. Browser uses its existing account/FID/epoch-fenced push registration and canonical inbox; prove dedupe, logout/revocation and dirty-workspace click admission. Remaining native code: replace Gateway-buffered account SSE with an admitted true-push transport, one receiver per account/lane with peer invalidation (a lock that starves other visible windows is forbidden), and lifecycle-independent credential renewal. Closing the primary window keeps its process/webview alive; explicit Quit/OS shutdown may stop it. Preserve multiple Desktop instance isolation. Do not claim close-to-tray establishes singleton push, or restore polling when push is unavailable. Native Desktop and CLI/MCP discovery/controls must expose truthful delivery state; no new project/chat authority or notification content store. Real installed Windows/Linux close→receive assignment from another project→restore/click/account-change proof is in SEEDING §22. Do not deploy until this mandatory gate is fulfilled.
 
 - `e01cf456` (major): one command must create an inbox task with two files attached and return their ids (`pm task create --attach <file>`, repeatable), with `--detach`, and a scheduled task must be able to return to unscheduled. `ds pm task attach` attaches only one file per call. The feedback parks these as additions under SRE mode; confirm the owner's go in OPEN-X.md before coding.
 

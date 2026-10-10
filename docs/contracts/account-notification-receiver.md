@@ -4,7 +4,17 @@ The shared `ds-client-core::account_notifications` policy consumes the existing
 `domains.messaging.account_stream` route. One primary Desktop shell owns one
 abortable receiver for its explicitly authenticated UID and install lane. Hidden
 or close-to-background window state does not own the receiver. Popouts consume
-its content-free events; conversation content streams remain visible-only.
+its content-free events. Closing the primary window hides it and retains
+credential renewal; explicit Quit or OS shutdown cancels it.
+
+Owner ruling, 2026-10-10: notifications are account-wide across authorized project
+groups; active project selection cannot suppress delivery or change silently.
+One account/lane receiver must fan out invalidations to visible peers. The
+current implementation is one receiver per process, not that singleton.
+Browser reads are navigation/refresh/push-driven; automatic browser account and
+conversation long polls are removed. A missing push capability must remain
+truthful, not activate polling. The remaining native transport is described
+below as a limitation, not fulfillment of the no-poll requirement.
 
 The gateway verifies the bearer; the native session handover also checks exact
 JWT subject, audience, issuer and expiry against the install pin. Credentials
@@ -43,7 +53,9 @@ backend's bounded cold-start initialization). Reconnect uses server-advertised
 holds a watch for 28 seconds and advertises 30 seconds after a quiet watch,
 about 62 requests/hour per idle signed-in shell. Active reconnects can approach
 124 requests/hour. Each watch reads/watches one exact account document; there
-is no collection/timeline polling. Only visible clients perform existing
+is no collection/timeline scan. Gateway buffers these responses, making the
+repeated HTTP reconnect loop long polling. It fails the owner's no-poll
+acceptance and must be replaced before the deployment sprint. Only visible clients perform existing
 canonical reconciliation. The receiver is not a second message/unread store.
 
 The host owns notification presentation and window actions only. Content-free
