@@ -11,6 +11,12 @@ Owner ruling, 2026-10-10: notifications are account-wide across authorized proje
 groups; active project selection cannot suppress delivery or change silently.
 One account/lane receiver must fan out invalidations to visible peers. The
 current implementation is one receiver per process, not that singleton.
+The owner's post-power-cut clarification means one Desktop notification owner
+remaining in the tray, not a warm cloud Brain instance. Additional visible
+workspaces must not accumulate hidden resident processes when closed. Explicit
+Quit releases the owner and terminates it; a crash or OS restart cannot leave
+stale ownership or start duplicate receivers. The current per-primary
+close-to-background implementation does not yet meet that process bound.
 Browser reads are navigation/refresh/push-driven; automatic browser account and
 conversation long polls are removed. A missing push capability must remain
 truthful, not activate polling. The remaining native transport is described

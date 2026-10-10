@@ -2,6 +2,13 @@
 
 **Owner, 2026-10-07:** [STABILIZATION.md](STABILIZATION.md) holds the current priority and comes before this order.
 
+**Owner update, 2026-10-10:** after winding down the current landing, independent
+Desktop/Server Kernel, Network, Reporter and Solar updates are the next
+architectural priority ([OPEN §1](OPEN.md#1-source-integration-and-release-code)).
+Start with the existing Reporter executable boundary. This newer ruling takes
+priority over the older feature sequence below; confirmed exposure/data loss and
+the current mandatory notification deployment gate remain safeguards.
+
 Start order for [OPEN.md](OPEN.md), following [owner priorities](PRINCIPLES.md#3-priorities-owner-2026-10-07). This file holds order and dependencies; scope, evidence and proof stay in OPEN.md. Delete a fulfilled row with its OPEN.md entry. [OPEN-X.md](OPEN-X.md) gates only the named decision; [SEEDING.md](SEEDING.md) owns configuration, deployment and installed acceptance.
 
 Pick the first actionable row in your track whose touched files are free. Recheck the defect through installed `ds` and owning tests; use admitted parameters/seeds before coding. “After” names an actual prerequisite, not a wait for every earlier row. A red gate blocks its affected release, not unrelated work. Work on canonical `run`, one coherent slice per repository, prove/commit/push before the next; preserve occupied edits. Cross-repository rows are successive owning slices, not a mixed checkpoint.
