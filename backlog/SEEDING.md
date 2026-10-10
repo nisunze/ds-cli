@@ -14,7 +14,7 @@ Candidate curation and native PLS-CADD acceptance are separate from coding the c
 
 | Area | Remaining entries |
 | --- | ---: |
-| [1. Deployment and template rollout](#1-deployment-and-template-rollout) | 17 |
+| [1. Deployment and template rollout](#1-deployment-and-template-rollout) | 16 |
 | [2. Release acceptance](#2-release-acceptance) | 2 |
 | [3. Template projects](#3-template-projects) | 5 |
 | [4. Print templates, styles and seed](#4-print-templates-styles-and-seed) | 6 |
@@ -33,7 +33,7 @@ Candidate curation and native PLS-CADD acceptance are separate from coding the c
 | [17. Project Work and Assets](#17-project-work-and-assets) | 11 |
 | [18. Global DS Grid library](#18-global-ds-grid-library) | 3 |
 | [21. Windows native release](#21-windows-native-release) | 10 |
-| [22. Operations](#22-operations) | 5 |
+| [22. Operations](#22-operations) | 6 |
 | [25. CLI reliability and feedback](#25-cli-reliability-and-feedback) | 6 |
 <!-- /toc -->
 
@@ -68,8 +68,6 @@ Candidate curation and native PLS-CADD acceptance are separate from coding the c
 - **Transformer tags in tiles**: release the compatible ds-vector-tiler before the brain consumer of `design_tags`, then verify the governed tag projection. The source changes are recorded on `run`; an older tiler refuses the new fields.
 
 - **Printing gateway rollout**: verify each needed stable/canary printing route and exact live consumer contract. Deploy only remaining missing routes, brain first. Gateway remote CI submission/approval remains the operator’s action.
-
-- **Canonical source safety**: verify simple_notes canonical `run` is reconciled with its remote before its next publication. Preserve unique work; do not open old revisions containing the retired injected kit as editor workspaces.
 
 - **Template rollout**: rerun the project census, seed any newly created projects, deploy matching locally built consumers and prove exact-revision report styles. Retire the old `eds_networks`/`eds_solar` roots only through the digest-fenced migration after verifying `~/ds-backups/global-templates-2026-10-06/`; inventory other legacy collections separately.
 
@@ -368,6 +366,8 @@ Candidate curation and native PLS-CADD acceptance are separate from coding the c
 - **Classification-aware Windows release** (`6e322426`): on a Windows/stable release carrying kernel `0e4389f`, read report project settings and export A0 for `ruhuha`, `upgrade_mbeho` and `zihare`; then close `6e322426`.
 
 ## 22. Operations
+
+- **Brain ordinary/bulk maintenance cutover** (owner 2026-10-10): use locally built artifacts and `ds-brain/docs/contracts/runtime-bulk-placement.md`. Roll out bulk with the same lane's existing device issuer/audience/signing-seed and revocation authority, verify device/cursor readiness, apply the reviewed gateway placement, then roll out ordinary admission. Brief downtime is accepted; do not introduce production compatibility forwarding. Prove Simple Notes NDJSON terminal summaries, permission reads, media-link reads, form activation, pipeline status and durable mutations through owning automated controls. Verify actual live placement and resource settings; configured 512 MiB remains until OPEN §22 full-runtime qualification admits 128 MiB. Measure live reads, compute and latency before claiming savings. No remote build/CI, owner hand-testing or separately paused stable release.
 
 - **Monitor service live figures**: on the running status publisher, verify the per-agent CPU/memory/task figures and the sortable Processes table against live processes, without killing other agents’ processes. Open an owning-code failure only if valid configuration cannot deliver the declared status.
 
