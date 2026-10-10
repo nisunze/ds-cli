@@ -843,6 +843,41 @@ pub fn alias_format(lowercase: &str) -> &str {
     }
 }
 
+/// Generated run identities belong in storage keys, never in download names.
+/// Match only the dated legacy report family, preserving project, date, scope
+/// and compound extensions. These constants also generate Brain's projection.
+pub const REPORT_DOWNLOAD_ID_PATTERN: &str =
+    r"(?i)^([0-9]{6}[-_][0-9]{4}[-_]report[-_].+?)[-_][0-9a-f]{32}([._-].*|)$";
+pub const REPORT_DOWNLOAD_ID_REPLACEMENT: &str = "${1}${2}";
+
+/// A presentation name, independent of the immutable storage locator. The
+/// basename and header-safe characters are shared by local and cloud readers.
+pub fn report_download_filename(filename: &str) -> String {
+    static RUN_ID: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    let basename = filename.rsplit(['/', '\\']).next().unwrap_or("");
+    let readable = RUN_ID
+        .get_or_init(|| regex::Regex::new(REPORT_DOWNLOAD_ID_PATTERN).expect("report name pattern"))
+        .replace(basename, REPORT_DOWNLOAD_ID_REPLACEMENT);
+    let safe: String = readable
+        .chars()
+        .map(|character| {
+            if character.is_control()
+                || matches!(character, ':' | '*' | '?' | '"' | '<' | '>' | '|')
+            {
+                '_'
+            } else {
+                character
+            }
+        })
+        .collect();
+    let safe = safe.trim().trim_end_matches('.');
+    if safe.is_empty() {
+        "report".into()
+    } else {
+        safe.into()
+    }
+}
+
 /// What is this artifact called?
 ///
 /// One question, two kinds of evidence. A local artifact is named from the
@@ -869,7 +904,7 @@ pub fn artifact_filename(locator: &str) -> String {
         // filename and a download with no name. This is that fallback, working.
         return "file".into();
     }
-    name.to_string()
+    report_download_filename(name)
 }
 
 /// Which door does this artifact open: the in-app PDF preview, or a download?
@@ -991,6 +1026,11 @@ pub fn combined_entry_naming(
         .find(|candidate| !candidate.is_empty())
         .unwrap_or_default()
         .to_string();
+    let label = if label == prefix && !prefix.is_empty() {
+        report_download_filename(prefix)
+    } else {
+        label
+    };
     let mut folder = String::with_capacity(label.len());
     let mut replaced = false;
     for character in label.chars() {
@@ -1011,7 +1051,8 @@ pub fn combined_entry_naming(
     if folder.is_empty() {
         folder = prefix.to_string();
     }
-    (label, folder, format!("{prefix}.zip"))
+    let archive_name = report_download_filename(&format!("{prefix}.zip"));
+    (label, folder, archive_name)
 }
 
 /// `decodeURIComponent` semantics: `%XX` is a byte, the result must be UTF-8,
@@ -1499,6 +1540,80 @@ pub fn plan(sheets: &Value, is_combined: bool) -> Result<Vec<Output>, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn download_names_share_the_cloud_projection_corpus() {
+        let cases: Vec<[String; 2]> =
+            serde_json::from_str(include_str!("../tests/fixtures/report-artifact-names.json"))
+                .unwrap();
+        for [input, expected] in cases {
+            assert_eq!(report_download_filename(&input), expected, "{input}");
+        }
+    }
+
+    #[test]
+    fn download_names_keep_report_meaning_and_remove_only_generated_run_identity() {
+        let run = "021d4e7aaba7bec355f7ceec5aececbc";
+        for (suffix, expected_suffix) in [
+            (".zip", ".zip"),
+            (".shp.zip", ".shp.zip"),
+            ("_geojsonl.zip", "_geojsonl.zip"),
+            (
+                "-overall-combined-report.xlsx",
+                "-overall-combined-report.xlsx",
+            ),
+            (
+                "-huye-combined-report.a3.pdf",
+                "-huye-combined-report.a3.pdf",
+            ),
+        ] {
+            let old = format!("280926-0916-report-gisagara-cjic-{run}{suffix}");
+            let clean = format!("280926-0916-report-gisagara-cjic{expected_suffix}");
+            assert_eq!(report_download_filename(&old), clean);
+            assert_eq!(report_download_filename(&clean), clean);
+            assert_eq!(
+                artifact_filename(&format!("gs://bucket/reports/{old}")),
+                clean
+            );
+        }
+        assert_eq!(
+            report_download_filename(&format!("280926_0916_report_gisagara_cjic_{run}.shp.zip")),
+            "280926_0916_report_gisagara_cjic.shp.zip"
+        );
+        // An authored project/file identifier is not a generated report run.
+        for name in [
+            format!("survey-{run}.zip"),
+            format!("project-{run}-report.xlsx"),
+            "280926-0916-report-gisagara-cjic-revision-12.zip".into(),
+            "combined_transformer.xlsx".into(),
+        ] {
+            assert_eq!(report_download_filename(&name), name);
+        }
+        let stem = format!("280926-0916-report-gisagara-cjic-{run}");
+        let (label, folder, archive) = combined_entry_naming("", "", &stem);
+        assert_eq!(label, "280926-0916-report-gisagara-cjic");
+        assert_eq!(folder, label);
+        assert_eq!(archive, "280926-0916-report-gisagara-cjic.zip");
+    }
+
+    #[test]
+    fn download_names_cannot_escape_a_folder_or_a_content_disposition() {
+        assert_eq!(
+            report_download_filename("../nested/report.xlsx"),
+            "report.xlsx"
+        );
+        assert_eq!(
+            report_download_filename(r"C:\reports\report.xlsx"),
+            "report.xlsx"
+        );
+        assert_eq!(
+            report_download_filename("report\r\n\"<>|:*?.xlsx"),
+            "report_________.xlsx"
+        );
+        assert_eq!(report_download_filename("  report.xlsx.  "), "report.xlsx");
+        assert_eq!(report_download_filename(".."), "report");
+        assert_eq!(report_download_filename(""), "report");
+    }
 
     /// The name is the artifact's own, whatever evidence it came from: a signed
     /// storage locator, a plain path, or the output id of a local outbox row.
