@@ -325,6 +325,26 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         .map(|class| (class.class_name.clone(), class.document.clone()))
         .collect();
 
+    let natures = if !rooms.is_empty()
+        && resolved
+            .keep
+            .get("tr")
+            .is_some_and(|fields| fields.iter().any(|field| field == "transformer_nature"))
+    {
+        let names = rooms
+            .iter()
+            .filter_map(|room| room["name"].as_str().map(str::to_owned))
+            .collect::<Vec<_>>();
+        ds_cli_report::project::hold::transformer_nature_view(
+            lane,
+            project,
+            status.identity(),
+            &names,
+        )?
+    } else {
+        None
+    };
+
     let merged = pinned_context::merge(request!(
         pinned_context::MergeRequest,
         json!({
@@ -332,6 +352,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             "rooms": rooms,
             "hidden": inputs.repeated("hide"),
             "styles": styles,
+            "transformer_natures": natures,
         })
     )?)
     .map_err(refused)?;

@@ -315,6 +315,44 @@ pub fn acquire_transformer_room(
     Ok((room, source))
 }
 
+/// Read only the governed nature projection needed by an authored view. This
+/// metadata request is batched; it never re-downloads transformer geometry.
+pub fn transformer_nature_view(
+    lane: &str,
+    project: &str,
+    identity: &ProviderIdentity,
+    names: &[String],
+) -> Result<Option<BTreeMap<String, String>>, Failure> {
+    let command = ds_cli_auth::DesignTagsCommand::Projection {
+        transformers: names.to_vec(),
+        definitions: vec!["transformer_nature".into()],
+    };
+    let projection = match ds_cli_auth::design_tags(lane, project, &command) {
+        Ok(result) => result,
+        Err(error) if error.code() == ds_cli_auth::TAG_DEFINITION_UNKNOWN_REFUSAL.code => {
+            return Ok(None);
+        }
+        Err(error) => return Err(error),
+    };
+    if projection.identity() != identity || projection.project_id() != project {
+        return Err(Failure::conflict(
+            "project_context_stale",
+            "the nature projection belongs to another project or account",
+        ));
+    }
+    let document = projection.result()["document"].as_str().ok_or_else(|| {
+        Failure::invalid(
+            "report_inputs_invalid",
+            "the nature projection has no document",
+        )
+    })?;
+    ds_command_kernel::report_export::held::transformer_natures_from_projection(
+        document, project, names,
+    )
+    .map(Some)
+    .map_err(|error| Failure::invalid("report_inputs_invalid", error))
+}
+
 /// What the service said about the head revisions of a batch's rooms.
 pub(super) enum Heads {
     /// Each room's head revision, as the service reported it.
