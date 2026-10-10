@@ -29,7 +29,7 @@ Unfinished code that an agent can implement and prove without further owner inpu
 | [21. Windows release code](#21-windows-release-code) | 5 |
 | [22. Operations product code](#22-operations-product-code) | 4 |
 | [23. Kernel controls, JSON UI and TypeScript retirement](#23-kernel-controls-json-ui-and-typescript-retirement) | 5 |
-| [24. Owner feature requests (CLI-first, after stabilization)](#24-owner-feature-requests-cli-first-after-stabilization) | 4 |
+| [24. Owner feature requests (CLI-first, after stabilization)](#24-owner-feature-requests-cli-first-after-stabilization) | 5 |
 | [25. CLI reliability reporting and proactive feedback (priority)](#25-cli-reliability-reporting-and-proactive-feedback-priority) | 3 |
 <!-- /toc -->
 
@@ -806,6 +806,8 @@ Rules: [PRINCIPLES.md §5](PRINCIPLES.md#5-kernel-cli-and-ui-owner-2026-10-07) �
 - **Project and instance isolation** (`docs/prompts/claude-project-instance-isolation.md`; contract `project-and-instance-isolation-contract.md`): after the Server execution context: live Desktop instance discovery and CLI/MCP routing that refuses stale or ambiguous targets; generation-fenced UI session state; multi-principal authority and fair capacity across Solar, printing and a third operation on one Server.
 
 ## 24. Owner feature requests (CLI-first, after stabilization)
+
+- **Active governed reconciliation and native workflow slice:** [focused execution plan](workflows-enhancements/governed-repair-release-slice.md). Owns the requested import/repair, report-quantity and reusable workflow features; implementation and proof are tracked there.
 
 - **DS Workflows — reusable analytics and reconciliation, deferred during stabilization** (owner direction 2026-10-07; generalized 2026-10-10): declarative `ds workflow` documents over the Rust vector/table engines become the preferred data and geographic processing interface; Data Factory becomes one way to build a workflow (temporary or saved) and its TypeScript transforms are deleted; agents compose workflows instead of patching data with geopandas, pandas or Polars. Contract and owner questions: [docs/contracts/ds-workflows.md](../docs/contracts/ds-workflows.md) (§14). Phases, each landed and proven before the next, only once the owner admits the work:
   0. Inventory every Data Factory, upload-wizard and attribute-table transformation and map it to a spec §5.2 op; record demonstrated missing operations in this entry and define their owning contracts before implementation.
