@@ -273,6 +273,7 @@ pub use transport::InstallsCall;
 /// The installation inventory: global, admin-gated, and reachable without a
 /// browser for the first time.
 pub mod installs;
+pub mod personal_notes;
 /// Correspondence — parties, records, threads and task blockers — on the
 /// same `POST /api/v1/pm` door, reachable without a window from the start.
 pub mod project_correspondence;

@@ -2964,6 +2964,13 @@ pub(crate) fn save_config_body(
 }
 
 pub trait Transport {
+    fn personal_notes(
+        &mut self,
+        _call: crate::personal_notes::PersonalNotesCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        Err(TransportError::Unreachable)
+    }
+
     fn messaging(
         &mut self,
         _call: crate::messaging::MessagingCall<'_>,
@@ -3332,6 +3339,13 @@ pub trait Transport {
 /// bearer as ordinary `Authorization: Bearer ...` without inferring that it is
 /// a Firebase token.
 pub trait AuthorizedTransport {
+    fn personal_notes(
+        &mut self,
+        _call: crate::personal_notes::PersonalNotesCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        Err(TransportError::Unreachable)
+    }
+
     fn messaging(
         &mut self,
         _call: crate::messaging::MessagingCall<'_>,
@@ -3668,6 +3682,13 @@ pub trait AuthorizedTransport {
 }
 
 impl<T: Transport> AuthorizedTransport for T {
+    fn personal_notes(
+        &mut self,
+        call: crate::personal_notes::PersonalNotesCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        Transport::personal_notes(self, call)
+    }
+
     fn messaging(
         &mut self,
         call: crate::messaging::MessagingCall<'_>,

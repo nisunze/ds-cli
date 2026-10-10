@@ -6292,6 +6292,8 @@ struct DeviceAuthorizedProbe {
     inner: FixtureTransport,
     seen: Vec<&'static str>,
     pm_bodies: Vec<serde_json::Value>,
+    note_bodies: Vec<serde_json::Value>,
+    selected_responses: std::collections::VecDeque<TransportResponse>,
 }
 
 impl DeviceAuthorizedProbe {
@@ -6300,6 +6302,8 @@ impl DeviceAuthorizedProbe {
             inner,
             seen: Vec::new(),
             pm_bodies: Vec::new(),
+            note_bodies: Vec::new(),
+            selected_responses: std::collections::VecDeque::new(),
         }
     }
 
@@ -6331,6 +6335,15 @@ macro_rules! device_authorized_call {
 }
 
 impl AuthorizedTransport for DeviceAuthorizedProbe {
+    fn personal_notes(&mut self, call: ds_client_core::personal_notes::PersonalNotesCall<'_>) -> Result<TransportResponse, TransportError> {
+        Self::verify(call.canonical_uid(),call.canonical_email(),call.device_id(),call.bearer_token())?;
+        assert_eq!(call.path(), "/api/v1/notes");
+        assert_eq!(call.method(), "POST");
+        assert_eq!(call.timeout_seconds(), 30);
+        assert_eq!(call.response_limit(), 8 << 20);
+        self.note_bodies.push(serde_json::from_slice(call.body().as_bytes()).unwrap());
+        Ok(self.selected_responses.pop_front().expect("selected notes response"))
+    }
     fn project_management(
         &mut self,
         call: ds_client_core::ProjectManagementCall<'_>,
@@ -6346,6 +6359,7 @@ impl AuthorizedTransport for DeviceAuthorizedProbe {
         assert_eq!(call.path(), "/api/v1/pm");
         self.pm_bodies
             .push(serde_json::from_slice(call.body().as_bytes()).unwrap());
+        if let Some(response) = self.selected_responses.pop_front() { return Ok(response); }
         Ok(TransportResponse::new(
             200,
             br#"{"success":true,"data":{"projects":[],"status":"active","next_cursor":""}}"#
@@ -14185,4 +14199,220 @@ fn checklist_commands_read_no_unused_data_and_replay_one_captured_project_write(
         "invalid project and expired authority make no request"
     );
     assert!(transport.seen.is_empty());
+}
+
+
+#[test]
+fn selected_notes_read_only_when_consumed_and_keep_private_project_replay_isolated() {
+    use ds_client_core::project_management::checklist::Edit;
+    use ds_client_core::{personal_notes, project_correspondence::Action};
+    let stable = profile(DeploymentLane::Stable);
+    let credential = device_credential(&stable);
+    let live = DeviceAccessSession::new("ds-memory-access-jwt".to_owned(), NOW + 300, NOW).unwrap();
+    let authorization = credential
+        .authorize_api(&live, &stable, "uid-1", NOW)
+        .unwrap();
+    let mut transport = DeviceAuthorizedProbe::new(FixtureTransport::default());
+    let edit: Edit = serde_json::from_value(
+        json!({"action":"check","item_id":"issue-1","answer":"selected evidence"}),
+    )
+    .unwrap();
+    let personal = personal_notes::Action::ChecklistEdit {
+        id: "private-note".into(),
+        expected_version: 7,
+        command_id: "private-retry-001".into(),
+        edit: edit.clone(),
+    };
+    let project = Action::NoteChecklistEdit {
+        id: "project-note".into(),
+        expected_version: 11,
+        command_id: "project-retry-001".into(),
+        edit,
+    };
+    personal.validate().unwrap();
+    project.validate().unwrap();
+    assert!(
+        transport.note_bodies.is_empty()
+            && transport.pm_bodies.is_empty()
+            && transport.seen.is_empty()
+    );
+    let answer = |data| {
+        TransportResponse::new(
+            200,
+            serde_json::to_vec(&json!({"success":true,"data":data})).unwrap(),
+        )
+    };
+    for private in [true, false, true] {
+        if private {
+            transport
+                .selected_responses
+                .push_back(answer(json!({"note":{"id":"private-note","version":8}})));
+            authorization
+                .personal_notes(&mut transport, &personal, NOW)
+                .unwrap();
+        } else {
+            transport
+                .selected_responses
+                .push_back(answer(json!({"item":{"id":"project-note","version":12}})));
+            authorization
+                .project_correspondence(&mut transport, "project-y", &project, NOW)
+                .unwrap();
+        }
+    }
+    assert_eq!(transport.note_bodies.len(), 2);
+    assert_eq!(transport.pm_bodies.len(), 1);
+    assert_eq!(transport.note_bodies[0], transport.note_bodies[1]);
+    assert!(transport.note_bodies[0].get("ds_project").is_none());
+    assert_eq!(transport.pm_bodies[0]["ds_project"], "project-y");
+    assert_eq!(transport.pm_bodies[0]["action"], "note_checklist_edit");
+    let canonical = json!({"id":"project-note","version":12,"checklist":{"kind":"issues","items":[{"id":"issue-1","state":"answered"}],"total":1,"completed":1,"overlay":{"type":"FeatureCollection","features":[]}}});
+    transport
+        .selected_responses
+        .push_back(answer(canonical.clone()));
+    let result = authorization
+        .project_correspondence(
+            &mut transport,
+            "project-y",
+            &Action::NoteChecklistRead {
+                id: "project-note".into(),
+            },
+            NOW,
+        )
+        .unwrap();
+    assert_eq!(result, canonical);
+    transport.selected_responses.push_back(answer(json!({"id":"private-note","version":8,"checklist":{"kind":"checklist","items":[],"total":0,"completed":0}})));
+    authorization
+        .personal_notes(
+            &mut transport,
+            &personal_notes::Action::ChecklistRead {
+                id: "private-note".into(),
+            },
+            NOW,
+        )
+        .unwrap();
+    assert_eq!(transport.note_bodies.len() + transport.pm_bodies.len(), 5);
+    assert!(authorization
+        .personal_notes(&mut transport, &personal, NOW + 300)
+        .is_err());
+    assert!(authorization
+        .personal_notes(
+            &mut transport,
+            &personal_notes::Action::ChecklistRead {
+                id: "bad/id".into()
+            },
+            NOW
+        )
+        .is_err());
+    assert!(authorization
+        .project_correspondence(&mut transport, "", &project, NOW)
+        .is_err());
+    assert!(credential
+        .authorize_api(&live, &stable, "other-user", NOW)
+        .is_err());
+    assert_eq!(
+        transport.note_bodies.len() + transport.pm_bodies.len(),
+        5,
+        "invalid, expired and wrong-account intent makes zero additional API calls"
+    );
+    assert!(
+        transport.seen.is_empty(),
+        "no project catalogue, graph, assets, thread or other unused API consumed"
+    );
+}
+
+#[test]
+fn selected_document_operations_never_acquire_unused_sources_and_replay_exact_pins() {
+    use ds_client_core::{
+        project_correspondence::Action,
+        project_management::documents::{CopyRequest, MailThreadRequest},
+    };
+    let stable = profile(DeploymentLane::Stable);
+    let credential = device_credential(&stable);
+    let live = DeviceAccessSession::new("ds-memory-access-jwt".into(), NOW + 300, NOW).unwrap();
+    let authorization = credential
+        .authorize_api(&live, &stable, "uid-1", NOW)
+        .unwrap();
+    let mut transport = DeviceAuthorizedProbe::new(FixtureTransport::default());
+    let copy:CopyRequest=serde_json::from_value(json!({"source_kind":"task","source_id":"task-1","source_version":9,"target_kind":"project_note","target_id":"note-1","exclude_attachments":true})).unwrap();
+    let mail:MailThreadRequest=serde_json::from_value(json!({"record_id":"record-1","message_count":1,"sources":[{"asset_id":"mail-1","version":3,"sha256":"a".repeat(64),"generation":7}]})).unwrap();
+    copy.validate().unwrap();
+    mail.validate().unwrap();
+    assert!(transport.pm_bodies.is_empty() && transport.seen.is_empty());
+    let answer = |data| {
+        TransportResponse::new(
+            200,
+            serde_json::to_vec(&json!({"success":true,"data":data})).unwrap(),
+        )
+    };
+    for dry_run in [true, false, false] {
+        let copied = json!({"source_kind":"task","source_id":"task-1","source_version":9,"target_kind":"project_note","target_id":"note-1","source_retained":true,"copied_attachment_ids":[],"excluded_attachment_ids":[],"applied":!dry_run,"record":{"id":"note-1","version":1}});
+        transport
+            .selected_responses
+            .push_back(answer(copied.clone()));
+        assert_eq!(
+            authorization
+                .project_correspondence(
+                    &mut transport,
+                    "project-x",
+                    &Action::CopyDocument {
+                        command_id: "copy-retry-001".into(),
+                        base_revision: 9,
+                        request: copy.clone(),
+                        dry_run
+                    },
+                    NOW
+                )
+                .unwrap(),
+            copied
+        );
+        let ingested = json!({"applied":!dry_run,"record":{"id":"record-1"},"manifest":{"schema":1,"message_count":1,"part_count":1,"sha256":"b".repeat(64),"messages":[{"source":{"asset_id":"mail-1","version":3,"sha256":"a".repeat(64),"generation":7},"mail":{"parts_total":1,"truncated":false,"parts":[{"sha256":"c".repeat(64)}]}}]}});
+        transport
+            .selected_responses
+            .push_back(answer(ingested.clone()));
+        assert_eq!(
+            authorization
+                .project_correspondence(
+                    &mut transport,
+                    "project-y",
+                    &Action::MailThreadIngest {
+                        command_id: "mail-retry-001".into(),
+                        request: mail.clone(),
+                        dry_run
+                    },
+                    NOW
+                )
+                .unwrap(),
+            ingested
+        );
+    }
+    assert_eq!(transport.pm_bodies.len(), 6);
+    assert_eq!(transport.pm_bodies[2], transport.pm_bodies[4]);
+    assert_eq!(transport.pm_bodies[3], transport.pm_bodies[5]);
+    for index in [0, 2, 4] {
+        assert_eq!(transport.pm_bodies[index]["ds_project"], "project-x");
+        assert_eq!(transport.pm_bodies[index]["action"], "copy_document");
+    }
+    for index in [1, 3, 5] {
+        assert_eq!(transport.pm_bodies[index]["ds_project"], "project-y");
+        assert_eq!(transport.pm_bodies[index]["action"], "mail_thread_ingest");
+    }
+    let mut invalid = mail;
+    invalid.message_count = 2;
+    assert!(authorization
+        .project_correspondence(
+            &mut transport,
+            "project-y",
+            &Action::MailThreadIngest {
+                command_id: "mail-retry-002".into(),
+                request: invalid,
+                dry_run: false
+            },
+            NOW
+        )
+        .is_err());
+    assert_eq!(transport.pm_bodies.len(), 6);
+    assert!(
+        transport.note_bodies.is_empty() && transport.seen.is_empty(),
+        "no source/asset/catalogue/thread acquisition, including previews and retries"
+    );
 }

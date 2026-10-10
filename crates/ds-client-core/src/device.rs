@@ -1377,6 +1377,18 @@ impl DeviceApiAuthorization<'_> {
             request,
         )
     }
+    /// One selected account-private note action under this captured device principal.
+    pub fn personal_notes<T: AuthorizedTransport>(
+        &self,
+        transport: &mut T,
+        action: &crate::personal_notes::Action,
+        now: u64,
+    ) -> Result<serde_json::Value, ClientError> {
+        action.validate()?;
+        self.ensure_active(now)?;
+        crate::personal_notes::run(self.profile, transport, self.authority(), action)
+    }
+
     /// One account-scoped messaging or notification action, authorized under
     /// this protected device principal by the same owner as a user session.
     pub fn messaging<T: AuthorizedTransport>(

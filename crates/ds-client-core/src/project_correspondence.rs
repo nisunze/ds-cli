@@ -65,6 +65,26 @@ pub struct PartyFilters {
 /// One governed correspondence action — the closed vocabulary of this door.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Action {
+    NoteChecklistRead {
+        id: String,
+    },
+    NoteChecklistEdit {
+        id: String,
+        expected_version: i64,
+        command_id: String,
+        edit: crate::project_management::checklist::Edit,
+    },
+    CopyDocument {
+        command_id: String,
+        base_revision: i64,
+        request: crate::project_management::documents::CopyRequest,
+        dry_run: bool,
+    },
+    MailThreadIngest {
+        command_id: String,
+        request: crate::project_management::documents::MailThreadRequest,
+        dry_run: bool,
+    },
     PartyList(PartyFilters),
     /// `data` is the party's authored fields, exactly as the contract lists
     /// them; `id` mints (`--id`).
@@ -147,6 +167,10 @@ pub enum Action {
 impl Action {
     fn name(&self) -> &'static str {
         match self {
+            Self::NoteChecklistRead { .. } => "note_checklist_read",
+            Self::NoteChecklistEdit { .. } => "note_checklist_edit",
+            Self::CopyDocument { .. } => "copy_document",
+            Self::MailThreadIngest { .. } => "mail_thread_ingest",
             Self::PartyList(_) => "party_list",
             Self::PartyCreate { .. } => "party_create",
             Self::PartyUpdate { .. } => "party_update",
@@ -175,6 +199,48 @@ impl Action {
                 && page.is_none_or(|page| page >= 1)
         };
         match self {
+            Self::NoteChecklistRead { id } => {
+                if !crate::personal_notes::note_id_valid(id) {
+                    return Err(invalid("note_request_invalid"));
+                }
+            }
+            Self::NoteChecklistEdit {
+                id,
+                expected_version,
+                command_id,
+                edit,
+            } => {
+                if !crate::personal_notes::note_id_valid(id)
+                    || !(1..i64::MAX).contains(expected_version)
+                    || !crate::personal_notes::command_id_valid(command_id)
+                {
+                    return Err(invalid("note_request_invalid"));
+                }
+                edit.validate()?;
+            }
+            Self::CopyDocument {
+                command_id,
+                base_revision,
+                request,
+                ..
+            } => {
+                if !crate::personal_notes::command_id_valid(command_id)
+                    || !(0..i64::MAX).contains(base_revision)
+                {
+                    return Err(invalid("document_request_invalid"));
+                }
+                request.validate()?;
+            }
+            Self::MailThreadIngest {
+                command_id,
+                request,
+                ..
+            } => {
+                if !crate::personal_notes::command_id_valid(command_id) {
+                    return Err(invalid("document_request_invalid"));
+                }
+                request.validate()?;
+            }
             Self::PartyList(filters) => {
                 if !page_ok(filters.limit, filters.page) {
                     return Err(invalid(
@@ -352,6 +418,38 @@ impl Action {
             }
         };
         match self {
+            Self::NoteChecklistRead { id } => {
+                payload["id"] = json!(id.trim());
+            }
+            Self::NoteChecklistEdit {
+                id,
+                expected_version,
+                command_id,
+                edit,
+            } => {
+                payload["id"] = json!(id.trim());
+                payload["expected_version"] = json!(expected_version);
+                payload["command_id"] = json!(command_id);
+                payload["data"] = serde_json::to_value(edit).expect("closed checklist edit");
+            }
+            Self::CopyDocument {
+                command_id,
+                base_revision,
+                request,
+                dry_run,
+            } => {
+                payload["command_id"] = json!(command_id);
+                payload["base_revision"] = json!(base_revision);
+                payload["data"] = request.payload(*dry_run);
+            }
+            Self::MailThreadIngest {
+                command_id,
+                request,
+                dry_run,
+            } => {
+                payload["command_id"] = json!(command_id);
+                payload["data"] = request.payload(*dry_run);
+            }
             Self::PartyList(filters) => {
                 set(&mut payload, "query", filters.query.as_ref());
                 set(&mut payload, "role", filters.role.as_ref());
@@ -626,6 +724,37 @@ pub(crate) fn run<T: AuthorizedTransport>(
     let data = body.get("data").cloned().unwrap_or(Value::Null);
     if data.is_null() {
         return Err(unreadable());
+    }
+    match action {
+        Action::NoteChecklistRead { id } => {
+            if data["id"].as_str() != Some(id.trim())
+                || data["version"].as_i64().is_none_or(|v| v < 1)
+            {
+                return Err(unreadable());
+            }
+            crate::project_management::checklist::projection(&data)?;
+        }
+        Action::NoteChecklistEdit {
+            id,
+            expected_version,
+            ..
+        } => {
+            if data["item"]["id"].as_str() != Some(id.trim())
+                || data["item"]["version"].as_i64() != Some(expected_version + 1)
+            {
+                return Err(unreadable());
+            }
+        }
+        Action::CopyDocument {
+            command_id,
+            base_revision,
+            request,
+            dry_run,
+        } => request.check_response(&data, command_id, *base_revision, *dry_run)?,
+        Action::MailThreadIngest {
+            request, dry_run, ..
+        } => request.check_response(&data, *dry_run)?,
+        _ => {}
     }
     // Graph mutations answer `{result: {…}}`; the result is what a caller
     // reads. Every read action's data IS the answer.

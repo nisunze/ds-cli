@@ -1829,6 +1829,28 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         )
     }
 
+    /// One selected account-private note action; no project or note catalogue read.
+    pub fn personal_notes(
+        &mut self,
+        action: &crate::personal_notes::Action,
+        now: u64,
+    ) -> Result<serde_json::Value, ClientError> {
+        action.validate()?;
+        self.ensure_fresh_session(now)?;
+        let session = self.session.as_ref().ok_or_else(signed_out)?;
+        crate::personal_notes::run(
+            &self.profile,
+            &mut self.transport,
+            crate::authorized::Authority {
+                bearer_token: &session.id_token,
+                uid: &session.stored.uid,
+                email: &session.stored.email,
+                device_id: None,
+            },
+            action,
+        )
+    }
+
     /// One account-scoped messaging or notification action. Brain authorizes
     /// every explicitly addressed conversation or project.
     pub fn messaging(
