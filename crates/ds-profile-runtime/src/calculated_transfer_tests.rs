@@ -503,13 +503,15 @@ fn observed_edits_land_whole_without_a_reconcile_job() {
             .any(|id| id == section.id.as_str())
     );
     assert!(update["pending_reconcile"].as_array().unwrap().is_empty());
-    assert!(update["scene_delta_json"].is_string());
+    assert!(result["scene_delta_json"].is_string());
+    assert_eq!(result["deferred"], false);
+    assert!(result["authored_delta"].is_null());
     assert_eq!(result["calculation"]["required"], false);
     assert_eq!(update["surface_work"]["computed_ground"], 0);
     assert_eq!(update["reference_work"]["computed_sections"], 1);
     assert!(runtime.held["one"].pending_receipts.is_empty());
     let prepared = prepare(&mut runtime, &worker);
-    let delta = serde_json::from_str(update["scene_delta_json"].as_str().unwrap()).unwrap();
+    let delta = serde_json::from_str(result["scene_delta_json"].as_str().unwrap()).unwrap();
     let head = worker.current_revision();
     let whole = receiver
         .admit(
@@ -568,7 +570,8 @@ fn observed_edits_land_whole_without_a_reconcile_job() {
         let phases = core
             + measured("authored_geometry_ms")
             + measured("authored_display_ms")
-            + measured("profile_response_build_ms");
+            + measured("profile_response_build_ms")
+            + measured("profile_presentation_ms");
         assert!(metrics["total_native_ms"].as_f64().unwrap() >= phases);
         assert!(
             metrics["runtime_elapsed_ms"].as_f64().unwrap()
@@ -584,7 +587,7 @@ fn observed_edits_land_whole_without_a_reconcile_job() {
             0
         );
         let delta = serde_json::from_str(
-            next["calculated_update"]["scene_delta_json"]
+            next["scene_delta_json"]
                 .as_str()
                 .unwrap(),
         )
@@ -601,6 +604,8 @@ fn observed_edits_land_whole_without_a_reconcile_job() {
             .unwrap();
         let fresh_scene: ds_grid_engine::ProfileAtlasScene =
             serde_json::from_value(fresh["scene"].clone()).unwrap();
+        assert_eq!(next["display"], fresh["scene"]["display"]);
+        assert_eq!(next["command_view"], fresh["command_view"]);
         assert!(
             serde_json::to_vec(receiver.scene()).unwrap()
                 == serde_json::to_vec(&fresh_scene).unwrap()
@@ -609,10 +614,82 @@ fn observed_edits_land_whole_without_a_reconcile_job() {
     }
 }
 
-/// A complete calculation consumes temporary authored connections. The next
-/// authored splice must address that completed worker scene.
+/// Exact-package measurement excludes process startup, IPC and canvas draw.
 #[test]
-fn repeated_geometry_edits_admit_authored_splices_after_complete_updates() {
+#[ignore = "explicit package/batch replay; run alone with disk scratch"]
+fn replay_complete_observation_cost_and_fresh_parity() {
+    let package = ds_grid_exchange::dsgrid::ingest(
+        &std::fs::read(std::env::var_os("DS_PROFILE_RENDERER_PACKAGE").unwrap()).unwrap(),
+    )
+    .unwrap()
+    .0;
+    let batch: Value = serde_json::from_slice(
+        &std::fs::read(std::env::var_os("DS_PROFILE_RENDERER_BATCH").unwrap()).unwrap(),
+    )
+    .unwrap();
+    let source = package.snapshot.clone();
+    let input = crate::transactional_projection_tests::request_for_with_assets(
+        source.clone(),
+        package.assets.clone(),
+    );
+    let mut worker = GridSession::open(source);
+    let mut runtime = Runtime::default();
+    let initial = runtime.execute(input.clone()).unwrap();
+    let mut receiver =
+        CalculatedSceneBase::new(serde_json::from_value(initial["scene"].clone()).unwrap());
+    for (index, step) in batch["commands"].as_array().unwrap().iter().enumerate() {
+        let base = worker.current_revision().revision_id.to_string();
+        worker
+            .apply_command(ds_grid_engine::CommandEnvelope::new(
+                format!("renderer-replay-{index}"),
+                worker.current_revision().revision_id.clone(),
+                serde_json::from_value(step["command"].clone()).unwrap(),
+            ))
+            .unwrap();
+        let mut request = refresh(&runtime, &input, &base, &worker);
+        request.calculated_base_signature = Some(receiver.signature().to_string());
+        let result = runtime
+            .execute(Request::Observe(Box::new(request)))
+            .unwrap();
+        assert_eq!(result["calculation"]["required"], false, "{result}");
+        let delta = serde_json::from_str(result["scene_delta_json"].as_str().unwrap()).unwrap();
+        receiver = receiver
+            .admit(
+                &delta,
+                &worker.current_revision().revision_id,
+                &worker.current_revision().roots.engineering_input_root,
+            )
+            .unwrap();
+        let fresh = Runtime::default()
+            .execute(
+                crate::transactional_projection_tests::request_for_with_assets(
+                    worker.snapshot().clone(),
+                    package.assets.clone(),
+                ),
+            )
+            .unwrap();
+        assert_eq!(result["display"], fresh["scene"]["display"]);
+        assert_eq!(result["command_view"], fresh["command_view"]);
+        let fresh: ds_grid_engine::ProfileAtlasScene =
+            serde_json::from_value(fresh["scene"].clone()).unwrap();
+        assert_eq!(
+            serde_json::to_vec(receiver.scene()).unwrap(),
+            serde_json::to_vec(&fresh).unwrap()
+        );
+        eprintln!(
+            "{}",
+            json!({"index":index, "metrics":result["metrics"],
+            "scene_delta_bytes":result["scene_delta_json"].as_str().unwrap().len(),
+            "display_bytes":serde_json::to_vec(&result["display"]).unwrap().len(),
+            "fresh_parity":true})
+        );
+    }
+}
+
+/// Complete geometry edits advance the signed calculated scene and consume
+/// temporary authored connections without an intermediate worker overlay.
+#[test]
+fn repeated_geometry_edits_admit_complete_calculated_updates() {
     let named_package = std::env::var_os("DS_PROFILE_GEOMETRY_PACKAGE");
     let package = named_package.as_ref().map(|path| {
         ds_grid_exchange::dsgrid::ingest(&std::fs::read(path).unwrap())
@@ -667,32 +744,11 @@ fn repeated_geometry_edits_admit_authored_splices_after_complete_updates() {
         let next = runtime
             .execute(Request::Observe(Box::new(request)))
             .unwrap();
-        let authored: ds_grid_engine::profile_atlas::ProfileAuthoredDelta =
-            serde_json::from_value(next["authored_delta"].clone()).unwrap();
-        eprintln!(
-            "edit {i}: retained connections {}, completed connections {}, authored splices {:?}",
-            runtime.held["one"]
-                .authored
-                .as_ref()
-                .unwrap()
-                .geometry()
-                .authored_connections
-                .len(),
-            receiver.scene().authored_connections.len(),
-            authored
-                .splices
-                .iter()
-                .map(|s| (&s.path, s.start, s.delete_count, s.items.len()))
-                .collect::<Vec<_>>()
-        );
-        let visible = authored.apply_to_scene(receiver.scene()).unwrap();
-        assert_eq!(
-            visible.model_revision,
-            worker.current_revision().revision_id
-        );
+        assert!(next["authored_delta"].is_null(), "a complete scene carries no unused authored overlay");
+        assert_eq!(next["deferred"], false);
         assert_eq!(next["calculation"]["required"], false, "{next}");
         let delta = serde_json::from_str(
-            next["calculated_update"]["scene_delta_json"]
+            next["scene_delta_json"]
                 .as_str()
                 .expect(&next.to_string()),
         )

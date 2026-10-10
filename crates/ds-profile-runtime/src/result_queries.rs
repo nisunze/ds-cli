@@ -729,7 +729,7 @@ mod tests {
             let observed = runtime.execute(Request::Observe(Box::new(replay))).unwrap();
             assert_eq!(observed["calculation"]["required"], false, "{observed}");
             let delta = serde_json::from_str(
-                observed["calculated_update"]["scene_delta_json"]
+                observed["scene_delta_json"]
                     .as_str()
                     .unwrap(),
             )

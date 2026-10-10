@@ -347,9 +347,9 @@ impl Runtime {
         }
         if !calculate {
             let authored_started = std::time::Instant::now();
-            // Admission stays transactional, but observation never enters scene,
-            // weather, usage or analysis preparation. Retain the calculated view
-            // and its axis in RAM; the response is bounded freshness metadata.
+            // Replay stays transactional. The engine may complete an affected
+            // section update against the worker's signed calculated base;
+            // otherwise retain the authored overlay and explicit reconcile need.
             let state = self.views[&request.scope].clone();
             resolve(&state, &project.style_document)?;
             review_status_colors(&project.style_document)?;
@@ -554,10 +554,52 @@ impl Runtime {
                 };
             }
             let update_core_ms = update_started.elapsed().as_secs_f64() * 1000.;
+            let presentation_started = std::time::Instant::now();
+            let complete_analysis = updated
+                .then(|| {
+                    self.analyses
+                        .get(&request.scope)
+                        .filter(|analysis| {
+                            analysis["model_revision"] == request.expected_revision.as_str()
+                        })
+                        .cloned()
+                })
+                .flatten();
+            let complete_presentation = if updated {
+                let scene = held
+                    .calculated_base
+                    .as_ref()
+                    .expect("complete calculated update")
+                    .scene();
+                let display = Projection::from_scene(
+                    scene,
+                    &state,
+                    held.rows.clone(),
+                    &held.label_policy,
+                    held.options.clone(),
+                    &project.style_document,
+                )?;
+                let command = command_view::project(
+                    &state,
+                    Some(&held.rows),
+                    Some(scene),
+                    complete_analysis.as_ref(),
+                    !held.session.snapshot().structures.is_empty(),
+                );
+                held.authored_display
+                    .clone_from(&display.authored_structures);
+                Some((
+                    serde_json::to_value(display).map_err(|error| error.to_string())?,
+                    command,
+                ))
+            } else {
+                None
+            };
+            let presentation_ms = presentation_started.elapsed().as_secs_f64() * 1000.;
             let computed = held.review.base_scene().map(|scene| &scene.model_revision);
             let authored_ms = authored_started.elapsed().as_secs_f64() * 1000.0;
             let response_started = std::time::Instant::now();
-            let delta_bytes = authored_delta.as_ref().map(|delta| {
+            let delta_bytes = authored_delta.as_ref().filter(|_| !updated).map(|delta| {
                 serde_json::to_vec(delta)
                     .expect("native delta serializes")
                     .len()
@@ -569,17 +611,29 @@ impl Runtime {
                     "analysis_state":state.analysis_state(false, !held.session.snapshot().structures.is_empty()),
                     "calculation_policy":"explicit"},
                 "projection_unavailable":null, "ran":false, "deferred":true, "calculated_update":calculated_update,
-                "authored_delta":authored_delta, "authored_display_delta":authored_display_delta, "authored_unavailable":authored_unavailable,
+                "authored_delta":authored_delta.as_ref().filter(|_| !updated), "authored_display_delta":authored_display_delta.as_ref().filter(|_| !updated), "authored_unavailable":authored_unavailable,
                 "calculation":{"policy":"explicit", "model_revision":request.expected_revision,
                     "computed_revision":computed, "required":!updated && computed != Some(&request.expected_revision),
                     "scope":scope}});
+            if let Some((display, command)) = complete_presentation {
+                // Existing exact calculated transport: the host applies this
+                // delta once and the worker admits it without constructing a
+                // second renderer diff or an intermediate authored pick index.
+                response["scene_delta_json"] =
+                    response["calculated_update"]["scene_delta_json"].take();
+                response["deferred"] = json!(false);
+                response["display"] = display;
+                response["command_view"] = command;
+                response["analysis"] = complete_analysis.unwrap_or(Value::Null);
+            }
             response["metrics"] = json!({"admission_ms":admission_ms,"journal_ms":journal_ms,"replay_ms":replay_ms,
                 "authored_ms":authored_ms,"total_native_ms":started.elapsed().as_secs_f64()*1000.0,
                 "authored_geometry_ms":authored_geometry_ms,"authored_display_ms":authored_display_ms,
                 "profile_engine_update_ms":engine_update_ms,"profile_delta_encode_ms":delta_encode_ms,
                 "profile_authored_rebase_ms":authored_rebase_ms,"profile_result_index_ms":result_index_ms,
                 "profile_update_core_ms":update_core_ms,
-                "authored_delta_bytes":delta_bytes,"authored_display_delta_bytes":authored_display_delta.as_ref().map(|delta| serde_json::to_vec(delta).unwrap().len()),"applied_entries":receipts.len(),"retained_entries":entries.len()});
+                "profile_presentation_ms":presentation_ms,
+                "authored_delta_bytes":delta_bytes,"authored_display_delta_bytes":authored_display_delta.as_ref().filter(|_| !updated).map(|delta| serde_json::to_vec(delta).unwrap().len()),"applied_entries":receipts.len(),"retained_entries":entries.len()});
             response["metrics"]["profile_update_ms"] =
                 json!(update_started.elapsed().as_secs_f64() * 1000.);
             if updated {

@@ -67,20 +67,22 @@ verified before projection. The admitted receipt names `model_id`,
 identity, the held `base_revision` and `base_history`, the worker's
 `expected_revision` and `target_history`, its full retained typed `JournalEntry`
 list, and the same display inputs. There are no package bytes in refresh.
-`operation: observe` uses the same fenced replay inputs but never prepares a
-scene, weather case, usage screen or analysis. It retains the calculated scene
-and axis, advances authored RAM history and demand-cache invalidation only, and
-returns `deferred:true`, `ran:false`, and native `calculation` metadata: explicit
-policy, authored/computed revisions, whether calculation is required, and the
-union of engine recalculation scopes since the held scene. Display patches and
-Analyze are refused on observation. No dense scene is serialized for this read.
-Observation also stages an independent native `ProfileAuthoredView` and returns
-`authored_delta` at the retained axis. Its fields identify the previous authored
+`operation: observe` uses the same fenced replay inputs and never runs
+whole-model Analyze. With a matching signed calculated base, the engine may
+complete an affected-section update and return its exact calculated delta and
+native presentation. Otherwise it retains the calculated scene and axis,
+advances authored RAM history and demand-cache invalidation, and returns
+`deferred:true`, `ran:false` and native `calculation` metadata: explicit policy,
+authored/computed revisions, whether calculation is required, and accumulated
+engine recalculation scope. Display patches and Analyze are refused on Observe.
+No dense calculated scene is serialized for this read.
+An incomplete observation stages an independent `ProfileAuthoredView` and
+returns `authored_delta` at the retained axis, identifying previous authored
 revision, current authored root, calculated revision and axis digest. Workers
-admit it against exact history before updating their current geometry/pick index;
-renderers transport native field changes without deriving geometry. The calculated
-review and its input root remain unchanged. An unavailable authored axis is named
-in `authored_unavailable`, with no package or calculated-scene fallback.
+admit it against exact history before updating geometry/picking; hosts transport
+native fields unchanged. Its calculated review/input root stay unchanged until
+a complete update. An unavailable authored axis is named in
+`authored_unavailable`, without a package or calculated-scene fallback.
 `metrics` reports journal admission, native replay and authored projection
 milliseconds, delta bytes and actual applied/retained entry counts. These phase
 measurements exclude host transport and worker installation and do not constitute
@@ -245,6 +247,15 @@ The headless runtime also accepts explicit calculated geometry delta transport:
   section ids; the runtime base stays where the worker's is and
   `calculation.required` stays true. The host then reconciles at once (Profile
   contract §0: an edit lands whole).
+- A complete Observe returns the existing exact calculated transport:
+  `deferred:false`, primary `scene_delta_json`, native `display` and
+  `command_view`. Full projection and incremental observation use the same
+  `Projection::from_scene` presentation authority. The host applies the
+  calculated delta once; the worker admits its original text without a second
+  renderer comparison or intermediate authored pick installation. The response
+  omits the unused authored overlay. Incomplete observations retain the authored
+  delta/reconciliation path. History, input-root, publication and exact result
+  signature fences remain unchanged.
 
 The receiving native owner must admit the delta against its immutable calculated
 base, target revision and engineering root before installing picking/render
@@ -448,9 +459,10 @@ three, retains the exact redo history, and matches a fresh native scene.
 Observe and explicit Refresh/Analyze return bounded numeric `metrics`.
 Observe separates `authored_geometry_ms`, `authored_display_ms`,
 `profile_engine_update_ms`, `profile_delta_encode_ms`,
-`profile_authored_rebase_ms`, `profile_result_index_ms` and
+`profile_authored_rebase_ms`, `profile_result_index_ms`, `profile_presentation_ms` and
 `profile_response_build_ms`. `profile_update_core_ms` contains the engine,
-delta encoding, authored rebase and result-index phases. `authored_ms` and
+delta encoding, authored rebase and result-index phases. Presentation is a
+separate phase. `authored_ms` and
 the historical `profile_update_ms` are inclusive measurements; do not sum
 them with their children. `total_native_ms` ends after response construction
 and metric assembly. `runtime_elapsed_ms` additionally includes publication

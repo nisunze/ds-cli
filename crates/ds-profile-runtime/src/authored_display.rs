@@ -80,3 +80,46 @@ pub(super) fn delta(before: &Groups, after: &Groups) -> Groups {
         .map(|key| (key.clone(), after.get(key).cloned().unwrap_or(Value::Null)))
         .collect()
 }
+
+impl Projection {
+    /// One native presentation authority for full calculation and complete
+    /// incremental observation. Hosts transport this projection unchanged.
+    pub(super) fn from_scene(
+        scene: &ProfileAtlasScene,
+        state: &DisplayState,
+        rows: Vec<DisplayRow>,
+        labels: &ds_grid_model::StructureLabelPolicy,
+        scene_options: ProfileAtlasOptions,
+        style_document: &Value,
+    ) -> Result<Self, String> {
+        let primitives = decorations::project(scene, state, &rows, labels);
+        let cables = ds_command_kernel::profile_encoding::cable_pens(
+            scene
+                .conductor_spans
+                .iter()
+                .map(|span| span.cable_engineering_name.as_str()),
+            &rows,
+            &state.cable_colors,
+        );
+        let legend = ds_command_kernel::profile_encoding::styled_legend(state, &rows, &cables);
+        let symbols = symbols::project(scene, state, &rows, &legend);
+        let (authored_structures, symbols, primitives) = partition(symbols, primitives, scene);
+        Ok(Self {
+            label_fields: label_fields(state),
+            groups: ds_command_kernel::profile_controls::groups(state, &rows, &cables),
+            style_controls: ds_command_kernel::profile_style::controls(state, &rows),
+            symbols,
+            authored_structures,
+            selection_families: ds_command_kernel::grid_selection_controls::profile_families(state),
+            state: state.clone(),
+            legend,
+            cables,
+            rows,
+            scene_options,
+            primitives,
+            review_status_colors: review_status_colors(style_document)?,
+            clearance_violation_encoding: clearance_violation_encoding(style_document)?,
+            review_box_ink: review_box_ink(style_document)?,
+        })
+    }
+}

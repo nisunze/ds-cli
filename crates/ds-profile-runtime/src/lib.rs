@@ -391,7 +391,7 @@ impl Runtime {
             return Ok(response);
         }
         let mut scene = scene.unwrap();
-        let (rows, review_status_colors, review_box_ink) = styles.unwrap();
+        let (rows, _, _) = styles.unwrap();
         let mut label_policy = source.presentation.effective_profile_structure_labels();
         label_policy.fields = serde_json::from_value(json!(label_fields(&state)))
             .map_err(|error| error.to_string())?;
@@ -476,47 +476,13 @@ impl Runtime {
                 calculated_touched: Default::default(),
             },
         );
-        let primitives = decorations::project(&scene, &state, &rows, &label_policy);
-        let cables = ds_command_kernel::profile_encoding::cable_pens(
-            scene
-                .conductor_spans
-                .iter()
-                .map(|span| span.cable_engineering_name.as_str()),
-            &rows,
-            &state.cable_colors,
-        );
-        let base_axis = self.held[&request.scope]
-            .review
-            .base_axis_digest()
-            .unwrap()
-            .to_string();
-        let legend = ds_command_kernel::profile_encoding::styled_legend(&state, &rows, &cables);
-        let symbols = symbols::project(&scene, &state, &rows, &legend);
-        let (authored_structures, symbols, primitives) =
-            authored_display::partition(symbols, primitives, &scene);
-        self.held.get_mut(&request.scope).unwrap().authored_display = authored_structures.clone();
-        scene.case_base_axis_digest = Some(base_axis);
+        let display = Projection::from_scene(
+            &scene, &state, rows, &label_policy, scene_options, &request.style_document,
+        )?;
+        self.held.get_mut(&request.scope).unwrap().authored_display = display.authored_structures.clone();
+        scene.case_base_axis_digest = Some(self.held[&request.scope].review.base_axis_digest().unwrap().to_string());
         let (mut scene, exact_scene, scene_delta, scene_transfer_metrics) = self.transfer_calculated_scene(&request.scope, scene)?;
-        let display = serde_json::to_value(Projection {
-            label_fields: label_fields(&state),
-            groups: ds_command_kernel::profile_controls::groups(&state, &rows, &cables),
-            style_controls: ds_command_kernel::profile_style::controls(&state, &rows),
-            symbols,
-            authored_structures,
-            selection_families: ds_command_kernel::grid_selection_controls::profile_families(
-                &state,
-            ),
-            state: state.clone(),
-            legend,
-            cables,
-            rows,
-            scene_options,
-            primitives,
-            review_status_colors,
-            clearance_violation_encoding: clearance_violation_encoding(&request.style_document)?,
-            review_box_ink,
-        })
-        .unwrap();
+        let display = serde_json::to_value(display).unwrap();
         let compact_display = if scene_delta.is_none() && exact_scene.is_none() {
             scene["display"] = display;
             None
