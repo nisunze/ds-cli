@@ -26,6 +26,9 @@ use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
+mod acquisition;
+pub use acquisition::{acquire, AcquiredRoom, AcquisitionError, RoomSource};
+
 pub const SCHEMA: &str = "ds.report-hold/v1";
 const ROOT: &str = "report-hold";
 const VERSION: &str = "v1";
@@ -226,6 +229,10 @@ pub fn active_print_rooms(
 /// Hold one room read whole from the service, replacing any older copy.
 pub fn hold_room(root: &Path, scope: &Scope, room: &Room) -> Result<(), String> {
     let _lock = lock(root, scope)?;
+    hold_room_locked(root, scope, room)
+}
+
+fn hold_room_locked(root: &Path, scope: &Scope, room: &Room) -> Result<(), String> {
     let bytes = serde_json::to_vec(room).map_err(|_| "a room could not be encoded")?;
     let path = room_file(root, scope, &room.transformer);
     ds_layer_store::private::create_dir_all(path.parent().expect("a room file has a folder"))

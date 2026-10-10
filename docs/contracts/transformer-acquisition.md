@@ -12,7 +12,17 @@ Pinning, map opening, paired CLI design reads, room materialization, and individ
 and combined report preparation use it. Complete rooms alone enter the canonical
 store. A renderer can project a room in memory, but cannot cache that projection
 as editable truth. A partial historical pin cache is not a canonical room.
-Native headless and derivative-worker migration remains in [OPEN §16](../../backlog/OPEN.md#16-map-data-datasets-and-screen-styling).
+Native saved-room execution lives in `ds-project-data::room_hold::acquire`.
+Project exports and headless pinned previews share this owner and its complete
+principal/project cache. It verifies saved-content digests before reuse, checks
+observed revisions and class inventories through the same planner, shares
+concurrent reads using a per-room OS file lock, and compares the captured room
+under the room/index lock before publication. A late response cannot replace a
+newer held room. It never substitutes a projected context for saved bytes.
+A pin receipt distinguishes actual acquisition counts from hypothetical `--held`
+planning counts; local retention failures remain explicit. Missing legacy
+saved digests require refresh, and unavailable reads cannot bless stale bytes.
+The other native headless readers and derivative-worker migration remain in [OPEN §16](../../backlog/OPEN.md#16-map-data-datasets-and-screen-styling).
 
 A complete unchanged room needs no source download. Saved inventory includes all
 classes, not only the transformer point; missing poles/custom classes and reduced
