@@ -232,6 +232,9 @@ name = "arrow-schema"
 version = "56.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5a0d5eb3fe25337ff83e8333a08379bdd1540b0961b1c888f6e505d971c198e1"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "arrow-select"
@@ -1740,14 +1743,17 @@ name = "ds-layer-store"
 version = "0.1.0"
 dependencies = [
  "dirs",
+ "ds-columnar",
  "ds-command-kernel",
  "fs2",
+ "libc",
  "rusqlite",
  "serde",
  "serde_json",
  "sha2 0.10.9",
  "tempfile",
  "uuid",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
