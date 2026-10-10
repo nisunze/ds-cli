@@ -14103,3 +14103,77 @@ fn guarded_property_repair_uses_two_exact_reads_and_never_sends_process_or_whole
     assert!(client.repair_transformer("explicit-project",&wrong_scope,NOW+1).is_err());
     assert!(transport.0.lock().unwrap().transformer_save_bodies.is_empty());
 }
+
+#[test]
+fn checklist_commands_read_no_unused_data_and_replay_one_captured_project_write() {
+    use ds_client_core::project_management::checklist::{Edit, Promotion};
+
+    let stable = profile(DeploymentLane::Stable);
+    let credential = device_credential(&stable);
+    let live = DeviceAccessSession::new("ds-memory-access-jwt".to_owned(), NOW + 300, NOW).unwrap();
+    let authorization = credential
+        .authorize_api(&live, &stable, "uid-1", NOW)
+        .unwrap();
+    let mut transport = DeviceAuthorizedProbe::new(FixtureTransport::default());
+    let edit: Edit = serde_json::from_value(json!({
+        "action":"edit", "item_id":"item-1", "body":"selected evidence", "attachment_ids":[]
+    }))
+    .unwrap();
+    let command = edit.command("task-1", "checklist-retry-001", 17).unwrap();
+    let promotion = Promotion {
+        item_id: "item-1".into(),
+        child_id: "child-1".into(),
+        request_emails: vec![],
+    }
+    .command("task-1", "promote-retry-001", 18)
+    .unwrap();
+    // Describing/building a command does not read a catalogue, graph or item.
+    assert!(transport.pm_bodies.is_empty());
+    assert!(transport.seen.is_empty());
+    for (project, selected) in [
+        ("project-a", &command),
+        ("project-b", &promotion),
+        ("project-a", &command),
+    ] {
+        authorization
+            .project_management(&mut transport, project, selected, NOW)
+            .unwrap();
+    }
+    assert_eq!(transport.pm_bodies.len(), 3);
+    assert!(
+        transport.seen.is_empty(),
+        "no unrelated native API boundary was consumed"
+    );
+    assert_eq!(
+        transport.pm_bodies[0], transport.pm_bodies[2],
+        "an exact replay keeps its captured intent"
+    );
+    for (index, project) in ["project-a", "project-b", "project-a"].iter().enumerate() {
+        assert_eq!(transport.pm_bodies[index]["action"], "commit_command");
+        assert_eq!(transport.pm_bodies[index]["ds_project"], *project);
+    }
+    assert_eq!(
+        transport.pm_bodies[0]["command"]["edit_checklist"]["item_id"],
+        "item-1"
+    );
+    assert_eq!(
+        transport.pm_bodies[1]["command"]["promote_checklist_item"]["child_id"],
+        "child-1"
+    );
+    assert_eq!(
+        authorization
+            .project_management(&mut transport, "", &command, NOW)
+            .unwrap_err()
+            .kind(),
+        ErrorKind::InvalidInput
+    );
+    assert!(authorization
+        .project_management(&mut transport, "project-a", &command, NOW + 300)
+        .is_err());
+    assert_eq!(
+        transport.pm_bodies.len(),
+        3,
+        "invalid project and expired authority make no request"
+    );
+    assert!(transport.seen.is_empty());
+}

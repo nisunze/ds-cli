@@ -30,6 +30,8 @@
 
 use serde_json::{json, Map, Value};
 
+pub mod checklist;
+
 use crate::{
     authorized::Authority, AuthorizedTransport, ClientError, ClientProfile, ErrorKind,
     ProjectManagementCall, ServiceRefusal,
