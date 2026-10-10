@@ -14061,7 +14061,7 @@ fn reliability_event_rides_the_fixed_ingest_with_an_optional_bearer() {
 }
 
 #[test]
-fn guarded_property_repair_uses_two_exact_reads_and_never_sends_process_or_whole_layers() {
+fn guarded_property_repair_uses_one_exact_read_and_never_sends_process_or_whole_layers() {
     use ds_command_kernel::{design::{self,Snapshot},design_repair::{self,Proposal,ApplySelection}};
     use ds_command_kernel::report_export::jcs::layers_content_digest;
     use serde_json::Value;
@@ -14083,12 +14083,11 @@ fn guarded_property_repair_uses_two_exact_reads_and_never_sends_process_or_whole
     for corrupt_readback in [false,true] {
         let transport=FixtureTransport::with_sign_in(SIGN_IN);
         let mut client=signed_in(transport.clone(),MemoryStore::default());
-        transport.push_transformer_context(200,&context(&target.layers,7));
         transport.push_transformer_context(200,&context(if corrupt_readback {&target.layers}else{&projected.layers},8));
         transport.0.lock().unwrap().transformer_saves.push_back(TransportResponse{status:200,body:serde_json::to_vec(&json!({"success":true,"data":{"operation_id":"repair-one","transformer_name":"T1","source_version":7,"source_content_digest":source_digest,"version":8,"content_digest":expected,"changed_cells":1}})).unwrap()});
         let result=client.repair_transformer("explicit-project",&publication,NOW+1);
         if corrupt_readback {assert_eq!(result.unwrap_err().to_string(),"repair_readback_unverified");}
-        else {let result=result.unwrap();assert_eq!(result["verified"],true);assert_eq!(result["measurements"]["transformer_reads"],2);}
+        else {let result=result.unwrap();assert_eq!(result["verified"],true);assert_eq!(result["measurements"]["transformer_reads"],1);}
         let state=transport.0.lock().unwrap();
         assert_eq!(state.transformer_save_bodies.len(),1);
         let body=&state.transformer_save_bodies[0];
@@ -14098,6 +14097,16 @@ fn guarded_property_repair_uses_two_exact_reads_and_never_sends_process_or_whole
         assert_eq!(body["repair"].as_object().unwrap().len(),4);
         assert!(state.configurations.is_empty());
     }
+    // The independent server CAS refusal consumes no saved-room read at all.
+    let refused_transport=FixtureTransport::with_sign_in(SIGN_IN);
+    let mut refused_client=signed_in(refused_transport.clone(),MemoryStore::default());
+    refused_transport.0.lock().unwrap().transformer_saves.push_back(TransportResponse{status:409,body:serde_json::to_vec(&json!({"success":false,"error":{"code":"TRANSFORMER_REPAIR_PREIMAGE_MOVED","message":"Selected cell changed"}})).unwrap()});
+    let error=refused_client.repair_transformer("explicit-project",&publication,NOW+1).unwrap_err();
+    assert_eq!(error.service_refusal().unwrap().code(),Some("transformer_repair_preimage_moved"));
+    let state=refused_transport.0.lock().unwrap();
+    assert_eq!(state.transformer_save_bodies.len(),1);
+    assert!(!state.calls.iter().any(|c|c.starts_with("transformer_context ")));
+    drop(state);
     let transport=FixtureTransport::with_sign_in(SIGN_IN);let mut client=signed_in(transport.clone(),MemoryStore::default());
     let mut wrong_scope=publication;wrong_scope.selection.scope.principal="different".into();
     assert!(client.repair_transformer("explicit-project",&wrong_scope,NOW+1).is_err());

@@ -160,4 +160,6 @@ transport separately; the pure engine does not claim those effects.
 
 ## Native persistence proof
 
-`ds-client-core/tests/client_contract.rs` exercises the property-only wire, two saved reads, exact retained layers, corrupt readback and scope refusal. The owning suite passed 262 unit, 198 client-contract and 19 journal tests. `ds-design-workspace/tests/repair.rs` proves SQLite CAS, replay, historical readback, preservation, atomic invalid selections, pending outbox and zero processing jobs; the complete workspace suite also passed. Timings are synthetic regression timings, not project performance claims.
+`ds-client-core/tests/client_contract.rs` exercises the property-only wire, one saved readback, exact retained layers, corrupt readback and scope refusal. The owning suite passed 262 unit, 198 client-contract and 19 journal tests. `ds-design-workspace/tests/repair.rs` proves SQLite CAS, replay, historical readback, preservation, atomic invalid selections, pending outbox and zero processing jobs; the complete workspace suite also passed. Timings are synthetic regression timings, not project performance claims.
+
+The publication boundary performs no preliminary saved-room download: the server transaction independently verifies the exact version/content/preimages. Only a successful operation receipt admits one exact saved readback. A failed write therefore performs no transformer download.

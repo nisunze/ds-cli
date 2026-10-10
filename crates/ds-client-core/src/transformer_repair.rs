@@ -1,8 +1,8 @@
 //! One no-process publication boundary for selected, evidence-derived cells.
 //! Native re-derivation precedes the server's independent CAS transaction.
 use crate::{
-    AuthorizedTransport, ClientError, ClientProfile, ErrorKind, ServiceRefusal,
     authorized::{self, Authority},
+    AuthorizedTransport, ClientError, ClientProfile, ErrorKind, ServiceRefusal,
 };
 use ds_command_kernel::report_export::jcs::layers_content_digest;
 use ds_command_kernel::{
@@ -10,7 +10,7 @@ use ds_command_kernel::{
     design_repair::{self, ApplySelection, EvidenceSource, Proposal},
 };
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::collections::BTreeSet;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -137,16 +137,9 @@ pub(crate) fn run<T: AuthorizedTransport>(
     let projected = input.projected()?;
     let expected = layers_content_digest(&projected.snapshot.layers)
         .map_err(|_| invalid("repair_target_invalid"))?;
-    let before = authorized::transformer_context(
-        profile,
-        transport,
-        authority,
-        project,
-        &input.target.transformer,
-        crate::TransformerContextProjection::Saved,
-    )?;
-    let current =
-        layers_content_digest(before.layers()).map_err(|_| invalid("repair_target_invalid"))?;
+    // The server's CAS validates the supplied saved version/content fence.
+    // A preliminary download would duplicate that check and cannot close a
+    // race; acquire the result only after its exact operation receipt succeeds.
     let source = input
         .proposal
         .request
@@ -154,11 +147,6 @@ pub(crate) fn run<T: AuthorizedTransport>(
         .layers_content_digest
         .as_deref()
         .unwrap();
-    // If already at the result, still submit the exact operation: only the
-    // server's retained receipt proves replay; equal content is not ownership.
-    if current != source && current != expected {
-        return Err(invalid("repair_target_changed"));
-    }
     let body = input.wire(project)?;
     let response = transport.transformer_save(crate::TransformerSaveCall {
         profile,
@@ -224,6 +212,6 @@ pub(crate) fn run<T: AuthorizedTransport>(
     }
     Ok(
         json!({"verified":true,"receipt":receipt,"preserved_outside_selection":true,"process_invoked":false,
-        "measurements":{"transformer_reads":2,"save_calls":1,"request_bytes":body.len(),"response_bytes":response.body.len()}}),
+        "measurements":{"transformer_reads":1,"save_calls":1,"request_bytes":body.len(),"response_bytes":response.body.len()}}),
     )
 }

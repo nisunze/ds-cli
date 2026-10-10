@@ -183,7 +183,10 @@ path, reuse admitted local data and coalesce consumers at the shared
 freshness/acquisition boundary. Establish truth from owning data/contracts and
 prove demand, request/read counts and the unused-data negative case. Reduce
 redundant calls without weakening authorization, credential expiry, revision
-fences, dirty local work or durable delivery. Requests are not evidence of hallucinated
+fences, dirty local work or durable delivery. Offline operations run from
+retained local inputs without incidental network/freshness checks; missing
+inputs name an explicit acquisition need rather than silently fetching in the
+background. Requests are not evidence of hallucinated
 calls without caller/action attribution. Measure request frequency, billed
 reads, compute and latency per successful operation before claiming savings;
 the Brain usage matrix is [the baseline](../../ds-brain/docs/operations/cloud-request-frequency.md).
