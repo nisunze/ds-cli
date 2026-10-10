@@ -1,6 +1,8 @@
+
+Current consolidation and acceptance boundary: [Native workflow slice](WORKFLOW-SLICE.md). Earlier numerical findings below describe their original snapshots; use current project receipts for current counts.
 # GIS, geospatial and general data workflows: delivery evidence
 
-This directory is implementation input for the existing [DS Workflows contract](../../docs/contracts/ds-workflows.md), not a new runtime, supported Python interface or completed-work archive. The copied bridges demonstrate missing composable controls. Remove a bridge once its equivalent native operations and acceptance are proven; keep durable semantics in the owning contract and tests. Implementation remains subject to the existing stabilization boundary in OPEN §24.
+This directory is implementation input for the existing [DS Workflows contract](../../../docs/contracts/ds-workflows.md), not a new runtime, supported Python interface or completed-work archive. The copied bridges demonstrate missing composable controls. Remove a bridge once its equivalent native operations and acceptance are proven; keep durable semantics in the owning contract and tests. Implementation remains subject to the existing stabilization boundary in OPEN §24.
 
 ## Owner direction
 

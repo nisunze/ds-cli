@@ -4,335 +4,527 @@
     "source_host": "Windows",
     "source_path": "C:\\Users\\nisun\\ds-work\\tmp\\restore_pole_types.py",
     "sha256": "c54dbe1a493629ca96e788654db8a9250c0b705a61f22b29fdd0b8ca855305b3",
-    "bytes": 5390
+    "bytes": 5390,
+    "usage": "Reference evidence only; inspect hard-coded paths, authority and source fences before any reuse."
   },
   {
     "copy": "scripts/windows/restore_verify.py",
     "source_host": "Windows",
     "source_path": "C:\\Users\\nisun\\ds-work\\tmp\\restore_verify.py",
     "sha256": "8b836c30148f948ed59adb21e98ffd4a509a2f74e8e96658f096ae39d2d905bd",
-    "bytes": 1776
+    "bytes": 1776,
+    "usage": "Reference evidence only; inspect hard-coded paths, authority and source fences before any reuse."
   },
   {
     "copy": "scripts/windows/restore_status.py",
     "source_host": "Windows",
     "source_path": "C:\\Users\\nisun\\ds-work\\tmp\\restore_status.py",
     "sha256": "82f63c38e6fb8267b577206bc98ed36d85e25006f6dd347d70f05f880154505b",
-    "bytes": 411
+    "bytes": 411,
+    "usage": "Reference evidence only; inspect hard-coded paths, authority and source fences before any reuse."
   },
   {
     "copy": "scripts/windows/restore_pack.py",
     "source_host": "Windows",
     "source_path": "C:\\Users\\nisun\\ds-work\\tmp\\restore_pack.py",
     "sha256": "e778396f10cdc9c9d2dd7a70da90f0087954528502ff064012d49da30412240f",
-    "bytes": 781
+    "bytes": 781,
+    "usage": "Reference evidence only; inspect hard-coded paths, authority and source fences before any reuse."
   },
   {
     "copy": "scripts/windows/restore_audit.py",
     "source_host": "Windows",
     "source_path": "C:\\Users\\nisun\\ds-work\\tmp\\restore_audit.py",
     "sha256": "fcaca8b9ffa53698e652e55fcbadc3a83157b01127b1d4630a9bba27195b316c",
-    "bytes": 2466
+    "bytes": 2466,
+    "usage": "Reference evidence only; inspect hard-coded paths, authority and source fences before any reuse."
   },
   {
     "copy": "scripts/windows/geometry_differences.py",
     "source_host": "Windows",
     "source_path": "C:\\Users\\nisun\\ds-work\\tmp\\geometry_differences.py",
     "sha256": "4573dc198156dedbde491ad4822eedf23a882f93df9b0781f8b2e053aa53ff72",
-    "bytes": 4965
+    "bytes": 4965,
+    "usage": "Reference evidence only; inspect hard-coded paths, authority and source fences before any reuse."
   },
   {
     "copy": "scripts/windows/fresh_combined.py",
     "source_host": "Windows",
     "source_path": "C:\\Users\\nisun\\ds-work\\tmp\\fresh_combined.py",
     "sha256": "771398bda15ba67eb2f3d395aeb39620eb716056d67d017aadd9cb52f50f7774",
-    "bytes": 704
+    "bytes": 704,
+    "usage": "Reference evidence only; inspect hard-coded paths, authority and source fences before any reuse."
   },
   {
     "copy": "scripts/windows/fresh_supply.py",
     "source_host": "Windows",
     "source_path": "C:\\Users\\nisun\\ds-work\\tmp\\fresh_supply.py",
     "sha256": "974d0743e91407c87bacd0bf22bc17068a44fd00d2c762245d3a9dcf781280d9",
-    "bytes": 1066
+    "bytes": 1066,
+    "usage": "Reference evidence only; inspect hard-coded paths, authority and source fences before any reuse."
   },
   {
     "copy": "scripts/windows/final_fresh_delivery.py",
     "source_host": "Windows",
     "source_path": "C:\\Users\\nisun\\ds-work\\tmp\\final_fresh_delivery.py",
     "sha256": "09eac7de28ae4d0aa1540814bbaaea9c01b2e62a6d61f9af3f5ae6b3e4bc50e0",
-    "bytes": 4607
+    "bytes": 4607,
+    "usage": "Reference evidence only; inspect hard-coded paths, authority and source fences before any reuse."
   },
   {
     "copy": "scripts/windows/compare_supply.py",
     "source_host": "Windows",
     "source_path": "C:\\Users\\nisun\\ds-work\\tmp\\compare_supply.py",
     "sha256": "2d2b686c044876f6f6184a0fcaf1288a02c6b012ba74b1cece136061b7a3b45f",
-    "bytes": 851
+    "bytes": 851,
+    "usage": "Reference evidence only; inspect hard-coded paths, authority and source fences before any reuse."
   },
   {
     "copy": "scripts/windows/check_fresh.py",
     "source_host": "Windows",
     "source_path": "C:\\Users\\nisun\\ds-work\\tmp\\check_fresh.py",
     "sha256": "bb067a775173aa75cb7681fb704134eec9f7f585c9fb90c22085a0f544cc9c35",
-    "bytes": 507
+    "bytes": 507,
+    "usage": "Reference evidence only; inspect hard-coded paths, authority and source fences before any reuse."
   },
   {
     "copy": "scripts/windows/gpkg_compare.py",
     "source_host": "Windows",
     "source_path": "C:\\Users\\nisun\\ds-work\\tmp\\gpkg_compare.py",
     "sha256": "4c3e020dcbaa5bbd625323d6fec00538bc9f69ca6230a7aa22afa5be51e7faaa",
-    "bytes": 7210
+    "bytes": 7210,
+    "usage": "Reference evidence only; inspect hard-coded paths, authority and source fences before any reuse."
   },
   {
     "copy": "scripts/windows/gpkg_report.py",
     "source_host": "Windows",
     "source_path": "C:\\Users\\nisun\\ds-work\\tmp\\gpkg_report.py",
     "sha256": "9d830640d60d427caa06a55a585eb9c7e247c78e0b9ddd6070df8fe53b4eb96c",
-    "bytes": 8057
+    "bytes": 8057,
+    "usage": "Reference evidence only; inspect hard-coded paths, authority and source fences before any reuse."
   },
   {
     "copy": "scripts/windows/gpkg_pdf.py",
     "source_host": "Windows",
     "source_path": "C:\\Users\\nisun\\ds-work\\tmp\\gpkg_pdf.py",
     "sha256": "838d2a3bc78cfbd4ac76af3adc2428890bb404850c8de5f7f0f63fddbbcfd0c7",
-    "bytes": 4261
+    "bytes": 4261,
+    "usage": "Reference evidence only; inspect hard-coded paths, authority and source fences before any reuse."
   },
   {
     "copy": "scripts/windows/remaining_counts_pdf.py",
     "source_host": "Windows",
     "source_path": "C:\\Users\\nisun\\ds-work\\tmp\\remaining_counts_pdf.py",
     "sha256": "a4eac0e11af1f1c316b62f84e7ac8517b378d1e22932634876cd4f0cad810735",
-    "bytes": 3765
+    "bytes": 3765,
+    "usage": "Reference evidence only; inspect hard-coded paths, authority and source fences before any reuse."
   },
   {
     "copy": "scripts/windows/verify_final_report.py",
     "source_host": "Windows",
     "source_path": "C:\\Users\\nisun\\ds-work\\tmp\\verify_final_report.py",
     "sha256": "b20de8aaf0c0bc6aa4e5f7126c7cad76ced53ac37b9d505ede0ae9d3d1389bb3",
-    "bytes": 1532
+    "bytes": 1532,
+    "usage": "Reference evidence only; inspect hard-coded paths, authority and source fences before any reuse."
   },
   {
     "copy": "scripts/windows/export_june_report.py",
     "source_host": "Windows",
     "source_path": "C:\\Users\\nisun\\ds-work\\tmp\\export_june_report.py",
     "sha256": "700ec2df71b19b77e2737e72071e7cc6c5ea6d16938dfc7ab22c1727c1e3c820",
-    "bytes": 1332
+    "bytes": 1332,
+    "usage": "Reference evidence only; inspect hard-coded paths, authority and source fences before any reuse."
   },
   {
     "copy": "scripts/windows/effective_report.py",
     "source_host": "Windows",
     "source_path": "C:\\Users\\nisun\\ds-work\\tmp\\effective_report.py",
     "sha256": "c91b3b19a5d54a77d2937f4d68e422000accb33e1c168581dbffaff3bc0df030",
-    "bytes": 873
+    "bytes": 873,
+    "usage": "Reference evidence only; inspect hard-coded paths, authority and source fences before any reuse."
   },
   {
     "copy": "scripts/windows/build_final_report.py",
     "source_host": "Windows",
     "source_path": "C:\\Users\\nisun\\ds-work\\tmp\\build_final_report.py",
     "sha256": "e8fe861180e0089759244d1adfc350e44f890037b08e4a7d29d0b1ce7fcdcabc",
-    "bytes": 1541
+    "bytes": 1541,
+    "usage": "Reference evidence only; inspect hard-coded paths, authority and source fences before any reuse."
   },
   {
     "copy": "scripts/windows/classified_kirwa_report.py",
     "source_host": "Windows",
     "source_path": "C:\\Users\\nisun\\ds-work\\tmp\\classified_kirwa_report.py",
     "sha256": "a7c54d95914d86a3173c18e17f6d4b0a5f0085cdbcd2d2764cdd31ee1572f92c",
-    "bytes": 991
+    "bytes": 991,
+    "usage": "Reference evidence only; inspect hard-coded paths, authority and source fences before any reuse."
   },
   {
     "copy": "scripts/server/gpkg-comparison-20261010/fresh_combined.py",
     "source_host": "ds-server",
     "source_path": "/home/magese/projects/gisagara/gpkg-comparison-20261010/fresh_combined.py",
     "sha256": "771398bda15ba67eb2f3d395aeb39620eb716056d67d017aadd9cb52f50f7774",
-    "bytes": 704
+    "bytes": 704,
+    "usage": "Reference evidence only; inspect hard-coded paths, authority and source fences before any reuse."
   },
   {
     "copy": "scripts/server/gpkg-comparison-20261010/geometry_differences.py",
     "source_host": "ds-server",
     "source_path": "/home/magese/projects/gisagara/gpkg-comparison-20261010/geometry_differences.py",
     "sha256": "4573dc198156dedbde491ad4822eedf23a882f93df9b0781f8b2e053aa53ff72",
-    "bytes": 4965
+    "bytes": 4965,
+    "usage": "Reference evidence only; inspect hard-coded paths, authority and source fences before any reuse."
   },
   {
     "copy": "scripts/server/gpkg-comparison-20261010/gpkg_check_blank.py",
     "source_host": "ds-server",
     "source_path": "/home/magese/projects/gisagara/gpkg-comparison-20261010/gpkg_check_blank.py",
     "sha256": "09d9050508e6c5d05e346c82a1cf07ad3b571ac4025344402bfd6e07840f4d5c",
-    "bytes": 518
+    "bytes": 518,
+    "usage": "Reference evidence only; inspect hard-coded paths, authority and source fences before any reuse."
   },
   {
     "copy": "scripts/server/gpkg-comparison-20261010/gpkg_compare.py",
     "source_host": "ds-server",
     "source_path": "/home/magese/projects/gisagara/gpkg-comparison-20261010/gpkg_compare.py",
     "sha256": "4c3e020dcbaa5bbd625323d6fec00538bc9f69ca6230a7aa22afa5be51e7faaa",
-    "bytes": 7210
+    "bytes": 7210,
+    "usage": "Reference evidence only; inspect hard-coded paths, authority and source fences before any reuse."
   },
   {
     "copy": "scripts/server/gpkg-comparison-20261010/gpkg_finish.py",
     "source_host": "ds-server",
     "source_path": "/home/magese/projects/gisagara/gpkg-comparison-20261010/gpkg_finish.py",
     "sha256": "6f1cfa45f9fe1c3da488ee568b82c3e45945b0c20eb4ab568eda3406a0399bc4",
-    "bytes": 886
+    "bytes": 886,
+    "usage": "Reference evidence only; inspect hard-coded paths, authority and source fences before any reuse."
   },
   {
     "copy": "scripts/server/gpkg-comparison-20261010/gpkg_modules.py",
     "source_host": "ds-server",
     "source_path": "/home/magese/projects/gisagara/gpkg-comparison-20261010/gpkg_modules.py",
     "sha256": "0cd9f2fadb58ed3643abd4486e1c1947b1be3c893c3e34a9dbab83e67b558964",
-    "bytes": 506
+    "bytes": 506,
+    "usage": "Reference evidence only; inspect hard-coded paths, authority and source fences before any reuse."
   },
   {
     "copy": "scripts/server/gpkg-comparison-20261010/gpkg_pdf.py",
     "source_host": "ds-server",
     "source_path": "/home/magese/projects/gisagara/gpkg-comparison-20261010/gpkg_pdf.py",
     "sha256": "838d2a3bc78cfbd4ac76af3adc2428890bb404850c8de5f7f0f63fddbbcfd0c7",
-    "bytes": 4261
+    "bytes": 4261,
+    "usage": "Reference evidence only; inspect hard-coded paths, authority and source fences before any reuse."
   },
   {
     "copy": "scripts/server/gpkg-comparison-20261010/gpkg_pdf_render.py",
     "source_host": "ds-server",
     "source_path": "/home/magese/projects/gisagara/gpkg-comparison-20261010/gpkg_pdf_render.py",
     "sha256": "b4d13aaced969fbb840d3f7847226f349a9d5f03e22ac408ad69cbac18b49a86",
-    "bytes": 318
+    "bytes": 318,
+    "usage": "Reference evidence only; inspect hard-coded paths, authority and source fences before any reuse."
   },
   {
     "copy": "scripts/server/gpkg-comparison-20261010/gpkg_probe.py",
     "source_host": "ds-server",
     "source_path": "/home/magese/projects/gisagara/gpkg-comparison-20261010/gpkg_probe.py",
     "sha256": "a82aa0b41840f301d772b0c640e5c62d5168bcd39c798364553b3a65783c2069",
-    "bytes": 967
+    "bytes": 967,
+    "usage": "Reference evidence only; inspect hard-coded paths, authority and source fences before any reuse."
   },
   {
     "copy": "scripts/server/gpkg-comparison-20261010/gpkg_qa.py",
     "source_host": "ds-server",
     "source_path": "/home/magese/projects/gisagara/gpkg-comparison-20261010/gpkg_qa.py",
     "sha256": "290d1f13ca8a2973726da270f99ddf9c349f88ae9dbbb5eb4b33ca8f9ef43cbb",
-    "bytes": 640
+    "bytes": 640,
+    "usage": "Reference evidence only; inspect hard-coded paths, authority and source fences before any reuse."
   },
   {
     "copy": "scripts/server/gpkg-comparison-20261010/gpkg_report.py",
     "source_host": "ds-server",
     "source_path": "/home/magese/projects/gisagara/gpkg-comparison-20261010/gpkg_report.py",
     "sha256": "9d830640d60d427caa06a55a585eb9c7e247c78e0b9ddd6070df8fe53b4eb96c",
-    "bytes": 8057
+    "bytes": 8057,
+    "usage": "Reference evidence only; inspect hard-coded paths, authority and source fences before any reuse."
   },
   {
     "copy": "scripts/server/gpkg-comparison-20261010/gpkg_restore_plan.py",
     "source_host": "ds-server",
     "source_path": "/home/magese/projects/gisagara/gpkg-comparison-20261010/gpkg_restore_plan.py",
     "sha256": "95d7d9c6d5e029d9d56e705129d29d97812618646e85996fa21ffbc2d1d2f883",
-    "bytes": 2461
+    "bytes": 2461,
+    "usage": "Reference evidence only; inspect hard-coded paths, authority and source fences before any reuse."
   },
   {
     "copy": "scripts/server/gpkg-comparison-20261010/gpkg_summary.py",
     "source_host": "ds-server",
     "source_path": "/home/magese/projects/gisagara/gpkg-comparison-20261010/gpkg_summary.py",
     "sha256": "90c0767055bc7f9ccef2ad47d55ec37680a4a2d6ea68347e1a622ce752de94c3",
-    "bytes": 1215
+    "bytes": 1215,
+    "usage": "Reference evidence only; inspect hard-coded paths, authority and source fences before any reuse."
   },
   {
     "copy": "scripts/server/gpkg-comparison-20261010/remaining_counts_pdf.py",
     "source_host": "ds-server",
     "source_path": "/home/magese/projects/gisagara/gpkg-comparison-20261010/remaining_counts_pdf.py",
     "sha256": "a4eac0e11af1f1c316b62f84e7ac8517b378d1e22932634876cd4f0cad810735",
-    "bytes": 3765
+    "bytes": 3765,
+    "usage": "Reference evidence only; inspect hard-coded paths, authority and source fences before any reuse."
   },
   {
     "copy": "scripts/server/gpkg-comparison-20261010/restore_audit.py",
     "source_host": "ds-server",
     "source_path": "/home/magese/projects/gisagara/gpkg-comparison-20261010/restore_audit.py",
     "sha256": "fcaca8b9ffa53698e652e55fcbadc3a83157b01127b1d4630a9bba27195b316c",
-    "bytes": 2466
+    "bytes": 2466,
+    "usage": "Reference evidence only; inspect hard-coded paths, authority and source fences before any reuse."
   },
   {
     "copy": "scripts/server/pole-restored-combined-20261010/check_fresh.py",
     "source_host": "ds-server",
     "source_path": "/home/magese/projects/gisagara/pole-restored-combined-20261010/check_fresh.py",
     "sha256": "bb067a775173aa75cb7681fb704134eec9f7f585c9fb90c22085a0f544cc9c35",
-    "bytes": 507
+    "bytes": 507,
+    "usage": "Reference evidence only; inspect hard-coded paths, authority and source fences before any reuse."
   },
   {
     "copy": "scripts/server/pole-restored-combined-20261010/compare_supply.py",
     "source_host": "ds-server",
     "source_path": "/home/magese/projects/gisagara/pole-restored-combined-20261010/compare_supply.py",
     "sha256": "2d2b686c044876f6f6184a0fcaf1288a02c6b012ba74b1cece136061b7a3b45f",
-    "bytes": 851
+    "bytes": 851,
+    "usage": "Reference evidence only; inspect hard-coded paths, authority and source fences before any reuse."
   },
   {
     "copy": "scripts/server/pole-restored-combined-20261010/final_fresh_delivery.py",
     "source_host": "ds-server",
     "source_path": "/home/magese/projects/gisagara/pole-restored-combined-20261010/final_fresh_delivery.py",
     "sha256": "09eac7de28ae4d0aa1540814bbaaea9c01b2e62a6d61f9af3f5ae6b3e4bc50e0",
-    "bytes": 4607
+    "bytes": 4607,
+    "usage": "Reference evidence only; inspect hard-coded paths, authority and source fences before any reuse."
   },
   {
     "copy": "scripts/server/pole-restored-combined-20261010/fresh_supply.py",
     "source_host": "ds-server",
     "source_path": "/home/magese/projects/gisagara/pole-restored-combined-20261010/fresh_supply.py",
     "sha256": "974d0743e91407c87bacd0bf22bc17068a44fd00d2c762245d3a9dcf781280d9",
-    "bytes": 1066
+    "bytes": 1066,
+    "usage": "Reference evidence only; inspect hard-coded paths, authority and source fences before any reuse."
   },
   {
     "copy": "scripts/server/final-aligned-20261010/build_final_report.py",
     "source_host": "ds-server",
     "source_path": "/home/magese/projects/gisagara/final-aligned-20261010/build_final_report.py",
     "sha256": "e8fe861180e0089759244d1adfc350e44f890037b08e4a7d29d0b1ce7fcdcabc",
-    "bytes": 1541
+    "bytes": 1541,
+    "usage": "Reference evidence only; inspect hard-coded paths, authority and source fences before any reuse."
   },
   {
     "copy": "scripts/server/final-aligned-20261010/check_issued_combined.py",
     "source_host": "ds-server",
     "source_path": "/home/magese/projects/gisagara/final-aligned-20261010/check_issued_combined.py",
     "sha256": "d12a1e4bd69ffa3205ed206e840eeac202730bd0116118133dc4e4e0ae20e66c",
-    "bytes": 395
+    "bytes": 395,
+    "usage": "Reference evidence only; inspect hard-coded paths, authority and source fences before any reuse."
   },
   {
     "copy": "scripts/server/final-aligned-20261010/classified_kirwa_report.py",
     "source_host": "ds-server",
     "source_path": "/home/magese/projects/gisagara/final-aligned-20261010/classified_kirwa_report.py",
     "sha256": "a7c54d95914d86a3173c18e17f6d4b0a5f0085cdbcd2d2764cdd31ee1572f92c",
-    "bytes": 991
+    "bytes": 991,
+    "usage": "Reference evidence only; inspect hard-coded paths, authority and source fences before any reuse."
   },
   {
     "copy": "scripts/server/final-aligned-20261010/final_align_delivery.py",
     "source_host": "ds-server",
     "source_path": "/home/magese/projects/gisagara/final-aligned-20261010/final_align_delivery.py",
     "sha256": "62567e1ee7770894de38e80780c4561a9ff374d34de5ed8739cdd300d1ea9589",
-    "bytes": 6775
+    "bytes": 6775,
+    "usage": "Reference evidence only; inspect hard-coded paths, authority and source fences before any reuse."
   },
   {
     "copy": "scripts/server/final-aligned-20261010/final_stake_inspect.py",
     "source_host": "ds-server",
     "source_path": "/home/magese/projects/gisagara/final-aligned-20261010/final_stake_inspect.py",
     "sha256": "5c153f742640c41d6bdba126bed0e195d504773c78f1abad4751df128c72c9ae",
-    "bytes": 458
+    "bytes": 458,
+    "usage": "Reference evidence only; inspect hard-coded paths, authority and source fences before any reuse."
   },
   {
     "copy": "scripts/server/final-aligned-20261010/proof_substation_sheet.py",
     "source_host": "ds-server",
     "source_path": "/home/magese/projects/gisagara/final-aligned-20261010/proof_substation_sheet.py",
     "sha256": "e2c060bc6da9cf5f1068b7bdb4853955774a07ec40e0329336fca2e56e69fde4",
-    "bytes": 598
+    "bytes": 598,
+    "usage": "Reference evidence only; inspect hard-coded paths, authority and source fences before any reuse."
   },
   {
     "copy": "scripts/server/final-aligned-20261010/retained_supply_kirwa.py",
     "source_host": "ds-server",
     "source_path": "/home/magese/projects/gisagara/final-aligned-20261010/retained_supply_kirwa.py",
     "sha256": "988db6ecffac224fb9c7f731823ddd33dcd04973712252fbf06aa345c76cbf23",
-    "bytes": 551
+    "bytes": 551,
+    "usage": "Reference evidence only; inspect hard-coded paths, authority and source fences before any reuse."
   },
   {
     "copy": "scripts/server/final-aligned-20261010/verify_final_report.py",
     "source_host": "ds-server",
     "source_path": "/home/magese/projects/gisagara/final-aligned-20261010/verify_final_report.py",
     "sha256": "b20de8aaf0c0bc6aa4e5f7126c7cad76ced53ac37b9d505ede0ae9d3d1389bb3",
-    "bytes": 1532
+    "bytes": 1532,
+    "usage": "Reference evidence only; inspect hard-coded paths, authority and source fences before any reuse."
   },
   {
     "copy": "scripts/server/final-aligned-20261010/zero_supply_kirwa.py",
     "source_host": "ds-server",
     "source_path": "/home/magese/projects/gisagara/final-aligned-20261010/zero_supply_kirwa.py",
     "sha256": "4349199e4df4e7f27b3ef0536e62be4af4fc3ecae19ec562027c2d480ae27ce8",
-    "bytes": 530
+    "bytes": 530,
+    "usage": "Reference evidence only; inspect hard-coded paths, authority and source fences before any reuse."
+  },
+  {
+    "copy": "scripts/server/review_native_integrity.py",
+    "source_host": "ds-server",
+    "source_path": "/home/magese/projects/gisagara/review_native_integrity.py",
+    "sha256": "8baea1774ccdbb166bec97285b5064cc2574eefd98081e47ef2b0810bd43ca5b",
+    "bytes": 1443,
+    "usage": "Reference evidence only; inspect hard-coded paths, authority and source fences before any reuse."
+  },
+  {
+    "copy": "scripts/server/review_services_april.py",
+    "source_host": "ds-server",
+    "source_path": "/home/magese/projects/gisagara/review_services_april.py",
+    "sha256": "b896e5560b2a5bee80f244f75681919221f5ce90fcef75058fc14114f09b5bbd",
+    "bytes": 2004,
+    "usage": "Reference evidence only; inspect hard-coded paths, authority and source fences before any reuse.",
+    "limitation": "Read-only candidate finder, not deletion/engineering authority. Design-only customer absence is insufficient; include survey sources."
+  },
+  {
+    "copy": "scripts/server/verify_rwegera_april.py",
+    "source_host": "ds-server",
+    "source_path": "/home/magese/projects/gisagara/verify_rwegera_april.py",
+    "sha256": "0e3c8f634e4b7e6cef1469b2393ed0c7ca0e4b2f7d65e149f9330e8cb46e73a6",
+    "bytes": 2114,
+    "usage": "Reference evidence only; inspect hard-coded paths, authority and source fences before any reuse."
+  },
+  {
+    "copy": "scripts/server/build_integrity_review.py",
+    "source_host": "ds-server",
+    "source_path": "/home/magese/projects/gisagara/build_integrity_review.py",
+    "sha256": "4e1cc6737702990fc10ee387a489006cf7fdaaa6daa850d933ff4f18077597b7",
+    "bytes": 4639,
+    "usage": "Reference evidence only; inspect hard-coded paths, authority and source fences before any reuse."
+  },
+  {
+    "copy": "scripts/server/coverage_rebero.py",
+    "source_host": "ds-server",
+    "source_path": "/home/magese/projects/gisagara/coverage_rebero.py",
+    "sha256": "b2e9539df7ae67a198d245338b60941505946a716fddab765e2fae0adcc310f7",
+    "bytes": 585,
+    "usage": "Reference evidence only; inspect hard-coded paths, authority and source fences before any reuse."
+  },
+  {
+    "copy": "scripts/server/check_rebero_sizes.py",
+    "source_host": "ds-server",
+    "source_path": "/home/magese/projects/gisagara/check_rebero_sizes.py",
+    "sha256": "48fbc4015d1ddc16e36cbabe91781ab82d0c522478f0679dfcaf8ad9662520e7",
+    "bytes": 1112,
+    "usage": "Reference evidence only; inspect hard-coded paths, authority and source fences before any reuse."
+  },
+  {
+    "copy": "scripts/server/summarize_integrity.py",
+    "source_host": "ds-server",
+    "source_path": "/home/magese/projects/gisagara/summarize_integrity.py",
+    "sha256": "c2b349a5d35af5af2b85ea450ec0b478e339c6f78241433cf4a3aa176b4ea9c2",
+    "bytes": 415,
+    "usage": "Reference evidence only; inspect hard-coded paths, authority and source fences before any reuse."
+  },
+  {
+    "copy": "scripts/server/lv_integrity_audit.py",
+    "source_host": "ds-server",
+    "source_path": "/home/magese/projects/gisagara/lv_integrity_audit.py",
+    "sha256": "62e2d0c2b4a54ce525ed2ceeb4f2b420a2cbbe8fd50672cc39bce40f3d867874",
+    "bytes": 5293,
+    "usage": "Reference evidence only; inspect hard-coded paths, authority and source fences before any reuse.",
+    "limitation": "Read-only candidate finder, not deletion/engineering authority. Design-only customer absence is insufficient; include survey sources."
+  },
+  {
+    "copy": "scripts/server/prepare_integrity_final.py",
+    "source_host": "ds-server",
+    "source_path": "/home/magese/projects/gisagara/prepare_integrity_final.py",
+    "sha256": "8f6ea063d8bcf56d22c821356f23342858f9dfc3a3133d8549e70adab8b3ecc2",
+    "bytes": 1268,
+    "usage": "Reference evidence only; inspect hard-coded paths, authority and source fences before any reuse."
+  },
+  {
+    "copy": "scripts/server/prepare_integrity_process.py",
+    "source_host": "ds-server",
+    "source_path": "/home/magese/projects/gisagara/prepare_integrity_process.py",
+    "sha256": "41c70286d7f0ee91c72bb7bb2b34f5aed7e58cf37b4d3466e77f33f8b36f3175",
+    "bytes": 1053,
+    "usage": "Reference evidence only; inspect hard-coded paths, authority and source fences before any reuse.",
+    "limitation": "Diagnostic only. Never publish a whole process result as scoped integrity repair; preserve approved fields."
+  },
+  {
+    "copy": "scripts/server/check_process_preservation.py",
+    "source_host": "ds-server",
+    "source_path": "/home/magese/projects/gisagara/check_process_preservation.py",
+    "sha256": "94b9bbbd4ba12b97aee2641c081b76b77ce0f3ec6393216107d8b075e5c2e141",
+    "bytes": 1099,
+    "usage": "Reference evidence only; inspect hard-coded paths, authority and source fences before any reuse.",
+    "limitation": "Diagnostic only. Never publish a whole process result as scoped integrity repair; preserve approved fields."
+  },
+  {
+    "copy": "scripts/windows/reconcile_survey_cables.py",
+    "source_host": "Windows",
+    "source_path": "C:\\Users\\nisun\\ds-work\\tmp\\reconcile_survey_cables.py",
+    "sha256": "fb8b1a99fc7e0244e13d87a20becd9702ded05bac06e601177799bf964048c8d",
+    "bytes": 4840,
+    "usage": "Reference evidence only; inspect hard-coded paths, authority and source fences before any reuse.",
+    "limitation": "Historical resumable batch specimen; skips already saved EP/Kirwa, uses native create and semantic ID-normalized readback. Not a generic rerunnable command."
+  },
+  {
+    "copy": "scripts/windows/read_orphan_survey.py",
+    "source_host": "Windows",
+    "source_path": "C:\\Users\\nisun\\ds-work\\tmp\\read_orphan_survey.py",
+    "sha256": "c1784c483742a72c16d012c18223b1be5ed925b1bc432fc8a278a5cda5ff70c0",
+    "bytes": 1483,
+    "usage": "Reference evidence only; inspect hard-coded paths, authority and source fences before any reuse.",
+    "limitation": "Never delete from design-layer absence alone. Survey completeness, endpoint matching and customer identity are required; historical deletion bridge is not an approved recipe."
+  },
+  {
+    "copy": "scripts/windows/check_orphan_survey.py",
+    "source_host": "Windows",
+    "source_path": "C:\\Users\\nisun\\ds-work\\tmp\\check_orphan_survey.py",
+    "sha256": "fd32ae0daa9efc400a1e615000f2cb4fe9a41b4934847d8874617333ede1c04a",
+    "bytes": 1057,
+    "usage": "Reference evidence only; inspect hard-coded paths, authority and source fences before any reuse.",
+    "limitation": "Never delete from design-layer absence alone. Survey completeness, endpoint matching and customer identity are required; historical deletion bridge is not an approved recipe."
+  },
+  {
+    "copy": "scripts/windows/lv_integrity_audit.py",
+    "source_host": "Windows",
+    "source_path": "C:\\Users\\nisun\\ds-work\\tmp\\lv_integrity_audit.py",
+    "sha256": "62e2d0c2b4a54ce525ed2ceeb4f2b420a2cbbe8fd50672cc39bce40f3d867874",
+    "bytes": 5293,
+    "usage": "Reference evidence only; inspect hard-coded paths, authority and source fences before any reuse.",
+    "limitation": "Read-only candidate finder, not deletion/engineering authority. Design-only customer absence is insufficient; include survey sources."
+  },
+  {
+    "copy": "scripts/windows/apply_rebero_sizes.py",
+    "source_host": "Windows",
+    "source_path": "C:\\Users\\nisun\\ds-work\\tmp\\apply_rebero_sizes.py",
+    "sha256": "ee129ad98edeabda1ab97e8e47148ed57ef3c2ff4fd0108723ab33d73a93dabf",
+    "bytes": 1979,
+    "usage": "Reference evidence only; inspect hard-coded paths, authority and source fences before any reuse."
+  },
+  {
+    "copy": "scripts/windows/finalize_survey_reconciliation.py",
+    "source_host": "Windows",
+    "source_path": "C:\\Users\\nisun\\ds-work\\tmp\\finalize_survey_reconciliation.py",
+    "sha256": "dca5db8aa4a2b5b23980c0692c297df02469f66c331f1006fe613241bd0fcb92",
+    "bytes": 2730,
+    "usage": "Reference evidence only; inspect hard-coded paths, authority and source fences before any reuse."
   }
 ]
