@@ -2,12 +2,13 @@
 
 **Owner, 2026-10-07:** [STABILIZATION.md](STABILIZATION.md) holds the current priority and comes before this order.
 
-**Owner update, 2026-10-10:** after winding down the current landing, independent
-Desktop/Server Kernel, Network, Reporter and Solar updates are the next
-architectural priority ([OPEN §1](OPEN.md#1-source-integration-and-release-code)).
-Start with the existing Reporter executable boundary. This newer ruling takes
-priority over the older feature sequence below; confirmed exposure/data loss and
-the current mandatory notification deployment gate remain safeguards.
+**Owner update, 2026-10-10:** independent Desktop/Server component updates are the
+next architectural priority, but implementation is deferred until the owner
+resumes with additional credits. Continue the current release landing now.
+When resumed, first scope is Reporter and Solar; Kernel/Network follow later
+([OPEN §1](OPEN.md#1-source-integration-and-release-code)). This newer ruling
+takes priority over the older feature sequence below; confirmed exposure/data
+loss and the current mandatory notification deployment gate remain safeguards.
 
 Start order for [OPEN.md](OPEN.md), following [owner priorities](PRINCIPLES.md#3-priorities-owner-2026-10-07). This file holds order and dependencies; scope, evidence and proof stay in OPEN.md. Delete a fulfilled row with its OPEN.md entry. [OPEN-X.md](OPEN-X.md) gates only the named decision; [SEEDING.md](SEEDING.md) owns configuration, deployment and installed acceptance.
 
