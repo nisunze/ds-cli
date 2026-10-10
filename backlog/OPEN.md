@@ -603,10 +603,8 @@ Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group A, to be fixed to
   Maintain the moving remaining plan here; no new owner input is needed for
   autonomous code. Whole-path acceptance is in the plan's matrix.
 
-  Active owning vertical: **cloud report admission** — ordinary authorized users
-  need simple reports; only combined/compounded cloud generation requires app
-  developer authority, with reads/downloads retained. Next: **4 — reporter
-  integration**: one embedded native candidate producer reused by cloud/local
+  Active owning vertical: **4 — reporter integration**: one embedded native
+  candidate producer reused by cloud/local
   combined preparation, distinct background outcome and complete-source fence;
   complete survey acquisition must schedule the same owner locally. No standalone
   vector-tiling API or custom dataset/explorer replacement is admitted. Trace and
@@ -669,7 +667,8 @@ Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group A, to be fixed to
   and local, with distinct tile outcomes and centrally verified publication.
   Ordinary users retain cloud simple reports; cloud combined/compounded report
   generation is developer-only. Native/local generation keeps existing project
-  permissions. Future custom short-lived containers and governed dataset jobs
+  permissions, with repeatable local combined reports for every authorized user
+  and no developer requirement or cloud-generation quota. Future custom short-lived containers and governed dataset jobs
   remain outside scope. The stable release remains paused.
 
 
