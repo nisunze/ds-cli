@@ -48,6 +48,24 @@ impl From<serde_json::Error> for Error {
 pub(crate) fn invalid(e: impl ToString) -> Error {
     Error::Invalid(e.to_string())
 }
+fn preserve_import_approved(retained: &Snapshot, replacement: &Snapshot) -> Result<()> {
+    for (layer, collection) in &retained.layers {
+        let existing = collection["features"]
+            .as_array()
+            .ok_or_else(|| invalid("features must be an array"))?;
+        let replacement = replacement
+            .layers
+            .get(layer)
+            .and_then(|v| v["features"].as_array())
+            .map(Vec::as_slice)
+            .unwrap_or(&[]);
+        ds_network::network::import_admission::preserve_approved_rows(
+            layer, existing, replacement,
+        )
+        .map_err(invalid)?;
+    }
+    Ok(())
+}
 
 // A workspace is the user's private offline Design data: its directory is
 // 0700 and the files DS keeps in it 0600 (SQLite creates -journal/-wal with
@@ -246,7 +264,25 @@ impl Workspace {
         expected: Option<&str>,
         operation: &str,
     ) -> Result<Value> {
-        let snapshot = design::decode(bytes).map_err(invalid)?;
+        // Validate authored input before creation normalization can fill IDs or
+        // rewrite owner references. Replacement admission is fenced in commit.
+        let mut snapshot = design::decode_retained(bytes).map_err(invalid)?;
+        for (layer, collection) in &snapshot.layers {
+            ds_network::network::import_admission::validate_design_rows(
+                layer,
+                collection["features"]
+                    .as_array()
+                    .ok_or_else(|| invalid("features must be an array"))?,
+            )
+            .map_err(invalid)?;
+        }
+        if let Some(expected) = expected {
+            // The immutable expected revision plus commit's head CAS keeps
+            // this raw-input check valid even if another writer wins meanwhile.
+            let (_, retained) = self.read(&snapshot.transformer, Some(expected))?;
+            preserve_import_approved(&retained, &snapshot)?;
+        }
+        snapshot.normalize().map_err(invalid)?;
         run::compute_input(&snapshot)?;
         let request =
             design::digest(&json!({"kind":"write","snapshot":snapshot,"expected":expected}))
@@ -341,6 +377,17 @@ impl Workspace {
             return Err(Error::Conflict(
                 "revision conflict; read the current snapshot and reconcile edits".into(),
             ));
+        }
+        if kind == "write" {
+            if let Some(current) = current.as_deref() {
+                let bytes: Vec<u8> = tx.query_row(
+                    "SELECT document FROM revisions WHERE revision=?1 AND transformer=?2",
+                    params![current, snapshot.transformer],
+                    |row| row.get(0),
+                )?;
+                let retained = design::decode_retained(&bytes).map_err(invalid)?;
+                preserve_import_approved(&retained, &snapshot)?;
+            }
         }
         let revision = design::digest(&snapshot).map_err(invalid)?;
         tx.execute(

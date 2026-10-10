@@ -7,6 +7,13 @@ exact readback. A workflow composes the same functions through the existing
 Rust DAG runner. No repair step runs a design process or silently normalizes
 retained data.
 
+Native layer imports and `Workspace::write` replacements also use the shared
+[design import admission](../../../ds-network/docs/contracts/design-import-admission.md).
+They validate incoming geometry and identities and preserve complete approved
+rows before persistence. Explicit typed edits, restores and selected repairs
+remain distinct deliberate operations. This does not claim that Brain's generic
+authorized full save distinguishes import intent from deliberate authoring.
+
 ## Retained facts and authority
 
 `design::decode_retained` admits a snapshot without assigning IDs, filling
