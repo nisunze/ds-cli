@@ -498,9 +498,20 @@ Cloud changes may invalidate state but never fetch or check unused inputs.
 Unused declared bindings are neither acquired nor required to execute a recipe.
 Local file/workspace runs work without cloud freshness checks; an explicitly
 selected cloud source remains an acquisition action.
+The host plans the graph before acquiring document sources and checks declared
+cloud scope before restoring credentials. Invalid recipes, missing scope and
+contradictory project/lane bindings refuse without acquiring the selected room.
 Receipts retain exact input/output pins, acquisition counts, measured local-file bytes and
 per-step latency separately from deterministic artifact identity. Owning tests
 cover file evidence, scoped retained snapshots, historical revision fences,
 key and exact-position joins, source/definition movement, unsupported operation
 versions and cancellation before a step. Broader Data Factory, table catalogue,
 cloud scheduling and custom expression work stays deferred.
+
+The owning executable fixture (one retained pole, compare then proposal) measured
+179.076 ms wall time, 77,120 KiB peak RSS and 4,644 response bytes; each step
+reported 10 ms. Its already-bound inputs caused zero source acquisitions and
+zero source-file bytes. This is a small offline admission/composition check, not
+a project-scale latency estimate or a measured cache-hit claim. Owning executable
+coverage is `ds-cli/crates/ds/tests/governed_repair_workflows.rs`; the measured receipt is
+`ds-cli/out/governed-repair-proof/workflow-profile-verification.json`.

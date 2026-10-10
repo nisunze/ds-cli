@@ -807,8 +807,6 @@ Rules: [PRINCIPLES.md §5](PRINCIPLES.md#5-kernel-cli-and-ui-owner-2026-10-07) �
 
 ## 24. Owner feature requests (CLI-first, after stabilization)
 
-- **Active governed reconciliation and native workflow slice:** [focused execution plan](workflows-enhancements/governed-repair-release-slice.md). Owns the requested import/repair, report-quantity and reusable workflow features; implementation and proof are tracked there.
-
 - **DS Workflows — reusable analytics and reconciliation, deferred during stabilization** (owner direction 2026-10-07; generalized 2026-10-10): declarative `ds workflow` documents over the Rust vector/table engines become the preferred data and geographic processing interface; Data Factory becomes one way to build a workflow (temporary or saved) and its TypeScript transforms are deleted; agents compose workflows instead of patching data with geopandas, pandas or Polars. Contract and owner questions: [docs/contracts/ds-workflows.md](../docs/contracts/ds-workflows.md) (§14). Phases, each landed and proven before the next, only once the owner admits the work:
   0. Inventory every Data Factory, upload-wizard and attribute-table transformation and map it to a spec §5.2 op; record demonstrated missing operations in this entry and define their owning contracts before implementation.
   1. Kernel: `ds.workflow/v1` types, canonical digest, DAG validation, op registry, static schema propagation; tests over spec §13 documents and negative controls, building with `ds-network` absent.
@@ -836,6 +834,8 @@ Rules: [PRINCIPLES.md §5](PRINCIPLES.md#5-kernel-cli-and-ui-owner-2026-10-07) �
 ## 25. CLI reliability reporting and proactive feedback (priority)
 
 Priority ([PRINCIPLES.md §3–4](PRINCIPLES.md#4-report-as-you-go-owner-2026-10-07)). Contract: [docs/contracts/ds-cli-reliability-and-feedback.md](../docs/contracts/ds-cli-reliability-and-feedback.md). Owner questions (opt-out, signed-out hosts, automatic-filing scope, read access) are in [OPEN-X.md block 25](OPEN-X.md#25-cli-reliability-and-feedback); slices below proceed on the spec's defaults. Land each slice on `run` before the next.
+
+- **Web refusal coverage cannot trace existing relays** (ds-cli owning test, ds-web adapters): `every_application_refusal_code_is_documented` fails on the existing dynamic `cliRefusal` calls in `src/lib/desktop/cli-sync-center.ts:126` and `cli-assets-args.ts:29`. Trace the closed Sync Center recovery vocabulary and Assets helper callers into the declared command refusals, retaining detection of unknown/dynamic codes. Do not exempt these adapters or claim the aggregate gate passes. The governed repair/notes/workflow Rust vocabulary is checked separately; this is a pre-existing Web coverage failure, not proof of an API/runtime failure.
 
 - **Wire CLI and MCP (ds-cli):** (1) ds-cli `docs/reference/feedback.md:57-58` still says `error.feedback` carries the draft and `sre_event`; the code puts `ds feedback draft --last` as the last `error.next` and carries no event id. Fix the text. (2) Nothing sets `DS_CLI_HOST_KIND`, so every event reports `host_kind=headless`; Desktop and Server must set it (spec §3.2). (3) Optional: bound `reporter::file_automatic` by `SEND_BUDGET`. The installed readback is in [SEEDING.md block 25](SEEDING.md#25-cli-reliability-and-feedback).
 
