@@ -603,18 +603,19 @@ Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group A, to be fixed to
   Maintain the moving remaining plan here; no new owner input is needed for
   autonomous code. Whole-path acceptance is in the plan's matrix.
 
-  Active owning vertical: **4 — reporter integration**: one embedded native
-  candidate producer reused by cloud/local
-  combined preparation, distinct background outcome and complete-source fence;
-  reports must never call or await tiling. Persist a minimal derivative descriptor
+  Active owning vertical: **4 — durable report derivatives**. Reports must never
+  call or await tiling. Connect the closed reporter derivative worker and its
+  verified handoff to durable scheduling. Persist a minimal derivative descriptor
   through the existing report seal/commit and independently reconcile durable jobs
   over retained artifacts: Desktop staging and CLI temporary results are deleted;
   cloud object names are reusable, so pin/retain the exact upload generation or
   immutable output. Do not mistake a ready handoff for a scheduled/completed job.
   complete survey acquisition must schedule the same owner locally. No standalone
-  vector-tiling API or custom dataset/explorer replacement is admitted. Trace and
-  move needed survey export/upload parsing, buildings, contours, elevation and
-  DS Grid mirror adapters into reporter before archiving ds-vector-tiler.
+  vector-tiling API or custom dataset/explorer replacement is admitted. Next
+  independent vertical: migrate the remaining Brain/gateway consumers to the
+  reporter's six closed geospatial adapters, remove their old tiler dispatch and
+  custom tiling surfaces, then retire/archive ds-vector-tiler. Preserve original
+  upload bytes and exact source generations, mirror leases and central reads.
   The optional HTTP/TLS dependency closure is outside this critical integration
   path; no local generator request may select a remote source.
   Remaining **2 — store integration** around `ds-layer-store::project_snapshot::Store`: spatial indexes/Polars projection and filter
@@ -639,9 +640,7 @@ Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group A, to be fixed to
   checked writer/readback or reintroduce external tools. Container/core
   dependencies still include TLS with defaults disabled; do not claim a
   credential-free dependency graph itself establishes an offline-only closure.
-  **4** reporter task and durable native jobs plus actual Windows execution.
-  Prove actual reporter executable linking with the admitted native dependency
-  and its existing print/report tests; metadata resolution alone is insufficient.
+  **4** durable native jobs plus actual Windows execution.
   Keep CLI/Desktop generation behind the reporter process boundary and remove
   replaced MBTiles/SQLite code from `ds-tile-runtime`. Preserve the existing
   reporter/Store SQLite and kernel time pins; use the pinned container feature
