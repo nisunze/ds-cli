@@ -23,3 +23,13 @@ Download names are basenames with filesystem-invalid characters and control
 characters replaced, and trailing dots removed. Empty names fall back to
 `report`. URLs, storage keys, signed object identity and integrity receipts are
 never altered by this presentation rule.
+
+The native format/command suites, Brain's owner-parity test and shared JSON
+corpus cover legacy projection, scopes, signatures and unchanged storage
+identity. `tests/report-artifact-names-wasm.cjs` exercises the actual compiled
+`reportCommand` export with that corpus and the combined archive command:
+
+```sh
+wasm-pack build --target nodejs --dev --out-dir out/report-name-proof --features wasm --locked
+node tests/report-artifact-names-wasm.cjs out/report-name-proof/ds_command_kernel.js
+```
