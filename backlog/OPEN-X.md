@@ -137,6 +137,4 @@ Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group A (owner decision
 
 ## Parked: outside stabilization
 
-- **Email/MIME provenance** (`68b6c668`): provide a full-conversation ingest boundary with retained provenance. **Input needed:** decide when this explicitly parked future feature enters the active scope. **Boundary:** starting implementation outside the current stabilization campaign. Once activated, implementation and proof belong in OPEN.md.
-
 - **Failed design-upload quarantine** (ds-web `docs/TODOs.md` §1): retain failed signed-in project uploads (`lv_transformer`, `lv_batch`, `mv_network`) through a ds-brain intake in a quarantined `gs://` prefix, with admin-gated download and a visible notice; never sketch/local layers or successful uploads. **Input needed:** activate this parked feature and specify retention TTL and per-project quota. **Boundary:** adopting that retention policy and starting the feature. Once decided, implement and prove its native intake, access fences and expiry in OPEN.md.

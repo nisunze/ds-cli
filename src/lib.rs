@@ -133,6 +133,7 @@ pub fn desktop_instance_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsVal
 pub mod connectivity;
 pub mod design;
 pub mod design_repair;
+pub mod workflow_documents;
 pub mod design_attachments;
 
 #[cfg(feature = "wasm")]

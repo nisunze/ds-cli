@@ -1,7 +1,9 @@
 # DS Workflows — the data and geographic processing contract
 
-**Status:** specification, owner direction 2026-10-07 — not now, not a priority.
-No code yet. Implementation phases and proof gates are in
+**Status:** broad specification remains deferred (owner, 2026-10-07).
+The bounded reconciliation extension admitted on 2026-10-10 reuses the existing
+vector DAG; its implemented boundary is §15, not the whole catalogue below.
+Remaining implementation phases and proof gates are in
 [`backlog/OPEN.md` block 24](../../backlog/OPEN.md#24-owner-feature-requests-cli-first-after-stabilization).
 Open owner questions are listed in §14 and must not be guessed in code.
 
@@ -457,3 +459,48 @@ receipts, and with no Python or TypeScript in the path:
 5. **Cloud execution.** Is a server-side run of a saved workflow (cloud
    placement for a whole run) in scope at all, or are workflows edge/Server
    only, with cloud reads as inputs?
+
+
+## 15. Admitted repair composition (2026-10-10)
+
+The approved governed-repair slice extends `ds.vector-workflow/v1` and its
+existing Rust DAG/reference validation, not a new interpreter or a parallel
+`ds.workflow/v1` engine. A host registers the four generated portable repair
+operation descriptors; native evaluation uses the same functions as standalone
+CLI/MCP. Only pure operations enter the DAG. Selected apply projects a retained
+snapshot with `persisted:false`; separate explicit workspace/publication commands
+own CAS, authorization, operation replay and exact readback. No process call is
+admitted by a repair workflow.
+
+`document` inputs preserve exact JSON integer identities and explicit
+missing/null properties. A run binds an inline document or a closed native source:
+
+- `file`: exact raw SHA-256 and path, resolved relative to the draft.
+- `workspace`: explicit project, transformer and exact retained revision.
+- `transformer`: explicit project/lane/transformer/version/content digest under
+  the matching restored principal/audience; changed heads refuse.
+
+Projections are `json`, validated retained `snapshot`, or scoped `evidence` with
+canonical layers digest, original raw file pin where applicable, units, CRS and
+revision. Exact-position and independently named key comparisons share one
+native matcher; ambiguous joins refuse and unmatched rows remain unchanged.
+
+Machine-global reusable definitions contain recipes and exact operation versions,
+never credentials, project holdings or source bindings. They are immutable
+`ds.workflow.definition/v1` envelopes named by their full content digest. Save,
+list, show and run verify those envelopes; changed descriptors refuse instead of
+silently selecting new behavior. This admitted local reuse does not create a
+cloud global-library authority or resolve the broader catalogue's scope question.
+Temporary drafts still run directly without saving a library revision.
+
+Source acquisition occurs only for the explicitly requested validate/run.
+Cloud changes may invalidate state but never fetch or check unused inputs.
+Unused declared bindings are neither acquired nor required to execute a recipe.
+Local file/workspace runs work without cloud freshness checks; an explicitly
+selected cloud source remains an acquisition action.
+Receipts retain exact input/output pins, acquisition counts, measured local-file bytes and
+per-step latency separately from deterministic artifact identity. Owning tests
+cover file evidence, scoped retained snapshots, historical revision fences,
+key and exact-position joins, source/definition movement, unsupported operation
+versions and cancellation before a step. Broader Data Factory, table catalogue,
+cloud scheduling and custom expression work stays deferred.
