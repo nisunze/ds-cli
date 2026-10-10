@@ -171,11 +171,19 @@ unsafe work belongs behind bulk or in the native compute pool. Bulk retirement
 and direct BigQuery-to-GCS survey delivery are deferred. Reports never wait for
 tiling, and the cloud/native report permissions remain governed by §9.
 
-No polling: intentional navigation, explicit refresh, canonical mutations and
-actual push drive application data reads. Preserve account-wide notifications
+No polling: intentional navigation, explicit refresh, and an operation actually
+consuming data drive application reads. Canonical mutations and actual push may
+invalidate retained state; they must not download unused project data or even
+check its freshness. Resolve that invalidation only when a consumer needs the
+data (owner clarification, 2026-10-10). Preserve account-wide push notifications
 across project navigation and one resident Desktop notification owner with
-peer delivery. Reduce redundant calls without weakening authorization,
-credential expiry or durable delivery. Requests are not evidence of hallucinated
+peer delivery; notification delivery is not permission for background project
+downloads. Whenever touching code, remove unnecessary/speculative calls in that
+path, reuse admitted local data and coalesce consumers at the shared
+freshness/acquisition boundary. Establish truth from owning data/contracts and
+prove demand, request/read counts and the unused-data negative case. Reduce
+redundant calls without weakening authorization, credential expiry, revision
+fences, dirty local work or durable delivery. Requests are not evidence of hallucinated
 calls without caller/action attribution. Measure request frequency, billed
 reads, compute and latency per successful operation before claiming savings;
 the Brain usage matrix is [the baseline](../../ds-brain/docs/operations/cloud-request-frequency.md).
