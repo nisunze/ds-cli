@@ -1480,8 +1480,12 @@ whole held copy. Known missing classes or incomplete feature counts repair even
 historical caches incorrectly marked complete. `--force` is
 the operator's Refresh: every pinned room, held or not. `--focus` is the
 transformer being edited, which is never pinned context as well and is dropped
-from the plan rather than fetched twice. Every context read asks for the
-`context` projection, so the non-scalar property bags are dropped server side.
+from the plan rather than fetched twice. Native pinning and project exports
+consume the same principal/project saved-room owner. Cold acquisition retains the
+complete exact saved snapshot; unchanged rooms need no source download, and
+non-scalar property bags are projected only for the read-only rendered merge.
+`acquisition` reports actual fetched/reused rooms independently of a hypothetical
+`--held` planning inventory. `--plan-only` reads status metadata, not geometry.
 
 **What one layer is.** Every pinned room of the same design class folds into ONE
 FeatureCollection per (source, class): fifty pinned transformers across six

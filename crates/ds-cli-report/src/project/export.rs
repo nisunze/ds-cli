@@ -1692,7 +1692,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
                 });
             let heads = rows
                 .iter()
-                .map(|row| json!({"name": row.name(), "version": super::hold::head_version(row.row())}))
+                .map(|row| json!({"name": row.name(), "version": super::hold::head_version(row.row()), "layers": row.row().get("layers")}))
                 .collect();
             (evidence, super::hold::Heads::Read(heads))
         }

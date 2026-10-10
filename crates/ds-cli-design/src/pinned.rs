@@ -81,7 +81,7 @@ const FORCE: Arg = Arg::switch(
 );
 const PLAN_ONLY: Arg = Arg::switch(
     "plan-only",
-    "Answer what would be fetched and stop. Nothing is read from the project.",
+    "Answer what would be fetched from status metadata; read no transformer geometry.",
 );
 
 /// Encode one kernel request. The command never hand-builds a kernel struct:
@@ -156,12 +156,11 @@ pub static COMMAND: Command = Command {
     contract: 1,
     summary: "Plan, fetch and fold a read-only pinned working set, with no browser.",
     purpose: "\
-Answers what a pinned working set costs, with the kernel decision the map uses. \
-A room already held is reused; a room missing ONE design class asks for that \
-class, not the room; only a moved head revision forces a whole room. Rooms of \
-the same class fold into ONE collection carrying the fields that class's pinned \
-style document reads, plus the transformer each feature came from. It writes \
-nothing and opens no edit context; --plan-only reads nothing at all. \
+Plan a read-only working set from status metadata, then acquire complete saved \
+rooms through the same native owner as project exports. Unchanged rooms need \
+no source download. Merge each class using its authored pinned style. Saved \
+rooms are retained locally; no project edit context is opened. --plan-only \
+reads status metadata and stops before geometry acquisition. \
 docs/reference/design.md#pinned-context has the rest.",
     chapter: Chapter::Design,
     effect: Effect::LocalAuthState,
@@ -181,7 +180,7 @@ docs/reference/design.md#pinned-context has the rest.",
     output: "\
 Lane and project identity; `plan` (reused and fetched room counts, the \
 layer-level fetches, the batched requests a browser would make, and the read \
-projection); and unless --plan-only, `merge` \u{2014} sources and layers before and \
+projection); actual room acquisition counts; and unless --plan-only, `merge` \u{2014} sources and layers before and \
 after the fold, the property keys the rooms carried and how many survive, and \
 one bounded row per merged class. Read failures are listed, never fatal.",
     examples: &[
@@ -220,8 +219,6 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         )
         .remedy(TOO_MANY_PINS.remedy));
     }
-    let held = held_inventory(inputs.value("held"))?;
-
     // The heads. `list_transformers_status` is the project's own register, and
     // a head that has MOVED is the one reason a held room is refetched whole.
     let status = ds_cli_auth::transformer_status_for_project(
@@ -230,6 +227,14 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         &TransformerSet::new(std::iter::empty::<String>())
             .map_err(|error| Failure::invalid("invalid_transformer_scope", error.to_string()))?,
     )?;
+    let held = if inputs.value("held").is_some() {
+        held_inventory(inputs.value("held"))?
+    } else {
+        Value::Array(ds_cli_report::project::hold::transformer_room_inventory(
+            status.identity(),
+            project,
+        )?)
+    };
     let heads: Vec<Value> = status
         .result()
         .rows()
@@ -262,20 +267,38 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     // unreadable room never costs the operator the rest of the set.
     let mut rooms: Vec<Value> = Vec::new();
     let mut failures: Vec<Value> = Vec::new();
+    let mut fetched = 0usize;
+    let mut reused = 0usize;
     for name in plan
         .reuse
         .iter()
         .map(|item| &item.name)
         .chain(plan.fetch.iter().map(|item| &item.name))
     {
-        match ds_cli_auth::transformer_context_for_project(lane, project, name) {
-            Ok(context) => rooms.push(json!({
-                "name": context.snapshot().transformer_name(),
-                "layers": context.snapshot().layers(),
-            })),
+        match ds_cli_report::project::hold::acquire_transformer_room(
+            lane,
+            project,
+            status.identity(),
+            name,
+            &heads,
+            inputs.switch("force"),
+        ) {
+            Ok((room, source)) => {
+                if source == "held" {
+                    reused += 1;
+                } else {
+                    fetched += 1;
+                }
+                rooms.push(json!({"name": room.transformer, "layers": room.layers}));
+            }
             Err(failure) => failures.push(json!({"name": name, "message": failure.message()})),
         }
     }
+
+    object.insert(
+        "acquisition".into(),
+        json!({"reused": reused, "rooms_fetched": fetched}),
+    );
 
     let classes: Vec<String> = rooms
         .iter()

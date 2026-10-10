@@ -260,6 +260,61 @@ impl Hold {
     }
 }
 
+/// Metadata-only inventory of this principal's complete saved rooms. Consumers
+/// use this owner instead of inventing a second native pin cache.
+pub fn transformer_room_inventory(
+    identity: &ProviderIdentity,
+    project: &str,
+) -> Result<Vec<Value>, Failure> {
+    let hold = Hold::open(identity, project)?;
+    room_hold::held(&hold.root, &hold.scope).map_err(|error| {
+        Failure::failed(INPUTS_NOT_HELD.code, error).remedy(INPUTS_NOT_HELD.remedy)
+    })
+}
+
+/// Acquire through the same saved-room owner project exports use. `heads` is
+/// the consumer's existing authenticated status result; there is no new probe.
+pub fn acquire_transformer_room(
+    lane: &str,
+    project: &str,
+    identity: &ProviderIdentity,
+    name: &str,
+    heads: &[Value],
+    force: bool,
+) -> Result<(Room, &'static str), Failure> {
+    let hold = Hold::open(identity, project)?;
+    let mut rooms = Rooms::plan(hold, &[name.to_owned()], Heads::Read(heads.to_vec()))?;
+    rooms.force = force;
+    let mut link = Link::default();
+    let room = rooms.room(name, &mut link, || {
+        let context = ds_cli_auth::saved_transformer_context_for_project(lane, project, name)?;
+        if context.identity().uid() != identity.uid() {
+            return Err(Failure::conflict(
+                ROOM_NOT_HELD.code,
+                "account changed during transformer acquisition",
+            ));
+        }
+        let snapshot = context.snapshot();
+        Ok(Room {
+            transformer: snapshot.transformer_name().to_owned(),
+            version: snapshot
+                .metadata()
+                .version()
+                .and_then(|value| i64::try_from(value).ok()),
+            content_digest: snapshot.metadata().content_digest().map(str::to_owned),
+            layers: snapshot.layers().clone(),
+        })
+    })?;
+    if !rooms.unkept.is_empty() {
+        return Err(Failure::failed(
+            INPUTS_NOT_HELD.code,
+            "the transformer was read but its complete local room could not be retained",
+        ));
+    }
+    let source = rooms.source(name).expect("successful room has a source");
+    Ok((room, source))
+}
+
 /// What the service said about the head revisions of a batch's rooms.
 pub(super) enum Heads {
     /// Each room's head revision, as the service reported it.
@@ -276,10 +331,10 @@ pub(super) enum Heads {
 /// the heads the service reported, and where each room actually came from.
 pub(super) struct Rooms {
     hold: Hold,
-    /// Planned reads: name → the kernel's reason.
-    planned: BTreeMap<String, &'static str>,
     /// `read`, `unread` (no link), or `refused: <why>`.
     heads: String,
+    observed_heads: Vec<Value>,
+    force: bool,
     sources: BTreeMap<String, &'static str>,
     not_held: Vec<String>,
     unkept: Vec<String>,
@@ -310,15 +365,12 @@ impl Rooms {
             "heads": heads,
         }))
         .map_err(|error| refused(error.to_string()))?;
-        let plan = pinned_context::plan(request).map_err(refused)?;
+        pinned_context::plan(request).map_err(refused)?;
         Ok(Self {
             hold,
-            planned: plan
-                .fetch
-                .iter()
-                .map(|item| (item.name.clone(), item.reason))
-                .collect(),
             heads: read,
+            observed_heads: heads,
+            force,
             sources: BTreeMap::new(),
             not_held: Vec::new(),
             unkept: Vec::new(),
@@ -335,52 +387,31 @@ impl Rooms {
         link: &mut Link,
         read: impl FnMut() -> Result<Room, Failure>,
     ) -> Result<Room, Failure> {
-        let mut invalid_held = false;
-        if !self.planned.contains_key(name) {
-            match room_hold::room(&self.hold.root, &self.hold.scope, name) {
-                Ok(Some(room)) if held_room_digest_matches(&room) => {
-                    self.sources.insert(name.to_owned(), "held");
-                    return Ok(room);
-                }
-                Ok(Some(_)) => invalid_held = true,
-                Ok(None) | Err(_) => {}
+        use room_hold::{AcquisitionError as Error, RoomSource};
+        match room_hold::acquire(&self.hold.root, &self.hold.scope, name,
+            &self.observed_heads, self.force, || link.read(read)) {
+            Ok(acquired) => {
+                if acquired.persistence_error.is_some() { self.unkept.push(name.to_owned()); }
+                self.sources.insert(name.to_owned(), match acquired.source {
+                    RoomSource::Held => "held", RoomSource::Fetched => "fetched",
+                });
+                Ok(acquired.room)
             }
-        }
-        match link.read(read)? {
-            Some(room) => {
-                if !fetched_room_digest_consistent(&room) {
-                    return Err(Failure::invalid(
-                        super::export::INPUTS_INVALID.code,
-                        format!(
-                            "saved transformer content digest does not match the fetched layers for {name}"
-                        ),
-                    )
-                    .remedy(super::export::INPUTS_INVALID.remedy));
-                }
-                if room_hold::hold_room(&self.hold.root, &self.hold.scope, &room).is_err() {
-                    self.unkept.push(name.to_owned());
-                }
-                self.sources.insert(name.to_owned(), "fetched");
-                Ok(room)
-            }
-            None => {
+            Err(Error::Read(error)) => Err(error),
+            Err(Error::Unavailable) => {
                 self.not_held.push(name.to_owned());
-                let held = if self.planned.get(name) == Some(&"head_moved") {
-                    "holds an older revision of"
-                } else if invalid_held {
-                    "holds a room whose saved content digest does not match its layers for"
-                } else {
-                    "does not hold"
-                };
-                Err(Failure::unavailable(
-                    ROOM_NOT_HELD.code,
-                    format!(
-                        "this machine {held} the room of {name}, and the service could not be reached ({})",
-                        link.unreachable().unwrap_or("unreachable"),
-                    ),
-                )
-                .remedy(ROOM_NOT_HELD.remedy))
+                Err(Failure::unavailable(ROOM_NOT_HELD.code, format!(
+                    "this machine has no current room with a verified saved content digest for {name}, and the service could not be reached ({})",
+                    link.unreachable().unwrap_or("unreachable"),
+                )).remedy(ROOM_NOT_HELD.remedy))
             }
+            Err(Error::Invalid(error)) => Err(Failure::invalid(super::export::INPUTS_INVALID.code, format!("{name}: {error}"))
+                .remedy(super::export::INPUTS_INVALID.remedy)),
+            Err(Error::Superseded) => Err(Failure::conflict(ROOM_NOT_HELD.code,
+                format!("the saved room of {name} changed during acquisition; retry with its current head"))
+                .remedy(ROOM_NOT_HELD.remedy)),
+            Err(Error::Store(error)) => Err(Failure::failed(INPUTS_NOT_HELD.code, error)
+                .remedy(INPUTS_NOT_HELD.remedy)),
         }
     }
 
@@ -404,25 +435,6 @@ impl Rooms {
         }
         receipt
     }
-}
-
-/// A file checksum proves that a held room was read intact, not that its
-/// saved server digest describes its layer content. Without a saved digest,
-/// the held room cannot be verified and must be refreshed when online.
-fn held_room_digest_matches(room: &Room) -> bool {
-    room.content_digest.as_deref().is_some_and(|expected| {
-        ds_command_kernel::report_export::jcs::layers_content_digest(&room.layers)
-            .is_ok_and(|actual| actual == expected)
-    })
-}
-
-/// New rooms may still come from an older service that does not return a
-/// saved digest. Preserve that existing fetch behavior; when it does return a
-/// digest, reject the answer before it can replace a good held copy.
-fn fetched_room_digest_consistent(room: &Room) -> bool {
-    room.content_digest
-        .as_deref()
-        .is_none_or(|_| held_room_digest_matches(room))
 }
 
 /// The head revision a status row carries for one transformer, or null. The
