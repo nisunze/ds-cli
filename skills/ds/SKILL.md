@@ -1,6 +1,6 @@
 ---
 name: ds
-description: "Use deployed `ds` as the sole DS interface: discover one live command, follow its contract, hand over at a named boundary, and report friction, failures and gaps as you go, unasked. Required before every DS task."
+description: "Use deployed `ds` as the sole DS interface: discover a command, follow its contract, name handover boundaries and report gaps. Required before every DS task."
 ---
 
 # Work through `ds`
@@ -10,20 +10,12 @@ parsers, repositories or skill-local programs. Use `--output json` for agents.
 
 ## Report as you go
 
-Outside coding, file a `feedback.submit` sighting (expected behavior, evidence,
-impact, acceptance) at once, unasked, when:
-
-1. a command failed, crashed or refused past its remedy;
-2. finding it took a second search, or the user's words missed it;
-3. help, refusal or skill text disagreed with what it did;
-4. output was wrong, incomplete, surprising or needed post-processing;
-5. a step was slow or needed a workaround;
-6. a capability was missing;
-7. an idea would have saved the user steps.
-
-One sighting per distinct gap; repeats merge, so never filing is the failure.
-Ask no permission; include no secrets or customer data. End by listing
-the report ids, one per line.
+Outside coding, immediately file `feedback.submit` with expected behavior,
+evidence, impact and acceptance for failures past their remedy, a second
+discovery search, missed user vocabulary, contract disagreements, wrong or
+incomplete output, post-processing, slow steps, workarounds, missing controls
+or ideas that save steps. One sighting per gap; repeats merge. Ask no permission;
+include no secrets or customer data. End with report ids, one per line.
 
 Coding sessions: never submit feedback; fix findings or record unfinished work
 in the owning backlogs (OPEN.md code, OPEN-X.md decisions, SEEDING.md
@@ -51,11 +43,10 @@ identity/project to force success, or reconstruct a refused answer.
 
 ## Recover identity
 
-Signed out (`headless_signed_out`): run `ds account connect` (MCP:
-`account.connect`), have the person approve it in their signed-in DS
-GridDesign Desktop under Account > Link a trusted device, then run it again.
-Only this signs in; never request addresses or secrets, or borrow credentials,
-projects or lanes; match the CLI/map lane and principal.
+For `headless_signed_out`, run `ds account connect` (MCP: `account.connect`).
+The person approves in signed-in Desktop > Account > Link a trusted device;
+run it again. Never request secrets or borrow credentials, projects or lanes.
+Match the CLI/map lane and principal.
 
 ## Through MCP
 
@@ -64,21 +55,21 @@ only when required. Setup and typed profiles: `ds-mcp-host`.
 
 ## Where `ds` stops, and who continues
 
-Name the boundary and return with its result:
+Name the boundary and return its result:
 
-- Native PLS-CADD — the model must be solved or accepted as the authority:
-  edit in DS Grid, export, let PLS-CADD verify; `ds` never drives that UI.
+- Native PLS-CADD — for model solving or acceptance, edit in DS Grid, export
+  and let PLS-CADD verify; `ds` never drives that UI.
 - A document renderer — a reviewed draft must become DOCX/PDF: `ds` authors
   and lints the text, installed document tools typeset it.
-- Desktop map and screen recorders — interactive geometry or motion: `ds` serves layers, tiles and still evidence only.
-- The operator — the effect needs authority `ds` will not grant: approval,
-  credentials, install, deploy or refusal remedy. Report the code and remedy.
+- Desktop and screen recorders — for interactive geometry or motion;
+  `ds` serves layers, tiles and still evidence only.
+- The operator — for approval, credentials, install, deploy or refusal remedy
+  beyond `ds` authority. Report the code and remedy.
 
 ## When `ds` cannot
 
-Rule out a stop, try other vocabulary, then report as you go. You may
-filter/compare `ds` files in a disposable step; name it in the sighting. Never
-improvise DS data/effects or bypass `ds` with a gap file or API call.
+Rule out a stop, try other vocabulary, then report. You may filter/compare
+`ds` files in a disposable step; name it in the sighting. Never bypass `ds`.
 
 ## Narrower skills
 
@@ -95,14 +86,13 @@ improvise DS data/effects or bypass `ds` with a gap file or API call.
 - Surface and backlog — `ds-mcp-host`, `ds-workstation-setup`,
   `ds-feedback-triage`.
 
-Stops at: PLS-CADD, a document renderer, Desktop or operator (above).
-
 ## Demand-driven reads
 
-Trigger project reads through intentional navigation, explicit refresh or an
-operation actually consuming that data. No polling. A cloud update or push may
-invalidate retained state, but must not download unused data or even check its
-freshness. Reuse admitted local snapshots through the shared freshness boundary;
-retain authorization, revision and dirty-work fences. Notifications follow their
-own minimal push contract. During coding, prove request/read counts and the
-unused-data negative case instead of claiming savings from inspection.
+Read project data only for navigation, explicit refresh or an actual consumer.
+No polling. Pushes invalidate retained state without fetching unused data or
+checking freshness. Reuse admitted local snapshots at the shared freshness
+boundary; preserve authorization, revision and dirty-work fences. Notifications
+retain their minimal push contract. In coding, prove read counts and the unused
+data negative case.
+
+Stops at: PLS-CADD, a document renderer, Desktop or operator (above).

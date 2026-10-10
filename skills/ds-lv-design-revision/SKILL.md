@@ -1,26 +1,22 @@
 ---
 name: ds-lv-design-revision
-description: Revise one transformer’s LV design through `ds`, preserving built infrastructure and staging before save. For LV extensions and drafting reruns.
+description: Revise one transformer's LV design through `ds`, preserving built work and staging before save. For extensions and drafting reruns.
 metadata:
   ds-chapters: project, design
 ---
 
-# Revise an LV transformer without redesigning installed work
+# Revise an LV transformer
 
-Use `ds-project-context` only to establish or deliberately switch the project.
-Then work through the live `ds` command contracts; do not copy a remembered
-flag surface into the workflow.
+Use `ds-project-context` to establish or switch project, then follow live
+command contracts rather than remembered flags.
 
-The application owns the state. The CLI requests the smallest typed
-transition and reads its receipt; it does not keep a second transformer, map,
-selection, process setup, or version history. Svelte renders app-owned state,
-WASM/Rust provides deterministic geometry evidence, and the model/operator
-decides what that evidence means. Never drive the UI as a puppet or rebuild
-raw API/IndexedDB steps in the CLI.
+The application owns transformer, map, selection, setup and history state.
+The CLI requests typed transitions and reads receipts. Svelte renders;
+WASM/Rust supplies geometry evidence; the engineer interprets it. Never drive
+the UI as a puppet or reconstruct raw API/IndexedDB steps.
 
-Driving or proving the application — opening a transformer, selecting,
-exporting, evidence — is `ds map …` against the running desktop, never a
-scripted browser or a hand-built request.
+Open, select, export and prove through `ds map …` against the running desktop;
+never script a browser or build requests by hand.
 
 ## Preserve the constructed network first
 
@@ -45,17 +41,15 @@ Copy the authoritative design line layer and the exact incoming named layer to
 local layers. Use the line comparison/difference operation with explicit,
 conservative tolerances and keep its bounded receipt.
 
-The numeric result is a candidate layer. Interpret it with the visible map and
-the task’s engineering meaning:
+Interpret numeric candidates with the map and engineering task:
 
 - Coincident or closely aligned portions may be the same surveyed asset.
 - A crossing or criss-cross is not covered merely because it intersects.
 - A parallel line is intrinsically ambiguous. It may be survey drift, a valid
   opposite-side-road feeder, or new construction beside an existing line.
-- Inspect endpoint connectivity, intended junctions, continuity through the
-  wider network, road-side context, known construction status, provenance,
-  and relevant attributes. A tolerance sweep can show sensitivity but cannot
-  decide semantics.
+- Inspect connectivity, intended junctions, wider continuity, road-side context,
+  construction status, provenance and attributes. Tolerance sweeps show
+  sensitivity; they cannot decide semantics.
 - Heal an endpoint only when it represents an intended electrical contact and
   the gap is credible measurement/drafting error. Never widen a tolerance just
   to make a visually inconvenient difference disappear.
@@ -74,18 +68,15 @@ local-selection-to-design creation contract. New rows must enter `lv_lines` as
 - every pre-existing feature remains `approved`;
 - only the accepted new line rows are `draft`.
 
-Discover the project LV process setup with the smallest adequate inventory
-`--limit` before changing it; selected sources and effective settings remain
-complete even when available-source suggestions are truncated. Configure the
-exact semantic customer source requested. “Additional customers from
-`edcl_customers_survey`” means retain current design customers and add that
-survey Point layer; it does not mean the similarly named as-built survey.
-Before processing, materialize survey data through the application-owned
-Working Area with `ds map survey download --entire-project`. Require the exact
-active project, `working_area.fullProjectLoad=true`, the intended form's
-bounded cached count, and `rows_returned=0`. This is not cross-project
-migration: migration changes project records; Working Area downloads the
-active project's survey forms into the desktop cache used by WASM.
+Discover LV process setup with the smallest adequate inventory `--limit`.
+Selected sources and effective settings remain complete despite truncated
+suggestions. Configure the exact customer source: adding
+`edcl_customers_survey` retains design customers and adds that Point layer,
+not the similarly named as-built survey. Before processing, use
+`ds map survey download --entire-project`; require the exact active project,
+`working_area.fullProjectLoad=true`, the intended form's bounded cached count
+and `rows_returned=0`. Working Area downloads that project's forms into the
+WASM desktop cache; migration instead changes project records.
 
 Select the drafting preset through the application-owned project setup, first
 with a dry run, and verify the returned layer key and local count.
@@ -108,12 +99,11 @@ Use `map.design.version.play` only for a returned version with
 `playback_available=true`; metadata-only history cannot be played as content.
 Playback and paired comparison are read-only evidence, never restore or editing.
 
-Decide explicitly whether an engineering edit needs a new governance version.
-If so, save the authorized engineering state first, then discover
-`design.version.begin`. Supply the explicit project, LV kind and object, a
-reason and a stable idempotency key; ds-brain assigns `vN` from the saved server
-state. Beginning history does not publish an unsaved device-local room. Read the
-headless descriptor before using confirmation or LV-only restore.
+Decide explicitly whether the edit needs a governance version. Save the
+authorized state first, then discover `design.version.begin`. Supply project,
+LV kind, object, reason and stable idempotency key; ds-brain assigns `vN` from
+saved server state. Unsaved rooms remain local. Read the headless descriptor
+before confirmation or LV-only restore.
 
 For an overwrite upload, enable its version option and reason only when the
 operator intends the bump. Never infer version intent from Replace, Save,
@@ -143,9 +133,6 @@ normalize a terminal Windows copy suffix ` (2)` out of the archive filename
 stem before transformer matching. Treat the suffixed and unsuffixed files as
 one transformer collision/revision choice, never as two transformer names.
 
-Stops at: the drafting application and the engineer — `ds` stages, revises and
-saves; drawing judgement and acceptance stay with them.
-
 ## Evidence-backed property repairs
 
 For a repair that must preserve current geometry, counts and approved facts,
@@ -159,3 +146,6 @@ server version/content fence and exact readback). Skills cannot waive a native
 refusal or substitute process/resize/renumber/demotion. When declared, verify
 the original raw evidence file pin. Use the existing typed workflow DAG to
 compose these same operations; effects remain explicit.
+
+Stops at: the drafting application and the engineer — `ds` stages, revises and
+saves; drawing judgement and acceptance stay with them.
