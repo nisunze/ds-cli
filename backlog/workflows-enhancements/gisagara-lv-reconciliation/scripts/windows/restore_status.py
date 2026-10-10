@@ -1,0 +1,2 @@
+import pathlib,json
+r=pathlib.Path('tmp/gpkg-comparison-20261010/approved-restore');a=[json.loads(p.read_text()) for p in r.glob('*/verified.json')];print(json.dumps({'verified_transformers':len(a),'restored_poles':sum(x['restored_poles'] for x in a),'approved_features':sum(x['approved_features'] for x in a),'counts_and_geometry_preserved':all(x['counts_unchanged'] and x['geometry_unchanged'] for x in a)}))
