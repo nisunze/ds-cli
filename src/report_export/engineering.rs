@@ -11,6 +11,8 @@ pub struct EngineeringPreflight {
     pub field_lineage: Vec<FieldLineage>,
     pub blockers: usize,
     pub finding_counts: BTreeMap<String, usize>,
+    #[serde(default)]
+    pub coverage_counts: BTreeMap<String, usize>,
     pub findings: Vec<Finding>,
     pub omitted_details: usize,
     pub quantity_rows_total: usize,
@@ -29,6 +31,8 @@ pub struct SourceLayer {
 pub struct FieldLineage {
     pub layer: String,
     pub field: String,
+    #[serde(default = "required")]
+    pub requirement: String,
     pub sections: Vec<String>,
     pub source_rows: usize,
     pub valid: usize,
@@ -69,6 +73,22 @@ impl EngineeringPreflight {
             && self.findings.len() <= 100
             && self.quantity_lineage.len() <= 500
             && self.finding_counts.len() <= 32
+            && self.coverage_counts.len() <= 1
+            && self
+                .coverage_counts
+                .keys()
+                .all(|code| code == "optional_engineering_fact_unrecorded")
+            && self
+                .field_lineage
+                .iter()
+                .filter(|row| row.requirement == "optional")
+                .try_fold(0_usize, |n, row| n.checked_add(row.missing))
+                == Some(
+                    self.coverage_counts
+                        .get("optional_engineering_fact_unrecorded")
+                        .copied()
+                        .unwrap_or(0),
+                )
             && self.finding_counts.keys().all(|code| text(code))
             && self
                 .finding_counts
@@ -88,6 +108,8 @@ impl EngineeringPreflight {
             && self.field_lineage.iter().all(|row| {
                 text(&row.layer)
                     && text(&row.field)
+                    && (row.requirement == "required"
+                        || row.requirement == "optional" && row.field == "flying_stay")
                     && row.sections.len() <= 16
                     && row.sections.iter().all(|section| text(section))
                     && [
@@ -123,4 +145,8 @@ impl EngineeringPreflight {
                     && row.quantity >= 0.0
             })
     }
+}
+
+fn required() -> String {
+    "required".into()
 }

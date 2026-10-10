@@ -3241,7 +3241,7 @@ mod tests {
         document["engineering_preflight"] = json!({
             "schema":"ds.report.engineering-preflight/v1",
             "source_layers":[{"layer":"lv_poles","features":1,"held_features_sha256":"a".repeat(64)}],
-            "field_lineage":[],"blockers":0,"finding_counts":{},"findings":[],
+            "field_lineage":[],"blockers":0,"finding_counts":{},"coverage_counts":{},"findings":[],
             "omitted_details":0,"quantity_rows_total":0,"quantity_lineage":[],"omitted_quantity_details":0
         });
         assert_eq!(
@@ -3249,11 +3249,21 @@ mod tests {
                 .unwrap(),
             document["engineering_preflight"]
         );
+        let mut optional = document.clone();
+        optional["engineering_preflight"]["coverage_counts"] = json!({"optional_engineering_fact_unrecorded":1});
+        optional["engineering_preflight"]["field_lineage"] = json!([{
+            "layer":"lv_poles","field":"flying_stay","requirement":"optional","sections":["Fly Stay"],
+            "source_rows":1,"valid":0,"explicit_zero":0,"existing_component":0,"tapping_marker":0,"missing":1,"invalid":0
+        }]);
+        assert!(verify(&optional).is_ok());
+        optional["engineering_preflight"]["field_lineage"][0]["requirement"] = json!("required");
+        assert!(verify(&optional).is_err());
         for patch in [
             json!({"extra":true}),
             json!({"schema":"wrong"}),
             json!({"omitted_details":1}),
             json!({"quantity_rows_total":1}),
+            json!({"coverage_counts":{"optional_engineering_fact_unrecorded":1}}),
             json!({"source_layers":vec![document["engineering_preflight"]["source_layers"][0].clone();33]}),
         ] {
             let mut invalid = document.clone();
