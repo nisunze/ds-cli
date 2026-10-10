@@ -38,6 +38,17 @@ pub struct StyleSnapshot {
     warnings: Vec<String>,
 }
 impl StyleSnapshot {
+    /// Re-admit a held observation through the same wire validator as a fresh read.
+    pub fn from_observation(project: &str, document: Value) -> Result<Self, ClientError> {
+        decode_style_snapshot(
+            TransportResponse {
+                status: 200,
+                body: serde_json::to_vec(&serde_json::json!({"success":true,"data":document}))
+                    .map_err(|_| bad())?,
+            },
+            project,
+        )
+    }
     /// The bounded backend-authored Style Center document, with no renderer
     /// sources, layers, sidebar, viewport, or basemap state.
     pub fn document(&self) -> &Value {

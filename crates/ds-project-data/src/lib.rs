@@ -36,6 +36,7 @@ pub mod declared;
 pub mod ensure;
 pub mod extents;
 pub mod held;
+pub mod metadata;
 pub mod print_context;
 pub mod room_hold;
 pub mod survey_hold;

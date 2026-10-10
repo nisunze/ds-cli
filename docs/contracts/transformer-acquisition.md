@@ -70,6 +70,45 @@ Owning proof: kernel pinned-context and Project Control tests; ds-web's
 `transformer-acquisition.test.ts`, `transformer-acquisition-boundary.test.ts`,
 room executor, report preparation, pinning and authored-style materialization tests.
 
+## Metadata observations, without consumer probes
+
+`ds-project-data::metadata` keeps complete authenticated style/status observations
+under principal, lane, credential audience and explicit project. Its native store
+checks the scope and checksum, bounds bytes, and shares a cold read across
+processes under a slot lock. An empty inventory is an observation too. Ordinary
+headless pinning consumes these observations and reports their cache/network
+source. `--force` refreshes metadata and rooms. Explicit status/style authoring
+reads replace the observations; native saves, retirement and style mutations
+invalidate the affected slots. Shared style changes invalidate every project
+catalogue for that identity. Failed refreshes never certify old observations.
+These local observations are last-known data, not membership grants or proof
+that an unseen remote change did not happen. Writes, publication and remote
+artifact acquisition retain their authenticated gateway admission.
+
+The browser's style transport host is `styles/catalog-cache.ts`: printing,
+previews and map exports reuse one admitted catalogue, including metadata already
+returned by layer navigation. A successful publication invalidates its durable
+account/backend epoch without starting another request. Explicit Refresh bypasses
+reuse. Atomic epoch checks fence in-flight reads across windows; account changes
+permanently supersede an old read. Returned documents are cloned so consumers
+cannot mutate held bytes. The layer loader checks local style freshness and
+signed-source age; a fresh panel remount makes no API request. Stale sources
+revalidate only on a navigation, never a timer.
+
+Browser status reads share in-flight requests and retain empty full inventories.
+Keys include principal, Firebase project, gateway origin and explicit project;
+legacy project-only entries are not adopted. Targeted subsets cannot establish
+full inventory completeness. Printing's inventory consumes that observation
+instead of forcing another whole-project status read. The room freshness owner
+continues to compare existing head observations; it never probes from each room.
+
+Request-count regressions live in `metadata` native tests and Web
+`style-observation-cache.test.ts`, `design-api-routing.test.ts` and
+`layers-loader.test.ts`: eight cold consumers share one read, warm consumers
+perform zero style/status reads, and refresh/mutation/supersession controls prove
+changed inputs cannot be silently served as fresh. Remaining consumer and
+artifact-provenance migration is tracked in OPEN §16.
+
 ## Measured headless acceptance
 
 The locally built CLI on Gisagara `agahehe` returned six classes and 435
@@ -81,3 +120,12 @@ including authenticated status/style reads; they are not browser cache latency
 or a claim of zero total API calls. The proof command is `ds design pinned preview --project czgmdwth_gisagara
 --transformer agahehe --lane canary --output json`, built from CLI `174a137c`
 and kernel `65ad6b6`. Owning tests retain the acquisition assertions; installed Desktop map acceptance is separate.
+
+After metadata observation reuse, an isolated native cache on the same project
+measured 17.169 s cold, then 0.820 s and 0.793 s warm. Cold used network status,
+network styles and one room acquisition. Both warm receipts used cached status
+and styles and fetched zero rooms. The complete merge receipts were identical:
+six classes, 435 features, including 76 poles. This proves removal of those warm
+metadata/source reads and an approximately 90% reduction against the earlier
+7.853 s warm invocation; it is not a measured cloud-billing total. Request-count
+unit tests guard the read reduction independently of wall-clock variability.

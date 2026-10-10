@@ -1579,6 +1579,18 @@ pub struct TransformerStatusList {
 }
 
 impl TransformerStatusList {
+    /// Re-admit a held observation using the status transport's bounded decoder.
+    pub fn from_observation(rows: Value) -> Result<Self, ClientError> {
+        decode_status(
+            TransportResponse {
+                status: 200,
+                body: serde_json::to_vec(&serde_json::json!({"transformers":rows}))
+                    .map_err(|_| unreadable())?,
+            },
+            crate::PROJECT_REPORT_RESPONSE_LIMIT,
+        )
+    }
+
     pub fn rows(&self) -> &[TransformerStatusRow] {
         &self.transformers
     }
