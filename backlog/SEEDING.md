@@ -15,7 +15,7 @@ Candidate curation and native PLS-CADD acceptance are separate from coding the c
 | Area | Remaining entries |
 | --- | ---: |
 | [1. Deployment and template rollout](#1-deployment-and-template-rollout) | 16 |
-| [2. Release acceptance](#2-release-acceptance) | 2 |
+| [2. Release acceptance](#2-release-acceptance) | 3 |
 | [3. Template projects](#3-template-projects) | 5 |
 | [4. Print templates, styles and seed](#4-print-templates-styles-and-seed) | 6 |
 | [5. Print sheet content and legibility](#5-print-sheet-content-and-legibility) | 6 |
@@ -72,6 +72,12 @@ Candidate curation and native PLS-CADD acceptance are separate from coding the c
 - **Template rollout**: rerun the project census, seed any newly created projects, deploy matching locally built consumers and prove exact-revision report styles. Retire the old `eds_networks`/`eds_solar` roots only through the digest-fenced migration after verifying `~/ds-backups/global-templates-2026-10-06/`; inventory other legacy collections separately.
 
 ## 2. Release acceptance
+
+- **Independent component rollout and measured release acceptance — deferred with OPEN §1** (owner 2026-10-10): after each [owning implementation vertical](OPEN.md#1-source-integration-and-release-code) is admitted and proven, locally build and publish that component's immutable artifact and update installed Windows Desktop and Linux Server. Retain the unchanged host/frontend and unrelated component digests. Prove the owning CLI/MCP operation and matching UI/native result, exact report artifact parity where promised, and Profile differential-edit behavior for its eventual vertical. Reject incompatible protocols before work starts; prove a compatible older/newer component mix. No owner hand-testing substitutes for owning tests and real native artifacts.
+
+  Fault acceptance covers offline use, interrupted acquisition, power loss at activation, invalid signatures/digests, rollback, running/cancelled jobs, concurrent instances, account/project changes and explicit shutdown without orphan workers. Preserve unsaved edits and credentials. Verify another authorized project's assignment/message reaches the single tray receiver and click admission does not silently switch or discard a workspace. Reports must never wait for tiling. Keep current notification and deployment safeguards; this future campaign is not a gate requiring all component extraction before ordinary stabilization releases.
+
+  Measure build, owning tests, packaging, upload, download, activation and first successful operation separately. Record transferred bytes, peak RAM, cache state, exact source/dependency pins and retries. Compare cold/warm builds without clearing reusable caches and against the owner's actual cloud release path and reported three-to-eight-hour Desktop/Server cycles. Retry publication/activation using the existing verified artifact rather than recompiling unchanged inputs. Initial targets are **5–15 minutes for a warm routine component patch** through local proof/publication and **under two minutes for acquisition/activation after download** on a representative idle machine. These are targets to validate, not current measurements or universal limits; measure cold builds, slow links and protocol migrations separately. Re-estimate the OPEN §1 effort after the first actual update.
 
 - **Unobserved platform gates**: run the current Windows Field gate, Storage-emulator rules and shellcheck at the pinned source. An unrun check is an acceptance task; promote a concrete failing source check to `OPEN.md` only after reproducing it.
 

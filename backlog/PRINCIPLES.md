@@ -54,6 +54,8 @@ The standing owner rulings for everyone who works the backlog. [OPEN.md](OPEN.md
 
 ## 3. Priorities (owner, 2026-10-07)
 
+**Owner update, 2026-10-10 — stabilization through the end of 2026:** focus near-term sessions on the existing backlogs, with a slower cadence, rather than introducing new features or rushing to clear every entry. A reproduced production blocker takes priority as it arises. Work one bounded, proven owning slice at a time; larger campaigns may advance slice by slice when the owner admits them and credits permit. Independent component releases remain the next architectural priority, deferred as specified in [OPEN §1](OPEN.md#1-source-integration-and-release-code). No end-of-year promise to empty the backlog is implied. Preserve security, data integrity and affected-release gates. This newer ruling takes precedence over the older ordering below; [ORDER.md](ORDER.md) holds sequencing and dependencies.
+
 1. **`ds` reliability reporting and proactive feedback** (OPEN.md block 25) is a priority.
 2. First-release work: clear the reproduced CLI source gates, complete the provider-model library lifecycle (block 18), integrate the existing PLS-CADD controls (block 21), and move touched UI controls to the kernel with JSON input/preview and replacement-code deletion (block 23).
 3. Fix measured renderer and compute failures.

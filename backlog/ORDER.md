@@ -2,13 +2,19 @@
 
 **Owner, 2026-10-07:** [STABILIZATION.md](STABILIZATION.md) holds the current priority and comes before this order.
 
-**Owner update, 2026-10-10:** independent Desktop/Server component updates are the
-next architectural priority, but implementation is deferred until the owner
-resumes with additional credits. Continue the current release landing now.
-When resumed, first scope is Reporter and Solar; Kernel/Network follow later
-([OPEN §1](OPEN.md#1-source-integration-and-release-code)). This newer ruling
-takes priority over the older feature sequence below; confirmed exposure/data
-loss and the current mandatory notification deployment gate remain safeguards.
+**Owner update, 2026-10-10:** stabilize the existing product through the end of
+2026 at a slower coding cadence; work the existing backlogs rather than starting
+new features or trying to clear every entry in a rush. A reproduced production
+blocker interrupts this sequence. Follow the [current priority ruling](PRINCIPLES.md#3-priorities-owner-2026-10-07)
+before the older priority lists here and in STABILIZATION.md. Independent
+Desktop/Server component releases remain the next architectural priority, but
+implementation is deferred until the owner resumes it with sufficient credits.
+Reporter comes first, Solar second, and Kernel/Network later; the moving slices,
+requirements and effort estimates are in [OPEN §1](OPEN.md#1-source-integration-and-release-code),
+with installed proof and performance targets in [SEEDING §2](SEEDING.md#2-release-acceptance).
+Confirmed exposure/data loss and affected-release safeguards, including the
+notification gate, remain binding. Backlog consolidation does not authorize
+starting extraction or a broad campaign.
 
 Start order for [OPEN.md](OPEN.md), following [owner priorities](PRINCIPLES.md#3-priorities-owner-2026-10-07). This file holds order and dependencies; scope, evidence and proof stay in OPEN.md. Delete a fulfilled row with its OPEN.md entry. [OPEN-X.md](OPEN-X.md) gates only the named decision; [SEEDING.md](SEEDING.md) owns configuration, deployment and installed acceptance.
 

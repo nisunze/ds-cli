@@ -3,8 +3,10 @@
 For Codex, on canonical `run`. Opened 2026-10-07 by the owner after the 7
 October test sweep. There is no deployment pressure.
 
-**Priority (owner, 2026-10-07):** this file is the owner's current priority
-order. Take its items before the rows of [ORDER.md](ORDER.md); ORDER.md rows that
+**Priority (owner, 2026-10-07; updated 2026-10-10):** apply the
+[year-end stabilization ruling](PRINCIPLES.md#3-priorities-owner-2026-10-07)
+first, including production blockers and the slower cadence. Within that scope,
+take this file's items before the older rows of [ORDER.md](ORDER.md); rows that
 link here are worked from here.
 
 **Scope:** this work may touch any other backlog surface it intersects:
