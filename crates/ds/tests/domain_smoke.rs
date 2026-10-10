@@ -11587,10 +11587,14 @@ fn every_work_command_is_reachable_without_the_desktop_installed() {
         "pm.deletion.restore",
         "pm.task.list",
         "pm.task.read",
+        "pm.task.checklist.read",
+        "pm.task.checklist.edit",
+        "pm.task.checklist.promote",
         "pm.task.create",
         "pm.task.update",
         "pm.task.delete",
         "pm.task.assign",
+        "pm.task.attach",
         "pm.task.respond",
         "pm.task.propose",
         "pm.task.request-admission",
@@ -11642,10 +11646,13 @@ fn every_work_command_is_reachable_without_the_desktop_installed() {
         let write = matches!(
             id,
             "pm.task.create"
+                | "pm.task.checklist.edit"
+                | "pm.task.checklist.promote"
                 | "pm.deletion.restore"
                 | "pm.task.update"
                 | "pm.task.delete"
                 | "pm.task.assign"
+                | "pm.task.attach"
                 | "pm.task.respond"
                 | "pm.task.propose"
                 | "pm.task.request-admission"
@@ -19794,4 +19801,122 @@ fn solar_portfolio_legacy_uploader_is_absent_and_native_observation_stays_discov
     assert!(!client.contains("pub(crate) fn publish"));
     let portfolio = include_str!("../../../../ds-command-kernel/crates/ds-client-core/src/solar_portfolio.rs");
     assert!(!portfolio.contains("Command::Publish {"));
+}
+
+
+#[test]
+fn task_checklist_commands_are_item_scoped_and_refuse_before_unused_reads() {
+    for (id, effect) in [
+        ("pm.task.checklist.read", "read_only"),
+        ("pm.task.checklist.edit", "global_write"),
+        ("pm.task.checklist.promote", "global_write"),
+    ] {
+        let described = ok(&["capabilities", id, "--output", "json"]);
+        let command = &described["command"];
+        assert_eq!(command["authority"], "headless_project");
+        assert_eq!(command["requires"], "server");
+        assert_eq!(command["effect"], effect);
+        for name in if effect == "global_write" {
+            vec!["task", "project", "id", "base-revision"]
+        } else {
+            vec!["task", "project"]
+        } {
+            assert!(
+                command["inputs"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|arg| arg["name"] == name && arg["required"] == true),
+                "{id} {name}"
+            );
+        }
+    }
+    assert_eq!(
+        native_pm_refusal(&[
+            "pm",
+            "task",
+            "checklist",
+            "read",
+            "--task",
+            "T4",
+            "--limit",
+            "201",
+            "--output",
+            "json"
+        ]),
+        "invalid_number"
+    );
+    assert!(
+        NATIVE_AUTH_CODES.contains(
+            &native_pm_refusal(&[
+                "pm",
+                "task",
+                "checklist",
+                "read",
+                "--task",
+                "T4",
+                "--output",
+                "json"
+            ])
+            .as_str()
+        )
+    );
+    let folder = temp_root("checklist-edits");
+    std::fs::create_dir_all(&folder).unwrap();
+    let input = folder.join("item-edit.json");
+    std::fs::write(
+        &input,
+        br#"{"action":"edit","item_id":"I2","body":"evidence","attachment_ids":[]}"#,
+    )
+    .unwrap();
+    let path = input.to_str().unwrap();
+    let args = [
+        "pm",
+        "task",
+        "checklist",
+        "edit",
+        "--task",
+        "T4",
+        "--input",
+        path,
+        "--id",
+        "edit-retry-001",
+        "--base-revision",
+        "7",
+        "--output",
+        "json",
+    ];
+    assert_eq!(native_pm_refusal(&args), "confirmation_required");
+    let mut confirmed = args.to_vec();
+    confirmed.push("--yes");
+    assert!(NATIVE_AUTH_CODES.contains(&native_pm_refusal(&confirmed).as_str()));
+    std::fs::write(
+        &input,
+        br#"{"action":"edit","item_id":"I2","task_id":"other-task"}"#,
+    )
+    .unwrap();
+    assert_eq!(native_pm_refusal(&confirmed), "invalid_checklist");
+    let args = [
+        "pm",
+        "task",
+        "checklist",
+        "promote",
+        "--task",
+        "T4",
+        "--item",
+        "I2",
+        "--child",
+        "child-2",
+        "--id",
+        "promote-retry-001",
+        "--base-revision",
+        "7",
+        "--output",
+        "json",
+    ];
+    assert_eq!(native_pm_refusal(&args), "confirmation_required");
+    let mut confirmed = args.to_vec();
+    confirmed.push("--yes");
+    assert!(NATIVE_AUTH_CODES.contains(&native_pm_refusal(&confirmed).as_str()));
+    std::fs::remove_dir_all(folder).unwrap();
 }

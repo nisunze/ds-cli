@@ -2374,6 +2374,21 @@ static WORK_ENTRIES: &[Entry] = &[
         render: ds_cli_pm::task::read::render,
     },
     Entry {
+        command: &ds_cli_pm::task::checklist::READ,
+        handler: ds_cli_pm::task::checklist::read,
+        render: ds_cli_pm::task::checklist::render,
+    },
+    Entry {
+        command: &ds_cli_pm::task::checklist::EDIT,
+        handler: ds_cli_pm::task::checklist::edit,
+        render: ds_cli_pm::task::checklist::render,
+    },
+    Entry {
+        command: &ds_cli_pm::task::checklist::PROMOTE,
+        handler: ds_cli_pm::task::checklist::promote,
+        render: ds_cli_pm::task::checklist::render,
+    },
+    Entry {
         command: &ds_cli_pm::task::create::COMMAND,
         handler: ds_cli_pm::task::create::run,
         render: ds_cli_pm::task::create::render,

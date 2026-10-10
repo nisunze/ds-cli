@@ -238,15 +238,26 @@ pub fn propose(
     read: &crate::Graph,
     existing_links: &[Value],
 ) -> Result<Proposal, Failure> {
-    let parsed = task_geometry::grammar::parse_all(references).map_err(refuse)?;
-    let mut sources: Vec<Source> = parsed.iter().map(|r| r.source.clone()).collect();
-    sources.sort();
-    sources.dedup();
-
     let scope = Scope {
         lane: read.lane.to_owned(),
         uid: read.uid.clone(),
     };
+    propose_scoped(inputs, references, &read.project_id, &scope, existing_links)
+}
+
+/// Resolve only the explicitly named models using the captured project and principal.
+/// Callers that hold a task read need no full project graph for this operation.
+pub fn propose_scoped(
+    inputs: &Inputs,
+    references: &[String],
+    project: &str,
+    scope: &Scope,
+    existing_links: &[Value],
+) -> Result<Proposal, Failure> {
+    let parsed = task_geometry::grammar::parse_all(references).map_err(refuse)?;
+    let mut sources: Vec<Source> = parsed.iter().map(|r| r.source.clone()).collect();
+    sources.sort();
+    sources.dedup();
     let mut index: Vec<ObjectIndex> = Vec::with_capacity(sources.len());
     for source in &sources {
         match source {
@@ -255,7 +266,7 @@ pub fn propose(
                 // the index; the kernel names that `model_unknown` with the
                 // reference it came from.
                 if let Some((path, display_name)) =
-                    ds_cli_dsgrid::objects::local_package(&scope, id)?
+                    ds_cli_dsgrid::objects::local_package(scope, id)?
                 {
                     index.push(ds_cli_dsgrid::objects::index(
                         &source.key(),
@@ -275,7 +286,7 @@ pub fn propose(
     let request = ProposeRequest {
         schema: task_geometry::SCHEMA.into(),
         action: "propose".into(),
-        project: read.project_id.clone(),
+        project: project.to_owned(),
         references: references.to_vec(),
         buffer_m: buffer(inputs)?,
         existing_links: existing_links.to_vec(),

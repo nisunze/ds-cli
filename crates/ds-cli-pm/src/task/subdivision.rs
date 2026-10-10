@@ -39,7 +39,7 @@ const INVALID_PROGRESS: Refusal = Refusal {
     when: "--percent is not a finite number from 0 through 100",
     remedy: "pass a percentage, e.g. --percent 50",
 };
-const RESPONSE_UNREADABLE: Refusal = Refusal {
+pub(crate) const RESPONSE_UNREADABLE: Refusal = Refusal {
     code: "task_write_response_unreadable",
     when: "the server's applied receipt does not match the submitted id and revision",
     remedy: "retry the exact same --id, --base-revision and intent; report a repeated mismatch",
@@ -200,7 +200,7 @@ fn progress(inputs: &Inputs) -> Result<(PmCommand, String, i64), Failure> {
     ))
 }
 
-fn send(
+pub(crate) fn send(
     inputs: &Inputs,
     command: &PmCommand,
     task: &str,

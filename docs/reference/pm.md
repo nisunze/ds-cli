@@ -180,6 +180,45 @@ platform account that can read every project is not thereby a member of any,
 and the engine refuses the request by name (`pm_refused`, "every task assignee
 must be an active project member"). Read `ds pm member list` before assigning.
 
+## Checklist and issue items
+
+`pm task checklist read` reads one named task through `task_read`, including
+server-owned item states, promoted-child completion and the location overlay.
+It returns at most 50 concise items by default; `--limit` admits up to 200 and
+`--details` includes their bodies, answers, geometry and links. `more` explicitly
+marks a shorter projection. No plan-wide read or background refresh is started.
+
+```bash
+ds pm task checklist read --project <exact-id> --task T4 --details --output json
+ds pm task checklist edit --project <exact-id> --task T4 --input item-edit.json --id item-edit-001 --base-revision 17
+ds pm task checklist promote --project <exact-id> --task T4 --item I2 --child T4-child-2 --id promote-001 --base-revision 18
+```
+
+The edit file is a closed item patch, at most 192 KiB. It contains `action`
+(`add`, `edit`, `check`, `uncheck`, `move`, `remove`) and stable `item_id`.
+Optional fields are `checklist_kind` (`checklist` or `issues`), `text`, `body`,
+`answer` (check only), `geometry`, `clear_geometry`, `links`, `attachment_ids`
+and zero-based `index` (add or move). Omitting a field preserves it; empty arrays
+explicitly clear the selected item's links or asset references. Assets must
+already belong to the task. Content belongs to add/edit, and move requires an
+index. The server validates geometry, evidence, list state and permissions.
+
+```json
+{"action":"edit","item_id":"I2","body":"Field evidence verified","attachment_ids":["asset-1"]}
+```
+
+Edits and promotions send one existing `commit_command` without first reading
+a graph. Preserve the exact `--id`, reviewed `--base-revision` and intent after
+a lost reply; both the command id and committed revision must match the receipt.
+There is no automatic rebase. Promotion creates the explicit child and retains
+the item's evidence and location atomically. `--request <email>` uses existing
+assignment requests and may be repeated.
+
+On add/edit, `--geometry-from` uses the same native DS object resolver as task
+geometry. It reads only the named task to pin its revision and preserve that
+item's links, then writes the geometry and links in the same item command.
+The task's own geometry, links and other items are unaffected.
+
 ## Where the work is: task geometry from DS objects
 
 A task carries one optional top-level WGS84 geometry (Point, LineString or

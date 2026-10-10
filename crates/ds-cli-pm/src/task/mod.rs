@@ -20,6 +20,7 @@
 pub mod assign;
 pub mod attach;
 pub mod block;
+pub mod checklist;
 pub mod create;
 pub mod delete;
 pub mod list;
