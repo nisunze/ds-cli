@@ -230,6 +230,62 @@ real workflow needs them (YAGNI).
 | `design.stage` | staged design features (`ds map design create`); the design-intake path |
 | `assets.ingest` | project asset; needs the project authority and `--yes` |
 
+### 5.3 Reusable reconciliation and guarded batch edits
+
+Owner clarification, 2026-10-10: historical pole-type restoration is one example
+of a general analytics workflow, not a dedicated product feature. The same
+sources and typed operations must support comparing snapshots, joining records,
+reviewing differences, projecting selected-field corrections and applying
+explicit assignments across a named scope. Read-only analytics can end in a
+file or preview without any project mutation. This specification remains
+deferred under the stabilization policy; it does not claim these controls exist.
+
+- **Sources:** read admitted local GeoPackages without uploading or processing
+  them into a design. Select exact layers, declare schema/CRS and pin file
+  bytes. Existing DS snapshots and authorized cached rooms are equivalent
+  pinned inputs. Use native readers and compiled dependencies, without requiring
+  an operator to install Python, SQLite command-line tools, Shapely, SciPy or
+  pyproj or write a one-off orchestration/comparison script.
+- **Matching:** choose an explicit identity/key join or geometry predicate, with
+  declared cardinality and deterministic output. Keep unmatched and ambiguous
+  records visible; never choose an arbitrary duplicate or silently substitute
+  nearest-neighbour matching. Exact-position comparison requires a declared
+  common CRS and precision/normalization policy. Numerical normalization is not
+  permission to pair different physical positions or alter target geometry.
+- **Differences and patches:** compare the selected fields and project only
+  allowlisted changes onto stable target identities. Preserve geometry, feature
+  counts and unrelated properties. Missing, null and unchanged values remain
+  distinct. Constant/domain assignments use their own explicit target scope;
+  assignment scope must not be inferred from which rows matched a restore.
+  Any required save-time normalization is separately exposed and authorized.
+- **Effects:** pure steps produce the match/difference/patch frames; sinks alone
+  stage or apply effects through the existing owning edit/save contracts. Extend
+  the current create-only `design.stage` composition to carry a guarded field
+  patch rather than replacing an entire room to change one property. Bind the
+  plan to project/principal, source digests and target revisions, preserving
+  dirty local work and optimistic concurrency. A batch records per-object atomic
+  success, conflict, failure and pending work; it is not a cross-project global
+  transaction. Resume/retry only unfinished effects and verify persisted
+  readbacks, distinguishing planned, staged, saved and verified outcomes.
+- **Economics:** reuse unchanged authorized local inputs and their admitted
+  revisions. Acquire only missing/stale data and write only changed targets;
+  do not poll, download the whole project again or recompute unaffected analysis
+  merely to compare properties. Receipts expose per-step timings, request/read
+  counts, fetched bytes, cache reuse and peak memory with exact input pins.
+  Full counts and explicit omitted-detail counts accompany bounded samples;
+  sample preview cannot establish full-population preservation.
+
+The initial acceptance case restores one selected historical field at the
+same pole positions while preserving current geometry/counts, then assigns
+approval to a separately named scope. Unmatched poles remain unchanged, no
+quantity balancing occurs, and no proximity inference is permitted. A second
+case uses different datasets/fields and an identity/key join, proving the
+operators are reusable. Include duplicate matches, incompatible/unknown CRS,
+source/head movement, dirty rooms, cancellation and idempotent resume as
+negative controls. Compare cold, warm unchanged and one-changed-target runs
+before claiming speed or cloud-read savings. Implementation and its existing
+feedback reference belong in [OPEN §24](../../backlog/OPEN.md#24-owner-feature-requests-cli-first-after-stabilization).
+
 ## 6. Lifecycle and modes
 
 ```text
