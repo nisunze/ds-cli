@@ -9,19 +9,33 @@ fn recipe() -> Value {
 }
 #[test]
 fn immutable_global_definition_pins_contracts_and_refuses_embedded_holdings() {
-    let versions = BTreeMap::from([("design.repair.compare".into(), 1)]);
+    let versions = BTreeMap::from([("design.repair.compare".into(), json!(1))]);
     let definition =
         workflow_documents::capture("repair", "Reviewed recipe", recipe(), versions.clone())
             .unwrap();
     assert_eq!(definition.document["steps"][0]["tool_version"], 1);
     workflow_documents::verify(&definition).unwrap();
+    let mut vector_recipe = recipe();
+    vector_recipe["steps"][0]["tool"] = json!("measure");
+    let vector = workflow_documents::capture(
+        "vector",
+        "",
+        vector_recipe,
+        BTreeMap::from([("measure".into(), json!("ds.vector-tool/v1"))]),
+    )
+    .unwrap();
+    assert_eq!(
+        vector.document["steps"][0]["tool_version"],
+        "ds.vector-tool/v1"
+    );
+    workflow_documents::verify(&vector).unwrap();
     let mut forged = definition.clone();
     forged.document["name"] = json!("changed");
     assert!(workflow_documents::verify(&forged).is_err());
     let mut extra = definition.clone();
     extra
         .operation_versions
-        .insert("unadmitted.extra".into(), 1);
+        .insert("unadmitted.extra".into(), json!(1));
     assert!(workflow_documents::verify(&extra).is_err());
     let mut holding = recipe();
     holding["steps"][0]["request"]["source"] = json!({"type":"FeatureCollection","features":[]});

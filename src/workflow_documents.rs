@@ -5,7 +5,7 @@ use crate::{
     design_repair::{EvidenceSource, Scope},
 };
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::Value;
 use std::collections::BTreeMap;
 
 pub const MAX_BYTES: usize = 8 * 1024 * 1024;
@@ -200,7 +200,7 @@ pub struct Definition {
     pub name: String,
     pub note: String,
     pub document: Value,
-    pub operation_versions: BTreeMap<String, u64>,
+    pub operation_versions: BTreeMap<String, Value>,
     pub digest: String,
 }
 /// Definitions retain recipe/versions only. Run bindings and credentials never
@@ -209,7 +209,7 @@ pub fn capture(
     name: &str,
     note: &str,
     mut document: Value,
-    versions: BTreeMap<String, u64>,
+    versions: BTreeMap<String, Value>,
 ) -> Result<Definition, String> {
     design::identifier(name)?;
     if note.len() > 2048 || note.chars().any(char::is_control) {
@@ -282,28 +282,29 @@ pub fn capture(
             .as_str()
             .ok_or_else(|| err("workflow_document_invalid", "step tool missing"))?
             .to_owned();
-        let version = *versions.get(&id).ok_or_else(|| {
+        let version = versions.get(&id).cloned().ok_or_else(|| {
             err(
                 "workflow_op_version_unsupported",
                 "tool has no admitted descriptor",
             )
         })?;
-        if version == 0 {
+        if !(version.as_u64().is_some_and(|v| v > 0)
+            || version.as_str().is_some_and(|v| {
+                !v.is_empty() && v.len() <= 128 && !v.chars().any(char::is_whitespace)
+            }))
+        {
             return Err(err(
                 "workflow_op_version_unsupported",
                 "operation contracts start at version one",
             ));
         }
-        if step
-            .get("tool_version")
-            .is_some_and(|v| v.as_u64() != Some(version))
-        {
+        if step.get("tool_version").is_some_and(|v| v != &version) {
             return Err(err(
                 "workflow_op_version_unsupported",
                 "step pins a different contract",
             ));
         }
-        step["tool_version"] = json!(version);
+        step["tool_version"] = version.clone();
         used.insert(id, version);
     }
     let mut result = Definition {
