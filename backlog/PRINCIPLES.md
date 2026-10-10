@@ -99,13 +99,23 @@ Why — the painful history:
 
 ## 9. Desktop tiling and data sources (owner, 2026-10-09)
 
-Implementation extension, 2026-10-09: archive and retire ds-vector-tiler entirely,
-after tracing and replacing/retiring its remaining consumers and deployment
-bindings. Combined and simple reports become PC-generated for ordinary users;
-governed central artifact publication and downloads remain. Remote report
-generation is permitted only to server-authorized developers. Ordinary controls
-remain read-only while migrating to PC. Remote tiling is removed for everyone.
-This work must not resume or publish the separately paused stable release.
+Owner revision, 2026-10-10: retire and archive ds-vector-tiler entirely after
+replacing its needed non-tiling consumers and removing deployment bindings.
+There is no standalone vector-tiling API and no current custom dataset/BigQuery
+tiling or explorer. ds-network-reporter is the single Rust compute container
+and native job host. Tiling is a background derivative of complete survey
+acquisition and combined-report preparation, cloud and local, using the same
+embedded native engine and central verified publication. Whole survey downloads
+on a PC retain reusable source data and schedule local tiling; whole combined
+report preparations reuse their acquired design data. Report success is independent
+of background tile success. Cloud simple reports remain available to ordinary
+authorized users; cloud combined/compounded report generation is developer-only.
+Local/headless Server combined reports remain available under existing project
+permissions. Published reports and tiles remain downloadable centrally. Future
+short-lived custom containers and governed expert dataset jobs are outside this
+migration; do not retain old APIs or hidden fallbacks for them. This supersedes
+the 2026-10-09 bans on every cloud report and cloud tile job. The separately
+paused stable release remains paused.
 
 - Windows and Linux Desktop must generate survey, design and personal/project
   tiles locally through shared native Rust, hosted by ds-network-reporter.
@@ -114,7 +124,8 @@ This work must not resume or publish the separately paused stable release.
   Prove actual Windows operation and explicit DS data/zoom/budget policy; no
   silent tile/feature dropping or fallback to an unselected engine.
   Replace Tippecanoe and external PMTiles conversion; remove ordinary Web tiling
-  controls and cloud build dispatch. Web retains map, status and download reads.
+  controls and standalone tile dispatch. Web retains simple report generation,
+  developer-admitted combined reports, map, status and download reads.
 - Survey reads use governed BigQuery snapshots. Current saved design authority
   remains Firestore and DS Grid; BigQuery is not a design transaction gate.
   This corrects the earlier blanket prohibition on Firestore for design.
@@ -136,7 +147,7 @@ This work must not resume or publish the separately paused stable release.
   principal-fenced. PCs never serve tiles; consumers read central publication.
   Claim/coalesce automatic compute before expensive work across contributors.
 - Cut cloud cost and unnecessary reads as measurable latency/UX requirements.
-  Remove ALL current cloud generation and obsolete custom BigQuery tiling/explorer
-  paths. Future expert container/custom-job APIs are outside this migration.
+  Remove standalone tile generation and obsolete custom BigQuery tiling/explorer
+  paths; cloud report-integrated derivatives use the same native reporter owner. Future expert container/custom-job APIs are outside this migration.
   Implement/prove minimal central source, lease and publication coordination. The [implementation plan](../docs/desktop-native-tiling-migration-plan.md)
   defines the serial slices and whole-product acceptance.

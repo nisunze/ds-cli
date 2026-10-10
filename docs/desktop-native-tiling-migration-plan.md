@@ -1,8 +1,9 @@
 # Desktop native tiling and reusable project snapshots
 
-Owner direction: 2026-10-09. Status: implementation plan, not a claim of shipped
+Owner direction: 2026-10-09, revised 2026-10-10. Status: implementation plan, not a claim of shipped
 behavior. Implement serially on canonical `run`. This plan migrates project
-tiling to a pool of user PCs and removes all current cloud tile generation.
+tiling to native reporter jobs on contributing PCs and the admitted report
+container; it removes the standalone tiler service and all custom tiling APIs.
 Future CLI-driven large-container/custom-job APIs are a separate expert project,
 not an implementation track, dependency or exception in this migration.
 
@@ -30,10 +31,12 @@ Windows and Linux Desktop compute project tiles, including admitted personal
 uploads in their project/visibility scope, locally with native
 Rust. Provide the same platform-independent engine on macOS; prove its supported
 build before advertising availability. Linux Server consumes the same owner.
-Web displays and downloads existing tiles/data but has no generate/regenerate
-control and does not request cloud tiling. Remove ALL existing cloud tile
-generation, including custom BigQuery table/dataset tiling and its explorer
-surfaces. No dormant cloud fallback or retained special-dataset build admission.
+Web displays and downloads centrally published tiles/data. Ordinary users may
+generate simple cloud reports; combined/compounded cloud reports require the
+server-authorized developer role. Complete combined-report preparation may
+schedule a background native tile derivative in the same reporter container.
+There is no standalone vector-tiling API, generate/regenerate Web control,
+custom BigQuery table/dataset tiling, explorer or dormant special-job fallback.
 
 PCs are compute contributors, never tile servers. A job produces a private
 candidate, uploads it through the governed project publication protocol, and
@@ -44,7 +47,7 @@ map source, LAN/peer serving or direct generated-file map consumption. A PC may
 go offline after upload without affecting other users. Offline candidates remain
 pending artifacts; consumers retain the last centrally published generation.
 
-`ds-network-reporter` hosts the desktop typed tiling process. The shared algorithm
+`ds-network-reporter` hosts cloud and native report/acquisition tasks and their embedded tiling. The shared algorithm
 remains a reusable native crate, not a second reporter implementation. Remove
 Tippecanoe and the external PMTiles conversion command from the migrated path.
 Do not merely wrap those executables in Rust.
@@ -79,7 +82,8 @@ and work-area query latency. Distinguish observed metrics from unavailable billi
 evidence; do not invent currency savings. Repeated warm refresh, report opening
 and area changes are mandatory scenarios, not just the first cold acquisition.
 
-Required outcomes: zero cloud tile-generation jobs; zero source-data downloads
+Required outcomes: zero standalone cloud tile-generation jobs; reuse acquired
+report/survey bytes for admitted embedded derivatives; zero source-data downloads
 for unchanged warm refresh; zero remote data/freshness calls caused solely by a
 cached-area mask change; changed-only acquisition for normal refresh; shared
 leases/coalescing so multiple PCs do not trigger redundant expensive work; and
@@ -99,14 +103,20 @@ behind hidden flags. Re-thought expert-only CLI workflows, bigger rented
 containers, custom jobs and new cloud-compute endpoints are OUT OF SCOPE. They
 are not required to close this migration and must not be implemented here.
 
-Owner extension during implementation, 2026-10-09: retire and archive the entire
-`ds-vector-tiler` repository/service after tracing and replacing its remaining
-consumers; the earlier non-tiling-service preservation exception is superseded.
-Combined and simple reports become PC-generated project artifacts, with governed
-central publication/download retained. Remote report generation is restricted to
-server-authorized developers only; ordinary users see read-only migrating-to-PC
-controls. Enforce this at the API authority boundary, not just in menus. Remote
-tiling is removed for everyone. Do not resume or publish the paused stable release.
+Owner revision, 2026-10-10: retire and archive the entire ds-vector-tiler
+repository/service after replacing needed consumers and removing deployment
+bindings. ds-network-reporter owns cloud/local tiling as part of combining and
+complete survey acquisition, never as a standalone vector-tiles API. Every
+complete whole-survey download retains reusable local data and schedules its
+background derivative; whole combined-report preparation does the same using
+its acquired design. Cloud simple reports remain available to ordinary authorized
+users; cloud combined/compounded generation requires the server-authorized
+developer role. Local/headless Server generation retains existing project
+permissions. Tiling failure cannot erase a valid report or acquired snapshot.
+Central verified publication/download remains independent of the producer PC.
+This supersedes the earlier blanket cloud-generation bans. Future custom,
+short-lived expert containers/jobs remain outside scope. Never resume the
+separately paused stable release.
 
 This deletion does not remove governed survey BigQuery reads, the future full
 design analytics export schema, local Polars workflows, existing published
@@ -343,17 +353,18 @@ share lifecycle semantics instead of making three reporters.
 ## 5. Automatic scheduling and desktop controls
 
 The kernel owns eligibility and freshness. UI emits typed events after successful
-snapshot acquisition/report preparation; it must not decide completeness itself.
+complete snapshot acquisition/report preparation, on the contributing PC or
+admitted reporter container; it must not decide completeness itself.
 
 | Trigger | Action |
 | --- | --- |
 | Report preparation loaded all transformers with no filter | Reuse its complete saved design snapshot; acquire only missing output layers through the admitted snapshot API; check freshness |
 | Survey load finished with no filter and complete coverage | Reuse the acquired survey snapshot; check freshness |
-| Explicit desktop/CLI tile request | Plan required complete acquisition, reuse matching local data, then build under admitted budgets |
+| Local/headless Server survey acquisition or combined-report request | Reuse matching complete data and schedule the embedded derivative under admitted budgets; no standalone tiling API |
 | Personal/project upload parsed and validated locally | Retain original bytes and columnar projection; compute a candidate for governed central publication in its project/visibility scope, never PC serving |
 | Filtered/partial/unsaved data | Permit explicitly scoped candidate computation; the subset cannot replace complete shared output or become a PC-backed map source. An independently attested complete unmasked disk snapshot may still supply a project job |
 | Work-area mask changes inside disk coverage | Query locally, issue no data/freshness request solely for the mask change, and retain complete project tile freshness |
-| Hosted Web load/report | Read existing artifacts/status; do not dispatch a build |
+| Hosted Web report | Simple reports are admitted normally; combined/compounded reports require developer authority and may schedule their embedded derivative; no standalone tiling dispatch |
 
 Use a key per project/owner, output kind, scope, revision and engine/options.
 Coalesce concurrent triggers and reuse existing jobs. A fresh current artifact
@@ -421,8 +432,9 @@ Backend metadata/credential/lease storage is not the project data acquisition
 policy. This plan does not migrate authentication or all control metadata out
 of Firestore. Minimize project data reads by reusing exact snapshots.
 
-Remove every current cloud tile-generation trigger and backend build admission,
-not just Web buttons. Inventory and retire worker routes `/vector_tile`,
+Remove every standalone cloud tile-generation trigger and backend build
+admission, not just Web buttons. Embedded reporter derivatives use only the
+existing admitted report/acquisition request, not a replacement tile endpoint. Inventory and retire worker routes `/vector_tile`,
 `/tile_dataset`, `/tile_design/firestore`, `/tile_survey/firestore`, `/tile_upload`
 and `/global_tiles/tile`, their callers, queue/retry dispatch and gateway bindings.
 Trace custom BigQuery table/dataset explorer-to-tiling consumers across ds-web,
@@ -491,8 +503,8 @@ remote CI builds or deployment under this plan alone.
    job lifecycle, package the matching reporter. Run a real Windows-native build
    and local generation without WSL, SSH, Tippecanoe, external PMTiles or cloud.
    Linux tests alone are not Windows proof. Keep existing report outputs passing.
-5. **CLI/MCP and Desktop.** Update existing `tile.plan/generate/status` contracts
-   rather than add a parallel command family. Add native job/cancellation and
+5. **CLI/MCP and Desktop.** Update existing report/acquisition and tile read/status contracts;
+   retire standalone generation rather than add a parallel command family. Add native job/cancellation and
    snapshot discovery controls where absent. Implement automatic report/load
    triggers and Desktop manual controls, using one kernel decision. Prove cold,
    fresh and stale caches, filtered input, concurrent loads and report independence.
@@ -502,9 +514,10 @@ remote CI builds or deployment under this plan alone.
    commits and reads the exact shared generation. Prove stale revision, lease loss,
    restricted reader, revoked user, offline queue and ambiguous completion. Keep
    only operational installation/deployment/acceptance in SEEDING once code lands.
-7. **Web retirement and dependency deletion.** Remove Web tiling buttons, handlers,
-   auto-dispatch, bypasses, dead imports and tests. Desktop controls remain native.
-   Remove ALL cloud tile-generation dispatch/admission, custom BigQuery
+7. **Service retirement and dependency deletion.** Remove standalone Web tiling
+   buttons, handlers, auto-dispatch, bypasses, dead imports and tests. Native
+   acquisition/report completion owns scheduling; no replacement vector API.
+   Remove standalone cloud tile-generation dispatch/admission, custom BigQuery
    table/dataset tiling and obsolete BigQuery explorer paths. Preserve governed
    survey reads, non-tiling workers and central published-archive consumers.
    Remove Tippecanoe/external conversion tooling, workstation installers, package
@@ -561,7 +574,7 @@ question. Keep measured cost/read/latency criteria in the live acceptance plan.
 | Windows reader, complete survey | BigQuery snapshot receipt; zero direct Firestore survey reads; native archive and shared readback at the admitted revision |
 | Windows report, all transformers | Exact saved Firestore/DS Grid design revision; complete output coverage; report succeeds; background tiles published or visibly pending |
 | Partial/filtered/restricted snapshot | Scoped candidate works; unauthorized shared project replacement refused; no local serving; current catalogue unchanged |
-| Personal/project upload contribution | Original bytes retained, GeoParquet query works, candidate centrally published at its admitted visibility and consumed through the central path; no PC tile server or cloud tile build |
+| Personal/project upload contribution | Original bytes retained, GeoParquet query works, candidate centrally published at its admitted visibility and consumed through the central path; no PC tile server or standalone cloud tile API |
 | Fresh, empty, stale, corrupted | Correct distinct result; fresh no-op; valid empty output replaces stale data through admitted commit; corruption rebuilt |
 | Two PCs / source edit during job | One publication lease; obsolete candidate cannot win; old good generation remains available |
 | Offline/cancel/crash/logout | No partial promotion or credential crossover; retry/recovery and retained report/snapshot behavior proven |
@@ -572,14 +585,14 @@ question. Keep measured cost/read/latency criteria in the live acceptance plan.
 | Delta recovery and concurrency | Duplicate/equal-time/out-of-order pages, interrupted apply, source epoch reset, cursor expiry, schema/tag/access changes preserve atomicity and produce the declared recovery/refusal |
 | Cached work-area changes | Shrink/expand/clear/revisit within retained coverage produces correct exact spatial results with zero data requests/downloads; full snapshot and project tile freshness unchanged |
 | Missing area and moving features | Only missing admitted coverage transfers; overlap deduplicates; moved/deleted features leave/enter views correctly; partial coverage cannot masquerade as complete |
-| Hosted Web | No build controls or build requests on load/report/upload; map/status/download of existing outputs still work |
-| Cloud retirement and obsolete explorers | All six inventoried worker build routes and all traced custom BQ tiling/explorer callers retired; old API/CLI calls cannot dispatch compute; no fallback or new expert-job endpoints |
+| Hosted Web | No standalone tile controls/requests; simple reports work for ordinary users, combined generation is developer-only; central map/status/download reads still work |
+| Cloud retirement and obsolete explorers | All six inventoried worker build routes and all traced custom BQ tiling/explorer callers retired; old standalone API/CLI calls cannot dispatch compute; no fallback or new expert-job endpoints |
 | PC compute pool, central consumption | Two PCs contribute without serving any tile URL; shut down the contributing PC and verify another Desktop/Web still consumes the committed central archive |
-| App economics and latency | Before/after cold/warm/delta/report/area metrics record source work, transfer and latency; zero cloud tiling, zero unchanged-data download and zero mask-induced remote calls are asserted |
+| App economics and latency | Before/after cold/warm/delta/report/area metrics record source work, transfer and latency; zero standalone cloud tiling, zero unchanged-data download and zero mask-induced remote calls are asserted |
 | Packaging | Real Windows native execution with external tiling tools absent; one installed CLI/MCP/reporter contract and matching skills |
 
 Final source searches must account for every remaining Tippecanoe, external
-PMTiles command, all cloud tile-dispatch and custom BQ tiling/explorer references.
+PMTiles command, all standalone cloud tile-dispatch and custom BQ tiling/explorer references.
 Delete replaced callers,
 adapters, installers and dormant fallbacks, not unrelated non-tiling APIs or PMTiles
 readers. Migrate `docs/contracts/ds-native-tiling.md` to the implemented truth and
@@ -618,7 +631,7 @@ report success independent of background tiling.
 Cut cloud cost and unnecessary reads as acceptance requirements; measure request,
 byte, compute and latency changes against the same workloads. Implement and prove
 minimal existing source/lease/publication coordination, without unconditional cloud
-retiling or full rereads as verification. Remove ALL current cloud tile generation,
+retiling or full rereads as verification. Remove standalone cloud tile generation,
 Web tiling buttons/dispatch, obsolete custom BigQuery tiling and BigQuery explorer,
 and traced replaced dependencies, permissions, tests and dormant fallbacks. Future
 expert CLI-driven large-container/custom-job APIs are outside scope; do not retain
@@ -626,6 +639,6 @@ or create them as a fallback. Preserve non-tiling services and central consumers
 
 Follow the whole-path acceptance matrix, prove refusals and installed discovery,
 and update owning contracts/skills/pins. Do not claim completion with mocks,
-Linux-only proof or remaining cloud generation. Delete fulfilled backlog items;
+Linux-only proof or remaining standalone/custom tile generation. Delete fulfilled backlog items;
 keep only genuine unresolved owner input in OPEN-X and operational acceptance in
 SEEDING. Do not resume or publish the separately paused stable release.

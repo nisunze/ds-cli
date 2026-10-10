@@ -598,20 +598,22 @@ Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group A, to be fixed to
   and revision-fenced central publication. Treat PCs as project compute contributors,
   never personal result owners or tile servers; explain this in Sync Center.
   Claim/coalesce project work, implement minimal source/lease/publication APIs,
-  remove ALL cloud generation and obsolete custom BigQuery tiling/explorer, and
+  remove standalone/custom tile generation and obsolete BigQuery tiling/explorer, and
   measure read/cost/latency savings. Future expert jobs are outside scope.
   Maintain the moving remaining plan here; no new owner input is needed for
   autonomous code. Whole-path acceptance is in the plan's matrix.
 
-  Next owning vertical: **3 — local-only container I/O closure**: remove unused
-  HTTP/TLS from the admitted local vector/container path, preserving the pinned
-  upstream algorithms. `versatiles_core::io::data_reader_http` and container
-  registry HTTP dispatch currently select reqwest/TLS unconditionally. Container
-  URL-only references can use the underlying URL type independently of HTTP.
-  Keep one exact Core type identity across geometry, container and direct callers
-  when introducing a pinned optional HTTP boundary; disabled URL I/O must refuse
-  before network work or filesystem fallback. Source/chunk-file transport
-  remains separate from the durable metadata journal and persisted local views.
+  Active owning vertical: **cloud report admission** — ordinary authorized users
+  need simple reports; only combined/compounded cloud generation requires app
+  developer authority, with reads/downloads retained. Next: **4 — reporter
+  integration**: one embedded native candidate producer reused by cloud/local
+  combined preparation, distinct background outcome and complete-source fence;
+  complete survey acquisition must schedule the same owner locally. No standalone
+  vector-tiling API or custom dataset/explorer replacement is admitted. Trace and
+  move needed survey export/upload parsing, buildings, contours, elevation and
+  DS Grid mirror adapters into reporter before archiving ds-vector-tiler.
+  The optional HTTP/TLS dependency closure is outside this critical integration
+  path; no local generator request may select a remote source.
   Remaining **2 — store integration** around `ds-layer-store::project_snapshot::Store`: spatial indexes/Polars projection and filter
   pushdown, recovery estimates and bounded retention policy.
   `Pin::visit_layer` still hashes/scans full layer chunks; prepared predicates do
@@ -651,24 +653,25 @@ Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group A, to be fixed to
   selected columns, validates all scoped rows on each page, and the mirror sync
   currently DELETEs tombstones. Implement maintained epoch/change/deletion
   evidence and full typed source properties before adapting that route; a
-  timestamp-fenced page is not a retained change ledger. **7** ALL cloud generation, obsolete custom BigQuery explorer/
+  timestamp-fenced page is not a retained change ledger. **7** standalone cloud generation, obsolete custom BigQuery explorer/
   tiling and external-tool/fallback deletion with consumer tracing; **8** matching
   development packaging, installed discovery and Windows/Linux real-map matrix.
   Every slice is proved, committed and pushed on canonical `run` before the next.
   Acceptance retains before/after cold/warm/delta/report/area request counts,
   source work/billed bytes where observable, transfer, cloud invocations, latency
-  and peak memory/disk. Assert zero cloud tiling, unchanged source downloads,
+  and peak memory/disk. Assert zero standalone/custom cloud tiling, unchanged source downloads,
   mask-induced remote calls and redundant cross-PC compute; never claim live
   publication or Windows proof from fixtures/Linux alone. Sync Center describes
   project compute contributors and central publication, never PC tile serving.
-  Owner extension during implementation: archive the entire ds-vector-tiler
-  service/repository after tracing and replacing/retiring its non-tiling consumers;
-  remove its deployment/gateway bindings. Combined and simple report generation
-  becomes PC-only for ordinary users; keep central artifact publication/download.
-  Ordinary compute menus remain to be made read-only and labelled as migrating
-  to PC; installed developer-only remote report admission is operational
-  acceptance in SEEDING.md §16, not a missing authority implementation.
-  Remote tiling is removed for everyone, including developers.
+  Retire/archive ds-vector-tiler and remove its deployment/gateway bindings only
+  after needed non-tiling consumers move. Complete survey downloads and combined
+  preparation must reuse acquired data for background native derivatives, cloud
+  and local, with distinct tile outcomes and centrally verified publication.
+  Ordinary users retain cloud simple reports; cloud combined/compounded report
+  generation is developer-only. Native/local generation keeps existing project
+  permissions. Future custom short-lived containers and governed dataset jobs
+  remain outside scope. The stable release remains paused.
+
 
 - `33003988` (minor): in-flight and transient dataset-download refusals reach the CLI as `desktop_refused`/failed with `retryable: false`. Give them a typed retryable code with a stated wait (a `cliRefusal` in ds-web reference-data TS, the refusal declared in ds-cli-desktop `data.rs`, regenerated ds-web `native-catalog.generated.json`), and stop truncating the nested cause (ds-cli-desktop `bridge.rs` `bounded()` keeps only the first line, at most 160 chars).
 
