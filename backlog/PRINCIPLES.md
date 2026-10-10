@@ -153,3 +153,29 @@ paused stable release remains paused.
   paths; cloud report-integrated derivatives use the same native reporter owner. Future expert container/custom-job APIs are outside this migration.
   Implement/prove minimal central source, lease and publication coordination. The [implementation plan](../docs/desktop-native-tiling-migration-plan.md)
   defines the serial slices and whole-product acceptance.
+
+## 10. Cloud cost and service ownership (owner, 2026-10-10)
+
+The intended compute/control service families are `ds-brain`, `ds-solar` and
+`ds-network-reporter`, including their admitted lane/bulk variants. Remove
+`ds-buildings`, `ds-data`, `ds-form-factory`, `ds-geo-exchange`, `ds-print`,
+`ds-solar-weather`, `ds-system` and `ds-vector-tiler` after replacing required
+consumers and reconciling invocation grants. Retire their deployments, jobs,
+triggers and local repositories with preserved Git history; retain no dispatch
+fallbacks. Source deletion alone does not establish live retirement.
+
+Ordinary Brain targets 128 MiB for bounded authority, signing and commits;
+unsafe work belongs behind bulk or in the native compute pool. Bulk retirement
+and direct BigQuery-to-GCS survey delivery are deferred. Reports never wait for
+tiling, and the cloud/native report permissions remain governed by §9.
+
+No polling: intentional navigation, explicit refresh, canonical mutations and
+actual push drive application data reads. Preserve account-wide notifications
+across project navigation and one resident Desktop notification owner with
+peer delivery. Reduce redundant calls without weakening authorization,
+credential expiry or durable delivery. Requests are not evidence of hallucinated
+calls without caller/action attribution. Measure request frequency, billed
+reads, compute and latency per successful operation before claiming savings;
+the Brain usage matrix is [the baseline](../../ds-brain/docs/operations/cloud-request-frequency.md).
+Remaining implementation and operational proof belong in OPEN §22/§17 and
+SEEDING §22, not another savings TODO file.
