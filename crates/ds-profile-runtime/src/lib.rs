@@ -162,6 +162,7 @@ pub struct Runtime {
 }
 impl Runtime {
     pub fn execute(&mut self, request: impl Into<Request>) -> Result<Value, String> {
+        let started = std::time::Instant::now();
         let request = match request.into() {
             Request::CalculationControl(input) => self.prepare_calculation_control(input)?,
             request => request,
@@ -176,7 +177,7 @@ impl Runtime {
             Request::Release(r) => Some(r.scope.clone()),
             _ => None,
         };
-        let result = self.execute_with_publication(request);
+        let mut result = self.execute_with_publication(request);
         if result.is_ok() {
             if let Some(scope) = changed_context {
                 if self.held.contains_key(&scope) {
@@ -185,6 +186,14 @@ impl Runtime {
                     self.calculation_contexts.remove(&scope);
                     self.calculation_jobs.release_scope(&scope);
                 }
+            }
+        }
+        if let Ok(value) = &mut result {
+            if let Some(metrics) = value.get_mut("metrics").and_then(Value::as_object_mut) {
+                metrics.insert(
+                    "runtime_elapsed_ms".into(),
+                    json!(started.elapsed().as_secs_f64() * 1000.),
+                );
             }
         }
         result

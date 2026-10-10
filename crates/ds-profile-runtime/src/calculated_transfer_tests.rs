@@ -544,6 +544,37 @@ fn observed_edits_land_whole_without_a_reconcile_job() {
             .execute(Request::Observe(Box::new(request)))
             .unwrap();
         assert_eq!(next["calculation"]["required"], false, "{next}");
+        let metrics = &next["metrics"];
+        let measured = |name: &str| {
+            let value = metrics[name].as_f64().expect("native elapsed phase");
+            assert!(
+                value.is_finite()
+                    && value >= 0.
+                    && value <= metrics["total_native_ms"].as_f64().unwrap()
+            );
+            value
+        };
+        let update_phases = [
+            "profile_engine_update_ms",
+            "profile_delta_encode_ms",
+            "profile_authored_rebase_ms",
+            "profile_result_index_ms",
+        ]
+        .into_iter()
+        .map(measured)
+        .sum::<f64>();
+        let core = measured("profile_update_core_ms");
+        assert!(core >= update_phases, "nested phases must not overlap");
+        let phases = core
+            + measured("authored_geometry_ms")
+            + measured("authored_display_ms")
+            + measured("profile_response_build_ms");
+        assert!(metrics["total_native_ms"].as_f64().unwrap() >= phases);
+        assert!(
+            metrics["runtime_elapsed_ms"].as_f64().unwrap()
+                >= metrics["total_native_ms"].as_f64().unwrap()
+                    + metrics["publication_checkpoint_ms"].as_f64().unwrap_or(0.)
+        );
         assert_eq!(
             next["calculated_update"]["reference_work"]["computed_sections"],
             1

@@ -385,6 +385,8 @@ impl Runtime {
                     Some(format!("profile_authored_geometry_unavailable: {error}")),
                 ),
             };
+            let authored_geometry_ms = authored_started.elapsed().as_secs_f64() * 1000.;
+            let display_started = std::time::Instant::now();
             let display = authored
                 .as_ref()
                 .filter(|_| authored_delta.is_some())
@@ -399,6 +401,7 @@ impl Runtime {
             let authored_display_delta = display
                 .as_ref()
                 .map(|display| authored_display::delta(&held.authored_display, display));
+            let authored_display_ms = display_started.elapsed().as_secs_f64() * 1000.;
             let held = self.held.get_mut(&request.scope).expect("admitted base");
             if held.session.current_revision().roots.engineering_input_root
                 != session.current_revision().roots.engineering_input_root
@@ -442,6 +445,10 @@ impl Runtime {
             // exact delta the worker admits, or a named whole-model
             // reconciliation. This host only carries the answer.
             let update_started = std::time::Instant::now();
+            let mut engine_update_ms = 0.;
+            let mut delta_encode_ms = 0.;
+            let mut authored_rebase_ms = 0.;
+            let mut result_index_ms = 0.;
             let mut calculated_update = Value::Null;
             let mut updated = false;
             let base = request.calculated_base_signature.as_ref().and_then(|_| {
@@ -472,7 +479,8 @@ impl Runtime {
                 use ds_grid_engine::profile_edit_update::{
                     profile_update_after_edit, ProfileEditInputs, ProfileEditUpdate,
                 };
-                calculated_update = match profile_update_after_edit(
+                let engine_started = std::time::Instant::now();
+                let update = profile_update_after_edit(
                     ProfileEditInputs {
                         session: &held.session,
                         review: Arc::make_mut(&mut held.review),
@@ -483,7 +491,9 @@ impl Runtime {
                     &base,
                     &touched,
                     held.options.clone(),
-                ) {
+                );
+                engine_update_ms = engine_started.elapsed().as_secs_f64() * 1000.;
+                calculated_update = match update {
                     // An update that carries whole-model facts from an older
                     // revision is half an edit. It is never presented as the
                     // edit's result: the base stays, and the host reconciles.
@@ -499,13 +509,16 @@ impl Runtime {
                         section_ids,
                         pending_reconcile,
                     }) => {
+                        let encode_started = std::time::Instant::now();
                         let delta_json =
                             serde_json::to_string(&delta).map_err(|error| error.to_string())?;
+                        delta_encode_ms = encode_started.elapsed().as_secs_f64() * 1000.;
                         let update = json!({"scene_delta_json":delta_json,"base_signature":base.signature(),
                             "section_ids":section_ids,"pending_reconcile":pending_reconcile,
                             "update_ms":update_started.elapsed().as_secs_f64()*1000.,
                             "surface_work":held.review.surface_work(),"reference_work":held.review.reference_work(),
                             "case_work":held.review.case_work(),"assembly_work":held.review.assembly_work()});
+                        let rebase_started = std::time::Instant::now();
                         if let Some(authored) = &mut held.authored {
                             Arc::make_mut(authored)
                                 .rebase_after_calculation(next.scene())
@@ -513,11 +526,14 @@ impl Runtime {
                                     format!("profile_authored_base_unavailable: {error}")
                                 })?;
                         }
+                        authored_rebase_ms = rebase_started.elapsed().as_secs_f64() * 1000.;
+                        let index_started = std::time::Instant::now();
                         held.result_index = Arc::new(result_queries::Index::new(
                             &held.session,
                             next.scene(),
                             &held.demand_cache,
                         ));
+                        result_index_ms = index_started.elapsed().as_secs_f64() * 1000.;
                         held.calculated_base = Some(Arc::new(next));
                         held.calculated_scene = None;
                         held.calculated_touched = Default::default();
@@ -537,8 +553,10 @@ impl Runtime {
                     }
                 };
             }
+            let update_core_ms = update_started.elapsed().as_secs_f64() * 1000.;
             let computed = held.review.base_scene().map(|scene| &scene.model_revision);
             let authored_ms = authored_started.elapsed().as_secs_f64() * 1000.0;
+            let response_started = std::time::Instant::now();
             let delta_bytes = authored_delta.as_ref().map(|delta| {
                 serde_json::to_vec(delta)
                     .expect("native delta serializes")
@@ -557,6 +575,10 @@ impl Runtime {
                     "scope":scope}});
             response["metrics"] = json!({"admission_ms":admission_ms,"journal_ms":journal_ms,"replay_ms":replay_ms,
                 "authored_ms":authored_ms,"total_native_ms":started.elapsed().as_secs_f64()*1000.0,
+                "authored_geometry_ms":authored_geometry_ms,"authored_display_ms":authored_display_ms,
+                "profile_engine_update_ms":engine_update_ms,"profile_delta_encode_ms":delta_encode_ms,
+                "profile_authored_rebase_ms":authored_rebase_ms,"profile_result_index_ms":result_index_ms,
+                "profile_update_core_ms":update_core_ms,
                 "authored_delta_bytes":delta_bytes,"authored_display_delta_bytes":authored_display_delta.as_ref().map(|delta| serde_json::to_vec(delta).unwrap().len()),"applied_entries":receipts.len(),"retained_entries":entries.len()});
             response["metrics"]["profile_update_ms"] =
                 json!(update_started.elapsed().as_secs_f64() * 1000.);
@@ -582,6 +604,9 @@ impl Runtime {
                     json!(demand.resolved_support_paths);
             }
             replay_cost.append(&mut response["metrics"]);
+            response["metrics"]["profile_response_build_ms"] =
+                json!(response_started.elapsed().as_secs_f64() * 1000.);
+            response["metrics"]["total_native_ms"] = json!(started.elapsed().as_secs_f64() * 1000.);
             return Ok(response);
         }
         if pending_reconcile {

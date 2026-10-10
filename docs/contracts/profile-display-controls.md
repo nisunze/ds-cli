@@ -446,6 +446,18 @@ reduces recomputed cases from six to the three affected cases, reuses the other
 three, retains the exact redo history, and matches a fresh native scene.
 
 Observe and explicit Refresh/Analyze return bounded numeric `metrics`.
+Observe separates `authored_geometry_ms`, `authored_display_ms`,
+`profile_engine_update_ms`, `profile_delta_encode_ms`,
+`profile_authored_rebase_ms`, `profile_result_index_ms` and
+`profile_response_build_ms`. `profile_update_core_ms` contains the engine,
+delta encoding, authored rebase and result-index phases. `authored_ms` and
+the historical `profile_update_ms` are inclusive measurements; do not sum
+them with their children. `total_native_ms` ends after response construction
+and metric assembly. `runtime_elapsed_ms` additionally includes publication
+checkpoint staging and outer runtime context admission. Both exclude the final IPC envelope encoding, transport,
+worker admission, renderer publication and canvas draw; hosts measure those
+using their own monotonic clock. Timing neither changes result admission nor
+starts a data acquisition.
 `admission_ms`, `journal_ms` and `replay_ms` separate request admission, native
 journal decoding/chain validation and staged replay/navigation. The summed
 `replay_apply_*_ms` phases measure actual native command admission, snapshot
