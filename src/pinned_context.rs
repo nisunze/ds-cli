@@ -9,9 +9,9 @@
 //! 1. **What to fetch** (`plan`). A room the machine already holds is reused.
 //!    A room that is missing one layer asks for THAT LAYER, never for the whole
 //!    room again. A held copy the server has moved past is refetched whole,
-//!    because a moved revision invalidates every layer of it. A room that was
-//!    already fetched whole and still does not carry the anchor layer is
-//!    reused, not asked for again — that is what the server has.
+//!    because a moved revision invalidates every layer of it. Default scope
+//!    is every saved class, proved by the existing status inventory or a
+//!    whole-room read. An anchor alone is never completeness.
 //!
 //! 2. **What one layer IS** (`merge`). Every pinned room of the same design
 //!    class folds into ONE FeatureCollection per (source, class), so fifty
@@ -90,7 +90,11 @@ pub struct PlanRequest {
     /// Refresh: ask for every pinned room again, cache or no cache.
     #[serde(default)]
     pub force: bool,
-    /// The classes a displayable room must carry. Empty means the anchor.
+    /// Explicitly discard captured local edits; ordinary refresh never does.
+    #[serde(default)]
+    pub discard_local_edits: bool,
+    /// Explicit class scope. Empty means ALL saved classes: use the head's
+    /// inventory, or require a proven whole-room read when it is unavailable.
     #[serde(default)]
     pub require: Vec<String>,
     #[serde(default)]
@@ -118,6 +122,9 @@ pub struct HeldRoom {
     /// asking again would loop forever.
     #[serde(default)]
     pub complete: bool,
+    /// Unsaved work is authoritative even when a refresh was requested.
+    #[serde(default)]
+    pub dirty: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -126,6 +133,10 @@ pub struct Head {
     pub name: String,
     #[serde(default)]
     pub version: Option<i64>,
+    /// Saved class counts from the existing status snapshot. None means that
+    /// inventory is unknown; an empty inventory is a known empty room.
+    #[serde(default)]
+    pub layers: Option<BTreeMap<String, i64>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -342,6 +353,41 @@ fn check_schema(schema: &str) -> Result<(), String> {
 
 // ── 1. What to fetch ────────────────────────────────────────────────────
 
+/// Shared room freshness for pinning, acquisition and Project Control. Older
+/// observations cannot invalidate a newer held snapshot. This is metadata-only;
+/// hosts still compare-and-swap the captured room before publishing fetched bytes.
+pub fn room_is_fresh(room: &HeldRoom, head: Option<&Head>) -> bool {
+    if room.dirty {
+        return true;
+    }
+    if let (Some(remote), Some(local)) = (head.and_then(|h| h.version), room.version) {
+        if remote > local {
+            return false;
+        }
+        if remote < local {
+            return room.complete;
+        }
+    }
+    if let Some(counts) = head.and_then(|h| h.layers.as_ref()) {
+        let held: BTreeMap<String, i64> = room
+            .layers
+            .iter()
+            .map(|(name, count)| (layer_key(name), *count))
+            .collect();
+        let saved: BTreeMap<String, i64> = counts
+            .iter()
+            .map(|(name, count)| (layer_key(name), *count))
+            .filter(|(_, count)| *count > 0)
+            .collect();
+        return held
+            .into_iter()
+            .filter(|(_, count)| *count > 0)
+            .collect::<BTreeMap<_, _>>()
+            == saved;
+    }
+    room.complete
+}
+
 pub fn plan(request: PlanRequest) -> Result<Plan, String> {
     check_schema(&request.schema)?;
     let batch = request
@@ -356,9 +402,6 @@ pub fn plan(request: PlanRequest) -> Result<Plan, String> {
         .map(|value| canonical(value))
         .filter(|value| !value.is_empty())
         .collect();
-    if required.is_empty() {
-        required.push(ANCHOR_LAYER.to_owned());
-    }
     required.sort();
     required.dedup();
 
@@ -367,11 +410,17 @@ pub fn plan(request: PlanRequest) -> Result<Plan, String> {
         .iter()
         .map(|room| (canonical(&room.name), room))
         .collect();
-    let heads: BTreeMap<String, Option<i64>> = request
-        .heads
-        .iter()
-        .map(|head| (canonical(&head.name), head.version))
-        .collect();
+    let mut heads: BTreeMap<String, &Head> = BTreeMap::new();
+    for head in &request.heads {
+        let key = canonical(&head.name);
+        let replace = heads.get(&key).is_none_or(|old| {
+            head.version.unwrap_or(0) > old.version.unwrap_or(0)
+                || (head.version == old.version && head.layers.is_some())
+        });
+        if replace {
+            heads.insert(key, head);
+        }
+    }
 
     let mut seen: BTreeSet<String> = BTreeSet::new();
     let mut names: Vec<String> = Vec::new();
@@ -389,8 +438,19 @@ pub fn plan(request: PlanRequest) -> Result<Plan, String> {
     for name in &names {
         let key = canonical(name);
         let room = held.get(&key).copied();
-        let head = heads.get(&key).copied().flatten();
+        let head = heads.get(&key).copied();
 
+        if request.discard_local_edits {
+            fetch.push(whole(name, "discard_local_edits"));
+            continue;
+        }
+        if room.is_some_and(|room| room.dirty) {
+            reuse.push(Reuse {
+                name: name.clone(),
+                reason: "local_edits",
+            });
+            continue;
+        }
         if request.force {
             fetch.push(whole(name, "forced"));
             continue;
@@ -399,7 +459,7 @@ pub fn plan(request: PlanRequest) -> Result<Plan, String> {
             fetch.push(whole(name, "not_held"));
             continue;
         };
-        if room.layers.values().all(|count| *count <= 0) {
+        if !room.complete && room.layers.values().all(|count| *count <= 0) {
             fetch.push(whole(name, "empty_room"));
             continue;
         }
@@ -408,11 +468,58 @@ pub fn plan(request: PlanRequest) -> Result<Plan, String> {
         // unknown is NOT stale on that basis: absence of evidence is not
         // evidence, and refetching on it is what made a locally-written room
         // download itself on every display.
-        if let (Some(server), Some(local)) = (head, room.version) {
-            if server > 0 && local > 0 && server != local {
+        if let (Some(server), Some(local)) = (head.and_then(|head| head.version), room.version) {
+            if server > 0 && local > 0 && server > local {
                 fetch.push(whole(name, "head_moved"));
                 continue;
             }
+        }
+        if required.is_empty() {
+            if room_is_fresh(room, head) {
+                reuse.push(Reuse {
+                    name: name.clone(),
+                    reason: "held",
+                });
+                continue;
+            }
+            if let Some(inventory) = head.and_then(|head| head.layers.as_ref()) {
+                // A transformer point proves neither poles nor custom design
+                // classes. The saved inventory also repairs historical caches
+                // that were incorrectly marked complete after a partial read.
+                let held_counts: BTreeMap<String, i64> = room
+                    .layers
+                    .iter()
+                    .map(|(name, count)| (layer_key(name), *count))
+                    .collect();
+                let missing: Vec<String> = inventory
+                    .iter()
+                    .filter(|(name, count)| {
+                        **count > 0
+                            && held_counts.get(&layer_key(name)).copied().unwrap_or(0) < **count
+                    })
+                    .map(|(name, _)| name.clone())
+                    .collect();
+                if missing.is_empty() {
+                    fetch.push(whole(name, "class_inventory_moved"));
+                } else {
+                    fetch.push(Fetch {
+                        name: name.clone(),
+                        layers: missing,
+                        whole_room: false,
+                        reason: "missing_layers",
+                    });
+                }
+            } else if room.complete {
+                reuse.push(Reuse {
+                    name: name.clone(),
+                    reason: "held",
+                });
+            } else {
+                // No inventory can prove which classes a legacy partial copy
+                // omitted. Read it whole once; the executor records that proof.
+                fetch.push(whole(name, "incomplete_room"));
+            }
+            continue;
         }
         let missing = missing_layers(room, &required);
         if missing.is_empty() {
@@ -913,6 +1020,54 @@ mod tests {
     // ── 1. what to fetch ────────────────────────────────────────────────
 
     #[test]
+    fn changed_inventory_and_out_of_order_observations_do_not_bless_stale_rooms() {
+        let request = plan_request(serde_json::json!({
+            "schema":SCHEMA,"pins":["t"], "held":[{"name":"t","version":7,"complete":true,"layers":{"lv_poles":4,"removed":2}}],
+            "heads":[{"name":"t","version":8,"layers":{"lv_poles":2}},{"name":"t","version":7,"layers":{"lv_poles":4,"removed":2}}]
+        }));
+        assert_eq!(plan(request).unwrap().fetch[0].reason, "head_moved");
+        let request = plan_request(serde_json::json!({
+            "schema":SCHEMA,"pins":["t"], "held":[{"name":"t","version":7,"complete":true,"layers":{"lv_poles":4,"removed":2}}],
+            "heads":[{"name":"t","version":7,"layers":{"lv_poles":2}}]
+        }));
+        assert_eq!(
+            plan(request).unwrap().fetch[0].reason,
+            "class_inventory_moved"
+        );
+        let request = plan_request(
+            serde_json::json!({"schema":SCHEMA,"pins":["t"],"discard_local_edits":true,"held":[{"name":"t","dirty":true}]}),
+        );
+        assert_eq!(
+            plan(request).unwrap().fetch[0].reason,
+            "discard_local_edits"
+        );
+    }
+
+    #[test]
+    fn shared_freshness_preserves_dirty_empty_and_newer_rooms() {
+        let decode = |value| serde_json::from_value::<HeldRoom>(value).unwrap();
+        let head: Head = serde_json::from_value(
+            serde_json::json!({"name":"t", "version":7, "layers":{"lv_poles":999}}),
+        )
+        .unwrap();
+        let newer = decode(
+            serde_json::json!({"name":"t", "version":8, "complete":true, "layers":{"lv_poles":4}}),
+        );
+        assert!(room_is_fresh(&newer, Some(&head)));
+        let dirty = decode(serde_json::json!({"name":"t", "dirty":true}));
+        assert!(room_is_fresh(&dirty, Some(&head)));
+        let empty = decode(serde_json::json!({"name":"t", "complete":true}));
+        assert!(room_is_fresh(&empty, None));
+        let request: PlanRequest = serde_json::from_value(serde_json::json!({
+            "schema":SCHEMA,"pins":["t"],"force":true,"held":[{"name":"t","dirty":true}]
+        }))
+        .unwrap();
+        let plan = plan(request).unwrap();
+        assert!(plan.fetch.is_empty());
+        assert_eq!(plan.reuse[0].reason, "local_edits");
+    }
+
+    #[test]
     fn a_room_missing_one_layer_asks_for_that_layer_not_the_room() {
         let answer = plan(plan_request(json!({
             "schema": SCHEMA,
@@ -944,7 +1099,7 @@ mod tests {
             "pins": ["T1", "T2"],
             "held": [
                 {"name": "T1", "layers": {"tr": 1}, "version": 6},
-                {"name": "T2", "layers": {"tr": 1}, "version": 7},
+                {"name": "T2", "layers": {"tr": 1}, "version": 7, "complete": true},
             ],
             "heads": [{"name": "T1", "version": 7}, {"name": "T2", "version": 7}],
         })))
@@ -973,7 +1128,7 @@ mod tests {
         let answer = plan(plan_request(json!({
             "schema": SCHEMA,
             "pins": ["T1"],
-            "held": [{"name": "T1", "layers": {"tr": 1}}],
+            "held": [{"name": "T1", "layers": {"tr": 1}, "complete": true}],
             "heads": [{"name": "T1", "version": 7}],
         })))
         .expect("plan");
@@ -986,6 +1141,7 @@ mod tests {
         let answer = plan(plan_request(json!({
             "schema": SCHEMA,
             "pins": ["T1"],
+            "require": ["tr"],
             "held": [{"name": "T1", "layers": {"Transformers": 1, "customers": 3}}],
         })))
         .expect("plan");
@@ -997,11 +1153,68 @@ mod tests {
         let answer = plan(plan_request(json!({
             "schema": SCHEMA,
             "pins": ["T1"],
+            "require": ["tr"],
             "held": [{"name": "T1", "layers": {"customers": 4}, "complete": true}],
         })))
         .expect("plan");
         assert!(answer.fetch.is_empty());
         assert_eq!(answer.reuse[0].reason, "absent_on_server");
+    }
+
+    #[test]
+    fn all_classes_repairs_missing_poles_and_custom_classes_despite_legacy_complete_flag() {
+        let answer = plan(plan_request(json!({
+            "schema": SCHEMA,
+            "pins": ["partial", "unchanged"],
+            "held": [
+                {"name": "partial", "version": 7, "complete": true, "layers": {"tr": 1, "lv_lines": 20}},
+                {"name": "unchanged", "version": 7, "layers": {"tr": 1, "lv_poles": 25}}
+            ],
+            "heads": [
+                {"name": "partial", "version": 7, "layers": {"tr": 1, "lv_lines": 20, "lv_poles": 25, "custom_notes": 2, "empty": 0}},
+                {"name": "unchanged", "version": 7, "layers": {"tr": 1, "lv_poles": 25}}
+            ]
+        }))).expect("plan");
+        assert_eq!(
+            answer.fetch,
+            vec![Fetch {
+                name: "partial".into(),
+                layers: vec!["custom_notes".into(), "lv_poles".into()],
+                whole_room: false,
+                reason: "missing_layers"
+            }]
+        );
+        assert_eq!(answer.reuse[0].name, "unchanged");
+        assert_eq!(answer.counts.requests, 1);
+        assert_eq!(answer.counts.rooms_fetched, 0);
+    }
+
+    #[test]
+    fn all_classes_without_inventory_reads_a_legacy_partial_room_whole_once() {
+        for complete in [false, true] {
+            let answer = plan(plan_request(json!({
+                "schema": SCHEMA, "pins": ["T1"],
+                "held": [{"name": "T1", "layers": {"tr": 1}, "complete": complete}],
+                "heads": [{"name": "T1", "version": 7}]
+            })))
+            .expect("plan");
+            if complete {
+                assert!(answer.fetch.is_empty());
+            } else {
+                assert_eq!(answer.fetch[0], whole("T1", "incomplete_room"));
+            }
+        }
+    }
+
+    #[test]
+    fn a_class_with_only_some_of_its_saved_features_is_not_complete() {
+        let answer = plan(plan_request(json!({
+            "schema": SCHEMA, "pins": ["T1"],
+            "held": [{"name": "T1", "layers": {"tr": 1, "lv_poles": 4}}],
+            "heads": [{"name": "T1", "layers": {"tr": 1, "lv_poles": 25}}]
+        })))
+        .expect("plan");
+        assert_eq!(answer.fetch[0].layers, vec!["lv_poles"]);
     }
 
     #[test]

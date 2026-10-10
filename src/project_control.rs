@@ -56,6 +56,8 @@ struct RoomPlanInput {
 struct RoomHead {
     name: String,
     #[serde(default)]
+    layers: Option<BTreeMap<String, i64>>,
+    #[serde(default)]
     version: Option<u64>,
 }
 
@@ -63,6 +65,8 @@ struct RoomHead {
 #[serde(deny_unknown_fields)]
 struct LocalRoom {
     name: String,
+    #[serde(default)]
+    layers: BTreeMap<String, i64>,
     server_known: bool,
     #[serde(default)]
     local_dirty: bool,
@@ -272,13 +276,25 @@ fn availability(
 }
 
 fn room_is_current(head: Option<&RoomHead>, room: Option<&LocalRoom>) -> bool {
-    let (Some(head), Some(room)) = (head, room) else {
+    let Some(room) = room else {
         return false;
     };
-    room.server_known
-        && head.version.is_some()
-        && head.version == room.server_version
-        && !room.local_dirty
+    if !room.server_known || room.local_dirty {
+        return false;
+    }
+    let held = crate::pinned_context::HeldRoom {
+        name: room.name.clone(),
+        layers: room.layers.clone(),
+        version: room.server_version.and_then(|v| i64::try_from(v).ok()),
+        complete: true,
+        dirty: false,
+    };
+    let head = head.map(|head| crate::pinned_context::Head {
+        name: head.name.clone(),
+        layers: head.layers.clone(),
+        version: head.version.and_then(|v| i64::try_from(v).ok()),
+    });
+    crate::pinned_context::room_is_fresh(&held, head.as_ref())
 }
 
 #[derive(Debug, Deserialize)]

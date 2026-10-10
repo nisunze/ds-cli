@@ -29,7 +29,7 @@ Candidate curation and native PLS-CADD acceptance are separate from coding the c
 | [13. Spotting (Codex main)](#13-spotting-codex-main) | 2 |
 | [14. Plan and Profile authoring](#14-plan-and-profile-authoring) | 7 |
 | [15. Project deliveries](#15-project-deliveries) | 6 |
-| [16. Map data, datasets and screen styling](#16-map-data-datasets-and-screen-styling) | 12 |
+| [16. Map data, datasets and screen styling](#16-map-data-datasets-and-screen-styling) | 13 |
 | [17. Project Work and Assets](#17-project-work-and-assets) | 11 |
 | [18. Global DS Grid library](#18-global-ds-grid-library) | 3 |
 | [21. Windows native release](#21-windows-native-release) | 10 |
@@ -290,6 +290,8 @@ Candidate curation and native PLS-CADD acceptance are separate from coding the c
 - Locally build and directly deploy needed canary dependencies, then rerender MV booklets without ground points, publish Nyamagabe into the system, and finish its stale A4 set and UI voltage-drop PDF. Keep the other documented landing defects open until individually proved. Never launch remote Cloud Build or deploy `ds-system` without its explicit name from the owner.
 
 ## 16. Map data, datasets and screen styling
+
+- **Installed Working set completeness acceptance** (owner report 2026-10-10): on a paired Desktop with a named transformer, prove that pinning includes its saved poles and every other nonempty design class, repairs a legacy partial preview cache, preserves the editable room, and incurs zero downloads on the next unchanged display. Source/native/WASM tests do not replace installed map evidence. The current ds-server session has no live paired Desktop; the bounded independent installed CLI trial discovered `map.design.pin` but could not inspect a live map. Use the matching installed kernel/CLI/Web set and remove this entry after recorded map/CLI evidence, without requiring owner hand-testing.
 
 - **Cloud report admission installation**: deploy a locally built development ds-brain artifact carrying `dec1b112`, then prove authenticated ordinary users (including non-developer administrators) can generate explicitly selected simple reports but cannot dispatch combined/compounded reports or trigger their pre-dispatch cleanup; developers retain authorized cloud combined generation. Prove native status/cache/sign/download and PC publication still work through their existing gates. Local combined generation remains repeatable for every authorized project user, without a developer requirement or cloud-generation quota. Source contract/tests: `ds-brain/docs/contracts/remote-report-admission.md`. No deployment has been performed by this coding slice; do not resume or publish the separately paused stable release.
 
