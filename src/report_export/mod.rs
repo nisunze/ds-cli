@@ -16,6 +16,7 @@
 //! `input_base_fingerprint` and `room_content_sha256` the publication contract
 //! admits against.
 
+pub mod engineering;
 pub mod held;
 pub mod jcs;
 pub mod preview;
@@ -1286,6 +1287,8 @@ pub struct AdminBoundsEvidence {
 #[serde(deny_unknown_fields)]
 struct ResultDocument {
     #[serde(default)]
+    engineering_preflight: Option<engineering::EngineeringPreflight>,
+    #[serde(default)]
     warnings: Vec<PrintWarning>,
     /// One measured assessment per named print output (`printing::
     /// diagnostics`): the typed collision findings behind the warnings,
@@ -1541,6 +1544,8 @@ pub fn layout_knob(message: &str) -> Option<LayoutKnob> {
 /// work that cannot leave the machine is the state the edge must never be in.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct VerifiedResult {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub engineering_preflight: Option<engineering::EngineeringPreflight>,
     pub artifacts: Vec<VerifiedArtifact>,
     pub failed: Vec<FailedFormat>,
     pub warnings: Vec<PrintWarning>,
@@ -1659,9 +1664,19 @@ fn parse_result(document: &[u8]) -> Result<ResultDocument, ResultRefusal> {
             "Network Reporter result exceeds its byte bound",
         ));
     }
-    serde_json::from_slice(document).map_err(|error| {
+    let result: ResultDocument = serde_json::from_slice(document).map_err(|error| {
         ResultRefusal::invalid(format!("Network Reporter result is malformed: {error}"))
-    })
+    })?;
+    if result
+        .engineering_preflight
+        .as_ref()
+        .is_some_and(|evidence| !evidence.valid())
+    {
+        return Err(ResultRefusal::invalid(
+            "Network Reporter engineering preflight is invalid or exceeds its bounds",
+        ));
+    }
+    Ok(result)
 }
 
 /// Read the engine's typed refusal out of a result it wrote before exiting
@@ -1707,6 +1722,76 @@ pub fn verify_result(
     {
         return Err(ResultRefusal::invalid(
             "Network Reporter result does not match its semantic request",
+        ));
+    }
+    if result
+        .engineering_preflight
+        .as_ref()
+        .is_some_and(|evidence| !evidence.valid())
+    {
+        return Err(ResultRefusal::invalid(
+            "Network Reporter engineering preflight is invalid or exceeds its bounds",
+        ));
+    }
+    Ok(result)
+}
+
+/// Read the engine's typed refusal out of a result it wrote before exiting
+/// non-zero. `None` when the document is absent, malformed, or not this
+/// request's — the host then reports the process failure itself.
+pub fn typed_failure(document: &[u8], plan: &ExportPlan) -> Option<ResultRefusal> {
+    let result = parse_result(document).ok()?;
+    if result.task != REPORT_TASK
+        || result.transformer != plan.transformer
+        || result.country != plan.country
+        || (result.status == "completed" && result.blockers.is_empty())
+    {
+        return None;
+    }
+    Some(ResultRefusal::Blocked {
+        status: result.status,
+        blockers: result.blockers,
+        artifacts: result.artifacts.len(),
+    })
+}
+
+/// Prove one result document answers the plan: the same task, transformer
+/// and country; at least one format built; every declared artifact a direct
+/// child of the staged output directory with a plausible name, size and
+/// digest; every requested format either built or named as failed;
+/// administrative evidence consistent with the country; and only the print
+/// warnings the kernel's tables can raise.
+///
+/// A run that built some of its formats is an answer, not a refusal. The
+/// artifacts it did build are finished work: they must be able to leave the
+/// machine — verified, receipted, publishable — while the formats it did not
+/// build are named with the knob that would fix them. Only a run that built
+/// nothing is [`ResultRefusal::Blocked`].
+pub fn verify_result(
+    document: &[u8],
+    plan: &ExportPlan,
+    out_dir: &Path,
+) -> Result<VerifiedResult, ResultRefusal> {
+    let result = parse_result(document)?;
+    if result.task != REPORT_TASK
+        || result.transformer != plan.transformer
+        || result.country != plan.country
+    {
+        return Err(ResultRefusal::invalid(
+            "Network Reporter result does not match its semantic request",
+        ));
+    }
+    if result
+        .engineering_preflight
+        .as_ref()
+        .is_some_and(|evidence| evidence.blockers > 0)
+        && result
+            .artifacts
+            .iter()
+            .any(|artifact| artifact.format == "xlsx")
+    {
+        return Err(ResultRefusal::invalid(
+            "Network Reporter published quantities despite engineering blockers",
         ));
     }
     let partial = match result.status.as_str() {
@@ -1907,6 +1992,7 @@ pub fn verify_result(
     }
     let survey_layers = verify_survey_layers(plan, &result.survey_layers)?;
     Ok(VerifiedResult {
+        engineering_preflight: result.engineering_preflight,
         artifacts,
         failed,
         warnings: result.warnings,
@@ -2235,6 +2321,10 @@ pub fn run_receipt(facts: &RunReceiptFacts<'_>) -> Result<Value, String> {
         "elapsed_ms": facts.result.elapsed_ms,
         "publication": publication_facts(facts.plan, facts.engine)?,
     });
+    if let Some(preflight) = &facts.result.engineering_preflight {
+        receipt["engineering_preflight"] =
+            serde_json::to_value(preflight).map_err(|error| error.to_string())?;
+    }
     // A no-omission receipt keeps the exact preexisting shape.
     if let Some(omitted) = &facts.plan.survey_layers_omitted {
         receipt["survey_layers_omitted"] = json!(omitted);
@@ -3186,6 +3276,65 @@ mod tests {
             "artifacts": artifacts,
             "blockers": [], "elapsed_ms": 42
         })
+    }
+
+    #[test]
+    fn engineering_preflight_is_optional_bounded_and_cannot_qualify_blocked_quantities() {
+        let plan = plan_transformer_export(
+            "proj-1",
+            &simple_receipt("Benin"),
+            "tx_a",
+            7,
+            &layers(),
+            None,
+        )
+        .unwrap();
+        let out_dir = PathBuf::from("/tmp/run/out");
+        let mut document = result_document(&plan, &out_dir);
+        let verify = |document: &Value| {
+            verify_result(&serde_json::to_vec(document).unwrap(), &plan, &out_dir)
+        };
+        assert!(verify(&document).unwrap().engineering_preflight.is_none());
+        document["engineering_preflight"] = json!({
+            "schema":"ds.report.engineering-preflight/v1",
+            "source_layers":[{"layer":"lv_poles","features":1,"held_features_sha256":"a".repeat(64)}],
+            "field_lineage":[],"blockers":0,"finding_counts":{},"findings":[],
+            "omitted_details":0,"quantity_rows_total":0,"quantity_lineage":[],"omitted_quantity_details":0
+        });
+        assert_eq!(
+            serde_json::to_value(verify(&document).unwrap().engineering_preflight.unwrap())
+                .unwrap(),
+            document["engineering_preflight"]
+        );
+        for patch in [
+            json!({"extra":true}),
+            json!({"schema":"wrong"}),
+            json!({"omitted_details":1}),
+            json!({"quantity_rows_total":1}),
+            json!({"source_layers":vec![document["engineering_preflight"]["source_layers"][0].clone();33]}),
+        ] {
+            let mut invalid = document.clone();
+            for (key, value) in patch.as_object().unwrap() {
+                invalid["engineering_preflight"][key] = value.clone();
+            }
+            assert!(verify(&invalid).is_err(), "{patch}");
+        }
+        document["engineering_preflight"]["blockers"] = json!(1);
+        document["engineering_preflight"]["omitted_details"] = json!(1);
+        document["engineering_preflight"]["finding_counts"] = json!({"missing_engineering_fact":1});
+        assert!(
+            verify(&document).is_err(),
+            "quantity artifact must not bypass engineering blockers"
+        );
+        document["artifacts"]
+            .as_array_mut()
+            .unwrap()
+            .retain(|artifact| artifact["format"] != "xlsx");
+        document["status"] = json!("partial");
+        document["blockers"] = json!([{"code":"report_engineering_facts_required","message":"missing source fact","format":"xlsx"}]);
+        let partial = verify(&document).unwrap();
+        assert_eq!(partial.failed.len(), 1);
+        assert_eq!(partial.engineering_preflight.unwrap().blockers, 1);
     }
 
     #[test]
