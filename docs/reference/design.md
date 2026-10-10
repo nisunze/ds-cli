@@ -1469,14 +1469,15 @@ the map executes.
 **What to fetch.** `--held` is a JSON array of what a machine already holds —
 `[{name, layers: {class: count}, version, complete}]` — an inventory of counts,
 never payloads. A room the machine holds is reused. A room missing ONE design
-class asks for that class rather than the whole room again; the classes a
-displayable room must carry are `--require`, defaulting to the transformer's
-own `tr` anchor, whose other spellings (`transformer`, `transformers`,
-`transformer_point`) resolve to the same class. A held copy is refetched WHOLE
-only when the project's status register proves its head revision has moved: a
-copy whose own revision is simply unknown is not stale on that basis. A room
-already read whole (`complete: true`) that still lacks a required class does
-not have one on the server either, and is never asked for again. `--force` is
+class asks for that class rather than the whole room again. By default the
+kernel checks every saved class against the existing status inventory, including
+poles and custom classes. `--require` explicitly narrows that scope. A cached
+transformer point alone never proves that the other classes are present. A
+legacy partial copy without a known inventory is read whole once; only a
+whole-room response records `complete: true`. Proven complete rooms are reused
+without another read when the head is unknown. A moved revision invalidates the
+whole held copy. Known missing classes or incomplete feature counts repair even
+historical caches incorrectly marked complete. `--force` is
 the operator's Refresh: every pinned room, held or not. `--focus` is the
 transformer being edited, which is never pinned context as well and is dropped
 from the plan rather than fetched twice. Every context read asks for the

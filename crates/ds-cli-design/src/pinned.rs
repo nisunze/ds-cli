@@ -68,7 +68,7 @@ const HIDE: Arg = Arg::repeated(
 const REQUIRE: Arg = Arg::repeated(
     "require",
     "<layer>",
-    "A design class a displayable room must carry. Repeat; the default is the transformer's own `tr` anchor.",
+    "Explicit design class scope. Repeat; by default include all saved design classes.",
 );
 const HELD: Arg = Arg::value(
     "held",
@@ -234,7 +234,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         .result()
         .rows()
         .iter()
-        .map(|row| json!({"name": row.name(), "version": head_version(row.row())}))
+        .map(|row| json!({"name": row.name(), "version": head_version(row.row()), "layers": row.row().get("layers")}))
         .collect();
 
     let plan = pinned_context::plan(request!(
@@ -515,7 +515,7 @@ mod tests {
                     "schema": SCHEMA,
                     "pins": ["T1", "T2"],
                     "held": [{"name": "T1", "layers": {"tr": 1, "customers": 9}, "version": 4}],
-                    "heads": [{"name": "T1", "version": 4}, {"name": "T2", "version": 2}],
+                    "heads": [{"name": "T1", "version": 4, "layers": {"tr": 1, "customers": 9}}, {"name": "T2", "version": 2}],
                 })
             )
             .expect("the request encodes"),
