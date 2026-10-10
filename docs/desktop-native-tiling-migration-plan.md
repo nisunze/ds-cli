@@ -376,6 +376,11 @@ Explicit offline/diagnostic generation may stage a candidate without a lease,
 but cannot publish or serve it; only the current admitted lease holder uploads
 and commits a shared candidate.
 
+Reports must never wait for tiling, tile uploads, retries or tile publication.
+Return completed reports immediately; independent durable jobs consume retained,
+digest-pinned artifacts. Native jobs must use sealed retained bytes after staging
+cleanup; cloud jobs must pin and retain an exact generation or immutable object.
+Do not launch untracked post-response workers or recapture current source data.
 Separate report success from tile success. Reports finish normally while a
 background tile job can be queued, running, ready locally, waiting for network,
 published, superseded, cancelled or failed. Retain bounded actionable diagnostics

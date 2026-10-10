@@ -606,6 +606,11 @@ Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group A, to be fixed to
   Active owning vertical: **4 — reporter integration**: one embedded native
   candidate producer reused by cloud/local
   combined preparation, distinct background outcome and complete-source fence;
+  reports must never call or await tiling. Persist a minimal derivative descriptor
+  through the existing report seal/commit and independently reconcile durable jobs
+  over retained artifacts: Desktop staging and CLI temporary results are deleted;
+  cloud object names are reusable, so pin/retain the exact upload generation or
+  immutable output. Do not mistake a ready handoff for a scheduled/completed job.
   complete survey acquisition must schedule the same owner locally. No standalone
   vector-tiling API or custom dataset/explorer replacement is admitted. Trace and
   move needed survey export/upload parsing, buildings, contours, elevation and

@@ -108,7 +108,9 @@ acquisition and combined-report preparation, cloud and local, using the same
 embedded native engine and central verified publication. Whole survey downloads
 on a PC retain reusable source data and schedule local tiling; whole combined
 report preparations reuse their acquired design data. Report success is independent
-of background tile success. Cloud simple reports remain available to ordinary
+of background tile success. Reports must never wait for tiling, tile uploads,
+tile retries or publication: a separate durable job consumes retained report
+artifacts after report completion. Cloud simple reports remain available to ordinary
 authorized users; cloud combined/compounded report generation is developer-only.
 Local/headless Server combined reports remain available under existing project
 permissions. Published reports and tiles remain downloadable centrally. Future
