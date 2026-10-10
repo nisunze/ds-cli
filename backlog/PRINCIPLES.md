@@ -20,7 +20,6 @@ The standing owner rulings for everyone who works the backlog. [OPEN.md](OPEN.md
 | SEEDING.md §6 | Nyamagabe dense-neighbor LV delivery | "install the already-landed angle-symbol/neighbour fixes" |
 | SEEDING.md §6 | Northern Hub LV delivery | "install the already-landed empty-table fix" |
 | SEEDING.md §8 | Canary store and Northern Hub reconciliation | "install the landed reclaim fix" |
-| SEEDING.md §11 | Stage-two qualification gate | "The oracle correction is already on `run`" |
 | SEEDING.md §12 | Saved scaffold trust states | "Install the landed native preview/WASM correction" |
 | SEEDING.md §13 | Installed spotting progress and Windows budget | "install the landed stage/pass/alignment progress" |
 | SEEDING.md §14 | Large-model edit lifecycle acceptance | "Source guards and hot-reload tests already exist" |

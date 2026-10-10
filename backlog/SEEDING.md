@@ -224,7 +224,7 @@ Candidate curation and native PLS-CADD acceptance are separate from coding the c
 
 - **Old project revisions**: upgrade only explicitly reviewed published heads through `ds grid model upgrade`, verify exact output and source retention, then republish through the governed project lifecycle. Reader retirement and named old-schema refusals remain code work in `OPEN.md` block 11.
 
-- **Stage-two qualification gate** (`e37d99d5`): rerun and close the filed full-workspace gate after the separate characterized 19.01/V68 case `c45dc437` is repaired. The oracle correction is already on `run`; no further oracle patch is implied by this acceptance task.
+- **Stage-two qualification gate** (`e37d99d5`, `c45dc437`): install the matching converter, rerun the filed full-workspace gate and Restore/reopen its artifacts in PLS-CADD 16.81. Verify exact restored member bytes, workspace identity and clearance/criterion-case parity for the characterized 19.01/DON-v68 sources, with the 16.20 control. Linux conversion tests do not establish native Windows acceptance.
 
 - **Model 2 whole-workspace export replay** (`90cf2311`): replay the real Model 2 PLS export once a package is saved with the current schema (m2-r18 is schema v3, its migration is refused and its manifest declares no complete table registry).
 
