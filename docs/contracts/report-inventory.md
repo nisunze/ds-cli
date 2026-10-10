@@ -36,6 +36,50 @@ Cloud-only outputs carry their own head/origin and never acquire a local run or
 generation timestamp. A changed current input is explicitly `changed`/`stale`;
 publication does not grant engineering or report freshness.
 
+## Freshness and automatic reuse
+
+Owner ruling, 2026-10-10: transformer acquisition and derived-output reuse use
+one shared native freshness authority. Pinning, editing, printing, report export,
+collision analysis and tiling consume its admitted snapshots. Hosts transport
+facts and render decisions; they do not implement separate `isFresh` policies.
+The unfinished migration is owned by [OPEN.md §16](../../backlog/OPEN.md#16-map-data-datasets-and-screen-styling).
+
+Before deciding to reuse an output instead of computing it, that authority must
+bind its producing provenance to the requested dependency closure: transformer
+revision and content, saved analysis, project configuration, seeds and reference
+data, styles, layout, extent and context layers, media, output format/options,
+and the admitted engine/build. Only dependencies relevant to that output belong
+in its closure; changing an unrelated transformer or output must not invalidate
+it. The source snapshot remains captured through execution and publication;
+an edit during acquisition or generation cannot silently bless stale work.
+
+The existing v2 server input-base fingerprint does not by itself prove this
+closure: it binds transformer/version, project sheets and country/reference.
+Inventory `source_state=matched` therefore is not permission to skip rendering.
+Historical missing provenance remains unknown. Name, date, report success,
+head-level fingerprint and byte equality alone cannot establish current reuse.
+Each surviving output keeps its own producing provenance, including when a head
+combines several runs. Unknown or changed inputs refuse automatic current reuse
+without hiding an otherwise authorized historical download.
+
+Project publication is reusable across users and machines. The producer is
+provenance, not an extra freshness dependency. Access must be authorized for the
+requesting principal and exact project through the existing publication owner;
+another account's private local cache is not project publication. Bind the
+selected immutable output, verify its size/digest when acquiring bytes, and
+recheck the captured authority before returning them. Revoked access, moved
+identity or invalid bytes cannot be repaired by borrowing the producer's account
+or returning an unverified local copy.
+
+Navigation, explicit refresh and admitted push events supply observations;
+there is no polling or per-consumer freshness probe. Shared acquisitions are
+coordinated so a freshness check cannot race an in-flight download or overwrite
+local edits. Intentional regenerate/Refresh remains a new run; opening an
+existing retained preview preserves [its read-only contract](retained-printing-previews.md).
+Report generation and artifact reuse never wait for tiling.
+
+## Inventory observations
+
 Read facts are `ready`, `held` (previous verified same-scope facts retained after
 a refresh error), `unavailable`, or `not_observed`. Held/unavailable facts retain
 their bounded error. Only all-ready reads establish complete observed inventory;
