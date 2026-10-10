@@ -745,6 +745,8 @@ Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group A, to be fixed to
 
 ## 22. Operations product code
 
+- **Ordinary Brain 128 MiB, staged bulk containment** (ds-brain, ds-apis-tf; owner 2026-10-10): follow `ds-brain/docs/authorization-only-128mib-migration-plan.md`. First preserve Simple Notes' single gateway, NDJSON terminal-summary/cancellation and mutation contracts while profiling current operations and isolating unsafe work behind existing bulk endpoints. Bulk may remain permanently; BQ-to-GCS/signed-object delivery and bulk retirement are deferred. Moving execution: (1) reproducible synthetic request/source profiling with external RSS/cgroup and allocation/latency/read accounting; (2) place typed survey reads on bulk, keep scope/cursors and preflights unchanged, bound aggregate input; (3) enforce ordinary/bulk runtime placement before decode and remove only safely separable heavy initialization; (4) classify remaining ordinary actions/startup/background work, profile retained mixed bursts/slow clients/cancellation and soak, then select proven 128 MiB limits/concurrency. Existing historical measurements are inherited evidence, not new profiles. Do not lower configured memory or claim savings from gateway placement alone. Owning tests prove compatibility; no owner hand-testing or stable-release work.
+
 - **Feedback and SRE closure are not linked** (kernel, ds-cli): kernel `ds-client-core` `sre.rs` `read_ds_client`/`project_ds_client` and the ds-cli-sre overview must read settled automatic reports and present a command+code as addressed when its newest event is older than the close of its newest settled report, keeping the counts as evidence (contract §5.3a step 4).
 
 ## 23. Kernel controls, JSON UI and TypeScript retirement
