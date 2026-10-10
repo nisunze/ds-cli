@@ -168,7 +168,10 @@ impl ArtifactSelection {
             return Err(unreadable());
         }
         let object = artifact["object"].as_str().ok_or_else(unreadable)?;
-        if object != format!("ds-grid/objects/sha256/{digest}") {
+        // The catalog server's canonicalGridObjectPath shards by the first
+        // two digest characters. Validate the exact authorized object rather
+        // than inventing a different (unsharded) content-addressed layout.
+        if object != format!("ds-grid/objects/sha256/{}/{digest}", &digest[..2]) {
             return Err(unreadable());
         }
         let size = artifact["byte_length"]
@@ -630,7 +633,7 @@ mod tests {
     fn artifact_fixture() -> (Value, String, Vec<u8>) {
         let bytes = b"exact original native bytes\r\n".to_vec();
         let digest = format!("{:x}", Sha256::digest(&bytes));
-        let object = format!("ds-grid/objects/sha256/{digest}");
+        let object = format!("ds-grid/objects/sha256/{}/{digest}", &digest[..2]);
         let artifact = json!({"digest":digest,"object":object,"byte_length":bytes.len()});
         let data = json!({"head":{"library_id":"library_1","example_id":"example_1"},
             "release":{"library_id":"library_1","release_id":"release_1","manifest":artifact,"validation_report":artifact},
@@ -760,9 +763,34 @@ mod tests {
         }
     }
 
+    #[test]
+    fn catalog_object_shard_must_match_digest_even_when_locator_matches_object() {
+        let (data, digest, bytes) = artifact_fixture();
+        for object in [
+            format!("ds-grid/objects/sha256/{digest}"),
+            format!("ds-grid/objects/sha256/zz/{digest}"),
+            format!("ds-grid/objects/sha256/{}/{digest}/extra", &digest[..2]),
+        ] {
+            let mut bad = data.clone();
+            bad["release"]["manifest"]["object"] = json!(object);
+            bad["manifest_download_url"] = json!(format!(
+                "https://storage.googleapis.com/bucket/{object}?signed=private"
+            ));
+            let mut transport = ArtifactTransport {
+                body: bytes.clone(),
+                status: 200,
+                calls: 0,
+            };
+            assert!(manifest_selection()
+                .download(&mut transport, &bad, &digest)
+                .is_err());
+            assert_eq!(transport.calls, 0, "invalid metadata never acquires bytes");
+        }
+    }
+
     fn member_fixture() -> (Value, String, Vec<u8>, ArtifactSelection) {
         let (_, digest, bytes) = artifact_fixture();
-        let object = format!("ds-grid/objects/sha256/{digest}");
+        let object = format!("ds-grid/objects/sha256/{}/{digest}", &digest[..2]);
         let data = json!({"library_id":"library_1","release_id":"release_1", "member":{"relative_path":"native/pole.012","class":"structure","artifact":{"digest":digest,"object":object,"byte_length":bytes.len()},"provenance":{"kind":"seed","reference":"reviewed exact source","source_digest":digest}},"download_url":format!("https://storage.googleapis.com/bucket/{object}?generation=123&signed=private"),"expires_at":"2026-10-07T12:00:00Z"});
         let selection = ArtifactSelection::LibraryAsset {
             library: "library_1".into(),

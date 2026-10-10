@@ -120,6 +120,13 @@ publish only with apply; returned routing keys must match the planned target.
 Tile catalogue receipts and GIS metadata omit signed URLs and private storage
 paths.
 
+Global catalog artifact acquisition uses the server's canonical object layout
+`ds-grid/objects/sha256/<first-two-digest-characters>/<digest>`. Exact immutable
+coordinates, authorized locator, byte count and SHA-256 must all agree before
+bytes are returned. Invalid metadata makes zero byte-transfer calls; valid
+acquisition makes one, without unrelated project reads. Signed locators never
+enter the receipt.
+
 Project GIS uploads accept an immutable host reader up to 1 GiB. The core alone
 accepts the backend-issued HTTPS storage session and project-bound raw path.
 The host sends bytes without DS bearer headers and without redirects. Only a
