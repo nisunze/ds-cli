@@ -1727,63 +1727,6 @@ pub fn verify_result(
     if result
         .engineering_preflight
         .as_ref()
-        .is_some_and(|evidence| !evidence.valid())
-    {
-        return Err(ResultRefusal::invalid(
-            "Network Reporter engineering preflight is invalid or exceeds its bounds",
-        ));
-    }
-    Ok(result)
-}
-
-/// Read the engine's typed refusal out of a result it wrote before exiting
-/// non-zero. `None` when the document is absent, malformed, or not this
-/// request's — the host then reports the process failure itself.
-pub fn typed_failure(document: &[u8], plan: &ExportPlan) -> Option<ResultRefusal> {
-    let result = parse_result(document).ok()?;
-    if result.task != REPORT_TASK
-        || result.transformer != plan.transformer
-        || result.country != plan.country
-        || (result.status == "completed" && result.blockers.is_empty())
-    {
-        return None;
-    }
-    Some(ResultRefusal::Blocked {
-        status: result.status,
-        blockers: result.blockers,
-        artifacts: result.artifacts.len(),
-    })
-}
-
-/// Prove one result document answers the plan: the same task, transformer
-/// and country; at least one format built; every declared artifact a direct
-/// child of the staged output directory with a plausible name, size and
-/// digest; every requested format either built or named as failed;
-/// administrative evidence consistent with the country; and only the print
-/// warnings the kernel's tables can raise.
-///
-/// A run that built some of its formats is an answer, not a refusal. The
-/// artifacts it did build are finished work: they must be able to leave the
-/// machine — verified, receipted, publishable — while the formats it did not
-/// build are named with the knob that would fix them. Only a run that built
-/// nothing is [`ResultRefusal::Blocked`].
-pub fn verify_result(
-    document: &[u8],
-    plan: &ExportPlan,
-    out_dir: &Path,
-) -> Result<VerifiedResult, ResultRefusal> {
-    let result = parse_result(document)?;
-    if result.task != REPORT_TASK
-        || result.transformer != plan.transformer
-        || result.country != plan.country
-    {
-        return Err(ResultRefusal::invalid(
-            "Network Reporter result does not match its semantic request",
-        ));
-    }
-    if result
-        .engineering_preflight
-        .as_ref()
         .is_some_and(|evidence| evidence.blockers > 0)
         && result
             .artifacts
