@@ -145,3 +145,17 @@ one transformer collision/revision choice, never as two transformer names.
 
 Stops at: the drafting application and the engineer — `ds` stages, revises and
 saves; drawing judgement and acceptance stay with them.
+
+## Evidence-backed property repairs
+
+For a repair that must preserve current geometry, counts and approved facts,
+discover `design.repair.describe`, then audit/compare/propose/apply-selected.
+These are native pure controls; apply-selected returns a projected snapshot,
+not a saved design. Use exact positions with declared CRS or independent typed
+keys; never infer proximity, balance totals or fill unmatched records. Missing
+and null differ. Review stable selected cells and source/head fences before
+`design.project.repair` (offline transaction) or `design.repair.publish` (saved
+server version/content fence and exact readback). Skills cannot waive a native
+refusal or substitute process/resize/renumber/demotion. When declared, verify
+the original raw evidence file pin. Use the existing typed workflow DAG to
+compose these same operations; effects remain explicit.

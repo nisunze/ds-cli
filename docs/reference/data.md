@@ -673,3 +673,41 @@ archive-local style references, and embedded icons. The resulting GeoParquet
 contains the layer style document under `ds:style_document`; feature properties
 retain `kml_style_id`, decoded components and data-driven colours. Invalid styles
 are reported in `kml_style_error` by placemark name while geometry is retained.
+
+## Reusable repair workflows
+
+The existing `data.vector.workflow` runner accepts `document` inputs and the
+portable `design.repair.audit`, `.compare`, `.propose` and `.apply-selected`
+operations. `describe` publishes their generated schemas; they are the same
+functions as the standalone repair commands. These steps stay pure: projection
+never publishes. Export the proposal/result, review selected changes, then use
+the explicit workspace or authenticated property-only publication command.
+
+A document input may be an inline object or a closed source binding:
+
+```json
+{
+  "source": {"kind":"file","path":"evidence.geojson","sha256":"<exact-file-sha256>"},
+  "projection":"evidence",
+  "scope":{"project":"<project>","principal":"<uid>","lane":"canary","audience":"<audience-sha256>"},
+  "id":"reviewed-external-source","layer":"lv_poles","crs":"EPSG:4326"
+}
+```
+
+Workspace sources use `kind:workspace`, `path`, explicit `project`, `transformer`
+and exact `revision`. Saved transformer sources use `kind:transformer`, explicit
+`project`, `transformer`, `lane`, `version` and `content_digest`, and must match
+restored identity scope. Projections are `json`, `snapshot` and `evidence`.
+Files resolve relative to the workflow document. No source substitutes a newer
+head. Run receipts expose source pins/acquisition counts/local-file bytes and per-step
+latency; source reads occur only for requested runs or explicit validation,
+never polling or cloud invalidation.
+
+Temporary workflows run directly from files. `data.vector.workflow.save --file
+recipe.json --library DIR --name recipe` stores an immutable machine-global
+recipe; document/layer bindings and credentials must remain outside it. Saved
+steps pin operation contract versions. `list --library DIR` and `show --library
+DIR --name recipe --digest SHA256` inspect verified revisions. Run an exact
+saved definition with the ordinary `run --file DIR/recipe/SHA256.json --inputs
+'{...}'`. Definitions grant no project access; every run binds its own authority
+and inputs. The broader workflow specification remains phased separately.

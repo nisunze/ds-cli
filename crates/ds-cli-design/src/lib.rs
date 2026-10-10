@@ -89,6 +89,7 @@ pub mod pinned;
 pub mod preview;
 pub mod process_settings;
 pub mod project;
+pub mod repair;
 pub mod selection;
 pub mod tag;
 pub mod transformer;
@@ -118,6 +119,13 @@ pub static DOMAIN: Domain = Domain {
         &config::DUPLICATE,
         &config_copy::PLAN,
         &config_copy::APPLY,
+        &repair::DESCRIBE,
+        &repair::AUDIT,
+        &repair::COMPARE,
+        &repair::PROPOSE,
+        &repair::PROJECT,
+        &repair::WORKSPACE,
+        &repair::PUBLISH,
         &project::SOURCES,
         &project::INIT,
         &project::WRITE,

@@ -1,5 +1,6 @@
 //! Workflow host adapter: bounded file input and named exports only. Rust's
 //! shared network runner owns graph planning, types, iteration and provenance.
+use super::workflow_operations::NativeOperations;
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
     Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
@@ -66,6 +67,31 @@ const REFUSALS: &[Refusal] = &[
         when: "A step failed; completed outputs remain in error.detail.",
         remedy: "Read error.detail.error for the step, path and kernel remedy.",
     },
+    Refusal {
+        code: "workflow_document_invalid",
+        when: "A pinned source binding or reusable definition is malformed.",
+        remedy: "Supply the declared closed binding and exact source.",
+    },
+    Refusal {
+        code: "workflow_source_changed",
+        when: "Source bytes, retained revision, identity or immutable definition differs.",
+        remedy: "Rebind the reviewed exact source; do not substitute a newer head.",
+    },
+    Refusal {
+        code: "workflow_authority_missing",
+        when: "An explicitly selected source lacks matching scope.",
+        remedy: "Bind the matching project, principal, lane and audience.",
+    },
+    Refusal {
+        code: "workflow_budget_exceeded",
+        when: "A source or reusable document exceeds its admitted budget.",
+        remedy: "Select a bounded source or split the recipe.",
+    },
+    Refusal {
+        code: "workflow_op_version_unsupported",
+        when: "A saved recipe pins an unavailable operation version.",
+        remedy: "Use the matching installed owner or save a reviewed new revision.",
+    },
     super::vector::TOOL_UNKNOWN,
     super::vector::TOOL_ROADMAP,
     super::vector::REQUEST_INVALID,
@@ -80,6 +106,22 @@ const REFUSALS: &[Refusal] = &[
         remedy: "Choose a fresh writable directory or rename the conflicting output.",
     },
 ];
+const fn with_auth_refusals()
+-> [Refusal; REFUSALS.len() + ds_cli_auth::PROJECT_LIST_COMMAND.refusals.len()] {
+    let mut all = [REFUSALS[0]; REFUSALS.len() + ds_cli_auth::PROJECT_LIST_COMMAND.refusals.len()];
+    let mut i = 0;
+    while i < REFUSALS.len() {
+        all[i] = REFUSALS[i];
+        i += 1;
+    }
+    let mut j = 0;
+    while j < ds_cli_auth::PROJECT_LIST_COMMAND.refusals.len() {
+        all[i] = ds_cli_auth::PROJECT_LIST_COMMAND.refusals[j];
+        i += 1;
+        j += 1;
+    }
+    all
+}
 pub static DESCRIBE_COMMAND: Command = Command {
     id: "data.vector.workflow.describe",
     path: &["data", "vector", "workflow", "describe"],
@@ -133,7 +175,7 @@ pub static VALIDATE_COMMAND: Command = Command {
         note: "Check a model before running it; the file is user supplied.",
         runnable: false,
     }],
-    refusals: REFUSALS,
+    refusals: &with_auth_refusals(),
     reference: Some("docs/reference/data.md"),
     search: &[
         "graph",
@@ -164,7 +206,7 @@ pub static RUN_COMMAND: Command = Command {
         note: "Inspect every step without exporting intermediates or outputs.",
         runnable: false,
     }],
-    refusals: REFUSALS,
+    refusals: &with_auth_refusals(),
     reference: Some("docs/reference/data.md"),
     search: &[
         "chain",
@@ -229,8 +271,19 @@ fn read(inputs: &Inputs) -> Result<(Value, Value), Failure> {
     let text = std::str::from_utf8(&bytes).map_err(|e| {
         Failure::invalid("vector_workflow_invalid", e.to_string()).remedy("Use UTF-8 JSON.")
     })?;
+    let raw = workflow::parse(text).map_err(refusal)?;
+    let document = if raw["schema"] == "ds.workflow.definition/v1" {
+        let definition: ds_command_kernel::workflow_documents::Definition =
+            serde_json::from_value(raw)
+                .map_err(|e| Failure::invalid("workflow_document_invalid", e.to_string()))?;
+        ds_command_kernel::workflow_documents::verify(&definition)
+            .map_err(|e| Failure::invalid("workflow_source_changed", e))?;
+        definition.document
+    } else {
+        raw
+    };
     Ok((
-        workflow::parse(text).map_err(refusal)?,
+        document,
         workflow::parse(inputs.value("inputs").unwrap_or("{}")).map_err(refusal)?,
     ))
 }
@@ -248,6 +301,7 @@ fn bind_files(
     let base = Path::new(inputs.value("file").unwrap())
         .parent()
         .unwrap_or(Path::new("."));
+    let required = workflow::referenced_inputs(&document);
     let mut layers = std::collections::BTreeMap::new();
     let mut bind = |value: &mut Value, id: String| -> Result<(), Failure> {
         if let Some(file) = value["file"].as_str() {
@@ -261,6 +315,9 @@ fn bind_files(
     };
     if let Some(parameters) = document["inputs"].as_object_mut() {
         for (name, input) in parameters {
+            if !required.contains(name) {
+                continue;
+            }
             if input["type"] != "layer" {
                 continue;
             }
@@ -283,6 +340,14 @@ fn bind_files(
     }
     if let Some(steps) = document["steps"].as_array_mut() {
         for step in steps {
+            if workflow::WorkflowOperations::descriptor(
+                &NativeOperations,
+                step["tool"].as_str().unwrap_or(""),
+            )
+            .is_some()
+            {
+                continue;
+            }
             let id = step["id"].as_str().unwrap_or("unknown").to_owned();
             for port in ["source", "against"] {
                 if step["request"].get(port).is_some() {
@@ -291,13 +356,24 @@ fn bind_files(
             }
         }
     }
-    layers.extend(workflow::import_file_layers(&mut document, &mut bindings).map_err(refusal)?);
+    layers.extend(
+        workflow::import_file_layers_with_operations(
+            &mut document,
+            &mut bindings,
+            &NativeOperations,
+        )
+        .map_err(refusal)?,
+    );
     Ok((document, bindings, layers))
 }
 
 pub fn run_describe(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     match inputs.value("example") {
-        None => Ok(workflow::describe()),
+        None => {
+            let mut value = workflow::describe();
+            value["registered_document_operations"] = ds_command_kernel::design_repair::describe();
+            Ok(value)
+        }
         Some(value) => value
             .parse::<usize>()
             .ok()
@@ -311,16 +387,59 @@ pub fn run_describe(inputs: &Inputs, _context: &Context) -> Result<Value, Failur
 }
 pub fn run_validate(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let (document, bindings) = read(inputs)?;
-    let (document, bindings, layers) = bind_files(document, bindings, inputs)?;
-    workflow::validate_layers(document, bindings, layers).map_err(refusal)
+    let (document, mut bindings, layers) = bind_files(document, bindings, inputs)?;
+    // Planning is pure. Reject malformed graphs before any selected cloud
+    // document can restore credentials or acquire its transformer.
+    workflow::validate_with_operations(
+        document.clone(),
+        bindings.clone(),
+        layers.clone(),
+        &NativeOperations,
+    )
+    .map_err(refusal)?;
+    super::workflow_sources::bind(
+        &document,
+        &mut bindings,
+        Path::new(inputs.require("file")?)
+            .parent()
+            .unwrap_or(Path::new(".")),
+    )?;
+    workflow::validate_with_operations(document, bindings, layers, &NativeOperations)
+        .map_err(refusal)
 }
 pub fn run_workflow(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let (document, bindings) = read(inputs)?;
+    let (document, mut bindings, layers) = bind_files(document, bindings, inputs)?;
+    workflow::validate_with_operations(
+        document.clone(),
+        bindings.clone(),
+        layers.clone(),
+        &NativeOperations,
+    )
+    .map_err(refusal)?;
+    let source_receipt = super::workflow_sources::bind(
+        &document,
+        &mut bindings,
+        Path::new(inputs.require("file")?)
+            .parent()
+            .unwrap_or(Path::new(".")),
+    )?;
+    let document_sources = document["inputs"]
+        .as_object()
+        .is_some_and(|inputs| inputs.values().any(|input| input["type"] == "document"));
     let dry_run = inputs.switch("dry-run");
-    let (document, bindings, layers) = bind_files(document, bindings, inputs)?;
-    let result =
-        workflow::run(document, bindings, layers, RunOptions { dry_run }).map_err(refusal)?;
+    let result = workflow::run_with_operations(
+        document,
+        bindings,
+        layers,
+        RunOptions { dry_run },
+        &NativeOperations,
+    )
+    .map_err(refusal)?;
     let mut answer = result.metadata;
+    if document_sources {
+        answer["source_acquisition"] = source_receipt;
+    }
     if !dry_run && let Some(directory) = inputs.value("out") {
         export(
             &mut answer,

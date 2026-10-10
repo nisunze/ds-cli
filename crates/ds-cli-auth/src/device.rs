@@ -903,6 +903,9 @@ impl<T: ds_client_core::Transport> DeviceSession<T> {
     ) -> Result<ds_client_core::survey_photo::Receipt, ClientError> {
         fixed_device_call!(self, survey_photo, project, command)
     }
+    pub fn repair_transformer(&mut self,project:&str,input:&ds_client_core::TransformerRepairPublication)->Result<Value,ClientError>{
+        fixed_device_call!(self,repair_transformer,project,input)
+    }
     pub fn save_transformers(
         &mut self,
         project: &str,

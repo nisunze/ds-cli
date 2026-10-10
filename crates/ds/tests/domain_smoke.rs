@@ -19243,6 +19243,11 @@ fn vector_descriptors_and_portable_requests_are_the_native_contract() {
 #[test]
 fn vector_workflow_examples_match_the_rust_runner_and_dry_run_writes_nothing() {
     use ds_network::vector::{RunOptions, workflow};
+    fn deterministic(mut value: Value) -> Value {
+        assert!(value["measurements"]["step_elapsed_ms"].is_object());
+        value.as_object_mut().unwrap().remove("measurements");
+        value
+    }
     let directory = tempfile::tempdir().unwrap();
     let file = directory.path().join("model.json");
     let absent = directory.path().join("dry-output");
@@ -19292,15 +19297,15 @@ fn vector_workflow_examples_match_the_rust_runner_and_dry_run_writes_nothing() {
             "json",
         ];
         assert_eq!(
-            ok(&args),
-            workflow::run(
+            deterministic(ok(&args)),
+            deterministic(workflow::run(
                 model.clone(),
                 json!({}),
                 std::collections::BTreeMap::new(),
                 RunOptions { dry_run: true }
             )
             .unwrap()
-            .metadata
+            .metadata)
         );
         assert!(!absent.exists());
         let args = [
@@ -19314,15 +19319,15 @@ fn vector_workflow_examples_match_the_rust_runner_and_dry_run_writes_nothing() {
             "json",
         ];
         assert_eq!(
-            ok(&args),
-            workflow::run(
+            deterministic(ok(&args)),
+            deterministic(workflow::run(
                 model,
                 json!({}),
                 std::collections::BTreeMap::new(),
                 RunOptions::default()
             )
             .unwrap()
-            .metadata
+            .metadata)
         );
     }
 }

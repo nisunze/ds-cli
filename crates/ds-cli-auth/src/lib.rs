@@ -4904,6 +4904,43 @@ fn map_client(error: ClientError) -> Failure {
         return map_project_report_service_code(code, error.service_refusal());
     }
     let message = error.to_string();
+    if message.starts_with("repair_") && message.bytes().all(|b| b.is_ascii_lowercase() || b == b'_') {
+        return match message.as_str() {
+        "repair_bound_exceeded" |
+        "repair_change_ambiguous" |
+        "repair_crs_required" |
+        "repair_document_invalid" |
+        "repair_effect_unconfirmed" |
+        "repair_field_invalid" |
+        "repair_field_not_allowed" |
+        "repair_geometry_invalid" |
+        "repair_identity_ambiguous" |
+        "repair_identity_required" |
+        "repair_key_invalid" |
+        "repair_layer_unknown" |
+        "repair_match_ambiguous" |
+        "repair_operation_id_invalid" |
+        "repair_preservation_refused" |
+        "repair_proposal_changed" |
+        "repair_readback_unverified" |
+        "repair_receipt_mismatch" |
+        "repair_response_failed" |
+        "repair_response_invalid" |
+        "repair_response_too_large" |
+        "repair_root_unknown" |
+        "repair_scope_invalid" |
+        "repair_scope_mismatch" |
+        "repair_selection_invalid" |
+        "repair_server_fence_required" |
+        "repair_source_changed" |
+        "repair_source_required" |
+        "repair_target_changed" |
+        "repair_target_invalid" |
+        "repair_unit_mismatch" |
+        "repair_value_invalid" => Failure::invalid(message.clone(), message).remedy("Inspect the exact repair proposal, source pins and target revision; do not process to bypass a refusal."),
+        _ => Failure::invalid("repair_response_invalid", message),
+        };
+    }
     // These are closed, static Core diagnostics, not backend response text.
     // Preserve the publication step instead of naming authentication as its cause.
     if error.kind() == ErrorKind::Transient && message.starts_with("Solar publication ") {
@@ -4996,6 +5033,46 @@ fn map_service_refusal(
     // three conditions each have a different next step — an admin, a re-read,
     // a corrected flag — which is why `ds pm` documents them by name rather
     // than as one `auth_rejected`.
+    if owner_message.starts_with("transformer repair") {
+        let code=refusal.code().unwrap_or("repair_response_failed");
+        let detail=json!({"http_status":refusal.status(),"service_code":code});
+        use ds_cli_contract::outcome::ExitClass;
+        let class = match refusal.status() {
+            409 | 423 => ExitClass::Conflict,
+            401 | 403 => ExitClass::Unauthorized,
+            400 | 413 | 422 => ExitClass::InvalidInput,
+            _ => ExitClass::Failed,
+        };
+        let failure = match code {
+            "insufficient_permissions" |
+            "project_archived" |
+            "project_expired" |
+            "repair_operation_id_invalid" |
+            "repair_readback_unverified" |
+            "repair_receipt_mismatch" |
+            "repair_response_failed" |
+            "repair_response_invalid" |
+            "repair_response_too_large" |
+            "repair_server_fence_required" |
+            "reserved_transformer_name" |
+            "transformer_deleted" |
+            "transformer_document_too_large" |
+            "transformer_locked" |
+            "transformer_repair_conflict" |
+            "transformer_repair_identity_invalid" |
+            "transformer_repair_invalid" |
+            "transformer_repair_operation_conflict" |
+            "transformer_repair_preimage_moved" |
+            "transformer_repair_source_invalid" |
+            "transformer_repair_source_moved" |
+            "transformer_retired" |
+            "transformer_source_changed" |
+            "transformer_version_conflict" |
+            "transformer_version_mismatch" => Failure::new(class, code, message),
+            _ => Failure::failed("repair_response_failed", message),
+        };
+        return failure.detail(detail).remedy("Inspect the named source/head, project permission or technical lock. Retry only the identical operation when its outcome is unknown.");
+    }
     if owner_message.starts_with("project management") {
         return map_project_management_refusal(kind, refusal, message);
     }
@@ -6541,6 +6618,12 @@ pub fn transformer_analysis_for_project(
 
 /// Save one batch to the project the batch itself names (a sealed source
 /// receipt's project); the saved selection is never read.
+pub fn repair_transformer(lane:&str,input:&ds_client_core::TransformerRepairPublication)->Result<HeadlessProjectReport<Value>,Failure>{
+ let receipt=headless_named_report(lane,input.project(),|device,project|device.repair_transformer(project,input),|client,project|client.repair_transformer(project,input,now()))?;
+ metadata::invalidate(receipt.identity(),input.project(),ds_project_data::metadata::Kind::TransformerStatus)?;
+ Ok(receipt)
+}
+
 pub fn save_transformers(
     lane: &str,
     batch: &TransformerSaveBatch,

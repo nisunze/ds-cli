@@ -2212,6 +2212,9 @@ static DATA_ENTRIES: &[Entry] = &[
         handler: ds_cli_data::vector_workflow::run_workflow,
         render: ds_cli_data::vector_workflow::render,
     },
+    Entry { command: &ds_cli_data::workflow_library::SAVE, handler: ds_cli_data::workflow_library::save, render: ds_cli_data::vector_workflow::render },
+    Entry { command: &ds_cli_data::workflow_library::SHOW, handler: ds_cli_data::workflow_library::show, render: ds_cli_data::vector_workflow::render },
+    Entry { command: &ds_cli_data::workflow_library::LIST, handler: ds_cli_data::workflow_library::list, render: ds_cli_data::vector_workflow::render },
     Entry {
         command: &ds_cli_data::vector::DESCRIBE_COMMAND,
         handler: ds_cli_data::vector::run_describe,
@@ -2974,6 +2977,41 @@ static DESIGN_ENTRIES: &[Entry] = &[
         command: &ds_cli_design::lv::project_save::COMMAND,
         handler: ds_cli_design::lv::project_save::run,
         render: ds_cli_design::lv::project_save::render,
+    },
+    Entry {
+        command: &ds_cli_design::repair::DESCRIBE,
+        handler: ds_cli_design::repair::describe,
+        render: ds_cli_design::repair::render,
+    },
+    Entry {
+        command: &ds_cli_design::repair::AUDIT,
+        handler: ds_cli_design::repair::audit,
+        render: ds_cli_design::repair::render,
+    },
+    Entry {
+        command: &ds_cli_design::repair::COMPARE,
+        handler: ds_cli_design::repair::compare,
+        render: ds_cli_design::repair::render,
+    },
+    Entry {
+        command: &ds_cli_design::repair::PROPOSE,
+        handler: ds_cli_design::repair::propose,
+        render: ds_cli_design::repair::render,
+    },
+    Entry {
+        command: &ds_cli_design::repair::PROJECT,
+        handler: ds_cli_design::repair::project,
+        render: ds_cli_design::repair::render,
+    },
+    Entry {
+        command: &ds_cli_design::repair::WORKSPACE,
+        handler: ds_cli_design::repair::workspace,
+        render: ds_cli_design::repair::render,
+    },
+    Entry {
+        command: &ds_cli_design::repair::PUBLISH,
+        handler: ds_cli_design::repair::publish,
+        render: ds_cli_design::repair::render,
     },
     Entry {
         command: &ds_cli_design::project::SOURCES,

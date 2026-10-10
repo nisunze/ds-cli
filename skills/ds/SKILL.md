@@ -96,3 +96,13 @@ improvise DS data/effects or bypass `ds` with a gap file or API call.
   `ds-feedback-triage`.
 
 Stops at: PLS-CADD, a document renderer, Desktop or operator (above).
+
+## Demand-driven reads
+
+Trigger project reads through intentional navigation, explicit refresh or an
+operation actually consuming that data. No polling. A cloud update or push may
+invalidate retained state, but must not download unused data or even check its
+freshness. Reuse admitted local snapshots through the shared freshness boundary;
+retain authorization, revision and dirty-work fences. Notifications follow their
+own minimal push contract. During coding, prove request/read counts and the
+unused-data negative case instead of claiming savings from inspection.
