@@ -412,10 +412,15 @@ impl Runtime {
             job_id: request.job_id.clone(),
         };
         let job = self.lookup_job(&reference)?;
-        if !self.job_current(job) || job.stale || job.cancel.load(Ordering::Acquire) {
+        if !self.job_current(job) || job.stale {
             return Err(
                 "profile_calculation_stale: authored history or calculation context changed".into(),
             );
+        }
+        // Context invalidation also stops the worker. Preserve that stale
+        // refusal, while distinguishing an explicit cancellation at this head.
+        if job.cancel.load(Ordering::Acquire) {
+            return Err("profile_calculation_cancelled: the result was cancelled".into());
         }
         if request.publication_id.as_ref() != Some(&job.publication_id) {
             return Err(
@@ -749,7 +754,7 @@ mod tests {
         assert!(runtime
             .execute(admit("cancel"))
             .unwrap_err()
-            .starts_with("profile_calculation_stale:"));
+            .starts_with("profile_calculation_cancelled:"));
         let mut other = input.clone();
         other.scope = "two".into();
         runtime.execute(other).unwrap();
@@ -757,6 +762,15 @@ mod tests {
         wrong.scope = "two".into();
         assert!(runtime
             .execute(Request::CalculationStatus(wrong))
+            .unwrap_err()
+            .starts_with("profile_calculation_stale:"));
+        let mut wrong_admit = match admit("cancel") {
+            Request::AdmitCalculation(request) => request,
+            _ => unreachable!(),
+        };
+        wrong_admit.scope = "two".into();
+        assert!(runtime
+            .execute(Request::AdmitCalculation(wrong_admit))
             .unwrap_err()
             .starts_with("profile_calculation_stale:"));
         assert_eq!(
@@ -770,6 +784,36 @@ mod tests {
             worker.history_state()
         );
         release.send(()).unwrap();
+        let until = Instant::now() + Duration::from_secs(10);
+        loop {
+            let status = runtime
+                .execute(Request::CalculationStatus(reference("cancel")))
+                .unwrap();
+            assert_eq!(status["status"], "cancelled");
+            if status["runtime_worker_active"] == false {
+                break;
+            }
+            assert!(
+                Instant::now() < until,
+                "cancelled worker did not release its real slot"
+            );
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        start(&mut runtime, &input, &worker, "recovered", false);
+        assert_eq!(wait_ready(&mut runtime, "recovered")["status"], "ready");
+        let recovered = runtime.execute(admit("recovered")).unwrap();
+        runtime
+            .execute(Request::ConfirmPublication(ConfirmPublicationRequest {
+                scope: "one".into(),
+                publication: serde_json::from_value(recovered["publication"].clone()).unwrap(),
+            }))
+            .unwrap();
+        let fresh = Runtime::default().execute(input).unwrap();
+        assert_eq!(recovered["scene"], fresh["scene"]);
+        assert_eq!(
+            runtime.held["one"].session.history_state(),
+            worker.history_state()
+        );
     }
 
     #[test]

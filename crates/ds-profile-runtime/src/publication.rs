@@ -46,7 +46,9 @@ impl Runtime {
     pub(super) fn execute_with_publication(&mut self, request: Request) -> Result<Value, String> {
         let immediate = None;
         let binding = match &request {
-            Request::Initialize(r) | Request::InitializeExact(r) => Some((&r.scope, &r.publication_id)),
+            Request::Initialize(r) | Request::InitializeExact(r) => {
+                Some((&r.scope, &r.publication_id))
+            }
             Request::Refresh(r) | Request::Observe(r) | Request::Present(r) => {
                 Some((&r.scope, &r.publication_id))
             }
@@ -167,6 +169,18 @@ impl Runtime {
             .publications
             .get(&request.scope)
             .ok_or("profile_publication_unavailable: no staged result exists in this scope")?;
+        if request.model_id == pending.pin.model_id
+            && pending.confirmed
+            && request.publication_id != pending.pin.publication_id
+        {
+            // A failed request restores its checkpoint without staging a
+            // candidate. The previous confirmed result is still admitted;
+            // discarding the failed candidate must neither roll it back nor
+            // replace the original failure with a stale-discard error.
+            return Err(
+                "profile_publication_unavailable: this candidate has no staged result".into(),
+            );
+        }
         if request.model_id != pending.pin.model_id
             || request.publication_id != pending.pin.publication_id
             || request.target_history != pending.pin.history

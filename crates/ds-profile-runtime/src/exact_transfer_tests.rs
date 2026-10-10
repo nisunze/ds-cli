@@ -15,6 +15,98 @@ fn control(worker: &GridSession, request: CalculationArguments) -> CalculationCo
 }
 
 #[test]
+fn failed_candidate_discard_preserves_previous_confirmed_publication_and_original_error() {
+    let snapshot = section_demand_fixture();
+    let input = request_for(snapshot.clone());
+    let mut worker = GridSession::open(snapshot);
+    let mut runtime = Runtime::default();
+    runtime.execute(input.clone()).unwrap();
+    let mut confirmed = refresh(&runtime, &input, &input.expected_revision, &worker);
+    confirmed.publication_id = Some("previous-confirmed".into());
+    let result = runtime
+        .execute(Request::Refresh(Box::new(confirmed)))
+        .unwrap();
+    let pin: PublicationPin = serde_json::from_value(result["publication"].clone()).unwrap();
+    runtime
+        .execute(Request::ConfirmPublication(ConfirmPublicationRequest {
+            scope: "one".into(),
+            publication: pin.clone(),
+        }))
+        .unwrap();
+    let previous_scene = serde_json::to_value(runtime.held["one"].review.base_scene()).unwrap();
+    let previous_state = runtime.views["one"].clone();
+    let previous_history = worker.history_state();
+    describe(
+        &mut worker,
+        "applied-before-failure",
+        "authored edit remains committed",
+    );
+    assert_ne!(worker.history_state(), previous_history);
+    let mut failed = refresh(&runtime, &input, &input.expected_revision, &worker);
+    failed.publication_id = Some("failed-candidate".into());
+    failed.style_document = json!({});
+    let error = runtime
+        .execute(Request::Refresh(Box::new(failed)))
+        .unwrap_err();
+    assert!(error.starts_with("profile_styles_unavailable:"), "{error}");
+    let discard = DiscardPublicationRequest {
+        scope: "one".into(),
+        model_id: "profile-test".into(),
+        publication_id: "failed-candidate".into(),
+        target_history: worker.history_state(),
+    };
+    assert!(runtime
+        .execute(Request::DiscardPublication(discard.clone()))
+        .unwrap_err()
+        .starts_with("profile_publication_unavailable:"));
+    assert_eq!(runtime.publications["one"].pin, pin);
+    assert!(runtime.publications["one"].confirmed);
+    assert_eq!(
+        runtime.held["one"].session.history_state(),
+        previous_history
+    );
+    assert_eq!(
+        serde_json::to_value(runtime.held["one"].review.base_scene()).unwrap(),
+        previous_scene
+    );
+    assert_eq!(runtime.views["one"], previous_state);
+    let mut foreign = discard;
+    foreign.model_id = "another-model".into();
+    assert!(runtime
+        .execute(Request::DiscardPublication(foreign))
+        .unwrap_err()
+        .starts_with("profile_publication_stale:"));
+
+    let mut recovery = refresh(&runtime, &input, &input.expected_revision, &worker);
+    recovery.publication_id = Some("recovery".into());
+    let recovered = runtime
+        .execute(Request::Refresh(Box::new(recovery)))
+        .unwrap();
+    let recovery_pin: PublicationPin =
+        serde_json::from_value(recovered["publication"].clone()).unwrap();
+    // A different candidate may never discard an outstanding unconfirmed result.
+    assert!(runtime
+        .execute(Request::DiscardPublication(DiscardPublicationRequest {
+            scope: "one".into(),
+            model_id: "profile-test".into(),
+            publication_id: "foreign-candidate".into(),
+            target_history: worker.history_state(),
+        }))
+        .unwrap_err()
+        .starts_with("profile_publication_stale:"));
+    runtime
+        .execute(Request::ConfirmPublication(ConfirmPublicationRequest {
+            scope: "one".into(),
+            publication: recovery_pin,
+        }))
+        .unwrap();
+    assert_eq!(
+        runtime.held["one"].session.history_state(),
+        worker.history_state()
+    );
+}
+
+#[test]
 fn exact_initialization_is_transactional_and_preserves_native_publication() {
     let snapshot = section_demand_fixture();
     let input = request_for(snapshot.clone());

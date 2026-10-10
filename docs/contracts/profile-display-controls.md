@@ -144,6 +144,18 @@ headless `ds-profile-runtime::Runtime` without a Desktop scheduler:
   installing the ready result under the ordinary publication checkpoint.
   Worker/render admission must still Confirm or Discard it.
 
+An owned cancelled job at the still-current calculation context refuses admission
+as `profile_calculation_cancelled`; scope/model and changed-context mismatches
+remain fenced before that state is read. Cancellation
+retains the real worker slot until exit, and a later explicit job must admit
+the same result as a fresh calculation. A request that fails before staging
+has no publication to discard. If a previous confirmed result remains in that
+scope, discarding the missing new candidate returns
+`profile_publication_unavailable` without changing that result, its history or
+the authored worker edits. Hosts preserve the original refusal in this case.
+Foreign models and outstanding unconfirmed candidates keep the strict discard
+identity/history fence.
+
 Observe and native selection remain executable while a job runs. Authored
 history pins distinguish repeated-content cursors; native context identity
 also distinguishes display changes away and back, calculation, release and
