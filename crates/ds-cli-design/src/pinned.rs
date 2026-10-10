@@ -27,7 +27,6 @@
 
 use std::collections::BTreeMap;
 
-use ds_cli_auth::TransformerSet;
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
     Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
@@ -77,7 +76,7 @@ const HELD: Arg = Arg::value(
 );
 const FORCE: Arg = Arg::switch(
     "force",
-    "Ask for every pinned room again, held or not — the operator's Refresh.",
+    "Refresh observed status, styles and every pinned room.",
 );
 const PLAN_ONLY: Arg = Arg::switch(
     "plan-only",
@@ -159,7 +158,7 @@ pub static COMMAND: Command = Command {
 Plan a read-only working set from status metadata, then acquire complete saved \
 rooms through the same native owner as project exports. Unchanged rooms need \
 no source download. Merge each class using its authored pinned style. Saved \
-rooms are retained locally; no project edit context is opened. --plan-only \
+rooms and metadata observations are retained locally; --force refreshes both. No project edit context is opened. --plan-only \
 reads status metadata and stops before geometry acquisition. \
 docs/reference/design.md#pinned-context has the rest.",
     chapter: Chapter::Design,
@@ -180,7 +179,7 @@ docs/reference/design.md#pinned-context has the rest.",
     output: "\
 Lane and project identity; `plan` (reused and fetched room counts, the \
 layer-level fetches, the batched requests a browser would make, and the read \
-projection); actual room acquisition counts; and unless --plan-only, `merge` \u{2014} sources and layers before and \
+projection); cache/network metadata observations; actual room acquisition counts; and unless --plan-only, `merge` \u{2014} sources and layers before and \
 after the fold, the property keys the rooms carried and how many survive, and \
 one bounded row per merged class. Read failures are listed, never fatal.",
     examples: &[
@@ -221,11 +220,10 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     }
     // The heads. `list_transformers_status` is the project's own register, and
     // a head that has MOVED is the one reason a held room is refetched whole.
-    let status = ds_cli_auth::transformer_status_for_project(
+    let (status, status_cached) = ds_cli_auth::observed_transformer_status_for_project(
         lane,
         project,
-        &TransformerSet::new(std::iter::empty::<String>())
-            .map_err(|error| Failure::invalid("invalid_transformer_scope", error.to_string()))?,
+        inputs.switch("force"),
     )?;
     let held = if inputs.value("held").is_some() {
         held_inventory(inputs.value("held"))?
@@ -259,6 +257,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let mut output = super::transformer::named_project_receipt(status.lane(), status.project_id());
     let object = output.as_object_mut().expect("receipt is an object");
     object.insert("plan".into(), plan_projection(&plan));
+    object.insert("metadata".into(), json!({"status": if status_cached { "cache" } else { "network" }, "styles": "not_requested"}));
     if inputs.switch("plan-only") {
         return Ok(output);
     }
@@ -306,7 +305,9 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         .flat_map(Map::keys)
         .cloned()
         .collect();
-    let catalog = ds_cli_auth::style_catalog(lane, project)?;
+    let (catalog, styles_cached) =
+        ds_cli_auth::observed_style_catalog(lane, project, inputs.switch("force"))?;
+    object["metadata"]["styles"] = json!(if styles_cached { "cache" } else { "network" });
     if catalog.result().document().get("styles").is_none() {
         return Err(Failure::conflict(NO_STYLES.code, NO_STYLES.when).remedy(NO_STYLES.remedy));
     }

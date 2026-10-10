@@ -1033,6 +1033,8 @@ dependencies = [
  "ds-client-core",
  "ds-command-kernel",
  "ds-edge-authority",
+ "ds-layer-store",
+ "ds-project-data",
  "ds-solar-contracts",
  "ds-solar-io",
  "ds-sync-runtime",

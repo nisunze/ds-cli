@@ -1478,12 +1478,18 @@ whole-room response records `complete: true`. Proven complete rooms are reused
 without another read when the head is unknown. A moved revision invalidates the
 whole held copy. Known missing classes or incomplete feature counts repair even
 historical caches incorrectly marked complete. `--force` is
-the operator's Refresh: every pinned room, held or not. `--focus` is the
+the operator's Refresh: status, styles and every pinned room, held or not. `--focus` is the
 transformer being edited, which is never pinned context as well and is dropped
 from the plan rather than fetched twice. Native pinning and project exports
 consume the same principal/project saved-room owner. Cold acquisition retains the
 complete exact saved snapshot; unchanged rooms need no source download, and
 non-scalar property bags are projected only for the read-only rendered merge.
+Status and style catalogues are last-observed account/lane/audience/project
+snapshots, reused without a network probe. The receipt's `metadata` sources
+say `cache` or `network`; they do not certify unseen remote changes. Explicit
+status/style reads replace observations, and native mutations invalidate them.
+Use `--force` to observe current remote metadata intentionally. Local observations
+never authorize a save, publication or artifact download.
 `acquisition` reports actual fetched/reused rooms independently of a hypothetical
 `--held` planning inventory. `--plan-only` reads status metadata, not geometry.
 

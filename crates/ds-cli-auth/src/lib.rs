@@ -11,6 +11,8 @@ pub mod device;
 pub mod grid_library_member;
 pub mod link_approval;
 mod local_go;
+mod metadata;
+pub use metadata::{observed_style_catalog, observed_transformer_status_for_project};
 mod profile;
 mod project_template;
 pub mod reliability;
@@ -2126,6 +2128,9 @@ pub fn style_edit(
         |device, project| device.style_edit(project, reference, instruction, apply),
         |client, project| client.style_edit(project, reference, instruction, apply, now()),
     )?;
+    if apply {
+        metadata::invalidate_styles(&named.identity)?;
+    }
     Ok(HeadlessStyleEdit {
         lane: named.lane,
         project_id: named.project_id,
@@ -2147,6 +2152,12 @@ pub fn style_history(
         |device, project| device.style_history(project, command),
         |client, project| client.style_history(project, command, now()),
     )?;
+    if matches!(
+        command,
+        ds_command_kernel::style_history::Command::Restore { .. }
+    ) {
+        metadata::invalidate_styles(&named.identity)?;
+    }
     let mut result = named.result;
     result["lane"] = json!(named.lane);
     Ok(result)
@@ -2168,12 +2179,22 @@ pub fn style_governance_receipt(
     project: &str,
     command: &ds_command_kernel::style_governance::Command,
 ) -> Result<HeadlessNamedProject<Value>, Failure> {
-    headless_named_project(
+    let named = headless_named_project(
         lane,
         project,
         |device, project| device.style_governance(project, command),
         |client, project| client.style_governance(project, command, now()),
-    )
+    )?;
+    if matches!(
+        command,
+        ds_command_kernel::style_governance::Command::CreateBinding { .. }
+            | ds_command_kernel::style_governance::Command::CreateA4 { .. }
+            | ds_command_kernel::style_governance::Command::ApplyA4Migration { .. }
+            | ds_command_kernel::style_governance::Command::Seed { .. }
+    ) {
+        metadata::invalidate_styles(&named.identity)?;
+    }
+    Ok(named)
 }
 
 /// One governed action on the GLOBAL reference publications.
@@ -2652,19 +2673,7 @@ pub fn layer_default_visibility_for_project(
 }
 
 pub fn style_catalog(lane_value: &str, project: &str) -> Result<HeadlessStyleSnapshot, Failure> {
-    let named = headless_named_project(
-        lane_value,
-        project,
-        |device, project| device.style_catalog(project),
-        |client, project| client.style_catalog(project, now()),
-    )?;
-    Ok(HeadlessStyleSnapshot {
-        lane: named.lane,
-        project_id: named.project_id,
-        project_name: String::new(),
-        project_status: String::new(),
-        result: named.result,
-    })
+    observed_style_catalog(lane_value, project, true).map(|(snapshot, _)| snapshot)
 }
 
 /// Read one tile output's published state for the caller's explicit project.
@@ -3117,12 +3126,22 @@ pub fn transformer_status_for_project(
     project: &str,
     requested: &TransformerSet,
 ) -> Result<HeadlessNamedProject<TransformerStatusList>, Failure> {
-    headless_named_project(
+    if requested.is_empty() {
+        return observed_transformer_status_for_project(lane_value, project, true)
+            .map(|(snapshot, _)| snapshot);
+    }
+    let named = headless_named_project(
         lane_value,
         project,
         |device, project| device.transformer_status(project, requested),
         |client, project| client.transformer_status(project, requested, now()),
-    )
+    )?;
+    metadata::invalidate(
+        &named.identity,
+        project,
+        ds_project_data::metadata::Kind::TransformerStatus,
+    )?;
+    Ok(named)
 }
 
 /// Every project this account can currently reach, as the gateway lists it.
@@ -3451,12 +3470,18 @@ pub fn transformer_retirement_for_project(
     action: RetirementAction,
     request: &RetirementRequest,
 ) -> Result<HeadlessNamedProject<RetirementReceipt>, Failure> {
-    headless_named_project(
+    let receipt = headless_named_project(
         lane_value,
         project,
         |device, project| device.transformer_retirement(project, action, request),
         |client, project| client.transformer_retirement(project, action, request, now()),
-    )
+    )?;
+    metadata::invalidate(
+        receipt.identity(),
+        project,
+        ds_project_data::metadata::Kind::TransformerStatus,
+    )?;
+    Ok(receipt)
 }
 
 /// Read the form bindings of the caller's explicit project. The gateway
@@ -6520,12 +6545,18 @@ pub fn save_transformers(
     lane: &str,
     batch: &TransformerSaveBatch,
 ) -> Result<HeadlessProjectReport<TransformerSaveReceipt>, Failure> {
-    headless_named_report(
+    let receipt = headless_named_report(
         lane,
         &batch.project_id,
         |device, project| device.save_transformers(project, batch),
         |client, project| client.save_transformers(project, batch, now()),
-    )
+    )?;
+    metadata::invalidate(
+        receipt.identity(),
+        &batch.project_id,
+        ds_project_data::metadata::Kind::TransformerStatus,
+    )?;
+    Ok(receipt)
 }
 
 /// Execute a shared-asset operation using only the caller's explicit project.

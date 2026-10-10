@@ -15,6 +15,8 @@ base64 = { workspace = true }
 ds-cli-contract = { workspace = true }
 ds-cli-desktop = { workspace = true }
 ds-client-core = { workspace = true }
+ds-project-data = { path = "../../../ds-command-kernel/crates/ds-project-data" }
+ds-layer-store = { path = "../../../ds-command-kernel/crates/ds-layer-store" }
 ds-edge-authority = { workspace = true }
 ds-sync-runtime = { workspace = true }
 # The kernel owns transfer terminal causes; the shared runtime hosts its IO.
