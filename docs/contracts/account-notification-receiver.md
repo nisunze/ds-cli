@@ -4,8 +4,9 @@ The shared `ds-client-core::account_notifications` policy consumes the existing
 `domains.messaging.account_stream` route. One primary Desktop shell owns one
 abortable receiver for its explicitly authenticated UID and install lane. Hidden
 or close-to-background window state does not own the receiver. Popouts consume
-its content-free events. Closing the primary window hides it and retains
-credential renewal; explicit Quit or OS shutdown cancels it.
+its content-free events. Closing the primary window retains credential renewal
+when its process owns residency or still has a visible popout; explicit Quit
+or OS shutdown cancels it.
 
 Owner ruling, 2026-10-10: notifications are account-wide across authorized project
 groups; active project selection cannot suppress delivery or change silently.
@@ -15,8 +16,15 @@ The owner's post-power-cut clarification means one Desktop notification owner
 remaining in the tray, not a warm cloud Brain instance. Additional visible
 workspaces must not accumulate hidden resident processes when closed. Explicit
 Quit releases the owner and terminates it; a crash or OS restart cannot leave
-stale ownership or start duplicate receivers. The current per-primary
-close-to-background implementation does not yet meet that process bound.
+stale ownership or start duplicate receivers. The native host now bounds fully
+hidden residency with an OS exclusive file lock per installed lane. Competing
+visible workspaces stay independent; closing an additional workspace confirms
+process teardown or keeps it visible. Closing the last popout rechecks residency.
+The lock inode is retained, but process exit releases ownership without PID
+scanning, polling or stale-file deletion. This is a process bound, not a shared
+receiver, credential handoff or push transport. Linux host and subprocess proof
+are in [Desktop lifecycle](../../../ds-web/docs/desktop-background-lifecycle.md);
+installed Windows execution remains unqualified.
 Browser reads are navigation/refresh/push-driven; automatic browser account and
 conversation long polls are removed. A missing push capability must remain
 truthful, not activate polling. The remaining native transport is described
