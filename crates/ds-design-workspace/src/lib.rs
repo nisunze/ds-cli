@@ -14,6 +14,8 @@ use std::{
 
 pub mod grid_publication;
 mod run;
+mod repair;
+pub use repair::RepairRequest;
 pub use run::RunReceipt;
 
 #[derive(Debug, thiserror::Error)]
@@ -196,7 +198,7 @@ impl Workspace {
             )
             .optional()?
             .ok_or_else(|| invalid("revision does not exist for this transformer"))?;
-        let snapshot = design::decode(&bytes).map_err(invalid)?;
+        let snapshot = design::decode_retained(&bytes).map_err(invalid)?;
         if design::digest(&snapshot).map_err(invalid)? != revision {
             return Err(invalid("stored revision digest mismatch"));
         }

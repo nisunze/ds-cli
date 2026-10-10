@@ -159,7 +159,7 @@ pub fn resolve_sources(bytes: &[u8]) -> Result<Value, String> {
     )
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Snapshot {
     pub schema: String,
@@ -210,7 +210,7 @@ pub fn compare_snapshots(left: &Snapshot, right: &Snapshot, limit: usize) -> Res
     )
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct NetworkConfig {
     pub sheets: Map<String, Value>,
@@ -220,7 +220,7 @@ pub struct NetworkConfig {
     pub models: Map<String, Value>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Source {
     pub id: String,
@@ -229,7 +229,7 @@ pub struct Source {
     pub collection: Value,
 }
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum SourceRole {
     Customers,
@@ -326,7 +326,19 @@ pub fn decode(bytes: &[u8]) -> Result<Snapshot, String> {
     Ok(snapshot)
 }
 
-fn authored_geometry(layer: &str) -> Result<&'static str, String> {
+/// Read retained facts without creating identities, rewriting transformer
+/// references, or applying current creation defaults. Revisions are digests of
+/// these facts; admission must never change them before checking that digest.
+pub fn decode_retained(bytes: &[u8]) -> Result<Snapshot, String> {
+    if bytes.len() > MAX_BYTES {
+        return Err("snapshot exceeds 64 MiB".into());
+    }
+    let snapshot: Snapshot = serde_json::from_slice(bytes).map_err(|e| e.to_string())?;
+    snapshot.validate_retained()?;
+    Ok(snapshot)
+}
+
+pub(crate) fn authored_geometry(layer: &str) -> Result<&'static str, String> {
     match layer {
         "tr" | "customers" | "lv_poles" | "tapping_poles" | "field_notes" => Ok("Point"),
         "lv_lines" | "service_cables" => Ok("LineString"),
@@ -391,6 +403,81 @@ fn features_mut(collection: &mut Value) -> Result<&mut Vec<Value>, String> {
 }
 
 impl Snapshot {
+    /// Strict, non-mutating shape admission. Legacy missing identities and
+    /// owner references remain recorded facts for a diagnostic or an explicit
+    /// repair; a mutation requiring stable identity refuses them separately.
+    pub fn validate_retained(&self) -> Result<(), String> {
+        if self.schema != SCHEMA || self.crs != "EPSG:4326" {
+            return Err("expected ds.design.snapshot/v1 and EPSG:4326".into());
+        }
+        transformer_name(&self.transformer)?;
+        if self.layers.is_empty() || self.layers.len() > 64 || self.sources.len() > 64 {
+            return Err("expected 1..64 layers and at most 64 sources".into());
+        }
+        let mut count = 0usize;
+        for (layer, collection) in &self.layers {
+            identifier(layer)?;
+            if collection["type"] != "FeatureCollection" {
+                return Err("layer must be a FeatureCollection".into());
+            }
+            let rows = collection["features"].as_array().ok_or("features must be an array")?;
+            count = count.checked_add(rows.len()).ok_or("feature count overflow")?;
+            let mut ids = BTreeSet::new();
+            for feature in rows {
+                if feature["type"] != "Feature" || !feature["properties"].is_object() {
+                    return Err("expected Feature with object properties".into());
+                }
+                validate_geometry(&feature["geometry"])?;
+                if let Some(id) = feature.get("id") {
+                    match id {
+                        Value::String(id) => identifier(id)?,
+                        Value::Number(_) => {},
+                        _ => return Err("feature id must be a nonempty string or number".into()),
+                    }
+                    if !ids.insert(serde_json::to_string(id).map_err(|e| e.to_string())?) {
+                        return Err(format!("duplicate feature identity in {layer}"));
+                    }
+                }
+            }
+        }
+        let mut source_ids = BTreeSet::new();
+        for source in &self.sources {
+            identifier(&source.id)?;
+            if !source_ids.insert(&source.id) || digest(&source.collection)? != source.sha256 {
+                return Err("duplicate source id or source digest mismatch".into());
+            }
+            if source.collection["type"] != "FeatureCollection" {
+                return Err("source must be a FeatureCollection".into());
+            }
+            let rows = source.collection["features"].as_array().ok_or("source features must be an array")?;
+            count = count.checked_add(rows.len()).ok_or("feature count overflow")?;
+            for feature in rows {
+                if feature["type"] != "Feature" || !feature["properties"].is_object() {
+                    return Err("invalid source feature".into());
+                }
+                validate_geometry(&feature["geometry"])?;
+                let kind = feature["geometry"]["type"].as_str().unwrap_or("");
+                if matches!(source.role, SourceRole::Buildings) {
+                    if !matches!(kind, "Point" | "Polygon" | "MultiPolygon") {
+                        return Err("building source requires point or polygon features".into());
+                    }
+                } else if kind != "Point" {
+                    return Err("customer/pole source requires point features".into());
+                }
+            }
+        }
+        if count > MAX_FEATURES {
+            return Err("snapshot exceeds 100,000 aggregate features".into());
+        }
+        if !self.include_design_customers && !self.sources.iter().any(|source| matches!(source.role, SourceRole::Customers | SourceRole::Buildings)) {
+            return Err("table-only customer mode requires an explicit source (which may be empty)".into());
+        }
+        if serde_json::to_vec(self).map_err(|e| e.to_string())?.len() > MAX_BYTES {
+            return Err("snapshot exceeds 64 MiB".into());
+        }
+        Ok(())
+    }
+
     pub fn normalize(&mut self) -> Result<(), String> {
         if self.schema != SCHEMA || self.crs != "EPSG:4326" {
             return Err("expected ds.design.snapshot/v1 and EPSG:4326".into());

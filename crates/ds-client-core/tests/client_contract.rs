@@ -14059,3 +14059,47 @@ fn reliability_event_rides_the_fixed_ingest_with_an_optional_bearer() {
         assert_eq!(send_outcome(answer), expected);
     }
 }
+
+#[test]
+fn guarded_property_repair_uses_two_exact_reads_and_never_sends_process_or_whole_layers() {
+    use ds_command_kernel::{design::{self,Snapshot},design_repair::{self,Proposal,ApplySelection}};
+    use ds_command_kernel::report_export::jcs::layers_content_digest;
+    use serde_json::Value;
+    let target:Snapshot=serde_json::from_value(json!({"schema":"ds.design.snapshot/v1","transformer":"T1","crs":"EPSG:4326",
+      "layers":{"lv_poles":{"type":"FeatureCollection","features":[{"type":"Feature","id":"pole","geometry":{"type":"Point","coordinates":[30.0,-2.0]},"properties":{"struct_type":"old","drafting_status":"approved","stay":1}}]}},
+      "settings":{},"network_config":{"sheets":{}},"sources":[],"include_design_customers":true})).unwrap();
+    let scope=json!({"project":"explicit-project","principal":"uid-1","lane":"stable","audience":profile(DeploymentLane::Stable).credential_audience_sha256()});
+    let source_digest=layers_content_digest(&target.layers).unwrap();
+    let proposal:Proposal=serde_json::from_value(design_repair::evaluate("propose",json!({"target":target,"request":{
+       "scope":scope,"target":{"snapshot_revision":design::digest(&target).unwrap(),"server_version":7,"layers_content_digest":source_digest},
+       "policy":{"scope":scope,"fields":{"lv_poles":{"struct_type":{"field_type":"string"}}}},"allowlist":{"lv_poles":["struct_type"]},
+       "operations":[{"kind":"assign","target_layer":"lv_poles","target_ids":["pole"],"values":{"struct_type":{"kind":"value","value":"new"}}}]
+    }})).unwrap()).unwrap();
+    let selection:ApplySelection=serde_json::from_value(json!({"scope":scope,"proposal_digest":proposal.digest,"change_ids":proposal.changes.iter().map(|c|c.id.clone()).collect::<Vec<_>>(),"confirmed":true})).unwrap();
+    let projected=design_repair::apply_selected(None,&target,&proposal,&selection).unwrap().snapshot;
+    let expected=layers_content_digest(&projected.layers).unwrap();
+    let publication=ds_client_core::TransformerRepairPublication{operation_id:"repair-one".into(),source:None,target:target.clone(),proposal,selection};
+    let context=|layers:&std::collections::BTreeMap<String,Value>,version:u64|serde_json::to_vec(&json!({"success":true,"data":{"total":1,"found_count":1,"failed_count":0,"results":[{"transformer_name":"T1","ok":true,"data":{"layers":layers,"metadata":{"version":version,"content_digest":layers_content_digest(layers).unwrap()}}}]}})).unwrap();
+    for corrupt_readback in [false,true] {
+        let transport=FixtureTransport::with_sign_in(SIGN_IN);
+        let mut client=signed_in(transport.clone(),MemoryStore::default());
+        transport.push_transformer_context(200,&context(&target.layers,7));
+        transport.push_transformer_context(200,&context(if corrupt_readback {&target.layers}else{&projected.layers},8));
+        transport.0.lock().unwrap().transformer_saves.push_back(TransportResponse{status:200,body:serde_json::to_vec(&json!({"success":true,"data":{"operation_id":"repair-one","transformer_name":"T1","source_version":7,"source_content_digest":source_digest,"version":8,"content_digest":expected,"changed_cells":1}})).unwrap()});
+        let result=client.repair_transformer("explicit-project",&publication,NOW+1);
+        if corrupt_readback {assert_eq!(result.unwrap_err().to_string(),"repair_readback_unverified");}
+        else {let result=result.unwrap();assert_eq!(result["verified"],true);assert_eq!(result["measurements"]["transformer_reads"],2);}
+        let state=transport.0.lock().unwrap();
+        assert_eq!(state.transformer_save_bodies.len(),1);
+        let body=&state.transformer_save_bodies[0];
+        assert_eq!(body["action"],"repair_transformer_properties");
+        assert_eq!(body["repair"]["changes"][0]["identity"],json!({"field":"id","value":"pole"}));
+        assert!(body.get("gdfs").is_none());assert!(body.get("process_metadata").is_none());
+        assert_eq!(body["repair"].as_object().unwrap().len(),4);
+        assert!(state.configurations.is_empty());
+    }
+    let transport=FixtureTransport::with_sign_in(SIGN_IN);let mut client=signed_in(transport.clone(),MemoryStore::default());
+    let mut wrong_scope=publication;wrong_scope.selection.scope.principal="different".into();
+    assert!(client.repair_transformer("explicit-project",&wrong_scope,NOW+1).is_err());
+    assert!(transport.0.lock().unwrap().transformer_save_bodies.is_empty());
+}

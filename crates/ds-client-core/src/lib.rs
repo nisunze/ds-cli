@@ -313,6 +313,8 @@ pub use transport::ProjectManagementCall;
 pub use transport::SharedAssetsCall;
 
 mod transformer_save;
+pub mod transformer_repair;
+pub use transformer_repair::TransformerRepairPublication;
 pub use transformer_save::{
     TransformerSaveBatch, TransformerSaveCall, TransformerSaveItem, TransformerSaveReceipt,
     TransformerSaved,

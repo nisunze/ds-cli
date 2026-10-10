@@ -1647,6 +1647,11 @@ impl DeviceApiAuthorization<'_> {
         self.ensure_active(now)?;
         crate::survey_photo::run(self.profile, transport, self.authority(), project, command)
     }
+    pub fn repair_transformer<T:AuthorizedTransport>(&self,transport:&mut T,project:&str,input:&crate::TransformerRepairPublication,now:u64)->Result<serde_json::Value,ClientError> {
+        input.validate(project)?;
+        self.ensure_active(now)?;
+        crate::transformer_repair::run(self.profile,transport,self.authority(),project,input)
+    }
     pub fn save_transformers<T: AuthorizedTransport>(
         &self,
         transport: &mut T,

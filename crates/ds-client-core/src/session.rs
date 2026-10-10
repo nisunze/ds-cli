@@ -1222,6 +1222,12 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
             command,
         )
     }
+    pub fn repair_transformer(&mut self,project:&str,input:&crate::TransformerRepairPublication,now:u64)->Result<serde_json::Value,ClientError> {
+        input.validate(project)?;
+        self.ensure_fresh_session(now)?;
+        let session=self.session.as_ref().ok_or_else(signed_out)?;
+        crate::transformer_repair::run(&self.profile,&mut self.transport,crate::authorized::Authority{bearer_token:&session.id_token,uid:&session.stored.uid,email:&session.stored.email,device_id:None},project,input)
+    }
     pub fn save_transformers(
         &mut self,
         project: &str,
