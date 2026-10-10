@@ -50,7 +50,7 @@ pub static COMMAND: Command = Command {
             required: false,
             default: None,
             choices: crate::surface::PROFILE_IDS,
-            summary: "Filter typed tools to one workflow.",
+            summary: "Typed workflow.",
         },
         Arg {
             name: "call-timeout",

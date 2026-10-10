@@ -2190,6 +2190,7 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
         "tiling",
         "project",
         "project-task-operations",
+        "project-checklists",
         "correspondence",
         "messaging",
         "solar-input",
@@ -2343,6 +2344,13 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
                 .collect(),
         );
     }
+    let checklists: BTreeSet<String> = [
+        "pm_task_checklist_read", "pm_task_checklist_edit", "pm_task_checklist_promote",
+        "pm_note_checklist_read", "pm_note_checklist_edit", "notes_checklist_read",
+        "notes_checklist_edit", "pm_document_copy", "pm_mail-thread_ingest",
+    ].into_iter().map(str::to_owned).collect();
+    assert_eq!(published["project-checklists"], checklists);
+    assert!(published["project"].is_disjoint(&checklists), "selected checklist/copy/mail controls must not inflate broad Project");
     assert!(published["printing-maps"].contains("map_print_schema"));
     assert!(published["printing-maps"].contains("desktop_printing_map_export"));
     assert!(published["printing"].contains("report_layout_edit"));

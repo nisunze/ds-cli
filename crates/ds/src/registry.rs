@@ -2322,6 +2322,11 @@ static TILE_ENTRIES: &[Entry] = &[
 /// The Project Work domain lists its commands in the order a session uses
 /// them: look at the plan, find the item, read it, then act on it. Domain
 /// help prints this order verbatim, so the index doubles as the procedure.
+static NOTES_ENTRIES: &[Entry] = &[
+    Entry { command: &ds_cli_pm::checklist_notes::PRIVATE_READ, handler: ds_cli_pm::checklist_notes::private_read, render: ds_cli_pm::checklist_notes::render },
+    Entry { command: &ds_cli_pm::checklist_notes::PRIVATE_EDIT, handler: ds_cli_pm::checklist_notes::private_edit, render: ds_cli_pm::checklist_notes::render },
+];
+
 static WORK_ENTRIES: &[Entry] = &[
     Entry {
         command: &ds_cli_pm::plan::COMMAND,
@@ -2530,6 +2535,10 @@ static WORK_ENTRIES: &[Entry] = &[
         handler: ds_cli_pm::note::run,
         render: ds_cli_pm::note::render,
     },
+    Entry { command: &ds_cli_pm::checklist_notes::PROJECT_READ, handler: ds_cli_pm::checklist_notes::project_read, render: ds_cli_pm::checklist_notes::render },
+    Entry { command: &ds_cli_pm::checklist_notes::PROJECT_EDIT, handler: ds_cli_pm::checklist_notes::project_edit, render: ds_cli_pm::checklist_notes::render },
+    Entry { command: &ds_cli_pm::documents::COPY, handler: ds_cli_pm::documents::copy, render: ds_cli_pm::documents::render },
+    Entry { command: &ds_cli_pm::documents::MAIL, handler: ds_cli_pm::documents::mail, render: ds_cli_pm::documents::render },
     Entry {
         command: &ds_cli_pm::record::create::COMMAND,
         handler: ds_cli_pm::record::create::run,
@@ -3642,6 +3651,7 @@ static MESSAGING_ENTRIES: &[Entry] = &[
 ];
 
 static DOMAINS: &[Registered] = &[
+    Registered { domain: &ds_cli_pm::checklist_notes::DOMAIN, entries: NOTES_ENTRIES },
     Registered {
         domain: &ds_cli_messaging::DOMAIN,
         entries: MESSAGING_ENTRIES,

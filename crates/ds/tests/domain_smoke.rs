@@ -11610,6 +11610,10 @@ fn every_work_command_is_reachable_without_the_desktop_installed() {
         "pm.task.block",
         "pm.task.unblock",
         "pm.note.create",
+        "pm.note.checklist.read",
+        "pm.note.checklist.edit",
+        "pm.document.copy",
+        "pm.mail-thread.ingest",
         "pm.record.list",
         "pm.record.read",
         "pm.record.thread",
@@ -11669,6 +11673,9 @@ fn every_work_command_is_reachable_without_the_desktop_installed() {
                 | "pm.task.subdivide"
                 | "pm.task.progress"
                 | "pm.note.create"
+                | "pm.note.checklist.edit"
+                | "pm.document.copy"
+                | "pm.mail-thread.ingest"
                 | "pm.record.create"
                 | "pm.record.reply"
                 | "pm.record.update"
@@ -19918,5 +19925,169 @@ fn task_checklist_commands_are_item_scoped_and_refuse_before_unused_reads() {
     let mut confirmed = args.to_vec();
     confirmed.push("--yes");
     assert!(NATIVE_AUTH_CODES.contains(&native_pm_refusal(&confirmed).as_str()));
+    std::fs::remove_dir_all(folder).unwrap();
+}
+
+#[test]
+fn selected_note_and_document_controls_keep_private_scope_and_explicit_intent() {
+    for (id, authority, effect) in [
+        ("notes.checklist.read", "headless_user", "read_only"),
+        ("notes.checklist.edit", "headless_user", "global_write"),
+        ("pm.note.checklist.read", "headless_project", "read_only"),
+        ("pm.note.checklist.edit", "headless_project", "global_write"),
+        ("pm.document.copy", "headless_project", "global_write"),
+        ("pm.mail-thread.ingest", "headless_project", "global_write"),
+    ] {
+        let described = ok(&["capabilities", id, "--output", "json"]);
+        let command = &described["command"];
+        assert_eq!(command["authority"], authority);
+        assert_eq!(command["effect"], effect);
+        assert_eq!(command["requires"], "server");
+        let args = command["inputs"].as_array().unwrap();
+        assert_eq!(
+            args.iter().any(|a| a["name"] == "project"),
+            authority == "headless_project",
+            "private notes cannot acquire a project"
+        );
+        if effect == "global_write" {
+            assert!(
+                args.iter()
+                    .any(|a| a["name"] == "id" && a["required"] == true)
+            );
+        }
+    }
+    assert_eq!(
+        native_refusal(&[
+            "notes",
+            "checklist",
+            "read",
+            "--note",
+            "n",
+            "--limit",
+            "201",
+            "--output",
+            "json"
+        ]),
+        "invalid_number"
+    );
+    assert!(
+        NATIVE_AUTH_CODES.contains(
+            &native_refusal(&[
+                "notes",
+                "checklist",
+                "read",
+                "--note",
+                "n",
+                "--output",
+                "json"
+            ])
+            .as_str()
+        )
+    );
+    assert!(
+        NATIVE_AUTH_CODES.contains(
+            &native_pm_refusal(&[
+                "pm",
+                "note",
+                "checklist",
+                "read",
+                "--note",
+                "n",
+                "--output",
+                "json"
+            ])
+            .as_str()
+        )
+    );
+    let folder = temp_root("selected-note-document");
+    std::fs::create_dir_all(&folder).unwrap();
+    let input = folder.join("intent.json");
+    let path = input.to_str().unwrap();
+    std::fs::write(
+        &input,
+        br#"{"action":"check","item_id":"i","answer":"verified"}"#,
+    )
+    .unwrap();
+    let personal = [
+        "notes",
+        "checklist",
+        "edit",
+        "--note",
+        "n",
+        "--input",
+        path,
+        "--id",
+        "note-edit-001",
+        "--version",
+        "7",
+        "--output",
+        "json",
+    ];
+    assert_eq!(native_refusal(&personal), "confirmation_required");
+    let mut confirmed = personal.to_vec();
+    confirmed.push("--yes");
+    assert!(NATIVE_AUTH_CODES.contains(&native_refusal(&confirmed).as_str()));
+    let project = [
+        "pm",
+        "note",
+        "checklist",
+        "edit",
+        "--note",
+        "n",
+        "--input",
+        path,
+        "--id",
+        "note-edit-001",
+        "--version",
+        "7",
+        "--output",
+        "json",
+        "--yes",
+    ];
+    assert!(NATIVE_AUTH_CODES.contains(&native_pm_refusal(&project).as_str()));
+    std::fs::write(
+        &input,
+        br#"{"action":"check","item_id":"i","owner":"other"}"#,
+    )
+    .unwrap();
+    assert_eq!(native_refusal(&confirmed), "note_checklist_invalid");
+    std::fs::write(&input,br#"{"source_kind":"task","source_id":"t","source_version":9,"target_kind":"project_note","target_id":"n","exclude_attachments":true}"#).unwrap();
+    let copy = [
+        "pm",
+        "document",
+        "copy",
+        "--input",
+        path,
+        "--id",
+        "copy-retry-001",
+        "--base-revision",
+        "9",
+        "--output",
+        "json",
+    ];
+    assert_eq!(native_pm_refusal(&copy), "confirmation_required");
+    let mut preview = copy.to_vec();
+    preview.push("--dry-run");
+    assert!(NATIVE_AUTH_CODES.contains(&native_pm_refusal(&preview).as_str()));
+    std::fs::write(&input,br#"{"source_kind":"task","source_id":"t","source_version":9,"target_kind":"project_note","target_id":"n","dry_run":true}"#).unwrap();
+    assert_eq!(native_pm_refusal(&preview), "document_request_invalid");
+    std::fs::write(&input,serde_json::to_vec(&json!({"record_id":"r","message_count":1,"sources":[{"asset_id":"eml","version":1,"sha256":"a".repeat(64)}]})).unwrap()).unwrap();
+    let mail = [
+        "pm",
+        "mail-thread",
+        "ingest",
+        "--input",
+        path,
+        "--id",
+        "mail-retry-001",
+        "--output",
+        "json",
+    ];
+    assert_eq!(native_pm_refusal(&mail), "confirmation_required");
+    let mut preview = mail.to_vec();
+    preview.push("--dry-run");
+    assert!(NATIVE_AUTH_CODES.contains(&native_pm_refusal(&preview).as_str()));
+    std::fs::write(&input,br#"{"record_id":"r","message_count":1,"sources":[],"url":"https://example.invalid/mail.eml"}"#).unwrap();
+    assert_eq!(native_pm_refusal(&preview), "document_request_invalid");
     std::fs::remove_dir_all(folder).unwrap();
 }

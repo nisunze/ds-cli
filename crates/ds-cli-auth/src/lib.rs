@@ -8482,6 +8482,7 @@ impl NamedSolarProjectSession {
 }
 
 pub mod messaging;
+pub mod personal_notes;
 
 #[cfg(test)]
 mod feedback_component_tests {

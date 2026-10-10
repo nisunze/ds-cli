@@ -100,6 +100,7 @@ pub const PROFILE_IDS: &[&str] = &[
     "tiling",
     "project",
     "project-task-operations",
+    "project-checklists",
     "correspondence",
     "messaging",
     "solar-input",
@@ -170,6 +171,7 @@ pub enum Profile {
     Tiling,
     Project,
     ProjectTaskOperations,
+    ProjectChecklists,
     Correspondence,
     Messaging,
     SolarInput,
@@ -218,6 +220,7 @@ impl Profile {
             "tiling" => Some(Self::Tiling),
             "project" => Some(Self::Project),
             "project-task-operations" => Some(Self::ProjectTaskOperations),
+            "project-checklists" => Some(Self::ProjectChecklists),
             "correspondence" => Some(Self::Correspondence),
             "messaging" => Some(Self::Messaging),
             "solar-input" => Some(Self::SolarInput),
@@ -267,6 +270,7 @@ impl Profile {
             Self::Tiling => "tiling",
             Self::Project => "project",
             Self::ProjectTaskOperations => "project-task-operations",
+            Self::ProjectChecklists => "project-checklists",
             Self::Correspondence => "correspondence",
             Self::Messaging => "messaging",
             Self::SolarInput => "solar-input",
@@ -576,6 +580,7 @@ impl Profile {
                     && !tool.id.starts_with("auth.")
                     && !tool.id.starts_with("account.")
                     && !tool.id.starts_with("messaging.")
+                    && !PROJECT_CHECKLIST_COMMANDS.contains(&tool.id.as_str())
                     && (!PROJECT_TASK_OPERATIONS_COMMANDS.contains(&tool.id.as_str())
                         || tool.id == "pm.task.create")
                     && !(CORRESPONDENCE_COMMANDS.contains(&tool.id.as_str())
@@ -584,6 +589,7 @@ impl Profile {
             Self::ProjectTaskOperations => {
                 PROJECT_TASK_OPERATIONS_COMMANDS.contains(&tool.id.as_str())
             }
+            Self::ProjectChecklists => PROJECT_CHECKLIST_COMMANDS.contains(&tool.id.as_str()),
             Self::Correspondence => CORRESPONDENCE_COMMANDS.contains(&tool.id.as_str()),
             Self::Messaging => tool.id.starts_with("messaging."),
             Self::Operations => {
@@ -647,6 +653,7 @@ impl Profile {
             Self::LibraryGovernance => LIBRARY_GOVERNANCE_COMMANDS,
             Self::ProjectOperations => PROJECT_OPERATIONS_COMMANDS,
             Self::ProjectTaskOperations => PROJECT_TASK_OPERATIONS_COMMANDS,
+            Self::ProjectChecklists => PROJECT_CHECKLIST_COMMANDS,
             Self::Correspondence => CORRESPONDENCE_COMMANDS,
             Self::Grid
             | Self::GridNative
@@ -697,6 +704,7 @@ impl Profile {
             Self::Tiling => chapter == Chapter::VectorTiles,
             Self::Project
             | Self::ProjectTaskOperations
+            | Self::ProjectChecklists
             | Self::Correspondence
             | Self::Messaging => chapter == Chapter::Project,
             Self::SolarInput
@@ -1188,6 +1196,20 @@ const CORRESPONDENCE_COMMANDS: &[&str] = &[
     "pm.record.update",
     "pm.task.block",
     "pm.task.unblock",
+];
+
+// Nine selected item/copy/mail leaves share one closed, bounded profile.
+// Keep them out of the broad Project profile without increasing its budget.
+const PROJECT_CHECKLIST_COMMANDS: &[&str] = &[
+    "pm.task.checklist.read",
+    "pm.task.checklist.edit",
+    "pm.task.checklist.promote",
+    "pm.note.checklist.read",
+    "pm.note.checklist.edit",
+    "notes.checklist.read",
+    "notes.checklist.edit",
+    "pm.document.copy",
+    "pm.mail-thread.ingest",
 ];
 
 /// Task creation with typed geometry, plus task geometry and execution

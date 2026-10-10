@@ -254,7 +254,7 @@ writes workspace configuration.",
             required: false,
             default: Some("chapters"),
             choices: crate::surface::EXPOSURES,
-            summary: "Use chapter routers or typed command tools.",
+            summary: "Chapters or typed tools.",
         },
         Arg {
             name: "profile",

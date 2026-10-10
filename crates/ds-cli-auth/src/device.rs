@@ -1186,6 +1186,12 @@ impl<T: ds_client_core::Transport> DeviceSession<T> {
     ) -> Result<ds_client_core::member_form_grants::GrantResult, ClientError> {
         fixed_device_call!(self, member_form_grant, project, command)
     }
+    pub fn personal_notes(
+        &mut self,
+        action: &ds_client_core::personal_notes::Action,
+    ) -> Result<Value, ClientError> {
+        fixed_device_call!(self, personal_notes, action)
+    }
     pub fn messaging(
         &mut self,
         command: &ds_client_core::messaging::Command,

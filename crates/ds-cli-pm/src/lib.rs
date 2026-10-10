@@ -54,6 +54,8 @@
 //! **A window path.** `--desktop-descriptor` is not an input of any `ds pm`
 //! command.
 
+pub mod checklist_notes;
+pub mod documents;
 pub mod collaboration;
 pub mod deletion;
 pub mod geometry;
@@ -76,7 +78,7 @@ pub use ds_cli_contract::args::{INVALID_NUMBER, integer, plural};
 
 pub static DOMAIN: Domain = Domain {
     id: "pm",
-    summary: "Tasks, milestones, records and the plan they sit in.",
+    summary: "Project tasks, notes and records.",
     commands: &[
         &plan::COMMAND,
         &collaboration::PROJECTS,
@@ -113,6 +115,10 @@ pub static DOMAIN: Domain = Domain {
         &model_link::REMOVE,
         &model_link::LIST,
         &note::CREATE,
+        &checklist_notes::PROJECT_READ,
+        &checklist_notes::PROJECT_EDIT,
+        &documents::COPY,
+        &documents::MAIL,
         &record::list::COMMAND,
         &record::read::COMMAND,
         &record::thread::COMMAND,

@@ -399,3 +399,53 @@ for a task's existing context comments; follow `next_cursor` with `--cursor`.
 This uses the existing comment action and leaves review state unchanged. After
 an uncertain reply, read comments and look for the same id before choosing a new
 id; duplicate creation is refused without a second comment.
+
+## Selected note checklists and scoped copies
+
+`ds notes checklist read --note <id>` reads one account-private note;
+`ds pm note checklist read --project <id> --note <id>` reads one project note.
+Both return the owner's `kind`, `items`, `total`, `completed` and note `version`.
+`--limit` is 1–200 (default 50), with explicit `more`; `--details` includes item
+body, answer, geometry, links and the canonical overlay. These reads acquire
+only the selected note, without graph, thread, attachment or asset queries.
+
+Each family's `checklist edit` uses `--note`, `--input <json>`, `--version`,
+`--id` and `--yes`; project notes also require `--project`. The closed JSON
+item edit is the same `add|edit|check|uncheck|move|remove` contract as task
+checklists. The command sends one write without an automatic preliminary read.
+Keep the exact version, id and payload after an uncertain reply. A new stale
+edit refuses; an exact replay returns its original version receipt. Project
+model pins cannot be copied into account-private notes. Asset references must
+already be held by the note; this control does not ingest a file implicitly.
+
+`ds pm document copy --project <id> --input copy.json --id <command-id>
+--base-revision <revision> --dry-run` previews a selected scoped copy. The JSON
+contains `source_kind`, `source_id`, `source_version`, `target_kind`,
+`target_id`, and explicit `attachment_ids` or `exclude_attachments`; kinds are
+`task`, `project_note`, `personal_note`. A task source pins its graph revision;
+a note source pins its version. A task destination requires the reviewed
+`--base-revision`; use 0 for note-only copies. Apply with `--yes` and without
+`--dry-run`. The source remains intact. Privacy, selected assets and portable
+body/checklist/geometry are revalidated atomically by the owner. Private to
+project files require the existing ingest boundary; a refusal never silently
+drops evidence. An exact replay, including a later preview of that same
+intent, may return its original applied receipt.
+
+`ds pm mail-thread ingest --project <id> --input mail.json --id <command-id>
+--dry-run` previews explicitly selected, already-ingested EML assets. Input
+contains `record_id`, exact `message_count` (1–32), and `sources` with
+`asset_id`, `version`, lowercase `sha256` and optional `generation`. Apply
+with `--yes`. The owner checks complete MIME/header lineage and returns an
+immutable correspondence record and source-pinned manifest with exact message
+and part counts. Truncated metadata, missing sources or unselected references
+refuse. The command never fetches a mailbox, URL or an unselected attachment.
+
+These controls acquire data only for the selected consuming operation.
+Constructing or describing an intent makes zero API calls. Note edits, copy
+previews/applies/replays and mail previews/applies/replays each use one fixed
+owner request, with no automatic catalogue, graph, asset or thread acquisition.
+
+The typed MCP profile `project-checklists` exposes these six note/copy/mail
+controls and the three task checklist controls from the same descriptors.
+Use `ds mcp serve --exposure commands --profile project-checklists`; it keeps
+the broad `project` profile at its existing tool budget.
