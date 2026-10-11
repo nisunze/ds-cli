@@ -278,18 +278,17 @@ Candidate curation and native PLS-CADD acceptance are separate from coding the c
 
 - **Paired geometry authoring acceptance**: verify active-layer Plan authoring, ground-point vertical drag and mounted Profile insertion preview without touching another model. Existing installed Model 2 insertion and public Web checkpoint/Undo/Redo/Discard proofs are retained in their receipts; only the remaining paired-window conditions stay open.
 
-- **Intentional Grid Save acceptance** (owner 2026-10-11): activate matching
-  native session/worker/UI and `map profile save` on a fresh disposable local
-  Desktop model. Manual local Save
-  must show a clear block, refuse concurrent edit/undo/redo/discard, acknowledge
-  durable bytes at the exact history and release after a storage failure with
-  the draft still unsaved. Prove actual Linux WebKit command/UI parity. Edit,
+- **Intentional Grid Save failure/concurrency acceptance** (owner 2026-10-11):
+  on a disposable local Desktop model, prove edit/undo/redo/discard refuse while
+  durable storage holds the native lease, and a storage failure releases it
+  with the draft still unsaved. Prove process-restart recovery of the exact
+  saved bytes through the public contract. Edit,
   catalogue, focus, idle and reconnect observations must make zero automatic
   checkpoint/capture/cloud-head/publication calls; Save to project remains an
-  explicit effect. Source native/Wasm-host tests, exact CLI/MCP discovery and
-  isolated Chrome release-worker + production overlay + IndexedDB proof exist;
-  those do not establish acceptance in the current running Desktop. Preserve
-  approved source bytes.
+  explicit effect. Keep the same shared Linux WebKit command/UI path and
+  preserve approved source bytes. The live local checkpoint and visible block
+  contract is in [Profile elapsed observation](../../ds-web/docs/profile-view-contract.md#elapsed-observation-and-drawing);
+  it does not prove these remaining failure, overlap and acquisition conditions.
 
 - **Reviewed unused-structure export activation**: activate native exchange
   `5c1051a8`, CLI/MCP `a9586a16` and export UI `9fbc7ff2a` together. CLI/MCP,
