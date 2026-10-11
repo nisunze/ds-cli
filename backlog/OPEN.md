@@ -28,7 +28,7 @@ Unfinished code that an agent can implement and prove without further owner inpu
 | [19. Country neutrality and duplicated rules](#19-country-neutrality-and-duplicated-rules) | 2 |
 | [21. Windows release code](#21-windows-release-code) | 5 |
 | [22. Operations product code](#22-operations-product-code) | 4 |
-| [23. Kernel controls, JSON UI and TypeScript retirement](#23-kernel-controls-json-ui-and-typescript-retirement) | 5 |
+| [23. Kernel controls, JSON UI and TypeScript retirement](#23-kernel-controls-json-ui-and-typescript-retirement) | 4 |
 | [24. Owner feature requests (CLI-first, after stabilization)](#24-owner-feature-requests-cli-first-after-stabilization) | 5 |
 | [25. CLI reliability reporting and proactive feedback (priority)](#25-cli-reliability-reporting-and-proactive-feedback-priority) | 3 |
 <!-- /toc -->
@@ -785,8 +785,6 @@ Rules: [PRINCIPLES.md ยง5](PRINCIPLES.md#5-kernel-cli-and-ui-owner-2026-10-07) โ
 - **Sidebar gateway bypasses** (ds-web `docs/layer-domain-claude-handoff.md`): Tiles/Files (`api/userData.ts`, `api/projectData.ts`), global tiles, survey pipeline/reports, basemap, Design section, PM context and drawer chrome still call API Gateway from TypeScript. One complete vertical each: kernel decides, native/WASM parity, negative controls, retired TS deleted. Then the local sketch-layer lifecycle (`docs/prompts/claude-local-sketch-layer-lifecycle.md`) and authenticated browser-to-Server transport (loopback/SSH only today).
 
 - **One Rust communication authority** (`docs/prompts/rust-communications-refactor.md`): every request to API Gateway goes through one shared Rust client (identity/lane, auth, retries, cancellation, resumable transfer, durable scheduling) and the TypeScript copies go. The transfer protocol landed 2026-09-10; live acceptance and the remaining TS callers are unverified.
-
-- **Project expiry countdown is shown nowhere**: ds-web `ProjectExpiryChip.svelte` has been unmounted since `92c874ca` (2026-08-21), while ds-web `CLAUDE.md` says the header chip carries the expiry countdown. Mount it again over the existing expiry read (or correct the doc if the owner retired it), with a render test.
 
 - **Project and instance isolation** (`docs/prompts/claude-project-instance-isolation.md`; contract `project-and-instance-isolation-contract.md`): after the Server execution context: live Desktop instance discovery and CLI/MCP routing that refuses stale or ambiguous targets; generation-fenced UI session state; multi-principal authority and fair capacity across Solar, printing and a third operation on one Server.
 
