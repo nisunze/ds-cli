@@ -415,18 +415,6 @@ canonical `run`, one proved/pushed slice at a time:
   repeated drag/retype/undo/another edit against fresh held-axis calculation,
   including canonical order, shared supports, unavailable sections and named
   wider-axis transitions.
-- **Duplicate observation/publication refusal.** A same-family retype in the
-  older Desktop returned `profile_publication_failed` while a later view had
-  healed the same head. Inspect begin/confirm/discard and asynchronous fallback
-  races through native/transport tests and the matching Desktop. Do not relax
-  publication, history or signed-zero checks to suppress the error. Original
-  receipts are `ds-network/out/profile-differential/desktop-retype-*.json`.
-  Attribute timing and actual work to the complete transaction, including the
-  observation that first healed it: `cow-next-retype-apply.json` reports zero
-  applied replay entries and retained full authored-work counters on the later
-  CLI observation. Its successful 5.18 s completion does not identify the
-  earlier solve's work. Keep per-phase costs and actual scope observable to
-  human and agent callers without repeating the calculation.
 
 Installed Desktop acceptance belongs to `SEEDING.md`; it remains part of this
 user-requested delivery. Use two build workers, disk scratch and the warm
