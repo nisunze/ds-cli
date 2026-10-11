@@ -885,25 +885,50 @@ fn mcp_only_agent_reads_receipt_verified_skills_without_a_skills_home() {
 
 #[test]
 fn diagnostics_reuse_the_exact_cli_envelopes_in_a_typed_profile() {
-    let (responses, _) = mcp(
-        &["--exposure", "commands", "--profile", "survey-migration"],
-        &[
-            json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": { "name": "ds_diagnostics", "arguments": { "operation": "doctor" } } }),
-            json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": { "name": "ds_diagnostics", "arguments": { "operation": "shell.status" } } }),
-            json!({ "jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": { "name": "ds_diagnostics", "arguments": { "operation": "capabilities" } } }),
-        ],
-    );
+    // Reporting is observable state. Give both process surfaces the same
+    // private store so unrelated CLI/MCP consumers cannot advance it between
+    // the exact-envelope observations; keep the reporter itself enabled.
+    let state = TestDir::new("diagnostics-reporting");
+    let scoped_cli = |args: &[&str]| {
+        let output = Command::new(env!("CARGO_BIN_EXE_ds"))
+            .args(args)
+            .env("XDG_STATE_HOME", &state.0)
+            .output()
+            .expect("ds runs");
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        serde_json::from_slice::<Value>(&output.stdout).expect("one CLI envelope")
+    };
+    let requests = [
+        json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": { "name": "ds_diagnostics", "arguments": { "operation": "doctor" } } }),
+        json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": { "name": "ds_diagnostics", "arguments": { "operation": "shell.status" } } }),
+        json!({ "jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": { "name": "ds_diagnostics", "arguments": { "operation": "capabilities" } } }),
+    ];
+    let observe = || {
+        mcp_with_env(
+            &["--exposure", "commands", "--profile", "survey-migration"],
+            &requests,
+            &[("XDG_STATE_HOME", &state.0)],
+        )
+    };
+    // Initialize the ordinary per-command daily rollup through the same real
+    // probes before comparing snapshots. No fields or reporting are suppressed.
+    let _ = observe();
+    let (responses, _) = observe();
     assert_eq!(
         response(&responses, 1)["result"]["structuredContent"],
-        cli(&["doctor", "--output", "json"])
+        scoped_cli(&["doctor", "--output", "json"])
     );
     assert_eq!(
         response(&responses, 2)["result"]["structuredContent"],
-        cli(&["shell", "status", "--output", "json"])
+        scoped_cli(&["shell", "status", "--output", "json"])
     );
     assert_eq!(
         response(&responses, 3)["result"]["structuredContent"],
-        cli(&["capabilities", "--output", "json"])
+        scoped_cli(&["capabilities", "--output", "json"])
     );
 }
 
