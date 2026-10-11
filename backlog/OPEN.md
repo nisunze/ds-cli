@@ -256,6 +256,8 @@ Rules: [PRINCIPLES.md §6](PRINCIPLES.md#6-ds-grid-engineering).
 
 ## 14. Plan and Profile authoring
 
+- **Native MV preview refusals carry the wrong command contract.** `ds-web/src-tauri/src/ds_invoke.rs` assigns every non-transformer refusal the working-area contract 1. `ds_invoke/mv_preview.rs` serves `report.plan-profile` contract 4, also declared by `ds-cli/crates/ds-cli-report/src/plan_profile.rs`; invalid layout inputs and route refusals consequently report contract 1. Fix the shared native refusal framing for this command, preserving error code, detail, remedy and captured project authority. Prove invalid-input and route refusals carry contract 4 and existing transformer/working-area refusals remain unchanged before removing this entry.
+
 ### Differential compute after an edit (the item to watch, owner 2026-10-08)
 
 Read this whole entry before coding. It carries the owner's steers, the
