@@ -41,6 +41,16 @@ It is also why there is no `convert --dry-run`. A flag would suggest the two
 differ by a switch. They differ by effect class: `plan` is `discovery` and can
 be called freely, `convert` writes.
 
+For a native PLS export, repeat `--omit-unused-structure-type <type-id>` only
+for explicitly reviewed unplaced definitions from `library.model.show`.
+The native plan pins these choices and names the exact omitted resource
+leaves and digests in losses. Placement, shared-resource and capacity
+dependency conflicts refuse; no source package is edited. The same flag is
+declared on `plan` and `convert` and exposed by their MCP contracts. Empty
+selection preserves existing behavior. An unsourced **used** type remains a
+blocker after unused definitions are omitted. Export/reopen checks do not
+establish native PLS-CADD Restore acceptance or engineering approval.
+
 ## `inspect`
 
 Answers the first question anyone has about a pile of engineering files: *what

@@ -548,6 +548,7 @@ fn incoming_bytes(
         selection: Vec::new(),
         pls_project: project,
         gis_include_layers: Vec::new(),
+        omitted_structure_type_ids: Vec::new(),
     };
     let plan = plan_conversion(&request);
     if !plan.blockers.is_empty() || !plan.losses.is_empty() {

@@ -182,6 +182,11 @@ pub const SHARED_ARGS: &[Arg] = &[
         "Keep a layer a client kmz/shp leaves out (tension_sections, terrain_points). Repeatable.",
     )
     .choices(&GIS_LAYER_IDS),
+    Arg::repeated(
+        "omit-unused-structure-type",
+        "<type-id>",
+        "Explicitly omit this reviewed unplaced type from native PLS output only. Repeatable; native placement/dependency fences apply.",
+    ),
     Arg::switch("swap-xy", "Treat source coordinates as (y, x)."),
     Arg::value(
         "expect-lon",
@@ -200,6 +205,11 @@ pub const SHARED_ARGS: &[Arg] = &[
 /// the source refusals, so the two help screens enumerate the same failures
 /// in the same order.
 pub const REQUEST_REFUSALS: &[Refusal] = &[
+    Refusal {
+        code: "structure_omission_invalid",
+        when: "an explicit omitted structure type ID cannot be decoded by the native request",
+        remedy: "use exact structure type IDs from library.model.show and preview the native plan",
+    },
     Refusal {
         code: "incomplete_expected_location",
         when: "only some of --expect-lon, --expect-lat and --expect-radius-km were given",
@@ -496,6 +506,10 @@ pub fn build(inputs: &Inputs, sources: SourceSet) -> Result<ConversionRequest, F
         selection,
         pls_project,
         gis_include_layers,
+        omitted_structure_type_ids: serde_json::from_value(json!(
+            inputs.repeated("omit-unused-structure-type")
+        ))
+        .map_err(|error| Failure::invalid("structure_omission_invalid", error.to_string()))?,
     })
 }
 

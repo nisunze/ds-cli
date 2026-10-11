@@ -116,7 +116,7 @@ const fn args() -> [Arg; request::SHARED_ARGS.len() + 1] {
     out
 }
 
-static REFUSALS: [Refusal; 19] = refusals::splice(&[
+static REFUSALS: [Refusal; 21] = refusals::splice(&[
     sources::SHARED_REFUSALS,
     request::REQUEST_REFUSALS,
     CONVERT_REFUSALS,
@@ -126,6 +126,11 @@ static REFUSALS: [Refusal; 19] = refusals::splice(&[
 /// nothing can raise is as misleading as an undeclared one that can: both
 /// leave a caller planning for the wrong failures.
 const CONVERT_REFUSALS: &[Refusal] = &[
+    Refusal {
+        code: "conversion_plan_choices_mismatch",
+        when: "execution choices differ from the immutable plan ID",
+        remedy: "preview a new plan with the exact intended choices",
+    },
     Refusal {
         code: "plan_blocked",
         when: "the conversion plan carries at least one blocker",
@@ -250,6 +255,11 @@ fn finish(status: &OutcomeStatus, answer: Value) -> Result<Value, Failure> {
 /// share a code, and the detail carries which candidate and which digests.
 fn execution_failure(error: ConversionError) -> Failure {
     match error {
+        ConversionError::PlanChoicesMismatch => Failure::conflict(
+            "conversion_plan_choices_mismatch",
+            "execution choices differ from the pinned plan",
+        )
+        .remedy("preview a new plan with the exact intended choices"),
         ConversionError::Blocked { count } => Failure::conflict(
             "plan_blocked",
             "the conversion plan carries blockers and will not run",
