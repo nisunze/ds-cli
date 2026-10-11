@@ -165,6 +165,7 @@ pub const PROFILE_SET: BridgeOp = BridgeOp {
         "cable_colors",
         "styles",
         "zoom_window",
+        "edit_mode",
     ],
 };
 pub const PROFILE_SELECT: BridgeOp = BridgeOp {

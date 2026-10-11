@@ -7846,6 +7846,29 @@ fn profile_analysis_is_an_explicit_native_set_action_without_an_extra_window_com
 }
 
 #[test]
+fn profile_edit_mode_requires_reviewed_history_before_contacting_desktop() {
+    let history = r#"{"model_revision":"rev:head","initial_revision":"rev:base","undo_depth":0,"redo_depth":0,"history_pin":"pin"}"#;
+    for extra in [
+        vec!["--history", r#"{"project":"untrusted"}"#],
+        vec!["--history", history, "--action", "analyze"],
+    ] {
+        let mut args = vec![
+            "map",
+            "profile",
+            "set",
+            "--edit-mode",
+            "true",
+            "--model",
+            "local-test",
+            "--output",
+            "json",
+        ];
+        args.extend(extra);
+        assert_eq!(refusal(&args), "invalid_profile_view");
+    }
+}
+
+#[test]
 fn headless_window_camera_centers_the_rectangle_and_refuses_zero_area() {
     let root = temp_root("window-camera");
     std::fs::create_dir_all(&root).unwrap();

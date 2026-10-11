@@ -4,7 +4,7 @@ use ds_cli_contract::spec::{
     Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
-use serde_json::{Map, Value, json};
+use serde_json::{json, Map, Value};
 
 use crate::{DESCRIPTOR_ARG, TARGET_ARG};
 
@@ -104,14 +104,17 @@ pub static VIEW: Command = Command {
 pub static SET: Command = Command {
     id: "map.profile.set",
     path: &["map", "profile", "set"],
-    contract: 9,
+    contract: 10,
     summary: "Set the paired Profile's visual state through typed CLI inputs.",
-    purpose: "Set Profile appearance; omitted values stay. An open model is required except staged height/camera. Explicit rebuild/analyze runs a native background job while edits and observation continue. Only current history/display context admits results. Save is independent. First initialization is synchronous. Display changes needing calculation refuse until rebuild/analyze. Report visibility schedules no analysis. Case selection requires prepared results. Combine --display-case with --action rebuild/analyze to explicitly calculate the requested case.",
+    purpose: "Set Profile appearance; omitted values stay. --edit-mode needs --model and native --history from view, alone; admits toolbar gestures without editing, calculation or save. An open model is required except staged height/camera. Rebuild/analyze runs a native job while edits and observation continue; only current history/display admits results. Save is independent. First initialization is synchronous. Calculation-dependent changes require rebuild/analyze. Report visibility schedules no analysis. Case selection needs prepared results or --display-case with rebuild/analyze.",
     chapter: Chapter::MapPresentation,
     effect: Effect::LocalUi,
     authority: Authority::DesktopPairing,
     execution: Execution::Sync,
     args: &[
+        Arg::value("edit-mode", "<true|false>", "Enter/leave edit gestures with native history admission; requires model/history alone.").choices(&["true", "false"]),
+        Arg::value("model", "<model-id>", "Exact open model id; required only with --edit-mode."),
+        Arg::value("history", "<native-json>", "Complete native history from map profile view (2 KiB); required only with --edit-mode."),
         Arg::value(
             "terrain",
             "<json-object>",
@@ -192,6 +195,7 @@ pub static SET: Command = Command {
         PROFILE_CASE_UNAVAILABLE,
         PROFILE_PACKAGE_INVALID,
         PROFILE_SELECTION_STALE,
+        Refusal { code: "profile_model_refused", when: "native edit-mode history, writable-session or gesture-context admission refuses", remedy: "inspect native code/detail; use current history and finish another edit/drawing context" },
         native_profile_refusal!(
             "profile_replay_model_mismatch",
             "the captured native case belongs to another model",
@@ -532,6 +536,29 @@ fn patch_from_inputs(inputs: &Inputs) -> Result<Map<String, Value>, Failure> {
         }
         patch.insert("action".to_owned(), json!(action));
     }
+    if let Some(raw) = inputs.value("edit-mode") {
+        if !patch.is_empty() {
+            return Err(invalid("edit-mode must be used with model/history alone"));
+        }
+        let model = selection_id(inputs.require("model")?, "model")?;
+        let history = inputs.require("history")?;
+        if history.len() > 2048 {
+            return Err(invalid("history exceeds 2 KiB"));
+        }
+        let request = ds_grid_engine::session::SessionEditModeRequest {
+            enabled: raw
+                .parse()
+                .map_err(|_| invalid("edit-mode must be true or false"))?,
+            expected_history: serde_json::from_str(history)
+                .map_err(|e| invalid(format!("history: {e}")))?,
+        };
+        patch.insert(
+            "edit_mode".into(),
+            json!({"model_id":model,"request":request}),
+        );
+    } else if inputs.value("model").is_some() || inputs.value("history").is_some() {
+        return Err(invalid("model/history require edit-mode"));
+    }
     if patch.is_empty() {
         return Err(invalid("provide at least one Profile setting or --action"));
     }
@@ -590,6 +617,46 @@ pub fn render_selection(data: &Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn edit_mode_uses_closed_native_history_and_cannot_mix_visual_effects() {
+        let history = r#"{"model_revision":"rev:head","initial_revision":"rev:base","undo_depth":1,"redo_depth":2,"history_pin":"pin"}"#;
+        let args = [
+            "--edit-mode",
+            "false",
+            "--model",
+            "local-test",
+            "--history",
+            history,
+        ]
+        .map(str::to_owned);
+        let inputs = ds_cli_contract::args::parse(&SET, &args).unwrap();
+        let patch = Value::Object(patch_from_inputs(&inputs).unwrap());
+        let request: ds_grid_engine::session::SessionEditModeRequest =
+            serde_json::from_value(patch["edit_mode"]["request"].clone()).unwrap();
+        assert!(!request.enabled);
+        assert_eq!(request.expected_history.redo_depth, 2);
+        assert_eq!(
+            ds_cli_desktop::ops::undeclared_key(&crate::PROFILE_SET, &patch),
+            None
+        );
+        let mut mixed = args.to_vec();
+        mixed.extend(["--action".into(), "analyze".into()]);
+        let inputs = ds_cli_contract::args::parse(&SET, &mixed).unwrap();
+        assert_eq!(
+            patch_from_inputs(&inputs).unwrap_err().code(),
+            "invalid_profile_view"
+        );
+        let unknown = args.map(|value| {
+            if value == history {
+                r#"{"project":"other"}"#.into()
+            } else {
+                value
+            }
+        });
+        let inputs = ds_cli_contract::args::parse(&SET, &unknown).unwrap();
+        assert!(patch_from_inputs(&inputs).is_err());
+    }
 
     #[test]
     fn display_case_is_forwarded_verbatim_for_native_validation() {
@@ -725,11 +792,12 @@ mod tests {
         assert!(parse_visibility(r#"{"auto_analysis":false}"#).is_err());
         let visibility = SET.args.iter().find(|arg| arg.name == "visibility");
         assert!(visibility.unwrap().summary.contains("analysis."));
-        assert!(SET.purpose.contains("Report visibility schedules no analysis"));
-        assert!(
-            VIEW.output
-                .contains("analysis_state: due/current/off/not_applicable")
-        );
+        assert!(SET
+            .purpose
+            .contains("Report visibility schedules no analysis"));
+        assert!(VIEW
+            .output
+            .contains("analysis_state: due/current/off/not_applicable"));
         assert!(VIEW.output.contains("computed_revision,required,scope"));
     }
 
@@ -810,10 +878,11 @@ mod tests {
         );
         assert_eq!(SET.effect, Effect::LocalUi);
         assert_eq!(SET.authority, Authority::DesktopPairing);
-        assert!(
-            ds_cli_contract::args::parse(&SET, &["--action".into(), "compute-arbitrary".into()])
-                .is_err()
-        );
+        assert!(ds_cli_contract::args::parse(
+            &SET,
+            &["--action".into(), "compute-arbitrary".into()]
+        )
+        .is_err());
     }
 
     #[test]
