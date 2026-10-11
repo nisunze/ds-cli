@@ -75,16 +75,16 @@ pub static VIEW: Command = Command {
     path: &["map", "profile", "view"],
     contract: 6,
     summary: "Read the paired Profile's exact visual state.",
-    purpose: "Read the Profile occupant, dock height, viewport, selection, edit mode and retained readiness. This read changes neither view nor model and starts no preparation, calculation, status polling or acquisition.",
+    purpose: "Read retained Profile state; no preparation, calculation, polling or acquisition.",
     chapter: Chapter::MapPresentation,
     effect: Effect::ReadOnly,
     authority: Authority::DesktopPairing,
     execution: Execution::Sync,
     args: &[TARGET_ARG, DESCRIPTOR_ARG],
-    output: "occupant, model_id/model_name/revision, persisted, history, scale, visibility, height_px, viewport, surface {width,height,scale} (CSS pixels, native px/scene-unit; null unmounted), edit_mode, selection {entity_ids,primary,kind,structures [{id,number}]}. review: up to 256 cases, selected_case_index, display_case, marker counts/truncation. display: native state/rows; analysis: bounded receipt; analysis_state: due/current/off/not_applicable. scene_loaded: current scene; scene_revision: retained head. calculation: native policy,model_revision,computed_revision,required,scope; null before observation. readiness: retained phase,initial,scene_admitted,model_id,model_revision,job,failure; null before a request or for a closed/foreign context. A job is the captured native receipt, never a new status read; initial preparation has no interruptible job.",
+    output: "occupant, local model_id/model_name/revision, persisted/history/edit_mode; selection IDs/family/primary; height_px and camera/surface (CSS px; null unmounted); display,visibility,vertical_exaggeration,review (<=256 cases),analysis. analysis_state: due/current/off/not_applicable; scene_loaded: current; scene_revision: retained. calculation: native policy,model_revision,computed_revision,required,scope; null before observation. readiness: retained phase,initial,scene_admitted,model_id,model_revision,job,failure; null before request/closed/foreign context. job has native model_id/history/status/runtime_worker_active; no status read. Cancel can leave worker active; initial prep has no job.",
     examples: &[Example {
         command: "ds map profile view --output json",
-        note: "Read the live Profile's viewport, selection and edit mode before a scoped model command.",
+        note: "Pin a model edit.",
         runnable: false,
     }],
     refusals: &[
@@ -648,12 +648,15 @@ mod tests {
         assert_eq!(VIEW.contract, 6);
         assert_eq!(VIEW.effect, Effect::ReadOnly);
         assert!(VIEW.purpose.contains(
-            "starts no preparation, calculation, status polling or acquisition"
+            "no preparation, calculation, polling or acquisition"
         ));
         assert!(VIEW.output.contains(
             "readiness: retained phase,initial,scene_admitted,model_id,model_revision,job,failure"
         ));
-        assert!(VIEW.output.contains("never a new status read"));
+        assert!(VIEW.output.contains("no status read"));
+        assert!(VIEW.output.contains("local model_id/model_name/revision"));
+        assert!(VIEW.output.contains("native model_id/history/status/runtime_worker_active"));
+        assert!(VIEW.output.contains("initial prep has no job"));
     }
 
     #[test]
