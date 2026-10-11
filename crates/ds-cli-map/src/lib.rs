@@ -22,6 +22,7 @@ pub mod profile_calculation;
 pub mod profile_edit;
 pub mod profile_model;
 pub mod profile_results;
+pub mod profile_save;
 pub mod random_points;
 pub mod remove;
 pub mod renderer_configure;
@@ -72,6 +73,7 @@ pub static DOMAIN: Domain = Domain {
         &profile_results::COMMAND,
         &profile_calculation::COMMAND,
         &profile_edit::COMMAND,
+        &profile_save::COMMAND,
         &profile_model::USAGE,
         &profile_model::ISSUES,
         &profile_model::FILTER,
@@ -198,6 +200,10 @@ pub const PROFILE_CALCULATION: BridgeOp = BridgeOp {
 pub const PROFILE_EDIT: BridgeOp = BridgeOp {
     operation: "map.profile.edit",
     arguments: &["model_id", "request"],
+};
+pub const PROFILE_SAVE: BridgeOp = BridgeOp {
+    operation: "map.profile.save",
+    arguments: &["model_id", "expected_history"],
 };
 pub const PROFILE_FILTER: BridgeOp = BridgeOp {
     operation: "map.profile.filter",
@@ -445,6 +451,7 @@ pub const BRIDGE_OPS: &[&BridgeOp] = &[
     &PROFILE_RESULTS,
     &PROFILE_CALCULATION,
     &PROFILE_EDIT,
+    &PROFILE_SAVE,
     &PROFILE_USAGE,
     &PROFILE_ISSUES,
     &PROFILE_FILTER,

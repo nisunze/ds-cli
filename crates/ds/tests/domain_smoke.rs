@@ -1224,7 +1224,7 @@ fn capabilities_requires_separates_the_window_from_the_server() {
     // Profile in the window, behind `paired_availability`.
     // Owner-requested live RAM controls are a window intent. Engineering and
     // full-history admission remain the headless native engine's authority.
-    assert_eq!(window["matched"], 47, "map's window commands");
+    assert_eq!(window["matched"], 48, "map's window commands");
     let ids: Vec<&str> = window["results"]
         .as_array()
         .expect("results")
@@ -1237,7 +1237,7 @@ fn capabilities_requires_separates_the_window_from_the_server() {
         "moving the camera is the window's own work: {ids:?}"
     );
     assert_eq!(window["more"]["shown"], 5);
-    assert_eq!(window["more"]["matched"], 47);
+    assert_eq!(window["more"]["matched"], 48);
 
     // Survey moved to the server. If a survey command ever needs the window
     // again, this is where it is noticed.
@@ -7931,6 +7931,7 @@ fn every_map_command_is_reachable_without_the_desktop_installed() {
         "map.profile.usage",
         "map.profile.retype",
         "map.profile.edit",
+        "map.profile.save",
         "map.profile.results",
         "map.profile.calculation",
         "map.profile.issues",
@@ -7989,6 +7990,36 @@ fn every_map_command_is_reachable_without_the_desktop_installed() {
     assert_eq!(
         actual, expected,
         "map command coverage list changed; add a specific smoke assertion for the new command before accepting it"
+    );
+    let history = r#"{"model_revision":"rev:head","initial_revision":"rev:head","undo_depth":0,"redo_depth":0,"history_pin":"pin"}"#;
+    assert_eq!(
+        refusal(&[
+            "map",
+            "profile",
+            "save",
+            "--model",
+            "local-test",
+            "--history",
+            history,
+            "--output",
+            "json"
+        ]),
+        "confirmation_required"
+    );
+    assert_eq!(
+        refusal(&[
+            "map",
+            "profile",
+            "save",
+            "--model",
+            "local-test",
+            "--history",
+            "{}",
+            "--yes",
+            "--output",
+            "json"
+        ]),
+        "invalid_profile_model_request"
     );
     assert_eq!(
         refusal(&[

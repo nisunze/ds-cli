@@ -829,6 +829,15 @@ Retype observation can calculate affected sections against a signed retained
 base; whole-model Analyze remains explicit. Timings include this local work and
 available canvas-draw acknowledgement, excluding OS compositing and CLI startup.
 
+`ds map profile save --model <id> --history '<native-history>' --yes` deliberately
+checkpoints that live RAM model locally. It uses the same native full-history
+Save lease and local storage adapter as the UI's Save local copy. The UI displays
+Saving and authored edits, undo/redo and discard refuse until persistence
+acknowledges or fails. A failed checkpoint preserves the RAM draft and releases
+the lock without stamping it saved. No calculation, cloud-head check or project
+publication occurs. The CLI/MCP receipt names the unchanged history and total
+elapsed Save time. Saving a shared project revision is a separate explicit action.
+
 These controls query and edit the human-held session. Package-backed headless
 engineering commands remain available for closed files and catalogue models;
 reading a saved package does not establish the head of an unsaved session.

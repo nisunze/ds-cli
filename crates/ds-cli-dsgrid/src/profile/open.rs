@@ -209,8 +209,6 @@ pub static COMMAND: Command = Command {
     search: &[
         "working copy",
         "alignment",
-        "desktop",
-        "checkpoint",
         "clone",
     ],
     // The two halves of one fact: this command asks the application for its

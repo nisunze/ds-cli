@@ -3914,3 +3914,20 @@ fn profile_calculation_tickets_are_a_typed_cli_projection_with_closed_mcp_argume
     ]);
     assert_eq!(descriptor["data"]["command"]["contract"], 2);
 }
+
+#[test]
+fn deliberate_profile_save_is_in_its_bounded_workflow_and_requires_confirmation() {
+    let (messages, _) = mcp(
+        &["--exposure", "commands", "--profile", "grid-profile"],
+        &[
+            json!({"jsonrpc":"2.0","id":1,"method":"tools/list"}),
+            json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"map_profile_save","arguments":{"model":"local-test","history":"{}"}}}),
+        ],
+    );
+    let tools = tools_by_title(&messages, 1);
+    let tool = &tools["map.profile.save"];
+    assert_eq!(tool["inputSchema"]["properties"]["history"]["type"], "string");
+    assert_eq!(tool["inputSchema"]["properties"]["confirm"]["type"], "boolean");
+    assert_eq!(tool["inputSchema"]["additionalProperties"], false);
+    assert_eq!(response(&messages, 2)["result"]["structuredContent"]["error"]["code"], "confirmation_required");
+}
