@@ -87,6 +87,7 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("dsgrid.replace-structure", "local_file_write", "none"),
     ("pls.desktop.autosag", "local_file_write", "none"),
     ("pls.desktop.check", "read_only", "none"),
+    ("pls.desktop.close", "artifact_write", "none"),
     ("pls.desktop.deliver", "local_file_write", "none"),
     ("pls.desktop.dialogs", "discovery", "none"),
     ("pls.desktop.qualify", "local_file_write", "none"),
