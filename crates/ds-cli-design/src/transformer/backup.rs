@@ -174,11 +174,7 @@ Lane and the named project, the transformer `name`, `source_revision`, \
     }],
     refusals: &READ_REFUSALS,
     reference: Some("docs/reference/design.md"),
-    search: &[
-        "deleted transformer backup",
-        "download transformer backup",
-        "recover deleted transformer",
-    ],
+    search: &["recover", "download", "recovery"],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
@@ -219,7 +215,7 @@ backup receipt it was restored from.",
     }],
     refusals: &WRITE_REFUSALS,
     reference: Some("docs/reference/design.md"),
-    search: &["restore deleted transformer", "undelete transformer"],
+    search: &["undelete", "undelete transformer"],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };

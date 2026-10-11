@@ -75,12 +75,7 @@ file's `bytes` and `sha256`. The upload session never appears.",
     }],
     refusals: &crate::correspondence_refusals::<23>(&[FILE_INVALID, UNVERIFIED]),
     reference: Some("docs/reference/pm.md"),
-    search: &[
-        "attach file to task",
-        "task attachment",
-        "upload document to task",
-        "attach photo",
-    ],
+    search: &["upload", "document", "photo", "drawing"],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };

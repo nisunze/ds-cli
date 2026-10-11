@@ -38,7 +38,7 @@ const ELEMENT_LIMIT: Arg = Arg::value(
 )
 .default("50");
 
-const SEARCH: &[&str] = &["library update", "propagation", "follower", "impact plan"];
+const SEARCH: &[&str] = &["library update", "propagation", "impact plan"];
 
 const REFUSALS: &[Refusal] = &[
     Refusal {

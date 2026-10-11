@@ -104,7 +104,7 @@ const fn descriptor(
         output: "Selected note id and version, canonical checklist state or exact item edit receipt; no unrelated collections.",
         examples: &[],
         reference: Some("docs/reference/pm.md"),
-        search: &["note", "checklist", "issues", "item", "answer"],
+        search: &["issues", "answer", "geometry"],
         requires: Requires::Server,
         availability: ds_cli_auth::native_availability,
     }

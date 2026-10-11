@@ -63,11 +63,7 @@ is `off` when DS_SRE_REPORTING=off kept the journal empty.",
     }],
     refusals: &[JOURNAL_UNAVAILABLE, INVALID_COUNT],
     reference: Some("docs/reference/feedback.md"),
-    search: &[
-        "report a failure",
-        "file the last error",
-        "feedback from failure",
-    ],
+    search: &["report failure", "last error", "incident"],
     requires: Requires::Server,
     availability: always,
 };

@@ -380,7 +380,7 @@ relative path, bytes, sha256) plus `refused` and `failed` rows with reasons.",
     reference: Some("docs/reference/design.md"),
     search: &[
         "download reports",
-        "fetch download plan",
+        "download plan",
         "download artefacts",
         "sha256 manifest",
     ],

@@ -1121,47 +1121,53 @@ mod tests {
     /// while they stay words.
     #[test]
     fn declared_search_terms_are_words_not_prose() {
+        let mut failures = Vec::new();
         for command in registry::all_commands() {
             let mut seen: Vec<&str> = Vec::new();
             for term in command.search {
-                assert!(
-                    term.len() >= 2 && term.len() <= 24,
-                    "`{}` declares `{term}`; a search term is a word, not a sentence",
-                    command.id
-                );
-                assert!(
-                    *term == term.to_lowercase(),
-                    "`{}` declares `{term}`; search terms are lowercase",
-                    command.id
-                );
-                assert!(
-                    term.split_whitespace().count() <= 2,
-                    "`{}` declares `{term}`; at most two words per term",
-                    command.id
-                );
-                assert!(
-                    !seen.contains(term),
-                    "`{}` declares `{term}` twice",
-                    command.id
-                );
+                if !(2..=24).contains(&term.len()) {
+                    failures.push(format!(
+                        "`{}` declares `{term}`; a search term is a word, not a sentence",
+                        command.id
+                    ));
+                }
+                if *term != term.to_lowercase() {
+                    failures.push(format!(
+                        "`{}` declares `{term}`; search terms are lowercase",
+                        command.id
+                    ));
+                }
+                if term.split_whitespace().count() > 2 {
+                    failures.push(format!(
+                        "`{}` declares `{term}`; at most two words per term",
+                        command.id
+                    ));
+                }
+                if seen.contains(term) {
+                    failures.push(format!("`{}` declares `{term}` twice", command.id));
+                }
                 seen.push(term);
             }
         }
+        assert!(failures.is_empty(), "{}", failures.join("\n"));
     }
 
     /// Terms that only repeat what the id or summary already says cost bytes
     /// and buy nothing. The field is for the words we did NOT choose.
     #[test]
     fn a_declared_term_says_something_the_command_does_not_already_say() {
+        let mut failures = Vec::new();
         for command in registry::all_commands() {
             let own = words(&format!("{} {}", command.id, command.summary));
             for term in command.search {
-                assert!(
-                    !own.contains(&term.to_string()),
-                    "`{}` declares `{term}`, which its id or summary already says",
-                    command.id
-                );
+                if own.contains(&term.to_string()) {
+                    failures.push(format!(
+                        "`{}` declares `{term}`, which its id or summary already says",
+                        command.id
+                    ));
+                }
             }
         }
+        assert!(failures.is_empty(), "{}", failures.join("\n"));
     }
 }

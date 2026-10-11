@@ -60,7 +60,7 @@ const fn command(
             crate::OUTPUT_REFUSED,
         ],
         reference: Some("docs/reference/data.md"),
-        search: &["workflow", "global", "recipe", "reuse", "revision"],
+        search: &["reuse", "revision"],
         requires: Requires::Server,
         availability: crate::available,
     }

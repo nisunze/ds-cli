@@ -89,14 +89,7 @@ pub static READ: Command = Command {
         READ_UNREADABLE,
     ]),
     reference: Some("docs/reference/pm.md"),
-    search: &[
-        "checklist",
-        "issues",
-        "answered",
-        "item",
-        "locations",
-        "completion",
-    ],
+    search: &["issues", "answered"],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
@@ -131,9 +124,7 @@ pub static EDIT: Command = Command {
     refusals: &edit_refusals(),
     reference: Some("docs/reference/pm.md"),
     search: &[
-        "checklist",
         "issue",
-        "answer",
         "check",
         "uncheck",
         "item geometry",
@@ -185,14 +176,7 @@ pub static PROMOTE: Command = Command {
         super::subdivision::RESPONSE_UNREADABLE,
     ]),
     reference: Some("docs/reference/pm.md"),
-    search: &[
-        "promote",
-        "checklist",
-        "issue",
-        "subtask",
-        "child task",
-        "item",
-    ],
+    search: &["issue", "subtask", "child task"],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };

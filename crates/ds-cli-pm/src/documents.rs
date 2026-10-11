@@ -63,7 +63,7 @@ pub static COPY: Command = Command {
     examples: &[],
     refusals: REFUSALS,
     reference: Some("docs/reference/pm.md"),
-    search: &["copy", "task", "note", "private", "provenance"],
+    search: &["private", "provenance"],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
@@ -82,7 +82,7 @@ pub static MAIL: Command = Command {
     examples: &[],
     refusals: REFUSALS,
     reference: Some("docs/reference/pm.md"),
-    search: &["mail", "eml", "thread", "provenance", "ingest"],
+    search: &["eml", "provenance"],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };

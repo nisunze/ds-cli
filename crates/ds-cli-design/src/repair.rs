@@ -80,7 +80,7 @@ const fn command(
         examples: &[],
         refusals: REFUSALS,
         reference: Some("docs/reference/design-repair.md"),
-        search: &["repair", "restore", "reconcile", "approved", "evidence"],
+        search: &["restore", "reconcile", "approved"],
         requires: Requires::Server,
         availability: || ds_cli_contract::spec::Availability::Available,
     }
