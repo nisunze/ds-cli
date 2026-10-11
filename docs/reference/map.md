@@ -750,6 +750,15 @@ adds an explicit caller history pin. Native refusals retain their codes.
 
 `ds map profile select --model <model-id> --revision <revision-id> --from <entity-id> --to <entity-id> [--mode replace|add|remove|intersect]` changes only that transient selection. The Desktop refuses a different model or revision. The native held scene resolves an inclusive range when both IDs belong to the same entity family; use the same ID for both endpoints to select one item. The default mode is `replace`. `add`, `remove` and `intersect` combine that resolved range with the current selection. The CLI sends the two IDs unchanged and returns the Desktop's selection receipt; it does not reconstruct scene order or author the model. On a local development Desktop, pass `--desktop-descriptor ~/.local/share/rw.datasolutions.desktop.local-dev/cli-bridge.d/<instance-id>.json` to address that instance directly.
 
+Attachment occurrences use the native closed pair `{"structure_id":"pole-1","attachment_point_id":"type-slot"}`. Use `--from-attachment` and `--to-attachment` with JSON strings instead of their plain endpoint flags; require exactly one form per endpoint. Two poles can share the same type-level point ID while remaining separate selectable occurrences. Rust validates canonical IDs and produces the opaque selection key; no NUL needs to cross shell arguments. Unknown fields, malformed IDs and ambiguous endpoint forms refuse before pairing. Native scene admission rejects unknown or cross-family ranges. The bounded `grid-profile` MCP tool consumes the same command descriptor and endpoint forms.
+
+```bash
+ds map profile select --model <model-id> --revision <revision-id> \
+  --from-attachment '{"structure_id":"pole-1","attachment_point_id":"type-slot"}' \
+  --to-attachment '{"structure_id":"pole-2","attachment_point_id":"type-slot"}' \
+  --mode replace --output json
+```
+
 `ds map grid lasso` adds a Plan/Profile polygon selection lens with optional
 family and native table filters. Discover its complete wire-input contract with
 `ds capabilities map.grid.lasso --output json`. It sends one declared

@@ -4,6 +4,7 @@ use ds_cli_contract::spec::{
     Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
+use ds_grid_engine::profile_atlas::ProfileAtlasAttachmentRef;
 use serde_json::{json, Map, Value};
 
 use crate::{DESCRIPTOR_ARG, TARGET_ARG};
@@ -293,9 +294,9 @@ pub static SET: Command = Command {
 pub static SELECT: Command = Command {
     id: "map.profile.select",
     path: &["map", "profile", "select"],
-    contract: 1,
+    contract: 2,
     summary: "Select one entity or a same-family range in the paired model Profile.",
-    purpose: "Changes only the paired Desktop's transient Profile selection. The Desktop checks the explicitly named model and revision against its held scene, asks the native scene for the inclusive same-family range, and applies the named set mode. Use the same ID for --from and --to to select one entity. No engineering model is changed.",
+    purpose: "Changes transient selection at the named model/revision. Native scene order owns the inclusive same-family range. Each endpoint requires one plain ID or a closed structure_id/attachment_point_id JSON pair. Repeat the endpoint to select one occurrence. No engineering model, Save or cloud state is changed.",
     chapter: Chapter::MapPresentation,
     effect: Effect::LocalUi,
     authority: Authority::DesktopPairing,
@@ -311,15 +312,23 @@ pub static SELECT: Command = Command {
         Arg::value(
             "from",
             "<entity-id>",
-            "First Profile entity ID; an inclusive range endpoint.",
-        )
-        .required(),
+            "First entity; use this or --from-attachment.",
+        ),
         Arg::value(
             "to",
             "<entity-id>",
-            "Last Profile entity ID; use --from's ID for one entity.",
-        )
-        .required(),
+            "Last entity; use this or --to-attachment.",
+        ),
+        Arg::value(
+            "from-attachment",
+            "<native-json>",
+            "First attachment pair: structure_id and attachment_point_id.",
+        ),
+        Arg::value(
+            "to-attachment",
+            "<native-json>",
+            "Last attachment pair; repeat the first pair for one occurrence.",
+        ),
         Arg::value(
             "mode",
             "<replace|add|remove|intersect>",
@@ -399,8 +408,8 @@ pub fn select(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
 fn selection_request(inputs: &Inputs) -> Result<Value, Failure> {
     let model = selection_id(inputs.require("model")?, "model")?;
     let revision = selection_id(inputs.require("revision")?, "revision")?;
-    let from = selection_id(inputs.require("from")?, "from")?;
-    let to = selection_id(inputs.require("to")?, "to")?;
+    let from = selection_endpoint(inputs, "from", "from-attachment")?;
+    let to = selection_endpoint(inputs, "to", "to-attachment")?;
     let mode = inputs.value("mode").unwrap_or("replace");
     if !matches!(mode, "replace" | "add" | "remove" | "intersect") {
         return Err(invalid_selection(
@@ -414,6 +423,23 @@ fn selection_request(inputs: &Inputs) -> Result<Value, Failure> {
         "to_entity_id": to,
         "mode": mode,
     }))
+}
+
+fn selection_endpoint(inputs: &Inputs, plain: &str, attachment: &str) -> Result<String, Failure> {
+    match (inputs.value(plain), inputs.value(attachment)) {
+        (Some(raw), None) => selection_id(raw, plain).map(str::to_owned),
+        (None, Some(raw)) => {
+            if raw.len() > 4096 {
+                return Err(invalid_selection(format!("--{attachment} exceeds 4 KiB")));
+            }
+            let pair: ProfileAtlasAttachmentRef = serde_json::from_str(raw)
+                .map_err(|error| invalid_selection(format!("--{attachment}: {error}")))?;
+            Ok(pair.selection_key())
+        }
+        _ => Err(invalid_selection(format!(
+            "use exactly one of --{plain} or --{attachment}"
+        ))),
+    }
 }
 
 fn selection_id<'a>(raw: &'a str, flag: &str) -> Result<&'a str, Failure> {
@@ -929,6 +955,73 @@ mod tests {
             selection_request(&override_inputs).expect("selection request")["mode"],
             "intersect"
         );
+    }
+
+    #[test]
+    fn typed_attachment_endpoints_use_native_occurrence_keys_and_reject_ambiguous_forms() {
+        let first = r#"{"structure_id":"pole-1","attachment_point_id":"type-slot"}"#;
+        let second = r#"{"structure_id":"pole-2","attachment_point_id":"type-slot"}"#;
+        let parsed = |endpoints: &[&str]| {
+            let mut args = ["--model", "model-a", "--revision", "revision-a"]
+                .map(str::to_owned)
+                .to_vec();
+            args.extend(endpoints.iter().map(|value| (*value).to_owned()));
+            selection_request(&ds_cli_contract::args::parse(&SELECT, &args).unwrap())
+        };
+        let request = parsed(&["--from-attachment", first, "--to-attachment", second]).unwrap();
+        let first: ProfileAtlasAttachmentRef = serde_json::from_str(first).unwrap();
+        let second: ProfileAtlasAttachmentRef = serde_json::from_str(second).unwrap();
+        assert_eq!(request["from_entity_id"], first.selection_key());
+        assert_eq!(request["to_entity_id"], second.selection_key());
+        assert_ne!(request["from_entity_id"], request["to_entity_id"]);
+        assert_eq!(
+            ds_cli_desktop::ops::undeclared_key(&crate::PROFILE_SELECT, &request),
+            None
+        );
+        for endpoints in [
+            vec!["--to", "pole-2"],
+            vec!["--from", "pole-1"],
+            vec![
+                "--from",
+                "pole-1",
+                "--from-attachment",
+                "{}",
+                "--to",
+                "pole-2",
+            ],
+            vec![
+                "--from",
+                "pole-1",
+                "--to",
+                "pole-2",
+                "--to-attachment",
+                "{}",
+            ],
+            vec!["--from-attachment", "[]", "--to", "pole-2"],
+            vec![
+                "--from-attachment",
+                r#"{"structure_id":"pole-1","attachment_point_id":"slot","extra":true}"#,
+                "--to",
+                "pole-2",
+            ],
+            vec![
+                "--from-attachment",
+                r#"{"structure_id":"pole-1\u0000forged","attachment_point_id":"slot"}"#,
+                "--to",
+                "pole-2",
+            ],
+            vec![
+                "--from-attachment",
+                r#"{"structure_id":"pole-1","attachment_point_id":" slot"}"#,
+                "--to",
+                "pole-2",
+            ],
+        ] {
+            assert_eq!(
+                parsed(&endpoints).unwrap_err().code(),
+                "invalid_profile_selection"
+            );
+        }
     }
 
     #[test]
