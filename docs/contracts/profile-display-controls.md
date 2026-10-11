@@ -301,7 +301,7 @@ or when the bounded delta cannot carry the result, `Present` returns native
 stale pins refuse without calculation, reseeding or a stale-input fallback.
 Transport flags are scoped to this call and cleared after success or refusal;
 publication discard restores the exact prior base and display without changing
-authored history. Ordinary Project/Refresh legacy full transports remain
+authored history. Ordinary Refresh full transports remain
 compatible. Complete component/root signatures and engineering bytes are
 unchanged; actual Desktop restoration/edit timings require matched acceptance.
 `scene_json` and `scene_delta_json` are opaque JSON strings from Rust, without a
@@ -421,11 +421,38 @@ Complete process traces observe one package open, one style open and zero
 network syscalls each, with both source files unchanged. Proof receipts are in
 `out/profile-project-removal/smoke-proof.json` and the owning gate logs.
 
-This proves the current headless owning API and fixture boundary. It does not
-claim installed Desktop activation or a performance gain. These default full
+These headless gates prove the owning API and fixture boundary; alone they do
+not qualify Desktop activation or a performance gain. These default full
 projection envelopes remain approximately 48.7 MB without Analyze and 91.6 MB
 with its retained evidence; incremental transport and elapsed-time acceptance
 retain their separate contracts.
+
+The maintained Linux Desktop was then rebuilt from this retirement and replayed
+the same 417-structure/63-alignment package. Its native executable SHA-256 is
+`658760623b91b4600322680bd780db5acf38e6a4656d2d4973258b24d45b330e`;
+staged CLI is
+`4c8acb73ffddd60c6ac377e953a591691aa2ad032689167a34106cfa3ad49b08`.
+The Grid WASM remained
+`467b4edca0925b65f60520266b377954b6ca8266ac7a0dd3ca1800aab6d2f244`.
+All eleven signed scene/history/root/axis pins matched the prior executable;
+six query kinds retained item bytes, basis, counts, freshness and history.
+Scope and cursor identities remain tied to their newly captured context.
+Both edits, Undo and Redo produced fresh draws, computing one band and reusing
+62. Headless and live checkpoint bytes match SHA-256
+`cc73134c0cca37afa9bb0603f361f13492032ac8202c3828ae41255a564826a5`;
+source bytes remain unchanged. Bounds, absent-entity and stale-cursor refusals
+passed. Evidence is the owning Desktop job's
+`out/profile-observer-20261010/project-retirement-live-paired-proof.json`.
+Complete edit-to-canvas samples were 1,223 and 983 ms; this is integrity and
+activation proof, not closure of the 500-ms performance or packaged release gate.
+The same executable also passed cancellation with physical worker exit,
+`profile_calculation_cancelled` admission refusal, fresh Analyze recovery and
+unchanged authored history/source bytes. Full recovery admission took 3.142 s.
+The 15-tool `grid-profile` MCP surface then matched CLI read-only preview and
+confirmed Undo/Redo, with fresh draws and exact restored history. Receipts are
+`project-removal-cancellation-v20-*` and `project-removal-mcp-v20-*` in that
+Desktop job. Packaged skill admission and the original Windows acceptance remain
+separate from these local runtime/command proofs.
 
 Initialize a replacement model in a fresh scope; reinitializing an admitted scope
 refuses. The renderer captures its own scope/generation and journal cursor before
