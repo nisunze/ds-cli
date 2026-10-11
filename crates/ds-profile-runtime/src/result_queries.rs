@@ -329,7 +329,7 @@ impl Index {
             RESULT_SEQUENCE.fetch_add(1, Ordering::Relaxed)
         )
     }
-    /// An equal-input package projection can reuse the review without entering
+    /// An equal-input retained projection can reuse the review without entering
     /// screening. Preserve its already retained complete facts too; a newly
     /// empty demand cache must not make those facts disappear.
     pub(super) fn identical_projection(
@@ -1113,7 +1113,7 @@ mod tests {
         assert!(execute(&mut runtime, bad)
             .unwrap_err()
             .starts_with("profile_query_stale:"));
-        runtime.execute(input).unwrap(); // A fresh calculation at equal authored content.
+        runtime.execute(input.refresh(&runtime)).unwrap(); // A fresh calculation at equal authored content.
         assert!(execute(&mut runtime, query)
             .unwrap_err()
             .starts_with("profile_query_stale:"));

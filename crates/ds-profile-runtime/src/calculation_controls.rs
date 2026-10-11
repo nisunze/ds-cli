@@ -49,7 +49,7 @@ mod tests {
     };
     use std::time::{Duration, Instant};
 
-    fn input() -> ProjectRequest {
+    fn input() -> FixtureInput {
         request_for(section_demand_fixture())
     }
     fn control(

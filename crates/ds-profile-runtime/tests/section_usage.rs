@@ -1,9 +1,10 @@
 //! Native source facts and actual display-selector acceptance, with no UI calculation.
 #[path = "../../../../ds-network/crates/ds-grid-engine/tests/common/mod.rs"]
 mod common;
-use ds_grid_engine::{GridSession, ProfileAtlasOptions};
+use ds_grid_engine::GridSession;
 use ds_grid_model::*;
-use ds_profile_runtime::{ProjectRequest, Runtime};
+use ds_profile_runtime::Runtime;
+mod support;
 use serde_json::json;
 fn model() -> GridModelSnapshot {
     let mut model = common::fixture();
@@ -81,32 +82,18 @@ fn model() -> GridModelSnapshot {
 fn section_usage_label_reads_current_solver_basis_and_native_selector_controls_it() {
     let snapshot = model();
     let session = GridSession::open(snapshot.clone());
-    let (package, _) = ds_grid_exchange::dsgrid::emit(
-        &snapshot,
-        &ds_grid_exchange::PackOptions {
-            model_id: EntityId::new("section-label-fixture").unwrap(),
-            model_revision: 0,
-            coordinate_system: ModelCrs::new("EPSG:32736").unwrap(),
-            presentation: Default::default(),
-            library_pins: vec![],
-            library_needs: vec![],
-            assets: vec![],
-            exchange_bindings: Default::default(),
-        },
-    )
+    let mut request = support::initialize(
+        &session,
+        "section-label-fixture",
+        "section-labels",
+        Default::default(),
+        &[],
+    );
+    request.style_document = serde_json::from_str(include_str!(
+        "../../../../ds-brain/internal/services/profile_display_style.v1.json"
+    ))
     .unwrap();
-    let mut request = ProjectRequest {
-        scope: "section-labels".into(),
-        expected_revision: session.current_revision().revision_id.to_string(),
-        package_bytes: package.artifacts[0].bytes.clone(),
-        options: ProfileAtlasOptions::default(),
-        style_document: serde_json::from_str(include_str!(
-            "../../../../ds-brain/internal/services/profile_display_style.v1.json"
-        ))
-        .unwrap(),
-        patch: serde_json::from_value(json!({"visibility":{"section_labels":true}})).unwrap(),
-        analyze: false,
-    };
+    request.patch = serde_json::from_value(json!({"visibility":{"section_labels":true}})).unwrap();
     let mut runtime = Runtime::default();
     let shown = runtime.execute(request.clone()).unwrap();
     let basis = shown["scene"]["evidence"]["section_basis"]
@@ -138,7 +125,9 @@ fn section_usage_label_reads_current_solver_basis_and_native_selector_controls_i
         .iter()
         .any(|row| row["option"] == "section_labels" && row["labels"][0]["text"] == expected));
     request.patch = serde_json::from_value(json!({"visibility":{"section_labels":false}})).unwrap();
-    let hidden = runtime.execute(request).unwrap();
+    let hidden = runtime
+        .execute(support::refresh(&request, &shown, None))
+        .unwrap();
     assert!(!hidden["scene"]["display"]["primitives"]
         .as_array()
         .unwrap()

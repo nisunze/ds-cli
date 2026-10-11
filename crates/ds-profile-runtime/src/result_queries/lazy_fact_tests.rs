@@ -4,7 +4,7 @@ use crate::transactional_projection_tests::{describe, refresh, request_for};
 use ds_grid_engine::profile_calculated_delta::CalculatedSceneBase;
 use tests::{execute, fixture, request};
 
-fn retained_runtime() -> (Runtime, ProjectRequest, RetainedIndexWork) {
+fn retained_runtime() -> (Runtime, FixtureInput, RetainedIndexWork) {
     let input = request_for(fixture());
     let mut runtime = Runtime::default();
     runtime.execute(input.clone()).unwrap();

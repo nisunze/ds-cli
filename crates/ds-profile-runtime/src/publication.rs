@@ -44,7 +44,6 @@ pub(super) struct PendingPublication {
 
 impl Runtime {
     pub(super) fn execute_with_publication(&mut self, request: Request) -> Result<Value, String> {
-        let immediate = None;
         let binding = match &request {
             Request::Initialize(r) | Request::InitializeExact(r) => {
                 Some((&r.scope, &r.publication_id))
@@ -53,7 +52,6 @@ impl Runtime {
                 Some((&r.scope, &r.publication_id))
             }
             Request::AdmitCalculation(r) => Some((&r.scope, &r.publication_id)),
-            Request::Project(r) => Some((&r.scope, &immediate)),
             _ => None,
         };
         if let Some((scope, _)) = binding {

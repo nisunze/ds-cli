@@ -158,7 +158,7 @@ mod tests {
 
     fn case(
         runtime: &Runtime,
-        input: &ProjectRequest,
+        input: &FixtureInput,
         display_case: ProfileDisplayCase,
         select: bool,
         cached_only: bool,
@@ -175,7 +175,7 @@ mod tests {
             sequence,
         }
     }
-    fn query(runtime: &Runtime, input: &ProjectRequest) -> QueryResultsRequest {
+    fn query(runtime: &Runtime, input: &FixtureInput) -> QueryResultsRequest {
         let held = &runtime.held[&input.scope];
         QueryResultsRequest {
             scope: input.scope.clone(),

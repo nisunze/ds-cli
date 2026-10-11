@@ -151,18 +151,16 @@ impl Runtime {
             serde_json::from_str(&request.seed_json)
                 .map_err(|error| format!("profile_seed_invalid: {error}"))?;
         let initialized = seed.open()?;
-        let project = ProjectRequest {
+        let project = ProjectionInputs {
             scope: request.scope,
             expected_revision: initialized
                 .session
                 .current_revision()
                 .revision_id
                 .to_string(),
-            package_bytes: vec![],
             options: request.options,
             style_document: request.style_document,
             patch: request.patch,
-            analyze: false,
         };
         let scope = project.scope.clone();
         let prior = restoration.map(|state| self.views.insert(scope.clone(), state));
@@ -331,14 +329,12 @@ impl Runtime {
         // A failed refresh is a transaction refusal, including Analyze requests;
         // the previous display, session and analysis stay admitted together.
         let source = held.source.clone();
-        let project = ProjectRequest {
+        let project = ProjectionInputs {
             scope: request.scope.clone(),
             expected_revision: request.expected_revision.to_string(),
-            package_bytes: vec![],
             options: request.options,
             style_document: request.style_document,
             patch: request.patch,
-            analyze: false,
         };
         // Only replay extending the admitted cursor has receipt lineage from
         // the held scene. Undo/redo and divergent prefixes reconcile explicitly.
@@ -734,7 +730,7 @@ impl Runtime {
     }
     fn render_replayed(
         &mut self,
-        mut project: ProjectRequest,
+        mut project: ProjectionInputs,
         session: GridSession,
         source: HeldSource,
         cache: ds_grid_engine::StructureUsageScreeningCache,

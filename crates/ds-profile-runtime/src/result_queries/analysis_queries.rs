@@ -361,7 +361,7 @@ mod tests {
     }
     pub(super) fn query(
         runtime: &Runtime,
-        input: &ProjectRequest,
+        input: &FixtureInput,
         kind: QueryKind,
     ) -> QueryResultsRequest {
         let mut query = request(runtime, &input.scope, kind);
@@ -370,7 +370,7 @@ mod tests {
     }
     pub(super) fn native(
         runtime: &Runtime,
-        input: &ProjectRequest,
+        input: &FixtureInput,
     ) -> (DefaultAnalysisReport, DefaultAnalysisFacts) {
         let session = &runtime.held[&input.scope].session;
         session
@@ -388,7 +388,7 @@ mod tests {
             )
             .unwrap()
     }
-    fn paged(runtime: &mut Runtime, input: &ProjectRequest, kind: QueryKind) -> Vec<Value> {
+    fn paged(runtime: &mut Runtime, input: &FixtureInput, kind: QueryKind) -> Vec<Value> {
         let mut query = query(runtime, input, kind);
         let mut result = Vec::new();
         query.limit = 200;
@@ -542,7 +542,7 @@ mod tests {
             .starts_with("profile_calculation_required:"));
         let mut analyzed = input.clone();
         analyzed.analyze = true;
-        runtime.execute(analyzed).unwrap();
+        runtime.execute(analyzed.refresh(&runtime)).unwrap();
         let wrong_source = request(&runtime, &input.scope, QueryKind::Findings);
         assert!(execute(&mut runtime, wrong_source)
             .unwrap_err()
@@ -760,7 +760,7 @@ mod tests {
         input.analyze = false;
         input.patch.display_case =
             Some(ds_command_kernel::profile_display::DisplayCase::SagReference);
-        runtime.execute(input.clone()).unwrap();
+        runtime.execute(input.refresh(&runtime)).unwrap();
         let held = &runtime.held[&input.scope];
         runtime
             .execute(Request::CaseLayer(CaseRequest {

@@ -74,7 +74,7 @@ fn sag(worker: &mut GridSession, id: &str, section: &str, tension: f64) {
 }
 fn read(
     runtime: &mut Runtime,
-    input: &ProjectRequest,
+    input: &FixtureInput,
     kind: QueryKind,
     ids: &[&str],
 ) -> Result<Value, String> {
@@ -82,7 +82,7 @@ fn read(
     request.entity_ids = ids.iter().map(|id| (*id).into()).collect();
     execute(runtime, request)
 }
-fn observe(runtime: &mut Runtime, input: &ProjectRequest, worker: &GridSession) {
+fn observe(runtime: &mut Runtime, input: &FixtureInput, worker: &GridSession) {
     let base = runtime.held[&input.scope]
         .session
         .current_revision()
@@ -91,7 +91,7 @@ fn observe(runtime: &mut Runtime, input: &ProjectRequest, worker: &GridSession) 
     let replay = refresh(runtime, input, &base, worker);
     runtime.execute(Request::Observe(Box::new(replay))).unwrap();
 }
-fn calculate(runtime: &mut Runtime, input: &ProjectRequest, worker: &GridSession, analyze: bool) {
+fn calculate(runtime: &mut Runtime, input: &FixtureInput, worker: &GridSession, analyze: bool) {
     let base = runtime.held[&input.scope]
         .session
         .current_revision()
@@ -106,7 +106,7 @@ fn require_calculation(result: Result<Value, String>) {
         .unwrap_err()
         .starts_with("profile_calculation_required:"));
 }
-fn assert_fresh_support_facts(runtime: &mut Runtime, input: &ProjectRequest, ids: &[&str]) {
+fn assert_fresh_support_facts(runtime: &mut Runtime, input: &FixtureInput, ids: &[&str]) {
     let (report, facts) = native(runtime, input);
     let fresh = Index::model_analysis(&runtime.held[&input.scope].session, &report, facts);
     let strings: Vec<_> = ids.iter().map(|id| (*id).into()).collect();
@@ -267,8 +267,8 @@ fn analysis_invalidation_accumulates_across_profile_calculation_and_navigation()
 }
 
 #[test]
-fn terrain_weather_unavailable_and_untraced_package_changes_cannot_reuse_analysis_facts() {
-    for change in ["terrain", "weather", "package", "unavailable", "criterion"] {
+fn terrain_weather_unavailable_and_replacement_seeds_cannot_reuse_analysis_facts() {
+    for change in ["terrain", "weather", "replacement", "unavailable", "criterion"] {
         let mut snapshot = connected_fixture(2);
         if change == "unavailable" {
             snapshot.criterion_sets.push(CriterionSetRow {
@@ -319,9 +319,13 @@ fn terrain_weather_unavailable_and_untraced_package_changes_cannot_reuse_analysi
             }
             _ => sag(&mut worker, "sag", "query-section", 25_000.),
         }
-        if change == "package" {
+        if change == "replacement" {
             let mut untraced = request_for(worker.snapshot().clone());
             untraced.scope = input.scope.clone();
+            runtime.execute(crate::ReleaseRequest {
+                scope: input.scope.clone(),
+                model_id: "profile-test".into(),
+            }).unwrap();
             runtime.execute(untraced).unwrap();
         } else {
             observe(&mut runtime, &input, &worker);

@@ -511,7 +511,7 @@ mod tests {
         }
         snapshot
     }
-    fn request() -> ProjectRequest {
+    fn request() -> FixtureInput {
         request_for(fixture())
     }
 
@@ -524,7 +524,7 @@ mod tests {
     }
     fn start(
         runtime: &mut Runtime,
-        input: &ProjectRequest,
+        input: &FixtureInput,
         worker: &GridSession,
         id: &str,
         analyze: bool,

@@ -1,36 +1,11 @@
 use ds_command_kernel::profile_display::{DisplayOption, DisplayPatch};
 use ds_grid_engine::GridSession;
-use ds_grid_model::{EntityId, ModelCrs};
-use ds_profile_runtime::{ProjectRequest as Request, Runtime};
+use ds_profile_runtime::{InitializeRequest as Request, Runtime};
+mod support;
 use serde_json::{json, Value};
 fn request() -> Request {
     let session = GridSession::open(Default::default());
-    let (artifacts, _) = ds_grid_exchange::dsgrid::emit(
-        session.snapshot(),
-        &ds_grid_exchange::PackOptions {
-            model_id: EntityId::new("profile-test").unwrap(),
-            model_revision: 0,
-            coordinate_system: ModelCrs::new("EPSG:32736").unwrap(),
-            presentation: Default::default(),
-            library_pins: vec![],
-            library_needs: vec![],
-            assets: vec![],
-            exchange_bindings: Default::default(),
-        },
-    )
-    .unwrap();
-    Request {
-        scope: "one".into(),
-        expected_revision: session.current_revision().revision_id.to_string(),
-        package_bytes: artifacts.artifacts[0].bytes.clone(),
-        options: Default::default(),
-        style_document: serde_json::from_str(include_str!(
-            "../../../tests/fixtures/profile-display-style.json"
-        ))
-        .unwrap(),
-        patch: Default::default(),
-        analyze: false,
-    }
+    support::initialize(&session, "profile-test", "one", Default::default(), &[])
 }
 #[test]
 fn display_is_native_atomic_and_isolated_and_unknowns_are_results() {
@@ -43,7 +18,9 @@ fn display_is_native_atomic_and_isolated_and_unknowns_are_results() {
     );
     one.patch =
         serde_json::from_value(json!({"visibility":{"review":false,"wire":false}})).unwrap();
-    let changed = runtime.execute(one.clone()).unwrap();
+    let changed = runtime
+        .execute(support::refresh(&one, &initial, None))
+        .unwrap();
     assert_eq!(
         changed["scene"]["display"]["state"]["visibility"]["review"],
         false
@@ -60,11 +37,15 @@ fn display_is_native_atomic_and_isolated_and_unknowns_are_results() {
     );
     let mut invalid = one.clone();
     invalid.patch.vertical_exaggeration = Some(101.0);
-    assert!(runtime.execute(invalid).is_err());
+    assert!(runtime
+        .execute(support::refresh(&invalid, &initial, None))
+        .is_err());
     one.patch = DisplayPatch::default();
     one.analyze = true;
     for _ in 0..2 {
-        let result = runtime.execute(one.clone()).unwrap();
+        let result = runtime
+            .execute(support::refresh(&one, &initial, None))
+            .unwrap();
         assert_eq!(result["ran"], true);
         assert_eq!(
             result["analysis"]["engineering_case_scope"],
@@ -89,45 +70,62 @@ fn display_is_native_atomic_and_isolated_and_unknowns_are_results() {
 #[test]
 fn stale_checkpoint_and_incomplete_pen_documents_refuse_before_mutation() {
     let mut runtime = Runtime::default();
-    let mut wrong = request();
-    wrong.expected_revision = "old".into();
+    let initial = runtime.execute(request()).unwrap();
+    let mut wrong = support::refresh(&request(), &initial, None);
+    wrong.expected_revision = serde_json::from_value(json!("old")).unwrap();
     assert!(runtime
         .execute(wrong)
         .unwrap_err()
-        .starts_with("profile_selection_stale"));
-    let mut wrong = request();
+        .starts_with("profile_replay_diverged"));
+    let mut wrong = support::refresh(&request(), &initial, None);
     wrong.style_document = Value::Null;
     assert!(runtime
         .execute(wrong)
         .unwrap_err()
         .starts_with("profile_styles_unavailable"));
     assert_eq!(
-        runtime.execute(request()).unwrap()["scene"]["display"]["state"]["visibility"]["review"],
+        runtime
+            .execute(support::refresh(&request(), &initial, None))
+            .unwrap()["scene"]["display"]["state"]["visibility"]["review"],
         true
     );
 }
 
 #[test]
-fn analyze_runs_and_exposes_unknown_blockers_without_governed_styles() {
+fn standalone_analysis_exposes_unknown_blockers_but_runtime_requires_governed_styles() {
     let mut runtime = Runtime::default();
     let mut input = request();
     input.style_document = Value::Null;
     input.analyze = true;
-    let result = runtime.execute(input).unwrap();
-    assert_eq!(result["ran"], true);
-    assert_eq!(
-        result["analysis"]["engineering_case_scope"],
-        "model_bound_envelope"
+    assert!(runtime
+        .execute(input)
+        .unwrap_err()
+        .starts_with("profile_styles_unavailable:"));
+    let session = GridSession::open(Default::default());
+    let result = ds_profile_runtime::analyze(
+        &session,
+        &Default::default(),
+        None,
+        Some("no governed Profile projection was admitted"),
     );
-    assert_eq!(result["scene"], Value::Null);
-    assert!(result["analysis"]["issues"].is_object());
+    assert_eq!(result["engineering_case_scope"], "model_bound_envelope");
+    assert_eq!(
+        result["model_revision"],
+        serde_json::json!(session.current_revision().revision_id)
+    );
+    assert!(result["issues"].is_object());
     assert!(
-        result["analysis"]["blocker_kinds"]["profile_projection"]
+        result["blocker_kinds"]["profile_projection"]
             .as_u64()
             .unwrap()
             > 0
     );
-    assert_eq!(result["display_state"]["visibility"]["review"], true);
+    let admitted = runtime.execute(request()).unwrap();
+    assert_eq!(
+        admitted["history"],
+        serde_json::to_value(session.history_state()).unwrap()
+    );
+    assert_eq!(admitted["ran"], false);
 }
 
 #[test]
@@ -139,8 +137,11 @@ fn cached_weather_is_display_only_and_revision_fenced() {
     initial.analyze = true;
     initial.patch.display_case =
         Some(serde_json::from_value(json!({"mode":"sag_reference"})).unwrap());
-    let revision = initial.expected_revision.clone();
     let projected = runtime.execute(initial).unwrap();
+    let revision = projected["history"]["model_revision"]
+        .as_str()
+        .unwrap()
+        .to_owned();
     let analysis = projected["command_view"]["analysis"].clone();
     let mut case = CaseRequest {
         scope: "one".into(),
@@ -225,7 +226,10 @@ fn refused_updates_preserve_the_prior_checkpoint_weather_sequence_and_cached_cas
         scope: original.scope.clone(),
         model_id: "profile-test".into(),
         expected_history: serde_json::from_value(opened["history"].clone()).unwrap(),
-        expected_revision: original.expected_revision.clone(),
+        expected_revision: opened["history"]["model_revision"]
+            .as_str()
+            .unwrap()
+            .to_owned(),
         display_case: ProfileDisplayCase::GreatestSag,
         select: true,
         cached_only: true,
@@ -234,15 +238,19 @@ fn refused_updates_preserve_the_prior_checkpoint_weather_sequence_and_cached_cas
     runtime.execute(case(7)).unwrap();
     let mut invalid = original.clone();
     invalid.patch.vertical_exaggeration = Some(101.0);
-    assert!(runtime.execute(invalid).is_err());
+    assert!(runtime
+        .execute(support::refresh(&invalid, &opened, None))
+        .is_err());
     let mut invalid = original.clone();
     invalid.style_document["metadata"]["profile_pens"]
         .as_object_mut()
         .unwrap()
         .remove("grid");
-    assert!(runtime.execute(invalid).is_err());
-    let mut invalid = original.clone();
-    invalid.expected_revision = "foreign-checkpoint".into();
+    assert!(runtime
+        .execute(support::refresh(&invalid, &opened, None))
+        .is_err());
+    let mut invalid = support::refresh(&original, &opened, None);
+    invalid.expected_revision = serde_json::from_value(json!("foreign-checkpoint")).unwrap();
     assert!(runtime.execute(invalid).is_err());
     assert!(runtime
         .execute(case(7))
@@ -251,7 +259,10 @@ fn refused_updates_preserve_the_prior_checkpoint_weather_sequence_and_cached_cas
     runtime
         .execute(case(8))
         .expect("previous prepared case must still be usable");
-    assert!(runtime.execute(original).unwrap()["scene"]["display"].is_object());
+    assert!(runtime
+        .execute(support::refresh(&original, &opened, None))
+        .unwrap()["scene"]["display"]
+        .is_object());
 }
 
 #[test]
@@ -262,10 +273,14 @@ fn native_structure_labels_keep_the_vertical_profile_position() {
     ))
     .unwrap();
     let (package, _) = ds_grid_exchange::dsgrid::ingest(&bytes).unwrap();
-    let session = GridSession::open(package.snapshot);
-    let mut packet = request();
-    packet.package_bytes = bytes;
-    packet.expected_revision = session.current_revision().revision_id.to_string();
+    let session = ds_grid_exchange::linked_models::open_session(&package);
+    let mut packet = support::initialize(
+        &session,
+        package.manifest.model.model_id.as_str(),
+        "one",
+        package.manifest.model.presentation.clone(),
+        &package.assets,
+    );
     let mut runtime = Runtime::default();
     let identity = |p: &&Value| {
         [
@@ -278,8 +293,8 @@ fn native_structure_labels_keep_the_vertical_profile_position() {
     };
     let option = |p: &Value, name: &str| p["option"].as_str() == Some(name);
     // Owner, 2026-10-05: names and comments are visible alongside numbers.
-    let opened = runtime.execute(packet.clone()).unwrap();
-    let opened = opened["scene"]["display"]["authored_structures"]
+    let admitted = runtime.execute(packet.clone()).unwrap();
+    let opened = admitted["scene"]["display"]["authored_structures"]
         .as_object()
         .unwrap()
         .values()
@@ -288,7 +303,9 @@ fn native_structure_labels_keep_the_vertical_profile_position() {
     assert!(opened.iter().any(|p| option(p, "structure_numbers")));
     assert!(opened.iter().any(|p| option(p, "structure_names")));
     packet.patch = serde_json::from_str(r#"{"visibility":{"structure_names":true}}"#).unwrap();
-    let result = runtime.execute(packet).unwrap();
+    let result = runtime
+        .execute(support::refresh(&packet, &admitted, None))
+        .unwrap();
     let primitives = result["scene"]["display"]["authored_structures"]
         .as_object()
         .unwrap()
@@ -383,17 +400,21 @@ fn cli_and_renderer_share_native_controls_and_colour_state() {
     )
     .unwrap();
     assert!(runtime
-        .execute(one.clone())
+        .execute(support::refresh(&one, &result, None))
         .unwrap_err()
         .starts_with("invalid_profile_view:"));
     one.patch = Default::default();
-    let retained = runtime.execute(one.clone()).unwrap();
+    let retained = runtime
+        .execute(support::refresh(&one, &result, None))
+        .unwrap();
     assert_eq!(
         retained["scene"]["display"]["groups"],
         result["scene"]["display"]["groups"]
     );
     one.patch = serde_json::from_value(json!({"cable_colors":{"Cable A":null}})).unwrap();
-    assert!(runtime.execute(one).unwrap()["display_state"]
+    assert!(runtime
+        .execute(support::refresh(&one, &result, None))
+        .unwrap()["display_state"]
         .get("cable_colors")
         .is_none());
 }

@@ -387,6 +387,46 @@ Replay and projection admission are one transaction. A stale base, replacement
 model, unknown journal origin, invalid command, divergent result or failed
 projection leaves the held session, redo tail, display and analysis unchanged.
 These named refusals never trigger an automatic package-checkpoint fallback.
+The Runtime has no public `project` operation or package-bytes projection
+request. Decoding `operation: project` refuses it as an unknown operation; no
+package bytes are ingested through that wire. A `.dsgrid` reader captures a
+read-only native session seed once at its
+boundary; live rendering uses Initialize/Refresh/Observe/Present with exact
+native history. Private projection inputs cannot request an Analyze fallback.
+An unavailable style or refused scene returns a transaction refusal, preserving
+the admitted session, view, analysis, facts and assets together. Independent
+style-free `ds_profile_runtime::analyze` remains available for explicit headless
+engineering evidence; its result does not admit a Runtime scene or history.
+The owning tests decode the removed wire as an unknown variant and prove a
+failed Analyze refresh preserves admitted history, view, analysis, review/fact
+indices and source assets. The standard Runtime gate passes 90 library tests
+and all 13 integration tests; seven intentional probes remain ignored. The
+integration fixtures initialize once and then use native Refresh journals,
+including a real structure-description edit, rather than reinserting packages.
+The imported label fixture preserves its package presentation policy.
+
+The offline `profile_smoke_driver` is a test example, not a shipped command. It
+opens the `.dsgrid` once at its reader boundary, preserves linked-model
+protection, presentation and exact assets, and captures a read-only native seed.
+Its first admitted input initializes; later inputs explicitly refresh the held
+journal. With the retained 417-structure/63-alignment witness (source SHA-256
+`e89b7a1c0416d65879aad8829c6a6faffc55105b746f4e683502620cec03bdc1`),
+four successful display/Analyze operations retain all 63 bands, 1,428 conductor
+spans, 108 assets and the exact native history. Their geometry and root/axis
+pins hash identically. An invalid combined patch refuses atomically; the next
+Analyze enables Review while preserving the previously disabled Wire choice,
+and a later display refresh retains current analysis. A separate missing-style
+process returns `profile_styles_unavailable` rather than an analysis fallback.
+Complete process traces observe one package open, one style open and zero
+network syscalls each, with both source files unchanged. Proof receipts are in
+`out/profile-project-removal/smoke-proof.json` and the owning gate logs.
+
+This proves the current headless owning API and fixture boundary. It does not
+claim installed Desktop activation or a performance gain. These default full
+projection envelopes remain approximately 48.7 MB without Analyze and 91.6 MB
+with its retained evidence; incremental transport and elapsed-time acceptance
+retain their separate contracts.
+
 Initialize a replacement model in a fresh scope; reinitializing an admitted scope
 refuses. The renderer captures its own scope/generation and journal cursor before
 work and installs a result only while those
@@ -433,7 +473,7 @@ section/case/basis slots; inputs evicted above that bound must be solved again.
 Clearance remains a separate design-case calculation. This change alone is not scoped-band or release-latency acceptance.
 
 Native Profile scopes are leases. The runtime admits up to eight and refuses a
-new scope with `profile_replay_capacity` before seed/package work if all slots
+new scope with `profile_replay_capacity` before seed work if all slots
 are held. It never evicts another admitted client by UUID ordering or recency.
 `release` takes exact `scope` and `model_id`, refuses a mismatched held model,
 and idempotently drops its session, retained source assets, display and analysis

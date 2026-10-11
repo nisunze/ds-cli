@@ -36,7 +36,7 @@ pub(super) fn ready(runtime: &mut Runtime, id: &str) {
 }
 pub(super) fn start(
     runtime: &mut Runtime,
-    input: &ProjectRequest,
+    input: &FixtureInput,
     worker: &GridSession,
     signature: String,
     id: &str,

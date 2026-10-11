@@ -1,5 +1,5 @@
 //! Native Profile execution shared by the desktop host and headless callers.
-//! Initialization pins a package once. Refresh replays the typed journal in RAM;
+//! Initialization admits a read-only native seed once. Refresh replays the typed journal in RAM;
 //! neither refresh nor history navigation writes or packs a package.
 use ds_command_kernel::profile_display::{DisplayPatch, DisplayState};
 use ds_command_kernel::profile_encoding::{
@@ -37,21 +37,17 @@ mod calculated_transfer;
 pub use calculated_transfer::{CalculatedSceneBaseRequest, StartDeltaCalculationRequest};
 pub use result_queries::{QueryArguments, QueryCursor, QueryKind, QueryResultsRequest, QuerySource};
 
-#[derive(Debug, Clone, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct ProjectRequest {
-    pub scope: String,
-    pub expected_revision: String,
-    pub package_bytes: Vec<u8>,
-    pub options: ProfileAtlasOptions,
-    pub style_document: Value,
-    pub patch: DisplayPatch,
-    pub analyze: bool,
+#[derive(Debug, Clone)]
+struct ProjectionInputs {
+    scope: String,
+    expected_revision: String,
+    options: ProfileAtlasOptions,
+    style_document: Value,
+    patch: DisplayPatch,
 }
 #[derive(Debug, Clone, Deserialize)]
 #[serde(tag = "operation", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Request {
-    Project(Box<ProjectRequest>),
     Initialize(Box<InitializeRequest>),
     InitializeExact(Box<InitializeRequest>),
     Refresh(Box<RefreshRequest>),
@@ -74,11 +70,6 @@ pub enum Request {
     CaseLayer(CaseRequest),
     Layout(ds_command_kernel::profile_layout::Request),
     SelectionControls(ds_command_kernel::grid_selection_controls::Request),
-}
-impl From<ProjectRequest> for Request {
-    fn from(value: ProjectRequest) -> Self {
-        Self::Project(Box::new(value))
-    }
 }
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -170,7 +161,6 @@ impl Runtime {
             request => request,
         };
         let changed_context = match &request {
-            Request::Project(r) => Some(r.scope.clone()),
             Request::Initialize(r) | Request::InitializeExact(r) => Some(r.scope.clone()),
             Request::Refresh(r) | Request::Present(r) => Some(r.scope.clone()),
             Request::CaseLayer(r) if r.select => Some(r.scope.clone()),
@@ -202,7 +192,6 @@ impl Runtime {
     }
     fn execute_inner(&mut self, request: Request) -> Result<Value, String> {
         match request {
-            Request::Project(request) => self.project(*request),
             Request::Initialize(request) => self.initialize(*request),
             Request::InitializeExact(request) => {
                 let scope = request.scope.clone();
@@ -250,27 +239,9 @@ impl Runtime {
             }
         }
     }
-    fn project(&mut self, request: ProjectRequest) -> Result<Value, String> {
-        if request.scope.is_empty()
-            || request.scope.len() > 1024
-            || request.package_bytes.len() > 512 * 1024 * 1024
-        {
-            return Err("invalid_profile_view: request exceeds native bounds".into());
-        }
-        self.ensure_scope_available(&request.scope)?;
-        let (package, _) = ds_grid_exchange::dsgrid::ingest(&request.package_bytes)
-            .map_err(|error| format!("profile_package_invalid: {error}"))?;
-        let session = ds_grid_exchange::linked_models::open_session(&package);
-        let source = HeldSource {
-            model_id: package.manifest.model.model_id.to_string(),
-            presentation: package.manifest.model.presentation,
-            assets: Arc::new(package.assets),
-        };
-        self.project_session(request, session, source, Default::default(), &[])
-    }
     fn project_session(
         &mut self,
-        mut request: ProjectRequest,
+        mut request: ProjectionInputs,
         session: GridSession,
         source: HeldSource,
         mut demand_cache: ds_grid_engine::StructureUsageScreeningCache,
@@ -286,25 +257,12 @@ impl Runtime {
             );
         }
         let current = self.views.get(&request.scope).cloned().unwrap_or_default();
-        let mut state = current.patched(&request.patch)?;
-        if request.analyze {
-            state.visibility.insert(
-                ds_command_kernel::profile_display::DisplayOption::Review,
-                true,
-            );
-        }
-        let styles = (|| {
-            Ok::<_, String>((
-                resolve(&state, &request.style_document)?,
-                review_status_colors(&request.style_document)?,
-                review_box_ink(&request.style_document)?,
-            ))
-        })();
-        if !request.analyze {
-            if let Err(error) = &styles {
-                return Err(error.clone());
-            }
-        }
+        let state = current.patched(&request.patch)?;
+        let styles = (
+            resolve(&state, &request.style_document)?,
+            review_status_colors(&request.style_document)?,
+            review_box_ink(&request.style_document)?,
+        );
         request.options = project_options(request.options, &state)?;
         // Named cases must exist. Failed selection cannot replace the current state.
         if let ds_grid_engine::profile_display_case::ProfileDisplayCase::AnalysisCase {
@@ -340,21 +298,15 @@ impl Runtime {
             .map(|held| std::mem::take(&mut held.review))
             .unwrap_or_default();
         Arc::make_mut(&mut review).install_case(requested_case);
-        // Analyze may return an explicit unavailable projection. A style
-        // refusal must not advance the retained review against the old session.
-        let scene = if let Err(error) = &styles {
-            Err(error.clone())
-        } else {
-            Arc::make_mut(&mut review)
-                .scene_after_with_cache(
-                    &session,
-                    request.options,
-                    if same_model { receipts } else { &[] },
-                    &mut demand_cache,
-                )
-                .map_err(|error| format!("profile_scene_unavailable: {error}"))
-        };
-        let projection_error = styles.as_ref().err().or(scene.as_ref().err()).cloned();
+        let scene = Arc::make_mut(&mut review)
+            .scene_after_with_cache(
+                &session,
+                request.options,
+                if same_model { receipts } else { &[] },
+                &mut demand_cache,
+            )
+            .map_err(|error| format!("profile_scene_unavailable: {error}"));
+        let projection_error = scene.as_ref().err().cloned();
         if let Some(error) = &projection_error {
             // A refused projection must retain the previously admitted checkpoint,
             // weather sequence and disposable cache. Transfer ownership back rather
@@ -367,33 +319,10 @@ impl Runtime {
                 held.review = review;
                 self.held.insert(request.scope.clone(), held);
             }
-            if !request.analyze {
-                return Err(error.clone());
-            }
-            let analysis = analysis::analyze_with_cache(
-                &session,
-                &scene_options.display_case,
-                scene.as_ref().ok(),
-                Some(error),
-                &mut demand_cache,
-            );
-            let command_view = command_view::project(
-                &state,
-                None,
-                scene.as_ref().ok(),
-                Some(&analysis),
-                !session.snapshot().structures.is_empty(),
-            );
-            self.analyses
-                .insert(request.scope.clone(), analysis.clone());
-            self.commit_view(&request.scope, state.clone());
-            let mut response = json!({"model_id":model_id, "model_revision":request.expected_revision, "history":history, "retained_asset_count":source.assets.len(), "scene":null, "analysis":null, "display_state":state, "projection_unavailable":error, "command_view":null, "ran":true});
-            response["analysis"] = analysis;
-            response["command_view"] = command_view;
-            return Ok(response);
+            return Err(error.clone());
         }
         let mut scene = scene.unwrap();
-        let (rows, _, _) = styles.unwrap();
+        let (rows, _, _) = styles;
         let mut label_policy = source.presentation.effective_profile_structure_labels();
         label_policy.fields = serde_json::from_value(json!(label_fields(&state)))
             .map_err(|error| error.to_string())?;
@@ -423,21 +352,11 @@ impl Runtime {
                 );
             }
         }
-        let (analysis, analysis_index) = if request.analyze {
-            let (value, index) = analysis::analyze_for_queries(
-                &session, &scene_options.display_case, Some(&scene), None, &mut demand_cache,
-            );
-            self.analyses.insert(request.scope.clone(), value.clone());
-            analysis_invalidation = Default::default();
-            (Some(value), Some(index))
-        } else {
-            let value = self.analyses.get(&request.scope)
-                .filter(|value| same_model && value["model_revision"] == request.expected_revision).cloned();
-            let index = previous.as_ref().filter(|_| same_model)
-                .and_then(|held| held.analysis_index.as_ref()).cloned();
-            (value, index)
-        };
-        if !same_model && !request.analyze {
+        let analysis = self.analyses.get(&request.scope)
+            .filter(|value| same_model && value["model_revision"] == request.expected_revision).cloned();
+        let analysis_index = previous.as_ref().filter(|_| same_model)
+            .and_then(|held| held.analysis_index.as_ref()).cloned();
+        if !same_model {
             self.analyses.remove(&request.scope);
         }
         let command_view = command_view::project(
@@ -494,7 +413,7 @@ impl Runtime {
         // json! serializes borrowed expressions even when they are already
         // Values. Move these trees into the envelope rather than rebuilding
         // the complete scene and its issue payload after their first encoding.
-        let mut response = json!({ "model_id":model_id, "model_revision":request.expected_revision, "history":history, "retained_asset_count":source.assets.len(), "scene":null, "analysis":null, "display_state":state, "projection_unavailable":null, "command_view":null, "ran": request.analyze });
+        let mut response = json!({ "model_id":model_id, "model_revision":request.expected_revision, "history":history, "retained_asset_count":source.assets.len(), "scene":null, "analysis":null, "display_state":state, "projection_unavailable":null, "command_view":null, "ran": false });
         response["scene"] = scene;
         if let Some(exact) = exact_scene {
             response["scene_json"] = json!(exact);
@@ -562,38 +481,76 @@ fn label_fields(state: &DisplayState) -> Vec<String> {
 mod common;
 
 #[cfg(test)]
+#[derive(Debug, Clone)]
+struct FixtureInput {
+    scope: String,
+    expected_revision: String,
+    seed_json: String,
+    options: ProfileAtlasOptions,
+    style_document: Value,
+    patch: DisplayPatch,
+    analyze: bool,
+}
+#[cfg(test)]
+impl FixtureInput {
+    /// Explicit retained refresh; a fixture never silently reinitializes a lease.
+    fn refresh(&self, runtime: &Runtime) -> RefreshRequest {
+        let held = &runtime.held[&self.scope];
+        RefreshRequest {
+            scope: self.scope.clone(),
+            publication_id: None,
+            model_id: held.source.model_id.clone(),
+            base_revision: held.session.current_revision().revision_id.clone(),
+            base_history: held.session.history_state(),
+            expected_revision: held.session.current_revision().revision_id.clone(),
+            target_history: held.session.history_state(),
+            journal_json: serde_json::to_string(&held.session.retained_journal()).unwrap(),
+            options: self.options.clone(),
+            style_document: self.style_document.clone(),
+            patch: self.patch.clone(),
+            analyze: self.analyze,
+            calculated_base_signature: None,
+        }
+    }
+}
+#[cfg(test)]
+impl From<FixtureInput> for Request {
+    fn from(input: FixtureInput) -> Self {
+        InitializeRequest {
+            scope: input.scope,
+            publication_id: None,
+            seed_json: input.seed_json,
+            restore_state: None,
+            options: input.options,
+            style_document: input.style_document,
+            patch: input.patch,
+            analyze: input.analyze,
+        }.into()
+    }
+}
+
+#[cfg(test)]
 mod transactional_projection_tests {
     use super::*;
-    use ds_grid_model::{EntityId, ModelCrs};
-    pub(super) fn request() -> ProjectRequest {
+    use ds_grid_model::EntityId;
+    pub(super) fn request() -> FixtureInput {
         request_for(common::fixture())
     }
-    pub(super) fn request_for(snapshot: ds_grid_model::GridModelSnapshot) -> ProjectRequest {
+    pub(super) fn request_for(snapshot: ds_grid_model::GridModelSnapshot) -> FixtureInput {
         request_for_with_assets(snapshot, vec![ds_grid_exchange::AssetBytes {
             invariant_leaf: "source-evidence.txt".into(),
             bytes: b"retained exact evidence".to_vec(),
         }])
     }
-    pub(super) fn request_for_with_assets(snapshot: ds_grid_model::GridModelSnapshot, assets: Vec<ds_grid_exchange::AssetBytes>) -> ProjectRequest {
+    pub(super) fn request_for_with_assets(snapshot: ds_grid_model::GridModelSnapshot, assets: Vec<ds_grid_exchange::AssetBytes>) -> FixtureInput {
         let session = GridSession::open(snapshot);
-        let (artifacts, _) = ds_grid_exchange::dsgrid::emit(
-            session.snapshot(),
-            &ds_grid_exchange::PackOptions {
-                model_id: EntityId::new("profile-test").unwrap(),
-                model_revision: 0,
-                coordinate_system: ModelCrs::new("EPSG:32736").unwrap(),
-                presentation: Default::default(),
-                library_pins: vec![],
-                library_needs: vec![],
-                assets,
-                exchange_bindings: Default::default(),
-            },
-        )
-        .unwrap();
-        ProjectRequest {
+        let seed = ds_grid_exchange::profile_session::ProfileSessionSeed::capture(
+            &session, EntityId::new("profile-test").unwrap(), Default::default(), &assets,
+        );
+        FixtureInput {
             scope: "one".into(),
             expected_revision: session.current_revision().revision_id.to_string(),
-            package_bytes: artifacts.artifacts[0].bytes.clone(),
+            seed_json: serde_json::to_string(&seed).unwrap(),
             options: Default::default(),
             style_document: serde_json::from_str(include_str!(
                 "../../../tests/fixtures/profile-display-style.json"
@@ -605,7 +562,7 @@ mod transactional_projection_tests {
     }
     pub(super) fn refresh(
         runtime: &Runtime,
-        input: &ProjectRequest,
+        input: &FixtureInput,
         base: &str,
         session: &GridSession,
     ) -> RefreshRequest {
@@ -651,20 +608,7 @@ mod transactional_projection_tests {
             .execute(refresh(&runtime, &input, &input.expected_revision, &worker))
             .unwrap();
         let fresh = Runtime::default()
-            .project_session(
-                ProjectRequest {
-                    expected_revision: edited.clone(),
-                    ..input.clone()
-                },
-                GridSession::open(worker.snapshot().clone()),
-                HeldSource {
-                    model_id: "profile-test".into(),
-                    presentation: Default::default(),
-                    assets: assets.clone(),
-                },
-                Default::default(),
-                &[],
-            )
+            .execute(request_for_with_assets(worker.snapshot().clone(), assets.as_ref().clone()))
             .unwrap();
         assert_eq!(replay["scene"], fresh["scene"]);
         assert_eq!(replay["command_view"], fresh["command_view"]);
@@ -700,7 +644,7 @@ mod transactional_projection_tests {
             worker.history_state()
         );
     }
-    fn two_band_request() -> (ProjectRequest, GridSession) {
+    fn two_band_request() -> (FixtureInput, GridSession) {
         use ds_grid_model::{AlignmentId, RouteEdgeId};
         let mut snapshot = common::fixture();
         for (index, (x_m, y_m, z_m)) in [(0., 0., 100.), (300., 0., 102.), (600., 40., 98.)]
@@ -734,7 +678,7 @@ mod transactional_projection_tests {
     }
     fn refresh_surface(
         runtime: &mut Runtime,
-        input: &ProjectRequest,
+        input: &FixtureInput,
         worker: &GridSession,
         computed: usize,
         reused: usize,
@@ -1319,26 +1263,34 @@ mod transactional_projection_tests {
         refresh_surface(&mut runtime, &input, &worker, 2, 0);
     }
     #[test]
-    fn unavailable_analyze_style_cannot_advance_review_against_old_held_session() {
+    fn unavailable_analyze_style_refuses_without_advancing_any_admitted_state() {
         let (input, mut worker) = two_band_request();
         let mut runtime = Runtime::default();
         runtime.execute(input.clone()).unwrap();
         let before = runtime.held[&input.scope].session.history_state();
+        let view = runtime.views[&input.scope].clone();
+        let analysis = runtime.analyses.get(&input.scope).cloned();
+        let review = runtime.held[&input.scope].review.clone();
+        let facts = runtime.held[&input.scope].result_index.clone();
+        let assets = runtime.held[&input.scope].source.assets.clone();
         describe(&mut worker, "one", "new head not yet admitted");
-        let mut unavailable = request_for(worker.snapshot().clone());
+        let mut unavailable = refresh(&runtime, &input, &input.expected_revision, &worker);
         unavailable.style_document = Value::Null;
         unavailable.analyze = true;
-        let result = runtime.execute(unavailable).unwrap();
-        assert!(result["scene"].is_null());
+        assert!(runtime.execute(unavailable).is_err());
         assert_eq!(runtime.held[&input.scope].session.history_state(), before);
-        assert_eq!(
-            runtime.held[&input.scope]
-                .review
-                .surface_work()
-                .unwrap()
-                .computed_bands,
-            2
-        );
+        assert_eq!(runtime.views[&input.scope], view);
+        assert_eq!(runtime.analyses.get(&input.scope).cloned(), analysis);
+        assert!(Arc::ptr_eq(&runtime.held[&input.scope].review, &review));
+        assert!(Arc::ptr_eq(&runtime.held[&input.scope].result_index, &facts));
+        assert!(Arc::ptr_eq(&runtime.held[&input.scope].source.assets, &assets));
+        assert_eq!(review.surface_work().unwrap().computed_bands, 2);
+        // Independent, style-free native analysis remains an explicit API;
+        // producing its evidence cannot admit a new runtime scene or history.
+        let independent = analyze(&worker, &Default::default(), None,
+            Some("the caller has no admitted display projection"));
+        assert_eq!(independent["model_revision"], json!(worker.current_revision().revision_id));
+        assert_eq!(runtime.held[&input.scope].session.history_state(), before);
         refresh_surface(&mut runtime, &input, &worker, 1, 1);
     }
     #[test]
@@ -2158,23 +2110,11 @@ mod transactional_projection_tests {
     #[test]
     fn package_derived_combined_protection_survives_native_replay() {
         let mut input = request();
-        let (package, _) = ds_grid_exchange::dsgrid::ingest(&input.package_bytes).unwrap();
         let model_id = "combined.0123456789abcdef";
-        let bytes = ds_grid_exchange::pack(
-            &package.snapshot,
-            &ds_grid_exchange::PackOptions {
-                model_id: EntityId::new(model_id).unwrap(),
-                model_revision: 0,
-                coordinate_system: ModelCrs::new("EPSG:32736").unwrap(),
-                presentation: Default::default(),
-                library_pins: vec![],
-                library_needs: vec![],
-                assets: package.assets,
-                exchange_bindings: Default::default(),
-            },
-        )
-        .unwrap();
-        input.package_bytes = bytes;
+        let mut seed: ds_grid_exchange::profile_session::ProfileSessionSeed =
+            serde_json::from_str(&input.seed_json).unwrap();
+        seed.model_id = EntityId::new(model_id).unwrap();
+        input.seed_json = serde_json::to_string(&seed).unwrap();
         let mut runtime = Runtime::default();
         runtime.execute(input.clone()).unwrap();
         let mut unprotected_worker = GridSession::open(common::fixture());
@@ -2202,29 +2142,37 @@ mod transactional_projection_tests {
         );
     }
     #[test]
-    fn boxed_project_request_preserves_exact_native_wire_fields_and_package_bytes() {
+    fn removed_package_wire_refuses_and_initialize_preserves_exact_native_seed() {
         let original = request();
+        let removed = serde_json::json!({
+            "operation":"project", "scope":original.scope,
+            "expected_revision":original.expected_revision,
+            "package_bytes":[0,1,2], "options":original.options,
+            "style_document":original.style_document, "patch":original.patch,
+            "analyze":true
+        });
+        assert!(serde_json::from_value::<Request>(removed).unwrap_err().to_string()
+            .contains("unknown variant `project`"));
         let wire = serde_json::json!({
-            "operation": "project", "scope": original.scope,
-            "expected_revision": original.expected_revision,
-            "package_bytes": original.package_bytes, "options": original.options,
-            "style_document": original.style_document, "patch": original.patch,
-            "analyze": original.analyze
+            "operation":"initialize", "scope":original.scope,
+            "publication_id":null, "seed_json":original.seed_json,
+            "restore_state":null, "options":original.options,
+            "style_document":original.style_document, "patch":original.patch,
+            "analyze":original.analyze
         });
         let bytes = serde_json::to_vec(&wire).unwrap();
-        let Request::Project(decoded) = serde_json::from_slice(&bytes).unwrap() else {
-            panic!("project wire decoded as case request");
+        let Request::Initialize(decoded) = serde_json::from_slice(&bytes).unwrap() else {
+            panic!("initialize wire decoded as another request");
         };
-        assert_eq!(decoded.package_bytes, original.package_bytes);
+        assert_eq!(decoded.seed_json, original.seed_json);
         assert_eq!(decoded.scope, original.scope);
-        assert_eq!(decoded.expected_revision, original.expected_revision);
-        assert_eq!(
-            serde_json::to_value(&decoded.options).unwrap(),
-            wire["options"]
-        );
+        assert_eq!(serde_json::to_value(&decoded.options).unwrap(), wire["options"]);
         assert_eq!(decoded.style_document, wire["style_document"]);
         assert_eq!(serde_json::to_value(&decoded.patch).unwrap(), wire["patch"]);
         assert_eq!(decoded.analyze, original.analyze);
+        let mut forbidden = wire;
+        forbidden["package_bytes"] = json!([]);
+        assert!(serde_json::from_value::<Request>(forbidden).is_err());
     }
     #[test]
     fn refused_scene_projection_restores_owned_held_cache_without_cloning() {
@@ -2291,7 +2239,7 @@ mod transactional_projection_tests {
             .unwrap()
             .terrain
             .gap_tolerance_m = -1.0;
-        let error = runtime.execute(original.clone()).unwrap_err();
+        let error = runtime.execute(original.refresh(&runtime)).unwrap_err();
         assert!(error.starts_with("profile_scene_unavailable:"), "{error}");
         let held = runtime
             .held
