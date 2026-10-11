@@ -1270,6 +1270,7 @@ dependencies = [
 name = "ds-cli-report"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "ds-cli-auth",
  "ds-cli-contract",
  "ds-cli-data",

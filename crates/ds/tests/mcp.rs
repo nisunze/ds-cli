@@ -3629,6 +3629,92 @@ fn saved_lv_analysis_read_mcp_preserves_cli_refusal_without_model_effects() {
 }
 
 #[test]
+fn mv_setup_file_output_mcp_matches_declared_cli_and_early_destination_refusals() {
+    let temporary = tempfile::tempdir().unwrap();
+    let owner = temporary.path().join("owner.json");
+    fs::write(&owner, b"owner bytes").unwrap();
+    // A credential restoration would fail on this root. Destination admission
+    // must answer before trying it in either process surface.
+    let unavailable_auth = temporary.path().join("not-a-directory");
+    fs::write(&unavailable_auth, b"not native state").unwrap();
+    let bundle = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../ds-cli-auth/tests/fixtures/development-catalog.json");
+    let mut paths = vec![PathBuf::from("relative.json"), owner.clone()];
+    #[cfg(unix)]
+    {
+        let linked = temporary.path().join("linked.json");
+        std::os::unix::fs::symlink(&owner, &linked).unwrap();
+        paths.push(linked);
+        let parent_link = temporary.path().join("parent-link");
+        std::os::unix::fs::symlink(temporary.path(), &parent_link).unwrap();
+        paths.push(parent_link.join("result.json"));
+    }
+    let mut calls = vec![json!({"jsonrpc":"2.0","id":0,"method":"tools/list"})];
+    let expected = paths
+        .iter()
+        .enumerate()
+        .map(|(index, path)| {
+            let output = Command::new(env!("CARGO_BIN_EXE_ds"))
+                .args([
+                    "report",
+                    "project",
+                    "mv-setup",
+                    "resolve",
+                    "--project",
+                    "project_a",
+                    "--out",
+                    path.to_str().unwrap(),
+                    "--output",
+                    "json",
+                ])
+                .env("DS_NATIVE_CLIENT_PROFILE_BUNDLE", &bundle)
+                .env("DS_CONFIG_HOME", &unavailable_auth)
+                .output()
+                .unwrap();
+            assert!(!output.status.success());
+            let envelope: Value = serde_json::from_slice(&output.stdout).unwrap();
+            assert_eq!(envelope["contract"], 2);
+            assert_eq!(envelope["error"]["code"], "mv_print_setup_output_invalid");
+            calls.push(json!({
+                "jsonrpc":"2.0", "id":index+1, "method":"tools/call", "params":{
+                    "name":"report_project_mv-setup_resolve", "arguments":{
+                        "project":"project_a", "out":path.to_str().unwrap()
+                    }
+                }
+            }));
+            envelope
+        })
+        .collect::<Vec<_>>();
+    let (messages, _) = mcp_with_env(
+        &["--exposure", "commands", "--profile", "printing"],
+        &calls,
+        &[
+            ("DS_NATIVE_CLIENT_PROFILE_BUNDLE", &bundle),
+            ("DS_CONFIG_HOME", &unavailable_auth),
+        ],
+    );
+    let tools = tools_by_title(&messages, 0);
+    let tool = leaf(&tools, "report.project.mv-setup.resolve");
+    assert_eq!(tool["inputSchema"]["properties"]["out"]["type"], "string");
+    assert_eq!(tool["annotations"]["readOnlyHint"], false);
+    assert_eq!(tool["annotations"]["destructiveHint"], true);
+    for (index, expected) in expected.iter().enumerate() {
+        let result = &response(&messages, index as i64 + 1)["result"];
+        assert_eq!(result["structuredContent"], *expected);
+        assert_eq!(result["isError"], true);
+        assert_eq!(
+            serde_json::from_str::<Value>(result["content"][0]["text"].as_str().unwrap()).unwrap(),
+            *expected
+        );
+        assert!(serde_json::to_vec(result).unwrap().len() < ds_cli_mcp::surface::MAX_RESULT_BYTES);
+        assert!(result["structuredContent"]["more"].is_null());
+    }
+    assert_eq!(fs::read(owner).unwrap(), b"owner bytes");
+    assert_eq!(fs::read(unavailable_auth).unwrap(), b"not native state");
+    assert!(!temporary.path().join("result.json").exists());
+}
+
+#[test]
 fn an_unbounded_or_malformed_call_timeout_is_refused_before_serving() {
     for value in ["0", "86401", "soon"] {
         let output = Command::new(env!("CARGO_BIN_EXE_ds"))

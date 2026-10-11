@@ -55,4 +55,5 @@ ds-cli-workstation = { path = "../ds-cli-workstation" }
 lopdf = { version = "0.45", default-features = false }
 
 [dev-dependencies]
+base64.workspace = true
 ds-grid-exchange = { workspace = true }

@@ -1119,6 +1119,7 @@ revision for all models:
 ```bash
 ds report project mv-setup set --project <id> --selection /absolute/selection.json --yes --output json
 ds report project mv-setup resolve --project <id> --model-identity Model1 --output json
+ds report project mv-setup resolve --project <id> --model-identity Model1 --out /absolute/fresh-mv-setup.json --output json
 ```
 
 The selection schema is returned by `report layout schema` as `mv_selection`:
@@ -1132,6 +1133,21 @@ printing drawer offers the same intentional selection and exact-base save; it
 never chooses a default layout or issue.
 The receipt reports configured documents with `ready:false`: actual geometry
 and held PDF bytes are admitted by the reporter before destination output.
+
+`mv-setup resolve` contract 2 keeps the complete native resolved receipt inline
+when `--out` is omitted. For a setup with embedded PNGs larger than an MCP
+answer, supply `--out` to write that same complete `ds.mv-print-resolved/v1`
+document on the CLI/MCP host. The destination must be a fresh absolute file in
+an existing directory without symlinks; invalid destinations refuse before
+credential or project acquisition, and concurrent writers are never overwritten.
+The bounded `ds.mv-print-resolved-file/v1` answer retains project identity,
+exact selection and lineage,
+permitted model fields, preserved-page asset pins and the canonical resolved
+`sha256`. Its `document` names the file, schema, exact-byte `sha256` and `bytes`;
+the file digest includes the resolved document's own canonical digest field.
+No embedded PNG data appears in that answer. Both modes use the same input
+acquisition and retain `ready:false`; file output adds no project reads, saves
+no project or template, fetches no PDF assets and performs no rendering.
 
 A fixed `preserved_pdf` page pins a governed asset id and `sha256:` digest.
 A `model_preserved_pdf` page declares an explicit bounded `bindings` list of

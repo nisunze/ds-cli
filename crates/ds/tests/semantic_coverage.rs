@@ -102,7 +102,7 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ),
     (
         "report.project.mv-setup.resolve",
-        "local_auth_state",
+        "local_file_write",
         "headless_project",
     ),
     (
