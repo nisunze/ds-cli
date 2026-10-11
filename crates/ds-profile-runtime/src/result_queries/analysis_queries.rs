@@ -131,7 +131,7 @@ impl Index {
                 for section in &row.failing_tension_section_ids {
                     add_section_contributor(
                         &mut sections,
-                        &section.to_string(),
+                        section.as_str(),
                         "capacity_failure_structure",
                         &id,
                     );

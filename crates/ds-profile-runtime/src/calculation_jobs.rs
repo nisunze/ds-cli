@@ -914,7 +914,7 @@ mod tests {
             runtime.held["one"].session.history_state(),
             worker.history_state()
         );
-        assert!(runtime.publications.get("one").is_none());
+        assert!(!runtime.publications.contains_key("one"));
     }
 
     #[test]
@@ -965,7 +965,7 @@ mod tests {
             .execute(wrong)
             .unwrap_err()
             .starts_with("profile_publication_stale:"));
-        assert!(runtime.publications.get("one").is_none());
+        assert!(!runtime.publications.contains_key("one"));
         let valid: Request = serde_json::from_value(json!({"operation":"admit_calculation","scope":"one","model_id":"profile-test","job_id":"wire","publication_id":"publication-wire"})).unwrap();
         runtime.execute(valid).unwrap();
         assert!(runtime

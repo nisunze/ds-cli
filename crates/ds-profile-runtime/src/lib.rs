@@ -1015,7 +1015,7 @@ mod transactional_projection_tests {
         assert_eq!(c["calculation"]["required"], true);
         assert_eq!(c["authored_delta"]["work"]["computed_ground"], 0);
         assert!(c["analysis"].is_null());
-        assert!(runtime.analyses.get(&input.scope).is_none());
+        assert!(!runtime.analyses.contains_key(&input.scope));
     }
 
     #[test]

@@ -407,8 +407,10 @@ impl Runtime {
                 // The single-use native job identity also owns its publication.
                 // Admission retrieves this pin from the native job, not the host.
                 let publication_id = job_id.clone();
-                let mut patch = DisplayPatch::default();
-                patch.display_case = display_case;
+                let patch = DisplayPatch {
+                    display_case,
+                    ..Default::default()
+                };
                 let journal_json = serde_json::to_string(&held.session.retained_journal())
                     .map_err(|error| format!("profile_replay_invalid: {error}"))?;
                 let start = Box::new(StartCalculationRequest {

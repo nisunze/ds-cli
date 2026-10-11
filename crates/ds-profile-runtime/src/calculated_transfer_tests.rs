@@ -777,7 +777,7 @@ fn repeated_geometry_edits_admit_complete_calculated_updates() {
         let delta = serde_json::from_str(
             next["scene_delta_json"]
                 .as_str()
-                .expect(&next.to_string()),
+                .unwrap_or_else(|| panic!("{next}")),
         )
         .unwrap();
         receiver = receiver
