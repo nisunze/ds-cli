@@ -293,9 +293,8 @@ Candidate curation and native PLS-CADD acceptance are separate from coding the c
 - **Intentional Grid Save failure/concurrency acceptance** (owner 2026-10-11):
   on a disposable local Desktop model, prove edit/undo/redo/discard refuse while
   durable storage holds the native lease, and a storage failure releases it
-  with the draft still unsaved. Prove process-restart recovery of the exact
-  saved bytes through the public contract. Edit,
-  catalogue, focus, idle and reconnect observations must make zero automatic
+  with the draft still unsaved. Edit, catalogue, focus, idle and reconnect
+  observations must make zero automatic
   checkpoint/capture/cloud-head/publication calls; Save to project remains an
   explicit effect. Keep the same shared Linux WebKit command/UI path and
   preserve approved source bytes. The live local checkpoint and visible block
