@@ -328,6 +328,51 @@ try {
         $closeText -notmatch 'Get-ModalWindows \$Process \$MainWindowHandle') `
         'exit checks modals from one frame snapshot and waits through its destruction'
 
+    # Execute the actual first-backup orchestration with native boundaries mocked.
+    # Offline verification errors must find the owned session already closed;
+    # an unexpected native Backup dialog must remain available for inspection.
+    $backupStart = $qualifierText.IndexOf('    $backupRun = Invoke-PlsBackup')
+    $backupEnd = $qualifierText.IndexOf('    $firstFull = Test-PlsRestoredTree', $backupStart)
+    $backupBlock = [scriptblock]::Create($qualifierText.Substring($backupStart, $backupEnd - $backupStart))
+    function Test-BackupFailureCleanup([string] $Scenario) {
+        $activeProcess = [pscustomobject]@{ Id = 123 }
+        $first = [pscustomobject]@{ main_window_handle = 456 }
+        $FreshBackupPath = 'fresh.bak'
+        $EvidenceDirectory = 'evidence'
+        $AuthorizeSaveBeforeBackup = $false
+        $ProjectFileName = 'school.xyz'
+        $FirstRestoreDirectory = 'r1'
+        $SourceRoot = ''
+        $candidateInventory = @{}
+        $script:cleanupObserved = $false
+        function Invoke-PlsBackup {
+            if ($Scenario -eq 'native_dialog') { throw 'Unexpected backup dialog' }
+            return @{}
+        }
+        function Close-PlsWithoutSaving { $script:cleanupObserved = $true }
+        function Get-PlsFileSha256 {
+            if ($Scenario -eq 'fresh_read') { throw 'Fresh backup unreadable' }
+            return ('0' * 64)
+        }
+        function Resolve-PlsNativeBackupPayload { return @{ native_path = 'fresh.bak' } }
+        function Get-PlsNativeBackupInventory { return @{} }
+        function Write-PlsJsonCreateNew {}
+        function Compare-PlsProtectedInventories {
+            return @{ equal = $false; differences = @('structure content differs') }
+        }
+        $failure = $null
+        try { & $backupBlock } catch { $failure = $_.Exception.Message }
+        if ($Scenario -eq 'native_dialog') {
+            Assert-True ($failure -match 'Unexpected backup dialog' -and -not $script:cleanupObserved) 'unknown native Backup dialog preserves the session without attempting exit'
+        } else {
+            $expected = if ($Scenario -eq 'fresh_read') { 'Fresh backup unreadable' } else { 'changed protected candidate content' }
+            Assert-True ($failure -match $expected -and $script:cleanupObserved) "$Scenario fails verification after the owned native session is closed without saving"
+        }
+    }
+    Test-BackupFailureCleanup 'protected_mismatch'
+    Test-BackupFailureCleanup 'fresh_read'
+    Test-BackupFailureCleanup 'native_dialog'
+
     [ordered]@{
         schema = 'ds.pls.backup_restore_contract_tests.v1'
         passed = $script:passed

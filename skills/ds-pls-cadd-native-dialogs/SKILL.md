@@ -32,9 +32,14 @@ whole observation to exactly one characterized transition:
   portable command.
 - **Stop:** unknown or ambiguous dialog, unexpected stage, changed body,
   multiple competing modals, missing expected control, repair/criteria error,
-  timeout, or output/count mismatch. Preserve the process and evidence so the
-  operator can classify it. Never blanket-dismiss modals, click a guessed
+  timeout, or output/count mismatch during a native transition. Preserve the
+  process and evidence so the operator can classify it. Never blanket-dismiss modals, click a guessed
   coordinate, or retry a state-changing operation from an uncertain stage.
+
+Once the characterized native operation has completed, the supported driver
+closes its owned session without saving before offline artifact verification.
+A later content/count mismatch preserves the evidence and backup; it does not
+require leaving an otherwise idle native session open.
 
 ## Insufficient strength criteria
 

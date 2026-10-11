@@ -425,7 +425,10 @@ untouched project (`fresh-pls-backup.bak`), close, Full and Protected checks;
 Restore that fresh backup (`r2`), close, checks against both backups. No save
 is authorised. Its `evidence/manifest.json` is the receipt, including the
 `saps_unlicensed_pls_16_81` caveat: this proves Restore integrity, not
-engineering. On an unexpected dialog the qualifier leaves PLS-CADD open, and
+engineering. After native Backup completes, the owned session closes without
+saving before offline content/count checks; a mismatch retains the evidence
+and fresh backup without leaving that session open. On an unexpected native
+dialog the qualifier leaves PLS-CADD open, and
 the refusal says so in `detail.process_left_for_operator`.
 
 ### `deliver`

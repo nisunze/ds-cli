@@ -1194,6 +1194,11 @@ try {
     $activeProcess = $first.process
 
     $backupRun = Invoke-PlsBackup $activeProcess $first.main_window_handle $FreshBackupPath ([bool] $AuthorizeSaveBeforeBackup)
+    # Backup completed through characterized native transitions. Release this
+    # run's session before offline inventory/content checks can fail. Unknown
+    # Backup/Exit dialogs still throw with the owned process preserved.
+    Close-PlsWithoutSaving $activeProcess $first.main_window_handle
+    $activeProcess = $null
     $freshBackupDigest = Get-PlsFileSha256 $FreshBackupPath
     $freshPayload = Resolve-PlsNativeBackupPayload $FreshBackupPath $freshBackupDigest (Join-Path $EvidenceDirectory 'fresh-backup-payload')
     $freshInventory = Get-PlsNativeBackupInventory $freshPayload.native_path $ProjectFileName $FirstRestoreDirectory
@@ -1203,8 +1208,6 @@ try {
     if (-not $protectedComparison.equal) {
         throw "Fresh PLS backup changed protected candidate content: $($protectedComparison.differences -join ', ')"
     }
-    Close-PlsWithoutSaving $activeProcess $first.main_window_handle
-    $activeProcess = $null
     $firstFull = Test-PlsRestoredTree $candidateInventory $FirstRestoreDirectory 'Full' @($profile.AllowedFreshRestoreExtras)
     $firstProtected = Test-PlsRestoredTree $candidateInventory $FirstRestoreDirectory 'Protected'
     Write-Journal 'first_restore_post_close_full_tree_verified' $firstFull

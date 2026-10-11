@@ -28,7 +28,7 @@ pub static COMMAND: Command = Command {
     path: &["pls", "desktop", "qualify"],
     contract: 1,
     summary: "Qualify a .bak by two native PLS-CADD restores and a PLS backup.",
-    purpose: "The native Restore/reopen acceptance a submission backup needs, and that backup-create cannot give itself: PLS-CADD 16.81 restores the backup into a new folder and opens it, makes its own File > Backup of the untouched project, closes without saving and verifies every restored file; then restores that fresh backup, closes, and verifies the second tree against both backups. No save is authorised at any point. On an unexpected dialog the qualifier leaves PLS-CADD open for the operator rather than closing it blind.",
+    purpose: "The native Restore/reopen acceptance a submission backup needs, and that backup-create cannot give itself: PLS-CADD 16.81 restores the backup into a new folder and opens it, makes its own File > Backup of the untouched project, closes without saving and verifies every restored file; then restores that fresh backup, closes, and verifies the second tree against both backups. No save is authorised at any point. The owned session closes before offline fresh-backup verification, including content/count mismatch failures. On an unexpected dialog the qualifier leaves PLS-CADD open for the operator rather than closing it blind.",
     chapter: Chapter::PlsCadd,
     effect: Effect::LocalFileWrite,
     authority: Authority::None,
