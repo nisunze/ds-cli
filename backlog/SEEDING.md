@@ -300,6 +300,16 @@ Candidate curation and native PLS-CADD acceptance are separate from coding the c
   resources, not its Undo journal; expose/admit the existing native full-draft
   recovery contract before any restart that would discard that history.
 
+- **Reviewed unused-structure export activation**: activate native exchange
+  `5c1051a8`, CLI/MCP `a9586a16` and export UI `9fbc7ff2a` together. CLI/MCP,
+  production export/diagnostics with matching release WASM, and the independent
+  CLI trial prove pinned output-only omissions, identical fixture artifact
+  bytes, retained source digests and zero browser API/cloud requests. These do
+  not update the current Tauri graph or prove native PLS solver acceptance.
+  Replay the shared JSON omission control and native refusal in the installed
+  Desktop. Keep the original School investigation package separate from the
+  newer exact-native replacement candidate and its Windows qualification owner.
+
 - **Cleared-forest data and print acceptance**: use an approved model with surveyed forest points and an authored GROUND/forest rule. The prior unchanged package had no forest codes and correctly refused `feature_code_unknown`; acquire the missing source data before testing installed compute/Profile/print. Preserve model identity, source Z and the independent drawing guide.
 
 - **Selected-case runtime acceptance**: after the native transport and UI bindings in OPEN.md are complete, install matching sources/WASM and verify real criterion/case/weight-basis selection, scene invalidation, usage/uplift/clearance markers and responsive popout display on the affected Windows model.
