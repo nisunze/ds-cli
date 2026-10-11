@@ -181,16 +181,17 @@ pub static COMMAND: Command = Command {
 /// One transformer's outcome: processed layers, an optional calculation and
 /// the producer's analysis envelope. A reserved nature has layers with
 /// `tr.vd_summary` and no calculation.
+type SolveOutcome = Result<
+    (
+        Map<String, Value>,
+        Option<VoltageDropRun>,
+        Option<VoltageDropAnalysis>,
+    ),
+    String,
+>;
 struct Solved {
     transformer_name: String,
-    outcome: Result<
-        (
-            Map<String, Value>,
-            Option<VoltageDropRun>,
-            Option<VoltageDropAnalysis>,
-        ),
-        String,
-    >,
+    outcome: SolveOutcome,
 }
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {

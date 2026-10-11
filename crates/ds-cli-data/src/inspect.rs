@@ -440,8 +440,7 @@ mod tests {
         assert_eq!(converted.receipt.feature_count, 1);
 
         let missing = read_geometry_source(folder.join("absent.shp").to_str().unwrap())
-            .err()
-            .expect("an absent .shp is refused");
+            .expect_err("an absent .shp is refused");
         assert_eq!(missing.code(), "source_unreadable");
         std::fs::remove_dir_all(folder).unwrap();
     }

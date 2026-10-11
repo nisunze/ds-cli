@@ -309,30 +309,30 @@ pub fn publish(i: &Inputs, c: &Context) -> Result<Value, Failure> {
     let publication: ds_client_core::TransformerRepairPublication =
         serde_json::from_value(read(i)?)
             .map_err(|e| Failure::invalid("repair_document_invalid", e.to_string()))?;
-    if let Some(source) = &publication.source {
-        if let Some(expected) = &source.raw_file_sha256 {
-            let path = i.value("evidence-file").ok_or_else(|| {
-                Failure::invalid(
-                    "repair_source_changed",
-                    "Supply --evidence-file for the declared raw file pin.",
-                )
-            })?;
-            let bytes =
-                ds_design_workspace::read_file(Path::new(path), design_repair::MAX_SOURCE_BYTES)
-                    .map_err(|e| Failure::invalid("repair_input_unreadable", e.to_string()))?;
-            let raw: Value = serde_json::from_slice(&bytes)
-                .map_err(|e| Failure::invalid("repair_document_invalid", e.to_string()))?;
-            let layers = raw.get("layers").cloned().unwrap_or_else(|| raw.clone());
-            let same_layers = layers == serde_json::to_value(&source.layers).unwrap()
-                || (raw["type"] == "FeatureCollection"
-                    && source.layers.len() == 1
-                    && source.layers.values().next() == Some(&raw));
-            if format!("{:x}", Sha256::digest(&bytes)) != *expected || !same_layers {
-                return Err(Failure::invalid(
-                    "repair_source_changed",
-                    "Raw evidence bytes or their decoded layers differ from the reviewed source.",
-                ));
-            }
+    if let Some(source) = &publication.source
+        && let Some(expected) = &source.raw_file_sha256
+    {
+        let path = i.value("evidence-file").ok_or_else(|| {
+            Failure::invalid(
+                "repair_source_changed",
+                "Supply --evidence-file for the declared raw file pin.",
+            )
+        })?;
+        let bytes =
+            ds_design_workspace::read_file(Path::new(path), design_repair::MAX_SOURCE_BYTES)
+                .map_err(|e| Failure::invalid("repair_input_unreadable", e.to_string()))?;
+        let raw: Value = serde_json::from_slice(&bytes)
+            .map_err(|e| Failure::invalid("repair_document_invalid", e.to_string()))?;
+        let layers = raw.get("layers").cloned().unwrap_or_else(|| raw.clone());
+        let same_layers = layers == serde_json::to_value(&source.layers).unwrap()
+            || (raw["type"] == "FeatureCollection"
+                && source.layers.len() == 1
+                && source.layers.values().next() == Some(&raw));
+        if format!("{:x}", Sha256::digest(&bytes)) != *expected || !same_layers {
+            return Err(Failure::invalid(
+                "repair_source_changed",
+                "Raw evidence bytes or their decoded layers differ from the reviewed source.",
+            ));
         }
     }
     let receipt = ds_cli_auth::repair_transformer(i.require("lane")?, &publication)?;

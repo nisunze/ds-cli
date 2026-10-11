@@ -80,8 +80,7 @@ const PRIVATE_REFUSALS: [Refusal; 27] = {
     out
 };
 const fn descriptor(
-    id: &'static str,
-    path: &'static [&'static str],
+    identity: (&'static str, &'static [&'static str]),
     summary: &'static str,
     purpose: &'static str,
     effect: Effect,
@@ -89,6 +88,7 @@ const fn descriptor(
     args: &'static [Arg],
     refusals: &'static [Refusal],
 ) -> Command {
+    let (id, path) = identity;
     Command {
         id,
         path,
@@ -110,8 +110,7 @@ const fn descriptor(
     }
 }
 pub static PRIVATE_READ: Command = descriptor(
-    "notes.checklist.read",
-    &["notes", "checklist", "read"],
+    ("notes.checklist.read", &["notes", "checklist", "read"]),
     "Read one account-private note checklist.",
     "Reads only the selected note through the account-private owner. No project, attachment, graph or thread catalogue is acquired. Canonical states and geometry remain the owner's projection.",
     Effect::ReadOnly,
@@ -120,8 +119,7 @@ pub static PRIVATE_READ: Command = descriptor(
     &PRIVATE_REFUSALS,
 );
 pub static PRIVATE_EDIT: Command = descriptor(
-    "notes.checklist.edit",
-    &["notes", "checklist", "edit"],
+    ("notes.checklist.edit", &["notes", "checklist", "edit"]),
     "Edit one account-private note checklist item.",
     "Sends one selected add/edit/check/uncheck/move/remove intent against the reviewed note version. Exact retries reuse id, version and payload. Existing note body, other items and evidence remain unchanged. Project model pins cannot be adopted by private notes.",
     Effect::GlobalWrite,
@@ -130,8 +128,10 @@ pub static PRIVATE_EDIT: Command = descriptor(
     &PRIVATE_REFUSALS,
 );
 pub static PROJECT_READ: Command = descriptor(
-    "pm.note.checklist.read",
-    &["pm", "note", "checklist", "read"],
+    (
+        "pm.note.checklist.read",
+        &["pm", "note", "checklist", "read"],
+    ),
     "Read one project note checklist.",
     "Reads only the selected project note and its owner-computed checklist projection. Does not acquire a thread, graph or assets; project membership is revalidated by the owner.",
     Effect::ReadOnly,
@@ -140,8 +140,10 @@ pub static PROJECT_READ: Command = descriptor(
     PROJECT_REFUSALS,
 );
 pub static PROJECT_EDIT: Command = descriptor(
-    "pm.note.checklist.edit",
-    &["pm", "note", "checklist", "edit"],
+    (
+        "pm.note.checklist.edit",
+        &["pm", "note", "checklist", "edit"],
+    ),
     "Edit one project note checklist item.",
     "Sends one closed item edit through the existing Project Work owner with an explicit note version and command id. No read precedes the write. Geometry and links stay item-scoped; referenced assets must already be note-held. The server owns authority and exact replay.",
     Effect::GlobalWrite,
