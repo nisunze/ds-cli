@@ -36,6 +36,16 @@ commands retain their explicitly declared authority below.
 
 ## Library identity across edits
 
+`dsgrid profile open --live` captures the model already occupying Desktop
+Profile, even when the CLI catalogue does not contain it. Supply a new absolute
+`--checkpoint-out` and the complete `--expect-history` from `map profile view`.
+The native session fences content, cursor, redo depth and retained journal;
+returning to the same authored revision through Undo does not admit old history.
+This path neither imports, focuses, saves nor adopts the working model. Its
+receipt names the captured revision/history and artifact digest/length. Explicit
+`model import-external` on that artifact creates an independent working copy.
+Ordinary `profile open` continues to resolve a machine working copy first.
+
 Typed mutations, command-envelope apply, spotting receipt applies and
 visualization previews retain the source package's exact library pins and
 element needs, assets and exchange bindings. The native emitter verifies the

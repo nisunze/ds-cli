@@ -18261,6 +18261,34 @@ fn dsgrid_profile_checkpoint_validates_output_before_touching_the_window() {
     std::fs::remove_dir_all(root).unwrap();
 }
 
+#[test]
+fn dsgrid_live_checkpoint_refuses_unreviewed_history_without_catalogue_lookup() {
+    let root = temp_root("live-profile-checkpoint-history");
+    std::fs::create_dir_all(&root).unwrap();
+    let path = root.join("new.dsgrid");
+    for history in [None, Some(r#"{"project":"untrusted"}"#)] {
+        let mut args = vec![
+            "dsgrid",
+            "profile",
+            "open",
+            "--model",
+            "browser-only",
+            "--live",
+            "--checkpoint-out",
+            path.to_str().unwrap(),
+            "--output",
+            "json",
+        ];
+        if let Some(history) = history {
+            args.extend_from_slice(&["--expect-history", history]);
+        }
+        let result = ds(&args);
+        assert_eq!(result.envelope["error"]["code"], "checkpoint_history_invalid");
+        assert!(!path.exists());
+    }
+    std::fs::remove_dir_all(root).unwrap();
+}
+
 // File-only batching must have the same canonical result as single-command
 // apply while avoiding intermediate package writes.
 #[test]

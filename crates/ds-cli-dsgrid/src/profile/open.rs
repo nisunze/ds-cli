@@ -37,6 +37,8 @@ pub const PROFILE_OPEN: BridgeOp = BridgeOp {
         "checkpoint_out",
         "expect_revision",
         "replace_temporary_models",
+        "live",
+        "expect_history",
     ],
 };
 
@@ -47,7 +49,7 @@ const MODEL_ARG: Arg = Arg {
     required: true,
     default: None,
     choices: &[],
-    summary: "The working copy to show, by the id `ds dsgrid model list` reports.",
+    summary: "Working-copy id, or the open Profile model id with --live.",
 };
 
 const ALIGNMENT_ARG: Arg = Arg {
@@ -76,7 +78,17 @@ const ALIGNMENT_NOT_FOUND: Refusal = Refusal {
     remedy: "run `ds dsgrid inspect --model <path> --include tables` and pass one alignment id",
 };
 
-const OWN: [Refusal; 14] = [
+const OWN: [Refusal; 16] = [
+    Refusal {
+        code: "checkpoint_history_invalid",
+        when: "--live lacks checkpoint output or full native history, mixes opening controls, or history JSON is invalid",
+        remedy: "use --live --checkpoint-out with --expect-history from map profile view; omit opening controls",
+    },
+    Refusal {
+        code: "history_conflict",
+        when: "the open model's full history changed before checkpoint admission",
+        remedy: "read map profile view and review the current history before capturing",
+    },
     Refusal {
         code: "checkpoint_output_invalid",
         when: "checkpoint output is not an absolute .dsgrid path, or --expect-revision is given without it",
@@ -135,16 +147,9 @@ const fn refusals() -> [Refusal; OWN.len() + workspace::REFUSALS.len()] {
 pub static COMMAND: Command = Command {
     id: "dsgrid.profile.open",
     path: &["dsgrid", "profile", "open"],
-    contract: 1,
-    summary: "Show one working copy in the paired DS GridDesign's Profile view.",
-    purpose: "\
-Opens this machine's working copy in the running DS GridDesign and occupies \
-its Profile view with it, focused on one alignment. The package is read by \
-the application from the catalogue's own file — no bytes cross the bridge — \
-and it is opened under the copy's id, so what `ds dsgrid model show` names \
-and what the window shows are one model. Reopening the copy the application \
-already holds is a focus change, never a second session. The session is not \
-added to the application's catalogue. Optional --checkpoint-out captures its exact live head through the model queue and writes a verified new .dsgrid file in the paired application; no model bytes cross the CLI bridge. --expect-revision guards that captured head. --replace-temporary-models removes browser-local temporary groups and models before opening the copy.",
+    contract: 2,
+    summary: "Open a working copy or checkpoint a live Desktop Profile model.",
+    purpose: "Open a machine working copy in Profile, optionally focusing an alignment and writing a new checkpoint. Reopening retains its live session. --live instead captures the already-open Profile model without catalogue lookup, import or focus changes; requires --checkpoint-out and --expect-history from map profile view. Native full-history admission rejects Undo/Redo ABA. Capture never saves or adopts the working model; import the new package explicitly to create an independent copy. No model bytes cross the bridge. --replace-temporary-models removes temporary groups/models only when explicitly requested during ordinary opening.",
     chapter: Chapter::GridModel,
     effect: Effect::LocalFileWrite,
     authority: Authority::DesktopPairing,
@@ -163,12 +168,25 @@ added to the application's catalogue. Optional --checkpoint-out captures its exa
             "Optional expected live authored head; requires --checkpoint-out.",
         ),
         REPLACE_TEMPORARY_MODELS_ARG,
-        workspace::ACCOUNT_ARG,
+        Arg::switch(
+            "live",
+            "Capture the already-open Profile model, including models outside the CLI catalogue; requires output and full history.",
+        ),
+        Arg::value(
+            "expect-history",
+            "<native-json>",
+            "Complete native history from map profile view (2 KiB); required with --live.",
+        ),
+        Arg::value(
+            "account",
+            "<uid>",
+            "Required for ordinary opening: account owning the machine catalogue. Live capture uses the paired Desktop identity.",
+        ),
         workspace::LANE_ARG,
         TARGET_ARG,
         DESCRIPTOR_ARG,
     ],
-    output: "The copy, package path, live revision, alignment and session state; optional checkpoint receipt names the exact captured revision and persisted file path, SHA-256 and byte length. With --replace-temporary-models, temporary_models_removed reports group and model counts.",
+    output: "Model, package path, live revision and Profile state; checkpoint receipt names the captured revision, full history with --live, persisted file path, SHA-256 and byte length. Live capture leaves alignment/focus unchanged. Explicit replacement reports removed temporary groups/models.",
     examples: &[
         Example {
             command: "ds dsgrid profile open --model local-b1b2d3b9e6ab4959",
@@ -188,7 +206,13 @@ added to the application's catalogue. Optional --checkpoint-out captures its exa
     ],
     refusals: REFUSALS,
     reference: Some("docs/reference/dsgrid.md"),
-    search: &["working copy", "alignment", "desktop"],
+    search: &[
+        "working copy",
+        "alignment",
+        "desktop",
+        "checkpoint",
+        "clone",
+    ],
     // The two halves of one fact: this command asks the application for its
     // answer, so it declares the window and hands over the paired availability.
     requires: Requires::Window,
@@ -198,13 +222,15 @@ added to the application's catalogue. Optional --checkpoint-out captures its exa
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let checkpoint_out = checkpoint_output(inputs)?;
     let id = inputs.require("model")?.trim().to_owned();
-    let located = workspace::locate(inputs, &id)?;
-    let path = located.path.display().to_string();
-    let mut arguments = json!({
-        "model": located.row.id,
-        "path": path,
-        "name": located.row.display_name,
-    });
+    let mut arguments = if inputs.switch("live") {
+        live_arguments(inputs)?
+    } else {
+        if inputs.value("expect-history").is_some() {
+            return Err(history_invalid());
+        }
+        let located = workspace::locate(inputs, &id)?;
+        json!({"model":located.row.id,"path":located.path.display().to_string(),"name":located.row.display_name})
+    };
     if let Some(alignment) = inputs
         .value("alignment")
         .map(str::trim)
@@ -224,7 +250,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let descriptor = crate::model::paired(inputs.value("desktop-descriptor"))?;
     let result = crate::model::invoke(&descriptor, &PROFILE_OPEN, arguments, LOCAL_TIMEOUT)
         .map_err(classify)?;
-    let receipt = receipt(&located.row.id, &result)?;
+    let receipt = receipt(&id, &result)?;
     if checkpoint_out.is_some() && receipt["checkpoint"]["persisted"] != true {
         return Err(Failure::failed(
             "desktop_unreadable",
@@ -233,6 +259,32 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         .remedy(UNREADABLE.remedy));
     }
     Ok(receipt)
+}
+
+fn history_invalid() -> Failure {
+    Failure::invalid("checkpoint_history_invalid", "Live checkpoint requires bounded native history and a new output, without opening controls.")
+        .remedy("use --live --checkpoint-out with --expect-history from map profile view; omit opening controls")
+}
+
+fn live_arguments(inputs: &Inputs) -> Result<Value, Failure> {
+    if inputs.value("checkpoint-out").is_none()
+        || inputs.value("alignment").is_some()
+        || inputs.value("expect-revision").is_some()
+        || inputs.switch("replace-temporary-models")
+    {
+        return Err(history_invalid());
+    }
+    let raw = inputs.value("expect-history").ok_or_else(history_invalid)?;
+    if raw.len() > 2048 {
+        return Err(history_invalid());
+    }
+    let history: ds_grid_engine::session::SessionHistoryState =
+        serde_json::from_str(raw).map_err(|_| history_invalid())?;
+    let id = inputs.require("model")?;
+    if id.trim().is_empty() || id.len() > 200 || id.chars().any(char::is_control) {
+        return Err(history_invalid());
+    }
+    Ok(json!({"model":id.trim(),"live":true,"expect_history":history}))
 }
 
 fn checkpoint_output(inputs: &Inputs) -> Result<Option<&str>, Failure> {
@@ -271,6 +323,10 @@ fn classify(failure: Failure) -> Failure {
         .and_then(|detail| detail["detail"].as_str())
         .unwrap_or_default()
         .to_ascii_lowercase();
+    if detail.contains("checkpoint_history_conflict:") {
+        return Failure::invalid("history_conflict", detail)
+            .remedy("read map profile view and review the current history before capturing");
+    }
     if detail.contains("checkpoint_revision_conflict:") {
         return Failure::invalid("revision_conflict", detail)
             .remedy("inspect the live revision and choose again");
@@ -290,7 +346,9 @@ fn receipt(id: &str, result: &Value) -> Result<Value, Failure> {
     let returned = result["model"].as_str().unwrap_or_default();
     let opened = result["profile_open"].as_bool().unwrap_or(false);
     let alignment = result["alignment"].as_str();
-    if returned != id || !opened || alignment.is_none() {
+    let live_checkpoint =
+        result["live_checkpoint"] == true && result["checkpoint"]["persisted"] == true;
+    if returned != id || !opened || (alignment.is_none() && !live_checkpoint) {
         return Err(Failure::failed(
             "desktop_unreadable",
             "the application did not confirm Profile occupied by the requested working copy",
@@ -315,6 +373,7 @@ fn receipt(id: &str, result: &Value) -> Result<Value, Failure> {
         "workspace": result["workspace"],
         "runtime_errors": result["runtime_errors"],
         "checkpoint": result["checkpoint"],
+        "live_checkpoint": live_checkpoint,
     });
     if let Some(removed) = result.get("temporary_models_removed") {
         receipt["temporary_models_removed"] = removed.clone();
@@ -345,6 +404,46 @@ pub fn render(data: &Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn live_capture_validates_native_history_without_catalogue_or_pairing() {
+        let history = r#"{"model_revision":"rev:head","initial_revision":"rev:head","undo_depth":0,"redo_depth":1,"history_pin":"pin"}"#;
+        let parse = |extra: &[&str]| {
+            let mut args = vec![
+                "--model",
+                "browser-only",
+                "--live",
+                "--checkpoint-out",
+                "/unused/new.dsgrid",
+            ];
+            args.extend_from_slice(extra);
+            ds_cli_contract::args::parse(
+                &COMMAND,
+                &args.iter().map(|v| (*v).into()).collect::<Vec<String>>(),
+            )
+            .unwrap()
+        };
+        let inputs = parse(&["--expect-history", history]);
+        let arguments = live_arguments(&inputs).unwrap();
+        assert_eq!(arguments["model"], "browser-only");
+        assert_eq!(arguments["expect_history"]["redo_depth"], 1);
+        assert!(arguments.get("path").is_none());
+        assert!(live_arguments(&parse(&[])).is_err());
+        assert!(
+            live_arguments(&parse(&[
+                "--expect-history",
+                history,
+                "--alignment",
+                "al-1"
+            ]))
+            .is_err()
+        );
+        assert!(
+            live_arguments(&parse(&["--expect-history", r#"{"project":"untrusted"}"#])).is_err()
+        );
+        let data = receipt("browser-only", &json!({"model":"browser-only","profile_open":true,"live_checkpoint":true,"checkpoint":{"persisted":true}})).unwrap();
+        assert!(data["alignment"].is_null());
+    }
 
     #[test]
     fn profile_open_receipt_keeps_temporary_removal_counts() {
