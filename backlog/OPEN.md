@@ -17,7 +17,7 @@ Unfinished code that an agent can implement and prove without further owner inpu
 | [8. Sync, publication and edge outbox](#8-sync-publication-and-edge-outbox) | 6 |
 | [9. LV processing, sizing and headless intake](#9-lv-processing-sizing-and-headless-intake) | 8 |
 | [10. Voltage drop](#10-voltage-drop) | 3 |
-| [11. PLS-CADD exchange round trip](#11-pls-cadd-exchange-round-trip) | 12 |
+| [11. PLS-CADD exchange round trip](#11-pls-cadd-exchange-round-trip) | 11 |
 | [12. DS Grid engineering (Codex main)](#12-ds-grid-engineering-codex-main) | 11 |
 | [13. Spotting (Codex main)](#13-spotting-codex-main) | 8 |
 | [14. Plan and Profile authoring](#14-plan-and-profile-authoring) | 1 |
@@ -221,8 +221,6 @@ Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group E (printing templ
 
 - **Imported PLS structure orientation** (needs characterization): a structure's `orientation_rad` is its travel bearing (e.g. 5.0776 rad at Nyamagabe `str-423815a32fed4309-420`), but the imported PLS STRUCT puts its transverse offset in `local_x`; `placed_local_xy` rotates local x by orientation, so imported transverse phase offsets would be placed along the line, and `resolve_directional_strain` reads PLS strain azimuths (1.571/4.712) as transverse and refuses. Compare ds-grid-exchange `pls_cadd_workspace.rs` attachment import with ds-grid-engine `projection.rs` `placed_local_xy` and `structure_placement.rs` `resolve_directional_strain`; prove placement against a PLS reference.
 
-- **`linked_models` suite red**: ds-grid-exchange `tests/linked_models.rs` fails 6 of 9 on `run` with "stored checkpoint differs from its graph baseline" (composite verify). Find the regression and prove the suite.
-
 ## 12. DS Grid engineering (Codex main)
 
 Rules: [PRINCIPLES.md §6](PRINCIPLES.md#6-ds-grid-engineering).
@@ -379,9 +377,9 @@ canonical `run`, one proved/pushed slice at a time:
   native copy-on-write arrays and keep signatures per row so changed rows
   alone are hashed and compared. Preserve canonical byte order,
   signed zero, delta bounds and current publication/history refusal paths.
-  `profile_calculated_delta.rs::CalculatedSceneBase`, the retained projection
-  and `ds-grid-wasm/src/profile_calculated.rs` still traverse unchanged span
-  rows and hash equal splice prefixes/suffixes. The authored view also emits
+  Changed component signatures still hash complete canonical arrays and
+  display-case failure records. Keep native/worker signature parity while
+  removing that remaining cost. The authored view also emits
   all 2,564 temporary connections against the consumed calculated baseline;
   generate only the affected support/section incidence. The Nyamagabe
   lifecycle probe exposes a 647 ms native complete
