@@ -1240,12 +1240,14 @@ mod transactional_projection_tests {
         let rendered = runtime
             .execute(Request::Present(Box::new(presentation)))
             .unwrap();
+        let rendered_scene: Value =
+            serde_json::from_str(rendered["scene_json"].as_str().unwrap()).unwrap();
         assert_eq!(
-            rendered["scene"]["engineering"],
+            rendered_scene["engineering"],
             opened["scene"]["engineering"]
         );
         assert_eq!(
-            rendered["scene"]["conductor_spans"],
+            rendered_scene["conductor_spans"],
             opened["scene"]["conductor_spans"]
         );
         assert_eq!(rendered["ran"], false);

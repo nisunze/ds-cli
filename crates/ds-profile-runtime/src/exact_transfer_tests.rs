@@ -15,6 +15,213 @@ fn control(worker: &GridSession, request: CalculationArguments) -> CalculationCo
 }
 
 #[test]
+fn present_retains_the_pinned_base_and_discard_restores_exact_geometry_and_display() {
+    let snapshot = section_demand_fixture();
+    let input = request_for(snapshot.clone());
+    let worker = GridSession::open(snapshot);
+    let mut runtime = Runtime::default();
+    runtime.execute(input.clone()).unwrap();
+    let prepared = prepare(&mut runtime, &worker);
+    let before = runtime.held["one"].calculated_base.clone().unwrap();
+    let bytes = serde_json::to_vec(before.scene()).unwrap();
+    let authored = serde_json::to_vec(worker.snapshot()).unwrap();
+    let state = runtime.views["one"].clone();
+    let case_work = runtime.held["one"].review.case_work();
+    let mut request = refresh(&runtime, &input, &input.expected_revision, &worker);
+    request.calculated_base_signature = Some(before.signature().into());
+    request.publication_id = Some("present-pinned".into());
+    request.patch.visibility.insert(
+        ds_command_kernel::profile_display::DisplayOption::Wire,
+        false,
+    );
+    let result = runtime
+        .execute(Request::Present(Box::new(request)))
+        .unwrap();
+    assert!(result["scene"].is_null());
+    assert!(result["scene_json"].is_null());
+    let delta = serde_json::from_str(result["scene_delta_json"].as_str().unwrap()).unwrap();
+    let receiver = before
+        .admit(
+            &delta,
+            &worker.current_revision().revision_id,
+            &worker.current_revision().roots.engineering_input_root,
+        )
+        .unwrap();
+    assert_eq!(serde_json::to_vec(receiver.scene()).unwrap(), bytes);
+    assert_eq!(receiver.signature(), before.signature());
+    assert_eq!(result["ran"], false);
+    assert_eq!(result["calculation"]["required"], false);
+    assert_eq!(result["history"], json!(worker.history_state()));
+    assert_eq!(
+        serde_json::to_value(runtime.held["one"].review.case_work()).unwrap(),
+        serde_json::to_value(case_work).unwrap()
+    );
+    assert_eq!(
+        runtime.held["one"].session.history_state(),
+        worker.history_state()
+    );
+    assert_eq!(
+        serde_json::to_vec(runtime.held["one"].session.snapshot()).unwrap(),
+        authored
+    );
+    assert_eq!(
+        runtime.held["one"]
+            .calculated_base
+            .as_ref()
+            .unwrap()
+            .signature(),
+        before.signature()
+    );
+    assert_eq!(result["metrics"]["calculated_delta"], 1);
+    assert_eq!(result["metrics"]["exact_scene_bytes"], 0);
+    assert!(runtime.delta_transfers.is_empty());
+    assert!(runtime.exact_transfers.is_empty());
+    assert_ne!(runtime.views["one"], state);
+    runtime
+        .execute(Request::DiscardPublication(DiscardPublicationRequest {
+            scope: "one".into(),
+            model_id: "profile-test".into(),
+            publication_id: "present-pinned".into(),
+            target_history: worker.history_state(),
+        }))
+        .unwrap();
+    assert_eq!(runtime.views["one"], state);
+    assert!(Arc::ptr_eq(
+        runtime.held["one"].calculated_base.as_ref().unwrap(),
+        &before
+    ));
+    let restored = prepare(&mut runtime, &worker);
+    assert_eq!(restored["base_signature"], prepared["base_signature"]);
+    assert_eq!(restored["metrics"]["base_rebuilt"], 0);
+    assert_eq!(restored["metrics"]["calculated_cases"], 0);
+}
+
+#[test]
+fn present_without_a_shared_pin_returns_exact_native_signed_zero_text() {
+    let mut input = request_for(section_demand_fixture());
+    let mut terrain = DisplayState::default().terrain;
+    terrain.corridor_half_width_m = -0.0;
+    input.patch.terrain = Some(terrain);
+    let mut runtime = Runtime::default();
+    runtime.execute(input.clone()).unwrap();
+    let worker = runtime.held["one"].session.clone();
+    let original = runtime.held["one"].calculated_scene.clone().unwrap();
+    assert_eq!(
+        original.metadata.terrain_corridor_half_width_m.to_bits(),
+        (-0.0_f64).to_bits()
+    );
+    let request = refresh(&runtime, &input, &input.expected_revision, &worker);
+    let result = runtime
+        .execute(Request::Present(Box::new(request)))
+        .unwrap();
+    assert!(result["scene"].is_null());
+    assert!(result["scene_delta_json"].is_null());
+    let envelope = serde_json::to_string(&result).unwrap();
+    let decoded: Value = serde_json::from_str(&envelope).unwrap();
+    let scene: ds_grid_engine::ProfileAtlasScene =
+        serde_json::from_str(decoded["scene_json"].as_str().unwrap()).unwrap();
+    assert_eq!(
+        scene.metadata.terrain_corridor_half_width_m.to_bits(),
+        (-0.0_f64).to_bits()
+    );
+    assert_eq!(
+        serde_json::to_vec(&scene).unwrap(),
+        serde_json::to_vec(original.as_ref()).unwrap()
+    );
+    assert_eq!(result["ran"], false);
+    assert_eq!(result["calculation"]["required"], false);
+    assert_eq!(result["history"], json!(worker.history_state()));
+    assert_eq!(
+        result["metrics"]["exact_scene_bytes"],
+        decoded["scene_json"].as_str().unwrap().len()
+    );
+    assert!(runtime.delta_transfers.is_empty());
+    assert!(runtime.exact_transfers.is_empty());
+    assert_eq!(
+        prepare(&mut runtime, &worker)["base_signature"],
+        CalculatedSceneBase::new(scene).signature()
+    );
+}
+
+#[test]
+fn present_transport_refusals_preserve_native_state_and_leave_no_transfer_flags() {
+    for (failure, expected) in [
+        ("malformed", "invalid_profile_view:"),
+        ("stale_signature", "profile_calculated_delta_stale:"),
+        ("foreign_model", "profile_replay_model_mismatch:"),
+        ("target_history", "profile_scene_unavailable:"),
+        ("base_history", "profile_replay_stale:"),
+        ("styles", "profile_styles_unavailable:"),
+        ("missing_base", "profile_calculated_delta_base_unavailable:"),
+    ] {
+        let input = request_for(section_demand_fixture());
+        let mut runtime = Runtime::default();
+        runtime.execute(input.clone()).unwrap();
+        let worker = runtime.held["one"].session.clone();
+        let prepared = prepare(&mut runtime, &worker);
+        let mut request = refresh(&runtime, &input, &input.expected_revision, &worker);
+        request.calculated_base_signature =
+            Some(prepared["base_signature"].as_str().unwrap().into());
+        request.publication_id = Some(format!("refused-{failure}"));
+        match failure {
+            "malformed" => request.calculated_base_signature = Some("sha256:bad".into()),
+            "stale_signature" => {
+                request.calculated_base_signature = Some(format!("sha256:{}", "0".repeat(64)))
+            }
+            "foreign_model" => request.model_id = "another-model".into(),
+            "target_history" => request.target_history.undo_depth += 1,
+            "base_history" => request.base_history.history_pin = "another-history".into(),
+            "styles" => request.style_document = json!({}),
+            "missing_base" => runtime.held.get_mut("one").unwrap().calculated_base = None,
+            _ => unreachable!(),
+        }
+        let before = runtime.held["one"].clone();
+        let state = runtime.views["one"].clone();
+        let error = runtime
+            .execute(Request::Present(Box::new(request)))
+            .unwrap_err();
+        assert!(error.starts_with(expected), "{failure}: {error}");
+        assert_eq!(runtime.views["one"], state, "{failure}");
+        assert_eq!(
+            runtime.held["one"].session.history_state(),
+            before.session.history_state(),
+            "{failure}"
+        );
+        assert_eq!(
+            runtime.held["one"].session.snapshot(),
+            before.session.snapshot(),
+            "{failure}"
+        );
+        assert_eq!(
+            runtime.held["one"]
+                .calculated_base
+                .as_ref()
+                .map(|base| base.signature()),
+            before.calculated_base.as_ref().map(|base| base.signature()),
+            "{failure}"
+        );
+        assert!(runtime.publications.is_empty(), "{failure}");
+        assert!(runtime.delta_transfers.is_empty(), "{failure}");
+        assert!(runtime.exact_transfers.is_empty(), "{failure}");
+        let recovered = runtime
+            .execute(Request::Present(Box::new(refresh(
+                &runtime,
+                &input,
+                &input.expected_revision,
+                &worker,
+            ))))
+            .unwrap();
+        assert!(recovered["scene_json"].is_string(), "{failure}");
+        assert!(recovered["scene_delta_json"].is_null(), "{failure}");
+        assert_eq!(
+            recovered["history"],
+            json!(worker.history_state()),
+            "{failure}"
+        );
+    }
+}
+
+#[test]
 fn failed_candidate_discard_preserves_previous_confirmed_publication_and_original_error() {
     let snapshot = section_demand_fixture();
     let input = request_for(snapshot.clone());

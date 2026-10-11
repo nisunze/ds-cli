@@ -291,6 +291,19 @@ public CLI/MCP and Web bindings remain separate owning slices.
 `scene:null`, original native `scene_json` and separate `display`. Explicit
 `start_exact_calculation` (or shared Start with `mode:exact_json`) returns the
 same exact form at admission. Legacy full transport remains compatible.
+At an unchanged prepared head, `Present` accepts its existing optional
+`calculated_base_signature` as a transport pin. The native owner validates the
+scope/model and retained signature after the ordinary history/options/prepared
+case guard. It returns the existing exact `scene_delta_json` and separate
+display, retaining the new signed base for the next edit. Without a shared pin,
+or when the bounded delta cannot carry the result, `Present` returns native
+`scene_json`, never a JavaScript-reencoded full scene. Malformed, foreign or
+stale pins refuse without calculation, reseeding or a stale-input fallback.
+Transport flags are scoped to this call and cleared after success or refusal;
+publication discard restores the exact prior base and display without changing
+authored history. Ordinary Project/Refresh legacy full transports remain
+compatible. Complete component/root signatures and engineering bytes are
+unchanged; actual Desktop restoration/edit timings require matched acceptance.
 `scene_json` and `scene_delta_json` are opaque JSON strings from Rust, without a
 second object copy. Hosts frame these strings directly into native receiving
 requests. JavaScript may parse them for rendering, but must never re-encode

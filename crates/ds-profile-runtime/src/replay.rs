@@ -92,7 +92,21 @@ impl Runtime {
         {
             return Err("profile_scene_unavailable: explicit Refresh or Analyze is required before presenting changed calculation inputs".into());
         }
-        self.refresh(request, true)
+        // Presentation reuses prepared engineering. The optional pin chooses
+        // transport only; it cannot authorize calculation or bypass freshness.
+        let scope = request.scope.clone();
+        if let Some(signature) = &request.calculated_base_signature {
+            self.require_calculated_base(&scope, &request.model_id, signature)?;
+            self.delta_transfers
+                .insert(scope.clone(), signature.clone());
+        }
+        // No shared base (or a bounded-delta fallback) still carries native
+        // text, preserving signed zero through the receiving worker.
+        self.exact_transfers.insert(scope.clone());
+        let result = self.refresh(request, true);
+        self.delta_transfers.remove(&scope);
+        self.exact_transfers.remove(&scope);
+        result
     }
     pub(super) fn release(&mut self, request: ReleaseRequest) -> Result<Value, String> {
         if request.scope.is_empty() || request.scope.len() > 1024 || request.model_id.is_empty() {
