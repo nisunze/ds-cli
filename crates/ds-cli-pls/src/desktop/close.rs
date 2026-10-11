@@ -58,9 +58,9 @@ pub static COMMAND: Command = Command {
     ],
     reference: Some("docs/reference/pls.md"),
     search: &[
-        "close stopped session",
+        "stopped session",
         "recover qualifier",
-        "exit without saving",
+        "without saving",
         "native cleanup",
     ],
     requires: Requires::Server,
