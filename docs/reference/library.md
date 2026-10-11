@@ -172,7 +172,21 @@ equivalents and retains native bytes and a verified portable cache. Use repeated
 Same names with different definitions refuse `no_cloud_equivalent`.
 
 `show` reports exact release pins, per-native-resource equivalence and managed
-export admission. Page resource rows with `--offset` and `--limit`. Missing
+export admission. It also emits `definitions`, the engine's reusable-definition
+usage with stable entity and source-resource IDs, exact placed-support and
+tension-section IDs, capacity-artifact IDs, and transitive resource IDs.
+Capacity basis dependency pins retain their ordered identities and declared
+digests; unavailable/non-extractable dependency identities are explicit.
+Missing direct source bindings remain null. Join `resource_ids` to the native
+resource rows to inspect exact byte digests, supplying pins and admission.
+An unused definition is not authorization to delete it, and the report does
+not weaken the export gate or qualify a capacity method.
+
+Page both collections with `--offset` and `--limit`: `total_members`/`more`
+describe resource rows and `total_definitions`/`definitions_more` describe
+definition rows. The same native JSON report is available through MCP and
+the Desktop library Show/download control; the UI does not derive usage or
+source relationships. It reads only on explicit request. Missing
 equivalents block a managed PLS-CADD export, and the export plan names them as
 blockers before any convert runs; an exact native-byte match still does not
 prove strength-case coverage or native solver acceptance.

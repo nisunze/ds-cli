@@ -103,6 +103,42 @@ fn lifecycle_is_discoverable_and_preserves_native_evidence() {
     assert_eq!(shown["data"]["managed_export_allowed"], true);
     assert_eq!(shown["data"]["solver_approval"], false);
     assert_eq!(shown["data"]["members"][0]["status"], "exact_native_bytes");
+    let native_report = ds_grid_exchange::model_library::inspect_model_libraries(
+        &std::fs::read(&adopted).unwrap(),
+        adopted_digest,
+    )
+    .unwrap();
+    assert_eq!(
+        shown["data"]["definitions"],
+        serde_json::to_value(&native_report.definitions).unwrap()
+    );
+    assert_eq!(
+        shown["data"]["total_definitions"],
+        native_report.definitions.len()
+    );
+    assert!(shown["data"]["definitions_more"].is_null());
+    let paged = invoke(
+        &[
+            "library",
+            "model",
+            "show",
+            "--model",
+            &adopted_path,
+            "--expected-sha256",
+            adopted_digest,
+            "--limit",
+            "1",
+        ],
+        true,
+    );
+    assert_eq!(paged["data"]["definitions"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        paged["data"]["definitions"][0],
+        shown["data"]["definitions"][0]
+    );
+    if native_report.definitions.len() > 1 {
+        assert_eq!(paged["data"]["definitions_more"]["offset"], 1);
+    }
     let adoption = &shown["data"]["releases"][0];
     assert_eq!(adoption["pinned"], true);
     assert_eq!(adoption["bundle_digest"], release_digest);

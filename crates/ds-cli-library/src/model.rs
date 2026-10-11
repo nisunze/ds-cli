@@ -253,12 +253,22 @@ pub static SHOW: Command = command(
     "library.model.show",
     &["library", "model", "show"],
     "Read model library pins, native equivalence and export admission.",
-    "Verifies the exact package and its immutable cached releases, then reports per-resource exact_native_bytes or no_cloud_equivalent, managed-export admission, and each cached release (pinned or retained after detach) with the exact model revision or clone source it came from. Byte equivalence never implies solver approval, strength-case coverage or engineering acceptance.",
+    "Verifies the exact package and its immutable cached releases, then reports native definition usage, exact resource IDs, affected placed supports/sections, capacity basis pins and unresolved external dependencies alongside per-resource equivalence and retained release history. Definition and resource collections share the declared paging window and have separate totals/cursors. Unused definitions are not authorization to prune; byte equivalence never implies solver approval or engineering acceptance.",
     &[
         MODEL,
         EXPECTED,
-        Arg::value("offset", "<n>", "First resource row, 0..5000.").default("0"),
-        Arg::value("limit", "<n>", "Resource rows, 1..5000.").default("25"),
+        Arg::value(
+            "offset",
+            "<n>",
+            "First resource and definition row, 0..5000.",
+        )
+        .default("0"),
+        Arg::value(
+            "limit",
+            "<n>",
+            "Rows in each resource/definition collection, 1..5000.",
+        )
+        .default("25"),
     ],
     &[Example {
         command: "ds library model show --model ./pinned.dsgrid --expected-sha256 sha256:<model> --output json",
@@ -595,6 +605,14 @@ pub fn show(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     }
     let total = report.members.len();
     let end = offset.saturating_add(limit).min(total);
+    let total_definitions = report.definitions.len();
+    let definition_end = offset.saturating_add(limit).min(total_definitions);
+    let definitions = report
+        .definitions
+        .into_iter()
+        .skip(offset)
+        .take(limit)
+        .collect::<Vec<_>>();
     let members = report
         .members
         .into_iter()
@@ -602,7 +620,7 @@ pub fn show(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
         .take(limit)
         .collect::<Vec<_>>();
     Ok(
-        json!({"model_digest":report.model_digest,"pins":report.pins,"releases":report.releases,"members":members,"total_members":total,"managed_export_allowed":report.managed_export_allowed,"solver_approval":false,"more":if end<total {json!({"offset":end})} else {Value::Null}}),
+        json!({"model_digest":report.model_digest,"pins":report.pins,"releases":report.releases,"members":members,"total_members":total,"definitions":definitions,"total_definitions":total_definitions,"definitions_more":if definition_end<total_definitions {json!({"offset":definition_end})} else {Value::Null},"managed_export_allowed":report.managed_export_allowed,"solver_approval":false,"more":if end<total {json!({"offset":end})} else {Value::Null}}),
     )
 }
 pub fn render(data: &Value) -> String {
