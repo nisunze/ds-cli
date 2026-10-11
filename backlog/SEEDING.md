@@ -212,6 +212,18 @@ Candidate curation and native PLS-CADD acceptance are separate from coding the c
 
 - **Saved-analysis rollout**: install the integrated mandatory voltage-drop producer/report bindings (`caaa95c`, `6ade028`, `a3ee153`, `b5f9046`) with the matching WASM. Verify current saved analysis JSON, exact source binding, per-transformer output and combined coverage. Reports consume producer JSON; do not reintroduce report-side calculation or legacy opt-outs.
 
+- **Standalone/saved Reporter A4 acceptance**: activate Reporter `c93ea7f` with
+  the paired CLI contract/reference `8d9672b7`. Render one authentic current
+  calculated `result/v1` and its exact same-job saved analysis/layers through
+  installed `ds`, using the same explicit brief/extended choice and governed
+  template. Verify source/output pins, matching values and attribution to
+  `analysis.inputs_digest`, distinct from the legacy summary digest. Replay
+  invalid/stale controls and selected/unused-source read counts. A development
+  executable override is not installed acceptance; fresh rendered A4 remains
+  unproved. Preserve approved project data and consume the producer's analysis
+  without reprocessing it. Owning contract:
+  [voltage-drop-result-consumption.md](../../ds-network-reporter/docs/contracts/voltage-drop-result-consumption.md).
+
 - **Gisagara LV topology and electrical inputs**: preserve approved customers, poles, cable and BoQ facts while reviewing Kibindyi’s loop/unconnected pole, Ruhuha’s unreachable/non-snapping customers and Rwegera’s missing 2×10 mm² single-phase parameters. Reprocess only an authorized corrected candidate, then deliver affected PDFs; keep fill-ins/upgrades excluded from the requested set.
 
 - **Owner input needed for LV saved-analysis acceptance:** installed `ds 1841da8d` now exposes the read-only `design.lv.analysis-read`. `ds design lv analysis-read --project czgmdwth_gisagara --transformer agahehe --out /home/magese/data-solutions/ds-cli/_discardable/lv-saved-analysis-installed-1841da8/agahehe.saved-analysis.zip --output json` exits 5 with `lv_analysis_missing`: saved version 3, content digest `7e1b072c508e04de90db48fc20dad49077dc6317eaad00d5c28bd3731d237bc2`, `analysis_state: missing`, `processed: false`, `saved: false`, and no partial ZIP. Supply an authentic current analysis run/save receipt or explicitly approve a reprocessing candidate; do not reprocess approved geometry for acceptance or reconstruct legacy `vd_summary`. Still prove current `ds.lv-voltage-drop.analysis/v1` identity, stale-read/Firestore-size refusal, saved-JSON-only Reporter A4/A0 rendering, web save/preview/download and combined coverage. Exact command/output/SHA: `ds-cli/_discardable/lv-saved-analysis-installed-1841da8/verification.json`; older input-only evidence remains in `ds-cli/_discardable/lv-saved-analysis-acceptance-20261001/`.

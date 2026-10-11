@@ -16,7 +16,7 @@ Unfinished code that an agent can implement and prove without further owner inpu
 | [7. Report compute, export and combined output](#7-report-compute-export-and-combined-output) | 15 |
 | [8. Sync, publication and edge outbox](#8-sync-publication-and-edge-outbox) | 6 |
 | [9. LV processing, sizing and headless intake](#9-lv-processing-sizing-and-headless-intake) | 8 |
-| [10. Voltage drop](#10-voltage-drop) | 1 |
+| [10. Voltage drop](#10-voltage-drop) | 0 |
 | [11. PLS-CADD exchange round trip](#11-pls-cadd-exchange-round-trip) | 11 |
 | [12. DS Grid engineering (Codex main)](#12-ds-grid-engineering-codex-main) | 11 |
 | [13. Spotting (Codex main)](#13-spotting-codex-main) | 8 |
@@ -185,8 +185,6 @@ Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group E (printing templ
 - `14fd08e8` (major): Headless LV intake cannot upload to Northern Hub.
 
 ## 10. Voltage drop
-
-- **Analysis/Reporter input binding** (reporter, ds-cli): (1) reporter `src/exports/voltage_drop.rs` `admit_engine_result` must admit `jobs[0].analysis` with `jobs[0].layers` through `admit_analysis(transformer, analysis, layers)` and record `analysis.inputs_digest` instead of `summary.inputs_digest`, so a standalone result and a saved analysis bind one digest; (2) ds-cli `docs/reference/design.md`: document the additive per-job `analysis` member in the `ds.lv-voltage-drop.result/v1` example and prose; (3) direct-artifact discovery only after a reproduced failing case. Release acceptance is in [SEEDING.md](SEEDING.md#10-voltage-drop).
 
 ## 11. PLS-CADD exchange round trip
 
