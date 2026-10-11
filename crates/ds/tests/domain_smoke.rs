@@ -20199,3 +20199,16 @@ fn selected_note_and_document_controls_keep_private_scope_and_explicit_intent() 
     assert_eq!(native_pm_refusal(&preview), "document_request_invalid");
     std::fs::remove_dir_all(folder).unwrap();
 }
+
+#[test]
+fn stopped_pls_session_close_is_receipt_pinned_and_explicitly_confirmed() {
+    let descriptor = ok(&["capabilities", "pls.desktop.close", "--output", "json"]);
+    let command = &descriptor["command"];
+    assert_eq!(command["confirmation_required"], true);
+    let inputs = command["inputs"].as_array().unwrap();
+    assert_eq!(inputs.len(), 2);
+    for name in ["run", "out"] {
+        assert!(inputs.iter().any(|input| input["name"] == name && input["required"] == true));
+    }
+    assert!(!inputs.iter().any(|input| input["name"] == "pid" || input["name"] == "force"));
+}

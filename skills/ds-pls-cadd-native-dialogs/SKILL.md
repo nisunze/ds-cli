@@ -39,7 +39,9 @@ whole observation to exactly one characterized transition:
 Once the characterized native operation has completed, the supported driver
 closes its owned session without saving before offline artifact verification.
 A later content/count mismatch preserves the evidence and backup; it does not
-require leaving an otherwise idle native session open.
+require leaving an otherwise idle native session open. For a session an older
+qualifier left open after completed Backup, discover `pls.desktop.close` and
+use its receipt-pinned no-save recovery. It refuses unknown native stops.
 
 ## Insufficient strength criteria
 

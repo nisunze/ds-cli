@@ -75,6 +75,14 @@ pub static BUNDLE: &[Script] = &[
         "daaceaeaff5a972cc2d38ec4d7c98f340628f8d6ce205a2a5ceadb68b85f500e"
     ),
     script!(
+        "adapters/pls-cadd/ds-desktop-close.ps1",
+        "199608cc6cb1f987678b27e84d6bb464c8481c56de9d68c0c0ac4a977cb7e1e7"
+    ),
+    script!(
+        "adapters/pls-cadd/pls-stopped-session.psm1",
+        "9aee68c1aeb7db600bd6c85404499aa57053dd15caeccd16246eb0ce2dd474c0"
+    ),
+    script!(
         "adapters/pls-cadd/ds-desktop-check.ps1",
         "a0ea4caa370025125e74ba1b8d9d6dc42dd217e6e08289a83a0698828888e66c"
     ),
@@ -415,6 +423,10 @@ pub static BUNDLE: &[Script] = &[
         "c3f956a0d6ecec73faa02d9da3e5848e8eeecb9031838524569e7688ffe4b55b"
     ),
     script!(
+        "adapters/pls-cadd/tests/pls-stopped-session.tests.ps1",
+        "30d986d619e4bd057e4e13f96b3ae92d3fbd21205e59cc1deca53017889c4060"
+    ),
+    script!(
         "adapters/pls-cadd/tests/pls-backup-restore-contract.tests.ps1",
         "bbe6cf1ae4a944ac90f35c9fa432e8cfc73c8e5546e2d17504f7c6bb9a03761b"
     ),
@@ -479,6 +491,7 @@ pub const fn embedded() -> bool {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Entry {
     Check,
+    Close,
     Restore,
     Qualify,
     Deliver,
@@ -490,6 +503,7 @@ pub enum Entry {
 impl Entry {
     pub const ALL: &[Self] = &[
         Self::Check,
+        Self::Close,
         Self::Restore,
         Self::Qualify,
         Self::Deliver,
@@ -500,6 +514,7 @@ impl Entry {
 
     pub const fn file(self) -> &'static str {
         match self {
+            Self::Close => "adapters/pls-cadd/ds-desktop-close.ps1",
             Self::Check => "adapters/pls-cadd/ds-desktop-check.ps1",
             Self::Restore => "adapters/pls-cadd/ds-desktop-restore.ps1",
             Self::Qualify => "adapters/pls-cadd/ds-desktop-qualify.ps1",

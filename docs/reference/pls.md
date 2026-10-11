@@ -431,6 +431,15 @@ and fresh backup without leaving that session open. On an unexpected native
 dialog the qualifier leaves PLS-CADD open, and
 the refusal says so in `detail.process_left_for_operator`.
 
+### `close`
+
+`ds pls desktop close --run <failed-qualification> --out <new-evidence> --yes`
+recovers an owned session left open after completed native Backup and an offline
+protected-content mismatch. Its failure receipt and journal must match the live
+PID, launch interval, pinned executable, frame and project leaf. It reuses the
+qualifier's characterized Exit/No-save transition; unknown native dialogs or
+missing/different ownership evidence refuse. No kill, save or generic click.
+
 ### `deliver`
 
 ```bash

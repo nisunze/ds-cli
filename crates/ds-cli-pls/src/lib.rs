@@ -56,6 +56,7 @@ pub static DOMAIN: Domain = Domain {
         &deviation_labels::COMMAND,
         &delivery_verify::COMMAND,
         &desktop::check::COMMAND,
+        &desktop::close::COMMAND,
         &desktop::dialogs::COMMAND,
         &desktop::restore::COMMAND,
         &desktop::qualify::COMMAND,

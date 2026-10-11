@@ -29,6 +29,7 @@ pub mod autosag;
 pub mod bundle;
 pub mod catalog;
 pub mod check;
+pub mod close;
 pub mod deliver;
 pub mod dialogs;
 mod failure;
@@ -464,6 +465,7 @@ mod tests {
 
     const VERBS: &[&ds_cli_contract::spec::Command] = &[
         &check::COMMAND,
+        &close::COMMAND,
         &dialogs::COMMAND,
         &restore::COMMAND,
         &qualify::COMMAND,

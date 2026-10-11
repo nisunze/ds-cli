@@ -715,6 +715,11 @@ static PLS_ENTRIES: &[Entry] = &[
         render: ds_cli_pls::desktop::restore::render,
     },
     Entry {
+        command: &ds_cli_pls::desktop::close::COMMAND,
+        handler: ds_cli_pls::desktop::close::run,
+        render: ds_cli_pls::desktop::close::render,
+    },
+    Entry {
         command: &ds_cli_pls::desktop::qualify::COMMAND,
         handler: ds_cli_pls::desktop::qualify::run,
         render: ds_cli_pls::desktop::qualify::render,
