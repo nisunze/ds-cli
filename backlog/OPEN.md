@@ -91,8 +91,6 @@ is ruled in the sync contract: simple local clean and recompute.
 
 ## 2. Green `run` and release gates
 
-- **Desktop production-library strict Clippy remains red.** `cargo clippy --offline --manifest-path ds-web/src-tauri/Cargo.toml --no-default-features --lib -- -D warnings` reports 31 diagnostics in unchanged `command_line`, `component_manager`, `ds_invoke`/`mv_preview`, `native_point_cloud`, `network_reporter`, `reference_data` and native `lib.rs`. They include an unused `via_start`, large error/enum variants and local simplification lints. Repair in their owning native slices without lint suppression; preserve the shared request/error contracts and concurrent work. Exact baseline byte proof and full diagnostics are in `ds-web/out/profile-host-transport/native-strict-baseline-proof.json` and `native-strict.log`. The whole strict command must pass before deleting this entry.
-
 - **Workspace formatting gate**: `cargo fmt --all --check` from `ds-cli` fails on committed Profile runtime formatting (`calculated_transfer_tests.rs`, `lib.rs`, `publication.rs`), the Network engine module order, and CLI Solar code/tests (`portfolio_headless.rs`, `project.rs`, `domain_smoke.rs`, `semantic_coverage.rs`). Format only those owning files, preserving concurrent edits, then prove the same workspace check. Exact diagnostics: `ds-web/out/windows-readiness-20261009/cli-fmt.log`.
 
 
