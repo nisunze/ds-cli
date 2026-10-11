@@ -389,12 +389,7 @@ resource parity on a disposable existing catalog before switching it.
 Measure repeated GUI edits to canvas, actual selected-range dependency reads
 and computes, unaffected-result reuse, and zero network reads for retained or
 unused data. Preserve originals and dirty sessions; do not replace unrelated
-SQLite sync/project/reference stores through this Grid migration. Reproduce
-the owner's `l-s → a` failure (`profile_authored_delta_invalid: native array
-range is unavailable`) on an isolated current-head checkpoint, and keep the
-type catalogue/edit controls usable if result admission fails. The read-only
-live receipt shows authored head ahead of the retained scene; it does not prove
-catalogue deletion or the precise splice producer defect.
+SQLite sync/project/reference stores through this Grid migration.
 
 The governing parity, receipt, shared-support and complete-update contracts
 and owning tests live in `ds-network/docs/contracts/profile-transactional-database.md`

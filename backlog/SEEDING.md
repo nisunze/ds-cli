@@ -286,6 +286,20 @@ Candidate curation and native PLS-CADD acceptance are separate from coding the c
   those do not establish acceptance in the current running Desktop. Preserve
   approved source bytes and do not reset the owner's failed-retype session.
 
+- **Prepared-case retype Desktop activation**: activate the matching host case
+  admission and authored-head picker fix while preserving the current RAM
+  session's six Undo entries. Replay prepared-case selection, `l-s.012` to
+  `a-w-S140.012`, Undo/Redo and another edit through the running Linux Desktop;
+  compare current geometry with fresh native calculation and retain all 45
+  library definitions. Native actual-package and isolated production-host /
+  release-worker Chrome and Linux WebKit replays prove the former splice error,
+  corrected geometry and zero API/cloud requests. The actual Svelte picker /
+  native-worker replay proves preview/apply despite an older displayed scene,
+  zero validation errors and zero checkpoints. These gates do not update the
+  current Tauri source graph. The portable checkpoint preserves the model and
+  resources, not its Undo journal; expose/admit the existing native full-draft
+  recovery contract before any restart that would discard that history.
+
 - **Cleared-forest data and print acceptance**: use an approved model with surveyed forest points and an authored GROUND/forest rule. The prior unchanged package had no forest codes and correctly refused `feature_code_unknown`; acquire the missing source data before testing installed compute/Profile/print. Preserve model identity, source Z and the independent drawing guide.
 
 - **Selected-case runtime acceptance**: after the native transport and UI bindings in OPEN.md are complete, install matching sources/WASM and verify real criterion/case/weight-basis selection, scene invalidation, usage/uplift/clearance markers and responsive popout display on the affected Windows model.

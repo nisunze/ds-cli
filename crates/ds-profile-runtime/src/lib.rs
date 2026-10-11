@@ -31,6 +31,8 @@ mod calculation_controls;
 pub use calculation_controls::{CalculationArguments, CalculationControlRequest, CalculationTransfer};
 mod result_queries;
 mod cached_cases;
+#[cfg(test)]
+mod selected_case_retype_probe;
 mod calculated_transfer;
 pub use calculated_transfer::{CalculatedSceneBaseRequest, StartDeltaCalculationRequest};
 pub use result_queries::{QueryArguments, QueryCursor, QueryKind, QueryResultsRequest, QuerySource};
