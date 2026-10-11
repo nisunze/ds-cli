@@ -23,7 +23,7 @@ Candidate curation and native PLS-CADD acceptance are separate from coding the c
 | [7. Report compute, export and combined output](#7-report-compute-export-and-combined-output) | 7 |
 | [8. Sync, publication and edge outbox](#8-sync-publication-and-edge-outbox) | 4 |
 | [9. LV processing, sizing and headless intake](#9-lv-processing-sizing-and-headless-intake) | 7 |
-| [10. Voltage drop](#10-voltage-drop) | 11 |
+| [10. Voltage drop](#10-voltage-drop) | 12 |
 | [11. PLS-CADD exchange round trip](#11-pls-cadd-exchange-round-trip) | 6 |
 | [12. DS Grid engineering (Codex main)](#12-ds-grid-engineering-codex-main) | 3 |
 | [13. Spotting (Codex main)](#13-spotting-codex-main) | 2 |
@@ -205,6 +205,8 @@ Candidate curation and native PLS-CADD acceptance are separate from coding the c
 - **Unicode source reproduction** (`f7732067`): current Linux Unicode fixtures and `bukane` v3 export preserve characters. Obtain the original affected host/build, corrupt request bytes and approved v2 source pin, then reproduce the exact export before alleging a remaining code fault.
 
 ## 10. Voltage drop
+
+- **Report project display-label acceptance** (`e538e632`): on a matching deployed Brain carrying `e1aabed6`, capture a fresh installed report receipt and render for a project whose `display_name` differs from its internal name. Verify `printing_context.project` and the title use the display label, while source, filename and engineering pins remain intact. Preserve approved project data and artifacts; source tests and the local watcher do not prove deployed acceptance.
 
 - **Voltage-drop delivery log to Project Work**: the Gisagara LV voltage-drop log (Drive archive `ds-work-archive-2026-10-02\standards\voltage-drop\PROGRESS.md`) becomes a Project Work task on `czgmdwth_gisagara`.
 

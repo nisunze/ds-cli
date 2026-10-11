@@ -16,7 +16,7 @@ Unfinished code that an agent can implement and prove without further owner inpu
 | [7. Report compute, export and combined output](#7-report-compute-export-and-combined-output) | 15 |
 | [8. Sync, publication and edge outbox](#8-sync-publication-and-edge-outbox) | 6 |
 | [9. LV processing, sizing and headless intake](#9-lv-processing-sizing-and-headless-intake) | 8 |
-| [10. Voltage drop](#10-voltage-drop) | 3 |
+| [10. Voltage drop](#10-voltage-drop) | 2 |
 | [11. PLS-CADD exchange round trip](#11-pls-cadd-exchange-round-trip) | 11 |
 | [12. DS Grid engineering (Codex main)](#12-ds-grid-engineering-codex-main) | 11 |
 | [13. Spotting (Codex main)](#13-spotting-codex-main) | 8 |
@@ -187,8 +187,6 @@ Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group E (printing templ
 ## 10. Voltage drop
 
 - **Analysis/Reporter input binding** (reporter, ds-cli): (1) reporter `src/exports/voltage_drop.rs` `admit_engine_result` must admit `jobs[0].analysis` with `jobs[0].layers` through `admit_analysis(transformer, analysis, layers)` and record `analysis.inputs_digest` instead of `summary.inputs_digest`, so a standalone result and a saved analysis bind one digest; (2) ds-cli `docs/reference/design.md`: document the additive per-job `analysis` member in the `ds.lv-voltage-drop.result/v1` example and prose; (3) direct-artifact discovery only after a reproduced failing case. Release acceptance is in [SEEDING.md](SEEDING.md#10-voltage-drop).
-
-- **Report title block names the project by its id** (`e538e632`): ds-brain `network_reporter_input_receipt.go:407` labels `printing_context.project` with `project_data.project_name` ("gisagara") instead of the display name. Use the display name and prove it in the receipt test. The governed logo source is an owner decision.
 
 - **Voltage-drop export contract text still describes the old A4 behaviour** (ds-cli, residue of reporter `026e441`; feedback `159282a4`, `e538e632`): the `report export` purpose (`crates/ds-cli-report/src/export.rs:51`) still says it prints reserved/incomplete/refused status on A4 and that governed identity supplies logos, and `docs/reference/report.md:126-129` still promises A4 status pages and logos on every A4 title block. Restate both: A4 prints only calculated analysis, without logos; non-calculated analysis is refused with `voltage_drop_pdf_not_calculated`; the combined A3 overview covers reserved and refused transformers. Regenerate ds-web `src/lib/tools/native-catalog.generated.json`. Optionally drop stale status-document wording in `crates/ds-cli-style/src/a4_seed.rs` and the stale test comment at reporter `src/exports/voltage_drop_pdf.rs:738`. **Proof:** the discovery and doc-contract tests pass and the regenerated catalogue matches the new text.
 
