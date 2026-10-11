@@ -212,15 +212,17 @@ Candidate curation and native PLS-CADD acceptance are separate from coding the c
 
 - **Saved-analysis rollout**: install the integrated mandatory voltage-drop producer/report bindings (`caaa95c`, `6ade028`, `a3ee153`, `b5f9046`) with the matching WASM. Verify current saved analysis JSON, exact source binding, per-transformer output and combined coverage. Reports consume producer JSON; do not reintroduce report-side calculation or legacy opt-outs.
 
-- **Standalone/saved Reporter A4 acceptance**: activate Reporter `c93ea7f` with
+- **Standalone/saved Reporter A4 acceptance**: activate Reporter `a97cb8e` with
   the paired CLI contract/reference `8d9672b7`. Render one authentic current
   calculated `result/v1` and its exact same-job saved analysis/layers through
   installed `ds`, using the same explicit brief/extended choice and governed
   template. Verify source/output pins, matching values and attribution to
   `analysis.inputs_digest`, distinct from the legacy summary digest. Replay
-  invalid/stale controls and selected/unused-source read counts. A development
-  executable override is not installed acceptance; fresh rendered A4 remains
-  unproved. Preserve approved project data and consume the producer's analysis
+  invalid/stale controls and selected/unused-source read counts. Qualify the
+  installed rendering boundary: zero DNS/TCP/data transmission, with the
+  remaining UDP route-connect attempt reported separately. A development
+  executable override is not installed acceptance. Preserve approved project
+  data and consume the producer's analysis
   without reprocessing it. Owning contract:
   [voltage-drop-result-consumption.md](../../ds-network-reporter/docs/contracts/voltage-drop-result-consumption.md).
 
