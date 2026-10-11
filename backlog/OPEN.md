@@ -368,6 +368,25 @@ Contracts: [Profile as a transactional database](../../ds-network/docs/contracts
 
 #### Remaining differential compute work
 
+**Owner priority, 2026-10-11 — database storage before further optimization.**
+Complete the bounded DuckDB-backed DS Grid storage vertical against
+[`profile-transactional-database.md` §1.1](../../ds-network/docs/contracts/profile-transactional-database.md#11-library-authored-database-and-disposable-results).
+Separate pinned library/template inputs, transactional authored records and
+discardable result partitions behind the existing native commands. The initial
+native/Chrome probe is feasibility evidence only. Prove actual Linux Desktop
+WebKit persistence/recovery, exact portable-package/history/resource parity,
+shared native CLI/MCP/UI semantics, revision conflicts and cancellation,
+and migration/reopen of a disposable existing catalog before switching it.
+Measure repeated GUI edits to canvas, actual selected-range dependency reads
+and computes, unaffected-result reuse, and zero network reads for retained or
+unused data. Preserve originals and dirty sessions; do not replace unrelated
+SQLite sync/project/reference stores through this Grid migration. Reproduce
+the owner's `l-s → a` failure (`profile_authored_delta_invalid: native array
+range is unavailable`) on an isolated current-head checkpoint, and keep the
+type catalogue/edit controls usable if result admission fails. The read-only
+live receipt shows authored head ahead of the retained scene; it does not prove
+catalogue deletion or the precise splice producer defect.
+
 The governing parity, receipt, shared-support and complete-update contracts
 and owning tests live in `ds-network/docs/contracts/profile-transactional-database.md`
 and `alignment-terrain-partitions.md`. Finish these independent costs on
