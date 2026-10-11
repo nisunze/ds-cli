@@ -725,7 +725,7 @@ mod tests {
         assert!(parse_visibility(r#"{"auto_analysis":false}"#).is_err());
         let visibility = SET.args.iter().find(|arg| arg.name == "visibility");
         assert!(visibility.unwrap().summary.contains("analysis."));
-        assert!(SET.purpose.contains("Calculation is explicit"));
+        assert!(SET.purpose.contains("Report visibility schedules no analysis"));
         assert!(
             VIEW.output
                 .contains("analysis_state: due/current/off/not_applicable")

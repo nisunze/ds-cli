@@ -565,6 +565,7 @@ impl Profile {
             Self::Map => {
                 tool.chapter == Chapter::MapPresentation
                     && tool.id != "map.profile.calculation"
+                    && tool.id != "map.profile.edit"
                     && !STYLE_COMMANDS.contains(&tool.id.as_str())
                     && !PRINT_STYLE_COMMANDS.contains(&tool.id.as_str())
             }
@@ -769,6 +770,7 @@ const GRID_PROFILE_COMMANDS: &[&str] = &[
     "map.profile.issues",
     "map.profile.filter",
     "map.profile.retype",
+    "map.profile.edit",
     "map.profile.calculation",
 ];
 

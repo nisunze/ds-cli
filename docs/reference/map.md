@@ -814,6 +814,21 @@ refresh completed. If refresh fails, the committed outcome remains explicit.
 A context change after commit names that committed model and revision, so a
 caller can inspect it before another edit. Saving is a separate explicit action.
 
+Live command and history controls use `map profile edit`. Capture the full
+history from the current view; its revision alone cannot fence undo/redo or a
+branched journal. Preview a native command envelope, then explicitly apply it,
+or navigate that exact history. Native preview/preview_transaction requests
+require `--dry-run`; apply/apply_transaction/undo/redo require `--yes`. The
+shared descriptor exposes this preview/confirmation boundary to MCP as well.
+The native engine owns command schemas and
+validation, and the package adapter admits model and exchange bindings together.
+CLI/MCP and UI editing use this same control. A successful RAM edit and a failed
+Profile observation remain separate outcomes; retry observation against the
+committed head instead of replaying an already applied command. No action saves.
+Retype observation can calculate affected sections against a signed retained
+base; whole-model Analyze remains explicit. Timings include this local work and
+available canvas-draw acknowledgement, excluding OS compositing and CLI startup.
+
 These controls query and edit the human-held session. Package-backed headless
 engineering commands remain available for closed files and catalogue models;
 reading a saved package does not establish the head of an unsaved session.

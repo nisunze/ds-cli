@@ -294,7 +294,11 @@ const WINDOW_COMMANDS: &[(&str, usize)] = &[
     // `ds report project compounded` only.
     // 38 → 39: the explicit revision-guarded map.profile.select lens command.
     // 39 → 40 on 2026-09-30: authorized Plan/Profile lasso selection lens.
-    ("ds-cli-map", 44),
+    // 2026-10-10 owner-requested live Profile investigation: results and
+    // calculation address the held window scope; edit controls its RAM
+    // session. Their Rust authorities remain headless. These three named
+    // lens intents account for 44 -> 47; no core command gains a bridge.
+    ("ds-cli-map", 47),
     // ── core, pending a headless form ───────────────────────────────────────
     // `ds-cli-assets` left this ledger on 2026-09-20: 9 → 0, every catalogue
     // command headless (contract 01 of the dsgrid-authority program).
@@ -546,7 +550,9 @@ const WINDOW_BACKLOG: &[(&str, u64)] = &[
     // 38 → 39 on 2026-09-29: revision-guarded map.profile.select is an
     // authorized transient Profile lens command; the native scene owns range.
     // 39 → 40 on 2026-09-30: authorized Plan/Profile lasso selection lens.
-    ("map", 44),
+    // Named live Profile results, calculation and edit/history intents; their
+    // engineering authority stays native and headless (see crate ceiling).
+    ("map", 47),
     ("solar", 16),
     // 9 → 8: `pm.plan` is a headless project read now, not a window command.
     // 8 → 0 on 2026-09-20: task list/read/create/update/assign/respond and
@@ -569,7 +575,8 @@ const WINDOW_BACKLOG: &[(&str, u64)] = &[
 // remains a headless `report.project.export --preview-layout` operation.
 // 88 → 92: owner-requested native reads/edits and selection refinement of a human-held dirty RAM session.
 // Computation remains the existing headless Rust usage/REG owner.
-const WINDOW_BACKLOG_TOTAL: u64 = 92;
+// The same three admitted Profile lens intents counted in `map` above.
+const WINDOW_BACKLOG_TOTAL: u64 = 95;
 
 #[test]
 fn paired_draft_preview_keeps_a_headless_computation_owner() {

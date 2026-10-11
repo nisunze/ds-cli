@@ -738,6 +738,19 @@ impl Command {
             .then_some("--dry-run")
     }
 
+    /// Guarded live UI edits declare the same preview/confirmation boundary
+    /// as durable writes. Publish that fact to CLI help and MCP rather than
+    /// hiding a second confirmation gate inside an adapter.
+    pub fn requires_confirmation(&self) -> bool {
+        self.effect.needs_confirmation()
+            || (self.effect == Effect::LocalUi
+                && self.preview_switch().is_some()
+                && self
+                    .refusals
+                    .iter()
+                    .any(|refusal| refusal.code == "confirmation_required"))
+    }
+
     pub fn confirmation_required_for(&self, inputs: &crate::args::Inputs) -> bool {
         match self.confirmation_trigger() {
             Some("--apply") => {
@@ -749,7 +762,7 @@ impl Command {
         if self.preview_switch().is_some() && inputs.switch("dry-run") {
             return false;
         }
-        self.effect.needs_confirmation()
+        self.requires_confirmation()
     }
 }
 
@@ -984,6 +997,31 @@ mod tests {
         assert!(!PREVIEW.confirmation_required_for(&proposal));
         let write = crate::parse(&PREVIEW, &[]).unwrap();
         assert!(PREVIEW.confirmation_required_for(&write));
+
+        let guarded_ui = Command {
+            effect: Effect::LocalUi,
+            refusals: &[super::Refusal {
+                code: "confirmation_required",
+                when: "live edit",
+                remedy: "preview or confirm",
+            }],
+            ..PREVIEW
+        };
+        assert!(!guarded_ui.confirmation_required_for(&proposal));
+        assert!(guarded_ui.confirmation_required_for(&write));
+        let descriptor = crate::help::command_json(&guarded_ui);
+        assert_eq!(descriptor["confirmation_required"], true);
+        assert_eq!(descriptor["preview_switch"], "--dry-run");
+        let unguarded_ui = Command {
+            refusals: &[],
+            ..guarded_ui
+        };
+        assert!(!unguarded_ui.confirmation_required_for(&write));
+        let read = Command {
+            effect: Effect::ReadOnly,
+            ..guarded_ui
+        };
+        assert!(!read.confirmation_required_for(&write));
 
         static VALUE: Command = Command {
             id: "fixture.value",

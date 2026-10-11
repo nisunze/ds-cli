@@ -290,7 +290,7 @@ fn command_json_with_availability(
         "effect": command.effect.token(),
         "authority": command.authority.token(),
         "execution": command.execution.token(),
-        "confirmation_required": command.effect.needs_confirmation(),
+        "confirmation_required": command.requires_confirmation(),
         "requires": command.requires.token(),
         "availability": reported_availability(command, availability.as_ref()),
         "inputs": command.args.iter().map(arg_json).collect::<Vec<_>>(),
@@ -303,7 +303,7 @@ fn command_json_with_availability(
         })).collect::<Vec<_>>(),
     });
 
-    if command.effect.needs_confirmation() {
+    if command.requires_confirmation() {
         // *Which* flag confirms, which a caller reading only the descriptor
         // cannot otherwise learn: the flag is global, so it is in no
         // command's `inputs`. Deliberately separate from
@@ -405,7 +405,7 @@ fn flag_form(arg: &Arg) -> String {
 /// declared `--write` switch makes the gate conditional, bare when the
 /// command cannot run any other way.
 fn confirmation_usage(command: &Command) -> &'static str {
-    if !command.effect.needs_confirmation() {
+    if !command.requires_confirmation() {
         return "";
     }
     if command.confirmation_trigger().is_some() || command.preview_switch().is_some() {
@@ -427,7 +427,7 @@ fn confirmation_contract_line(command: &Command) -> &'static str {
     if command.confirmation_trigger().is_some() {
         return "  confirm    --yes  (required with --write)\n";
     }
-    if command.preview_switch().is_some() && command.effect.needs_confirmation() {
+    if command.preview_switch().is_some() && command.requires_confirmation() {
         return "  confirm    --yes  (not needed with --dry-run)\n";
     }
     ""

@@ -1222,7 +1222,9 @@ fn capabilities_requires_separates_the_window_from_the_server() {
     // 46 since the paired Profile gained `map.profile.results` (8a776a32) and
     // `map.profile.calculation` (3355763b): both read or drive the live
     // Profile in the window, behind `paired_availability`.
-    assert_eq!(window["matched"], 46, "map's window commands");
+    // Owner-requested live RAM controls are a window intent. Engineering and
+    // full-history admission remain the headless native engine's authority.
+    assert_eq!(window["matched"], 47, "map's window commands");
     let ids: Vec<&str> = window["results"]
         .as_array()
         .expect("results")
@@ -1235,7 +1237,7 @@ fn capabilities_requires_separates_the_window_from_the_server() {
         "moving the camera is the window's own work: {ids:?}"
     );
     assert_eq!(window["more"]["shown"], 5);
-    assert_eq!(window["more"]["matched"], 46);
+    assert_eq!(window["more"]["matched"], 47);
 
     // Survey moved to the server. If a survey command ever needs the window
     // again, this is where it is noticed.
@@ -7905,6 +7907,9 @@ fn every_map_command_is_reachable_without_the_desktop_installed() {
         "map.profile.select",
         "map.profile.usage",
         "map.profile.retype",
+        "map.profile.edit",
+        "map.profile.results",
+        "map.profile.calculation",
         "map.profile.issues",
         "map.profile.filter",
         "map.grid.lasso",
@@ -8010,7 +8015,7 @@ fn every_map_command_is_reachable_without_the_desktop_installed() {
             "--output",
             "json"
         ]),
-        "invalid_profile_model_request"
+        "invalid_profile_query"
     );
     assert_eq!(
         refusal(&[
@@ -8059,7 +8064,7 @@ fn every_map_command_is_reachable_without_the_desktop_installed() {
         live_usage["command"]["output"]
             .as_str()
             .unwrap()
-            .contains("screening_usage_percent")
+            .contains("native QueryResults page")
     );
     let profile_select = ok(&["capabilities", "map.profile.select", "--output", "json"]);
     assert_eq!(profile_select["command"]["effect"], "local_ui");
@@ -10013,7 +10018,8 @@ fn every_design_command_is_discoverable_without_the_desktop_installed() {
         // voltage-drop check (2026-09-28), one-shot project run (2026-09-30),
         // the governed tag project-list read, and LV analysis availability,
         // plus the two network document copy commands (2026-10-06).
-        110,
+        // Seven native repair controls, source resolution and verified backup/restore.
+        120,
         "the design domain should expose its whole family: {commands:?}"
     );
     for command in commands {
@@ -10072,6 +10078,7 @@ fn every_design_command_is_discoverable_without_the_desktop_installed() {
                     // build with no digest-pinned release catalog.
                     | "design.bulk.plan"
                     | "design.download.plan"
+                    | "design.download.fetch"
                     | "design.version.status"
                     // Published-version listing and comparison went headless
                     // on 2026-09-14 (no paired desktop): same native spine.
@@ -10130,6 +10137,9 @@ fn every_design_command_is_discoverable_without_the_desktop_installed() {
                     | "design.materials.preview"
                     | "design.materials.apply"
                     | "design.lv.analysis-read"
+                    | "design.repair.publish"
+                    | "design.transformer.backup"
+                    | "design.transformer.restore-deleted"
             ) {
                 "unavailable"
             } else if COLLABORATION_WINDOW_BACKLOG.contains(&id) {
@@ -10577,6 +10587,8 @@ fn design_collaboration_is_a_complete_headless_project_surface() {
                 // offline fold over what it retained. It holds no governed
                 // record and never reaches the bridge.
                 && !id.starts_with("design.activities.")
+                // Native repair is a file workflow; only publish is project-owned.
+                && !id.starts_with("design.repair.")
         })
         .collect();
     let expected: BTreeSet<&str> = [
@@ -10684,6 +10696,7 @@ fn design_collaboration_is_a_complete_headless_project_surface() {
             || id.starts_with("design.intake.")
             || id.starts_with("design.attachment.")
             || id.starts_with("design.activities.")
+            || id.starts_with("design.repair.")
             // Project-to-project migration is a bulk service call against two
             // projects, pinned by its own test.
             || id.starts_with("design.migrate.")
@@ -16205,6 +16218,14 @@ fn vector_cli_file_and_json_packets_match_the_kernel_and_frozen_native_baseline(
                 .path()
                 .join(format!("result-{index}-{from_file}.geojson"));
             let mut expected = case["expected"].clone();
+            // The frozen kernel fixture remains the legacy primitive contract.
+            // Vector v4 now names eligible short lines as `no_station` rather
+            // than counting them as processed; geometry and all other facts
+            // remain byte-identical. Native vector tests pin this accounting.
+            if index == 4 {
+                expected["processed"] = json!(0);
+                expected["skipped"]["no_station"] = json!(2);
+            }
             expected["result"] = Value::Null;
             if request["result_projection"] == "complete_produced" {
                 arguments.extend(["--out".to_owned(), output.to_str().unwrap().to_owned()]);
@@ -19777,7 +19798,7 @@ fn profile_calculation_discovers_native_tickets_and_refuses_transport_overrides_
     assert_eq!(described.code, 0, "{}", described.envelope);
     let command = &described.envelope["data"]["command"];
     assert!(discoverable(command));
-    assert_eq!(command["contract"], 1);
+    assert_eq!(command["contract"], 2);
     assert_eq!(command["requires"], "window");
     assert!(
         command["purpose"]

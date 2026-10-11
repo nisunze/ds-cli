@@ -3742,10 +3742,29 @@ fn vector_workflow_stdio_matches_cli_discovery_validation_execution_and_failure(
         }
         args.extend(extra);
         args.extend(["--output", "json"]);
-        assert_eq!(
-            response(&messages, id)["result"]["structuredContent"],
-            cli_envelope(&args)
-        );
+        let mut paired = response(&messages, id)["result"]["structuredContent"].clone();
+        let mut direct = cli_envelope(&args);
+        // These are independent executions: elapsed time is measured evidence,
+        // not deterministic workflow output. Everything else remains exact.
+        let mut timing_keys = Vec::new();
+        for envelope in [&mut paired, &mut direct] {
+            if let Some(data) = envelope["data"].as_object_mut()
+                && let Some(measurements) = data.remove("measurements")
+            {
+                assert_eq!(measurements.as_object().unwrap().len(), 1);
+                let timings = measurements["step_elapsed_ms"].as_object().unwrap();
+                assert!(timings.values().all(|value| value.as_u64().is_some()));
+                timing_keys.push(timings.keys().cloned().collect::<std::collections::BTreeSet<_>>());
+            }
+        }
+        if id == 3 {
+            assert_eq!(timing_keys.len(), 2);
+            assert_eq!(timing_keys[0], ["corridor".to_owned(), "measure".to_owned()].into_iter().collect());
+            assert_eq!(timing_keys[0], timing_keys[1]);
+        } else {
+            assert!(timing_keys.is_empty());
+        }
+        assert_eq!(paired, direct);
         assert_eq!(response(&messages, id)["result"]["isError"], id == 4);
     }
     assert_eq!(

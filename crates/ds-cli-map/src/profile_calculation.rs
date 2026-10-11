@@ -55,7 +55,7 @@ pub static COMMAND: Command = Command {
         refusal!("profile_publication_failed","worker/render publication rollback refused","preserve edits and resolve the named publication"),
     ],
     reference:Some("docs/reference/map.md"),search:&["job","ticket","async","calculate","analyze","cancel","status"],
-    requires:Requires::Window,availability:crate::paired_availability,
+    requires: Requires::Window, availability: crate::paired_availability,
 };
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
