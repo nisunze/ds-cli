@@ -465,6 +465,7 @@ impl Runtime {
             let mut delta_encode_ms = 0.;
             let mut authored_rebase_ms = 0.;
             let mut result_index_ms = 0.;
+            let mut result_index_work = result_queries::RetainedIndexWork::default();
             let mut calculated_update = Value::Null;
             let mut updated = false;
             let base = request.calculated_base_signature.as_ref().and_then(|_| {
@@ -545,13 +546,16 @@ impl Runtime {
                         }
                         authored_rebase_ms = rebase_started.elapsed().as_secs_f64() * 1000.;
                         let index_started = std::time::Instant::now();
-                        held.result_index = Arc::new(result_queries::Index::new(
+                        let next = Arc::new(next);
+                        let (index, work) = result_queries::Index::new_retained(
                             &held.session,
-                            next.scene(),
+                            next.clone(),
                             &held.demand_cache,
-                        ));
+                        );
+                        held.result_index = Arc::new(index);
+                        result_index_work = work;
                         result_index_ms = index_started.elapsed().as_secs_f64() * 1000.;
-                        held.calculated_base = Some(Arc::new(next));
+                        held.calculated_base = Some(next);
                         held.calculated_scene = None;
                         held.calculated_touched = Default::default();
                         held.pending_receipts.clear();
@@ -652,6 +656,10 @@ impl Runtime {
                 "profile_engine_presentation_ms":engine_phases.presentation_ms,
                 "profile_engine_delta_ms":engine_phases.delta_ms,
                 "profile_authored_rebase_ms":authored_rebase_ms,"profile_result_index_ms":result_index_ms,
+                "profile_result_fact_source_capture_ms":result_index_work.source_capture_ms,
+                "profile_result_fact_captured_report_rows":result_index_work.captured_report_rows,
+                "profile_result_fact_deferred_facts":result_index_work.deferred_facts,
+                "profile_result_fact_materializations":result_index_work.materialized_facts,
                 "profile_update_core_ms":update_core_ms,
                 "profile_presentation_ms":presentation_ms,
                 "authored_delta_bytes":delta_bytes,"authored_display_delta_bytes":authored_display_delta.as_ref().filter(|_| !updated).map(|delta| serde_json::to_vec(delta).unwrap().len()),"applied_entries":receipts.len(),"retained_entries":entries.len()});
@@ -659,7 +667,10 @@ impl Runtime {
                 json!(update_started.elapsed().as_secs_f64() * 1000.);
             if updated {
                 for (prefix, work) in [
-                    ("profile_delta_transport", json!(engine_phases.transport_work)),
+                    (
+                        "profile_delta_transport",
+                        json!(engine_phases.transport_work),
+                    ),
                     ("profile_surface", json!(held.review.surface_work())),
                     ("profile_reference", json!(held.review.reference_work())),
                     ("profile_case", json!(held.review.case_work())),

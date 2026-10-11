@@ -5,12 +5,16 @@ use ds_grid_engine::{ClearanceStatus, RevisionId, SessionHistoryState};
 use ds_grid_physics::EngineeringStatus;
 use std::collections::BTreeSet;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::OnceLock;
 
 const MAX_ITEMS: usize = 200;
 const MAX_BYTES: usize = 256 * 1024;
 static RESULT_SEQUENCE: AtomicU64 = AtomicU64::new(1);
 
 mod analysis_queries;
+
+#[cfg(test)]
+mod lazy_fact_tests;
 
 /// Independent admitted result sources; reading never changes the display case.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -89,7 +93,156 @@ fn default_limit() -> usize {
 #[derive(Clone)]
 struct Fact {
     entity_id: Option<String>,
-    value: Arc<Value>,
+    value: Arc<FactValue>,
+}
+
+/// Only the JSON representation is deferred. Native predicates, row order,
+/// complete counts and entity membership are registered before query caps.
+struct FactValue {
+    value: OnceLock<Arc<Value>>,
+    materialize: Option<Box<dyn Fn() -> Arc<Value> + Send + Sync>>,
+    work: Option<Arc<MaterializationWork>>,
+}
+#[derive(Default)]
+struct MaterializationWork {
+    registered: AtomicU64,
+    materialized: AtomicU64,
+    elapsed_ns: AtomicU64,
+}
+impl FactValue {
+    fn ready(value: Arc<Value>) -> Arc<Self> {
+        Arc::new(Self {
+            value: OnceLock::from(value),
+            materialize: None,
+            work: None,
+        })
+    }
+    fn deferred(
+        work: &Arc<MaterializationWork>,
+        materialize: impl Fn() -> Arc<Value> + Send + Sync + 'static,
+    ) -> Arc<Self> {
+        work.registered.fetch_add(1, Ordering::Relaxed);
+        Arc::new(Self {
+            value: OnceLock::new(),
+            materialize: Some(Box::new(materialize)),
+            work: Some(work.clone()),
+        })
+    }
+    fn get(&self) -> &Arc<Value> {
+        self.value.get_or_init(|| {
+            let started = std::time::Instant::now();
+            let value = self.materialize.as_ref().expect("retained native fact")();
+            let work = self.work.as_ref().expect("deferred native fact work");
+            work.elapsed_ns.fetch_add(
+                started.elapsed().as_nanos().min(u64::MAX as u128) as u64,
+                Ordering::Relaxed,
+            );
+            work.materialized.fetch_add(1, Ordering::Relaxed);
+            value
+        })
+    }
+}
+impl Serialize for FactValue {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        self.get().serialize(serializer)
+    }
+}
+
+#[derive(Default)]
+pub(super) struct RetainedIndexWork {
+    pub(super) source_capture_ms: f64,
+    pub(super) captured_report_rows: usize,
+    pub(super) deferred_facts: u64,
+    pub(super) materialized_facts: u64,
+}
+
+enum ProfileFactSource<'a> {
+    Borrowed {
+        scene: &'a ds_grid_engine::ProfileAtlasScene,
+        report: Option<&'a ds_grid_engine::StructureUsageScreeningReport>,
+    },
+    Retained {
+        base: Arc<ds_grid_engine::profile_calculated_delta::CalculatedSceneBase>,
+        report: Option<Arc<ds_grid_engine::StructureUsageScreeningReport>>,
+        work: Arc<MaterializationWork>,
+    },
+}
+impl ProfileFactSource<'_> {
+    fn scene(&self) -> &ds_grid_engine::ProfileAtlasScene {
+        match self {
+            Self::Borrowed { scene, .. } => scene,
+            Self::Retained { base, .. } => base.scene(),
+        }
+    }
+    fn report(&self) -> Option<&ds_grid_engine::StructureUsageScreeningReport> {
+        match self {
+            Self::Borrowed { report, .. } => *report,
+            Self::Retained { report, .. } => report.as_deref(),
+        }
+    }
+    fn usage(&self, position: usize) -> Arc<FactValue> {
+        match self {
+            Self::Borrowed { report, .. } => {
+                FactValue::ready(usage_fact(&report.unwrap().rows[position]))
+            }
+            Self::Retained { report, work, .. } => {
+                let report = report.as_ref().expect("matching retained report").clone();
+                FactValue::deferred(work, move || usage_fact(&report.rows[position]))
+            }
+        }
+    }
+    fn scene_fact(
+        &self,
+        materialize: impl Fn(&ds_grid_engine::ProfileAtlasScene) -> Arc<Value> + Send + Sync + 'static,
+    ) -> Arc<FactValue> {
+        match self {
+            Self::Borrowed { scene, .. } => FactValue::ready(materialize(scene)),
+            Self::Retained { base, work, .. } => {
+                let base = base.clone();
+                FactValue::deferred(work, move || materialize(base.scene()))
+            }
+        }
+    }
+    fn blocker(&self, kind: &str, code: Option<Value>, message: &str) -> Arc<FactValue> {
+        let kind = kind.to_owned();
+        let message = message.to_owned();
+        let materialize = move || {
+            let mut value = bounded_text(&message);
+            value["kind"] = json!(kind);
+            value["code"] = json!(code);
+            Arc::new(value)
+        };
+        match self {
+            Self::Borrowed { .. } => FactValue::ready(materialize()),
+            Self::Retained { work, .. } => FactValue::deferred(work, materialize),
+        }
+    }
+}
+
+#[derive(Default)]
+struct ViolatingSection {
+    capacity_failure_structure_ids: Vec<String>,
+    capacity_failure_structure_count: u64,
+    clearance_position: Option<usize>,
+    marker_position: Option<usize>,
+}
+impl ViolatingSection {
+    fn value(&self, id: &str, scene: &ds_grid_engine::ProfileAtlasScene) -> Arc<Value> {
+        let mut value = json!({"kind":"violating_section","section_id":id,
+            "capacity_failure_structure_ids":self.capacity_failure_structure_ids,
+            "capacity_failure_structure_count":self.capacity_failure_structure_count});
+        if let Some(position) = self.clearance_position {
+            value["profile_clearance"] = json!(scene.evidence.section_clearance[position]);
+        }
+        if let Some(position) = self.marker_position {
+            let marker = &scene.engineering.markers[position];
+            value["section_state"] = json!({"source_status":marker.source_status,
+                "classification":marker.source_classification,"usage_percent":marker.usage_percent});
+        }
+        value["capacity_failure_structures_truncated"] =
+            json!(self.capacity_failure_structure_count > 50);
+        Arc::new(value)
+    }
 }
 #[derive(Clone, Default)]
 struct Facts {
@@ -98,6 +251,9 @@ struct Facts {
 }
 impl Facts {
     fn insert(&mut self, entity_id: Option<String>, value: Arc<Value>) {
+        self.insert_fact(entity_id, FactValue::ready(value));
+    }
+    fn insert_fact(&mut self, entity_id: Option<String>, value: Arc<FactValue>) {
         if let Some(id) = &entity_id {
             self.by_entity
                 .entry(id.clone())
@@ -201,6 +357,47 @@ impl Index {
             .usage_request
             .as_ref()
             .and_then(|request| cache.cached_report(&scene.model_revision, request));
+        Self::from_profile_source(session, &ProfileFactSource::Borrowed { scene, report })
+    }
+    /// Capture exact admitted typed results, without cloning dense scene arrays
+    /// or serializing unused query facts. The report cache is mutable; retain a
+    /// typed copy of its matching report rather than consulting it at query time.
+    pub(super) fn new_retained(
+        session: &GridSession,
+        base: Arc<ds_grid_engine::profile_calculated_delta::CalculatedSceneBase>,
+        cache: &ds_grid_engine::StructureUsageScreeningCache,
+    ) -> (Self, RetainedIndexWork) {
+        let capture_started = std::time::Instant::now();
+        let scene = base.scene();
+        let report = scene
+            .engineering
+            .usage_request
+            .as_ref()
+            .and_then(|request| cache.cached_report(&scene.model_revision, request))
+            .cloned()
+            .map(Arc::new);
+        let source_capture_ms = capture_started.elapsed().as_secs_f64() * 1000.;
+        let captured_report_rows = report.as_ref().map_or(0, |report| report.rows.len());
+        let work = Arc::new(MaterializationWork::default());
+        let index = Self::from_profile_source(
+            session,
+            &ProfileFactSource::Retained {
+                base,
+                report,
+                work: work.clone(),
+            },
+        );
+        let receipt = RetainedIndexWork {
+            source_capture_ms,
+            captured_report_rows,
+            deferred_facts: work.registered.load(Ordering::Relaxed),
+            materialized_facts: work.materialized.load(Ordering::Relaxed),
+        };
+        (index, receipt)
+    }
+    fn from_profile_source(session: &GridSession, source: &ProfileFactSource<'_>) -> Self {
+        let scene = source.scene();
+        let report = source.report();
         let usage_available = report.is_some_and(|report| {
             scene
                 .engineering
@@ -277,111 +474,120 @@ impl Index {
         }
         // Aggregate distinct violating sections. All contributor identities are
         // counted before their bounded presentation list is made.
-        let mut sections: BTreeMap<String, Value> = BTreeMap::new();
+        let mut sections: BTreeMap<String, ViolatingSection> = BTreeMap::new();
         if let Some(report) = report {
-            for row in &report.rows {
+            for (position, row) in report.rows.iter().enumerate() {
                 let id = row.structure_id.to_string();
-                let fact = usage_fact(row);
-                index.add(QueryKind::Usage, Some(id.clone()), fact.clone());
-                index.add(QueryKind::Qualification, Some(id.clone()), fact.clone());
+                let fact = source.usage(position);
+                index.add_fact(QueryKind::Usage, Some(id.clone()), fact.clone());
+                index.add_fact(QueryKind::Qualification, Some(id.clone()), fact.clone());
                 if row.engineering_status == Some(EngineeringStatus::Fail) {
-                    index.add(QueryKind::Failures, Some(id.clone()), fact.clone());
+                    index.add_fact(QueryKind::Failures, Some(id.clone()), fact.clone());
                     for section in &row.failing_tension_section_ids {
                         let section = section.to_string();
-                        let entry = sections.entry(section.clone()).or_insert_with(||
-                            json!({"kind":"violating_section","section_id":section,
-                                "capacity_failure_structure_ids":[],"capacity_failure_structure_count":0}));
-                        let count = entry["capacity_failure_structure_count"].as_u64().unwrap();
-                        entry["capacity_failure_structure_count"] = json!(count + 1);
-                        if count < 50 {
-                            entry["capacity_failure_structure_ids"]
-                                .as_array_mut()
-                                .unwrap()
-                                .push(json!(id));
+                        let entry = sections.entry(section).or_default();
+                        entry.capacity_failure_structure_count += 1;
+                        if entry.capacity_failure_structure_ids.len() < 50 {
+                            entry.capacity_failure_structure_ids.push(id.clone());
                         }
                     }
                 }
                 if row.uplift_case_present
                     || row.minimum_signed_weight_span_m.is_some_and(|v| v < 0.0)
                 {
-                    index.add(QueryKind::NegativeLoading, Some(id.clone()), fact);
+                    index.add_fact(QueryKind::NegativeLoading, Some(id.clone()), fact);
                 }
                 for (kind, messages) in [
                     ("structure_demand_or_capacity", &row.blockers),
                     ("unevaluated_structure_check", &row.unevaluated_checks),
                 ] {
                     for message in messages {
-                        index.blocker(Some(id.clone()), kind, None, message);
+                        index.add_fact(
+                            QueryKind::Blockers,
+                            Some(id.clone()),
+                            source.blocker(kind, None, message),
+                        );
                     }
                 }
             }
         }
-        for evidence in &scene.evidence.section_clearance {
+        for (position, evidence) in scene.evidence.section_clearance.iter().enumerate() {
             let id = evidence.section_id.to_string();
             if evidence.status == ClearanceStatus::Fail {
-                let entry = sections.entry(id.clone()).or_insert_with(|| {
-                    json!({"kind":"violating_section","section_id":id,
-                        "capacity_failure_structure_ids":[],"capacity_failure_structure_count":0})
-                });
-                entry["profile_clearance"] = json!(evidence);
+                sections.entry(id).or_default().clearance_position = Some(position);
             } else if evidence.status == ClearanceStatus::Indeterminate {
-                index.add(
+                index.add_fact(
                     QueryKind::Blockers,
                     Some(id),
-                    Arc::new(json!({
-                    "kind":"profile_clearance_indeterminate","evidence":evidence})),
+                    source.scene_fact(move |scene| {
+                        Arc::new(json!({
+                        "kind":"profile_clearance_indeterminate",
+                        "evidence":scene.evidence.section_clearance[position]}))
+                    }),
                 );
             }
         }
-        for marker in &scene.engineering.markers {
+        for (position, marker) in scene.engineering.markers.iter().enumerate() {
             if marker.kind
                 == ds_grid_engine::profile_engineering::ProfileEngineeringMarkerKind::SectionState
                 && marker.source_status == Some(EngineeringStatus::Fail)
             {
                 if let Some(section) = &marker.section_id {
                     let id = section.to_string();
-                    let entry = sections.entry(id.clone()).or_insert_with(||
-                        json!({"kind":"violating_section","section_id":id,
-                            "capacity_failure_structure_ids":[],"capacity_failure_structure_count":0}));
-                    entry["section_state"] = json!({"source_status":marker.source_status,
-                        "classification":marker.source_classification,"usage_percent":marker.usage_percent});
+                    sections.entry(id).or_default().marker_position = Some(position);
                 }
             }
         }
-        for (id, mut value) in sections {
-            value["capacity_failure_structures_truncated"] =
-                json!(value["capacity_failure_structure_count"].as_u64().unwrap() > 50);
-            index.add(QueryKind::ViolatingSections, Some(id), Arc::new(value));
+        for (id, section) in sections {
+            let section_id = id.clone();
+            index.add_fact(
+                QueryKind::ViolatingSections,
+                Some(id),
+                source.scene_fact(move |scene| section.value(&section_id, scene)),
+            );
         }
         for unavailable in &scene.evidence.curve_unavailable {
-            index.blocker(
+            index.add_fact(
+                QueryKind::Blockers,
                 Some(unavailable.section_id.to_string()),
-                "profile_curve",
-                Some(json!(unavailable.code)),
-                &unavailable.message,
+                source.blocker(
+                    "profile_curve",
+                    Some(json!(unavailable.code)),
+                    &unavailable.message,
+                ),
             );
         }
         for band in &scene.bands {
             if let Some(unavailable) = &band.evidence.projection_unavailable {
-                index.blocker(
+                index.add_fact(
+                    QueryKind::Blockers,
                     Some(band.alignment_id.to_string()),
-                    "profile_projection",
-                    Some(json!(unavailable.code)),
-                    &unavailable.message,
+                    source.blocker(
+                        "profile_projection",
+                        Some(json!(unavailable.code)),
+                        &unavailable.message,
+                    ),
                 );
             }
         }
         for message in &scene.engineering.limitations {
-            index.blocker(None, "profile_review", None, message);
+            index.add_fact(
+                QueryKind::Blockers,
+                None,
+                source.blocker("profile_review", None, message),
+            );
         }
         if !usage_available {
-            index.blocker(None, "usage_calculation_unavailable", Some(json!("no_complete_matching_cached_report")),
-                "The native calculation retained no complete usage report for this envelope. Inspect blockers; repair inputs and explicitly calculate.");
+            index.add_fact(QueryKind::Blockers, None, source.blocker("usage_calculation_unavailable", Some(json!("no_complete_matching_cached_report")),
+                "The native calculation retained no complete usage report for this envelope. Inspect blockers; repair inputs and explicitly calculate."));
         }
         index
     }
     fn add(&mut self, kind: QueryKind, id: Option<String>, value: Arc<Value>) {
-        self.facts.get_mut(&kind).unwrap().insert(id, value);
+        self.add_fact(kind, id, FactValue::ready(value));
+    }
+    fn add_fact(&mut self, kind: QueryKind, id: Option<String>, value: Arc<FactValue>) {
+        self.facts.get_mut(&kind).unwrap().insert_fact(id, value);
     }
     fn blocker(&mut self, id: Option<String>, kind: &str, code: Option<Value>, message: &str) {
         let mut value = bounded_text(message);
@@ -591,11 +797,18 @@ impl Runtime {
             );
         }
         let mut items = Vec::new();
+        let work = facts.rows.iter().find_map(|fact| fact.value.work.as_ref());
+        let before_materialized = work.map_or(0, |work| work.materialized.load(Ordering::Relaxed));
+        let before_elapsed_ns = work.map_or(0, |work| work.elapsed_ns.load(Ordering::Relaxed));
+        let mut reused_materialized_facts = 0_u64;
         for position in offset..total.min(offset + request.limit) {
             let fact = &facts.rows[selected
                 .as_ref()
                 .map_or(position, |selected| selected[position])];
-            let item = json!({"entity_id":fact.entity_id,"fact":*fact.value});
+            if fact.value.work.is_some() && fact.value.value.get().is_some() {
+                reused_materialized_facts += 1;
+            }
+            let item = json!({"entity_id":fact.entity_id,"fact":fact.value.get().as_ref()});
             let item_bytes = serde_json::to_vec(&item).unwrap().len() + 1;
             if bytes + item_bytes > MAX_BYTES {
                 if items.is_empty() {
@@ -616,7 +829,10 @@ impl Runtime {
             response["next_cursor"] = json!(next(end));
         }
         response["metrics"] = json!({"query_ms":started.elapsed().as_secs_f64()*1000.0,
-            "returned_items":end-offset,"calculated_cases":0});
+            "returned_items":end-offset,"calculated_cases":0,
+            "materialized_facts":work.map_or(0, |work| work.materialized.load(Ordering::Relaxed)) - before_materialized,
+            "reused_materialized_facts":reused_materialized_facts,
+            "fact_materialization_ms":(work.map_or(0, |work| work.elapsed_ns.load(Ordering::Relaxed)) - before_elapsed_ns) as f64 / 1_000_000.});
         if serde_json::to_vec(&response).unwrap().len() > MAX_BYTES {
             return Err(
                 "profile_query_output_limit: native query response exceeds its byte limit".into(),
@@ -728,12 +944,8 @@ mod tests {
             replay.calculated_base_signature = Some(receiver.signature().into());
             let observed = runtime.execute(Request::Observe(Box::new(replay))).unwrap();
             assert_eq!(observed["calculation"]["required"], false, "{observed}");
-            let delta = serde_json::from_str(
-                observed["scene_delta_json"]
-                    .as_str()
-                    .unwrap(),
-            )
-            .unwrap();
+            let delta =
+                serde_json::from_str(observed["scene_delta_json"].as_str().unwrap()).unwrap();
             receiver = receiver
                 .admit(
                     &delta,
@@ -746,6 +958,8 @@ mod tests {
             fresh.execute(fresh_input.clone()).unwrap();
             for kind in [
                 QueryKind::Usage,
+                QueryKind::Failures,
+                QueryKind::NegativeLoading,
                 QueryKind::ViolatingSections,
                 QueryKind::Blockers,
                 QueryKind::Qualification,
@@ -1070,11 +1284,22 @@ mod tests {
                 .len(),
             2000
         );
+        let held = runtime.held.get_mut(&input.scope).unwrap();
+        let base = Arc::new(
+            ds_grid_engine::profile_calculated_delta::CalculatedSceneBase::from_shared(
+                held.calculated_scene.as_ref().unwrap().clone(),
+            ),
+        );
+        let (index, work) = Index::new_retained(&held.session, base, &held.demand_cache);
+        assert_eq!(work.materialized_facts, 0);
+        assert_eq!(work.captured_report_rows, 2006);
+        held.result_index = Arc::new(index);
         let mut query = request(&runtime, &input.scope, QueryKind::Usage);
         query.limit = 2;
         let page = execute(&mut runtime, query.clone()).unwrap();
         assert_eq!(page["total"], 2006);
         assert_eq!(page["items"].as_array().unwrap().len(), 2);
+        assert_eq!(page["metrics"]["materialized_facts"], 2);
         query.cursor = serde_json::from_value(page["next_cursor"].clone()).unwrap();
         let mut worker = GridSession::open(snapshot);
         worker
