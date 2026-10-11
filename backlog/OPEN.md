@@ -391,12 +391,6 @@ canonical `run`, one proved/pushed slice at a time:
   from the same affected bands/identities, retain unchanged picking and inspector
   evidence, and request only changed geometry before work. Prove no far band or
   unchanged ground projection during repeated drags.
-- **Signed base through case selection.** Runtime `cached_cases.rs` and the
-  worker's case installation discard the calculated base. Keep an exact native
-  base across prepared-case selection on both sides, transport the native
-  selection delta unchanged and prove that another edit uses it. Preserve
-  read-only case preparation, election, axis and publication fences; the host
-  must not invent a second scene/signature.
 - **Undo/redo scope and next-edit continuity.** Preserve the native journal and
   history pins. Characterize retained reconciliation from actual navigation
   receipts rather than defaulting every alignment to a fresh build. Prove

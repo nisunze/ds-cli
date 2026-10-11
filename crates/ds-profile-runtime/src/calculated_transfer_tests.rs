@@ -397,7 +397,7 @@ fn delta_publication_discard_restores_exact_base_and_keeps_authored_history() {
 }
 
 #[test]
-fn delta_requests_are_closed_and_case_selection_invalidates_prepared_base() {
+fn delta_requests_are_closed_and_reselecting_a_case_retains_prepared_base() {
     for wire in [
         json!({"operation":"calculated_scene_base","scope":"one","model_id":"profile-test","expected_history":null,"save":true}),
         json!({"operation":"start_delta_calculation","base_signature":"x","calculation":null,"fallback":true}),
@@ -409,7 +409,7 @@ fn delta_requests_are_closed_and_case_selection_invalidates_prepared_base() {
     let worker = GridSession::open(snapshot);
     let mut runtime = Runtime::default();
     runtime.execute(input.clone()).unwrap();
-    prepare(&mut runtime, &worker);
+    let before = prepare(&mut runtime, &worker);
     runtime
         .execute(Request::CaseLayer(CaseRequest {
             scope: "one".into(),
@@ -422,16 +422,10 @@ fn delta_requests_are_closed_and_case_selection_invalidates_prepared_base() {
             sequence: 1,
         }))
         .unwrap();
-    assert!(
-        runtime
-            .execute(Request::CalculatedSceneBase(CalculatedSceneBaseRequest {
-                scope: "one".into(),
-                model_id: "profile-test".into(),
-                expected_history: worker.history_state(),
-            }))
-            .unwrap_err()
-            .starts_with("profile_calculated_delta_base_unavailable:")
-    );
+    let after = prepare(&mut runtime, &worker);
+    assert_eq!(after["base_signature"], before["base_signature"]);
+    assert_eq!(after["metrics"]["base_rebuilt"], 0);
+    assert_eq!(after["metrics"]["calculated_cases"], 0);
     assert_eq!(worker.history_state().undo_depth, 0);
 }
 

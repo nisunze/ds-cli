@@ -59,7 +59,7 @@ impl Runtime {
         let rebuilt = held.calculated_base.is_none();
         if rebuilt {
             let scene = held.calculated_scene.as_ref()
-                .ok_or("profile_calculated_delta_base_unavailable: explicit full calculated projection is required after case selection or unavailable projection")?;
+                .ok_or("profile_calculated_delta_base_unavailable: explicit full calculated projection is required for an unavailable projection")?;
             held.calculated_base = Some(Arc::new(CalculatedSceneBase::from_shared(scene.clone())));
         }
         let base = held.calculated_base.as_ref().unwrap();

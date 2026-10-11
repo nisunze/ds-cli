@@ -265,9 +265,19 @@ signatures alone do not authorize admission. Missing/stale/malformed/foreign
 bases refuse before a worker starts. Pending publication prevents preparing or
 starting another candidate. Confirm/discard preserves the ordinary checkpoint;
 discard restores the exact prior scene base and accumulated engineering receipts
-while retaining worker-authored edits. Cached case selection invalidates the
-typed calculated transport base and requires an explicit full projection before
-preparing another one. Reads do not implicitly project or solve.
+while retaining worker-authored edits. Prepared-case selection applies the native
+binary layer to the exact retained calculated scene on both sides and rebases
+its signature without a solve. Reselecting a case retains the same signature;
+switching cases retains the exact changed signature for the next edit. A missing
+or older calculated head refuses before selection changes results or state.
+Reads do not implicitly project or solve.
+
+The Linux Desktop public replay of prepared selection, receipt-only reselection,
+two subsequent retypes, live capture and Undo/Redo is recorded in
+[`profile-calculated-scene-transport.md`](../../../ds-network/docs/contracts/profile-calculated-scene-transport.md#receiving-native-worker).
+It proves retained signed bases and actual completed differential draws on a
+disposable Model 1 copy. It does not establish packaged Windows acceptance or
+the outstanding 500-ms latency target.
 
 `scene_transfer_ms`, `calculated_delta_bytes` and `calculated_delta` expose native
 comparison/encoding work in calculation metrics. Full transport reports delta

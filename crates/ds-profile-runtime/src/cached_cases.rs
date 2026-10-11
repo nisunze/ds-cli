@@ -51,12 +51,40 @@ impl Runtime {
                 _ => format!("profile_case_unavailable: {error}"),
             })?;
         let materialize_started = std::time::Instant::now();
-        let mut scene = held
-            .review
-            .base_scene()
-            .ok_or("profile_case_base_unavailable: scene is missing")?
-            .clone();
+        let exact_base = if request.select {
+            Some(
+                held.calculated_base
+                    .clone()
+                    .or_else(|| {
+                        held.calculated_scene.as_ref().map(|scene| {
+                            Arc::new(
+                                ds_grid_engine::profile_calculated_delta::CalculatedSceneBase::from_shared(scene.clone()),
+                            )
+                        })
+                    })
+                    .ok_or("profile_case_base_unavailable: exact calculated scene is missing")?,
+            )
+        } else {
+            None
+        };
+        if let Some(base) = &exact_base {
+            let head = held.session.current_revision();
+            if base.scene().model_revision != head.revision_id
+                || base.scene().engineering_input_root != head.roots.engineering_input_root
+            {
+                return Err("profile_case_base_unavailable: calculate the current authored head before selecting a case".into());
+            }
+        }
+        let mut scene = if let Some(base) = &exact_base {
+            base.scene().clone()
+        } else {
+            held.review
+                .base_scene()
+                .ok_or("profile_case_base_unavailable: scene is missing")?
+                .clone()
+        };
         layer.apply_to_scene(&mut scene);
+        let selected_base = exact_base.map(|base| Arc::new(base.rebase_scene(scene.clone())));
         let materialize_ms = materialize_started.elapsed().as_secs_f64() * 1000.0;
         let decoration_started = std::time::Instant::now();
         let case_primitives = decorations::project(&scene, &state, &held.rows, &held.label_policy)
@@ -107,10 +135,10 @@ impl Runtime {
                 .expect("validated prepared layer");
             held.result_index = index;
             held.last_weather_sequence = request.sequence;
-            // Case patches alter the projected geometry outside a full
-            // calculated projection. Never claim the previous exact base.
+            // The existing native case layer advances this exact scene on
+            // both sides; retain its new signature rather than the old base.
             held.calculated_scene = None;
-            held.calculated_base = None;
+            held.calculated_base = selected_base;
             self.views.insert(request.scope, state);
         }
         receipt["metrics"] = json!({"case_ms":started.elapsed().as_secs_f64()*1000.0,
@@ -233,6 +261,146 @@ mod tests {
         assert_eq!(runtime.held[&input.scope].last_weather_sequence, 0);
         assert_eq!(json!(runtime.views[&input.scope]), state);
     }
+    #[test]
+    fn prepared_case_retains_signed_base_and_next_edit_uses_exact_delta() {
+        use crate::transactional_projection_tests::{request_for, section_demand_fixture};
+        use ds_grid_engine::profile_calculated_delta::CalculatedSceneBase;
+        let snapshot = section_demand_fixture();
+        let input = request_for(snapshot.clone());
+        let mut worker = GridSession::open(snapshot);
+        let mut runtime = Runtime::default();
+        let mut input = input;
+        input.patch.display_case =
+            Some(serde_json::from_value(json!({"mode":"sag_reference"})).unwrap());
+        let initial = runtime.execute(input.clone()).unwrap();
+        let mut expected: ds_grid_engine::ProfileAtlasScene =
+            serde_json::from_value(initial["scene"].clone()).unwrap();
+        let layer = runtime.held[&input.scope]
+            .review
+            .current_prepared_layer(
+                &runtime.held[&input.scope].session,
+                &ProfileDisplayCase::SagReference,
+                runtime.held[&input.scope].options.clone(),
+            )
+            .unwrap();
+        layer.apply_to_scene(&mut expected);
+        let selected = runtime
+            .execute(case(
+                &runtime,
+                &input,
+                ProfileDisplayCase::SagReference,
+                true,
+                false,
+                1,
+            ))
+            .unwrap();
+        assert_eq!(selected["metrics"]["calculated_cases"], 0);
+        let receiver = CalculatedSceneBase::new(expected);
+        let prepared = runtime
+            .execute(Request::CalculatedSceneBase(CalculatedSceneBaseRequest {
+                scope: input.scope.clone(),
+                model_id: runtime.held[&input.scope].source.model_id.clone(),
+                expected_history: worker.history_state(),
+            }))
+            .unwrap();
+        assert_eq!(prepared["base_signature"], receiver.signature());
+        assert_eq!(prepared["metrics"]["base_rebuilt"], 0);
+        let revision = worker.current_revision().revision_id.to_string();
+        describe(
+            &mut worker,
+            "case-next-edit",
+            "uses the selected signed base",
+        );
+        let mut observe = refresh(&runtime, &input, &revision, &worker);
+        observe.calculated_base_signature = Some(receiver.signature().to_string());
+        let result = runtime
+            .execute(Request::Observe(Box::new(observe)))
+            .unwrap();
+        assert_eq!(result["deferred"], false, "{result}");
+        assert_eq!(result["calculation"]["required"], false, "{result}");
+        let delta = serde_json::from_str(result["scene_delta_json"].as_str().unwrap()).unwrap();
+        let admitted = receiver
+            .admit(
+                &delta,
+                &worker.current_revision().revision_id,
+                &worker.current_revision().roots.engineering_input_root,
+            )
+            .unwrap();
+        // Case selection is explicit; use its retained native case for the
+        // independent calculation rather than silently restoring a default.
+        let mut fresh_input = request_for(worker.snapshot().clone());
+        fresh_input.patch.display_case = input.patch.display_case.clone();
+        let fresh = Runtime::default().execute(fresh_input).unwrap();
+        let fresh_scene: ds_grid_engine::ProfileAtlasScene =
+            serde_json::from_value(fresh["scene"].clone()).unwrap();
+        assert_eq!(
+            serde_json::to_vec(admitted.scene()).unwrap(),
+            serde_json::to_vec(&fresh_scene).unwrap()
+        );
+        assert_eq!(
+            runtime.held[&input.scope].session.history_state(),
+            worker.history_state()
+        );
+    }
+
+    #[test]
+    fn case_selection_cannot_promote_a_previous_calculated_head() {
+        let mut runtime = Runtime::default();
+        let input = request();
+        runtime.execute(input.clone()).unwrap();
+        let previous = runtime.held[&input.scope].calculated_scene.clone().unwrap();
+        let mut worker = runtime.held[&input.scope].session.clone();
+        let revision = worker.current_revision().revision_id.to_string();
+        describe(&mut worker, "case-with-old-base", "current authored head");
+        runtime
+            .execute(Request::Refresh(Box::new(refresh(
+                &runtime, &input, &revision, &worker,
+            ))))
+            .unwrap();
+        let held = runtime.held.get_mut(&input.scope).unwrap();
+        held.calculated_scene = Some(previous.clone());
+        held.calculated_base = None;
+        let index = held.result_index.clone();
+        let context = runtime.calculation_contexts[&input.scope].clone();
+        let state = json!(runtime.views[&input.scope]);
+        let mut select = case(
+            &runtime,
+            &input,
+            ProfileDisplayCase::GreatestSag,
+            true,
+            true,
+            1,
+        );
+        select.expected_revision = worker.current_revision().revision_id.to_string();
+        assert!(
+            runtime
+                .execute(select)
+                .unwrap_err()
+                .starts_with("profile_case_base_unavailable:")
+        );
+        assert!(Arc::ptr_eq(
+            &index,
+            &runtime.held[&input.scope].result_index
+        ));
+        assert!(Arc::ptr_eq(
+            &previous,
+            runtime.held[&input.scope]
+                .calculated_scene
+                .as_ref()
+                .unwrap()
+        ));
+        assert!(Arc::ptr_eq(
+            &context,
+            &runtime.calculation_contexts[&input.scope]
+        ));
+        assert_eq!(json!(runtime.views[&input.scope]), state);
+        assert_eq!(runtime.held[&input.scope].last_weather_sequence, 0);
+        assert_eq!(
+            runtime.held[&input.scope].session.history_state(),
+            worker.history_state()
+        );
+    }
+
     #[test]
     fn native_case_fences_model_and_same_revision_history_aba() {
         let mut runtime = Runtime::default();
@@ -360,6 +528,19 @@ mod tests {
         let before = runtime
             .execute(Request::QueryResults(query(&runtime, &input)))
             .unwrap();
+        let prior = runtime.held[&input.scope].calculated_scene.clone().unwrap();
+        let mut selected_scene = (*prior).clone();
+        runtime.held[&input.scope]
+            .review
+            .current_prepared_layer(
+                &runtime.held[&input.scope].session,
+                &ProfileDisplayCase::GreatestSag,
+                runtime.held[&input.scope].options.clone(),
+            )
+            .unwrap()
+            .apply_to_scene(&mut selected_scene);
+        let expected_selected =
+            ds_grid_engine::profile_calculated_delta::CalculatedSceneBase::new(selected_scene);
         let cached = runtime
             .execute(case(
                 &runtime,
@@ -372,6 +553,13 @@ mod tests {
             .unwrap();
         assert!(cached["bytes"].is_null());
         assert!(cached["case_primitives"].is_array());
+        let retained = runtime.held[&input.scope].calculated_base.as_ref().unwrap();
+        assert_eq!(retained.signature(), expected_selected.signature());
+        assert_ne!(
+            retained.signature(),
+            ds_grid_engine::profile_calculated_delta::CalculatedSceneBase::from_shared(prior)
+                .signature()
+        );
         let after = runtime
             .execute(Request::QueryResults(query(&runtime, &input)))
             .unwrap();
