@@ -179,6 +179,13 @@ Capacity basis dependency pins retain their ordered identities and declared
 digests; unavailable/non-extractable dependency identities are explicit.
 Missing direct source bindings remain null. Join `resource_ids` to the native
 resource rows to inspect exact byte digests, supplying pins and admission.
+`native_bytes_retained` requires local exact leaf, digest and length evidence.
+When present, `native_loads_source` uses the native export owner's classifier:
+`immutable_structure_unsourced`, `ds_authored_analytical_capacity`, or
+`no_scaffold_loads_marker`. The last value means only that the known scaffold
+marker is absent; it does not certify a native loads run, applicability,
+reference closure or solver acceptance. Missing bytes stay explicit and cause
+no automatic download, including when an exact retained release cache is read.
 An unused definition is not authorization to delete it, and the report does
 not weaken the export gate or qualify a capacity method.
 

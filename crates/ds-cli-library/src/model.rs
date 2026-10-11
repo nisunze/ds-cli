@@ -253,7 +253,7 @@ pub static SHOW: Command = command(
     "library.model.show",
     &["library", "model", "show"],
     "Read model library pins, native equivalence and export admission.",
-    "Verifies the exact package and its immutable cached releases, then reports native definition usage, exact resource IDs, affected placed supports/sections, capacity basis pins and unresolved external dependencies alongside per-resource equivalence and retained release history. Definition and resource collections share the declared paging window and have separate totals/cursors. Unused definitions are not authorization to prune; byte equivalence never implies solver approval or engineering acceptance.",
+    "Verifies the exact package and its immutable cached releases, then reports native definition usage, exact resource IDs, affected placed supports/sections, capacity basis pins and unresolved external dependencies alongside per-resource equivalence and retained release history. Retained native bytes expose the export owner's unsourced-loads or DS-authored-capacity marker without qualification. Definition and resource collections share the declared paging window and have separate totals/cursors. Unused definitions are not authorization to prune; byte equivalence never implies solver approval or engineering acceptance.",
     &[
         MODEL,
         EXPECTED,

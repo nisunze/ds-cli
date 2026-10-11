@@ -113,6 +113,10 @@ fn lifecycle_is_discoverable_and_preserves_native_evidence() {
         serde_json::to_value(&native_report.definitions).unwrap()
     );
     assert_eq!(
+        shown["data"]["members"],
+        serde_json::to_value(&native_report.members).unwrap()
+    );
+    assert_eq!(
         shown["data"]["total_definitions"],
         native_report.definitions.len()
     );
