@@ -150,8 +150,6 @@ Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group E (printing templ
 
 - Never-landed (owner 2026-10-02, land adapted to run): Generic archive-group readers: kernel, ds-cli (890bac3) and ds-web (54a65730) read the `group_count`/`groups` ds-brain writes, not `district_count` only.
 
-- **GIS Shapefile ZIP timestamps prevent reproducible artifact hashes**: `ds-grid-exchange/src/gis/mod.rs::zip_members` uses `SimpleFileOptions::default()`, so two exports of identical pinned models carry different wall-clock ZIP dates. Gisagara combined-GIS installed replay produced identical paths/order and all 25 exact member bytes, but archive hashes 524fb43c... and d2b7a465.... Use the existing deterministic ZIP options helper and prove fixed entry dates plus repeated-run archive digest parity; keep geometry, attributes and delivered source models unchanged. Evidence: `ds-work/out/gisagara-combined-gis-20261011/final-built-byte-parity.json`.
-
 
 ## 8. Sync, publication and edge outbox
 
