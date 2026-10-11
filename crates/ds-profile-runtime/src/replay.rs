@@ -645,6 +645,7 @@ impl Runtime {
                 json!(update_started.elapsed().as_secs_f64() * 1000.);
             if updated {
                 for (prefix, work) in [
+                    ("profile_delta_transport", json!(engine_phases.transport_work)),
                     ("profile_surface", json!(held.review.surface_work())),
                     ("profile_reference", json!(held.review.reference_work())),
                     ("profile_case", json!(held.review.case_work())),

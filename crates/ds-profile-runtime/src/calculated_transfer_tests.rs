@@ -569,6 +569,29 @@ fn observed_edits_land_whole_without_a_reconcile_job() {
         .map(measured)
         .sum::<f64>();
         assert!(measured("profile_engine_update_ms") >= engine_phases);
+        let delta_phases = [
+            "profile_delta_transport_component_reuse_ms",
+            "profile_delta_transport_row_encoding_ms",
+            "profile_delta_transport_component_signing_ms",
+            "profile_delta_transport_delta_operations_ms",
+        ]
+        .into_iter()
+        .map(measured)
+        .sum::<f64>();
+        assert!(measured("profile_engine_delta_ms") >= delta_phases);
+        for count in [
+            "encoded_span_rows",
+            "reused_span_rows",
+            "encoded_guide_rows",
+            "reused_guide_rows",
+            "encoded_marker_rows",
+            "reused_marker_rows",
+            "reused_array_signatures",
+        ] {
+            metrics[format!("profile_delta_transport_{count}")]
+                .as_u64()
+                .expect("native serialization work count");
+        }
         let core = measured("profile_update_core_ms");
         assert!(core >= update_phases, "nested phases must not overlap");
         let phases = core

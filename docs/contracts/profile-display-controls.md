@@ -478,6 +478,14 @@ separate phase. The engine's existing monotonic clock further divides
 `profile_engine_delta_ms`. These nested measurements distinguish dependency
 maintenance from label composition and exact calculated transport signing;
 they reuse the admitted operation without another calculation or read.
+The calculated transport phase additionally exposes
+`profile_delta_transport_component_reuse_ms`,
+`profile_delta_transport_row_encoding_ms`,
+`profile_delta_transport_component_signing_ms` and
+`profile_delta_transport_delta_operations_ms`, nested within
+`profile_engine_delta_ms`. Its retained/encoded span, guide and marker row counts
+and reused array-signature count describe exact serialization work. They do not
+assert engineering completeness or start a second comparison/calculation.
 `authored_ms` and
 the historical `profile_update_ms` are inclusive measurements; do not sum
 them with their children. `total_native_ms` ends after response construction
