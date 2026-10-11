@@ -412,14 +412,6 @@ canonical `run`, one proved/pushed slice at a time:
   range/lasso/occurrence semantics. The drag preview also prepares raw
   bands/surface beyond the changed support; request only changed geometry before
   work. Prove no far band or unchanged ground projection during repeated drags.
-- **Attachment occurrence selection parity.** `map.profile.select` requires
-  plain `--from`/`--to` tokens but rejects the native attachment occurrence
-  key's NUL separator. Expose typed structure/attachment pairs through the shared
-  command descriptor and native occurrence-key owner. Preserve same-family
-  range and stale scene/project fences. Replace the touched UI adapter's copied
-  set algebra with the existing native selection composition. Prove two poles
-  sharing a type-level point, reversed ranges, foreign/unknown pairs, CLI/MCP/UI
-  parity and zero authored/checkpoint/cloud effects.
 - **Undo/redo scope and next-edit continuity.** Preserve the native journal and
   history pins. Characterize retained reconciliation from actual navigation
   receipts rather than defaulting every alignment to a fresh build. Prove

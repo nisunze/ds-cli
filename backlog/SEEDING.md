@@ -277,8 +277,8 @@ Candidate curation and native PLS-CADD acceptance are separate from coding the c
 - **Paired geometry authoring acceptance**: verify active-layer Plan authoring, ground-point vertical drag and mounted Profile insertion preview without touching another model. Existing installed Model 2 insertion and public Web checkpoint/Undo/Redo/Discard proofs are retained in their receipts; only the remaining paired-window conditions stay open.
 
 - **Intentional Grid Save acceptance** (owner 2026-10-11): activate matching
-  native session/worker/UI and `map profile save` in a fresh local Desktop after
-  preserving the current unsaved Profile and its history. Manual local Save
+  native session/worker/UI and `map profile save` on a fresh disposable local
+  Desktop model. Manual local Save
   must show a clear block, refuse concurrent edit/undo/redo/discard, acknowledge
   durable bytes at the exact history and release after a storage failure with
   the draft still unsaved. Prove actual Linux WebKit command/UI parity. Edit,
@@ -287,11 +287,11 @@ Candidate curation and native PLS-CADD acceptance are separate from coding the c
   explicit effect. Source native/Wasm-host tests, exact CLI/MCP discovery and
   isolated Chrome release-worker + production overlay + IndexedDB proof exist;
   those do not establish acceptance in the current running Desktop. Preserve
-  approved source bytes and do not reset the owner's failed-retype session.
+  approved source bytes.
 
 - **Prepared-case retype Desktop activation**: activate the matching host case
-  admission and authored-head picker fix while preserving the current RAM
-  session's six Undo entries. Replay prepared-case selection, `l-s.012` to
+  admission and authored-head picker fix on a fresh disposable model. Replay
+  prepared-case selection, `l-s.012` to
   `a-w-S140.012`, Undo/Redo and another edit through the running Linux Desktop;
   compare current geometry with fresh native calculation and retain all 45
   library definitions. Native actual-package and isolated production-host /
@@ -299,9 +299,8 @@ Candidate curation and native PLS-CADD acceptance are separate from coding the c
   corrected geometry and zero API/cloud requests. The actual Svelte picker /
   native-worker replay proves preview/apply despite an older displayed scene,
   zero validation errors and zero checkpoints. These gates do not update the
-  current Tauri source graph. The portable checkpoint preserves the model and
-  resources, not its Undo journal; expose/admit the existing native full-draft
-  recovery contract before any restart that would discard that history.
+  current Tauri source graph. The owner authorized discarding disposable drafts
+  for local activation; full-draft recovery is not a prerequisite for that restart.
 
 - **Reviewed unused-structure export activation**: activate native exchange
   `5c1051a8`, CLI/MCP `a9586a16` and export UI `9fbc7ff2a` together. CLI/MCP,
