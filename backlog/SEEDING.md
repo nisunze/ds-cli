@@ -265,7 +265,10 @@ Candidate curation and native PLS-CADD acceptance are separate from coding the c
   scratch large model. Verify source/ABI identity rather than
   relying on development release-pin metadata. Measure installed apply,
   observation, calculation, transfer and interaction separately; preserve
-  independent Save and continued picking/selection during calculation.
+  independent Save and continued picking/selection during calculation. Verify
+  the native point-glyph priority and retained pick index through actual ground/
+  attachment gestures, shaft selection, Alt-cycle and unchanged/fresh geometry;
+  the isolated compiled-worker/canvas proofs do not activate the current Desktop.
 
 - **Large-model edit lifecycle acceptance**: exercise several Plan/Profile edits, full reconciliation, guarded Done and durable recovery on a real large model. Source guards and hot-reload tests already exist; measure runtime behaviour and promote only reproduced failures to `OPEN.md`.
 

@@ -93,7 +93,7 @@ is ruled in the sync contract: simple local clean and recompute.
 
 - **Workspace formatting gate**: `cargo fmt --all --check` from `ds-cli` fails on committed Profile runtime formatting (`calculated_transfer_tests.rs`, `lib.rs`, `publication.rs`), the Network engine module order, and CLI Solar code/tests (`portfolio_headless.rs`, `project.rs`, `domain_smoke.rs`, `semantic_coverage.rs`). Format only those owning files, preserving concurrent edits, then prove the same workspace check. Exact diagnostics: `ds-web/out/windows-readiness-20261009/cli-fmt.log`.
 
-- **Native engine strict Clippy gate**: `cargo clippy --locked -p ds-grid-engine --all-targets --no-deps -- -D warnings` remains blocked by baseline owning diagnostics: collapsible conditions, large error/enum variants, argument counts and presentation borrow/style issues. Current library gate reports 27 diagnostics; exact log: `ds-network/out/stabilization/profile-reference-reuse-clippy.log`. Repair coherent owning slices and rerun library-test diagnostics after the library gate admits; retain native error JSON and engineering behavior.
+- **Native engine strict Clippy gate**: `cargo clippy --locked -p ds-grid-engine --all-targets --no-deps -- -D warnings` remains blocked by baseline owning diagnostics: collapsible conditions, large error/enum variants, argument counts and presentation borrow/style issues. The current ordinary `-p ds-grid-engine -p ds-grid-wasm --lib --tests` check completes with 31 engine library warnings plus eight in `ds-io`; exact log: `ds-network/out/profile-native/retained-pick-clippy-baseline.log`. The strict gate remains unmet. Repair coherent owning slices and rerun library-test diagnostics after the library gate admits; retain native error JSON and engineering behavior.
 
 - **ds-cli contract suites red (wave 3, 2026-10-09)**: observed red, some possibly from then-uncommitted work: `context_budget::command_help_is_bounded` (`ds doctor --help` 1426 > 1380 bytes; `ds report layout list --help` 3083 > 3020); `contract` (`design.download.fetch` summary 73 > 70 chars); `refusal_coverage` (two `Failure::invalid/conflict(code, …)` sites in `ds-cli-auth/src/device.rs`, and ds-web `src/lib/desktop/cli-sync-center.ts:126` and `cli-assets-args.ts:29` mint refusal codes that are not literals); `lens_core_boundary` (`ds-cli-map/src/profile_calculation.rs` uses a paired availability without `Requires::Window`; window commands 46/45 against a ceiling of 44); `clippy -p ds-cli-design -D warnings` (`lv/voltage_drop.rs:186` `type_complexity`). Re-run each on `run` and fix those still red in their owning files. **Proof:** the full `ds` test suites and that clippy pass.
 
@@ -408,12 +408,20 @@ canonical `run`, one proved/pushed slice at a time:
   lifecycle probe exposes a 647 ms native complete
   update, 773 ms worker install and 1,241,283-byte delta for one support; do not
   substitute another full baseline for reducing these costs.
-- **Pick and geometry-preview scope.** `profile_pick_cache.register` still
-  indexes the complete scene after a delta, and the drag preview still prepares
-  raw bands/surface beyond the changed support. Advance the native pick index
-  from the same affected bands/identities, retain unchanged picking and inspector
-  evidence, and request only changed geometry before work. Prove no far band or
-  unchanged ground projection during repeated drags.
+- **Remaining pick and geometry-preview scope.** Native delta installation
+  still materializes every global segment reference, sorted search/prefix maxima
+  and entity-order map. Bound that remaining work without weakening exact native
+  range/lasso/occurrence semantics. The drag preview also prepares raw
+  bands/surface beyond the changed support; request only changed geometry before
+  work. Prove no far band or unchanged ground projection during repeated drags.
+- **Attachment occurrence selection parity.** `map.profile.select` requires
+  plain `--from`/`--to` tokens but rejects the native attachment occurrence
+  key's NUL separator. Expose typed structure/attachment pairs through the shared
+  command descriptor and native occurrence-key owner. Preserve same-family
+  range and stale scene/project fences. Replace the touched UI adapter's copied
+  set algebra with the existing native selection composition. Prove two poles
+  sharing a type-level point, reversed ranges, foreign/unknown pairs, CLI/MCP/UI
+  parity and zero authored/checkpoint/cloud effects.
 - **Undo/redo scope and next-edit continuity.** Preserve the native journal and
   history pins. Characterize retained reconciliation from actual navigation
   receipts rather than defaulting every alignment to a fresh build. Prove
