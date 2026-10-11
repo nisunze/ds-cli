@@ -567,6 +567,7 @@ impl Profile {
                     && tool.id != "map.profile.calculation"
                     && tool.id != "map.profile.edit"
                     && tool.id != "map.profile.save"
+                    && tool.id != "map.profile.pick"
                     && !STYLE_COMMANDS.contains(&tool.id.as_str())
                     && !PRINT_STYLE_COMMANDS.contains(&tool.id.as_str())
             }
@@ -766,6 +767,7 @@ const GRID_PROFILE_COMMANDS: &[&str] = &[
     "map.profile.view",
     "map.profile.set",
     "map.profile.select",
+    "map.profile.pick",
     "map.profile.results",
     "map.profile.usage",
     "map.profile.issues",

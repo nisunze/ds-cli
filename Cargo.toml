@@ -143,3 +143,8 @@ opt-level = "s"
 lto = true
 strip = true
 codegen-units = 1
+
+# Keep the normal local launcher final executable within its disk budget.
+# Dependency profiles and debug assertions retain their existing settings.
+[profile.dev.package.ds]
+strip = "debuginfo"

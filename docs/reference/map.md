@@ -772,6 +772,18 @@ Native limits are 200 items and 256 KiB; no full scene is transferred. `--histor
 adds an explicit caller history pin. Native refusals retain their codes.
 
 
+Read `map.profile.pick` to inspect the native ordered hits at a CSS point in
+the actual mounted model canvas before selecting an identity. Read
+`map.profile.view` first and reuse its exact model/history and opaque
+`pick_context`. The mounted provider supplies the painted camera and visibility;
+no caller invents scene geometry or an alternate ranking. Native attachment
+hits carry their structure/point occurrence pair. A changed history, ownership,
+scene, viewport or mounted provider refuses; the query never selects, observes,
+calculates, acquires or saves. Full finite native candidate ordering is retained;
+the existing 8 MiB Desktop response transport ceiling refuses unreadable replies
+rather than silently truncating them. Actual pointer/modifier gesture acceptance
+is separate from a read-only mounted query.
+
 `ds map profile select --model <model-id> --revision <revision-id> --from <entity-id> --to <entity-id> [--mode replace|add|remove|intersect]` changes only that transient selection. The Desktop refuses a different model or revision. The native held scene resolves an inclusive range when both IDs belong to the same entity family; use the same ID for both endpoints to select one item. The default mode is `replace`. `add`, `remove` and `intersect` combine that resolved range with the current selection. The CLI sends the two IDs unchanged and returns the Desktop's selection receipt; it does not reconstruct scene order or author the model. On a local development Desktop, pass `--desktop-descriptor ~/.local/share/rw.datasolutions.desktop.local-dev/cli-bridge.d/<instance-id>.json` to address that instance directly.
 
 Attachment occurrences use the native closed pair `{"structure_id":"pole-1","attachment_point_id":"type-slot"}`. Use `--from-attachment` and `--to-attachment` with JSON strings instead of their plain endpoint flags; require exactly one form per endpoint. Two poles can share the same type-level point ID while remaining separate selectable occurrences. Rust validates canonical IDs and produces the opaque selection key; no NUL needs to cross shell arguments. Unknown fields, malformed IDs and ambiguous endpoint forms refuse before pairing. Native scene admission rejects unknown or cross-family ranges. The bounded `grid-profile` MCP tool consumes the same command descriptor and endpoint forms.

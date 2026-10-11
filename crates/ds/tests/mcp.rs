@@ -3979,16 +3979,23 @@ fn manual_combination_projects_the_same_preview_through_mcp() {
 #[test]
 fn profile_readiness_view_is_the_same_read_only_contract_in_cli_chapter_and_typed_profile() {
     let descriptor = cli(&["capabilities", "map.profile.view", "--output", "json"]);
-    assert_eq!(descriptor["data"]["command"]["contract"], 6);
-    assert!(descriptor["data"]["command"]["output"]
-        .as_str()
-        .unwrap()
-        .contains("readiness: retained"));
+    assert_eq!(descriptor["data"]["command"]["contract"], 7);
+    assert!(
+        descriptor["data"]["command"]["output"]
+            .as_str()
+            .unwrap()
+            .contains("readiness: retained")
+    );
     let (chapter, _) = mcp(
         &["--exposure", "chapters"],
-        &[json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"ds_map_presentation","arguments":{"operation":"describe","command":"map.profile.view"}}})],
+        &[
+            json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"ds_map_presentation","arguments":{"operation":"describe","command":"map.profile.view"}}}),
+        ],
     );
-    assert_eq!(response(&chapter, 1)["result"]["structuredContent"], descriptor);
+    assert_eq!(
+        response(&chapter, 1)["result"]["structuredContent"],
+        descriptor
+    );
     let (typed, _) = mcp(
         &["--exposure", "commands", "--profile", "grid-profile"],
         &[json!({"jsonrpc":"2.0","id":1,"method":"tools/list"})],
@@ -4001,6 +4008,48 @@ fn profile_readiness_view_is_the_same_read_only_contract_in_cli_chapter_and_type
     assert_eq!(view["annotations"]["readOnlyHint"], true);
     assert_eq!(view["inputSchema"]["additionalProperties"], false);
     assert!(view["inputSchema"]["properties"].get("action").is_none());
+}
+
+#[test]
+fn profile_pick_cli_chapter_and_typed_profile_share_one_read_only_descriptor() {
+    let descriptor = cli(&["capabilities", "map.profile.pick", "--output", "json"]);
+    assert_eq!(descriptor["data"]["command"]["effect"], "read_only");
+    let (chapter, _) = mcp(
+        &["--exposure", "chapters"],
+        &[
+            json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{
+        "name":"ds_map_presentation","arguments":{"operation":"describe","command":"map.profile.pick"}}}),
+        ],
+    );
+    assert_eq!(
+        response(&chapter, 1)["result"]["structuredContent"],
+        descriptor
+    );
+    let (typed, _) = mcp(
+        &["--exposure", "commands", "--profile", "grid-profile"],
+        &[json!({"jsonrpc":"2.0","id":1,"method":"tools/list"})],
+    );
+    let tool = response(&typed, 1)["result"]["tools"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|tool| tool["name"] == "map_profile_pick")
+        .unwrap();
+    assert_eq!(tool["annotations"]["readOnlyHint"], true);
+    assert_eq!(tool["inputSchema"]["additionalProperties"], false);
+    for key in ["model", "history", "context", "x", "y"] {
+        assert!(tool["inputSchema"]["properties"].get(key).is_some());
+    }
+    for key in ["scene_x", "visibility", "calculate", "save"] {
+        assert!(tool["inputSchema"]["properties"].get(key).is_none());
+    }
+    let (general, _) = mcp(
+        &["--exposure", "commands", "--profile", "map"],
+        &[json!({"jsonrpc":"2.0","id":1,"method":"tools/list"})],
+    );
+    let tools = response(&general, 1)["result"]["tools"].as_array().unwrap();
+    assert!(tools.len() <= 16);
+    assert!(tools.iter().all(|tool| tool["name"] != "map_profile_pick"));
 }
 
 #[test]

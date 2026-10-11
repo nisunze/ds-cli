@@ -73,15 +73,15 @@ macro_rules! native_profile_refusal {
 pub static VIEW: Command = Command {
     id: "map.profile.view",
     path: &["map", "profile", "view"],
-    contract: 6,
+    contract: 7,
     summary: "Read the paired Profile's exact visual state.",
-    purpose: "Read retained Profile state; no preparation, calculation, polling or acquisition.",
+    purpose: "Read retained Profile state and the mounted pick_context; no preparation, calculation, polling or acquisition.",
     chapter: Chapter::MapPresentation,
     effect: Effect::ReadOnly,
     authority: Authority::DesktopPairing,
     execution: Execution::Sync,
     args: &[TARGET_ARG, DESCRIPTOR_ARG],
-    output: "occupant, local model_id/model_name/revision, persisted/history/edit_mode; selection IDs/family/primary; height_px and camera/surface (CSS px; null unmounted); display,visibility,vertical_exaggeration,review (<=256 cases),analysis. analysis_state: due/current/off/not_applicable; scene_loaded: current; scene_revision: retained. calculation: native policy,model_revision,computed_revision,required,scope; null before observation. readiness: retained phase,initial,scene_admitted,model_id,model_revision,job,failure; null before request/closed/foreign context. job has native model_id/history/status/runtime_worker_active; no status read. Cancel can leave worker active; initial prep has no job.",
+    output: "occupant, local model_id/model_name/revision, persisted/history/edit_mode; selection IDs/family/primary; height_px and camera/surface (CSS px; null unmounted); pick_context: opaque current painted model/scene/viewport lease for pick, null unavailable; display,visibility,vertical_exaggeration,review (<=256 cases),analysis. analysis_state: due/current/off/not_applicable; scene_loaded: current; scene_revision: retained. calculation: native policy,model_revision,computed_revision,required,scope; null before observation. readiness: retained phase,initial,scene_admitted,model_id,model_revision,job,failure; null before request/closed/foreign context. job has native model_id/history/status/runtime_worker_active; no status read. Cancel can leave worker active; initial prep has no job.",
     examples: &[Example {
         command: "ds map profile view --output json",
         note: "Pin a model edit.",
@@ -645,7 +645,7 @@ mod tests {
     use super::*;
     #[test]
     fn view_declares_retained_readiness_without_preparation_or_status_reads() {
-        assert_eq!(VIEW.contract, 6);
+        assert_eq!(VIEW.contract, 7);
         assert_eq!(VIEW.effect, Effect::ReadOnly);
         assert!(VIEW.purpose.contains(
             "no preparation, calculation, polling or acquisition"

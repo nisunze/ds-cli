@@ -942,6 +942,7 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("map.profile.view", "read_only", "desktop_pairing"),
     ("map.profile.set", "local_ui", "desktop_pairing"),
     ("map.profile.select", "local_ui", "desktop_pairing"),
+    ("map.profile.pick", "read_only", "desktop_pairing"),
     ("map.profile.usage", "read_only", "desktop_pairing"),
     ("map.profile.calculation", "local_ui", "desktop_pairing"),
     ("map.profile.results", "read_only", "desktop_pairing"),

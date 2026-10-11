@@ -21,6 +21,7 @@ pub mod profile;
 pub mod profile_calculation;
 pub mod profile_edit;
 pub mod profile_model;
+pub mod profile_pick;
 pub mod profile_results;
 pub mod profile_save;
 pub mod random_points;
@@ -70,6 +71,7 @@ pub static DOMAIN: Domain = Domain {
         &profile::VIEW,
         &profile::SET,
         &profile::SELECT,
+        &profile_pick::COMMAND,
         &profile_results::COMMAND,
         &profile_calculation::COMMAND,
         &profile_edit::COMMAND,
@@ -178,6 +180,16 @@ pub const PROFILE_SELECT: BridgeOp = BridgeOp {
         "from_entity_id",
         "to_entity_id",
         "mode",
+    ],
+};
+pub const PROFILE_PICK: BridgeOp = BridgeOp {
+    operation: "map.profile.pick",
+    arguments: &[
+        "model_id",
+        "expected_history",
+        "pick_context",
+        "screen_x",
+        "screen_y",
     ],
 };
 pub const PROFILE_USAGE: BridgeOp = BridgeOp {
@@ -448,6 +460,7 @@ pub const BRIDGE_OPS: &[&BridgeOp] = &[
     &PROFILE_VIEW,
     &PROFILE_SET,
     &PROFILE_SELECT,
+    &PROFILE_PICK,
     &PROFILE_RESULTS,
     &PROFILE_CALCULATION,
     &PROFILE_EDIT,

@@ -7928,6 +7928,7 @@ fn every_map_command_is_reachable_without_the_desktop_installed() {
         "map.profile.view",
         "map.profile.set",
         "map.profile.select",
+        "map.profile.pick",
         "map.profile.usage",
         "map.profile.retype",
         "map.profile.edit",
@@ -8178,6 +8179,58 @@ fn every_map_command_is_reachable_without_the_desktop_installed() {
             );
         }
     }
+}
+
+#[test]
+fn profile_pick_is_read_only_and_refuses_invalid_css_points_before_pairing() {
+    let descriptor = ok(&["capabilities", "map.profile.pick", "--output", "json"]);
+    let command = &descriptor["command"];
+    assert_eq!(command["effect"], "read_only");
+    assert_eq!(command["authority"], "desktop_pairing");
+    assert!(
+        command["purpose"]
+            .as_str()
+            .unwrap()
+            .contains("mounted canvas")
+    );
+    assert!(command["output"].as_str().unwrap().contains("8 MiB"));
+    assert!(
+        command["output"]
+            .as_str()
+            .unwrap()
+            .contains("attachment_ref")
+    );
+    let history = r#"{"model_revision":"head","initial_revision":"initial","undo_depth":2,"redo_depth":1,"history_pin":"native-prefix"}"#;
+    for x in ["NaN", "inf", "not-a-number"] {
+        assert_eq!(
+            refusal(&[
+                "map",
+                "profile",
+                "pick",
+                "--model",
+                "model-a",
+                "--history",
+                history,
+                "--context",
+                "retained-context",
+                "--x",
+                x,
+                "--y",
+                "1",
+                "--output",
+                "json"
+            ]),
+            "invalid_profile_pick"
+        );
+    }
+    let view = ok(&["capabilities", "map.profile.view", "--output", "json"]);
+    assert_eq!(view["command"]["contract"], 7);
+    assert!(
+        view["command"]["output"]
+            .as_str()
+            .unwrap()
+            .contains("pick_context")
+    );
 }
 
 #[test]
