@@ -565,6 +565,16 @@ fn observed_edits_land_whole_without_a_reconcile_job() {
         .into_iter()
         .map(measured)
         .sum::<f64>();
+        let engine_phases = [
+            "profile_engine_admission_ms",
+            "profile_engine_scoped_scene_ms",
+            "profile_engine_presentation_ms",
+            "profile_engine_delta_ms",
+        ]
+        .into_iter()
+        .map(measured)
+        .sum::<f64>();
+        assert!(measured("profile_engine_update_ms") >= engine_phases);
         let core = measured("profile_update_core_ms");
         assert!(core >= update_phases, "nested phases must not overlap");
         let phases = core

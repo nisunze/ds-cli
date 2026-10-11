@@ -462,7 +462,13 @@ Observe separates `authored_geometry_ms`, `authored_display_ms`,
 `profile_authored_rebase_ms`, `profile_result_index_ms`, `profile_presentation_ms` and
 `profile_response_build_ms`. `profile_update_core_ms` contains the engine,
 delta encoding, authored rebase and result-index phases. Presentation is a
-separate phase. `authored_ms` and
+separate phase. The engine's existing monotonic clock further divides
+`profile_engine_update_ms` into `profile_engine_admission_ms`,
+`profile_engine_scoped_scene_ms`, `profile_engine_presentation_ms` and
+`profile_engine_delta_ms`. These nested measurements distinguish dependency
+maintenance from label composition and exact calculated transport signing;
+they reuse the admitted operation without another calculation or read.
+`authored_ms` and
 the historical `profile_update_ms` are inclusive measurements; do not sum
 them with their children. `total_native_ms` ends after response construction
 and metric assembly. `runtime_elapsed_ms` additionally includes publication
@@ -470,6 +476,20 @@ checkpoint staging and outer runtime context admission. Both exclude the final I
 worker admission, renderer publication and canvas draw; hosts measure those
 using their own monotonic clock. Timing neither changes result admission nor
 starts a data acquisition.
+
+The 2026-10-11 Linux development Desktop replay of the 417-structure,
+63-alignment witness measured same-class retype/restoration command-to-canvas
+draw at 2,680/3,221 ms. Engine totals were 1,191.59/1,172.83 ms, including
+210.75/189.25 ms scoped scene preparation, 0.37/0.29 ms presentation and
+946.51/957.32 ms exact delta construction/signing. Each edit computed one band,
+reused 62 bands and reused all 63 ground preparations. Both draws carried current
+calculations; the captured checkpoint validated and matched the independently
+applied headless authored revision. This identifies transport construction as
+the next measured bottleneck, without claiming a speed improvement from clocks.
+Receipt: `ds-web/out/profile-observer-20261010/engine-phases-v1-proof.json`.
+The owning runtime gate passes 78 tests, with six dedicated cost gates ignored.
+Packaged release and deployed Windows acceptance remain separate.
+
 `admission_ms`, `journal_ms` and `replay_ms` separate request admission, native
 journal decoding/chain validation and staged replay/navigation. The summed
 `replay_apply_*_ms` phases measure actual native command admission, snapshot

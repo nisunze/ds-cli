@@ -446,6 +446,8 @@ impl Runtime {
             // reconciliation. This host only carries the answer.
             let update_started = std::time::Instant::now();
             let mut engine_update_ms = 0.;
+            let mut engine_phases =
+                ds_grid_engine::profile_edit_update::ProfileEditTimings::default();
             let mut delta_encode_ms = 0.;
             let mut authored_rebase_ms = 0.;
             let mut result_index_ms = 0.;
@@ -477,10 +479,10 @@ impl Runtime {
                 touched.spans.extend(scope.spans.iter().cloned());
                 touched.alignments.extend(scope.alignments.iter().cloned());
                 use ds_grid_engine::profile_edit_update::{
-                    profile_update_after_edit, ProfileEditInputs, ProfileEditUpdate,
+                    profile_update_after_edit_with_timings, ProfileEditInputs, ProfileEditUpdate,
                 };
                 let engine_started = std::time::Instant::now();
-                let update = profile_update_after_edit(
+                let update = profile_update_after_edit_with_timings(
                     ProfileEditInputs {
                         session: &held.session,
                         review: Arc::make_mut(&mut held.review),
@@ -491,6 +493,7 @@ impl Runtime {
                     &base,
                     &touched,
                     held.options.clone(),
+                    &mut engine_phases,
                 );
                 engine_update_ms = engine_started.elapsed().as_secs_f64() * 1000.;
                 calculated_update = match update {
@@ -630,6 +633,10 @@ impl Runtime {
                 "authored_ms":authored_ms,"total_native_ms":started.elapsed().as_secs_f64()*1000.0,
                 "authored_geometry_ms":authored_geometry_ms,"authored_display_ms":authored_display_ms,
                 "profile_engine_update_ms":engine_update_ms,"profile_delta_encode_ms":delta_encode_ms,
+                "profile_engine_admission_ms":engine_phases.admission_ms,
+                "profile_engine_scoped_scene_ms":engine_phases.scoped_scene_ms,
+                "profile_engine_presentation_ms":engine_phases.presentation_ms,
+                "profile_engine_delta_ms":engine_phases.delta_ms,
                 "profile_authored_rebase_ms":authored_rebase_ms,"profile_result_index_ms":result_index_ms,
                 "profile_update_core_ms":update_core_ms,
                 "profile_presentation_ms":presentation_ms,
