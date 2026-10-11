@@ -8,7 +8,7 @@ Unfinished code that an agent can implement and prove without further owner inpu
 
 | Area | Remaining entries |
 | --- | ---: |
-| [1. Source integration and release code](#1-source-integration-and-release-code) | 4 |
+| [1. Source integration and release code](#1-source-integration-and-release-code) | 3 |
 | [2. Green `run` and release gates](#2-green-run-and-release-gates) | 8 |
 | [3. Template creation code](#3-template-creation-code) | 1 |
 | [4. Print template and style code](#4-print-template-and-style-code) | 0 |
@@ -88,16 +88,6 @@ is ruled in the sync contract: simple local clean and recompute.
   printing tests. These paths are unchanged by Solar sync. Leave the Profile
   findings to its owner and the remaining findings to their owning gate slices;
   proof requires the strict command to pass without lint suppression.
-- **CLI release gates have unrelated baseline failures.** The unchanged
-  `domain_smoke` assertions omit
-  `map.profile.calculation` and `map.profile.results` from the coverage set, and
-  expect one Profile calculation example instead of two. Repair these in their
-  owning CLI/Profile slices and prove the full context-budget/domain-smoke suites;
-  the four new native recovery commands must retain their derived budgets.
-  `cargo test -p ds --test semantic_coverage` also fails because that unchanged
-  inventory omits both Profile commands. Solar and native sync have a separate
-  exact semantic inventory proof; add the two Profile entries in their owning
-  slice and prove the full suite.
 
 ## 2. Green `run` and release gates
 
