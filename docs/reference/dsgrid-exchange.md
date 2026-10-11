@@ -440,3 +440,14 @@ There is no second implementation of source classification, planning or
 conversion in this repository, and there must not be one: two planners with
 two tolerances disagree silently, and the caller receives a different answer
 rather than a disagreement.
+
+## Combined GIS from independent models
+
+`plan` and `convert --mode merge-gis` accept 2..100 canonical `.dsgrid`
+sources and a `kmz`, `shp` or `geojson` target. They produce one GIS artifact
+and its sibling exchange report. Each feature retains its geometry and
+engineering attributes, adds `src_model`, and scopes its exchange entity ID
+by source order. No deduplication, new connectivity, library substitution or
+source write occurs. Sources must share a declared CRS. This is a display
+projection, not a composed engineering model; native/model targets refuse.
+The existing KMZ/SHP default terrain and tension-section omissions apply.

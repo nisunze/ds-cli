@@ -68,6 +68,11 @@ fingerprints, and each written artifact with its sha256 — plus the path of \
 the exchange report.",
     examples: &[
         Example {
+            command: "ds dsgrid-exchange convert --source ./rev3.dsgrid --source ./school.dsgrid --target kmz --mode merge-gis --out ./out --output json",
+            note: "Combine GIS features without reconciling or modifying the source engineering libraries.",
+            runnable: false,
+        },
+        Example {
             command: "ds dsgrid-exchange convert --source ./workspace --target dsgrid --out ./out --output json",
             note: "Import a PLS-CADD workspace into a canonical .dsgrid.",
             runnable: false,
@@ -90,7 +95,7 @@ the exchange report.",
     ],
     refusals: &REFUSALS,
     reference: Some("docs/reference/dsgrid-exchange.md"),
-    search: &[],
+    search: &["combine gis", "merged kmz", "merged shapefile"],
     requires: Requires::Server,
     availability: available,
 };

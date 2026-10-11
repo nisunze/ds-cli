@@ -40,7 +40,7 @@ pub const TARGETS: &[&str] = &[
     "xlsx",
 ];
 
-pub const MODES: &[&str] = &["separate", "compose", "combine"];
+pub const MODES: &[&str] = &["separate", "compose", "combine", "merge-gis"];
 pub const CONTAINERS: &[&str] = &["folder", "bak"];
 pub const NETWORK_SOURCE_ROLES: &[&str] = &["tapping", "substation", "plant", "network_source"];
 
@@ -55,7 +55,7 @@ pub const SHARED_ARGS: &[Arg] = &[
     Arg::value(
         "mode",
         "<mode>",
-        "Treat sources separately, compose into one .dsgrid, or combine natively.",
+        "Separate outputs, compose a .dsgrid, combine natively, or merge-gis into one GIS file without changing source models.",
     )
     .default("separate")
     .choices(MODES),
@@ -306,6 +306,7 @@ fn parse_mode(value: Option<&str>) -> Result<BatchMode, Failure> {
         None | Some("separate") => BatchMode::Separate,
         Some("compose") => BatchMode::ComposeDsGrid,
         Some("combine") => BatchMode::CombinePlsNative,
+        Some("merge-gis") => BatchMode::MergeGis,
         other => return Err(unmapped("mode", other.unwrap_or_default(), MODES)),
     })
 }

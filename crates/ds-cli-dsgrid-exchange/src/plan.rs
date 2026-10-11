@@ -51,6 +51,11 @@ digests, and the expected artifacts — plus blockers, warnings and losses in \
 full. Long lists are truncated and the withheld count reported.",
     examples: &[
         Example {
+            command: "ds dsgrid-exchange plan --source ./rev3.dsgrid --source ./school.dsgrid --target kmz --mode merge-gis --output json",
+            note: "Combine GIS features without reconciling or modifying the source engineering libraries.",
+            runnable: false,
+        },
+        Example {
             command: "ds dsgrid-exchange plan --source ./workspace --target dsgrid --output json",
             note: "What importing a PLS-CADD workspace would produce.",
             runnable: false,
@@ -68,7 +73,7 @@ full. Long lists are truncated and the withheld count reported.",
     ],
     refusals: &REFUSALS,
     reference: Some("docs/reference/dsgrid-exchange.md"),
-    search: &[],
+    search: &["combine gis", "merged kmz", "merged shapefile"],
     requires: Requires::Server,
     availability: available,
 };
