@@ -104,3 +104,19 @@ when revision/root/case/usage differs, equal-input index reuse fails and a new
 eager index is built. Queries afterward correctly report zero newly materialized
 lazy cells. Scene-base preparation alone does not change an index. These paths
 remain separate from the accepted live-edit optimization.
+
+The same after executable also passed live cancellation and recovery. Cancellation
+reported the discarded result at 78.7 ms while the noninterruptible worker still
+held its slot; status reported physical exit at 1,124.3 ms. Admission of the
+cancelled result refused with `profile_calculation_cancelled`. A new explicit
+Analyze reached ready at 946.2 ms (823.2 ms native calculation), then took
+3.659 s for public admission through the canvas. This full eager reconciliation
+is measured separately from edit latency. Cancellation preserved the prior
+history and calculation; recovery retained the authored history, installed its
+current computed revision and left source bytes unchanged. CLI and the current
+15-tool `grid-profile` MCP surface then matched read-only preview and confirmed
+Undo/Redo controls, with completed fresh draws and the original history restored.
+Evidence is `lazy-facts-cancellation-v19-proof.json` and the corresponding
+`lazy-facts-mcp-v19-*` receipts in the same Desktop job. These are Linux local
+development proofs; they do not qualify the packaged Windows/Canary runtime or
+repair its separately pending command/skill bundle receipt.
