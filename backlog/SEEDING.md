@@ -27,7 +27,7 @@ Candidate curation and native PLS-CADD acceptance are separate from coding the c
 | [11. PLS-CADD exchange round trip](#11-pls-cadd-exchange-round-trip) | 6 |
 | [12. DS Grid engineering (Codex main)](#12-ds-grid-engineering-codex-main) | 3 |
 | [13. Spotting (Codex main)](#13-spotting-codex-main) | 2 |
-| [14. Plan and Profile authoring](#14-plan-and-profile-authoring) | 7 |
+| [14. Plan and Profile authoring](#14-plan-and-profile-authoring) | 6 |
 | [15. Project deliveries](#15-project-deliveries) | 6 |
 | [16. Map data, datasets and screen styling](#16-map-data-datasets-and-screen-styling) | 13 |
 | [17. Project Work and Assets](#17-project-work-and-assets) | 11 |
@@ -290,19 +290,6 @@ Candidate curation and native PLS-CADD acceptance are separate from coding the c
   isolated Chrome release-worker + production overlay + IndexedDB proof exist;
   those do not establish acceptance in the current running Desktop. Preserve
   approved source bytes.
-
-- **Prepared-case retype Desktop activation**: activate the matching host case
-  admission and authored-head picker fix on a fresh disposable model. Replay
-  prepared-case selection, `l-s.012` to
-  `a-w-S140.012`, Undo/Redo and another edit through the running Linux Desktop;
-  compare current geometry with fresh native calculation and retain all 45
-  library definitions. Native actual-package and isolated production-host /
-  release-worker Chrome and Linux WebKit replays prove the former splice error,
-  corrected geometry and zero API/cloud requests. The actual Svelte picker /
-  native-worker replay proves preview/apply despite an older displayed scene,
-  zero validation errors and zero checkpoints. These gates do not update the
-  current Tauri source graph. The owner authorized discarding disposable drafts
-  for local activation; full-draft recovery is not a prerequisite for that restart.
 
 - **Reviewed unused-structure export activation**: activate native exchange
   `5c1051a8`, CLI/MCP `a9586a16` and export UI `9fbc7ff2a` together. CLI/MCP,
