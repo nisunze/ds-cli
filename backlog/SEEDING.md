@@ -273,6 +273,19 @@ Candidate curation and native PLS-CADD acceptance are separate from coding the c
 
 - **Paired geometry authoring acceptance**: verify active-layer Plan authoring, ground-point vertical drag and mounted Profile insertion preview without touching another model. Existing installed Model 2 insertion and public Web checkpoint/Undo/Redo/Discard proofs are retained in their receipts; only the remaining paired-window conditions stay open.
 
+- **Intentional Grid Save acceptance** (owner 2026-10-11): activate matching
+  native session/worker/UI and `map profile save` in a fresh local Desktop after
+  preserving the current unsaved Profile and its history. Manual local Save
+  must show a clear block, refuse concurrent edit/undo/redo/discard, acknowledge
+  durable bytes at the exact history and release after a storage failure with
+  the draft still unsaved. Prove actual Linux WebKit command/UI parity. Edit,
+  catalogue, focus, idle and reconnect observations must make zero automatic
+  checkpoint/capture/cloud-head/publication calls; Save to project remains an
+  explicit effect. Source native/Wasm-host tests, exact CLI/MCP discovery and
+  isolated Chrome release-worker + production overlay + IndexedDB proof exist;
+  those do not establish acceptance in the current running Desktop. Preserve
+  approved source bytes and do not reset the owner's failed-retype session.
+
 - **Cleared-forest data and print acceptance**: use an approved model with surveyed forest points and an authored GROUND/forest rule. The prior unchanged package had no forest codes and correctly refused `feature_code_unknown`; acquire the missing source data before testing installed compute/Profile/print. Preserve model identity, source Z and the independent drawing guide.
 
 - **Selected-case runtime acceptance**: after the native transport and UI bindings in OPEN.md are complete, install matching sources/WASM and verify real criterion/case/weight-basis selection, scene invalidation, usage/uplift/clearance markers and responsive popout display on the affected Windows model.

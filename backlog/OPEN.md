@@ -375,7 +375,12 @@ serialization from the editing path against
 Retain pinned library/template inputs, transactional authored records and
 discardable result partitions in their owning memory behind the existing native
 commands. Separate full Save/export/publication from command-to-canvas work;
-preserve bounded crash recovery. Prove exact history/resource semantics,
+manual Save is the default and cloud publication is deliberate. Finish the
+optional five-minute **local-only** save using native policy, with no save during
+dragging or an active edit and no automatic cloud acquisition/publication.
+Expose native/UI/CLI/MCP choice and prove paused versus dragging cases with
+exact checkpoint/read counts. Do not enable hidden autosave or claim recovery
+for unsaved RAM. Prove exact history/resource semantics,
 shared native CLI/MCP/UI behavior, revision conflicts and cancellation.
 The DuckDB native/Chrome probe establishes storage feasibility only; defer
 cutover until a storage need is demonstrated. Any later migration must prove
