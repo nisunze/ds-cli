@@ -368,15 +368,19 @@ Contracts: [Profile as a transactional database](../../ds-network/docs/contracts
 
 #### Remaining differential compute work
 
-**Owner priority, 2026-10-11 — database storage before further optimization.**
-Complete the bounded DuckDB-backed DS Grid storage vertical against
+**Owner priority, 2026-10-11 — resident memory before backend migration.**
+Remove redundant live session replay, scene mirrors and unchanged-data
+serialization from the editing path against
 [`profile-transactional-database.md` §1.1](../../ds-network/docs/contracts/profile-transactional-database.md#11-library-authored-database-and-disposable-results).
-Separate pinned library/template inputs, transactional authored records and
-discardable result partitions behind the existing native commands. The initial
-native/Chrome probe is feasibility evidence only. Prove actual Linux Desktop
-WebKit persistence/recovery, exact portable-package/history/resource parity,
-shared native CLI/MCP/UI semantics, revision conflicts and cancellation,
-and migration/reopen of a disposable existing catalog before switching it.
+Retain pinned library/template inputs, transactional authored records and
+discardable result partitions in their owning memory behind the existing native
+commands. Separate full Save/export/publication from command-to-canvas work;
+preserve bounded crash recovery. Prove exact history/resource semantics,
+shared native CLI/MCP/UI behavior, revision conflicts and cancellation.
+The DuckDB native/Chrome probe establishes storage feasibility only; defer
+cutover until a storage need is demonstrated. Any later migration must prove
+actual Linux Desktop WebKit persistence/recovery and exact package/history/
+resource parity on a disposable existing catalog before switching it.
 Measure repeated GUI edits to canvas, actual selected-range dependency reads
 and computes, unaffected-result reuse, and zero network reads for retained or
 unused data. Preserve originals and dirty sessions; do not replace unrelated
