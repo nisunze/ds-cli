@@ -13,7 +13,7 @@ Unfinished code that an agent can implement and prove without further owner inpu
 | [3. Template creation code](#3-template-creation-code) | 1 |
 | [4. Print template and style code](#4-print-template-and-style-code) | 0 |
 | [5. Print renderer and booklet code](#5-print-renderer-and-booklet-code) | 2 |
-| [7. Report compute, export and combined output](#7-report-compute-export-and-combined-output) | 14 |
+| [7. Report compute, export and combined output](#7-report-compute-export-and-combined-output) | 15 |
 | [8. Sync, publication and edge outbox](#8-sync-publication-and-edge-outbox) | 6 |
 | [9. LV processing, sizing and headless intake](#9-lv-processing-sizing-and-headless-intake) | 8 |
 | [10. Voltage drop](#10-voltage-drop) | 3 |
@@ -154,6 +154,9 @@ Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group E (printing templ
 - `9d0f28da` (major): installed ds-canary 0.1.6 refuses `report project settings --project czgmdwth_gisagara --lane stable` and `report layout get` with `auth_response_unreadable`, although all 31 config sheets read through `design config sheets`; the closed-contract break sits in the report-settings read (printing catalogue or receipt decode). Reproduce on a native-profile build of current source, fix the decode, and prove both reads plus a typed refusal for a genuinely unreadable response.
 
 - Never-landed (owner 2026-10-02, land adapted to run): Generic archive-group readers: kernel, ds-cli (890bac3) and ds-web (54a65730) read the `group_count`/`groups` ds-brain writes, not `district_count` only.
+
+- **GIS Shapefile ZIP timestamps prevent reproducible artifact hashes**: `ds-grid-exchange/src/gis/mod.rs::zip_members` uses `SimpleFileOptions::default()`, so two exports of identical pinned models carry different wall-clock ZIP dates. Gisagara combined-GIS installed replay produced identical paths/order and all 25 exact member bytes, but archive hashes 524fb43c... and d2b7a465.... Use the existing deterministic ZIP options helper and prove fixed entry dates plus repeated-run archive digest parity; keep geometry, attributes and delivered source models unchanged. Evidence: `ds-work/out/gisagara-combined-gis-20261011/final-built-byte-parity.json`.
+
 
 ## 8. Sync, publication and edge outbox
 
@@ -830,5 +833,8 @@ Priority ([PRINCIPLES.md §3–4](PRINCIPLES.md#4-report-as-you-go-owner-2026-10
 - **`ds feedback draft --last` completeness (kernel, ds-cli):** (a) the draft `component` must be the owning repository from the command registry (spec §4): kernel `reporter.rs` `draft_one` still emits `ds-cli/{domain}`, and ds-cli-contract `Command` has no owner field. (b) A CLI draft without `DS_CLI_AGENT` still lists `needs: agent` while `feedback.submit` requires `--agent`; the MCP adapter (ds-cli-mcp `tools.rs` `run_bounded`) never passes `clientInfo.name` to the child as `DS_CLI_AGENT`; the JSON draft's `context` is an object, not the repeated `key=value` input submit takes (only the human render maps it). (c) The `ds` skill (`ds-cli/skills/ds/SKILL.md`, "Report as you go") does not name `ds feedback draft --last`. Signed-in installed acceptance (spec §7.6) is in SEEDING.md block 25.
 
 - **`ds capabilities --search` does not find `feedback.submit` (ds-cli, text only):** `ds capabilities --search 'report a bug'`, `'report a problem'` and `'file a bug'` return no `feedback.submit` (its search list is empty); only `feedback`, `friction` and `idea` find it. **Proof:** all three phrases return `feedback.submit`; the discovery tests pass.
+
+<!-- dsgrid-server-investigation-20261010 -->
+- **DS Grid export diagnosis, actionable unavailable-usage results and cross-surface revision parity**: see [DSGRID feedbacks.md](<DSGRID feedbacks.md>) for scoped unmet work, installed evidence and closure proofs. Preserve correct refusals; do not invent engineering inputs.
 
 - **PLS qualification cleanup/recovery (ds-cli):** installed Windows DS3db830b2 leaves an owned session open when an offline fresh-backup content/count check fails. The current School PID34504 is such a stopped, no-save session, and installed DS has no receipt-pinned recovery-close command. Add a governed recovery control for an already stopped owned session, fenced to the failed run's receipt/PID/executable and characterized Exit/No-save transition; unknown dialogs must remain stopped, no process kill or generic click. Existing PowerShell contract suite also fails on both HEAD and the cleanup candidate at the stale filename Edit setter assertion after WM_CHAR replaced WM_SETTEXT; repair that test against the current characterized path setter without weakening it.
