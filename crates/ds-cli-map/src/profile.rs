@@ -73,15 +73,15 @@ macro_rules! native_profile_refusal {
 pub static VIEW: Command = Command {
     id: "map.profile.view",
     path: &["map", "profile", "view"],
-    contract: 5,
+    contract: 6,
     summary: "Read the paired Profile's exact visual state.",
-    purpose: "Read the Profile occupant, dock height, viewport, selection and edit mode. This read changes neither view nor model.",
+    purpose: "Read the Profile occupant, dock height, viewport, selection, edit mode and retained readiness. This read changes neither view nor model and starts no preparation, calculation, status polling or acquisition.",
     chapter: Chapter::MapPresentation,
     effect: Effect::ReadOnly,
     authority: Authority::DesktopPairing,
     execution: Execution::Sync,
     args: &[TARGET_ARG, DESCRIPTOR_ARG],
-    output: "occupant, model_id/model_name/revision, persisted, history, scale, visibility, height_px, viewport, surface {width,height,scale} (CSS pixels, native px/scene-unit; null unmounted), edit_mode, selection {entity_ids,primary,kind,structures [{id,number}]}. review: up to 256 cases, selected_case_index, display_case, marker counts/truncation. display: native state/rows; analysis: bounded receipt; analysis_state: due/current/off/not_applicable. scene_loaded: current scene; scene_revision: retained head. calculation: native policy,model_revision,computed_revision,required,scope; null before observation.",
+    output: "occupant, model_id/model_name/revision, persisted, history, scale, visibility, height_px, viewport, surface {width,height,scale} (CSS pixels, native px/scene-unit; null unmounted), edit_mode, selection {entity_ids,primary,kind,structures [{id,number}]}. review: up to 256 cases, selected_case_index, display_case, marker counts/truncation. display: native state/rows; analysis: bounded receipt; analysis_state: due/current/off/not_applicable. scene_loaded: current scene; scene_revision: retained head. calculation: native policy,model_revision,computed_revision,required,scope; null before observation. readiness: retained phase,initial,scene_admitted,model_id,model_revision,job,failure; null before a request or for a closed/foreign context. A job is the captured native receipt, never a new status read; initial preparation has no interruptible job.",
     examples: &[Example {
         command: "ds map profile view --output json",
         note: "Read the live Profile's viewport, selection and edit mode before a scoped model command.",
@@ -643,6 +643,18 @@ pub fn render_selection(data: &Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn view_declares_retained_readiness_without_preparation_or_status_reads() {
+        assert_eq!(VIEW.contract, 6);
+        assert_eq!(VIEW.effect, Effect::ReadOnly);
+        assert!(VIEW.purpose.contains(
+            "starts no preparation, calculation, status polling or acquisition"
+        ));
+        assert!(VIEW.output.contains(
+            "readiness: retained phase,initial,scene_admitted,model_id,model_revision,job,failure"
+        ));
+        assert!(VIEW.output.contains("never a new status read"));
+    }
 
     #[test]
     fn edit_mode_uses_closed_native_history_and_cannot_mix_visual_effects() {

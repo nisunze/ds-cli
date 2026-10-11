@@ -712,6 +712,20 @@ A minimal fit request is `{"operation":"fit"}`. Results use `zoom`, `pan_x`,
 
 `kind` is `none`, `structures`, `tension_sections`, `alignments`, `terrain_points`, `attachment_points`, or `mixed`. `entity_ids` follows the engine's order for a single selected family; mixed selections retain the selected IDs. `primary` is an ID in the selection or `null`. `structures` contains ID and display number only for a homogeneous structure selection; `number` is `null` if unknown. `model_id` and `revision` are `null` without an open model Profile. The older `model` field remains for existing consumers. These fields describe the paired Desktop's current focus and do not authorize a model edit. Use an explicit model and revision in the corresponding `ds dsgrid` command.
 
+View contract 6 includes retained `readiness`: `phase`, `initial`,
+`scene_admitted`, `model_id`, `model_revision`, `job` and `failure`. It is null
+before a request or outside the held model/account/project context. Reading it
+starts no preparation, calculation, native status read, timer or acquisition.
+The yellow Profile status button shows the same actual preparation phases and
+can be inspected while preparation runs. Initial preparation has no
+interruptible job. A retained `job` is the last captured native receipt; use an
+explicit calculation status action to update it, and respect
+`runtime_worker_active` after discarding a result.
+Status and cancellation address the captured job without requiring its old
+authored history to remain current. Admit keeps the exact history fence. A
+readiness receipt retained through a later authored observation still identifies
+that job; it never substitutes a signed scene-base receipt for a calculation.
+
 Profile review defaults to one compact attachment box per attachment and one governing usage label per structure. Pass boxes use the native good role, fail boxes the bad role, and unknown boxes the neutral role with no text. Usage retains qualified percentages and partial `~NN%` evidence; unavailable usage is neutral. Structure identities are vertical. Structure numbers, names (`structure_names`) and comments (`structure_comments`) start on; `route_deviation` starts off; `offset_embedment_height` starts on. `structure_usage` (the usage label), `section_state` (the attachment boxes) and `section_usage` (one box per wire of each attachment set, above its labelled span) are separate switches, on by default. Each cable engineering name gets its own pen and legend entry; `--cable-colors {"NAME":"#rrggbb"}` sets a cable's pen by its exact engineering name, and `null` returns that cable to its default pen. Omitted visibility keys retain native state. `ds dsgrid run --model <file> --operation project_profile_atlas --limit 10000` returns the same native per-structure summaries and bounded disclosure evidence without authoring the file.
 
 Display is the sole Profile settings surface; the legend only explains native symbols and pens. `--styles` submits a native partial style map, for example `{"ground":{"color":"#123456","width_mm":0.8,"line_type":"dotted"},"strain":{"symbol":"▲"}}`. Native option names and the symbol roles strain/suspension/junction/unknown are targets; null resets a target. Omitted fields retain authored values. Discover the native style request/schema in the view's `display.style_controls`. Rust validates colours, physical widths, line types and glyphs and emits identical CLI and drawing encodings. Opening the dock always starts at half the available Map/Profile height; previous pixel heights do not override this. Explicit resizing goes through the same native layout request.
@@ -724,6 +738,16 @@ only shows or hides retained results. Authored observation advances geometry
 and history independently of the computed revision. A missing prepared display
 case refuses until explicitly calculated. To prepare and display it, combine
 `--display-case` with `--action rebuild` or `--action analyze`.
+
+The weather picker retains a requested case after a native preparation refusal
+and offers **Calculate and choose**. That explicit action uses the same
+`ds map profile set --display-case '<native-case-json>' --action rebuild`
+contract. The previously admitted curve and case label stay visible until the
+new result is admitted; presenting the refusal does no calculation. The
+requested choice is cleared when its model, history, session, account or
+project context changes. Rebuild releases disposable Profile results and
+reinitializes from the current retained model and full edit history; it leaves
+the editable worker and Undo/Redo history intact and never saves.
 
 
 `ds map profile set --action analyze` runs the native structure, section and clearance checks on every invocation at the held model revision. It uses the complete model-bound case envelope; selecting weather changes the displayed curve, never that engineering envelope. Qualified, partial and unknown results and typed blockers remain visible in Profile and Issues. The result retains `ran`, model/revision and the bounded native analysis receipt. No engineering model or project data is changed. This action replaces the redundant `ds map profile analyze` command; headless file analysis remains `ds dsgrid run --model <file> --operation analyze_model_defaults`.

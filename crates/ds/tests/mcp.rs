@@ -3866,6 +3866,33 @@ fn manual_combination_projects_the_same_preview_through_mcp() {
 }
 
 #[test]
+fn profile_readiness_view_is_the_same_read_only_contract_in_cli_chapter_and_typed_profile() {
+    let descriptor = cli(&["capabilities", "map.profile.view", "--output", "json"]);
+    assert_eq!(descriptor["data"]["command"]["contract"], 6);
+    assert!(descriptor["data"]["command"]["output"]
+        .as_str()
+        .unwrap()
+        .contains("readiness: retained"));
+    let (chapter, _) = mcp(
+        &["--exposure", "chapters"],
+        &[json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"ds_map_presentation","arguments":{"operation":"describe","command":"map.profile.view"}}})],
+    );
+    assert_eq!(response(&chapter, 1)["result"]["structuredContent"], descriptor);
+    let (typed, _) = mcp(
+        &["--exposure", "commands", "--profile", "grid-profile"],
+        &[json!({"jsonrpc":"2.0","id":1,"method":"tools/list"})],
+    );
+    let tools = response(&typed, 1)["result"]["tools"].as_array().unwrap();
+    let view = tools
+        .iter()
+        .find(|tool| tool["name"] == "map_profile_view")
+        .unwrap();
+    assert_eq!(view["annotations"]["readOnlyHint"], true);
+    assert_eq!(view["inputSchema"]["additionalProperties"], false);
+    assert!(view["inputSchema"]["properties"].get("action").is_none());
+}
+
+#[test]
 fn profile_calculation_tickets_are_a_typed_cli_projection_with_closed_mcp_arguments() {
     let (messages, _) = mcp(
         &["--exposure", "commands", "--profile", "grid-profile"],
