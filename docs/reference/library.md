@@ -271,3 +271,15 @@ Indexed governed member byte readback uses `library global download --kind libra
 
 
 Model-library member admission is a local exact-byte gate. `managed_export_allowed` does not attest to cloud registration, review state, strength coverage or native load-case applicability. The caller must read the exact governed release and its qualification scope before promoting a project delivery; `solver_approval` remains false.
+
+### Centered earthwire library variants
+
+library.seed --center-earthwire <exact-model-leaf> creates a new immutable
+Method-1 stick variant using the characterized geometry exporter. Repeat the
+selection for each member. Only the selected GW/OPGW clamp transverse and
+longitudinal coordinates become zero. Heights, ordered tapping sets, attachment
+slots and parts stay unchanged; the source stays untouched.
+The receipt pins original and derived digests. This is a
+library preparation/export, not a native project editor or a strength approval.
+Missing or ambiguous leaves and uncharacterized geometry refuse before output.
+Native Restore/reopen remains the delivery boundary.

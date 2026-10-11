@@ -5,7 +5,7 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Failure, Inputs};
 use ds_grid_exchange::{
     StandardsCapacityBasisDeclaration, StandardsCapacityGenerationDeclaration,
-    StandardsLibrarySeedOptions, plan_standards_library_seed, portable_backup_seed_members,
+    StandardsLibrarySeedOptions, portable_backup_seed_members,
 };
 use ds_io::{
     PlsCaddAvailableStructureSpottingEdit, pls_cadd_parse_available_structure_list,
@@ -19,14 +19,15 @@ use std::path::{Path, PathBuf};
 pub static COMMAND: Command = Command {
     id: "library.seed",
     path: &["library", "seed"],
-    contract: 3,
+    contract: 4,
     summary: "Seed an immutable as-built, new-design or custom parallel library.",
-    purpose: "Discovers explicit local roots or backups, classifies members by native headers, keeps exact pinned PLS-CADD assets in pls-cadd/, ingests only the characterized PLS-CADD-to-DS-Grid projection into dsgrid/, and atomically promotes library/<id>/<version>. Reviewed capacity-basis declarations state the weight-span definition. Optional generation declarations validate and pin LIC, generating CRI and native-run provenance. Operative native capacity cases bind by the selected project CRI ordinal. Native strength bytes and verification stay unchanged. It never publishes, overwrites, opens PLS-CADD or converts DS Grid assets to PLS-CADD.",
+    purpose: "Discovers explicit local roots or backups, classifies members by native headers, keeps exact pinned PLS-CADD assets in pls-cadd/, ingests only the characterized PLS-CADD-to-DS-Grid projection into dsgrid/, and atomically promotes library/<id>/<version>. Reviewed capacity-basis declarations state the weight-span definition. Optional generation declarations validate and pin LIC, generating CRI and native-run provenance. Operative native capacity cases bind by the selected project CRI ordinal. Optional --center-earthwire selects exact Method-1 model leaves for a new centered GW/OPGW geometry variant: used sets, slots, elevations, parts and capacity bytes remain unchanged, with source/derived/support digests in the immutable receipt. Geometry variants require native verification and confer no strength approval. It never publishes, overwrites, opens PLS-CADD or converts DS Grid assets to PLS-CADD.",
     chapter: Chapter::PlsCadd,
     effect: Effect::ArtifactWrite,
     authority: Authority::None,
     execution: Execution::Sync,
     args: &[
+        Arg::repeated("center-earthwire", "<model-leaf>", "Create a centered Method-1 GW/OPGW variant for this exact source leaf; repeat for at most 128 members. Preserve tapping sets and capacity bytes; original files remain unchanged."),
         Arg::repeated(
             "source",
             "<path>",
@@ -36,7 +37,7 @@ pub static COMMAND: Command = Command {
         Arg::value(
             "out",
             "<dir>",
-            "Local parent under which library/<id>/<version> is created.",
+            "Parent directory for library/<id>/<version>.",
         )
         .required(),
         Arg::value("library-id", "<id>", "Stable library role/id.").required(),
@@ -51,7 +52,7 @@ pub static COMMAND: Command = Command {
         Arg::value(
             "provenance",
             "<id>",
-            "Source ruling identifier carried by every member: nonempty, at most 128 bytes, no control characters or edge whitespace.",
+            "Every member's source ruling ID: 1..128 bytes, no control characters or edge whitespace.",
         )
         .required(),
         Arg::repeated(
@@ -63,17 +64,17 @@ pub static COMMAND: Command = Command {
         Arg::value(
             "capacity-basis-declarations",
             "<json-path>",
-            "Bounded JSON array of {source_sha256, weight_span_basis, authority}. Each exact native source digest declares its imported capacity basis once. No capacity, case applicability or verification is inferred; without a declaration the basis stays undeclared.",
+            "Bounded JSON {source_sha256, weight_span_basis, authority} array, once per exact native digest. Omitted basis stays undeclared; no inferred capacity, case applicability or verification.",
         ),
         Arg::value(
             "capacity-generation-declarations",
             "<json-path>",
-            "Optional reviewed generation provenance: exact native, LIC, generating CRI and run digests, source conditions and wind signs. Check-time capacity bindings use the selected project CRI ordinals.",
+            "Reviewed provenance: exact native/LIC/generating CRI/run digests, source conditions and wind signs. Checks bind selected project CRI ordinals.",
         ),
         Arg::value(
             "spotting-price-rules",
             "<json-path>",
-            "Versioned price-factor rule. Derives the native STR and its DS Grid catalog together; the source is unchanged.",
+            "Versioned price factors derive native STR and DS Grid catalog together; source unchanged.",
         ),
     ],
     output: "Immutable local prefix, manifest/content digests, object/byte counts, loss rollup, execution owner, native-tool handoff and remaining engineer decision.",
@@ -85,23 +86,23 @@ pub static COMMAND: Command = Command {
     refusals: &[
         Refusal {
             code: "capacity_generation_declarations_invalid",
-            when: "the generation declaration file exceeds 1 MiB or is not a typed complete array",
-            remedy: "provide exact native, LIC, CRI and native-run digests and reviewed bindings for every generating condition",
+            when: "generation declarations exceed 1 MiB or are not a typed complete array",
+            remedy: "provide exact native/LIC/CRI/run digests and reviewed bindings for each generating condition",
         },
         Refusal {
             code: "capacity_basis_declarations_invalid",
-            when: "the declaration file exceeds 1 MiB or is not a typed declaration array",
-            remedy: "provide exact source SHA-256 digests, declared weight-span definitions and their engineering citations",
+            when: "basis declarations exceed 1 MiB or are not a typed array",
+            remedy: "provide exact source SHA-256, weight-span definitions and engineering citations",
         },
         Refusal {
             code: "spotting_price_rules_invalid",
             when: "the optional spotting price rules are malformed or incompatible with the seed",
-            remedy: "correct the JSON rules and their referenced source members, then retry",
+            remedy: "correct JSON rules and referenced source members",
         },
         Refusal {
             code: "library_seed_failed",
             when: "source option identity, classification, ingestion, schema, digest or immutable-layout planning fails",
-            remedy: "correct the reported source option or leaf conflict; keep the exact source authority and provenance identifier",
+            remedy: "fix reported source options or leaf conflicts; retain exact authority and provenance",
         },
         Refusal {
             code: "seed_version_conflict",
@@ -490,8 +491,18 @@ pub fn run(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
         capacity_basis_declarations,
         capacity_generation_declarations,
     };
-    let plan = plan_standards_library_seed(schema, &source_members, &options)
-        .map_err(|error| engine_failure("library_seed_failed", error))?;
+    let selections: Vec<String> = inputs
+        .repeated("center-earthwire")
+        .iter()
+        .map(|name| name.to_string())
+        .collect();
+    let plan = ds_grid_exchange::centered_library::plan_centered_standards_library_seed(
+        schema,
+        &source_members,
+        &options,
+        &selections,
+    )
+    .map_err(|error| engine_failure("library_seed_failed", error))?;
     let receipt_bytes = serde_json::to_vec_pretty(&plan.receipt)
         .map_err(|error| Failure::internal("receipt_encode_failed", error.to_string()))?;
     let target = PathBuf::from(inputs.require("out")?).join(&plan.receipt.immutable_prefix);

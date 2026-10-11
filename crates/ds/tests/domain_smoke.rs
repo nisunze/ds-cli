@@ -20212,3 +20212,67 @@ fn stopped_pls_session_close_is_receipt_pinned_and_explicitly_confirmed() {
     }
     assert!(!inputs.iter().any(|input| input["name"] == "pid" || input["name"] == "force"));
 }
+
+#[test]
+fn library_seed_centers_named_earthwires_and_retains_tapping_and_capacity() {
+    let root = temp_root("centered-earthwire-library");
+    std::fs::create_dir_all(&root).unwrap();
+    let source = root.join("tap.012");
+    let native = "TYPE='STRUCT FILE' VERSION='13' UNITS='SI' SOURCE='PLS-CADD Version 16.81'\nTAPPING STICK\n10 2 0\n2\n'GW' 'C' 'N' 'N' 1 1\n0.2 0.2 0 'GW' 'GW' 0 0 0 0\n'30kV' 'S' 'S' 'S' 1 1\n200 0.1 0.3 0 0 0\n-1.1 1 0 'P1' 'P1' 'P1' 0 1.571 -1000 0 0\nS\nResults generated for loads file: 'original.lic'\n1\n0 1000 1000 -5000 1000 1000\n0 0 0 0\n";
+    std::fs::write(&source, native).unwrap();
+    let output = root.join("out");
+    let source_text = source.display().to_string();
+    let output_text = output.display().to_string();
+    let args = [
+        "library",
+        "seed",
+        "--source",
+        &source_text,
+        "--out",
+        &output_text,
+        "--library-id",
+        "centered",
+        "--library-version",
+        "v1",
+        "--role",
+        "custom",
+        "--provenance",
+        "owner-center-only",
+        "--center-earthwire",
+        "tap.012",
+        "--yes",
+        "--output",
+        "json",
+    ];
+    let result = ok(&args);
+    let receipt = &result["receipt"]["centered_earthwire_derivations"][0];
+    assert_eq!(receipt["model_leaf"], "tap.012");
+    assert_eq!(receipt["changed_groundwire_attachment_count"], 1);
+    assert_eq!(receipt["capacity_bytes_preserved"], true);
+    assert_eq!(std::fs::read_to_string(&source).unwrap(), native);
+    let seeded =
+        std::fs::read_to_string(output.join("library/centered/v1/pls-cadd/structures/tap.012"))
+            .unwrap();
+    assert!(seeded.contains("0 0.2 0 'GW'"));
+    assert!(seeded.contains("-1.1 1 0 'P1' 'P1' 'P1' 0 1.571 -1000 0 0"));
+    assert!(seeded.ends_with(&native[native.find("\nS\n").unwrap()..]));
+    assert_eq!(ok(&args)["idempotent"], true);
+    let described = ok(&["capabilities", "library.seed", "--output", "json"]);
+    assert!(
+        described["command"]["inputs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|a| a["name"] == "center-earthwire")
+    );
+    let mut missing = args;
+    let index = args
+        .iter()
+        .position(|a| *a == "--center-earthwire")
+        .unwrap()
+        + 1;
+    missing[index] = "missing.012";
+    let refused = ds(&missing);
+    assert_ne!(refused.code, 0);
+    assert_eq!(refused.envelope["error"]["code"], "library_seed_failed");
+}
