@@ -8123,12 +8123,13 @@ fn every_map_command_is_reachable_without_the_desktop_installed() {
     let profile_select = ok(&["capabilities", "map.profile.select", "--output", "json"]);
     assert_eq!(profile_select["command"]["effect"], "local_ui");
     assert_eq!(profile_select["command"]["authority"], "desktop_pairing");
-    assert!(
-        profile_select["command"]["purpose"]
-            .as_str()
-            .expect("purpose")
-            .contains("native scene")
-    );
+    assert_eq!(profile_select["command"]["contract"], 2);
+    let selection_purpose = profile_select["command"]["purpose"]
+        .as_str()
+        .expect("purpose");
+    assert!(selection_purpose.contains("Native scene order owns"));
+    assert!(selection_purpose.contains("closed structure_id/attachment_point_id JSON pair"));
+    assert!(selection_purpose.contains("one occurrence"));
     assert_eq!(
         refusal(&[
             "map",
