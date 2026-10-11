@@ -206,6 +206,16 @@ The absent `--out` path receives one `ds.lv-voltage-drop.result/v1` document:
     "ok": true,
     "report": { "status": "calculated", "summary": { "compliant": true } },
     "sizing": { "status": "compliant_as_drawn", "changes": [] },
+    "analysis": {
+      "schema": "ds.lv-voltage-drop.analysis/v1",
+      "method": "ds-lv-vd/1",
+      "status": "calculated",
+      "inputs_digest": "…",
+      "analysis_inputs_digest": "…",
+      "processed_digest": "…",
+      "summary": { "status": "calculated" },
+      "run": { "report": { "status": "calculated" }, "sizing": { "changes": [] } }
+    },
     "layers": { "customers": { "type": "FeatureCollection", "features": [] } }
   }]
 }
@@ -221,12 +231,19 @@ design comply (`compliant_after_changes`), or the customers no allowed
 conductor can save (`partially_resolved`, listed under `infeasible`). Existing
 and approved sections are never resized. `layers` are the processed GeoJSON
 layers carrying the `vd_*` columns and each customer's balanced
-`connection_phase`. A failed job has `ok: false` and an `error` instead of the
-three. The result is never truncated or overwritten; above 256 MiB it is
+`connection_phase`. The additive `analysis` member is the complete native
+`ds.lv-voltage-drop.analysis/v1` envelope bound to those same layers, with its
+summary and exact report/sizing in `run`; the example abbreviates these values.
+Its three digest fields are full lowercase SHA-256 values. Reporter admission
+uses `analysis.inputs_digest`, not the separate legacy solver-model digest in
+the summary. It admits standalone analysis with `jobs[].layers` through the same
+boundary used for a saved analysis; an A4 format remains an explicit reporting
+choice. A failed job has `ok: false` and an `error` instead of these members.
+The result is never truncated or overwritten; above 256 MiB it is
 refused.
 
-A reserved job has `ok: true`, `vd_summary` and `layers`, with no `report` or
-`sizing`. Its receipt row says `status: reserved`, `sizing_status:
+A reserved job has `ok: true`, `vd_summary`, `analysis` with `run: null`, and
+`layers`, with no `report` or `sizing`. Its receipt row says `status: reserved`, `sizing_status:
 not_calculated`, the authoritative nature and the gate's `calculation` reason.
 It is counted as succeeded and never as compliant.
 
