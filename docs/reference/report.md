@@ -123,10 +123,11 @@ ds report export --task voltage-drop --request ./a4-request.json \
 Author the request from the installed owner's schema. This route passes the
 request unchanged and refuses when that render task is unavailable. The
 project label is presentation only; it grants no project authority. Missing
-analysis must be produced by the network owner before printing. Admitted
-reserved, incomplete and refused saved analyses produce explicit A4 status
-pages without inventing results. Optional governed printing identity carries
-the project display label and digest-pinned logos onto every A4 title block.
+analysis must be produced by the network owner before printing. A4 accepts
+only complete calculated analysis; reserved, incomplete and refused saved
+analyses refuse with `voltage_drop_pdf_not_calculated`. Optional governed
+printing identity carries the project display label onto every A4 title block.
+A4 prints without logos.
 
 `report.voltage-drop-combined` prints one local A3 overview for an exact
 transformer roster from held voltage-drop result files. The reporter owns
@@ -143,9 +144,9 @@ ds report voltage-drop-combined --request /absolute/vd-overview-request.json \
 
 The request and optional receipt paths must be absolute. Both the receipt
 and the requested PDF must be absent. The answer preserves the reporter's
-coverage counts, source digests, PDF digest and page count; reserved and held
-transformers stay outside calculated coverage. This local operation performs
-no project write, sync pass or cloud publication.
+coverage counts, source digests, PDF digest and page count; reserved, incomplete,
+refused and held transformers remain overview rows outside calculated coverage.
+This local operation performs no project write, sync pass or cloud publication.
 
 With `--result`, the wrapper retains the reporter's receipt on success or
 failure. Refusals carry the full decoded receipt in `error.detail.receipt`,
