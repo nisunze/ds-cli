@@ -403,11 +403,22 @@ pub fn update_task(
             "progress must be a whole number from 0 through 100.".into(),
         ));
     }
-    let start = input.start_date.as_deref().filter(|date| !date.is_empty());
-    let finish = input.finish_date.as_deref().filter(|date| !date.is_empty());
+    // Presence is intent: an empty date clears it; an omitted date stays held.
+    let start = input.start_date.as_deref();
+    let finish = input.finish_date.as_deref();
 
     require_edit_schedule(graph)?;
     let task = require_task(graph, &task_id)?;
+    if (start == Some("") || finish == Some(""))
+        && graph
+            .tasks
+            .iter()
+            .any(|child| child.parent_task_id.as_deref() == Some(task_id.as_str()))
+    {
+        return Err(Refusal::InvalidShape(
+            "A summary schedule is derived from its children; clear the leaf dates instead.".into(),
+        ));
+    }
 
     let model = graph.field_model.as_ref();
     held(
@@ -509,7 +520,7 @@ pub fn update_task(
         // A call that turns a task into a milestone and dates it in the same
         // draft would otherwise send `resize_task` for a node the engine is
         // about to treat as zero-duration, and be refused whole.
-        if becomes_milestone {
+        if becomes_milestone || (start == Some("") && finish == Some("")) {
             commands.push(json!({
                 "kind": "move_task",
                 "move_task": { "task_id": task_id, "start": start.or(finish).unwrap_or_default() },
@@ -1066,6 +1077,79 @@ mod tests {
         .expect("valid");
         assert_eq!(kinds, vec!["update_task_fields", "move_task"]);
         assert_eq!(batch.commands[1]["move_task"]["start"], "2026-09-30");
+    }
+
+    #[test]
+    fn unscheduling_clears_a_leaf_or_milestone_with_one_zero_move() {
+        for milestone in [false, true] {
+            let mut g = graph(true);
+            g.tasks.retain(|task| task.id != "m1");
+            if milestone {
+                g.tasks[0].task_type = TaskType::Milestone;
+            }
+            let (batch, kinds) = update_task(
+                &g,
+                &UpdateTask {
+                    task: "t1".into(),
+                    start_date: Some(String::new()),
+                    finish_date: Some(String::new()),
+                    ..Default::default()
+                },
+            )
+            .expect("leaf and milestone can be unscheduled");
+            assert_eq!(batch.project, "p");
+            assert_eq!(batch.base_revision, 4);
+            assert_eq!(kinds, vec!["move_task"]);
+            assert_eq!(
+                batch.commands,
+                vec![json!({
+                    "kind": "move_task", "move_task": {"task_id": "t1", "start": ""}
+                })]
+            );
+        }
+    }
+
+    #[test]
+    fn a_single_explicit_date_clear_preserves_the_omitted_date() {
+        for (start, finish, cleared, omitted) in [
+            (Some(String::new()), None, "start", "finish"),
+            (None, Some(String::new()), "finish", "start"),
+        ] {
+            let (batch, kinds) = update_task(
+                &graph(true),
+                &UpdateTask {
+                    task: "m1".into(),
+                    task_type: Some("task".into()),
+                    start_date: start,
+                    finish_date: finish,
+                    ..Default::default()
+                },
+            )
+            .expect("one date can be cleared");
+            assert_eq!(kinds, vec!["update_task_fields", "resize_task"]);
+            let resize = &batch.commands[1]["resize_task"];
+            assert_eq!(resize[cleared], "");
+            assert!(resize.get(omitted).is_none());
+        }
+    }
+
+    #[test]
+    fn a_summary_or_unauthorized_unschedule_is_refused_before_any_batch() {
+        let clear = UpdateTask {
+            task: "t1".into(),
+            title: Some("Must not commit".into()),
+            start_date: Some(String::new()),
+            finish_date: Some(String::new()),
+            ..Default::default()
+        };
+        assert!(
+            matches!(update_task(&graph(true), &clear), Err(Refusal::InvalidShape(message))
+            if message.contains("summary"))
+        );
+        assert!(matches!(
+            update_task(&graph(false), &clear),
+            Err(Refusal::NotPermitted(_))
+        ));
     }
 
     #[test]
