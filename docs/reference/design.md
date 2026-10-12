@@ -1470,6 +1470,17 @@ occupied targets refuse. Optional `--task` and `--source-record` retain verified
 project work references, without closing tasks or assigning approval. None of
 these commands issues a PM submission.
 
+`design version revision bind --project ID --object TR --file BINDING.json --yes`
+retains an exact immutable revision against an issued PM record or live milestone.
+The closed file names version/revision identities, purpose, catalog/source fences,
+reason and replay key. Submission also requires the issued record's exact update
+time and up to 32 delivered asset version/digest pins; their record association
+and actual storage generations are checked by the server. Changed working content
+refuses issuance and requires a new revision/version first. An issued version
+cannot append changed content; multiple issued records may bind its same exact
+revision. Milestone binding records a milestone without assigning approval.
+A note's typed transformer link alone is not an immutable issuance binding.
+
 `design version import-prepare` reads six layers from an original native
 GeoPackage into a new closed input file, preserving original `fid`, properties
 and coordinate dimensions. It requires exact source record, asset version,

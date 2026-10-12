@@ -217,6 +217,7 @@ pub static DOMAIN: Domain = Domain {
         &version_catalog::REVISION_SHOW,
         &version_catalog::REVISION_PUBLISH,
         &version_catalog::RENUMBER,
+        &version_catalog::REVISION_BIND,
         &versions::STATUS,
         &versions::LIST,
         &versions::SHOW,

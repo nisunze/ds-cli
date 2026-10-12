@@ -168,6 +168,37 @@ pub static RENUMBER: Command = descriptor(
     ],
     Effect::GlobalWrite,
 );
+pub static REVISION_BIND: Command = descriptor(
+    "design.version.revision.bind",
+    &["design", "version", "revision", "bind"],
+    "Bind an exact immutable revision to an issued PM record or milestone (needs --yes).",
+    &[PROJECT, OBJECT, Arg::value("file", "<binding.json>", "Closed binding pins: version_id,revision_id,purpose,record_id/expected_record_revision,milestone_id,assets,expected_catalog_revision,expected_source_revision,reason,idempotency_key. Submission requires issued record and delivered assets; at most 32 asset pins.").required(), LANE],
+    Effect::GlobalWrite,
+);
+pub fn bind(i: &Inputs, _: &Context) -> Result<Value, Failure> {
+    let path = i.require("file")?;
+    let metadata =
+        std::fs::metadata(path).map_err(|e| Failure::invalid("invalid_input", e.to_string()))?;
+    if !metadata.is_file() || metadata.len() > 64 * 1024 {
+        return Err(Failure::invalid(
+            "invalid_input",
+            "binding input must be a bounded regular file",
+        ));
+    }
+    let bytes =
+        std::fs::read(path).map_err(|e| Failure::invalid("invalid_input", e.to_string()))?;
+    let binding =
+        serde_json::from_slice::<ds_command_kernel::design_version_binding::Binding>(&bytes)
+            .map_err(|e| Failure::invalid("invalid_input", e.to_string()))?;
+    ask(
+        i,
+        Request::Bind {
+            object_id: i.require("object")?.into(),
+            binding,
+        },
+    )
+}
+
 fn mutation(i: &Inputs) -> Result<Mutation, Failure> {
     Ok(Mutation {
         task_id: i.value("task").map(str::to_owned),
