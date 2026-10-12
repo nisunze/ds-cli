@@ -18,9 +18,9 @@ use std::process::Command;
 
 use ds_command_kernel::report_export::InputReceipt;
 use ds_report_host::{
-    answer, execute, run_batch, run_transformer_report, transformer_page, BatchSettings,
-    EngineExit, HeldContext, HeldRoom, HeldState, HostFailure, PageRef, PreviewRequest,
-    PreviewSettings, ReportEngine, RunSettings, TransformerReportInputs,
+    execute, run_batch, run_transformer_report, transformer_page, BatchSettings, EngineExit,
+    HeldContext, HeldRoom, HeldState, HostFailure, PreviewRequest, PreviewSettings, ReportEngine,
+    RunSettings, TransformerReportInputs,
 };
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -529,8 +529,24 @@ fn the_command_execution_answers_the_same_page_over_the_synthetic_room() {
     assert_eq!(page.receipt["transformer"], "tr_example_a");
     assert!(page.context_layers.is_empty());
     assert!(page.context_omitted.is_empty());
-    let data = answer("example-project", "stable", &[(&page, PageRef::Inline)]);
-    assert_eq!(data["results"][0]["page"]["svg"], page.page);
+    let room = ds_project_data::preview_room::Room {
+        root: temp.path().join("preview-hold"),
+        scope: ds_command_kernel::project_dataset_cache::Scope {
+            principal: "owner".into(),
+            project: "example-project".into(),
+        },
+        lane: "stable".into(),
+        credential_audience_sha256: "a".repeat(64),
+    };
+    let artifact = ds_report_host::preview_artifact::materialize(&room, &page).unwrap();
+    let data =
+        ds_report_host::answer_artifact("example-project", "stable", &page, &artifact).unwrap();
+    assert_eq!(data["results"][0]["page"]["path"], artifact.path);
+    assert_eq!(
+        ds_report_host::preview_artifact::read(&room, &artifact).unwrap(),
+        page.page.as_bytes()
+    );
+    assert!(data["results"][0]["page"].get("svg").is_none());
     assert_eq!(data["results"][0]["filename"], page.filename);
     assert_eq!(data["preview"]["output_id"], "svg__preview-draft");
     assert_eq!(data["batch"]["completed"], 1);

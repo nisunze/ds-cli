@@ -59,27 +59,6 @@ pub struct MvPreviewAnswer {
     pub sheet: MvPreviewSheet,
 }
 
-impl MvPreviewAnswer {
-    /// The envelope `data` every door answers with.
-    pub fn to_value(&self) -> Value {
-        json!({
-            "project": self.project_id,
-            "layout_id": self.layout_id,
-            "model_revision": self.model_revision,
-            "setup_sha256": self.setup_sha256,
-            "page_count": self.page_count,
-            "full_page_count": self.full_page_count,
-            "sheet": {
-                "source_sheet_number": self.sheet.source_sheet_number,
-                "alignment_id": self.sheet.alignment_id,
-                "from_station_m": self.sheet.from_station_m,
-                "to_station_m": self.sheet.to_station_m,
-                "svg": self.sheet.svg,
-            },
-        })
-    }
-}
-
 /// Why no sheet came back: the kernel's keyed refusal or a host failure.
 #[derive(Debug, Clone, PartialEq)]
 pub enum MvPreviewRefusal {
@@ -352,7 +331,15 @@ mod tests {
             let out = PathBuf::from(request["out_dir"].as_str().unwrap());
             std::fs::create_dir_all(out.join("preview")).unwrap();
             let sheet = out.join("preview").join("sheet-001.svg");
-            std::fs::write(&sheet, "<svg xmlns=\"http://www.w3.org/2000/svg\"/>").unwrap();
+            let svg = if self.mode == "large" {
+                format!(
+                    "<svg xmlns=\"http://www.w3.org/2000/svg\">{}</svg>",
+                    " ".repeat(9 * 1024 * 1024)
+                )
+            } else {
+                "<svg xmlns=\"http://www.w3.org/2000/svg\"/>".into()
+            };
+            std::fs::write(&sheet, svg).unwrap();
             let previews = match self.mode {
                 "escape" => json!([request["scene_path"]]),
                 _ => json!([sheet]),
@@ -512,6 +499,67 @@ mod tests {
         assert_eq!(answer.sheet.alignment_id, "aln-1");
         assert_eq!(answer.sheet.to_station_m, 1650.5);
         assert!(answer.sheet.svg.starts_with("<svg"));
+    }
+
+    #[test]
+    fn an_oversized_mv_svg_uses_a_small_manifest_and_keeps_its_exact_disk_bytes() {
+        let staging = tempfile::tempdir().unwrap();
+        let hold = tempfile::tempdir().unwrap();
+        let engine = FakeEngine {
+            mode: "large",
+            calls: Mutex::new(0),
+        };
+        let layout = layout();
+        let table = table(&layout);
+        let sheets = sheets();
+        let room = ds_project_data::preview_room::Room {
+            root: hold.path().into(),
+            scope: ds_command_kernel::project_dataset_cache::Scope {
+                principal: "owner".into(),
+                project: "template_project".into(),
+            },
+            lane: "canary".into(),
+            credential_audience_sha256: "a".repeat(64),
+        };
+        let inputs = MvPreviewInputs {
+            project_id: "template_project",
+            sheets: &sheets,
+            layout: &layout,
+            table: &table,
+            project_crs: None,
+            model_crs: None,
+            scene: b"{}",
+            plan: b"{}",
+            staging: staging.path(),
+        };
+        let answer = crate::mv_artifact::execute_retained(
+            &engine,
+            &inputs,
+            &room,
+            crate::preview_artifact::Retention::Days7,
+        )
+        .unwrap();
+        assert!(answer.sheet.page.size_bytes > 8 * 1024 * 1024);
+        assert_eq!(
+            answer.sheet.page.retention_ms,
+            crate::preview_artifact::LONG_RETENTION_MS
+        );
+        assert!(serde_json::to_vec(&answer.to_value()).unwrap().len() < 8192);
+        let bytes = crate::preview_artifact::read(&room, &answer.sheet.page).unwrap();
+        assert_eq!(bytes.len() as u64, answer.sheet.page.size_bytes);
+        assert_eq!(
+            ds_command_kernel::report_export::sha256_hex(&bytes),
+            answer.sheet.page.sha256
+        );
+        let repeated = crate::mv_artifact::execute_retained(
+            &engine,
+            &inputs,
+            &room,
+            crate::preview_artifact::Retention::Days7,
+        )
+        .unwrap();
+        assert_eq!(repeated, answer);
+        assert_eq!(*engine.calls.lock().unwrap(), 1);
     }
 
     #[test]

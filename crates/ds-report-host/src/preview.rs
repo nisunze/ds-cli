@@ -888,20 +888,18 @@ pub fn execute_with_styles_retained(
     Ok(page)
 }
 
-/// Where a host put one page: on its filesystem, named by path in the
-/// answer, or nowhere, the SVG text inline — the desktop's web limitation.
+/// The host-admitted file containing one complete native preview page.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PageRef<'a> {
     File(&'a Path),
-    Inline,
 }
 
-/// What `data.preview.note` says: a preview is draft state, not an artifact.
+/// A retained preview artifact is separate from saved publication.
 pub const PREVIEW_NOTE: &str =
-    "a preview is draft state rendered from what this host holds; the delivery is the artifact";
+    "a preview is a retained disk artifact rendered from this host's held inputs; publication is separate";
 
 /// The one `data` member of a successful preview, for both doors: one row
-/// per page with the page by path or inline, the run's diagnostics,
+/// per page with its disk path, the run's diagnostics,
 /// warnings and context summary, the draft's identity under `preview`, and
 /// a completed batch summary. Every page was rendered for the same draft, so
 /// `preview` is read from the first.
@@ -912,7 +910,6 @@ pub fn answer(project: &str, lane: &str, pages: &[(&PreviewPage, PageRef<'_>)]) 
         .map(|(page, placed)| {
             let page_ref = match placed {
                 PageRef::File(path) => json!({ "path": path.to_string_lossy() }),
-                PageRef::Inline => json!({ "svg": page.page }),
             };
             json!({
                 "transformer": page.transformer,
@@ -974,7 +971,8 @@ pub fn execute_artifact_retained(
     retention: crate::preview_artifact::Retention,
 ) -> Result<(PreviewPage, crate::preview_artifact::Artifact), PreviewRefusal> {
     let page = execute_with_styles_retained(engine, settings, request, held, captured, Some(room))?;
-    let artifact = crate::preview_artifact::materialize_retained(room, &page, retention).map_err(PreviewRefusal::Host)?;
+    let artifact = crate::preview_artifact::materialize_retained(room, &page, retention)
+        .map_err(PreviewRefusal::Host)?;
     Ok((page, artifact))
 }
 
@@ -984,12 +982,21 @@ pub fn answer_artifact(
     page: &PreviewPage,
     artifact: &crate::preview_artifact::Artifact,
 ) -> Result<Value, HostFailure> {
-    let mut data = answer(project, lane, &[(page, PageRef::File(Path::new(&artifact.path)))]);
+    let mut data = answer(
+        project,
+        lane,
+        &[(page, PageRef::File(Path::new(&artifact.path)))],
+    );
     data["preview"]["artifact_schema"] = json!(crate::preview_artifact::SCHEMA);
-    data["results"][0]["page"] = serde_json::to_value(artifact).map_err(|e| page_invalid(e.to_string()))?;
+    data["results"][0]["page"] =
+        serde_json::to_value(artifact).map_err(|e| page_invalid(e.to_string()))?;
     // Keep the paired bridge bound independently of the SVG size. The full
     // native diagnostics remain in the disk manifest if reply metadata refuses.
-    if serde_json::to_vec(&data).map_err(|e| page_invalid(e.to_string()))?.len() > 8 * 1024 * 1024 - 1024 {
+    if serde_json::to_vec(&data)
+        .map_err(|e| page_invalid(e.to_string()))?
+        .len()
+        > 8 * 1024 * 1024 - 1024
+    {
         return Err(HostFailure::new("print_preview_metadata_limit", "Preview metadata exceeds the paired 8 MiB bound; read its native disk manifest.")
             .with_detail(json!({"artifact":artifact,"manifest_path":Path::new(&artifact.path).parent().map(|p|p.join("manifest.json"))})));
     }
@@ -1124,7 +1131,11 @@ mod tests {
             recipe["preview"]["survey_forms_omitted"],
             json!(["field_notes", "transformer_survey"])
         );
-        let answer = answer("proj-1", "stable", &[(&page, PageRef::Inline)]);
+        let answer = answer(
+            "proj-1",
+            "stable",
+            &[(&page, PageRef::File(Path::new("/native/preview/page.svg")))],
+        );
         assert_eq!(
             answer["preview"]["survey_forms_omitted"],
             json!(["field_notes", "transformer_survey"])
@@ -1572,10 +1583,16 @@ mod tests {
         assert_eq!(first.page, second.page);
         assert_eq!(engine.calls.load(Ordering::SeqCst), 1);
         let artifact = crate::preview_artifact::materialize(&room, &first).unwrap();
-        assert_eq!(crate::preview_artifact::materialize(&room, &second).unwrap(), artifact);
+        assert_eq!(
+            crate::preview_artifact::materialize(&room, &second).unwrap(),
+            artifact
+        );
         let result = answer_artifact("proj-1", "canary", &second, &artifact).unwrap();
         assert!(result["results"][0]["page"].get("svg").is_none());
-        assert_eq!(crate::preview_artifact::read(&room, &artifact).unwrap(), first.page.as_bytes());
+        assert_eq!(
+            crate::preview_artifact::read(&room, &artifact).unwrap(),
+            first.page.as_bytes()
+        );
         assert_eq!(engine.calls.load(Ordering::SeqCst), 1);
         let mut changed = request.clone();
         changed.layout.name = "Changed draft".into();
@@ -1927,17 +1944,19 @@ mod tests {
         )
         .unwrap();
 
-        let inline = answer("proj-1", "stable", &[(&page, PageRef::Inline)]);
+        let placed = temp.path().join("tx_a.draft-a3.svg");
+        crate::write_new_private(&placed, page.page.as_bytes()).unwrap();
+        let by_path = answer("proj-1", "stable", &[(&page, PageRef::File(&placed))]);
         let keys =
             |value: &Value| -> Vec<String> { value.as_object().unwrap().keys().cloned().collect() };
         assert_eq!(
-            keys(&inline),
+            keys(&by_path),
             ["lane", "project", "preview", "results", "batch"]
         );
-        assert_eq!(inline["lane"], "stable");
-        assert_eq!(inline["project"], "proj-1");
+        assert_eq!(by_path["lane"], "stable");
+        assert_eq!(by_path["project"], "proj-1");
         assert_eq!(
-            keys(&inline["preview"]),
+            keys(&by_path["preview"]),
             [
                 "layout_id",
                 "layout_sha256",
@@ -1947,17 +1966,17 @@ mod tests {
                 "survey_forms_omitted"
             ]
         );
-        assert_eq!(inline["preview"]["survey_forms_omitted"], json!([]));
-        assert_eq!(inline["preview"]["layout_id"], "draft-a3");
-        assert_eq!(inline["preview"]["layout_sha256"], page.layout_sha256);
-        assert_eq!(inline["preview"]["output_id"], "svg__draft-a3");
-        assert_eq!(inline["preview"]["format"], "svg");
-        assert_eq!(inline["preview"]["note"], PREVIEW_NOTE);
+        assert_eq!(by_path["preview"]["survey_forms_omitted"], json!([]));
+        assert_eq!(by_path["preview"]["layout_id"], "draft-a3");
+        assert_eq!(by_path["preview"]["layout_sha256"], page.layout_sha256);
+        assert_eq!(by_path["preview"]["output_id"], "svg__draft-a3");
+        assert_eq!(by_path["preview"]["format"], "svg");
+        assert_eq!(by_path["preview"]["note"], PREVIEW_NOTE);
         assert_eq!(
-            inline["batch"],
+            by_path["batch"],
             json!({"status": "completed", "requested_count": 1, "completed": 1, "failed": 0})
         );
-        let row = &inline["results"][0];
+        let row = &by_path["results"][0];
         assert_eq!(
             keys(row),
             [
@@ -1979,7 +1998,8 @@ mod tests {
         assert_eq!(row["transformer"], "tx_a");
         assert_eq!(row["server_version"], 7);
         assert_eq!(row["status"], "completed");
-        assert_eq!(row["page"], json!({"svg": page.page}));
+        assert_eq!(row["page"], json!({"path": placed.to_string_lossy()}));
+        assert!(!serde_json::to_string(&by_path).unwrap().contains("<svg"));
         assert_eq!(row["filename"], "tx_a.draft-a3.svg");
         assert_eq!(row["sha256"], page.sha256);
         assert_eq!(row["size_bytes"], page.size_bytes);
@@ -2002,30 +2022,12 @@ mod tests {
                 ],
             })
         );
-        let success = envelope::success(COMMAND_ID, CONTRACT, inline);
+        let success = envelope::success(COMMAND_ID, CONTRACT, by_path);
         assert_eq!(
             keys(&success),
             ["v", "command", "contract", "status", "data"]
         );
         assert_eq!(success["status"], "ok");
-
-        // The CLI names the page it placed; every other member is the same.
-        let placed = temp.path().join("out/tx_a/tx_a.draft-a3.svg");
-        let by_path = answer("proj-1", "stable", &[(&page, PageRef::File(&placed))]);
-        assert_eq!(
-            by_path["results"][0]["page"],
-            json!({"path": placed.to_string_lossy()})
-        );
-        let mut same = by_path.clone();
-        same["results"][0]["page"] = json!({"svg": page.page});
-        assert_eq!(
-            same,
-            envelope::success(COMMAND_ID, CONTRACT, same.clone())["data"]
-        );
-        assert_eq!(
-            same,
-            answer("proj-1", "stable", &[(&page, PageRef::Inline)])
-        );
     }
 
     #[test]
