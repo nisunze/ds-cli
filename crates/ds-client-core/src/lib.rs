@@ -46,11 +46,13 @@ pub use solar_snapshot::{HeldSessionSnapshotRead, SolarMediaDownloadCall};
 mod status_processing;
 mod styles;
 mod survey_delete;
+mod survey_update;
 mod survey_entries_changes;
 pub mod survey_entries_read;
 mod survey_entries_select;
 mod survey_entry_create;
 pub use survey_delete::{SurveyDeleteCall, SurveyDeleteRequest};
+pub use survey_update::{SurveyUpdateCall, SurveyUpdateRequest};
 mod survey_form_read;
 pub use survey_entries_read::{
     SurveyEntriesRead, SurveyEntriesReadRequest, SurveyEntry, SurveyEntryMedia,

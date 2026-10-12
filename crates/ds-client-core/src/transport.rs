@@ -1396,23 +1396,36 @@ pub struct DesignVersionsCall<'a> {
 }
 
 impl DesignVersionsCall<'_> {
+    // Only the closed kernel history-import command constructs this action.
+    // Every other version operation retains its existing metadata-only route.
+    fn import_route(&self) -> Option<&'static crate::GatewayOperation> {
+        (self.payload["action"] == "import_transformer_version").then(|| {
+            crate::gateway_operation("domains.design_versions.import")
+                .expect("generated immutable history import route")
+        })
+    }
     pub fn gateway_origin(&self) -> &str {
         self.profile.gateway_origin()
     }
     pub fn path(&self) -> String {
-        crate::profile::DESIGN_VERSIONS_PATH.into()
+        self.import_route()
+            .map_or(crate::profile::DESIGN_VERSIONS_PATH, |route| route.path)
+            .into()
     }
     pub fn method(&self) -> &'static str {
-        crate::profile::DESIGN_VERSIONS_METHOD
+        self.import_route()
+            .map_or(crate::profile::DESIGN_VERSIONS_METHOD, |route| route.method)
     }
     pub const fn content_type(&self) -> &'static str {
         "application/json"
     }
-    pub const fn response_limit(&self) -> usize {
-        64 * 1024 * 1024
+    pub fn response_limit(&self) -> usize {
+        self.import_route()
+            .map_or(64 * 1024 * 1024, |route| route.response_cap_bytes as usize)
     }
-    pub const fn timeout_seconds(&self) -> u64 {
-        TILE_TIMEOUT_SECONDS
+    pub fn timeout_seconds(&self) -> u64 {
+        self.import_route()
+            .map_or(TILE_TIMEOUT_SECONDS, |route| u64::from(route.timeout_s))
     }
     pub const fn correlation_headers(&self) -> [&'static str; 2] {
         CORRELATION_HEADERS
@@ -3229,6 +3242,12 @@ pub trait Transport {
     ) -> Result<TransportResponse, TransportError> {
         Err(TransportError::Unreachable)
     }
+    fn survey_update(
+        &mut self,
+        _call: crate::SurveyUpdateCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        Err(TransportError::Unreachable)
+    }
     fn survey_entry_create(
         &mut self,
         call: SurveyEntryCreateCall<'_>,
@@ -3589,6 +3608,12 @@ pub trait AuthorizedTransport {
     ) -> Result<TransportResponse, TransportError> {
         Err(TransportError::Unreachable)
     }
+    fn survey_update(
+        &mut self,
+        _call: crate::SurveyUpdateCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        Err(TransportError::Unreachable)
+    }
     fn survey_entry_create(
         &mut self,
         call: SurveyEntryCreateCall<'_>,
@@ -3944,6 +3969,12 @@ impl<T: Transport> AuthorizedTransport for T {
         call: crate::SurveyDeleteCall<'_>,
     ) -> Result<TransportResponse, TransportError> {
         Transport::survey_delete(self, call)
+    }
+    fn survey_update(
+        &mut self,
+        call: crate::SurveyUpdateCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        Transport::survey_update(self, call)
     }
     fn survey_entry_create(
         &mut self,

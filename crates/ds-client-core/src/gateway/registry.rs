@@ -18,7 +18,7 @@ pub const SCHEMA_VERSION: &str = "ds-web.gateway-registry/v1";
 
 /// sha256 of the exact `routing/operations.json` bytes these rows came from.
 pub const DESCRIPTOR_SHA256: &str =
-    "834185d396ad641cb5b793a601e7a8d32cd3b821165510f791472a9b9de3e93e";
+    "0ab8014bdccc05b25af11b934be0d840df73e0d7140db48c041347e8b64591a0";
 
 /// Every declared operation that has a gateway route, sorted by id.
 pub const OPERATIONS: &[GatewayOperation] = &[
@@ -474,6 +474,25 @@ pub const OPERATIONS: &[GatewayOperation] = &[
         retry_class: "none",
         timeout_s: 30,
         response_cap_bytes: 1048576,
+        resolution_web: "gateway",
+        resolution_desktop: "gateway",
+        native_command: "",
+    },
+    GatewayOperation {
+        id: "domains.design_versions.import",
+        method: "POST",
+        path: "/bulk/api/v1/data",
+        path_params: &[],
+        action_key: "action",
+        actions: &["import_transformer_version"],
+        transport: "json",
+        authority: "gateway",
+        principal: "user",
+        lane_header: false,
+        idempotency: "idempotent_with_key",
+        retry_class: "none",
+        timeout_s: 120,
+        response_cap_bytes: 67108864,
         resolution_web: "gateway",
         resolution_desktop: "gateway",
         native_command: "",
@@ -1324,6 +1343,25 @@ pub const OPERATIONS: &[GatewayOperation] = &[
         path_params: &[],
         action_key: "operation",
         actions: &["delete"],
+        transport: "json",
+        authority: "gateway",
+        principal: "user",
+        lane_header: false,
+        idempotency: "idempotent_with_key",
+        retry_class: "none",
+        timeout_s: 120,
+        response_cap_bytes: 65536,
+        resolution_web: "gateway",
+        resolution_desktop: "gateway",
+        native_command: "",
+    },
+    GatewayOperation {
+        id: "domains.survey_entries.update",
+        method: "PUT",
+        path: "/api/v1/entries/mutate",
+        path_params: &[],
+        action_key: "operation",
+        actions: &["update"],
         transport: "json",
         authority: "gateway",
         principal: "user",

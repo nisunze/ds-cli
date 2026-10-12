@@ -1158,9 +1158,38 @@
         }
       }
     },
+    "design_versions": {
+      "summary": "Explicit immutable transformer history import through the bulk authority.",
+      "operations": {
+        "import": {
+          "summary": "Import one bounded historical transformer snapshot without changing its live head.",
+          "transport": "json",
+          "action_key": "action",
+          "actions": ["import_transformer_version"],
+          "idempotency": "idempotent_with_key",
+          "retry_class": "none",
+          "timeout_s": 120,
+          "response_cap_bytes": 67108864,
+          "gateway": { "method": "POST", "path": "/bulk/api/v1/data", "backend": "ds_brain_bulk_url" },
+          "resolution": { "web": "gateway", "desktop": "gateway" }
+        }
+      }
+    },
     "survey_entries": {
       "summary": "Governed Survey entry mutations with bounded acknowledgements.",
       "operations": {
+        "update": {
+          "summary": "Correct declared data fields of one existing Survey entry with a version fence.",
+          "transport": "json",
+          "action_key": "operation",
+          "actions": ["update"],
+          "idempotency": "idempotent_with_key",
+          "retry_class": "none",
+          "timeout_s": 120,
+          "response_cap_bytes": 65536,
+          "gateway": { "method": "PUT", "path": "/api/v1/entries/mutate", "backend": "ds_brain_url" },
+          "resolution": { "web": "gateway", "desktop": "gateway" }
+        },
         "delete": {
           "summary": "Soft-delete one exact survey entry with an explicit replay key.",
           "transport": "json",

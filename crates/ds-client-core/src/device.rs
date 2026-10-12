@@ -1300,6 +1300,24 @@ impl DeviceApiAuthorization<'_> {
         crate::survey_delete::run(self.profile, transport, self.authority(), project, request)
     }
 
+    pub fn survey_update<T: AuthorizedTransport>(
+        &self,
+        transport: &mut T,
+        project: &str,
+        request: &crate::SurveyUpdateRequest,
+        now: u64,
+    ) -> Result<serde_json::Value, ClientError> {
+        if request.project() != project {
+            return Err(ClientError::new(
+                ErrorKind::InvalidInput,
+                "Survey update project mismatch",
+            ));
+        }
+        crate::authorized::validate_survey_entry_create(project)?;
+        self.ensure_active(now)?;
+        crate::survey_update::run(self.profile, transport, self.authority(), project, request)
+    }
+
     pub fn survey_entry_create<T: AuthorizedTransport>(
         &self,
         transport: &mut T,
