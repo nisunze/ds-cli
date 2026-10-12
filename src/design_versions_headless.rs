@@ -156,8 +156,7 @@ fn identifier(s: &str) -> bool {
         && !s.chars().any(|c| c.is_control() || matches!(c, '/' | '\\'))
 }
 fn version(s: &str) -> bool {
-    s.starts_with('v')
-        && crate::design_versions::valid_target(s)
+    (s == "v0" || (s.starts_with('v') && crate::design_versions::valid_target(s)))
         && s[1..].parse::<u64>().is_ok_and(|n| n <= i64::MAX as u64)
 }
 
@@ -205,6 +204,37 @@ fn fence(kind: &str, expected: Option<&str>) -> Result<(), String> {
             "expected source must be the reviewed MV head revision id or - for no head; LV takes the transformer's RFC3339 update time",
         ))
     }
+}
+fn created_record(row: &Value, create: &Create) -> Result<(), String> {
+    let matches_source = |expected: &str| match row["object"]["kind"].as_str() {
+        Some("lv_transformer") => {
+            let instant = |value: &str| {
+                time::OffsetDateTime::parse(value, &time::format_description::well_known::Rfc3339)
+                    .ok()
+            };
+            instant(expected)
+                .zip(row["source_update_time"].as_str().and_then(instant))
+                .is_some_and(|(expected, actual)| expected == actual)
+        }
+        Some("mv_model") if expected == NO_SOURCE_FENCE => {
+            row["content_pinned"] == false
+                && row["source_revision"].as_str().is_none_or(str::is_empty)
+        }
+        Some("mv_model") => row["source_revision"] == expected,
+        _ => false,
+    };
+    if create
+        .expected_source
+        .as_deref()
+        .is_some_and(|expected| !matches_source(expected))
+        || create
+            .milestone
+            .as_deref()
+            .is_some_and(|milestone| row["milestone"] != milestone)
+    {
+        return Err("created version differs from the requested source fence or milestone".into());
+    }
+    Ok(())
 }
 fn selection<'a>(objects: impl Iterator<Item = &'a ObjectRef>) -> Result<usize, String> {
     let mut seen = std::collections::BTreeSet::new();
@@ -359,6 +389,7 @@ fn record(
         || value["object"]["kind"] != kind
         || value["object"]["id"] != transformer
         || !version(id)
+        || (id == "v0" && !crate::design_version_catalog::baseline_evidence(value))
         || value["version"].as_u64() != Some(ordinal(id))
         || expected.is_some_and(|s| s != id)
     {
@@ -449,6 +480,10 @@ pub fn authority_command(input: &[u8]) -> Result<Value, String> {
                         reason: reason.into(),
                         idempotency_key: key.into(),
                         milestone: milestone.clone(),
+                        expected_source: request
+                            .get("expected_source_update_time")
+                            .and_then(Value::as_str)
+                            .map(str::to_owned),
                         ..Create::default()
                     },
                 }
@@ -677,6 +712,7 @@ pub fn run<S: Source>(
                 .create(project, transformer, create)
                 .map_err(Error::Source)?;
             record(&data["version"], project, transformer, None, kind)?;
+            created_record(&data["version"], create)?;
             Ok(json!({
                 "project": project,
                 "transformer": transformer,
@@ -835,6 +871,17 @@ fn batch_receipt(project: &str, items: &[BatchItem], data: &Value) -> Result<Val
                     None,
                     &item.object.kind,
                 )?;
+                created_record(
+                    &result["version"],
+                    &Create {
+                        reason: String::new(),
+                        milestone: item.milestone.clone(),
+                        expected_source: (item.object.kind == "lv_transformer")
+                            .then(|| item.expected_source_revision.clone())
+                            .flatten(),
+                        idempotency_key: item.idempotency_key.clone(),
+                    },
+                )?;
                 ok += 1;
             }
             Some(false) => {}
@@ -929,7 +976,7 @@ mod tests {
         }
         .validate("p")
         .is_ok());
-        for id in ["v0", "v01", "v-1", "local-abc", "v18446744073709551615"] {
+        for id in ["v01", "v-1", "local-abc", "v18446744073709551615"] {
             assert!(!version(id));
         }
         let row = json!({"project_id":"p","object":{"kind":"lv_transformer","id":"tr"},"version_id":"v1","version":1});
@@ -1176,5 +1223,39 @@ mod tests {
         answer["response"]["data"]["version"]["source_revision"] = json!("r1");
         answer["response"]["data"]["version"]["milestone"] = json!("Dropped");
         assert!(authority_command(&serde_json::to_vec(&answer).unwrap()).is_err());
+    }
+    #[test]
+    fn v0_is_visible_only_as_a_proven_source_pinned_baseline() {
+        let mut row = json!({"project_id":"p","object":{"kind":"lv_transformer","id":"TR-1"},"version_id":"v0","version":0});
+        assert!(record(&row, "p", "TR-1", Some("v0"), "lv_transformer").is_err());
+        row["source_mode"] = json!("source_pinned_import");
+        row["snapshot_scope"] = json!("exported_design");
+        row["source"] = json!({"record_id":"R-1","asset_id":"a_source","asset_version":3,"archive_member":"GEOPACKAGE/TR-1.gpkg","historical_period":"April 2026","asset_sha256":"a".repeat(64),"member_sha256":"b".repeat(64),"imported_layers_sha256":"c".repeat(64)});
+        assert!(record(&row, "p", "TR-1", Some("v0"), "lv_transformer").is_ok());
+        row["source"]["member_sha256"] = json!("bad");
+        assert!(record(&row, "p", "TR-1", Some("v0"), "lv_transformer").is_err());
+        assert!(!version("v00"));
+    }
+
+    #[test]
+    fn legacy_source_acknowledgement_uses_the_actual_per_kind_wire() {
+        let create = Create {
+            reason: "Reviewed source".into(),
+            expected_source: Some("2026-10-12T12:00:00Z".into()),
+            milestone: Some("Issue".into()),
+            idempotency_key: "k1".into(),
+        };
+        let mut row = json!({"object":{"kind":"lv_transformer"},"source_revision":"1791806400000000","source_update_time":"2026-10-12T14:00:00+02:00","milestone":"Issue"});
+        assert!(created_record(&row, &create).is_ok());
+        row["source_update_time"] = json!("2026-10-12T12:00:01Z");
+        assert!(created_record(&row, &create).is_err());
+        let mv = Create {
+            expected_source: Some("-".into()),
+            ..create
+        };
+        row = json!({"object":{"kind":"mv_model"},"source_revision":"","content_pinned":false,"milestone":"Issue"});
+        assert!(created_record(&row, &mv).is_ok());
+        row["content_pinned"] = json!(true);
+        assert!(created_record(&row, &mv).is_err());
     }
 }
