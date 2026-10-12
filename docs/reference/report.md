@@ -943,8 +943,8 @@ format a template may later be delivered in. The template's pens
 (`style_overrides`, edited through `report layout pens` or the `pen_edit` /
 `set_style_override` ops of `report layout edit`) print exactly as they will
 in the delivery, through the same engine, workbook schedules and context.
-A preview is draft state, not an artifact: the delivery is the artifact. It
-is executed once, in `ds-report-host` (`preview::execute`), for both doors —
+A preview is a retained disk artifact; publication is a separate operation. It
+is executed in `ds-report-host` (`preview::execute_artifact_retained`), for both doors —
 this command and the desktop Printing setup, which obtains the same page
 through the same command id via the desktop door and paints it over its
 Canvas2D sheet. The engine runs over the room this command admits from the
@@ -959,7 +959,7 @@ What it writes, per transformer in scope: `<out-dir>/<transformer>/
 `local_print_recipe.preview` says it was a preview); there is no batch
 receipt. `.data.preview` names `layout_id`, `layout_sha256` and the
 `output_id` (`svg__<id>`); `.data.results[]` carries one row per page —
-`page.path`, `filename`, `sha256`, `engine`, `elapsed_ms`, `warnings`,
+the managed `ds.print-preview-artifact/v1` receipt in `page`, `filename`, `sha256`, `engine`, `elapsed_ms`, `warnings`,
 `print_diagnostics` and `print_context` (`sha256`, `layers`, and `omitted`
 as `{layer, reason}` rows keyed by the draft's context layer ids) — and
 `.data.batch` counts the pages; `lane`, `project`, `scope`, `out_dir` and
@@ -1167,11 +1167,16 @@ components unchanged alongside the assembled booklet.
 before it is adopted. The kernel resolves that layout as the selection under
 the project's own issue identity (its fixed version and date) and governed
 styles, and the shared report host renders one `preview_only` sample sheet.
-The answer carries that sheet's SVG, station window, pinned model revision,
-setup digest and the full sheet count. Nothing is written or selected, and the
-run's private files are removed. Model-specific preserved pages need an
+Contract 5 returns `ds.mv-preview-artifacts/v1`: a native SVG file receipt,
+station window, pinned model revision, setup digest and full sheet count. The
+ordered `pages` inventory and `progress` describe the single sample actually
+rendered. SVG bytes remain on disk and never appear inline. Native cache reuse
+preserves exact source, layout, style, authority and engine fences. Retention
+defaults to 24 hours; `--preview-retention 7d` chooses seven days. The preview
+saves its scoped artifact while preserving model, layout, selection and
+publication. Private staging is removed. Model-specific preserved pages need an
 adopted setup and a print. A metric-grid project needs `--model-crs`. Desktop
-previews the same request through its window.
+previews the same request and reads the admitted file through its native host.
 
 `report plan-profile --alignment <id>` selects exact `alignment_id` band IDs
 from the held `--scene`; repeat the flag for multiple bands (1..256 IDs).

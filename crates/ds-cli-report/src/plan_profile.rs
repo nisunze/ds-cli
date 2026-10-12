@@ -19,9 +19,9 @@ use crate::{DS_REPORT, EXPORT_TIMEOUT};
 pub static COMMAND: Command = Command {
     id: "report.plan-profile",
     path: &["report", "plan-profile"],
-    contract: 4,
+    contract: 5,
     summary: "Render DS Grid plan/profile sheets from a pinned scene and plan.",
-    purpose: "Resolve the named project canonical MV setup from its exact adopted printing-library revision, then render same-revision engine projections and approved front matter into one local PDF. Repeat --alignment for exact scene band IDs, or omit it for every alignment. Title, party logos, page order, scales, fonts and fixed publication version/date come only from that setup. Allowed model identity/title differences are explicit. Missing configuration or held approved assets refuses before output. Use report layout copy and report project mv-setup set to adopt and select; no print data is mutated by this command. --request alone renders a complete engine print request, such as a fixture booklet, with no project read. --preview-layout shows one sample sheet of a saved or draft MV layout before adoption, under the project's issue identity and styles; nothing is written.",
+    purpose: "Resolve the named project's adopted MV setup and render same-revision projections into its ordered local publication. Exact alignment IDs narrow scope; omitting them prints all. Text, logos, scales, fonts and issue policy inherit that setup; allowed model differences are explicit. Missing inputs refuse before output. --request alone runs a complete native request without project reads. --preview-layout renders a saved or draft template sample into the scoped native disk cache, with exact input/style/engine fences and 24h or 7d retention. Responses contain file receipts and station metadata, never inline SVG. No model, layout, selection or publication is saved by a template preview.",
     chapter: Chapter::Reports,
     effect: Effect::LocalFileWrite,
     authority: Authority::HeadlessProject,
@@ -35,8 +35,14 @@ pub static COMMAND: Command = Command {
         Arg::value(
             "preview-layout",
             "<json-file>",
-            "Saved or draft MV printing layout to preview on one sample sheet of --scene/--plan; needs --project, writes nothing.",
+            "Saved or draft MV layout sample from --scene/--plan; requires --project, returns a disk receipt.",
         ),
+        Arg::value(
+            "preview-retention",
+            "<24h|7d>",
+            "SVG cache lifetime; requires --preview-layout, default 24h.",
+        )
+        .choices(&["24h", "7d"]),
         Arg::switch(
             "preview-only",
             "Produce the complete ordered PNG preview set and layout plan before assembling a PDF.",
@@ -114,13 +120,13 @@ pub static COMMAND: Command = Command {
         ),
         Arg::value("result", "<path>", "Fresh reporter receipt path."),
     ],
-    output: "Exact model revision, layout plan digest, ordered PNG paths and raster hashes including front matter; PDF path/digest unless preview-only; source and approved component digests.",
+    output: "Exact revision, ordered file paths/digests and station windows. Template previews return ds.mv-preview-artifacts/v1 with native SVG receipts and progress; publication includes its layout plan and optional PDF.",
     examples: &[Example {
         command: "ds report plan-profile --project gisagara --scene /project/profile.json --plan /project/plan.json --alignment al-main --out-dir /project/gisagara-sheets --output json",
         note: "Render the adopted publication for one alignment from held engine projections.",
         runnable: false,
     }],
-    refusals: &crate::project::joined::<{ crate::project::NATIVE_READ_REFUSALS.len() + 18 }>(&[
+    refusals: &crate::project::joined::<{ crate::project::NATIVE_READ_REFUSALS.len() + 20 }>(&[
         crate::project::NATIVE_READ_REFUSALS,
         &[
             REQUEST_MODE_REFUSAL,
@@ -128,6 +134,16 @@ pub static COMMAND: Command = Command {
             crate::project::export::INPUTS_INVALID,
             crate::project::export::STAGING_FAILED,
             crate::project::export::RESULT_INVALID,
+            Refusal {
+                code: "print_preview_artifact_unavailable",
+                when: "the exact native preview file or manifest is unavailable",
+                remedy: "request the same preview again; repair its scoped native cache if it persists",
+            },
+            Refusal {
+                code: "print_preview_artifact_expired",
+                when: "the admitted preview receipt has expired",
+                remedy: "request its exact preview again",
+            },
             PRINT_REQUEST_REFUSAL,
             crate::project::mv_setup::REFUSAL,
             crate::project::mv_setup::STYLE_REFUSAL,
@@ -228,6 +244,7 @@ const PROJECT_MODE_INPUTS: &[&str] = &[
     "context-pages",
     "model-crs",
     "sample-pages",
+    "preview-retention",
 ];
 
 fn mode_invalid(message: String) -> Failure {
@@ -241,6 +258,11 @@ fn print_request_invalid(message: String) -> Failure {
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     if let Some(layout) = inputs.value("preview-layout") {
         return run_template_preview(inputs, layout);
+    }
+    if inputs.value("preview-retention").is_some() {
+        return Err(mode_invalid(
+            "--preview-retention requires --preview-layout".into(),
+        ));
     }
     match inputs.value("request") {
         Some(request) => run_request(inputs, PathBuf::from(request)),
@@ -301,9 +323,10 @@ fn run_request(inputs: &Inputs, request: PathBuf) -> Result<Value, Failure> {
 
 /// Preview one saved or draft MV layout on a single sample sheet of held
 /// projections, under the project's issue identity and governed styles. The
-/// shared report host stages, renders and removes the run; nothing is kept.
+/// shared report host stages and renders; only its scoped disk artifact is kept.
 fn run_template_preview(inputs: &Inputs, layout_path: &str) -> Result<Value, Failure> {
-    use ds_report_host::mv_preview::{self, MvPreviewInputs, MvPreviewRefusal};
+    use ds_report_host::mv_preview::{MvPreviewInputs, MvPreviewRefusal};
+    use ds_report_host::{mv_artifact, preview_artifact::Retention};
     let mut mixed: Vec<&str> = [
         "request",
         "out-dir",
@@ -352,12 +375,14 @@ fn run_template_preview(inputs: &Inputs, layout_path: &str) -> Result<Value, Fai
     let mut projections = Vec::new();
     for name in ["scene", "plan"] {
         let path = required(name)?;
-        projections.push(read(path, mv_preview::MAX_PROJECTION_BYTES).ok_or_else(|| {
-            Failure::invalid(
-                "projection_missing",
-                format!("{name} file is missing, empty or oversized: {path}"),
-            )
-        })?);
+        projections.push(
+            read(path, ds_report_host::mv_preview::MAX_PROJECTION_BYTES).ok_or_else(|| {
+                Failure::invalid(
+                    "projection_missing",
+                    format!("{name} file is missing, empty or oversized: {path}"),
+                )
+            })?,
+        );
     }
     let layout: ds_command_kernel::printing::Layout =
         read(layout_path, ds_command_kernel::printing::MAX_LAYOUT_BYTES)
@@ -404,7 +429,12 @@ fn run_template_preview(inputs: &Inputs, layout_path: &str) -> Result<Value, Fai
         )
         .remedy(crate::project::export::STAGING_FAILED.remedy)
     })?;
-    let answer = mv_preview::execute_retained(
+    let retention = match inputs.value("preview-retention") {
+        None | Some("24h") => Retention::Hours24,
+        Some("7d") => Retention::Days7,
+        Some(_) => return Err(mode_invalid("preview retention must be 24h or 7d".into())),
+    };
+    let answer = mv_artifact::execute_retained(
         &crate::project::export::CliEngine,
         &MvPreviewInputs {
             project_id: project,
@@ -417,7 +447,8 @@ fn run_template_preview(inputs: &Inputs, layout_path: &str) -> Result<Value, Fai
             plan: &projections[1],
             staging: staging.path(),
         },
-        Some(&result_room),
+        &result_room,
+        retention,
     )
     .map_err(|refusal| match refusal {
         MvPreviewRefusal::Kernel(error) => crate::project::mv_setup::failure(error),
@@ -674,6 +705,7 @@ mod tests {
             &["--request", path, "--project", "fixture"][..],
             &["--request", path, "--alignment", "al-1"],
             &["--request", path, "--preview-only"],
+            &["--request", path, "--preview-retention", "7d"],
             &["--scene", path, "--plan", path, "--out-dir", "/x"],
         ] {
             assert_eq!(refusal(mixed), "request_mode_invalid", "{mixed:?}");
@@ -700,6 +732,26 @@ mod tests {
             "output_exists"
         );
         assert!(!dir.path().join("fresh").exists());
+    }
+
+    #[test]
+    fn native_disk_preview_contract_admits_only_explicit_retention_choices() {
+        assert_eq!(COMMAND.contract, 5);
+        let tokens = |retention: &str| {
+            [
+                "--preview-layout",
+                "draft.json",
+                "--preview-retention",
+                retention,
+            ]
+            .map(str::to_owned)
+        };
+        for retention in ["24h", "7d"] {
+            let parsed = ds_cli_contract::args::parse(&COMMAND, &tokens(retention)).unwrap();
+            assert_eq!(parsed.value("preview-retention"), Some(retention));
+        }
+        assert!(ds_cli_contract::args::parse(&COMMAND, &tokens("forever")).is_err());
+        assert!(COMMAND.output.contains("ds.mv-preview-artifacts/v1"));
     }
 
     #[test]
