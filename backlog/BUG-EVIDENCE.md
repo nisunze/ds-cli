@@ -5,11 +5,66 @@ An agent assigned only to review works read-only; write only this file and
 [STABILIZATION.md](STABILIZATION.md). No feedback submissions, project
 mutations, publication, source edits or competing builds from reviewers.
 The coding agent independently confirms findings and owns proof and landing.
-The owner is assigning the Profile implementation to Opus manually; Codex
-will return to validate and refine it. Preserve Claude's separate template work.
-Request the next bounded review before finishing the current coding slice.
+Owner update, 2026-10-12: Codex owns the immediate printing fast path; Claude
+is unavailable. Preserve unrelated held edits. Use bounded independent Codex
+proofs and installed CLI/MCP evidence, not another review campaign.
 The coding agent re-reads both files between slices and incorporates new
 evidence; reviewers mark a request claimed here to avoid duplicate work.
+
+## Immediate printing fast path (owner, 2026-10-12)
+
+Work from [STABILIZATION.md](STABILIZATION.md#immediate-printing-fast-path-owner-2026-10-12).
+These are live owner reports, not completed fixes. Delete each evidence entry
+when its actual acceptance passes; delete this file only when no unresolved
+evidence remains. Composition stays in the CLI; the Desktop lists and previews
+the governed catalogue. Run all supported printing preview pages through the
+live Linux Desktop's admitted `ds` controls and retain timings, errors and exact
+source/project/revision fences in owning test or output receipts. Do not claim
+Windows acceptance from Linux proof.
+
+1. **Cloud compute selected for local context.** Deployed Windows reports
+   `Building footprints: downstream https://ds-network-reporter-bulk-rjnfdov67a-ue.a.run.app/v1/buildings/fetch returned 404`
+   and `Elevation contours · 10 m / 50 m: downstream https://ds-network-reporter-bulk-rjnfdov67a-ue.a.run.app/v1/contours/fetch returned 404`.
+   Source tracing confirms `ds-project-data::datasets`, CLI `CliProvider`,
+   `project-data/buildings.ts` and `reports/transformer-print-context.ts` invoke
+   Brain `query_print_context`, whose `tile_orchestrator.go` selects Reporter
+   bulk. This is the current default, not proved local compute. Use retained
+   project inputs and a shared native local provider; missing local inputs name
+   acquisition needs without remote-compute fallback. Prove actual local output
+   and zero Brain/Reporter compute calls, warm/offline reuse and unused-input
+   negative cases. Preserve source identity, authored contour parameters and
+   datum; do not substitute a different footprint provider silently.
+2. **Template library repeatedly loads from the API.** Owner sees
+   `Loading templates… Choose one from the library, or create a layout with its own paper, orientation, and title block.`
+   `PrintingSetup.svelte` remounts invoke native `printing_reads` without a
+   retained read cache. Retain and coalesce the governed catalogue per captured
+   authority/project; updates invalidate, consumers resolve, explicit Refresh
+   acquires. Prove warm concurrent remount read counts, unused invalidation,
+   offline use and project/account isolation.
+3. **Preview blocks navigation, loses reusable work and repeats data reads.**
+   Owner prefers native backend jobs to continue while navigating away. The
+   supplied screenshot shows Printing setup's A0 transformer preview and LV,
+   MV and overview groups. General `busy` disables the entire setup fieldset;
+   view destruction discards preview adoption. Retain jobs/results under exact
+   subject/layout/input fences, keep navigation available, and reuse the shared
+   transformer/MV holdings for every consuming page. Prove navigation during
+   work, safe return/adoption, stale result refusal and counted shared reads.
+4. **MV pagination refuses the owner's preview.** Exact report:
+   `DsRefused: the MV plan and profile preview did not render: Network Reporter plan and profile preview failed: alignment aln-0c77f3e8a31d74e9-38: no plan-feasible continuation path within 558 m per sheet; increase the horizontal scale denominator or inspect route bends and long spans`.
+   Reproduce `grid_plan_profile::station_page_windows` on the captured request,
+   trace plan feasibility and fix the demonstrated defect without silently
+   changing authored scale or geometry. Prove valid continuation, long-span and
+   bend negatives, complete page coverage, readable preview and actual timing.
+5. **Front Matter has no clear preview section.** Owner requests MV and
+   applicable LV front matter grouped and previewable from the governed
+   catalogue, leaving composition in the CLI. Reuse native subject/category
+   facts and preview contracts; prove discovery, grouping and rendered pages.
+6. **Analysis response lacks its transport digest.** Exact report:
+   `DesktopBoundaryError: analysis response is missing its SHA-256 header`.
+   Trace the producing native/binary boundary and all preview callers. Emit and
+   verify the exact response bytes' declared digest; preserve mismatch/tamper
+   refusals. Prove real native response handling and every supported Linux
+   preview page, including subject changes and navigation while rendering.
 
 ## Queued next: characterized NUM 15 normalization
 
