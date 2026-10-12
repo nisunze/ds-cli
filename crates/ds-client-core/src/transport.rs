@@ -1396,13 +1396,14 @@ pub struct DesignVersionsCall<'a> {
 }
 
 impl DesignVersionsCall<'_> {
-    // Only the closed kernel history-import command constructs this action.
-    // Every other version operation retains its existing metadata-only route.
+    // Only these closed kernel commands use fixed Bulk operations. The remaining
+    // version calls retain the admitted metadata-only Run route.
     fn import_route(&self) -> Option<&'static crate::GatewayOperation> {
         let operation = match self.payload["action"].as_str() {
             Some("import_transformer_version") => "domains.design_versions.import",
             Some("publish_transformer_version_revision") => "domains.design_versions.publish_revision",
             Some("get_transformer_version_revision") => "domains.design_versions.read_revision",
+            Some("promote_transformer_version_revision") => "domains.design_versions.promote_revision",
             _ => return None,
         };
         Some(crate::gateway_operation(operation).expect("generated closed history Bulk route"))

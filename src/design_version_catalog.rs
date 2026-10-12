@@ -22,6 +22,10 @@ pub struct Mutation {
 }
 #[derive(Clone, Debug)]
 pub enum Command {
+    Promote {
+        object_id: String,
+        promotion: super::design_version_promotion::Promotion,
+    },
     Bind {
         object_id: String,
         binding: super::design_version_binding::Binding,
@@ -199,7 +203,8 @@ impl Command {
             | Self::Snapshot { object_id, .. }
             | Self::Publish { object_id, .. }
             | Self::Renumber { object_id, .. }
-            | Self::Bind { object_id, .. } => object_id,
+            | Self::Bind { object_id, .. }
+            | Self::Promote { object_id, .. } => object_id,
         }
     }
     pub fn validate(&self, project: &str) -> Result<(), String> {
@@ -209,6 +214,7 @@ impl Command {
         match self {
             Self::Catalog { .. } => Ok(()),
             Self::Bind { binding, .. } => binding.validate(),
+            Self::Promote { promotion, .. } => promotion.validate(),
             Self::Revision {
                 version_id,
                 revision_id,
@@ -277,6 +283,7 @@ impl Command {
         let action = match self {
             Self::Catalog { .. } => "get_version_catalog",
             Self::Bind { .. } => "bind_version_revision",
+            Self::Promote { .. } => "promote_transformer_version_revision",
             Self::Revision { .. } => "get_version_revision",
             Self::Snapshot { .. } => "get_transformer_version_revision",
             Self::Publish { .. } => "publish_transformer_version_revision",
@@ -300,6 +307,12 @@ impl Command {
                 value = json!({"action":action,"eds_project_id":project,
                     "catalog_revision_read":{"transformer_id":self.object_id(),"version_id":version_id,"revision_id":revision_id}});
             }
+            Self::Promote { promotion, .. } => {
+                let mut promotion = json!(promotion);
+                promotion["transformer_id"] = json!(self.object_id());
+                value =
+                    json!({"action":action,"eds_project_id":project,"catalog_promotion":promotion});
+            }
             Self::Publish { mutation, .. } => {
                 let mut publication = json!(mutation);
                 publication["transformer_id"] = json!(self.object_id());
@@ -312,7 +325,13 @@ impl Command {
         Ok(value)
     }
     pub fn verify_response(&self, project: &str, value: &Value) -> Result<(), String> {
-        if !matches!(self, Self::Revision { .. } | Self::Snapshot { .. }) {
+        if let Self::Promote { promotion, .. } = self {
+            return promotion.verify_response(value);
+        }
+        if !matches!(
+            self,
+            Self::Revision { .. } | Self::Snapshot { .. } | Self::Promote { .. }
+        ) {
             let c = &value["catalog"];
             if c["schema"] != "ds.lv-version-catalog/v1"
                 || c["project_id"] != project

@@ -1183,6 +1183,20 @@
           "response_cap_bytes": 67108864,
           "gateway": { "method": "POST", "path": "/bulk/api/v1/data", "backend": "ds_brain_bulk_url" },
           "resolution": { "web": "gateway", "desktop": "gateway" }
+        },
+        "promote_revision": {
+          "summary": "Promote one exact immutable runtime revision after retaining an immutable backup of current source.",
+          "transport": "json",
+          "action_key": "action",
+          "actions": [
+            "promote_transformer_version_revision"
+          ],
+          "idempotency": "idempotent_with_key",
+          "retry_class": "none",
+          "timeout_s": 120,
+          "response_cap_bytes": 1048576,
+          "gateway": { "method": "POST", "path": "/bulk/api/v1/data", "backend": "ds_brain_bulk_url" },
+          "resolution": { "web": "gateway", "desktop": "gateway" }
         }
       }
     },

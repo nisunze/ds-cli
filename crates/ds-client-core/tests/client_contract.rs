@@ -14495,3 +14495,78 @@ fn immutable_binding_is_one_metadata_write_and_verifies_issued_record_and_assets
     assert_eq!(client.design_version_catalog("active-project",&command,NOW+2).unwrap_err().kind(),ErrorKind::UnreadableResponse);
     assert_eq!(transport.calls().len(),3,"no blind repeat when issuance acknowledgement differs");
 }
+
+#[test]
+fn safe_version_promotion_uses_one_closed_bulk_call_and_verifies_original_backup() {
+    use ds_client_core::design_version_catalog::Command;
+    use ds_command_kernel::design_version_promotion::Promotion;
+    let transport = FixtureTransport::with_sign_in(SIGN_IN);
+    let reply = json!({"version_id":"v0","revision_id":"v0","change_id":"change1","working_source_version":6,"working_content_digest":"b".repeat(64),"backup":{"backup_id":"backup1","snapshot_digest":"c".repeat(64),"source_revision":"2026-10-13T12:00:00Z","source_version":5,"created_at":"2026-10-13T12:01:00Z","created_by":"actor1"}});
+    transport.push_design_versions(200, &selection_envelope(reply.clone()));
+    let mut client = signed_in(transport.clone(), MemoryStore::default());
+    let command = Command::Promote {
+        object_id: "TR-1".into(),
+        promotion: Promotion {
+            version_id: "v0".into(),
+            revision_id: "v0".into(),
+            expected_catalog_revision: "a".repeat(64),
+            expected_source_revision: "2026-10-13T12:00:00Z".into(),
+            task_ids: vec!["task1".into()],
+            source_record_ids: vec!["record1".into()],
+            reason: "Restore exact immutable design".into(),
+            idempotency_key: "promote1".into(),
+        },
+    };
+    client
+        .design_version_catalog("active-project", &command, NOW + 1)
+        .unwrap();
+    let calls = transport.calls();
+    assert_eq!(
+        calls.len(),
+        2,
+        "sign-in plus one mutation, no readback/retry: {calls:?}"
+    );
+    let call = calls.last().unwrap();
+    for expected in [
+        "path=/bulk/api/v1/data",
+        "promote_transformer_version_revision",
+        "catalog_promotion",
+        "transformer_id",
+        "eds_project_id",
+        "correlation=true",
+    ] {
+        assert!(call.contains(expected), "{call}");
+    }
+    assert!(
+        !call.contains("gdfs") && !call.contains("layers") && !call.contains("snapshot"),
+        "no caller content or legacy overwrite: {call}"
+    );
+    let mut bad = reply;
+    bad["backup"]["source_revision"] = json!("2026-10-13T11:00:00Z");
+    transport.push_design_versions(200, &selection_envelope(bad));
+    assert_eq!(
+        client
+            .design_version_catalog("active-project", &command, NOW + 2)
+            .unwrap_err()
+            .kind(),
+        ErrorKind::UnreadableResponse
+    );
+    assert_eq!(
+        transport.calls().len(),
+        3,
+        "mismatched backup cannot induce retry or readback"
+    );
+    transport.push_design_versions(409, br#"{"success":false,"error":{"code":"VERSION_CATALOG_SOURCE_MOVED","message":"Exact source moved"}}"#);
+    let error = client
+        .design_version_catalog("active-project", &command, NOW + 3)
+        .unwrap_err();
+    assert_eq!(
+        error.service_refusal().unwrap().code(),
+        Some("version_catalog_source_moved")
+    );
+    assert_eq!(
+        transport.calls().len(),
+        4,
+        "refusal is never retried automatically"
+    );
+}

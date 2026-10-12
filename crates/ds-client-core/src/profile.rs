@@ -141,14 +141,14 @@ pub const DESIGN_ATTACHMENTS_ACTIONS: [&str; 10] = [
 pub const DESIGN_VERSIONS_METHOD: &str = "POST";
 pub const DESIGN_VERSIONS_PATH: &str = "/api/v1/design/versions";
 /// The closed `/api/v1/design/versions` action vocabulary. The per-object
-/// summary read and the batched create joined in v30, beside the attachment
-/// actions above. Order is part of the profile identity.
-pub const DESIGN_VERSIONS_ACTIONS: [&str; 11] = [
+/// summary read and batched create joined in v30; v31 adds catalog metadata
+/// and retires unsafe restore. Snapshot reads/captures/promotions stay on fixed
+/// Bulk operations. Order is part of the profile identity.
+pub const DESIGN_VERSIONS_ACTIONS: [&str; 10] = [
     "list_versions",
     "get_version",
     "get_head",
     "create_version",
-    "restore_version",
     "list_version_summaries",
     "create_versions",
     "get_version_catalog",
@@ -592,7 +592,6 @@ impl ClientProfile {
             DESIGN_VERSIONS_ACTIONS[7],
             DESIGN_VERSIONS_ACTIONS[8],
             DESIGN_VERSIONS_ACTIONS[9],
-            DESIGN_VERSIONS_ACTIONS[10],
             DESIGN_SELECTIONS_METHOD,
             DESIGN_SELECTIONS_PATH,
             DESIGN_SELECTIONS_ACTIONS[0],
