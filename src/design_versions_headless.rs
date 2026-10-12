@@ -28,15 +28,6 @@ pub trait Source {
     /// One `list_version_summaries` call over a bounded object selection.
     fn summaries(&mut self, project: &str, objects: &[ObjectRef]) -> Result<Value, Self::Error>;
     fn current(&mut self, project: &str, transformer: &str) -> Result<Value, Self::Error>;
-    fn restore(
-        &mut self,
-        project: &str,
-        transformer: &str,
-        version: &str,
-        reason: &str,
-        expected_source_revision: &str,
-        idempotency_key: &str,
-    ) -> Result<Value, Self::Error>;
 }
 #[derive(Debug)]
 pub enum Error<E> {
@@ -135,12 +126,6 @@ pub enum Command {
     Begin {
         transformer: String,
         create: Create,
-    },
-    Restore {
-        transformer: String,
-        version: String,
-        reason: String,
-        idempotency_key: String,
     },
 }
 fn invalid(message: &'static str) -> String {
@@ -287,8 +272,7 @@ impl Command {
             | Self::List { transformer }
             | Self::Show { transformer, .. }
             | Self::Compare { transformer, .. }
-            | Self::Begin { transformer, .. }
-            | Self::Restore { transformer, .. } => transformer,
+            | Self::Begin { transformer, .. } => transformer,
             // A selection has no single object; its items carry their own.
             Self::BeginBatch { .. } | Self::Summaries { .. } => "",
         }
@@ -309,9 +293,8 @@ impl Command {
             if !matches!(kind.as_str(), "lv_transformer" | "mv_model")
                 || matches!(command.as_ref(), Self::Object { .. })
                 || command.is_selection()
-                || (kind == "mv_model" && matches!(command.as_ref(), Self::Restore { .. }))
             {
-                return Err("MV restore is unavailable; download its pinned model revision through dsgrid model download".into());
+                return Err("choose one LV transformer or MV model command; nested objects and selections are unavailable".into());
             }
             if let Self::Begin { create, .. } = command.as_ref() {
                 fence(kind, create.expected_source.as_deref())?;
@@ -350,26 +333,11 @@ impl Command {
                 }
                 Some((create.reason.as_str(), create.idempotency_key.as_str()))
             }
-            Self::Restore {
-                reason,
-                idempotency_key,
-                ..
-            } => Some((reason.as_str(), idempotency_key.as_str())),
             _ => None,
         };
         if let Some((reason, idempotency_key)) = replay {
             if !reason_text(reason) || !replay_key(idempotency_key) {
                 return Err(invalid("version reason or idempotency key is invalid"));
-            }
-        }
-        if let Self::Restore {
-            version: target, ..
-        } = self
-        {
-            if !version(target) {
-                return Err(invalid(
-                    "restore requires one canonical assigned vN version",
-                ));
             }
         }
         Ok(())
@@ -720,45 +688,6 @@ pub fn run<S: Source>(
                 "mutated": true,
             }))
         }
-        Command::Restore {
-            version,
-            reason,
-            idempotency_key,
-            ..
-        } => {
-            let current = source
-                .current(project, transformer)
-                .map_err(Error::Source)?;
-            let head = &current["head"];
-            let expected = head["source_revision"]
-                .as_str()
-                .ok_or_else(|| bad("saved transformer head has no exact source revision"))?;
-            if head["project_id"] != *project
-                || head["object"]["kind"] != "lv_transformer"
-                || head["object"]["id"] != transformer
-                || expected.is_empty()
-            {
-                return Err(bad("saved transformer head scope mismatch").into());
-            }
-            let data = source
-                .restore(
-                    project,
-                    transformer,
-                    version,
-                    reason,
-                    expected,
-                    idempotency_key,
-                )
-                .map_err(Error::Source)?;
-            record(&data["version"], project, transformer, Some(version), kind)?;
-            Ok(json!({
-                "project": project,
-                "transformer": transformer,
-                "version": data["version"],
-                "prepared_source_revision": expected,
-                "mutated": true,
-            }))
-        }
     }
 }
 fn validate_head(head: &Value, scope: &Scope) -> Result<(), String> {
@@ -782,43 +711,73 @@ fn run_model<S: Source>(
     let kind = scope.object_kind.as_str();
     match command {
         Command::List { .. } => {
-            let data = source.versions(project, object, None).map_err(Error::Source)?;
+            let data = source
+                .versions(project, object, None)
+                .map_err(Error::Source)?;
             let rows = listed(&data, project, object, kind)?;
-            Ok(json!({"project":project,"object":{"kind":kind,"id":object},"versions":rows,"truncated":rows.len()==200,"scope":"published_versions","mutated":false}))
+            Ok(
+                json!({"project":project,"object":{"kind":kind,"id":object},"versions":rows,"truncated":rows.len()==200,"scope":"published_versions","mutated":false}),
+            )
         }
         Command::Status { .. } => {
             let data = source.current(project, object).map_err(Error::Source)?;
             validate_head(&data["head"], scope)?;
-            Ok(json!({"project":project,"object":{"kind":kind,"id":object},"head":data["head"],"mutated":false}))
+            Ok(
+                json!({"project":project,"object":{"kind":kind,"id":object},"head":data["head"],"mutated":false}),
+            )
         }
         Command::Begin { create, .. } => {
-            let data = source.create(project, object, create).map_err(Error::Source)?;
+            let data = source
+                .create(project, object, create)
+                .map_err(Error::Source)?;
             record(&data["version"], project, object, None, kind)?;
             // The Server echoes the milestone it stored; one it dropped would
             // make a submission marker indistinguishable from any other vN.
-            if create.milestone.as_deref().is_some_and(|m| data["version"]["milestone"] != m) {
+            if create
+                .milestone
+                .as_deref()
+                .is_some_and(|m| data["version"]["milestone"] != m)
+            {
                 return Err(bad("created version did not record the requested milestone").into());
             }
-            Ok(json!({"project":project,"object":{"kind":kind,"id":object},"version":data["version"],"content_revision":data["version"]["source_revision"],"mutated":true}))
+            Ok(
+                json!({"project":project,"object":{"kind":kind,"id":object},"version":data["version"],"content_revision":data["version"]["source_revision"],"mutated":true}),
+            )
         }
         Command::Show { version, .. } => show(source, scope, version),
         Command::Compare { from, to, .. } => {
-            let left = source.versions(project, object, Some(from)).map_err(Error::Source)?;
+            let left = source
+                .versions(project, object, Some(from))
+                .map_err(Error::Source)?;
             record(&left["version"], project, object, Some(from), kind)?;
             let right = if to == "head" {
                 let data = source.current(project, object).map_err(Error::Source)?;
                 validate_head(&data["head"], scope)?;
                 data["head"].clone()
             } else {
-                let data = source.versions(project, object, Some(to)).map_err(Error::Source)?;
+                let data = source
+                    .versions(project, object, Some(to))
+                    .map_err(Error::Source)?;
                 record(&data["version"], project, object, Some(to), kind)?;
                 data["version"].clone()
             };
-            let keys = ["source_revision", "pinned_model_digest", "manifest_model_id", "manifest_model_revision"];
-            let changed: Vec<_> = keys.into_iter().filter(|key| left["version"][key] != right[key]).collect();
-            Ok(json!({"project":project,"object":{"kind":kind,"id":object},"from":left["version"],"to":right,"comparison":{"scope":"published_model_revision_metadata","changed_fields":changed},"geometry_included":false,"mutated":false}))
+            let keys = [
+                "source_revision",
+                "pinned_model_digest",
+                "manifest_model_id",
+                "manifest_model_revision",
+            ];
+            let changed: Vec<_> = keys
+                .into_iter()
+                .filter(|key| left["version"][key] != right[key])
+                .collect();
+            Ok(
+                json!({"project":project,"object":{"kind":kind,"id":object},"from":left["version"],"to":right,"comparison":{"scope":"published_model_revision_metadata","changed_fields":changed},"geometry_included":false,"mutated":false}),
+            )
         }
-        _ => Err("MV restore is unavailable; download its pinned model revision through dsgrid model download".to_string().into()),
+        _ => Err("this command is unavailable for an MV model"
+            .to_string()
+            .into()),
     }
 }
 
@@ -1019,17 +978,6 @@ mod tests {
         fn current(&mut self, _: &str, _: &str) -> Result<Value, ()> {
             Err(())
         }
-        fn restore(
-            &mut self,
-            _: &str,
-            _: &str,
-            _: &str,
-            _: &str,
-            _: &str,
-            _: &str,
-        ) -> Result<Value, ()> {
-            Err(())
-        }
     }
     fn scope(kind: &str, id: &str) -> Scope {
         Scope {
@@ -1051,6 +999,31 @@ mod tests {
         json!({"project_id":"p","object":{"kind":"mv_model","id":"model-a"},"version_id":id,"version":n,
             "source_revision":"rev-abc","content_pinned":true,"milestone":"Submission 2"})
     }
+    #[test]
+    fn metadata_only_versions_never_claim_a_successful_snapshot_comparison() {
+        let row = json!({"project_id":"p","object":{"kind":"lv_transformer","id":"tr"},
+            "version_id":"v1","version":1,"playback_available":true});
+        let mut source = Recorded::default();
+        source.answers.push_back(json!({"versions":[row.clone()]}));
+        source.answers.push_back(json!({"version":row}));
+        let result = run(
+            &scope("lv_transformer", "tr"),
+            &mut source,
+            &Command::Compare {
+                transformer: "tr".into(),
+                from: "v1".into(),
+                to: "head".into(),
+            },
+        );
+        assert!(matches!(result, Err(Error::Invalid(message))
+            if message.starts_with("playback_unavailable:")));
+        assert_eq!(
+            source.asked,
+            vec![json!({"versions":null}), json!({"versions":"v1"})]
+        );
+        assert!(source.answers.is_empty());
+    }
+
     #[test]
     fn a_submission_marker_carries_its_milestone_and_its_reviewed_head() {
         let begin = |milestone: Option<&str>, expected: Option<&str>| {

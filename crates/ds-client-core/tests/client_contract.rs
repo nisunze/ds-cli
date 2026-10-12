@@ -10973,46 +10973,6 @@ fn headless_version_comparison_uses_pinned_snapshots_and_has_no_geometry_payload
     assert_eq!(begun["mutated"], true);
     transport.push_design_versions(
         200,
-        &selection_envelope(serde_json::json!({"head":{
-            "project_id":"project_a",
-            "object":{"kind":"lv_transformer","id":"tr"},
-            "source_revision":"2026-09-15T12:00:00.123456Z",
-            "source_version":12
-        }})),
-    );
-    transport.push_design_versions(
-        200,
-        &selection_envelope(serde_json::json!({"version":created})),
-    );
-    let restored = client
-        .design_versions(
-            "project_a",
-            &Command::Restore {
-                transformer: "tr".into(),
-                version: "v1".into(),
-                reason: "Return to approved survey".into(),
-                idempotency_key: "restore-tr-v1-1".into(),
-            },
-            NOW + 1,
-        )
-        .unwrap();
-    assert_eq!(restored["version"]["version_id"], "v1");
-    assert_eq!(
-        restored["prepared_source_revision"],
-        "2026-09-15T12:00:00.123456Z"
-    );
-    assert_eq!(restored["mutated"], true);
-    let calls = transport.0.lock().unwrap().calls.clone();
-    let restore = calls
-        .iter()
-        .rev()
-        .find(|call| call.starts_with("design_versions "))
-        .expect("restore call");
-    assert!(restore.contains(r#""action":"restore_version""#));
-    assert!(restore.contains(r#""version_id":"v1""#));
-    assert!(restore.contains(r#""expected_source_revision":"2026-09-15T12:00:00.123456Z""#));
-    transport.push_design_versions(
-        200,
         &selection_envelope(serde_json::json!({"versions":[row("v1")]})),
     );
     assert!(client
@@ -11797,22 +11757,6 @@ fn generic_mv_history_uses_explicit_interleaved_projects_and_rejects_lv_restore(
             .unwrap_err()
             .kind(),
         ErrorKind::UnreadableResponse
-    );
-    let restore = Command::Object {
-        kind: "mv_model".into(),
-        command: Box::new(Command::Restore {
-            transformer: "line".into(),
-            version: "v1".into(),
-            reason: "review".into(),
-            idempotency_key: "restore".into(),
-        }),
-    };
-    assert_eq!(
-        client
-            .design_versions("project_a", &restore, NOW + 1)
-            .unwrap_err()
-            .kind(),
-        ErrorKind::InvalidInput
     );
     let calls = &transport.0.lock().unwrap().calls;
     assert!(calls
