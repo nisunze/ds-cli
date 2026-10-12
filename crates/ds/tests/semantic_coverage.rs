@@ -1109,11 +1109,8 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("solar.project.sync", "global_write", "headless_project"),
     ("data.city-vectors", "local_file_write", "none"),
     ("solar.cities", "read_only", "headless_project"),
-    (
-        "solar.reference.acquire",
-        "global_write",
-        "headless_project",
-    ),
+    ("solar.reference.plan", "local_file_write", "none"),
+    ("solar.reference.import", "local_file_write", "none"),
     ("solar.engine", "discovery", "none"),
     ("solar.application", "artifact_write", "headless_project"),
     ("solar.application.schema", "discovery", "none"),
