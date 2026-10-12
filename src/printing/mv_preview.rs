@@ -153,3 +153,27 @@ fn refuse(code: &str, field: &str, remedy: &str) -> mv::Refusal {
         remedy: remedy.into(),
     }
 }
+
+/// The same admitted template over every native station sheet. Only an exact
+/// native progress target enables this mode; ordinary samples stay bounded.
+pub fn all_pages(
+    mut preview: Preview,
+    target: &super::preview_progress::Target,
+) -> Result<Preview, mv::Refusal> {
+    target.validate().map_err(|_| {
+        refuse(
+            "mv_print_template_invalid",
+            "preview_progress",
+            "Use the native preview job's exact private target.",
+        )
+    })?;
+    preview.request["sample_pages"] = Value::Null;
+    preview.request["preview_progress"] = serde_json::to_value(target).map_err(|_| {
+        refuse(
+            "mv_print_template_invalid",
+            "preview_progress",
+            "Repair the native preview target.",
+        )
+    })?;
+    Ok(preview)
+}

@@ -31,6 +31,8 @@ Multipage MV delivery retains native order and per-page station metadata. Its
 consumer must be able to read the first ready page and request later pages from
 disk without transferring the entire booklet inline. A single bounded sample
 preview is one page; it is not proof that a full atlas was generated.
+The shared [native MV job contract](../printing/mv-preview-jobs.md) admits full
+jobs, intentional status/page consumers, bounded concurrency and safe expiry.
 
 The MV renderer's optional native `preview_progress` target publishes complete
 decorated SVG pages and a closed `ds.mv-preview-progress/v1` disk journal while

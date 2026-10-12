@@ -75,7 +75,7 @@ fn now() -> Result<u64, HostFailure> {
         .try_into()
         .map_err(|_| failed("preview clock exceeds its bound"))
 }
-fn authority(room: &Room) -> Result<String, HostFailure> {
+pub(crate) fn authority(room: &Room) -> Result<String, HostFailure> {
     if !room.root.is_absolute()
         || room.scope.principal.trim().is_empty()
         || room.scope.project.trim().is_empty()
@@ -379,6 +379,27 @@ fn prune_at(room: &Room, clock: u64, limit: usize) -> Result<usize, HostFailure>
 /// Read only the exact admitted managed file; no render, acquisition or refresh.
 pub fn read(room: &Room, artifact: &Artifact) -> Result<Vec<u8>, HostFailure> {
     read_at(room, artifact, now()?)
+}
+/// Validate a retained locator without reading an unselected page's bytes.
+/// The actual file consumer still calls `read` to verify its exact content.
+pub fn admit_receipt(room: &Room, artifact: &Artifact) -> Result<(), HostFailure> {
+    if !digest_token(&artifact.result_sha256) {
+        return Err(failed("preview result locator is invalid"));
+    }
+    let manifest = read_manifest(&root(room, &authority(room)?).join(&artifact.result_sha256))?;
+    admit_manifest(room, &manifest)?;
+    if &manifest.artifact != artifact {
+        return Err(failed(
+            "preview receipt differs from its exact native manifest",
+        ));
+    }
+    if now()? >= artifact.expires_at_unix_ms {
+        return Err(HostFailure::new(
+            "print_preview_artifact_expired",
+            "Preview receipt expired; request its exact native preview again.",
+        ));
+    }
+    Ok(())
 }
 fn read_at(room: &Room, artifact: &Artifact, clock: u64) -> Result<Vec<u8>, HostFailure> {
     if !digest_token(&artifact.result_sha256) {

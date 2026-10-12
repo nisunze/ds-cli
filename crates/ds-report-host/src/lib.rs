@@ -39,8 +39,9 @@ pub use ds_command_kernel::report_export::{
     batch_plan, blocker_summary, BatchPlan, DEFAULT_RESIDENT_LIMIT, MAX_RESIDENT_LIMIT,
 };
 
-pub mod mv_preview;
 pub mod mv_artifact;
+pub mod mv_job;
+pub mod mv_preview;
 pub mod preview;
 pub mod preview_artifact;
 pub use preview::*;
@@ -157,6 +158,20 @@ pub trait ReportEngine: Sync {
         Err(HostFailure::new(
             CODE_ENGINE_UNSUPPORTED,
             "this report engine does not render MV plan and profile sheets",
+        ))
+    }
+    /// Start only the fixed native MV preview task over host-owned durable
+    /// inputs. The process remains alive after its calling view or CLI leaves.
+    fn launch_grid_preview(
+        &self,
+        request: &Path,
+        result: &Path,
+        input_sha256: &str,
+    ) -> Result<(), HostFailure> {
+        let _ = (request, result, input_sha256);
+        Err(HostFailure::new(
+            CODE_ENGINE_UNSUPPORTED,
+            "this engine adapter cannot start native disk preview jobs",
         ))
     }
 }
@@ -668,7 +683,9 @@ impl Drop for Staging {
     }
 }
 
-pub(crate) fn engine_identity_now(engine: &dyn ReportEngine) -> Result<EngineIdentity, HostFailure> {
+pub(crate) fn engine_identity_now(
+    engine: &dyn ReportEngine,
+) -> Result<EngineIdentity, HostFailure> {
     let document = engine.build_info()?;
     engine_identity(&document)
         .map_err(|error| HostFailure::new(CODE_ENGINE_IDENTITY_INVALID, error))

@@ -6,6 +6,7 @@ use std::path::PathBuf;
 pub const SCHEMA: &str = "ds.mv-preview-progress/v1";
 pub const EVENT_SCHEMA: &str = "ds.mv-preview-progress-event/v1";
 pub const EVENT_PREFIX: &str = "DS_PRINT_PREVIEW ";
+pub const FAILURE_SCHEMA: &str = "ds.mv-preview-failure/v1";
 pub const MAX_MANIFEST_BYTES: u64 = 2 * 1024 * 1024;
 pub const MAX_PAGES: usize = 4096;
 
@@ -136,4 +137,28 @@ pub struct Event {
     pub schema: String,
     pub input_sha256: String,
     pub revision: u64,
+}
+
+/// An early native producer refusal can precede the planned-page manifest.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Failure {
+    pub schema: String,
+    pub input_sha256: String,
+    pub project: String,
+    pub error: String,
+}
+impl Failure {
+    pub fn validate(&self, target: &Target, project: &str) -> Result<(), String> {
+        target.validate()?;
+        if self.schema != FAILURE_SCHEMA
+            || self.input_sha256 != target.input_sha256
+            || self.project != project
+            || self.error.is_empty()
+            || self.error.len() > 8192
+        {
+            return Err("MV preview failure differs from its exact native job".into());
+        }
+        Ok(())
+    }
 }
