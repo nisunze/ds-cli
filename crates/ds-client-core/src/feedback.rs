@@ -145,6 +145,10 @@ fn date(s: &str) -> Option<time::OffsetDateTime> {
     time::OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).ok()
 }
 impl Command {
+    /// Two positions can carry distinct admitted 200-character report IDs.
+    /// The closed bound includes worst-case JSON escaping and base64 encoding.
+    pub const MAX_CURSOR_BYTES: usize = 4096;
+
     pub fn validate(&self) -> Result<(), ClientError> {
         let optional = |s: &Option<String>, max| s.as_ref().is_none_or(|v| text(v, max));
         let valid = match self {
@@ -163,7 +167,7 @@ impl Command {
                     // The cursor is opaque: this validates its shape, never its
                     // meaning. A caller that could compose one would be back to
                     // remembering timestamps, which is the habit it replaces.
-                    && cursor.as_ref().is_none_or(|c| text(c, 512) && c.starts_with("fb1."))
+                    && cursor.as_ref().is_none_or(|c| text(c, Self::MAX_CURSOR_BYTES) && c.len() <= Self::MAX_CURSOR_BYTES && c.starts_with("fb1."))
             }
             Self::Submit {
                 title,
@@ -652,5 +656,44 @@ mod component_tests {
             submit(" ds-cli").validate().unwrap_err().to_string(),
             COMPONENT_UNKNOWN
         );
+    }
+}
+
+#[cfg(test)]
+mod cursor_tests {
+    use super::*;
+    fn list(cursor: String) -> Command {
+        Command::List {
+            view: "not_addressed".into(),
+            component: Some("ds-cli/feedback".into()),
+            query: None,
+            limit: 1,
+            detail: false,
+            cursor: Some(cursor),
+            all: false,
+        }
+    }
+    #[test]
+    fn bounded_page_tokens_accept_admitted_long_ids_without_local_decoding() {
+        for size in [741, Command::MAX_CURSOR_BYTES] {
+            assert!(list(format!("fb1.{}", "a".repeat(size - 4)))
+                .validate()
+                .is_ok());
+        }
+        assert!(list("fb1.legacy.digest".into()).validate().is_ok());
+    }
+    #[test]
+    fn oversized_and_non_token_cursors_are_refused_before_transport() {
+        for cursor in [
+            format!("fb1.{}", "a".repeat(Command::MAX_CURSOR_BYTES - 3)),
+            format!("fb1.{}", "é".repeat(Command::MAX_CURSOR_BYTES / 2)),
+            "forged-without-prefix".into(),
+            "".into(),
+        ] {
+            assert_eq!(
+                list(cursor).validate().unwrap_err().kind(),
+                ErrorKind::InvalidInput
+            );
+        }
     }
 }
