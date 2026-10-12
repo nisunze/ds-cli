@@ -30,12 +30,15 @@ read. Copy one `.location` object from that response (or from the headless
 `desktop printing view --project <id> --location location.json`. Pins remain
 exact, including governed document revision and content digests. Another
 template cannot replace a dirty draft; save or explicitly discard that draft
-first. With a document open, `--page <n>` changes its held PDF camera. Select a
+first. The first intentional selection may read or acquire that exact pinned
+document through its existing native template cache. With a document open,
+`--page <n>` changes its held PDF camera. Select a
 template and navigate its pages in separate calls. The current page count is
 the held document's count, so an MV template sample reports one page rather
 than claiming the full atlas is present. Reads and page turns acquire no
 catalogue, style, design, geographic context or renderer result. Existing
-native preview jobs continue independently of this visible navigation.
+native preview jobs continue independently of this visible navigation; it
+issues no independent geographic, style, design or render acquisition.
 
 Named setups are read and published natively, with no paired application.
 Project scope always names its project; the saved selection is never read.
