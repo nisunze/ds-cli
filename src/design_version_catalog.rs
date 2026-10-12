@@ -30,6 +30,11 @@ pub enum Command {
         version_id: String,
         revision_id: String,
     },
+    Snapshot {
+        object_id: String,
+        version_id: String,
+        revision_id: String,
+    },
     Publish {
         object_id: String,
         mutation: Mutation,
@@ -66,15 +71,47 @@ fn revision(s: &str) -> bool {
     legacy(s) || s.strip_prefix("vr_").is_some_and(sha)
 }
 /// Immutable catalog reference grammar, shared by native and WASM admission.
-pub fn version_id(id: &str) -> bool { version(id) }
+pub fn version_id(id: &str) -> bool {
+    version(id)
+}
 /// Exact immutable revision grammar; a display ordinal is never a reference.
-pub fn revision_id(id: &str) -> bool { revision(id) }
+pub fn revision_id(id: &str) -> bool {
+    revision(id)
+}
+
+/// Verify exact immutable UTF-8 bytes and decode their native snapshot once.
+/// The digest of the compressed stored frame remains separate server evidence.
+pub fn decode_pinned_snapshot(value: &Value) -> Result<Value, String> {
+    use sha2::{Digest, Sha256};
+    let raw = value["snapshot_json"]
+        .as_str()
+        .ok_or("immutable snapshot text absent")?;
+    if raw.len() > 64 * 1024 * 1024
+        || value["snapshot_sha256"] != format!("{:x}", Sha256::digest(raw.as_bytes()))
+    {
+        return Err("immutable snapshot exact UTF-8 digest differs or exceeds 64MiB".into());
+    }
+    let snapshot: Value =
+        serde_json::from_str(raw).map_err(|_| "immutable snapshot JSON is invalid")?;
+    if snapshot["schema"] != "ds.transformer-version-snapshot/v1"
+        || !snapshot["layers"].as_object().is_some_and(|layers| {
+            !layers.is_empty()
+                && layers.values().all(|layer| {
+                    layer["type"] == "FeatureCollection" && layer["features"].is_array()
+                })
+        })
+    {
+        return Err("immutable snapshot schema/layers are invalid".into());
+    }
+    Ok(snapshot)
+}
 
 impl Command {
     pub fn object_id(&self) -> &str {
         match self {
             Self::Catalog { object_id }
             | Self::Revision { object_id, .. }
+            | Self::Snapshot { object_id, .. }
             | Self::Publish { object_id, .. }
             | Self::Renumber { object_id, .. } => object_id,
         }
@@ -86,6 +123,11 @@ impl Command {
         match self {
             Self::Catalog { .. } => Ok(()),
             Self::Revision {
+                version_id,
+                revision_id,
+                ..
+            }
+            | Self::Snapshot {
                 version_id,
                 revision_id,
                 ..
@@ -148,6 +190,7 @@ impl Command {
         let action = match self {
             Self::Catalog { .. } => "get_version_catalog",
             Self::Revision { .. } => "get_version_revision",
+            Self::Snapshot { .. } => "get_transformer_version_revision",
             Self::Publish { .. } => "publish_transformer_version_revision",
             Self::Renumber { .. } => "renumber_version",
         };
@@ -161,6 +204,14 @@ impl Command {
                 value["version_id"] = json!(version_id);
                 value["revision_id"] = json!(revision_id);
             }
+            Self::Snapshot {
+                version_id,
+                revision_id,
+                ..
+            } => {
+                value = json!({"action":action,"eds_project_id":project,
+                    "catalog_revision_read":{"transformer_id":self.object_id(),"version_id":version_id,"revision_id":revision_id}});
+            }
             Self::Publish { mutation, .. } => {
                 let mut publication = json!(mutation);
                 publication["transformer_id"] = json!(self.object_id());
@@ -172,7 +223,7 @@ impl Command {
         Ok(value)
     }
     pub fn verify_response(&self, project: &str, value: &Value) -> Result<(), String> {
-        if !matches!(self, Self::Revision { .. }) {
+        if !matches!(self, Self::Revision { .. } | Self::Snapshot { .. }) {
             let c = &value["catalog"];
             if c["schema"] != "ds.lv-version-catalog/v1"
                 || c["project_id"] != project
@@ -207,7 +258,10 @@ impl Command {
                 }
             }
         }
-        if matches!(self, Self::Revision { .. } | Self::Publish { .. }) {
+        if matches!(
+            self,
+            Self::Revision { .. } | Self::Snapshot { .. } | Self::Publish { .. }
+        ) {
             let m = &value["metadata"];
             if m["project_id"] != project
                 || m["transformer_id"] != self.object_id()
@@ -223,6 +277,11 @@ impl Command {
             version_id,
             revision_id,
             ..
+        }
+        | Self::Snapshot {
+            version_id,
+            revision_id,
+            ..
         } = self
         {
             let m = &value["metadata"];
@@ -232,6 +291,9 @@ impl Command {
             {
                 return Err("revision response differs from exact requested identity or content digest is absent".into());
             }
+        }
+        if matches!(self, Self::Snapshot { .. }) {
+            decode_pinned_snapshot(value)?;
         }
         if matches!(self, Self::Publish { .. } | Self::Renumber { .. })
             && !value["changed"].is_boolean()
@@ -308,6 +370,28 @@ mod tests {
         .payload("p")
         .is_err());
     }
+    #[test]
+    fn pinned_snapshot_verifies_exact_utf8_without_number_reserialization() {
+        use sha2::{Digest, Sha256};
+        let c = Command::Snapshot {
+            object_id: "TR-1".into(),
+            version_id: "v0".into(),
+            revision_id: "v0".into(),
+        };
+        let raw = r#"{"schema":"ds.transformer-version-snapshot/v1","layers":{"tr":{"type":"FeatureCollection","features":[]}},"metadata":{"sentinel":1.0000,"name":"??"}}"#;
+        let mut reply = json!({"metadata":{"project_id":"p","transformer_id":"TR-1","version_id":"v0","revision_id":"v0","revision_number":1,"content_digest":"a".repeat(64)},"snapshot_json":raw,"snapshot_sha256":format!("{:x}",Sha256::digest(raw.as_bytes()))});
+        c.verify_response("p", &reply).unwrap();
+        let payload = c.payload("p").unwrap();
+        assert_eq!(payload["action"], "get_transformer_version_revision");
+        assert_eq!(payload["catalog_revision_read"]["version_id"], "v0");
+        assert!(payload.get("object").is_none());
+        reply["snapshot_json"] = json!(raw.replace("1.0000", "1"));
+        assert!(c.verify_response("p", &reply).is_err());
+        reply["snapshot_json"] = json!(raw);
+        reply["metadata"]["revision_id"] = json!("v1");
+        assert!(c.verify_response("p", &reply).is_err());
+    }
+
     #[test]
     fn catalog_scope_and_duplicate_labels_are_checked() {
         let c = Command::Catalog {
