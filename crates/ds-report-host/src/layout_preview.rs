@@ -10,6 +10,33 @@ use std::{fs, io::Read, path::Path};
 
 pub const MAX_CAPTURE_BYTES: u64 = 128 * 1024 * 1024;
 const MAX_RESULT_BYTES: u64 = 1024 * 1024;
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum Format {
+    #[default]
+    Svg,
+    Pdf,
+}
+impl Format {
+    fn key(self) -> &'static str {
+        match self {
+            Self::Svg => "svg",
+            Self::Pdf => "pdf",
+        }
+    }
+    fn mime(self) -> &'static str {
+        match self {
+            Self::Svg => "image/svg+xml",
+            Self::Pdf => "application/pdf",
+        }
+    }
+    fn file(self) -> &'static str {
+        match self {
+            Self::Svg => "map.svg",
+            Self::Pdf => "map.pdf",
+        }
+    }
+}
 
 fn invalid(message: impl Into<String>) -> HostFailure {
     HostFailure::new(crate::CODE_INPUTS_INVALID, message)
@@ -69,6 +96,7 @@ fn admit(room: &Room, capture: &Value) -> Result<printing::Layout, HostFailure> 
                 "schema"
                     | "render"
                     | "renderer_defaults"
+                    | "source"
                     | "out_dir"
                     | "formats"
                     | "dpi"
@@ -118,7 +146,15 @@ fn admit(room: &Room, capture: &Value) -> Result<printing::Layout, HostFailure> 
     }
     let layout: printing::Layout = serde_json::from_value(capture["render"]["layout"].clone())
         .map_err(|e| invalid(e.to_string()))?;
-    printing::validate(&layout).map_err(invalid)?;
+    if let Some(source) = capture.get("source").filter(|value| !value.is_null()) {
+        let source: printing::standard_read::PreviewSource =
+            serde_json::from_value(source.clone()).map_err(|e| invalid(e.to_string()))?;
+        source
+            .admit(&room.scope.project, &layout)
+            .map_err(invalid)?;
+    } else {
+        printing::validate(&layout).map_err(invalid)?;
+    }
     Ok(layout)
 }
 
@@ -129,15 +165,25 @@ pub fn execute(
     retention: preview_artifact::Retention,
     staging_root: &Path,
 ) -> Result<Answer, HostFailure> {
+    execute_format(engine, room, capture, retention, staging_root, Format::Svg)
+}
+pub fn execute_format(
+    engine: &dyn ReportEngine,
+    room: &Room,
+    capture: &Value,
+    retention: preview_artifact::Retention,
+    staging_root: &Path,
+    format: Format,
+) -> Result<Answer, HostFailure> {
     let layout = admit(room, capture)?;
     let identity = crate::engine_identity_now(engine)?;
     // Digest the entire semantic capture, including optional source metadata.
-    // Only output transport/format are replaced by this explicit SVG mode.
+    // Only output transport/format are replaced by the declared preview choice.
     let mut semantic = capture.clone();
     let semantic_fields = semantic.as_object_mut().expect("admitted object");
     semantic_fields.remove("out_dir");
-    semantic_fields.insert("formats".into(), json!(["svg"]));
-    let provenance = json!({"subject":"captured-layout-svg","capture_sha256":sha(&semantic)?,
+    semantic_fields.insert("formats".into(), json!([format.key()]));
+    let provenance = json!({"subject":"captured-layout","format":format,"capture_sha256":sha(&semantic)?,
         "layout_sha256":sha(&serde_json::to_value(&layout).map_err(|e| invalid(e.to_string()))?)?,"engine":identity});
     let mut lease = preview_artifact::begin_request(room, provenance.clone(), retention)?;
     if let Some(metadata) = lease.retained() {
@@ -149,7 +195,7 @@ pub fn execute(
             || answer.layout_id != layout.id
             || answer.page_mm != layout.page_mm
             || answer.engine != identity
-            || answer.page.content_type != "image/svg+xml"
+            || answer.page.content_type != format.mime()
         {
             return Err(result_invalid(
                 "retained layout preview metadata differs from admitted capture",
@@ -164,6 +210,17 @@ pub fn execute(
         path: stage_path.clone(),
     };
     let out_dir = stage_path.join("rendered");
+    if let Some(source) = semantic.get("source").filter(|value| !value.is_null()) {
+        let source: printing::standard_read::PreviewSource =
+            serde_json::from_value(source.clone()).map_err(|e| invalid(e.to_string()))?;
+        semantic["render"]["layout"] =
+            serde_json::to_value(source.render_layout()).map_err(|e| invalid(e.to_string()))?;
+    }
+    semantic
+        .as_object_mut()
+        .expect("admitted capture")
+        .remove("source");
+    let producer_layout_sha256 = sha(&semantic["render"]["layout"])?;
     semantic["out_dir"] = json!(out_dir);
     let request_path = stage_path.join("request.json");
     let result_path = stage_path.join("result.json");
@@ -197,25 +254,51 @@ pub fn execute(
         || result["layout_id"] != layout.id
         || result["page_count"] != 1
         || result["page_mm"] != json!(layout.page_mm)
-        || result["layout_sha256"] != provenance["layout_sha256"]
+        || result["layout_sha256"] != producer_layout_sha256
         || rows.len() != 1
-        || rows[0]["format"] != "svg"
-        || rows[0]["path"] != json!(out_dir.join("map.svg"))
+        || rows[0]["format"] != format.key()
+        || rows[0]["path"] != json!(out_dir.join(format.file()))
         || !result["print_diagnostics"].is_object()
     {
         return Err(result_invalid(
-            "fixed layout producer manifest differs from its one requested SVG page",
+            "fixed layout producer manifest differs from its one requested page",
         ));
     }
-    let bytes = read_regular(&out_dir.join("map.svg"), crate::MAX_PREVIEW_BYTES)?;
+    let bytes = read_regular(
+        &out_dir.join(format.file()),
+        if format == Format::Pdf {
+            128 * 1024 * 1024
+        } else {
+            crate::MAX_PREVIEW_BYTES
+        },
+    )?;
     if rows[0]["bytes"] != bytes.len() || rows[0]["sha256"] != report_export::sha256_hex(&bytes) {
         return Err(result_invalid(
-            "layout SVG bytes differ from their producer inventory",
+            "layout bytes differ from their producer inventory",
         ));
     }
-    let svg = std::str::from_utf8(&bytes).map_err(|e| result_invalid(e.to_string()))?;
-    let artifact =
-        preview_artifact::materialize_svg_retained(room, svg, provenance.clone(), retention)?;
+    let artifact = match format {
+        Format::Svg => preview_artifact::materialize_svg_retained(
+            room,
+            std::str::from_utf8(&bytes).map_err(|e| result_invalid(e.to_string()))?,
+            provenance.clone(),
+            retention,
+        )?,
+        Format::Pdf => {
+            let mut source = ds_layer_store::private::open_options()
+                .read(true)
+                .open(out_dir.join(format.file()))
+                .map_err(|e| result_invalid(e.to_string()))?;
+            preview_artifact::materialize_pdf_retained(
+                room,
+                &mut source,
+                bytes.len() as u64,
+                &report_export::sha256_hex(&bytes),
+                provenance.clone(),
+                retention,
+            )?
+        }
+    };
     let mut answer = Answer {
         project: room.scope.project.clone(),
         lane: room.lane.clone(),
@@ -317,19 +400,24 @@ mod tests {
         ) -> Result<crate::EngineExit, HostFailure> {
             self.renders.fetch_add(1, Ordering::SeqCst);
             let capture: Value = serde_json::from_slice(&fs::read(request).unwrap()).unwrap();
-            assert_eq!(capture["formats"], json!(["svg"]));
+            let format = capture["formats"][0].as_str().unwrap();
+            assert!(matches!(format, "svg" | "pdf"));
+            assert!(capture.get("source").is_none());
             assert!(capture.get("page_cache_dir").is_none_or(Value::is_null));
             let layout: printing::Layout =
                 serde_json::from_value(capture["render"]["layout"].clone()).unwrap();
             let out = Path::new(capture["out_dir"].as_str().unwrap());
             fs::create_dir(out).unwrap();
-            let path = out.join("map.svg");
-            let body =
-                b"<svg xmlns=\"http://www.w3.org/2000/svg\"><rect width=\"1\" height=\"1\"/></svg>";
+            let path = out.join(format!("map.{format}"));
+            let body: &[u8] = if format == "pdf" {
+                b"%PDF-1.7\nstatic page"
+            } else {
+                b"<svg xmlns=\"http://www.w3.org/2000/svg\"><rect width=\"1\" height=\"1\"/></svg>"
+            };
             fs::write(&path, body).unwrap();
             fs::write(result,serde_json::to_vec(&json!({"schema":"ds.print-layout-result/v1","status":"ok",
                 "layout_id":layout.id,"page_mm":layout.page_mm,"page_count":1,"layout_sha256":sha(&serde_json::to_value(&layout).unwrap()).unwrap(),
-                "artifacts":[{"format":"svg","path":path,"bytes":body.len(),"sha256":if self.bad_digest {"0".repeat(64)} else {report_export::sha256_hex(body)}}],
+                "artifacts":[{"format":format,"path":path,"bytes":body.len(),"sha256":if self.bad_digest {"0".repeat(64)} else {report_export::sha256_hex(body)}}],
                 "print_diagnostics":{"checked_pages":1,"affected_pages":0,"truncated":false,"pages":[]}})).unwrap()).unwrap();
             Ok(crate::EngineExit {
                 succeeded: true,
@@ -374,6 +462,148 @@ mod tests {
                 "project_crs":crs,"text":{"title":"Captured page"},"report_config":{"source_digest_metadata":{"sha256":"c".repeat(64)}}}});
         (room, capture)
     }
+    #[test]
+    fn pdf_and_svg_choices_share_the_common_owner_and_eight_pdf_consumers_render_once() {
+        let dir = tempfile::tempdir().unwrap();
+        let (room, capture) = fixture(dir.path());
+        let engine = Arc::new(Engine::new());
+        std::thread::scope(|threads| {
+            for _ in 0..8 {
+                let engine = engine.clone();
+                let (room, capture) = (&room, &capture);
+                threads.spawn(move || {
+                    execute_format(
+                        engine.as_ref(),
+                        room,
+                        capture,
+                        preview_artifact::Retention::Hours24,
+                        &room.root.join("scratch"),
+                        Format::Pdf,
+                    )
+                    .unwrap();
+                });
+            }
+        });
+        assert_eq!(engine.renders.load(Ordering::SeqCst), 1);
+        let pdf = execute_format(
+            engine.as_ref(),
+            &room,
+            &capture,
+            preview_artifact::Retention::Hours24,
+            &room.root.join("unused"),
+            Format::Pdf,
+        )
+        .unwrap();
+        assert!(pdf.preview_cache.reused);
+        assert_eq!(pdf.page.content_type, "application/pdf");
+        assert!(preview_artifact::read(&room, &pdf.page)
+            .unwrap()
+            .starts_with(b"%PDF-"));
+        assert!(!room.root.join("unused").exists());
+        let svg = execute(
+            &*engine,
+            &room,
+            &capture,
+            preview_artifact::Retention::Hours24,
+            &room.root.join("scratch"),
+        )
+        .unwrap();
+        assert_ne!(
+            pdf.preview_cache.input_sha256,
+            svg.preview_cache.input_sha256
+        );
+        assert_eq!(engine.renders.load(Ordering::SeqCst), 2);
+    }
+
+    #[test]
+    fn governed_static_source_pins_are_admitted_before_rendering_and_hash_reuse() {
+        let dir = tempfile::tempdir().unwrap();
+        let (room, mut capture) = fixture(dir.path());
+        let engine = Engine::new();
+        let mut layout = printing::default_layout();
+        layout.styles.clear();
+        layout.style_refs.clear();
+        layout.elements.retain(|e| {
+            matches!(
+                e.kind,
+                printing::ElementKind::Text | printing::ElementKind::Rectangle
+            )
+        });
+        layout.attribution=Some(serde_json::from_value(json!({"font_pt":7,"color":"#595959","svg_font_family":"DejaVu Sans","pdf_font_family":"Helvetica","right_inset_pt":146,"baseline_pt":7})).unwrap());
+        let mut document = printing::standards::TemplateDocument {
+            template_id: "mv-booklet-a3-v1".into(),
+            role: printing::page_role::PageRole::Cover,
+            revision_id: "a".repeat(64),
+            content_sha256: String::new(),
+            layout: layout.clone(),
+            logo_slots: vec![],
+            layer_keys: Default::default(),
+        };
+        document.content_sha256 = document.content_digest().unwrap();
+        let source = json!({"kind":"governed_standard","location":{"kind":"governed_standard","project_id":"project","id":"cover","template_id":document.template_id,"revision_id":document.revision_id,"content_sha256":document.content_sha256},"document":document});
+        capture["render"]["layout"] = json!(layout);
+        capture["source"] = source;
+        let original = capture.clone();
+        let first = execute(
+            &engine,
+            &room,
+            &capture,
+            preview_artifact::Retention::Hours24,
+            &dir.path().join("scratch"),
+        )
+        .unwrap();
+        assert!(
+            execute(
+                &engine,
+                &room,
+                &capture,
+                preview_artifact::Retention::Hours24,
+                &dir.path().join("scratch")
+            )
+            .unwrap()
+            .preview_cache
+            .reused
+        );
+        assert_eq!(engine.renders.load(Ordering::SeqCst), 1);
+        for field in ["project_id", "content_sha256"] {
+            let mut crossed = capture.clone();
+            crossed["source"]["location"][field] = json!(if field == "project_id" {
+                "foreign".to_owned()
+            } else {
+                "b".repeat(64)
+            });
+            assert!(execute(
+                &engine,
+                &room,
+                &crossed,
+                preview_artifact::Retention::Hours24,
+                &dir.path().join("unused")
+            )
+            .is_err());
+        }
+        assert_eq!(engine.renders.load(Ordering::SeqCst), 1);
+        assert!(!dir.path().join("unused").exists());
+        capture["source"]["location"]["revision_id"] = json!("c".repeat(64));
+        capture["source"]["document"]["revision_id"] = json!("c".repeat(64));
+        let second = execute(
+            &engine,
+            &room,
+            &capture,
+            preview_artifact::Retention::Hours24,
+            &dir.path().join("scratch"),
+        )
+        .unwrap();
+        assert_ne!(
+            first.preview_cache.input_sha256,
+            second.preview_cache.input_sha256
+        );
+        assert_eq!(engine.renders.load(Ordering::SeqCst), 2);
+        assert_eq!(
+            original["render"], capture["render"],
+            "source revision never rewrites authored page"
+        );
+    }
+
     #[test]
     fn simultaneous_and_warm_captured_pages_use_one_fixed_renderer_and_common_svg_file() {
         let dir = tempfile::tempdir().unwrap();

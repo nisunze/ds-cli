@@ -15,7 +15,8 @@
 //! reads for that transformer is one the engine may print, and which server
 //! version it carries. The host hands the room's facts as it found them;
 //! this module never fetches a missing room.
-use super::catalogue::Purpose;
+use super::catalogue::{Classification, Purpose};
+use super::page_role::PageRole;
 use super::Layout;
 use crate::report_formats::PrintArtifactFormat;
 use schemars::JsonSchema;
@@ -43,6 +44,8 @@ pub struct Transformer {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "subject", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Subject {
+    /// Captured page furniture/text; no engineering subject is consumed.
+    Layout,
     /// One transformer, as `printable_transformers` listed it.
     Transformer {
         name: String,
@@ -66,6 +69,7 @@ pub enum Subject {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum SubjectKind {
+    Layout,
     Transformer,
     MvModels,
     Extent,
@@ -74,17 +78,22 @@ pub enum SubjectKind {
 impl SubjectKind {
     pub fn key(self) -> &'static str {
         match self {
+            Self::Layout => "layout",
             Self::Transformer => "transformer",
             Self::MvModels => "mv_models",
             Self::Extent => "extent",
         }
     }
-    /// The purpose's subject: MV sheets and front matter preview against MV
-    /// models, overview sheets against an extent, LV sheets and voltage-drop
-    /// reports against one transformer.
-    pub fn of(purpose: Purpose) -> Self {
-        match purpose {
-            Purpose::MvModel | Purpose::FrontMatter => Self::MvModels,
+    /// Explicit role narrows front matter to captured page or geographic input.
+    pub fn of(classification: Classification) -> Self {
+        match classification.purpose {
+            Purpose::FrontMatter
+                if matches!(classification.role, PageRole::KeyMap | PageRole::KeyPlan) =>
+            {
+                Self::Extent
+            }
+            Purpose::FrontMatter => Self::Layout,
+            Purpose::MvModel => Self::MvModels,
             Purpose::Project => Self::Extent,
             Purpose::LvTransformer | Purpose::VoltageDrop => Self::Transformer,
         }
@@ -92,6 +101,7 @@ impl SubjectKind {
     /// The canonical command that renders a preview for this subject.
     pub fn render_command(self) -> Option<&'static str> {
         match self {
+            Self::Layout => Some("report.layout.render"),
             Self::Transformer => Some(TRANSFORMER_PREVIEW_COMMAND),
             Self::MvModels => Some(super::mv_preview::COMMAND_ID),
             Self::Extent => None,
@@ -102,6 +112,7 @@ impl SubjectKind {
 impl Subject {
     pub fn kind(&self) -> SubjectKind {
         match self {
+            Self::Layout => SubjectKind::Layout,
             Self::Transformer { .. } => SubjectKind::Transformer,
             Self::MvModels { .. } => SubjectKind::MvModels,
             Self::Extent { .. } => SubjectKind::Extent,
@@ -119,7 +130,7 @@ pub const MAX_PREVIEW_MODELS: usize = 64;
 /// previews against MV models, anything else against a transformer.
 pub fn expected_subject(layout: &Layout) -> SubjectKind {
     match layout.classification {
-        Some(classification) => SubjectKind::of(classification.purpose),
+        Some(classification) => SubjectKind::of(classification),
         None if layout.mv.is_some() => SubjectKind::MvModels,
         None => SubjectKind::Transformer,
     }
@@ -245,15 +256,21 @@ pub fn plan(facts: &Facts) -> Result<Plan, String> {
     let expected = expected_subject(&facts.layout);
     // The legacy `transformer` fact is a transformer subject.
     let subject = facts.subject.clone().or_else(|| {
-        facts.transformer.as_ref().map(|t| Subject::Transformer {
-            name: t.name.clone(),
-            kind: t.kind.clone(),
-            cached: t.cached,
-            dirty: t.dirty,
-        })
+        facts
+            .transformer
+            .as_ref()
+            .filter(|_| expected != SubjectKind::Layout)
+            .map(|t| Subject::Transformer {
+                name: t.name.clone(),
+                kind: t.kind.clone(),
+                cached: t.cached,
+                dirty: t.dirty,
+            })
     });
     match &subject {
+        None if expected == SubjectKind::Layout => {}
         None => refusals.push(match expected {
+            SubjectKind::Layout => unreachable!("captured layouts need no engineering subject"),
             SubjectKind::Transformer => refusal(
                 "print_preview_no_transformer",
                 "printing_preview_no_transformer",
@@ -276,6 +293,7 @@ pub fn plan(facts: &Facts) -> Result<Plan, String> {
                 ("subject", chosen.kind().key()),
             ],
         )),
+        Some(Subject::Layout) => {}
         Some(Subject::Transformer {
             name,
             kind,
@@ -519,33 +537,50 @@ mod tests {
         assert_eq!(mv.refusals[0].code, "print_preview_subject_mismatch");
         assert_eq!(mv.refusals[0].params["expected"], "mv_models");
         assert_eq!(mv.refusals[0].params["subject"], "transformer");
-        // Front matter previews against the booklet's MV models.
-        let mut f = classified("front_matter", "cover");
+        // A static front-matter page consumes no engineering subject.
+        for role in [
+            "cover",
+            "naming",
+            "sheet_index",
+            "legend",
+            "general_notes",
+            "legend_notes",
+            "revisions",
+        ] {
+            let mut f = classified("front_matter", role);
+            f.transformer = None;
+            f.subject = None;
+            let front = plan(&f).unwrap();
+            assert!(front.ready, "{role}: {:?}", front.refusals);
+            assert_eq!(front.subject, SubjectKind::Layout);
+            assert_eq!(
+                front.render_command.as_deref(),
+                Some("report.layout.render")
+            );
+            f.subject = Some(Subject::MvModels {
+                model_ids: vec!["unused".into()],
+            });
+            assert_eq!(
+                plan(&f).unwrap().refusals[0].code,
+                "print_preview_subject_mismatch"
+            );
+        }
+        for role in ["key_map", "key_plan"] {
+            let mut f = classified("front_matter", role);
+            f.transformer = None;
+            f.subject = None;
+            assert_eq!(plan(&f).unwrap().subject, SubjectKind::Extent);
+            assert_eq!(
+                plan(&f).unwrap().refusals[0].code,
+                "print_preview_no_extent"
+            );
+        }
+        let mut f = classified("mv_model", "plan_profile");
         f.transformer = None;
-        f.subject = Some(Subject::MvModels {
-            model_ids: vec!["model-a".into(), "model-b".into()],
-        });
-        let front = plan(&f).unwrap();
-        assert!(front.ready, "{:?}", front.refusals);
-        assert_eq!(front.transformer, None);
-        // Absent, empty or repeated models are named.
-        f.subject = None;
-        assert_eq!(
-            plan(&f).unwrap().refusals[0].code,
-            "print_preview_no_mv_model"
-        );
-        f.subject = Some(Subject::MvModels { model_ids: vec![] });
-        assert_eq!(
-            plan(&f).unwrap().refusals[0].code,
-            "print_preview_no_mv_model"
-        );
-        f.subject = Some(Subject::MvModels {
-            model_ids: vec!["a".into(), "a".into()],
-        });
-        assert_eq!(
-            plan(&f).unwrap().refusals[0].code,
-            "print_preview_mv_model_invalid"
-        );
+        for ids in [vec![], vec!["a".into(), "a".into()]] {
+            f.subject = Some(Subject::MvModels { model_ids: ids });
+            assert!(!plan(&f).unwrap().ready);
+        }
         // An overview sheet previews against an extent, which no renderer draws yet.
         let mut o = classified("project", "overview");
         o.transformer = None;

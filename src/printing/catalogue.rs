@@ -16,8 +16,7 @@ pub enum Purpose {
     MvModel,
     Project,
     VoltageDrop,
-    /// Booklet front matter (cover, naming, key map, ...); it previews against
-    /// the DS Grid MV model(s) its booklet prints.
+    /// Booklet front matter; its explicit page role determines consumed input.
     FrontMatter,
 }
 
@@ -149,7 +148,7 @@ impl Entry {
     fn new(row: Row, location: Location) -> Self {
         let mismatch = stored_mismatch(&row);
         let subject = match (&mismatch, row.classification) {
-            (None, Some(classification)) => Some(SubjectKind::of(classification.purpose)),
+            (None, Some(classification)) => Some(SubjectKind::of(classification)),
             _ => None,
         };
         Self {
@@ -595,7 +594,7 @@ mod tests {
         );
         let front = &out["groups"][0]["roles"][0]["templates"][0];
         assert_eq!(front["location"]["kind"], "governed_standard");
-        assert_eq!(front["subject"], "mv_models");
+        assert_eq!(front["subject"], "layout");
         let mv = &out["groups"][1]["roles"][0];
         assert_eq!(mv["role"], "plan_profile");
         assert_eq!(mv["templates"].as_array().unwrap().len(), 1);

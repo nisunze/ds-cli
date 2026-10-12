@@ -4,6 +4,100 @@ use super::catalogue::{Location, FRONT_MATTER_ROLES};
 use super::standards::{TemplateDocument, Templates, TEMPLATE_SCHEMA};
 use serde_json::Value;
 
+pub fn preview_subject(document: &TemplateDocument) -> Result<super::preview::SubjectKind, String> {
+    let classification = super::catalogue::Classification {
+        purpose: super::catalogue::Purpose::FrontMatter,
+        role: document.role,
+    };
+    classification.admit()?;
+    Ok(super::preview::SubjectKind::of(classification))
+}
+
+/// Optional source of a captured page, shared by headless and paired preview.
+/// Its pins fence reuse; it grants no project access and fetches no document.
+#[derive(serde::Deserialize, serde::Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum PreviewSource {
+    GovernedStandard {
+        location: Location,
+        document: TemplateDocument,
+    },
+}
+impl PreviewSource {
+    pub fn render_layout(&self) -> super::Layout {
+        let Self::GovernedStandard { document, .. } = self;
+        let mut layout = document.layout.clone();
+        layout.elements.retain(|element| {
+            !(element.kind == super::ElementKind::Logo
+                && document.logo_slots.contains(&element.asset)
+                && !layout.assets.contains_key(&element.asset))
+        });
+        layout
+    }
+    pub fn admit(&self, project: &str, layout: &super::Layout) -> Result<(), String> {
+        let Self::GovernedStandard { location, document } = self;
+        let Location::GovernedStandard {
+            project_id,
+            id,
+            template_id,
+            revision_id,
+            ..
+        } = location
+        else {
+            return Err("print_document_invalid: a governed standard location is required".into());
+        };
+        if project_id != project || &document.layout != layout {
+            return Err(
+                "print_document_invalid: captured project or authored layout differs".into(),
+            );
+        }
+        let response = serde_json::json!({"scope":"project","project_id":project_id,"kind":"standard","id":id,
+            "template_id":template_id,"revision_id":revision_id,"role":document.role,"document":document});
+        admit(location, &response)?;
+        Ok(())
+    }
+}
+
+/// Assemble the existing public capture without engineering or acquisition
+/// ports. Keep source placeholders intact until admitted producer transport.
+pub fn capture_preview(
+    location: Location,
+    document: TemplateDocument,
+    resolution: &crate::style_resolution::Snapshot,
+    text: Value,
+    date: String,
+) -> Result<Value, String> {
+    let source = PreviewSource::GovernedStandard {
+        location,
+        document: document.clone(),
+    };
+    source.admit(&resolution.project_id, &document.layout)?;
+    if preview_subject(&document)? != super::preview::SubjectKind::Layout {
+        return Err("printing_acquisition_required: this governed page needs an explicit geographic capture".into());
+    }
+    let rendered = source.render_layout();
+    let (resolved, capture) = super::resolve_style_documents(rendered.clone(), resolution)?;
+    if resolved != rendered {
+        return Err("print_document_invalid: a static standard page cannot substitute its authored style bindings".into());
+    }
+    let mut facts = rendered;
+    facts.classification = Some(super::catalogue::Classification {
+        purpose: super::catalogue::Purpose::FrontMatter,
+        role: document.role,
+    });
+    let plan: Value = serde_json::from_str(&super::evaluate(&serde_json::to_vec(&serde_json::json!({
+        "op":"render_plan","layout":facts,"available_style_refs":[],"layer_count":0,"text":text,"date":date
+    })).map_err(|error|error.to_string())?)?).map_err(|error|error.to_string())?;
+    if plan["ready"] != true {
+        return Err("print_document_invalid: static standard capture is not ready".into());
+    }
+    Ok(
+        serde_json::json!({"schema":"ds.print-layout-export/v1","render":{
+        "layout":document.layout,"layers":[],"text":plan["text"],"print_styles":capture["print_styles"],"renderer_defaults":capture["renderer_defaults"]},
+        "renderer_defaults":capture["renderer_defaults"],"source":source}),
+    )
+}
+
 /// Reject an unusable held location before the host acquires any document.
 pub fn admit_location(location: &Location) -> Result<(), String> {
     let Location::GovernedStandard {
@@ -199,6 +293,71 @@ mod tests {
             response["document"]
         );
         assert!(!document.layout.assets.contains_key("client-logo-slot"));
+        let source = PreviewSource::GovernedStandard {
+            location: location.clone(),
+            document: document.clone(),
+        };
+        source.admit("project_one", &document.layout).unwrap();
+        assert!(source.admit("other_project", &document.layout).is_err());
+        let mut changed = document.layout.clone();
+        changed.name = "Changed page".into();
+        assert!(source.admit("project_one", &changed).is_err());
+        assert_eq!(
+            preview_subject(&document).unwrap(),
+            super::super::preview::SubjectKind::Layout
+        );
+        let rendered = source.render_layout();
+        assert!(!rendered
+            .elements
+            .iter()
+            .any(|element| element.id == "client-logo"));
+        assert!(document
+            .layout
+            .elements
+            .iter()
+            .any(|element| element.id == "client-logo"));
+        let defaults: Value = serde_json::from_str(include_str!(
+            "../../tests/fixtures/governed-renderer-defaults.json"
+        ))
+        .unwrap();
+        let policy = json!({"type":"line","paint":{},"layout":{},"metadata":{"print_renderer_defaults":defaults}});
+        let resolution: crate::style_resolution::Snapshot = serde_json::from_value(json!({
+            "schema":"ds.style-resolution/v1","project_id":"project_one","revision_id":"a".repeat(64),
+            "bindings":[{"key":super::super::renderer_defaults::key(),"style_ref":"test/renderer_defaults_print",
+                "revision_id":"a".repeat(64),"content_sha256":crate::style_plan::style_digest(&policy),"scope":"catalogue","document":policy}]
+        })).unwrap();
+        let capture = capture_preview(
+            location.clone(),
+            document.clone(),
+            &resolution,
+            json!({"title":"Cover"}),
+            "2026-10-12".into(),
+        )
+        .unwrap();
+        assert_eq!(capture["render"]["layout"], response["document"]["layout"]);
+        assert_eq!(capture["source"]["document"], response["document"]);
+        assert_eq!(capture["render"]["layers"], json!([]));
+        assert_eq!(capture["render"]["text"]["date"], "2026-10-12");
+        let intent = json!({"op":"capture_governed_standard_preview","location":location,"document":document,
+            "resolution":resolution,"text":{"title":"Cover"},"date":"2026-10-12"});
+        let transported: Value = serde_json::from_str(
+            &super::super::evaluate(&serde_json::to_vec(&intent).unwrap()).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(transported, capture);
+        let mut crossed = resolution.clone();
+        crossed.project_id = "foreign".into();
+        assert!(capture_preview(
+            location.clone(),
+            document.clone(),
+            &crossed,
+            json!({}),
+            String::new()
+        )
+        .is_err());
+        let mut missing = resolution;
+        missing.bindings.clear();
+        assert!(capture_preview(location, document, &missing, json!({}), String::new()).is_err());
     }
     #[test]
     fn a_recomputed_body_digest_cannot_replace_the_catalogue_pin() {

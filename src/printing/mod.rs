@@ -2381,6 +2381,16 @@ pub enum Command {
         location: catalogue::Location,
         response: Value,
     },
+    /// Capture a static, pinned governed page with retained renderer policy.
+    CaptureGovernedStandardPreview {
+        location: catalogue::Location,
+        document: standards::TemplateDocument,
+        resolution: crate::style_resolution::Snapshot,
+        #[serde(default)]
+        text: Value,
+        #[serde(default)]
+        date: String,
+    },
     Duplicate {
         layout: Layout,
         id: String,
@@ -2817,7 +2827,7 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
                     }));
                 }
             }
-            if layer_count == 0 {
+            if layer_count == 0 && preview::expected_subject(&layout) != preview::SubjectKind::Layout {
                 refusals.push(json!({
                     "code": "print_preview_needs_layers",
                     "message_key": "printing_preview_needs_layers",
@@ -2966,6 +2976,9 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
         Command::ReadGovernedStandard { location, response } => {
             serde_json::to_value(standard_read::admit(&location, &response)?)
                 .map_err(|e| e.to_string())?
+        }
+        Command::CaptureGovernedStandardPreview { location, document, resolution, text, date } => {
+            standard_read::capture_preview(location, document, &resolution, text, date)?
         }
         Command::Duplicate { layout, id, name } => {
             let mut layout = upgrade(layout)?;

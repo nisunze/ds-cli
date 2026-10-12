@@ -99,7 +99,32 @@ a stored `mv_model` row with another role, or with saved paper other than A3
 landscape, is listed as Unclassified with `mismatch: {code:
 "print_classification_mv_requires_plan_profile", message, stored}` until it is
 reclassified. Every admitted entry carries the preview `subject` its purpose
-previews against (`transformer`, `mv_models` or `extent`).
+previews against (`transformer`, `mv_models`, `extent` or `layout`). Static front
+matter roles (cover, naming, sheet index, legend, general notes, legend and notes,
+revisions) consume a captured layout page; they do not require MV inventory,
+transformer design or a geographic extent. Key map and key plan retain their
+explicit extent requirement. Governed standard reads return the same native
+role-derived subject and preserve the original authored document and pins.
+
+`report.layout.render --preview` consumes one `ds.print-layout-export/v1`
+capture through the shared native file-preview owner. SVG is the default;
+`--preview-format pdf` selects one PDF through the same fixed local
+`render-print-layout` producer. The closed format choice joins the exact scope,
+layout, complete input capture, governed source pins and engine build identity
+in the reuse key. Both return only the common disk artifact manifest, with the
+24-hour or declared seven-day lifetime; reuse keeps its original expiry.
+Concurrent consumers render once. Preview and PDF download read the admitted
+file through the same digest-fenced reader, and PDF download follows visual
+inspection of that PDF. No inline producer or alternate preview route exists.
+
+A governed capture may carry `source: {kind: "governed_standard", location,
+document}`. Native admission checks project, exact catalogue revision/content
+pins, role and equality of the captured layout to that original document before
+the producer runs. The reuse key hashes this source. The fixed producer receives
+the admitted layout, omitting only declared, unbound logo placeholders; the
+original governed source remains intact. No model, style or project provider
+is available to this host. Desktop captures retained governed style/default
+policy; a missing or invalidated policy names an explicit acquisition need.
 
 `catalogue::from_listing` is the one grouped catalogue read
 (`report.layout.list --scope project --project <id> --catalogue`). It takes the
