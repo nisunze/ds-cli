@@ -1655,6 +1655,24 @@ pub fn saved_transformer_context_for_project(
     })
 }
 
+/// Capture one exact saved snapshot with its governed processing projection.
+pub fn processing_transformer_context_for_project(
+    lane_value: &str,
+    project: &str,
+    transformer: &str,
+) -> Result<HeadlessNamedTransformerContext, Failure> {
+    let report = headless_named_project(
+        lane_value,
+        project,
+        |device, project| device.transformer_context_for_processing(project, transformer),
+        |client, project| client.transformer_context_for_processing(project, transformer, now()),
+    )?;
+    Ok(HeadlessNamedTransformerContext {
+        identity: report.identity().clone(),
+        snapshot: report.into_result(),
+    })
+}
+
 /// Exact saved layers and, when present, their server-fenced raw analysis.
 /// Both calls use one restored session; no project selection or second identity
 /// restoration can enter between the snapshot and its analysis read.

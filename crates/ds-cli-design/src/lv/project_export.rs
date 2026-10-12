@@ -67,6 +67,11 @@ pub static COMMAND: Command = Command {
     }],
     refusals: &[
         refusal!(
+            "transformer_process_projection_unavailable",
+            "the backend does not return exact saved layers and their same-read processing projection",
+            "deploy matching ds-brain process projection support, then retry without changing local state"
+        ),
+        refusal!(
             "native_profile_not_configured",
             "the exact packaged native profile is unavailable",
             "install one complete ds release"
@@ -211,7 +216,8 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let transformer = inputs.require("transformer")?;
     let lane = inputs.require("lane")?;
     let project = inputs.require("project")?;
-    let headless = ds_cli_auth::saved_transformer_context_for_project(lane, project, transformer)?;
+    let headless =
+        ds_cli_auth::processing_transformer_context_for_project(lane, project, transformer)?;
     let snapshot = headless.snapshot();
     let (Some(version), Some(content_digest)) = (
         snapshot.metadata().version(),
@@ -224,23 +230,14 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         .remedy("Refresh or migrate the transformer until the context call returns both fences."));
     };
 
-    // The saved projection is the source of the publication digest. The full
-    // projection carries governed transformer nature for this run only; the
-    // network processor removes it from the saved result.
-    let projected = ds_cli_auth::transformer_context_for_project(lane, project, transformer)?;
-    if projected.identity() != headless.identity()
-        || projected.snapshot().ds_project() != snapshot.ds_project()
-        || projected.snapshot().transformer_name() != snapshot.transformer_name()
-        || projected.snapshot().metadata() != snapshot.metadata()
-    {
-        return Err(Failure::conflict(
-            "project_context_stale",
-            "The saved and governed transformer projections have different source fences.",
-        )
-        .remedy("Export the transformer again after the project state settles."));
-    }
+    // One response binds saved bytes and the separately governed transformer
+    // projection to this principal, project and generation. No second read.
+    let projected = snapshot.processing_layers().ok_or_else(|| Failure::unavailable(
+        "transformer_process_projection_unavailable",
+        "The backend did not return the coherent transformer processing projection.",
+    ).remedy("Deploy matching ds-brain process projection support, then retry without changing local state."))?;
     let mut process_layers = snapshot.layers().clone();
-    carry_projected_nature(&mut process_layers, projected.snapshot().layers())?;
+    carry_projected_nature(&mut process_layers, projected)?;
 
     let mut config_sha256 = None;
     let request = if inputs.switch("project-config") {
@@ -325,7 +322,9 @@ fn carry_projected_nature(
             "The transformer point is absent from a saved or governed projection.",
         ));
     };
-    if saved_tr.get("id") != projected_tr.get("id") {
+    if saved_tr.get("id") != projected_tr.get("id")
+        || saved_tr.get("geometry") != projected_tr.get("geometry")
+    {
         return Err(Failure::conflict(
             "project_context_stale",
             "The saved and governed transformer points differ.",
@@ -334,10 +333,13 @@ fn carry_projected_nature(
     if let Some(nature) = projected_tr
         .get("properties")
         .and_then(|properties| properties.get("transformer_nature"))
-        .and_then(Value::as_str)
-        .filter(|nature| !nature.trim().is_empty())
     {
-        saved_tr["properties"]["transformer_nature"] = Value::String(nature.to_string());
+        saved_tr["properties"]["transformer_nature"] = nature.clone();
+    } else if let Some(properties) = saved_tr
+        .get_mut("properties")
+        .and_then(Value::as_object_mut)
+    {
+        properties.remove("transformer_nature");
     }
     Ok(())
 }
@@ -400,6 +402,30 @@ mod tests {
             saved["tr"]["features"][0]["properties"]["transformer_nature"],
             "fill_in"
         );
+        projected.get_mut("tr").unwrap()["features"][0]["properties"]["transformer_nature"] =
+            json!(["fill_in", "productive_use"]);
+        carry_projected_nature(&mut saved, &projected).unwrap();
+        assert_eq!(
+            saved["tr"]["features"][0]["properties"]["transformer_nature"],
+            json!(["fill_in", "productive_use"])
+        );
+        projected.get_mut("tr").unwrap()["features"][0]["properties"]
+            .as_object_mut()
+            .unwrap()
+            .remove("transformer_nature");
+        carry_projected_nature(&mut saved, &projected).unwrap();
+        assert!(
+            saved["tr"]["features"][0]["properties"]
+                .get("transformer_nature")
+                .is_none()
+        );
+        projected.get_mut("tr").unwrap()["features"][0]["geometry"] =
+            json!({"type":"Point", "coordinates":[1,2]});
+        assert!(carry_projected_nature(&mut saved, &projected).is_err());
+        projected.get_mut("tr").unwrap()["features"][0]
+            .as_object_mut()
+            .unwrap()
+            .remove("geometry");
         projected.get_mut("tr").unwrap()["features"][0]["id"] = json!("another-tr");
         assert!(carry_projected_nature(&mut saved, &projected).is_err());
     }
