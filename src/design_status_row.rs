@@ -183,6 +183,18 @@ pub struct VersionView {
     /// The lead is not the newest snapshot — something was restored.
     pub restored: bool,
     pub unversioned: bool,
+    pub baseline_ready: bool,
+    pub label: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub baseline_origin: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub current_version_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub current_revision_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub changed_since_version: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub review_status: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reason: Option<String>,
 }
@@ -556,17 +568,58 @@ const UNVERSIONED: i64 = 0;
 /// around THIS — the register and the prompt must never decide the lead twice.
 pub(crate) fn version_view(row: &Map<String, Value>) -> VersionView {
     let metadata = row.get("version_metadata").and_then(object);
-    let version =
-        finite_ordinal(metadata.and_then(|m| m.get("lead_version"))).unwrap_or(UNVERSIONED);
-    let latest =
-        finite_ordinal(metadata.and_then(|m| m.get("latest_version"))).unwrap_or(UNVERSIONED);
-    let latest = latest.max(version);
+    let origin = string_at(metadata, "baseline_origin");
+    let current_version_id = string_at(metadata, "current_version_id");
+    let current_revision_id = string_at(metadata, "current_revision_id");
+    let display = metadata
+        .and_then(|m| m.get("version_display"))
+        .and_then(Value::as_u64)
+        .filter(|n| *n <= 1_000_000)
+        .map(|n| n as i64);
+    let baseline_ready = metadata
+        .and_then(|m| m.get("baseline_ready"))
+        .and_then(Value::as_bool)
+        == Some(true)
+        && matches!(
+            origin.as_str(),
+            "source_pinned_import" | "baseline_today" | "initial_creation"
+        )
+        && crate::design_version_catalog::version_id(&current_version_id)
+        && crate::design_version_catalog::revision_id(&current_revision_id)
+        && display.is_some();
+    // Positive legacy ordinals remain observable; zero is never baseline evidence.
+    let version = if baseline_ready {
+        display.unwrap()
+    } else {
+        finite_ordinal(metadata.and_then(|m| m.get("lead_version"))).unwrap_or(UNVERSIONED)
+    };
+    let latest = finite_ordinal(metadata.and_then(|m| m.get("latest_version")))
+        .unwrap_or(version)
+        .max(version);
     let reason = string_at(metadata, "lead_reason");
+    let review_status = string_at(metadata, "review_status");
     VersionView {
         version,
         latest,
-        restored: version > UNVERSIONED && latest > version,
-        unversioned: version == UNVERSIONED,
+        restored: latest > version && (baseline_ready || version > 0),
+        unversioned: !baseline_ready && version == UNVERSIONED,
+        baseline_ready,
+        label: if baseline_ready || version > 0 {
+            format!("v{version}")
+        } else {
+            "baseline_required".into()
+        },
+        baseline_origin: baseline_ready.then_some(origin),
+        current_version_id: baseline_ready.then_some(current_version_id),
+        current_revision_id: baseline_ready.then_some(current_revision_id),
+        changed_since_version: baseline_ready
+            .then(|| {
+                metadata
+                    .and_then(|m| m.get("changed_since_version"))
+                    .and_then(Value::as_bool)
+            })
+            .flatten(),
+        review_status: (!review_status.is_empty()).then_some(review_status),
         reason: (!reason.is_empty()).then_some(reason),
     }
 }

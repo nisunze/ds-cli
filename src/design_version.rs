@@ -1,24 +1,8 @@
-//! Deliberate transformer versions — has the saved state moved, and may the
-//! pen open?
-//!
-//! `metadata.version` is the optimistic-concurrency SAVE COUNTER, not a
-//! version. The two meet at exactly one point: `lead_source_version`, the save
-//! generation present when the deliberate version began. Comparing those two
-//! integers is the whole of "has this transformer moved since its lead" — and
-//! a backend that reports neither cannot prove the document is unchanged, so
-//! it reports changed and the prompt is offered rather than silently skipped.
-//!
-//! Five ordered clauses decide ask-vs-open, and the ORDER is the authority: a
-//! gesture that closes a session, or one the entry gates already refused, must
-//! never raise a dialog, because in neither case is an edit about to start.
-//!
-//! `design_versions` is a different concept with a near-identical name: it
-//! governs OFFLINE LOCAL version rooms and explicitly disclaims server vN
-//! identity. This module answers the server-assigned ordinal's prompt. The
-//! ordinal itself stays ds-brain's — the kernel only says which one is next.
-//!
-//! Pure: `now` is never read, no IO, no clock. Every label that leaves here is
-//! a token or a `v<n>` identifier, never a sentence.
+//! Deliberate transformer version presentation and edit prompts.
+//! Server metadata owns baseline provenance, immutable identities, display
+//! ordinals, content-change verdicts and review state. A zero save counter or
+//! missing catalog is never a baseline. Hosts render this pure answer without
+//! reconstructing version or approval policy.
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -60,6 +44,15 @@ pub struct VersionFacts {
     /// The lead is not the newest snapshot: something was restored.
     pub restored: bool,
     pub unversioned: bool,
+    pub baseline_ready: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub baseline_origin: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub current_version_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub current_revision_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub review_status: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reason: Option<String>,
     /// Has the SAVED state moved since the version in force was cut? There is
@@ -284,28 +277,13 @@ fn row_name(row: Option<&Value>) -> String {
 
 /// Has this transformer's SAVED state moved since the lead was cut?
 ///
-/// This predicate is evaluated only after a version exists. The public facts
-/// return `null` for an unversioned row. Otherwise the save counter is compared
-/// with the one the lead froze; a backend that reports neither number cannot
-/// prove the document is unchanged, so it reports changed.
+/// The server compares saved content digests at publication. Missing baseline
+/// or change evidence cannot prove that the working content is unchanged.
 pub fn changed_since_version(row: Option<&Value>) -> bool {
-    let metadata = version_metadata(row);
-    let lead =
-        finite_ordinal(metadata.and_then(|map| map.get("lead_version"))).unwrap_or(UNVERSIONED);
-    if lead == UNVERSIONED {
-        return true;
-    }
-    let snapshotted = finite_ordinal(metadata.and_then(|map| map.get("lead_source_version")));
-    let current = finite_ordinal(
-        row.and_then(object)
-            .and_then(|map| map.get("metadata"))
-            .and_then(object)
-            .and_then(|map| map.get("version")),
-    );
-    match (snapshotted, current) {
-        (Some(snapshotted), Some(current)) => current != snapshotted,
-        _ => true,
-    }
+    let empty = Map::new();
+    let view = crate::design_status_row::version_view(row.and_then(object).unwrap_or(&empty));
+    // This is a server content-digest verdict, never a save-counter comparison.
+    !view.baseline_ready || view.changed_since_version != Some(false)
 }
 
 /// Every version fact about one row, decided once.
@@ -341,11 +319,16 @@ pub fn facts(row: Option<&Value>, name_override: Option<&str>) -> VersionFacts {
         latest: view.latest,
         next: view.latest + 1,
         count,
-        label: format!("v{}", view.version),
+        label: view.label,
         restored: view.restored,
         unversioned: view.unversioned,
+        baseline_ready: view.baseline_ready,
+        baseline_origin: view.baseline_origin,
+        current_version_id: view.current_version_id,
+        current_revision_id: view.current_revision_id,
+        review_status: view.review_status,
         reason: view.reason,
-        changed_since_version: (!view.unversioned).then(|| changed_since_version(row)),
+        changed_since_version: view.changed_since_version,
         lead,
     }
 }
@@ -383,7 +366,7 @@ pub fn prompt(
         PromptDecision::Ask {
             current_version: facts.version,
             next_version: facts.next,
-            first_ever: facts.version == UNVERSIONED,
+            first_ever: !facts.baseline_ready && facts.version == UNVERSIONED,
         }
     };
     (decision, facts)
@@ -545,11 +528,11 @@ mod tests {
     }
 
     #[test]
-    fn an_unmoved_save_counter_opens_the_pen_without_a_dialog() {
+    fn a_server_unchanged_content_verdict_opens_the_pen_without_a_dialog() {
         let decision = ask(json!({
             "name": "tx_1",
             "metadata": {"version": 4},
-            "version_metadata": {"lead_version": 2, "lead_source_version": 4},
+            "version_metadata": {"lead_version":2,"lead_source_version":999,"baseline_ready":true,"baseline_origin":"baseline_today","version_display":2,"current_version_id":"v2","current_revision_id":"v2","changed_since_version":false},
         }));
         assert_eq!(
             decision,
@@ -693,6 +676,61 @@ mod tests {
             upload_overwrite_reason("collisions", "replace_all", Some(&saved)),
             UploadOverwriteReason::Unversionable
         );
+    }
+
+    #[test]
+    fn genuine_zero_requires_pinned_baseline_evidence_and_never_claims_approval() {
+        let row = json!({"name":"tx_1","metadata":{"version":100},"version_metadata":{
+            "baseline_ready":true,"baseline_origin":"source_pinned_import",
+            "version_display":0,"current_version_id":"v0","current_revision_id":"v0",
+            "changed_since_version":false,"review_status":"unreviewed"}});
+        let ready = facts(Some(&row), None);
+        assert!(ready.baseline_ready);
+        assert!(!ready.unversioned);
+        assert_eq!(ready.label, "v0");
+        assert_eq!(ready.changed_since_version, Some(false));
+        assert_eq!(ready.review_status.as_deref(), Some("unreviewed"));
+        assert!(matches!(
+            ask(row.clone()),
+            PromptDecision::Open {
+                reason: OpenReason::Unchanged
+            }
+        ));
+        for key in [
+            "baseline_ready",
+            "baseline_origin",
+            "current_revision_id",
+            "current_version_id",
+            "version_display",
+        ] {
+            let mut missing = row.clone();
+            missing["version_metadata"]
+                .as_object_mut()
+                .unwrap()
+                .remove(key);
+            let missing = facts(Some(&missing), None);
+            assert!(!missing.baseline_ready, "{key}");
+            assert_ne!(missing.label, "v0", "{key}");
+        }
+    }
+    #[test]
+    fn stable_catalog_identity_is_independent_of_display_and_save_counter() {
+        let id = format!("vc_{}", "a".repeat(64));
+        let revision = format!("vr_{}", "b".repeat(64));
+        let row = json!({"name":"tx_1","metadata":{"version":99},"version_metadata":{
+            "baseline_ready":true,"baseline_origin":"initial_creation","version_display":0,
+            "current_version_id":id,"current_revision_id":revision,"changed_since_version":true}});
+        let f = facts(Some(&row), None);
+        assert_eq!(f.label, "v0");
+        assert_eq!(f.changed_since_version, Some(true));
+        assert_eq!(f.current_version_id.as_deref(), Some(id.as_str()));
+        assert!(matches!(
+            ask(row),
+            PromptDecision::Ask {
+                first_ever: false,
+                ..
+            }
+        ));
     }
 
     #[test]
