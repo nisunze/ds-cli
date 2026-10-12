@@ -521,6 +521,7 @@ fn settle(
                         let _ = room.fail(&digest, &ticket, error.message());
                         return Err(match error {
                             Failure::ProviderUnavailable(m) => Failure::ProviderUnavailable(m),
+                            Failure::LocalResourceRequired(m) => Failure::LocalResourceRequired(m),
                             Failure::BundleUnavailable(m) => Failure::BundleUnavailable(m),
                             other => Failure::AcquisitionFailed(other.message().to_owned()),
                         });
