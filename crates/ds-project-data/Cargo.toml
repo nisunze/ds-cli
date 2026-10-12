@@ -13,6 +13,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
 flate2 = "1"
+csv = "1"
 tempfile = "3"
 
 ds-grid-exchange = { path = "../../../ds-network/crates/ds-grid-exchange" }

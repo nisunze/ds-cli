@@ -40,6 +40,7 @@ pub mod local_source;
 pub mod metadata;
 pub mod preview_room;
 pub mod print_context;
+pub mod publisher_footprints;
 pub mod room_hold;
 pub mod survey_hold;
 
@@ -66,6 +67,8 @@ pub enum Failure {
     AcquisitionFailed(String),
     /// The governed provider door could not be reached or answered a fault.
     ProviderUnavailable(String),
+    /// The selected computed context needs an explicit pinned local source.
+    LocalResourceRequired(String),
     /// The catalogue row has no verified bundle, or the bundle could not be
     /// fetched, verified or installed.
     BundleUnavailable(String),
@@ -89,6 +92,7 @@ impl Failure {
             Failure::NotHeld(_) => "project_dataset_not_held",
             Failure::AcquisitionFailed(_) => "project_dataset_acquisition_failed",
             Failure::ProviderUnavailable(_) => "dataset_provider_unavailable",
+            Failure::LocalResourceRequired(_) => "project_dataset_local_source_required",
             Failure::BundleUnavailable(_) => "reference_bundle_unavailable",
             Failure::Unsupported(_) => "print_context_unsupported",
             Failure::TooLarge(_) => "print_context_too_large",
@@ -103,6 +107,7 @@ impl Failure {
             Failure::NotHeld(m)
             | Failure::AcquisitionFailed(m)
             | Failure::ProviderUnavailable(m)
+            | Failure::LocalResourceRequired(m)
             | Failure::BundleUnavailable(m)
             | Failure::Unsupported(m)
             | Failure::TooLarge(m)

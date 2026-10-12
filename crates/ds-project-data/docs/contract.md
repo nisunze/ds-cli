@@ -57,17 +57,63 @@ no provider and perform no download. Expansion reads/patches only missing cells;
 explicit `refresh` repeats local indexed subsets through the same ticket fence.
 The retained analytical source survives removal of the original input file.
 
-This native seam accepts existing analytical inputs only. It does not yet bind
-CLI/UI source selection, publish a shared asset, compute contours, acquire
-publisher footprints or resolve contiguous city boundaries. Those consumers
-must use this owner before the local-source workflow is usable through `ds`.
+The CLI binds this seam through `data.project-cache.{seed,status,query}` and
+an explicit `--local-source` manifest. Shared publication, contour production,
+publisher download and contiguous city authority remain separate consumers.
+
+## Explicit pinned publisher footprint inputs
+
+`publisher_footprints::Input` (`ds.publisher-footprints/v1`) admits Google
+Open Buildings CSV.gz or Microsoft GeoJSONL.gz objects only. It names the exact
+project/asset revision, actual source, publisher revision, extraction coverage
+and 1–16 publisher object identities, absolute local paths, SHA-256 pins and
+publisher object coverage. The complete object coverage must cover every
+selected extraction cell before any object is opened. Neither geometry bounds
+nor a download request establishes completeness. Paths do not enter identity;
+source/version, stable object identities, byte pins, coverage and conversion
+revision do. Explicit source changes never substitute Microsoft for Google.
+
+The native producer verifies compressed bytes (128 MiB/object), then streams
+bounded records (2 MiB/record, 512 MiB expanded/object). Google geometry is strict
+2D Polygon/MultiPolygon WKT, including holes; unsupported types, dimensional or
+CRS modifiers, malformed/unclosed rings and nonfinite/non-WGS84 coordinates
+refuse. Microsoft rows require canonical WGS84 Polygon/MultiPolygon Features.
+The extraction is limited to 500000 selected footprints. Publisher ids are
+preserved under their source namespace; an absent publisher id uses a stable
+geometry digest. Identical ids deduplicate and conflicting rows refuse.
+Publisher properties are preserved losslessly in the declared
+`publisher_properties` JSON string column, avoiding schema drift between
+streaming Arrow batches.
+
+`ds-columnar::ConversionStream` owns canonical GeoParquet, CRS84/WKB metadata
+and bounded Arrow batches. Output is published under the immutable conversion
+identity with a source manifest and completed receipt published last; failed
+conversion publishes no source. The source carries the exact publisher
+revision and SHA-256 of the canonical pinned object/coverage/conversion
+description, separately from the generated artifact SHA-256. The completed
+receipt retains each publisher object pin. Empty verified extracts are valid.
+Unchanged explicit acquisition reads only this retained manifest and receipt;
+it never opens the original gzip objects or checks remote freshness. The
+existing local analytical owner builds/uses the spatial index and commits
+project coverage through the same ticket fence. There is no transport port,
+ADC, Earth Engine or Brain compute call in this producer.
+
+This is a local publisher-input producer, not an online publisher download or
+contour cutter. Google online acquisition needs an admitted frozen publisher
+catalogue/resource port. Existing Microsoft city acquisition remains explicit
+and separate. A retained full Rwanda COG is an elevation input; no native
+contour producer is admitted by this slice.
 
 ## The registry the kernel echoes
 
 `datasets::{buildings_dataset, contours_dataset, catalog_dataset}` produce the
 `Dataset` documents — byte-identical to the desktop's — whose digest is the
-room address. Buildings and contours go through
-`ds-brain:query_print_context`; a catalogue layer is a project subset of the
+room address. The legacy Buildings/Contours provider value
+`ds-brain:query_print_context` remains in the identity to preserve old holdings;
+it is not permission to compute remotely. `datasets::local_resource_need`
+reports the selected missing local input and exact authored parameters. The
+CLI provider calls this owner instead of Brain compute; warm holdings still
+read without any acquisition. A catalogue layer is a project subset of the
 machine's installed national bundle (`desktop:reference_resource_cache`).
 Contours are one room dataset carrying both kinds; the assembler splits them
 back into `contours_index` / `contours_intermediate`.
@@ -133,6 +179,6 @@ the rest fits. The held coverage stays whole for smaller prints.
 ## Failure codes
 
 `project_dataset_not_held`, `project_dataset_acquisition_failed`,
-`dataset_provider_unavailable`, `reference_bundle_unavailable`,
+`dataset_provider_unavailable`, `project_dataset_local_source_required`, `reference_bundle_unavailable`,
 `print_context_unsupported`, `print_context_too_large`, `catalog_invalid`,
 `project_dataset_store_failed`. A command declares the ones it can reach.

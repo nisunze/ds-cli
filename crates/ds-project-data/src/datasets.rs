@@ -14,7 +14,8 @@ use std::collections::BTreeMap;
 
 use crate::catalog::ReferenceResource;
 
-/// The governed door every derived acquisition goes through.
+/// Legacy room identity, retained so existing holdings keep their address.
+/// New derived acquisitions require explicitly pinned local source inputs.
 pub const BRAIN_PRINT_CONTEXT_PROVIDER: &str = "ds-brain:query_print_context";
 
 /// Authored contour intervals, as the layout's context source carries them.
@@ -93,5 +94,17 @@ pub fn at_version(dataset: &Dataset, source_version: &str) -> Dataset {
     Dataset {
         source_version: source_version.to_owned(),
         ..dataset.clone()
+    }
+}
+
+/// A host must not turn a missing local computed context into a Brain compute
+/// call. Keep the selected source and authored contour parameters explicit.
+pub fn local_resource_need(dataset: &Dataset) -> Option<crate::Failure> {
+    match dataset.id.as_str() {
+        BUILDINGS_DATASET_ID => Some(crate::Failure::LocalResourceRequired(format!(
+            "Google Open Buildings needs a pinned local Google publisher input or analytical source for version {:?}; explicitly supply it, or select Microsoft as a separate source", dataset.source_version))),
+        CONTOURS_DATASET_ID => Some(crate::Failure::LocalResourceRequired(format!(
+            "elevation contours need an explicitly selected local Rwanda DEM or Terrarium producer and exact surface revision/datum; authored parameters {} and version {:?} are preserved; local contour production is not yet admitted", serde_json::to_string(&dataset.parameters).unwrap_or_default(),dataset.source_version))),
+        _ => None,
     }
 }
