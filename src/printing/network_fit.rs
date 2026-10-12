@@ -512,7 +512,7 @@ mod tests {
             let result =
                 run(json!({"op":"preview_context_preparation","layout":selected,"online":online}))
                     .unwrap();
-            assert_eq!(result["acquire_missing"], online);
+            assert_eq!(result["acquire_missing"], false);
             assert_eq!(result["contexts"].as_array().unwrap().len(), 1);
             assert_eq!(
                 result["contexts"][0]["source"]["kind"],

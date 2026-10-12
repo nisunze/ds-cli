@@ -3088,7 +3088,7 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
             json!({"layout":layout})
         }
         Command::ContextStatus { omitted } => json!(sheet_status::context_status(omitted)?),
-        Command::PreviewContextPreparation { layout, online } => {
+        Command::PreviewContextPreparation { layout, online: _ } => {
             let layout = upgrade(layout)?;
             let (shown, hidden): (Vec<_>, Vec<_>) = layout
                 .context_layers
@@ -3098,7 +3098,7 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
                 .into_iter()
                 .map(|layer| context::hidden_context(&layout.id, layer))
                 .collect();
-            json!({"contexts":shown,"acquire_missing":online,"hidden":hidden})
+            json!({"contexts":shown,"acquire_missing":false,"hidden":hidden})
         }
         Command::SetFocusVisibility { layout, visible } => {
             let mut layout = upgrade(layout)?;

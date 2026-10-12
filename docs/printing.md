@@ -311,11 +311,11 @@ rosters refuse rather than silently guessing.
 Published global samples and project-adopted revisions are the starting point,
 not an LLM's last temporary recipe. Keep MV front matter, ordered pages, issue
 fields and general presentation in the same project printing library, editable
-and previewable through the native CLI/MCP surface. New-install preparation
-must schedule the existing idempotent context owners in the background under
-a captured principal/project. A read and the read-only render never acquire
-providers; only a preview's preparation step may, online, before that render
-(`preview_context_preparation` below).
+and previewable through the native CLI/MCP surface. Input acquisition runs only
+for an operation actually consuming those inputs under a captured
+principal/project. A preview and its read-only renderer consume held context,
+name missing inputs and never acquire providers. Explicit acquisition retains
+its existing owner and project fences.
 
 The preferred MV reference is the October 1 Nyamagabe Model 1 A3 booklet:
 `Nyamagabe-MV-Model1-Plan-and-Profile-A3.pdf`, 100 A3 landscape pages,
@@ -422,8 +422,8 @@ the closest-scale limit capped enlargement, and the occupied footprint. CLI
 and MCP author these policies through `set_fit_policy`; the UI adapts that
 same operation. A draft proof is not an online publication receipt.
 
-`preview_context_preparation` decides selected draft context and whether
-missing inputs may be prepared online, before the read-only render.
+`preview_context_preparation` describes selected draft context with
+`acquire_missing:false` whether connected or offline.
 `context_status` presents omissions: an acquired layer with no features in the
 design extent is neutral; an unheld/unavailable source retains its reason.
 This does not mutate source holdings or the saved project selection. The UI
