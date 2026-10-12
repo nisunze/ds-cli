@@ -175,6 +175,43 @@ pub static REVISION_BIND: Command = descriptor(
     &[PROJECT, OBJECT, Arg::value("file", "<binding.json>", "Closed binding pins: version_id,revision_id,purpose,record_id/expected_record_revision,milestone_id,assets,expected_catalog_revision,expected_source_revision,reason,idempotency_key. Submission requires issued record and delivered assets; at most 32 asset pins.").required(), LANE],
     Effect::GlobalWrite,
 );
+pub static REVISION_PROMOTE: Command = Command {
+    purpose: "Promote an exact immutable runtime revision through Bulk. The server retains the current source as an immutable backup, records the tracked change and validates runtime identities before replacing Latest. Exported-design and metadata-only revisions refuse. Requires exact catalog/source fences and explicit confirmation; no caller content, implicit retry, submission or engineering approval.",
+    output: "Verified exact target revision, immutable original-source backup, tracked change and new working source version/digest.",
+    search: &["version promote", "immutable backup", "safe restore"],
+    ..descriptor(
+    "design.version.revision.promote",
+    &["design", "version", "revision", "promote"],
+    "Promote an exact immutable runtime revision after backing up current source (needs --yes).",
+    &[PROJECT, OBJECT, Arg::value("file", "<promotion.json>", "Closed promotion pins: version_id,revision_id,expected_catalog_revision,expected_source_revision,task_ids?,source_record_ids?,reason,idempotency_key. Server retains original frame backup and tracked change before replacing Latest; exported-design and metadata-only snapshots refuse.").required(), LANE],
+    Effect::GlobalWrite,
+)
+};
+
+pub fn promote(i: &Inputs, _: &Context) -> Result<Value, Failure> {
+    let path = i.require("file")?;
+    let metadata =
+        std::fs::metadata(path).map_err(|e| Failure::invalid("invalid_input", e.to_string()))?;
+    if !metadata.is_file() || metadata.len() > 64 * 1024 {
+        return Err(Failure::invalid(
+            "invalid_input",
+            "promotion input must be a bounded regular file",
+        ));
+    }
+    let bytes =
+        std::fs::read(path).map_err(|e| Failure::invalid("invalid_input", e.to_string()))?;
+    let promotion =
+        serde_json::from_slice::<ds_command_kernel::design_version_promotion::Promotion>(&bytes)
+            .map_err(|e| Failure::invalid("invalid_input", e.to_string()))?;
+    ask(
+        i,
+        Request::Promote {
+            object_id: i.require("object")?.into(),
+            promotion,
+        },
+    )
+}
+
 pub fn bind(i: &Inputs, _: &Context) -> Result<Value, Failure> {
     let path = i.require("file")?;
     let metadata =

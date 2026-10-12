@@ -1569,3 +1569,13 @@ before the payload reaches a renderer or a store.
 The receipt is bounded: whole-room fetches are counted rather than listed,
 `--plan-only` reads nothing from the project at all, and a per-transformer read
 failure is reported beside the answer rather than ending it.
+
+`design version revision promote --project <project> --object <transformer> --file <promotion.json> --yes`
+uses exact immutable `version_id`/`revision_id`, `expected_catalog_revision`,
+`expected_source_revision`, bounded optional `task_ids`/`source_record_ids`,
+`reason` and `idempotency_key`. Bulk retains an immutable backup of current saved
+source and a tracked change before replacing Latest. Exported-design and
+metadata-only revisions refuse; labels never select content. The receipt must
+acknowledge the requested revision and fenced original backup. There is no
+implicit retry, readback or caller-supplied geometry. The obsolete `design version
+restore` overwrite command is retired.
