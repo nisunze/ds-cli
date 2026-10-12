@@ -712,7 +712,28 @@ A minimal fit request is `{"operation":"fit"}`. Results use `zoom`, `pan_x`,
 
 `kind` is `none`, `structures`, `tension_sections`, `alignments`, `terrain_points`, `attachment_points`, or `mixed`. `entity_ids` follows the engine's order for a single selected family; mixed selections retain the selected IDs. `primary` is an ID in the selection or `null`. `structures` contains ID and display number only for a homogeneous structure selection; `number` is `null` if unknown. `model_id` and `revision` are `null` without an open model Profile. The older `model` field remains for existing consumers. These fields describe the paired Desktop's current focus and do not authorize a model edit. Use an explicit model and revision in the corresponding `ds dsgrid` command.
 
-View contract 6 includes retained `readiness`: `phase`, `initial`,
+View contract 7 reads retained state without preparation, calculation, polling,
+acquisition or native status reads. The default reads no model workers.
+`--include-held` deliberately reads one atomic native presentation from each
+existing worker, coalescing concurrent observers without opening models,
+changing focus or checkpointing. `held_models` contains captured/current
+account/project/generation context, `total`, complete bounded `rows` and
+`mutated:false`. Rows retain native manifest identity, revision, full history
+and CRS alongside local persistence, ownership, project provenance and
+retained activity facts. Changed context or worker history refuses the whole
+inventory; no partial answer is admitted.
+
+The view reports `occupant`, `model_id`, `model_name`, `revision`, `persisted`,
+`history`, `edit_mode`, selection, `height_px`, camera/surface in CSS pixels,
+`display`, `visibility`, `vertical_exaggeration`, `review` (at most 256 cases)
+and `analysis`. `analysis_state` is `due`, `current`, `off` or `not_applicable`.
+`scene_loaded` denotes the current scene; `scene_revision` is retained.
+`calculation` retains native policy, `model_revision`, `computed_revision`,
+`required` and `scope`, and is null before observation. The mounted
+`pick_context` is an opaque lease for the painted model/scene/viewport; it is
+null when unavailable, as are unmounted surface facts.
+
+The view includes retained `readiness`: `phase`, `initial`,
 `scene_admitted`, `model_id`, `model_revision`, `job` and `failure`. It is null
 before a request or outside the held model/account/project context. Reading it
 starts no preparation, calculation, native status read, timer or acquisition.

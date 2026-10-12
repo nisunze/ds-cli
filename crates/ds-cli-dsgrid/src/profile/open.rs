@@ -155,7 +155,7 @@ pub static COMMAND: Command = Command {
     path: &["dsgrid", "profile", "open"],
     contract: 2,
     summary: "Open a working copy or checkpoint a live Desktop Profile model.",
-    purpose: "Open a machine working copy in Profile, optionally focusing an alignment and writing a new checkpoint. Reopening retains its live session. --live instead captures the already-open Profile model without catalogue lookup, import or focus changes; requires --checkpoint-out and --expect-history from map profile view. Native full-history admission rejects Undo/Redo ABA. Capture never saves or adopts the working model; import the new package explicitly to create an independent copy. --live --held explicitly captures a named existing worker without taking Profile occupancy; use history from map profile view --include-held. Its new artifact preserves current authored state/assets, and the receipt witnesses history; cold reopening does not preserve Undo/Redo. No model bytes cross the bridge. --replace-temporary-models removes temporary groups/models only when explicitly requested during ordinary opening.",
+    purpose: "Open a working copy, optionally focusing an alignment; reopening retains live work. --live captures the current Profile without opening or focus changes; --held permits another existing worker. Capture requires a new --checkpoint-out and exact --expect-history from map profile view (with --include-held for peers). Native history fences reject Undo/Redo ABA. Captures never save the source, overwrite outputs or preserve Undo/Redo on cold reopen. --replace-temporary-models explicitly removes temporary models during ordinary opening. No model bytes cross the bridge.",
     chapter: Chapter::GridModel,
     effect: Effect::LocalFileWrite,
     authority: Authority::DesktopPairing,
@@ -176,11 +176,11 @@ pub static COMMAND: Command = Command {
         REPLACE_TEMPORARY_MODELS_ARG,
         Arg::switch(
             "live",
-            "Capture the already-open Profile model, including models outside the CLI catalogue; requires output and full history.",
+            "Capture the current Profile, including uncatalogued models; requires output and full history.",
         ),
         Arg::switch(
             "held",
-            "With --live, capture one existing Desktop worker without focus change; use its exact history from map profile view --include-held. The new package carries authored state/assets and a receipt history witness, not durable Undo/Redo recovery.",
+            "With --live, capture an existing worker without focus change; use its history from map profile view --include-held.",
         ),
         Arg::value(
             "expect-history",
@@ -196,7 +196,7 @@ pub static COMMAND: Command = Command {
         TARGET_ARG,
         DESCRIPTOR_ARG,
     ],
-    output: "Model, package path, live revision and Profile state; checkpoint receipt names the captured revision, full history with --live, persisted file path, SHA-256 and byte length. Live capture leaves alignment/focus unchanged. --held additionally reports held_checkpoint:true, source_saved:false, focus_changed:false, undo_redo_preserved:false; it never overwrites a source or output. Explicit replacement reports removed temporary groups/models.",
+    output: "Model, package path, live revision and Profile state. Checkpoint: captured revision, live history, file path, SHA-256 and byte length. Held capture: held_checkpoint:true, source_saved:false, focus_changed:false, undo_redo_preserved:false. Replacement: removed temporary groups/models.",
     examples: &[
         Example {
             command: "ds dsgrid profile open --model local-b1b2d3b9e6ab4959",

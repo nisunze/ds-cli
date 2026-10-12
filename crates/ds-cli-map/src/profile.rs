@@ -75,7 +75,7 @@ pub static VIEW: Command = Command {
     path: &["map", "profile", "view"],
     contract: 7,
     summary: "Read the paired Profile's exact visual state.",
-    purpose: "Read retained Profile state and the mounted pick_context; no preparation, calculation, polling or acquisition. --include-held deliberately reads one atomic native presentation from every existing worker, without opening models or changing focus. Concurrent observers share pending worker reads. Default view reads no workers.",
+    purpose: "Read retained Profile; no preparation, calculation, polling or acquisition. Default reads no workers. --include-held coalesces native reads without opening models or changing focus.",
     chapter: Chapter::MapPresentation,
     effect: Effect::ReadOnly,
     authority: Authority::DesktopPairing,
@@ -83,12 +83,12 @@ pub static VIEW: Command = Command {
     args: &[
         Arg::switch(
             "include-held",
-            "Include every existing Desktop model worker with native identity/history and held persistence/activity facts; no model acquisition or checkpoint.",
+            "Include existing workers' native identity/history and persistence/activity facts.",
         ),
         TARGET_ARG,
         DESCRIPTOR_ARG,
     ],
-    output: "occupant, local model_id/model_name/revision, persisted/history/edit_mode; selection IDs/family/primary; height_px and camera/surface (CSS px; null unmounted); pick_context: opaque current painted model/scene/viewport lease for pick, null unavailable; display,visibility,vertical_exaggeration,review (<=256 cases),analysis. analysis_state: due/current/off/not_applicable; scene_loaded: current; scene_revision: retained. calculation: native policy,model_revision,computed_revision,required,scope; null before observation. readiness: retained phase,initial,scene_admitted,model_id,model_revision,job,failure; null before request/closed/foreign context. job has native model_id/history/status/runtime_worker_active; no status read. Cancel can leave worker active; initial prep has no job. With --include-held, held_models contains the complete bounded existing-worker inventory: captured/current context, total, rows, mutated:false; each row carries native manifest identity/revision/history/CRS, local persistence/ownership/project provenance and retained activity facts.",
+    output: "occupant,local model_id/model_name/revision,history,persisted,edit_mode,selection,camera/surface(CSS px),pick_context,display,visibility,scale,review(<=256),analysis; analysis_state: due/current/off/not_applicable; calculation: computed_revision,required,scope; readiness: retained phase,initial,scene_admitted,model_id,model_revision,job,failure; job:native model_id/history/status/runtime_worker_active; no status read; initial prep has no job. --include-held: held_models{context,total,rows,mutated:false}; full fields: reference.",
     examples: &[Example {
         command: "ds map profile view --output json",
         note: "Pin a model edit.",
