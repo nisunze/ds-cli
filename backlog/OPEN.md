@@ -171,7 +171,6 @@ Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group E (printing templ
 ## 9. LV processing, sizing and headless intake
 
 
-- `00ad9848`, `47136650` (major): saved LV designs whose spans or nodes lack processor node ids are refused for voltage drop ("saved span has no from_node_id", "saved topology has no LV spans to prove feature ids"). Add an analysis-only topology derivation (or a topology patch preview plus a save door) on a copy, with exact source-digest proof and a typed ambiguity refusal. Saved designs that carry node ids already get non-destructive VD through `keep_network_as_drawn`.
 
 - `007c1624` (major): Legacy (unfenced) transformer rooms cannot be read headlessly: lv project-export refuses, features select scans 0, location path resolves nothing, no headless migrate.
 
