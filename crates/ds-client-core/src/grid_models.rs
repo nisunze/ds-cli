@@ -15,6 +15,7 @@ use ds_command_kernel::grid_publication::{
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 pub const MAX_BYTES: usize = 256 * 1024 * 1024;
+pub const PATH: &str = "/api/v1/grid/models";
 /// Catalog pages one revision-position walk may read (100 rows each). A
 /// version with more saves than this reports its count as a lower bound and
 /// claims no ordinal.
@@ -42,6 +43,7 @@ pub const ACTIONS: [&str; 18] = [
 ];
 /// The refusal code for an action or field a Server predates.
 pub const SERVER_ACTION_UNSUPPORTED: &str = "server_action_unsupported";
+pub mod catalogue;
 pub mod exports;
 pub mod governance;
 pub mod linked_publication;
@@ -336,6 +338,14 @@ pub(crate) fn request<T: AuthorizedTransport>(
         authority: authority.call(),
         payload,
     })?;
+    decode_response(response, &action, optional_sent)
+}
+
+fn decode_response(
+    response: TransportResponse,
+    action: &str,
+    optional_sent: bool,
+) -> Result<Value, ClientError> {
     if !matches!(response.status, 200 | 201) {
         return Err(refusal(&response, &action, optional_sent));
     }
@@ -802,9 +812,7 @@ pub(crate) fn run<T: AuthorizedTransport>(
             limit,
             cursor,
             include_deleted,
-        } => {
-            json!({"action":"list_models","project_id":project,"page_size":limit,"cursor":cursor.as_deref().unwrap_or(""),"include_deleted":include_deleted})
-        }
+        } => list_payload(project, *limit, cursor.as_deref(), *include_deleted),
         Command::ListVersions {
             model,
             limit,
@@ -945,39 +953,7 @@ pub(crate) fn run<T: AuthorizedTransport>(
                 bytes: None,
             })
         }
-        Command::List { limit, .. } => {
-            let rows = if data["models"].is_null() {
-                vec![]
-            } else {
-                data["models"].as_array().ok_or_else(bad)?.clone()
-            };
-            let more = data["has_more"].as_bool().ok_or_else(bad)?;
-            let cursor = data["next_cursor"].as_str().unwrap_or("");
-            if rows.len() > usize::from(*limit)
-                || cursor.len() > 4096
-                || (more && cursor.is_empty())
-            {
-                return Err(bad());
-            }
-            let mut ids = std::collections::HashSet::new();
-            let mut models = Vec::new();
-            for row in rows {
-                let model = row["model_id"].as_str().filter(|v| id(v)).ok_or_else(bad)?;
-                if !ids.insert(model.to_owned()) || row["project_id"] != project {
-                    return Err(bad());
-                }
-                // The head projection plus the retirement backup identity a
-                // restore names. `head_version` is the model's current
-                // version (v1, v2, …).
-                let mut entry = head_projection(&row);
-                entry["backup"] = row["backup"].clone();
-                models.push(entry);
-            }
-            Ok(Receipt {
-                data: json!({"project":project,"models":models,"more":more,"next_cursor":cursor}),
-                bytes: None,
-            })
-        }
+        Command::List { limit, .. } => list_receipt(project, *limit, &data),
         Command::Download { model, revision } => {
             let v = data
                 .get("revision")
@@ -1245,4 +1221,39 @@ mod tests {
         .validate("project")
         .is_err());
     }
+}
+
+fn list_payload(project: &str, limit: u16, cursor: Option<&str>, include_deleted: bool) -> Value {
+    json!({"action":"list_models","project_id":project,"page_size":limit,"cursor":cursor.unwrap_or(""),"include_deleted":include_deleted})
+}
+
+fn list_receipt(project: &str, limit: u16, data: &Value) -> Result<Receipt, ClientError> {
+    let rows = if data["models"].is_null() {
+        vec![]
+    } else {
+        data["models"].as_array().ok_or_else(bad)?.clone()
+    };
+    let more = data["has_more"].as_bool().ok_or_else(bad)?;
+    let cursor = data["next_cursor"].as_str().unwrap_or("");
+    if rows.len() > usize::from(limit) || cursor.len() > 4096 || (more && cursor.is_empty()) {
+        return Err(bad());
+    }
+    let mut ids = std::collections::HashSet::new();
+    let mut models = Vec::new();
+    for row in rows {
+        let model = row["model_id"].as_str().filter(|v| id(v)).ok_or_else(bad)?;
+        if !ids.insert(model.to_owned()) || row["project_id"] != project {
+            return Err(bad());
+        }
+        // The head projection plus the retirement backup identity a
+        // restore names. `head_version` is the model's current
+        // version (v1, v2, …).
+        let mut entry = head_projection(&row);
+        entry["backup"] = row["backup"].clone();
+        models.push(entry);
+    }
+    Ok(Receipt {
+        data: json!({"project":project,"models":models,"more":more,"next_cursor":cursor}),
+        bytes: None,
+    })
 }

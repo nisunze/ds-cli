@@ -17,6 +17,7 @@ pub mod map_policy;
 pub mod mv;
 pub mod mv_booklet;
 pub mod mv_context;
+pub mod mv_models;
 pub mod mv_placement;
 pub mod mv_preview;
 pub mod mv_settings;

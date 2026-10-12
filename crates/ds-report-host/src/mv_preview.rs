@@ -101,6 +101,16 @@ pub fn execute_retained(
     inputs: &MvPreviewInputs<'_>,
     result_room: Option<&ds_project_data::preview_room::Room>,
 ) -> Result<MvPreviewAnswer, MvPreviewRefusal> {
+    execute_retained_bound(engine, inputs, result_room, None)
+}
+
+pub(crate) fn execute_retained_bound(
+    engine: &dyn ReportEngine,
+    inputs: &MvPreviewInputs<'_>,
+    result_room: Option<&ds_project_data::preview_room::Room>,
+    source: Option<&printing::mv_models::SourceBinding>,
+) -> Result<MvPreviewAnswer, MvPreviewRefusal> {
+    validate_source(inputs, source)?;
     for (name, bytes) in [("scene", inputs.scene), ("plan", inputs.plan)] {
         if bytes.is_empty() || bytes.len() > MAX_PROJECTION_BYTES {
             return Err(HostFailure::new(
@@ -151,7 +161,7 @@ pub fn execute_retained(
         for path in ["scene_path", "plan_path", "out_dir"] {
             effective.as_object_mut().expect("native MV request object").remove(path);
         }
-        let key = json!({"project":inputs.project_id,"sheets":inputs.sheets,"layout":inputs.layout,
+        let key = json!({"source_binding":source,"project":inputs.project_id,"sheets":inputs.sheets,"layout":inputs.layout,
             "styles":inputs.table,"project_crs":inputs.project_crs,"model_crs":inputs.model_crs,
             "scene_sha256": ds_command_kernel::report_export::sha256_hex(inputs.scene),
             "plan_sha256": ds_command_kernel::report_export::sha256_hex(inputs.plan),"engine":identity,"request":effective});
@@ -586,4 +596,23 @@ mod tests {
         assert!(matches!(answer, Err(MvPreviewRefusal::Host(f)) if f.code == CODE_INPUTS_INVALID));
         assert_eq!(calls, 0);
     }
+}
+
+pub(crate) fn validate_source(
+    inputs: &MvPreviewInputs<'_>,
+    source: Option<&printing::mv_models::SourceBinding>,
+) -> Result<(), HostFailure> {
+    if let Some(source) = source {
+        printing::mv_models::admit_context(inputs.project_id, source)
+            .map_err(|code| HostFailure::new(CODE_INPUTS_INVALID, code))?;
+        let revision = printing::mv_models::scene_revision(inputs.scene)
+            .map_err(|code| HostFailure::new(CODE_INPUTS_INVALID, code))?;
+        if source.worker_revision != revision {
+            return Err(HostFailure::new(
+                CODE_INPUTS_INVALID,
+                "native MV source revision differs from its captured scene",
+            ));
+        }
+    }
+    Ok(())
 }

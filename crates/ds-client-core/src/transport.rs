@@ -1723,7 +1723,7 @@ impl GridModelsCall<'_> {
         self.profile.gateway_origin()
     }
     pub fn path(&self) -> String {
-        "/api/v1/grid/models".into()
+        crate::grid_models::PATH.into()
     }
     pub fn method(&self) -> &'static str {
         "POST"

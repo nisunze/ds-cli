@@ -150,6 +150,17 @@ pub fn start(
     room: &Room,
     retention: preview_artifact::Retention,
 ) -> Result<Value, crate::mv_preview::MvPreviewRefusal> {
+    start_bound(engine, inputs, room, retention, None)
+}
+
+pub fn start_bound(
+    engine: &dyn ReportEngine,
+    inputs: &MvPreviewInputs<'_>,
+    room: &Room,
+    retention: preview_artifact::Retention,
+    source: Option<&ds_command_kernel::printing::mv_models::SourceBinding>,
+) -> Result<Value, crate::mv_preview::MvPreviewRefusal> {
+    crate::mv_preview::validate_source(inputs, source)?;
     if room.scope.project != inputs.project_id {
         return Err(failure("MV job belongs to another project").into());
     }
@@ -173,7 +184,7 @@ pub fn start(
         preview_artifact::Retention::Hours24 => preview_artifact::RETENTION_MS,
         preview_artifact::Retention::Days7 => preview_artifact::LONG_RETENTION_MS,
     };
-    let key_inputs = json!({"schema":SCHEMA,"project":inputs.project_id,"layout":inputs.layout,
+    let key_inputs = json!({"source_binding":source,"schema":SCHEMA,"project":inputs.project_id,"layout":inputs.layout,
         "sheets":inputs.sheets,"styles":inputs.table,"project_crs":inputs.project_crs,
         "model_crs":inputs.model_crs,"engine":identity,"retention_ms":lifetime,
         "scene_sha256":ds_command_kernel::report_export::sha256_hex(inputs.scene),
@@ -1029,6 +1040,68 @@ mod tests {
         let expected = answers[0].clone();
         drop(answers);
         assert_eq!(read(&room, key(&expected), Some(1)).unwrap(), expected);
+    }
+    #[test]
+    fn exact_project_model_source_is_hashed_and_crossed_source_never_launches() {
+        let fixture = Fixture::new();
+        let room = fixture.room();
+        let engine = Engine::new();
+        let source = ds_command_kernel::printing::mv_models::SourceBinding {
+            project_id: room.scope.project.clone(),
+            model_id: "logical-one".into(),
+            revision_id: "head-one".into(),
+            content_sha256: "a".repeat(64),
+            version: 1,
+            worker_id: "local-one".into(),
+            worker_model_id: "native-one".into(),
+            worker_revision: "revision-one".into(),
+            history_pin: "pin".into(),
+            coordinate_system: "EPSG:32736".into(),
+            read_only: false,
+        };
+        let first = start_bound(
+            &engine,
+            &fixture.inputs(),
+            &room,
+            preview_artifact::Retention::default(),
+            Some(&source),
+        )
+        .unwrap();
+        assert_eq!(
+            start_bound(
+                &engine,
+                &fixture.inputs(),
+                &room,
+                preview_artifact::Retention::default(),
+                Some(&source)
+            )
+            .unwrap(),
+            first
+        );
+        let mut crossed = source.clone();
+        crossed.project_id = "foreign".into();
+        assert!(start_bound(
+            &engine,
+            &fixture.inputs(),
+            &room,
+            preview_artifact::Retention::default(),
+            Some(&crossed)
+        )
+        .is_err());
+        assert_eq!(engine.launches.load(Ordering::SeqCst), 1);
+        let mut second_source = source.clone();
+        second_source.model_id = "logical-two".into();
+        second_source.revision_id = "head-two".into();
+        let second = start_bound(
+            &engine,
+            &fixture.inputs(),
+            &room,
+            preview_artifact::Retention::default(),
+            Some(&second_source),
+        )
+        .unwrap();
+        assert_ne!(key(&first), key(&second));
+        assert_eq!(engine.launches.load(Ordering::SeqCst), 2);
     }
     #[test]
     fn native_termination_is_scoped_and_visible_without_another_engine_call() {

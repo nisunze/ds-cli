@@ -46,6 +46,17 @@ pub fn execute_retained(
     room: &Room,
     retention: preview_artifact::Retention,
 ) -> Result<Answer, mv_preview::MvPreviewRefusal> {
+    execute_bound(engine, inputs, room, retention, None)
+}
+
+pub fn execute_bound(
+    engine: &dyn ReportEngine,
+    inputs: &mv_preview::MvPreviewInputs<'_>,
+    room: &Room,
+    retention: preview_artifact::Retention,
+    source: Option<&ds_command_kernel::printing::mv_models::SourceBinding>,
+) -> Result<Answer, mv_preview::MvPreviewRefusal> {
+    mv_preview::validate_source(inputs, source)?;
     if room.scope.project != inputs.project_id {
         return Err(HostFailure::new(
             crate::CODE_INPUTS_INVALID,
@@ -54,7 +65,7 @@ pub fn execute_retained(
         .into());
     }
     let identity = crate::engine_identity_now(engine)?;
-    let rendered = mv_preview::execute_retained(engine, inputs, Some(room))?;
+    let rendered = mv_preview::execute_retained_bound(engine, inputs, Some(room), source)?;
     if crate::engine_identity_now(engine)? != identity {
         return Err(HostFailure::new(
             crate::CODE_ENGINE_IDENTITY_CHANGED,
@@ -62,7 +73,7 @@ pub fn execute_retained(
         )
         .into());
     }
-    let provenance = json!({"schema":SCHEMA,"project":inputs.project_id,
+    let provenance = json!({"source_binding":source,"schema":SCHEMA,"project":inputs.project_id,
         "layout":inputs.layout,"sheets":inputs.sheets,"styles":inputs.table,
         "project_crs":inputs.project_crs,"model_crs":inputs.model_crs,"engine":identity,
         "scene_sha256":ds_command_kernel::report_export::sha256_hex(inputs.scene),
