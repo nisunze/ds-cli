@@ -1466,6 +1466,60 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
             asset_id,
         )
     }
+    pub fn transformer_history_import(
+        &mut self,
+        project: &str,
+        command: &crate::transformer_history_import::Import,
+        now: u64,
+    ) -> Result<serde_json::Value, ClientError> {
+        command.validate(project).map_err(|_| {
+            ClientError::new(
+                crate::ErrorKind::InvalidInput,
+                "invalid pinned historical import request; use stable version/revision identities and reviewed fences",
+            )
+        })?;
+        self.ensure_fresh_session(now)?;
+        let session = self.session.as_ref().ok_or_else(signed_out)?;
+        crate::transformer_history_import::run(
+            &self.profile,
+            &mut self.transport,
+            crate::authorized::Authority {
+                bearer_token: &session.id_token,
+                uid: &session.stored.uid,
+                email: &session.stored.email,
+                device_id: None,
+            },
+            project,
+            command,
+        )
+    }
+    pub fn design_version_catalog(
+        &mut self,
+        project: &str,
+        command: &crate::design_version_catalog::Command,
+        now: u64,
+    ) -> Result<serde_json::Value, ClientError> {
+        command.validate(project).map_err(|_| {
+            ClientError::new(
+                crate::ErrorKind::InvalidInput,
+                "invalid catalog request; use stable version/revision identities and reviewed fences",
+            )
+        })?;
+        self.ensure_fresh_session(now)?;
+        let session = self.session.as_ref().ok_or_else(signed_out)?;
+        crate::design_version_catalog::run(
+            &self.profile,
+            &mut self.transport,
+            crate::authorized::Authority {
+                bearer_token: &session.id_token,
+                uid: &session.stored.uid,
+                email: &session.stored.email,
+                device_id: None,
+            },
+            project,
+            command,
+        )
+    }
     pub fn design_versions(
         &mut self,
         project: &str,

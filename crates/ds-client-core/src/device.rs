@@ -1938,6 +1938,38 @@ impl DeviceApiAuthorization<'_> {
             asset_id,
         )
     }
+    pub fn transformer_history_import<T: AuthorizedTransport>(
+        &self,
+        transport: &mut T,
+        project: &str,
+        command: &crate::transformer_history_import::Import,
+        now: u64,
+    ) -> Result<serde_json::Value, ClientError> {
+        command.validate(project).map_err(|_| {
+            ClientError::new(
+                crate::ErrorKind::InvalidInput,
+                "invalid pinned historical import request; use stable version/revision identities and reviewed fences",
+            )
+        })?;
+        self.ensure_active(now)?;
+        crate::transformer_history_import::run(self.profile, transport, self.authority(), project, command)
+    }
+    pub fn design_version_catalog<T: AuthorizedTransport>(
+        &self,
+        transport: &mut T,
+        project: &str,
+        command: &crate::design_version_catalog::Command,
+        now: u64,
+    ) -> Result<serde_json::Value, ClientError> {
+        command.validate(project).map_err(|_| {
+            ClientError::new(
+                crate::ErrorKind::InvalidInput,
+                "invalid catalog request; use stable version/revision identities and reviewed fences",
+            )
+        })?;
+        self.ensure_active(now)?;
+        crate::design_version_catalog::run(self.profile, transport, self.authority(), project, command)
+    }
     pub fn design_versions<T: AuthorizedTransport>(
         &self,
         transport: &mut T,

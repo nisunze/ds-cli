@@ -18,7 +18,7 @@ pub const SCHEMA_VERSION: &str = "ds-web.gateway-registry/v1";
 
 /// sha256 of the exact `routing/operations.json` bytes these rows came from.
 pub const DESCRIPTOR_SHA256: &str =
-    "578ae7b4607a48c4d8e68fd31bd84cf3f4114ccc91dd29b048ddf6865215ab73";
+    "a7194274f78038bacb5373277b397ca399eec69358ccae353492707b123768de";
 
 /// Every declared operation that has a gateway route, sorted by id.
 pub const OPERATIONS: &[GatewayOperation] = &[
@@ -512,6 +512,25 @@ pub const OPERATIONS: &[GatewayOperation] = &[
         retry_class: "none",
         timeout_s: 120,
         response_cap_bytes: 1048576,
+        resolution_web: "gateway",
+        resolution_desktop: "gateway",
+        native_command: "",
+    },
+    GatewayOperation {
+        id: "domains.design_versions.read_revision",
+        method: "POST",
+        path: "/bulk/api/v1/data",
+        path_params: &[],
+        action_key: "action",
+        actions: &["get_transformer_version_revision"],
+        transport: "json",
+        authority: "gateway",
+        principal: "user",
+        lane_header: false,
+        idempotency: "idempotent",
+        retry_class: "none",
+        timeout_s: 120,
+        response_cap_bytes: 67108864,
         resolution_web: "gateway",
         resolution_desktop: "gateway",
         native_command: "",

@@ -1148,6 +1148,18 @@
     "design_versions": {
       "summary": "Explicit immutable transformer history import through the bulk authority.",
       "operations": {
+        "read_revision": {
+          "summary": "Read exact immutable transformer revision bytes and metadata from the Bulk authority.",
+          "transport": "json",
+          "action_key": "action",
+          "actions": ["get_transformer_version_revision"],
+          "idempotency": "idempotent",
+          "retry_class": "none",
+          "timeout_s": 120,
+          "response_cap_bytes": 67108864,
+          "gateway": { "method": "POST", "path": "/bulk/api/v1/data", "backend": "ds_brain_bulk_url" },
+          "resolution": { "web": "gateway", "desktop": "gateway" }
+        },
         "publish_revision": {
           "summary": "Freeze one saved transformer frame as an immutable version revision without caller-supplied content.",
           "transport": "json",

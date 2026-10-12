@@ -3,7 +3,7 @@ use std::fmt;
 use sha2::{Digest, Sha256};
 use url::Url;
 
-pub const CLIENT_PROFILE_SCHEMA: &str = "ds.native-client-profiles/v30";
+pub const CLIENT_PROFILE_SCHEMA: &str = "ds.native-client-profiles/v31";
 pub const DEVICE_CREDENTIAL_AUDIENCE_SCHEMA: &str = "ds.native-client-credential-audience/v1";
 pub const NATIVE_CLIENT_ID: &str = "ds-native-client";
 pub const AUTH_LINK_BEGIN_METHOD: &str = "POST";
@@ -143,7 +143,7 @@ pub const DESIGN_VERSIONS_PATH: &str = "/api/v1/design/versions";
 /// The closed `/api/v1/design/versions` action vocabulary. The per-object
 /// summary read and the batched create joined in v30, beside the attachment
 /// actions above. Order is part of the profile identity.
-pub const DESIGN_VERSIONS_ACTIONS: [&str; 7] = [
+pub const DESIGN_VERSIONS_ACTIONS: [&str; 10] = [
     "list_versions",
     "get_version",
     "get_head",
@@ -151,6 +151,9 @@ pub const DESIGN_VERSIONS_ACTIONS: [&str; 7] = [
     "restore_version",
     "list_version_summaries",
     "create_versions",
+    "get_version_catalog",
+    "get_version_revision",
+    "renumber_version",
 ];
 pub const DESIGN_SELECTIONS_METHOD: &str = "POST";
 pub const DESIGN_SELECTIONS_PATH: &str = "/api/v1/design/selections";
@@ -585,6 +588,9 @@ impl ClientProfile {
             DESIGN_VERSIONS_ACTIONS[4],
             DESIGN_VERSIONS_ACTIONS[5],
             DESIGN_VERSIONS_ACTIONS[6],
+            DESIGN_VERSIONS_ACTIONS[7],
+            DESIGN_VERSIONS_ACTIONS[8],
+            DESIGN_VERSIONS_ACTIONS[9],
             DESIGN_SELECTIONS_METHOD,
             DESIGN_SELECTIONS_PATH,
             DESIGN_SELECTIONS_ACTIONS[0],

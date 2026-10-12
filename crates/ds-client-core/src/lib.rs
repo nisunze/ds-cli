@@ -289,6 +289,8 @@ pub use transport::ReportArtifactCall;
 pub use transport::{SreEventsCall, SreOverviewCall};
 
 pub mod design_attachments;
+pub mod transformer_history_import;
+pub mod design_version_catalog;
 pub mod design_versions;
 pub use transport::{DesignAttachmentsCall, DesignVersionsCall};
 

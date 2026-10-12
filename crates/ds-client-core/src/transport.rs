@@ -1399,10 +1399,13 @@ impl DesignVersionsCall<'_> {
     // Only the closed kernel history-import command constructs this action.
     // Every other version operation retains its existing metadata-only route.
     fn import_route(&self) -> Option<&'static crate::GatewayOperation> {
-        (self.payload["action"] == "import_transformer_version").then(|| {
-            crate::gateway_operation("domains.design_versions.import")
-                .expect("generated immutable history import route")
-        })
+        let operation = match self.payload["action"].as_str() {
+            Some("import_transformer_version") => "domains.design_versions.import",
+            Some("publish_transformer_version_revision") => "domains.design_versions.publish_revision",
+            Some("get_transformer_version_revision") => "domains.design_versions.read_revision",
+            _ => return None,
+        };
+        Some(crate::gateway_operation(operation).expect("generated closed history Bulk route"))
     }
     pub fn gateway_origin(&self) -> &str {
         self.profile.gateway_origin()

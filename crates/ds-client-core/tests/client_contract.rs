@@ -14464,3 +14464,73 @@ fn selected_document_operations_never_acquire_unused_sources_and_replay_exact_pi
         "no source/asset/catalogue/thread acquisition, including previews and retries"
     );
 }
+
+#[test]
+fn version_catalog_is_one_explicit_read_and_invalid_mutation_reads_nothing() {
+    use ds_client_core::design_version_catalog::{Command, Mutation};
+    let catalog=json!({"schema":"ds.lv-version-catalog/v1","project_id":"active-project",
+        "object":{"kind":"lv_transformer","id":"TR-1"},"catalog_revision":"a".repeat(64),
+        "versions":[{"version_id":"v1","display_ordinal":2,"head_revision_id":"v1","revision_count":1}]});
+    let transport=FixtureTransport::with_sign_in(SIGN_IN);
+    transport.push_design_versions(200,&selection_envelope(json!({"catalog":catalog})));
+    let mut client=signed_in(transport.clone(),MemoryStore::default());
+    let c=Command::Catalog {object_id:"TR-1".into()};
+    let reply=client.design_version_catalog("active-project",&c,NOW+1).unwrap();
+    assert_eq!(reply["catalog"]["versions"][0]["version_id"],"v1");
+    assert_eq!(reply["catalog"]["versions"][0]["display_ordinal"],2);
+    let calls=transport.calls(); assert_eq!(calls.len(),2,"only sign-in plus consumed catalog: {calls:?}");
+    let call=calls.last().unwrap();
+    for expected in ["get_version_catalog","active-project","TR-1","correlation=true","path=/api/v1/design/versions"] { assert!(call.contains(expected),"{call}"); }
+    assert!(!calls.iter().any(|c|c.contains("transformer_context ")||c.contains("project_configuration")));
+    let invalid=Command::Publish {object_id:"TR-1".into(),mutation:Mutation{
+        version_id:Some("v1".into()),task_id:None,source_record_id:None,display_ordinal:Some(0),insert_before_version_id:None,
+        expected_catalog_revision:"a".repeat(64),expected_source_revision:"2026-10-12T12:00:00Z".into(),
+        reason:"baseline".into(),idempotency_key:"same".into()}};
+    assert_eq!(client.design_version_catalog("active-project",&invalid,NOW+2).unwrap_err().kind(),ErrorKind::InvalidInput);
+    assert_eq!(transport.calls(),calls,"invalid mutation performs no restore/read/write");
+}
+
+
+#[test]
+fn version_catalog_publication_uses_closed_bulk_route_once_without_content_or_readback() {
+    use ds_client_core::design_version_catalog::{Command,Mutation};
+    let id=format!("vc_{}","a".repeat(64));let revision=format!("vr_{}","b".repeat(64));
+    let catalog=json!({"schema":"ds.lv-version-catalog/v1","project_id":"active-project","object":{"kind":"lv_transformer","id":"TR-1"},"catalog_revision":"c".repeat(64),"versions":[{"version_id":id,"display_ordinal":1,"head_revision_id":revision,"revision_count":1}]});
+    let reply=json!({"catalog":catalog,"changed":true,"metadata":{"project_id":"active-project","transformer_id":"TR-1","version_id":id,"revision_id":revision,"revision_number":1,"display_ordinal_at_capture":1,"content_digest":"d".repeat(64),"source_revision":"2026-10-12T12:00:00Z"}});
+    let transport=FixtureTransport::with_sign_in(SIGN_IN);transport.push_design_versions(200,&selection_envelope(reply));
+    let mut client=signed_in(transport.clone(),MemoryStore::default());
+    let command=Command::Publish {object_id:"TR-1".into(),mutation:Mutation{version_id:None,task_id:None,source_record_id:None,display_ordinal:Some(1),insert_before_version_id:None,expected_catalog_revision:"a".repeat(64),expected_source_revision:"2026-10-12T12:00:00Z".into(),reason:"Freeze reviewed current".into(),idempotency_key:"freeze1".into()}};
+    client.design_version_catalog("active-project",&command,NOW+1).unwrap();
+    let calls=transport.calls();assert_eq!(calls.len(),2,"only sign-in and single publication: {calls:?}");let call=calls.last().unwrap();
+    for expected in ["path=/bulk/api/v1/data","publish_transformer_version_revision","catalog_publication","eds_project_id","transformer_id","correlation=true"] {assert!(call.contains(expected),"{call}");}
+    assert!(!call.contains("gdfs")&&!call.contains("snapshot")&&!call.contains("layers"),"no caller content: {call}");
+    transport.push_design_versions(409,br#"{"success":false,"error":{"code":"VERSION_CATALOG_SOURCE_MOVED","message":"Exact source moved"}}"#);
+    let error=client.design_version_catalog("active-project",&command,NOW+2).unwrap_err();
+    assert_eq!(error.service_refusal().unwrap().code(),Some("version_catalog_source_moved"));
+    assert_eq!(transport.calls().len(),3,"one attempt, no retry/readback on conflict");
+}
+
+
+#[test]
+fn historical_import_uses_one_closed_bulk_write_and_rejects_moved_acknowledgement() {
+    use ds_client_core::transformer_history_import::{Import,Source};
+    let input=Import{transformer_id:"TR-1".into(),version_number:0,expected_source_revision:"2026-10-12T12:00:00Z".into(),reason:"Approved archival design".into(),milestone:None,idempotency_key:"april-TR-1".into(),source:Source{record_id:"r1".into(),asset_id:"a1".into(),asset_version:3,asset_sha256:"a".repeat(64),archive_member:"GEOPACKAGE/TR-1.gpkg".into(),member_sha256:"b".repeat(64),historical_period:"April 2026".into()},layers:["customers","lv_lines","lv_poles","service_cables","spans","tr"].into_iter().map(|name|{let features=if name=="tr"{vec![json!({"type":"Feature","properties":{"fid":17},"geometry":{"type":"Point","coordinates":[30,-2,1234]}})]}else{vec![]};(name.into(),json!({"type":"FeatureCollection","features":features}))}).collect()};
+    let mut source=json!(input.source);
+    source["imported_layers_sha256"]=json!("c".repeat(64));
+    let ack=json!({"version":{"project_id":"active-project","object":{"kind":"lv_transformer","id":"TR-1"},"version_id":"v0","version":0,"source_mode":"source_pinned_import","snapshot_scope":"exported_design","source":source}});
+    let transport=FixtureTransport::with_sign_in(SIGN_IN);
+    transport.push_design_versions(200,&selection_envelope(ack.clone()));
+    let mut client=signed_in(transport.clone(),MemoryStore::default());
+    client.transformer_history_import("active-project",&input,NOW+1).unwrap();
+    let calls=transport.calls();assert_eq!(calls.len(),2);
+    let call=calls.last().unwrap();
+    for expected in ["import_transformer_version","path=/bulk/api/v1/data","active-project","TR-1"] {assert!(call.contains(expected),"{call}");}
+    assert!(!calls.iter().any(|c|c.contains("transformer_context ")||c.contains("project_configuration")));
+    let mut moved=ack;moved["version"]["source"]["member_sha256"]=json!("d".repeat(64));
+    transport.push_design_versions(200,&selection_envelope(moved));
+    assert_eq!(client.transformer_history_import("active-project",&input,NOW+2).unwrap_err().kind(),ErrorKind::UnreadableResponse);
+    assert_eq!(transport.calls().len(),3,"no blind retry after uncertain/mismatched immutable publication");
+    let mut bad=input;bad.version_number=1;
+    assert_eq!(client.transformer_history_import("active-project",&bad,NOW+3).unwrap_err().kind(),ErrorKind::InvalidInput);
+    assert_eq!(transport.calls().len(),3,"invalid input has no authority effect");
+}

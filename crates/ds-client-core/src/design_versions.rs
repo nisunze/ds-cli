@@ -12,7 +12,7 @@ use serde_json::{json, Value};
 fn bad(message: &'static str) -> ClientError {
     ClientError::new(ErrorKind::UnreadableResponse, message)
 }
-fn decode(response: TransportResponse) -> Result<Value, ClientError> {
+pub(crate) fn decode(response: TransportResponse) -> Result<Value, ClientError> {
     if response.body.len() > 64 * 1024 * 1024 {
         return Err(bad("version response exceeds 64 MiB"));
     }
