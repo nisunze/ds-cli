@@ -135,6 +135,21 @@ Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group A (owner decision
   conditions for opening the Cloud Run publication lane. **Boundary:** changing
   the closed routing descriptor; parity work does not open hosted Solar.
 
+## Ancillary infrastructure identity retirement
+
+- **Unused messaging-stream identity.** Cloud Run service/job retirement and
+  push-only messaging do not require deleting
+  `ds-messaging-stream-canary@electrification-rural.iam.gserviceaccount.com` or
+  forgetting `google_service_account.messaging_stream_canary` in the isolated
+  foundation state. Both remain intact and ungranted; source has no creation
+  path and a native `removed { lifecycle { destroy = false } }` guard.
+  Automatic approval review rejected the combined permanent IAM deletion/state
+  removal because explicit identity-deletion authority was absent.
+  **Input needed only if optional retirement is reactivated:** explicit authority
+  naming that identity and managed record. **Boundary:** IAM deletion or an apply
+  that forgets its state, including the unapplied source retirement plan. See the
+  owning [retirement report](../../ds-apis-tf/docs/cloud-run-retirement-report.md).
+
 ## Parked: outside stabilization
 
 - **Failed design-upload quarantine** (ds-web `docs/TODOs.md` §1): retain failed signed-in project uploads (`lv_transformer`, `lv_batch`, `mv_network`) through a ds-brain intake in a quarantined `gs://` prefix, with admin-gated download and a visible notice; never sketch/local layers or successful uploads. **Input needed:** activate this parked feature and specify retention TTL and per-project quota. **Boundary:** adopting that retention policy and starting the feature. Once decided, implement and prove its native intake, access fences and expiry in OPEN.md.

@@ -634,11 +634,7 @@ Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group A, to be fixed to
   cloud object names are reusable, so pin/retain the exact upload generation or
   immutable output. Do not mistake a ready handoff for a scheduled/completed job.
   complete survey acquisition must schedule the same owner locally. No standalone
-  vector-tiling API or custom dataset/explorer replacement is admitted. Next
-  independent vertical: retire/archive the old tiler repository and deployed
-  services after the coordinated replacement cutover. Brain/gateway adapter and
-  standalone/custom dispatch removal is source-proven; deployment/retirement
-  remains in SEEDING §22. Preserve original
+  vector-tiling API or custom dataset/explorer replacement is admitted. Preserve original
   upload bytes and exact source generations, mirror leases and central reads.
   The optional HTTP/TLS dependency closure is outside this critical integration
   path; no local generator request may select a remote source.
@@ -690,8 +686,7 @@ Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group A, to be fixed to
   mask-induced remote calls and redundant cross-PC compute; never claim live
   publication or Windows proof from fixtures/Linux alone. Sync Center describes
   project compute contributors and central publication, never PC tile serving.
-  Retire/archive ds-vector-tiler and remove its deployment/gateway bindings only
-  after needed non-tiling consumers move. Complete survey downloads and combined
+  Complete survey downloads and combined
   preparation must reuse acquired data for background native derivatives, cloud
   and local, with distinct tile outcomes and centrally verified publication.
   Ordinary users retain cloud simple reports; cloud combined/compounded report
