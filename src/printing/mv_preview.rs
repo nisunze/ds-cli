@@ -4,7 +4,7 @@
 //! draft, is resolved as if it were the project's selection, under the
 //! project's effective issue identity (its fixed external version and issue
 //! date), and bound to the project's style table. The answer is one complete
-//! `render-grid-plan-profile` request for a `preview_only` sample sheet. A
+//! `render-grid-plan-profile` request for a `preview_only`, `svg_only` sample sheet. A
 //! preview reads no approved preserved page and writes no selection,
 //! publication or model state; model-specific preserved pages belong to an
 //! adopted setup and a print.
@@ -124,6 +124,7 @@ pub fn request(
         "project_crs": project_crs,
         "report_config": previewed,
         "preview_only": true,
+        "svg_only": true,
         "project_id": project_id,
         "scene_path": paths.scene,
         "plan_path": paths.plan,

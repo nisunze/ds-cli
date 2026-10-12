@@ -76,6 +76,7 @@ fn draft_template_previews_one_sheet_under_the_project_issue_identity() {
     .unwrap();
     let request = &preview.request;
     assert_eq!(request["preview_only"], true);
+    assert_eq!(request["svg_only"], true);
     assert_eq!(request["sample_pages"], mv_preview::SAMPLE_PAGES);
     assert_eq!(request["publication_assets"], json!({}));
     assert_eq!(request["context_page_files"], json!([]));
