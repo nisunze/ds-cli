@@ -3994,10 +3994,11 @@ mod tests {
         )
         .unwrap();
         let selection = super::run_output_selection(&inputs).unwrap();
-        assert_eq!(
-            super::reuse::policy_outputs(&source, Some(&selection)).unwrap(),
-            ["xlsx", "voltage_drop"]
-        );
+        let selected = super::reuse::policy_outputs(&source, Some(&selection)).unwrap();
+        assert_eq!(selected, ["xlsx"]);
+        // This is the same demand gate used before acquiring saved analysis
+        // and its transformer-nature projection for the batch.
+        assert!(!super::voltage_drop_selected(&selected));
         assert!(super::preflight(&inputs).is_ok());
         std::fs::write(&path, b"{\"output_root\":\"C:\\\\External\"}").unwrap();
         assert!(super::preflight(&inputs).is_err());
