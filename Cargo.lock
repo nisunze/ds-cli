@@ -1818,6 +1818,7 @@ dependencies = [
 name = "ds-project-data"
 version = "0.1.0"
 dependencies = [
+ "ds-columnar",
  "ds-command-kernel",
  "ds-geo",
  "ds-grid-exchange",
@@ -1849,6 +1850,7 @@ version = "0.1.0"
 dependencies = [
  "ds-command-kernel",
  "ds-project-data",
+ "serde",
  "rustix",
  "serde_json",
  "sha2 0.10.9",

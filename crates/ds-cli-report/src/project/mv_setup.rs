@@ -263,6 +263,23 @@ pub(crate) fn project_print_context(
     ),
     Failure,
 > {
+    let (sheets, project_crs, _) = project_print_context_with_identity(lane, project)?;
+    Ok((sheets, project_crs))
+}
+
+/// Preserve the identity already captured by these same authorized reads for a
+/// native preview room. No additional discovery or project acquisition.
+pub(crate) fn project_print_context_with_identity(
+    lane: &str,
+    project: &str,
+) -> Result<
+    (
+        Value,
+        Option<ds_command_kernel::printing::project_crs::Capture>,
+        ds_cli_auth::ProviderIdentity,
+    ),
+    Failure,
+> {
     let scoped = ds_cli_auth::feeder_configuration_for_project(lane, project)?;
     let directory = ds_cli_auth::project_directory(lane)?;
     if scoped.project_id() != project || scoped.identity() != directory.identity() {
@@ -272,7 +289,7 @@ pub(crate) fn project_print_context(
         )
         .remedy(PROJECT_CRS_CONTEXT_REFUSAL.remedy));
     }
-    let identity = scoped.identity();
+    let identity = scoped.identity().clone();
     let project_crs = directory
         .project_params(project)
         .filter(|params| params["crs"].is_object())
@@ -288,7 +305,11 @@ pub(crate) fn project_print_context(
         .transpose()
         .map_err(|e| Failure::invalid("print_project_crs_invalid", e))?;
     let configuration = scoped.into_result();
-    Ok((configuration.document["sheets"].clone(), project_crs))
+    Ok((
+        configuration.document["sheets"].clone(),
+        project_crs,
+        identity,
+    ))
 }
 /// The project's governed style table, as MV paper and renderer bindings read it.
 pub(crate) fn style_table(

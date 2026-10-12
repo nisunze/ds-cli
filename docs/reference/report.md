@@ -782,10 +782,11 @@ mode, resolved denominator and occupied footprint. This edits a draft; use the
 normal project-template save contract to apply it across transformer sheets.
 
 `preview_context_preparation` accepts a draft layout and `online`; it returns
-only that draft's selected contexts and whether missing inputs may be acquired.
-Prepare these inputs before the read-only native preview. Contour intervals are
+only that draft's selected contexts with `acquire_missing:false` whether online
+or offline. Native preview consumes held inputs and names missing context
+without provider acquisition or cloud computation. Contour intervals remain
 part of the retained context address, so different templates cannot reuse the
-wrong interval set. Acquisition failures and offline omissions remain named.
+wrong interval set. Explicit acquisition remains a separate admitted operation.
 `context_status` accepts the render's `omitted` rows (`layer`, `reason`) and
 separates neutral `empty_layers` from `unavailable` sources with their reasons.
 

@@ -2049,6 +2049,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
                 project: project_receipt,
                 lane,
                 scope,
+                identity: &identity,
             },
             inputs.value("server-state-dir").is_some(),
         );
@@ -2678,6 +2679,7 @@ struct PreviewFacts<'a> {
     project: Value,
     lane: &'a str,
     scope: Value,
+    identity: &'a ds_cli_auth::ProviderIdentity,
 }
 
 /// The preview run: one page per transformer in scope, each through
@@ -2713,6 +2715,21 @@ fn preview_pages(
     let staging_failed = |message: String| {
         Failure::failed(STAGING_FAILED.code, message).remedy(STAGING_FAILED.remedy)
     };
+    let result_room = ds_project_data::preview_room::Room {
+        root: ds_layer_store::default_root().map_err(staging_failed)?,
+        scope: holdings_scope.clone(),
+        lane: facts.identity.lane().into(),
+        credential_audience_sha256: facts.identity.credential_audience_sha256().into(),
+    };
+    let current = || {
+        require_same_context(
+            facts.identity,
+            &holdings_scope.project,
+            &ds_cli_auth::headless_identity_for_named_project(facts.lane)?,
+            &holdings_scope.project,
+        )
+        .map_err(host_failure)
+    };
     let mut pages: Vec<(PreviewPage, PathBuf)> = Vec::with_capacity(names.len());
     for name in names {
         let folder = out_dir.join(name);
@@ -2745,7 +2762,8 @@ fn preview_pages(
             .map(|capture| capture.for_layout(&request.layout))
             .transpose()
             .map_err(|error| Failure::invalid(INPUTS_INVALID.code, error))?;
-        let page = ds_report_host::execute_with_styles(
+        current()?;
+        let page = ds_report_host::execute_with_styles_retained(
             &CliEngine,
             settings,
             &ds_report_host::PreviewRequest {
@@ -2754,8 +2772,10 @@ fn preview_pages(
             },
             &held,
             captured.as_ref(),
+            Some(&result_room),
         )
         .map_err(preview_failure)?;
+        current()?;
         let page_path = folder.join(&page.filename);
         if page_path.exists() {
             return Err(Failure::conflict(

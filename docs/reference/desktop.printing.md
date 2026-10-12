@@ -8,8 +8,12 @@ The same leaf is exposed by `ds mcp serve --exposure commands --profile printing
 `ds desktop printing preview --project <exact-current-project> --transformer
 <name> --layout draft-layout.json --output json` previews a full draft sheet
 through the same live SVG command as the Printing setup canvas. It resolves the
-held governed styles and prepares that transformer's ordinary cached context;
-the JSON returns SVG, diagnostics, omissions and context warnings. The project
+held governed styles and consumes that transformer's shared room and already
+held geographic context. Missing geographic inputs stay named in the native
+omissions; this preview performs no geographic provider or cloud computation
+acquisition. The JSON returns the exact SVG, native diagnostics, warnings and
+omissions. Native results share the account/project room across navigation and
+concurrent consumers. The project
 must match the paired Desktop's current project, and an account or project
 change refuses. The layout input is bounded to 800 KB and the existing bridge
 response to 8 MiB. No layout, export selection, main output or publication is

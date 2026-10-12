@@ -370,8 +370,33 @@ fn run_template_preview(inputs: &Inputs, layout_path: &str) -> Result<Value, Fai
                 .remedy(PREVIEW_LAYOUT_REFUSAL.remedy)
             })?;
     let lane = inputs.require("lane")?;
-    let (sheets, project_crs) = crate::project::mv_setup::project_print_context(lane, project)?;
+    let (sheets, project_crs, identity) =
+        crate::project::mv_setup::project_print_context_with_identity(lane, project)?;
     let table = crate::project::mv_setup::style_table(lane, project)?;
+    let current = || {
+        if ds_cli_auth::headless_identity_for_named_project(lane)? != identity {
+            return Err(Failure::invalid(
+                "print_project_crs_context_mismatch",
+                "the native preview account or deployment audience changed",
+            ));
+        }
+        Ok(())
+    };
+    current()?;
+    let result_room = ds_project_data::preview_room::Room {
+        root: ds_layer_store::default_root().map_err(|message| {
+            crate::project::export::host_failure(ds_report_host::HostFailure::new(
+                crate::project::export::STAGING_FAILED.code,
+                message,
+            ))
+        })?,
+        scope: ds_command_kernel::project_dataset_cache::Scope {
+            principal: identity.uid().into(),
+            project: project.into(),
+        },
+        lane: identity.lane().into(),
+        credential_audience_sha256: identity.credential_audience_sha256().into(),
+    };
     let staging = tempfile::tempdir().map_err(|error| {
         Failure::failed(
             crate::project::export::STAGING_FAILED.code,
@@ -379,7 +404,7 @@ fn run_template_preview(inputs: &Inputs, layout_path: &str) -> Result<Value, Fai
         )
         .remedy(crate::project::export::STAGING_FAILED.remedy)
     })?;
-    let answer = mv_preview::execute(
+    let answer = mv_preview::execute_retained(
         &crate::project::export::CliEngine,
         &MvPreviewInputs {
             project_id: project,
@@ -392,11 +417,13 @@ fn run_template_preview(inputs: &Inputs, layout_path: &str) -> Result<Value, Fai
             plan: &projections[1],
             staging: staging.path(),
         },
+        Some(&result_room),
     )
     .map_err(|refusal| match refusal {
         MvPreviewRefusal::Kernel(error) => crate::project::mv_setup::failure(error),
         MvPreviewRefusal::Host(failure) => crate::project::export::host_failure(failure),
     })?;
+    current()?;
     Ok(answer.to_value())
 }
 

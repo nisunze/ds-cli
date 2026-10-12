@@ -1,10 +1,10 @@
 //! Prepare the paired application's project printing workflow; Brain owns saves.
 use crate::ops::{self, BridgeOp, DESCRIPTOR_ARG, TARGET_ARG};
 use ds_cli_contract::{
-    Context, Failure, Inputs,
     spec::{Arg, ArgKind, Authority, Chapter, Command, Effect, Execution, Refusal, Requires},
+    Context, Failure, Inputs,
 };
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::{io::Read, time::Duration};
 
 pub const PREPARE_OP: BridgeOp = BridgeOp {
@@ -110,7 +110,7 @@ pub static PREVIEW_COMMAND: Command = Command {
     path: &["desktop", "printing", "preview"],
     contract: 1,
     summary: "Preview a draft transformer sheet through the live SVG renderer.",
-    purpose: "Requires the paired Desktop's current signed-in project. Reads a bounded draft layout, resolves its exact governed styles and prepares the same held room/context as the Printing setup page, then invokes report.project.export --preview-layout. Returns SVG, diagnostics, omissions and context preparation warnings. Never saves a layout or selection, writes main report outputs, publishes, switches projects, or refreshes survey data. Missing context can be acquired into the ordinary local cache, as for the page's preview.",
+    purpose: "Requires the paired Desktop's current signed-in project. Reads a bounded draft layout, resolves its exact governed styles and consumes the shared transformer room, then invokes report.project.export --preview-layout with held geographic context. Native rendering returns the exact SVG, diagnostics, warnings and named missing-context omissions, and retains its scoped result for navigation and concurrent consumers. Geographic providers and cloud computation are never acquired by preview. No layout/selection save, main output replacement, publication, project switch or survey refresh.",
     chapter: Chapter::Reports,
     effect: Effect::LocalFileWrite,
     authority: Authority::DesktopUser,
@@ -122,7 +122,7 @@ pub static PREVIEW_COMMAND: Command = Command {
         TARGET_ARG,
         DESCRIPTOR_ARG,
     ],
-    output: "Explicit project, preview identity and inline SVG result with SHA-256, print diagnostics, context omissions and preparation warnings. Existing paired bridge response bound: 8 MiB.",
+    output: "Explicit project, preview identity and inline SVG result with SHA-256, native print diagnostics, warnings and context omissions. Existing paired bridge response bound: 8 MiB.",
     examples: &[],
     refusals: &[
         ops::NOT_PAIRED, ops::AMBIGUOUS, ops::UNREACHABLE, ops::PAIRING_REJECTED,
@@ -512,19 +512,24 @@ mod tests {
 
     #[test]
     fn live_preview_refuses_export_options_and_invalid_identity_before_pairing() {
-        for extra in ["--force", "--selection", "--intent"] {
-            assert!(
-                preview_inputs(&[
-                    "--project",
-                    "huye",
-                    "--transformer",
-                    "agasharu",
-                    "--layout",
-                    "draft.json",
-                    extra
-                ])
-                .is_err()
-            );
+        for extra in [
+            "--force",
+            "--selection",
+            "--intent",
+            "--seed",
+            "--acquire",
+            "--refresh",
+        ] {
+            assert!(preview_inputs(&[
+                "--project",
+                "huye",
+                "--transformer",
+                "agasharu",
+                "--layout",
+                "draft.json",
+                extra
+            ])
+            .is_err());
         }
         let layout = serde_json::to_value(ds_command_kernel::printing::default_layout()).unwrap();
         for name in ["combined_transformer", "AGASHARU", "../agasharu"] {
@@ -579,14 +584,52 @@ mod tests {
     }
 
     #[test]
+    fn live_preview_binds_selected_missing_geography_to_the_native_read_only_plan() {
+        let inputs = preview_inputs(&[
+            "--project",
+            "huye",
+            "--transformer",
+            "agasharu",
+            "--layout",
+            "draft.json",
+        ])
+        .unwrap();
+        let mut layout = ds_command_kernel::printing::default_layout();
+        for context in ds_command_kernel::printing::context::derived_layers() {
+            layout =
+                ds_command_kernel::printing::context::toggle(layout, context, true, None).unwrap();
+        }
+        let layout = serde_json::to_value(layout).unwrap();
+        let arguments = preview_arguments(&inputs, layout.clone()).unwrap();
+        assert_eq!(arguments.as_object().unwrap().len(), 3);
+        assert_eq!(PREVIEW_OP.operation, "printing.preview");
+        for online in [false, true] {
+            let request = serde_json::to_vec(&json!({"op":"preview_context_preparation","layout":arguments["layout"],"online":online})).unwrap();
+            let native: Value =
+                serde_json::from_str(&ds_command_kernel::printing::evaluate(&request).unwrap())
+                    .unwrap();
+            assert_eq!(native["acquire_missing"], false);
+            assert!(native["contexts"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|row| row["source"]["kind"] == "google_open_buildings"));
+            assert!(native["contexts"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|row| row["source"]["kind"] == "elevation_contours"));
+        }
+        assert_eq!(arguments["layout"], layout);
+    }
+
+    #[test]
     fn request_writes_require_the_exact_project_locally() {
         let prepare = json!({"layout": {}, "expectedRevision": "", "selection": {}});
-        assert!(
-            require_request_project(&prepare, "printing.prepare")
-                .expect_err("prepare project is required")
-                .message()
-                .contains("explicit project")
-        );
+        assert!(require_request_project(&prepare, "printing.prepare")
+            .expect_err("prepare project is required")
+            .message()
+            .contains("explicit project"));
         assert_eq!(
             require_request_project(&json!({"project":"huye"}), "printing.prepare").unwrap(),
             "huye"
