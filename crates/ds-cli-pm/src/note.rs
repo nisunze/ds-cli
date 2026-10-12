@@ -52,13 +52,15 @@ const NOTE_EXISTS: Refusal = Refusal {
 pub static CREATE: Command = Command {
     id: "pm.note.create",
     path: &["pm", "note", "create"],
-    contract: 1,
+    contract: 2,
     summary: "Create a project-visible Markdown note for human review or editing.",
     purpose: "\
 Files a quick project note in Project Work, with its title and concise Markdown \
 body. The signed-in native credential must be allowed to contribute to the \
 explicitly named project. This creates a record with category project_note; \
-it does not send correspondence. An existing report is linked afterward with \
+it does not send correspondence. Repeat --transformer for exact same-project \
+active transformer links; body text does not create relationships. These links \
+do not pin an immutable submission revision or grant approval. An existing report is linked afterward with \
 `ds assets attach --record <note-id>`; confirm that link by reading the asset \
 or record. Reuse --id after an uncertain response: duplicate creation is \
 refused without a second note. Headless; no window.",
@@ -71,6 +73,11 @@ refused without a second note. Headless; no window.",
         BODY_ARG,
         BODY_FILE_ARG,
         ID_ARG,
+        Arg::repeated(
+            "transformer",
+            "<exact-id>",
+            "Typed same-project transformer link; repeat for 1..128 unique targets. Body text is not parsed into relationships.",
+        ),
         LANE_ARG,
         crate::PROJECT_ARG,
     ],
@@ -162,10 +169,18 @@ fn receipt(project: &str, response: &Value) -> Result<Value, Failure> {
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let body = body(inputs)?;
     let project = inputs.require("project")?;
-    let command = PMCommand::ProjectNoteCreate {
-        id: inputs.value("id").map(str::to_owned),
-        title: inputs.require("title")?.to_owned(),
-        body,
+    let id = inputs.value("id").map(str::to_owned);
+    let title = inputs.require("title")?.to_owned();
+    let transformer_ids = inputs.repeated("transformer").to_vec();
+    let command = if transformer_ids.is_empty() {
+        PMCommand::ProjectNoteCreate { id, title, body }
+    } else {
+        PMCommand::ProjectNoteCreateLinked {
+            id,
+            title,
+            body,
+            transformer_ids,
+        }
     };
     command
         .validate()
