@@ -41,6 +41,7 @@ pub use ds_command_kernel::report_export::{
 
 pub mod mv_preview;
 pub mod preview;
+pub mod preview_artifact;
 pub use preview::*;
 
 /// The kernel refused the inputs before any engine ran.

@@ -740,6 +740,7 @@ dependencies = [
 name = "ds-project-data"
 version = "0.1.0"
 dependencies = [
+ "csv",
  "ds-columnar",
  "ds-command-kernel",
  "ds-geo",
@@ -758,6 +759,7 @@ version = "0.1.0"
 dependencies = [
  "ds-command-kernel",
  "ds-project-data",
+ "ds-layer-store",
  "rustix",
  "serde",
  "serde_json",

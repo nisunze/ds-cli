@@ -39,6 +39,7 @@ pub mod sheet_margin;
 pub mod sheet_status;
 pub mod standards;
 pub mod standard_read;
+pub mod template_read;
 pub mod structure_descriptions;
 pub mod style_capture;
 pub mod style_migration;

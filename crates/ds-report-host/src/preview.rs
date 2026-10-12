@@ -963,6 +963,39 @@ pub fn answer(project: &str, lane: &str, pages: &[(&PreviewPage, PageRef<'_>)]) 
     })
 }
 
+/// One completed native result, materialized before a host encodes transport.
+pub fn execute_artifact_retained(
+    engine: &dyn crate::ReportEngine,
+    settings: &PreviewSettings<'_>,
+    request: &PreviewRequest,
+    held: &HeldState,
+    captured: Option<&Value>,
+    room: &ds_project_data::preview_room::Room,
+    retention: crate::preview_artifact::Retention,
+) -> Result<(PreviewPage, crate::preview_artifact::Artifact), PreviewRefusal> {
+    let page = execute_with_styles_retained(engine, settings, request, held, captured, Some(room))?;
+    let artifact = crate::preview_artifact::materialize_retained(room, &page, retention).map_err(PreviewRefusal::Host)?;
+    Ok((page, artifact))
+}
+
+pub fn answer_artifact(
+    project: &str,
+    lane: &str,
+    page: &PreviewPage,
+    artifact: &crate::preview_artifact::Artifact,
+) -> Result<Value, HostFailure> {
+    let mut data = answer(project, lane, &[(page, PageRef::File(Path::new(&artifact.path)))]);
+    data["preview"]["artifact_schema"] = json!(crate::preview_artifact::SCHEMA);
+    data["results"][0]["page"] = serde_json::to_value(artifact).map_err(|e| page_invalid(e.to_string()))?;
+    // Keep the paired bridge bound independently of the SVG size. The full
+    // native diagnostics remain in the disk manifest if reply metadata refuses.
+    if serde_json::to_vec(&data).map_err(|e| page_invalid(e.to_string()))?.len() > 8 * 1024 * 1024 - 1024 {
+        return Err(HostFailure::new("print_preview_metadata_limit", "Preview metadata exceeds the paired 8 MiB bound; read its native disk manifest.")
+            .with_detail(json!({"artifact":artifact,"manifest_path":Path::new(&artifact.path).parent().map(|p|p.join("manifest.json"))})));
+    }
+    Ok(data)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1537,6 +1570,12 @@ mod tests {
         )
         .unwrap();
         assert_eq!(first.page, second.page);
+        assert_eq!(engine.calls.load(Ordering::SeqCst), 1);
+        let artifact = crate::preview_artifact::materialize(&room, &first).unwrap();
+        assert_eq!(crate::preview_artifact::materialize(&room, &second).unwrap(), artifact);
+        let result = answer_artifact("proj-1", "canary", &second, &artifact).unwrap();
+        assert!(result["results"][0]["page"].get("svg").is_none());
+        assert_eq!(crate::preview_artifact::read(&room, &artifact).unwrap(), first.page.as_bytes());
         assert_eq!(engine.calls.load(Ordering::SeqCst), 1);
         let mut changed = request.clone();
         changed.layout.name = "Changed draft".into();
