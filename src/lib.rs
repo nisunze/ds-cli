@@ -17,6 +17,7 @@ pub use time;
 pub mod assets;
 pub mod project_snapshot;
 pub mod grid_selection_controls;
+pub mod grid_held_models;
 pub mod profile_controls;
 pub mod profile_display;
 pub mod profile_encoding;
