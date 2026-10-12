@@ -1,0 +1,323 @@
+//! Closed wire validation for the LV version catalog; allocation stays server-owned.
+use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Mutation {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display_ordinal: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub insert_before_version_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub task_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_record_id: Option<String>,
+    pub expected_catalog_revision: String,
+    pub expected_source_revision: String,
+    pub reason: String,
+    pub idempotency_key: String,
+}
+#[derive(Clone, Debug)]
+pub enum Command {
+    Catalog {
+        object_id: String,
+    },
+    Revision {
+        object_id: String,
+        version_id: String,
+        revision_id: String,
+    },
+    Publish {
+        object_id: String,
+        mutation: Mutation,
+    },
+    Renumber {
+        object_id: String,
+        mutation: Mutation,
+    },
+}
+fn identifier(s: &str) -> bool {
+    !s.is_empty()
+        && s.len() <= 256
+        && s.trim() == s
+        && !s
+            .chars()
+            .any(|c| c.is_control() || c.is_whitespace() || matches!(c, '/' | '\\'))
+}
+fn sha(s: &str) -> bool {
+    s.len() == 64
+        && s.bytes()
+            .all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c))
+}
+fn legacy(s: &str) -> bool {
+    s.strip_prefix('v').is_some_and(|n| {
+        !n.is_empty()
+            && n.bytes().all(|c| c.is_ascii_digit())
+            && n.parse::<u64>().is_ok_and(|n| n <= i64::MAX as u64)
+    })
+}
+fn version(s: &str) -> bool {
+    legacy(s) || s.strip_prefix("vc_").is_some_and(sha)
+}
+fn revision(s: &str) -> bool {
+    legacy(s) || s.strip_prefix("vr_").is_some_and(sha)
+}
+/// Immutable catalog reference grammar, shared by native and WASM admission.
+pub fn version_id(id: &str) -> bool { version(id) }
+/// Exact immutable revision grammar; a display ordinal is never a reference.
+pub fn revision_id(id: &str) -> bool { revision(id) }
+
+impl Command {
+    pub fn object_id(&self) -> &str {
+        match self {
+            Self::Catalog { object_id }
+            | Self::Revision { object_id, .. }
+            | Self::Publish { object_id, .. }
+            | Self::Renumber { object_id, .. } => object_id,
+        }
+    }
+    pub fn validate(&self, project: &str) -> Result<(), String> {
+        if !identifier(project) || !identifier(self.object_id()) {
+            return Err("catalog request needs exact project and transformer identities".into());
+        }
+        match self {
+            Self::Catalog { .. } => Ok(()),
+            Self::Revision {
+                version_id,
+                revision_id,
+                ..
+            } => {
+                if version(version_id) && revision(revision_id) {
+                    Ok(())
+                } else {
+                    Err("use immutable catalog version and revision identities, not display ordinals".into())
+                }
+            }
+            Self::Publish { mutation: m, .. } | Self::Renumber { mutation: m, .. } => {
+                if m.task_id.as_deref().is_some_and(|s| !identifier(s))
+                    || m.source_record_id
+                        .as_deref()
+                        .is_some_and(|s| !identifier(s))
+                    || !sha(&m.expected_catalog_revision)
+                    || time::OffsetDateTime::parse(
+                        &m.expected_source_revision,
+                        &time::format_description::well_known::Rfc3339,
+                    )
+                    .is_err()
+                    || m.reason.trim().is_empty()
+                    || m.reason.trim() != m.reason
+                    || m.reason.len() > 2000
+                    || m.reason.chars().any(char::is_control)
+                    || m.idempotency_key.trim().is_empty()
+                    || m.idempotency_key.trim() != m.idempotency_key
+                    || m.idempotency_key.len() > 256
+                    || m.idempotency_key.chars().any(char::is_control)
+                    || m.version_id.as_deref().is_some_and(|s| !version(s))
+                    || m.display_ordinal.is_some_and(|n| n > 1_000_000)
+                    || m.insert_before_version_id
+                        .as_deref()
+                        .is_some_and(|s| !version(s))
+                {
+                    return Err("catalog mutation needs exact catalog/source fences, bounded reason/key and immutable identities".into());
+                }
+                let valid = match self {
+                    Self::Publish { .. } => {
+                        (m.version_id.is_some() ^ m.display_ordinal.is_some())
+                            && (m.insert_before_version_id.is_none() || m.display_ordinal.is_some())
+                    }
+                    Self::Renumber { .. } => {
+                        m.version_id.is_some()
+                            && m.display_ordinal.is_some()
+                            && m.insert_before_version_id.is_none()
+                    }
+                    _ => unreachable!(),
+                };
+                if valid {
+                    Ok(())
+                } else {
+                    Err("publish names an existing version OR a new display ordinal; insertion is new-only; renumber names version and ordinal without insertion".into())
+                }
+            }
+        }
+    }
+    pub fn payload(&self, project: &str) -> Result<Value, String> {
+        self.validate(project)?;
+        let action = match self {
+            Self::Catalog { .. } => "get_version_catalog",
+            Self::Revision { .. } => "get_version_revision",
+            Self::Publish { .. } => "publish_transformer_version_revision",
+            Self::Renumber { .. } => "renumber_version",
+        };
+        let mut value = json!({"action":action,"project_id":project,"object":{"kind":"lv_transformer","id":self.object_id()}});
+        match self {
+            Self::Revision {
+                version_id,
+                revision_id,
+                ..
+            } => {
+                value["version_id"] = json!(version_id);
+                value["revision_id"] = json!(revision_id);
+            }
+            Self::Publish { mutation, .. } => {
+                let mut publication = json!(mutation);
+                publication["transformer_id"] = json!(self.object_id());
+                value = json!({"action":action,"eds_project_id":project,"catalog_publication":publication});
+            }
+            Self::Renumber { mutation, .. } => value["catalog_mutation"] = json!(mutation),
+            _ => {}
+        }
+        Ok(value)
+    }
+    pub fn verify_response(&self, project: &str, value: &Value) -> Result<(), String> {
+        if !matches!(self, Self::Revision { .. }) {
+            let c = &value["catalog"];
+            if c["schema"] != "ds.lv-version-catalog/v1"
+                || c["project_id"] != project
+                || c["object"] != json!({"kind":"lv_transformer","id":self.object_id()})
+                || !c["catalog_revision"].as_str().is_some_and(sha)
+            {
+                return Err("catalog response scope or revision is invalid".into());
+            }
+            let rows = c["versions"].as_array().ok_or("catalog versions absent")?;
+            if rows.len() > 1000 {
+                return Err("catalog exceeds 1000 versions".into());
+            }
+            let mut ids = std::collections::BTreeSet::new();
+            let mut ordinals = std::collections::BTreeSet::new();
+            for row in rows {
+                let id = row["version_id"]
+                    .as_str()
+                    .filter(|s| version(s))
+                    .ok_or("invalid catalog version identity")?;
+                let ordinal = row["display_ordinal"]
+                    .as_u64()
+                    .filter(|n| *n <= 1_000_000)
+                    .ok_or("invalid catalog display ordinal")?;
+                if !ids.insert(id)
+                    || !ordinals.insert(ordinal)
+                    || !row["head_revision_id"].as_str().is_some_and(revision)
+                    || !row["revision_count"].as_u64().is_some_and(|n| n > 0)
+                {
+                    return Err(
+                        "catalog contains duplicate identity/ordinal or invalid revision".into(),
+                    );
+                }
+            }
+        }
+        if matches!(self, Self::Revision { .. } | Self::Publish { .. }) {
+            let m = &value["metadata"];
+            if m["project_id"] != project
+                || m["transformer_id"] != self.object_id()
+                || !m["revision_number"].as_u64().is_some_and(|n| n > 0)
+            {
+                return Err(
+                    "immutable revision metadata differs from requested project or transformer"
+                        .into(),
+                );
+            }
+        }
+        if let Self::Revision {
+            version_id,
+            revision_id,
+            ..
+        } = self
+        {
+            let m = &value["metadata"];
+            if m["version_id"] != *version_id
+                || m["revision_id"] != *revision_id
+                || !m["content_digest"].as_str().is_some_and(sha)
+            {
+                return Err("revision response differs from exact requested identity or content digest is absent".into());
+            }
+        }
+        if matches!(self, Self::Publish { .. } | Self::Renumber { .. })
+            && !value["changed"].is_boolean()
+        {
+            return Err("mutation change receipt absent".into());
+        }
+        if matches!(self, Self::Publish { .. }) {
+            let m = &value["metadata"];
+            if !m["version_id"].as_str().is_some_and(version)
+                || !m["revision_id"].as_str().is_some_and(revision)
+                || !m["content_digest"].as_str().is_some_and(sha)
+            {
+                return Err("published immutable revision metadata absent".into());
+            }
+        }
+        Ok(())
+    }
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    fn mutation() -> Mutation {
+        Mutation {
+            version_id: None,
+            task_id: None,
+            source_record_id: None,
+            display_ordinal: Some(0),
+            insert_before_version_id: Some("v1".into()),
+            expected_catalog_revision: "a".repeat(64),
+            expected_source_revision: "2026-10-12T12:00:00Z".into(),
+            reason: "April baseline".into(),
+            idempotency_key: "freeze-april".into(),
+        }
+    }
+    #[test]
+    fn placement_and_stable_reference_are_distinct_without_rewriting_legacy_refs() {
+        let c = Command::Publish {
+            object_id: "TR-1".into(),
+            mutation: mutation(),
+        };
+        let p = c.payload("p").unwrap();
+        assert_eq!(p["catalog_publication"]["display_ordinal"], 0);
+        assert_eq!(p["catalog_publication"]["insert_before_version_id"], "v1");
+        assert!(p["catalog_publication"].get("version_id").is_none());
+        let c = Command::Revision {
+            object_id: "TR-1".into(),
+            version_id: "v1".into(),
+            revision_id: "v1".into(),
+        };
+        assert_eq!(c.payload("p").unwrap()["version_id"], "v1");
+    }
+    #[test]
+    fn malformed_mutations_refuse_before_transport() {
+        let mut m = mutation();
+        m.version_id = Some("v1".into());
+        assert!(Command::Publish {
+            object_id: "TR-1".into(),
+            mutation: m.clone()
+        }
+        .payload("p")
+        .is_err());
+        m.insert_before_version_id = None;
+        assert!(Command::Renumber {
+            object_id: "TR-1".into(),
+            mutation: m.clone()
+        }
+        .payload("p")
+        .is_ok());
+        m.expected_source_revision = "yesterday".into();
+        assert!(Command::Renumber {
+            object_id: "TR-1".into(),
+            mutation: m
+        }
+        .payload("p")
+        .is_err());
+    }
+    #[test]
+    fn catalog_scope_and_duplicate_labels_are_checked() {
+        let c = Command::Catalog {
+            object_id: "TR-1".into(),
+        };
+        let row = json!({"version_id":"v1","display_ordinal":4,"head_revision_id":"v1","revision_count":1});
+        let mut v = json!({"catalog":{"schema":"ds.lv-version-catalog/v1","project_id":"p","object":{"kind":"lv_transformer","id":"TR-1"},"catalog_revision":"a".repeat(64),"versions":[row.clone()]}});
+        c.verify_response("p", &v).unwrap();
+        v["catalog"]["versions"].as_array_mut().unwrap().push(row);
+        assert!(c.verify_response("p", &v).is_err());
+        assert!(c.verify_response("other", &v).is_err());
+    }
+}
