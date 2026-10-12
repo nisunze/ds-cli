@@ -104,6 +104,12 @@ pub enum Command {
         transformer: String,
         response: Value,
     },
+    PlaybackPlan {
+        project: String,
+        transformer: String,
+        version_id: String,
+        revision_id: Option<String>,
+    },
     PinnedRead {
         project: String,
         transformer: String,
@@ -441,6 +447,33 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
             command.verify_response(&project, &response)?;
             response["catalog"].clone()
         }
+        Command::PlaybackPlan {
+            project,
+            transformer,
+            version_id,
+            revision_id,
+        } => {
+            crate::design_version_catalog::Command::Catalog {
+                object_id: transformer.clone(),
+            }
+            .validate(&project)?;
+            if version_id.starts_with("local-")
+                && valid_target(&version_id)
+                && revision_id.is_none()
+            {
+                json!({"storage":"local","version_id":version_id})
+            } else {
+                let revision_id = revision_id
+                    .ok_or("server playback requires an exact immutable revision identity")?;
+                let request = crate::design_version_catalog::Command::Snapshot {
+                    object_id: transformer,
+                    version_id: version_id.clone(),
+                    revision_id: revision_id.clone(),
+                }
+                .payload(&project)?;
+                json!({"storage":"server","version_id":version_id,"revision_id":revision_id,"request":request})
+            }
+        }
         Command::PinnedRead {
             project,
             transformer,
@@ -731,12 +764,39 @@ fn record(m: &Manifest) -> Value {
 #[cfg(test)]
 mod tests {
     #[test]
+    fn playback_plan_requires_exact_server_revision_and_keeps_retained_drafts_offline() {
+        use serde_json::{json, Value};
+        let mut input =
+            json!({"action":"playback_plan","project":"p","transformer":"t","version_id":"v0"});
+        assert!(super::evaluate(&serde_json::to_vec(&input).unwrap()).is_err());
+        input["revision_id"] = json!("v0");
+        let output: Value =
+            serde_json::from_str(&super::evaluate(&serde_json::to_vec(&input).unwrap()).unwrap())
+                .unwrap();
+        assert_eq!(output["storage"], "server");
+        assert_eq!(
+            output["request"],
+            json!({"action":"get_transformer_version_revision","eds_project_id":"p",
+            "catalog_revision_read":{"transformer_id":"t","version_id":"v0","revision_id":"v0"}})
+        );
+        input["version_id"] = json!(format!("local-{}", "a".repeat(64)));
+        input.as_object_mut().unwrap().remove("revision_id");
+        let output: Value =
+            serde_json::from_str(&super::evaluate(&serde_json::to_vec(&input).unwrap()).unwrap())
+                .unwrap();
+        assert_eq!(output["storage"], "local");
+        assert!(output.get("request").is_none());
+        input["revision_id"] = json!("v0");
+        assert!(super::evaluate(&serde_json::to_vec(&input).unwrap()).is_err());
+    }
+
+    #[test]
     fn pinned_read_requires_exact_immutable_identity_and_snapshot_bytes() {
         use serde_json::json;
         let snapshot=json!({"schema":"ds.transformer-version-snapshot/v1","layers":{"tr":{"type":"FeatureCollection","features":[]}}}).to_string();
         let mut request = json!({"action":"pinned_read","project":"p","transformer":"t","version_id":"v0","revision_id":"v0",
             "response":{"display_ordinal":0,"metadata":{"project_id":"p","transformer_id":"t","version_id":"v0","revision_id":"v0",
-                "revision_number":1,"content_digest":"a".repeat(64),"snapshot_scope":"exported_design","source_mode":"source_pinned_import"},
+                "revision_number":1,"playback_available":true,"content_digest":"a".repeat(64),"snapshot_scope":"exported_design","source_mode":"source_pinned_import"},
                 "snapshot_json":snapshot,"snapshot_sha256":format!("{:x}",sha2::Sha256::digest(snapshot.as_bytes()))}});
         let out: serde_json::Value =
             serde_json::from_str(&super::evaluate(&serde_json::to_vec(&request).unwrap()).unwrap())
@@ -744,6 +804,9 @@ mod tests {
         assert_eq!(out["version"]["version"], 0);
         assert_eq!(out["version"]["snapshot_scope"], "exported_design");
         assert!(out["version"].get("restore_allowed").is_none());
+        request["response"]["metadata"]["playback_available"] = json!(false);
+        assert!(super::evaluate(&serde_json::to_vec(&request).unwrap()).is_err());
+        request["response"]["metadata"]["playback_available"] = json!(true);
         request["response"]["snapshot_json"] = json!("{}");
         assert!(super::evaluate(&serde_json::to_vec(&request).unwrap())
             .unwrap_err()
