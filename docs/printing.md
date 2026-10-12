@@ -774,12 +774,32 @@ delivery's existing saved JSON companion remains an exact source artifact;
 it is not a second preview path. Existing main publication and retained report
 downloads keep their separate contracts.
 
-The paired CLI first consumer is `desktop printing export --intent preview`
+The paired CLI consumer is `desktop printing export --intent preview`
 with only `voltage_drop_pdf` selected and optional
 `--preview-retention 24h|7d`. Its result exposes the common `previewArtifact`
-and a native reuse receipt. This paired adapter is not proof of a Server
-adapter; a headless caller must admit its own saved source and native context
-through the same owner.
+and a native reuse receipt. Server's `report project export
+--preview-voltage-drop` admits its own exact scoped native hold and saved
+analysis before using this same owner. It branches before project/provider,
+tag, survey, freshness or publication reads. The headless response returns
+the same common PDF file manifest and original lifetime; missing or moved
+analysis refuses before scratch or renderer invocation.
+
+`ds-report-host::layout_preview::execute` retains one inline
+`ds.print-layout-export/v1` page through that common input lease and SVG file
+owner. The namespace is admitted independently by the native host; captured
+JSON never grants account or project authority. An included project-CRS
+capsule must match project, principal, lane and audience. The exact authored
+capture, including source digest metadata, layout, styles, symbols, config
+and held renderer policy, participates in its input hash with the renderer
+build. No style or geometry is inferred. Only delivery output transport and
+format are replaced by the explicit SVG preview mode. One fixed
+`render-print-layout` task writes private scratch; its bounded manifest,
+layout/paper identity and exact SVG bytes are verified before common
+materialization. Missing policy, multipage/file-indirected captures and
+private page caches refuse before rendering. Cold and warm producers expose
+only the shared file manifest, reuse receipt and bounded diagnostics.
+Each cover, naming page, index or overview supplies its own exact captured
+page through this owner; this does not introduce another preview store.
 
 The inventory carries exact saved `layers.customers` and `layers.lv_poles`
 counts when present. `preview_cases` identifies the smallest and largest of

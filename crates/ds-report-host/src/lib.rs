@@ -39,6 +39,7 @@ pub use ds_command_kernel::report_export::{
     batch_plan, blocker_summary, BatchPlan, DEFAULT_RESIDENT_LIMIT, MAX_RESIDENT_LIMIT,
 };
 
+pub mod layout_preview;
 pub mod mv_artifact;
 pub mod mv_job;
 pub mod mv_preview;
@@ -148,6 +149,19 @@ pub trait ReportEngine: Sync {
         request: &Path,
         result: &Path,
     ) -> Result<EngineExit, HostFailure>;
+    /// `ds-report render-print-layout --request REQUEST --result RESULT`.
+    /// Captured local inputs only; this task acquires no project data.
+    fn render_print_layout(
+        &self,
+        request: &Path,
+        result: &Path,
+    ) -> Result<EngineExit, HostFailure> {
+        let _ = (request, result);
+        Err(HostFailure::new(
+            CODE_ENGINE_UNSUPPORTED,
+            "this report engine does not render captured print layouts",
+        ))
+    }
     /// `ds-report render-grid-plan-profile --request REQUEST --result RESULT`.
     /// An engine that serves only transformer exports refuses it by name.
     fn render_grid_plan_profile(
