@@ -6,18 +6,33 @@ and the actual selected template papers. It never infers paper from a filename.
 The same leaf is exposed by `ds mcp serve --exposure commands --profile printing`.
 
 `ds desktop printing preview --project <exact-current-project> --transformer
-<name> --layout draft-layout.json --output json` previews a full draft sheet
-through the same live SVG command as the Printing setup canvas. It resolves the
-held governed styles and consumes that transformer's shared room and already
-held geographic context. Missing geographic inputs stay named in the native
-omissions; this preview performs no geographic provider or cloud computation
-acquisition. The JSON returns the exact SVG, native diagnostics, warnings and
-omissions. Native results share the account/project room across navigation and
-concurrent consumers. The project
-must match the paired Desktop's current project, and an account or project
-change refuses. The layout input is bounded to 800 KB and the existing bridge
-response to 8 MiB. No layout, export selection, main output or publication is
-written. This SVG command is separate from `export --intent preview`, which
+<name> --layout draft-layout.json --output json` renders a full draft sheet
+through the native report host. Alternatively, supply `--template location.json`
+with an exact layout location from the native catalogue; choose exactly one of
+`--layout` and `--template`. The native owner validates its kind, identity and
+revision, reads that chosen template through its authenticated retained cache,
+and resolves held governed styles and the transformer's shared room. Missing
+geographic inputs remain named in native omissions; preview does not acquire
+geographic provider data or cloud computation.
+
+The native host persists SVG bytes in its scoped disk cache before transport.
+Contract 2 returns a `ds.print-preview-artifact/v1` receipt with its absolute
+path, SHA-256, byte count, content type, exact result and authority digests,
+creation and expiry times, plus native diagnostics, warnings and omissions.
+CLI responses contain no inline SVG. Retention defaults to 24 hours;
+`--retention 7d` selects seven days. Repeated exact requests reuse the original
+file and expiry without rendering or acquiring data. Optional `--out
+/absolute/new.svg` copies the validated artifact without replacing an existing
+file. The Desktop reads the same admitted file for presentation. A mismatched
+older Desktop response refuses and requires a matching CLI/Desktop package.
+
+The project must match the paired Desktop's current project; account or project
+changes refuse. Layout input remains bounded to 800 KB and response metadata
+to 8 MiB. Rendering persists only preview artifacts: it does not save layouts,
+export selections, main outputs or publication. The headless
+`report project export --preview-layout draft-layout.json` uses the same native
+artifact owner; `--preview-retention 24h|7d` controls that artifact's retention.
+This draft SVG operation is separate from `export --intent preview`, which
 produces review artifacts from saved project layouts.
 
 An explicit export selection containing only named PDFs does not add saved
