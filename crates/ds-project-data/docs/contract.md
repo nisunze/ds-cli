@@ -20,6 +20,48 @@ bytes.
 This crate decides nothing about geometry or document shape and never opens a
 socket.
 
+## Explicit local analytical project sources
+
+`local_source::Source` (`ds.local-analytical-source/v1`) names one exact project,
+asset revision, actual source origin, footprint/contour kind, local native
+GeoParquet artifact SHA-256, producer-source revision/digest and producer-completed coverage. The caller holds
+and authorizes the project context; a project string is not authorization.
+Google/Microsoft origins admit footprints; Rwanda DEM/Terrarium origins admit
+contours at explicitly declared intervals. Custom origin is explicit. No source
+is inferred or substituted, and feature bounds never imply complete coverage.
+The producer source pin is separate from the generated artifact revision: it
+records the elevation input for contours, with an exact SHA-256 or CRC32C
+(the Rwanda COG publishes CRC32C). It participates in room/index identity and
+the retained source receipt.
+
+`DeclaredSource::LocalAnalytical` validates that binding before acquisition.
+For genuinely missing cells it verifies and retains the analytical artifact,
+reads bounded Arrow batches once, admits explicit canonical CRS84/WKB footer
+metadata and geometry/stable identities, and builds
+the existing native reference RTree. Identical stable rows deduplicate;
+conflicting rows with the same identity refuse. Project subset queries use that
+exact index and the existing room ticket/commit fence. A cell outside the
+producer's complete coverage refuses. A completely empty analytical artifact
+and an empty subset inside complete coverage can both complete and reuse warm.
+The native columnar writer owns canonical CRS84 metadata
+(`ds-columnar::geoparquet::geo_metadata`); this seam admits the actual reader
+schema metadata against that owner, so a digest-valid file with altered CRS
+refuses before its index or any project coverage is published.
+
+Resource identity includes project/asset, actual origin and content parameters;
+revision identity includes the exact artifact and completed source coverage.
+Each selected revision has its own room. Old pinned revisions remain usable
+offline; selecting a new revision cannot inherit the old revision's completion.
+A warm seed and `Mode::Read` inspect no source file or national index, contact
+no provider and perform no download. Expansion reads/patches only missing cells;
+explicit `refresh` repeats local indexed subsets through the same ticket fence.
+The retained analytical source survives removal of the original input file.
+
+This native seam accepts existing analytical inputs only. It does not yet bind
+CLI/UI source selection, publish a shared asset, compute contours, acquire
+publisher footprints or resolve contiguous city boundaries. Those consumers
+must use this owner before the local-source workflow is usable through `ds`.
+
 ## The registry the kernel echoes
 
 `datasets::{buildings_dataset, contours_dataset, catalog_dataset}` produce the

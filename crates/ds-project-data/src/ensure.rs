@@ -375,6 +375,9 @@ fn settle(
     mut mode: Mode<'_, '_>,
     refresh: bool,
 ) -> Result<EnsureOutcome, Failure> {
+    if let DeclaredSource::LocalAnalytical(local) = source {
+        local.bind(scope, dataset)?;
+    }
     let plan = plan_focused(scope, dataset, policy, extents, focus).map_err(crate::store)?;
     let mut warnings = Vec::new();
     if !plan.skipped.is_empty() {
@@ -441,6 +444,12 @@ fn settle(
             } else {
                 assessment.gaps.cells.clone()
             };
+            if let DeclaredSource::LocalAnalytical(local) = source {
+                for cell in &targets {
+                    local.covers(&polygon(*cell))?;
+                }
+                local.prepare(root)?;
+            }
             let mut pending: Vec<([f64; 4], u32)> = Vec::new();
             for cell in targets {
                 pending.extend(tiles(cell)?.into_iter().rev().map(|tile| (tile, 0)));
@@ -451,6 +460,7 @@ fn settle(
                 // A national subset is read from this machine's own index
                 // first: a read the index truncates is split, never stored.
                 let local = match source {
+                    DeclaredSource::LocalAnalytical(local) => Some(local.acquire(root, &area)),
                     DeclaredSource::Catalog(resource) => {
                         Some(acquire_catalog(root, resource, &area))
                     }
@@ -458,11 +468,16 @@ fn settle(
                     | DeclaredSource::Contours(_)
                     | DeclaredSource::Cloud(_) => None,
                 };
-                if let (Some(Ok(None)), DeclaredSource::Catalog(resource)) = (&local, source) {
+                if matches!(local, Some(Ok(None))) {
+                    let label = match source {
+                        DeclaredSource::Catalog(resource) => resource.layer.as_str(),
+                        DeclaredSource::LocalAnalytical(local) => local.asset_id.as_str(),
+                        _ => unreachable!("only local indexes return a truncated page"),
+                    };
                     if depth >= MAX_SPLIT_DEPTH {
                         return Err(Failure::AcquisitionFailed(format!(
                             "the national-cache query for {} still exceeds {CATALOG_QUERY_LIMIT} features in a {:.4}° cell after {MAX_SPLIT_DEPTH} splits",
-                            resource.layer,
+                            label,
                             cell[2] - cell[0],
                         )));
                     }

@@ -19,6 +19,8 @@ use crate::Failure;
 /// Where a declared dataset's rows come from.
 #[derive(Debug, Clone, PartialEq)]
 pub enum DeclaredSource {
+    /// An explicitly selected, revision-pinned local analytical project asset.
+    LocalAnalytical(Box<crate::local_source::Source>),
     /// A project subset of one installed national bundle.
     Catalog(Box<ReferenceResource>),
     /// Building footprints through ds-brain.

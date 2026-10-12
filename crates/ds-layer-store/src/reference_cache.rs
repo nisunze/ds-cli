@@ -68,6 +68,16 @@ pub struct BundleIndexWriter {
 }
 
 impl BundleIndexWriter {
+    /// Retain the exact analytical input beside its derived spatial index.
+    /// The caller verifies its digest before publishing this private staging tree.
+    pub fn analytical_artifact_path(&self) -> Result<PathBuf, String> {
+        self.connection
+            .path()
+            .and_then(|path| Path::new(path).parent())
+            .map(|directory| directory.join("source.parquet"))
+            .ok_or_else(|| "reference index has no staged artifact directory".into())
+    }
+
     pub fn new(staging_root: &Path, identity: Identity) -> Result<Self, String> {
         let dir = directory(staging_root, &identity)?;
         let path = dir.join(BUNDLE_INDEX_FILE);
@@ -115,7 +125,20 @@ impl BundleIndexWriter {
         Ok(())
     }
     pub fn finish(self, verified_source_bytes: u64) -> Result<(), String> {
-        if self.features == 0
+        self.finish_inner(verified_source_bytes, false)
+    }
+    /// Explicitly completed local extracts can be empty; their exact nonempty
+    /// analytical input must be retained beside the derived index.
+    pub fn finish_analytical_artifact(self, verified_source_bytes: u64) -> Result<(), String> {
+        let metadata = fs::symlink_metadata(self.analytical_artifact_path()?)
+            .map_err(|error| error.to_string())?;
+        if linked(&metadata) || !metadata.is_file() || metadata.len() != verified_source_bytes {
+            return Err("analytical index needs its exact retained input".into());
+        }
+        self.finish_inner(verified_source_bytes, true)
+    }
+    fn finish_inner(self, verified_source_bytes: u64, allow_empty: bool) -> Result<(), String> {
+        if (!allow_empty && self.features == 0)
             || verified_source_bytes == 0
             || verified_source_bytes > MAX_RESOURCE_BYTES
         {
@@ -182,7 +205,12 @@ fn completed_bundle(dir: &Path, identity: &Identity) -> Option<CacheSummary> {
         .ok()?;
     if resource != identity.resource_id
         || version != identity.version
-        || features == 0
+        || (features == 0 && {
+            let Ok(artifact) = fs::symlink_metadata(dir.join("source.parquet")) else {
+                return None;
+            };
+            linked(&artifact) || !artifact.is_file() || artifact.len() != bytes as u64
+        })
         || bytes == 0
     {
         return None;

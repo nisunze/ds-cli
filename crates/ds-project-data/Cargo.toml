@@ -17,6 +17,7 @@ tempfile = "3"
 
 ds-grid-exchange = { path = "../../../ds-network/crates/ds-grid-exchange" }
 ds-geo = { path = "../../../ds-network/crates/ds-geo" }
+ds-columnar = { path = "../../../ds-network/crates/ds-columnar" }
 
 [dev-dependencies]
 
