@@ -75,13 +75,20 @@ pub static VIEW: Command = Command {
     path: &["map", "profile", "view"],
     contract: 7,
     summary: "Read the paired Profile's exact visual state.",
-    purpose: "Read retained Profile state and the mounted pick_context; no preparation, calculation, polling or acquisition.",
+    purpose: "Read retained Profile state and the mounted pick_context; no preparation, calculation, polling or acquisition. --include-held deliberately reads one atomic native presentation from every existing worker, without opening models or changing focus. Concurrent observers share pending worker reads. Default view reads no workers.",
     chapter: Chapter::MapPresentation,
     effect: Effect::ReadOnly,
     authority: Authority::DesktopPairing,
     execution: Execution::Sync,
-    args: &[TARGET_ARG, DESCRIPTOR_ARG],
-    output: "occupant, local model_id/model_name/revision, persisted/history/edit_mode; selection IDs/family/primary; height_px and camera/surface (CSS px; null unmounted); pick_context: opaque current painted model/scene/viewport lease for pick, null unavailable; display,visibility,vertical_exaggeration,review (<=256 cases),analysis. analysis_state: due/current/off/not_applicable; scene_loaded: current; scene_revision: retained. calculation: native policy,model_revision,computed_revision,required,scope; null before observation. readiness: retained phase,initial,scene_admitted,model_id,model_revision,job,failure; null before request/closed/foreign context. job has native model_id/history/status/runtime_worker_active; no status read. Cancel can leave worker active; initial prep has no job.",
+    args: &[
+        Arg::switch(
+            "include-held",
+            "Include every existing Desktop model worker with native identity/history and held persistence/activity facts; no model acquisition or checkpoint.",
+        ),
+        TARGET_ARG,
+        DESCRIPTOR_ARG,
+    ],
+    output: "occupant, local model_id/model_name/revision, persisted/history/edit_mode; selection IDs/family/primary; height_px and camera/surface (CSS px; null unmounted); pick_context: opaque current painted model/scene/viewport lease for pick, null unavailable; display,visibility,vertical_exaggeration,review (<=256 cases),analysis. analysis_state: due/current/off/not_applicable; scene_loaded: current; scene_revision: retained. calculation: native policy,model_revision,computed_revision,required,scope; null before observation. readiness: retained phase,initial,scene_admitted,model_id,model_revision,job,failure; null before request/closed/foreign context. job has native model_id/history/status/runtime_worker_active; no status read. Cancel can leave worker active; initial prep has no job. With --include-held, held_models contains the complete bounded existing-worker inventory: captured/current context, total, rows, mutated:false; each row carries native manifest identity/revision/history/CRS, local persistence/ownership/project provenance and retained activity facts.",
     examples: &[Example {
         command: "ds map profile view --output json",
         note: "Pin a model edit.",
@@ -95,6 +102,16 @@ pub static VIEW: Command = Command {
         PROFILE_CLOSED,
         crate::UNSUPPORTED,
         crate::UNREADABLE,
+        Refusal {
+            code: "held_model_inventory_invalid",
+            when: "the explicit held-worker read has missing, duplicate or unadmitted native facts",
+            remedy: "retain live sessions and use matching Desktop and CLI before reading --include-held again",
+        },
+        Refusal {
+            code: "held_model_context_stale",
+            when: "account, project, worker roster or native history changes during inventory",
+            remedy: "retain live sessions and deliberately read --include-held again",
+        },
     ],
     reference: Some("docs/reference/map.md"),
     search: &["viewport"],
@@ -371,12 +388,29 @@ pub static SELECT: Command = Command {
 
 pub fn view(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let descriptor = crate::paired(inputs.value("desktop-descriptor"))?;
-    crate::invoke(
+    let include = inputs.switch("include-held");
+    let result = crate::invoke(
         &descriptor,
         &crate::PROFILE_VIEW,
-        json!({}),
+        if include {
+            json!({"include_held":true})
+        } else {
+            json!({})
+        },
         crate::UI_TIMEOUT,
-    )
+    )?;
+    admit_view(result, include)
+}
+
+fn admit_view(mut result: Value, include: bool) -> Result<Value, Failure> {
+    if include {
+        let inventory = ds_command_kernel::grid_held_models::admit(result["held_models"].take())
+            .map_err(|message| Failure::failed("held_model_inventory_invalid", message)
+                .remedy("retain live sessions and deliberately read --include-held again with matching Desktop and CLI"))?;
+        result["held_models"] =
+            serde_json::to_value(inventory).expect("typed held inventory serializes");
+    }
+    Ok(result)
 }
 
 pub fn set(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
@@ -644,18 +678,34 @@ pub fn render_selection(data: &Value) -> String {
 mod tests {
     use super::*;
     #[test]
+    fn held_inventory_is_explicit_and_missing_owner_facts_cannot_pass() {
+        let inputs = ds_cli_contract::args::parse(&VIEW, &["--include-held".into()]).unwrap();
+        assert!(inputs.switch("include-held"));
+        assert_eq!(
+            admit_view(json!({"open":false}), false).unwrap(),
+            json!({"open":false})
+        );
+        assert!(admit_view(json!({"open":false}), true).is_err());
+        let context = json!({"account":null,"project":null,"generation":0});
+        assert!(admit_view(json!({"open":false,"held_models":{"captured_context":context,"context":context,"total":0,"rows":[],"mutated":false}}), true).is_ok());
+    }
+    #[test]
     fn view_declares_retained_readiness_without_preparation_or_status_reads() {
         assert_eq!(VIEW.contract, 7);
         assert_eq!(VIEW.effect, Effect::ReadOnly);
-        assert!(VIEW.purpose.contains(
-            "no preparation, calculation, polling or acquisition"
-        ));
+        assert!(
+            VIEW.purpose
+                .contains("no preparation, calculation, polling or acquisition")
+        );
         assert!(VIEW.output.contains(
             "readiness: retained phase,initial,scene_admitted,model_id,model_revision,job,failure"
         ));
         assert!(VIEW.output.contains("no status read"));
         assert!(VIEW.output.contains("local model_id/model_name/revision"));
-        assert!(VIEW.output.contains("native model_id/history/status/runtime_worker_active"));
+        assert!(
+            VIEW.output
+                .contains("native model_id/history/status/runtime_worker_active")
+        );
         assert!(VIEW.output.contains("initial prep has no job"));
     }
 

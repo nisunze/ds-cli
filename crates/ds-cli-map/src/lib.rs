@@ -152,7 +152,7 @@ pub const ZOOM_TO: BridgeOp = BridgeOp {
 };
 pub const PROFILE_VIEW: BridgeOp = BridgeOp {
     operation: "map.profile.view",
-    arguments: &[],
+    arguments: &["include_held"],
 };
 pub const PROFILE_SET: BridgeOp = BridgeOp {
     operation: "map.profile.set",

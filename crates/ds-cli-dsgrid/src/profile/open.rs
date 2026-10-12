@@ -38,6 +38,7 @@ pub const PROFILE_OPEN: BridgeOp = BridgeOp {
         "expect_revision",
         "replace_temporary_models",
         "live",
+        "held",
         "expect_history",
     ],
 };
@@ -49,7 +50,7 @@ const MODEL_ARG: Arg = Arg {
     required: true,
     default: None,
     choices: &[],
-    summary: "Working-copy id, or the open Profile model id with --live.",
+    summary: "Working-copy id, current Profile id with --live, or an existing Desktop worker id with --live --held.",
 };
 
 const ALIGNMENT_ARG: Arg = Arg {
@@ -78,7 +79,12 @@ const ALIGNMENT_NOT_FOUND: Refusal = Refusal {
     remedy: "run `ds dsgrid inspect --model <path> --include tables` and pass one alignment id",
 };
 
-const OWN: [Refusal; 16] = [
+const OWN: [Refusal; 17] = [
+    Refusal {
+        code: "held_model_checkpoint_invalid",
+        when: "a held-worker artifact receipt crosses identity/history/output fences or claims source Save, focus change or durable Undo/Redo",
+        remedy: "retain the live worker and written artifact; inspect the exact checkpoint receipt before restart",
+    },
     Refusal {
         code: "checkpoint_history_invalid",
         when: "--live lacks checkpoint output or full native history, mixes opening controls, or history JSON is invalid",
@@ -149,7 +155,7 @@ pub static COMMAND: Command = Command {
     path: &["dsgrid", "profile", "open"],
     contract: 2,
     summary: "Open a working copy or checkpoint a live Desktop Profile model.",
-    purpose: "Open a machine working copy in Profile, optionally focusing an alignment and writing a new checkpoint. Reopening retains its live session. --live instead captures the already-open Profile model without catalogue lookup, import or focus changes; requires --checkpoint-out and --expect-history from map profile view. Native full-history admission rejects Undo/Redo ABA. Capture never saves or adopts the working model; import the new package explicitly to create an independent copy. No model bytes cross the bridge. --replace-temporary-models removes temporary groups/models only when explicitly requested during ordinary opening.",
+    purpose: "Open a machine working copy in Profile, optionally focusing an alignment and writing a new checkpoint. Reopening retains its live session. --live instead captures the already-open Profile model without catalogue lookup, import or focus changes; requires --checkpoint-out and --expect-history from map profile view. Native full-history admission rejects Undo/Redo ABA. Capture never saves or adopts the working model; import the new package explicitly to create an independent copy. --live --held explicitly captures a named existing worker without taking Profile occupancy; use history from map profile view --include-held. Its new artifact preserves current authored state/assets, and the receipt witnesses history; cold reopening does not preserve Undo/Redo. No model bytes cross the bridge. --replace-temporary-models removes temporary groups/models only when explicitly requested during ordinary opening.",
     chapter: Chapter::GridModel,
     effect: Effect::LocalFileWrite,
     authority: Authority::DesktopPairing,
@@ -172,6 +178,10 @@ pub static COMMAND: Command = Command {
             "live",
             "Capture the already-open Profile model, including models outside the CLI catalogue; requires output and full history.",
         ),
+        Arg::switch(
+            "held",
+            "With --live, capture one existing Desktop worker without focus change; use its exact history from map profile view --include-held. The new package carries authored state/assets and a receipt history witness, not durable Undo/Redo recovery.",
+        ),
         Arg::value(
             "expect-history",
             "<native-json>",
@@ -186,7 +196,7 @@ pub static COMMAND: Command = Command {
         TARGET_ARG,
         DESCRIPTOR_ARG,
     ],
-    output: "Model, package path, live revision and Profile state; checkpoint receipt names the captured revision, full history with --live, persisted file path, SHA-256 and byte length. Live capture leaves alignment/focus unchanged. Explicit replacement reports removed temporary groups/models.",
+    output: "Model, package path, live revision and Profile state; checkpoint receipt names the captured revision, full history with --live, persisted file path, SHA-256 and byte length. Live capture leaves alignment/focus unchanged. --held additionally reports held_checkpoint:true, source_saved:false, focus_changed:false, undo_redo_preserved:false; it never overwrites a source or output. Explicit replacement reports removed temporary groups/models.",
     examples: &[
         Example {
             command: "ds dsgrid profile open --model local-b1b2d3b9e6ab4959",
@@ -206,11 +216,7 @@ pub static COMMAND: Command = Command {
     ],
     refusals: REFUSALS,
     reference: Some("docs/reference/dsgrid.md"),
-    search: &[
-        "working copy",
-        "alignment",
-        "clone",
-    ],
+    search: &["working copy", "alignment", "clone"],
     // The two halves of one fact: this command asks the application for its
     // answer, so it declares the window and hands over the paired availability.
     requires: Requires::Window,
@@ -218,6 +224,9 @@ pub static COMMAND: Command = Command {
 };
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
+    if inputs.switch("held") && !inputs.switch("live") {
+        return Err(history_invalid());
+    }
     let checkpoint_out = checkpoint_output(inputs)?;
     let id = inputs.require("model")?.trim().to_owned();
     let mut arguments = if inputs.switch("live") {
@@ -248,6 +257,21 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let descriptor = crate::model::paired(inputs.value("desktop-descriptor"))?;
     let result = crate::model::invoke(&descriptor, &PROFILE_OPEN, arguments, LOCAL_TIMEOUT)
         .map_err(classify)?;
+    if inputs.switch("held") {
+        let expected =
+            serde_json::from_str(inputs.value("expect-history").ok_or_else(history_invalid)?)
+                .map_err(|_| history_invalid())?;
+        ds_command_kernel::grid_held_models::admit_checkpoint(&id, &expected, checkpoint_out.ok_or_else(history_invalid)?, &result)
+            .map_err(|message| Failure::failed("held_model_checkpoint_invalid", message)
+                .remedy("retain the live worker and any newly written artifact; inspect the exact checkpoint receipt before restart"))?;
+        return Ok(result);
+    }
+    if result["held_checkpoint"] == true {
+        return Err(Failure::failed(
+            "desktop_unreadable",
+            "an ordinary Profile request returned a held-worker capture",
+        ));
+    }
     let receipt = receipt(&id, &result)?;
     if checkpoint_out.is_some() && receipt["checkpoint"]["persisted"] != true {
         return Err(Failure::failed(
@@ -282,7 +306,11 @@ fn live_arguments(inputs: &Inputs) -> Result<Value, Failure> {
     if id.trim().is_empty() || id.len() > 200 || id.chars().any(char::is_control) {
         return Err(history_invalid());
     }
-    Ok(json!({"model":id.trim(),"live":true,"expect_history":history}))
+    let mut result = json!({"model":id.trim(),"live":true,"expect_history":history});
+    if inputs.switch("held") {
+        result["held"] = json!(true);
+    }
+    Ok(result)
 }
 
 fn checkpoint_output(inputs: &Inputs) -> Result<Option<&str>, Failure> {
@@ -426,6 +454,10 @@ mod tests {
         assert_eq!(arguments["model"], "browser-only");
         assert_eq!(arguments["expect_history"]["redo_depth"], 1);
         assert!(arguments.get("path").is_none());
+        assert!(arguments.get("held").is_none());
+        let held = live_arguments(&parse(&["--expect-history", history, "--held"])).unwrap();
+        assert_eq!(held["held"], true);
+        assert!(held.get("path").is_none());
         assert!(live_arguments(&parse(&[])).is_err());
         assert!(
             live_arguments(&parse(&[
