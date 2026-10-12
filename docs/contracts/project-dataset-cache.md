@@ -10,6 +10,65 @@ Three separations are load-bearing: room address versus acquisition identity,
 requested versus completed coverage, and dataset independence. They are stated
 in the module's own documentation and are not restated here.
 
+## Project source assets and local computation (owner, 2026-10-12)
+
+Footprints, contours and authorized custom spatial layers are reusable project
+data. An installation acquires or computes a bounded extract locally, retains
+its exact source-quality rows, and publishes a versioned project asset through
+the existing authorized asset/publication boundary. Other authorized users
+download the verified extract once and share the native project dataset room.
+Printing, composition and analysis consume that room; they never independently
+query an upstream provider or start a cloud compute fallback.
+
+Arrow/GeoParquet supplies retained analytical rows and native spatial indexes;
+GeoJSON is the mapping and interoperable export representation of those same
+rows. Display vector tiles do not establish complete analytical source data.
+An asset identifies its project, source and license, CRS, schema, stable feature
+ids, source revision, completed coverage, content digest and extraction or
+computation parameters. Contours additionally pin the admitted elevation
+surface and interval/spacing choices. No substitute elevation source is chosen
+silently when that surface has gaps.
+
+Expanded transformer or model bounds ask the shared owner for the difference
+between requested and completed coverage. Acquire only that missing coverage;
+merge it under stable source identities without duplicate boundary features or
+overwriting dirty local rows. A changed source patches affected coverage and
+explicit deletions under its revision fence. Requested, queued and partially
+downloaded areas are never marked complete. Concurrent consumers coalesce the
+same work. One failed dataset does not invalidate an independent held dataset.
+
+CLI acquisition, refetch and publication are explicit operations with their
+existing project permissions. An explicit refetch may deliberately replace
+selected coverage. Cloud push retains an invalidation marker; no unused data
+read or freshness check follows it. Offline consumers use held assets without
+network probes; missing inputs answer an acquisition need. Shared central
+storage is a distribution boundary, not permission for remote computation or
+national-reference publication. Governed national extensions keep their
+separate authority and immutable provenance review.
+
+Offline map consumption may retain complete, immutable PMTiles packages under
+a configurable byte budget, initially 1 GiB with a 5 GiB option. Show the exact
+package sizes and coverage before download; admit only complete packages that
+fit the chosen budget, verify their bytes, and reuse them without GCS range
+requests. Do not silently lower zoom, omit features, or evict pinned inputs.
+Explicit download/refresh controls and native retention policy own this choice.
+
+Printing the highest admitted vector-tile zoom is an optional experiment, not
+an analytical source or required print backend. Compare it against source-row
+rendering using the same extent, physical scale, styles and furniture: feature
+ids/counts, clipped and boundary geometry, labels, line weights, completeness,
+latency, transferred bytes and actual request counts. A package's highest zoom
+alone does not prove unsimplified or print-equivalent geometry. Retain the
+source-row path unless this evidence establishes equivalence for the selected
+output. This does not change the local-compute default or authorize deployment
+of a cloud printing service.
+
+The historical provider paths described below explain existing decoding
+formats; they do not authorize continued Cloud Run acquisition or Terrarium
+fallback. Remaining implementation and installed acceptance live in
+[OPEN §16](../../backlog/OPEN.md#16-map-data-datasets-and-screen-styling) and the
+[printing fast path](../../backlog/STABILIZATION.md#immediate-printing-fast-path-owner-2026-10-12).
+
 ## 2026-09-11 — building decode refusals and the first-use seed rule
 
 ### Four named refusals, one per case
