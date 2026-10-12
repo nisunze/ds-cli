@@ -16,7 +16,7 @@ Candidate curation and native PLS-CADD acceptance are separate from coding the c
 | --- | ---: |
 | [1. Deployment and template rollout](#1-deployment-and-template-rollout) | 16 |
 | [2. Release acceptance](#2-release-acceptance) | 3 |
-| [3. Template projects](#3-template-projects) | 5 |
+| [3. Template projects](#3-template-projects) | 6 |
 | [4. Print templates, styles and seed](#4-print-templates-styles-and-seed) | 6 |
 | [5. Print sheet content and legibility](#5-print-sheet-content-and-legibility) | 6 |
 | [6. Print acceptance on live projects](#6-print-acceptance-on-live-projects) | 14 |
@@ -84,6 +84,8 @@ Candidate curation and native PLS-CADD acceptance are separate from coding the c
 - **Reporter pin for end-pole names** (`8b2d9545`): the reporter's native source pin must include ds-network `822a22de` before Engineering Review rows for spans saved without node ids name their end poles instead of `? → ?`; verify on the installed release.
 
 ## 3. Template projects
+
+- **Two-project reusable composition and integration-project retirement** (owner, 2026-10-12): curate the actual Rwanda and Tchad template projects through governed DS commands, using fictional example project names/company logos throughout reusable layouts. Add MV front matter; add LV A0 front matter with transformer location/size index, saved voltage-drop details and an A0 project overview. On Tchad, add city overview maps and a project map showing all sites against the admitted Tchad extent, with distinct supported OSM settings. Validate/render/read back exact saved revisions and demonstrate customization/copy into another project without changing designs or submission documents. Before retiring `it_rwanda`, `it_tchad` and the newer `tchad_loc_7`, discover their exact project IDs and inventory/migrate useful template aspects with revision-pinned receipts. Keep and use the veteran `arjgpydw_aderm_loc7`; never substitute or delete it. Only then perform admitted lifecycle deletion. Missing governed retirement controls are code work in OPEN, never a direct store mutation. Do not seed legacy/unclassified examples.
 
 - **Rwanda Template as a read-only demonstration project** (owner, 2026-10-07; `wnmajona_edcl_rural_electrification_template`): signed-in users read it for tutorials and demonstrations. Replace logos rather than anonymizing them. Title blocks get fictitious companies and account numbers, and the people's names on every transformer sheet become gibberish Latin. Claude is doing this.
   - **Logos ready:** `outputs/rwanda-template-seed-20261007/logos/generated/` (each ≤ 200 KB, under the 350,000-character base64 bound at `src/printing/mod.rs:1446`). Asset `rwanda` → Republic of Calventa; `edcl` → Velmora Grid Authority; `afdb` → Quenara Development Fund; `cjic` → Tallowind Lineworks; `ccce` → Orvanex Engineering.
