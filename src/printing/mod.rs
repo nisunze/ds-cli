@@ -33,6 +33,7 @@ pub mod project_sources;
 pub mod renderer_defaults;
 pub mod resolved_styles;
 pub mod retained_preview;
+pub mod retained_reads;
 pub mod session;
 pub mod sheet_margin;
 pub mod sheet_status;
