@@ -38,6 +38,7 @@ pub mod session;
 pub mod sheet_margin;
 pub mod sheet_status;
 pub mod standards;
+pub mod standard_read;
 pub mod structure_descriptions;
 pub mod style_capture;
 pub mod style_migration;
@@ -2366,6 +2367,11 @@ pub enum Command {
         location: catalogue::Location,
         response: Value,
     },
+    /// Admit one exact immutable standard page for read-only consumption.
+    ReadGovernedStandard {
+        location: catalogue::Location,
+        response: Value,
+    },
     Duplicate {
         layout: Layout,
         id: String,
@@ -2943,6 +2949,10 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
             .map_err(|e| e.to_string())?,
         Command::ReadGovernedTemplate { location, response } => {
             serde_json::to_value(catalogue::read_governed(location, response)?)
+                .map_err(|e| e.to_string())?
+        }
+        Command::ReadGovernedStandard { location, response } => {
+            serde_json::to_value(standard_read::admit(&location, &response)?)
                 .map_err(|e| e.to_string())?
         }
         Command::Duplicate { layout, id, name } => {

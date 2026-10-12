@@ -126,6 +126,9 @@ pub enum Location {
         id: String,
         template_id: String,
         revision_id: String,
+        /// Older catalogues may list the page without enabling pinned preview.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        content_sha256: Option<String>,
     },
 }
 
@@ -204,6 +207,17 @@ fn standard_entry(project: &str, row: &Value) -> Result<Option<Entry>, String> {
         .ok_or("print_catalogue_invalid: standard page template missing")?;
     let revision_id =
         digest(&row["revision_id"]).ok_or("print_catalogue_invalid: standard page pin missing")?;
+    let content_sha256 = if row
+        .get("content_sha256")
+        .is_some_and(|value| !value.is_null())
+    {
+        Some(
+            digest(&row["content_sha256"])
+                .ok_or("print_catalogue_invalid: standard page content pin invalid")?,
+        )
+    } else {
+        None
+    };
     let label = ROLES
         .iter()
         .find(|(r, _)| *r == role)
@@ -226,6 +240,7 @@ fn standard_entry(project: &str, row: &Value) -> Result<Option<Entry>, String> {
             id: id.into(),
             template_id: template_id.into(),
             revision_id,
+            content_sha256,
         },
     )))
 }
@@ -713,7 +728,7 @@ mod tests {
         );
         assert_eq!(
             cover["location"],
-            json!({"kind":"governed_standard","project_id":"project_one","id":"mv-cover-a3","template_id":"mv-booklet-a3-v1","revision_id":pin})
+            json!({"kind":"governed_standard","project_id":"project_one","id":"mv-cover-a3","template_id":"mv-booklet-a3-v1","revision_id":pin,"content_sha256":pin})
         );
         // An unpinned or unknown-role page refuses the capture instead of guessing.
         for broken in [
