@@ -232,6 +232,13 @@ pub enum Command {
         title: String,
         body: String,
     },
+    /// A quick project note with typed same-project transformer relationships.
+    ProjectNoteCreateLinked {
+        id: Option<String>,
+        title: String,
+        body: String,
+        transformer_ids: Vec<String>,
+    },
     /// One project command against one base revision — `commit_command`, the
     /// same body the Plan sheet sends for one gesture. The command is the
     /// kernel's (`ds_command_kernel::project_management::writes`), already
@@ -347,7 +354,9 @@ impl Command {
             Self::TaskComments { .. } => "get_context",
             Self::Assignees => "get_assignees",
             Self::Context { .. } => "get_context",
-            Self::ProjectNoteCreate { .. } => "create_record",
+            Self::ProjectNoteCreate { .. } | Self::ProjectNoteCreateLinked { .. } => {
+                "create_record"
+            }
             Self::Commit { .. } | Self::TaskCreateAttached { .. } => "commit_command",
             Self::CommitBatch { .. } => "commit_batch",
             Self::Propose { .. } => "commit_command",
@@ -429,7 +438,26 @@ impl Command {
                 )),
                 _ => Ok(()),
             },
-            Self::ProjectNoteCreate { id, title, body } => {
+            Self::ProjectNoteCreate { id, title, body }
+            | Self::ProjectNoteCreateLinked {
+                id, title, body, ..
+            } => {
+                if let Self::ProjectNoteCreateLinked {
+                    transformer_ids, ..
+                } = self
+                {
+                    let mut unique = std::collections::BTreeSet::new();
+                    if transformer_ids.is_empty()
+                        || transformer_ids.len() > 128
+                        || transformer_ids
+                            .iter()
+                            .any(|id| !project_note_id_valid(id) || !unique.insert(id))
+                    {
+                        return Err(invalid(
+                            "project note links need 1..128 unique exact transformer identities",
+                        ));
+                    }
+                }
                 let subject = title.trim();
                 if subject.is_empty()
                     || subject.len() > MAX_PROJECT_NOTE_SUBJECT_BYTES
@@ -579,7 +607,10 @@ impl Command {
                     payload["limit"] = json!(limit);
                 }
             }
-            Self::ProjectNoteCreate { id, title, body } => {
+            Self::ProjectNoteCreate { id, title, body }
+            | Self::ProjectNoteCreateLinked {
+                id, title, body, ..
+            } => {
                 if let Some(id) = id {
                     payload["id"] = json!(id);
                 }
@@ -589,6 +620,12 @@ impl Command {
                     "subject": title,
                     "body": body,
                 });
+                if let Self::ProjectNoteCreateLinked {
+                    transformer_ids, ..
+                } = self
+                {
+                    payload["data"]["links"]=json!(transformer_ids.iter().map(|id| json!({"kind":"ds_object","project_id":project,"object_type":"transformer","entity_id":id})).collect::<Vec<_>>());
+                }
             }
             Self::Commit {
                 command_id,
@@ -991,6 +1028,7 @@ pub(crate) fn run<T: AuthorizedTransport>(
         Command::PublicProjects { .. }
         | Command::TaskCommentCreate { .. }
         | Command::ProjectNoteCreate { .. }
+        | Command::ProjectNoteCreateLinked { .. }
         | Command::Propose { .. }
         | Command::RequestAdmission { .. }
         | Command::Admit { .. }
@@ -1073,6 +1111,29 @@ mod collaboration_contract_tests {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn linked_project_note_uses_exact_typed_project_scope_without_prose_inference() {
+        let c = Command::ProjectNoteCreateLinked {
+            id: Some("n1".into()),
+            title: "Review".into(),
+            body: "Do not parse TR-other from prose".into(),
+            transformer_ids: vec!["TR-1".into()],
+        };
+        c.validate().unwrap();
+        let p = c.payload("exact-project");
+        assert_eq!(
+            p["data"]["links"],
+            json!([{"kind":"ds_object","project_id":"exact-project","object_type":"transformer","entity_id":"TR-1"}])
+        );
+        let bad = Command::ProjectNoteCreateLinked {
+            id: None,
+            title: "Review".into(),
+            body: String::new(),
+            transformer_ids: vec!["TR-1".into(), "TR-1".into()],
+        };
+        assert!(bad.validate().is_err());
+    }
 
     #[test]
     fn project_note_create_payload_routes_the_explicit_project_and_stable_id() {
