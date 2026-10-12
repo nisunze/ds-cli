@@ -82,6 +82,9 @@ pub fn revision_id(id: &str) -> bool {
 /// Verify exact immutable UTF-8 bytes and decode their native snapshot once.
 /// The digest of the compressed stored frame remains separate server evidence.
 pub fn decode_pinned_snapshot(value: &Value) -> Result<Value, String> {
+    if value["metadata"]["playback_available"] != true {
+        return Err("immutable revision authority does not permit playback".into());
+    }
     use sha2::{Digest, Sha256};
     let raw = value["snapshot_json"]
         .as_str()
@@ -379,8 +382,11 @@ mod tests {
             revision_id: "v0".into(),
         };
         let raw = r#"{"schema":"ds.transformer-version-snapshot/v1","layers":{"tr":{"type":"FeatureCollection","features":[]}},"metadata":{"sentinel":1.0000,"name":"??"}}"#;
-        let mut reply = json!({"metadata":{"project_id":"p","transformer_id":"TR-1","version_id":"v0","revision_id":"v0","revision_number":1,"content_digest":"a".repeat(64)},"snapshot_json":raw,"snapshot_sha256":format!("{:x}",Sha256::digest(raw.as_bytes()))});
+        let mut reply = json!({"metadata":{"project_id":"p","transformer_id":"TR-1","version_id":"v0","revision_id":"v0","revision_number":1,"playback_available":true,"content_digest":"a".repeat(64)},"snapshot_json":raw,"snapshot_sha256":format!("{:x}",Sha256::digest(raw.as_bytes()))});
         c.verify_response("p", &reply).unwrap();
+        reply["metadata"]["playback_available"]=json!(false);
+        assert!(c.verify_response("p",&reply).is_err());
+        reply["metadata"]["playback_available"]=json!(true);
         let payload = c.payload("p").unwrap();
         assert_eq!(payload["action"], "get_transformer_version_revision");
         assert_eq!(payload["catalog_revision_read"]["version_id"], "v0");
