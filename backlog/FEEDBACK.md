@@ -2,13 +2,13 @@
 
 > **Moved 2026-10-07:** this backlog now lives in `ds-command-kernel/backlog/`. The old `ds-work/backlog/` no longer exists: edit these files here, commit them to ds-command-kernel `run`, and stage only `backlog/`. ds-work holds working sessions, not coding lists.
 
-Working list from the 2026-10-07 snapshot and 2026-10-09 component lookups, with proven closures removed: 253 tracked rows (99 open, 154 waiting according to the rows below). These are file counts, not a fresh live backlog total. The feedback API is the authority: verify each selected report's current status, full ID, version and acceptance through `ds`, close only what is proven, and remove its row. Delete this file when its remaining work is fulfilled; keep no completed-work archive.
+Working list from the 2026-10-07 snapshot and 2026-10-09 component lookups, with proven closures removed: 252 tracked rows (98 open, 154 waiting according to the rows below). These are file counts, not a fresh live backlog total. The feedback API is the authority: verify each selected report's current status, full ID, version and acceptance through `ds`, close only what is proven, and remove its row. Delete this file when its remaining work is fulfilled; keep no completed-work archive.
 
-Reports are grouped by the live repository that owns the code, then by component. The component is the submitter's free-text label, shown verbatim so `ds feedback list --component` finds it. Legacy labels map as follows: `ds-grid*`, `dsgrid*`, `ds/grid-*`, `ds/pls-library` → ds-network; `ds-report*`, `ds-printing*` → ds-network-reporter; `ds-desktop*` → ds-web (`src-tauri`); `ds pls desktop` → ds-cli (`ds-cli-pls/desktop`). Labels that name no repository stay **unassigned**. "Backlog" names the [OPEN.md](OPEN.md), [OPEN-X.md](OPEN-X.md) or [SEEDING.md](SEEDING.md) section citing the report; **untracked** means none does (128 reports).
+Reports are grouped by the live repository that owns the code, then by component. The component is the submitter's free-text label, shown verbatim so `ds feedback list --component` finds it. Legacy labels map as follows: `ds-grid*`, `dsgrid*`, `ds/grid-*`, `ds/pls-library` → ds-network; `ds-report*`, `ds-printing*` → ds-network-reporter; `ds-desktop*` → ds-web (`src-tauri`); `ds pls desktop` → ds-cli (`ds-cli-pls/desktop`). Labels that name no repository stay **unassigned**. "Backlog" names the [OPEN.md](OPEN.md), [OPEN-X.md](OPEN-X.md) or [SEEDING.md](SEEDING.md) section citing the report; **untracked** means none does (127 reports).
 
 | Repository | Total | Blocker | Major | Minor | Waiting | Untracked |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| [ds-cli](#ds-cli) | 95 | 11 | 64 | 20 | 59 | 60 |
+| [ds-cli](#ds-cli) | 94 | 11 | 64 | 19 | 59 | 59 |
 | [ds-network](#ds-network) | 75 | 18 | 52 | 5 | 38 | 26 |
 | [ds-network-reporter](#ds-network-reporter) | 28 | 1 | 21 | 6 | 20 | 16 |
 | [ds-web](#ds-web) | 34 | 6 | 26 | 2 | 24 | 16 |
@@ -36,7 +36,6 @@ Reports are grouped by the live repository that owns the code, then by component
 | ds-cli dsgrid-exchange / dsgrid model link / pls desktop | `e7059959` | blocker | obstacle | No governed route from DS typed retypes back into the native PLS-CADD workspace when the origin folder digest differs (restored copy) | open | **untracked** |
 | ds-cli pls desktop drivers / dialog catalogue | `4115583d` | blocker | bug | PLS-CADD desktop drivers refuse on the startup 'About PLS-CADD' box (not catalogued); autosag fails at launch | waiting: release of ds-cli@90f39089 (Windows), then native AutoSag and unknown-dialog negative control | **untracked** |
 | ds-cli/auth | `dba03da7` | major | obstacle | auth_transient storm: map-inputs and dsgrid project download hang 10-30 min then refuse | open | **untracked** |
-| ds-cli/data | `d4ae9a9f` | minor | obstacle | Raster and image analysis have no registered CLI contracts | open | **untracked** |
 | ds-cli/data-elevation | `829e8ddc` | major | bug | ds data elevation attach always refused: desktop_refused 422 mismatched native elevation evidence (Desktop writes a correct result) | waiting: release of ds-web@c1c768a05 (Desktop) | **untracked** |
 | ds-cli/data-elevation | `ed8b6d68` | major | bug | Stable Rwanda elevation attach rejects supported request with opaque evidence mismatch | waiting: release of ds-web@c1c768a05 (Desktop) | **untracked** |
 | ds-cli/data-terrain | `62b63e0e` | major | obstacle | Expose original Rwanda DEM cells for terrain import without interpolation | waiting: deployed headless original DEM-cell extraction with NoData coverage | **untracked** |
