@@ -570,6 +570,18 @@ when serialized, preserving compatibility and their existing presentation.
 
 ## The shared preview page
 
+`printing::view::plan` is the read-only consumption authority for the open
+Printing templates view. `report.layout.edit` exposes its `view_plan` intent
+headlessly. It receives the explicit project, exact held catalogue locations,
+current session state and actual held document page count. It admits one exact
+location or one held page, refuses replacement of dirty drafts through the
+existing session reducer, and returns no acquisition, refresh, render or save
+effect. Same-template reads and page navigation remain usable with dirty work.
+The Desktop door serves only this pure intent under the owner window's existing
+account/project route; the paired `desktop.printing.view` transports the same
+request. PDF navigation consumes all held pages. A one-sheet MV sample remains
+one held page until the renderer declares an exact requested-sheet contract.
+
 Desktop native transformer and MV template previews retain their latest exact result in
 the existing account/project report hold through `ds_project_data::preview_room`.
 The host captures account, project, lane and credential audience before reading

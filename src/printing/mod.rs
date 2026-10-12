@@ -47,6 +47,7 @@ pub mod table_columns;
 pub mod table_headings;
 pub mod table_rows;
 pub mod table_values;
+pub mod view;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -2318,6 +2319,11 @@ pub enum Command {
         state: session::State,
         event: session::Event,
     },
+    /// Read-only selection/page consumption of an already held printing view.
+    ViewPlan {
+        request: view::Request,
+        facts: view::Facts,
+    },
     /// Switch one context layer on or off, seeding fallback styles.
     ContextToggle {
         layout: Layout,
@@ -2888,6 +2894,9 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
         }),
         Command::SessionStep { state, event } => {
             serde_json::to_value(session::step(&state, &event)?).map_err(|e| e.to_string())?
+        }
+        Command::ViewPlan { request, facts } => {
+            serde_json::to_value(view::plan(&request, &facts)?).map_err(|e| e.to_string())?
         }
         Command::ContextToggle {
             layout,
