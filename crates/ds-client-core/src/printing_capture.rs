@@ -1,10 +1,7 @@
 //! Pure held-transport seam for the same saved-source reads as the native CLI.
 //! A host supplies exact response entities. This module never selects an account,
 //! changes an API lane, fetches data, calculates an analysis or repairs a seed.
-use crate::{
-    ClientError, PrintingStandardKind, PrintingStandardRequest, TransformerContext,
-    TransportResponse,
-};
+use crate::{ClientError, TransformerContext, TransportResponse};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -37,23 +34,8 @@ impl Response {
 #[serde(rename_all = "camelCase")]
 pub struct ReadPlan {
     pub snapshot: Read,
-    pub config: Read,
-    pub document: Read,
-    pub styles: Read,
 }
 
-fn a4() -> PrintingStandardRequest {
-    PrintingStandardRequest::Get {
-        kind: PrintingStandardKind::A4,
-        id: "voltage-drop-a4-v1".into(),
-    }
-}
-fn styles(project: &str) -> ds_command_kernel::style_governance::Request {
-    ds_command_kernel::style_governance::Request {
-        project: project.into(),
-        command: ds_command_kernel::style_governance::Command::Table,
-    }
-}
 fn read(path: impl Into<String>, body: Vec<u8>, limit: usize, timeout: u64) -> Read {
     Read {
         path: path.into(),
@@ -75,29 +57,6 @@ pub fn plan(project: &str, transformer: &str) -> Result<ReadPlan, ClientError> {
             ),
             crate::TRANSFORMER_CONTEXT_RESPONSE_LIMIT,
             crate::TRANSFORMER_CONTEXT_TIMEOUT_SECONDS,
-        ),
-        config: Read {
-            path: crate::project_feeders::read_path(project),
-            method: "GET",
-            body: serde_json::json!({}),
-            response_limit: 8 * 1024 * 1024,
-            timeout_seconds: 120,
-        },
-        document: read(
-            crate::printing_standard::PRINTING_STANDARD_PATH,
-            a4().body(project),
-            crate::printing_standard::PRINTING_STANDARD_RESPONSE_LIMIT,
-            60,
-        ),
-        styles: read(
-            crate::STYLES_PATH,
-            serde_json::to_vec(
-                &ds_command_kernel::style_governance::request_body(&styles(project))
-                    .map_err(|_| invalid("Invalid governed style-table read."))?,
-            )
-            .expect("closed style table request"),
-            crate::LAYERS_RESPONSE_LIMIT,
-            120,
         ),
     })
 }
@@ -136,29 +95,6 @@ pub fn analysis_plan(
         crate::TRANSFORMER_ANALYSIS_TIMEOUT_SECONDS,
     ))
 }
-pub fn configuration(response: Response) -> Result<crate::FeederConfiguration, ClientError> {
-    if response.bytes.len() > 8 * 1024 * 1024 {
-        return Err(invalid("Project configuration exceeds its read bound."));
-    }
-    let document = crate::project_feeders::decode(response.transport())?;
-    crate::project_feeders::rows(&document)?;
-    Ok(crate::FeederConfiguration {
-        document,
-        summary: Value::Null,
-    })
-}
-pub fn document(project: &str, response: Response) -> Result<Value, ClientError> {
-    crate::printing_standard::decode(response.transport(), project, &a4())
-}
-pub fn style_table(project: &str, response: Response) -> Result<Value, ClientError> {
-    if response.status != 200 || response.bytes.len() > crate::LAYERS_RESPONSE_LIMIT {
-        return Err(invalid("Style table is outside its read contract."));
-    }
-    let value: Value =
-        serde_json::from_slice(&response.bytes).map_err(|_| invalid("Unreadable style table."))?;
-    ds_command_kernel::style_governance::admit(&styles(project), &value)
-        .map_err(|_| invalid("Invalid governed style-table response."))
-}
 pub fn analysis(response: Response, sha: &str) -> Result<Vec<u8>, ClientError> {
     let headers = crate::TransformerAnalysisHeaders {
         content_type: response.content_type,
@@ -175,4 +111,48 @@ pub fn analysis(response: Response, sha: &str) -> Result<Vec<u8>, ClientError> {
 }
 fn invalid(message: &'static str) -> ClientError {
     ClientError::new(crate::ErrorKind::UnreadableResponse, message)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sha2::{Digest, Sha256};
+
+    #[test]
+    fn saved_read_plan_cannot_acquire_retired_configuration_document_or_styles() {
+        let plan = plan("project", "T1").unwrap();
+        let wire = serde_json::to_value(&plan).unwrap();
+        assert_eq!(
+            wire.as_object().unwrap().keys().collect::<Vec<_>>(),
+            vec!["snapshot"]
+        );
+        assert_eq!(plan.snapshot.body["fields"], "saved");
+        assert_eq!(plan.snapshot.path, crate::TRANSFORMER_CONTEXT_PATH);
+        assert!(self::plan("", "T1").is_err());
+        assert!(self::plan("project", "").is_err());
+    }
+
+    #[test]
+    fn saved_analysis_preserves_exact_bytes_and_rejects_changed_payload_or_headers() {
+        let raw = b"{ \"saved_value\": 1.0 }".to_vec();
+        let sha = format!("{:x}", Sha256::digest(&raw));
+        let response = || Response {
+            status: 200,
+            bytes: raw.clone(),
+            content_type: Some("application/json".into()),
+            analysis_sha256: Some(sha.clone()),
+            cache_control: Some("no-store".into()),
+        };
+        assert_eq!(analysis(response(), &sha).unwrap(), raw);
+        for change in 0..4 {
+            let mut held = response();
+            match change {
+                0 => held.bytes.push(b' '),
+                1 => held.analysis_sha256 = Some("f".repeat(64)),
+                2 => held.cache_control = None,
+                _ => held.content_type = Some("text/plain".into()),
+            }
+            assert!(analysis(held, &sha).is_err(), "change {change}");
+        }
+    }
 }
