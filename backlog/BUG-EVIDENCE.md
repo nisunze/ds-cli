@@ -49,6 +49,15 @@ Windows acceptance from Linux proof.
    subject/layout/input fences, keep navigation available, and reuse the shared
    transformer/MV holdings for every consuming page. Prove navigation during
    work, safe return/adoption, stale result refusal and counted shared reads.
+   Live Linux reproduction on 2026-10-12: the declared
+   `desktop.printing.preview` for `czgmdwth_gisagara` / `agahehe`, using the
+   existing DS-captured A0 draft at
+   `ds-web/out/printing-fast-path-20261012/live/captured-a0-draft.json`, did not
+   answer within 60 seconds. The currently running Native shell
+   predates the cache fixes, while Vite consumes current source. Recheck with
+   the qualified matching pair and trace the style/room/held-state awaits if
+   it remains slow. This explicit draft is not the project's configured
+   template and proves no finished print delivery.
 4. **MV pagination refuses the owner's preview.** Exact report:
    `DsRefused: the MV plan and profile preview did not render: Network Reporter plan and profile preview failed: alignment aln-0c77f3e8a31d74e9-38: no plan-feasible continuation path within 558 m per sheet; increase the horizontal scale denominator or inspect route bends and long spans`.
    Reproduce `grid_plan_profile::station_page_windows` on the captured request,
