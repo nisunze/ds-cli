@@ -31,6 +31,7 @@
 use serde_json::{json, Map, Value};
 
 pub mod checklist;
+pub mod create_attached;
 pub mod documents;
 
 use crate::{
@@ -286,6 +287,15 @@ pub enum Command {
         hours: f64,
         note: Option<String>,
     },
+    /// A task creation followed by verified task-owned uploads. Creation is
+    /// durable independently of upload success; never silently retry either.
+    TaskCreateAttached {
+        command_id: String,
+        base_revision: i64,
+        command: Value,
+        task_id: String,
+        files: Vec<AttachmentFile>,
+    },
     /// Attach one file to one task through the task attachment routes, as one
     /// command: `start_attachment_upload` reserves the row and mints one
     /// resumable session, the bytes go straight to storage, and
@@ -338,7 +348,7 @@ impl Command {
             Self::Assignees => "get_assignees",
             Self::Context { .. } => "get_context",
             Self::ProjectNoteCreate { .. } => "create_record",
-            Self::Commit { .. } => "commit_command",
+            Self::Commit { .. } | Self::TaskCreateAttached { .. } => "commit_command",
             Self::CommitBatch { .. } => "commit_batch",
             Self::Propose { .. } => "commit_command",
             Self::RequestAdmission { .. } => "task_request_admission",
@@ -355,6 +365,13 @@ impl Command {
         let invalid = |message: &'static str| ClientError::new(ErrorKind::InvalidInput, message);
         match self {
             Self::Graph | Self::Assignees => Ok(()),
+            Self::TaskCreateAttached {
+                command_id,
+                base_revision,
+                command,
+                task_id,
+                files,
+            } => create_attached::validate(command_id, *base_revision, command, task_id, files),
             Self::TaskAttach { task_id, .. } => {
                 if !project_note_id_valid(task_id) {
                     return Err(invalid("a task attachment names one stable task id"));
@@ -527,13 +544,7 @@ impl Command {
         match self {
             Self::Graph | Self::Assignees => {}
             Self::TaskAttach { task_id, file } => {
-                payload["data"] = json!({
-                    "linked_entity_type": "task",
-                    "linked_entity_id": task_id,
-                    "original_name": file.name,
-                    "content_type": file.content_type,
-                    "size_bytes": file.bytes.len(),
-                });
+                return attachment_start_payload(project, task_id, file);
             }
             Self::PublicProjects {
                 status,
@@ -583,6 +594,12 @@ impl Command {
                 command_id,
                 base_revision,
                 command,
+            }
+            | Self::TaskCreateAttached {
+                command_id,
+                base_revision,
+                command,
+                ..
             } => {
                 payload["command_id"] = json!(command_id);
                 payload["base_revision"] = json!(base_revision);
@@ -839,6 +856,13 @@ fn ready_attachment(
     Ok(item.clone())
 }
 
+fn attachment_start_payload(project: &str, task_id: &str, file: &AttachmentFile) -> Value {
+    json!({"action": "start_attachment_upload", "ds_project": project, "data": {
+        "linked_entity_type": "task", "linked_entity_id": task_id,
+        "original_name": file.name, "content_type": file.content_type,
+        "size_bytes": file.bytes.len()}})
+}
+
 /// `start_attachment_upload` → the bytes to the resumable session →
 /// `finalize_attachment_upload`. The session URI is transport authority: it
 /// is spent here and never returned.
@@ -905,6 +929,17 @@ pub(crate) fn run<T: AuthorizedTransport>(
         readable_project(project)?
     };
     command.validate()?;
+    if let Command::TaskCreateAttached { task_id, files, .. } = command {
+        return create_attached::run(
+            profile,
+            transport,
+            authority,
+            project,
+            command.payload(project),
+            task_id,
+            files,
+        );
+    }
     if let Command::TaskAttach { task_id, file } = command {
         return attach_to_task(
             profile,
@@ -961,7 +996,8 @@ pub(crate) fn run<T: AuthorizedTransport>(
         | Command::Admit { .. }
         | Command::DeclineAdmission { .. }
         | Command::LogHours { .. }
-        | Command::TaskAttach { .. } => data,
+        | Command::TaskAttach { .. }
+        | Command::TaskCreateAttached { .. } => data,
     };
     Ok(graph)
 }
@@ -1391,6 +1427,8 @@ mod tests {
     /// A transport that answers the attachment start, the byte upload and the
     /// finalize in turn, recording what was sent.
     struct AttachTransport {
+        created: Option<Value>,
+        fail_upload_at: Option<usize>,
         started: Value,
         upload_status: u16,
         finalized: Value,
@@ -1434,7 +1472,11 @@ mod tests {
             assert_eq!(bytes.len() as u64, call.size());
             self.uploaded.push((call.uri().to_owned(), bytes));
             Ok(crate::TransportResponse::new(
-                self.upload_status,
+                if self.fail_upload_at == Some(self.uploaded.len()) {
+                    500
+                } else {
+                    self.upload_status
+                },
                 Vec::new(),
             ))
         }
@@ -1443,8 +1485,17 @@ mod tests {
             call: ProjectManagementCall<'_>,
         ) -> Result<crate::TransportResponse, crate::TransportError> {
             let data = match call.payload["action"].as_str() {
-                Some("start_attachment_upload") => self.started.clone(),
-                Some("finalize_attachment_upload") => self.finalized.clone(),
+                Some("commit_command") => self.created.clone().expect("explicit creation fixture"),
+                Some("start_attachment_upload") => {
+                    let mut started = self.started.clone();
+                    started["item"]["id"] = json!(format!("att-{}", self.uploaded.len() + 1));
+                    started
+                }
+                Some("finalize_attachment_upload") => {
+                    let mut finalized = self.finalized.clone();
+                    finalized["item"]["id"] = call.payload["id"].clone();
+                    finalized
+                }
                 other => panic!("unexpected PM action {other:?}"),
             };
             self.payloads.push(call.payload);
@@ -1455,8 +1506,130 @@ mod tests {
         }
     }
 
-    const SESSION: &str =
-        "https://storage.googleapis.com/upload/storage/v1/b/bucket/o?uploadType=resumable&upload_id=abc";
+    fn create_with_files(
+        transport: &mut AttachTransport,
+        files: Vec<AttachmentFile>,
+    ) -> Result<Value, ClientError> {
+        run(
+            &crate::data_distribution::tests::profile_for_tests(),
+            transport,
+            crate::authorized::Authority {
+                bearer_token: "bearer",
+                uid: "uid",
+                email: "user@example.com",
+                device_id: None,
+            },
+            "project-a",
+            &Command::TaskCreateAttached {
+                command_id: "create-7".into(),
+                base_revision: 7,
+                command: json!({"kind":"create_task","create_task":{"id":"task-7","title":"Evidence"}}),
+                task_id: "task-7".into(),
+                files,
+            },
+        )
+    }
+
+    fn create_fixture(applied: bool) -> Value {
+        json!({"result":{"applied":applied,"command_id":"create-7","committed_revision":8,
+            "violations":if applied {json!([])} else {json!([{"code":"PROJECT_WORK_REVISION_CONFLICT","message":"Plan moved"}])}}})
+    }
+
+    fn two_files() -> Vec<AttachmentFile> {
+        vec![
+            AttachmentFile::new("source.eml", None, vec![1; 4]).unwrap(),
+            AttachmentFile::new("drawing.pdf", None, vec![2; 4]).unwrap(),
+        ]
+    }
+
+    #[test]
+    fn composed_task_creation_verifies_two_files_without_unrelated_reads() {
+        let mut transport = attach_transport("ready", 4);
+        transport.created = Some(create_fixture(true));
+        let answer = create_with_files(&mut transport, two_files()).unwrap();
+        assert_eq!(answer["complete"], true);
+        assert_eq!(answer["task_id"], "task-7");
+        assert_eq!(answer["result"]["committed_revision"], 8);
+        assert_eq!(answer["attachments"].as_array().unwrap().len(), 2);
+        assert_eq!(answer["attachments"][0]["item"]["id"], "att-1");
+        assert_eq!(answer["attachments"][1]["item"]["id"], "att-2");
+        assert_eq!(transport.uploaded.len(), 2);
+        assert_eq!(
+            transport
+                .payloads
+                .iter()
+                .map(|p| p["action"].as_str().unwrap())
+                .collect::<Vec<_>>(),
+            [
+                "commit_command",
+                "start_attachment_upload",
+                "finalize_attachment_upload",
+                "start_attachment_upload",
+                "finalize_attachment_upload"
+            ]
+        );
+        assert!(transport
+            .payloads
+            .iter()
+            .all(|p| p["ds_project"] == "project-a"));
+        assert!(!answer.to_string().contains("upload_id"));
+        assert!(!answer.to_string().contains("bearer"));
+    }
+
+    #[test]
+    fn composed_upload_failure_retains_the_created_task_and_only_ready_files() {
+        let mut transport = attach_transport("ready", 4);
+        transport.created = Some(create_fixture(true));
+        transport.fail_upload_at = Some(2);
+        let mut files = two_files();
+        files.push(AttachmentFile::new("later.txt", None, vec![3; 4]).unwrap());
+        let answer = create_with_files(&mut transport, files).unwrap();
+        assert_eq!(answer["complete"], false);
+        assert_eq!(answer["task_id"], "task-7");
+        assert_eq!(answer["result"]["applied"], true);
+        assert_eq!(answer["failed_attachment_index"], 1);
+        assert_eq!(answer["requested_attachment_count"], 3);
+        assert_eq!(answer["attachments"].as_array().unwrap().len(), 1);
+        assert_eq!(transport.uploaded.len(), 2);
+        assert_eq!(transport.payloads.len(), 4); // no retry, third reservation or failed finalize
+    }
+
+    #[test]
+    fn refused_task_creation_never_reserves_or_uploads_any_file() {
+        let mut transport = attach_transport("ready", 4);
+        transport.created = Some(create_fixture(false));
+        let answer = create_with_files(&mut transport, two_files()).unwrap();
+        assert_eq!(answer["result"]["applied"], false);
+        assert_eq!(answer["complete"], false);
+        assert!(transport.uploaded.is_empty());
+        assert_eq!(transport.payloads.len(), 1);
+    }
+
+    #[test]
+    fn composed_attachment_bounds_and_mismatched_task_refuse_before_any_effect() {
+        for files in [
+            vec![],
+            vec![two_files()[0].clone(); 11],
+            vec![two_files()[0].clone(); 2],
+        ] {
+            let mut transport = attach_transport("ready", 4);
+            assert_eq!(
+                create_with_files(&mut transport, files).unwrap_err().kind(),
+                ErrorKind::InvalidInput
+            );
+            assert!(transport.payloads.is_empty());
+        }
+        let bad = Command::TaskCreateAttached {
+            command_id: "create-7".into(),
+            base_revision: 7,
+            command: json!({"kind":"create_task","create_task":{"id":"another-task"}}),
+            task_id: "task-7".into(),
+            files: two_files(),
+        };
+        assert_eq!(bad.validate().unwrap_err().kind(), ErrorKind::InvalidInput);
+    }
+
+    const SESSION: &str = "https://storage.googleapis.com/upload/storage/v1/b/bucket/o?uploadType=resumable&upload_id=abc";
 
     fn attach_transport(state: &str, size: usize) -> AttachTransport {
         let row = |state: &str| {
@@ -1464,6 +1637,8 @@ mod tests {
                    "linked_entity_id": "task-7", "state": state, "size_bytes": size})
         };
         AttachTransport {
+            created: None,
+            fail_upload_at: None,
             started: json!({"item": row("uploading"), "session_uri": SESSION}),
             upload_status: 200,
             finalized: json!({"item": row(state)}),
