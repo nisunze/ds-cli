@@ -97,12 +97,18 @@ guess from filenames, or create a task or note simply to answer a question.
    document number, revision and state, and read back the row. `assets.versions`
    applies only where the source exposes versions, such as a projected design
    or model; an uploaded document does not gain a version chain by ingestion.
-   Register and file documents using the live asset and record contracts;
-   link a catalogue asset with `assets.attach` only if the route accepts that
-   asset and task. The declared link route can refuse, and there
-   is no free-standing `pm.task.attach` command. Read back the task or asset
-   link before claiming an attachment, and preserve the file receipt on
-   refusal. Use the applicable design/model version read where the source
+   To attach a local file directly to an existing task, read `pm.task.attach`
+   and use `ds pm task attach --project <id> --task <id> --file <path> --yes
+   --output json`. No Assets ingest or separate link is needed. Claim attachment
+   only when the receipt names the exact task and reports `attachment.state`
+   as `ready`, with the verified byte count and content type; retain its local
+   file SHA-256. An `uploading` row is not delivery. This task-owned attachment
+   does not classify a document, award approval, or create a version history.
+   Formal document registration and correspondence still use the live asset
+   and record contracts. To link an existing catalogue asset instead, use
+   `assets.attach` only if that route accepts the asset and task, then read back
+   the task or asset link. Preserve the receipt when a route refuses.
+   Use the applicable design/model version read where the source
    owns a version; never substitute a path, draft alias or guessed version
    for that artifact.
 6. When a real dependency stops delivery, read the task and record its cause
