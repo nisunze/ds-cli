@@ -6,6 +6,102 @@ use std::io::Read;
 
 const MAX_MANIFEST_BYTES: u64 = 64 * 1024;
 
+#[derive(Debug)]
+pub(super) enum Selected {
+    Analytical(Declared),
+    Publisher(ds_project_data::publisher_footprints::Input),
+}
+
+pub(super) fn select_seed(inputs: &Inputs, scope: &Scope) -> Result<Option<Selected>, Failure> {
+    let Some(path) = inputs.value("publisher-input") else {
+        return dispatch(
+            inputs,
+            scope,
+            |entry| Ok(Some(Selected::Analytical(entry))),
+            || Ok(None),
+        );
+    };
+    if inputs.value("local-source").is_some() || !explicit_dataset(inputs)?.is_empty() {
+        return Err(Failure::invalid(PUBLISHER_INVALID.code,
+            "--publisher-input selects its own native asset dataset; do not combine it with --local-source or --dataset")
+            .remedy(PUBLISHER_INVALID.remedy));
+    }
+    let invalid = |error: String| {
+        Failure::invalid(PUBLISHER_INVALID.code, error).remedy(PUBLISHER_INVALID.remedy)
+    };
+    let meta = std::fs::symlink_metadata(path).map_err(|e| invalid(e.to_string()))?;
+    if !meta.is_file() || meta.file_type().is_symlink() || meta.len() > MAX_MANIFEST_BYTES {
+        return Err(invalid(
+            "--publisher-input must be a regular JSON file of at most 64 KiB".into(),
+        ));
+    }
+    let mut bytes = Vec::new();
+    std::fs::File::open(path)
+        .and_then(|f| f.take(MAX_MANIFEST_BYTES + 1).read_to_end(&mut bytes))
+        .map_err(|e| invalid(e.to_string()))?;
+    if bytes.len() as u64 > MAX_MANIFEST_BYTES {
+        return Err(invalid("--publisher-input grew beyond 64 KiB".into()));
+    }
+    let input: ds_project_data::publisher_footprints::Input =
+        serde_json::from_slice(&bytes).map_err(|e| invalid(e.to_string()))?;
+    input.validate(scope).map_err(publisher_refused)?;
+    Ok(Some(Selected::Publisher(input)))
+}
+
+pub(super) fn materialize(
+    root: &Path,
+    scope: &Scope,
+    selected: Selected,
+) -> Result<(Declared, Value), Failure> {
+    match selected {
+        Selected::Analytical(entry) => Ok((entry, Value::Null)),
+        Selected::Publisher(input) => {
+            let out = ds_project_data::publisher_footprints::produce(root, scope, &input)
+                .map_err(publisher_refused)?;
+            let dataset = out.source.dataset();
+            let receipt = json!({"source_manifest":out.source_manifest,"reused":out.reused,
+                "actual_source":out.source.actual_source,"publisher_revision":input.publisher_revision,
+                "producer_source":out.source.producer_source,"feature_count":out.receipt["feature_count"],
+                "brain_compute_requests":0});
+            Ok((
+                Declared {
+                    candidate: SeedCandidate {
+                        id: dataset.id.clone(),
+                        label: out.source.asset_id.clone(),
+                        seeded: false,
+                    },
+                    dataset,
+                    source: DeclaredSource::LocalAnalytical(Box::new(out.source)),
+                },
+                receipt,
+            ))
+        }
+    }
+}
+
+fn publisher_refused(error: ds_project_data::publisher_footprints::Error) -> Failure {
+    use ds_project_data::publisher_footprints::Error;
+    let message = error.message().to_owned();
+    match error {
+        Error::Invalid(_) => {
+            Failure::invalid(PUBLISHER_INVALID.code, message).remedy(PUBLISHER_INVALID.remedy)
+        }
+        Error::Required(_) => Failure::conflict(LOCAL_RESOURCE_REQUIRED.code, message)
+            .remedy(LOCAL_RESOURCE_REQUIRED.remedy),
+        Error::Malformed(_) => {
+            Failure::failed(PUBLISHER_MALFORMED.code, message).remedy(PUBLISHER_MALFORMED.remedy)
+        }
+        Error::Unsupported(_) => Failure::invalid(PUBLISHER_UNSUPPORTED.code, message)
+            .remedy(PUBLISHER_UNSUPPORTED.remedy),
+        Error::TooLarge(_) => {
+            Failure::invalid(PUBLISHER_TOO_LARGE.code, message).remedy(PUBLISHER_TOO_LARGE.remedy)
+        }
+        Error::Store(_) => {
+            Failure::unavailable(STORE_FAILED.code, message).remedy(STORE_FAILED.remedy)
+        }
+    }
+}
+
 /// The same lazy dispatch is used by seed, status and query. In particular,
 /// selecting a local input never evaluates the catalogue-backed continuation.
 pub(super) fn dispatch<T>(
@@ -310,6 +406,291 @@ mod tests {
             ))
         })
         .unwrap()
+    }
+
+    fn publisher(dir: &Path, origin: Origin) -> (PathBuf, PathBuf) {
+        use ds_project_data::publisher_footprints::{Input, Resource};
+        use std::io::Write;
+        let gzip = dir.join("publisher.gz");
+        let raw = if origin == Origin::GoogleOpenBuildings {
+            "geometry,building_id,confidence\n\"POLYGON ((30.0005 -2,30.0006 -2,30.0006 -1.9999,30.0005 -1.9999,30.0005 -2))\",source-id,0.9\n".into()
+        } else {
+            json!({"type":"Feature","id":"source-id","properties":{"height":9.},
+                "geometry":{"type":"Polygon","coordinates":[[[30.0005,-2.],[30.0006,-2.],[30.0006,-1.9999],[30.0005,-1.9999],[30.0005,-2.]]]}}).to_string()+"\n"
+        };
+        let mut writer = flate2::write::GzEncoder::new(
+            std::fs::File::create(&gzip).unwrap(),
+            flate2::Compression::default(),
+        );
+        writer.write_all(raw.as_bytes()).unwrap();
+        writer.finish().unwrap();
+        let coverage = policy::Coverage {
+            cells: vec![[29.9, -2.1, 30.2, -1.9]],
+        };
+        let source = Input {
+            schema: "ds.publisher-footprints/v1".into(),
+            project_id: scope().project,
+            asset_id: "publisher-city".into(),
+            revision: "asset-r1".into(),
+            actual_source: origin,
+            publisher_revision: "exact-publisher-version".into(),
+            coverage: coverage.clone(),
+            resources: vec![Resource {
+                resource_id: "publisher-tile".into(),
+                sha256: ds_columnar::digest_file(&gzip).unwrap(),
+                path: gzip.clone(),
+                coverage,
+            }],
+        };
+        let manifest = dir.join("publisher.json");
+        std::fs::write(&manifest, serde_json::to_vec(&source).unwrap()).unwrap();
+        (manifest, gzip)
+    }
+
+    #[test]
+    fn publisher_selector_materializes_actual_local_sources_and_consumes_them_offline() {
+        for origin in [Origin::GoogleOpenBuildings, Origin::MicrosoftBuildings] {
+            let dir = Fixture::new();
+            let root = dir.0.join("held");
+            let (manifest, gzip) = publisher(&dir.0, origin);
+            let inputs = input(
+                &SEED_COMMAND,
+                &[
+                    "--project",
+                    "fixture-project",
+                    "--publisher-input",
+                    manifest.to_str().unwrap(),
+                ],
+            );
+            let selected = select_seed(&inputs, &scope()).unwrap().unwrap();
+            let (entry, produced) = materialize(&root, &scope(), selected).unwrap();
+            assert_eq!(produced["actual_source"], json!(origin));
+            assert_eq!(produced["reused"], false);
+            counts::take();
+            let first = seed(&root, &scope(), &entry, &extents(false), false, || Ok(())).unwrap();
+            assert_eq!(first["covered"], true);
+            assert_eq!(first["feature_count"], 1);
+            std::fs::remove_file(gzip).unwrap();
+            let (retained, second) = materialize(
+                &root,
+                &scope(),
+                select_seed(&inputs, &scope()).unwrap().unwrap(),
+            )
+            .unwrap();
+            assert_eq!(second["reused"], true);
+            assert_eq!(
+                seed(
+                    &root,
+                    &scope(),
+                    &retained,
+                    &extents(false),
+                    false,
+                    || Ok(())
+                )
+                .unwrap()["acquired"],
+                0
+            );
+            let source_manifest = second["source_manifest"].as_str().unwrap();
+            let status_input = input(
+                &STATUS_COMMAND,
+                &[
+                    "--project",
+                    "fixture-project",
+                    "--local-source",
+                    source_manifest,
+                ],
+            );
+            let catalogue_reads = Cell::new(0);
+            let held = declared(&status_input, &scope(), &catalogue_reads);
+            assert_eq!(
+                status(&root, &scope(), "stable", &held, false, || Ok(())).unwrap()["datasets"][0]
+                    ["ready"],
+                true
+            );
+            let out = dir.0.join("publisher-export.geojson");
+            let page=super::super::query_dataset(&root,&scope(),&held.dataset,
+                &json!({"type":"Polygon","coordinates":[[[30.,-2.],[30.001,-2.],[30.001,-1.999],[30.,-1.999],[30.,-2.]]]}),
+                &out,(10,None,None),||Ok(())).unwrap();
+            assert_eq!(page["rows_returned"], 1);
+            let exported: Value = serde_json::from_slice(&std::fs::read(out).unwrap()).unwrap();
+            assert!(
+                exported["features"][0]["id"]
+                    .as_str()
+                    .unwrap()
+                    .ends_with(":source-id")
+            );
+            assert_eq!(
+                (catalogue_reads.get(), counts::take()),
+                (0, (0, 0)),
+                "offline publisher-source status/query do no catalogue/provider/bundle work"
+            );
+        }
+    }
+
+    #[test]
+    fn publisher_selection_refuses_ambiguous_or_foreign_input_before_materialization() {
+        let dir = Fixture::new();
+        let (manifest, _) = publisher(&dir.0, Origin::MicrosoftBuildings);
+        for args in [
+            vec![
+                "--project",
+                "fixture-project",
+                "--publisher-input",
+                manifest.to_str().unwrap(),
+                "--dataset",
+                "google_open_buildings",
+            ],
+            vec![
+                "--project",
+                "fixture-project",
+                "--publisher-input",
+                manifest.to_str().unwrap(),
+                "--local-source",
+                "unread.json",
+            ],
+        ] {
+            assert_eq!(
+                select_seed(&input(&SEED_COMMAND, &args), &scope())
+                    .unwrap_err()
+                    .code(),
+                "publisher_input_invalid"
+            );
+        }
+        let mut foreign = scope();
+        foreign.project = "other-project".into();
+        assert_eq!(
+            select_seed(
+                &input(
+                    &SEED_COMMAND,
+                    &[
+                        "--project",
+                        "other-project",
+                        "--publisher-input",
+                        manifest.to_str().unwrap()
+                    ]
+                ),
+                &foreign
+            )
+            .unwrap_err()
+            .code(),
+            "publisher_input_invalid"
+        );
+        for error in [
+            ds_project_data::publisher_footprints::Error::Invalid("x".into()),
+            ds_project_data::publisher_footprints::Error::Required("x".into()),
+            ds_project_data::publisher_footprints::Error::Malformed("x".into()),
+            ds_project_data::publisher_footprints::Error::Unsupported("x".into()),
+            ds_project_data::publisher_footprints::Error::TooLarge("x".into()),
+            ds_project_data::publisher_footprints::Error::Store("x".into()),
+        ] {
+            let refusal = publisher_refused(error.clone());
+            assert_eq!(refusal.code(), error.code());
+            assert!(SEED_REFUSALS.iter().any(|r| r.code == refusal.code()));
+        }
+    }
+
+    #[test]
+    fn local_resource_refusal_preserves_legacy_warm_holdings_and_completed_coverage() {
+        struct Existing;
+        impl Provider for Existing {
+            fn acquire(
+                &mut self,
+                _: &Dataset,
+                _: &Value,
+            ) -> Result<Acquisition, ds_project_data::Failure> {
+                Ok(Acquisition {
+                    features: vec![],
+                    source_version: "held-google-version".into(),
+                    source_receipt: json!({"fixture":"existing completed extract"}),
+                })
+            }
+        }
+        let dir = Fixture::new();
+        let root = dir.0.join("held");
+        let dataset = ds_project_data::buildings_dataset();
+        let selected = DeclaredSource::Buildings;
+        let policy = buffer_policy(&[200.]).unwrap();
+        let mut old = Existing;
+        let mut fetch = |_: &BundleReceipt, _: &Path| Err("download forbidden".into());
+        let first = ds_project_data::ensure(
+            &root,
+            &scope(),
+            &dataset,
+            &selected,
+            &policy,
+            &extents(false),
+            &[],
+            Mode::Acquire(&mut Hosts {
+                provider: &mut old,
+                fetch: &mut fetch,
+            }),
+        )
+        .unwrap();
+        assert!(first.covered);
+        let status = || {
+            ds_layer_store::project_dataset_cache::execute_at(
+                &root,
+                json!({"action":"status","dataset_key":policy::dataset_key(&scope(),&dataset),
+            "principal":scope().principal,"project":scope().project}),
+            )
+            .unwrap()
+        };
+        let completed = status()["completed"].clone();
+        let mut default = CliProvider {
+            lane: "unconfigured-native-lane",
+            project: "fixture-project",
+        };
+        let mut hosts = Hosts {
+            provider: &mut default,
+            fetch: &mut fetch,
+        };
+        let warm = ds_project_data::ensure(
+            &root,
+            &scope(),
+            &dataset,
+            &selected,
+            &policy,
+            &extents(false),
+            &[],
+            Mode::Acquire(&mut hosts),
+        )
+        .unwrap();
+        assert!(warm.covered);
+        assert_eq!(
+            warm.acquired, 0,
+            "warm legacy rooms need no new provider input"
+        );
+        let error = ds_project_data::ensure(
+            &root,
+            &scope(),
+            &dataset,
+            &selected,
+            &policy,
+            &extents(true),
+            &[],
+            Mode::Acquire(&mut hosts),
+        )
+        .unwrap_err();
+        assert_eq!(error.code(), "project_dataset_local_source_required");
+        assert_eq!(
+            status()["completed"],
+            completed,
+            "missing local expansion input does not erase completed coverage"
+        );
+        assert!(
+            ds_project_data::ensure(
+                &root,
+                &scope(),
+                &dataset,
+                &selected,
+                &policy,
+                &extents(false),
+                &[],
+                Mode::Read
+            )
+            .unwrap()
+            .covered
+        );
     }
 
     #[test]

@@ -1073,6 +1073,7 @@ dependencies = [
  "ds-network",
  "ds-project-data",
  "ds-terrain-host",
+ "flate2",
  "serde_json",
  "sha2 0.10.9",
  "ureq",
@@ -1818,6 +1819,7 @@ dependencies = [
 name = "ds-project-data"
 version = "0.1.0"
 dependencies = [
+ "csv",
  "ds-columnar",
  "ds-command-kernel",
  "ds-geo",

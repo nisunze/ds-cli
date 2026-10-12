@@ -251,6 +251,65 @@ file. Expansion patches only gaps from the retained index; `--refresh` explicitl
 repeats its local subsets. Completed empty footprint/flat-contour inputs remain
 complete. Selecting another revision cannot inherit the old room's completion.
 
+### Convert pinned local publisher footprint objects and seed
+
+`seed --publisher-input <manifest.json>` selects the native
+`ds.publisher-footprints/v1` manifest. It is exclusive with `--local-source`
+and `--dataset`, and uses the same explicit project authorization and captured
+identity fence as local-source seed. Manifest validation precedes gateway
+reads; actual object conversion follows authorized project/design capture.
+No reference catalogue, bundle or Brain compute is consumed.
+
+```json
+{
+  "schema": "ds.publisher-footprints/v1",
+  "project_id": "<exact-project-id>",
+  "asset_id": "city-footprints",
+  "revision": "asset-revision-1",
+  "actual_source": "google_open_buildings",
+  "publisher_revision": "google-v3",
+  "coverage": { "cells": [[29.9, -2.1, 30.2, -1.9]] },
+  "resources": [{
+    "resource_id": "<publisher-tile-id>",
+    "path": "/absolute/path/to/publisher.csv.gz",
+    "sha256": "<exact-lowercase-sha256>",
+    "coverage": { "cells": [[29.8, -2.2, 30.3, -1.8]] }
+  }]
+}
+```
+
+Google inputs are bounded CSV.gz with a `geometry` WKT column. Microsoft
+inputs select `actual_source: "microsoft_buildings"`, their exact publisher
+revision, and GeoJSONL.gz files. Only WGS84 2D Polygon/MultiPolygon forms are
+admitted. The manifest declares actual publisher object coverage; a requested
+extent or feature bounds cannot invent coverage. Publisher stable ids and
+properties are retained, duplicate ids deduplicate, conflicting ids refuse.
+Native streaming Arrow conversion publishes the analytical source and receipt
+last, then the existing indexed room machinery seeds missing cells.
+
+```bash
+ds data project-cache seed --project <id> --publisher-input ./publisher.json --yes --output json
+ds data project-cache status --project <id> --local-source <returned-publisher_source.source_manifest> --summary --output json
+```
+
+The returned `publisher_source.source_manifest` also drives the existing
+offline `query --local-source` command. Warm seed uses retained output without
+opening original gzip objects; status/query do no source freshness checks.
+`--refresh` explicitly repeats indexed local subsets. The source manifest and
+receipt pin publisher revision/objects separately from generated artifact
+revision/SHA-256. This control consumes already acquired publisher objects;
+it does not download arbitrary URLs, publish shared assets or generate contours.
+Existing `data.city-vectors --source microsoft` is an explicit public Microsoft
+acquisition, separate from Google and from governed project-room seed.
+
+Missing legacy Google/contour inputs now return
+`project_dataset_local_source_required` without a Brain compute request. Old
+room identities and completed holdings remain intact. Contours require an
+explicit elevation producer/source revision/datum and preserve authored
+intervals; a native cutter remains unavailable. Any incomplete multi-dataset
+seed returns `project_dataset_seed_incomplete` with the complete partial
+receipt under refusal `detail.result`, including retained successes and errors.
+
 `status` and `query` read the current protected native identity's exact retained
 project/revision room offline; neither reads the original input, source index,
 upstream freshness or a saved project selection. Query checks the captured

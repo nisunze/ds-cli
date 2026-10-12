@@ -35,3 +35,6 @@ ds-elevation-host = { path = "../../../ds-network/crates/ds-elevation-host" }
 ds-terrain-host = { path = "../../../ds-network/crates/ds-terrain-host" }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
+
+[dev-dependencies]
+flate2 = "1"

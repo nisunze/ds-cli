@@ -22,8 +22,8 @@
 //! lends the crate the governed provider door and the bundle fetch.
 
 use ds_cli_auth::{
-    ContourParameters, DATA_DISTRIBUTION_UNAVAILABLE_REFUSAL, DataDistributionRequest,
-    PrintContextKind, REFERENCE_BUNDLE_DOWNLOAD_FAILED_REFUSAL,
+    DATA_DISTRIBUTION_UNAVAILABLE_REFUSAL, DataDistributionRequest,
+    REFERENCE_BUNDLE_DOWNLOAD_FAILED_REFUSAL,
 };
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
@@ -31,8 +31,8 @@ use ds_cli_contract::spec::{
 };
 use ds_cli_contract::{Context, Inputs};
 use ds_command_kernel::project_dataset_cache::{
-    self as policy, BUILDINGS_DATASET_ID, CONTOURS_DATASET_ID, CatalogEntry, Dataset, OverviewRow,
-    Scope, SeedCandidate, both_orientations, buffer_policy,
+    self as policy, CatalogEntry, Dataset, OverviewRow, Scope, SeedCandidate, both_orientations,
+    buffer_policy,
 };
 use ds_project_data::{Acquisition, BundleReceipt, Hosts, Mode, Provider};
 use serde_json::{Value, json};
@@ -64,6 +64,11 @@ const LOCAL_SOURCE_ARG: Arg = Arg::value(
     "local-source",
     "<manifest.json>",
     "Native ds.local-analytical-source/v1 JSON manifest (64 KiB) selecting one project asset revision and completed coverage. --dataset, when given, must match its id.",
+);
+const PUBLISHER_INPUT_ARG: Arg = Arg::value(
+    "publisher-input",
+    "<manifest.json>",
+    "Native pinned Google CSV.gz/Microsoft GeoJSONL.gz manifest; converts and seeds gaps. Exclusive with --local-source/--dataset.",
 );
 
 const LANE_ARG: ds_cli_contract::spec::Arg =
@@ -148,6 +153,42 @@ refusal!(
     "project_dataset_acquisition_failed",
     "the provider or the room refused one acquisition cell; held data is intact",
     "fix the cause named on the dataset's row and retry; only the missing coverage is acquired again"
+);
+refusal!(
+    LOCAL_RESOURCE_REQUIRED,
+    "project_dataset_local_source_required",
+    "the selected pinned local source or contour producer is missing",
+    "supply the exact pinned input; no compute fallback or substitution occurs"
+);
+refusal!(
+    PUBLISHER_INVALID,
+    "publisher_input_invalid",
+    "publisher manifest or gzip SHA-256 pin is invalid",
+    "supply exact project/source/version/coverage/object pins"
+);
+refusal!(
+    PUBLISHER_MALFORMED,
+    "publisher_input_malformed",
+    "publisher records are malformed or stable ids conflict",
+    "repair the selected input; failed conversion publishes no source"
+);
+refusal!(
+    PUBLISHER_UNSUPPORTED,
+    "publisher_geometry_unsupported",
+    "publisher geometry is outside supported 2D Polygon/MultiPolygon",
+    "supply WGS84 polygon records without CRS/dimension overrides"
+);
+refusal!(
+    PUBLISHER_TOO_LARGE,
+    "publisher_input_too_large",
+    "publisher object, record or extract exceeds a native bound",
+    "select a smaller explicit extraction"
+);
+refusal!(
+    SEED_INCOMPLETE,
+    "project_dataset_seed_incomplete",
+    "a selected dataset failed or has incomplete coverage",
+    "inspect detail.result and acquire its missing inputs; completed holdings remain"
 );
 refusal!(
     BUNDLE_UNAVAILABLE,
@@ -390,6 +431,12 @@ const SEED_REFUSALS: &[Refusal] = &[
     CONFIRM,
     PROVIDER_UNAVAILABLE,
     ACQUISITION_FAILED,
+    LOCAL_RESOURCE_REQUIRED,
+    PUBLISHER_INVALID,
+    PUBLISHER_MALFORMED,
+    PUBLISHER_UNSUPPORTED,
+    PUBLISHER_TOO_LARGE,
+    SEED_INCOMPLETE,
     BUNDLE_UNAVAILABLE,
     CATALOG_UNAVAILABLE,
     STORE_FAILED,
@@ -493,7 +540,7 @@ pub static SEED_COMMAND: Command = Command {
     path: &["data", "project-cache", "seed"],
     contract: 1,
     summary: "Acquire the geographic datasets this project's design needs.",
-    purpose: "Authorizes --project and derives fused coverage from active designs, MV routes and optional --mv-model. Acquires gaps unless --refresh. --local-source selects a pinned analytical asset without catalogue/provider/bundle reads; initial seed needs the gateway. Otherwise, with no --dataset, seeds what the project declares plus what it holds. Saved selection is ignored; partial acquisitions stay incomplete.",
+    purpose: "Seeds design/MV coverage under authorized --project. --local-source selects analytical input; --publisher-input converts pinned Google CSV.gz/Microsoft GeoJSONL.gz. Both skip catalogue/remote compute. Otherwise seeds declared datasets plus what it holds. --refresh repeats. Incomplete results refuse with detail.result.",
     chapter: Chapter::Data,
     effect: Effect::ArtifactWrite,
     authority: Authority::HeadlessProject,
@@ -502,6 +549,7 @@ pub static SEED_COMMAND: Command = Command {
         PROJECT_ARG,
         DATASET_ARG,
         LOCAL_SOURCE_ARG,
+        PUBLISHER_INPUT_ARG,
         MV_MODEL_ARG,
         REFRESH_ARG,
         LANE_ARG,
@@ -509,13 +557,13 @@ pub static SEED_COMMAND: Command = Command {
     output: "Per dataset: acquired cells, coverage, features, holding, warnings/errors and optional `selected_source` pins; plus `refresh`, `failed`, `complete` and captured transformer/MV sources.",
     examples: &[
         Example {
-            command: "ds data project-cache seed --project gisagara --local-source ./source.json --yes --output json",
-            note: "Authorize the project and hold missing local analytical coverage.",
+            command: "ds data project-cache seed --project gisagara --publisher-input ./publisher.json --yes --output json",
+            note: "Convert pinned inputs and seed; reuse returned source_manifest offline.",
             runnable: false,
         },
         Example {
-            command: "ds data project-cache seed --project gisagara --yes --output json",
-            note: "Seeds every dataset this project declares, holding none too.",
+            command: "ds data project-cache seed --project gisagara --local-source ./source.json --yes --output json",
+            note: "Authorize the project and hold missing local analytical coverage.",
             runnable: false,
         },
     ],
@@ -591,6 +639,8 @@ fn refused(error: ds_project_data::Failure) -> Failure {
         }
         Cause::ProviderUnavailable(_) => Failure::unavailable(PROVIDER_UNAVAILABLE.code, message)
             .remedy(PROVIDER_UNAVAILABLE.remedy),
+        Cause::LocalResourceRequired(_) => Failure::conflict(LOCAL_RESOURCE_REQUIRED.code, message)
+            .remedy(LOCAL_RESOURCE_REQUIRED.remedy),
         Cause::BundleUnavailable(_) => {
             Failure::unavailable(BUNDLE_UNAVAILABLE.code, message).remedy(BUNDLE_UNAVAILABLE.remedy)
         }
@@ -1158,9 +1208,8 @@ fn query_dataset(
     }))
 }
 
-/// The host's door to ds-brain's `query_print_context`, decoded by the kernel.
-/// Shared with `ds report project export --seed`, which seeds the printed
-/// transformer through the same door.
+/// Bounded canonical cloud reads remain governed. Derived footprints and
+/// contours require native local producer inputs, including during export seed.
 pub struct CliProvider<'a> {
     pub lane: &'a str,
     pub project: &'a str,
@@ -1181,14 +1230,6 @@ pub fn bundle_fetch(lane: &str) -> impl FnMut(&BundleReceipt, &Path) -> Result<(
     }
 }
 
-fn contour_parameters(dataset: &Dataset) -> Option<ContourParameters> {
-    Some(ContourParameters {
-        minor_interval_m: dataset.parameters.get("minor_interval_m")?.as_u64()? as u16,
-        index_interval_m: dataset.parameters.get("index_interval_m")?.as_u64()? as u16,
-        sample_spacing_m: dataset.parameters.get("sample_spacing_m")?.as_f64()?,
-    })
-}
-
 fn decoded_page(decoded: Value) -> Acquisition {
     Acquisition {
         features: decoded["features"].as_array().cloned().unwrap_or_default(),
@@ -1202,6 +1243,19 @@ impl Provider for CliProvider<'_> {
         &mut self,
         dataset: &Dataset,
         area: &Value,
+    ) -> Result<Acquisition, ds_project_data::Failure> {
+        self.acquire_with(dataset, area, |request| {
+            ds_cli_auth::data_distribution(self.lane, self.project, request)
+        })
+    }
+}
+
+impl CliProvider<'_> {
+    fn acquire_with(
+        &self,
+        dataset: &Dataset,
+        area: &Value,
+        mut read: impl FnMut(&DataDistributionRequest) -> Result<Value, Failure>,
     ) -> Result<Acquisition, ds_project_data::Failure> {
         use ds_project_data::Failure as Cause;
         // A cloud-resident dataset seeds through its bounded read: the cell is
@@ -1234,43 +1288,7 @@ impl Provider for CliProvider<'_> {
                     )));
                 }
             };
-            let response = ds_cli_auth::data_distribution(self.lane, self.project, &request)
-                .map_err(|error| {
-                    let message = format!("{}: {}", error.code(), error.message());
-                    match error.code() {
-                        "data_distribution_unavailable" | "auth_transient" => {
-                            Cause::ProviderUnavailable(message)
-                        }
-                        _ => Cause::AcquisitionFailed(message),
-                    }
-                })?;
-            let decoded = policy::decode_cloud_read(&response, area, &layer)
-                .map_err(Cause::AcquisitionFailed)?;
-            return Ok(decoded_page(decoded));
-        }
-        let (kind, contour_parameters) = match dataset.id.as_str() {
-            BUILDINGS_DATASET_ID => (PrintContextKind::GoogleOpenBuildings, None),
-            CONTOURS_DATASET_ID => (
-                PrintContextKind::ElevationContours,
-                Some(contour_parameters(dataset).ok_or_else(|| {
-                    Cause::AcquisitionFailed(
-                        "the contour dataset carries no authored intervals".into(),
-                    )
-                })?),
-            ),
-            other => {
-                return Err(Cause::AcquisitionFailed(format!(
-                    "{other} has no governed provider door"
-                )));
-            }
-        };
-        let request = DataDistributionRequest::QueryPrintContext {
-            context_kind: kind,
-            area: area.clone(),
-            contour_parameters,
-        };
-        let response =
-            ds_cli_auth::data_distribution(self.lane, self.project, &request).map_err(|error| {
+            let response = read(&request).map_err(|error| {
                 let message = format!("{}: {}", error.code(), error.message());
                 match error.code() {
                     "data_distribution_unavailable" | "auth_transient" => {
@@ -1279,12 +1297,18 @@ impl Provider for CliProvider<'_> {
                     _ => Cause::AcquisitionFailed(message),
                 }
             })?;
-        let decoded = match kind {
-            PrintContextKind::GoogleOpenBuildings => policy::decode_buildings(&response, area),
-            PrintContextKind::ElevationContours => policy::decode_contours(&response, area),
+            let decoded = policy::decode_cloud_read(&response, area, &layer)
+                .map_err(Cause::AcquisitionFailed)?;
+            return Ok(decoded_page(decoded));
         }
-        .map_err(Cause::AcquisitionFailed)?;
-        Ok(decoded_page(decoded))
+        Err(
+            ds_project_data::datasets::local_resource_need(dataset).unwrap_or_else(|| {
+                Cause::AcquisitionFailed(format!(
+                    "{} has no admitted local provider input",
+                    dataset.id
+                ))
+            }),
+        )
     }
 }
 
@@ -1456,14 +1480,12 @@ pub fn run_seed(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let project = inputs.require("project")?;
     explicit_dataset(inputs)?;
     let identity = ds_cli_auth::headless_identity_for_named_project(lane)?;
-    let selected = local_source::dispatch(
+    let selected = local_source::select_seed(
         inputs,
         &Scope {
             principal: identity.uid().to_owned(),
             project: project.to_owned(),
         },
-        |entry| Ok(Some(entry)),
-        || Ok(None),
     )?;
     let requested = ds_cli_auth::TransformerSet::new(Vec::<String>::new())
         .map_err(|error| Failure::invalid(INVALID_SCOPE.code, error.to_string()))?;
@@ -1479,7 +1501,7 @@ pub fn run_seed(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         project: inventory.project_id().to_owned(),
     };
     match selected {
-        Some(entry) => local_seed(inputs, &inventory, &scope, &entry),
+        Some(entry) => local_seed(inputs, &inventory, &scope, entry),
         None => catalog_seed(inputs, &inventory, &scope),
     }
 }
@@ -1488,7 +1510,7 @@ fn local_seed(
     inputs: &Inputs,
     inventory: &ds_cli_auth::HeadlessNamedProject<ds_cli_auth::TransformerInventory>,
     scope: &Scope,
-    entry: &ds_project_data::declared::Declared,
+    selected: local_source::Selected,
 ) -> Result<Value, Failure> {
     let lane = inputs.require("lane")?;
     let mut extents = design_extents(lane, inventory)?;
@@ -1518,20 +1540,24 @@ fn local_seed(
     let root = holdings_root()?;
     let refresh = inputs.switch("refresh");
     let fence = ds_cli_auth::capture_layer_scope_fence_for_project(lane, &scope.project)?;
-    let row = local_source::seed(&root, scope, entry, &extents, refresh, || {
+    let verify = || {
         ds_cli_auth::verify_layer_scope_fence_for_project(
             lane,
             &fence,
             &scope.principal,
             &scope.project,
         )
-    })?;
+    };
+    verify()?;
+    let (entry, producer) = local_source::materialize(&root, scope, selected)?;
+    verify()?;
+    let row = local_source::seed(&root, scope, &entry, &extents, refresh, verify)?;
     let complete = row["covered"] == true;
-    Ok(
+    finish_seed(
         json!({"lane":lane,"project":scope.project,"datasets":[row],"seeded":1,
         "refresh":refresh,"failed":usize::from(!complete),"complete":complete,
         "transformer_extent_count":transformer_extent_count,"mv_route_extent_count":mv_extent_count,
-        "mv_sources":mv_sources}),
+        "mv_sources":mv_sources,"publisher_source":producer}),
     )
 }
 
@@ -1679,6 +1705,7 @@ fn catalog_seed(
                     "clusters": 0, "acquired": 0, "feature_count": 0,
                     "local_holding": rooms.contains_key(&entry.dataset.id),
                     "warnings": [],
+                    "code": error.code(),
                     "error": format!("{}: {}", error.code(), error.message()),
                 }));
             }
@@ -1699,7 +1726,16 @@ fn catalog_seed(
     if let Some(answered_as) = answered_as {
         receipt["answered_as"] = answered_as;
     }
-    Ok(receipt)
+    finish_seed(receipt)
+}
+
+fn finish_seed(receipt: Value) -> Result<Value, Failure> {
+    if receipt["complete"] == true && receipt["failed"] == 0 {
+        return Ok(receipt);
+    }
+    Err(Failure::failed(SEED_INCOMPLETE.code,
+        "project dataset acquisition is incomplete; inspect the per-dataset errors in result detail")
+        .remedy(SEED_INCOMPLETE.remedy).detail(json!({"result":receipt})))
 }
 
 fn coverage_cells(value: &Value) -> usize {
@@ -1901,6 +1937,7 @@ pub fn render_seed(data: &Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ds_command_kernel::project_dataset_cache::CONTOURS_DATASET_ID;
 
     #[test]
     fn retained_retired_digests_refuse_without_blocking_other_historical_rooms() {
@@ -2124,6 +2161,7 @@ mod tests {
             Cause::NotHeld("x".into()),
             Cause::AcquisitionFailed("x".into()),
             Cause::ProviderUnavailable("x".into()),
+            Cause::LocalResourceRequired("x".into()),
             Cause::BundleUnavailable("x".into()),
             Cause::Unsupported("x".into()),
             Cause::TooLarge("x".into()),
@@ -2147,17 +2185,61 @@ mod tests {
     /// Contour intervals travel from the dataset document the room was opened
     /// with — never from a default of this host's own.
     #[test]
-    fn contour_parameters_are_the_datasets_own() {
+    fn derived_context_requires_local_input_and_never_calls_brain_compute() {
         let dataset = ds_project_data::contours_dataset(ds_project_data::ContourSettings {
             minor_interval_m: 10,
             index_interval_m: 50,
             sample_spacing_m: 10.0,
         });
-        let parameters = contour_parameters(&dataset).expect("authored intervals");
-        assert_eq!(parameters.minor_interval_m, 10);
-        assert_eq!(parameters.index_interval_m, 50);
-        assert_eq!(parameters.sample_spacing_m, 10.0);
-        assert!(contour_parameters(&ds_project_data::buildings_dataset()).is_none());
+        let provider = CliProvider {
+            lane: "unconfigured-native-lane",
+            project: "fixture-project",
+        };
+        let mut calls = 0;
+        for selected in [dataset.clone(), ds_project_data::buildings_dataset()] {
+            let error = provider
+                .acquire_with(&selected, &json!({}), |_| {
+                    calls += 1;
+                    Err(Failure::failed(
+                        "auth_input_invalid",
+                        "no remote door is admitted",
+                    ))
+                })
+                .unwrap_err();
+            assert_eq!(error.code(), "project_dataset_local_source_required");
+            if selected.id == CONTOURS_DATASET_ID {
+                assert!(error.message().contains("minor_interval_m\":10"));
+                assert!(error.message().contains("index_interval_m\":50"));
+                assert!(error.message().contains("sample_spacing_m\":10.0"));
+            } else {
+                assert!(error.message().contains("Google"));
+            }
+        }
+        assert_eq!(
+            calls, 0,
+            "the actual provider dispatch never constructs a Brain compute request"
+        );
+        assert_eq!(
+            dataset,
+            ds_project_data::contours_dataset(ds_project_data::ContourSettings {
+                minor_interval_m: 10,
+                index_interval_m: 50,
+                sample_spacing_m: 10.0,
+            }),
+            "the legacy dataset address and authored intervals remain intact"
+        );
+    }
+
+    #[test]
+    fn incomplete_seed_envelope_keeps_the_partial_result_and_refuses_success() {
+        let receipt = json!({"project":"p","failed":1,"complete":false,"datasets":[
+            {"dataset_id":"held","covered":true,"feature_count":12},
+            {"dataset_id":"google_open_buildings","covered":false,"error":"project_dataset_local_source_required: missing input"}]});
+        let error = finish_seed(receipt.clone()).unwrap_err();
+        assert_eq!(error.code(), "project_dataset_seed_incomplete");
+        assert_eq!(error.detail_value().unwrap()["result"], receipt);
+        let complete = json!({"failed":0,"complete":true,"datasets":[]});
+        assert_eq!(finish_seed(complete.clone()).unwrap(), complete);
     }
 
     /// A seed that could not finish every dataset renders as partial.
