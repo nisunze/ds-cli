@@ -28,8 +28,7 @@ mod test_support;
 mod transport;
 
 pub use saved_a4::{
-    SavedA4Capture, SavedA4Responses, admit_saved_a4_responses, saved_a4_for_project,
-    saved_owned_a4_for_project,
+    SavedA4Capture, saved_a4_for_project, saved_owned_a4_for_project,
 };
 pub use saved_preview_read::retained_a4_for_project;
 
