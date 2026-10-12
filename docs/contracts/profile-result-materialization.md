@@ -28,6 +28,15 @@ actually offered page item materializes its cell. Query metrics count new
 materializations, already materialized offered cells and JSON materialization
 time; these are presentation work, not calculated cases.
 
+Private exact/delta drawing transfers use the Engine's compact paint
+representation. Its omission of recursive summary blocker bodies changes no
+retained fact source: the original calculated scene/Arc and complete report
+remain native. Generic scene exports and Analyze retain their full evidence.
+The Runtime's transfer tests compare exact compact paint against a fresh
+calculation and independently compare the complete retained native scene bytes;
+lazy/eager query parity also verifies that paint encoding and all six fact
+consumers retain the same original base and full scene bytes.
+
 All existing model/history/input-root/source/case/entity/cursor/bounds and
 publication checks occur before materialization. Invalid or stale queries,
 unconfirmed publications, changed dependencies, absent envelopes, invalid page

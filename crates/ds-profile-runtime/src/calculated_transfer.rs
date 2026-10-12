@@ -21,7 +21,7 @@ mod cost;
 mod exact_tests;
 #[cfg(test)]
 #[path = "calculated_transfer_tests.rs"]
-mod tests;
+pub(crate) mod tests;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -131,7 +131,10 @@ impl Runtime {
             let (wire, exact) = if exact_requested {
                 (
                     Value::Null,
-                    Some(serde_json::to_string(scene.as_ref()).map_err(|error| error.to_string())?),
+                    Some(
+                        ds_grid_engine::profile_calculated_delta::paint_scene_json(scene.as_ref())
+                            .map_err(|error| error.to_string())?,
+                    ),
                 )
             } else {
                 (

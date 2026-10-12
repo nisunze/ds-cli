@@ -63,6 +63,14 @@ fn unused_facts_are_unserialized_and_bounded_consumers_share_exact_cells() {
 #[test]
 fn retained_typed_report_survives_cache_replacement_and_matches_eager_facts() {
     let (mut runtime, input, _) = retained_runtime();
+    let base = runtime.held[&input.scope].calculated_base.clone().unwrap();
+    let full_scene = serde_json::to_vec(base.scene()).unwrap();
+    let paint = ds_grid_engine::profile_calculated_delta::paint_scene_json(base.scene()).unwrap();
+    let decoded = serde_json::from_str(&paint).unwrap();
+    assert_eq!(
+        CalculatedSceneBase::new(decoded).signature(),
+        base.signature()
+    );
     let mut eager = Runtime::default();
     eager.execute(input.clone()).unwrap();
     // Deliberately remove the mutable acquisition/cache source. Reading exact
@@ -109,7 +117,12 @@ fn retained_typed_report_survives_cache_replacement_and_matches_eager_facts() {
         {
             for item in actual["items"].as_array().unwrap() {
                 assert_eq!(
-                    item["fact"].as_object().unwrap().keys().next_back().unwrap(),
+                    item["fact"]
+                        .as_object()
+                        .unwrap()
+                        .keys()
+                        .next_back()
+                        .unwrap(),
                     "capacity_failure_structures_truncated"
                 );
             }
@@ -119,6 +132,15 @@ fn retained_typed_report_survives_cache_replacement_and_matches_eager_facts() {
     assert_eq!(
         runtime.held[&input.scope].demand_cache.last_demand_work(),
         cache_work
+    );
+    assert!(Arc::ptr_eq(
+        runtime.held[&input.scope].calculated_base.as_ref().unwrap(),
+        &base
+    ));
+    assert_eq!(
+        serde_json::to_vec(base.scene()).unwrap(),
+        full_scene,
+        "compact paint and fact consumers cannot trim retained native evidence"
     );
 }
 

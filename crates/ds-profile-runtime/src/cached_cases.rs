@@ -333,9 +333,8 @@ mod tests {
         let fresh = Runtime::default().execute(fresh_input).unwrap();
         let fresh_scene: ds_grid_engine::ProfileAtlasScene =
             serde_json::from_value(fresh["scene"].clone()).unwrap();
-        assert_eq!(
-            serde_json::to_vec(admitted.scene()).unwrap(),
-            serde_json::to_vec(&fresh_scene).unwrap()
+        crate::calculated_transfer::tests::assert_paint_and_retained_scene(
+            &runtime, admitted.scene(), &fresh_scene,
         );
         assert_eq!(
             runtime.held[&input.scope].session.history_state(),

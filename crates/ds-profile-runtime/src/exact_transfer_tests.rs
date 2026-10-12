@@ -1,4 +1,4 @@
-use super::tests::{prepare, ready};
+use super::tests::{assert_paint_and_retained_scene, prepare, ready};
 use super::*;
 use crate::transactional_projection_tests::{
     describe, refresh, request_for, section_demand_fixture,
@@ -124,9 +124,10 @@ fn present_without_a_shared_pin_returns_exact_native_signed_zero_text() {
         scene.metadata.terrain_corridor_half_width_m.to_bits(),
         (-0.0_f64).to_bits()
     );
+    assert_paint_and_retained_scene(&runtime, &scene, original.as_ref());
     assert_eq!(
-        serde_json::to_vec(&scene).unwrap(),
-        serde_json::to_vec(original.as_ref()).unwrap()
+        decoded["scene_json"].as_str().unwrap(),
+        ds_grid_engine::profile_calculated_delta::paint_scene_json(original.as_ref()).unwrap()
     );
     assert_eq!(result["ran"], false);
     assert_eq!(result["calculation"]["required"], false);
@@ -352,10 +353,7 @@ fn exact_initialization_is_transactional_and_preserves_native_publication() {
     let fresh = Runtime::default().execute(request).unwrap();
     let fresh_scene: ds_grid_engine::ProfileAtlasScene =
         serde_json::from_value(fresh["scene"].clone()).unwrap();
-    assert_eq!(
-        serde_json::to_vec(&exact).unwrap(),
-        serde_json::to_vec(&fresh_scene).unwrap()
-    );
+    assert_paint_and_retained_scene(&runtime, &exact, &fresh_scene);
     assert_eq!(result["display"], fresh["scene"]["display"]);
     assert_eq!(
         runtime.held["one"].session.history_state(),
@@ -410,10 +408,7 @@ fn shared_controls_prepare_then_exact_full_and_delta_jobs_preserve_fresh_geometr
         serde_json::from_str(result["scene_json"].as_str().unwrap()).unwrap();
     let initial_typed: ds_grid_engine::ProfileAtlasScene =
         serde_json::from_value(initial["scene"].clone()).unwrap();
-    assert_eq!(
-        serde_json::to_vec(&typed).unwrap(),
-        serde_json::to_vec(&initial_typed).unwrap()
-    );
+    assert_paint_and_retained_scene(&runtime, &typed, &initial_typed);
     assert_eq!(result["display"], initial["scene"]["display"]);
     runtime
         .execute(Request::ConfirmPublication(ConfirmPublicationRequest {
@@ -480,10 +475,7 @@ fn shared_controls_prepare_then_exact_full_and_delta_jobs_preserve_fresh_geometr
             .unwrap();
         let fresh_typed: ds_grid_engine::ProfileAtlasScene =
             serde_json::from_value(fresh["scene"].clone()).unwrap();
-        assert_eq!(
-            serde_json::to_vec(receiver.scene()).unwrap(),
-            serde_json::to_vec(&fresh_typed).unwrap()
-        );
+        assert_paint_and_retained_scene(&runtime, receiver.scene(), &fresh_typed);
         assert_eq!(result["display"], fresh["scene"]["display"]);
         runtime
             .execute(Request::ConfirmPublication(ConfirmPublicationRequest {

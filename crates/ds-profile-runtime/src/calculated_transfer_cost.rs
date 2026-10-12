@@ -211,7 +211,13 @@ fn dense_delta_job_costs_and_complete_fresh_parity() {
                 "geometry_bytes":if is_delta{result["scene_delta_json"].as_str().unwrap().len()}else{serde_json::to_vec(&result["scene"]).unwrap().len()}}));
             results.push(decoded);
         }
-        assert_eq!(results[0]["scene"], results[1]["scene"]);
+        let full_scene = serde_json::from_value(results[0]["scene"].clone()).unwrap();
+        let paint_scene = serde_json::from_value(results[1]["scene"].clone()).unwrap();
+        super::tests::assert_paint_and_retained_scene(&delta, &paint_scene, &full_scene);
+        assert_eq!(
+            results[0]["scene"]["display"],
+            results[1]["scene"]["display"]
+        );
         assert_eq!(results[0]["analysis"], results[1]["analysis"]);
         assert_eq!(results[0]["command_view"], results[1]["command_view"]);
         let fresh = Runtime::default()

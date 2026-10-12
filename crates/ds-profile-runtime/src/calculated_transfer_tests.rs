@@ -4,6 +4,33 @@ use crate::transactional_projection_tests::{
 };
 use std::time::Duration;
 
+/// The renderer receives compact paint; the native owner retains complete
+/// typed evidence for queries and ordinary scene/export serialization.
+pub(crate) fn assert_paint_and_retained_scene(
+    runtime: &Runtime,
+    receiver: &ds_grid_engine::ProfileAtlasScene,
+    fresh: &ds_grid_engine::ProfileAtlasScene,
+) {
+    use ds_grid_engine::profile_calculated_delta::paint_scene_json;
+    assert_eq!(
+        paint_scene_json(receiver).unwrap(),
+        paint_scene_json(fresh).unwrap()
+    );
+    let held = &runtime.held["one"];
+    let native = held
+        .calculated_base
+        .as_ref()
+        .map(|base| base.scene())
+        .or(held.calculated_scene.as_deref())
+        .unwrap();
+    assert_eq!(
+        serde_json::to_vec(native).unwrap(),
+        serde_json::to_vec(fresh).unwrap(),
+        "the native retained evidence remains complete and fresh"
+    );
+}
+
+
 pub(super) fn prepare(runtime: &mut Runtime, worker: &GridSession) -> Value {
     runtime
         .execute(Request::CalculatedSceneBase(CalculatedSceneBaseRequest {
@@ -121,10 +148,7 @@ fn explicit_delta_jobs_preserve_complete_fresh_geometry_display_and_publication(
             .unwrap();
         let fresh_scene: ds_grid_engine::ProfileAtlasScene =
             serde_json::from_value(fresh["scene"].clone()).unwrap();
-        assert_eq!(
-            serde_json::to_vec(receiver.scene()).unwrap(),
-            serde_json::to_vec(&fresh_scene).unwrap()
-        );
+        assert_paint_and_retained_scene(&runtime, receiver.scene(), &fresh_scene);
         assert_eq!(result["display"], fresh["scene"]["display"]);
         let pin = serde_json::from_value(result["publication"].clone()).unwrap();
         runtime
@@ -520,10 +544,7 @@ fn observed_edits_land_whole_without_a_reconcile_job() {
         .unwrap();
     let fresh_scene: ds_grid_engine::ProfileAtlasScene =
         serde_json::from_value(fresh["scene"].clone()).unwrap();
-    assert_eq!(
-        serde_json::to_vec(whole.scene()).unwrap(),
-        serde_json::to_vec(&fresh_scene).unwrap()
-    );
+    assert_paint_and_retained_scene(&runtime, whole.scene(), &fresh_scene);
     let mut receiver = whole;
     for (i, tension) in [8000., 6500.].into_iter().enumerate() {
         let base = worker.current_revision().revision_id.to_string();
@@ -633,10 +654,7 @@ fn observed_edits_land_whole_without_a_reconcile_job() {
             serde_json::from_value(fresh["scene"].clone()).unwrap();
         assert_eq!(next["display"], fresh["scene"]["display"]);
         assert_eq!(next["command_view"], fresh["command_view"]);
-        assert!(
-            serde_json::to_vec(receiver.scene()).unwrap()
-                == serde_json::to_vec(&fresh_scene).unwrap()
-        );
+        assert_paint_and_retained_scene(&runtime, receiver.scene(), &fresh_scene);
         assert!(runtime.held["one"].pending_receipts.is_empty());
     }
 }
@@ -699,10 +717,7 @@ fn replay_complete_observation_cost_and_fresh_parity() {
         assert_eq!(result["command_view"], fresh["command_view"]);
         let fresh: ds_grid_engine::ProfileAtlasScene =
             serde_json::from_value(fresh["scene"].clone()).unwrap();
-        assert_eq!(
-            serde_json::to_vec(receiver.scene()).unwrap(),
-            serde_json::to_vec(&fresh).unwrap()
-        );
+        assert_paint_and_retained_scene(&runtime, receiver.scene(), &fresh);
         eprintln!(
             "{}",
             json!({"index":index, "metrics":result["metrics"],
@@ -793,10 +808,7 @@ fn repeated_geometry_edits_admit_complete_calculated_updates() {
             .unwrap();
         let fresh: ds_grid_engine::ProfileAtlasScene =
             serde_json::from_value(fresh["scene"].clone()).unwrap();
-        assert_eq!(
-            serde_json::to_vec(receiver.scene()).unwrap(),
-            serde_json::to_vec(&fresh).unwrap()
-        );
+        assert_paint_and_retained_scene(&runtime, receiver.scene(), &fresh);
         assert!(runtime.held["one"].pending_receipts.is_empty());
     }
 }
@@ -821,6 +833,7 @@ fn a_delta_transfer_without_its_base_lands_the_exact_full_scene() {
         .unwrap();
     assert!(wire.is_null());
     assert!(delta.is_none());
-    assert_eq!(exact.unwrap(), serde_json::to_string(&scene).unwrap());
+    assert_eq!(exact.unwrap(), ds_grid_engine::profile_calculated_delta::paint_scene_json(&scene).unwrap());
+    assert_paint_and_retained_scene(&runtime, &scene, &scene);
     assert!(runtime.held["one"].calculated_base.is_none());
 }
