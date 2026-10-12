@@ -23,7 +23,7 @@ Candidate curation and native PLS-CADD acceptance are separate from coding the c
 | [7. Report compute, export and combined output](#7-report-compute-export-and-combined-output) | 7 |
 | [8. Sync, publication and edge outbox](#8-sync-publication-and-edge-outbox) | 4 |
 | [9. LV processing, sizing and headless intake](#9-lv-processing-sizing-and-headless-intake) | 7 |
-| [10. Voltage drop](#10-voltage-drop) | 12 |
+| [10. Voltage drop](#10-voltage-drop) | 13 |
 | [11. PLS-CADD exchange round trip](#11-pls-cadd-exchange-round-trip) | 6 |
 | [12. DS Grid engineering (Codex main)](#12-ds-grid-engineering-codex-main) | 3 |
 | [13. Spotting (Codex main)](#13-spotting-codex-main) | 2 |
@@ -209,6 +209,8 @@ Candidate curation and native PLS-CADD acceptance are separate from coding the c
 - **Unicode source reproduction** (`f7732067`): current Linux Unicode fixtures and `bukane` v3 export preserve characters. Obtain the original affected host/build, corrupt request bytes and approved v2 source pin, then reproduce the exact export before alleging a remaining code fault.
 
 ## 10. Voltage drop
+
+- **Legacy transformer-nature seeding in Rwanda Template**: installed `ds design status`, `design group list` and `design tag list` on canary locate `fill_in_akarubumba` in `wnmajona_edcl_rural_electrification_template`. Its v2 saved analysis has nature `null` and an actual no-transformer-node refusal; document metadata carries legacy `transfo_type: fill_in`, but the project has no current tag definitions or assignments. The native default reserves authoritative `fill_in`/`upgrade` tags unless calculation is positively requested. Curate the project's nature definition and explicit assignments through the governed DS controls; preview exact changes before effects. Do not infer nature from names, silently adopt legacy metadata as a second authority, rewrite the stored analysis, or reprocess approved geometry to clear a display warning. Preserve v2 content digest `120e3a60183b6e49240374eff7f0a76ae8b86812140e6c37d6410c4644adeaee`. Verify expected reservations on a separately authorized processing candidate and current installed status wording.
 
 - **Report project display-label acceptance** (`e538e632`): on a matching deployed Brain carrying `e1aabed6`, capture a fresh installed report receipt and render for a project whose `display_name` differs from its internal name. Verify `printing_context.project` and the title use the display label, while source, filename and engineering pins remain intact. Preserve approved project data and artifacts; source tests and the local watcher do not prove deployed acceptance.
 
