@@ -237,6 +237,26 @@ const CONTEXT_ACQUISITION: Refusal = Refusal {
     when: "--seed acquired context the room refused (batch row)",
     remedy: "`ds data project-cache status` shows the last error",
 };
+const CONTEXT_LOCAL_SOURCE: Refusal = Refusal {
+    code: "project_dataset_local_source_required",
+    when: "an explicitly selected geographic producer needs a pinned local source",
+    remedy: "publish the exact local-source manifest through ds data project-cache; preview may report the missing held context",
+};
+const PREVIEW_ARTIFACT_UNAVAILABLE: Refusal = Refusal {
+    code: "print_preview_artifact_unavailable",
+    when: "the managed preview manifest, scope, path or exact bytes cannot be admitted",
+    remedy: "retain written artifacts and request the exact native preview again",
+};
+const PREVIEW_ARTIFACT_EXPIRED: Refusal = Refusal {
+    code: "print_preview_artifact_expired",
+    when: "the native preview file has passed its admitted expiry",
+    remedy: "request its exact preview again; no read automatically renders or acquires",
+};
+const PREVIEW_METADATA_LIMIT: Refusal = Refusal {
+    code: "print_preview_metadata_limit",
+    when: "preview diagnostics exceed the bounded response metadata",
+    remedy: "read the native disk manifest named in detail",
+};
 const CONTEXT_TOO_LARGE: Refusal = Refusal {
     code: "print_context_too_large",
     when: "a preview's held context exceeds the engine's bounds",
@@ -300,6 +320,10 @@ pub(super) const REFUSALS: &[Refusal] = &[
     CONTEXT_CATALOG,
     CONTEXT_BUNDLE,
     CONTEXT_ACQUISITION,
+    CONTEXT_LOCAL_SOURCE,
+    PREVIEW_ARTIFACT_UNAVAILABLE,
+    PREVIEW_ARTIFACT_EXPIRED,
+    PREVIEW_METADATA_LIMIT,
     CONTEXT_TOO_LARGE,
     NEIGHBOR_POINTS_UNAVAILABLE,
     HOLDINGS_STORE,
@@ -345,6 +369,7 @@ pub static COMMAND: Command = Command {
             "<json-file>",
             "One outlined-text SVG per transformer; no publication or --print-layout.",
         ),
+        Arg::value("preview-retention", "<24h|7d>", "SVG lifetime; requires --preview-layout, default 24h.").choices(&["24h","7d"]),
         Arg::value(
             "context-vectors",
             "<dir>",
@@ -735,6 +760,10 @@ pub(crate) fn host_failure(failure: HostFailure) -> Failure {
             Failure::failed("project_dataset_acquisition_failed", message)
                 .remedy(CONTEXT_ACQUISITION.remedy)
         }
+        "project_dataset_local_source_required" => Failure::unavailable(CONTEXT_LOCAL_SOURCE.code,message).remedy(CONTEXT_LOCAL_SOURCE.remedy),
+        "print_preview_artifact_unavailable" => Failure::failed(PREVIEW_ARTIFACT_UNAVAILABLE.code,message).remedy(PREVIEW_ARTIFACT_UNAVAILABLE.remedy),
+        "print_preview_artifact_expired" => Failure::unavailable(PREVIEW_ARTIFACT_EXPIRED.code,message).remedy(PREVIEW_ARTIFACT_EXPIRED.remedy),
+        "print_preview_metadata_limit" => Failure::failed(PREVIEW_METADATA_LIMIT.code,message).remedy(PREVIEW_METADATA_LIMIT.remedy),
         "catalog_unavailable" => {
             Failure::unavailable("catalog_unavailable", message).remedy(CONTEXT_CATALOG.remedy)
         }
@@ -1205,10 +1234,12 @@ fn verify_publish_scope(
 /// touched: the draft.
 struct PreviewRequest {
     layout: ds_command_kernel::printing::Layout,
+    retention: ds_report_host::preview_artifact::Retention,
 }
 
 fn preview_request(inputs: &Inputs, proofs: bool) -> Result<Option<PreviewRequest>, Failure> {
     let Some(path) = inputs.value("preview-layout") else {
+        if inputs.value("preview-retention").is_some() { return Err(Failure::invalid(INPUTS_INVALID.code,"--preview-retention requires --preview-layout")); }
         return Ok(None);
     };
     if proofs {
@@ -1238,7 +1269,8 @@ fn preview_request(inputs: &Inputs, proofs: bool) -> Result<Option<PreviewReques
         .map_err(|e| Failure::invalid(INPUTS_INVALID.code, format!("{path}: {e}")))?;
     let layout = ds_command_kernel::printing::upgrade(layout)
         .map_err(|e| Failure::invalid(INPUTS_INVALID.code, e))?;
-    Ok(Some(PreviewRequest { layout }))
+    let retention = inputs.value("preview-retention").map(|value|serde_json::from_value(json!(value)).map_err(|e|Failure::invalid(INPUTS_INVALID.code,e.to_string()))).transpose()?.unwrap_or_default();
+    Ok(Some(PreviewRequest { layout, retention }))
 }
 
 /// The exact saved revisions a batch pins, by transformer: each held room
@@ -2730,7 +2762,7 @@ fn preview_pages(
         )
         .map_err(host_failure)
     };
-    let mut pages: Vec<(PreviewPage, PathBuf)> = Vec::with_capacity(names.len());
+    let mut pages: Vec<(PreviewPage, PathBuf, ds_report_host::preview_artifact::Artifact)> = Vec::with_capacity(names.len());
     for name in names {
         let folder = out_dir.join(name);
         let receipt_path = folder.join(ds_command_kernel::report_export::RUN_RECEIPT_FILE);
@@ -2763,7 +2795,7 @@ fn preview_pages(
             .transpose()
             .map_err(|error| Failure::invalid(INPUTS_INVALID.code, error))?;
         current()?;
-        let page = ds_report_host::execute_with_styles_retained(
+        let (page, artifact) = ds_report_host::execute_artifact_retained(
             &CliEngine,
             settings,
             &ds_report_host::PreviewRequest {
@@ -2772,7 +2804,8 @@ fn preview_pages(
             },
             &held,
             captured.as_ref(),
-            Some(&result_room),
+            &result_room,
+            request.retention,
         )
         .map_err(preview_failure)?;
         current()?;
@@ -2787,9 +2820,9 @@ fn preview_pages(
         std::fs::create_dir_all(&folder).map_err(|error| {
             staging_failed(format!("could not create {}: {error}", folder.display()))
         })?;
-        std::fs::write(&page_path, page.page.as_bytes()).map_err(|error| {
-            staging_failed(format!("could not write {}: {error}", page_path.display()))
-        })?;
+        let page_path = std::fs::canonicalize(&folder).map_err(|e|staging_failed(e.to_string()))?.join(&page.filename);
+        ds_report_host::preview_artifact::copy(&result_room, &artifact, page_path.to_str().ok_or_else(||staging_failed("preview output path is not UTF-8".into()))?)
+            .map_err(host_failure)?;
         let receipt_bytes = serde_json::to_vec_pretty(&page.receipt)
             .map_err(|error| staging_failed(error.to_string()))?;
         std::fs::write(&receipt_path, receipt_bytes).map_err(|error| {
@@ -2798,18 +2831,23 @@ fn preview_pages(
                 receipt_path.display()
             ))
         })?;
-        pages.push((page, page_path));
+        pages.push((page, page_path, artifact));
     }
     // Every run removed its own scratch; the empty staging root goes too.
     let _ = std::fs::remove_dir(settings.staging_root);
 
     let placed: Vec<(&PreviewPage, PageRef<'_>)> = pages
         .iter()
-        .map(|(page, path)| (page, PageRef::File(path.as_path())))
+        .map(|(page, path, _)| (page, PageRef::File(path.as_path())))
         .collect();
-    let answer = ds_report_host::answer(settings.project_id, facts.lane, &placed);
+    let mut answer = ds_report_host::answer(settings.project_id, facts.lane, &placed);
+    answer["preview"]["artifact_schema"] = json!(ds_report_host::preview_artifact::SCHEMA);
+    for (row, (_, path, artifact)) in answer["results"].as_array_mut().expect("native result rows").iter_mut().zip(&pages) {
+        row["page"] = serde_json::to_value(artifact).map_err(|e|staging_failed(e.to_string()))?;
+        row["out"] = json!(path);
+    }
     let mut data = facts.project;
-    data["local_print_recipe"] = pages.first().map_or(Value::Null, |(page, _)| {
+    data["local_print_recipe"] = pages.first().map_or(Value::Null, |(page, _, _)| {
         page.receipt["local_print_recipe"].clone()
     });
     data["out_dir"] = json!(out_dir.display().to_string());
@@ -3311,6 +3349,7 @@ fn context_failure(error: ds_project_data::Failure) -> HostFailure {
             message,
         ),
         Cause::AcquisitionFailed(_) => HostFailure::new(CONTEXT_ACQUISITION.code, message),
+        Cause::LocalResourceRequired(_) => HostFailure::new(CONTEXT_LOCAL_SOURCE.code,message),
         Cause::CatalogInvalid(_) => HostFailure::new(CONTEXT_CATALOG.code, message),
         // A print read never names a retired row (printing's catalogue
         // selection excludes it), so reaching here is the document's own defect.

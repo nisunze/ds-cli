@@ -103,14 +103,14 @@ pub const EXPORT_OP: BridgeOp = BridgeOp {
 };
 pub const PREVIEW_OP: BridgeOp = BridgeOp {
     operation: "printing.preview",
-    arguments: &["project", "transformer", "layout"],
+    arguments: &["project", "transformer", "layout", "template", "out", "retention"],
 };
 pub static PREVIEW_COMMAND: Command = Command {
     id: "desktop.printing.preview",
     path: &["desktop", "printing", "preview"],
-    contract: 1,
-    summary: "Preview a draft transformer sheet through the live SVG renderer.",
-    purpose: "Requires the paired Desktop's current signed-in project. Reads a bounded draft layout, resolves its exact governed styles and consumes the shared transformer room, then invokes report.project.export --preview-layout with held geographic context. Native rendering returns the exact SVG, diagnostics, warnings and named missing-context omissions, and retains its scoped result for navigation and concurrent consumers. Geographic providers and cloud computation are never acquired by preview. No layout/selection save, main output replacement, publication, project switch or survey refresh.",
+    contract: 2,
+    summary: "Render a transformer SVG into the native disk preview cache.",
+    purpose: "Use exactly one --layout draft or --template catalogue location in the current signed-in project. Native authenticated template reads, exact styles and the held transformer room feed the shared headless renderer. Returns a verified local file manifest with diagnostics and omissions; no inline page bytes. Exact repeats reuse native results and disk bytes. Default retention24h; optional7d. --out creates a verified new copy. No save, publication, project switch, geographic-provider acquisition or cloud compute.",
     chapter: Chapter::Reports,
     effect: Effect::LocalFileWrite,
     authority: Authority::DesktopUser,
@@ -118,11 +118,14 @@ pub static PREVIEW_COMMAND: Command = Command {
     args: &[
         Arg::value("project", "<exact-id>", "Exact current Desktop project; a mismatch refuses without switching it.").required(),
         Arg::value("transformer", "<name>", "One canonical individual transformer name; combined_transformer is refused.").required(),
-        Arg::value("layout", "<json-file>", "Full draft print-layout JSON document, at most 800 KB; no layout or project settings are saved.").required(),
+        Arg::value("layout", "<json-file>", "Full draft layout, at most800KB; mutually exclusive with --template."),
+        Arg::value("template", "<json-file>", "Exact layout Location from desktop printing view --catalogue; mutually exclusive with --layout."),
+        Arg::value("out", "<absolute.svg>", "Optional new absolute SVG copy; existing paths refuse."),
+        Arg::value("retention", "<24h|7d>", "Managed cache lifetime, default24h; reuse keeps original expiry.").choices(&["24h","7d"]),
         TARGET_ARG,
         DESCRIPTOR_ARG,
     ],
-    output: "Explicit project, preview identity and inline SVG result with SHA-256, native print diagnostics, warnings and context omissions. Existing paired bridge response bound: 8 MiB.",
+    output: "Project, pinned preview identity, ordered native file manifest (path,SHA-256,size,contenttype,scope/result pins,expiry), diagnostics,warnings,omissions and optionalout. Metadata bridge bound8MiB; no inlineSVG.",
     examples: &[],
     refusals: &[
         ops::NOT_PAIRED, ops::AMBIGUOUS, ops::UNREACHABLE, ops::PAIRING_REJECTED,
@@ -417,25 +420,74 @@ fn preview_arguments(inputs: &Inputs, layout: Value) -> Result<Value, Failure> {
     let parsed: ds_command_kernel::printing::Layout =
         serde_json::from_value(layout.clone()).map_err(|error| invalid_read(error.to_string()))?;
     ds_command_kernel::printing::validate(&parsed).map_err(invalid_read)?;
-    Ok(json!({"project":project,"transformer":transformer,"layout":layout}))
+    let mut arguments = json!({"project":project,"transformer":transformer,"layout":layout});
+    preview_delivery_arguments(inputs,&mut arguments)?;
+    Ok(arguments)
+}
+
+fn preview_delivery_arguments(inputs: &Inputs, arguments: &mut Value) -> Result<(),Failure> {
+    if let Some(raw) = inputs.value("out") {
+        let path = std::path::Path::new(raw);
+        if raw.is_empty() || raw.len()>4096 || raw.chars().any(char::is_control) || !path.is_absolute()
+            || path.extension().and_then(|v|v.to_str()) != Some("svg") || std::fs::symlink_metadata(path).is_ok()
+            || !path.parent().is_some_and(|parent|std::fs::symlink_metadata(parent).is_ok_and(|m|m.is_dir()&&!m.file_type().is_symlink())) {
+            return Err(invalid_read("preview output must be a new absolute .svg in an existing real directory"));
+        }
+        arguments["out"] = json!(raw);
+    }
+    if let Some(value) = inputs.value("retention") { arguments["retention"] = json!(value); }
+    Ok(())
+}
+fn preview_template_arguments(inputs: &Inputs, template: Value) -> Result<Value,Failure> {
+    let project = bounded_project(inputs.require("project")?)?;
+    let transformer = bounded_transformer(inputs.require("transformer")?)?;
+    if transformer=="combined_transformer" { return Err(invalid_read("live sheet preview requires one individual transformer")); }
+    let location = serde_json::from_value(template.clone()).map_err(|e|invalid_read(format!("invalid template location: {e}")))?;
+    ds_command_kernel::printing::template_read::admit_location(&location).map_err(invalid_read)?;
+    let mut arguments = json!({"project":project,"transformer":transformer,"template":template});
+    preview_delivery_arguments(inputs,&mut arguments)?;
+    Ok(arguments)
+}
+
+fn admit_preview_result(inputs: &Inputs, data: Value) -> Result<Value,Failure> {
+    let rows = data["results"].as_array().ok_or_else(||invalid_read("native preview result rows are missing"))?;
+    let digest = |v:&Value|v.as_str().is_some_and(|s|s.len()==64&&s.bytes().all(|b|b.is_ascii_digit()||(b'a'..=b'f').contains(&b)));
+    let row = rows.first().ok_or_else(||invalid_read("native preview page is missing"))?;
+    let page = &row["page"];
+    let retained = page["retention_ms"].as_u64();
+    if data["project"] != inputs.require("project")? || rows.len()!=1 || row["transformer"]!=inputs.require("transformer")?
+        || data["preview"]["artifact_schema"]!="ds.print-preview-artifact/v1"
+        || page["schema"]!="ds.print-preview-artifact/v1" || page.get("svg").is_some() || page.get("png_data_url").is_some()
+        || !page["path"].as_str().is_some_and(|s|std::path::Path::new(s).is_absolute())
+        || !digest(&page["sha256"]) || !digest(&page["authority_sha256"]) || !digest(&page["result_sha256"])
+        || !digest(&data["preview"]["layout_sha256"]) || page["sha256"]!=row["sha256"] || page["size_bytes"]!=row["size_bytes"]
+        || page["content_type"]!="image/svg+xml" || !page["size_bytes"].as_u64().is_some_and(|n|n>0&&n<=96*1024*1024)
+        || !retained.is_some_and(|n|[86_400_000,604_800_000].contains(&n))
+        || page["created_at_unix_ms"].as_u64().and_then(|v|v.checked_add(retained?))!=page["expires_at_unix_ms"].as_u64()
+        || inputs.value("out").is_some_and(|out|row["out"]!=out) {
+        return Err(Failure::failed("desktop_unreadable","The native preview file receipt differs from the explicit request or its digest/expiry pins.")
+            .remedy("use matching Desktop/CLI and retain any written preview file; no inline SVG is admitted"));
+    }
+    Ok(data)
 }
 
 pub fn preview(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     // Project/name/document validation precedes pairing or any application call.
     bounded_project(inputs.require("project")?)?;
     bounded_transformer(inputs.require("transformer")?)?;
-    let layout = read_request(
-        inputs.require("layout")?,
-        "provide a full print-layout JSON document at most 800 KB",
-    )?;
-    let arguments = preview_arguments(inputs, layout)?;
-    ops::invoke(
+    let arguments = match (inputs.value("layout"),inputs.value("template")) {
+        (Some(path),None)=>preview_arguments(inputs,read_request(path,"provide a draft layout at most800KB")?)?,
+        (None,Some(path))=>preview_template_arguments(inputs,read_request(path,"provide the exact layout Location from desktop printing view --catalogue")?)?,
+        _=>return Err(invalid_read("supply exactly one --layout or --template")),
+    };
+    let result = ops::invoke(
         &ops::paired(inputs.value("desktop-descriptor"))?,
         &PREVIEW_OP,
         arguments,
         Duration::from_secs(30 * 60),
     )
-    .map_err(ops::classify_signed_out)
+    .map_err(ops::classify_signed_out)?;
+    admit_preview_result(inputs,result)
 }
 
 pub fn export(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
@@ -486,7 +538,7 @@ mod tests {
     #[test]
     fn read_operations_declare_explicit_project_without_a_switch_operation() {
         assert_eq!(TRANSFORMERS_OP.arguments, ["project", "limit"]);
-        assert_eq!(PREVIEW_OP.arguments, ["project", "transformer", "layout"]);
+        assert_eq!(PREVIEW_OP.arguments, ["project", "transformer", "layout", "template", "out", "retention"]);
         assert_eq!(
             EXPORT_OP.arguments,
             [
@@ -581,6 +633,34 @@ mod tests {
             preview_arguments(&inputs, layout.clone()).unwrap(),
             json!({"project":"huye","transformer":"agasharu","layout":layout})
         );
+    }
+
+    #[test]
+    fn live_preview_template_and_delivery_controls_are_closed_before_pairing() {
+        let dir=tempfile::tempdir().unwrap(); let output=dir.path().join("new.svg");
+        let inputs=preview_inputs(&["--project","huye","--transformer","agasharu","--template","location.json","--out",output.to_str().unwrap(),"--retention","7d"]).unwrap();
+        assert_eq!(preview_template_arguments(&inputs,json!({"kind":"layout","id":"focus-a0"})).unwrap(),
+            json!({"project":"huye","transformer":"agasharu","template":{"kind":"layout","id":"focus-a0"},"out":output,"retention":"7d"}));
+        for location in [json!({"kind":"layout","id":"../other"}),json!({"kind":"layout","id":"a0","extra":true}),json!({"kind":"governed_html","id":"a4"})] {
+            assert!(preview_template_arguments(&inputs,location).is_err());
+        }
+        std::fs::write(&output,b"keep").unwrap();
+        assert!(preview_template_arguments(&inputs,json!({"kind":"layout","id":"focus-a0"})).is_err());
+        assert_eq!(std::fs::read(output).unwrap(),b"keep");
+        for args in [vec!["--project","huye","--transformer","agasharu"],vec!["--project","huye","--transformer","agasharu","--layout","draft.json","--template","location.json"]] {
+            let inputs=preview_inputs(&args).unwrap(); assert!(preview(&inputs,&Context { confirmed:false, output:ds_cli_contract::Output::resolve(ds_cli_contract::Format::Json,false,true) }).is_err());
+        }
+    }
+
+    #[test]
+    fn live_preview_cannot_admit_inline_or_crossed_native_file_receipts() {
+        let inputs=preview_inputs(&["--project","huye","--transformer","agasharu","--layout","draft.json"]).unwrap();
+        let artifact=json!({"schema":"ds.print-preview-artifact/v1","path":"/native/preview.svg","sha256":"a".repeat(64),"size_bytes":9*1024*1024,
+            "content_type":"image/svg+xml","authority_sha256":"b".repeat(64),"result_sha256":"c".repeat(64),"created_at_unix_ms":100,"expires_at_unix_ms":86_400_100,"retention_ms":86_400_000});
+        let result=json!({"project":"huye","preview":{"layout_sha256":"d".repeat(64),"artifact_schema":"ds.print-preview-artifact/v1"},"results":[{"transformer":"agasharu","page":artifact,"sha256":"a".repeat(64),"size_bytes":9*1024*1024}]});
+        assert_eq!(admit_preview_result(&inputs,result.clone()).unwrap(),result);
+        for field in ["path","sha256","size_bytes","expires_at_unix_ms","authority_sha256"] {let mut bad=result.clone();bad["results"][0]["page"][field]=json!("other");assert!(admit_preview_result(&inputs,bad).is_err());}
+        let mut bad=result;bad["results"][0]["page"]["svg"]=json!("<svg/>");assert!(admit_preview_result(&inputs,bad).is_err());
     }
 
     #[test]
