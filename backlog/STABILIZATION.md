@@ -234,13 +234,13 @@ and handles must stay usable for the admitted scene while background work runs.
 The removed native `project` operation and reconciliation-only status button
 are no longer current evidence; recheck each remaining caller.
 
-**Remaining code:** `nativeProfileCaseCommand` does not emit readiness phases.
-Connect intentional case reads/preparation to the existing presentation signal,
-using the captured native request/result and current client/context fences.
-Do not invent a job, replace a retained calculation ticket, add polling or
-trigger another case read merely to animate the button. Audit other deliberate
-usage/query consumers against the same rule; prove concurrent work, typed
-refusals and cancelled/failed worker release without changing native authority.
+**Remaining code audit:** inspect deliberate usage/query consumers for requested
+work that is still absent from the readiness signal. Use captured native
+requests/results and current client/context fences. Do not invent a job,
+replace a retained calculation ticket, add polling or trigger another read
+merely to animate the button. Prove any demonstrated missing consumer's busy
+interval, concurrent work, typed refusals and cancelled/failed worker release
+without changing native authority.
 
 **Remaining installed acceptance:** restart the Linux Desktop, open the Profile
 and prove the visible initial-preparation transitions, native interruption
