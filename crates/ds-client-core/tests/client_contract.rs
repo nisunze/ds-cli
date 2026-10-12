@@ -14534,3 +14534,20 @@ fn historical_import_uses_one_closed_bulk_write_and_rejects_moved_acknowledgemen
     assert_eq!(client.transformer_history_import("active-project",&bad,NOW+3).unwrap_err().kind(),ErrorKind::InvalidInput);
     assert_eq!(transport.calls().len(),3,"invalid input has no authority effect");
 }
+
+#[test]
+fn immutable_binding_is_one_metadata_write_and_verifies_issued_record_and_assets() {
+    use ds_client_core::design_version_catalog::Command;
+    use ds_command_kernel::design_version_binding::{Binding,AssetPin};
+    let b=Binding{version_id:"v0".into(),revision_id:"v0".into(),purpose:"submission".into(),record_id:Some("R-1".into()),expected_record_revision:Some("2026-10-13T00:00:00Z".into()),milestone_id:None,assets:vec![AssetPin{asset_id:"A-1".into(),asset_version:3,asset_sha256:"a".repeat(64),asset_generation:Some(123)}],expected_catalog_revision:"b".repeat(64),expected_source_revision:"2026-10-13T00:00:00Z".into(),reason:"Issue reviewed deliverable".into(),idempotency_key:"issue-1".into()};
+    let command=Command::Bind{object_id:"TR-1".into(),binding:b};
+    let mut ack=json!({"catalog":{"schema":"ds.lv-version-catalog/v1","project_id":"active-project","object":{"kind":"lv_transformer","id":"TR-1"},"catalog_revision":"c".repeat(64),"versions":[{"version_id":"v0","display_ordinal":0,"head_revision_id":"v0","revision_count":1,"issued_revision_id":"v0","binding_count":1}]},"binding":{"binding_id":"binding-1","project_id":"active-project","transformer_id":"TR-1","version_id":"v0","revision_id":"v0","purpose":"submission","record_id":"R-1","record_revision":"2026-10-13T00:00:00Z","record_sha256":"c".repeat(64),"snapshot_digest":"d".repeat(64),"created_by":"owner","created_at":"2026-10-13T00:01:00Z","display_ordinal_at_issue":0,"assets":[{"asset_id":"A-1","asset_version":3,"asset_sha256":"a".repeat(64),"asset_generation":123}]}});
+    let transport=FixtureTransport::with_sign_in(SIGN_IN);transport.push_design_versions(200,&selection_envelope(ack.clone()));
+    let mut client=signed_in(transport.clone(),MemoryStore::default());client.design_version_catalog("active-project",&command,NOW+1).unwrap();
+    let calls=transport.calls();assert_eq!(calls.len(),2);let call=calls.last().unwrap();
+    for expected in ["bind_version_revision","path=/api/v1/design/versions","R-1","A-1"]{assert!(call.contains(expected),"{call}");}
+    assert!(!calls.iter().any(|c|c.contains("transformer_context ")||c.contains("project_configuration")));
+    ack["catalog"]["versions"][0]["issued_revision_id"]=json!("v1");transport.push_design_versions(200,&selection_envelope(ack));
+    assert_eq!(client.design_version_catalog("active-project",&command,NOW+2).unwrap_err().kind(),ErrorKind::UnreadableResponse);
+    assert_eq!(transport.calls().len(),3,"no blind repeat when issuance acknowledgement differs");
+}

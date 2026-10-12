@@ -1,7 +1,7 @@
 //! Fixed native transport for the pure catalog wire contract.
 use crate::{
-    AuthorizedTransport, ClientError, ClientProfile, DesignVersionsCall, ErrorKind,
-    authorized::Authority,
+    authorized::Authority, AuthorizedTransport, ClientError, ClientProfile, DesignVersionsCall,
+    ErrorKind,
 };
 pub use ds_command_kernel::design_version_catalog::{Command, Mutation};
 use serde_json::Value;

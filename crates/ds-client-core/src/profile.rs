@@ -143,7 +143,7 @@ pub const DESIGN_VERSIONS_PATH: &str = "/api/v1/design/versions";
 /// The closed `/api/v1/design/versions` action vocabulary. The per-object
 /// summary read and the batched create joined in v30, beside the attachment
 /// actions above. Order is part of the profile identity.
-pub const DESIGN_VERSIONS_ACTIONS: [&str; 10] = [
+pub const DESIGN_VERSIONS_ACTIONS: [&str; 11] = [
     "list_versions",
     "get_version",
     "get_head",
@@ -154,6 +154,7 @@ pub const DESIGN_VERSIONS_ACTIONS: [&str; 10] = [
     "get_version_catalog",
     "get_version_revision",
     "renumber_version",
+    "bind_version_revision",
 ];
 pub const DESIGN_SELECTIONS_METHOD: &str = "POST";
 pub const DESIGN_SELECTIONS_PATH: &str = "/api/v1/design/selections";
@@ -591,6 +592,7 @@ impl ClientProfile {
             DESIGN_VERSIONS_ACTIONS[7],
             DESIGN_VERSIONS_ACTIONS[8],
             DESIGN_VERSIONS_ACTIONS[9],
+            DESIGN_VERSIONS_ACTIONS[10],
             DESIGN_SELECTIONS_METHOD,
             DESIGN_SELECTIONS_PATH,
             DESIGN_SELECTIONS_ACTIONS[0],

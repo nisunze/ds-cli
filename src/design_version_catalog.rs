@@ -1,6 +1,6 @@
 //! Closed wire validation for the LV version catalog; allocation stays server-owned.
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -22,6 +22,10 @@ pub struct Mutation {
 }
 #[derive(Clone, Debug)]
 pub enum Command {
+    Bind {
+        object_id: String,
+        binding: super::design_version_binding::Binding,
+    },
     Catalog {
         object_id: String,
     },
@@ -194,7 +198,8 @@ impl Command {
             | Self::Revision { object_id, .. }
             | Self::Snapshot { object_id, .. }
             | Self::Publish { object_id, .. }
-            | Self::Renumber { object_id, .. } => object_id,
+            | Self::Renumber { object_id, .. }
+            | Self::Bind { object_id, .. } => object_id,
         }
     }
     pub fn validate(&self, project: &str) -> Result<(), String> {
@@ -203,6 +208,7 @@ impl Command {
         }
         match self {
             Self::Catalog { .. } => Ok(()),
+            Self::Bind { binding, .. } => binding.validate(),
             Self::Revision {
                 version_id,
                 revision_id,
@@ -232,11 +238,11 @@ impl Command {
                     .is_err()
                     || m.reason.trim().is_empty()
                     || m.reason.trim() != m.reason
-                    || m.reason.len() > 2000
+                    || m.reason.chars().count() > 280
                     || m.reason.chars().any(char::is_control)
                     || m.idempotency_key.trim().is_empty()
                     || m.idempotency_key.trim() != m.idempotency_key
-                    || m.idempotency_key.len() > 256
+                    || m.idempotency_key.chars().count() > 128
                     || m.idempotency_key.chars().any(char::is_control)
                     || m.version_id.as_deref().is_some_and(|s| !version(s))
                     || m.display_ordinal.is_some_and(|n| n > 1_000_000)
@@ -270,6 +276,7 @@ impl Command {
         self.validate(project)?;
         let action = match self {
             Self::Catalog { .. } => "get_version_catalog",
+            Self::Bind { .. } => "bind_version_revision",
             Self::Revision { .. } => "get_version_revision",
             Self::Snapshot { .. } => "get_transformer_version_revision",
             Self::Publish { .. } => "publish_transformer_version_revision",
@@ -299,6 +306,7 @@ impl Command {
                 value = json!({"action":action,"eds_project_id":project,"catalog_publication":publication});
             }
             Self::Renumber { mutation, .. } => value["catalog_mutation"] = json!(mutation),
+            Self::Bind { binding, .. } => value["catalog_binding"] = json!(binding),
             _ => {}
         }
         Ok(value)
@@ -390,6 +398,22 @@ impl Command {
                 return Err("published immutable revision metadata absent".into());
             }
         }
+        if let Self::Bind { binding, .. } = self {
+            binding.verify_response(project, self.object_id(), value)?;
+            let entry = value["catalog"]["versions"]
+                .as_array()
+                .and_then(|rows| {
+                    rows.iter()
+                        .find(|row| row["version_id"] == binding.version_id)
+                })
+                .ok_or("bound catalog identity absent")?;
+            if !entry["binding_count"].as_u64().is_some_and(|n| n > 0)
+                || (binding.purpose == "submission"
+                    && entry["issued_revision_id"] != binding.revision_id)
+            {
+                return Err("catalog did not retain immutable issuance evidence".into());
+            }
+        }
         Ok(())
     }
 }
@@ -430,32 +454,26 @@ mod tests {
     fn malformed_mutations_refuse_before_transport() {
         let mut m = mutation();
         m.version_id = Some("v1".into());
-        assert!(
-            Command::Publish {
-                object_id: "TR-1".into(),
-                mutation: m.clone()
-            }
-            .payload("p")
-            .is_err()
-        );
+        assert!(Command::Publish {
+            object_id: "TR-1".into(),
+            mutation: m.clone()
+        }
+        .payload("p")
+        .is_err());
         m.insert_before_version_id = None;
-        assert!(
-            Command::Renumber {
-                object_id: "TR-1".into(),
-                mutation: m.clone()
-            }
-            .payload("p")
-            .is_ok()
-        );
+        assert!(Command::Renumber {
+            object_id: "TR-1".into(),
+            mutation: m.clone()
+        }
+        .payload("p")
+        .is_ok());
         m.expected_source_revision = "yesterday".into();
-        assert!(
-            Command::Renumber {
-                object_id: "TR-1".into(),
-                mutation: m
-            }
-            .payload("p")
-            .is_err()
-        );
+        assert!(Command::Renumber {
+            object_id: "TR-1".into(),
+            mutation: m
+        }
+        .payload("p")
+        .is_err());
     }
     #[test]
     fn pinned_snapshot_verifies_exact_utf8_without_number_reserialization() {
