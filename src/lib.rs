@@ -1856,6 +1856,15 @@ pub mod grid_versions;
 pub fn grid_model_management_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
     grid_model_management::evaluate(input).map_err(|e| wasm_bindgen::JsValue::from_str(&e))
 }
+/// Exact held-byte identity only; strict package admission remains separate.
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = gridSavedSourceDigest)]
+pub fn grid_saved_source_digest_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
+    let identity = grid_model_management::saved::source_digest(input)
+        .map_err(|error| wasm_bindgen::JsValue::from_str(&error.to_string()))?;
+    serde_json::to_string(&identity)
+        .map_err(|error| wasm_bindgen::JsValue::from_str(&error.to_string()))
+}
 pub mod solar_seed;
 #[cfg(feature = "wasm")]
 #[wasm_bindgen::prelude::wasm_bindgen(js_name = solarSeed)]

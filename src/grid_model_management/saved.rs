@@ -4,9 +4,43 @@
 //! the one held checkpoint. Their byte truth is not established by this module.
 
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 
 pub const MAX_RECORDS: usize = 500;
 pub const MAX_PAGE: usize = 50;
+/// Mirrors the native stored-package IO owner's `MAX_PACKAGE_BYTES` in
+/// `ds-layer-store/src/local_models.rs`; it does not widen metadata JSON.
+pub const MAX_STORED_SOURCE_BYTES: usize = 512 * 1024 * 1024;
+
+/// Identity of exact held bytes, without any claim of package/model validity.
+#[derive(Debug, PartialEq, Eq, Serialize)]
+pub struct SourceDigest {
+    pub digest: String,
+    pub size_bytes: u64,
+}
+
+fn admit_source_length(length: usize) -> Result<(), Refusal> {
+    if length > MAX_STORED_SOURCE_BYTES {
+        return refuse(
+            "saved_model_source_too_large",
+            "the held stored-source bytes exceed 512 MiB",
+        );
+    }
+    Ok(())
+}
+
+/// Hash the same private byte view the host will hand to the strict reader,
+/// before transferring or detaching it. No decoding, IO or mutation occurs.
+/// Empty/malformed bytes still have a digest; the package reader must refuse
+/// them independently. Native callers use this directly; WASM exposes the
+/// same function separately from the bounded metadata facts endpoint.
+pub fn source_digest(bytes: &[u8]) -> Result<SourceDigest, Refusal> {
+    admit_source_length(bytes.len())?;
+    Ok(SourceDigest {
+        digest: format!("{:x}", Sha256::digest(bytes)),
+        size_bytes: bytes.len() as u64,
+    })
+}
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
@@ -437,6 +471,56 @@ pub fn evaluate(request: Request) -> Result<Outcome, Refusal> {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn source_digest_matches_known_vectors_without_claiming_package_validity() {
+        for (bytes, expected) in [
+            (
+                b"".as_slice(),
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            ),
+            (
+                b"abc".as_slice(),
+                "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+            ),
+        ] {
+            let identity = source_digest(bytes).unwrap();
+            assert_eq!(identity.digest, expected);
+            assert_eq!(identity.size_bytes, bytes.len() as u64);
+            assert_eq!(
+                serde_json::to_value(identity).unwrap(),
+                json!({"digest":expected,"size_bytes":bytes.len()})
+            );
+        }
+    }
+
+    #[test]
+    fn source_digest_reads_exact_binary_view_and_leaves_owned_buffer_unchanged() {
+        let buffer = vec![0, 255, 128, 1, 0];
+        let before = buffer.clone();
+        let identity = source_digest(&buffer).unwrap();
+        assert_eq!(buffer, before);
+        assert_eq!(source_digest(&buffer).unwrap(), identity);
+        let mut changed = buffer.clone();
+        changed[2] ^= 1;
+        assert_ne!(source_digest(&changed).unwrap().digest, identity.digest);
+        assert_ne!(source_digest(&buffer[1..]).unwrap(), identity);
+        assert_eq!(source_digest(&buffer[1..]).unwrap().size_bytes, 4);
+    }
+
+    #[test]
+    fn source_digest_size_guard_uses_stored_package_bound_before_hashing() {
+        // The same guard source_digest invokes, without allocating 512 MiB.
+        assert!(admit_source_length(0).is_ok());
+        assert!(admit_source_length(MAX_STORED_SOURCE_BYTES).is_ok());
+        assert_eq!(
+            admit_source_length(MAX_STORED_SOURCE_BYTES + 1)
+                .unwrap_err()
+                .code,
+            "saved_model_source_too_large"
+        );
+        assert_eq!(MAX_STORED_SOURCE_BYTES as u64, 512 * 1024 * 1024);
+    }
 
     fn context() -> Context {
         Context {
