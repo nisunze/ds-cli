@@ -628,6 +628,24 @@ pub fn read(room: &Room, key: &str, selected: Option<usize>) -> Result<Value, Ho
         ds_layer_store::exclusive_lock(&root.join(format!("{key}.lock"))).map_err(failure)?;
     read_locked(room, key, selected, clock()?)
 }
+/// A fixed native adapter records process termination under its admitted job
+/// scope. No consumer-supplied path or rendering occurs here.
+pub fn mark_failed(room: &Room, key: &str, message: &str) -> Result<(), HostFailure> {
+    if !preview_progress::digest(key) || message.is_empty() {
+        return Err(failure("native MV failure locator or message is invalid"));
+    }
+    let root = base(room)?;
+    let _flight =
+        ds_layer_store::exclusive_lock(&root.join(format!("{key}.lock"))).map_err(failure)?;
+    let (mut control, path) = load(room, key, clock()?, true)?;
+    control.error = Some(message.chars().take(2048).collect());
+    ds_project_data::private::write_atomic(
+        &path.join("control.json"),
+        serde_json::to_vec(&control).map_err(|e| failure(e.to_string()))?,
+    )
+    .map_err(|e| failure(e.to_string()))
+}
+
 fn read_locked(
     room: &Room,
     key: &str,
@@ -1012,6 +1030,38 @@ mod tests {
         drop(answers);
         assert_eq!(read(&room, key(&expected), Some(1)).unwrap(), expected);
     }
+    #[test]
+    fn native_termination_is_scoped_and_visible_without_another_engine_call() {
+        let fixture = Fixture::new();
+        let room = fixture.room();
+        let engine = Engine::new();
+        let first = start(
+            &engine,
+            &fixture.inputs(),
+            &room,
+            preview_artifact::Retention::default(),
+        )
+        .unwrap();
+        let reads = engine.reads.load(Ordering::SeqCst);
+        let mut foreign = room.clone();
+        foreign.scope.project = "foreign_project".into();
+        assert!(mark_failed(&foreign, key(&first), "wrong scope").is_err());
+        assert!(mark_failed(&room, "../foreign", "wrong locator").is_err());
+        assert!(mark_failed(&room, key(&first), "").is_err());
+        assert!(read(&room, key(&first), None).unwrap()["error"].is_null());
+        mark_failed(
+            &room,
+            key(&first),
+            "renderer terminated before its first page",
+        )
+        .unwrap();
+        let failed = read(&room, key(&first), None).unwrap();
+        assert_eq!(failed["progress"]["stage"], "failed");
+        assert_eq!(failed["error"], "renderer terminated before its first page");
+        assert_eq!(engine.launches.load(Ordering::SeqCst), 1);
+        assert_eq!(engine.reads.load(Ordering::SeqCst), reads);
+    }
+
     #[test]
     fn early_failure_is_visible_before_a_page_plan_and_retries_do_not_launch_again() {
         let fixture = Fixture::new();
