@@ -903,6 +903,30 @@ can select the PDF without changing project settings, but the report format
 itself is read from the project's saved selection. This fixed A4 output does
 not require a named map print layout.
 
+For an offline preview of one saved analysis, use
+`report project export --project <exact-id> --transformer <exact-name>
+--preview-voltage-drop --out-dir ./preview-scratch`. This mode consumes only
+the native account's retained project inputs, saved room and exact saved
+analysis. It branches before project, tag, survey or map-context reads and
+never calculates, refreshes or publishes an analysis. Missing source refuses
+with `lv_analysis_missing`; revision, content, account, lane, audience or
+settings disagreement refuses with `lv_analysis_stale`. Acquire those inputs
+explicitly through their owning controls before previewing.
+
+The result's `results[].page` is the same `ds.print-preview-artifact/v1` PDF
+file manifest used by Desktop and SVG previews. Its scope includes project,
+principal, lane and credential audience; its source pins include the saved
+room revision/content, exact analysis SHA, settings/selection and engine
+build. Concurrent identical consumers render once. Warm consumers verify the
+retained file without rendering, network or freshness checks. The default
+lifetime is 24 hours; `--preview-retention 7d` selects seven days. Reuse
+preserves the original expiry, reported with `preview_cache.reused`.
+`--out-dir` is only temporary disk scratch for a cold render; the verified PDF
+lives in the common native preview room and its manifest is the result. A
+supplied `--selection` must choose only `voltage_drop_pdf`; its report format
+is preserved. Delivery, acquisition and map-preview flags cannot be combined
+with this mode.
+
 Survey forms the project appends to delivered reports
 (`include_survey_data_in_transformer_exports`,
 `survey_forms_in_transformer_exports`) come from this machine's held copy of

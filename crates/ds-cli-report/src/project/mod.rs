@@ -35,6 +35,7 @@ pub mod reuse;
 pub mod scope;
 pub mod settings;
 mod survey_context;
+mod vd_preview;
 
 use ds_cli_auth::{
     HeadlessNamedProject, HeadlessProjectReport, PROJECT_REPORT_MAX_TRANSFORMERS,

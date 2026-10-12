@@ -1,7 +1,7 @@
 //! `ds report project export` — individual transformer reports, prints
 //! included, from the governed inputs and the installed engine.
 //!
-//! No map, no room cache, no Desktop. The native user's audience-fenced
+//! No Desktop. The native user's audience-fenced
 //! named project supplies two things through fixed doors: the Network
 //! Reporter input receipt ds-brain mints beside the project configuration
 //! (country, the exact settings sheets, the reference snapshot), and each
@@ -19,13 +19,17 @@
 //! serial and memory stays bounded. One transformer's failure is one row of
 //! the batch receipt, never the end of the batch.
 //!
-//! `--preview-layout` is the other state regime: draft state, not an
-//! artifact. Each page is `ds_report_host::preview::execute` — the one
+//! `--preview-layout` retains a draft page through the common native file
+//! owner. Each page is `ds_report_host::preview::execute_artifact_retained` — the one
 //! execution the desktop door reaches too — over the room this command
 //! admits from the service answer and the holdings this machine keeps; the
 //! answer is `ds_report_host::preview::answer`, so both doors give the same
 //! `data` under the same envelope. A preview never seeds, never projects MV,
 //! and writes one page with its run receipt per transformer, no batch receipt.
+//!
+//! `--preview-voltage-drop` branches before every remote read and publication
+//! path. It admits one exact held saved analysis and room, then joins the same
+//! scoped file-preview owner or renders that saved source into an A4 PDF.
 
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
@@ -63,7 +67,7 @@ use crate::{DISCOVERY_TIMEOUT, DS_REPORT, EXPORT_TIMEOUT};
 const OUT_DIR_ARG: Arg = Arg::value(
     "out-dir",
     "<path>",
-    "Fresh directory to write into: one folder per transformer plus the batch receipt.",
+    "Fresh delivery directory; saved A4 preview uses it only as temporary scratch.",
 )
 .required();
 const CONCURRENCY_ARG: Arg = Arg::value(
@@ -279,6 +283,8 @@ const HOLDINGS_STORE: Refusal = Refusal {
 };
 
 pub(super) const REFUSALS: &[Refusal] = &[
+    super::vd_preview::MISSING,
+    super::vd_preview::STALE,
     super::NATIVE_PROFILE,
     super::NATIVE_PROFILE_DIGEST,
     super::NATIVE_PROFILE_UNSAFE,
@@ -349,7 +355,7 @@ pub static COMMAND: Command = Command {
     path: &["report", "project", "export"],
     contract: 2,
     summary: "Export all transformer reports and maps headlessly in parallel.",
-    purpose: "Defaults: SHP/KMZ/XLSX/saved voltage-drop JSON. Prints regenerate; data may reuse.",
+    purpose: "Defaults: SHP/KMZ/XLSX/saved voltage-drop JSON. Prints regenerate; data may reuse. Saved A4 preview reuses held files.",
     chapter: Chapter::Reports,
     effect: Effect::LocalFileWrite,
     authority: Authority::HeadlessProject,
@@ -374,7 +380,8 @@ pub static COMMAND: Command = Command {
             "<json-file>",
             "One outlined-text SVG per transformer; no publication or --print-layout.",
         ),
-        Arg::value("preview-retention", "<24h|7d>", "SVG lifetime; requires --preview-layout, default 24h.").choices(&["24h","7d"]),
+        Arg::value("preview-retention", "<24h|7d>", "SVG/A4 lifetime; requires a preview mode, default 24h.").choices(&["24h","7d"]),
+        Arg::switch("preview-voltage-drop", "Fixed A4 from exact held saved analysis; disk manifest only, no publication or remote reads."),
         Arg::value(
             "context-vectors",
             "<dir>",
@@ -393,7 +400,7 @@ pub static COMMAND: Command = Command {
         LANE_ARG,
         super::PROJECT_ARG,
     ],
-    output: "Lane, project, scope, engine, stage and receipt; results with artifacts, failed_formats[{format,output_id,remedy,partial_formats,overflow/panels/row_mm}]; reuse.reused[{output_id,work_id,sha256}], generate reasons and every output was reused.",
+    output: "Lane/project, engine/receipt, results/artifacts and failed_formats with remedies; reuse.reused and generate reasons. A4 preview: common PDF file manifest and preview_cache lifetime/reused receipt; no publication.",
     examples: &[
         Example {
             command: "ds report project export --out-dir ./reports --output json --project <exact-id>",
@@ -620,6 +627,30 @@ impl ReportEngine for SavedAnalysisEngine<'_> {
         }
         self.delegate.export_transformer_report(request, result)
     }
+}
+
+/// The held A4 preview uses this same fixed saved-result injection; it never
+/// invokes the analysis producer, nature projection or a cloud acquisition.
+pub(super) fn render_saved_a4_preview(
+    engine: &dyn ReportEngine,
+    settings: &ds_report_host::RunSettings<'_>,
+    room: &ds_report_host::TransformerReportInputs,
+    saved: &ds_command_kernel::report_export::held::SavedAnalysis,
+    format: &'static str,
+) -> Result<ds_report_host::RunOutcome, HostFailure> {
+    let analyses = std::sync::Mutex::new(BTreeMap::from([(
+        room.transformer.clone(),
+        BatchAnalysis::Ready {
+            document: saved.document.as_bytes().to_vec(),
+            sha256: saved.sha256.clone(),
+        },
+    )]));
+    let captured = SavedAnalysisEngine {
+        analyses: &analyses,
+        delegate: engine,
+        report_format: format,
+    };
+    ds_report_host::run_transformer_report(&captured, settings, room)
 }
 
 fn bounded_summary(stderr: &str, stdout: &str) -> String {
@@ -1346,6 +1377,9 @@ fn pinned_rooms(
 }
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
+    if inputs.switch("preview-voltage-drop") {
+        return super::vd_preview::run(inputs);
+    }
     let mut requested_outputs = run_output_selection(inputs)?;
     let requested = super::transformer_set(inputs)?;
     let lane = inputs.require("lane")?;
@@ -4725,7 +4759,8 @@ mod tests {
                 .is_some_and(|arg| arg.required && arg.default.is_none())
         );
         // Acceptance B: there is no `--publish`. An export publishes, and the
-        // only way to publish nothing is to ask for a dry run. If this switch
+        // delivery publishes nothing only in a dry run. Preview modes have
+        // their own retained-file result. If this switch
         // ever comes back, every run that forgets it strands its artifacts
         // again.
         assert!(COMMAND.args.iter().all(|arg| arg.name != "publish"));
