@@ -713,7 +713,7 @@
       }
     },
     "messaging": {
-      "summary": "Messaging commands, attachments and the account/conversation streams. All mounted on ds-brain; there is no separate messaging origin in any lane.",
+      "summary": "Explicit messaging commands and attachment reads on ds-brain, with push notification delivery.",
       "operations": {
         "command": {
           "summary": "Messaging command / read envelope.",
@@ -741,27 +741,6 @@
           "gateway": {
             "method": "GET",
             "path": "/api/v1/messaging/contract",
-            "backend": "ds_brain_url"
-          },
-          "resolution": { "web": "gateway", "desktop": "gateway" }
-        },
-        "stream": {
-          "summary": "One conversation's server-sent event stream.",
-          "transport": "sse",
-          "gateway": {
-            "method": "GET",
-            "path": "/api/v1/messaging/stream",
-            "backend": "ds_brain_url"
-          },
-          "resolution": { "web": "gateway", "desktop": "gateway" }
-        },
-        "account_stream": {
-          "summary": "The account-wide server-sent event stream.",
-          "transport": "sse",
-          "timeout_s": 55,
-          "gateway": {
-            "method": "GET",
-            "path": "/api/v1/messaging/account-stream",
             "backend": "ds_brain_url"
           },
           "resolution": { "web": "gateway", "desktop": "gateway" }

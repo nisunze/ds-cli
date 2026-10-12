@@ -18,7 +18,7 @@ pub const SCHEMA_VERSION: &str = "ds-web.gateway-registry/v1";
 
 /// sha256 of the exact `routing/operations.json` bytes these rows came from.
 pub const DESCRIPTOR_SHA256: &str =
-    "59ac9548fa71b776087e425e54dea1537d0214fca0630da8d86bf14ed529a9b7";
+    "834185d396ad641cb5b793a601e7a8d32cd3b821165510f791472a9b9de3e93e";
 
 /// Every declared operation that has a gateway route, sorted by id.
 pub const OPERATIONS: &[GatewayOperation] = &[
@@ -611,25 +611,6 @@ pub const OPERATIONS: &[GatewayOperation] = &[
         native_command: "",
     },
     GatewayOperation {
-        id: "domains.messaging.account_stream",
-        method: "GET",
-        path: "/api/v1/messaging/account-stream",
-        path_params: &[],
-        action_key: "action",
-        actions: &[],
-        transport: "sse",
-        authority: "gateway",
-        principal: "user",
-        lane_header: false,
-        idempotency: "unsafe",
-        retry_class: "none",
-        timeout_s: 55,
-        response_cap_bytes: 1048576,
-        resolution_web: "gateway",
-        resolution_desktop: "gateway",
-        native_command: "",
-    },
-    GatewayOperation {
         id: "domains.messaging.attachments",
         method: "POST",
         path: "/api/v1/messaging/attachments",
@@ -675,25 +656,6 @@ pub const OPERATIONS: &[GatewayOperation] = &[
         action_key: "action",
         actions: &[],
         transport: "json",
-        authority: "gateway",
-        principal: "user",
-        lane_header: false,
-        idempotency: "unsafe",
-        retry_class: "none",
-        timeout_s: 30,
-        response_cap_bytes: 1048576,
-        resolution_web: "gateway",
-        resolution_desktop: "gateway",
-        native_command: "",
-    },
-    GatewayOperation {
-        id: "domains.messaging.stream",
-        method: "GET",
-        path: "/api/v1/messaging/stream",
-        path_params: &[],
-        action_key: "action",
-        actions: &[],
-        transport: "sse",
         authority: "gateway",
         principal: "user",
         lane_header: false,
