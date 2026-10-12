@@ -12,10 +12,25 @@ use ds_cli_contract::spec::{
 };
 use ds_cli_contract::{Context, Inputs};
 use ds_command_kernel::project_management::writes::{self, CreateKind, CreateTask};
-use serde_json::{Map, Value, json};
+use serde_json::{json, Map, Value};
 
-use crate::LANE_ARG;
 use crate::geometry::{BUFFER_ARG, DRY_RUN_ARG, GEOMETRY_FROM_ARG, PACKAGE_ARG, PROPOSAL_REFUSALS};
+use crate::LANE_ARG;
+
+const ATTACH_ARG: Arg = Arg {
+    name: "attach",
+    kind: ArgKind::Repeated,
+    value: "<path>",
+    required: false,
+    default: None,
+    choices: &[],
+    summary: "Attach local files after creation; repeat up to 10, at most 100 MiB combined. All files are checked before creating anything.",
+};
+const ATTACH_PARTIAL: Refusal = Refusal {
+    code: "task_attachments_incomplete",
+    when: "the task was committed but one attachment upload was refused, failed or could not be verified",
+    remedy: "read the task and detail.taskId/attachments; retain its existing task id and attach only confirmed missing files with pm.task.attach; do not create a replacement task or blindly retry an uncertain upload",
+};
 
 const TITLE_ARG: Arg = Arg {
     name: "title",
@@ -111,11 +126,13 @@ pub const INVALID_TASK_SHAPE: Refusal = Refusal {
 
 /// This command's own refusals: the create's three, then everything a
 /// `--geometry-from` proposal can refuse.
-const REFUSALS: [Refusal; 20] = {
-    let mut out = [crate::INVALID_DATE; 20];
+const REFUSALS: [Refusal; 22] = {
+    let mut out = [crate::INVALID_DATE; 22];
     out[0] = crate::INVALID_DATE;
     out[1] = crate::INVALID_VALUE;
     out[2] = INVALID_TASK_SHAPE;
+    out[20] = super::attach::FILE_INVALID;
+    out[21] = ATTACH_PARTIAL;
     let mut i = 0;
     while i < PROPOSAL_REFUSALS.len() {
         out[3 + i] = PROPOSAL_REFUSALS[i];
@@ -127,7 +144,7 @@ const REFUSALS: [Refusal; 20] = {
 pub static COMMAND: Command = Command {
     id: "pm.task.create",
     path: &["pm", "task", "create"],
-    contract: 1,
+    contract: 2,
     summary: "Add one task or milestone to the project's plan.",
     purpose: "\
 Creates one work item through the same governed command the Plan sheet uses, \
@@ -139,7 +156,10 @@ no window. With --geometry-from the item is created carrying WHERE: the \
 geometry of the named DS Grid structures (an area around several, a point for \
 one, a line for an alignment or span range) and one ds_object link per \
 structure, in the same revision; --dry-run answers that proposal and creates \
-nothing.",
+nothing. With repeatable --attach, the native PM owner creates the task \
+then verifies each task-owned upload. The task remains durable if an upload \
+fails; the refusal carries its taskId and verified ready receipts. Do not \
+repeat task creation to recover an attachment.",
     chapter: Chapter::Project,
     effect: Effect::GlobalWrite,
     authority: Authority::HeadlessProject,
@@ -154,6 +174,7 @@ nothing.",
         FINISH_ARG,
         FROM_RECORD_ARG,
         ID_ARG,
+        ATTACH_ARG,
         GEOMETRY_FROM_ARG,
         PACKAGE_ARG,
         BUFFER_ARG,
@@ -165,8 +186,13 @@ nothing.",
 The project, the minted `taskId`, the `committedRevision` the plan moved to, \
 any `warnings` the engine returned, and `link` — the deep link that opens the \
 new item in the app. With --geometry-from, `proposal` (geometry, rule, \
-objects, links, sources); with --dry-run, only the proposal and no task.",
+objects, links, sources); with --dry-run, only the proposal and no task. With --attach, attachments contains server-verified ready rows and exact local bytes/SHA; an incomplete upload returns task_attachments_incomplete with the committed task and ready receipts.",
     examples: &[
+        Example {
+            command: "ds pm task create --project <exact-id> --kind inbox --title \"Review crossing\" --attach ./source.eml --attach ./drawing.pdf --yes --output json",
+            note: "The task is durable before uploading files; an incomplete upload carries its existing task id and ready receipts.",
+            runnable: false,
+        },
         Example {
             command: "ds pm task create --title \"Stake MV route\" --kind parent --start 2026-09-01 --finish 2026-09-12 --yes --project <exact-id>",
             note: "Without --yes dispatch refuses before anything is sent.",
@@ -178,7 +204,7 @@ objects, links, sources); with --dry-run, only the proposal and no task.",
             runnable: false,
         },
     ],
-    refusals: &crate::write_refusals::<42>(&REFUSALS),
+    refusals: &crate::write_refusals::<44>(&REFUSALS),
     reference: Some("docs/reference/pm.md"),
     search: &[
         "subtask",
@@ -198,6 +224,16 @@ objects, links, sources); with --dry-run, only the proposal and no task.",
 };
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
+    let mut files = Vec::new();
+    for path in inputs.repeated("attach") {
+        files.push(super::attach::read_attachment(path, None)?);
+        ds_client_core::project_management::create_attached::validate_files(&files).map_err(
+            |error| {
+                Failure::invalid(super::attach::FILE_INVALID.code, error.to_string())
+                    .remedy("Pass up to 10 distinct readable files, at most 100 MiB combined")
+            },
+        )?;
+    }
     let kind = inputs.value("kind").unwrap_or("parent");
     let parent = inputs.value("parent");
     let start = inputs.value("start");
@@ -282,9 +318,41 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             "committedRevision": Value::Null,
         }));
     }
-    let result = crate::commit(lane, inputs.require("project")?, &prepared)?;
+    let (result, attachments) = if files.is_empty() {
+        (
+            crate::commit(lane, inputs.require("project")?, &prepared)?,
+            None,
+        )
+    } else {
+        let answer = ds_cli_auth::project_management_for_project(
+            lane,
+            inputs.require("project")?,
+            &ds_client_core::project_management::Command::TaskCreateAttached {
+                command_id: crate::command_id()?,
+                base_revision: prepared.base_revision,
+                command: prepared.command.clone(),
+                task_id: id.clone(),
+                files,
+            },
+        )?
+        .into_result();
+        let result = crate::accepted(writes::decode_operation_result(&answer["result"]))?;
+        if answer["complete"] != true {
+            return Err(Failure::failed(ATTACH_PARTIAL.code, "Task created; not all attachments were verified ready")
+                .remedy(ATTACH_PARTIAL.remedy)
+                .detail(json!({"project": read.project_id, "taskId": id,
+                    "committedRevision": result.committed_revision, "attachments": answer["attachments"],
+                    "failed_attachment_index": answer["failed_attachment_index"],
+                    "requested_attachment_count": answer["requested_attachment_count"],
+                    "failure_kind": answer["failure_kind"]})));
+        }
+        (result, Some(answer["attachments"].clone()))
+    };
     let mut extra = Map::new();
     extra.insert("kind".into(), json!(kind.token()));
+    if let Some(attachments) = attachments {
+        extra.insert("attachments".into(), attachments);
+    }
     if let Some(proposal) = proposal {
         extra.insert("dry_run".into(), json!(false));
         extra.insert("proposal".into(), proposal);
@@ -319,4 +387,40 @@ pub fn render(data: &Value) -> String {
         out.push_str(&format!("  {link}\n"));
     }
     out
+}
+
+#[cfg(test)]
+mod attachment_create_tests {
+    use super::*;
+    #[test]
+    fn create_discovers_repeatable_files_and_refuses_missing_file_before_graph_read() {
+        let args = [
+            "--project",
+            "project-a",
+            "--kind",
+            "inbox",
+            "--title",
+            "Evidence",
+            "--attach",
+            "missing-first.pdf",
+            "--attach",
+            "missing-second.pdf",
+        ]
+        .map(str::to_owned);
+        let inputs = ds_cli_contract::parse(&COMMAND, &args).unwrap();
+        assert_eq!(inputs.repeated("attach").len(), 2);
+        let error = run(
+            &inputs,
+            &Context {
+                confirmed: true,
+                output: ds_cli_contract::Output::resolve(
+                    ds_cli_contract::Format::Json,
+                    false,
+                    true,
+                ),
+            },
+        )
+        .unwrap_err();
+        assert_eq!(error.code(), super::super::attach::FILE_INVALID.code);
+    }
 }

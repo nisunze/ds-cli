@@ -15,7 +15,7 @@ use ds_cli_contract::{Context, Inputs};
 use ds_client_core::project_management::{
     AttachmentFile, Command as PMCommand, MAX_ATTACHMENT_BYTES,
 };
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 
 const FILE: Arg = Arg::value(
     "file",
@@ -87,7 +87,14 @@ fn file_invalid(message: impl Into<String>) -> Failure {
 /// The file to attach, read whole and bounded before any byte is read past
 /// the limit, then checked by the core's own rules.
 fn attachment(inputs: &Inputs) -> Result<AttachmentFile, Failure> {
-    let path = std::path::Path::new(inputs.require("file")?);
+    read_attachment(inputs.require("file")?, inputs.value("content-type"))
+}
+
+pub(crate) fn read_attachment(
+    path: &str,
+    content_type: Option<&str>,
+) -> Result<AttachmentFile, Failure> {
+    let path = std::path::Path::new(path);
     let name = path
         .file_name()
         .and_then(|name| name.to_str())
@@ -99,10 +106,14 @@ fn attachment(inputs: &Inputs) -> Result<AttachmentFile, Failure> {
             "--file is not a regular file of 1 byte to 100 MiB",
         ));
     }
-    let bytes = std::fs::read(path)
+    use std::io::Read;
+    let mut bytes = Vec::new();
+    std::fs::File::open(path)
+        .map_err(|error| file_invalid(format!("--file could not be read: {error}")))?
+        .take(MAX_ATTACHMENT_BYTES as u64 + 1)
+        .read_to_end(&mut bytes)
         .map_err(|error| file_invalid(format!("--file could not be read: {error}")))?;
-    AttachmentFile::new(name, inputs.value("content-type"), bytes)
-        .map_err(|error| file_invalid(error.to_string()))
+    AttachmentFile::new(name, content_type, bytes).map_err(|error| file_invalid(error.to_string()))
 }
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
