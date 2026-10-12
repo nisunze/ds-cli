@@ -48,7 +48,7 @@ pub static COMMAND: Command = Command {
     path: &["desktop", "printing", "view"],
     contract: 1,
     summary: "Read, select a template or navigate a held printing page.",
-    purpose: "Requires the current signed-in project's open Printing templates view. With no selection arguments reads its actual template and held page count; --catalogue includes its already-held native groups, preview subjects and exact location pins. --location consumes one such native Location from a bounded JSON file; an intentional first selection may read or acquire that exact pinned document through its existing native cache. --page changes the held PDF page camera. Select first, then navigate pages. The native report.layout.edit view_plan admits the exact catalogue pins and page bounds and refuses replacement of dirty work. View navigation issues no independent geographic, style, design or render acquisition, refresh, export, save or project switch. Existing preview jobs continue independently; no arbitrary UI automation is available.",
+    purpose: "Requires open Printing templates for the signed-in project. Reads its template and held page count; --catalogue adds held native groups, subjects and location pins. --location consumes an exact Location JSON file; first selection may read or acquire that pinned document through its native cache. --page changes the held PDF camera. Native report.layout.edit view_plan checks pins/pages and refuses dirty draft replacement. Navigation performs no independent geographic, style, design or render acquisition, refresh, export, save or project switch. Existing preview jobs continue.",
     chapter: Chapter::Reports,
     effect: Effect::LocalUi,
     authority: Authority::DesktopUser,
