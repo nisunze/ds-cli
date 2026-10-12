@@ -133,6 +133,7 @@ copies still require a new destination and verify the sealed bytes.
 For one A4 voltage-drop PDF without regenerating other formats, pass a local
 selection file containing
 `{"schema":"ds.design-output-selection/v1","geospatial":["voltage_drop_pdf"]}`
+
 to `ds desktop printing export --selection <file>`. This PDF uses local
 Chromium printing and does not require a named map print layout. Its filename is
 `<Display Name> voltage drop.pdf`; `paper_size` in the receipt is `A4`.
@@ -140,6 +141,16 @@ The saved project selection chooses `voltage_drop_report: "extended"` by
 default, or `"brief"` when explicitly set.
 Web execution does not generate this PDF; after local publication the Web app
 can preview and download it.
+
+With `--intent preview`, this fixed A4 selection returns the same
+`ds.print-preview-artifact/v1` disk file manifest as SVG previews. Exact saved
+analysis, revision, settings and engine repeats join or reuse one native
+renderer result. `--preview-retention 24h|7d` chooses its lifetime (default
+24 hours); reuse never extends the original expiry. `previewArtifact` names
+the verified PDF file; `previewCache.reused` and `regenerated` report actual
+reuse. Preview navigation reads that common native file, without listing
+older report runs, refreshing project inputs or borrowing a cloud PDF. The
+saved-analysis JSON companion still follows its existing artifact contract.
 
 ## Map export
 

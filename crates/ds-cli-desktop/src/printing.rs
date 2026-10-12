@@ -99,6 +99,7 @@ pub const EXPORT_OP: BridgeOp = BridgeOp {
         "force",
         "selection",
         "intent",
+        "preview_retention",
     ],
 };
 pub const PREVIEW_OP: BridgeOp = BridgeOp {
@@ -229,6 +230,7 @@ pub static EXPORT_COMMAND: Command = Command {
         .required(),
         Arg::value("selection", "<json-file>", "Local ds.design-output-selection/v1 matrix. Only selected outputs are regenerated; no project settings are saved."),
         Arg::value("intent", "<preview>", "Produce local-only review artifacts; omit for the ordinary main export.").choices(&["preview"]),
+        Arg::value("preview-retention", "<24h|7d>", "A4-only preview disk lifetime, default24h; reuse keeps original expiry.").choices(&["24h","7d"]),
         FORCE_ARG,
         TARGET_ARG,
         DESCRIPTOR_ARG,
@@ -363,6 +365,12 @@ fn export_arguments(inputs: &Inputs) -> Result<Value, Failure> {
         .remedy(PRINTING_EXPORT_INVALID.remedy));
     }
     let mut arguments = json!({"project": project, "force": inputs.switch("force")});
+    if let Some(retention) = inputs.value("preview-retention") {
+        if inputs.value("intent") != Some("preview") {
+            return Err(invalid_read("--preview-retention requires --intent preview selecting only voltage_drop_pdf"));
+        }
+        arguments["preview_retention"] = json!(retention);
+    }
     if let Some(intent) = inputs.value("intent") {
         arguments["intent"] = json!(intent);
     }
@@ -547,7 +555,7 @@ mod tests {
                 "transformers",
                 "force",
                 "selection",
-                "intent"
+                "intent", "preview_retention"
             ]
         );
     }
@@ -762,6 +770,14 @@ mod tests {
         let arguments = export_arguments(&preview).unwrap();
         assert_eq!(arguments, expected);
         assert!(arguments.get("localReview").is_none());
+    }
+    #[test]
+    fn a4_preview_retention_is_declared_and_main_export_refuses_before_pairing() {
+        let preview=export_inputs(&["--project","huye","--transformer","agasharu","--intent","preview","--preview-retention","7d"]).unwrap();
+        assert_eq!(export_arguments(&preview).unwrap()["preview_retention"],"7d");
+        let main=export_inputs(&["--project","huye","--transformer","agasharu","--preview-retention","7d"]).unwrap();
+        assert_eq!(export_arguments(&main).unwrap_err().code(),"printing_request_invalid");
+        assert!(export_inputs(&["--project","huye","--transformer","agasharu","--intent","preview","--preview-retention","30d"]).is_err());
     }
 
     #[test]
