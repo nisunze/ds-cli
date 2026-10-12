@@ -31,3 +31,15 @@ Multipage MV delivery retains native order and per-page station metadata. Its
 consumer must be able to read the first ready page and request later pages from
 disk without transferring the entire booklet inline. A single bounded sample
 preview is one page; it is not proof that a full atlas was generated.
+
+The MV renderer's optional native `preview_progress` target publishes complete
+decorated SVG pages and a closed `ds.mv-preview-progress/v1` disk journal while
+later sheets are still drawing. Each ready page retains its original source
+sheet number, alignment, station window, byte count and digest. Progress names
+completed and total sheets, stage and a monotonic disk revision; manifests and
+events contain no SVG bytes. `DS_PRINT_PREVIEW` events announce only the exact
+input digest and disk revision to an intentional native consumer. Closing its
+pipe does not stop rendering or discard ready files. No polling or project
+acquisition is attached to event production. Ordinary publication still commits
+its complete directory separately and atomically, preserving page order and
+the same SVG content, finalized PDF and raster hashes.

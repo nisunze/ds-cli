@@ -105,14 +105,16 @@ fn root(room: &Room, authority: &str) -> PathBuf {
 }
 fn metadata(page: &PreviewPage, retention: Retention) -> Result<Value, HostFailure> {
     // Serialize metadata directly; never serialize the SVG to discard it.
-    Ok(json!({"transformer":page.transformer,"server_version":page.server_version,
+    Ok(
+        json!({"transformer":page.transformer,"server_version":page.server_version,
         "sha256":page.sha256,"size_bytes":page.size_bytes,"content_type":page.content_type,
         "output_id":page.output_id,"layout_id":page.layout_id,"layout_sha256":page.layout_sha256,
         "format":page.format,"warnings":page.warnings,"print_diagnostics":page.print_diagnostics,
         "elapsed_ms":page.elapsed_ms,"engine":page.engine,"context_layers":page.context_layers,
         "context_omitted":page.context_omitted,"survey_forms_omitted":page.survey_forms_omitted,
         "context_sha256":page.context_sha256,"filename":page.filename,"receipt":page.receipt,
-        "retention_ms":retention.millis()}))
+        "retention_ms":retention.millis()}),
+    )
 }
 fn admitted_page(page: &PreviewPage) -> Result<(), HostFailure> {
     if page.size_bytes == 0
@@ -199,8 +201,48 @@ fn materialize_with_retention_at(
     clock: u64,
 ) -> Result<Artifact, HostFailure> {
     admitted_page(page)?;
+    materialize_svg_at(
+        room,
+        &page.page,
+        metadata(page, retention)?,
+        retention,
+        clock,
+    )
+}
+
+/// Persist another native SVG subject through the same artifact authority.
+/// Provenance is authored by the admitted native renderer host, never a path
+/// or artifact receipt supplied by a consumer.
+pub fn materialize_svg_retained(
+    room: &Room,
+    svg: &str,
+    provenance: Value,
+    retention: Retention,
+) -> Result<Artifact, HostFailure> {
+    let metadata = json!({"provenance":provenance,"sha256":digest(svg.as_bytes()),
+        "size_bytes":svg.len(),"content_type":"image/svg+xml","retention_ms":retention.millis()});
+    materialize_svg_at(room, svg, metadata, retention, now()?)
+}
+
+fn materialize_svg_at(
+    room: &Room,
+    svg: &str,
+    metadata: Value,
+    retention: Retention,
+    clock: u64,
+) -> Result<Artifact, HostFailure> {
+    let size_bytes = svg.len() as u64;
+    if size_bytes == 0
+        || size_bytes > crate::MAX_PREVIEW_BYTES
+        || !(svg.trim_start().starts_with("<svg") || svg.trim_start().starts_with("<?xml"))
+    {
+        return Err(HostFailure::new(
+            CODE_RESULT_INVALID,
+            "native preview is empty, oversized or not an SVG document",
+        ));
+    }
+    let sha256 = digest(svg.as_bytes());
     let owner = authority(room)?;
-    let metadata = metadata(page, retention)?;
     let result = digest(&serde_json::to_vec(&metadata).map_err(|e| failed(e.to_string()))?);
     let base = root(room, &owner);
     ds_project_data::private::create_dir_all(&base).map_err(|e| failed(e.to_string()))?;
@@ -216,7 +258,7 @@ fn materialize_with_retention_at(
                 "preview result identity differs from its retained manifest",
             ));
         }
-        crate::verify_file(&path, page.size_bytes, &page.sha256)?;
+        crate::verify_file(&path, size_bytes, &sha256)?;
         if clock < manifest.artifact.expires_at_unix_ms {
             return Ok(manifest.artifact);
         }
@@ -227,9 +269,9 @@ fn materialize_with_retention_at(
     let artifact = Artifact {
         schema: SCHEMA.into(),
         path: target.join("page.svg").to_string_lossy().into_owned(),
-        sha256: page.sha256.clone(),
-        size_bytes: page.size_bytes,
-        content_type: page.content_type.clone(),
+        sha256: sha256.clone(),
+        size_bytes,
+        content_type: "image/svg+xml".into(),
         authority_sha256: owner,
         result_sha256: result,
         created_at_unix_ms: clock,
@@ -242,8 +284,8 @@ fn materialize_with_retention_at(
         path: base.join(format!(".stage-{}", crate::random_run_id())),
     };
     crate::create_private_dir(&staged.path)?;
-    crate::write_new_private(&staged.path.join("page.svg"), page.page.as_bytes())?;
-    crate::verify_file(&staged.path.join("page.svg"), page.size_bytes, &page.sha256)?;
+    crate::write_new_private(&staged.path.join("page.svg"), svg.as_bytes())?;
+    crate::verify_file(&staged.path.join("page.svg"), size_bytes, &sha256)?;
     let manifest = serde_json::to_vec(&Manifest {
         artifact: artifact.clone(),
         metadata,

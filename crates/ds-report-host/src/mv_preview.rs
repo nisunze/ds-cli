@@ -448,12 +448,54 @@ mod tests {
             plan: b"{}",
             staging: staging.path(),
         };
-        let first = execute_retained(&engine, &inputs, Some(&room)).unwrap();
-        let second = execute_retained(&engine, &inputs, Some(&room)).unwrap();
+        let first = crate::mv_artifact::execute_retained(
+            &engine,
+            &inputs,
+            &room,
+            crate::preview_artifact::Retention::default(),
+        )
+        .unwrap();
+        let second = crate::mv_artifact::execute_retained(
+            &engine,
+            &inputs,
+            &room,
+            crate::preview_artifact::Retention::default(),
+        )
+        .unwrap();
         assert_eq!(first, second);
         assert_eq!(*engine.calls.lock().unwrap(), 1);
+        let bytes = crate::preview_artifact::read(&room, &first.sheet.page).unwrap();
+        assert!(bytes.starts_with(b"<svg"));
+        let data = first.to_value();
+        assert_eq!(data["pages"][0]["page"]["path"], first.sheet.page.path);
+        assert_eq!(
+            data["progress"],
+            json!({"completed":1,"total":1,"stage":"complete"})
+        );
+        assert!(!serde_json::to_string(&data).unwrap().contains("<svg"));
+        assert!(data["sheet"].get("svg").is_none());
+        let mut foreign = room.clone();
+        foreign.scope.project = "another".into();
+        assert!(crate::mv_artifact::execute_retained(
+            &engine,
+            &inputs,
+            &foreign,
+            crate::preview_artifact::Retention::default()
+        )
+        .is_err());
+        assert_eq!(*engine.calls.lock().unwrap(), 1);
         inputs.scene = b"{\"model_revision\":\"changed\"}";
-        execute_retained(&engine, &inputs, Some(&room)).unwrap();
+        let changed = crate::mv_artifact::execute_retained(
+            &engine,
+            &inputs,
+            &room,
+            crate::preview_artifact::Retention::default(),
+        )
+        .unwrap();
+        assert_ne!(
+            first.sheet.page.result_sha256,
+            changed.sheet.page.result_sha256
+        );
         assert_eq!(*engine.calls.lock().unwrap(), 2);
         assert_eq!(std::fs::read_dir(staging.path()).unwrap().count(), 0);
     }

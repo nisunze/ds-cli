@@ -40,6 +40,7 @@ pub use ds_command_kernel::report_export::{
 };
 
 pub mod mv_preview;
+pub mod mv_artifact;
 pub mod preview;
 pub mod preview_artifact;
 pub use preview::*;
