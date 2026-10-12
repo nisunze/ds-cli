@@ -39,6 +39,8 @@ use serde_json::{Value, json};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
+mod local_source;
+
 const DATASET_ARG: Arg = Arg::value(
     "dataset",
     "<dataset-id>",
@@ -56,6 +58,12 @@ const MV_MODEL_ARG: Arg = Arg::value(
     "mv-model",
     "<absolute.dsgrid>",
     "Optional exact local DS Grid draft whose route also needs geographic coverage; the receipt pins its SHA-256. Seed still authorizes --project.",
+);
+
+const LOCAL_SOURCE_ARG: Arg = Arg::value(
+    "local-source",
+    "<manifest.json>",
+    "Native ds.local-analytical-source/v1 JSON manifest (64 KiB) selecting one project asset revision and completed coverage. --dataset, when given, must match its id.",
 );
 
 const LANE_ARG: ds_cli_contract::spec::Arg =
@@ -209,6 +217,12 @@ refusal!(
     "retry the same --project under the signed-in identity"
 );
 refusal!(
+    PROJECT_CONTEXT_CHANGED,
+    "project_context_changed",
+    "the native account, audience or credential changed while consuming the named project's local input",
+    "retry the same explicit project and manifest under the intended native account"
+);
+refusal!(
     NATIVE_STATE_UNSAFE,
     "native_state_unsafe",
     "protected native state is unsafe or unreadable",
@@ -317,7 +331,7 @@ refusal!(
     "choose a fresh writable GeoJSON output path"
 );
 
-const HEADLESS_REFUSALS: [Refusal; 19] = [
+const HEADLESS_REFUSALS: [Refusal; 20] = [
     NATIVE_PROFILE,
     NATIVE_PROFILE_DIGEST,
     NATIVE_PROFILE_UNSAFE,
@@ -337,6 +351,7 @@ const HEADLESS_REFUSALS: [Refusal; 19] = [
     AUTH_IDENTITY_MISMATCH,
     AUTH_TRANSIENT,
     AUTH_UNREADABLE,
+    PROJECT_CONTEXT_CHANGED,
 ];
 
 const STATUS_REFUSALS: &[Refusal] = &[
@@ -365,6 +380,7 @@ const STATUS_REFUSALS: &[Refusal] = &[
     HEADLESS_REFUSALS[16],
     HEADLESS_REFUSALS[17],
     HEADLESS_REFUSALS[18],
+    HEADLESS_REFUSALS[19],
 ];
 
 const SEED_REFUSALS: &[Refusal] = &[
@@ -399,6 +415,7 @@ const SEED_REFUSALS: &[Refusal] = &[
     HEADLESS_REFUSALS[16],
     HEADLESS_REFUSALS[17],
     HEADLESS_REFUSALS[18],
+    HEADLESS_REFUSALS[19],
 ];
 
 const QUERY_OWN_REFUSALS: [Refusal; 9] = [
@@ -434,13 +451,19 @@ pub static STATUS_COMMAND: Command = Command {
     path: &["data", "project-cache", "status"],
     contract: 1,
     summary: "Report the project's held extracts of canonical geographic datasets.",
-    purpose: "Reads what the named project holds on this machine, per dataset: requested and completed coverage (kept apart: a failed acquisition is never a holding), feature count, index state, source versions, buffer policy and last error. Stale coverage is reported, never deleted; abandoned acquisitions read as expired; declared datasets held nowhere yet read as not seeded. Only the reference catalogue is read (no provider, no cost), and held rooms still report without it.",
+    purpose: "Reports each dataset's requested/completed coverage, features, index, source versions and errors under the explicit project. --local-source reads its exact principal/project/revision room offline, without catalogue, provider, input artifact or freshness reads. Otherwise reads the catalogue; held rooms still report when it is unavailable. Missing data is never acquired.",
     chapter: Chapter::Data,
     effect: Effect::ReadOnly,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[PROJECT_ARG, DATASET_ARG, SUMMARY_ARG, LANE_ARG],
-    output: "Full by default: per-dataset identity, readiness, source versions, coverage geometry, query history and errors. --summary drops coverage geometry and query history and adds residency, the seed/read command and row cap; both include `seeded`, `available` and `catalog`.",
+    args: &[
+        PROJECT_ARG,
+        DATASET_ARG,
+        LOCAL_SOURCE_ARG,
+        SUMMARY_ARG,
+        LANE_ARG,
+    ],
+    output: "Coverage and history by default; --summary keeps identity, source, readiness, coverage counts and seed/read commands. Includes `seeded`, `available`, `catalog`; --local-source adds `selected_source` provenance.",
     examples: &[
         Example {
             command: "ds data project-cache status --project gisagara --output json",
@@ -448,8 +471,8 @@ pub static STATUS_COMMAND: Command = Command {
             runnable: false,
         },
         Example {
-            command: "ds data project-cache status --project gisagara --dataset google_open_buildings --output json",
-            note: "Reads one dataset's own coverage and readiness.",
+            command: "ds data project-cache status --project gisagara --local-source ./source.json --summary --output json",
+            note: "Inspect one pinned local analytical source's held room, offline and without catalogue discovery.",
             runnable: false,
         },
         Example {
@@ -470,7 +493,7 @@ pub static SEED_COMMAND: Command = Command {
     path: &["data", "project-cache", "seed"],
     contract: 1,
     summary: "Acquire the geographic datasets this project's design needs.",
-    purpose: "Derives coverage from the explicitly named project's active transformer designs, exact governed MV route segments, and an optional local DS Grid draft supplied with --mv-model. It buffers and fuses them, then acquires only missing data; a re-run over unchanged design acquires nothing unless --refresh. With no --dataset it seeds what this project declares plus what it holds. Confirmed, because it queries a source. Saved active-project selection is ignored. Held data survives a failure, and a partial acquisition is never ready.",
+    purpose: "Authorizes --project and derives fused coverage from active designs, MV routes and optional --mv-model. Acquires gaps unless --refresh. --local-source selects a pinned analytical asset without catalogue/provider/bundle reads; initial seed needs the gateway. Otherwise, with no --dataset, seeds what the project declares plus what it holds. Saved selection is ignored; partial acquisitions stay incomplete.",
     chapter: Chapter::Data,
     effect: Effect::ArtifactWrite,
     authority: Authority::HeadlessProject,
@@ -478,15 +501,16 @@ pub static SEED_COMMAND: Command = Command {
     args: &[
         PROJECT_ARG,
         DATASET_ARG,
+        LOCAL_SOURCE_ARG,
         MV_MODEL_ARG,
         REFRESH_ARG,
         LANE_ARG,
     ],
-    output: "Per dataset: clusters, cells acquired this run, coverage, feature count, local holding, warnings and its own failure cause; plus `refresh`, `failed` and `complete`.",
+    output: "Per dataset: acquired cells, coverage, features, holding, warnings/errors and optional `selected_source` pins; plus `refresh`, `failed`, `complete` and captured transformer/MV sources.",
     examples: &[
         Example {
-            command: "ds data project-cache seed --project gisagara --dataset google_open_buildings --yes --output json",
-            note: "Seeds building footprints for the whole project's fused coverage.",
+            command: "ds data project-cache seed --project gisagara --local-source ./source.json --yes --output json",
+            note: "Authorize the project and hold missing local analytical coverage.",
             runnable: false,
         },
         Example {
@@ -507,7 +531,7 @@ pub static QUERY_COMMAND: Command = Command {
     path: &["data", "project-cache", "query"],
     contract: 1,
     summary: "Export held project datasets inside one polygon.",
-    purpose: "Reads one dataset already held on this computer for the explicitly named project. The polygon must lie wholly inside completed coverage. The native indexed room tests actual feature intersections; nothing is fetched or silently inferred from missing coverage. Writes one bounded GeoJSON page. A truncated receipt names the next cursor and room generation, so every page is explicit and a changed room refuses continuation. Use project-cache status --summary to find canonical layers and whether seeding is needed.",
+    purpose: "Exports one bounded GeoJSON page of actual intersections wholly inside completed project coverage. --local-source selects its exact retained principal/project/revision room offline, without catalogue, provider, input artifact or freshness reads; --dataset must match its native id. Missing coverage refuses. A truncated response supplies cursor and generation; a changed room refuses continuation. Use status --summary to find datasets and readiness.",
     chapter: Chapter::Data,
     effect: Effect::LocalFileWrite,
     authority: Authority::HeadlessProject,
@@ -515,6 +539,7 @@ pub static QUERY_COMMAND: Command = Command {
     args: &[
         PROJECT_ARG,
         QUERY_DATASET_ARG,
+        LOCAL_SOURCE_ARG,
         QUERY_BOUNDARY_ARG,
         QUERY_GEOMETRY_OUT_ARG,
         QUERY_LIMIT_ARG,
@@ -530,8 +555,8 @@ pub static QUERY_COMMAND: Command = Command {
             runnable: false,
         },
         Example {
-            command: "ds data project-cache query --project gisagara --dataset village_boundaries --boundary ./district.geojson --limit 500 --geometry-out ./villages-1.geojson --output json",
-            note: "Export the first bounded page of held villages.",
+            command: "ds data project-cache query --project gisagara --local-source ./source.json --dataset <source-id> --boundary ./area.geojson --geometry-out ./footprints.geojson --output json",
+            note: "Read one page from the exact pinned local source's completed room without upstream access.",
             runnable: false,
         },
     ],
@@ -730,7 +755,6 @@ fn resolve_explicit(
 pub fn run_status(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let lane = inputs.require("lane")?;
     let project = inputs.require("project")?;
-    let explicit = explicit_dataset(inputs)?;
     // A local read of the durable providers: no network, no token output.
     let Some(identity) = ds_cli_auth::probe_headless_identity_for_named_project(lane)? else {
         return Err(Failure::conflict(
@@ -750,7 +774,40 @@ pub fn run_status(inputs: &Inputs, _context: &Context) -> Result<Value, Failure>
         ));
     }
     let root = holdings_root()?;
-    let rooms = held_rooms(&root, &scope)?;
+    local_source::dispatch(
+        inputs,
+        &scope,
+        |entry| {
+            let fence = ds_cli_auth::capture_layer_scope_fence_for_project(lane, project)?;
+            local_source::status(
+                &root,
+                &scope,
+                lane,
+                &entry,
+                inputs.switch("summary"),
+                || {
+                    ds_cli_auth::verify_layer_scope_fence_for_project(
+                        lane,
+                        &fence,
+                        &scope.principal,
+                        project,
+                    )
+                },
+            )
+        },
+        || catalog_status(inputs, &root, &scope, lane, project),
+    )
+}
+
+fn catalog_status(
+    inputs: &Inputs,
+    root: &Path,
+    scope: &Scope,
+    lane: &str,
+    project: &str,
+) -> Result<Value, Failure> {
+    let explicit = explicit_dataset(inputs)?;
+    let rooms = held_rooms(root, scope)?;
     let (declared, resources, catalog) = match catalogue(lane, project) {
         Ok(resources) => {
             let declared = ds_project_data::declared(&resources).map_err(refused)?;
@@ -994,24 +1051,72 @@ pub fn run_query(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> 
         )
         .remedy(HEADLESS_SIGNED_OUT.remedy));
     };
-    let resources = catalogue(lane, project)?;
-    let resolved = ds_project_data::declared::resolve(&resources, &explicit)
-        .map_err(refused)?
-        .ok_or_else(|| {
-            Failure::invalid(
-                INVALID_SCOPE.code,
-                format!("{explicit} is not a canonical dataset of this project"),
-            )
-            .remedy(INVALID_SCOPE.remedy)
-        })?;
     let scope = Scope {
         principal: identity.uid().to_owned(),
         project: project.to_owned(),
     };
-    let dataset_key = policy::dataset_key(&scope, &resolved.dataset);
+    let (resolved, fence) = local_source::dispatch(
+        inputs,
+        &scope,
+        |entry| {
+            let fence = ds_cli_auth::capture_layer_scope_fence_for_project(lane, project)?;
+            Ok((entry, Some(fence)))
+        },
+        || {
+            let resources = catalogue(lane, project)?;
+            ds_project_data::declared::resolve(&resources, &explicit)
+                .map_err(refused)?
+                .ok_or_else(|| {
+                    Failure::invalid(
+                        INVALID_SCOPE.code,
+                        format!("{explicit} is not a canonical dataset of this project"),
+                    )
+                    .remedy(INVALID_SCOPE.remedy)
+                })
+                .map(|entry| (entry, None))
+        },
+    )?;
     let root = holdings_root()?;
-    let page = ds_layer_store::project_dataset_cache::execute_at(
+    let mut answer = query_dataset(
         &root,
+        &scope,
+        &resolved.dataset,
+        &boundary,
+        &out,
+        (limit, cursor, generation),
+        || match &fence {
+            Some(fence) => ds_cli_auth::verify_layer_scope_fence_for_project(
+                lane,
+                fence,
+                &scope.principal,
+                project,
+            ),
+            None => Ok(()),
+        },
+    )?;
+    if matches!(
+        resolved.source,
+        ds_project_data::DeclaredSource::LocalAnalytical(_)
+    ) {
+        answer["selected_source"] = local_source::metadata(&resolved);
+    }
+    Ok(answer)
+}
+
+fn query_dataset(
+    root: &Path,
+    scope: &Scope,
+    dataset: &Dataset,
+    boundary: &Value,
+    out: &Path,
+    pagination: (u64, Option<i64>, Option<i64>),
+    mut verify_scope: impl FnMut() -> Result<(), Failure>,
+) -> Result<Value, Failure> {
+    verify_scope()?;
+    let (limit, cursor, generation) = pagination;
+    let dataset_key = policy::dataset_key(scope, dataset);
+    let page = ds_layer_store::project_dataset_cache::execute_at(
+        root,
         json!({
             "action": "query",
             "dataset_key": dataset_key,
@@ -1028,7 +1133,8 @@ pub fn run_query(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> 
         Failure::unavailable(STORE_FAILED.code, "project room returned no feature array")
             .remedy(STORE_FAILED.remedy)
     })?;
-    crate::foundation::write_geometry(&out, features)?;
+    verify_scope()?;
+    crate::foundation::write_geometry(out, features)?;
     let truncated = page["truncated"] == true;
     let next = if truncated {
         json!({
@@ -1039,9 +1145,9 @@ pub fn run_query(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> 
         Value::Null
     };
     Ok(json!({
-        "project": project,
+        "project": scope.project,
         "dataset_id": page["dataset_id"],
-        "layer": resolved.dataset.parameters.get("layer"),
+        "layer": dataset.parameters.get("layer"),
         "source_version": page["source_version"],
         "boundary": {"bounds": ds_command_kernel::reference_cache::area_bounds(&boundary).map_err(|error| Failure::internal(STORE_FAILED.code, error))?},
         "rows_returned": features.len(),
@@ -1348,19 +1454,99 @@ fn local_mv_route_extents(path: &str) -> Result<(Vec<policy::Extent>, Value), Fa
 pub fn run_seed(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let lane = inputs.require("lane")?;
     let project = inputs.require("project")?;
-    let explicit = explicit_dataset(inputs)?;
-    let refresh = inputs.switch("refresh");
+    explicit_dataset(inputs)?;
+    let identity = ds_cli_auth::headless_identity_for_named_project(lane)?;
+    let selected = local_source::dispatch(
+        inputs,
+        &Scope {
+            principal: identity.uid().to_owned(),
+            project: project.to_owned(),
+        },
+        |entry| Ok(Some(entry)),
+        || Ok(None),
+    )?;
     let requested = ds_cli_auth::TransformerSet::new(Vec::<String>::new())
         .map_err(|error| Failure::invalid(INVALID_SCOPE.code, error.to_string()))?;
     let inventory = ds_cli_auth::transformer_inventory_for_project(lane, project, &requested)?;
-    let project = inventory.project_id().to_owned();
+    if inventory.identity() != &identity {
+        return Err(Failure::conflict(
+            AUTH_CONTEXT_MISMATCH.code,
+            "the native identity changed while authorizing the selected source's project",
+        ));
+    }
     let scope = Scope {
         principal: inventory.identity().uid().to_owned(),
-        project: project.clone(),
+        project: inventory.project_id().to_owned(),
     };
+    match selected {
+        Some(entry) => local_seed(inputs, &inventory, &scope, &entry),
+        None => catalog_seed(inputs, &inventory, &scope),
+    }
+}
+
+fn local_seed(
+    inputs: &Inputs,
+    inventory: &ds_cli_auth::HeadlessNamedProject<ds_cli_auth::TransformerInventory>,
+    scope: &Scope,
+    entry: &ds_project_data::declared::Declared,
+) -> Result<Value, Failure> {
+    let lane = inputs.require("lane")?;
+    let mut extents = design_extents(lane, inventory)?;
+    let transformer_extent_count = extents.len();
+    let (mut mv_extents, mut mv_sources) =
+        mv_route_extents(lane, &scope.project, inventory.identity())?;
+    if let Some(path) = inputs.value("mv-model") {
+        let (draft, source) = local_mv_route_extents(path)?;
+        mv_extents.extend(draft);
+        mv_sources.push(source);
+    }
+    let mv_extent_count = mv_extents.len();
+    extents.extend(mv_extents);
+    if extents.len() > policy::MAX_EXTENTS {
+        return Err(Failure::invalid(
+            INVALID_SCOPE.code,
+            "combined transformer and MV route coverage exceeds 5,000 acquisition extents",
+        ));
+    }
+    if extents.iter().all(|extent| extent.bounds.is_none()) {
+        return Err(Failure::conflict(
+            NO_DESIGN_EXTENT.code,
+            "no active transformer design or governed MV route has an extent to derive coverage from",
+        )
+        .remedy(NO_DESIGN_EXTENT.remedy));
+    }
+    let root = holdings_root()?;
+    let refresh = inputs.switch("refresh");
+    let fence = ds_cli_auth::capture_layer_scope_fence_for_project(lane, &scope.project)?;
+    let row = local_source::seed(&root, scope, entry, &extents, refresh, || {
+        ds_cli_auth::verify_layer_scope_fence_for_project(
+            lane,
+            &fence,
+            &scope.principal,
+            &scope.project,
+        )
+    })?;
+    let complete = row["covered"] == true;
+    Ok(
+        json!({"lane":lane,"project":scope.project,"datasets":[row],"seeded":1,
+        "refresh":refresh,"failed":usize::from(!complete),"complete":complete,
+        "transformer_extent_count":transformer_extent_count,"mv_route_extent_count":mv_extent_count,
+        "mv_sources":mv_sources}),
+    )
+}
+
+fn catalog_seed(
+    inputs: &Inputs,
+    inventory: &ds_cli_auth::HeadlessNamedProject<ds_cli_auth::TransformerInventory>,
+    scope: &Scope,
+) -> Result<Value, Failure> {
+    let lane = inputs.require("lane")?;
+    let project = inventory.project_id().to_owned();
+    let explicit = explicit_dataset(inputs)?;
+    let refresh = inputs.switch("refresh");
     let root = holdings_root()?;
     let resources = catalogue(lane, &project)?;
-    let rooms = held_rooms(&root, &scope)?;
+    let rooms = held_rooms(&root, scope)?;
     let (explicit, answered_as) = resolve_explicit(&explicit, &resources, &rooms)?;
     let declared = ds_project_data::declared(&resources).map_err(refused)?;
     let held: Vec<SeedCandidate> = rooms
@@ -1381,7 +1567,7 @@ pub fn run_seed(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         })
         .remedy(INVALID_SCOPE.remedy)
     })?;
-    let mut extents = design_extents(lane, &inventory)?;
+    let mut extents = design_extents(lane, inventory)?;
     let transformer_extent_count = extents.len();
     let (mut mv_extents, mut mv_sources) = mv_route_extents(lane, &project, inventory.identity())?;
     if let Some(path) = inputs.value("mv-model") {
@@ -1441,7 +1627,7 @@ pub fn run_seed(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         let settled = if refresh {
             ds_project_data::refresh(
                 &root,
-                &scope,
+                scope,
                 &entry.dataset,
                 &entry.source,
                 &policy,
@@ -1452,7 +1638,7 @@ pub fn run_seed(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         } else {
             ds_project_data::ensure(
                 &root,
-                &scope,
+                scope,
                 &entry.dataset,
                 &entry.source,
                 &policy,

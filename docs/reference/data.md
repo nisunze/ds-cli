@@ -222,8 +222,48 @@ holdings — no paired Desktop. The holdings live under the shared
 geographic data root (`rw.datasolutions.desktop.shared`, the same root the
 desktop uses), so a desktop signed in as the same account on the same machine
 reads the rooms a headless seed filled. The orchestration is
-`ds-web/crates/ds-project-data` (shared with the desktop shell); every decision
+`ds-command-kernel/crates/ds-project-data` (shared with the desktop shell); every decision
 is `ds-command-kernel`'s.
+
+### Select an existing local analytical project asset
+
+`--local-source <manifest.json>` on `seed`, `status` and `query` selects the
+native `ds.local-analytical-source/v1` contract owned by `ds-project-data`.
+The manifest names one exact project/asset revision, actual footprint or
+contour origin, producer-source revision/digest, canonical native GeoParquet
+SHA-256 and producer-completed coverage. It selects an existing analytical
+input; these commands do not generate contours, acquire publisher footprints,
+publish shared assets or infer city coverage.
+
+```bash
+ds data project-cache seed --project <id> --local-source ./source.json --yes --output json
+ds data project-cache status --project <id> --local-source ./source.json --summary --output json
+ds data project-cache query --project <id> --local-source ./source.json \
+  --dataset <source-id-returned-by-status> --boundary ./area.geojson \
+  --geometry-out ./held-footprints.geojson --output json
+```
+
+Local-source selection reads no reference catalogue, cloud geographic provider
+or reference bundle. The native source owner verifies and retains the original
+analytical input only when coverage is missing, indexes it once, deduplicates
+stable rows and commits only completed cells. Warm coverage needs no original
+file. Expansion patches only gaps from the retained index; `--refresh` explicitly
+repeats its local subsets. Completed empty footprint/flat-contour inputs remain
+complete. Selecting another revision cannot inherit the old room's completion.
+
+`status` and `query` read the current protected native identity's exact retained
+project/revision room offline; neither reads the original input, source index,
+upstream freshness or a saved project selection. Query checks the captured
+credential scope again before publishing GeoJSON. Missing holdings or coverage
+refuse rather than acquiring. An accompanying `--dataset` must match the native
+source id; `query` requires that id.
+
+`seed` still authorizes the explicitly named project and captures design/MV
+coverage through the existing native gateway. Native auth retains no independent
+explicit-project membership context, so offline initial seed or geometry
+expansion is not admitted by this CLI slice. A signed-in identity and manifest
+project string do not grant membership. The packaged native profile remains
+required; `native_profile_not_configured` is never bypassed.
 
 Two families of dataset, seeded differently:
 
