@@ -46,6 +46,18 @@ receipt names the captured revision/history and artifact digest/length. Explicit
 `model import-external` on that artifact creates an independent working copy.
 Ordinary `profile open` continues to resolve a machine working copy first.
 
+Command emission also admits the native package-side section-binding effects.
+When an engine delta splits a PLS section, only the child retaining its ordered
+support-path origin inherits the exact native section number/group-slot rows.
+Both characterized native sag/display cache rows retire; the other child gains
+no invented identity. `apply`, `apply-batch`, typed mutations and spotting
+receipt application use the same Exchange owner, including dry runs. A
+`pls_section_identity_unresolved` refusal retains the native reason and evidence
+in `detail`, leaves the source unchanged and writes no output. Commands without
+split deltas invent no lineage; genuine deletion retains the ordinary package
+retirement rule. No source workspace, library seed or engineering result is
+rewritten by this metadata admission.
+
 Typed mutations, command-envelope apply, spotting receipt applies and
 visualization previews retain the source package's exact library pins and
 element needs, assets and exchange bindings. The native emitter verifies the

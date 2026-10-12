@@ -102,6 +102,7 @@ package path, package revision, byte length and SHA-256.",
         },
     ],
     refusals: &[
+        package::PLS_SECTION_IDENTITY_UNRESOLVED,
         Refusal {
             code: "model_not_found",
             when: "the source path does not exist or is not a file",
@@ -318,6 +319,11 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         let simulation = session
             .simulate_command(&envelope)
             .map_err(apply::map_command_error)?;
+        package::admit_command_bindings(
+            &model.exchange_bindings,
+            std::slice::from_ref(&simulation.delta),
+            false,
+        )?;
         return Ok(json!({
             "verification_level": VERIFICATION_LEVEL,
             "dry_run": true,
@@ -334,6 +340,11 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let outcome = session
         .apply_command(envelope)
         .map_err(apply::map_command_error)?;
+    let exchange_bindings = package::admit_command_bindings(
+        &model.exchange_bindings,
+        std::slice::from_ref(&outcome.delta),
+        outcome.idempotent_replay,
+    )?;
     let checkpoint = session
         .save_checkpoint()
         .map_err(apply::map_command_error)?;
@@ -345,7 +356,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         library_pins: model.manifest.model.library_pins.clone(),
         library_needs: model.manifest.model.library_needs.clone(),
         assets: model.assets.clone(),
-        exchange_bindings: model.exchange_bindings.clone(),
+        exchange_bindings,
     };
     let (package_plan, _report) =
         dsgrid::emit(&checkpoint.snapshot, &options).map_err(|error| {

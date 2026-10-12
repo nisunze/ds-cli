@@ -83,6 +83,7 @@ pub const ACCOUNT_ARG: Arg = Arg::value(
 /// The declared refusals every typed mutation shares, spliced into each
 /// command's own list so the vocabulary is written once.
 pub const REFUSALS: &[Refusal] = &[
+    package::PLS_SECTION_IDENTITY_UNRESOLVED,
     package::PROTECTED_MODEL,
     Refusal {
         code: "target_required",
@@ -394,6 +395,16 @@ pub fn run(
     let outcome: TransactionOutcome = session
         .apply_transaction_at_head(head.clone(), commands)
         .map_err(map_command_error)?;
+    let deltas = outcome
+        .outcomes
+        .iter()
+        .map(|command| command.delta.clone())
+        .collect::<Vec<_>>();
+    let exchange_bindings = package::admit_command_bindings(
+        &package.exchange_bindings,
+        &deltas,
+        outcome.idempotent_replay,
+    )?;
 
     let resulting = outcome.final_revision.revision_id.clone();
     let touched = touched_counts(&outcome);
@@ -491,7 +502,7 @@ pub fn run(
         library_pins: package.manifest.model.library_pins.clone(),
         library_needs: package.manifest.model.library_needs.clone(),
         assets: package.assets.clone(),
-        exchange_bindings: package.exchange_bindings.clone(),
+        exchange_bindings,
     };
     let (plan, _report) = dsgrid::emit(&checkpoint.snapshot, &options).map_err(|error| {
         let detail = if unresolved_count > 0 {

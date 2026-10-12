@@ -28,7 +28,7 @@ use ds_grid_model::tables::{
     TensionSectionRow, TensionSectionSupportRow, TerrainPointRow, WeatherStateRow,
     WindDirectionPolicy,
 };
-use ds_grid_model::{EntityId, GridModelSnapshot, ModelCrs, SpottingSettings};
+use ds_grid_model::{EntityId, ExchangeBindingRow, GridModelSnapshot, ModelCrs, SpottingSettings};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
@@ -453,6 +453,490 @@ fn write_model(path: &Path) {
     )
     .unwrap();
     std::fs::write(path, bytes).unwrap();
+}
+
+/// Four physical wires use two native section groups: three phase slots and
+/// one independent slot. The middle suspension is not a section boundary until
+/// the native retype changes its attachment duty.
+fn write_binding_model(path: &Path, bindings: bool) {
+    let mut snapshot = spotting_model();
+    for point in &mut snapshot.attachment_points {
+        point.dead_end = Some(point.structure_type_id.as_str() == "st-heavy");
+    }
+    for name in ["tangent", "heavy"] {
+        let prototype = snapshot
+            .attachment_points
+            .iter()
+            .find(|point| point.id.as_str() == format!("ap-{name}"))
+            .unwrap()
+            .clone();
+        for slot in 1..=3 {
+            let mut point = prototype.clone();
+            point.id = id(&format!("ap-{name}-{slot}"));
+            point.slot = slot;
+            snapshot.attachment_points.push(point);
+        }
+    }
+    let mut same_class = snapshot
+        .structure_types
+        .iter()
+        .find(|row| row.id.as_str() == "st-tangent")
+        .unwrap()
+        .clone();
+    same_class.id = id("st-tangent-copy");
+    same_class.engineering_name = "other tangent pole".into();
+    snapshot.structure_types.push(same_class);
+    let points = snapshot
+        .attachment_points
+        .iter()
+        .filter(|row| row.structure_type_id.as_str() == "st-tangent")
+        .cloned()
+        .collect::<Vec<_>>();
+    for mut point in points {
+        point.id = id(&format!("{}-copy", point.id.as_str()));
+        point.structure_type_id = id("st-tangent-copy");
+        snapshot.attachment_points.push(point);
+    }
+    let mut middle = existing_structure("str-middle", LINE_M / 2.0);
+    middle.structure_type_id = id("st-tangent");
+    snapshot.structures.push(middle);
+    snapshot.tension_section_supports[1].sequence = 2;
+    snapshot
+        .tension_section_supports
+        .push(TensionSectionSupportRow {
+            section_id: id("ts-basis"),
+            sequence: 1,
+            structure_id: id("str-middle"),
+            attachment_point_id: Some(id("ap-tangent")),
+            insulator_model: None,
+        });
+    let section = snapshot.tension_sections[0].clone();
+    for slot in 1..=3 {
+        let mut row = section.clone();
+        row.id = id(&format!("ts-basis-{slot}"));
+        snapshot.tension_sections.push(row.clone());
+        for (sequence, structure) in ["str-start", "str-end"].into_iter().enumerate() {
+            snapshot
+                .tension_section_supports
+                .push(TensionSectionSupportRow {
+                    section_id: row.id.clone(),
+                    sequence: sequence as u32 * 2,
+                    structure_id: id(structure),
+                    attachment_point_id: Some(id(&format!("ap-heavy-{slot}"))),
+                    insulator_model: None,
+                });
+        }
+        snapshot
+            .tension_section_supports
+            .push(TensionSectionSupportRow {
+                section_id: row.id,
+                sequence: 1,
+                structure_id: id("str-middle"),
+                attachment_point_id: Some(id(&format!("ap-tangent-{slot}"))),
+                insulator_model: None,
+            });
+    }
+    let mut rows = Vec::new();
+    if bindings {
+        for slot in 0..=3 {
+            let entity = if slot == 0 {
+                "ts-basis".to_owned()
+            } else {
+                format!("ts-basis-{slot}")
+            };
+            let group = if slot == 3 { 8 } else { 7 };
+            let group_slot = if slot == 3 { 0 } else { slot };
+            let mut row = |namespace: &str, key: String| {
+                rows.push(ExchangeBindingRow {
+                    entity_id: id(&entity),
+                    system: "pls_cadd".into(),
+                    namespace: namespace.into(),
+                    key,
+                    raw: None,
+                })
+            };
+            row("section_group_slot", format!("{group}:{group_slot}"));
+            if slot == 0 || slot == 3 {
+                row("section_number", group.to_string());
+            }
+            row("section_native_sag_token_1", "146.782".into());
+            row("section_display_catenary_constant_m", "530.801".into());
+        }
+    }
+    let bytes = pack(
+        &snapshot,
+        &PackOptions {
+            model_id: id("binding-model"),
+            model_revision: 31,
+            presentation: Default::default(),
+            coordinate_system: ModelCrs::new("EPSG:32735").unwrap(),
+            library_pins: vec![],
+            library_needs: vec![],
+            assets: ["res-catalog", "res-tangent", "res-heavy"]
+                .into_iter()
+                .map(|raw| AssetBytes {
+                    invariant_leaf: format!("{raw}.def"),
+                    bytes: resource_bytes(raw),
+                })
+                .collect(),
+            exchange_bindings: if bindings {
+                BTreeMap::from([("pls_cadd".into(), rows)])
+            } else {
+                BTreeMap::new()
+            },
+        },
+    )
+    .unwrap();
+    std::fs::write(path, bytes).unwrap();
+}
+
+fn prove_binding_split(path: &str, split: bool) {
+    use ds_grid_engine::{CommandEnvelope, GridCommand, GridSession};
+    use ds_grid_exchange::carry_forward_pls_section_bindings;
+    for bound in [true, false] {
+        let target = if split { "st-heavy" } else { "st-tangent-copy" };
+        let dir = tempfile::tempdir().unwrap();
+        let model = dir.path().join("source.dsgrid");
+        let output = dir.path().join("result.dsgrid");
+        write_binding_model(&model, bound);
+        let original = std::fs::read(&model).unwrap();
+        let package = unpack(&original).unwrap();
+        let mut native = GridSession::open(package.snapshot.clone());
+        let envelope = CommandEnvelope::new(
+            "binding-split",
+            native.current_revision().revision_id.clone(),
+            GridCommand::RetypeStructure {
+                id: id("str-middle"),
+                structure_type_id: id(target),
+            },
+        );
+        let outcome = native.apply_command(envelope.clone()).unwrap();
+        assert_eq!(
+            outcome.delta.tension_section_splits.len(),
+            if split { 4 } else { 0 },
+            "actual native splitting command"
+        );
+        let mut expected_bindings = package.exchange_bindings.clone();
+        if let Some(rows) = expected_bindings.get_mut("pls_cadd") {
+            let report = carry_forward_pls_section_bindings(rows, &[outcome.delta]).unwrap();
+            assert_eq!(report.transfers.len(), if split { 6 } else { 0 });
+            assert_eq!(
+                report.invalidated_display_caches.len(),
+                if split { 8 } else { 0 }
+            );
+            assert_eq!(rows.len(), if split { 6 } else { 14 });
+        }
+        let checkpoint = native.save_checkpoint().unwrap();
+        let expected = pack(
+            &checkpoint.snapshot,
+            &PackOptions {
+                model_id: package.manifest.model.model_id.clone(),
+                model_revision: 32,
+                presentation: package.manifest.model.presentation.clone(),
+                coordinate_system: package.manifest.model.coordinate_system.clone(),
+                library_pins: package.manifest.model.library_pins.clone(),
+                library_needs: package.manifest.model.library_needs.clone(),
+                assets: package.assets.clone(),
+                exchange_bindings: expected_bindings,
+            },
+        )
+        .unwrap();
+        let commands = dir.path().join("commands.json");
+        let payload = if path == "batch" {
+            json!({"expected_revision": envelope.expected_revision, "commands": [{"command_id": envelope.command_id, "command": envelope.command}]})
+        } else {
+            serde_json::to_value(&envelope).unwrap()
+        };
+        std::fs::write(&commands, serde_json::to_vec(&payload).unwrap()).unwrap();
+        let mut args = match path {
+            "batch" => vec![
+                "dsgrid",
+                "apply-batch",
+                "--model",
+                text(&model),
+                "--batch",
+                text(&commands),
+            ],
+            "single" => vec![
+                "dsgrid",
+                "apply",
+                "--model",
+                text(&model),
+                "--envelope",
+                text(&commands),
+            ],
+            _ => vec![
+                "dsgrid",
+                "structure",
+                "retype",
+                "--package",
+                text(&model),
+                "--structure",
+                "str-middle",
+                "--type",
+                target,
+                "--yes",
+            ],
+        };
+        args.extend(["--out", text(&output), "--output", "json"]);
+        let (result, code) = common::json(&args);
+        assert_eq!(code, 0, "{path}: {result}");
+        assert_eq!(std::fs::read(&model).unwrap(), original);
+        let actual = std::fs::read(&output).unwrap();
+        assert!(
+            actual == expected,
+            "{path}: matched native checkpoint cadence; actual {}B/{} expected {}B/{}",
+            actual.len(),
+            sha256_hex(&actual),
+            expected.len(),
+            sha256_hex(&expected)
+        );
+    }
+}
+
+fn prove_binding_refusal(path: &str) {
+    for dry in [true, false] {
+        let dir = tempfile::tempdir().unwrap();
+        let model = dir.path().join("source.dsgrid");
+        let output = dir.path().join("result.dsgrid");
+        write_binding_model(&model, true);
+        let mut package = unpack(&std::fs::read(&model).unwrap()).unwrap();
+        package
+            .exchange_bindings
+            .get_mut("pls_cadd")
+            .unwrap()
+            .retain(|row| {
+                !(row.entity_id.as_str() == "ts-basis"
+                    && row.namespace == "section_native_sag_token_1")
+            });
+        let source = pack(
+            &package.snapshot,
+            &PackOptions {
+                model_id: package.manifest.model.model_id,
+                model_revision: 31,
+                presentation: package.manifest.model.presentation,
+                coordinate_system: package.manifest.model.coordinate_system,
+                library_pins: package.manifest.model.library_pins,
+                library_needs: package.manifest.model.library_needs,
+                assets: package.assets,
+                exchange_bindings: package.exchange_bindings,
+            },
+        )
+        .unwrap();
+        std::fs::write(&model, &source).unwrap();
+        let session = ds_grid_engine::GridSession::open(package.snapshot);
+        let envelope = ds_grid_engine::CommandEnvelope::new(
+            "binding-refusal",
+            session.current_revision().revision_id.clone(),
+            ds_grid_engine::GridCommand::RetypeStructure {
+                id: id("str-middle"),
+                structure_type_id: id("st-heavy"),
+            },
+        );
+        let commands = dir.path().join("commands.json");
+        std::fs::write(&commands, serde_json::to_vec(&if path == "batch" {
+                json!({"expected_revision": envelope.expected_revision, "commands": [{"command_id": envelope.command_id, "command": envelope.command}]})
+            } else { serde_json::to_value(envelope).unwrap() }).unwrap()).unwrap();
+        let mut args = match path {
+            "batch" => vec![
+                "dsgrid",
+                "apply-batch",
+                "--model",
+                text(&model),
+                "--batch",
+                text(&commands),
+            ],
+            "single" => vec![
+                "dsgrid",
+                "apply",
+                "--model",
+                text(&model),
+                "--envelope",
+                text(&commands),
+            ],
+            _ => vec![
+                "dsgrid",
+                "structure",
+                "retype",
+                "--package",
+                text(&model),
+                "--structure",
+                "str-middle",
+                "--type",
+                "st-heavy",
+            ],
+        };
+        args.extend(["--out", text(&output), "--output", "json"]);
+        if dry {
+            args.push("--dry-run");
+        } else if path == "typed" {
+            args.push("--yes");
+        }
+        let (result, code) = common::json(&args);
+        assert_ne!(code, 0, "{path}: {result}");
+        assert_eq!(
+            result["error"]["code"], "pls_section_identity_unresolved",
+            "{path}: {result}"
+        );
+        assert_eq!(
+            result["error"]["detail"]["reason"],
+            "incomplete_native_display_cache"
+        );
+        assert!(!output.exists());
+        assert_eq!(std::fs::read(&model).unwrap(), source);
+    }
+}
+
+#[test]
+fn binding_emission_batch_split_matches_native_owner_exactly() {
+    prove_binding_split("batch", true);
+}
+
+#[test]
+fn binding_emission_batch_refuses_incomplete_cache_before_dry_run_or_write() {
+    prove_binding_refusal("batch");
+}
+
+#[test]
+fn binding_emission_single_split_matches_native_owner_exactly() {
+    prove_binding_split("single", true);
+}
+
+#[test]
+fn binding_emission_single_refuses_incomplete_cache_before_dry_run_or_write() {
+    prove_binding_refusal("single");
+}
+
+#[test]
+fn binding_emission_typed_split_matches_native_owner_exactly() {
+    prove_binding_split("typed", true);
+}
+
+#[test]
+fn binding_emission_typed_refuses_incomplete_cache_before_dry_run_or_write() {
+    prove_binding_refusal("typed");
+}
+
+#[test]
+fn binding_emission_same_class_preserves_every_binding_without_split_inference() {
+    for path in ["batch", "single", "typed"] {
+        prove_binding_split(path, false);
+    }
+}
+
+#[test]
+fn binding_emission_spotting_receipt_matches_native_topology_and_retirement() {
+    use ds_grid_engine::{
+        CommandEnvelope, GridCommand, GridSession, SpottingLayoutApplyRequest,
+        spotting_layout_application, spotting_layout_command_id,
+    };
+    use ds_grid_exchange::carry_forward_pls_section_bindings;
+    let dir = tempfile::tempdir().unwrap();
+    let model = dir.path().join("source.dsgrid");
+    write_model(&model);
+    let mut package = unpack(&std::fs::read(&model).unwrap()).unwrap();
+    package.exchange_bindings.insert(
+        "pls_cadd".into(),
+        vec![
+            ExchangeBindingRow {
+                entity_id: id("ts-basis"),
+                system: "pls_cadd".into(),
+                namespace: "section_number".into(),
+                key: "42".into(),
+                raw: None,
+            },
+            ExchangeBindingRow {
+                entity_id: id("ts-basis"),
+                system: "pls_cadd".into(),
+                namespace: "section_group_slot".into(),
+                key: "42:0".into(),
+                raw: None,
+            },
+        ],
+    );
+    let source = pack(
+        &package.snapshot,
+        &PackOptions {
+            model_id: package.manifest.model.model_id.clone(),
+            model_revision: 1,
+            presentation: package.manifest.model.presentation.clone(),
+            coordinate_system: package.manifest.model.coordinate_system.clone(),
+            library_pins: package.manifest.model.library_pins.clone(),
+            library_needs: package.manifest.model.library_needs.clone(),
+            assets: package.assets.clone(),
+            exchange_bindings: package.exchange_bindings.clone(),
+        },
+    )
+    .unwrap();
+    std::fs::write(&model, &source).unwrap();
+    let planned = common::invoke(&[
+        "dsgrid",
+        "run",
+        "--model",
+        text(&model),
+        "--operation",
+        "plan_whole_model_spotting",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(planned.code, 0, "{}", planned.stdout);
+    let receipt: Value = serde_json::from_str(&planned.stdout).unwrap();
+    let plans = receipt["data"]["result"]["batch"]["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|item| serde_json::from_value(item["plan"].clone()).unwrap())
+        .collect();
+    let request = SpottingLayoutApplyRequest {
+        plans,
+        fixed_structure_retypes: Default::default(),
+        prior_warnings: Default::default(),
+        warning_band_half_width_m: None,
+    };
+    let mut native = GridSession::open(package.snapshot.clone());
+    let application =
+        spotting_layout_application(native.snapshot(), native.current_revision(), &request)
+            .unwrap();
+    let outcome = native
+        .apply_command(CommandEnvelope::new(
+            spotting_layout_command_id(&request),
+            native.current_revision().revision_id.clone(),
+            GridCommand::ApplySpottingLayouts { application },
+        ))
+        .unwrap();
+    let report = carry_forward_pls_section_bindings(
+        package.exchange_bindings.get_mut("pls_cadd").unwrap(),
+        &[outcome.delta.clone()],
+    )
+    .unwrap();
+    // Whole-layout replacement has its own native topology semantics. This
+    // caller must not infer a split or invent lineage when its delta has none.
+    assert!(outcome.delta.tension_section_splits.is_empty());
+    assert!(report.transfers.is_empty());
+    let checkpoint = native.save_checkpoint().unwrap();
+    let expected = pack(
+        &checkpoint.snapshot,
+        &PackOptions {
+            model_id: package.manifest.model.model_id,
+            model_revision: 2,
+            presentation: package.manifest.model.presentation,
+            coordinate_system: package.manifest.model.coordinate_system,
+            library_pins: package.manifest.model.library_pins,
+            library_needs: package.manifest.model.library_needs,
+            assets: package.assets,
+            exchange_bindings: package.exchange_bindings,
+        },
+    )
+    .unwrap();
+    let receipt_path = dir.path().join("receipt.json");
+    std::fs::write(&receipt_path, &planned.stdout).unwrap();
+    let output = dir.path().join("result.dsgrid");
+    let sha = sha256_hex(planned.stdout.as_bytes());
+    let (result, code) =
+        apply_receipt(text(&model), text(&receipt_path), &sha, Some(text(&output)));
+    assert_eq!(code, 0, "{result}");
+    assert_eq!(std::fs::read(&output).unwrap(), expected);
+    assert_eq!(std::fs::read(&model).unwrap(), source);
 }
 
 fn sha256_hex(bytes: &[u8]) -> String {

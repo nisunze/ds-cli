@@ -91,6 +91,7 @@ SHA-256. Receipt size is independent of entity count.",
     ],
     refusals: &[
         package::PROTECTED_MODEL,
+        package::PLS_SECTION_IDENTITY_UNRESOLVED,
         Refusal {
             code: "model_not_found",
             when: "the source path does not exist or is not a file",
@@ -773,6 +774,16 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
                 .collect(),
         )
         .map_err(map_command_error)?;
+    let deltas = outcome
+        .outcomes
+        .iter()
+        .map(|command| command.delta.clone())
+        .collect::<Vec<_>>();
+    let exchange_bindings = package::admit_command_bindings(
+        &package.exchange_bindings,
+        &deltas,
+        outcome.idempotent_replay,
+    )?;
     let checkpoint = session.save_checkpoint().map_err(map_command_error)?;
     if let Some((guard, _)) = &guard {
         guard
@@ -823,7 +834,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             library_pins: package.manifest.model.library_pins,
             library_needs: package.manifest.model.library_needs,
             assets: package.assets,
-            exchange_bindings: package.exchange_bindings,
+            exchange_bindings,
         };
         let (plan, _) = dsgrid::emit(&checkpoint.snapshot, &options).map_err(|error| {
             Failure::failed(

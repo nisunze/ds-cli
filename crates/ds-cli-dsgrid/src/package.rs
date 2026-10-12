@@ -6,6 +6,7 @@
 //! identical. A caller who learns `model_not_found` from `ds dsgrid inspect`
 //! must get the same code, with the same remedy, from `ds dsgrid validate`.
 
+use std::collections::BTreeMap;
 use std::io::Read;
 use std::path::Path;
 
@@ -26,6 +27,35 @@ pub const PROTECTED_MODEL: ds_cli_contract::spec::Refusal = ds_cli_contract::spe
     when: "the target is the automatic combined model in protected mode",
     remedy: "edit the owning submodel named in the refusal, then reconcile; combined models remain available for reads, status, tiling and reports",
 };
+
+/// The same characterized section-identity refusal exposed by the JSON host.
+pub const PLS_SECTION_IDENTITY_UNRESOLVED: ds_cli_contract::spec::Refusal =
+    ds_cli_contract::spec::Refusal {
+        code: "pls_section_identity_unresolved",
+        when: "the native section split cannot carry its PLS identities or paired display-cache evidence without guessing",
+        remedy: "inspect the native detail and repair the source binding group before retrying",
+    };
+
+/// Stage package metadata from the engine's ordered split deltas. Exchange
+/// owns all lineage/cache rules. Failure leaves the input bindings untouched;
+/// genuine deletion still retires bindings at the ordinary package emitter.
+pub(crate) fn admit_command_bindings(
+    current: &BTreeMap<String, Vec<ds_grid_model::ExchangeBindingRow>>,
+    deltas: &[ds_grid_engine::CommandDelta],
+    idempotent_replay: bool,
+) -> Result<BTreeMap<String, Vec<ds_grid_model::ExchangeBindingRow>>, Failure> {
+    let mut staged = current.clone();
+    if !idempotent_replay && let Some(bindings) = staged.get_mut("pls_cadd") {
+        ds_grid_exchange::carry_forward_pls_section_bindings(bindings, deltas).map_err(
+            |error| {
+                Failure::invalid(PLS_SECTION_IDENTITY_UNRESOLVED.code, error.to_string())
+                    .remedy(PLS_SECTION_IDENTITY_UNRESOLVED.remedy)
+                    .detail(json!(error))
+            },
+        )?;
+    }
+    Ok(staged)
+}
 
 pub fn authorize_write(package: &GridPackage, operation: &str) -> Result<(), Failure> {
     ds_grid_exchange::linked_models::authorize_package_write(package, operation, &[]).map_err(
@@ -195,4 +225,74 @@ pub fn parse_limit(raw: Option<&str>) -> Result<usize, Failure> {
         );
     }
     Ok(parsed)
+}
+
+#[cfg(test)]
+mod binding_tests {
+    use super::*;
+    use ds_grid_model::{EntityId, ExchangeBindingRow};
+
+    fn row(entity: &str, namespace: &str, key: &str) -> ExchangeBindingRow {
+        ExchangeBindingRow {
+            entity_id: EntityId::new(entity).unwrap(),
+            system: "pls_cadd".into(),
+            namespace: namespace.into(),
+            key: key.into(),
+            raw: None,
+        }
+    }
+    fn split(old: &str, origin: &str) -> ds_grid_engine::CommandDelta {
+        serde_json::from_value(json!({"command_id":format!("split-{old}"),"command_kind":"create_structure",
+            "affected_entities":[],"declared_write_tables":[],"changed_tables":[],"changed_dependency_tokens":[],"projection_refreshes":[],
+            "tension_section_splits":[{"retired_section_id":old,"retired_support_structure_ids":["str-a","str-b"],
+                "derived_sections":[{"section_id":origin,"support_structure_ids":["str-a","str-x"],"retains_ordered_path_origin":true},
+                {"section_id":format!("{old}-suffix"),"support_structure_ids":["str-x","str-b"],"retains_ordered_path_origin":false}]}]})).unwrap()
+    }
+    #[test]
+    fn command_binding_refusals_keep_exact_native_detail_and_source_atomicity() {
+        let cases = [
+            (
+                vec![row("old", "section_group_slot", "wrong")],
+                vec![split("old", "origin")],
+            ),
+            (
+                vec![
+                    row("old", "section_number", "7"),
+                    row("old", "section_group_slot", "7:0"),
+                    row("other-phase", "section_group_slot", "7:1"),
+                ],
+                vec![split("old", "origin")],
+            ),
+            // The first delta succeeds; the second collides. Admission still
+            // publishes none of the first delta's package metadata.
+            (
+                vec![
+                    row("old", "section_number", "1"),
+                    row("later", "section_number", "2"),
+                    row("occupied", "section_number", "9"),
+                ],
+                vec![split("old", "origin"), split("later", "occupied")],
+            ),
+        ];
+        for (rows, deltas) in cases {
+            let input = BTreeMap::from([
+                ("pls_cadd".into(), rows.clone()),
+                ("other_adapter".into(), Vec::new()),
+            ]);
+            let before = serde_json::to_vec(&input).unwrap();
+            let mut native_rows = rows;
+            let native =
+                ds_grid_exchange::carry_forward_pls_section_bindings(&mut native_rows, &deltas)
+                    .unwrap_err();
+            let refused = admit_command_bindings(&input, &deltas, false).unwrap_err();
+            assert_eq!(refused.code(), PLS_SECTION_IDENTITY_UNRESOLVED.code);
+            assert_eq!(refused.detail_value(), Some(&json!(native)));
+            assert_eq!(serde_json::to_vec(&input).unwrap(), before);
+            assert_eq!(
+                admit_command_bindings(&input, &deltas, true).unwrap(),
+                input,
+                "idempotent replay never repeats split effects"
+            );
+        }
+    }
 }

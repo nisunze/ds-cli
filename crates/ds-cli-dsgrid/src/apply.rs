@@ -76,6 +76,7 @@ also returns the new package path, package revision, byte length and SHA-256.",
     ],
     refusals: &[
         package::PROTECTED_MODEL,
+        package::PLS_SECTION_IDENTITY_UNRESOLVED,
         Refusal {
             code: "model_not_found",
             when: "the source path does not exist or is not a file",
@@ -212,7 +213,6 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let source_package_revision = package.manifest.model.model_revision;
     let coordinate_system = package.manifest.model.coordinate_system.clone();
     let assets = package.assets.clone();
-    let exchange_bindings = package.exchange_bindings.clone();
     let mut session = ds_grid_exchange::linked_models::open_session(&package);
     let current_revision = session.current_revision().revision_id.clone();
 
@@ -220,6 +220,11 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         let preview = session
             .simulate_command(&envelope)
             .map_err(map_command_error)?;
+        package::admit_command_bindings(
+            &package.exchange_bindings,
+            std::slice::from_ref(&preview.delta),
+            false,
+        )?;
         return Ok(json!({
             "source": {
                 "path": model_path,
@@ -247,6 +252,11 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let command_id = envelope.command_id.clone();
     let command_kind = envelope.command.command_kind().to_string();
     let outcome = session.apply_command(envelope).map_err(map_command_error)?;
+    let exchange_bindings = package::admit_command_bindings(
+        &package.exchange_bindings,
+        std::slice::from_ref(&outcome.delta),
+        outcome.idempotent_replay,
+    )?;
     let checkpoint = session.save_checkpoint().map_err(map_command_error)?;
 
     let options = PackOptions {
