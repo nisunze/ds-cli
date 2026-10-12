@@ -24,7 +24,7 @@ The coding agent re-reads both files between slices.
 
 ## Immediate printing fast path (owner, 2026-10-12)
 
-These reproduced production reports precede the held Profile campaign. Codex
+These reproduced production reports are the active printing scope. Codex
 implements and proves them directly; Claude is unavailable. Exact owner errors,
 source traces and acceptance live in [BUG-EVIDENCE.md](BUG-EVIDENCE.md#immediate-printing-fast-path-owner-2026-10-12).
 Finish one coherent owning slice, commit and push `run`, then delete its row and
@@ -38,9 +38,9 @@ evidence after actual acceptance. No completed-work archive or feedback filing.
 | Front Matter previews for MV and applicable LV | Governed layout catalogue and native preview | Native categories/subjects, rendered front matter, CLI composition retained |
 | Missing analysis SHA-256 header | Native analysis transport producer and readers | Exact response digest, mismatch refusal, all supported Linux printing preview pages with timings |
 
-Keep the held pick-search and saved-local selection patches, their pinned
-dependencies, foreign edits and live coherent Profile pair intact while this
-printing fast path runs. Native local builds only; no remote CI or Cloud Build.
+Preserve held pick-search and saved-local selection patches, pinned
+dependencies and foreign edits. The owner accepts current DS Grid speed and
+CLI-first operation; its dedicated optimization campaign is closed. Native local builds only; no remote CI or Cloud Build.
 
 ## Owner rulings that apply
 
@@ -88,109 +88,6 @@ Once the slices above have landed:
 
 The owner puts requests here. Related OPEN.md and OPEN-X.md work is grouped
 below (A–D, moved 2026-10-07) so it is fixed together with these items.
-
-### 4. Swift editing: retyping one structure, a range or a selection must feel instant
-
-**Owner:** a retype takes far too long. Retype one, retype a range, retype the
-selection and similar edits must be fluid, or the field team will not use
-editing. The owner suspects the whole model is recomputed on every edit; the
-trace below confirms it.
-
-**Measured** on ds-server, 7 October:
-
-- Builds: debug, because it is the only `ds` that reads today's schema-5
-  packages. Installed canary 0.1.6 refuses them, so no release timing exists
-  yet.
-- Model: Nyamagabe MV Model 1, "2026-10-02 oracle reference copy" (stable-lane
-  copy `local-aad500c1e08847db`, revision 8, 1.4 MB, schema 4), structure 618.
-- Writes went to scratch packages only; no working copy changed.
-
-| Step | Time |
-| --- | --- |
-| CLI `dsgrid structure retype` dry run (any type; nothing written) | 6.0–6.2 s, 180 MB, one core |
-| CLI write 618 → `j-w-S255.012`, from the stored copy (schema 4) | 7.3 s |
-| CLI write 618 → `j-w-S325.014`, from a schema-5 package | 3.9 s |
-| `dsgrid validate` (open and validate only), schema 4 / schema 5 | 5.5 s / 1.9 s (`inspect` alone: 0.1 s) |
-| Whole-model `engineering_issue_layer` (the Desktop's analysis request) | 5.6 s |
-
-Current remaining latency boundary: three consecutive live native retypes of
-Nyamagabe structure 40 take 1,545 / 1,549 / 1,512 ms without calculation or
-Save. Preview is 28–37 ms, commit/session refresh 495–508 ms, native history
-observation 988–1,026 ms. Receipts:
-`ds-cli/out/stabilization/profile-controls/intentional-retype40-{first,second,third}.json`.
-The sub-0.5-second target remains unmet. Atomic localized work is the priority;
-RAM retention alone does not close the performance requirement. Instrument and
-reduce native apply/replay/session-state work without weakening revision fences.
-
-Terrain point edits still require interval segmentation and local
-calculation/station dependencies; dense segment splits/merges and identity
-reorders can require large changed array ranges.
-Full authored layout, comparison and cloning remain measurable costs despite
-retained route/ground inputs. Web/Desktop still need exact native calculated
-delta bindings and bounded display/analysis patches. Browser/peer calculation remains on its model worker; bind
-the native job owner there so picking and selection remain available while it
-runs. Matching installed Desktop/CLI artifacts and measured
-live editing/calculation acceptance remain outstanding. Changed-unit database
-Save, alignment membership and independent bounded terrain surfaces are required
-by [OPEN.md §14](OPEN.md#14-plan-and-profile-authoring) and the
-[transactional database contract](../../ds-network/docs/contracts/profile-transactional-database.md).
-Preserve exact history and publication fences, bounded native metrics and fresh
-engineering parity.
-
-**Trace: remaining whole-model work during edits.**
-
-1. **Desktop apply:** `GridProfileRetypePicker.svelte` →
-   `gridCommitStructureRetype` (`ds-web/src/lib/grid/session.ts:749`) applies
-   the edit in the worker, which is cheap.
-3. **Explicit calculation:** engineering calculation is intentional only
-   (owner clarification, 2026-10-07). Repeated edits accumulate in RAM;
-   neither idle time nor Save authorizes calculation. The explicit native
-   session refresh still rebuilds case election,
-   engineering marker assembly and layout across the Profile, and runs separate
-   design-case clearance work.
-   It returns the full scene and bounded issues for worker installation.
-   Localize those remaining stages and the remaining clearance work.
-4. **CLI path** (`ds-cli/crates/ds-cli-dsgrid/src/structure/retype.rs`,
-   `mutation.rs`):
-   - decode the whole package; schema-4 copies re-run the 4 → 5 migration and
-     its verification on every open;
-   - open a session;
-   - run `line_angles_by_structure` over every structure;
-   - apply, checkpoint, then re-emit the whole package with all its assets,
-     hash it and write it.
-
-**Patch direction, smallest first:**
-
-2. **Scope the recompute.** A retype touches one structure: recompute its
-   incident tension sections, those sections' structure usage and the
-   clearance of the adjacent spans. Reuse cached results elsewhere, keyed by
-   per-section or per-structure input digests (the engine already has a
-   per-revision `engineering_input_root`).
-3. **Retain unaffected Profile preparation.** Localize remaining case
-   transitions/election, engineering marker assembly and layout. Rebuild only
-   affected paint rows, with explicit downstream station-offset and global-axis
-   fences; retain fresh-scene parity and explicit unavailable evidence.
-4. **Intentional background calculation.** Explicitly requested analysis runs
-   scoped in the background without blocking another edit or opening Issues.
-   Report visibility does not schedule engineering work.
-6. **CLI fixes:**
-   - store a migrated working copy once in schema 5, using the existing
-     migration (no new bump);
-   - compute line angles only for the selected structures;
-7. **One path for batches.** Retype one, a range or a selection through the
-   same single transaction. Accumulate native affected scopes for a later
-   explicit section calculation, Refresh or Analyze.
-
-**Acceptance:** on this model, in a release build, retyping 618 shows the new
-authored type in well under 0.5 seconds, with no whole-model package round trip
-or implicit engineering work. Only intentional calculation updates usage;
-the scoped calculation must also meet the local latency requirement. Edits stay
-dirty until explicit Save; a draft that fails package validation never blocks
-the edit, and its issues stay pending until Save (owner, 2026-10-07). Recalculation reaches
-incident and adjacent tension sections and their affected supports, spans and
-bands, stopping propagation at affected tension-section ends during interaction.
-Wider sway/downstream propagation waits for reconciliation; whole-model analysis
-stays available on demand.
 
 ### 5. Bug evidence found during the trace
 
@@ -424,7 +321,7 @@ These entries share code with the stabilization items above. Fix each group in
 the same slices as its related item, so nothing is read or fixed twice. Owner
 decisions keep their **Input needed** and **Boundary**.
 
-### A. Profile editing, selection and docking (with §4, §11, §12 and BUG-EVIDENCE.md retype/closure)
+### A. Profile functional controls (with §11, §12 and BUG-EVIDENCE.md retype/closure)
 
 - **One Plan selection and independent two-way tracking** (owner, 2026-10-07): remove the non-working Profile lasso and its native contracts, `ds-grid-engine/src/profile_lasso.rs`/descriptor/pick-index hooks, WASM binding/tests, web overlay/binder/protocol and Profile-only adaptive-runner tests. Keep the Plan/map lasso, field/layer filters, Within/Intersects/Outside predicates and native composition. Audit shared `profile_hit`, `lasso.ts`, `lasso-run.ts` and `ds-canvas/src/selection.rs` consumers before deletion. Preserve Profile-click navigation to Plan; selecting a displayed element in Plan must navigate Profile. Expose independent "Plan follows Profile" and "Profile follows Plan" switches through the kernel/CLI, then render them. Reconcile the earlier `c28ee1a5` Outside implementation; the Plan predicate remains. Prove selection identity/revision isolation, both direction switches and removal of obsolete discovery/contracts.
 
@@ -432,11 +329,9 @@ decisions keep their **Input needed** and **Boundary**.
 
 - **Show loading, uplift and failures in Profile for the selected case, as PLS-CADD does** (owner, 2026-10-02; DS Grid compute track): a criterion-set/case (and weight-basis) selector drives the drawn `display_case` and a per-case `structure_usage_screening`; each structure gets a source-backed usage-% label (owner-defined colour bands are separated into [OPEN-X.md](OPEN-X.md#14-profile-display-and-supervised-editing)), uplift is marked from `uplift_case_present`/`uplift_failure`, and clearance violations are drawn at their station and elevation. Profile paints none of these today; only the selected structure's screening % shows. `profileAtlasSceneJson` accepts `display_case` but ds-web never sends it; `clearance_report` cannot run for one case (no case ids in `ClearanceReportOptions`) and its findings carry no scene coordinates; `conductor_spans[].clearance` follows the display case but is untyped and unpainted in ds-web.
 
-- Make selection, hover, range, drag, and cross-alignment switching responsive on a large real model; measure the slow path. Use Rust hit/pick/snap rules, with ground-point collision priority, a hover cursor, sensible overlap cycling, and free select/zoom in Plan and Profile. Prove popout fit stable on the live profile.
-
 - Keep one universal, resizable, flat Properties dock for Plan, Profile, and tables. Useful editable facts come first, immutable IDs last. Remove duplicate compact dialogs. Use a pen for edit context; show model name, revision, dirty/save/discard state only while editing. Model cloud-save belongs in the model menu; continuous working-head synchronization must not bump the intentional named version.
 
-- Move a structure instantly within legal station bounds, with a centered hitable slider and no filled ring. Warn before crossing a neighbor or moving an angle duty off the route angle; imported supports outside their alignment need explicit native findings and review, never silent snapping. Retype inline with current type selected and searchable assembly-first choices; the Profile source now shows exact native unresolved-attachment findings after an accepted draft retype, but repair controls and installed/live proof remain. Keep spotting/stringing revisions local to affected angle and tension intervals and terminate each spotting session cleanly.
+- Move a structure within legal station bounds, with a centered hitable slider and no filled ring. Warn before crossing a neighbor or moving an angle duty off the route angle; imported supports outside their alignment need explicit native findings and review, never silent snapping. Retype inline with current type selected and searchable assembly-first choices; the Profile source now shows exact native unresolved-attachment findings after an accepted draft retype, but repair controls and installed/live proof remain. Keep spotting/stringing revisions local to affected angle and tension intervals and terminate each spotting session cleanly.
 
 - Complete the CLI's revision-pinned Profile edit bridge for a full human/CLI edit cycle without inferring or overwriting the person's choice. Native camera/selection paths are source-tested. An incompatible retype yields exact unresolved attachments, but the CLI's package-backed copy cannot persist that invalid draft (`package_emit_failed`); wire the new pinned native draft checkpoint through the local catalogue while keeping strict export/publication gates. Keep cloud working revisions synchronized without a version bump during ordinary iterations; make bumping a version intentional, and never upload local-dev compute artifacts. Implement scoped proposals, explicit decision/checkpoint handling and an HTML modification-note asset; prove revision fences and refusal paths with fixtures. The human demonstration, chosen changes and review of the resulting notes are in [OPEN-X.md](OPEN-X.md#14-profile-display-and-supervised-editing).
 

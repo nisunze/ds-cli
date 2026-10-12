@@ -1,5 +1,13 @@
 # Profile display control authority
 
+## Current performance acceptance
+
+The owner accepts current DS Grid speed for CLI-first delivery (2026-10-12).
+The dedicated optimization campaign is closed; historical timings below are
+evidence, not an outstanding interactive-speed release gate. Authority,
+revision fences and functional control guarantees still apply. See the
+[owning acceptance](../../../ds-network/docs/contracts/profile-transactional-database.md#current-delivery-acceptance-owner-2026-10-12).
+
 `profile_display::DisplayState::patched` owns display validation and atomic
 patching. `profile_controls::groups` owns the declared grouping, label keys,
 initial section expansion, numeric values, limits and complete current request
