@@ -502,18 +502,19 @@ pub static RENDER: Command = Command {
     path: &["report", "layout", "render"],
     contract: 1,
     summary: "Print captured maps with collision and clipping diagnostics.",
-    purpose: "Render a ds.print-layout-export/v1 capture as PDF/PNG/SVG/JPEG. --preview returns one retained SVG file manifest under the explicitly named native account/project; no provider, freshness or publication reads. Delivery out_dir must be fresh. Schemas: report tasks --task render_print_layout; report layout schema.",
+    purpose: "Render a ds.print-layout-export/v1 capture as PDF/PNG/SVG/JPEG. --preview returns one retained SVG (default) or PDF file under the named native account/project; no provider, freshness or publication reads. Delivery out_dir must be fresh. Schemas: report tasks --task render_print_layout; report layout schema.",
     chapter: Chapter::Reports,
     effect: Effect::LocalFileWrite,
     authority: Authority::None,
     execution: Execution::Sync,
     args: &[REQUEST,
         Arg::switch("preview", "One inline captured page through the common native file-preview owner."),
+        Arg::value("preview-format","<svg|pdf>","Preview file media; requires --preview, default SVG.").choices(&["svg","pdf"]),
         Arg::value("preview-retention", "<24h|7d>", "Preview lifetime; requires --preview, default 24h.").choices(&["24h", "7d"]),
         Arg::value("project", "<exact-id>", "Required for --preview; namespace admitted by the restored native account, never source JSON."),
         LANE,
     ],
-    output: "Artifacts and bounded collision/clipping diagnostics. Preview returns page (common SVG file manifest), engine and preview_cache (original expiry/reused); no inline bytes. Mechanical checks are not visual approval.",
+    output: "Artifacts and bounded collision/clipping diagnostics. Preview returns page (common SVG/PDF file manifest), engine and preview_cache (original expiry/reused); no inline bytes. Mechanical checks are not visual approval.",
     examples: &[Example {
         command: "ds report layout render --request city-a3.json --output json",
         note: "Render a prepared city map; its request schema: ds report tasks --task render_print_layout.",
@@ -1301,7 +1302,7 @@ mod tests {
         );
         let front = &out["groups"][0]["roles"][0]["templates"][0];
         assert_eq!(front["location"]["kind"], "governed_standard");
-        assert_eq!(front["subject"], "mv_models");
+        assert_eq!(front["subject"], "layout");
         let mv = &out["groups"][1]["roles"][0];
         assert_eq!(mv["role"], "plan_profile");
         assert_eq!(mv["templates"].as_array().unwrap().len(), 1);

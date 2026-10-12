@@ -39,7 +39,7 @@ pub(crate) const REFUSALS: &[Refusal] = &[
     },
     Refusal {
         code: "report_result_invalid",
-        when: "the producer manifest or bytes differ from the requested SVG",
+        when: "the producer manifest or bytes differ from the requested page",
         remedy: "preserve the capture and install matching CLI/reporter artifacts",
     },
     Refusal {
@@ -70,7 +70,7 @@ pub(crate) const REFUSALS: &[Refusal] = &[
     Refusal {
         code: "print_preview_metadata_limit",
         when: "the retained diagnostics exceed the common metadata bound",
-        remedy: "narrow the captured page; never inline SVG bytes",
+        remedy: "narrow the captured page; never inline page bytes",
     },
     Refusal {
         code: "reporter_engine_missing",
@@ -109,9 +109,12 @@ pub(crate) fn preflight(inputs: &Inputs) -> Result<(), Failure> {
             )
             .remedy("pass the exact --project and --lane for this native account"));
         }
-    } else if inputs.value("preview-retention").is_some() || inputs.value("project").is_some() {
+    } else if inputs.value("preview-format").is_some()
+        || inputs.value("preview-retention").is_some()
+        || inputs.value("project").is_some()
+    {
         return Err(invalid(
-            "--preview-retention and --project require --preview for this local render command",
+            "--preview-format, --preview-retention and --project require --preview for this local render command",
         ));
     }
     Ok(())
@@ -154,12 +157,18 @@ pub(crate) fn run(inputs: &Inputs) -> Result<Value, Failure> {
             "Native preview account changed.",
         ));
     }
-    let answer = layout_preview::execute(
+    let format = inputs
+        .value("preview-format")
+        .map(|value| serde_json::from_value(json!(value)).map_err(invalid))
+        .transpose()?
+        .unwrap_or_default();
+    let answer = layout_preview::execute_format(
         &crate::project::export::CliEngine,
         &room,
         &capture,
         retention,
         &root.join("preview-scratch"),
+        format,
     )
     .map_err(host_failure)?;
     if ds_cli_auth::headless_identity_for_named_project(lane)? != identity {
@@ -208,6 +217,18 @@ mod tests {
         assert_eq!(preflight(&inputs).unwrap_err().code(), "project_required");
         let inputs = parse(&["--request", "unread.json", "--preview-retention", "7d"]);
         assert_eq!(preflight(&inputs).unwrap_err().code(), "printing_invalid");
+        let inputs = parse(&["--request", "unread.json", "--preview-format", "pdf"]);
+        assert_eq!(preflight(&inputs).unwrap_err().code(), "printing_invalid");
+        assert!(ds_cli_contract::args::parse(
+            &crate::layout::RENDER,
+            &[
+                "--request".into(),
+                "unread.json".into(),
+                "--preview-format".into(),
+                "png".into()
+            ]
+        )
+        .is_err());
         let inputs = parse(&[
             "--request",
             "unread.json",

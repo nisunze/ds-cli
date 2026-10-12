@@ -589,17 +589,26 @@ must match that context. The fixed renderer retains the exact authored page,
 geometry, text, source digest metadata, style documents and held renderer
 policy. Missing policy, multipage captures, page-file indirection and private
 page caches refuse instead of substituting defaults or acquiring inputs.
-The preview changes only delivery transport: it renders SVG into private
-scratch, verifies the producer's manifest and exact bytes, then removes the
-scratch. It leaves the request's delivery `out_dir` untouched.
+SVG is the default; `--preview-format pdf` selects a single PDF through the
+same fixed producer and common file owner. The native closed format choice
+joins the reuse key. It renders the chosen format into private scratch,
+verifies the producer's manifest and exact bytes, then removes the scratch.
+It leaves the request's delivery `out_dir` untouched.
 
 The result's `page` is the common file manifest, with `engine`, bounded
-`print_diagnostics` and `preview_cache`. No SVG bytes are embedded in the
+`print_diagnostics` and `preview_cache`. No SVG or PDF bytes are embedded in the
 producer response. Identical concurrent consumers render once; warm consumers
 verify the retained file without renderer, provider or freshness calls.
 `--preview-retention 24h|7d` chooses the original lifetime; reuse never extends
 it. Covers, naming pages, indices and overview pages each supply their own
 exact inline capture through this same entry, including across projects.
+Governed static pages may include the admitted `source` object with the exact
+standard document and project-scoped catalogue pins. The host hashes that
+source, validates its role/revision/content and captured-layout equality, then
+passes only the admitted rendering inputs to the producer. Static Cover,
+Naming, Index, Legend, Notes and Revisions consume no engineering inventory.
+Key map and key plan still require an explicit geographic capture. Desktop
+opens the same PDF artifact for visual checking before Download reads it.
 
 `ds mcp serve --exposure commands --profile printing` exposes all twelve layout
 commands together. The grid profile keeps its existing report-export workflow.
