@@ -3,6 +3,9 @@
 //! version increment or overwrite is inferred from a display name.
 use serde_json::{json, Value};
 
+#[path = "grid_model_management/saved.rs"]
+pub mod saved;
+
 fn text<'a>(value: &'a Value, key: &str) -> Option<&'a str> {
     value[key].as_str().filter(|s| !s.is_empty())
 }
@@ -127,7 +130,15 @@ pub fn evaluate(bytes: &[u8]) -> Result<String, String> {
     let result = match input["action"].as_str() {
         Some("project") => project(&input)?,
         Some("working_copy") => working_copy(&input),
-        _ => return Err("choose project or working_copy model facts".into()),
+        Some("saved_list" | "saved_open") => {
+            let request = serde_json::from_value(input)
+                .map_err(|_| "saved_model_request_invalid: invalid saved-local facts".to_owned())?;
+            serde_json::to_value(saved::evaluate(request).map_err(|error| error.to_string())?)
+                .map_err(|error| error.to_string())?
+        }
+        _ => {
+            return Err("choose project, working_copy, saved_list or saved_open model facts".into())
+        }
     };
     serde_json::to_string(&result).map_err(|e| e.to_string())
 }
