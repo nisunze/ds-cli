@@ -177,3 +177,52 @@ pub fn all_pages(
     })?;
     Ok(preview)
 }
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Action {
+    None,
+    Sample,
+    Start,
+    Read {
+        input_sha256: String,
+        page: Option<usize>,
+    },
+}
+
+/// One closed control policy shared by headless and paired preview doors.
+pub fn action(
+    has_layout: bool,
+    all: bool,
+    job: Option<&str>,
+    page: Option<usize>,
+    retention: bool,
+) -> Result<Action, mv::Refusal> {
+    let invalid = || {
+        refuse("request_mode_invalid","preview-job",
+        "Use --preview-layout with optional --preview-all/--preview-retention, or --preview-job with optional --preview-page.")
+    };
+    if let Some(job) = job {
+        if has_layout
+            || all
+            || retention
+            || !super::preview_progress::digest(job)
+            || page.is_some_and(|page| page == 0 || page > super::preview_progress::MAX_PAGES)
+        {
+            return Err(invalid());
+        }
+        return Ok(Action::Read {
+            input_sha256: job.into(),
+            page,
+        });
+    }
+    if page.is_some() || (!has_layout && (all || retention)) {
+        return Err(invalid());
+    }
+    Ok(if !has_layout {
+        Action::None
+    } else if all {
+        Action::Start
+    } else {
+        Action::Sample
+    })
+}

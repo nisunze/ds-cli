@@ -552,6 +552,10 @@ pub const CLASS_TABLE: &[(&str, Class)] = &[
     ("report_engine_identity_changed", Class::Failed),
     ("print_context_invalid", Class::Failed),
     ("project_dataset_store_failed", Class::Failed),
+    ("print_preview_artifact_unavailable", Class::Failed),
+    ("print_preview_artifact_expired", Class::Unavailable),
+    ("print_preview_metadata_limit", Class::Failed),
+    ("print_preview_job_capacity", Class::Unavailable),
 ];
 
 /// One sentence for a kernel refusal, from its code and params; the
@@ -2068,6 +2072,10 @@ mod tests {
         // Every code this crate raises, and the ones its adapters and the
         // holdings resolver raise, is classified — and never as internal.
         let host_codes = [
+            ("print_preview_artifact_unavailable", Class::Failed),
+            ("print_preview_artifact_expired", Class::Unavailable),
+            ("print_preview_metadata_limit", Class::Failed),
+            ("print_preview_job_capacity", Class::Unavailable),
             (crate::CODE_INPUTS_INVALID, Class::InvalidInput),
             ("print_context_unsupported", Class::InvalidInput),
             ("print_context_too_large", Class::InvalidInput),
