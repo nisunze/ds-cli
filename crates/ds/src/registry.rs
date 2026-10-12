@@ -3185,6 +3185,28 @@ static DESIGN_ENTRIES: &[Entry] = &[
         handler: ds_cli_design::preview::run_download_fetch,
         render: ds_cli_design::preview::render_download_fetch,
     },
+    Entry { command: &ds_cli_design::history_import::PREPARE, handler: ds_cli_design::history_import::prepare, render: ds_cli_design::history_import::render },
+    Entry { command: &ds_cli_design::history_import::PUBLISH, handler: ds_cli_design::history_import::publish, render: ds_cli_design::history_import::render },
+    Entry {
+        command: &ds_cli_design::version_catalog::CATALOG_COMMAND,
+        handler: ds_cli_design::version_catalog::catalog,
+        render: ds_cli_design::version_catalog::render,
+    },
+    Entry {
+        command: &ds_cli_design::version_catalog::REVISION_SHOW,
+        handler: ds_cli_design::version_catalog::show,
+        render: ds_cli_design::version_catalog::render,
+    },
+    Entry {
+        command: &ds_cli_design::version_catalog::REVISION_PUBLISH,
+        handler: ds_cli_design::version_catalog::publish,
+        render: ds_cli_design::version_catalog::render,
+    },
+    Entry {
+        command: &ds_cli_design::version_catalog::RENUMBER,
+        handler: ds_cli_design::version_catalog::renumber,
+        render: ds_cli_design::version_catalog::render,
+    },
     Entry {
         command: &ds_cli_design::versions::LIST,
         handler: ds_cli_design::versions::list,

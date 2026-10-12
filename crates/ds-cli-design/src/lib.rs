@@ -93,6 +93,8 @@ pub mod repair;
 pub mod selection;
 pub mod tag;
 pub mod transformer;
+pub mod history_import;
+pub mod version_catalog;
 pub mod versions;
 
 use ds_cli_contract::outcome::Failure;
@@ -209,6 +211,12 @@ pub static DOMAIN: Domain = Domain {
         &preview::BULK_PLAN,
         &preview::DOWNLOAD_PLAN,
         &preview::DOWNLOAD_FETCH,
+        &history_import::PREPARE,
+        &history_import::PUBLISH,
+        &version_catalog::CATALOG_COMMAND,
+        &version_catalog::REVISION_SHOW,
+        &version_catalog::REVISION_PUBLISH,
+        &version_catalog::RENUMBER,
         &versions::STATUS,
         &versions::LIST,
         &versions::SHOW,

@@ -1446,17 +1446,43 @@ refuses or storage fails are listed in the manifest and the command answers
 
 ### Governed design history
 
-`design.version` names one explicit project, kind and object: an LV transformer
-or MV project model. The server alone assigns governed `vN` identities; native Server and Web use
-shared Rust request planning and response validation. Creation snapshots saved
-server content, with an exact idempotency key, independently of an open map.
-LV comparisons use immutable snapshots; MV comparisons describe pinned content
-revision/digest/manifest lineage without claiming geometry comparison. Restore
-is LV-only and pins the source head before its fenced transaction.
+`design.version` names an explicit project and object. The LV catalog separates
+immutable identities from display numbers. `design version catalog --project ID
+--object TR` returns the catalog fence, stable `version_id` and exact
+`head_revision_id`. Existing `vN` references retain their original snapshots;
+new groups and revisions use opaque `vc_` and `vr_` identities. Display ordinal
+zero alone does not prove a baseline or its origin.
 
-Paired map version creation/listing have been retired. Playback and comparison
-rooms remain presentation adapters. Device-local snapshots are retained drafts,
-not governed history or queued publication work.
+`design version revision show --project ID --object TR --version ID --revision ID`
+reads metadata through Run. Add `--snapshot` explicitly to read immutable bytes
+through Bulk, verifying the exact UTF-8 snapshot digest and the server's
+playback grant. Metadata-only baselines cannot be painted. Paired map playback
+passes the same exact `--version` and `--revision`; retained `local-<digest>`
+drafts omit the revision and remain offline and read-only.
+
+`design version revision publish` captures saved working content through Bulk.
+It requires exact catalog/source fences, a reason, an idempotency key and
+`--yes`. Use `--version` to append a revision to an existing immutable identity,
+or `--display-ordinal` to create a new identity. An explicit `--insert-before`
+shifts display numbers under the same catalog fence without rewriting previous
+snapshots or links. `design version renumber` changes only a display number;
+occupied targets refuse. Optional `--task` and `--source-record` retain verified
+project work references, without closing tasks or assigning approval. None of
+these commands issues a PM submission.
+
+`design version import-prepare` reads six layers from an original native
+GeoPackage into a new closed input file, preserving original `fid`, properties
+and coordinate dimensions. It requires exact source record, asset version,
+archive/member hashes and the current transformer fence. `design version import
+--file INPUT --project ID --yes` publishes that archival design as immutable
+source-pinned `v0` through Bulk. Working design is unchanged; existing history
+cannot be overwritten. Its `exported_design` scope permits immutable viewing,
+not runtime restoration. Import archival v0 before any runtime baseline
+bootstrap; a conflicting baseline refuses.
+
+Legacy MV version operations continue to use exact model revision/digest lineage.
+Paired version creation/listing have been retired. Playback and comparison
+rooms remain presentation adapters; local drafts are not governed history.
 
 `design.attachment` uses the native authenticated client and an explicit project,
 without Desktop state. It lists opaque revisions per object (`list`), per

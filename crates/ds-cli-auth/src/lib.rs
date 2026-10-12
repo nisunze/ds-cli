@@ -6696,6 +6696,56 @@ pub fn shared_assets_for_project(
 }
 
 /// Explicit request context: saved selection is neither read nor changed.
+pub fn transformer_history_import_for_project(
+    lane_value: &str,
+    project: &str,
+    command: &ds_client_core::transformer_history_import::Import,
+) -> Result<Value, Failure> {
+    let lane = Lane::parse(lane_value)?;
+    let project = bounded_named_project(project)?;
+    command.validate(&project).map_err(|error| {
+        Failure::invalid("invalid_input", error).remedy(
+            "Choose an exact transformer and immutable version/revision identities with reviewed catalog/source fences",
+        )
+    })?;
+    if let Some(mut device) = restored_device_session(lane)? {
+        return device
+            .transformer_history_import(&project, command)
+            .map_err(map_client);
+    }
+    let profile = profile::load(lane)?;
+    let store = NativeRefreshStore::open()?;
+    let mut client = Client::new(profile, NativeTransport, store);
+    require_restore_before_context(&mut client)?;
+    client
+        .transformer_history_import(&project, command, now())
+        .map_err(map_client)
+}
+pub fn design_version_catalog_for_project(
+    lane_value: &str,
+    project: &str,
+    command: &ds_client_core::design_version_catalog::Command,
+) -> Result<Value, Failure> {
+    let lane = Lane::parse(lane_value)?;
+    let project = bounded_named_project(project)?;
+    command.validate(&project).map_err(|error| {
+        Failure::invalid("invalid_input", error).remedy(
+            "Choose an exact transformer and immutable version/revision identities with reviewed catalog/source fences",
+        )
+    })?;
+    if let Some(mut device) = restored_device_session(lane)? {
+        return device
+            .design_version_catalog(&project, command)
+            .map_err(map_client);
+    }
+    let profile = profile::load(lane)?;
+    let store = NativeRefreshStore::open()?;
+    let mut client = Client::new(profile, NativeTransport, store);
+    require_restore_before_context(&mut client)?;
+    client
+        .design_version_catalog(&project, command, now())
+        .map_err(map_client)
+}
 pub fn design_versions_for_project(
     lane_value: &str,
     project: &str,

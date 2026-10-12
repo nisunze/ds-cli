@@ -14,25 +14,37 @@ use crate::{DESCRIPTOR_ARG, TARGET_ARG};
 const VERSION_ARG: Arg = Arg::value(
     "version",
     "<version-id>",
-    "Exact playable retained version.",
+    "Exact immutable server version identity or retained local draft.",
 )
 .required();
+
+const REVISION_ARG: Arg = Arg::value(
+    "revision",
+    "<revision-id>",
+    "Exact immutable revision identity; required for server versions and omitted for local drafts.",
+);
 
 pub static COMMAND: Command = Command {
     id: "map.design.version.play",
     path: &["map", "design", "version", "play"],
-    contract: 2,
+    contract: 3,
     summary: "Open one retained transformer version read-only on the map.",
     purpose: "Asks the paired application to load one exact immutable transformer snapshot into its visible read-only playback context and waits for the map acknowledgement. No features cross the CLI. It never stages, restores, saves, or replaces working truth.",
     chapter: Chapter::Design,
     effect: Effect::LocalUi,
     authority: Authority::Project,
     execution: Execution::Sync,
-    args: &[TRANSFORMER_ARG, VERSION_ARG, TARGET_ARG, DESCRIPTOR_ARG],
-    output: "A bounded playback receipt: project, transformer, exact version, version_playback context, whether it changed, map readiness, read_only=true, feature count, staged=false, and persisted=false.",
+    args: &[
+        TRANSFORMER_ARG,
+        VERSION_ARG,
+        REVISION_ARG,
+        TARGET_ARG,
+        DESCRIPTOR_ARG,
+    ],
+    output: "A bounded playback receipt: project, transformer, exact version and server revision, version_playback context, whether it changed, map readiness, read_only=true, feature count, staged=false, and persisted=false.",
     examples: &[Example {
-        command: "ds map design version play --transformer agasharu --version v2 --output json",
-        note: "Opens the immutable v2 overlay; it cannot become an editable room.",
+        command: "ds map design version play --transformer agasharu --version v2 --revision v2 --output json",
+        note: "Opens the exact immutable v2 revision overlay; it cannot become an editable room.",
         runnable: false,
     }],
     refusals: &[
@@ -50,8 +62,8 @@ pub static COMMAND: Command = Command {
         },
         Refusal {
             code: "invalid_version",
-            when: "--version is not a canonical local-<digest> or v<number>",
-            remedy: "list versions and pass one exact returned version id",
+            when: "the version/revision pair is not an exact immutable server pin or retained local draft",
+            remedy: "list the catalog and pass its exact version_id and head_revision_id; local drafts omit --revision",
         },
         Refusal {
             code: "version_not_found",
@@ -84,25 +96,52 @@ pub static COMMAND: Command = Command {
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let transformer = inputs.require("transformer")?;
-    let version = shared::canonical_version(inputs.require("version")?, false)?;
+    let version = inputs.require("version")?;
+    let revision = inputs.value("revision");
+    if version.len() > 128 || revision.is_some_and(|id| id.len() > 128) {
+        return Err(Failure::invalid(
+            "invalid_version",
+            "version references exceed the bounded transport contract",
+        ));
+    }
+    let mut arguments = json!({ "transformer": transformer, "version": version });
+    if let Some(revision) = revision {
+        arguments["revision"] = json!(revision);
+    }
     let descriptor = crate::paired(inputs.value("desktop-descriptor"))?;
     let result = crate::invoke(
         &descriptor,
         &crate::DESIGN_VERSION_PLAY,
-        json!({ "transformer": transformer, "version": version }),
+        arguments,
         crate::DESIGN_STAGE_TIMEOUT,
     )
     .map_err(shared::classify_failure)?;
-    receipt(transformer, version, &result)
+    receipt(transformer, version, revision, &result)
 }
 
-fn receipt(transformer: &str, version: &str, result: &Value) -> Result<Value, Failure> {
+fn receipt(
+    transformer: &str,
+    version: &str,
+    revision: Option<&str>,
+    result: &Value,
+) -> Result<Value, Failure> {
     let project = shared::nonempty_text(result, "project")?;
     let returned = shared::nonempty_text(result, "transformer")?;
     let version_id = shared::nonempty_text(result, "versionId")?;
     if returned != transformer || version_id != version {
         return Err(shared::unreadable(
             "the application acknowledged a different transformer or version",
+        ));
+    }
+    if let Some(revision) = revision {
+        if shared::nonempty_text(result, "revisionId")? != revision {
+            return Err(shared::unreadable(
+                "the application acknowledged a different immutable revision",
+            ));
+        }
+    } else if result.get("revisionId").is_some_and(|id| !id.is_null()) {
+        return Err(shared::unreadable(
+            "the application attached a server revision to a retained local draft",
         ));
     }
     if shared::nonempty_text(result, "contextType")? != "version_playback" {
@@ -114,7 +153,7 @@ fn receipt(transformer: &str, version: &str, result: &Value) -> Result<Value, Fa
     shared::require_true(result, "readOnly")?;
     shared::require_false(result, "staged")?;
     shared::require_false(result, "persisted")?;
-    Ok(json!({
+    let mut shaped = json!({
         "project": project,
         "transformer": returned,
         "version_id": version_id,
@@ -125,7 +164,11 @@ fn receipt(transformer: &str, version: &str, result: &Value) -> Result<Value, Fa
         "feature_count": shared::count(result, "featureCount")?,
         "staged": false,
         "persisted": false,
-    }))
+    });
+    if let Some(revision) = revision {
+        shaped["revision_id"] = json!(revision);
+    }
+    Ok(shaped)
 }
 
 pub fn render(data: &Value) -> String {
@@ -149,20 +192,31 @@ mod tests {
     #[test]
     fn receipt_refuses_any_mutation_claim_and_drops_feature_payloads() {
         let raw = json!({
-            "project":"p","transformer":"agasharu","versionId":"v2",
+            "project":"p","transformer":"agasharu","versionId":"v2","revisionId":"v2",
             "contextType":"version_playback","contextChanged":false,"mapReady":true,
             "readOnly":true,"featureCount":14,"staged":false,"persisted":false,
             "features":[{"must":"not cross"}]
         });
-        let shaped = receipt("agasharu", "v2", &raw).expect("valid receipt");
+        let shaped = receipt("agasharu", "v2", Some("v2"), &raw).expect("valid receipt");
         assert_eq!(shaped["read_only"], true);
         assert_eq!(shaped["context_changed"], false);
         assert_eq!(shaped["staged"], false);
         assert!(shaped.get("features").is_none());
+        let mut wrong_pin = raw.clone();
+        wrong_pin["revisionId"] = json!("v1");
+        assert!(receipt("agasharu", "v2", Some("v2"), &wrong_pin).is_err());
+        let local = format!("local-{}", "a".repeat(64));
+        let mut local_raw = raw.clone();
+        local_raw["versionId"] = json!(local);
+        local_raw.as_object_mut().unwrap().remove("revisionId");
+        let local_receipt = receipt("agasharu", &local, None, &local_raw).unwrap();
+        assert!(local_receipt.get("revision_id").is_none());
         let mut unsafe_raw = raw;
         unsafe_raw["staged"] = json!(true);
         assert_eq!(
-            receipt("agasharu", "v2", &unsafe_raw).unwrap_err().code(),
+            receipt("agasharu", "v2", Some("v2"), &unsafe_raw)
+                .unwrap_err()
+                .code(),
             "desktop_unreadable"
         );
     }

@@ -1022,6 +1022,20 @@ impl<T: ds_client_core::Transport> DeviceSession<T> {
     ) -> Result<(Value, Vec<u8>), ClientError> {
         fixed_device_call!(self, read_asset_bytes, project, asset_id)
     }
+    pub fn transformer_history_import(
+        &mut self,
+        project: &str,
+        command: &ds_client_core::transformer_history_import::Import,
+    ) -> Result<Value, ClientError> {
+        fixed_device_call!(self, transformer_history_import, project, command)
+    }
+    pub fn design_version_catalog(
+        &mut self,
+        project: &str,
+        command: &ds_client_core::design_version_catalog::Command,
+    ) -> Result<Value, ClientError> {
+        fixed_device_call!(self, design_version_catalog, project, command)
+    }
     pub fn design_versions(
         &mut self,
         project: &str,

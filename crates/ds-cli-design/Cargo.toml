@@ -32,3 +32,7 @@ ds-command-kernel = { workspace = true }
 
 [dev-dependencies]
 lopdf = { version = "0.45", default-features = false }
+
+# Native-only immutable GeoPackage source reading, no browser SQLite implementation.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+ds-io = { workspace = true, features = ["native-gpkg"] }

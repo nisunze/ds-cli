@@ -378,7 +378,7 @@ pub const DESIGN_PROCESS_CONFIGURE: BridgeOp = BridgeOp {
 };
 pub const DESIGN_VERSION_PLAY: BridgeOp = BridgeOp {
     operation: "design.version.play",
-    arguments: &["transformer", "version"],
+    arguments: &["transformer", "version", "revision"],
 };
 pub const DESIGN_VERSION_COMPARE: BridgeOp = BridgeOp {
     operation: "design.version.compare",

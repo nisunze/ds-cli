@@ -654,7 +654,7 @@ fn design_version_history_has_closed_operations_and_exact_arguments() {
     for (operation, expected) in [
         (
             &ds_cli_map::DESIGN_VERSION_PLAY,
-            ["transformer", "version"].as_slice(),
+            ["transformer", "version", "revision"].as_slice(),
         ),
         (
             &ds_cli_map::DESIGN_VERSION_COMPARE,
