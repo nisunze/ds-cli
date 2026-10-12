@@ -466,8 +466,8 @@ const STATE_UNAVAILABLE_REFUSAL: Refusal = Refusal {
 };
 const STATE_PROTECTION_REFUSAL: Refusal = Refusal {
     code: "native_state_protection_unavailable",
-    when: "this platform build has no protected-state adapter",
-    remedy: "install a build with the native protected-state adapter",
+    when: "the protected-state adapter cannot safely initialize in this execution context; a missing adapter is not established",
+    remedy: "check this installed ds in a normal shell for the same OS user, or a connected MCP using the same build, lane and DS account; if that works, resolve the restricted shell context; inspect the exact state error before repair or reinstall",
 };
 const STATE_ROOT_REFUSAL: Refusal = Refusal {
     code: "native_state_root_invalid",

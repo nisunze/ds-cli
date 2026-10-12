@@ -728,12 +728,16 @@ pub(crate) fn availability() -> ds_cli_contract::spec::Availability {
     let result = state_windows::probe();
     #[cfg(not(windows))]
     let result: Result<(), StoreError> = Ok(());
+    availability_for_probe(result)
+}
+
+fn availability_for_probe(result: Result<(), StoreError>) -> ds_cli_contract::spec::Availability {
     match result {
-        Ok(_) => ds_cli_contract::spec::Availability::Available,
+        Ok(()) => ds_cli_contract::spec::Availability::Available,
         Err(_) => ds_cli_contract::spec::Availability::unavailable(
-            "native_state_protection_unavailable",
-            "the protected native state adapter cannot safely initialize for this user",
-            "repair the current user's protected DS state root or reinstall this ds build",
+            super::STATE_PROTECTION_REFUSAL.code,
+            super::STATE_PROTECTION_REFUSAL.when,
+            super::STATE_PROTECTION_REFUSAL.remedy,
         ),
     }
 }
@@ -1444,5 +1448,42 @@ mod tests {
         super::private_parent(&admission);
         assert_eq!(mode(&admission), 0o700);
         fs::remove_dir_all(root).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod protected_state_diagnostic_tests {
+    use super::{StoreError, availability_for_probe};
+    use ds_cli_contract::spec::Availability;
+
+    #[test]
+    fn successful_context_probe_keeps_native_commands_available() {
+        assert_eq!(availability_for_probe(Ok(())), Availability::Available);
+    }
+
+    #[test]
+    fn failed_context_probes_remain_closed_without_claiming_a_missing_adapter() {
+        for error in [
+            StoreError::Unavailable,
+            StoreError::UnsafeOrUnreadable,
+            StoreError::Conflict,
+        ] {
+            let Availability::Unavailable {
+                code,
+                reason,
+                remedy,
+            } = availability_for_probe(Err(error))
+            else {
+                panic!("a failed protected-state probe must not admit native commands");
+            };
+            assert_eq!(code, "native_state_protection_unavailable");
+            assert!(reason.contains("execution context"));
+            assert!(reason.contains("not established"));
+            assert!(remedy.contains("same OS user"));
+            assert!(remedy.contains("same build, lane and DS account"));
+            assert!(remedy.find("MCP").unwrap() < remedy.find("repair").unwrap());
+            assert_eq!(reason, super::super::STATE_PROTECTION_REFUSAL.when);
+            assert_eq!(remedy, super::super::STATE_PROTECTION_REFUSAL.remedy);
+        }
     }
 }

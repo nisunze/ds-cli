@@ -38,6 +38,15 @@ canonical identity, immutable profile/audience fences, selected-project
 metadata, provider/session state, and normalized capabilities; credential
 material never enters the projection.
 
+A native_state_protection_unavailable probe failure describes the current
+execution context, not a proven missing adapter or damaged installation.
+Check the installed executable in a normal shell for the same OS user, or
+check a connected MCP with the same build, deployment lane and DS account.
+A successful matching MCP call can distinguish a restricted agent shell
+from a product installation problem; it does not make that shell available.
+Inspect the concrete protected-state error before recommending repair or
+reinstallation. Do not reset credentials or change identity to diagnose it.
+
 The selected project is only a device-local address plus an authority fence,
 and since 2026-09-24 no `ds` command reads it: every project command names its
 project with `--project`, so one machine, Server or agent serves several
