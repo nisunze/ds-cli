@@ -226,44 +226,33 @@ point first in the Plan, then in the Profile. Read `ds map profile view` after
 each click, and confirm that the selection kind and id match a point in the
 Profile scene.
 
-### 12. Profile warm-up: early selections are floppy; animate the status button during any computation
+### 12. Profile warm-up and complete computation visibility
 
-**Owner, 2026-10-07:** right after the Profile opens, the first selections are
-"floppy", as if it needs to warm up. This is what blocked moving the ground
-point (§11). Every computation must animate the toolbar's status button.
+**Owner, 2026-10-07:** initial preparation may take time, but every requested
+computation must remain visible through the toolbar status button. Selection
+and handles must stay usable for the admitted scene while background work runs.
+The removed native `project` operation and reconciliation-only status button
+are no longer current evidence; recheck each remaining caller.
 
-**Evidence** (code; not timed in the UI):
+**Remaining code:** `nativeProfileCaseCommand` does not emit readiness phases.
+Connect intentional case reads/preparation to the existing presentation signal,
+using the captured native request/result and current client/context fences.
+Do not invent a job, replace a retained calculation ticket, add polling or
+trigger another case read merely to animate the button. Audit other deliberate
+usage/query consumers against the same rule; prove concurrent work, typed
+refusals and cancelled/failed worker release without changing native authority.
 
-- **One queue.** Opening the Profile queues, one after the other on the same
-  model client (`nativeProfileCommand` serializes per client,
-  `ds-web/src/lib/grid/profile-native.ts:44-49`):
-  - the native `project`: a full `checkpointDsgrid()` emit, a JSON
-    `Array.from` IPC transfer, a full decode, and the whole scene;
-  - remove revision-driven projection, automatic analysis and offscreen
-    weather preparation; observe authored history without solving.
-- **Selection before the first scene.** Until the first native scene exists,
-  case-layer requests refuse with
-  `profile_case_base_unavailable: draw the native Profile first`
-  (`nativeProfileCaseCommand`, `profile-native.ts:58`). Selection-dependent
-  reads (selected usage, scene ids for highlights and handles) wait, or miss.
-- **Comparable costs** (§4, debug builds): a full open and validate takes
-  1.9–5.5 s; the whole-model issue analysis takes 5.6 s.
-- **Status button.** The toolbar's leftmost button spins only for edit
-  reconciliation (`reconciliationStatus.phase === 'pending'`,
-  `GridProfilePanel.svelte:1455-1470`). Scene building (`loading`), the
-  case layers and usage screening animate nothing.
-
-**Needed:**
-
-- One busy signal fed by every native Profile computation: project,
-  analysis, case layer, usage and reconciliation. The status button animates
-  while any of them is in flight, and its tooltip names it.
-- Selection and handles work immediately from the Plan and scene data already
-  shown. Heavy analysis runs in the background and never blocks selection
-  (§4 and the edits-in-RAM ruling in BUG-EVIDENCE.md).
-- **Reproduce:** restart the Desktop, open the Profile, and click a ground
-  point within the first seconds. Read `ds map profile view` repeatedly to
-  time when the selection, the scene and the analysis settle.
+**Remaining installed acceptance:** restart the Linux Desktop, open the Profile
+and prove the visible initial-preparation transitions, native interruption
+availability and eventual interaction readiness. Exercise a Plan-selected ground
+point and its Profile highlight/vertical handle during preparation and after
+admission; pair the current native selection/history with the actual displayed
+scene. Prove case, usage and reconciliation busy states as well. Use admitted
+CLI/MCP controls and characterized interaction evidence, without vision
+automation or extra status polling. Retain measured elapsed paths and distinguish
+cold opening from edits on an already admitted scene. This overlaps §11 and
+[SEEDING §14](SEEDING.md#14-plan-and-profile-authoring); it remains open after
+the scoped readiness component regressions pass.
 
 ### 13. Print templates: subject-aware preview and the remaining Desktop read
 
