@@ -278,10 +278,9 @@ fn matching_rows<'g>(
         .collect()
 }
 
-/// `listCliWorkTasks` (cli-pm.ts:456-491) less the session: the same
-/// text filter as the Table's search box (`filterProjectWorkTableRows`,
-/// views.ts:174-188), then the state, discipline, holder, placement and
-/// geometry narrowings, then one bounded page.
+/// Canonical task filtering shared by CLI/MCP reads and the Table's search:
+/// text, state, discipline, holder, placement and geometry narrowings, then
+/// one bounded page. Presentation consumers use this owner directly.
 pub fn task_list(graph: &CanonicalProjectGraph, filter: &TaskListFilter) -> TaskListReply {
     let matched: Vec<TaskRow> = matching_rows(graph, filter)
         .into_iter()
