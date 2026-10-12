@@ -18,7 +18,7 @@ pub const SCHEMA_VERSION: &str = "ds-web.gateway-registry/v1";
 
 /// sha256 of the exact `routing/operations.json` bytes these rows came from.
 pub const DESCRIPTOR_SHA256: &str =
-    "0ab8014bdccc05b25af11b934be0d840df73e0d7140db48c041347e8b64591a0";
+    "578ae7b4607a48c4d8e68fd31bd84cf3f4114ccc91dd29b048ddf6865215ab73";
 
 /// Every declared operation that has a gateway route, sorted by id.
 pub const OPERATIONS: &[GatewayOperation] = &[
@@ -498,6 +498,25 @@ pub const OPERATIONS: &[GatewayOperation] = &[
         native_command: "",
     },
     GatewayOperation {
+        id: "domains.design_versions.publish_revision",
+        method: "POST",
+        path: "/bulk/api/v1/data",
+        path_params: &[],
+        action_key: "action",
+        actions: &["publish_transformer_version_revision"],
+        transport: "json",
+        authority: "gateway",
+        principal: "user",
+        lane_header: false,
+        idempotency: "idempotent_with_key",
+        retry_class: "none",
+        timeout_s: 120,
+        response_cap_bytes: 1048576,
+        resolution_web: "gateway",
+        resolution_desktop: "gateway",
+        native_command: "",
+    },
+    GatewayOperation {
         id: "domains.grid.catalog.action",
         method: "POST",
         path: "/api/v1/grid/catalog",
@@ -726,25 +745,6 @@ pub const OPERATIONS: &[GatewayOperation] = &[
     },
     GatewayOperation {
         id: "domains.printing.list",
-        method: "POST",
-        path: "/api/v1/printing",
-        path_params: &[],
-        action_key: "action",
-        actions: &[],
-        transport: "json",
-        authority: "gateway",
-        principal: "user",
-        lane_header: false,
-        idempotency: "unsafe",
-        retry_class: "none",
-        timeout_s: 30,
-        response_cap_bytes: 1048576,
-        resolution_web: "gateway",
-        resolution_desktop: "gateway",
-        native_command: "",
-    },
-    GatewayOperation {
-        id: "domains.printing.render",
         method: "POST",
         path: "/api/v1/printing",
         path_params: &[],

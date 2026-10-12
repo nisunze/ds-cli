@@ -142,7 +142,7 @@
   },
   "domains": {
     "printing": {
-      "summary": "Shared global and project print layouts; GeoJSON vector delivery.",
+      "summary": "Governed revisioned layout documents; rendering stays local.",
       "operations": {
         "list": {
           "summary": "List printing setups",
@@ -172,19 +172,6 @@
         },
         "save": {
           "summary": "Publish with expected revision",
-          "transport": "json",
-          "gateway": {
-            "method": "POST",
-            "path": "/api/v1/printing",
-            "backend": "ds_brain_url"
-          },
-          "resolution": {
-            "web": "gateway",
-            "desktop": "gateway"
-          }
-        },
-        "render": {
-          "summary": "Render a vector PDF",
           "transport": "json",
           "gateway": {
             "method": "POST",
@@ -1161,6 +1148,18 @@
     "design_versions": {
       "summary": "Explicit immutable transformer history import through the bulk authority.",
       "operations": {
+        "publish_revision": {
+          "summary": "Freeze one saved transformer frame as an immutable version revision without caller-supplied content.",
+          "transport": "json",
+          "action_key": "action",
+          "actions": ["publish_transformer_version_revision"],
+          "idempotency": "idempotent_with_key",
+          "retry_class": "none",
+          "timeout_s": 120,
+          "response_cap_bytes": 1048576,
+          "gateway": { "method": "POST", "path": "/bulk/api/v1/data", "backend": "ds_brain_bulk_url" },
+          "resolution": { "web": "gateway", "desktop": "gateway" }
+        },
         "import": {
           "summary": "Import one bounded historical transformer snapshot without changing its live head.",
           "transport": "json",
