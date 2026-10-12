@@ -19,7 +19,7 @@ use crate::{DS_REPORT, EXPORT_TIMEOUT};
 pub static COMMAND: Command = Command {
     id: "report.plan-profile",
     path: &["report", "plan-profile"],
-    contract: 5,
+    contract: 6,
     summary: "Render DS Grid plan/profile sheets from a pinned scene and plan.",
     purpose: "Resolve the named project's adopted MV setup and render same-revision projections into its ordered local publication. Exact alignment IDs narrow scope; omitting them prints all. Text, logos, scales, fonts and issue policy inherit that setup; allowed model differences are explicit. Missing inputs refuse before output. --request alone runs a complete native request without project reads. --preview-layout renders a saved or draft template sample into the scoped native disk cache, with exact input/style/engine fences and 24h or 7d retention. Responses contain file receipts and station metadata, never inline SVG. No model, layout, selection or publication is saved by a template preview.",
     chapter: Chapter::Reports,
@@ -43,6 +43,20 @@ pub static COMMAND: Command = Command {
             "SVG cache lifetime; requires --preview-layout, default 24h.",
         )
         .choices(&["24h", "7d"]),
+        Arg::switch(
+            "preview-all",
+            "Start all drawing sheets as one native background disk job; requires --preview-layout.",
+        ),
+        Arg::value(
+            "preview-job",
+            "<input-sha256>",
+            "Read one exact native disk job; requires --project and excludes geometry/layout flags.",
+        ),
+        Arg::value(
+            "preview-page",
+            "<number>",
+            "Consume one ready page of --preview-job; omitted means metadata only.",
+        ),
         Arg::switch(
             "preview-only",
             "Produce the complete ordered PNG preview set and layout plan before assembling a PDF.",
@@ -120,13 +134,13 @@ pub static COMMAND: Command = Command {
         ),
         Arg::value("result", "<path>", "Fresh reporter receipt path."),
     ],
-    output: "Exact revision, ordered file paths/digests and station windows. Template previews return ds.mv-preview-artifacts/v1 with native SVG receipts and progress; publication includes its layout plan and optional PDF.",
+    output: "Exact revision, ordered file paths/digests and station windows. Samples return ds.mv-preview-artifacts/v1. --preview-all/--preview-job return ds.mv-preview-job/v1 progress and ordered ready pages; --preview-page includes its native SVG receipt. Publication includes its layout plan and optional PDF.",
     examples: &[Example {
         command: "ds report plan-profile --project gisagara --scene /project/profile.json --plan /project/plan.json --alignment al-main --out-dir /project/gisagara-sheets --output json",
         note: "Render the adopted publication for one alignment from held engine projections.",
         runnable: false,
     }],
-    refusals: &crate::project::joined::<{ crate::project::NATIVE_READ_REFUSALS.len() + 20 }>(&[
+    refusals: &crate::project::joined::<{ crate::project::NATIVE_READ_REFUSALS.len() + 21 }>(&[
         crate::project::NATIVE_READ_REFUSALS,
         &[
             REQUEST_MODE_REFUSAL,
@@ -144,6 +158,7 @@ pub static COMMAND: Command = Command {
                 when: "the admitted preview receipt has expired",
                 remedy: "request its exact preview again",
             },
+            crate::project::export::PREVIEW_JOB_CAPACITY,
             PRINT_REQUEST_REFUSAL,
             crate::project::mv_setup::REFUSAL,
             crate::project::mv_setup::STYLE_REFUSAL,
@@ -208,7 +223,9 @@ pub static COMMAND: Command = Command {
 };
 
 fn availability() -> Availability {
-    DS_REPORT.availability()
+    // Retained status/page reads need no renderer. Rendering branches name a
+    // missing matching Reporter at their existing fixed process boundary.
+    Availability::Available
 }
 
 /// One mode per call. A request file is the engine's whole request, so a
@@ -245,6 +262,8 @@ const PROJECT_MODE_INPUTS: &[&str] = &[
     "model-crs",
     "sample-pages",
     "preview-retention",
+    "preview-job",
+    "preview-page",
 ];
 
 fn mode_invalid(message: String) -> Failure {
@@ -256,6 +275,24 @@ fn print_request_invalid(message: String) -> Failure {
 }
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
+    let page = inputs
+        .value("preview-page")
+        .map(|page| {
+            page.parse::<usize>()
+                .map_err(|_| mode_invalid("preview page must be an integer".into()))
+        })
+        .transpose()?;
+    let action = ds_command_kernel::printing::mv_preview::action(
+        inputs.value("preview-layout").is_some(),
+        inputs.switch("preview-all"),
+        inputs.value("preview-job"),
+        page,
+        inputs.value("preview-retention").is_some(),
+    )
+    .map_err(|error|mode_invalid(error.to_string()).remedy(error.remedy))?;
+    if let ds_command_kernel::printing::mv_preview::Action::Read { input_sha256, page } = action {
+        return run_job_read(inputs, &input_sha256, page);
+    }
     if let Some(layout) = inputs.value("preview-layout") {
         return run_template_preview(inputs, layout);
     }
@@ -283,6 +320,9 @@ fn run_request(inputs: &Inputs, request: PathBuf) -> Result<Value, Failure> {
     }
     if inputs.switch("preview-only") {
         mixed.push("preview-only");
+    }
+    if inputs.switch("preview-all") {
+        mixed.push("preview-all");
     }
     if !mixed.is_empty() {
         return Err(mode_invalid(format!(
@@ -351,7 +391,7 @@ fn run_template_preview(inputs: &Inputs, layout_path: &str) -> Result<Value, Fai
     }
     if !mixed.is_empty() {
         return Err(mode_invalid(format!(
-            "--preview-layout previews one sample sheet; remove --{}",
+            "--preview-layout previews its native template; remove --{}",
             mixed.join(", --")
         )));
     }
@@ -434,28 +474,86 @@ fn run_template_preview(inputs: &Inputs, layout_path: &str) -> Result<Value, Fai
         Some("7d") => Retention::Days7,
         Some(_) => return Err(mode_invalid("preview retention must be 24h or 7d".into())),
     };
-    let answer = mv_artifact::execute_retained(
-        &crate::project::export::CliEngine,
-        &MvPreviewInputs {
-            project_id: project,
-            sheets: &sheets,
-            layout: &layout,
-            table: &table,
-            project_crs: project_crs.as_ref(),
-            model_crs: inputs.value("model-crs"),
-            scene: &projections[0],
-            plan: &projections[1],
-            staging: staging.path(),
-        },
-        &result_room,
-        retention,
-    )
+    let held = MvPreviewInputs {
+        project_id: project,
+        sheets: &sheets,
+        layout: &layout,
+        table: &table,
+        project_crs: project_crs.as_ref(),
+        model_crs: inputs.value("model-crs"),
+        scene: &projections[0],
+        plan: &projections[1],
+        staging: staging.path(),
+    };
+    let answer = if inputs.switch("preview-all") {
+        ds_report_host::mv_job::start(
+            &crate::project::export::CliEngine,
+            &held,
+            &result_room,
+            retention,
+        )
+    } else {
+        mv_artifact::execute_retained(
+            &crate::project::export::CliEngine,
+            &held,
+            &result_room,
+            retention,
+        )
+        .map(|answer| answer.to_value())
+    }
     .map_err(|refusal| match refusal {
         MvPreviewRefusal::Kernel(error) => crate::project::mv_setup::failure(error),
         MvPreviewRefusal::Host(failure) => crate::project::export::host_failure(failure),
     })?;
     current()?;
-    Ok(answer.to_value())
+    Ok(answer)
+}
+
+fn run_job_read(inputs: &Inputs, key: &str, page: Option<usize>) -> Result<Value, Failure> {
+    let mixed = COMMAND
+        .args
+        .iter()
+        .filter(|arg| {
+            !matches!(
+                arg.name,
+                "project" | "lane" | "preview-job" | "preview-page"
+            )
+        })
+        .filter(|arg| {
+            inputs.value(arg.name).is_some()
+                || inputs.switch(arg.name)
+                || !inputs.repeated(arg.name).is_empty()
+        })
+        .map(|arg| arg.name)
+        .collect::<Vec<_>>();
+    if !mixed.is_empty() {
+        return Err(mode_invalid(format!(
+            "--preview-job excludes --{}",
+            mixed.join(", --")
+        )));
+    }
+    let project = project_input(inputs, "project")?;
+    let lane = inputs.require("lane")?;
+    let identity = ds_cli_auth::headless_identity_for_named_project(lane)?;
+    let room = ds_project_data::preview_room::Room {
+        root: ds_layer_store::default_root()
+            .map_err(|error| Failure::failed(crate::project::export::STAGING_FAILED.code, error))?,
+        scope: ds_command_kernel::project_dataset_cache::Scope {
+            principal: identity.uid().into(),
+            project: project.into(),
+        },
+        lane: identity.lane().into(),
+        credential_audience_sha256: identity.credential_audience_sha256().into(),
+    };
+    let answer = ds_report_host::mv_job::read(&room, key, page)
+        .map_err(crate::project::export::host_failure)?;
+    if ds_cli_auth::headless_identity_for_named_project(lane)? != identity {
+        return Err(Failure::invalid(
+            "print_project_crs_context_mismatch",
+            "native preview account changed while reading",
+        ));
+    }
+    Ok(answer)
 }
 
 fn project_input<'a>(inputs: &'a Inputs, name: &str) -> Result<&'a str, Failure> {
@@ -658,6 +756,28 @@ fn stage_selected_scene(
 }
 
 pub fn render(data: &Value) -> String {
+    if data["schema"] == ds_report_host::mv_job::SCHEMA {
+        let path = data["selected_page"]["page"]["path"]
+            .as_str()
+            .unwrap_or("No selected page is ready yet.");
+        return format!(
+            "MV preview {} · {}/{} ready
+job {}
+{}",
+            data["progress"]["stage"].as_str().unwrap_or("preparing"),
+            data["progress"]["completed"],
+            data["progress"]["total"],
+            data["job"]["input_sha256"].as_str().unwrap_or("?"),
+            path
+        );
+    }
+    if data["schema"] == ds_report_host::mv_artifact::SCHEMA {
+        return format!(
+            "MV preview sheet {} · {}",
+            data["sheet"]["source_sheet_number"],
+            data["sheet"]["page"]["path"].as_str().unwrap_or("?")
+        );
+    }
     let artifact = data["pdf"]
         .as_str()
         .map(|path| format!("PDF {path}"))
@@ -684,10 +804,17 @@ mod tests {
     fn refusal(args: &[&str]) -> String {
         let tokens: Vec<String> = args.iter().map(|arg| arg.to_string()).collect();
         let inputs = ds_cli_contract::args::parse(&COMMAND, &tokens).unwrap();
-        let outcome = match inputs.value("request") {
-            Some(request) => run_request(&inputs, PathBuf::from(request)),
-            None => run_project(&inputs),
-        };
+        let outcome = run(
+            &inputs,
+            &Context {
+                confirmed: false,
+                output: ds_cli_contract::output::Output {
+                    format: ds_cli_contract::output::Format::Json,
+                    pretty: false,
+                    color: false,
+                },
+            },
+        );
         outcome
             .expect_err("refused before the engine")
             .code()
@@ -736,7 +863,7 @@ mod tests {
 
     #[test]
     fn native_disk_preview_contract_admits_only_explicit_retention_choices() {
-        assert_eq!(COMMAND.contract, 5);
+        assert_eq!(COMMAND.contract, 6);
         let tokens = |retention: &str| {
             [
                 "--preview-layout",
@@ -752,6 +879,60 @@ mod tests {
         }
         assert!(ds_cli_contract::args::parse(&COMMAND, &tokens("forever")).is_err());
         assert!(COMMAND.output.contains("ds.mv-preview-artifacts/v1"));
+    }
+
+    #[test]
+    fn progressive_modes_share_native_admission_and_refuse_mixed_reads_before_auth_or_io() {
+        use ds_command_kernel::printing::mv_preview::{Action, action};
+        let digest = "a".repeat(64);
+        assert_eq!(
+            action(true, true, None, None, false).unwrap(),
+            Action::Start
+        );
+        assert_eq!(
+            action(false, false, Some(&digest), Some(100), false).unwrap(),
+            Action::Read {
+                input_sha256: digest.clone(),
+                page: Some(100)
+            }
+        );
+        for mixed in [
+            vec!["--preview-all"],
+            vec!["--preview-job", "../foreign", "--project", "fixture"],
+            vec![
+                "--preview-job",
+                &digest,
+                "--preview-page",
+                "0",
+                "--project",
+                "fixture",
+            ],
+            vec![
+                "--preview-job",
+                &digest,
+                "--scene",
+                "missing",
+                "--project",
+                "fixture",
+            ],
+            vec![
+                "--preview-job",
+                &digest,
+                "--preview-layout",
+                "missing",
+                "--project",
+                "fixture",
+            ],
+            vec!["--preview-page", "1"],
+        ] {
+            assert_eq!(refusal(&mixed), "request_mode_invalid", "{mixed:?}");
+        }
+        assert_eq!(COMMAND.contract, 6);
+        let outcome = crate::project::export::host_failure(ds_report_host::HostFailure::new(
+            "print_preview_job_capacity",
+            "busy",
+        ));
+        assert_eq!(outcome.code(), "print_preview_job_capacity");
     }
 
     #[test]

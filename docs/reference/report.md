@@ -1178,6 +1178,19 @@ publication. Private staging is removed. Model-specific preserved pages need an
 adopted setup and a print. A metric-grid project needs `--model-crs`. Desktop
 previews the same request and reads the admitted file through its native host.
 
+Contract 6 adds `--preview-all` beside `--preview-layout` to start every drawing
+sheet as one scoped native disk job. It returns `ds.mv-preview-job/v1` promptly;
+the Reporter continues after CLI completion or Desktop navigation. Completed
+pages become consumable while later sheets render. Read `--project <id>
+--preview-job <input-sha256>` for intentional status, and add `--preview-page
+<number>` for one ready page's disk receipt. These reads acquire no project
+inputs, invoke no engine and do not poll. A pending page returns no selected
+artifact, with the current completed/total/stage/revision. Layout, projection,
+retention and export flags are excluded from a job read. Full publication
+remains a separate operation. The native room admits two active jobs, preserves
+exact hashes and original 24h/7d expiry, and safely prunes only admitted expired
+owned files while preserving active jobs and foreign bytes.
+
 `report plan-profile --alignment <id>` selects exact `alignment_id` band IDs
 from the held `--scene`; repeat the flag for multiple bands (1..256 IDs).
 Omitting it prints every band. Unknown or malformed IDs return

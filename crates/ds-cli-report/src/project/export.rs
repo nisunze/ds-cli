@@ -252,6 +252,11 @@ const PREVIEW_ARTIFACT_EXPIRED: Refusal = Refusal {
     when: "the native preview file has passed its admitted expiry",
     remedy: "request its exact preview again; no read automatically renders or acquires",
 };
+pub(crate) const PREVIEW_JOB_CAPACITY: Refusal = Refusal {
+    code: "print_preview_job_capacity",
+    when: "two native MV preview jobs are active",
+    remedy: "Consume a ready page or wait for one native MV job to finish.",
+};
 const PREVIEW_METADATA_LIMIT: Refusal = Refusal {
     code: "print_preview_metadata_limit",
     when: "preview diagnostics exceed the bounded response metadata",
@@ -704,6 +709,33 @@ impl ReportEngine for CliEngine {
             summary: bounded_summary(&completed.stderr, &completed.stdout),
         })
     }
+    fn launch_grid_preview(
+        &self,
+        request: &Path,
+        result: &Path,
+        _input_sha256: &str,
+    ) -> Result<(), HostFailure> {
+        let executable = DS_REPORT.locate().ok_or_else(|| {
+            HostFailure::new(
+                "reporter_engine_missing",
+                "the matching native Reporter is unavailable",
+            )
+        })?;
+        // One fixed task over host-owned durable paths. Reporter owns its
+        // process lock and failure journal, so CLI exit releases only a viewer.
+        std::process::Command::new(executable)
+            .arg("render-grid-plan-profile")
+            .arg("--request")
+            .arg(request)
+            .arg("--result")
+            .arg(result)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .map_err(|error| HostFailure::new("engine_refused", error.to_string()))?;
+        Ok(())
+    }
 }
 
 /// A host failure that ends the whole command, in the CLI's own classes.
@@ -763,6 +795,8 @@ pub(crate) fn host_failure(failure: HostFailure) -> Failure {
         "project_dataset_local_source_required" => Failure::unavailable(CONTEXT_LOCAL_SOURCE.code,message).remedy(CONTEXT_LOCAL_SOURCE.remedy),
         "print_preview_artifact_unavailable" => Failure::failed(PREVIEW_ARTIFACT_UNAVAILABLE.code,message).remedy(PREVIEW_ARTIFACT_UNAVAILABLE.remedy),
         "print_preview_artifact_expired" => Failure::unavailable(PREVIEW_ARTIFACT_EXPIRED.code,message).remedy(PREVIEW_ARTIFACT_EXPIRED.remedy),
+        "print_preview_job_capacity" => Failure::unavailable(PREVIEW_JOB_CAPACITY.code, message)
+            .remedy(PREVIEW_JOB_CAPACITY.remedy),
         "print_preview_metadata_limit" => Failure::failed(PREVIEW_METADATA_LIMIT.code,message).remedy(PREVIEW_METADATA_LIMIT.remedy),
         "catalog_unavailable" => {
             Failure::unavailable("catalog_unavailable", message).remedy(CONTEXT_CATALOG.remedy)
