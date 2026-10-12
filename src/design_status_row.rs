@@ -254,7 +254,9 @@ fn voltage_drop_view(row: &Map<String, Value>, dirty: bool) -> VoltageDropView {
         }
         ("saved_json", Some("does_not_comply")) => ("dsr_vd_does_not_comply", "red"),
         ("saved_json", Some("incomplete")) => ("dsr_vd_incomplete", "amber"),
-        ("saved_json", Some("refused")) => ("dsr_vd_not_calculated", "red"),
+        // A refused calculation has no electrical verdict. Keep its input
+        // issue visible without presenting it as a calculated failure.
+        ("saved_json", Some("refused")) => ("dsr_vd_not_calculated", "amber"),
         ("saved_json", Some("reserved")) => ("dsr_vd_reserved", "slate"),
         ("local_changes", _) => ("dsr_vd_local_changes", "blue"),
         ("stale", _) => ("dsr_vd_stale", "amber"),
@@ -1738,7 +1740,7 @@ mod tests {
             view("tx_refused"),
             json!({"state": "saved_json", "calculated": false, "verdict": "refused",
                 "reason": "the network has no transformer node to start from",
-                "label_key": "dsr_vd_not_calculated", "tone": "red"})
+                "label_key": "dsr_vd_not_calculated", "tone": "amber"})
         );
         assert_eq!(view("tx_local")["state"], "local_changes");
         assert_eq!(view("tx_local")["label_key"], "dsr_vd_local_changes");
@@ -1747,6 +1749,53 @@ mod tests {
             view("mv_data").is_null(),
             "an aggregate row has no analysis"
         );
+    }
+
+    #[test]
+    fn reserved_voltage_drop_is_neutral_and_names_do_not_override_saved_analysis() {
+        for nature in ["fill_in", "upgrade"] {
+            let mut row = json!({"name": "tx_reserved",
+                "metadata": {"version": 2, "content_digest": "a".repeat(64)},
+                "voltage_drop_metadata": {"state": "ready",
+                    "schema": "ds.lv-voltage-drop.analysis/v1", "method": "ds-lv-vd/1",
+                    "status": "reserved", "nature": nature, "content_digest": "a".repeat(64),
+                    "analysis_sha256": "b".repeat(64), "inputs_digest": "c".repeat(64),
+                    "analysis_inputs_digest": "d".repeat(64), "processed_digest": "e".repeat(64),
+                    "json_bytes": 2048, "summary": {"method": "ds-lv-vd/1", "status": "reserved",
+                        "transformer_nature": nature, "verdict": "not_calculated",
+                        "calculation": "Existing network not fully surveyed"}}});
+            let reserved = voltage_drop_view(row.as_object().unwrap(), false);
+            assert!(!reserved.calculated);
+            assert_eq!(reserved.verdict.as_deref(), Some("reserved"));
+            assert_eq!(reserved.label_key, "dsr_vd_reserved");
+            assert_eq!(reserved.tone, "slate");
+            assert_eq!(reserved.reason.as_deref(), Some("Existing network not fully surveyed"));
+
+            // A positive calculation override can produce a real failure for
+            // either nature. Its saved verdict must still be shown in red.
+            row["voltage_drop_metadata"]["status"] = json!("calculated");
+            row["voltage_drop_metadata"]["summary"]["status"] = json!("calculated");
+            row["voltage_drop_metadata"]["summary"]["verdict"] = json!("does_not_comply");
+            row["name"] = json!(format!("{nature}_named_site"));
+            let failed = voltage_drop_view(row.as_object().unwrap(), false);
+            assert!(failed.calculated);
+            assert_eq!(failed.label_key, "dsr_vd_does_not_comply");
+            assert_eq!(failed.tone, "red");
+
+            // Legacy classification does not invent an authoritative tag or
+            // turn a refused saved calculation into a policy reservation.
+            row["metadata"]["transfo_type"] = json!(nature);
+            row["voltage_drop_metadata"]["nature"] = Value::Null;
+            row["voltage_drop_metadata"]["status"] = json!("refused");
+            row["voltage_drop_metadata"]["summary"]["transformer_nature"] = Value::Null;
+            row["voltage_drop_metadata"]["summary"]["status"] = json!("not_calculated");
+            row["voltage_drop_metadata"]["summary"]["issues"] = json!(["Missing transformer node"]);
+            let unavailable = voltage_drop_view(row.as_object().unwrap(), false);
+            assert!(!unavailable.calculated);
+            assert_eq!(unavailable.verdict.as_deref(), Some("refused"));
+            assert_eq!(unavailable.tone, "amber");
+            assert_eq!(unavailable.reason.as_deref(), Some("Missing transformer node"));
+        }
     }
 
     #[test]
