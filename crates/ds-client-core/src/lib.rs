@@ -324,6 +324,5 @@ pub use transformer_save::{
 pub mod feedback;
 pub use transport::FeedbackCall;
 
-pub mod account_notifications;
 
 pub mod messaging;
