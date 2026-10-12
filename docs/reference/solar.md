@@ -638,7 +638,18 @@ the source city's media grants.
 
 Discover an explicit project's city ids with `ds solar cities --project <id>`; use those exact ids for capture and preparation.
 
-Use `solar.reference.acquire` for a fresh headless server after capturing and seeding the local workspace. The owner derives the full PV request; the explicit `--project` supplies captured native authority without changing selection. A successful receipt verifies cache readback before any calculation.
+Discover `solar.reference.plan` and `solar.reference.import` for local preparation
+after capturing and seeding a workspace. The native plan exports the complete
+selected-city request and its input digest; an optional external reference
+producer seals the four files. Import preserves the explicit local project and
+expected city digest, verifies bytes/site/equipment, and commits/readbacks the
+existing native cache. Retained identical bytes reuse the same generation. No
+API, Python launch or cloud publication occurs in these controls. Local project
+attribution grants no cloud authority. The retired remote acquisition leaf is
+removed; there is no implicit provider fallback.
+The compact `solar-input` MCP profile keeps both local reference controls within
+its existing bound. Result inspection remains in `solar-dashboard` and the CLI;
+it is separate from the input profile.
 
 ## Shared network forms
 

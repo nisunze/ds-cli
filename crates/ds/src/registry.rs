@@ -1041,8 +1041,13 @@ static SOLAR_ENTRIES: &[Entry] = &[
         render: ds_cli_solar::network_form::render,
     },
     Entry {
-        command: &ds_cli_solar::reference::COMMAND,
-        handler: ds_cli_solar::reference::run,
+        command: &ds_cli_solar::reference::PLAN,
+        handler: ds_cli_solar::reference::plan,
+        render: ds_cli_solar::reference::render,
+    },
+    Entry {
+        command: &ds_cli_solar::reference::IMPORT,
+        handler: ds_cli_solar::reference::import,
         render: ds_cli_solar::reference::render,
     },
     Entry {
