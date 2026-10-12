@@ -18,6 +18,7 @@ mixes them. Staking is an XLSX submission, never printed booklet pages; the full
 [MV submission deliverables](../ds-project-work/references/mv-submission-deliverables.md).
 
 Map delivery: `printing-maps`.
+Public city acquisition: Data chapter or CLI.
 
 For MV sets, read [the standard booklet workflow](references/mv-plan-profile-booklet.md)
 before setup or batching.

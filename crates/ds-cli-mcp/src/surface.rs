@@ -2624,6 +2624,8 @@ pub const fn chapter_description(chapter: Chapter) -> &'static str {
 // (`report.project.export`, `--seed` on the first print). The paired leaves
 // remain for what has no headless owner yet: survey and local-layer context,
 // per-transformer overrides, district and custom-area maps.
+// Public city-data acquisition stays in the Data chapter and CLI; it is not
+// a print consumer. Keep the printing profile within its existing tool bound.
 const PRINTING_COMMANDS: &[&str] = &[
     "report.layout.render",
     "report.layout.context",
@@ -2636,7 +2638,6 @@ const PRINTING_COMMANDS: &[&str] = &[
     "report.outbox.inventory",
     "data.project-cache.status",
     "data.project-cache.seed",
-    "data.city-vectors",
     "report.project.settings",
     "report.project.outputs.set",
     "report.project.mv-setup.set",

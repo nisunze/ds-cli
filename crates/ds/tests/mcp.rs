@@ -2174,13 +2174,34 @@ fn printing_profile_exposes_one_bounded_live_preview_without_export_options() {
     assert_eq!(tool["title"], "desktop.printing.preview");
     assert_eq!(
         tool["inputSchema"]["required"],
-        json!(["project", "transformer", "layout"])
+        json!(["project", "transformer"])
     );
     assert_eq!(tool["inputSchema"]["additionalProperties"], false);
     let properties = tool["inputSchema"]["properties"].as_object().unwrap();
+    for admitted in ["layout", "template", "out", "retention"] {
+        assert!(properties.contains_key(admitted), "{admitted}");
+    }
+    assert_eq!(properties["retention"]["enum"], json!(["24h", "7d"]));
+    assert!(tools.iter().all(|tool| tool["title"] != "data.city-vectors"));
     for forbidden in ["force", "selection", "intent", "confirm", "yes"] {
         assert!(!properties.contains_key(forbidden), "{forbidden}");
     }
+}
+
+#[test]
+fn city_acquisition_remains_discoverable_in_its_data_chapter() {
+    let (messages, _) = mcp(
+        &["--exposure", "chapters"],
+        &[json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{
+            "name":"ds_data","arguments":{"operation":"describe","command":"data.city-vectors"}
+        }})],
+    );
+    let result = response(&messages, 1)["result"].clone();
+    assert_ne!(result["isError"], true);
+    let described = serde_json::from_str::<Value>(result["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(described["status"], "ok");
+    assert!(described.to_string().contains("data.city-vectors"));
+    assert_eq!(cli(&["capabilities", "data.city-vectors", "--output", "json"])["data"]["command"]["chapter"], "data");
 }
 
 #[test]
