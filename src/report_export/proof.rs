@@ -79,9 +79,9 @@ pub fn local_review_formats(formats: &[String]) -> Result<(), String> {
     Ok(())
 }
 
-/// Plan saved printing recipes for a local review, independently of delivery's
-/// mandatory analysis inventory. Only the selected A4 PDF adds its exact
-/// saved-analysis companion; draft SVG pages use the authoring-preview owner.
+/// Plan saved printing recipes for a local review. Only the selected A4 PDF
+/// adds its exact saved-analysis companion; draft SVG pages use the
+/// authoring-preview owner.
 pub fn local_review_plan(
     sheets: &Value,
     is_combined: bool,
@@ -244,8 +244,8 @@ mod tests {
                     .iter()
                     .filter(|format| *format == "voltage_drop")
                     .count(),
-                1,
-                "delivery keeps its mandatory analysis for {tokens:?}"
+                usize::from(tokens.contains(&"voltage_drop_pdf")),
+                "only selected A4 analysis has a saved JSON companion for {tokens:?}"
             );
             assert!(plan_transformer_export(
                 "proj-1",

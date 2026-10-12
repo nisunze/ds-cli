@@ -275,7 +275,7 @@ mod tests {
     }
 
     #[test]
-    fn a_preview_requires_its_pinned_page_and_cannot_hide_delivery_analysis() {
+    fn a_preview_requires_its_pinned_page_and_delivery_receipt_refuses_svg() {
         let layout = crate::printing::default_layout();
         let preview = with_layout(&source(json!([])), &layout).unwrap();
         let sheets: Value = serde_json::from_str(&preview.receipt.sheets_json).unwrap();
@@ -292,21 +292,16 @@ mod tests {
         mixed.tabular.push("xlsx".into());
         assert!(plan_outputs(&sheets, Some(&mixed), provenance)
             .is_err_and(|error| error.contains("exactly one named SVG")));
+        let mut delivery = preview.receipt.clone();
+        delivery.local_print_recipe = None;
+        let layers = BTreeMap::from([("lv_poles".into(), json!({"type":"FeatureCollection",
+            "features":[{"type":"Feature","properties":{},"geometry":{"type":"Point","coordinates":[30.,-2.]}}]}))]);
         for selection in [&preview.selection, &mixed] {
-            let public = crate::report::evaluate(
-                &serde_json::to_vec(&json!({
-                    "command":"formats", "sheets":sheets,
-                    "combined":false, "selection":selection
-                }))
-                .unwrap(),
+            let error = crate::report_export::plan_transformer_export(
+                "proj-1", &delivery, "tx_a", 1, &layers, Some(selection),
             )
-            .unwrap();
-            let public: Value = serde_json::from_str(&public).unwrap();
-            assert!(public["result"]["outputs"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .any(|output| output["outputId"] == "voltage_drop"));
+            .unwrap_err();
+            assert!(error.contains("svg is the shared print preview"));
             assert!(report_formats::normalize_output_selection(
                 Some(selection.clone()),
                 None,

@@ -7,6 +7,15 @@ optional geometry does not require a reserved colour palette or label override.
 
 # Printing document authority
 
+An explicit `ds.design-output-selection/v1` delivery invocation consumes its
+selected output inventory. A PDF-only map selection does not request, inspect
+or export saved voltage-drop analysis and completes when all its selected
+artifacts complete. Default/project LV report policy still includes saved
+voltage-drop JSON; explicitly selecting it still names missing or invalid
+analysis. The A4 voltage-drop PDF keeps its existing exact saved-analysis
+companion. Reporting never recalculates that analysis. Native Desktop and
+headless report hosts consume the same `report_formats::selected_plan`.
+
 The 2026-10-02 style-resolution ruling supersedes any older instruction below
 that constructs a style id, borrows a source sibling, or selects reserved pens
 in code. See [governed style resolution](style-resolution.md): templates declare

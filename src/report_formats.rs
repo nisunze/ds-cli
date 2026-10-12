@@ -4,10 +4,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 
-/// The outputs an absent or empty selection produces. Every individual LV
-/// report also delivers `voltage_drop`, including an explicit selection
-/// (owner ruling 2026-10-02). It consumes the producer's saved analysis JSON;
-/// reporting never recomputes the electrical result.
+/// The outputs an absent or empty default selection produces. Default/project
+/// policy delivers saved voltage-drop JSON; an explicit invocation selecting
+/// only other outputs does not add it. Reporting never recalculates analysis.
 pub const DEFAULT_INDIVIDUAL: &[&str] = &["shp", "kmz", "xlsx", "voltage_drop"];
 pub const INDIVIDUAL: &[&str] = &[
     "shp",
@@ -21,8 +20,8 @@ pub const INDIVIDUAL: &[&str] = &[
     "voltage_drop",
     "voltage_drop_pdf",
 ];
-/// The output every individual LV report delivers whatever the selection:
-/// the exact saved voltage-drop analysis (owner ruling 2026-10-02).
+/// The saved-analysis output retained by default/project LV report policy,
+/// and the existing companion to a selected A4 voltage-drop PDF.
 pub const MANDATORY_INDIVIDUAL_OUTPUT: &str = "voltage_drop";
 /// The tabular outputs, one list for every reader that classes a token.
 pub const TABULAR: &[&str] = &["xlsx", "network_information", "voltage_drop"];
@@ -1372,18 +1371,19 @@ fn selected_plan_for_purpose(
         }
         outputs.push(output);
     }
-    // Delivery always retains the saved LV analysis. A local review needs it
-    // only beside the A4 voltage-drop PDF; a map sheet is its selected print.
+    // An explicit delivery or review selection needs the saved-analysis
+    // companion only beside the selected A4 voltage-drop PDF. Other selected
+    // outputs do not ask for analysis; default/project policy is separate.
     // Validate authored tokens first so a companion never admits an empty
     // or invalid selection.
-    let needs_analysis = purpose == OutputPurpose::Delivery
-        || (purpose == OutputPurpose::LocalReview && seen.contains("voltage_drop_pdf"));
+    let needs_analysis =
+        purpose != OutputPurpose::AuthoringPreview && seen.contains("voltage_drop_pdf");
     if needs_analysis && !seen.contains(MANDATORY_INDIVIDUAL_OUTPUT) {
         outputs.push(output(MANDATORY_INDIVIDUAL_OUTPUT)?);
     }
     if outputs.len() > 32 {
         return Err(
-            "Report exceeds 32 selected output artifacts including mandatory voltage drop".into(),
+            "Report exceeds 32 selected output artifacts including the saved-analysis companion".into(),
         );
     }
     outputs.sort_by(|a, b| {
@@ -1842,7 +1842,7 @@ mod tests {
                 .iter()
                 .map(|o| o.output_id.as_str())
                 .collect::<Vec<_>>(),
-            vec!["voltage_drop", "pdf__detail"]
+            vec!["pdf__detail"]
         );
         assert_eq!(sheets, original);
         assert_eq!(selected_plan(&sheets, false, None).unwrap().len(), 3);
@@ -2628,13 +2628,16 @@ mod tests {
     }
 
     #[test]
-    fn local_override_keeps_mandatory_analysis_and_refuses_invalid_inventory() {
+    fn local_override_consumes_only_selected_analysis_and_refuses_invalid_inventory() {
         let selection = |tokens: Value| -> DesignOutputSelection {
             serde_json::from_value(json!({"schema":OUTPUT_SELECTION_SCHEMA,"tabular":tokens}))
                 .unwrap()
         };
         let sheets = json!({"project_settings":[{"parameter":"report_formats","value":"gpkg"}]});
-        for tokens in [json!(["xlsx"]), json!(["xlsx", "voltage_drop"])] {
+        for (tokens, expected) in [
+            (json!(["xlsx"]), vec!["xlsx"]),
+            (json!(["xlsx", "voltage_drop"]), vec!["xlsx", "voltage_drop"]),
+        ] {
             let selection = selection(tokens);
             let original = serde_json::to_value(&selection).unwrap();
             assert_eq!(
@@ -2643,7 +2646,7 @@ mod tests {
                     .iter()
                     .map(|output| output.output_id.as_str())
                     .collect::<Vec<_>>(),
-                ["xlsx", "voltage_drop"]
+                expected
             );
             assert_eq!(serde_json::to_value(&selection).unwrap(), original);
         }
@@ -2653,7 +2656,7 @@ mod tests {
     }
 
     #[test]
-    fn mandatory_analysis_remains_inside_the_local_artifact_bound() {
+    fn explicit_inventory_and_selected_analysis_companion_stay_inside_the_artifact_bound() {
         let mut selection: DesignOutputSelection = serde_json::from_value(json!({
             "schema":OUTPUT_SELECTION_SCHEMA,
             "geospatial":["shp","kmz","gpkg","pdf_a0","pdf_a3"],"tabular":["xlsx","network_information"]
@@ -2672,8 +2675,14 @@ mod tests {
             });
         }
         let sheets = json!({"printing_setups":layouts});
+        let outputs = selected_plan(&sheets, false, Some(&selection)).unwrap();
+        assert_eq!(outputs.len(), 32);
+        assert!(!outputs.iter().any(|output| output.output_id == "voltage_drop"));
+        selection.geospatial.push("voltage_drop_pdf".into());
+        assert!(selected_plan(&sheets, false, Some(&selection)).is_err());
+        selection.prints.pop();
         assert!(selected_plan(&sheets, false, Some(&selection))
-            .is_err_and(|error| error.contains("including mandatory voltage drop")));
+            .is_err_and(|error| error.contains("including the saved-analysis companion")));
         selection.prints.pop();
         let outputs = selected_plan(&sheets, false, Some(&selection)).unwrap();
         assert_eq!(outputs.len(), 32);
@@ -2972,7 +2981,7 @@ mod tests {
                 .iter()
                 .map(|output| output.output_id.as_str())
                 .collect::<Vec<_>>(),
-            ["shp", "geojson", "voltage_drop"]
+            ["shp", "geojson"]
         );
         let geojson = &planned[1];
         assert_eq!(geojson.format, "geojson");

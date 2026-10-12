@@ -1433,6 +1433,7 @@ pub(crate) mod tests {
         /// The media grant bytes the last request named, read from the
         /// staged path, or `None` when the request named no grant.
         pub(crate) media_grant_seen: Mutex<Option<Vec<u8>>>,
+        formats_seen: Mutex<Vec<Vec<String>>>,
     }
 
     impl FakeEngine {
@@ -1489,6 +1490,10 @@ pub(crate) mod tests {
             let live = self.concurrent.fetch_add(1, Ordering::SeqCst) + 1;
             self.peak.fetch_max(live, Ordering::SeqCst);
             let request: Value = serde_json::from_slice(&fs::read(request).unwrap()).unwrap();
+            self.formats_seen
+                .lock()
+                .unwrap()
+                .push(serde_json::from_value(request["formats"].clone()).unwrap());
             *self.transformer_natures_seen.lock().unwrap() =
                 request.get("transformer_natures").cloned();
             let transformer = request["transformer"].as_str().unwrap().to_string();
@@ -1550,13 +1555,20 @@ pub(crate) mod tests {
                 }
                 // A format the engine could not build writes no file and
                 // declares no artifact: that is what "partial" means on disk.
-                if (behaviour == "partial" && format == "xlsx") || behaviour == "failed" {
+                if (behaviour == "partial" && format == "xlsx")
+                    || (behaviour == "missing_analysis" && format == "voltage_drop")
+                    || behaviour == "failed"
+                {
                     continue;
                 }
                 let filename = match format {
                     "shp" => format!("{transformer}.shp.zip"),
                     "xlsx" => format!("{transformer}.xlsx"),
                     "voltage_drop" => format!("{transformer}.voltage-drop.json"),
+                    other if other.starts_with("pdf__") => {
+                        ds_command_kernel::report_formats::report_filename(&transformer, other)
+                            .unwrap()
+                    }
                     other => panic!("{other}"),
                 };
                 let bytes = format!("{transformer}:{format}:bytes").into_bytes();
@@ -1567,7 +1579,25 @@ pub(crate) mod tests {
                 } else {
                     format!("{:x}", Sha256::digest(&bytes))
                 };
-                artifacts.push(json!({"format": format, "filename": filename, "path": path, "bytes": bytes.len(), "sha256": declared_sha}));
+                let mut artifact = json!({"format": format, "filename": filename, "path": path, "bytes": bytes.len(), "sha256": declared_sha});
+                if let Some(id) = format.strip_prefix("pdf__") {
+                    let layout: ds_command_kernel::printing::Layout = serde_json::from_value(
+                        config["sheets"]["printing_setups"]
+                            .as_array()
+                            .unwrap()
+                            .iter()
+                            .find(|setup| setup["id"] == id)
+                            .unwrap()["layout"]
+                            .clone(),
+                    )
+                    .unwrap();
+                    let presentation =
+                        ds_command_kernel::printing::ArtifactPresentation::from_layout(&layout)
+                            .unwrap();
+                    artifact["paper_size"] = json!(presentation.paper_name);
+                    artifact["presentation"] = json!(presentation);
+                }
+                artifacts.push(artifact);
             }
             if behaviour == "extra" {
                 fs::write(out_dir.join("debug.log"), b"noise").unwrap();
@@ -1595,6 +1625,19 @@ pub(crate) mod tests {
                     ]),
                     false,
                 ),
+                "missing_analysis"
+                    if request["formats"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .any(|format| format == "voltage_drop") =>
+                {
+                    (
+                        "partial",
+                        json!([{"code":"voltage_drop_result_missing","message":"saved analysis is absent","format":"voltage_drop"}]),
+                        true,
+                    )
+                }
                 _ => ("completed", json!([]), true),
             };
             let document = json!({
@@ -1626,6 +1669,123 @@ pub(crate) mod tests {
             staging_root: staging,
             out_root: root,
         }
+    }
+
+    fn a0_delivery_fixture() -> (
+        InputReceipt,
+        ds_command_kernel::report_formats::DesignOutputSelection,
+    ) {
+        let layout = ds_command_kernel::printing::named_layout(
+            Some("selected-a0".into()),
+            Some("Selected A0".into()),
+            ds_command_kernel::printing::Paper::A0,
+            ds_command_kernel::printing::Orientation::Landscape,
+        )
+        .unwrap();
+        let sheets = json!({"project_settings":[{"parameter":"design_export_format","value":["xlsx"]}],
+            "printing_setups":[{"id":layout.id,"revision":"a".repeat(64),"layout":layout}]});
+        let mut source = receipt("Benin");
+        source.sheets_json = sheets.to_string();
+        source.sheets_sha256 = decisions::sha256_hex(source.sheets_json.as_bytes());
+        let selection = serde_json::from_value(json!({"schema":"ds.design-output-selection/v1",
+            "prints":[{"layout_id":"selected-a0","formats":["pdf"]}],"geospatial":[],"tabular":[]}))
+        .unwrap();
+        (source, selection)
+    }
+
+    #[test]
+    fn pdf_only_delivery_completes_three_members_without_requesting_missing_analysis() {
+        let temp = tempfile::tempdir().unwrap();
+        let out = temp.path().join("out");
+        let staging = temp.path().join("staging");
+        let (receipt, selection) = a0_delivery_fixture();
+        let names = ["tx_a", "tx_b", "tx_c"].map(str::to_owned);
+        let engine = FakeEngine::release();
+        for name in &names {
+            engine
+                .behaviour
+                .lock()
+                .unwrap()
+                .insert(name.clone(), "missing_analysis");
+        }
+        let batch = run_batch(
+            &engine,
+            &BatchSettings {
+                run: settings(&receipt, &out, &staging),
+                lane: "stable",
+                concurrency: 2,
+                media_grant: None,
+            },
+            &names,
+            |name| {
+                let mut room = inputs(name);
+                room.selection = Some(selection.clone());
+                Ok(room)
+            },
+        )
+        .unwrap();
+        assert_eq!(engine.calls.load(Ordering::SeqCst), 3);
+        assert_eq!(
+            *engine.formats_seen.lock().unwrap(),
+            vec![vec!["pdf__selected-a0".to_owned()]; 3]
+        );
+        assert_eq!(batch.receipt["status"], "completed");
+        assert_eq!(batch.receipt["failed"], 0);
+        assert_eq!(batch.receipt["partial_formats"], 0);
+        assert_eq!(batch.runs.len(), 3);
+        for run in batch.runs {
+            assert_eq!(
+                run.receipt["formats_requested"],
+                json!(["pdf__selected-a0"])
+            );
+            assert_eq!(run.receipt["status"], "completed");
+            assert!(run.failed.is_empty());
+            assert_eq!(run.artifacts.len(), 1);
+            assert_eq!(run.artifacts[0].paper_size.as_deref(), Some("A0"));
+            assert_eq!(
+                run.artifacts[0].presentation.as_ref().unwrap().page_mm,
+                [1189., 841.]
+            );
+        }
+        assert!(fs::read_dir(&staging).unwrap().next().is_none());
+    }
+
+    #[test]
+    fn explicitly_selected_missing_analysis_still_marks_the_run_partial() {
+        let temp = tempfile::tempdir().unwrap();
+        let (receipt, mut selection) = a0_delivery_fixture();
+        selection.tabular.push("voltage_drop".into());
+        let mut room = inputs("tx_a");
+        room.selection = Some(selection);
+        let engine = FakeEngine::release();
+        engine
+            .behaviour
+            .lock()
+            .unwrap()
+            .insert(room.transformer.clone(), "missing_analysis");
+        let run = run_transformer_report(
+            &engine,
+            &settings(
+                &receipt,
+                &temp.path().join("out"),
+                &temp.path().join("staging"),
+            ),
+            &room,
+        )
+        .unwrap();
+        assert_eq!(
+            run.receipt["formats_requested"],
+            json!(["voltage_drop", "pdf__selected-a0"])
+        );
+        assert_eq!(run.receipt["status"], "partial");
+        assert_eq!(run.artifacts.len(), 1);
+        assert_eq!(run.failed.len(), 1);
+        assert_eq!(run.failed[0].output_id, "voltage_drop");
+        assert_eq!(
+            run.receipt["failed_formats"][0]["code"],
+            "voltage_drop_result_missing"
+        );
+        assert_eq!(engine.calls.load(Ordering::SeqCst), 1);
     }
 
     #[test]

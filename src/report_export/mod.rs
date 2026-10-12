@@ -999,7 +999,14 @@ pub fn plan_transformer_export_with_survey(
             preview::plan_outputs(&sheets, selection, provenance)?
         }
         Some(_) => proof::local_review_plan(&sheets, false, selection)?,
-        None => report_formats::selected_plan(&sheets, false, selection)?,
+        None => {
+            // Preview recipes prove their SVG page above. A delivery receipt
+            // uses the existing deliverable admission for its explicit set.
+            if let Some(selection) = selection {
+                selection.require_deliverable()?;
+            }
+            report_formats::selected_plan(&sheets, false, selection)?
+        }
     };
     if outputs.is_empty() {
         return Err("the project's output policy names no individual report output".to_string());
@@ -3068,8 +3075,8 @@ mod tests {
         let narrowed =
             plan_transformer_export("proj-1", &receipt, "tx_a", 7, &layers(), Some(&selection))
                 .unwrap();
-        // A narrowed selection still delivers the mandatory saved analysis.
-        assert_eq!(narrowed.formats, vec!["xlsx", "voltage_drop"]);
+        // Explicit selection does not consume an unselected saved analysis.
+        assert_eq!(narrowed.formats, vec!["xlsx"]);
         // A named print output needs its setup in the sheets.
         assert!(plan_transformer_export(
             "proj-1",
@@ -3207,7 +3214,7 @@ mod tests {
             json!({"format": "shp", "filename": "tx_a.shp.zip", "path": out_dir.join("tx_a.shp.zip"), "bytes": 10, "sha256": "1".repeat(64)}),
             json!({"format": "xlsx", "filename": "tx_a.xlsx", "path": out_dir.join("tx_a.xlsx"), "bytes": 20, "sha256": "2".repeat(64)}),
         ];
-        // Like the Network Reporter, deliver the mandatory saved analysis.
+        // Like the Network Reporter, deliver saved analysis when requested.
         if plan.formats.iter().any(|format| format == "voltage_drop") {
             artifacts.push(json!({"format": "voltage_drop", "filename": "tx_a.voltage-drop.json", "path": out_dir.join("tx_a.voltage-drop.json"), "bytes": 30, "sha256": "3".repeat(64)}));
         }
