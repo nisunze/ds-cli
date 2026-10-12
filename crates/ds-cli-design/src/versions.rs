@@ -29,7 +29,7 @@ const REFUSALS: &[Refusal] = &[
     Refusal {
         code: "design_version_refused",
         when: "The authenticated history call or shared Rust validation refuses the request",
-        remedy: "Read the nested cause; use one explicit project/kind/object and assigned vN identities. MV restore is unsupported; download its pinned content revision.",
+        remedy: "Read the nested cause; use one explicit project/kind/object and assigned vN identities.",
     },
     Refusal {
         code: "invalid_input",
@@ -49,7 +49,7 @@ const fn command(
         path,
         contract: 3,
         summary,
-        purpose: "Use one explicit project and captured identity without Desktop or active-project state. ds-brain alone assigns vN ordinals. An MV vN marks a milestone such as a submission; show names the content revision its attachments bind to. LV comparison uses exact snapshots; MV comparison reports pinned content-revision metadata without claiming geometry comparison. Local browser rooms are not published history. Restore is LV-only.",
+        purpose: "Use one explicit project and captured identity without Desktop or active-project state. ds-brain alone assigns vN ordinals. An MV vN marks a milestone such as a submission; show names the content revision its attachments bind to. LV comparison uses exact snapshots; MV comparison reports pinned content-revision metadata without claiming geometry comparison. Local browser rooms are not published history.",
         chapter: Chapter::Design,
         effect,
         authority: Authority::HeadlessProject,
@@ -172,32 +172,12 @@ pub static SUMMARIES: Command = command(
     ],
     Effect::ReadOnly,
 );
-pub static RESTORE: Command = command(
-    "design.version.restore",
-    &["design", "version", "restore"],
-    "Restore an exact governed LV version (needs --yes).",
-    &[
-        PROJECT,
-        KIND,
-        OBJECT,
-        Arg::value("version", "<vN>", "Exact assigned LV version to restore.").required(),
-        Arg::value("reason", "<text>", "Why this version is being restored.").required(),
-        Arg::value(
-            "idempotency-key",
-            "<key>",
-            "Stable key for retries of this exact restore.",
-        )
-        .required(),
-        crate::transformer::LANE_ARG,
-    ],
-    Effect::GlobalWrite,
-);
 fn ask(i: &Inputs, request: Request) -> Result<Value, Failure> {
     let request = Request::Object {
         kind: i.require("kind")?.into(),
         command: Box::new(request),
     };
-    ds_cli_auth::design_versions_for_project(i.require("lane")?,i.require("project")?,&request).map_err(|error|Failure::failed("design_version_refused",error.to_string()).detail(json!({"cause":error.code(),"detail":error.detail_value()})).remedy(error.remedy_text().unwrap_or("Choose exact assigned versions; MV restore is unavailable. Review a conflict without changing the accepted request.")))
+    ds_cli_auth::design_versions_for_project(i.require("lane")?,i.require("project")?,&request).map_err(|error|Failure::failed("design_version_refused",error.to_string()).detail(json!({"cause":error.code(),"detail":error.detail_value()})).remedy(error.remedy_text().unwrap_or("Choose exact assigned versions; Review a conflict without changing the accepted request.")))
 }
 pub fn list(i: &Inputs, _: &Context) -> Result<Value, Failure> {
     ask(
@@ -320,17 +300,6 @@ pub fn summaries(i: &Inputs, _: &Context) -> Result<Value, Failure> {
                     id: id.clone(),
                 })
                 .collect(),
-        },
-    )
-}
-pub fn restore(i: &Inputs, _: &Context) -> Result<Value, Failure> {
-    ask(
-        i,
-        Request::Restore {
-            transformer: i.require("object")?.into(),
-            version: i.require("version")?.into(),
-            reason: i.require("reason")?.into(),
-            idempotency_key: i.require("idempotency-key")?.into(),
         },
     )
 }

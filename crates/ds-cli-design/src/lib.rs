@@ -225,7 +225,6 @@ pub static DOMAIN: Domain = Domain {
         &versions::BEGIN,
         &versions::BEGIN_BATCH,
         &versions::SUMMARIES,
-        &versions::RESTORE,
         &preview::CONFLICT_LIST,
         &preview::CONFLICT_CHECK,
         &preview::PRESENCE_STATUS,
