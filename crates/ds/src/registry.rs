@@ -2218,24 +2218,6 @@ static DATA_ENTRIES: &[Entry] = &[
     // command that answers "what is in this file" — the question every
     // refusal below it would otherwise leave a caller guessing at.
     Entry {
-        command: &ds_cli_data::vector_workflow::DESCRIBE_COMMAND,
-        handler: ds_cli_data::vector_workflow::run_describe,
-        render: ds_cli_data::vector_workflow::render,
-    },
-    Entry {
-        command: &ds_cli_data::vector_workflow::VALIDATE_COMMAND,
-        handler: ds_cli_data::vector_workflow::run_validate,
-        render: ds_cli_data::vector_workflow::render,
-    },
-    Entry {
-        command: &ds_cli_data::vector_workflow::RUN_COMMAND,
-        handler: ds_cli_data::vector_workflow::run_workflow,
-        render: ds_cli_data::vector_workflow::render,
-    },
-    Entry { command: &ds_cli_data::workflow_library::SAVE, handler: ds_cli_data::workflow_library::save, render: ds_cli_data::vector_workflow::render },
-    Entry { command: &ds_cli_data::workflow_library::SHOW, handler: ds_cli_data::workflow_library::show, render: ds_cli_data::vector_workflow::render },
-    Entry { command: &ds_cli_data::workflow_library::LIST, handler: ds_cli_data::workflow_library::list, render: ds_cli_data::vector_workflow::render },
-    Entry {
         command: &ds_cli_data::vector::DESCRIBE_COMMAND,
         handler: ds_cli_data::vector::run_describe,
         render: ds_cli_data::vector::render_describe,

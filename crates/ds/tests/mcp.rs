@@ -3814,74 +3814,24 @@ fn member_form_grants_project_survey_mcp_matches_cli_confirmation() {
 }
 
 #[test]
-fn vector_workflow_stdio_matches_cli_discovery_validation_execution_and_failure() {
-    let directory = tempfile::tempdir().unwrap();
-    let file = directory.path().join("model.json");
-    let bad = directory.path().join("failed.json");
-    let model = ds_network::vector::workflow::examples().remove(0);
-    fs::write(&file, model.to_string()).unwrap();
-    let mut failed = model.clone();
-    failed["steps"][0]["tool"] = json!("random-points-area");
-    failed["steps"][0]["request"]["parameters"] = json!({"sample_elevation":true});
-    fs::write(&bad, failed.to_string()).unwrap();
-    let calls = [
-        json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"data_vector_workflow_describe","arguments":{}}}),
-        json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"data_vector_workflow_validate","arguments":{"file":file,"inputs":"{\"radius\":10}"}}}),
-        json!({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"data_vector_workflow_run","arguments":{"file":file,"inputs":"{\"radius\":10}","dry-run":true}}}),
-        json!({"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"data_vector_workflow_run","arguments":{"file":bad}}}),
-    ];
+fn retired_general_workflow_commands_are_absent_from_mcp_discovery_and_routing() {
+    let calls = [json!({"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}})];
     let (messages, _) = mcp(&["--exposure", "commands", "--profile", "vector"], &calls);
-    for (id, operation, source, extra) in [
-        (1, "describe", None, vec![]),
-        (
-            2,
-            "validate",
-            Some(&file),
-            vec!["--inputs", "{\"radius\":10}"],
-        ),
-        (
-            3,
-            "run",
-            Some(&file),
-            vec!["--inputs", "{\"radius\":10}", "--dry-run"],
-        ),
-        (4, "run", Some(&bad), vec![]),
-    ] {
-        let mut args = vec!["data", "vector", "workflow", operation];
-        if let Some(path) = source {
-            args.extend(["--file", path.to_str().unwrap()]);
-        }
-        args.extend(extra);
-        args.extend(["--output", "json"]);
-        let mut paired = response(&messages, id)["result"]["structuredContent"].clone();
-        let mut direct = cli_envelope(&args);
-        // These are independent executions: elapsed time is measured evidence,
-        // not deterministic workflow output. Everything else remains exact.
-        let mut timing_keys = Vec::new();
-        for envelope in [&mut paired, &mut direct] {
-            if let Some(data) = envelope["data"].as_object_mut()
-                && let Some(measurements) = data.remove("measurements")
-            {
-                assert_eq!(measurements.as_object().unwrap().len(), 1);
-                let timings = measurements["step_elapsed_ms"].as_object().unwrap();
-                assert!(timings.values().all(|value| value.as_u64().is_some()));
-                timing_keys.push(timings.keys().cloned().collect::<std::collections::BTreeSet<_>>());
-            }
-        }
-        if id == 3 {
-            assert_eq!(timing_keys.len(), 2);
-            assert_eq!(timing_keys[0], ["corridor".to_owned(), "measure".to_owned()].into_iter().collect());
-            assert_eq!(timing_keys[0], timing_keys[1]);
-        } else {
-            assert!(timing_keys.is_empty());
-        }
-        assert_eq!(paired, direct);
-        assert_eq!(response(&messages, id)["result"]["isError"], id == 4);
+    let tools = response(&messages, 1)["result"]["tools"].as_array().unwrap();
+    assert!(tools.iter().all(|tool| !tool["name"].as_str().unwrap().starts_with("data_vector_workflow_")));
+    let calls: Vec<Value> = ["describe", "validate", "run", "save", "show", "list"]
+        .into_iter()
+        .enumerate()
+        .map(|(index, operation)| json!({"jsonrpc":"2.0","id":index + 1,"method":"tools/call","params":{
+            "name":"ds_data","arguments":{"operation":"describe","command":format!("data.vector.workflow.{operation}")}
+        }}))
+        .collect();
+    let (messages, _) = mcp(&[], &calls);
+    for id in 1..=6 {
+        let refusal = &response(&messages, id)["error"];
+        assert_eq!(refusal["code"], -32602);
+        assert!(refusal["message"].as_str().unwrap().contains("unknown command"));
     }
-    assert_eq!(
-        response(&messages, 4)["result"]["structuredContent"]["error"]["detail"]["error"]["step_id"],
-        "measure"
-    );
 }
 
 #[test]

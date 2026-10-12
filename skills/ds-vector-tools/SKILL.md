@@ -7,7 +7,7 @@ metadata:
 
 # Native local vector work
 
-Use this workflow when an agent needs local geometry results. Discover the
+Use these commands when an agent needs local geometry results. Discover the
 compiled tools before preparing a separate GIS runtime. The same native Rust
 operations serve the map and the headless executable.
 
@@ -35,7 +35,7 @@ complete. A source-feature bound can withhold input, while a result bound can
 withhold inline output; writing an output file does not restore input that was
 never processed. An empty crossing or sampling result can be a valid answer;
 read its `note`. Retain source identity/properties and the output receipt when
-passing the result to another workflow.
+passing the result to another explicit consumer.
 
 For other source formats, discover `data.inspect` and `data.convert`; follow
 their actual format and CRS contracts. A requested operation absent from the
@@ -50,3 +50,10 @@ For display, hand the produced GeoJSON to `ds-map-local-data` or
 Stops at: the native map workflow for display, or the operator when the
 installed surface lacks the requested geometry operation. Hand over the
 source identity, requested operation and exact capability/refusal evidence.
+
+General analysis uses an external executor's own interface and standard files
+outside DS Run. DS has no custom general analysis DAG or recipe store. Discover
+the exact DS export and validation/import commands, retain source identity and
+revision/digests, declare CRS/units and external tool version/parameters, and
+validate the output before an approved native import or design change. Retained
+geometry primitives and governed direct repair commands remain their owners.

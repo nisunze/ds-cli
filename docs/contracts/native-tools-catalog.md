@@ -38,8 +38,6 @@ not build or replace `target/debug/ds`. The product artifact is
 `ds-web/src/lib/tools/native-catalog.generated.json`; generation ownership
 remains here. Replace it only after comparing the generated fresh artifact.
 
-Portable vector workflows remain `ds.vector-workflow/v1` documents executed
-by the existing Rust vector workflow owner. That owner ships eight embedded
-examples, exposes validation and runs named graph outputs with provenance.
-This catalogue adds no workflow execution algorithm, publication backend or
-global sharing authority.
+General analysis runs through external executors and standard data files. The
+DS catalogue retains the named domain and data contracts; it declares no custom
+analysis DAG, workflow store or arbitrary shell execution.

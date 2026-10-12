@@ -778,12 +778,8 @@ const GRID_PROFILE_COMMANDS: &[&str] = &[
     "map.profile.calculation",
 ];
 
-// Portable vector JSON is one bounded workflow; keep the established dataset
-// profile within its existing budget while retaining its four geometry leaves.
+// Standalone vector leaves; execution stays with each declared tool owner.
 const VECTOR_COMMANDS: &[&str] = &[
-    "data.vector.workflow.describe",
-    "data.vector.workflow.validate",
-    "data.vector.workflow.run",
     "data.vector.describe",
     "data.vector.buffer",
     "data.vector.measure",

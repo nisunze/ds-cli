@@ -27,8 +27,8 @@ and one property-only write. Locks, project lifecycle, permissions, stale heads,
 altered preimages, operation payload conflicts and unverified readbacks refuse.
 It never processes, resizes, renumbers, rebuilds or demotes approved data.
 
-The existing `ds data vector workflow` DAG registers these same four pure
-operations. Persistence remains an explicit separate command consuming the
-reviewed proposal and selection. CLI and MCP use the same descriptors/refusals;
-no skill can waive them. See the kernel governed-design-repair contract for the
-closed property catalogue and source fences.
+External analysis uses the executor's own commands and file formats. Its evidence
+returns through these direct native controls; persistence remains an explicit
+separate command consuming the reviewed proposal and selection. CLI and MCP use
+the same descriptors and refusals; no skill can waive them. See the kernel
+governed-design-repair contract for the closed property catalogue and source fences.

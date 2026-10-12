@@ -661,152 +661,26 @@ For random points, optional `sample_elevation: true` requires `elevations_m` in 
 
 Use `ds mcp serve --exposure commands --profile vector` for descriptor discovery and all available vector commands. The existing datasets profile keeps its original four geometry primitives.
 
-### Vector workflows
-
-`ds data vector workflow describe --output json` returns a compact catalogue
-of the seven available tools, their typed input/output ports, the workflow
-schema, resource bounds, conditions and eight runnable examples. Roadmap tools
-are excluded from this compact catalogue; full descriptors remain available
-through `vector describe`. `--example 1` returns one complete JSON model.
-The generated document schema is [vector-workflow.schema.json](vector-workflow.schema.json);
-Rust validation adds graph, descriptor type and execution-bound checks.
-
-A `ds.vector-workflow/v1` document has `name`, optional `description`, typed
-`inputs`, `steps` and named `outputs`. Model inputs use `layer`, `number`,
-`string`, `bool` or `enum`; they may have descriptions and defaults. Enum inputs
-use `values`; number inputs may declare `unit` and `integer: true`. Layer inputs
-may declare `geometry` kinds and field name/type pairs. `many: true` declares a
-layer array. Supply input bindings with `--inputs <json-text>`.
-For a local layer, bind `{"route":{"file":"lv-lines.arrow"}}` (GeoJSON and
-KML files work too). File paths resolve relative to the workflow file. Raw
-GeoJSON is an import at the file edge; `path` is not a layer-reference key.
-
-Each step has a unique plain `id`, a descriptor `tool` id (command aliases also
-resolve), and the same `request` object used by standalone tools. Anywhere in
-that request, a single-member `{"$ref":"inputs.mv"}` object may replace a
-literal. Step references use `steps.<id>.outputs.<port>`; ports are `layer`,
-`report`, `preview`, `counts` and `fields_added`. Declared report/count fields
-and numeric array indices can be referenced further, for example
-`steps.metrics.outputs.report.totals.length_m`. Named model outputs are single
-references; only exported outputs are written to disk.
-To export appended geometry fields, reference the measure step's `outputs.layer`;
-`outputs.report` exports the measurement report instead.
-
-`ds data vector workflow validate --file model.json --output json` checks ids,
-all references, graph cycles, types, geometry kinds, units, known parameter
-constraints, conditions and iterator shapes. It returns topological order,
-dependencies, typed step outputs and unbound required parameters. `run` requires
-all inputs to be bound. Constraints on computed values are checked again when
-the actual request resolves. Errors include `step_id`, JSON `path` and `remedy`.
-
-Optional `when` accepts a boolean, a boolean reference, or an object with `op`.
-`exists` and `non_empty` use `value`; `eq`, `ne`, `gt`, `gte`, `lt`, `lte` use
-`left` and `right`; `all` and `any` use `conditions`; `not` uses `value`.
-Conditions short-circuit. A false condition skips its step and yields null
-layer/report ports; guard consumers of those ports with their own preconditions.
-
-Optional `for_each` has `kind: features|groups|layers` and `over` (a reference or
-literal). Feature iteration has `chunk_size` (1..64, default 1). Group iteration
-requires `group_by`; layer iteration requires a layer array. Requests can refer
-to `iterator.layer`, `iterator.index` and `iterator.key`. Layers are merged in
-deterministic order with `workflow_iteration` and `workflow_key` fields;
-iteration reports remain an array. Intermediate layers stay in bounded memory.
-
-`ds data vector workflow run --file model.json --dry-run --output json` computes
-each admitted intermediate so downstream counts stay accurate, returning a
-preview per step and up to five features per public layer. It creates no files
-or folders, even with `--out`. Actual execution uses the same native/WASM runner.
-`--out <directory>` exports named layers as Arrow IPC, other outputs as JSON, and
-`workflow-result.json` as a provenance receipt. Existing output files refuse;
-there is no overwrite switch. Without `--out`, named layer references and bounded
-previews are returned in the receipt; feature data is never returned inline.
-On the first execution failure, CLI/MCP refuse with
-`vector_workflow_step_failed`; `error.detail` keeps the completed outputs and
-the underlying step error. With `--out`, completed layers survive as
-`completed_<step>.arrow`, with a failure receipt.
-
-Each output records the tool id/version, canonical SHA-256 request digest,
-input/parameter digests and output digest. Fixed seeds and ordered execution
-make repeated requests deterministic. The runner bounds documents and bindings
-to 8 MiB each, retained typed data to 32 MiB, layers to 20,000 features, models to
-64 steps and iterators to 128 chunks/groups/layers. Conservative output estimates
-refuse excessive generators before kernel execution. This is a bounded inline
-runner with lazy feature chunks; split larger data into multiple models. No intermediate files survive.
-
-The eight embedded models are MV corridor buffer then measure; LV line points,
-point buffers and measure; line crossing points then measure; seeded area points
-then measure; outlier setbacks with a condition; points grouped by transformer;
-chunked line sampling; and buffers over multiple layers. All run against embedded
-fixtures in native and WASM tests. Building-within/count, nearest-building,
-dissolve and split-line recipes still need their roadmap tools; discovery never
-claims those algorithms are shipped.
-
-Workflow refusals are `vector_workflow_invalid` (fix schema/bindings),
-`vector_workflow_reference_invalid` (fix a named input/producer/port),
-`vector_workflow_type_mismatch` (match geometry, scalar type or units),
-`vector_workflow_cycle` (remove a back edge),
-`vector_workflow_bound_exceeded` (increase spacing/chunk size or split the model),
-`vector_tool_unknown` (choose a known id), `vector_tool_roadmap` (choose an
-available tool), and `vector_workflow_step_failed` (inspect the underlying step
-refusal and retained outputs). File reads can also return `source_unreadable`;
-exports use the existing `output_refused` contract. Literal parameter admission
-can retain `vector_request_invalid`, `vector_distance_out_of_range` and
-`vector_limit_out_of_range` from the tool descriptor.
-
-MCP exposes `data_vector_workflow_describe`, `data_vector_workflow_validate` and
-`data_vector_workflow_run` in the bounded `vector` profile and through the data
-chapter router. Their arguments and envelopes match the CLI. WASM exports
-`vector_workflow_describe`, `vector_workflow_validate`,
-`vector_workflow_validate_ipc` and `vector_workflow_run_ipc`; workflows have no human UI yet.
-
-Feature data stays in typed Rust layers between steps and crosses WASM as
-Arrow IPC. Tool execution returns receipts; `--out file.arrow` exports IPC and
-`--out file.geojson` uses the explicit file writer. Only the web's MapLibre
-renderer turns small results into GeoJSON. Rust selects vector-tile delivery
-for large results; the web sends file bytes through the existing upload and tiling pipeline. `vector_data_bound_exceeded` names
-an input or projected output beyond 32 MiB/20000 rows; split the layer or
-increase spacing. Binary import may also refuse `vector_document_malformed`.
-
 KML and KMZ conversion retains shared and inline styles, normal StyleMap entries,
 archive-local style references, and embedded icons. The resulting GeoParquet
 contains the layer style document under `ds:style_document`; feature properties
 retain `kml_style_id`, decoded components and data-driven colours. Invalid styles
 are reported in `kml_style_error` by placemark name while geometry is retained.
 
-## Reusable repair workflows
+## External analysis and governed repair
 
-The existing `data.vector.workflow` runner accepts `document` inputs and the
-portable `design.repair.audit`, `.compare`, `.propose` and `.apply-selected`
-operations. `describe` publishes their generated schemas; they are the same
-functions as the standalone repair commands. These steps stay pure: projection
-never publishes. Export the proposal/result, review selected changes, then use
-the explicit workspace or authenticated property-only publication command.
+General analysis runs outside DS Run through an external executor's own
+commands and formats. DS retains domain processing, geometry primitives,
+explicit governed export/import and their authority checks. Retained local data
+is reused; neither cloud pushes nor an unused declaration acquires inputs.
 
-A document input may be an inline object or a closed source binding:
+Use the direct `design.repair.audit`, `design.repair.compare`,
+`design.repair.propose` and `design.repair.apply-selected` contracts for governed
+repair. An external result is evidence, never authority to publish a change.
+Pin source identities, project/principal/lane, revisions and digests, declare
+CRS and units, preserve unaffected facts and geometry, inspect the proposal,
+then use the explicit approved native apply/publication contract. DS exposes no
+custom general analysis DAG, recipe store or arbitrary shell launcher.
 
-```json
-{
-  "source": {"kind":"file","path":"evidence.geojson","sha256":"<exact-file-sha256>"},
-  "projection":"evidence",
-  "scope":{"project":"<project>","principal":"<uid>","lane":"canary","audience":"<audience-sha256>"},
-  "id":"reviewed-external-source","layer":"lv_poles","crs":"EPSG:4326"
-}
-```
-
-Workspace sources use `kind:workspace`, `path`, explicit `project`, `transformer`
-and exact `revision`. Saved transformer sources use `kind:transformer`, explicit
-`project`, `transformer`, `lane`, `version` and `content_digest`, and must match
-restored identity scope. Projections are `json`, `snapshot` and `evidence`.
-Files resolve relative to the workflow document. No source substitutes a newer
-head. Run receipts expose source pins/acquisition counts/local-file bytes and per-step
-latency; source reads occur only for requested runs or explicit validation,
-never polling or cloud invalidation.
-
-Temporary workflows run directly from files. `data.vector.workflow.save --file
-recipe.json --library DIR --name recipe` stores an immutable machine-global
-recipe; document/layer bindings and credentials must remain outside it. Saved
-steps pin operation contract versions. `list --library DIR` and `show --library
-DIR --name recipe --digest SHA256` inspect verified revisions. Run an exact
-saved definition with the ordinary `run --file DIR/recipe/SHA256.json --inputs
-'{...}'`. Definitions grant no project access; every run binds its own authority
-and inputs. The broader workflow specification remains phased separately.
+The [external analysis boundary](../../../ds-command-kernel/docs/contracts/ds-workflows.md)
+records executor provenance and the validation/import responsibilities.

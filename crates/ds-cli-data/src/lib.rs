@@ -27,10 +27,6 @@ pub mod project_cache;
 pub mod spatial;
 pub mod terrain_sampling;
 pub mod vector;
-pub mod vector_workflow;
-mod workflow_operations;
-mod workflow_sources;
-pub mod workflow_library;
 
 pub static DOMAIN: Domain = Domain {
     id: "data",
@@ -66,12 +62,6 @@ pub static DOMAIN: Domain = Domain {
         &vector::OUTLIERS_COMMAND,
         &vector::RANDOM_COMMAND,
         &vector::COLLISIONS_COMMAND,
-        &vector_workflow::DESCRIBE_COMMAND,
-        &vector_workflow::VALIDATE_COMMAND,
-        &vector_workflow::RUN_COMMAND,
-        &workflow_library::SAVE,
-        &workflow_library::SHOW,
-        &workflow_library::LIST,
     ],
 };
 

@@ -23,7 +23,6 @@ ds-client-core = { path = "../../../ds-command-kernel/crates/ds-client-core" }
 # kernel's; the holdings, acquisition loop and bundle installation are
 # ds-project-data's, shared with the desktop shell; the rooms are ds-layer-store's.
 ds-command-kernel = { workspace = true }
-ds-design-workspace = { workspace = true }
 ds-layer-store = { path = "../../../ds-command-kernel/crates/ds-layer-store" }
 ds-project-data = { path = "../../../ds-command-kernel/crates/ds-project-data" }
 # The centralized converter. `ds` links the same implementation Desktop import
