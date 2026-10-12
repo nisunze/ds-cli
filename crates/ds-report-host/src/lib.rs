@@ -44,6 +44,7 @@ pub mod mv_job;
 pub mod mv_preview;
 pub mod preview;
 pub mod preview_artifact;
+pub mod vd_preview;
 pub use preview::*;
 
 /// The kernel refused the inputs before any engine ran.

@@ -1,4 +1,4 @@
-//! Explicit consumers of a native preview read one exact disk SVG. This owner
+//! Explicit consumers of a native preview read one exact disk SVG or PDF. This owner
 //! has no transport or credential refresh; hosts admit their captured context.
 use crate::{HostFailure, PreviewPage, CODE_INPUTS_INVALID, CODE_RESULT_INVALID};
 use ds_project_data::preview_room::Room;
@@ -7,6 +7,7 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::{
     fs,
+    io::{Read, Seek, Write},
     path::{Path, PathBuf},
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -25,10 +26,51 @@ pub enum Retention {
     Days7,
 }
 impl Retention {
-    fn millis(self) -> u64 {
+    pub(crate) fn millis(self) -> u64 {
         match self {
             Self::Hours24 => RETENTION_MS,
             Self::Days7 => LONG_RETENTION_MS,
+        }
+    }
+}
+/// Closed native preview media; arbitrary MIME types never admit a file.
+#[derive(Clone, Copy)]
+enum Media {
+    Svg,
+    Pdf,
+}
+impl Media {
+    fn admit(raw: &str) -> Result<Self, HostFailure> {
+        match raw {
+            "image/svg+xml" => Ok(Self::Svg),
+            "application/pdf" => Ok(Self::Pdf),
+            _ => Err(failed("preview media is not SVG or PDF")),
+        }
+    }
+    fn filename(self) -> &'static str {
+        match self {
+            Self::Svg => "page.svg",
+            Self::Pdf => "page.pdf",
+        }
+    }
+    fn mime(self) -> &'static str {
+        match self {
+            Self::Svg => "image/svg+xml",
+            Self::Pdf => "application/pdf",
+        }
+    }
+    fn limit(self) -> u64 {
+        match self {
+            Self::Svg => crate::MAX_PREVIEW_BYTES,
+            Self::Pdf => 128 * 1024 * 1024,
+        }
+    }
+    fn signature(self, bytes: &[u8]) -> bool {
+        match self {
+            Self::Svg => std::str::from_utf8(bytes).is_ok_and(|s| {
+                s.trim_start().starts_with("<svg") || s.trim_start().starts_with("<?xml")
+            }),
+            Self::Pdf => bytes.starts_with(b"%PDF-"),
         }
     }
 }
@@ -46,6 +88,159 @@ pub struct Artifact {
     pub created_at_unix_ms: u64,
     pub expires_at_unix_ms: u64,
     pub retention_ms: u64,
+}
+
+/// A shared disk input index. Result bytes exist only in the common managed
+/// file room; this index joins native producers before they render.
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RequestManifest {
+    schema: String,
+    authority_sha256: String,
+    input_sha256: String,
+    inputs: Value,
+    artifact: Artifact,
+    metadata_sha256: String,
+    metadata: Value,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct RequestReceipt {
+    pub input_sha256: String,
+    pub reused: bool,
+    pub created_at_unix_ms: u64,
+    pub expires_at_unix_ms: u64,
+    pub retention_ms: u64,
+}
+pub struct RequestLease {
+    _lock: fs::File,
+    pub(crate) path: PathBuf,
+    room: Room,
+    inputs: Value,
+    key: String,
+    retention: Retention,
+    retained: Option<RequestManifest>,
+}
+pub fn begin_request(
+    room: &Room,
+    inputs: Value,
+    retention: Retention,
+) -> Result<RequestLease, HostFailure> {
+    begin_request_at(room, inputs, retention, now()?)
+}
+pub(crate) fn begin_request_at(
+    room: &Room,
+    inputs: Value,
+    retention: Retention,
+    clock: u64,
+) -> Result<RequestLease, HostFailure> {
+    if !inputs.is_object() {
+        return Err(failed("preview input index requires native semantic pins"));
+    }
+    let owner = authority(room)?;
+    let key = digest(
+        &serde_json::to_vec(&json!({"inputs":inputs,"retention_ms":retention.millis()}))
+            .map_err(|e| failed(e.to_string()))?,
+    );
+    let base = root(room, &owner).join("requests");
+    for ancestor in base.ancestors().take_while(|p| p.starts_with(&room.root)) {
+        match fs::symlink_metadata(ancestor) {
+            Ok(m) if m.is_dir() && !m.file_type().is_symlink() => {}
+            Ok(_) => return Err(failed("preview input index root is crossed")),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => return Err(failed(e.to_string())),
+        }
+    }
+    let lock = ds_layer_store::exclusive_lock(&base.join(format!("{key}.lock"))).map_err(failed)?;
+    let path = base.join(format!("{key}.json"));
+    let mut lease = RequestLease {
+        _lock: lock,
+        path,
+        room: room.clone(),
+        inputs,
+        key,
+        retention,
+        retained: None,
+    };
+    if let Some(bytes) = crate::read_bounded(&lease.path, MAX_MANIFEST_BYTES)? {
+        let old: RequestManifest =
+            serde_json::from_slice(&bytes).map_err(|e| failed(e.to_string()))?;
+        if old.schema != SCHEMA
+            || old.authority_sha256 != owner
+            || old.input_sha256 != lease.key
+            || old.inputs != lease.inputs
+            || old.artifact.retention_ms != retention.millis()
+            || digest(&serde_json::to_vec(&old.metadata).map_err(|e| failed(e.to_string()))?)
+                != old.metadata_sha256
+        {
+            return Err(failed(
+                "preview input index differs from its exact native inputs or result",
+            ));
+        }
+        if clock < old.artifact.expires_at_unix_ms {
+            admit_receipt_at(room, &old.artifact, clock)?;
+            lease.retained = Some(old);
+        }
+    }
+    Ok(lease)
+}
+impl RequestLease {
+    pub fn retained(&self) -> Option<&Value> {
+        self.retained.as_ref().map(|record| &record.metadata)
+    }
+    pub fn receipt(&self, reused: bool) -> Result<RequestReceipt, HostFailure> {
+        let record = self
+            .retained
+            .as_ref()
+            .ok_or_else(|| failed("preview has no committed file"))?;
+        Ok(RequestReceipt {
+            input_sha256: self.key.clone(),
+            reused,
+            created_at_unix_ms: record.artifact.created_at_unix_ms,
+            expires_at_unix_ms: record.artifact.expires_at_unix_ms,
+            retention_ms: record.artifact.retention_ms,
+        })
+    }
+    /// Only an admitted common file can complete the input index. Metadata
+    /// never contains the rendered PDF/SVG bytes and never grants a new path.
+    pub fn commit(&mut self, metadata: Value, artifact: &Artifact) -> Result<(), HostFailure> {
+        self.commit_at(metadata, artifact, now()?)
+    }
+    pub(crate) fn commit_at(
+        &mut self,
+        metadata: Value,
+        artifact: &Artifact,
+        clock: u64,
+    ) -> Result<(), HostFailure> {
+        if self.retained.is_some()
+            || !metadata.is_object()
+            || artifact.retention_ms != self.retention.millis()
+        {
+            return Err(failed(
+                "preview input index requires one newly admitted file result",
+            ));
+        }
+        admit_receipt_at(&self.room, artifact, clock)?;
+        let record = RequestManifest {
+            schema: SCHEMA.into(),
+            authority_sha256: authority(&self.room)?,
+            input_sha256: self.key.clone(),
+            inputs: self.inputs.clone(),
+            artifact: artifact.clone(),
+            metadata_sha256: digest(
+                &serde_json::to_vec(&metadata).map_err(|e| failed(e.to_string()))?,
+            ),
+            metadata,
+        };
+        let bytes = serde_json::to_vec(&record).map_err(|e| failed(e.to_string()))?;
+        if bytes.len() as u64 > MAX_MANIFEST_BYTES {
+            return Err(failed("preview index metadata exceeds its bound"));
+        }
+        ds_layer_store::private::write_atomic(&self.path, bytes)
+            .map_err(|e| failed(e.to_string()))?;
+        self.retained = Some(record);
+        Ok(())
+    }
 }
 
 #[derive(Serialize, Deserialize)]
@@ -100,7 +295,7 @@ pub(crate) fn authority(room: &Room) -> Result<String, HostFailure> {
 }
 fn root(room: &Room, authority: &str) -> PathBuf {
     ds_project_data::room_hold::room_dir(&room.root, &room.scope)
-        .join("preview-svg")
+        .join("preview-files")
         .join(authority)
 }
 fn metadata(page: &PreviewPage, retention: Retention) -> Result<Value, HostFailure> {
@@ -145,14 +340,14 @@ fn read_manifest(directory: &Path) -> Result<Manifest, HostFailure> {
 }
 fn admit_manifest(room: &Room, manifest: &Manifest) -> Result<PathBuf, HostFailure> {
     let artifact = &manifest.artifact;
+    let media = Media::admit(&artifact.content_type)?;
     let owner = authority(room)?;
     if artifact.schema != SCHEMA
         || artifact.authority_sha256 != owner
         || !digest_token(&artifact.result_sha256)
         || !digest_token(&artifact.sha256)
-        || artifact.content_type != "image/svg+xml"
         || artifact.size_bytes == 0
-        || artifact.size_bytes > crate::MAX_PREVIEW_BYTES
+        || artifact.size_bytes > media.limit()
         || ![RETENTION_MS, LONG_RETENTION_MS].contains(&artifact.retention_ms)
         || artifact
             .created_at_unix_ms
@@ -163,6 +358,7 @@ fn admit_manifest(room: &Room, manifest: &Manifest) -> Result<PathBuf, HostFailu
         || manifest.metadata["sha256"] != artifact.sha256
         || manifest.metadata["retention_ms"] != artifact.retention_ms
         || manifest.metadata["size_bytes"] != artifact.size_bytes
+        || manifest.metadata["content_type"] != artifact.content_type
     {
         return Err(failed(
             "preview artifact differs from its captured native authority or result",
@@ -170,7 +366,7 @@ fn admit_manifest(room: &Room, manifest: &Manifest) -> Result<PathBuf, HostFailu
     }
     let path = root(room, &owner)
         .join(&artifact.result_sha256)
-        .join("page.svg");
+        .join(media.filename());
     if path.to_string_lossy() != artifact.path {
         return Err(failed(
             "preview artifact path differs from its managed result",
@@ -242,6 +438,80 @@ fn materialize_svg_at(
         ));
     }
     let sha256 = digest(svg.as_bytes());
+    materialize_file_at(
+        room,
+        size_bytes,
+        sha256,
+        metadata,
+        Media::Svg,
+        retention,
+        clock,
+        |path| crate::write_new_private(path, svg.as_bytes()),
+    )
+}
+
+/// A renderer host supplies its already confined, verified PDF handle. The
+/// common preview owner streams those same bytes to the same managed room;
+/// this never invokes a renderer or accepts a consumer-supplied source path.
+pub fn materialize_pdf_retained(
+    room: &Room,
+    source: &mut fs::File,
+    size_bytes: u64,
+    sha256: &str,
+    provenance: Value,
+    retention: Retention,
+) -> Result<Artifact, HostFailure> {
+    if size_bytes == 0
+        || size_bytes > Media::Pdf.limit()
+        || !digest_token(sha256)
+        || source.metadata().map_err(|e| failed(e.to_string()))?.len() != size_bytes
+    {
+        return Err(failed(
+            "PDF preview differs from its verified native byte pins",
+        ));
+    }
+    source.rewind().map_err(|e| failed(e.to_string()))?;
+    let mut prefix = [0_u8; 5];
+    source
+        .read_exact(&mut prefix)
+        .map_err(|e| failed(e.to_string()))?;
+    if !Media::Pdf.signature(&prefix) {
+        return Err(failed("native preview is not PDF"));
+    }
+    source.rewind().map_err(|e| failed(e.to_string()))?;
+    let metadata = json!({"provenance":provenance,"sha256":sha256,"size_bytes":size_bytes,
+        "content_type":Media::Pdf.mime(),"retention_ms":retention.millis()});
+    materialize_file_at(
+        room,
+        size_bytes,
+        sha256.into(),
+        metadata,
+        Media::Pdf,
+        retention,
+        now()?,
+        |path| {
+            let mut target = ds_layer_store::private::open_options()
+                .write(true)
+                .create_new(true)
+                .open(path)
+                .map_err(|e| failed(e.to_string()))?;
+            std::io::copy(&mut source.take(size_bytes + 1), &mut target)
+                .map_err(|e| failed(e.to_string()))?;
+            target.flush().map_err(|e| failed(e.to_string()))?;
+            target.sync_all().map_err(|e| failed(e.to_string()))
+        },
+    )
+}
+fn materialize_file_at(
+    room: &Room,
+    size_bytes: u64,
+    sha256: String,
+    metadata: Value,
+    media: Media,
+    retention: Retention,
+    clock: u64,
+    write: impl FnOnce(&Path) -> Result<(), HostFailure>,
+) -> Result<Artifact, HostFailure> {
     let owner = authority(room)?;
     let result = digest(&serde_json::to_vec(&metadata).map_err(|e| failed(e.to_string()))?);
     let base = root(room, &owner);
@@ -268,10 +538,10 @@ fn materialize_svg_at(
     }
     let artifact = Artifact {
         schema: SCHEMA.into(),
-        path: target.join("page.svg").to_string_lossy().into_owned(),
+        path: target.join(media.filename()).to_string_lossy().into_owned(),
         sha256: sha256.clone(),
         size_bytes,
-        content_type: "image/svg+xml".into(),
+        content_type: media.mime().into(),
         authority_sha256: owner,
         result_sha256: result,
         created_at_unix_ms: clock,
@@ -284,8 +554,8 @@ fn materialize_svg_at(
         path: base.join(format!(".stage-{}", crate::random_run_id())),
     };
     crate::create_private_dir(&staged.path)?;
-    crate::write_new_private(&staged.path.join("page.svg"), svg.as_bytes())?;
-    crate::verify_file(&staged.path.join("page.svg"), size_bytes, &sha256)?;
+    write(&staged.path.join(media.filename()))?;
+    crate::verify_file(&staged.path.join(media.filename()), size_bytes, &sha256)?;
     let manifest = serde_json::to_vec(&Manifest {
         artifact: artifact.clone(),
         metadata,
@@ -300,6 +570,29 @@ fn materialize_svg_at(
     crate::promote_report(&staged.path, &target)?;
     Ok(artifact)
 }
+#[cfg(test)]
+pub(crate) fn materialize_pdf_at(
+    room: &Room,
+    bytes: &[u8],
+    provenance: Value,
+    retention: Retention,
+    clock: u64,
+) -> Result<Artifact, HostFailure> {
+    if !Media::Pdf.signature(bytes) || bytes.len() as u64 > Media::Pdf.limit() {
+        return Err(failed("test native PDF is invalid"));
+    }
+    let sha = digest(bytes);
+    materialize_file_at(
+        room,
+        bytes.len() as u64,
+        sha.clone(),
+        json!({"provenance":provenance,"sha256":sha,"size_bytes":bytes.len(),"content_type":Media::Pdf.mime(),"retention_ms":retention.millis()}),
+        Media::Pdf,
+        retention,
+        clock,
+        |path| crate::write_new_private(path, bytes),
+    )
+}
 
 fn remove_owned(directory: &Path, manifest: &Manifest, page: &Path) -> Result<(), HostFailure> {
     let names = fs::read_dir(directory)
@@ -307,10 +600,13 @@ fn remove_owned(directory: &Path, manifest: &Manifest, page: &Path) -> Result<()
         .map(|entry| entry.map(|entry| entry.file_name()))
         .collect::<Result<std::collections::BTreeSet<_>, _>>()
         .map_err(|e| failed(e.to_string()))?;
-    let expected = ["manifest.json", "page.svg"]
-        .map(std::ffi::OsString::from)
-        .into_iter()
-        .collect();
+    let expected = [
+        "manifest.json",
+        Media::admit(&manifest.artifact.content_type)?.filename(),
+    ]
+    .map(std::ffi::OsString::from)
+    .into_iter()
+    .collect();
     if names != expected {
         return Err(failed(
             "preview result contains foreign files; expiration left every file intact",
@@ -383,6 +679,9 @@ pub fn read(room: &Room, artifact: &Artifact) -> Result<Vec<u8>, HostFailure> {
 /// Validate a retained locator without reading an unselected page's bytes.
 /// The actual file consumer still calls `read` to verify its exact content.
 pub fn admit_receipt(room: &Room, artifact: &Artifact) -> Result<(), HostFailure> {
+    admit_receipt_at(room, artifact, now()?)
+}
+fn admit_receipt_at(room: &Room, artifact: &Artifact, clock: u64) -> Result<(), HostFailure> {
     if !digest_token(&artifact.result_sha256) {
         return Err(failed("preview result locator is invalid"));
     }
@@ -393,11 +692,28 @@ pub fn admit_receipt(room: &Room, artifact: &Artifact) -> Result<(), HostFailure
             "preview receipt differs from its exact native manifest",
         ));
     }
-    if now()? >= artifact.expires_at_unix_ms {
+    if clock >= artifact.expires_at_unix_ms {
         return Err(HostFailure::new(
             "print_preview_artifact_expired",
             "Preview receipt expired; request its exact native preview again.",
         ));
+    }
+    Ok(())
+}
+/// Prove an input-pinned producer result without loading its file into RAM.
+pub fn verify(room: &Room, artifact: &Artifact, provenance: &Value) -> Result<(), HostFailure> {
+    admit_receipt(room, artifact)?;
+    let manifest = read_manifest(&root(room, &authority(room)?).join(&artifact.result_sha256))?;
+    if manifest.metadata["provenance"] != *provenance {
+        return Err(failed("preview file differs from its native semantic pins"));
+    }
+    let path = admit_manifest(room, &manifest)?;
+    crate::verify_file(&path, artifact.size_bytes, &artifact.sha256)?;
+    let mut file = fs::File::open(path).map_err(|e| failed(e.to_string()))?;
+    let mut prefix = [0_u8; 512];
+    let count = file.read(&mut prefix).map_err(|e| failed(e.to_string()))?;
+    if !Media::admit(&artifact.content_type)?.signature(&prefix[..count]) {
+        return Err(failed("preview file differs from its admitted media"));
     }
     Ok(())
 }
@@ -418,9 +734,12 @@ fn read_at(room: &Room, artifact: &Artifact, clock: u64) -> Result<Vec<u8>, Host
     }
     crate::verify_file(&path, artifact.size_bytes, &artifact.sha256)?;
     let bytes = crate::read_bounded(&path, artifact.size_bytes)?
-        .ok_or_else(|| failed("preview SVG is missing"))?;
+        .ok_or_else(|| failed("preview file is missing"))?;
     if bytes.len() as u64 != artifact.size_bytes || digest(&bytes) != artifact.sha256 {
-        return Err(failed("preview SVG changed while reading"));
+        return Err(failed("preview file changed while reading"));
+    }
+    if !Media::admit(&artifact.content_type)?.signature(&bytes) {
+        return Err(failed("preview bytes differ from their admitted media"));
     }
     Ok(bytes)
 }
@@ -428,16 +747,29 @@ fn read_at(room: &Room, artifact: &Artifact, clock: u64) -> Result<Vec<u8>, Host
 /// Validate the explicit output before rendering. The managed result remains
 /// authoritative; a copy never replaces or adopts a source or another output.
 pub fn admit_output(raw: &str) -> Result<PathBuf, HostFailure> {
+    let path = admit_file_output(raw)?;
+    if path.extension().and_then(|s| s.to_str()) != Some("svg") {
+        return Err(HostFailure::new(
+            CODE_INPUTS_INVALID,
+            "SVG preview output must be a new absolute .svg path",
+        ));
+    }
+    Ok(path)
+}
+fn admit_file_output(raw: &str) -> Result<PathBuf, HostFailure> {
     let path = PathBuf::from(raw);
     if raw.is_empty()
         || raw.len() > 4096
         || raw.chars().any(char::is_control)
         || !path.is_absolute()
-        || path.extension().and_then(|s| s.to_str()) != Some("svg")
+        || !matches!(
+            path.extension().and_then(|s| s.to_str()),
+            Some("svg" | "pdf")
+        )
     {
         return Err(HostFailure::new(
             CODE_INPUTS_INVALID,
-            "preview output must be a new absolute .svg path",
+            "preview output must be a new absolute .svg or .pdf path",
         ));
     }
     if fs::symlink_metadata(&path).is_ok() {
@@ -457,7 +789,17 @@ pub fn admit_output(raw: &str) -> Result<PathBuf, HostFailure> {
     Ok(path)
 }
 pub fn copy(room: &Room, artifact: &Artifact, raw: &str) -> Result<PathBuf, HostFailure> {
-    let destination = admit_output(raw)?;
+    let destination = admit_file_output(raw)?;
+    if destination.extension().and_then(|s| s.to_str())
+        != Some(match Media::admit(&artifact.content_type)? {
+            Media::Svg => "svg",
+            Media::Pdf => "pdf",
+        })
+    {
+        return Err(failed(
+            "preview copy extension differs from its admitted media",
+        ));
+    }
     let bytes = read(room, artifact)?;
     let temporary = destination
         .parent()
@@ -467,7 +809,7 @@ pub fn copy(room: &Room, artifact: &Artifact, raw: &str) -> Result<PathBuf, Host
         path: temporary.clone(),
     };
     crate::create_private_dir(&temporary)?;
-    let file = temporary.join("page.svg");
+    let file = temporary.join(Media::admit(&artifact.content_type)?.filename());
     crate::write_new_private(&file, &bytes)?;
     crate::verify_file(&file, artifact.size_bytes, &artifact.sha256)?;
     // A same-filesystem hard link publishes complete bytes with atomic
@@ -504,6 +846,94 @@ mod tests {
             "warnings":[],"print_diagnostics":[],"elapsed_ms":1,"engine":{"engine_version":"dev","build_manifest_sha256":"c".repeat(64),
             "package_version":"1","source_sha":"d".repeat(40),"profile":"debug"},"context_layers":[],"context_omitted":[],
             "survey_forms_omitted":[],"context_sha256":null,"filename":"tx_a.svg","receipt":{"input":"native-pinned"}})).unwrap()
+    }
+    #[test]
+    fn pdf_and_svg_share_authority_file_reader_and_verified_copy_with_closed_media() {
+        let dir = tempfile::tempdir().unwrap();
+        let room = room(dir.path().into());
+        let bytes = b"%PDF-1.7 exact saved analysis";
+        let source = dir.path().join("verified-source.pdf");
+        fs::write(&source, bytes).unwrap();
+        let mut handle = fs::File::open(&source).unwrap();
+        let provenance = json!({"saved_analysis_sha256":"b".repeat(64)});
+        let pdf = materialize_pdf_retained(
+            &room,
+            &mut handle,
+            bytes.len() as u64,
+            &digest(bytes),
+            provenance.clone(),
+            Retention::Hours24,
+        )
+        .unwrap();
+        assert_eq!(pdf.content_type, "application/pdf");
+        assert!(pdf.path.ends_with("/page.pdf"));
+        assert!(pdf.path.contains("/preview-files/"));
+        assert!(serde_json::to_vec(&pdf).unwrap().len() < 2048);
+        assert_eq!(read(&room, &pdf).unwrap(), bytes);
+        verify(&room, &pdf, &provenance).unwrap();
+        let svg = materialize(&room, &page(10)).unwrap();
+        assert_eq!(pdf.authority_sha256, svg.authority_sha256);
+        let out = dir.path().join("copy.pdf");
+        copy(&room, &pdf, out.to_str().unwrap()).unwrap();
+        assert_eq!(fs::read(out).unwrap(), bytes);
+        assert!(copy(&room, &pdf, dir.path().join("wrong.svg").to_str().unwrap()).is_err());
+        let mut crossed = room.clone();
+        crossed.lane = "stable".into();
+        assert!(read(&crossed, &pdf).is_err());
+        let mut wrong = pdf.clone();
+        wrong.content_type = "text/html".into();
+        assert!(read(&room, &wrong).is_err());
+        assert!(verify(
+            &room,
+            &pdf,
+            &json!({"saved_analysis_sha256":"c".repeat(64)})
+        )
+        .is_err());
+        fs::write(&pdf.path, b"%PDF-1.7 changed saved result").unwrap();
+        assert!(read(&room, &pdf).is_err());
+    }
+    #[test]
+    fn pdf_materialization_requires_verified_bytes_and_expiry_never_renders_or_refreshes() {
+        let dir = tempfile::tempdir().unwrap();
+        let room = room(dir.path().into());
+        let pdf = materialize_pdf_at(
+            &room,
+            b"%PDF-1.7 held",
+            json!({"analysis":"pinned"}),
+            Retention::Days7,
+            100,
+        )
+        .unwrap();
+        assert!(read_at(&room, &pdf, 100 + LONG_RETENTION_MS - 1).is_ok());
+        assert_eq!(
+            read_at(&room, &pdf, 100 + LONG_RETENTION_MS)
+                .unwrap_err()
+                .code,
+            "print_preview_artifact_expired"
+        );
+        let file = dir.path().join("bad.pdf");
+        fs::write(&file, b"<svg>wrong media</svg>").unwrap();
+        let mut source = fs::File::open(&file).unwrap();
+        assert!(materialize_pdf_retained(
+            &room,
+            &mut source,
+            fs::metadata(&file).unwrap().len(),
+            &digest(b"<svg>wrong media</svg>"),
+            json!({}),
+            Retention::Hours24
+        )
+        .is_err());
+        fs::write(&file, b"%PDF-1.7 changed pins").unwrap();
+        let mut source = fs::File::open(&file).unwrap();
+        assert!(materialize_pdf_retained(
+            &room,
+            &mut source,
+            fs::metadata(&file).unwrap().len(),
+            &"f".repeat(64),
+            json!({}),
+            Retention::Hours24
+        )
+        .is_err());
     }
     #[test]
     fn large_svg_is_disk_bytes_with_small_receipt_and_reuse_keeps_expiry() {

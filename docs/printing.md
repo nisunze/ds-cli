@@ -754,6 +754,33 @@ operations; `ds report layout pens` is the same surface headlessly.
 
 ## Printable inventory and preview admission
 
+Native SVG and saved-analysis A4 PDF previews share
+`ds-report-host::preview_artifact`: one `ds.print-preview-artifact/v1` file
+manifest, scoped account/project/lane/audience room, byte/hash admission,
+24-hour default lifetime and optional seven-day lifetime. Opening a retained
+file never renders, acquires inputs or observes remote freshness. Reuse keeps
+the original expiry. Files are the output; renderer responses contain only
+their small manifests and diagnostics. The shared reader refuses crossed
+authority, paths, expired files, wrong SVG/PDF media and changed bytes.
+
+The fixed A4 producer admits the exact saved analysis before a cache lookup.
+Its common disk input lease binds the transformer and saved revision, original
+analysis SHA, layer content digest, captured settings/selection and exact engine
+build. Overlapping consumers join one renderer task; restarting or returning
+to an earlier exact input hash consumes its disk result. Navigation releases
+the view's adoption only; the admitted native task retains its completed file.
+No missing analysis is replaced by an older preview or recomputation. A4
+delivery's existing saved JSON companion remains an exact source artifact;
+it is not a second preview path. Existing main publication and retained report
+downloads keep their separate contracts.
+
+The paired CLI first consumer is `desktop printing export --intent preview`
+with only `voltage_drop_pdf` selected and optional
+`--preview-retention 24h|7d`. Its result exposes the common `previewArtifact`
+and a native reuse receipt. This paired adapter is not proof of a Server
+adapter; a headless caller must admit its own saved source and native context
+through the same owner.
+
 The inventory carries exact saved `layers.customers` and `layers.lv_poles`
 counts when present. `preview_cases` identifies the smallest and largest of
 each among the returned rows, with stable name order for ties. Missing or

@@ -83,7 +83,7 @@ pub struct NetworkReporterLocalArtifactSet {
     pub artifacts: Vec<PublishedArtifact>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PublishedArtifact {
     pub output_id: String,
