@@ -1,7 +1,7 @@
 //! Fixed Bulk import transport; source preparation remains the native file owner's job.
 use crate::{
-    authorized::Authority, AuthorizedTransport, ClientError, ClientProfile, DesignVersionsCall,
-    ErrorKind,
+    AuthorizedTransport, ClientError, ClientProfile, DesignVersionsCall, ErrorKind,
+    authorized::Authority,
 };
 pub use ds_command_kernel::transformer_history_import::{Import, Prepared, Source};
 use serde_json::Value;

@@ -1,6 +1,6 @@
 //! Source-pinned exported-design history input. Runtime identity restoration is excluded.
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
 pub const LAYERS: [&str; 6] = [
     "customers",
@@ -199,9 +199,11 @@ mod tests {
         let i = input();
         let p = i.payload("p").unwrap();
         assert_eq!(p["history_import"]["layers"]["tr"], i.layers["tr"]);
-        assert!(p["history_import"]["source"]
-            .get("source_update_time")
-            .is_none());
+        assert!(
+            p["history_import"]["source"]
+                .get("source_update_time")
+                .is_none()
+        );
         assert!(p.get("gdfs").is_none());
     }
     #[test]

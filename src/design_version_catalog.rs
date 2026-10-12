@@ -1,6 +1,6 @@
 //! Closed wire validation for the LV version catalog; allocation stays server-owned.
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -60,6 +60,7 @@ fn sha(s: &str) -> bool {
 fn legacy(s: &str) -> bool {
     s.strip_prefix('v').is_some_and(|n| {
         !n.is_empty()
+            && (n == "0" || !n.starts_with('0'))
             && n.bytes().all(|c| c.is_ascii_digit())
             && n.parse::<u64>().is_ok_and(|n| n <= i64::MAX as u64)
     })
@@ -77,6 +78,83 @@ pub fn version_id(id: &str) -> bool {
 /// Exact immutable revision grammar; a display ordinal is never a reference.
 pub fn revision_id(id: &str) -> bool {
     revision(id)
+}
+
+/// Admit a legacy v0 only from the authority's immutable baseline evidence.
+/// This validates provenance, not engineering approval or current demand.
+pub fn baseline_evidence(row: &Value) -> bool {
+    if row["object"]["kind"] != "lv_transformer" || row["version_id"] != "v0" || row["version"] != 0
+    {
+        return false;
+    }
+    let mode = row["source_mode"].as_str().unwrap_or_default();
+    if mode == "source_pinned_import" {
+        let source = &row["source"];
+        return row["snapshot_scope"] == "exported_design"
+            && source["asset_version"]
+                .as_u64()
+                .is_some_and(|n| n > 0 && n <= i64::MAX as u64)
+            && ["record_id", "asset_id"]
+                .iter()
+                .all(|key| source[key].as_str().is_some_and(identifier))
+            && source["archive_member"].as_str().is_some_and(|s| {
+                !s.is_empty()
+                    && s.len() <= 512
+                    && !s.contains('\\')
+                    && !s.chars().any(char::is_control)
+                    && s.split('/')
+                        .all(|part| !part.is_empty() && part != "." && part != "..")
+            })
+            && source["historical_period"].as_str().is_some_and(|s| {
+                !s.trim().is_empty() && s.len() <= 80 && !s.chars().any(char::is_control)
+            })
+            && ["asset_sha256", "member_sha256", "imported_layers_sha256"]
+                .iter()
+                .all(|key| source[key].as_str().is_some_and(sha));
+    }
+    if !matches!(mode, "initial_creation" | "baseline_today")
+        || row["snapshot_scope"] != "runtime_design"
+        || row["baseline_source"]["kind"] != mode
+        || !row["baseline_source"]["snapshot_digest"]
+            .as_str()
+            .is_some_and(sha)
+        || !row["created_by"].as_str().is_some_and(identifier)
+    {
+        return false;
+    }
+    let instant = |v: &Value| {
+        v.as_str().and_then(|s| {
+            time::OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).ok()
+        })
+    };
+    let Some(created) = instant(&row["created_at"]) else {
+        return false;
+    };
+    if created.unix_timestamp() <= 0
+        || instant(&row["baseline_source"]["captured_at"]) != Some(created)
+    {
+        return false;
+    }
+    if mode == "initial_creation" {
+        return row["source_revision"]
+            == format!(
+                "sha256:{}",
+                row["baseline_source"]["snapshot_digest"]
+                    .as_str()
+                    .unwrap_or_default()
+            )
+            && (row["source_update_time"].is_null()
+                || row["source_update_time"] == "0001-01-01T00:00:00Z");
+    }
+    instant(&row["source_update_time"]).is_some_and(|observed| {
+        observed.unix_timestamp() > 0
+            && row["source_revision"]
+                .as_str()
+                .and_then(|s| s.parse::<i64>().ok())
+                .is_some_and(|revision| {
+                    i128::from(revision) == observed.unix_timestamp_nanos() / 1000
+                })
+    })
 }
 
 /// Verify exact immutable UTF-8 bytes and decode their native snapshot once.
@@ -352,26 +430,32 @@ mod tests {
     fn malformed_mutations_refuse_before_transport() {
         let mut m = mutation();
         m.version_id = Some("v1".into());
-        assert!(Command::Publish {
-            object_id: "TR-1".into(),
-            mutation: m.clone()
-        }
-        .payload("p")
-        .is_err());
+        assert!(
+            Command::Publish {
+                object_id: "TR-1".into(),
+                mutation: m.clone()
+            }
+            .payload("p")
+            .is_err()
+        );
         m.insert_before_version_id = None;
-        assert!(Command::Renumber {
-            object_id: "TR-1".into(),
-            mutation: m.clone()
-        }
-        .payload("p")
-        .is_ok());
+        assert!(
+            Command::Renumber {
+                object_id: "TR-1".into(),
+                mutation: m.clone()
+            }
+            .payload("p")
+            .is_ok()
+        );
         m.expected_source_revision = "yesterday".into();
-        assert!(Command::Renumber {
-            object_id: "TR-1".into(),
-            mutation: m
-        }
-        .payload("p")
-        .is_err());
+        assert!(
+            Command::Renumber {
+                object_id: "TR-1".into(),
+                mutation: m
+            }
+            .payload("p")
+            .is_err()
+        );
     }
     #[test]
     fn pinned_snapshot_verifies_exact_utf8_without_number_reserialization() {
@@ -384,9 +468,9 @@ mod tests {
         let raw = r#"{"schema":"ds.transformer-version-snapshot/v1","layers":{"tr":{"type":"FeatureCollection","features":[]}},"metadata":{"sentinel":1.0000,"name":"??"}}"#;
         let mut reply = json!({"metadata":{"project_id":"p","transformer_id":"TR-1","version_id":"v0","revision_id":"v0","revision_number":1,"playback_available":true,"content_digest":"a".repeat(64)},"snapshot_json":raw,"snapshot_sha256":format!("{:x}",Sha256::digest(raw.as_bytes()))});
         c.verify_response("p", &reply).unwrap();
-        reply["metadata"]["playback_available"]=json!(false);
-        assert!(c.verify_response("p",&reply).is_err());
-        reply["metadata"]["playback_available"]=json!(true);
+        reply["metadata"]["playback_available"] = json!(false);
+        assert!(c.verify_response("p", &reply).is_err());
+        reply["metadata"]["playback_available"] = json!(true);
         let payload = c.payload("p").unwrap();
         assert_eq!(payload["action"], "get_transformer_version_revision");
         assert_eq!(payload["catalog_revision_read"]["version_id"], "v0");
@@ -409,5 +493,41 @@ mod tests {
         v["catalog"]["versions"].as_array_mut().unwrap().push(row);
         assert!(c.verify_response("p", &v).is_err());
         assert!(c.verify_response("other", &v).is_err());
+    }
+    #[test]
+    fn baseline_requires_immutable_evidence_for_each_actual_origin() {
+        let mut row =
+            json!({"object":{"kind":"lv_transformer","id":"TR-1"},"version_id":"v0","version":0});
+        assert!(!baseline_evidence(&row));
+        row["source_mode"] = json!("initial_creation");
+        row["snapshot_scope"] = json!("runtime_design");
+        row["created_by"] = json!("owner@example.com");
+        row["created_at"] = json!("2026-10-12T12:00:00Z");
+        row["baseline_source"] = json!({"kind":"initial_creation","snapshot_digest":"a".repeat(64),"captured_at":"2026-10-12T12:00:00Z"});
+        row["source_revision"] = json!(format!("sha256:{}", "a".repeat(64)));
+        assert!(baseline_evidence(&row));
+        row["baseline_source"]["snapshot_digest"] = json!("bad");
+        assert!(!baseline_evidence(&row));
+        row["baseline_source"]["snapshot_digest"] = json!("a".repeat(64));
+        row["source_mode"] = json!("baseline_today");
+        row["baseline_source"]["kind"] = json!("baseline_today");
+        row["source_update_time"] = json!("2026-10-12T11:00:00.123456Z");
+        let observed = time::OffsetDateTime::parse(
+            "2026-10-12T11:00:00.123456Z",
+            &time::format_description::well_known::Rfc3339,
+        )
+        .unwrap();
+        row["source_revision"] = json!((observed.unix_timestamp_nanos() / 1000).to_string());
+        assert!(baseline_evidence(&row));
+        row["source_revision"] = json!(1);
+        assert!(!baseline_evidence(&row));
+        row["source_mode"] = json!("source_pinned_import");
+        row["snapshot_scope"] = json!("exported_design");
+        row["source"] = json!({"record_id":"R-1","asset_id":"A-1","asset_version":3,"asset_sha256":"a".repeat(64),"archive_member":"GEOPACKAGE/TR-1.gpkg","member_sha256":"b".repeat(64),"imported_layers_sha256":"c".repeat(64),"historical_period":"April 2026"});
+        assert!(baseline_evidence(&row));
+        row["source"]["member_sha256"] = json!("bad");
+        assert!(!baseline_evidence(&row));
+        assert!(!version_id("v00"));
+        assert!(!revision_id("v01"));
     }
 }
