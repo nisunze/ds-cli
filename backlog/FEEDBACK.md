@@ -2,13 +2,13 @@
 
 > **Moved 2026-10-07:** this backlog now lives in `ds-command-kernel/backlog/`. The old `ds-work/backlog/` no longer exists: edit these files here, commit them to ds-command-kernel `run`, and stage only `backlog/`. ds-work holds working sessions, not coding lists.
 
-Working list from the 2026-10-07 snapshot and 2026-10-09 component lookups, with proven closures removed: 252 tracked rows (98 open, 154 waiting according to the rows below). These are file counts, not a fresh live backlog total. The feedback API is the authority: verify each selected report's current status, full ID, version and acceptance through `ds`, close only what is proven, and remove its row. Delete this file when its remaining work is fulfilled; keep no completed-work archive.
+Working list from the 2026-10-07 snapshot and 2026-10-09 component lookups, with proven closures removed: 251 tracked rows (99 open, 152 waiting according to the rows below). These are file counts, not a fresh live backlog total. The feedback API is the authority: verify each selected report's current status, full ID, version and acceptance through `ds`, close only what is proven, and remove its row. Delete this file when its remaining work is fulfilled; keep no completed-work archive.
 
-Reports are grouped by the live repository that owns the code, then by component. The component is the submitter's free-text label, shown verbatim so `ds feedback list --component` finds it. Legacy labels map as follows: `ds-grid*`, `dsgrid*`, `ds/grid-*`, `ds/pls-library` → ds-network; `ds-report*`, `ds-printing*` → ds-network-reporter; `ds-desktop*` → ds-web (`src-tauri`); `ds pls desktop` → ds-cli (`ds-cli-pls/desktop`). Labels that name no repository stay **unassigned**. "Backlog" names the [OPEN.md](OPEN.md), [OPEN-X.md](OPEN-X.md) or [SEEDING.md](SEEDING.md) section citing the report; **untracked** means none does (127 reports).
+Reports are grouped by the live repository that owns the code, then by component. The component is the submitter's free-text label, shown verbatim so `ds feedback list --component` finds it. Legacy labels map as follows: `ds-grid*`, `dsgrid*`, `ds/grid-*`, `ds/pls-library` → ds-network; `ds-report*`, `ds-printing*` → ds-network-reporter; `ds-desktop*` → ds-web (`src-tauri`); `ds pls desktop` → ds-cli (`ds-cli-pls/desktop`). Labels that name no repository stay **unassigned**. "Backlog" names the [OPEN.md](OPEN.md), [OPEN-X.md](OPEN-X.md) or [SEEDING.md](SEEDING.md) section citing the report; **untracked** means none does (126 reports).
 
 | Repository | Total | Blocker | Major | Minor | Waiting | Untracked |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| [ds-cli](#ds-cli) | 94 | 11 | 64 | 19 | 59 | 59 |
+| [ds-cli](#ds-cli) | 93 | 11 | 63 | 19 | 57 | 58 |
 | [ds-network](#ds-network) | 75 | 18 | 52 | 5 | 38 | 26 |
 | [ds-network-reporter](#ds-network-reporter) | 28 | 1 | 21 | 6 | 20 | 16 |
 | [ds-web](#ds-web) | 34 | 6 | 26 | 2 | 24 | 16 |
@@ -108,11 +108,10 @@ Reports are grouped by the live repository that owns the code, then by component
 | ds-cli/skills | `e6a0751f` | minor | idea | Skill proposal for the ds bundle: ds-lv-misprojected-room-healing | waiting: SRE mode: addition parked until the owner says go | **untracked** |
 | ds-cli/skills | `c7dcd5ee` | minor | idea | Skill proposal for the ds bundle: ds-lv-findings-healing | waiting: SRE mode: addition parked until the owner says go | **untracked** |
 | ds-cli/skills | `9924576b` | minor | idea | Skill proposal for the ds bundle: ds-headless-gotchas | waiting: SRE mode: addition parked until the owner says go | **untracked** |
-| ds-cli/skills (ds-project-work, ds-boq-staking-table, ds-grid-project-model, ds-printout) | `190d8eaf` | major | friction | Canonical MV deliverables list (staking = XLSX only, never printed) is not visible to submission skills | waiting: install of canary 0.1.7-r79+ carrying ds-cli@e34d4423 | **untracked** |
 | ds-cli/style | `14aec381` | major | obstacle | Web-map styling is fixed-scale: no zoom-stepped overlap/size, no headless categorical colour, Desktop ignores headless publish, capture os error 32 | waiting: Remaining categorical/zoom/halo styles, PLS editors, casing/live-tile order, invalidation/defaults; affected Windows camera/zoom/UI/capture  | SEEDING.md §16 |
 | ds-cli/survey | `cf92af6c` | major | obstacle | No way to measure staked-out LV line length by district or sector: survey aggregates count only, entries carry no admin fields, and geometry selection has no pagination | waiting: SRE mode: addition parked until the owner says go | OPEN.md §16 |
 | ds-cli/survey | `e6b8070d` | major | idea | Design triage: filter or export the survey records (customers or any form) not yet covered by design clusters, so the next transformer to design is visible at a glance | waiting: SRE mode: addition parked until the owner says go | **untracked** |
-| ds-cli/work | `e01cf456` | major | obstacle | PM: creating a free-standing task with two attachments costs 8 commands across two domains and still fails; a task needs its own cheap attach route (work task create --attach), not the design assets l | waiting: SRE mode: addition parked until the owner says go | OPEN.md §17 |
+| ds-cli/work | `e01cf456` | major | obstacle | PM: creating a free-standing task with two attachments costs 8 commands across two domains and still fails; a task needs its own cheap attach route (work task create --attach), not the design assets l | open: owner authorized PM code on 2026-10-12; create attachments, detach and unschedule acceptance remain | OPEN.md §17 |
 | ds-cli/workstation | `f73043ec` | major | idea | Allow moving the whole DS working data folder to an external disk for low-storage machines | open | **untracked** |
 | ds-cli/workstation/chromium | `f88d24ad` | major | bug | Windows workstation browser verification rejects installed functional Chrome and Edge | waiting: release of ds-cli@d53255d8 (Windows) | **untracked** |
 
