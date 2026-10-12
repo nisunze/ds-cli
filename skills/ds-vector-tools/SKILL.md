@@ -47,13 +47,15 @@ For display, hand the produced GeoJSON to `ds-map-local-data` or
 `ds-layer-management`; for authorized corridor dataset reads, use
 `ds-cloud-datasets`.
 
-Stops at: the native map workflow for display, or the operator when the
-installed surface lacks the requested geometry operation. Hand over the
-source identity, requested operation and exact capability/refusal evidence.
-
 General analysis uses an external executor's own interface and standard files
 outside DS Run. DS has no custom general analysis DAG or recipe store. Discover
 the exact DS export and validation/import commands, retain source identity and
 revision/digests, declare CRS/units and external tool version/parameters, and
 validate the output before an approved native import or design change. Retained
 geometry primitives and governed direct repair commands remain their owners.
+
+Stops at: the native map workflow for display, an external GIS executor for
+general analysis, or the operator for an unavailable control. Hand over source
+identity, revision/digests, declared CRS/units and operation evidence. Return
+external outputs with tool version/parameters for governed DS validation and
+an explicitly approved import; retained geometry remains native DS authority.
