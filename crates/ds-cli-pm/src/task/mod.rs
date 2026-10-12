@@ -23,6 +23,7 @@ pub mod block;
 pub mod checklist;
 pub mod create;
 pub mod delete;
+pub mod detach;
 pub mod list;
 pub mod proposals;
 pub mod read;

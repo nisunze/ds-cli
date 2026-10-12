@@ -2449,6 +2449,11 @@ static WORK_ENTRIES: &[Entry] = &[
         render: ds_cli_pm::task::assign::render,
     },
     Entry {
+        command: &ds_cli_pm::task::detach::COMMAND,
+        handler: ds_cli_pm::task::detach::run,
+        render: ds_cli_pm::task::detach::render,
+    },
+    Entry {
         command: &ds_cli_pm::task::attach::COMMAND,
         handler: ds_cli_pm::task::attach::run,
         render: ds_cli_pm::task::attach::render,

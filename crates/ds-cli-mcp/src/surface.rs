@@ -404,7 +404,8 @@ impl Profile {
             // Raised to 14 on 2026-10-02 by the three model-link leaves: the
             // exact DS Grid model version a work item is about sits beside its
             // WHERE, and reading which work links a model is the same lane.
-            Self::ProjectTaskOperations => 14,
+            // Thirteen task leaves plus two bootstrap tools; detach retains files.
+            Self::ProjectTaskOperations => 15,
             // Seventeen working-copy leaves plus both bootstrap tools. Raised
             // from the default on 2026-09-22 when the four 2026-09-21 leaves
             // (`dsgrid model forget`, `dsgrid structure admin-refresh`,
@@ -1228,6 +1229,7 @@ const PROJECT_CHECKLIST_COMMANDS: &[&str] = &[
 /// Task creation with typed geometry, plus task geometry and execution
 /// decisions. Kept apart from correspondence and broad project planning.
 const PROJECT_TASK_OPERATIONS_COMMANDS: &[&str] = &[
+    "pm.task.detach",
     "pm.task.create",
     "pm.task.propose",
     "pm.task.request-admission",

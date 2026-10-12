@@ -4089,3 +4089,39 @@ fn deliberate_profile_save_is_in_its_bounded_workflow_and_requires_confirmation(
     assert_eq!(tool["inputSchema"]["additionalProperties"], false);
     assert_eq!(response(&messages, 2)["result"]["structuredContent"]["error"]["code"], "confirmation_required");
 }
+
+#[test]
+fn task_attachment_detach_projects_exact_cli_inputs_and_confirmation() {
+    let home = signed_out("task-detach");
+    let messages = signed_out_mcp(
+        &home,
+        &[
+            "--exposure",
+            "commands",
+            "--profile",
+            "project-task-operations",
+        ],
+        &[
+            json!({"jsonrpc":"2.0","id":1,"method":"tools/list"}),
+            json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"pm_task_detach","arguments":{"project":"project","task":"task","attachment":"file","expected-version":"3"}}}),
+            json!({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"pm_task_detach","arguments":{"project":"project","task":"task","attachment":"file","expected-version":"0","confirm":true}}}),
+        ],
+    );
+    let tool = response(&messages, 1)["result"]["tools"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|t| t["name"] == "pm_task_detach")
+        .expect("CLI-backed task detach tool");
+    assert!(tool["inputSchema"]["properties"]["expected-version"].is_object());
+    assert!(tool["inputSchema"]["properties"].get("data").is_none());
+    assert!(tool["inputSchema"]["properties"].get("file").is_none());
+    assert_eq!(
+        structured(&messages, 2)["error"]["code"],
+        "confirmation_required"
+    );
+    assert_eq!(
+        structured(&messages, 3)["error"]["code"],
+        "native_profile_not_configured"
+    );
+}

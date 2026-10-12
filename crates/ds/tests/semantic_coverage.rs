@@ -1509,6 +1509,7 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("pm.record.update", "global_write", "headless_project"),
     ("pm.task.assign", "global_write", "headless_project"),
     ("pm.task.attach", "global_write", "headless_project"),
+    ("pm.task.detach", "global_write", "headless_project"),
     ("pm.task.admit", "global_write", "headless_project"),
     ("pm.task.block", "global_write", "headless_project"),
     ("pm.task.checklist.read", "read_only", "headless_project"),

@@ -20145,3 +20145,41 @@ fn library_seed_centers_named_earthwires_and_retains_tapping_and_capacity() {
     assert_ne!(refused.code, 0);
     assert_eq!(refused.envelope["error"]["code"], "library_seed_failed");
 }
+
+#[test]
+fn pm_task_detach_descriptor_confirmation_and_packaging_gate_are_honest() {
+    let command = ok(&["capabilities", "pm.task.detach", "--output", "json"])["command"].clone();
+    assert_eq!(command["requires"], "server");
+    assert_eq!(command["authority"], "headless_project");
+    assert_eq!(command["effect"], "global_write");
+    assert!(
+        command["inputs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|a| a["name"] == "expected-version")
+    );
+    let base = [
+        "pm",
+        "task",
+        "detach",
+        "--task",
+        "T-1",
+        "--attachment",
+        "att-1",
+        "--expected-version",
+        "3",
+        "--output",
+        "json",
+    ];
+    assert_eq!(pm_refusal(&base), "confirmation_required");
+    let mut invalid = base.to_vec();
+    invalid[8] = "0";
+    invalid.push("--yes");
+    // This deliberately held v30 fixture cannot admit the compiled v31 profile.
+    // Pure CLI/core tests separately prove invalid inputs have zero owner calls.
+    assert_eq!(native_pm_refusal(&invalid), "native_profile_not_configured");
+    let mut valid = base.to_vec();
+    valid.push("--yes");
+    assert_eq!(native_pm_refusal(&valid), "native_profile_not_configured");
+}
