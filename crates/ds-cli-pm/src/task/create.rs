@@ -12,10 +12,10 @@ use ds_cli_contract::spec::{
 };
 use ds_cli_contract::{Context, Inputs};
 use ds_command_kernel::project_management::writes::{self, CreateKind, CreateTask};
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value, json};
 
-use crate::geometry::{BUFFER_ARG, DRY_RUN_ARG, GEOMETRY_FROM_ARG, PACKAGE_ARG, PROPOSAL_REFUSALS};
 use crate::LANE_ARG;
+use crate::geometry::{BUFFER_ARG, DRY_RUN_ARG, GEOMETRY_FROM_ARG, PACKAGE_ARG, PROPOSAL_REFUSALS};
 
 const ATTACH_ARG: Arg = Arg {
     name: "attach",

@@ -15,7 +15,7 @@ use ds_cli_contract::{Context, Inputs};
 use ds_client_core::project_management::{
     AttachmentFile, Command as PMCommand, MAX_ATTACHMENT_BYTES,
 };
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 const FILE: Arg = Arg::value(
     "file",
