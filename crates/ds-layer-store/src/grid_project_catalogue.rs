@@ -237,6 +237,9 @@ pub fn consume<E>(
     load: impl FnOnce() -> Result<Value, E>,
     unauthorized: impl Fn(&E) -> bool,
 ) -> Result<Value, Failure<E>> {
+    if source.is_some() && inventory.is_none() {
+        return Err(Failure::Admission(mv_models::STALE));
+    }
     if let Some(source) = &source {
         mv_models::admit_context(&scope.project, source).map_err(Failure::Admission)?;
     }
@@ -363,7 +366,7 @@ mod tests {
         ));
     }
     #[test]
-    fn foreign_selected_source_refuses_before_cache_or_transport_access() {
+    fn incomplete_or_foreign_selected_sources_refuse_before_cache_or_transport_access() {
         let root = tempfile::tempdir().unwrap();
         let scope = scope("template");
         let source = mv_models::SourceBinding {
@@ -380,21 +383,27 @@ mod tests {
             read_only: false,
         };
         let calls = AtomicUsize::new(0);
-        assert!(matches!(
-            consume(
-                root.path(),
-                &scope,
-                demand(),
-                None,
-                Some(source),
-                || {
-                    calls.fetch_add(1, Ordering::SeqCst);
-                    Ok::<_, &str>(answer("template"))
-                },
-                |_| false
-            ),
-            Err(Failure::Admission(mv_models::STALE))
-        ));
+        let context = json!({"account":"owner","project":"template","generation":1});
+        let inventory = ds_command_kernel::grid_held_models::admit(json!({"captured_context":context,"context":context,"total":0,"rows":[],"mutated":false})).unwrap();
+        let mut unbound = source.clone();
+        unbound.project_id = "template".into();
+        for (inventory, source) in [(Some(inventory), source), (None, unbound)] {
+            assert!(matches!(
+                consume(
+                    root.path(),
+                    &scope,
+                    demand(),
+                    inventory,
+                    Some(source),
+                    || {
+                        calls.fetch_add(1, Ordering::SeqCst);
+                        Ok::<_, &str>(answer("template"))
+                    },
+                    |_| false
+                ),
+                Err(Failure::Admission(mv_models::STALE))
+            ));
+        }
         assert_eq!(calls.load(Ordering::SeqCst), 0);
         assert!(!root.path().join("grid-project-catalogue").exists());
     }
