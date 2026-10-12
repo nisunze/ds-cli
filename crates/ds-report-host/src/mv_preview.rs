@@ -166,10 +166,16 @@ pub fn execute_retained(
             return Err(HostFailure::new(CODE_INPUTS_INVALID, "the MV preview result room belongs to another project"));
         }
         let identity = crate::engine_identity_now(engine)?;
+        // The effective native policy is part of the result identity. Private
+        // per-run paths transport the already-digested scene/plan and output.
+        let mut effective = preview.request.clone();
+        for path in ["scene_path", "plan_path", "out_dir"] {
+            effective.as_object_mut().expect("native MV request object").remove(path);
+        }
         let key = json!({"project":inputs.project_id,"sheets":inputs.sheets,"layout":inputs.layout,
             "styles":inputs.table,"project_crs":inputs.project_crs,"model_crs":inputs.model_crs,
             "scene_sha256": ds_command_kernel::report_export::sha256_hex(inputs.scene),
-            "plan_sha256": ds_command_kernel::report_export::sha256_hex(inputs.plan),"engine":identity});
+            "plan_sha256": ds_command_kernel::report_export::sha256_hex(inputs.plan),"engine":identity,"request":effective});
         Ok((room, key, identity))
     }).transpose()?;
     let render = || -> Result<MvPreviewAnswer, MvPreviewRefusal> {

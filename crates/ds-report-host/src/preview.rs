@@ -1579,6 +1579,65 @@ mod tests {
     }
 
     #[test]
+    fn native_cli_and_desktop_consumers_share_one_renderer_for_exact_scope_and_inputs() {
+        use std::sync::Barrier;
+        let temp = tempfile::tempdir().unwrap();
+        let staging = temp.path().join("staging");
+        let receipt = receipt("Benin");
+        let engine = FakeEngine::release();
+        engine
+            .behaviour
+            .lock()
+            .unwrap()
+            .insert("tx_a".into(), "slow");
+        let desktop = ds_project_data::preview_room::Room {
+            root: temp.path().join("room-hold"),
+            scope: Scope {
+                principal: "owner".into(),
+                project: "proj-1".into(),
+            },
+            lane: "canary".into(),
+            credential_audience_sha256: "a".repeat(64),
+        };
+        let cli = desktop.clone();
+        let request = request(draft());
+        let inputs = held("tx_a", Vec::new());
+        let barrier = Barrier::new(2);
+        let pages = std::thread::scope(|threads| {
+            let jobs: Vec<_> = [&desktop, &cli]
+                .into_iter()
+                .map(|room| {
+                    let engine = &engine;
+                    let request = &request;
+                    let inputs = &inputs;
+                    let receipt = &receipt;
+                    let staging = &staging;
+                    let barrier = &barrier;
+                    threads.spawn(move || {
+                        barrier.wait();
+                        execute_with_styles_retained(
+                            engine,
+                            &settings(receipt, staging),
+                            request,
+                            inputs,
+                            None,
+                            Some(room),
+                        )
+                        .unwrap()
+                    })
+                })
+                .collect();
+            jobs.into_iter()
+                .map(|job| job.join().unwrap())
+                .collect::<Vec<_>>()
+        });
+        assert_eq!(pages[0].page, pages[1].page);
+        assert_eq!(pages[0].sha256, pages[1].sha256);
+        assert_eq!(engine.calls.load(Ordering::SeqCst), 1);
+        assert!(nothing_left(&staging));
+    }
+
+    #[test]
     fn execute_resolves_exactly_the_drafts_layers_from_the_handed_captures() {
         let temp = tempfile::tempdir().unwrap();
         let staging = temp.path().join("staging");
