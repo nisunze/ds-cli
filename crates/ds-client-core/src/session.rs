@@ -635,6 +635,31 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         )
     }
 
+    /// Exact saved layers and governed transformer input in one read.
+    pub fn transformer_context_for_processing(
+        &mut self,
+        ds_project: &str,
+        transformer: &str,
+        now_epoch_seconds: u64,
+    ) -> Result<TransformerContext, ClientError> {
+        crate::authorized::validate_transformer_context(ds_project, transformer)?;
+        self.ensure_fresh_session(now_epoch_seconds)?;
+        let session = self.session.as_ref().ok_or_else(signed_out)?;
+        crate::authorized::transformer_context(
+            &self.profile,
+            &mut self.transport,
+            crate::authorized::Authority {
+                bearer_token: &session.id_token,
+                uid: &session.stored.uid,
+                email: &session.stored.email,
+                device_id: None,
+            },
+            ds_project,
+            transformer,
+            crate::TransformerContextProjection::Process,
+        )
+    }
+
     /// Read the complete bounded project-form catalogue for one selected
     /// project. Membership remains a server-side decision on this call.
     pub fn project_forms(

@@ -2545,6 +2545,54 @@ fn transformer_context_reads_full_source_with_nested_properties() {
 }
 
 #[test]
+fn process_context_consumes_one_read_with_saved_fences_and_no_unused_configuration() {
+    let saved = serde_json::json!({"type":"FeatureCollection", "features":[{
+        "type":"Feature", "id":"tr-1", "geometry":{"type":"Point", "coordinates":[30,-2]},
+        "properties":{"transformer_nature":"stored", "comments":"keep"}}]});
+    let mut projected = saved.clone();
+    projected["features"][0]["properties"]["transformer_nature"] = serde_json::json!("fill_in");
+    let response = serde_json::json!({"success":true, "data":{
+        "total":1, "found_count":1, "failed_count":0, "results":[{
+            "transformer_name":"tx_1", "ok":true, "data":{
+                "layers":{"tr":saved}, "processing_layers":{"tr":projected},
+                "metadata":{"version":7, "content_digest":"abc123"}}}]}});
+    let transport = FixtureTransport::with_sign_in(SIGN_IN);
+    transport.push_transformer_context(200, &serde_json::to_vec(&response).unwrap());
+    let mut client = signed_in(transport.clone(), MemoryStore::default());
+    let context = client
+        .transformer_context_for_processing("active-project", "tx_1", NOW + 1)
+        .unwrap();
+    assert_eq!(context.layers()["tr"], saved);
+    assert_eq!(context.processing_layers().unwrap()["tr"], projected);
+    assert_eq!(context.metadata().version(), Some(7));
+    assert_eq!(context.metadata().content_digest(), Some("abc123"));
+    assert_eq!(transport.correlated_transformer_requests(), 1);
+    let calls = transport.calls();
+    assert_eq!(
+        calls.len(),
+        2,
+        "only sign-in and the explicitly consumed context: {calls:?}"
+    );
+    assert!(calls
+        .last()
+        .unwrap()
+        .contains("projection=process body_exact=true lane_absent=true"));
+    assert!(!calls.iter().any(|c| c.contains("project_configuration")));
+
+    let mut malformed = response;
+    malformed["data"]["results"][0]["data"]["processing_layers"]["customers"] =
+        serde_json::json!({});
+    transport.push_transformer_context(200, &serde_json::to_vec(&malformed).unwrap());
+    assert_eq!(
+        client
+            .transformer_context_for_processing("active-project", "tx_1", NOW + 2)
+            .unwrap_err()
+            .kind(),
+        ErrorKind::UnreadableResponse
+    );
+}
+
+#[test]
 fn transformer_context_profile_and_runtime_inputs_have_no_escape_hatch() {
     for mutate in [
         |input: &mut ClientProfileInput| input.transformer_context_method = "GET".to_owned(),

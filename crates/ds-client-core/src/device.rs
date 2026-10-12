@@ -1161,6 +1161,26 @@ impl DeviceApiAuthorization<'_> {
         )
     }
 
+    /// Exact saved layers and governed transformer input in one read.
+    pub fn transformer_context_for_processing<T: AuthorizedTransport>(
+        &self,
+        transport: &mut T,
+        ds_project: &str,
+        transformer: &str,
+        now: u64,
+    ) -> Result<TransformerContext, ClientError> {
+        crate::authorized::validate_transformer_context(ds_project, transformer)?;
+        self.ensure_active(now)?;
+        crate::authorized::transformer_context(
+            self.profile,
+            transport,
+            self.authority(),
+            ds_project,
+            transformer,
+            crate::TransformerContextProjection::Process,
+        )
+    }
+
     pub fn project_forms<T: AuthorizedTransport>(
         &self,
         transport: &mut T,

@@ -320,6 +320,7 @@ pub struct TransformerContextCall<'a> {
 pub enum TransformerContextProjection {
     Full,
     Saved,
+    Process,
 }
 
 impl TransformerContextProjection {
@@ -327,6 +328,7 @@ impl TransformerContextProjection {
         match self {
             Self::Full => TRANSFORMER_CONTEXT_FIELDS,
             Self::Saved => crate::profile::TRANSFORMER_CONTEXT_SAVED_FIELDS,
+            Self::Process => "process",
         }
     }
 }

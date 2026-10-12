@@ -17,6 +17,7 @@ pub struct TransformerContext {
     layers: BTreeMap<String, Value>,
     metadata: TransformerContextMetadata,
     voltage_drop_metadata: Option<Value>,
+    processing_layers: Option<BTreeMap<String, Value>>,
 }
 
 impl TransformerContext {
@@ -30,6 +31,12 @@ impl TransformerContext {
 
     pub fn layers(&self) -> &BTreeMap<String, Value> {
         &self.layers
+    }
+
+    /// Separately governed transformer layer from the exact same process read.
+    /// None means the server did not supply the process projection.
+    pub fn processing_layers(&self) -> Option<&BTreeMap<String, Value>> {
+        self.processing_layers.as_ref()
     }
 
     /// Same-snapshot compact receipt; full analysis is never in this response.
@@ -86,6 +93,8 @@ struct TransformerBatchItem {
 
 #[derive(Deserialize)]
 struct TransformerData {
+    #[serde(default)]
+    processing_layers: Option<BTreeMap<String, Value>>,
     #[serde(default)]
     voltage_drop_metadata: Option<Value>,
     layers: BTreeMap<String, Value>,
@@ -173,6 +182,13 @@ pub(crate) fn decode_context(
     {
         return Err(unreadable());
     }
+    if data
+        .processing_layers
+        .as_ref()
+        .is_some_and(|layers| layers.len() != 1 || !layers.contains_key("tr"))
+    {
+        return Err(unreadable());
+    }
     let metadata = data.metadata.unwrap_or_default();
     if metadata
         .content_digest
@@ -186,6 +202,7 @@ pub(crate) fn decode_context(
         transformer_name: item.transformer_name,
         layers: data.layers,
         voltage_drop_metadata: data.voltage_drop_metadata,
+        processing_layers: data.processing_layers,
         metadata: TransformerContextMetadata {
             version: metadata.version,
             content_digest: metadata.content_digest,
