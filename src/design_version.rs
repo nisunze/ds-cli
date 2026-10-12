@@ -168,6 +168,45 @@ enum Request {
     Reason(ReasonRequest),
     UploadOverwrite(Box<UploadOverwriteRequest>),
     Label(LabelRequest),
+    PlaybackIdentity(PlaybackIdentityRequest),
+}
+
+#[derive(Deserialize, Debug)]
+#[serde(deny_unknown_fields)]
+struct PlaybackIdentityRequest {
+    project: String,
+    transformer: String,
+    version_id: String,
+    #[serde(default)]
+    revision_id: Option<String>,
+    record: Value,
+}
+
+fn playback_identity(request: &PlaybackIdentityRequest) -> bool {
+    let r = &request.record;
+    if r["project_id"] != request.project
+        || r["transformer_id"] != request.transformer
+        || r["version_id"] != request.version_id
+        || r["playback_available"] != true
+    {
+        return false;
+    }
+    let Some(display) = r["version"].as_u64().filter(|n| *n <= 1_000_000) else {
+        return false;
+    };
+    if let Some(revision) = &request.revision_id {
+        return crate::design_version_catalog::version_id(&request.version_id)
+            && crate::design_version_catalog::revision_id(revision)
+            && r["revision_id"] == *revision;
+    }
+    // Legacy playback remains positive-ordinal only. Real v0 and opaque IDs
+    // require an exact immutable revision; a display label is never identity.
+    if request.version_id.starts_with("local-") {
+        return crate::design_versions::valid_target(&request.version_id) && display > 0;
+    }
+    request.version_id.strip_prefix('v').is_some_and(|n| {
+        !n.starts_with('0') && n.parse::<u64>().is_ok_and(|n| n == display && n > 0)
+    })
 }
 
 #[derive(Deserialize, Debug)]
@@ -491,6 +530,9 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
                 reason,
             })
         }
+        Request::PlaybackIdentity(request) => serde_json::to_string(&serde_json::json!({
+            "valid": playback_identity(&request),
+        })),
         Request::Label(request) => serde_json::to_string(&serde_json::json!({
             "schema": SCHEMA,
             "op": "label",
@@ -731,6 +773,36 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    #[test]
+    fn readonly_pinned_playback_uses_exact_ids_not_display_labels() {
+        let id = format!("vc_{}", "a".repeat(64));
+        let rev = format!("vr_{}", "b".repeat(64));
+        let record = json!({"project_id":"p","transformer_id":"t","version_id":id,
+            "revision_id":rev,"version":0,"playback_available":true});
+        let mut r = PlaybackIdentityRequest {
+            project: "p".into(),
+            transformer: "t".into(),
+            version_id: id,
+            revision_id: Some(rev),
+            record,
+        };
+        assert!(playback_identity(&r));
+        r.record["version"] = json!(7);
+        assert!(playback_identity(&r));
+        r.record["revision_id"] = json!("v1");
+        assert!(!playback_identity(&r));
+        r.record["version_id"] = json!("v0");
+        r.version_id = "v0".into();
+        r.revision_id = None;
+        r.record["version"] = json!(0);
+        assert!(!playback_identity(&r));
+        r.revision_id = Some("v0".into());
+        r.record["revision_id"] = json!("v0");
+        assert!(playback_identity(&r));
+        r.project = "another".into();
+        assert!(!playback_identity(&r));
     }
 
     #[test]

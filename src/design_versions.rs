@@ -95,6 +95,22 @@ pub enum Command {
         scope: Scope,
         artifact: Value,
     },
+    GovernedCatalogPlan {
+        project: String,
+        transformer: String,
+    },
+    GovernedCatalogAccept {
+        project: String,
+        transformer: String,
+        response: Value,
+    },
+    PinnedRead {
+        project: String,
+        transformer: String,
+        version_id: String,
+        revision_id: String,
+        response: Value,
+    },
     ValidateTarget {
         id: String,
     },
@@ -406,6 +422,58 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
             };
             json!({"intent":publication})
         }
+        Command::GovernedCatalogPlan {
+            project,
+            transformer,
+        } => crate::design_version_catalog::Command::Catalog {
+            object_id: transformer,
+        }
+        .payload(&project)?,
+        Command::GovernedCatalogAccept {
+            project,
+            transformer,
+            response,
+        } => {
+            let command = crate::design_version_catalog::Command::Catalog {
+                object_id: transformer,
+            };
+            command.validate(&project)?;
+            command.verify_response(&project, &response)?;
+            response["catalog"].clone()
+        }
+        Command::PinnedRead {
+            project,
+            transformer,
+            version_id,
+            revision_id,
+            response,
+        } => {
+            let command = crate::design_version_catalog::Command::Revision {
+                object_id: transformer.clone(),
+                version_id: version_id.clone(),
+                revision_id: revision_id.clone(),
+            };
+            command.validate(&project)?;
+            command.verify_response(&project, &response)?;
+            let snapshot = crate::design_version_catalog::decode_pinned_snapshot(&response)?;
+            layers(&snapshot)?;
+            let m = &response["metadata"];
+            if !matches!(
+                m["snapshot_scope"].as_str(),
+                Some("runtime_design" | "exported_design")
+            ) {
+                return Err("pinned snapshot scope unavailable".into());
+            }
+            let display = response["display_ordinal"]
+                .as_u64()
+                .filter(|n| *n <= 1_000_000)
+                .ok_or("pinned catalog display ordinal absent")?;
+            json!({"version":{"project_id":project,"transformer_id":transformer,
+                "version_id":version_id,"revision_id":revision_id,"version":display,
+                "source_revision":m["source_revision"],"reason":m["reason"],"created_at":m["created_at"],
+                "created_by":m["created_by"],"playback_available":true,
+                "snapshot_scope":m["snapshot_scope"],"source_mode":m["source_mode"]},"snapshot":snapshot})
+        }
         Command::ValidateTarget { id } => json!({"valid":valid_target(&id)}),
         Command::Prepare {
             scope,
@@ -662,6 +730,28 @@ fn record(m: &Manifest) -> Value {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn pinned_read_requires_exact_immutable_identity_and_snapshot_bytes() {
+        use serde_json::json;
+        let snapshot=json!({"schema":"ds.transformer-version-snapshot/v1","layers":{"tr":{"type":"FeatureCollection","features":[]}}}).to_string();
+        let mut request = json!({"action":"pinned_read","project":"p","transformer":"t","version_id":"v0","revision_id":"v0",
+            "response":{"display_ordinal":0,"metadata":{"project_id":"p","transformer_id":"t","version_id":"v0","revision_id":"v0",
+                "revision_number":1,"content_digest":"a".repeat(64),"snapshot_scope":"exported_design","source_mode":"source_pinned_import"},
+                "snapshot_json":snapshot,"snapshot_sha256":format!("{:x}",sha2::Sha256::digest(snapshot.as_bytes()))}});
+        let out: serde_json::Value =
+            serde_json::from_str(&super::evaluate(&serde_json::to_vec(&request).unwrap()).unwrap())
+                .unwrap();
+        assert_eq!(out["version"]["version"], 0);
+        assert_eq!(out["version"]["snapshot_scope"], "exported_design");
+        assert!(out["version"].get("restore_allowed").is_none());
+        request["response"]["snapshot_json"] = json!("{}");
+        assert!(super::evaluate(&serde_json::to_vec(&request).unwrap())
+            .unwrap_err()
+            .contains("digest"));
+        request["response"]["metadata"]["revision_id"] = json!("v1");
+        assert!(super::evaluate(&serde_json::to_vec(&request).unwrap()).is_err());
+    }
+
     use super::*;
     fn scope() -> Scope {
         Scope {
