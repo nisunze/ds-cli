@@ -334,6 +334,7 @@ pub(super) const REFUSALS: &[Refusal] = &[
     CONTEXT_LOCAL_SOURCE,
     PREVIEW_ARTIFACT_UNAVAILABLE,
     PREVIEW_ARTIFACT_EXPIRED,
+    PREVIEW_JOB_CAPACITY,
     PREVIEW_METADATA_LIMIT,
     CONTEXT_TOO_LARGE,
     NEIGHBOR_POINTS_UNAVAILABLE,
@@ -715,6 +716,22 @@ impl ReportEngine for CliEngine {
         let completed = DS_REPORT
             .call("export-transformer-report", &args, EXPORT_TIMEOUT)
             .map_err(failure_to_host)?;
+        Ok(EngineExit {
+            succeeded: completed.succeeded(),
+            summary: bounded_summary(&completed.stderr, &completed.stdout),
+        })
+    }
+
+    fn render_print_layout(
+        &self,
+        request: &Path,
+        result: &Path,
+    ) -> Result<EngineExit, HostFailure> {
+        let completed = DS_REPORT.call(
+            "render-print-layout",
+            &["--request".into(), request.into(), "--result".into(), result.into()],
+            EXPORT_TIMEOUT,
+        ).map_err(failure_to_host)?;
         Ok(EngineExit {
             succeeded: completed.succeeded(),
             summary: bounded_summary(&completed.stderr, &completed.stdout),

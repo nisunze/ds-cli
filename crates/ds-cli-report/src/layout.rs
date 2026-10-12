@@ -502,19 +502,24 @@ pub static RENDER: Command = Command {
     path: &["report", "layout", "render"],
     contract: 1,
     summary: "Print captured maps with collision and clipping diagnostics.",
-    purpose: "Headlessly render a ds.print-layout-export/v1 capture (render-request.json from report.project.map-inputs): MV/LV maps with held context as PDF/PNG/SVG/JPEG. out_dir must not exist; keep the request outside it. Schemas: report tasks --task render_print_layout, report layout schema standards. Full LV set with front matter: report export --task lv-standard. Composition: report layout commands.",
+    purpose: "Render a ds.print-layout-export/v1 capture as PDF/PNG/SVG/JPEG. --preview returns one retained SVG file manifest under the explicitly named native account/project; no provider, freshness or publication reads. Delivery out_dir must be fresh. Schemas: report tasks --task render_print_layout; report layout schema.",
     chapter: Chapter::Reports,
     effect: Effect::LocalFileWrite,
     authority: Authority::None,
     execution: Execution::Sync,
-    args: &[REQUEST],
-    output: "Artifacts and bounded print_diagnostics: affected pages, furniture overlaps/clipping (mm), omitted rows and labels. Mechanical checks are not visual approval.",
+    args: &[REQUEST,
+        Arg::switch("preview", "One inline captured page through the common native file-preview owner."),
+        Arg::value("preview-retention", "<24h|7d>", "Preview lifetime; requires --preview, default 24h.").choices(&["24h", "7d"]),
+        Arg::value("project", "<exact-id>", "Required for --preview; namespace admitted by the restored native account, never source JSON."),
+        LANE,
+    ],
+    output: "Artifacts and bounded collision/clipping diagnostics. Preview returns page (common SVG file manifest), engine and preview_cache (original expiry/reused); no inline bytes. Mechanical checks are not visual approval.",
     examples: &[Example {
         command: "ds report layout render --request city-a3.json --output json",
         note: "Render a prepared city map; its request schema: ds report tasks --task render_print_layout.",
         runnable: false,
     }],
-    refusals: REFUSALS,
+    refusals: crate::layout_preview::REFUSALS,
     reference: Some("docs/reference/report.md"),
     search: &[],
     requires: Requires::Server,
@@ -1216,6 +1221,10 @@ pub fn copy(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
     ds_cli_auth::printing(i.require("lane")?, false, i.value("project"), &request)
 }
 pub fn render(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
+    crate::layout_preview::preflight(i)?;
+    if i.switch("preview") {
+        return crate::layout_preview::run(i);
+    }
     // Copy input to a private scratch file so the bytes cannot change between validation and dispatch.
     // Governed district captures include thousands of road, river and network
     // features. Keep the immutable local request bounded, but large enough for

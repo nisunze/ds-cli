@@ -580,6 +580,27 @@ schema with `report.tasks --task render_print_layout`. It writes SVG/PDF to a
 fresh directory and returns paths and hashes. No network or desktop is required.
 Published setup reads use Brain; a held layout/render file prints offline.
 
+`report.layout.render --request render.json --preview --project <exact-id>
+--lane canary` previews one inline captured page through the same native
+`ds.print-preview-artifact/v1` file owner as MV, LV and saved A4 previews.
+The native account admits the project/lane/audience namespace before reading
+the local capture. Source JSON grants no authority; a captured project CRS
+must match that context. The fixed renderer retains the exact authored page,
+geometry, text, source digest metadata, style documents and held renderer
+policy. Missing policy, multipage captures, page-file indirection and private
+page caches refuse instead of substituting defaults or acquiring inputs.
+The preview changes only delivery transport: it renders SVG into private
+scratch, verifies the producer's manifest and exact bytes, then removes the
+scratch. It leaves the request's delivery `out_dir` untouched.
+
+The result's `page` is the common file manifest, with `engine`, bounded
+`print_diagnostics` and `preview_cache`. No SVG bytes are embedded in the
+producer response. Identical concurrent consumers render once; warm consumers
+verify the retained file without renderer, provider or freshness calls.
+`--preview-retention 24h|7d` chooses the original lifetime; reuse never extends
+it. Covers, naming pages, indices and overview pages each supply their own
+exact inline capture through this same entry, including across projects.
+
 `ds mcp serve --exposure commands --profile printing` exposes all twelve layout
 commands together. The grid profile keeps its existing report-export workflow.
 Reference A3/A4 layouts and runnable synthetic-data proofs live in
