@@ -29,6 +29,33 @@ computation parameters. Contours additionally pin the admitted elevation
 surface and interval/spacing choices. No substitute elevation source is chosen
 silently when that surface has gaps.
 
+Transformer metadata projects references to its footprint and contour rooms,
+their native readiness/reason, completed coverage and exact source provenance.
+It does not maintain a second independent "fetched" boolean or imply that
+queued work is complete. The reference names the published asset revision and
+local retained digest where available. Source choices distinguish Rwanda TIFF
+from Terrarium and Microsoft from Google footprints, including versions and
+parameters; an explicit source change creates a separate acquisition identity.
+Reading this metadata never fetches or probes the linked dataset.
+
+For an urban area with an admitted city-limit polygon, the acquisition planner
+uses contiguous city coverage shared by its transformers instead of individual
+transformer extracts. Preserve the polygon's authority/revision and present
+the bounded coverage/cost plan before explicit acquisition; do not substitute
+an invented city extent. Without an admitted city limit, retain the existing
+bounded project/cluster coverage policy. Dataset geometry remains spatially
+indexed so consumers can read a transformer or print extent from the shared
+city extract without a provider query or full scan.
+
+Deduplicate repeated source resources by logical provider/asset identity and
+version, not by expiring download URLs. Feature merge keys include the source
+identity and stable feature id; overlap at acquisition-cell boundaries must
+not duplicate a footprint or contour. A source without stable ids requires a
+declared deterministic geometry/property identity and measured collision
+checks. Never merge distinct touching buildings, discard a different source's
+row, or equate separate dataset versions merely because their URLs resemble
+one another.
+
 Expanded transformer or model bounds ask the shared owner for the difference
 between requested and completed coverage. Acquire only that missing coverage;
 merge it under stable source identities without duplicate boundary features or
