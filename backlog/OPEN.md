@@ -114,7 +114,6 @@ Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group E (printing templ
 
 Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group E (printing templates, previews and booklets).
 
-- **Headless saved-analysis A4 disk preview** (owner, 2026-10-12): wire `report.project.export` to the common `ds-report-host::vd_preview` / `preview_artifact` file owner through the existing scoped held room, print inputs and `SavedAnalysisEngine` capture. The paired Desktop A4 adapter alone does not prove Server use. Branch before publication, project freshness, catalogue/context/provider reads; admit the exact native project/principal/lane/audience and saved analysis/version/content/settings/engine pins. Missing or stale source refuses instead of calculating, acquiring or borrowing an older PDF. Return the same SVG/PDF file manifest and original 24h/7d expiry, coalesce actual renderer invocations, keep work running after view navigation and prove warm/offline/unused-zero-reads plus crossed-source refusals. Preserve main export, designs and submission artifacts.
 
 - **Dead retired renderer in the reporter**: ds-network-reporter `src/print_iterations.rs` still holds a `cfg(test)`-only retired renderer (`render_transformer_svg_legacy`, `compose_svg` and helpers, about 2,000 lines) reachable only from its own tests. Delete it with its tests in a dead-code slice; keep live renderer coverage.
 
