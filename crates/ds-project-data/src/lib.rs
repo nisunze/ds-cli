@@ -39,6 +39,7 @@ pub mod held;
 pub mod metadata;
 pub mod print_context;
 pub mod room_hold;
+pub mod preview_room;
 pub mod survey_hold;
 
 pub use bundle::{install_bundle, BundleReceipt};

@@ -570,6 +570,22 @@ when serialized, preserving compatibility and their existing presentation.
 
 ## The shared preview page
 
+Desktop native transformer and MV template previews retain their latest exact result in
+the existing account/project report hold through `ds_project_data::preview_room`.
+The host captures account, project, lane and credential audience before reading
+the room. Each consumer still admits the layout, governed input receipt, styles
+and actual held context. The room key pins their exact bytes and the verified
+reporter build; changed inputs render a new result. Repeated navigation and
+overlapping consumers reuse that result through the retained-read owner, with a
+file lock for another native process. The room performs no provider acquisition,
+cloud read or freshness probe. Invalid local bytes are recomputed by the next
+intentional preview; a failed render preserves the previous valid result.
+
+Navigation releases only the canvas view. An admitted native render continues,
+stores its original scoped result and can be consumed when the user returns.
+The view checks its current account, project, template and subject before
+painting, and a preview spinner never disables template or camera navigation.
+
 A preview is one transformer rendered through the delivery engine with a
 draft layout — any id, any paper, saved or not — as the engine's own page:
 the SVG every delivered format is derived from (PDF by conversion, PNG and

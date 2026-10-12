@@ -666,7 +666,7 @@ impl Drop for Staging {
     }
 }
 
-fn engine_identity_now(engine: &dyn ReportEngine) -> Result<EngineIdentity, HostFailure> {
+pub(crate) fn engine_identity_now(engine: &dyn ReportEngine) -> Result<EngineIdentity, HostFailure> {
     let document = engine.build_info()?;
     engine_identity(&document)
         .map_err(|error| HostFailure::new(CODE_ENGINE_IDENTITY_INVALID, error))

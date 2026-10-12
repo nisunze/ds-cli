@@ -102,7 +102,7 @@ pub struct HeldRoom {
 }
 
 /// A context layer the draft names that the page was printed without.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ContextOmission {
     pub layer: String,
     /// Plain prose a sheet's status line can show beside the layer.
@@ -110,7 +110,7 @@ pub struct ContextOmission {
 }
 
 /// The rendered page and everything the run said about it.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct PreviewPage {
     pub transformer: String,
     pub server_version: i64,
@@ -121,7 +121,7 @@ pub struct PreviewPage {
     /// declared and this crate re-hashed.
     pub sha256: String,
     pub size_bytes: u64,
-    pub content_type: &'static str,
+    pub content_type: String,
     /// `svg__<layout id>`: the engine's output id.
     pub output_id: String,
     pub layout_id: String,
@@ -255,6 +255,26 @@ pub fn transformer_page_with_styles(
     captured: Option<&Value>,
     print_context: impl FnOnce(&[PrintContextLayer]) -> Result<Option<PrintContextBytes>, HostFailure>,
 ) -> Result<PreviewPage, HostFailure> {
+    transformer_page_with_styles_retained(
+        engine,
+        settings,
+        room,
+        layout,
+        captured,
+        None,
+        print_context,
+    )
+}
+
+fn transformer_page_with_styles_retained(
+    engine: &dyn crate::ReportEngine,
+    settings: &PreviewSettings<'_>,
+    room: &HeldRoom,
+    layout: &printing::Layout,
+    captured: Option<&Value>,
+    result_room: Option<&ds_project_data::preview_room::Room>,
+    print_context: impl FnOnce(&[PrintContextLayer]) -> Result<Option<PrintContextBytes>, HostFailure>,
+) -> Result<PreviewPage, HostFailure> {
     // The recipe is over the draft's current form: a draft a host still holds
     // under the legacy schema, or without its completed bindings, is upgraded
     // here, so every host stages the same document for the same draft.
@@ -280,119 +300,165 @@ pub fn transformer_page_with_styles(
     let (context_layers, context_omitted) = context_summary(&contexts, context.as_ref());
     let context_sha256 = context.as_ref().map(|context| context.sha256.clone());
 
-    // The page root is private scratch of its own; the run's staging lives
-    // beside it and goes with the run, the page root goes with this guard.
-    crate::create_staging_root(settings.staging_root)?;
-    let page_root = Staging {
-        path: settings
-            .staging_root
-            .join(format!("{}-page", random_run_id())),
-    };
-    crate::create_private_dir(&page_root.path)?;
-    let inputs = TransformerReportInputs {
-        transformer: room.transformer.clone(),
-        server_version: room.server_version,
-        layers: room.layers.clone(),
-        content_digest: room.content_digest.clone(),
-        transformer_natures: None,
-        selection: Some(preview.selection.clone()),
-        print_context: context,
-        sheet: room.sheet,
-        survey: None,
-    };
-    let outcome = run_transformer_report_with(
-        engine,
-        &RunSettings {
-            project_id: settings.project_id,
-            receipt: &preview.receipt,
-            admin_bounds: settings.admin_bounds,
-            staging_root: settings.staging_root,
-            out_root: &page_root.path,
-        },
-        &inputs,
-        &RunExtras {
-            media_grant: room.media_grant.as_deref(),
-        },
-    )?;
-    drop(inputs);
+    // Admission and the actual held context are resolved above even on reuse.
+    // The key contains exact bytes and the verified reporter build; no head or
+    // provider lookup is involved in a repeated preview of this same subject.
+    let retained = result_room.map(|result_room| {
+        if result_room.scope.project != settings.project_id {
+            return Err(inputs_invalid("the preview result room belongs to another project"));
+        }
+        let identity = crate::engine_identity_now(engine)?;
+        let layers_sha256 = ds_command_kernel::report_export::jcs::layers_content_digest(&room.layers)
+            .map_err(inputs_invalid)?;
+        let media_grant_sha256 = room.media_grant.as_ref().map(|bytes| format!("{:x}", Sha256::digest(bytes)));
+        let key = json!({
+            "receipt": preview.receipt, "layout": layout, "engine": identity,
+            "room": {"transformer":room.transformer,"version":room.server_version,"layers_sha256":layers_sha256,
+                "content_digest":room.content_digest,"sheet":room.sheet,"media_grant_sha256":media_grant_sha256},
+            "context_sha256":context_sha256,
+            "context_layers":context_layers,"context_omitted":context_omitted,
+            "reference_sha256":settings.admin_bounds.map(|asset| &asset.sha256),
+        });
+        Ok((result_room, key, identity))
+    }).transpose()?;
 
-    let artifact = match outcome.artifacts.as_slice() {
-        [one] if one.output_id == preview.output_id => one,
-        [_] => return Err(page_invalid("the print preview answered another output")),
-        [] => return Err(page_invalid("the print preview produced no page")),
-        _ => {
+    let render = || -> Result<PreviewPage, HostFailure> {
+        // The page root is private scratch of its own; the run's staging lives
+        // beside it and goes with the run, the page root goes with this guard.
+        crate::create_staging_root(settings.staging_root)?;
+        let page_root = Staging {
+            path: settings
+                .staging_root
+                .join(format!("{}-page", random_run_id())),
+        };
+        crate::create_private_dir(&page_root.path)?;
+        let inputs = TransformerReportInputs {
+            transformer: room.transformer.clone(),
+            server_version: room.server_version,
+            layers: room.layers.clone(),
+            content_digest: room.content_digest.clone(),
+            transformer_natures: None,
+            selection: Some(preview.selection.clone()),
+            print_context: context,
+            sheet: room.sheet,
+            survey: None,
+        };
+        let outcome = run_transformer_report_with(
+            engine,
+            &RunSettings {
+                project_id: settings.project_id,
+                receipt: &preview.receipt,
+                admin_bounds: settings.admin_bounds,
+                staging_root: settings.staging_root,
+                out_root: &page_root.path,
+            },
+            &inputs,
+            &RunExtras {
+                media_grant: room.media_grant.as_deref(),
+            },
+        )?;
+        drop(inputs);
+
+        let artifact = match outcome.artifacts.as_slice() {
+            [one] if one.output_id == preview.output_id => one,
+            [_] => return Err(page_invalid("the print preview answered another output")),
+            [] => return Err(page_invalid("the print preview produced no page")),
+            _ => {
+                return Err(page_invalid(
+                    "the print preview produced more than its one page",
+                ));
+            }
+        };
+        if artifact.size_bytes > MAX_PREVIEW_BYTES {
+            return Err(page_invalid(format!(
+                "the print preview page exceeds {MAX_PREVIEW_BYTES} bytes"
+            )));
+        }
+        let bytes = fs::read(outcome.artifact_dir.join(&artifact.filename))
+            .map_err(|error| page_invalid(format!("could not read the print preview: {error}")))?;
+        if bytes.len() as u64 != artifact.size_bytes
+            || format!("{:x}", Sha256::digest(&bytes)) != artifact.sha256
+        {
             return Err(page_invalid(
-                "the print preview produced more than its one page",
+                "the print preview bytes differ from the engine's receipt",
             ));
         }
-    };
-    if artifact.size_bytes > MAX_PREVIEW_BYTES {
-        return Err(page_invalid(format!(
-            "the print preview page exceeds {MAX_PREVIEW_BYTES} bytes"
-        )));
-    }
-    let bytes = fs::read(outcome.artifact_dir.join(&artifact.filename))
-        .map_err(|error| page_invalid(format!("could not read the print preview: {error}")))?;
-    if bytes.len() as u64 != artifact.size_bytes
-        || format!("{:x}", Sha256::digest(&bytes)) != artifact.sha256
-    {
-        return Err(page_invalid(
-            "the print preview bytes differ from the engine's receipt",
-        ));
-    }
-    let page = String::from_utf8(bytes)
-        .map_err(|_| page_invalid("the print preview page is not UTF-8 SVG"))?;
-    if !page.trim_start().starts_with("<svg") {
-        return Err(page_invalid(
-            "the print preview page is not an SVG document",
-        ));
-    }
-    let mut print_diagnostics = outcome.receipt["print_diagnostics"]
-        .as_array()
-        .cloned()
-        .unwrap_or_default();
-    // The survey forms the delivered report appends that this proof was
-    // rendered without: a named omission in the diagnostics, and one named
-    // omission per form beside the context layers, so a sheet's status line
-    // and an agent reading the receipt both see it.
-    let mut context_omitted = context_omitted;
-    if !preview.facts.survey_forms_omitted.is_empty() {
-        print_diagnostics.push(json!({
-            "code": SURVEY_LAYERS_OMITTED,
-            "forms": preview.facts.survey_forms_omitted,
-            "message": survey_layers_omitted_message(&preview.facts.survey_forms_omitted),
-        }));
-        for form in &preview.facts.survey_forms_omitted {
-            context_omitted.push(ContextOmission {
-                layer: form.clone(),
-                reason: SURVEY_LAYER_OMISSION_REASON.into(),
-            });
+        let page = String::from_utf8(bytes)
+            .map_err(|_| page_invalid("the print preview page is not UTF-8 SVG"))?;
+        if !page.trim_start().starts_with("<svg") {
+            return Err(page_invalid(
+                "the print preview page is not an SVG document",
+            ));
         }
+        let mut print_diagnostics = outcome.receipt["print_diagnostics"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
+        // The survey forms the delivered report appends that this proof was
+        // rendered without: a named omission in the diagnostics, and one named
+        // omission per form beside the context layers, so a sheet's status line
+        // and an agent reading the receipt both see it.
+        let mut context_omitted = context_omitted;
+        if !preview.facts.survey_forms_omitted.is_empty() {
+            print_diagnostics.push(json!({
+                "code": SURVEY_LAYERS_OMITTED,
+                "forms": preview.facts.survey_forms_omitted,
+                "message": survey_layers_omitted_message(&preview.facts.survey_forms_omitted),
+            }));
+            for form in &preview.facts.survey_forms_omitted {
+                context_omitted.push(ContextOmission {
+                    layer: form.clone(),
+                    reason: SURVEY_LAYER_OMISSION_REASON.into(),
+                });
+            }
+        }
+        let elapsed_ms = outcome.receipt["elapsed_ms"].as_u64().unwrap_or_default();
+        drop(page_root);
+        Ok(PreviewPage {
+            transformer: outcome.transformer,
+            server_version: room.server_version,
+            page,
+            sha256: artifact.sha256.clone(),
+            size_bytes: artifact.size_bytes,
+            content_type: artifact.content_type.into(),
+            output_id: preview.output_id,
+            layout_id: preview.layout_id,
+            layout_sha256: preview.layout_sha256,
+            format: preview.facts.format,
+            warnings: outcome.warnings,
+            print_diagnostics,
+            elapsed_ms,
+            engine: outcome.engine,
+            context_layers,
+            context_omitted,
+            survey_forms_omitted: preview.facts.survey_forms_omitted.clone(),
+            context_sha256,
+            filename: artifact.filename.clone(),
+            receipt: outcome.receipt,
+        })
+    };
+    let Some((result_room, key, identity)) = retained else {
+        return render();
+    };
+    let page = ds_project_data::preview_room::consume(
+        result_room,
+        &format!("transformer/{}", room.transformer),
+        &key,
+        render,
+    )
+    .map_err(|error| match error {
+        ds_project_data::preview_room::Error::Render(error) => error,
+        ds_project_data::preview_room::Error::Store(message) => {
+            HostFailure::new(crate::CODE_STAGING_FAILED, message)
+        }
+    })?;
+    if crate::engine_identity_now(engine)? != identity {
+        return Err(HostFailure::new(
+            crate::CODE_ENGINE_IDENTITY_CHANGED,
+            "the reporter build changed while reading a retained preview",
+        ));
     }
-    let elapsed_ms = outcome.receipt["elapsed_ms"].as_u64().unwrap_or_default();
-    drop(page_root);
-    Ok(PreviewPage {
-        transformer: outcome.transformer,
-        server_version: room.server_version,
-        page,
-        sha256: artifact.sha256.clone(),
-        size_bytes: artifact.size_bytes,
-        content_type: artifact.content_type,
-        output_id: preview.output_id,
-        layout_id: preview.layout_id,
-        layout_sha256: preview.layout_sha256,
-        format: preview.facts.format,
-        warnings: outcome.warnings,
-        print_diagnostics,
-        elapsed_ms,
-        engine: outcome.engine,
-        context_layers,
-        context_omitted,
-        survey_forms_omitted: preview.facts.survey_forms_omitted.clone(),
-        context_sha256,
-        filename: artifact.filename.clone(),
-        receipt: outcome.receipt,
-    })
+    Ok(page)
 }
 
 /// The preview's argument set, as every door builds it from the command's
@@ -630,6 +696,19 @@ pub fn execute_with_styles(
     held: &HeldState,
     captured: Option<&Value>,
 ) -> Result<PreviewPage, PreviewRefusal> {
+    execute_with_styles_retained(engine, settings, request, held, captured, None)
+}
+
+/// Shared local preview room for native consumers. Scope is captured by the
+/// authenticated host before admission; context and source fences still run.
+pub fn execute_with_styles_retained(
+    engine: &dyn crate::ReportEngine,
+    settings: &PreviewSettings<'_>,
+    request: &PreviewRequest,
+    held: &HeldState,
+    captured: Option<&Value>,
+    result_room: Option<&ds_project_data::preview_room::Room>,
+) -> Result<PreviewPage, PreviewRefusal> {
     if held.room.transformer != request.transformer {
         return Err(PreviewRefusal::Host(inputs_invalid(format!(
             "the held room is {}'s, not {}'s",
@@ -662,12 +741,13 @@ pub fn execute_with_styles(
     let mut wanted_layers: Vec<PrintContextLayer> = Vec::new();
     let adjacent = printing::adjacent_networks::selected(&request.layout);
     let mut adjacent_omission = None;
-    let outcome = transformer_page_with_styles(
+    let outcome = transformer_page_with_styles_retained(
         engine,
         settings,
         &held.room,
         &request.layout,
         captured,
+        result_room,
         |wanted| {
             wanted_layers = wanted.to_vec();
             match preview_context(
@@ -1418,6 +1498,84 @@ mod tests {
         assert_eq!(other.code(), CODE_INPUTS_INVALID);
         assert_eq!(other.class(), Class::InvalidInput);
         assert_eq!(engine.calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn retained_navigation_reuses_native_render_but_exact_draft_and_context_changes_render_again() {
+        use std::sync::atomic::Ordering;
+        let temp = tempfile::tempdir().unwrap();
+        let staging = temp.path().join("staging");
+        let receipt = receipt("Benin");
+        let engine = FakeEngine::release();
+        let room = ds_project_data::preview_room::Room {
+            root: temp.path().join("room-hold"),
+            scope: Scope {
+                principal: "owner".into(),
+                project: "proj-1".into(),
+            },
+            lane: "canary".into(),
+            credential_audience_sha256: "a".repeat(64),
+        };
+        let request = request(draft());
+        let inputs = held("tx_a", Vec::new());
+        let first = execute_with_styles_retained(
+            &engine,
+            &settings(&receipt, &staging),
+            &request,
+            &inputs,
+            None,
+            Some(&room),
+        )
+        .unwrap();
+        let second = execute_with_styles_retained(
+            &engine,
+            &settings(&receipt, &staging),
+            &request,
+            &inputs,
+            None,
+            Some(&room),
+        )
+        .unwrap();
+        assert_eq!(first.page, second.page);
+        assert_eq!(engine.calls.load(Ordering::SeqCst), 1);
+        let mut changed = request.clone();
+        changed.layout.name = "Changed draft".into();
+        execute_with_styles_retained(
+            &engine,
+            &settings(&receipt, &staging),
+            &changed,
+            &inputs,
+            None,
+            Some(&room),
+        )
+        .unwrap();
+        assert_eq!(engine.calls.load(Ordering::SeqCst), 2);
+        let mut revision = inputs.clone();
+        revision.room.server_version += 1;
+        execute_with_styles_retained(
+            &engine,
+            &settings(&receipt, &staging),
+            &changed,
+            &revision,
+            None,
+            Some(&room),
+        )
+        .unwrap();
+        assert_eq!(engine.calls.load(Ordering::SeqCst), 3);
+        // Admission still precedes reuse, even if this host holds a valid result.
+        let mut foreign = inputs.clone();
+        foreign.room.transformer = "other_tx".into();
+        assert!(execute_with_styles_retained(
+            &engine,
+            &settings(&receipt, &staging),
+            &changed,
+            &foreign,
+            None,
+            Some(&room)
+        )
+        .is_err());
+        assert_eq!(engine.calls.load(Ordering::SeqCst), 3);
+        assert!(nothing_left(&staging));
     }
 
     #[test]

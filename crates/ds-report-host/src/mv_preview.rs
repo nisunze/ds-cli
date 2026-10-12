@@ -3,8 +3,8 @@
 //! The host stages the held engine projections in its own private directory,
 //! the kernel composes the request (`printing::mv_preview`), the engine renders
 //! one `preview_only` sample, and the host answers that sheet's SVG with its
-//! station window. Nothing is published, selected or kept: the run directory is
-//! removed when the answer has been read.
+//! station window. Runs stay private scratch. An authenticated host may attach
+//! the shared local preview room so navigation can reuse the exact result.
 
 use std::path::{Path, PathBuf};
 
@@ -38,7 +38,7 @@ pub struct MvPreviewInputs<'a> {
 }
 
 /// The rendered sample sheet.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct MvPreviewSheet {
     pub source_sheet_number: u64,
     pub alignment_id: String,
@@ -48,7 +48,7 @@ pub struct MvPreviewSheet {
 }
 
 /// One preview's answer: the pinned model and setup and the sample sheet.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct MvPreviewAnswer {
     pub project_id: String,
     pub layout_id: String,
@@ -112,6 +112,16 @@ pub fn execute(
     engine: &dyn ReportEngine,
     inputs: &MvPreviewInputs<'_>,
 ) -> Result<MvPreviewAnswer, MvPreviewRefusal> {
+    execute_retained(engine, inputs, None)
+}
+
+/// Resolve the same kernel request before reading an exact retained result.
+/// Transformer and MV previews use one account/project report-hold owner.
+pub fn execute_retained(
+    engine: &dyn ReportEngine,
+    inputs: &MvPreviewInputs<'_>,
+    result_room: Option<&ds_project_data::preview_room::Room>,
+) -> Result<MvPreviewAnswer, MvPreviewRefusal> {
     for (name, bytes) in [("scene", inputs.scene), ("plan", inputs.plan)] {
         if bytes.is_empty() || bytes.len() > MAX_PROJECTION_BYTES {
             return Err(HostFailure::new(
@@ -151,27 +161,59 @@ pub fn execute(
         },
     )
     .map_err(MvPreviewRefusal::Kernel)?;
-    let request_path = run.path().join("request.json");
-    let result_path = run.path().join("result.json");
-    let request_bytes = serde_json::to_vec(&preview.request)
-        .map_err(|error| HostFailure::new(CODE_STAGING_FAILED, error.to_string()))?;
-    std::fs::write(&request_path, request_bytes)
-        .map_err(|error| HostFailure::new(CODE_STAGING_FAILED, error.to_string()))?;
-    let exit = engine.render_grid_plan_profile(&request_path, &result_path)?;
-    let document: Option<Value> = std::fs::read(&result_path)
-        .ok()
-        .and_then(|bytes| serde_json::from_slice(&bytes).ok());
-    let Some(document) = document.filter(|_| exit.succeeded) else {
+    let retained = result_room.map(|room| {
+        if room.scope.project != inputs.project_id {
+            return Err(HostFailure::new(CODE_INPUTS_INVALID, "the MV preview result room belongs to another project"));
+        }
+        let identity = crate::engine_identity_now(engine)?;
+        let key = json!({"project":inputs.project_id,"sheets":inputs.sheets,"layout":inputs.layout,
+            "styles":inputs.table,"project_crs":inputs.project_crs,"model_crs":inputs.model_crs,
+            "scene_sha256": ds_command_kernel::report_export::sha256_hex(inputs.scene),
+            "plan_sha256": ds_command_kernel::report_export::sha256_hex(inputs.plan),"engine":identity});
+        Ok((room, key, identity))
+    }).transpose()?;
+    let render = || -> Result<MvPreviewAnswer, MvPreviewRefusal> {
+        let request_path = run.path().join("request.json");
+        let result_path = run.path().join("result.json");
+        let request_bytes = serde_json::to_vec(&preview.request)
+            .map_err(|error| HostFailure::new(CODE_STAGING_FAILED, error.to_string()))?;
+        std::fs::write(&request_path, request_bytes)
+            .map_err(|error| HostFailure::new(CODE_STAGING_FAILED, error.to_string()))?;
+        let exit = engine.render_grid_plan_profile(&request_path, &result_path)?;
+        let document: Option<Value> = std::fs::read(&result_path)
+            .ok()
+            .and_then(|bytes| serde_json::from_slice(&bytes).ok());
+        let Some(document) = document.filter(|_| exit.succeeded) else {
+            return Err(HostFailure::new(
+                CODE_ENGINE_REFUSED,
+                format!(
+                    "the MV plan and profile preview did not render: {}",
+                    exit.summary
+                ),
+            )
+            .into());
+        };
+        answer(inputs, &preview, &document, &out_dir).map_err(MvPreviewRefusal::Host)
+    };
+    let Some((room, key, identity)) = retained else {
+        return render();
+    };
+    let answer = ds_project_data::preview_room::consume(room, "mv/models", &key, render).map_err(
+        |error| match error {
+            ds_project_data::preview_room::Error::Render(error) => error,
+            ds_project_data::preview_room::Error::Store(message) => {
+                MvPreviewRefusal::Host(HostFailure::new(CODE_STAGING_FAILED, message))
+            }
+        },
+    )?;
+    if crate::engine_identity_now(engine)? != identity {
         return Err(HostFailure::new(
-            CODE_ENGINE_REFUSED,
-            format!(
-                "the MV plan and profile preview did not render: {}",
-                exit.summary
-            ),
+            crate::CODE_ENGINE_IDENTITY_CHANGED,
+            "the reporter build changed while reading a retained MV preview",
         )
         .into());
-    };
-    answer(inputs, &preview, &document, &out_dir).map_err(MvPreviewRefusal::Host)
+    }
+    Ok(answer)
 }
 
 fn answer(
@@ -287,7 +329,7 @@ mod tests {
 
     impl ReportEngine for FakeEngine {
         fn build_info(&self) -> Result<Value, HostFailure> {
-            Ok(json!({}))
+            crate::tests::FakeEngine::release().build_info()
         }
         fn export_transformer_report(&self, _: &Path, _: &Path) -> Result<EngineExit, HostFailure> {
             unreachable!("an MV preview never exports a transformer")
@@ -367,6 +409,47 @@ mod tests {
             "the run directory is removed"
         );
         (answer, calls)
+    }
+
+    #[test]
+    fn a_returning_mv_consumer_reuses_the_native_result_and_changed_inputs_render_again() {
+        let staging = tempfile::tempdir().unwrap();
+        let hold = tempfile::tempdir().unwrap();
+        let engine = FakeEngine {
+            mode: "ok",
+            calls: Mutex::new(0),
+        };
+        let layout = layout();
+        let table = table(&layout);
+        let sheets = sheets();
+        let room = ds_project_data::preview_room::Room {
+            root: hold.path().into(),
+            scope: ds_command_kernel::project_dataset_cache::Scope {
+                principal: "owner".into(),
+                project: "template_project".into(),
+            },
+            lane: "canary".into(),
+            credential_audience_sha256: "a".repeat(64),
+        };
+        let mut inputs = MvPreviewInputs {
+            project_id: "template_project",
+            sheets: &sheets,
+            layout: &layout,
+            table: &table,
+            project_crs: None,
+            model_crs: None,
+            scene: b"{}",
+            plan: b"{}",
+            staging: staging.path(),
+        };
+        let first = execute_retained(&engine, &inputs, Some(&room)).unwrap();
+        let second = execute_retained(&engine, &inputs, Some(&room)).unwrap();
+        assert_eq!(first, second);
+        assert_eq!(*engine.calls.lock().unwrap(), 1);
+        inputs.scene = b"{\"model_revision\":\"changed\"}";
+        execute_retained(&engine, &inputs, Some(&room)).unwrap();
+        assert_eq!(*engine.calls.lock().unwrap(), 2);
+        assert_eq!(std::fs::read_dir(staging.path()).unwrap().count(), 0);
     }
 
     #[test]

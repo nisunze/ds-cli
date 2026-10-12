@@ -1178,7 +1178,7 @@ pub fn engine_request(plan: &ExportPlan, staged: &StagedInputs<'_>) -> Result<Va
 
 /// The release identity of the engine that produced a run, read from
 /// `ds-report build-info`. Artifacts are bound to it; a receipt names it.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EngineIdentity {
     pub engine_version: String,
     pub build_manifest_sha256: String,
