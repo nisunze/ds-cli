@@ -21,12 +21,24 @@ surface — the way Dataprep runs a recipe over a dataset.
 - **Agents compose workflows instead of scripting.** An agent that needs a
   buffer, clip, join, dedupe, rename or domain mapping writes or edits a
   workflow and runs it through `ds`. It never patches data with geopandas,
-  pandas, Polars, shapely or ad-hoc JavaScript (owner ruling 2026-09-23: no
-  Python, ever).
+  pandas, Polars, shapely or ad-hoc JavaScript. Native computation remains the
+  authority; the optional script interchange below introduces no interpreter
+  dependency in DS (owner clarification, 2026-10-12).
 - **One implementation per operation.** Every workflow operation is an
   existing Rust engine function behind a command descriptor. A single
   `ds data vector buffer` call and a workflow `data.vector.buffer` step run the
   same code with the same contract; neither has a private copy.
+- **Portable graph and script interchange** (owner, 2026-10-12). A saved graph
+  connects declared tool outputs to declared inputs and runs as one native job;
+  it can be parameterized and rerun on other admitted layers. Python and Bash
+  exports are readable wrappers around that same canonical workflow, intended
+  for LLM understanding and optional execution where the interpreter exists.
+  Supported wrappers carry the canonical document and digest so native `ds`
+  can import and execute them without evaluating a scripting language. The
+  supported wrapper grammar and native/script parity are implementation gates,
+  not a claim of accepting arbitrary existing scripts. No computation is
+  duplicated in the wrapper. CLI/MCP authoring leads; UI consumption remains
+  available and authoring UI is optional.
 
 ### Non-goals
 
