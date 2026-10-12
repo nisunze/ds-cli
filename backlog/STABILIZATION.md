@@ -33,8 +33,7 @@ evidence after actual acceptance. No completed-work archive or feedback filing.
 | Remaining slice | Owning boundary | Required proof |
 | --- | --- | --- |
 | Local buildings/contours instead of Cloud Run compute | Shared native project dataset acquisition and its CLI/Desktop bindings | Local results, missing-input refusal, no remote fallback, warm/offline/unused-input request counts |
-| Retained template catalogue | Kernel printing lifecycle and native authenticated reads | Coalesced reuse, explicit Refresh, invalidation without unused reads, account/project isolation |
-| Free navigation and reusable preview jobs; shared transformer/MV rooms | Native preview owner and shared data acquisition, thin Desktop binding | Navigate during render, retained return, stale result fences, counted shared input reuse |
+| Free navigation and reusable disk preview artifacts; shared transformer/MV rooms | Headless native preview owner and shared data acquisition, thin Desktop binding | Render to disk, return a bounded manifest/path/digest/expiry, default 24-hour cache with admitted seven-day retention, navigate during work, safe retained return, stale result fences and counted reuse |
 | 558 m MV continuation refusal | Reporter plan/profile pagination | Exact request reproduction, valid route pagination, truthful impossible-input refusal and complete rendered coverage |
 | Front Matter previews for MV and applicable LV | Governed layout catalogue and native preview | Native categories/subjects, rendered front matter, CLI composition retained |
 | Missing analysis SHA-256 header | Native analysis transport producer and readers | Exact response digest, mismatch refusal, all supported Linux printing preview pages with timings |

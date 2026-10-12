@@ -34,14 +34,7 @@ Windows acceptance from Linux proof.
    and zero Brain/Reporter compute calls, warm/offline reuse and unused-input
    negative cases. Preserve source identity, authored contour parameters and
    datum; do not substitute a different footprint provider silently.
-2. **Template library repeatedly loads from the API.** Owner sees
-   `Loading templates… Choose one from the library, or create a layout with its own paper, orientation, and title block.`
-   `PrintingSetup.svelte` remounts invoke native `printing_reads` without a
-   retained read cache. Retain and coalesce the governed catalogue per captured
-   authority/project; updates invalidate, consumers resolve, explicit Refresh
-   acquires. Prove warm concurrent remount read counts, unused invalidation,
-   offline use and project/account isolation.
-3. **Preview blocks navigation, loses reusable work and repeats data reads.**
+2. **Preview blocks navigation, loses reusable work and repeats data reads.**
    Owner prefers native backend jobs to continue while navigating away. The
    supplied screenshot shows Printing setup's A0 transformer preview and LV,
    MV and overview groups. General `busy` disables the entire setup fieldset;
@@ -53,22 +46,34 @@ Windows acceptance from Linux proof.
    `desktop.printing.preview` for `czgmdwth_gisagara` / `agahehe`, using the
    existing DS-captured A0 draft at
    `ds-web/out/printing-fast-path-20261012/live/captured-a0-draft.json`, did not
-   answer within 60 seconds. The currently running Native shell
-   predates the cache fixes, while Vite consumes current source. Recheck with
-   the qualified matching pair and trace the style/room/held-state awaits if
-   it remains slow. This explicit draft is not the project's configured
-   template and proves no finished print delivery.
-4. **MV pagination refuses the owner's preview.** Exact report:
+   answer within 60 seconds on the earlier Native/frontend pair. The old Vite
+   process had source watching disabled and did not consume the current source.
+   After the matching local restart (Native SHA-256
+   `2221c5dabbe2351331f1f79f5c539d9683c487aa8343059ea97c5a06b79507cc`),
+   the same request reached the renderer in 16.49 seconds but refused
+   `Live printing preview exceeds the paired bridge 8 MiB response bound`.
+   This explicit draft is not the project's configured template and proves no
+   finished print delivery. Owner's 2026-10-12 ruling: headless native rendering
+   writes disk artifacts, then CLI/Desktop consume a bounded path/manifest;
+   do not return large SVG/page bytes inline or make the renderer face the UI.
+   Use private disk-backed expirable preview storage, default 24 hours with an
+   admitted seven-day option. Retain exact input/result/source fences and
+   verified bytes; unchanged consuming requests reuse without engine/API work.
+   MV pages preserve native order and can be consumed as they become ready.
+   The restarted `map.ui.open` reached the printing page but waited for unrelated
+   asynchronous Svelte rendering until the bridge timed out; prove the new
+   presentation acknowledgement through the live paired command after reload.
+3. **MV pagination refuses the owner's preview.** Exact report:
    `DsRefused: the MV plan and profile preview did not render: Network Reporter plan and profile preview failed: alignment aln-0c77f3e8a31d74e9-38: no plan-feasible continuation path within 558 m per sheet; increase the horizontal scale denominator or inspect route bends and long spans`.
    Reproduce `grid_plan_profile::station_page_windows` on the captured request,
    trace plan feasibility and fix the demonstrated defect without silently
    changing authored scale or geometry. Prove valid continuation, long-span and
    bend negatives, complete page coverage, readable preview and actual timing.
-5. **Front Matter has no clear preview section.** Owner requests MV and
+4. **Front Matter has no clear preview section.** Owner requests MV and
    applicable LV front matter grouped and previewable from the governed
    catalogue, leaving composition in the CLI. Reuse native subject/category
    facts and preview contracts; prove discovery, grouping and rendered pages.
-6. **Analysis response lacks its transport digest.** Exact report:
+5. **Analysis response lacks its transport digest.** Exact report:
    `DesktopBoundaryError: analysis response is missing its SHA-256 header`.
    Trace the producing native/binary boundary and all preview callers. Emit and
    verify the exact response bytes' declared digest; preserve mismatch/tamper
