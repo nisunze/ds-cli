@@ -9,6 +9,7 @@ mod context;
 pub mod correspondence;
 pub mod device;
 pub mod grid_library_member;
+pub mod grid_mv_catalogue;
 pub mod link_approval;
 mod local_go;
 mod metadata;

@@ -730,3 +730,12 @@ fsync and exact readback. Its receipt records migration and lineage identities.
 Dry-run does not write. Neither mode publishes or establishes server-owned
 project-head lineage; publication requires a separate authorized expected-head
 operation.
+
+`dsgrid project list --mv-picker` returns the native `ds.mv-model-catalogue/v1`
+project-head/held-copy projection (contract2), using retained metadata. It never
+downloads or opens model bytes. Pass `--refresh` for intentional acquisition.
+Optional `--held-inventory <json>` consumes a declared `map profile view
+--include-held` result; `--source-binding <json>` admits one exact native candidate
+from that inventory. Multiple matching copies require an explicit choice; absent,
+historical, foreign or incomplete copies report a load need. Dirty local copies
+remain held. The ordinary paged list keeps its `models/more/next_cursor` output.

@@ -9,7 +9,7 @@ use ds_cli_contract::spec::{
 };
 use ds_cli_contract::{Context, Failure, Inputs};
 use ds_command_kernel::task_geometry::ObjectIndex;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::io::Write;
 
 pub mod compare;
@@ -40,6 +40,26 @@ pub(crate) const fn with_shared<const M: usize>(mut r: [Refusal; M], at: usize) 
     r
 }
 const REFUSALS: &[Refusal] = &with_shared([LOCAL; 1 + SHARED], 1);
+const fn list_refusals() -> [Refusal; 4 + SHARED] {
+    let mut r = [LOCAL; 4 + SHARED];
+    r[1] = Refusal {
+        code: "project_model_catalogue_acquisition_required",
+        when: "current project heads are not retained for this authenticated scope",
+        remedy: "repeat this consuming read while connected",
+    };
+    r[2] = Refusal {
+        code: "mv_model_catalogue_invalid",
+        when: "project heads are incomplete, duplicated or invalid",
+        remedy: "explicitly refresh this project's model catalogue",
+    };
+    r[3] = Refusal {
+        code: "mv_model_source_stale",
+        when: "captured inventory account/project/history differs",
+        remedy: "capture a new declared held inventory",
+    };
+    with_shared(r, 4)
+}
+const LIST_REFUSALS: &[Refusal] = &list_refusals();
 const RETIRE_BACKUP: Refusal = Refusal {
     code: "grid_retire_backup_unconfirmed",
     when: "the Server did not confirm a byte-verified backup of the exact head (it could not take one, or its answer was lost or lacked it); nothing is reported retired",
@@ -53,8 +73,10 @@ const GEOJSON_OUTPUT: Refusal = Refusal {
 };
 const GEOJSON_PAGE: Refusal = Refusal {
     code: "grid_geojson_page_invalid",
-    when: "--limit is outside 1..5000, --cursor is unknown, or --alignment and --cursor are combined",
-    remedy: "use 1..5000 and the exact next_cursor from a prior page; omit --cursor with --alignment",
+    when:
+        "--limit is outside 1..5000, --cursor is unknown, or --alignment and --cursor are combined",
+    remedy:
+        "use 1..5000 and the exact next_cursor from a prior page; omit --cursor with --alignment",
 };
 const GEOJSON_ALIGNMENT: Refusal = Refusal {
     code: "grid_geojson_alignment_not_found",
@@ -154,14 +176,32 @@ pub static RESTORE: Command = Command {
 pub static LIST: Command = Command {
     id: "dsgrid.project.list",
     path: &["dsgrid", "project", "list"],
-    contract: 1,
+    contract: 2,
     summary: "List one explicitly named project's saved MV models headlessly.",
-    purpose: "Discover governed DS Grid model heads for MV maps and Solar network seeding without a Desktop. Returns exact revision and digest identifiers and each model's current version (head_version, the app's v1/v2), approval, stage and update/retirement fields. Follow next_cursor when more is true, including an empty page. Local unpublished Desktop models are outside this inventory.",
+    purpose: "Discover governed DS Grid model heads for MV maps and Solar network seeding without a Desktop. Returns exact revision and digest identifiers and each model's current version (head_version, the app's v1/v2), approval, stage and update/retirement fields. Follow next_cursor when more is true, including an empty page. Local unpublished models are outside it. --mv-picker reads bounded complete head metadata through the native cache; --held-inventory maps exact current working copies without opening or changing them.",
     chapter: Chapter::GridModel,
     effect: Effect::LocalAuthState,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
     args: &[
+        Arg::value(
+            "source-binding",
+            "<json>",
+            "Exact native selected source; requires --mv-picker and --held-inventory.",
+        ),
+        Arg::switch(
+            "mv-picker",
+            "Current logical MV heads and exact held-copy choices.",
+        ),
+        Arg::value(
+            "held-inventory",
+            "<json>",
+            "Declared map.profile.view --include-held output; requires --mv-picker.",
+        ),
+        Arg::switch(
+            "refresh",
+            "Explicitly refresh --mv-picker project-head metadata.",
+        ),
         PROJECT,
         LANE,
         Arg::value("limit", "<1..100>", "Maximum catalog rows scanned.").default("50"),
@@ -175,9 +215,9 @@ pub static LIST: Command = Command {
             "Include retired model heads so they can be restored.",
         ),
     ],
-    output: "Selected project, bounded models with head revision/digest, head_version, approval_status, updated_at/by, deleted_at/by and delete_reason, more and next_cursor.",
+    output: "Selected project, bounded heads with revision/digest/version and governance fields; more/next_cursor. --mv-picker returns ds.mv-model-catalogue/v1 logical heads, copy state and exact source/candidates (optional selected_source); no model download.",
     examples: &[],
-    refusals: REFUSALS,
+    refusals: LIST_REFUSALS,
     reference: Some("docs/reference/dsgrid.md"),
     search: &[],
     requires: Requires::Server,
@@ -343,7 +383,88 @@ pub static GEOJSON: Command = Command {
 fn failure(e: impl std::fmt::Display) -> Failure {
     Failure::invalid("grid_project_output_invalid", e.to_string()).remedy(LOCAL.remedy)
 }
+fn owned_json(path: &str, limit: u64) -> Result<Value, Failure> {
+    use std::io::Read;
+    let metadata = std::fs::symlink_metadata(path).map_err(failure)?;
+    if !metadata.is_file() || metadata.file_type().is_symlink() || metadata.len() > limit {
+        return Err(failure(
+            "The declared input must be a bounded regular JSON file.",
+        ));
+    }
+    let mut bytes = Vec::new();
+    ds_layer_store::private::open_options()
+        .read(true)
+        .open(path)
+        .map_err(failure)?
+        .take(limit + 1)
+        .read_to_end(&mut bytes)
+        .map_err(failure)?;
+    if bytes.len() as u64 > limit {
+        return Err(failure("The declared input grew beyond its byte bound."));
+    }
+    serde_json::from_slice(&bytes).map_err(failure)
+}
+fn held_inventory(value: Value) -> Result<ds_command_kernel::grid_held_models::Inventory, Failure> {
+    let value = if value.get("command").is_some() {
+        if value["command"] != "map.profile.view" || value["status"] != "ok" {
+            return Err(failure(
+                "Use a successful map.profile.view --include-held result.",
+            ));
+        }
+        value["data"]["held_models"].clone()
+    } else {
+        value.get("held_models").cloned().unwrap_or(value)
+    };
+    ds_command_kernel::grid_held_models::admit(value)
+        .map_err(|e| Failure::invalid("mv_model_source_stale", e))
+}
 pub fn list(i: &Inputs, _: &Context) -> Result<Value, Failure> {
+    if i.switch("mv-picker") {
+        let source: Option<ds_command_kernel::printing::mv_models::SourceBinding> = i
+            .value("source-binding")
+            .map(|path| {
+                let value = owned_json(path, 16 * 1024)?;
+                let source = serde_json::from_value(value).map_err(failure)?;
+                ds_command_kernel::printing::mv_models::admit_context(
+                    i.require("project")?,
+                    &source,
+                )
+                .map_err(|e| Failure::invalid(e, e))?;
+                Ok::<_, Failure>(source)
+            })
+            .transpose()?;
+
+        if i.value("cursor").is_some() || i.switch("include-deleted") {
+            return Err(failure("mv-picker excludes cursor and retired heads"));
+        }
+        if source.is_some() && i.value("held-inventory").is_none() {
+            return Err(failure(
+                "source-binding requires its declared held-inventory",
+            ));
+        }
+        let inventory = i
+            .value("held-inventory")
+            .map(|path| held_inventory(owned_json(path, 4 * 1024 * 1024)?))
+            .transpose()?;
+        let captured = ds_cli_auth::grid_mv_catalogue::read(
+            i.require("lane")?,
+            i.require("project")?,
+            ds_command_kernel::printing::retained_reads::Demand {
+                online: true,
+                acquire: true,
+                refresh: i.switch("refresh"),
+            },
+            inventory,
+            source,
+        )?;
+        return Ok(captured.into_result());
+    }
+    if i.value("held-inventory").is_some()
+        || i.value("source-binding").is_some()
+        || i.switch("refresh")
+    {
+        return Err(failure("held-inventory and refresh require mv-picker"));
+    }
     let limit = i.require("limit")?.parse::<u16>().map_err(failure)?;
     let r = ds_cli_auth::grid_models_for_project(
         i.require("lane")?,
@@ -677,6 +798,79 @@ pub fn render(v: &Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn mv_picker_consumes_the_declared_held_inventory_envelope_and_refuses_other_answers() {
+        let context = json!({"account":"owner","project":"project","generation":1});
+        let inventory = json!({"captured_context":context,"context":context,"total":0,"rows":[],"mutated":false});
+        let envelope = json!({"v":1,"command":"map.profile.view","status":"ok","data":{"held_models":inventory}});
+        assert_eq!(held_inventory(envelope.clone()).unwrap().total, 0);
+        assert_eq!(held_inventory(inventory).unwrap().total, 0);
+        for (field, value) in [
+            ("command", json!("another.command")),
+            ("status", json!("error")),
+        ] {
+            let mut other = envelope.clone();
+            other[field] = value;
+            assert!(held_inventory(other).is_err());
+        }
+    }
+
+    #[test]
+    fn mv_picker_refuses_mixed_modes_before_authentication_and_bounds_input_files() {
+        let context = Context {
+            confirmed: false,
+            output: ds_cli_contract::Output::resolve(ds_cli_contract::Format::Json, false, true),
+        };
+        for flags in [
+            vec!["--mv-picker", "--cursor", "old"],
+            vec!["--refresh"],
+            vec!["--source-binding", "missing.json"],
+        ] {
+            let mut tokens: Vec<String> = vec![
+                "--project".into(),
+                "project".into(),
+                "--lane".into(),
+                "stable".into(),
+            ];
+            tokens.extend(flags.into_iter().map(str::to_owned));
+            let inputs = ds_cli_contract::args::parse(&LIST, &tokens).unwrap();
+            assert_eq!(
+                list(&inputs, &context).unwrap_err().code(),
+                "grid_project_output_invalid"
+            );
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("bounded.json");
+        std::fs::write(&path, b"{\"a\":1}").unwrap();
+        assert_eq!(owned_json(path.to_str().unwrap(), 7).unwrap()["a"], 1);
+        assert!(owned_json(path.to_str().unwrap(), 6).is_err());
+        let source_path = dir.path().join("source.json");
+        std::fs::write(&source_path,serde_json::to_vec(&json!({"project_id":"project","model_id":"head","revision_id":"rev","content_sha256":"a".repeat(64),"version":1,"worker_id":"local","worker_model_id":"native","worker_revision":"rev:1","history_pin":"pin","coordinate_system":"EPSG:32736","read_only":false})).unwrap()).unwrap();
+        let inputs = ds_cli_contract::args::parse(
+            &LIST,
+            &[
+                "--project".into(),
+                "project".into(),
+                "--lane".into(),
+                "stable".into(),
+                "--mv-picker".into(),
+                "--source-binding".into(),
+                source_path.to_str().unwrap().into(),
+            ],
+        )
+        .unwrap();
+        assert_eq!(
+            list(&inputs, &context).unwrap_err().code(),
+            "grid_project_output_invalid"
+        );
+        #[cfg(unix)]
+        {
+            let link = dir.path().join("alias.json");
+            std::os::unix::fs::symlink(&path, &link).unwrap();
+            assert!(owned_json(link.to_str().unwrap(), 100).is_err());
+        }
+    }
 
     fn fixture_index() -> ObjectIndex {
         let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))

@@ -140,9 +140,24 @@ pub static COMMAND: Command = Command {
         note: "Render the adopted publication for one alignment from held engine projections.",
         runnable: false,
     }],
-    refusals: &crate::project::joined::<{ crate::project::NATIVE_READ_REFUSALS.len() + 21 }>(&[
+    refusals: &crate::project::joined::<{ crate::project::NATIVE_READ_REFUSALS.len() + 24 }>(&[
         crate::project::NATIVE_READ_REFUSALS,
         &[
+            Refusal {
+                code: "mv_model_source_stale",
+                when: "the head or copy moved",
+                remedy: "select an exact copy from project choices",
+            },
+            Refusal {
+                code: "mv_model_catalogue_invalid",
+                when: "project heads are invalid",
+                remedy: "refresh project choices",
+            },
+            Refusal {
+                code: "project_model_catalogue_acquisition_required",
+                when: "project heads are missing",
+                remedy: "read project choices online",
+            },
             REQUEST_MODE_REFUSAL,
             PREVIEW_LAYOUT_REFUSAL,
             crate::project::export::INPUTS_INVALID,
