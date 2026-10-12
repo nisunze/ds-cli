@@ -312,6 +312,10 @@ pub enum Command {
         task_id: String,
         file: AttachmentFile,
     },
+    /// One exact task relationship detach; retained file bytes are not deleted.
+    TaskDetach {
+        request: ds_command_kernel::project_management::task_attachment_detach::Request,
+    },
 }
 
 fn command_id_valid(id: &str) -> bool {
@@ -365,6 +369,7 @@ impl Command {
             Self::DeclineAdmission { .. } => "task_decline_admission",
             Self::LogHours { .. } => "task_log_hours",
             Self::TaskAttach { .. } => "start_attachment_upload",
+            Self::TaskDetach { .. } => "detach_task_attachment",
         }
     }
 
@@ -381,6 +386,9 @@ impl Command {
                 task_id,
                 files,
             } => create_attached::validate(command_id, *base_revision, command, task_id, files),
+            Self::TaskDetach { request } => request
+                .validate()
+                .map_err(|message| ClientError::new(ErrorKind::InvalidInput, message)),
             Self::TaskAttach { task_id, .. } => {
                 if !project_note_id_valid(task_id) {
                     return Err(invalid("a task attachment names one stable task id"));
@@ -571,6 +579,7 @@ impl Command {
         let mut payload = json!({ "action": self.action(), "ds_project": project });
         match self {
             Self::Graph | Self::Assignees => {}
+            Self::TaskDetach { request } => return request.payload(project),
             Self::TaskAttach { task_id, file } => {
                 return attachment_start_payload(project, task_id, file);
             }
@@ -988,7 +997,18 @@ pub(crate) fn run<T: AuthorizedTransport>(
             file,
         );
     }
+    if let Command::TaskDetach { request } = command {
+        request
+            .validate_for(project)
+            .map_err(|message| ClientError::new(ErrorKind::InvalidInput, message))?;
+    }
     let data = send(profile, transport, authority, command.payload(project))?;
+    if let Command::TaskDetach { request } = command {
+        request
+            .verify(project, &data)
+            .map_err(|message| ClientError::new(ErrorKind::UnreadableResponse, message))?;
+        return Ok(data);
+    }
     // ds-brain answers `{success, data}`, and the graph sits under `data.graph`
     // when it is wrapped and IS the data when it is not. The browser reads it
     // the same way (`response.graph ?? response`, `api/pm.ts:119-121`).
@@ -1035,6 +1055,7 @@ pub(crate) fn run<T: AuthorizedTransport>(
         | Command::DeclineAdmission { .. }
         | Command::LogHours { .. }
         | Command::TaskAttach { .. }
+        | Command::TaskDetach { .. }
         | Command::TaskCreateAttached { .. } => data,
     };
     Ok(graph)
@@ -1547,6 +1568,7 @@ mod tests {
         ) -> Result<crate::TransportResponse, crate::TransportError> {
             let data = match call.payload["action"].as_str() {
                 Some("commit_command") => self.created.clone().expect("explicit creation fixture"),
+                Some("detach_task_attachment") => self.started.clone(),
                 Some("start_attachment_upload") => {
                     let mut started = self.started.clone();
                     started["item"]["id"] = json!(format!("att-{}", self.uploaded.len() + 1));
@@ -1792,6 +1814,70 @@ mod tests {
             1,
             "an incomplete upload is never finalized"
         );
+    }
+
+    #[test]
+    fn task_detach_sends_one_exact_metadata_write_and_verifies_receipt() {
+        use ds_command_kernel::project_management::task_attachment_detach::Request;
+        let req = Request {
+            task_id: "task-7".into(),
+            attachment_id: "att-1".into(),
+            expected_version: 3,
+        };
+        let response = json!({"project_id":"project-a","task_id":"task-7","attachment_id":"att-1","version":4,"changed":true,"detached":true,"item":{"id":"att-1","version":4,"task_detached":true,"task_detached_prior_version":3,"task_detached_by":"user@example.com","task_detached_at":"2026-10-13T00:00:00Z","data":{"linked_entity_type":"task","linked_entity_id":"task-7","state":"ready","generation":29}}});
+        let profile = crate::data_distribution::tests::profile_for_tests();
+        let mut transport = attach_transport("ready", 1);
+        transport.started = response.clone();
+        let invoke = |transport: &mut AttachTransport, request: Request| {
+            run(
+                &profile,
+                transport,
+                crate::authorized::Authority {
+                    bearer_token: "bearer",
+                    uid: "uid",
+                    email: "user@example.com",
+                    device_id: None,
+                },
+                "project-a",
+                &Command::TaskDetach { request },
+            )
+        };
+        assert_eq!(invoke(&mut transport, req.clone()).unwrap(), response);
+        assert_eq!(transport.payloads, vec![req.payload("project-a")]);
+        assert!(
+            transport.uploaded.is_empty(),
+            "detach has no storage upload"
+        );
+        for bad in [
+            Request {
+                expected_version: 0,
+                ..req.clone()
+            },
+            Request {
+                task_id: "other/task".into(),
+                ..req.clone()
+            },
+        ] {
+            let mut untouched = attach_transport("ready", 1);
+            assert_eq!(
+                invoke(&mut untouched, bad).unwrap_err().kind(),
+                ErrorKind::InvalidInput
+            );
+            assert!(untouched.payloads.is_empty() && untouched.uploaded.is_empty());
+        }
+        let mut foreign = attach_transport("ready", 1);
+        foreign.started = response;
+        foreign.started["project_id"] = json!("other-project");
+        assert_eq!(
+            invoke(&mut foreign, req).unwrap_err().kind(),
+            ErrorKind::UnreadableResponse
+        );
+        assert_eq!(
+            foreign.payloads.len(),
+            1,
+            "mismatched receipt is never retried"
+        );
+        assert!(foreign.uploaded.is_empty());
     }
 
     #[test]

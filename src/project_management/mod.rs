@@ -36,6 +36,7 @@ mod hierarchy;
 pub mod model_links;
 pub mod projections;
 pub mod reads;
+pub mod task_attachment_detach;
 mod wasm_writes;
 pub mod wire;
 pub mod writes;
