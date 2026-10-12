@@ -10,7 +10,7 @@ use serde_json::{Map, Value, json};
 use crate::{MAX_LIST_LIMIT, bounded_text, truncate};
 
 const MAX_FILTER_CHARS: usize = 200;
-const MAX_CURSOR_CHARS: usize = 512;
+const MAX_CURSOR_BYTES: usize = ds_cli_auth::FeedbackCommand::MAX_CURSOR_BYTES;
 
 pub static COMMAND: Command = Command {
     id: "feedback.list",
@@ -61,7 +61,7 @@ latest note, and the id and version a close must carry.",
         Arg::value(
             "cursor",
             "<token>",
-            "Read the difference since this token; an --all read's token pages every match once, watermark untouched.",
+            "Read the difference since this token (up to 4096 bytes); an --all read's token pages every match once, watermark untouched.",
         ),
         Arg::switch(
             "all",
@@ -138,15 +138,24 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     // watermark is the backlog's now: an opaque token it issued, or nothing at
     // all and it reads from where this account left off.
     if let Some(cursor) = inputs.value("cursor") {
-        arguments.insert(
-            "cursor".into(),
-            json!(bounded_text(cursor, "cursor", MAX_CURSOR_CHARS)?),
-        );
+        arguments.insert("cursor".into(), json!(bounded_cursor(cursor)?));
     }
     if inputs.switch("all") {
         arguments.insert("all".into(), json!(true));
     }
     crate::invoke_native(inputs, "list", arguments)
+}
+
+fn bounded_cursor(value: &str) -> Result<&str, Failure> {
+    let value = bounded_text(value, "cursor", MAX_CURSOR_BYTES)?;
+    if value.len() > MAX_CURSOR_BYTES {
+        return Err(Failure::invalid(
+            crate::INVALID_TEXT.code,
+            format!("`--cursor` must be at most {MAX_CURSOR_BYTES} bytes"),
+        )
+        .remedy(crate::INVALID_TEXT.remedy));
+    }
+    Ok(value)
 }
 
 pub fn render(data: &Value) -> String {
@@ -212,7 +221,7 @@ pub fn render(data: &Value) -> String {
             ));
         } else {
             out.push_str(&format!(
-                "  … {rows} of {total} shown; narrow with --component or --query\n"
+                "  … {rows} of {total} shown; continue with --cursor, or narrow with --component or --query\n"
             ));
         }
     }
@@ -251,10 +260,20 @@ mod tests {
 
         let top = render(&page(false));
         assert!(
-            top.contains("narrow with --component"),
-            "a top read returns these same rows forever; narrowing is the remedy: {top}"
+            top.contains("narrow with --component") && top.contains("continue with --cursor"),
+            "a truncated peek offers its continuation token and narrower filters: {top}"
         );
         assert!(!top.contains("list again"));
+    }
+
+    #[test]
+    fn opaque_cursor_bounds_match_the_native_owner_in_bytes() {
+        for size in [741, MAX_CURSOR_BYTES] {
+            let token = format!("fb1.{}", "a".repeat(size - 4));
+            assert_eq!(bounded_cursor(&token).unwrap(), token);
+        }
+        assert!(bounded_cursor(&format!("fb1.{}", "a".repeat(MAX_CURSOR_BYTES - 3))).is_err());
+        assert!(bounded_cursor(&format!("fb1.{}", "é".repeat(MAX_CURSOR_BYTES / 2))).is_err());
     }
 
     /// The cheapest answer has no rows to read, and the row above it carries

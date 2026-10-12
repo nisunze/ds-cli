@@ -81,7 +81,7 @@ list to interpret, and reaching it cost no local file, no timestamp and no
 token the caller had to keep.
 
 * `--cursor <token>` reads the difference since a token the backlog issued. The
-  token is opaque and carries its own integrity digest and the fingerprint of
+  token is opaque, bounded to 4096 bytes, and carries its own integrity digest and the fingerprint of
   the query it answered; a hand-built one, or one replayed under a different
   filter, is `feedback_cursor_rejected`.
 * A read that NARROWS — `--component` or `--query` — is a lookup, not a chunk
@@ -100,8 +100,8 @@ token the caller had to keep.
 * A read-only ENUMERATION of every matching report, for a summary, never moves
   the shared watermark: take the `cursor` of an `--all` read and drain with
   `--cursor`. The token points behind every report that read withheld, so
-  echoing each answer's `cursor` returns each matching report exactly once,
-  then `count: 0`, `changed: false`. A request cursor neither reads nor
+  echoing each answer's `cursor` continues creation order and returns each matching report exactly once,
+  then `count: 0`, `changed: false`. Changed rows remain available through the terminal update-position token. A request cursor neither reads nor
   advances the account's watermark (`cursor_source: "request"`), so the default
   sweep of every other session is untouched:
 
