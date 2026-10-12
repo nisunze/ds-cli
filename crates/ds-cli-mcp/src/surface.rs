@@ -2654,6 +2654,7 @@ const PRINTING_COMMANDS: &[&str] = &[
     "desktop.printing.transformers",
     "desktop.printing.export",
     "desktop.printing.preview",
+    "desktop.printing.view",
     "desktop.printing.artifact.read",
     "desktop.printing.seed-context",
 ];

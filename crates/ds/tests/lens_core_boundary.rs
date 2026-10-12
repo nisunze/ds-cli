@@ -278,10 +278,12 @@ fn the_target_layers_are_exactly_the_window_and_the_binary() {
 /// Measured against the 2026-09-22 run tip.
 const WINDOW_COMMANDS: &[(&str, usize)] = &[
     // The bridge's own domain: pairing, sync, printing, published artifacts.
-    // 25 → 26: `desktop.printing.preview` (0b9a457b) reads the paired
+    // 25 → 26 literal declarations: `desktop.printing.preview` (0b9a457b) reads the paired
     // window's held context and draft SVG, while `report.project.export`
     // owns headless preview computation. It cannot save or publish a layout.
-    ("ds-cli-desktop", 26),
+    // 26 → 27 declarations: printing.view consumes the window's held catalogue and page
+    // camera; pure headless view_plan remains report.layout.edit.
+    ("ds-cli-desktop", 27),
     // The lens crate. Window commands are its purpose; its server commands
     // (the machine-local layer catalogue) are not counted here.
     // Profile view/set/select are display and transient selection controls in
@@ -300,7 +302,9 @@ const WINDOW_COMMANDS: &[(&str, usize)] = &[
     // lens intents account for 44 -> 47; no core command gains a bridge.
     // 2026-10-11 deliberate local Save of this window's RAM session. Native
     // history exclusion and packing remain headless engine/worker authority.
-    ("ds-cli-map", 48),
+    // 48 → 49: a43c9c95 exposes read-only picking in this window's mounted
+    // Profile scene; its native hit ordering does not gain a window dependency.
+    ("ds-cli-map", 49),
     // ── core, pending a headless form ───────────────────────────────────────
     // `ds-cli-assets` left this ledger on 2026-09-20: 9 → 0, every catalogue
     // command headless (contract 01 of the dsgrid-authority program).
@@ -542,7 +546,9 @@ const WINDOW_BACKLOG: &[(&str, u64)] = &[
     ("design", 0),
     // 26 → 27: the same held-window SVG preview admitted above. Connectivity
     // contributes the existing shared-constructor declaration difference.
-    ("desktop", 27),
+    // Installed baseline is 27 registered commands (a shared constructor has
+    // one fewer literal declaration). printing.view adds one admitted lens.
+    ("desktop", 28),
     // `dsgrid.model.prepare-project` is headless; `dsgrid.profile.open` is
     // the one window command admitted on 2026-09-22.
     ("dsgrid", 1),
@@ -555,7 +561,8 @@ const WINDOW_BACKLOG: &[(&str, u64)] = &[
     // Named live Profile results, calculation and edit/history intents; their
     // engineering authority stays native and headless (see crate ceiling).
     // Deliberate local Save targets the held RAM session, never project data.
-    ("map", 48),
+    // a43c9c95 adds the mounted read-only Profile pick lens.
+    ("map", 49),
     ("solar", 16),
     // 9 → 8: `pm.plan` is a headless project read now, not a window command.
     // 8 → 0 on 2026-09-20: task list/read/create/update/assign/respond and
@@ -579,7 +586,8 @@ const WINDOW_BACKLOG: &[(&str, u64)] = &[
 // 88 → 92: owner-requested native reads/edits and selection refinement of a human-held dirty RAM session.
 // Computation remains the existing headless Rust usage/REG owner.
 // The same three admitted Profile lens intents counted in `map` above.
-const WINDOW_BACKLOG_TOTAL: u64 = 96;
+// The admitted mounted Profile pick and printing view add one each.
+const WINDOW_BACKLOG_TOTAL: u64 = 98;
 
 #[test]
 fn paired_draft_preview_keeps_a_headless_computation_owner() {

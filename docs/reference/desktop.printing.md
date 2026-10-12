@@ -20,6 +20,23 @@ response to 8 MiB. No layout, export selection, main output or publication is
 written. This SVG command is separate from `export --intent preview`, which
 produces review artifacts from saved project layouts.
 
+`ds desktop printing view --project <exact-current-project> --output json`
+reads the open Printing templates view's actual location and held page count.
+Open that view with `ds map ui open --target project-printing --ref <project>`.
+`desktop printing view --project <id> --catalogue` includes the already-held
+native groups, preview subjects and exact location pins without a catalogue
+read. Copy one `.location` object from that response (or from the headless
+`report layout list --catalogue` response) into a JSON file, then consume it with
+`desktop printing view --project <id> --location location.json`. Pins remain
+exact, including governed document revision and content digests. Another
+template cannot replace a dirty draft; save or explicitly discard that draft
+first. With a document open, `--page <n>` changes its held PDF camera. Select a
+template and navigate its pages in separate calls. The current page count is
+the held document's count, so an MV template sample reports one page rather
+than claiming the full atlas is present. Reads and page turns acquire no
+catalogue, style, design, geographic context or renderer result. Existing
+native preview jobs continue independently of this visible navigation.
+
 Named setups are read and published natively, with no paired application.
 Project scope always names its project; the saved selection is never read.
 `ds report layout list --scope project --project <id> --output json` inspects

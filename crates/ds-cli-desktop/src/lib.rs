@@ -34,6 +34,7 @@ pub mod discover;
 pub mod list;
 pub mod ops;
 pub mod printing;
+pub mod printing_view;
 pub mod project;
 pub mod published;
 pub mod status;
@@ -56,6 +57,7 @@ pub static DOMAIN: Domain = Domain {
         &printing::TRANSFORMERS_COMMAND,
         &printing::EXPORT_COMMAND,
         &printing::PREVIEW_COMMAND,
+        &printing_view::COMMAND,
         &printing::PREPARE_COMMAND,
         &sync_plan::PLAN_COMMAND,
         &printing::SEED_CONTEXT_COMMAND,
