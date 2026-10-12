@@ -48,8 +48,16 @@ const CLOSEOUT_ARG: Arg = Arg::value(
     "Closeout state, from the same vocabulary.",
 );
 const PROGRESS_ARG: Arg = Arg::value("progress", "<percent>", "Percent complete, 0 through 100.");
-const START_ARG: Arg = Arg::value("start", "<yyyy-mm-dd>", "Move the planned start.");
-const FINISH_ARG: Arg = Arg::value("finish", "<yyyy-mm-dd>", "Move the planned finish.");
+const START_ARG: Arg = Arg::value(
+    "start",
+    "<yyyy-mm-dd|none>",
+    "Move the planned start, or clear it with none.",
+);
+const FINISH_ARG: Arg = Arg::value(
+    "finish",
+    "<yyyy-mm-dd|none>",
+    "Move the planned finish, or clear it with none.",
+);
 
 pub static COMMAND: Command = Command {
     id: "pm.task.update",
@@ -88,19 +96,26 @@ of the signed-in native credential, no window.",
     output: "\
 The project, the `taskId`, `applied`, the `committedRevision`, the list of \
 `commands` the flags became, and any `warnings` the engine returned.",
-    examples: &[Example {
-        command: "ds pm task update --task T-0007 --delivery in_progress --progress 40 --yes --project <exact-id>",
-        note: "Delivery and progress land together or not at all.",
-        runnable: false,
-    }],
+    examples: &[
+        Example {
+            command: "ds pm task update --task T-0007 --delivery in_progress --progress 40 --yes --project <exact-id>",
+            note: "Delivery and progress land together or not at all.",
+            runnable: false,
+        },
+        Example {
+            command: "ds pm task update --task T-0007 --start none --finish none --yes --project <exact-id>",
+            note: "Remove a leaf task's schedule while retaining its other fields.",
+            runnable: false,
+        },
+    ],
     refusals: &crate::write_refusals::<27>(&[
         crate::INVALID_DATE,
         crate::INVALID_NUMBER,
         crate::INVALID_VALUE,
         Refusal {
             code: "invalid_task_shape",
-            when: "a milestone was given two different dates in one update",
-            remedy: "give a milestone one date",
+            when: "a milestone was given different dates, or a summary schedule was cleared",
+            remedy: "give a milestone one date; unschedule summary children individually",
         },
         Refusal {
             code: "nothing_to_update",
@@ -114,6 +129,8 @@ The project, the `taskId`, `applied`, the `committedRevision`, the list of \
         "due",
         "date",
         "reschedule",
+        "unschedule",
+        "clear dates",
         "schedule",
         "milestone",
         "subtask",
@@ -132,11 +149,11 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         .map(|value| value as u64);
     let start_date = inputs
         .value("start")
-        .map(|value| crate::date(value, "start"))
+        .map(|value| schedule_date(value, "start"))
         .transpose()?;
     let finish_date = inputs
         .value("finish")
-        .map(|value| crate::date(value, "finish"))
+        .map(|value| schedule_date(value, "finish"))
         .transpose()?;
     let update = UpdateTask {
         task: task.clone(),
@@ -217,4 +234,29 @@ pub fn render(data: &Value) -> String {
     );
     out.push_str(&super::warnings(data));
     out
+}
+
+/// Only the transport spelling lives here; the kernel owns clear semantics.
+fn schedule_date(value: &str, flag: &str) -> Result<String, Failure> {
+    if value == "none" {
+        Ok(String::new())
+    } else {
+        crate::date(value, flag)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn dates_and_explicit_clear_are_distinct_before_any_project_acquisition() {
+        assert_eq!(schedule_date("none", "start").unwrap(), "");
+        assert_eq!(schedule_date("2026-10-13", "finish").unwrap(), "2026-10-13");
+        for value in ["", "null", "2026-02-30"] {
+            assert!(schedule_date(value, "start").is_err());
+        }
+        assert_eq!(START_ARG.value, "<yyyy-mm-dd|none>");
+        assert_eq!(FINISH_ARG.value, "<yyyy-mm-dd|none>");
+    }
 }
