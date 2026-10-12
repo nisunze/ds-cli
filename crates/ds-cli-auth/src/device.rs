@@ -810,6 +810,14 @@ impl<T: ds_client_core::Transport> DeviceSession<T> {
     ) -> Result<serde_json::Value, ClientError> {
         fixed_device_call!(self, survey_delete, project, request)
     }
+
+    pub fn survey_update(
+        &mut self,
+        project: &str,
+        request: &ds_client_core::SurveyUpdateRequest,
+    ) -> Result<serde_json::Value, ClientError> {
+        fixed_device_call!(self, survey_update, project, request)
+    }
     pub fn survey_entry_create(
         &mut self,
         project: &str,

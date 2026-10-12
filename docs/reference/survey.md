@@ -41,6 +41,41 @@ completeness. Retain exact identities and completed delivery checkpoints when
 handing off data. Capture time answers when field work happened; replication
 time answers when a downstream copy changed.
 
+## Preview field rules before publication
+
+`survey.form.validate` runs the shared Survey submission field evaluator over
+one explicitly retained revision and proposed values. It acquires no metadata,
+checks no freshness and creates no entry. Inspect hidden fields and missing
+visible required fields, including conditional Other detail, before publishing
+a form rule change. Its input digest binds the exact reviewed snapshot; cloud
+authority and update revision fences remain separate. Discover the typed
+document shape and bounds from the command descriptor.
+
+## Correct one retained Survey entry
+
+Read the exact entry through the existing mirror-backed entry read/select
+surface, and retain its Feature plus the current form fields. Prepare a closed
+`ds.survey-entry-update/v1` document containing `prior`, a `changes` object,
+`fields`, `form_revision`, and the observed `expected_version` (zero for a
+legacy row without `metadata.client_version`). An optional `context_key`
+selects an existing nested scope; root entries omit it.
+
+`ds survey entries update-plan --project <id> --form <slug> --doc-id <id>
+--document correction.json --idempotency-key <stable-key> --now <RFC3339>`
+validates only these retained inputs with the shared Rust form evaluator.
+It performs no acquisition or write. Only declared data-field changes are
+admitted; geometry, connectivity and capture metadata stay outside the wire
+payload. Neither the form revision label nor a successful preview proves cloud
+freshness.
+
+Use the same arguments with `ds survey entries update --yes` to authorize one
+native governed update. The backend authorizes the caller and checks the
+version transactionally. A conflict stops the correction; a missing entry is
+never recreated. There is no automatic retry or rebase. Preserve the exact
+file, key and clock for an exact retry after an ambiguous response, which may
+represent a committed write. A commit receipt remains `bigquery=unconfirmed`
+until a separate mirror-backed read verifies the target and changed fields.
+
 ## Control plane and browser capture
 
 `ds survey` runs natively without Desktop. Form Factory schemas, project form

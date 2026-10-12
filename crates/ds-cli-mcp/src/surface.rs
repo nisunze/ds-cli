@@ -1094,6 +1094,7 @@ const LAYER_COMMANDS: &[&str] = &[
 ];
 
 const FORM_FACTORY_COMMANDS: &[&str] = &[
+    "survey.form.validate",
     "survey.forms.list",
     "survey.form.read",
     "survey.form.types",
@@ -1130,6 +1131,8 @@ const SURVEY_PROJECT_COMMANDS: &[&str] = &[
     "survey.entries.changes",
     "survey.entries.create",
     "survey.entries.delete-plan",
+    "survey.entries.update-plan",
+    "survey.entries.update",
     "survey.entries.delete",
     "survey.project-forms.list",
     "survey.project-form.settings",

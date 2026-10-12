@@ -1637,6 +1637,21 @@ static MAP_ENTRIES: &[Entry] = &[
 
 static SURVEY_ENTRIES: &[Entry] = &[
     Entry {
+        command: &ds_cli_survey::update::PLAN,
+        handler: ds_cli_survey::update::plan,
+        render: ds_cli_survey::update::render,
+    },
+    Entry {
+        command: &ds_cli_survey::update::COMMAND,
+        handler: ds_cli_survey::update::run,
+        render: ds_cli_survey::update::render,
+    },
+    Entry {
+        command: &ds_cli_survey::validate::COMMAND,
+        handler: ds_cli_survey::validate::run,
+        render: ds_cli_survey::validate::render,
+    },
+    Entry {
         command: &ds_cli_survey::forms::LIST_COMMAND,
         handler: ds_cli_survey::forms::list,
         render: ds_cli_survey::forms::render_list,

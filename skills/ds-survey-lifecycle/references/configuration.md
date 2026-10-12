@@ -14,6 +14,12 @@ for changes, and `survey.form.lifecycle` for publication/archive/restore/etc.
 A global form change can affect more than the requested project's binding.
 Do not add `--force` merely to remove a dependency refusal.
 
+Before publishing required or visibility changes, use `survey.form.validate`
+against the retained fields and proposed values. Check a hidden required field,
+a missing visible required field, Other without detail, and a valid selection.
+The preview is offline and writes nothing; its revision label identifies the
+supplied snapshot, so keep the separate cloud-version fence on the update.
+
 ## One project's bindings
 
 Read `survey.project-forms.read --project <id> --detail`, then
@@ -52,3 +58,14 @@ observations and existing entry identities when revising collection settings.
 
 Finish with exact object IDs, saved revisions and the project actually affected.
 Do not copy another project's entries merely because its form setup is useful.
+
+### Correct an existing captured entry
+
+For a scoped classification correction, use `survey.entries.update-plan` with
+one retained mirror Feature, explicit project/form/doc identity, current form
+fields/revision, declared data changes and the observed client version. Review
+that plan before `survey.entries.update --yes` with the same document, replay
+key and clock. Preserve capture fields/geometry/media unless the user expressly
+asks to change a declared data field. A conflict requires a fresh reviewed
+plan; a missing entry must never be recreated as a correction. A native commit
+receipt is not mirror sync: verify through a separate Survey entry read.

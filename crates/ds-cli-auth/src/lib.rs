@@ -3798,6 +3798,19 @@ pub fn survey_delete(
     )
 }
 
+pub fn survey_update(
+    lane: &str,
+    project: &str,
+    request: &ds_client_core::SurveyUpdateRequest,
+) -> Result<HeadlessNamedProject<serde_json::Value>, Failure> {
+    headless_named_project(
+        lane,
+        project,
+        |device, project| device.survey_update(project, request),
+        |client, project| client.survey_update(project, request, now()),
+    )
+}
+
 pub fn survey_entry_create(
     lane_value: &str,
     project: &str,

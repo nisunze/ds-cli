@@ -24,6 +24,8 @@ pub mod purge;
 pub mod query;
 pub mod read;
 pub mod templates;
+pub mod validate;
+pub mod update;
 pub mod working_area;
 
 use std::io::Read;
@@ -40,6 +42,9 @@ pub static DOMAIN: Domain = Domain {
         &forms::LIST_COMMAND,
         &forms::READ_COMMAND,
         &forms::TYPES_COMMAND,
+        &validate::COMMAND,
+        &update::PLAN,
+        &update::COMMAND,
         &forms::CREATE_COMMAND,
         &forms::UPDATE_COMMAND,
         &forms::LIFECYCLE_COMMAND,
