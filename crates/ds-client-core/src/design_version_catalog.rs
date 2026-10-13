@@ -12,6 +12,39 @@ pub(crate) fn run<T: AuthorizedTransport>(
     project: &str,
     command: &Command,
 ) -> Result<Value, ClientError> {
+    if let Command::Compare { object_id, request } = command {
+        let scope = ds_command_kernel::design_versions::Scope {
+            owner: authority.uid.into(),
+            audience: profile.credential_audience_sha256().into(),
+            lane: profile.lane().token().into(),
+            project: project.into(),
+            object_kind: "lv_transformer".into(),
+            object_id: object_id.clone(),
+        };
+        return ds_command_kernel::design_revision_comparison::run(
+            &scope,
+            &mut RevisionSource {
+                profile,
+                transport,
+                authority,
+            },
+            request,
+        )
+        .map_err(|e| match e {
+            ds_command_kernel::design_revision_comparison::Error::Source(e) => e,
+            ds_command_kernel::design_revision_comparison::Error::Invalid(message) => {
+                ClientError::with_service_refusal(
+                    ErrorKind::InvalidInput,
+                    "immutable revision comparison refused",
+                    crate::ServiceRefusal::new(
+                        400,
+                        Some("revision_comparison_refused"),
+                        Some(&message),
+                    ),
+                )
+            }
+        });
+    }
     let payload = command.payload(project).map_err(|_| {
         ClientError::new(ErrorKind::InvalidInput, "invalid version catalog request")
     })?;
@@ -60,4 +93,36 @@ pub(crate) fn decode_authority_response(
             refusal["details"].as_object(),
         ),
     ))
+}
+
+struct RevisionSource<'a, T> {
+    profile: &'a ClientProfile,
+    transport: &'a mut T,
+    authority: Authority<'a>,
+}
+impl<T: AuthorizedTransport> ds_command_kernel::design_revision_comparison::Source
+    for RevisionSource<'_, T>
+{
+    type Error = ClientError;
+    fn read(
+        &mut self,
+        project: &str,
+        object: &str,
+        pin: &ds_command_kernel::design_revision_comparison::Pin,
+    ) -> Result<Value, ClientError> {
+        let command = Command::Snapshot {
+            object_id: object.into(),
+            version_id: pin.version_id.clone(),
+            revision_id: pin.revision_id.clone(),
+        };
+        let payload = command.payload(project).map_err(|_| {
+            ClientError::new(ErrorKind::InvalidInput, "invalid exact immutable read")
+        })?;
+        // The pure consuming workflow validates scope/digests and decodes once.
+        decode_authority_response(self.transport.design_versions(DesignVersionsCall {
+            profile: self.profile,
+            authority: self.authority.call(),
+            payload,
+        })?)
+    }
 }

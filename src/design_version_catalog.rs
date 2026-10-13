@@ -22,6 +22,10 @@ pub struct Mutation {
 }
 #[derive(Clone, Debug)]
 pub enum Command {
+    Compare {
+        object_id: String,
+        request: Box<super::design_revision_comparison::Request>,
+    },
     Promote {
         object_id: String,
         promotion: super::design_version_promotion::Promotion,
@@ -204,7 +208,8 @@ impl Command {
             | Self::Publish { object_id, .. }
             | Self::Renumber { object_id, .. }
             | Self::Bind { object_id, .. }
-            | Self::Promote { object_id, .. } => object_id,
+            | Self::Promote { object_id, .. }
+            | Self::Compare { object_id, .. } => object_id,
         }
     }
     pub fn validate(&self, project: &str) -> Result<(), String> {
@@ -215,6 +220,7 @@ impl Command {
             Self::Catalog { .. } => Ok(()),
             Self::Bind { binding, .. } => binding.validate(),
             Self::Promote { promotion, .. } => promotion.validate(),
+            Self::Compare { request, .. } => request.validate(),
             Self::Revision {
                 version_id,
                 revision_id,
@@ -280,7 +286,14 @@ impl Command {
     }
     pub fn payload(&self, project: &str) -> Result<Value, String> {
         self.validate(project)?;
+        if matches!(self, Self::Compare { .. }) {
+            return Err(
+                "comparison consumes exact reads through its owning workflow, not one raw action"
+                    .into(),
+            );
+        }
         let action = match self {
+            Self::Compare { .. } => unreachable!("comparison has a separate consuming workflow"),
             Self::Catalog { .. } => "get_version_catalog",
             Self::Bind { .. } => "bind_version_revision",
             Self::Promote { .. } => "promote_transformer_version_revision",
@@ -325,6 +338,9 @@ impl Command {
         Ok(value)
     }
     pub fn verify_response(&self, project: &str, value: &Value) -> Result<(), String> {
+        if matches!(self, Self::Compare { .. }) {
+            return Err("comparison receipts are verified by the owning workflow".into());
+        }
         if let Self::Promote { promotion, .. } = self {
             return promotion.verify_response(value);
         }

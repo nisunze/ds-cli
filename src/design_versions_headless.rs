@@ -11,7 +11,6 @@ pub trait Source {
         transformer: &str,
         version: Option<&str>,
     ) -> Result<Value, Self::Error>;
-    fn head(&mut self, project: &str, transformer: &str) -> Result<Value, Self::Error>;
     fn create(
         &mut self,
         project: &str,
@@ -289,6 +288,9 @@ impl Command {
         matches!(self, Self::BeginBatch { .. } | Self::Summaries { .. })
     }
     pub fn validate(&self, project: &str) -> Result<(), String> {
+        self.validate_kind(project, self.kind())
+    }
+    fn validate_kind(&self, project: &str, kind: &str) -> Result<(), String> {
         if let Self::Object { kind, command } = self {
             if !matches!(kind.as_str(), "lv_transformer" | "mv_model")
                 || matches!(command.as_ref(), Self::Object { .. })
@@ -299,7 +301,7 @@ impl Command {
             if let Self::Begin { create, .. } = command.as_ref() {
                 fence(kind, create.expected_source.as_deref())?;
             }
-            return command.validate(project);
+            return command.validate_kind(project, kind);
         }
         if !identifier(project) {
             return Err(invalid("invalid project or transformer identity"));
@@ -320,6 +322,9 @@ impl Command {
             }
         }
         if let Self::Compare { from, to, .. } = self {
+            if kind != "mv_model" {
+                return Err("LV comparison requires exact immutable revision pins; use design version revision compare".into());
+            }
             if !version(from) || (to != "head" && !version(to)) || from == to {
                 return Err(invalid(
                     "choose distinct canonical vN versions; --to may be head. Device-local drafts are not governance versions.",
@@ -367,23 +372,6 @@ fn record(
     }
     Ok(())
 }
-fn snapshot(data: &Value, project: &str, transformer: &str, id: &str) -> Result<Value, String> {
-    record(
-        &data["version"],
-        project,
-        transformer,
-        Some(id),
-        "lv_transformer",
-    )?;
-    if data["version"]["playback_available"] != true
-        || data["snapshot"]["schema"] != "ds.transformer-version-snapshot/v1"
-        || !data["snapshot"]["layers"].is_object()
-    {
-        return Err("playback_unavailable: retained version has no readable snapshot; choose a version with playback_available=true".into());
-    }
-    Ok(data["snapshot"].clone())
-}
-
 fn listed<'a>(
     data: &'a Value,
     project: &str,
@@ -533,14 +521,6 @@ pub fn authority_command(input: &[u8]) -> Result<Value, String> {
         _ => Err("choose plan or accept".into()),
     }
 }
-fn kernel(request: Value) -> Result<Value, String> {
-    let bytes =
-        serde_json::to_vec(&request).map_err(|_| bad("version kernel response is unreadable"))?;
-    let answer = crate::design_versions::evaluate(&bytes)
-        .map_err(|_| bad("version snapshot failed kernel integrity validation"))?;
-    serde_json::from_str(&answer).map_err(|_| bad("version kernel response is unreadable"))
-}
-
 pub fn run<S: Source>(
     scope: &Scope,
     source: &mut S,
@@ -596,85 +576,9 @@ pub fn run<S: Source>(
                 json!({"project":project,"transformer":transformer,"versions":rows,"truncated":rows.len()==200,"scope":"published_versions","mutated":false}),
             )
         }
-        Command::Compare { from, to, .. } => {
-            // A complete bounded list lets the kernel distinguish a missing
-            // version from authentication before asking for snapshot bytes.
-            // A 200-row page may be truncated, so older identities still go
-            // to the exact read and retain its authoritative answer.
-            let inventory = source
-                .versions(project, transformer, None)
-                .map_err(Error::Source)?;
-            let rows = listed(&inventory, project, transformer, kind)?;
-            if rows.len() < 200 {
-                let present = rows
-                    .iter()
-                    .filter_map(|row| row["version_id"].as_str())
-                    .collect::<std::collections::BTreeSet<_>>();
-                let latest = present
-                    .iter()
-                    .map(|id| ordinal(id))
-                    .max()
-                    .unwrap_or_default();
-                for requested in [Some(from.as_str()), (to != "head").then_some(to.as_str())]
-                    .into_iter()
-                    .flatten()
-                {
-                    if !present.contains(requested) {
-                        return Err(Error::VersionNotFound {
-                            transformer: transformer.to_string(),
-                            requested: requested.to_string(),
-                            latest,
-                        });
-                    }
-                }
-            }
-            let left = snapshot(
-                &source
-                    .versions(project, transformer, Some(from))
-                    .map_err(Error::Source)?,
-                project,
-                transformer,
-                from,
-            )?;
-            let (right, descriptor) = if to == "head" {
-                let head = source.head(project, transformer).map_err(Error::Source)?;
-                if head["project"] != *project || head["transformer"] != transformer {
-                    return Err(bad("saved head scope mismatch").into());
-                }
-                (
-                    head["snapshot"].clone(),
-                    json!({"kind":"saved_head","server_version":head["server_version"],"content_digest":head["content_digest"]}),
-                )
-            } else {
-                (
-                    snapshot(
-                        &source
-                            .versions(project, transformer, Some(to))
-                            .map_err(Error::Source)?,
-                        project,
-                        transformer,
-                        to,
-                    )?,
-                    json!({"kind":"version","version_id":to}),
-                )
-            };
-            let prepare = |snapshot| {
-                kernel(
-                    json!({"action":"prepare","scope":scope,"operation":"comparison","parent":null,"local_sequence":1,"created_at":"comparison-observation","reason":"read-only comparison","snapshot":snapshot,"project_config":null}),
-                )
-            };
-            let l = prepare(left)?;
-            let r = prepare(right)?;
-            let mut result = kernel(
-                json!({"action":"compare","scope":scope,"left":l,"right":r,"tolerance_m":0}),
-            )?;
-            bound_comparison(&mut result["comparison"]);
-            bound_comparison(&mut result["metadata_comparison"]);
-            Ok(
-                json!({"project":project,"transformer":transformer,"from":{"kind":"version","version_id":from},"to":descriptor,
-                "from_snapshot_digest":l["manifest"]["id"],"to_snapshot_digest":r["manifest"]["id"],"comparison":result["comparison"],"consistency":result["consistency"],"metadata_comparison":result["metadata_comparison"],"details_included":false,"mutated":false}),
-            )
-        }
+        Command::Compare { .. } => Err("LV comparison requires the exact revision workflow"
+            .to_owned()
+            .into()),
         Command::Begin { create, .. } => {
             let data = source
                 .create(project, transformer, create)
@@ -877,7 +781,7 @@ fn summaries_receipt(project: &str, objects: &[ObjectRef], data: &Value) -> Resu
     Ok(json!({"project":project,"summaries":rows,"mutated":false}))
 }
 
-fn bound_comparison(value: &mut Value) {
+pub(crate) fn bound_comparison(value: &mut Value) {
     fn keys(v: &mut Value) {
         if let Some(map) = v["changedAttributeKeyCounts"].as_object_mut() {
             let total = map.len();
@@ -928,11 +832,11 @@ mod tests {
     }
     #[test]
     fn exact_scope_and_versions_are_required() {
-        assert!(Command::Compare {
+        assert!(mv(Command::Compare {
             transformer: "tr".into(),
             from: "v1".into(),
             to: "head".into()
-        }
+        })
         .validate("p")
         .is_ok());
         for id in ["v01", "v-1", "local-abc", "v18446744073709551615"] {
@@ -943,7 +847,6 @@ mod tests {
         assert!(record(&row, "other", "tr", Some("v1"), "lv_transformer").is_err());
         assert!(record(&row, "p", "other", Some("v1"), "lv_transformer").is_err());
         assert!(record(&row, "p", "tr", Some("v2"), "lv_transformer").is_err());
-        assert!(snapshot(&json!({"version":row}), "p", "tr", "v1").is_err());
     }
 
     /// Answers every call from a queue and records what was asked.
@@ -957,9 +860,6 @@ mod tests {
         fn versions(&mut self, _: &str, _: &str, v: Option<&str>) -> Result<Value, ()> {
             self.asked.push(json!({"versions":v}));
             self.answers.pop_front().ok_or(())
-        }
-        fn head(&mut self, _: &str, _: &str) -> Result<Value, ()> {
-            Err(())
         }
         fn create(&mut self, _: &str, _: &str, create: &Create) -> Result<Value, ()> {
             self.asked.push(
@@ -1000,12 +900,8 @@ mod tests {
             "source_revision":"rev-abc","content_pinned":true,"milestone":"Submission 2"})
     }
     #[test]
-    fn metadata_only_versions_never_claim_a_successful_snapshot_comparison() {
-        let row = json!({"project_id":"p","object":{"kind":"lv_transformer","id":"tr"},
-            "version_id":"v1","version":1,"playback_available":true});
+    fn legacy_lv_comparison_refuses_before_any_acquisition() {
         let mut source = Recorded::default();
-        source.answers.push_back(json!({"versions":[row.clone()]}));
-        source.answers.push_back(json!({"version":row}));
         let result = run(
             &scope("lv_transformer", "tr"),
             &mut source,
@@ -1015,13 +911,10 @@ mod tests {
                 to: "head".into(),
             },
         );
-        assert!(matches!(result, Err(Error::Invalid(message))
-            if message.starts_with("playback_unavailable:")));
-        assert_eq!(
-            source.asked,
-            vec![json!({"versions":null}), json!({"versions":"v1"})]
+        assert!(
+            matches!(result,Err(Error::Invalid(message)) if message.contains("exact immutable revision pins"))
         );
-        assert!(source.answers.is_empty());
+        assert!(source.asked.is_empty());
     }
 
     #[test]

@@ -11055,99 +11055,6 @@ fn headless_feedback_submit_uses_authenticated_agent_contract_without_project() 
 }
 
 #[test]
-fn headless_version_comparison_uses_pinned_snapshots_and_has_no_geometry_payload() {
-    use ds_client_core::design_versions::Command;
-    let transport = FixtureTransport::with_sign_in(SIGN_IN);
-    let mut client = signed_in(transport.clone(), MemoryStore::default());
-    let row = |id: &str| serde_json::json!({"project_id":"project_a","object":{"kind":"lv_transformer","id":"tr"},"version_id":id,"version":id[1..].parse::<u64>().unwrap(),"playback_available":true});
-    let snapshot = |id: &str, n: i64| serde_json::json!({"version":row(id),"snapshot":{"schema":"ds.transformer-version-snapshot/v1","layers":{"lv_poles":{"type":"FeatureCollection","features":[{"type":"Feature","id":"P1","geometry":{"type":"Point","coordinates":[30,-2]},"properties":{"height":n}}]}}}});
-    transport.push_design_versions(
-        200,
-        &selection_envelope(serde_json::json!({"versions":[row("v2"),row("v1")]})),
-    );
-    transport.push_design_versions(200, &selection_envelope(snapshot("v1", 9)));
-    transport.push_design_versions(200, &selection_envelope(snapshot("v2", 11)));
-    let result = client
-        .design_versions(
-            "project_a",
-            &Command::Compare {
-                transformer: "tr".into(),
-                from: "v1".into(),
-                to: "v2".into(),
-            },
-            NOW + 1,
-        )
-        .unwrap();
-    assert_eq!(result["comparison"]["totals"]["attributeOnlyChanged"], 1);
-    assert_eq!(result["mutated"], false);
-    assert!(result["comparison"]["layers"][0]
-        .get("reviewCollections")
-        .is_none());
-    assert!(result["comparison"]["layers"][0].get("details").is_none());
-    assert_ne!(result["from_snapshot_digest"], result["to_snapshot_digest"]);
-    transport.push_design_versions(200, &selection_envelope(serde_json::json!({"versions":[]})));
-    let missing = client
-        .design_versions(
-            "project_a",
-            &Command::Compare {
-                transformer: "tr".into(),
-                from: "v1".into(),
-                to: "head".into(),
-            },
-            NOW + 1,
-        )
-        .unwrap_err();
-    assert_eq!(missing.kind(), ds_client_core::ErrorKind::ResourceNotFound);
-    let refusal = missing.service_refusal().expect("typed version refusal");
-    assert_eq!(refusal.code(), Some("version_not_found"));
-    assert!(refusal.message().is_some_and(|message| {
-        message.contains("transformer tr")
-            && message.contains("published v1")
-            && message.contains("latest is v0")
-    }));
-    let created = serde_json::json!({
-        "project_id":"project_a",
-        "object":{"kind":"lv_transformer","id":"tr"},
-        "version_id":"v1",
-        "version":1,
-        "playback_available":true,
-    });
-    transport.push_design_versions(
-        200,
-        &selection_envelope(serde_json::json!({"version":created})),
-    );
-    let begun = client
-        .design_versions(
-            "project_a",
-            &Command::Begin {
-                transformer: "tr".into(),
-                create: ds_command_kernel::design_versions_headless::Create {
-                    reason: "before field review".into(),
-                    idempotency_key: "version-request-1".into(),
-                    ..Default::default()
-                },
-            },
-            NOW + 1,
-        )
-        .unwrap();
-    assert_eq!(begun["version"]["version_id"], "v1");
-    assert_eq!(begun["mutated"], true);
-    transport.push_design_versions(
-        200,
-        &selection_envelope(serde_json::json!({"versions":[row("v1")]})),
-    );
-    assert!(client
-        .design_versions(
-            "another_project",
-            &Command::List {
-                transformer: "tr".into()
-            },
-            NOW + 1
-        )
-        .is_err());
-}
-
-#[test]
 fn grid_publication_requires_storage_proof_commit_and_exact_readback() {
     use ds_client_core::grid_models::Command;
     use ds_command_kernel::grid_publication::Intent;
@@ -14729,5 +14636,123 @@ fn safe_version_promotion_uses_one_closed_bulk_call_and_verifies_original_backup
         transport.calls().len(),
         4,
         "refusal is never retried automatically"
+    );
+}
+
+#[test]
+fn exact_revision_comparison_consumes_only_two_bulk_reads_and_offline_reuse_none() {
+    use ds_client_core::design_version_catalog::Command;
+    use ds_command_kernel::design_revision_comparison::{Mode, Pin, Request};
+    use sha2::{Digest, Sha256};
+    let read = |id: &str, x: f64| {
+        let raw=json!({"schema":"ds.transformer-version-snapshot/v1","layers":{"tr":{"type":"FeatureCollection","features":[{"type":"Feature","id":"TR-1","geometry":{"type":"Point","coordinates":[x,-2.0]},"properties":{"id":"TR-1"}}]}}}).to_string();
+        let pin = Pin {
+            version_id: id.into(),
+            revision_id: id.into(),
+            content_digest: format!("{:x}", Sha256::digest(raw.as_bytes())),
+            snapshot_digest: "d".repeat(64),
+            snapshot_sha256: format!("{:x}", Sha256::digest(raw.as_bytes())),
+        };
+        let reply = json!({"metadata":{"project_id":"active-project","transformer_id":"TR-1","version_id":id,"revision_id":id,"revision_number":1,"snapshot_scope":"runtime_design","playback_available":true,"content_digest":pin.content_digest,"snapshot_digest":pin.snapshot_digest},"snapshot_json":raw,"snapshot_sha256":pin.snapshot_sha256});
+        (pin, reply)
+    };
+    let (left, l) = read("v0", 30.0);
+    let (right, r) = read("v1", 30.001);
+    let transport = FixtureTransport::with_sign_in(SIGN_IN);
+    transport.push_design_versions(200, &selection_envelope(l.clone()));
+    transport.push_design_versions(200, &selection_envelope(r));
+    let mut client = signed_in(transport.clone(), MemoryStore::default());
+    let request = Request {
+        left: left.clone(),
+        right: right.clone(),
+        mode: Mode::Geometry,
+        retain_reads: true,
+        retained: None,
+    };
+    let command = Command::Compare {
+        object_id: "TR-1".into(),
+        request: Box::new(request.clone()),
+    };
+    let result = client
+        .design_version_catalog("active-project", &command, NOW + 1)
+        .unwrap();
+    assert_eq!(result["comparison"]["totals"]["geometryOnlyChanged"], 1);
+    let calls = transport.calls();
+    assert_eq!(
+        calls.len(),
+        3,
+        "sign-in plus exactly two consumed reads: {calls:?}"
+    );
+    for call in &calls[1..] {
+        assert!(
+            call.contains("path=/bulk/api/v1/data")
+                && call.contains("get_transformer_version_revision"),
+            "{call}"
+        );
+        assert!(
+            !call.contains("get_head")
+                && !call.contains("list_versions")
+                && !call.contains("get_config"),
+            "no incidental acquisition: {call}"
+        );
+    }
+    let mut cached = request.clone();
+    cached.retained = Some(serde_json::from_value(result["retained"].clone()).unwrap());
+    cached.retain_reads = false;
+    let offline = client
+        .design_version_catalog(
+            "active-project",
+            &Command::Compare {
+                object_id: "TR-1".into(),
+                request: Box::new(cached.clone()),
+            },
+            NOW + 2,
+        )
+        .unwrap();
+    assert_eq!(
+        transport.calls().len(),
+        3,
+        "retained comparison has zero incidental reads"
+    );
+    assert_eq!(offline["comparison"], result["comparison"]);
+    assert_eq!(offline["working_currentness_checked"], false);
+    cached.retained.as_mut().unwrap().scope.lane = "canary".into();
+    assert!(client
+        .design_version_catalog(
+            "active-project",
+            &Command::Compare {
+                object_id: "TR-1".into(),
+                request: Box::new(cached)
+            },
+            NOW + 3
+        )
+        .is_err());
+    assert_eq!(
+        transport.calls().len(),
+        3,
+        "wrong capture scope refuses before reads"
+    );
+    transport.push_design_versions(200, &selection_envelope(l));
+    let same = Request {
+        left: left.clone(),
+        right: left,
+        mode: Mode::Geometry,
+        retain_reads: false,
+        retained: None,
+    };
+    client
+        .design_version_catalog(
+            "active-project",
+            &Command::Compare {
+                object_id: "TR-1".into(),
+                request: Box::new(same),
+            },
+            NOW + 4,
+        )
+        .unwrap();
+    assert_eq!(
+        transport.calls().len(),
+        4,
+        "same exact revision consumes one read, never two"
     );
 }

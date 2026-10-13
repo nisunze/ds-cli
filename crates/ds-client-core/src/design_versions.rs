@@ -77,21 +77,6 @@ impl<T: AuthorizedTransport> Source for AuthenticatedSource<'_, T> {
             self.kind,
         )
     }
-    fn head(&mut self, project: &str, transformer: &str) -> Result<Value, ClientError> {
-        let observed = authorized::transformer_context(
-            self.profile,
-            self.transport,
-            self.authority,
-            project,
-            transformer,
-            crate::TransformerContextProjection::Full,
-        )?;
-        Ok(
-            json!({"project":observed.ds_project(),"transformer":observed.transformer_name(),
-            "snapshot":{"schema":"ds.transformer-version-snapshot/v1","layers":observed.layers()},
-            "server_version":observed.metadata().version(),"content_digest":observed.metadata().content_digest()}),
-        )
-    }
     fn create(
         &mut self,
         project: &str,

@@ -1401,9 +1401,13 @@ impl DesignVersionsCall<'_> {
     fn import_route(&self) -> Option<&'static crate::GatewayOperation> {
         let operation = match self.payload["action"].as_str() {
             Some("import_transformer_version") => "domains.design_versions.import",
-            Some("publish_transformer_version_revision") => "domains.design_versions.publish_revision",
+            Some("publish_transformer_version_revision") => {
+                "domains.design_versions.publish_revision"
+            }
             Some("get_transformer_version_revision") => "domains.design_versions.read_revision",
-            Some("promote_transformer_version_revision") => "domains.design_versions.promote_revision",
+            Some("promote_transformer_version_revision") => {
+                "domains.design_versions.promote_revision"
+            }
             _ => return None,
         };
         Some(crate::gateway_operation(operation).expect("generated closed history Bulk route"))

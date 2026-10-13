@@ -1609,6 +1609,7 @@ pub mod report_migrations;
 pub mod transformer_history_import;
 pub mod design_version_binding;
 pub mod design_version_promotion;
+pub mod design_revision_comparison;
 pub mod design_version_catalog;
 pub mod design_versions;
 pub mod design_versions_headless;
