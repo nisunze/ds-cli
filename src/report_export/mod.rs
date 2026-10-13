@@ -177,15 +177,27 @@ pub fn captured_printing_project_label(
     project: &str,
     source: &Value,
     network_config: &Value,
+    receipt: &InputReceipt,
 ) -> Result<String, String> {
     if source["project"]["ds_project"] != project
         || network_config["printing_context"]["project_id"] != project
     {
         return Err("The captured label context belongs to another project".into());
     }
-    let label = admitted_printing_label(project, source["project"]["printing_label"].as_str())?;
-    if network_config["printing_context"]["project"] != label {
-        return Err("The captured label differs from the pinned native printing context".into());
+    let config: BTreeMap<String, Value> = serde_json::from_value(network_config.clone())
+        .map_err(|_| "The captured raw process configuration is invalid")?;
+    let config_sha = sha256_hex(&serde_json::to_vec(&config).map_err(|e| e.to_string())?);
+    if source["project_config_sha256"] != config_sha
+        || source["project"]["printing_receipt"]["sheets_sha256"] != receipt.sheets_sha256
+    {
+        return Err(
+            "The captured printing receipt differs from the raw configuration capture".into(),
+        );
+    }
+    let context = receipt.printing_context_for_project(project)?;
+    let label = admitted_printing_label(project, context["project"].as_str())?;
+    if source["project"]["printing_label"] != label {
+        return Err("The captured caption differs from its validated server receipt".into());
     }
     Ok(label)
 }
@@ -4496,31 +4508,31 @@ mod project_printing_label_tests {
             local_print_recipe: None,
         }
     }
-    #[test]
-    fn governed_display_label_preserves_the_sealed_project_context() {
-        let r = receipt("czgmdwth_gisagara", json!("Gisagara, CJIC"));
-        let ctx = r.printing_context_for_project("czgmdwth_gisagara").unwrap();
-        assert_eq!(ctx["project"], "Gisagara, CJIC");
-        assert_eq!(ctx["caption"], "Kept");
-        let source =
-            json!({"project":{"ds_project":"czgmdwth_gisagara","printing_label":ctx["project"]}});
-        assert_eq!(
-            captured_printing_project_label(
-                "czgmdwth_gisagara",
-                &source,
-                &json!({"printing_context":ctx})
-            )
-            .unwrap(),
-            "Gisagara, CJIC"
-        );
+    fn captured(project: &str, r: &InputReceipt) -> (Value, Value) {
+        let raw = json!({"printing_context":{"project_id":project,"project":"Raw sheet caption"}});
+        let source = json!({"project":{"ds_project":project,"printing_label":"Gisagara, CJIC","printing_receipt":{"sheets_sha256":r.sheets_sha256}},"project_config_sha256":sha256_hex(serde_json::to_vec(&raw).unwrap().as_slice())});
+        (source, raw)
     }
     #[test]
-    fn foreign_changed_and_missing_label_contexts_are_refused() {
+    fn governed_display_label_preserves_raw_process_configuration() {
+        let r = receipt("czgmdwth_gisagara", json!("Gisagara, CJIC"));
+        let (source, raw) = captured("czgmdwth_gisagara", &r);
+        let before = raw.clone();
+        assert_eq!(
+            captured_printing_project_label("czgmdwth_gisagara", &source, &raw, &r).unwrap(),
+            "Gisagara, CJIC"
+        );
+        assert_eq!(raw, before);
+        assert_eq!(raw["printing_context"]["project"], "Raw sheet caption");
+    }
+    #[test]
+    fn foreign_changed_missing_and_tampered_caption_contexts_refuse() {
         let r = receipt("project", json!("Gisagara, CJIC"));
         assert!(r.printing_context_for_project("other").is_err());
+        let (source, raw) = captured("project", &r);
         let mut stale = r.clone();
         stale.sheets_json.push(' ');
-        assert!(stale.printing_context_for_project("project").is_err());
+        assert!(captured_printing_project_label("project", &source, &raw, &stale).is_err());
         for label in [
             Value::Null,
             json!(""),
@@ -4535,27 +4547,20 @@ mod project_printing_label_tests {
                     .is_err()
             );
         }
-        let source = json!({"project":{"ds_project":"project","printing_label":"Gisagara, CJIC"}});
-        for ctx in [
-            json!({"project_id":"other","project":"Gisagara, CJIC"}),
-            json!({"project_id":"project","project":"Old caption"}),
-        ] {
-            assert!(
-                captured_printing_project_label(
-                    "project",
-                    &source,
-                    &json!({"printing_context":ctx})
-                )
-                .is_err()
-            );
+        for change in 0..4 {
+            let mut altered = source.clone();
+            match change {
+                0 => altered["project"]["printing_label"] = json!("Changed label"),
+                1 => altered["project"]["ds_project"] = json!("other"),
+                2 => altered["project_config_sha256"] = json!("b".repeat(64)),
+                _ => {
+                    altered["project"]["printing_receipt"]["sheets_sha256"] = json!("c".repeat(64))
+                }
+            }
+            assert!(captured_printing_project_label("project", &altered, &raw, &r).is_err());
         }
-        assert!(
-            captured_printing_project_label(
-                "project",
-                &json!({"project":{"ds_project":"project"}}),
-                &json!({"printing_context":{"project_id":"project","project":"Gisagara, CJIC"}})
-            )
-            .is_err()
-        );
+        let mut changed_raw = raw.clone();
+        changed_raw["printing_context"]["project"] = json!("Modified raw settings");
+        assert!(captured_printing_project_label("project", &source, &changed_raw, &r).is_err());
     }
 }
