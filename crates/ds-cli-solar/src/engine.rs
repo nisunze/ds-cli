@@ -7,17 +7,17 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
-use crate::{DISCOVERY_TIMEOUT, DS_SOLAR};
+use crate::{DISCOVERY_TIMEOUT, SOLAR_ENGINE};
 
 pub static COMMAND: Command = Command {
     id: "solar.engine",
     path: &["solar", "engine"],
-    contract: 2,
+    contract: 3,
     summary: "Report the installed solar engine's version and location.",
     purpose: "\
-Returns the immutable build identity of the `ds-solar` engine this machine \
-will use and where it was found. Run it to confirm the packaged sidecar before \
-starting a batch, and to record which exact engine produced a result.",
+Returns the immutable build identity of the `solar` addon this machine \
+will use and where it was found. Run it to inspect the addon before \
+a prepared-city task, and to record which exact engine produced a result.",
     chapter: Chapter::Solar,
     effect: Effect::Discovery,
     authority: Authority::None,
@@ -32,12 +32,12 @@ starting a batch, and to record which exact engine produced a result.",
     refusals: &[
         Refusal {
             code: "solar_engine_missing",
-            when: "the packaged `ds-solar` sidecar cannot be found",
-            remedy: "reinstall the complete ds release, or set DS_SOLAR_BIN for development",
+            when: "the `solar` addon cannot be found",
+            remedy: "install the Solar addon, or set DS_SOLAR_ENGINE_BIN for development",
         },
         Refusal {
             code: "callee_contract_mismatch",
-            when: "`ds-solar build-info` does not return its engine identity document",
+            when: "`solar build-info` does not return its engine identity document",
             remedy: "update ds and DS GridDesign to one matching release",
         },
     ],
@@ -48,28 +48,28 @@ starting a batch, and to record which exact engine produced a result.",
 };
 
 fn availability() -> Availability {
-    DS_SOLAR.availability()
+    SOLAR_ENGINE.availability()
 }
 
 pub fn run(_inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
-    let mut identity = DS_SOLAR.call_json("build-info", &[], DISCOVERY_TIMEOUT)?;
+    let mut identity = SOLAR_ENGINE.call_json("build-info", &[], DISCOVERY_TIMEOUT)?;
     let object = identity.as_object_mut().ok_or_else(|| {
         Failure::failed(
             "callee_contract_mismatch",
-            "`ds-solar build-info` did not return an identity object",
+            "`solar build-info` did not return an identity object",
         )
         .remedy("update ds and DS GridDesign to one matching release")
     })?;
     if object.get("name").and_then(Value::as_str) != Some("ds-solar-engine") {
         return Err(Failure::failed(
             "callee_contract_mismatch",
-            "`ds-solar build-info` returned the wrong engine identity",
+            "`solar build-info` returned the wrong engine identity",
         )
         .remedy("update ds and DS GridDesign to one matching release"));
     }
     object.insert(
         "path".to_string(),
-        json!(DS_SOLAR.locate().map(|path| path.display().to_string())),
+        json!(SOLAR_ENGINE.locate().map(|path| path.display().to_string())),
     );
     Ok(identity)
 }

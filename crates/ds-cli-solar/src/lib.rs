@@ -38,6 +38,7 @@ use std::time::Duration;
 
 use ds_cli_contract::spec::Domain;
 use ds_cli_exec::External;
+pub use ds_cli_exec::addons::SOLAR as SOLAR_ENGINE;
 
 /// The solar binary.
 ///

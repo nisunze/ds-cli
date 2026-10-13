@@ -3668,6 +3668,16 @@ static MCP_ENTRIES: &[Entry] = &[
 
 static SERVER_ENTRIES: &[Entry] = &[
     Entry {
+        command: &ds_cli_server::modules::INVENTORY,
+        handler: ds_cli_server::modules::inventory,
+        render: ds_cli_server::render,
+    },
+    Entry {
+        command: &ds_cli_server::modules::RELEASE,
+        handler: ds_cli_server::modules::release,
+        render: ds_cli_server::render,
+    },
+    Entry {
         command: &ds_cli_server::ENGINE,
         handler: ds_cli_server::engine,
         render: ds_cli_server::render,

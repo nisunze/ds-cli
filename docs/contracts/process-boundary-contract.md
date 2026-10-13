@@ -9,16 +9,22 @@
 | Route | When | Example |
 |---|---|---|
 | **Link the crate** | the owner is a pure library with a clean boundary | `ds dsgrid` links `ds-grid-model`, `ds-grid-exchange` — the same crates `ds-web/src-tauri` links |
-| **Call the binary** | the owning workspace deliberately chose process separation and wrote down why | `ds report` → `reporter`; `ds solar` → `ds-solar` |
+| **Call the binary** | the owning workspace deliberately chose process separation and wrote down why | `ds report` → `reporter`; prepared Solar calculation → `solar` |
 
-The choice belongs to the owning workspace, not to convenience. Three typed
+The choice belongs to the owning workspace, not to convenience. Four typed
 process contracts exist today, each designed as one:
 
 | Binary | Owner | Shape |
 |---|---|---|
 | `ds-grid` | `ds-network/crates/ds-grid-cli` | one named subcommand per call |
 | `reporter` | `ds-network-reporter/src/bin/reporter.rs` | typed request file; machine-readable result file; the result must not already exist |
+| `solar` | `ds-solar/apps/solar` | fixed build identity and sealed prepared-calculation file task; no acquisition |
 | `ds-solar` | `ds-solar/apps/ds-solar-cli` | `prepare` may reach the network, `run` may not |
+
+`solar` is the independent engine addon. `DS_SOLAR_ENGINE_BIN` selects it for
+development. The application tool `ds-solar` and its `DS_SOLAR_BIN` override
+remain separate while native batch and portfolio orchestration are extracted;
+the addon inventory does not claim those workflows are already detached.
 
 ## There is no generic invoker
 
@@ -58,7 +64,7 @@ named owner classes, and each is audited where it lives:
 | Owner class | Where | What it may spawn |
 |---|---|---|
 | Native Assets PDF text decoder | `ds-command-kernel/crates/ds-assets-pdf-host` (linked by `ds-cli-assets`) | fixed `/usr/bin/prlimit` executing only `/usr/bin/pdfinfo` or `/usr/bin/pdftotext`, over a private local copy of governed signed-read bytes; validated numeric pages, fixed resource limits, no executable/argv/environment/URL/password input |
-| A sibling DS executable | `crates/ds-cli-exec` | `ds-report`, `ds-solar`, under one named subcommand |
+| A sibling DS executable | `crates/ds-cli-exec` | `reporter`, `solar`, `ds-solar`, under one named subcommand |
 | The platform package manager | `crates/ds-cli-workstation/src/install.rs` | one fixed manager with a `const` package identity |
 | An executable already on this machine, probed | `crates/ds-cli-workstation/src/detect.rs`, `verify.rs` | bounded version probes and the harmless verification smoke test |
 | This same `ds`, and the installed desktop | `crates/ds-cli-mcp/src/tools.rs` | one `ds <path> … --output json` per `tools/call`; for a live-descriptor command that requires desktop authority and has no named descriptor, one fixed no-argument DS GridDesign launch |
@@ -99,9 +105,21 @@ the resulting wrong answer would look like a correct one.
 `DS_REPORT_BIN` names a path that is not a file, `ds` refuses rather than
 quietly using a different binary than the operator named.
 
-The sibling rule is what makes the deployed case configuration-free: the
-Linux `.deb` installs `ds` and `ds-report` into the same directory, so an
-installed `ds` finds an installed `ds-report` with no environment at all.
+The sibling rule makes a colocated addon configuration-free: `ds` finds
+`reporter` or `solar` beside itself without an environment override. Missing
+addons return a named installation remedy; they do not require rebuilding the
+shell.
+
+Addon interface qualification can run against an existing Linux debug build
+without recompilation:
+
+```sh
+python3 scripts/test-module-interface.py --ds target/debug/ds --scratch out/<run>/tmp
+```
+
+The scratch directory must already exist on disk. This checks actual CLI/MCP
+dispatch, zero discovery spawns, one explicit identity probe per addon, missing
+override refusal, and Kernel catalog admission without engine execution.
 
 ## Availability must not execute
 

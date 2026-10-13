@@ -1,0 +1,105 @@
+//! Read-only addon inventory and Kernel-owned release metadata admission.
+use ds_cli_contract::spec::{
+    Arg, Authority, Availability, Chapter, Command, Effect, Execution, Refusal, Requires,
+};
+use ds_cli_contract::{Context, Failure, Inputs};
+use serde_json::Value;
+use std::{fs::File, io::Read};
+
+pub static INVENTORY: Command = Command {
+    id: "server.modules",
+    path: &["server", "modules"],
+    contract: 1,
+    summary: "Inspect installed Solar and Reporter engine addons.",
+    purpose: "Inspect the two fixed native addon executables, their captured build identities and declared schemas. Starts at most one build-info task per available addon. Missing or incompatible engines remain named rows. This does not install, update, acquire project data, or establish full application workflow readiness.",
+    chapter: Chapter::Design,
+    effect: Effect::Discovery,
+    authority: Authority::None,
+    execution: Execution::Sync,
+    args: &[],
+    output: "ds.module-inventory/v1 with exactly Solar and Reporter rows: available, missing or refused, captured path, identity and capabilities or a named remedy. Development provenance remains explicit.",
+    examples: &[],
+    refusals: &[],
+    reference: Some("docs/reference/server.md"),
+    search: &["addons", "extensions"],
+    requires: Requires::Server,
+    availability: || Availability::Available,
+};
+
+pub static RELEASE: Command = Command {
+    id: "server.module-release",
+    path: &["server", "module-release"],
+    contract: 1,
+    summary: "Validate one module's declared release metadata.",
+    purpose: "Read bounded local JSON and ask the Kernel to validate the selected module and lane's release metadata. This is read-only schema and compatibility inspection; it grants no installation trust, download, activation, computation or publication authority.",
+    chapter: Chapter::Design,
+    effect: Effect::ReadOnly,
+    authority: Authority::None,
+    execution: Execution::Sync,
+    args: &[
+        Arg::value("component", "<solar|reporter>", "Exact addon identity.")
+            .choices(&["solar", "reporter"])
+            .required(),
+        Arg::value("channel", "<stable|canary>", "Exact release lane.")
+            .choices(&["stable", "canary"])
+            .required(),
+        Arg::value(
+            "file",
+            "<json-file>",
+            "Local module manifest or public release envelope; at most 2 MiB.",
+        )
+        .required(),
+    ],
+    output: "The Kernel-admitted module manifest, or null when no release was declared. Never a verified install receipt.",
+    examples: &[],
+    refusals: &[Refusal {
+        code: "module_release_invalid",
+        when: "the local file, manifest, selected module or lane is invalid, excessive or incompatible",
+        remedy: "retain the metadata; select its exact module and lane or obtain a corrected declared release",
+    }],
+    reference: Some("docs/reference/server.md"),
+    search: &["addons", "release"],
+    requires: Requires::Server,
+    availability: || Availability::Available,
+};
+
+pub fn inventory(_: &Inputs, _: &Context) -> Result<Value, Failure> {
+    Ok(ds_cli_exec::addons::inventory())
+}
+
+pub fn release(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
+    const LIMIT: u64 = 2 * 1024 * 1024;
+    let invalid = |message: String| {
+        Failure::invalid("module_release_invalid", message)
+        .remedy("retain the metadata; select its exact module and lane or obtain a corrected declared release")
+    };
+    let path = inputs.require("file")?;
+    let metadata = std::fs::symlink_metadata(path).map_err(|error| invalid(error.to_string()))?;
+    if !metadata.is_file() || metadata.len() > LIMIT {
+        return Err(invalid(
+            "release metadata must be a bounded regular file".into(),
+        ));
+    }
+    let mut bytes = Vec::new();
+    File::open(path)
+        .map_err(|error| invalid(error.to_string()))?
+        .take(LIMIT + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|error| invalid(error.to_string()))?;
+    if bytes.len() as u64 > LIMIT {
+        return Err(invalid("release metadata grew beyond its bound".into()));
+    }
+    let value: Value =
+        serde_json::from_slice(&bytes).map_err(|error| invalid(error.to_string()))?;
+    let value = value.get("release").unwrap_or(&value);
+    if value.is_null() {
+        return Ok(Value::Null);
+    }
+    let admitted = ds_command_kernel::module_release::validate_module_release(
+        inputs.require("component")?,
+        inputs.require("channel")?,
+        value,
+    )
+    .map_err(|error| invalid(format!("{}: {}", error.code, error.message)))?;
+    serde_json::to_value(admitted).map_err(|error| invalid(error.to_string()))
+}

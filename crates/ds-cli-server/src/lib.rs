@@ -1,5 +1,6 @@
 //! Thin command/HTTP host for the shared native compute runtime.
 mod auth;
+pub mod modules;
 // The HTTP host and the layer binding are reachable from an integration test
 // so the isolation proof can stand up a real owner-only socket over a fixture
 // identity and a fixture document source. Nothing here is a supported API:
@@ -322,32 +323,48 @@ const fn command(
 pub static ENGINE: Command = Command {
     id: "server.engine",
     path: &["server", "engine"],
-    contract: 1,
-    summary: "Inspect the Solar engine embedded in this Server executable.",
-    purpose: "Identify the exact linked Solar build for release admission and diagnostics. A bundled standalone engine can have a different dependency closure. This local inspection needs no login, running server, state directory or network connection; development builds intentionally omit release provenance.",
+    contract: 2,
+    summary: "Inspect the Solar addon this Server will execute.",
+    purpose: "Identify the captured standalone Solar engine used by prepared-city computation. This local inspection needs no login, running server, state directory or network connection. It does not establish full native application workflow readiness; development builds intentionally omit release provenance.",
     chapter: Chapter::Design,
     effect: Effect::ReadOnly,
     authority: Authority::None,
     execution: Execution::Sync,
     args: &[],
-    output: "The owning engine's identity and stamped schema inventory. Release builds carry ds.engine-build/v1 provenance, including the linked dependency-lock and build-manifest digests.",
+    output: "The standalone engine's actual identity and stamped schema inventory. Release builds carry their own ds.engine-build/v1 provenance.",
     examples: &[Example {
         command: "ds server engine --output json",
-        note: "Inspect this binary's embedded Solar engine without starting or authenticating a server.",
+        note: "Inspect the installed Solar addon without starting or authenticating a server.",
         runnable: true,
     }],
-    refusals: &[Refusal {
-        code: "server_engine_identity_invalid",
-        when: "the owning engine identity cannot be encoded",
-        remedy: "rebuild the executable from the pinned engine sources and retry",
-    }],
+    refusals: &[
+        Refusal {
+            code: "solar_engine_missing",
+            when: "the Solar addon is unavailable",
+            remedy: "install the Solar addon or set DS_SOLAR_ENGINE_BIN to a compatible engine",
+        },
+        Refusal {
+            code: "server_engine_identity_invalid",
+            when: "the owning engine identity cannot be encoded",
+            remedy: "rebuild the executable from the pinned engine sources and retry",
+        },
+    ],
     reference: Some("docs/reference/server.md"),
     search: &[],
     requires: Requires::Server,
     availability: || Availability::Available,
 };
 pub fn engine(_: &Inputs, _: &Context) -> Result<Value, Failure> {
-    serde_json::to_value(ds_compute_runtime::solar_engine_identity()).map_err(|error| {
+    let identity = ds_compute_runtime::solar_engine_identity().map_err(|error| {
+        if error.kind == ds_solar_process::ProcessFailureKind::Unavailable {
+            Failure::unavailable("solar_engine_missing", error.message)
+                .remedy("install the Solar addon or set DS_SOLAR_ENGINE_BIN to a compatible engine")
+        } else {
+            Failure::failed("server_engine_identity_invalid", error.message)
+                .remedy("rebuild the executable from the pinned engine sources and retry")
+        }
+    })?;
+    serde_json::to_value(identity).map_err(|error| {
         Failure::failed("server_engine_identity_invalid", error.to_string())
             .remedy("rebuild the executable from the pinned engine sources and retry")
     })
@@ -857,6 +874,8 @@ pub static DOMAIN: Domain = Domain {
     summary: "Native server.",
     commands: &[
         &ENGINE,
+        &modules::INVENTORY,
+        &modules::RELEASE,
         &SERVE,
         &SUBMIT,
         &SOLAR_SUBMIT,
@@ -1672,7 +1691,7 @@ mod tests {
     #[test]
     fn every_command_that_names_a_job_or_a_project_declares_project() {
         for command in DOMAIN.commands {
-            if command.id == "server.engine" || command.id == "server.serve" {
+            if command.authority == Authority::None || command.id == "server.serve" {
                 continue;
             }
             assert!(

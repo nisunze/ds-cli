@@ -14,7 +14,7 @@ use ds_solar_contracts::{
 };
 use serde_json::{Value, json};
 
-use crate::{DISCOVERY_TIMEOUT, DS_SOLAR, RUN_TIMEOUT};
+use crate::{DISCOVERY_TIMEOUT, RUN_TIMEOUT, SOLAR_ENGINE};
 
 // A local receipt consumption bound; calculation/input limits remain Solar-owned.
 const MAX_RESULT_BYTES: u64 = 64 * 1024 * 1024;
@@ -53,18 +53,18 @@ pub static COMMAND: Command = Command {
     refusals: &[
         Refusal {
             code: "solar_engine_missing",
-            when: "the packaged ds-solar cannot be found",
-            remedy: "reinstall the complete ds release, or set DS_SOLAR_BIN to a compatible development engine",
+            when: "the Solar addon cannot be found",
+            remedy: "reinstall the complete ds release, or set DS_SOLAR_ENGINE_BIN to a compatible development solar executable",
         },
         Refusal {
             code: "solar_prepared_schema_unavailable",
             when: "the captured engine does not name ds-solar-engine and advertise the prepared-calculation task schema",
-            remedy: "install matching ds and ds-solar versions with the calculate-prepared native task",
+            remedy: "install compatible ds and Solar addon versions with the calculate-prepared native task",
         },
         Refusal {
             code: "solar_prepared_result_invalid",
             when: "the native file result is missing, unsafe, oversized, invalid, or stamped by another schema/build",
-            remedy: "retain output; install matching ds and ds-solar, then retry into a fresh directory",
+            remedy: "retain output; install compatible ds and Solar addon, then retry into a fresh directory",
         },
         Refusal {
             code: "engine_refused",
@@ -74,7 +74,7 @@ pub static COMMAND: Command = Command {
         Refusal {
             code: "callee_contract_mismatch",
             when: "the captured engine returns invalid, excessive or incompatible JSON",
-            remedy: "install matching ds and ds-solar versions",
+            remedy: "install compatible ds and Solar addon versions",
         },
         Refusal {
             code: "callee_timed_out",
@@ -94,7 +94,7 @@ pub static COMMAND: Command = Command {
 };
 
 fn availability() -> Availability {
-    DS_SOLAR.availability()
+    SOLAR_ENGINE.availability()
 }
 
 fn incompatible_result() -> Failure {
@@ -102,20 +102,22 @@ fn incompatible_result() -> Failure {
         "solar_prepared_result_invalid",
         "native prepared calculation did not produce its declared bounded file result",
     )
-    .remedy("retain output; install matching ds and ds-solar, then retry into a fresh directory")
+    .remedy(
+        "retain output; install compatible ds and Solar addon, then retry into a fresh directory",
+    )
 }
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let request = inputs.require("request")?;
     let out = PathBuf::from(inputs.require("out")?);
-    let engine = DS_SOLAR.capture()?;
+    let engine = SOLAR_ENGINE.capture()?;
     let identity = engine.call_json("build-info", &[], DISCOVERY_TIMEOUT)?;
     let identity: EngineIdentity = serde_json::from_value(identity).map_err(|_| {
         Failure::failed(
             "callee_contract_mismatch",
-            "ds-solar build-info is not its typed engine identity",
+            "solar build-info is not its typed engine identity",
         )
-        .remedy("install matching ds and ds-solar versions")
+        .remedy("install compatible ds and Solar addon versions")
     })?;
     if identity.name != "ds-solar-engine"
         || !identity
@@ -128,7 +130,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             "the captured Solar engine does not support the prepared calculation task",
         )
         .remedy(
-            "install matching ds and ds-solar versions with the calculate-prepared native task",
+            "install compatible ds and Solar addon versions with the calculate-prepared native task",
         ));
     }
     let args = [
@@ -139,7 +141,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     ];
     let completed = engine.call("calculate-prepared", &args, RUN_TIMEOUT)?;
     if !completed.succeeded() {
-        let mut failure = DS_SOLAR.failure_from(&completed, "calculate-prepared");
+        let mut failure = SOLAR_ENGINE.failure_from(&completed, "calculate-prepared");
         // The native task writes typed refusal JSON on stdout. Keep it bounded,
         // without losing the standard bounded stderr evidence.
         if !completed.truncated

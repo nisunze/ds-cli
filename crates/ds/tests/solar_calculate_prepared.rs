@@ -13,7 +13,7 @@ use serde_json::{Value, json};
 fn cli(args: &[&str], engine: &Path) -> Value {
     let output = Command::new(env!("CARGO_BIN_EXE_ds"))
         .args(args)
-        .env("DS_SOLAR_BIN", engine)
+        .env("DS_SOLAR_ENGINE_BIN", engine)
         .env("DS_SRE_REPORTING", "off")
         .output()
         .unwrap();
@@ -108,7 +108,7 @@ fn discovery_is_the_same_declared_cli_and_mcp_contract_without_spawning_the_owne
 
     let mut child = Command::new(env!("CARGO_BIN_EXE_ds"))
         .args(["mcp", "serve"])
-        .env("DS_SOLAR_BIN", &engine)
+        .env("DS_SOLAR_ENGINE_BIN", &engine)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -228,13 +228,15 @@ fn captured_engine_survives_an_active_pointer_switch() {
 
 #[test]
 fn actual_native_prepared_task_matches_cli_and_mcp_with_zero_provider_calls() {
-    let Some(engine) = std::env::var_os("DS_SOLAR_BIN").map(std::path::PathBuf::from) else {
-        panic!("DS_SOLAR_BIN must point at the native calculate-prepared engine for parity");
+    let Some(engine) = std::env::var_os("DS_SOLAR_ENGINE_BIN").map(std::path::PathBuf::from) else {
+        panic!("DS_SOLAR_ENGINE_BIN must point at the native calculate-prepared engine for parity");
     };
     let root = tempfile::tempdir().unwrap();
     let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../ds-solar/fixtures");
     let prepared = root.path().join("prepared");
-    let preparation = Command::new(&engine)
+    let preparation_tool = std::env::var_os("DS_SOLAR_BIN")
+        .expect("DS_SOLAR_BIN must point at the retained fixture preparation tool");
+    let preparation = Command::new(preparation_tool)
         .args(["prepare", "--fixtures"])
         .arg(fixtures)
         .args(["--city", "aderm_bere", "--out"])
@@ -285,7 +287,7 @@ fn actual_native_prepared_task_matches_cli_and_mcp_with_zero_provider_calls() {
         .arg("--out")
         .arg(&out)
         .args(["--output", "json"])
-        .env("DS_SOLAR_BIN", &engine)
+        .env("DS_SOLAR_ENGINE_BIN", &engine)
         .env("HTTP_PROXY", &proxy_url)
         .env("HTTPS_PROXY", &proxy_url)
         .env("ALL_PROXY", &proxy_url)
@@ -335,7 +337,7 @@ fn actual_native_prepared_task_matches_cli_and_mcp_with_zero_provider_calls() {
     let mcp_out = root.path().join("mcp");
     let mut child = Command::new(env!("CARGO_BIN_EXE_ds"))
         .args(["mcp", "serve"])
-        .env("DS_SOLAR_BIN", &engine)
+        .env("DS_SOLAR_ENGINE_BIN", &engine)
         .env("HTTP_PROXY", &proxy_url)
         .env("HTTPS_PROXY", &proxy_url)
         .env("ALL_PROXY", &proxy_url)

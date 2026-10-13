@@ -52,17 +52,7 @@ pub mod voltage_drop_combined;
 use std::time::Duration;
 
 use ds_cli_contract::spec::Domain;
-use ds_cli_exec::External;
-
-/// The reporter addon. `reporter` is a bundled desktop sidecar, so
-/// on an installed machine it sits next to `ds` and needs no configuration.
-pub static DS_REPORT: External = External {
-    name: "reporter",
-    env_override: "DS_REPORT_BIN",
-    owner: "ds-network-reporter",
-    remedy: "install the Reporter addon, or set DS_REPORT_BIN to a compatible reporter executable",
-    missing_code: "reporter_engine_missing",
-};
+pub use ds_cli_exec::addons::REPORTER as DS_REPORT;
 
 /// Discovery calls answer immediately or something is wrong.
 pub const DISCOVERY_TIMEOUT: Duration = Duration::from_secs(20);

@@ -27,6 +27,8 @@ use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::Availability;
 use serde_json::json;
 
+pub mod addons;
+
 /// Cap on what a called binary may return. Beyond this the output is
 /// truncated and the invocation refused: a result larger than this is not a
 /// result `ds` should be inlining anyway — it belongs in a file the callee
