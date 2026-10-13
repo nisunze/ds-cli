@@ -54,13 +54,13 @@ use std::time::Duration;
 use ds_cli_contract::spec::Domain;
 use ds_cli_exec::External;
 
-/// The reporter binary. `ds-report` is already a bundled desktop sidecar, so
+/// The reporter addon. `reporter` is a bundled desktop sidecar, so
 /// on an installed machine it sits next to `ds` and needs no configuration.
 pub static DS_REPORT: External = External {
-    name: "ds-report",
+    name: "reporter",
     env_override: "DS_REPORT_BIN",
     owner: "ds-network-reporter",
-    remedy: "install the headless DS package, or set DS_REPORT_BIN to a built ds-report",
+    remedy: "install the Reporter addon, or set DS_REPORT_BIN to a compatible reporter executable",
     missing_code: "reporter_engine_missing",
 };
 

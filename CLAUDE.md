@@ -74,7 +74,7 @@ chosen process separation and documented why. Three already exist:
 | Binary | Owner | Shape |
 |---|---|---|
 | `ds-grid` | `ds-network/crates/ds-grid-cli` | one named subcommand per call |
-| `ds-report` | `ds-network-reporter/src/bin/ds-report.rs` | typed request file, machine-readable result file |
+| `reporter` | `ds-network-reporter/src/bin/reporter.rs` | typed request file, machine-readable result file |
 | `ds-solar` | `ds-solar/apps/ds-solar-cli` | prepare/run split; `run` may not touch the network |
 
 `ds-report`'s own header states the rule: one named subcommand per call, never

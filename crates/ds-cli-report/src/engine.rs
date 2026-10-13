@@ -15,7 +15,7 @@ pub static COMMAND: Command = Command {
     contract: 1,
     summary: "Report the installed reporter engine's identity.",
     purpose: "\
-Returns the release identity of the `ds-report` engine this machine will use: \
+Returns the release identity of the `reporter` addon this machine will use: \
 its package version and the exact source it was built from. Artifacts are \
 bound to that identity, so it is the field to record alongside a deliverable \
 and the first thing to compare when two machines disagree.",
@@ -33,8 +33,8 @@ and the first thing to compare when two machines disagree.",
     refusals: &[
         Refusal {
             code: "reporter_engine_missing",
-            when: "`ds-report` is not installed next to `ds`",
-            remedy: "install the headless DS package, or set DS_REPORT_BIN to a built ds-report",
+            when: "`reporter` is not installed next to `ds`",
+            remedy: "install the Reporter addon, or set DS_REPORT_BIN to a compatible reporter executable",
         },
         Refusal {
             code: "callee_contract_mismatch",
@@ -55,7 +55,7 @@ fn availability() -> Availability {
 pub fn run(_inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let identity = DS_REPORT.call_json("build-info", &[], DISCOVERY_TIMEOUT)?;
     Ok(json!({
-        "binary": "ds-report",
+        "binary": "reporter",
         "path": DS_REPORT.locate().map(|path| path.display().to_string()),
         "identity": identity,
     }))
@@ -65,7 +65,7 @@ pub fn render(data: &Value) -> String {
     let identity = &data["identity"];
     format!(
         "{} {}\n  source {}\n  {}",
-        identity["binary"].as_str().unwrap_or("ds-report"),
+        data["binary"].as_str().unwrap_or("reporter"),
         identity["package_version"].as_str().unwrap_or("?"),
         identity["source_sha"].as_str().unwrap_or("?"),
         data["path"].as_str().unwrap_or(""),

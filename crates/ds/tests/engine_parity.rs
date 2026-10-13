@@ -26,7 +26,7 @@ use std::process::Command;
 use serde_json::Value;
 
 /// The reporter engine: the binary name `ds` looks for, and its override.
-const REPORT: (&str, &str) = ("ds-report", "DS_REPORT_BIN");
+const REPORT: (&str, &str) = ("reporter", "DS_REPORT_BIN");
 /// The solar engine, likewise.
 const SOLAR: (&str, &str) = ("ds-solar", "DS_SOLAR_BIN");
 
