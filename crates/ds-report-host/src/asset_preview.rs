@@ -1,4 +1,4 @@
-//! Intentional PDF source acquisition over the common native preview files.
+//! Intentional document source acquisition over the common native preview files.
 //! Source authorization and transport are supplied by the closed native client.
 //! This owner keeps no URL, credential, second byte cache or editable source.
 use crate::{
@@ -196,11 +196,13 @@ pub fn acquire(
         }
         if receipt.schema != RECEIPT_SCHEMA
             || receipt.document["schema"] != ds_command_kernel::assets::PREVIEW_DOC_SCHEMA
-            || receipt.document["format"] != "pdf"
+            || receipt.document["format"].as_str()
+                != ds_command_kernel::assets::semantic::source_format(&receipt.source.content_type)
+            || receipt.artifact.content_type != receipt.source.content_type
         {
             return Err(fail(
                 "asset_preview_retained_invalid",
-                "Retained preview has no exact native PDF document.",
+                "Retained preview has no exact native document.",
             ));
         }
         receipt
@@ -212,7 +214,7 @@ pub fn acquire(
         {
             return Err(fail(
                 "asset_preview_retained_invalid",
-                "Retained PDF differs from its exact source byte proof.",
+                "Retained document differs from its exact source byte proof.",
             ));
         }
         preview_artifact::admit_receipt(room, &receipt.artifact)?;
@@ -227,7 +229,7 @@ pub fn acquire(
     let source = source.ok_or_else(|| {
         fail(
             "asset_preview_offline_absent",
-            "This exact PDF revision is not retained under the current native authority.",
+            "This exact document revision is not retained under the current native authority.",
         )
     })?;
     let mut staging = Stage::new(room)?;
@@ -271,15 +273,16 @@ pub fn acquire(
     }
     control.progress(Phase::Decoding, source.size_bytes, Some(source.size_bytes));
     control.check_current()?;
-    let document=ds_command_kernel::assets::evaluate_with_bytes(&bytes,&serde_json::to_vec(&json!({"schema":ds_command_kernel::assets::REQUEST_SCHEMA,"action":"preview","format":"pdf","name":source.name})).map_err(|e|fail("asset_preview_decode_failed",e.to_string()))?).map_err(|e|fail("asset_preview_decode_failed",e))?;
+    let document=ds_command_kernel::assets::evaluate_with_bytes(&bytes,&serde_json::to_vec(&json!({"schema":ds_command_kernel::assets::REQUEST_SCHEMA,"action":"preview","format":ds_command_kernel::assets::semantic::source_format(&source.content_type),"name":source.name})).map_err(|e|fail("asset_preview_decode_failed",e.to_string()))?).map_err(|e|fail("asset_preview_decode_failed",e))?;
     let document: Value = serde_json::from_str(&document)
         .map_err(|e| fail("asset_preview_decode_failed", e.to_string()))?;
     control.check_current()?;
-    let artifact = preview_artifact::materialize_pdf_retained(
+    let artifact = preview_artifact::materialize_document_retained(
         room,
         staging.file(),
         source.size_bytes,
         &measured_sha256,
+        &source.content_type,
         json!({"schema":REQUEST_SCHEMA,"source":source,"method":METHOD}),
         request.retention,
     )?;

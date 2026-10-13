@@ -7,6 +7,18 @@ pub const SCHEMA: &str = "ds.asset-semantic/v1";
 pub const MARKDOWN_TYPE: &str = "text/markdown; charset=utf-8";
 pub const MAX_SOURCE_BYTES: u64 = 100 * 1024 * 1024;
 pub const MAX_OUTPUT_BYTES: u64 = 16 * 1024 * 1024;
+pub const DOCX_TYPE: &str =
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+pub const XLSX_TYPE: &str = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+/// Declared source MIME is authority; filenames and ZIP signatures never select it.
+pub fn source_format(content_type: &str) -> Option<&'static str> {
+    match content_type {
+        "application/pdf" => Some("pdf"),
+        DOCX_TYPE => Some("docx"),
+        XLSX_TYPE => Some("xlsx"),
+        _ => None,
+    }
+}
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -115,7 +127,7 @@ pub fn digest(bytes: &[u8]) -> String {
 }
 impl SourcePin {
     pub fn validate(&self) -> Result<(), String> {
-        require(source_id(&self.kind,&self.id) && self.version>0 && self.version<=i64::MAX as u64 && self.generation>0 && self.generation<=i64::MAX as u64 && (1..=MAX_SOURCE_BYTES).contains(&self.size_bytes) && self.content_type=="application/pdf" && sha(&self.measured_sha256),"Semantic source requires one exact PDF identity/version/generation and native measured SHA")
+        require(source_id(&self.kind,&self.id) && self.version>0 && self.version<=i64::MAX as u64 && self.generation>0 && self.generation<=i64::MAX as u64 && (1..=MAX_SOURCE_BYTES).contains(&self.size_bytes) && source_format(&self.content_type).is_some() && sha(&self.measured_sha256),"Semantic source requires one exact PDF, DOCX or XLSX identity/version/generation and native measured SHA")
     }
 }
 impl Extractor {
@@ -495,6 +507,36 @@ mod tests {
             let mut changed = ready.clone();
             changed[field] = val;
             assert!(command.verify_response("project",&json!({"schema":SCHEMA,"project_id":"project","found":true,"derivative":changed})).is_err());
+        }
+    }
+    #[test]
+    fn office_mime_is_exact_and_changes_the_existing_key() {
+        let mut selected = selection();
+        let pdf_key = selected.key_sha256("project").unwrap();
+        for (mime, expected_key) in [
+            (
+                DOCX_TYPE,
+                "d3126c9125cfa16196038cac3ed20440dea5c6306d018b4f252331d883c4f2a2",
+            ),
+            (
+                XLSX_TYPE,
+                "c317049d7d3786d3d613a82b2ed8da13c86ac5b04d04d63211184723ad05e579",
+            ),
+        ] {
+            selected.source.content_type = mime.into();
+            assert_eq!(selected.key_sha256("project").unwrap(), expected_key);
+            assert_ne!(expected_key, pdf_key);
+        }
+        for mime in [
+            "application/zip",
+            "application/octet-stream",
+            "application/msword",
+            "application/vnd.ms-excel",
+            "application/pdf; charset=utf-8",
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        ] {
+            selected.source.content_type = mime.into();
+            assert!(selected.validate("project").is_err());
         }
     }
 }

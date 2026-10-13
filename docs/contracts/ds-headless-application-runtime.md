@@ -236,6 +236,31 @@ Measure representative workloads on the relevant target. Record the workload,
 resource constraints and observed result; a fast native build does not prove
 acceptable web startup, desktop resource use or server memory consumption.
 
+### Prompt queue sync and cheap input freshness
+
+Owner clarification, 2026-10-13: collaborative mutation queues sync promptly
+through their existing owner when connectivity and admission permit. Preserve
+durable writes, acknowledgements, exact replay and pending local work. Queue
+progress does not force repeated downloads of unchanged analysis inputs.
+
+Retain exact version-pinned inputs and producing data across sessions. An online
+consumer needing current data obtains a bounded, cheap, authorized source-basis
+stamp and uses the shared kernel freshness comparison. The stamp includes the
+complete principal, lane, audience, project, resource and dependency-revision
+fences. Equal complete stamps reuse captured bytes; changed stamps acquire the
+affected data through its existing owner. Concurrent consumers join that work.
+Unknown or unavailable freshness remains explicitly unknown while captured data
+stays available under its existing permission/revocation policy. Freshness
+comparison itself performs no IO and does not grant authorization.
+
+Local analysis, report iterations and presentation changes reuse their captured
+versions. Acquire freshness only for an intentional online need or a consumed
+invalidation; unused data incurs no probe. Preserve explicit Refresh and offline
+operation, with no polling, eager rereads, competing cache or queue. Verify warm,
+concurrent, offline and changed-source request/body counts when each owning slice
+is touched. Transformer analysis and reporting illustrate this general contract;
+they do not authorize an unrelated implementation audit or migration.
+
 ## 8. Implementation and landing method
 
 Coordinate the existing campaign lanes around this destination and preserve
@@ -339,38 +364,36 @@ Artifact-store tests move with their owner. Record actual shared-runtime,
 Desktop adapter and Server consumer validation separately; a clean build is
 not a live authenticated publication proof or remote GUI parity.
 
-### Explicit retained PM plan and selected-note capture
+### Explicit retained PM reads
 
-Native `pm plan` retains one bounded authenticated canonical graph and
-`pm note read` retains one last-selected exact note/version/claim response in
-the existing `ds-layer-store` owner (`pm_graph_catalogue`). The graph room is
-at most 8 MiB and the single selected-note room at most 2 MiB, plus bounded
-metadata. Another note selection replaces that room; there is no growing cache
-per note ID. Normal reads remain live;
-only an explicit offline read consumes those bytes. The holding binds protected
-UID, deployment lane/audience, credential instance and caller-named project,
-plus the captured body digest, graph/schedule revisions or exact typed note
-selection hash and observed note version, and shared local invalidation epoch.
-Each fixed room has its own capture generation; a note capture cannot displace
-the retained graph. Note version alone does not prove current remote freshness. Protected local
-identity is rechecked; a profile alone never admits data.
-No session restoration, directory lookup, authorization refresh or source
-freshness request runs offline. Capture-time permissions are disclosed as such,
-not promoted into present authority. Correspondence partial/legacy absence
-qualifications remain intact and graph revision alone is not asserted to cover
-the redacted correspondence or current subject projection.
+The existing `ds-layer-store` PM owner holds five fixed, bounded rooms per
+protected identity/project binding: canonical Graph (8 MiB), last selected
+note/version/claim (2 MiB), last selected task/optional timeline (8 MiB), last
+exact note-query page (8 MiB) and last scoped note-context response (8 MiB), plus
+bounded metadata. Another selection replaces its room. Each room has its own
+capture generation and selector digest; it cannot displace a different room.
 
-Intentional overlapping captures serialize/coalesce through native private
-locks. An attempted PM mutation lazily marks existing holdings potentially
-stale; it creates no unused holding and handles uncertain/partial write results.
-Known project access denial is durably recorded before best-effort removal of
-both rooms and refuses
-offline reuse. A retained revocation epoch prevents reacquiring one room from
-resurrecting denied bytes left in the other room after failed cleanup. A capture cannot publish across an invalidation epoch change.
-The pure shared freshness comparison serves known local epochs only; unknown
-remote freshness remains unknown. A selected note absence is not project-membership revocation. Offline note
-reuse requires the same exact id/version/claim selector; a replaced selection
-requires intentional online acquisition. The existing typed note receipt
-validator runs before retention and offline consumption. Task detail/context,
-project-note query/context and private-note reads remain separate consumers,
-not implicitly covered by these fixed captures. No automatic polling or expiry policy is introduced.
+Bindings include protected UID, lane/audience, credential instance, explicit
+project, body digest and shared local invalidation epoch. Receipts retain their
+actual independent source revisions. A task's graph revision does not establish
+its records-context revision; a note query/context retains its own exact context
+revision and incomplete/migration-needed flags. No consumer synthesizes authority
+or treats a captured version as proof of current remote freshness.
+
+Normal reads currently acquire canonical source responses. Explicit `--offline`
+uses only an exact retained selection, with zero session restoration, directory,
+authorization or freshness acquisition. Capture-time permissions and unknown
+remote freshness are disclosed. This source slice does not establish the cheap
+online unchanged-body path required by the general freshness contract above.
+
+Intentional overlapping captures serialize/coalesce through private locks.
+PM write attempts, including correspondence mutations, mark existing holdings
+potentially stale before effects; read/preview intents create no invalidation.
+Known project access denial is durable before best-effort cleanup of all rooms.
+The shared revocation floor prevents reacquiring one room from reviving denied
+bytes left in another after failed cleanup. A capture cannot publish across an
+invalidation or identity change. Named selected-note/task absence is distinct
+from project denial. Existing kernel receipt validators run before persistence
+and offline reuse, preserving partial totals, cursors and literal-only historical
+notes. Model-reference reads capture graph plus one bounded records page under a single protected authority; the unused generic Context command is retired. Private-note bodies remain a distinct consumer.
+No polling or timer-based freshness policy is introduced.

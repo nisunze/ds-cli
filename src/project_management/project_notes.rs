@@ -625,15 +625,15 @@ impl Draft {
         evidence(&m.evidence)?;
         claim_refs(&m.supersedes)?;
         require(
-            !m.claims.is_empty()
-                && m.claims.len() <= 128
+            (!m.claims.is_empty() || m.note_type == NoteType::Observation)
+                && m.claims.len() <= 64
                 && m.claims
                     .iter()
                     .map(|c| &c.id)
                     .collect::<std::collections::BTreeSet<_>>()
                     .len()
                     == m.claims.len(),
-            "Meaningful notes need1..128 individually retrievable unique claims",
+            "Notes need bounded unique claims; literal observations may have none",
         )?;
         for c in &m.claims {
             c.validate()?;
@@ -775,7 +775,20 @@ impl Command {
                 )?;
             }
             Self::Read(r) => {
-                verify_note(project, &v["note"], Some(&r.id))?;
+                if v["note"]["semantic_status"] == "unrecorded" {
+                    require(
+                        r.version.is_some()
+                            && r.claim_id.is_none()
+                            && v["note"]["project_id"] == project
+                            && v["note"]["id"] == r.id
+                            && v["note"]["version"].as_u64() == r.version
+                            && v["note"]["document"].is_object()
+                            && v["note"]["memory"].is_null(),
+                        "Unrecorded semantics require an exact historical literal read",
+                    )?;
+                } else {
+                    verify_note(project, &v["note"], Some(&r.id))?;
+                }
                 require(
                     r.version
                         .is_none_or(|version| v["note"]["version"] == version)
@@ -936,8 +949,7 @@ fn verify_note(project: &str, n: &serde_json::Value, wanted: Option<&str>) -> Re
                 .as_u64()
                 .is_some_and(|v| v > 0 && v < i64::MAX as u64)
             && n["document"].is_object()
-            && n["memory"].is_object()
-            && n["legacy"].is_boolean(),
+            && n["memory"].is_object(),
         "Note lacks its exact project/identity/version and preserved document",
     )
 }
@@ -962,6 +974,17 @@ fn verify_page(project: &str, v: &serde_json::Value, limit: u32) -> Result<(), S
             && v["context_revision"].as_str().is_some_and(sha),
         "Note page completeness is invalid; an incomplete page is not no context",
     )?;
+    if !v["migration_required"].is_null() {
+        let migrations = v["migration_required"]
+            .as_array()
+            .ok_or("Invalid migration completeness metadata")?;
+        require(
+            migrations.len() <= 200
+                && migrations.iter().all(|v| v.as_str().is_some_and(id))
+                && (migrations.is_empty() || v["complete"] == false),
+            "Unadopted notes cannot be presented as complete context",
+        )?;
+    }
     for n in rows {
         verify_note(project, n, None)?;
     }
@@ -1012,6 +1035,35 @@ fn verify_lifecycle(
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn plain_history_is_literal_only_for_exact_version_without_claim() {
+        let literal = json!({"project_id":"p","context_revision":"a".repeat(64),"note":{"project_id":"p","id":"n","version":7,"document":{"body":"unaltered"},"memory":null,"semantic_status":"unrecorded"}});
+        let c = Command::Read(Read {
+            id: "n".into(),
+            version: Some(7),
+            claim_id: None,
+        });
+        c.verify_response("p", &literal).unwrap();
+        assert!(
+            Command::Read(Read {
+                id: "n".into(),
+                version: None,
+                claim_id: None
+            })
+            .verify_response("p", &literal)
+            .is_err()
+        );
+        assert!(
+            Command::Read(Read {
+                id: "n".into(),
+                version: Some(7),
+                claim_id: Some("claim".into())
+            })
+            .verify_response("p", &literal)
+            .is_err()
+        );
+    }
     fn scope() -> Scope {
         Scope {
             kind: ScopeKind::Workstream,
@@ -1041,7 +1093,7 @@ mod tests {
         }
     }
     fn view(id: &str, version: u64) -> serde_json::Value {
-        json!({"project_id":"p","id":id,"version":version,"document":{"category":"project_note"},"memory":draft().memory,"legacy":false})
+        json!({"project_id":"p","id":id,"version":version,"document":{"category":"project_note"},"memory":draft().memory})
     }
     #[test]
     fn parent_selector_and_relationship_pins_are_closed() {

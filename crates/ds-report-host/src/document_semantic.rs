@@ -130,11 +130,14 @@ pub fn validate_export(project: &str, export: &Export) -> Result<(), HostFailure
     let receipt = &export.native_source;
     if receipt.schema != ds_command_kernel::asset_preview::RECEIPT_SCHEMA
         || receipt.artifact.schema != preview_artifact::SCHEMA
-        || receipt.artifact.content_type != "application/pdf"
+        || receipt.artifact.content_type != receipt.source.content_type
+        || semantic::source_format(&receipt.artifact.content_type).is_none()
         || receipt.artifact.sha256 != receipt.measured_sha256
         || receipt.artifact.size_bytes != receipt.source.size_bytes
     {
-        return Err(fail("semantic manifest is not an exact native PDF receipt"));
+        return Err(fail(
+            "semantic manifest is not an exact native document receipt",
+        ));
     }
     let asset_id = match export.selection.source.kind {
         SourceKind::CatalogueAsset => export.selection.source.id.clone(),
@@ -617,5 +620,175 @@ mod tests {
             preview_artifact::Retention::Hours24
         )
         .is_err());
+    }
+    #[test]
+    fn office_exact_bytes_export_import_and_offline_reuse_share_the_native_owner() {
+        struct OfficeProvider {
+            bytes: &'static [u8],
+            mime: &'static str,
+            calls: usize,
+        }
+        impl asset_preview::SourceProvider for OfficeProvider {
+            fn authorize(
+                &mut self,
+                request: &Request,
+                _: &dyn asset_preview::Control,
+            ) -> Result<ds_command_kernel::asset_preview::SourceProof, asset_preview::SourceFailure>
+            {
+                self.calls += 1;
+                Ok(ds_command_kernel::asset_preview::SourceProof {
+                    project_id: "project".into(),
+                    asset_id: request.asset_id.clone(),
+                    source_kind: "pm_attachment".into(),
+                    source_id: "office-one".into(),
+                    revision: "pm-version:7".into(),
+                    generation: "29".into(),
+                    advertised_sha256: None,
+                    size_bytes: self.bytes.len() as u64,
+                    content_type: self.mime.into(),
+                    sensitivity: "internal".into(),
+                    name: "Misleading.pdf".into(),
+                })
+            }
+            fn acquire(
+                &mut self,
+                _: &ds_command_kernel::asset_preview::SourceProof,
+                file: &mut fs::File,
+                _: &dyn asset_preview::Control,
+            ) -> Result<(), HostFailure> {
+                self.calls += 1;
+                file.write_all(self.bytes).map_err(|e| fail(e.to_string()))
+            }
+        }
+        for (format, mime, bytes) in [
+            (
+                "docx",
+                semantic::DOCX_TYPE,
+                include_bytes!("../tests/fixtures/semantic-source.docx").as_slice(),
+            ),
+            (
+                "xlsx",
+                semantic::XLSX_TYPE,
+                include_bytes!("../tests/fixtures/semantic-source.xlsx").as_slice(),
+            ),
+        ] {
+            let dir = tempfile::tempdir().unwrap();
+            let r = room(dir.path().into());
+            let request = Request {
+                schema: REQUEST_SCHEMA.into(),
+                asset_id: "sys:pm_attachment:office-one".into(),
+                expected_revision: None,
+                expected_generation: None,
+                expected_sha256: None,
+                offline: false,
+                retention: preview_artifact::Retention::Hours24,
+            };
+            let mut provider = OfficeProvider {
+                bytes,
+                mime,
+                calls: 0,
+            };
+            let bad_dir = tempfile::tempdir().unwrap();
+            let bad_room = room(bad_dir.path().into());
+            let mut not_office = OfficeProvider {
+                bytes: b"PK\x03\x04not an OOXML document",
+                mime,
+                calls: 0,
+            };
+            assert_eq!(
+                asset_preview::acquire(&bad_room, &request, &mut not_office, &Guard)
+                    .unwrap_err()
+                    .code,
+                "asset_preview_decode_failed"
+            );
+            let absent = Request {
+                expected_revision: Some("pm-version:7".into()),
+                expected_generation: Some("29".into()),
+                expected_sha256: Some(semantic::digest(not_office.bytes)),
+                offline: true,
+                ..request.clone()
+            };
+            assert_eq!(
+                asset_preview::acquire(&bad_room, &absent, &mut not_office, &Guard)
+                    .unwrap_err()
+                    .code,
+                "asset_preview_offline_absent"
+            );
+            assert_eq!(
+                not_office.calls, 2,
+                "invalid ZIP became retained source truth"
+            );
+            let source = asset_preview::acquire(&r, &request, &mut provider, &Guard).unwrap();
+            assert_eq!(source.document["format"], format);
+            assert_eq!(source.artifact.content_type, mime);
+            let out = dir.path().join(format!("external-source.{format}"));
+            let exported = export(&r, &source, extractor(), out.to_str().unwrap(), &Guard).unwrap();
+            validate_export("project", &exported).unwrap();
+            assert_eq!(fs::read(&out).unwrap(), bytes);
+            assert_eq!(provider.calls, 2);
+            let mut crossed = exported.clone();
+            crossed.native_source.artifact.content_type = "application/pdf".into();
+            assert!(validate_export("project", &crossed).is_err());
+            assert!(export(
+                &r,
+                &source,
+                extractor(),
+                dir.path().join("wrong.pdf").to_str().unwrap(),
+                &Guard
+            )
+            .is_err());
+            let offline = Request {
+                expected_revision: Some(source.source.revision.clone()),
+                expected_generation: Some(source.source.generation.clone()),
+                expected_sha256: Some(source.measured_sha256.clone()),
+                offline: true,
+                ..request
+            };
+            asset_preview::acquire(&r, &offline, &mut provider, &Guard).unwrap();
+            assert_eq!(
+                provider.calls, 2,
+                "retained Office source performed an incidental read"
+            );
+            let output = dir.path().join("external.md");
+            // These exact golden bytes were produced externally by MarkItDown 0.1.8
+            // with docx/xlsx extras and default options, never by this owner.
+            let extracted: &[u8] = match format {
+                "docx" => include_bytes!("../tests/fixtures/semantic-source.docx.md"),
+                "xlsx" => include_bytes!("../tests/fixtures/semantic-source.xlsx.md"),
+                _ => unreachable!(),
+            };
+            assert!(std::str::from_utf8(extracted)
+                .unwrap()
+                .contains("Reviewed source"));
+            fs::write(&output, extracted).unwrap();
+            let (prepared, markdown) =
+                prepare_file("project", exported.selection, &output).unwrap();
+            assert_eq!(prepared.selection.source.content_type, mime);
+            assert_eq!(prepared.output.sha256, semantic::digest(&markdown));
+            assert_eq!(markdown, extracted);
+            let receipt = ready(&r, &prepared);
+            let artifact = retain_ready(
+                &r,
+                &prepared,
+                &receipt,
+                &markdown,
+                preview_artifact::Retention::Hours24,
+            )
+            .unwrap();
+            let (cached_receipt, cached_artifact) = read_retained(
+                &r,
+                &prepared.selection,
+                preview_artifact::Retention::Hours24,
+            )
+            .unwrap()
+            .unwrap();
+            assert_eq!(cached_receipt, receipt);
+            assert_eq!(cached_artifact, artifact);
+            assert_eq!(preview_artifact::read(&r, &artifact).unwrap(), extracted);
+            assert_eq!(
+                provider.calls, 2,
+                "semantic retained read repeated source acquisition"
+            );
+        }
     }
 }

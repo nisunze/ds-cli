@@ -1,4 +1,4 @@
-//! Two fixed retained PM rooms through one existing native persistence owner.
+//! Fixed retained PM rooms through one existing native persistence owner.
 //! Offline holdings attest capture-time access only; no permission or source probe runs.
 use crate::{exclusive_lock, private};
 use serde::{Deserialize, Serialize};
@@ -12,45 +12,75 @@ use std::{
 const SCHEMA: &str = "ds.pm.native-graph/v1";
 const MAX_BYTES: usize = 8 * 1024 * 1024;
 const MAX_NOTE_BYTES: usize = 2 * 1024 * 1024;
+const MAX_TASK_BYTES: usize = 8 * 1024 * 1024;
+const TASK_SCHEMA: &str = "ds.pm.native-task-read/v1";
+const MAX_PAGE_BYTES: usize = 8 * 1024 * 1024;
+const QUERY_SCHEMA: &str = "ds.pm.native-note-query/v1";
+const CONTEXT_SCHEMA: &str = "ds.pm.native-note-context/v1";
 const NOTE_SCHEMA: &str = "ds.pm.native-note-read/v1";
 use ds_command_kernel::project_management::project_notes::{
-    Command as NoteCommand, Read as NoteRead,
+    Command as NoteCommand, Context as NoteContext, Query as NoteQuery, Read as NoteRead,
 };
+
+/// One exact task consumer; a changed timeline flag is a different selection.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TaskRead {
+    pub task_id: String,
+    pub timeline: bool,
+}
 
 #[derive(Clone)]
 enum Room {
     Graph,
     NoteRead(NoteRead),
+    NoteQuery(NoteQuery),
+    NoteContext(NoteContext),
+    TaskRead(TaskRead),
 }
 impl Room {
     fn file(&self) -> &str {
         match self {
             Self::Graph => "graph.json",
             Self::NoteRead(_) => "note-read.json",
+            Self::NoteQuery(_) => "note-query.json",
+            Self::NoteContext(_) => "note-context.json",
+            Self::TaskRead(_) => "task-read.json",
         }
     }
     fn schema(&self) -> &str {
         match self {
             Self::Graph => SCHEMA,
             Self::NoteRead(_) => NOTE_SCHEMA,
+            Self::NoteQuery(_) => QUERY_SCHEMA,
+            Self::NoteContext(_) => CONTEXT_SCHEMA,
+            Self::TaskRead(_) => TASK_SCHEMA,
         }
     }
     fn bound(&self) -> usize {
         match self {
             Self::Graph => MAX_BYTES,
             Self::NoteRead(_) => MAX_NOTE_BYTES,
+            Self::NoteQuery(_) | Self::NoteContext(_) => MAX_PAGE_BYTES,
+            Self::TaskRead(_) => MAX_TASK_BYTES,
         }
     }
     fn serial(&self, state: &State) -> u64 {
         match self {
             Self::Graph => state.serial,
             Self::NoteRead(_) => state.note_serial,
+            Self::NoteQuery(_) => state.query_serial,
+            Self::NoteContext(_) => state.context_serial,
+            Self::TaskRead(_) => state.task_serial,
         }
     }
     fn advance(&self, state: &mut State) -> Result<(), String> {
         let serial = match self {
             Self::Graph => &mut state.serial,
             Self::NoteRead(_) => &mut state.note_serial,
+            Self::NoteQuery(_) => &mut state.query_serial,
+            Self::NoteContext(_) => &mut state.context_serial,
+            Self::TaskRead(_) => &mut state.task_serial,
         };
         *serial = serial
             .checked_add(1)
@@ -60,6 +90,15 @@ impl Room {
     fn selection(&self) -> Result<Value, String> {
         match self {
             Self::Graph => Ok(Value::Null),
+            Self::TaskRead(read) => {
+                serde_json::to_value(read).map_err(|_| "pm_retained_selection_invalid".into())
+            }
+            Self::NoteQuery(query) => {
+                serde_json::to_value(query).map_err(|_| "pm_retained_selection_invalid".into())
+            }
+            Self::NoteContext(context) => {
+                serde_json::to_value(context).map_err(|_| "pm_retained_selection_invalid".into())
+            }
             Self::NoteRead(read) => {
                 serde_json::to_value(read).map_err(|_| "pm_retained_selection_invalid".into())
             }
@@ -68,7 +107,9 @@ impl Room {
     fn selection_sha(&self) -> Result<Option<String>, String> {
         match self {
             Self::Graph => Ok(None),
-            Self::NoteRead(_) => digest(&self.selection()?).map(Some),
+            Self::NoteRead(_) | Self::TaskRead(_) | Self::NoteQuery(_) | Self::NoteContext(_) => {
+                digest(&self.selection()?).map(Some)
+            }
         }
     }
 }
@@ -107,6 +148,12 @@ struct State {
     serial: u64,
     #[serde(default, skip_serializing_if = "is_zero")]
     note_serial: u64,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    task_serial: u64,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    query_serial: u64,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    context_serial: u64,
     denied: bool,
     #[serde(default, skip_serializing_if = "is_zero")]
     revoked_before_epoch: u64,
@@ -128,6 +175,12 @@ struct Held {
     graph: Value,
     #[serde(default, skip_serializing_if = "Value::is_null")]
     note_read: Value,
+    #[serde(default, skip_serializing_if = "Value::is_null")]
+    task_read: Value,
+    #[serde(default, skip_serializing_if = "Value::is_null")]
+    note_query: Value,
+    #[serde(default, skip_serializing_if = "Value::is_null")]
+    note_context: Value,
     #[serde(default, skip_serializing_if = "Value::is_null")]
     selection: Value,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -218,13 +271,21 @@ impl Held {
         match room {
             Room::Graph => &self.graph,
             Room::NoteRead(_) => &self.note_read,
+            Room::TaskRead(_) => &self.task_read,
+            Room::NoteQuery(_) => &self.note_query,
+            Room::NoteContext(_) => &self.note_context,
         }
     }
     fn admitted(&self, binding: &Binding, room: &Room, current: &State) -> Result<bool, String> {
-        let other_body_absent = match room {
-            Room::Graph => self.note_read.is_null(),
-            Room::NoteRead(_) => self.graph.is_null(),
-        };
+        let other_body_absent = [
+            (&self.graph, matches!(room, Room::Graph)),
+            (&self.note_read, matches!(room, Room::NoteRead(_))),
+            (&self.task_read, matches!(room, Room::TaskRead(_))),
+            (&self.note_query, matches!(room, Room::NoteQuery(_))),
+            (&self.note_context, matches!(room, Room::NoteContext(_))),
+        ]
+        .into_iter()
+        .all(|(body, selected)| selected || body.is_null());
         Ok(self.schema == room.schema()
             && self.binding == *binding
             && self.captured_at_ms >= 0
@@ -243,8 +304,18 @@ fn metadata(held: Held, room: &Room, current: &State, acquired: bool) -> Value {
     let mut result = match room {
         Room::Graph => held.graph,
         Room::NoteRead(_) => held.note_read,
+        Room::TaskRead(_) => held.task_read,
+        Room::NoteQuery(_) => held.note_query,
+        Room::NoteContext(_) => held.note_context,
     };
-    let mut retained = json!({"schema":if matches!(room, Room::Graph) {"ds.pm.retained-graph/v1"} else {"ds.pm.retained-note-read/v1"},
+    let retained_schema = match room {
+        Room::Graph => "ds.pm.retained-graph/v1",
+        Room::NoteRead(_) => "ds.pm.retained-note-read/v1",
+        Room::TaskRead(_) => "ds.pm.retained-task-read/v1",
+        Room::NoteQuery(_) => "ds.pm.retained-note-query/v1",
+        Room::NoteContext(_) => "ds.pm.retained-note-context/v1",
+    };
+    let mut retained = json!({"schema": retained_schema,
         "mode":if acquired {"acquired"} else {"offline_capture"}, "captured_at_ms":held.captured_at_ms,
         "known_invalidated":stale,"current_source_verified":acquired,
         "source_freshness":if acquired {"verified_at_capture"} else {"unknown"},
@@ -254,6 +325,26 @@ fn metadata(held: Held, room: &Room, current: &State, acquired: bool) -> Value {
             retained["graph_sha256"] = json!(held.sha256);
             retained["graph_revision"] = result["revision"].clone();
             retained["schedule_revision"] = result["schedule_revision"].clone();
+        }
+        Room::TaskRead(_) => {
+            retained["body_sha256"] = json!(held.sha256);
+            retained["selection"] = held.selection;
+            retained["selection_sha256"] = json!(held.selection_sha256);
+            retained["source_revisions"] = json!({
+                "graph": result["graph"]["revision"],
+                "records_context": result["records_context"]["revision"],
+                "timeline": result["timeline_receipt"]["revision"],
+            });
+            retained["snapshot_consistency"] = json!("independent_reads");
+        }
+        Room::NoteQuery(_) | Room::NoteContext(_) => {
+            retained["body_sha256"] = json!(held.sha256);
+            retained["selection"] = held.selection;
+            retained["selection_sha256"] = json!(held.selection_sha256);
+            retained["context_revision"] = result["context_revision"].clone();
+            // This receipt's completeness is independent of Graph or another page.
+            retained["complete"] = result["complete"].clone();
+            retained["truncated"] = result["truncated"].clone();
         }
         Room::NoteRead(_) => {
             retained["body_sha256"] = json!(held.sha256);
@@ -272,10 +363,34 @@ fn verify_body<S: Source>(
     value: &Value,
     source: &S,
 ) -> Result<(), Error<S::Error>> {
+    let note_command = match room {
+        Room::NoteQuery(selection) => Some(NoteCommand::Query(selection.clone())),
+        Room::NoteContext(selection) => Some(NoteCommand::Context(selection.clone())),
+        _ => None,
+    };
+    if let Some(command) = note_command {
+        command
+            .verify_response(&binding.project, value)
+            .map_err(Error::Local)?;
+    }
     if let Room::NoteRead(selection) = room {
         NoteCommand::Read(selection.clone())
             .verify_response(&binding.project, value)
             .map_err(Error::Local)?;
+    }
+    if let Room::TaskRead(selection) = room {
+        if value["project_id"] != binding.project
+            || value["selection"] != room.selection().map_err(Error::Local)?
+            || value["records_context"]["task_id"] != selection.task_id
+            || value["graph"]["tasks"].as_array().is_none_or(|tasks| {
+                !tasks
+                    .iter()
+                    .any(|task| task["id"] == selection.task_id && task["is_deleted"] != true)
+            })
+            || selection.timeline != value.get("timeline_receipt").is_some()
+        {
+            return Err(Error::Local("pm_retained_task_selection_invalid".into()));
+        }
     }
     source.verify(value).map_err(Error::Source)
 }
@@ -305,6 +420,73 @@ pub fn consume_note<S: Source>(
         root,
         binding,
         &Room::NoteRead(selection.clone()),
+        offline,
+        now_ms,
+        source,
+    )
+}
+/// One fixed selected-task room; bodies are retained only for an admitted actual consumer.
+pub fn consume_task<S: Source>(
+    root: &Path,
+    binding: &Binding,
+    selection: &TaskRead,
+    offline: bool,
+    now_ms: i64,
+    source: &mut S,
+) -> Result<Value, Error<S::Error>> {
+    if selection.task_id.is_empty()
+        || selection.task_id.len() > 2048
+        || selection.task_id.trim() != selection.task_id
+        || selection.task_id.chars().any(char::is_control)
+    {
+        return Err(Error::Local("pm_retained_selection_invalid".into()));
+    }
+    consume_selected(
+        root,
+        binding,
+        &Room::TaskRead(selection.clone()),
+        offline,
+        now_ms,
+        source,
+    )
+}
+/// A fixed last-query page; exact cursor/filter changes require deliberate acquisition.
+pub fn consume_query<S: Source>(
+    root: &Path,
+    binding: &Binding,
+    selection: &NoteQuery,
+    offline: bool,
+    now_ms: i64,
+    source: &mut S,
+) -> Result<Value, Error<S::Error>> {
+    NoteCommand::Query(selection.clone())
+        .payload(&binding.project)
+        .map_err(Error::Local)?;
+    consume_selected(
+        root,
+        binding,
+        &Room::NoteQuery(selection.clone()),
+        offline,
+        now_ms,
+        source,
+    )
+}
+/// A fixed last-context page; incompleteness and source revision remain capture facts.
+pub fn consume_context<S: Source>(
+    root: &Path,
+    binding: &Binding,
+    selection: &NoteContext,
+    offline: bool,
+    now_ms: i64,
+    source: &mut S,
+) -> Result<Value, Error<S::Error>> {
+    NoteCommand::Context(selection.clone())
+        .payload(&binding.project)
+        .map_err(Error::Local)?;
+    consume_selected(
+        root,
+        binding,
+        &Room::NoteContext(selection.clone()),
         offline,
         now_ms,
         source,
@@ -403,9 +585,12 @@ fn consume_selected<S: Source>(
     room.advance(&mut current).map_err(local)?;
     current.denied = false;
     let body_sha256 = digest(&graph).map_err(local)?;
-    let (graph, note_read) = match room {
-        Room::Graph => (graph, Value::Null),
-        Room::NoteRead(_) => (Value::Null, graph),
+    let (graph, note_read, task_read, note_query, note_context) = match room {
+        Room::Graph => (graph, Value::Null, Value::Null, Value::Null, Value::Null),
+        Room::NoteRead(_) => (Value::Null, graph, Value::Null, Value::Null, Value::Null),
+        Room::TaskRead(_) => (Value::Null, Value::Null, graph, Value::Null, Value::Null),
+        Room::NoteQuery(_) => (Value::Null, Value::Null, Value::Null, graph, Value::Null),
+        Room::NoteContext(_) => (Value::Null, Value::Null, Value::Null, Value::Null, graph),
     };
     let held = Held {
         schema: room.schema().into(),
@@ -416,6 +601,9 @@ fn consume_selected<S: Source>(
         sha256: body_sha256,
         graph,
         note_read,
+        task_read,
+        note_query,
+        note_context,
         selection: room.selection().map_err(local)?,
         selection_sha256: room.selection_sha().map_err(local)?,
     };
@@ -446,7 +634,13 @@ pub fn mark(root: &Path, binding: &Binding, denied: bool) -> Result<bool, String
     write(&dir.join("state.json"), &current)?;
     // Denial is durable even if deletion is impossible. Offline observes the marker first.
     if denied {
-        for file in ["graph.json", "note-read.json"] {
+        for file in [
+            "graph.json",
+            "note-read.json",
+            "task-read.json",
+            "note-query.json",
+            "note-context.json",
+        ] {
             let _ = std::fs::remove_file(dir.join(file));
         }
     }
@@ -1056,5 +1250,542 @@ mod tests {
             .join("note-read.json")
             .exists());
         assert_eq!(calls.load(Ordering::SeqCst), 1);
+    }
+    fn task_selection(id: &str, timeline: bool) -> TaskRead {
+        TaskRead {
+            task_id: id.into(),
+            timeline,
+        }
+    }
+    fn task_capture(selection: &TaskRead) -> Value {
+        let mut capture = json!({"project_id":"p","selection":selection,
+            "graph":{"tasks":[{"id":selection.task_id}],"revision":3},
+            "records_context":{"project_id":"p","task_id":selection.task_id,"records":[],
+                "truncated_by_collection":{"pm_records":true},"next_cursors":{"pm_records":"scan-boundary"}}});
+        if selection.timeline {
+            capture["timeline_receipt"] = json!({"revision":4,"timeline":{"task_id":selection.task_id,"total":0,"entries":[],"truncated":true}});
+        }
+        capture
+    }
+    struct TaskSource {
+        selection: TaskRead,
+        calls: Arc<AtomicUsize>,
+        failure: Option<&'static str>,
+        mutation: Option<PathBuf>,
+        barrier: Option<Arc<std::sync::Barrier>>,
+    }
+    impl TaskSource {
+        fn new(calls: Arc<AtomicUsize>, selection: TaskRead) -> Self {
+            Self {
+                selection,
+                calls,
+                failure: None,
+                mutation: None,
+                barrier: None,
+            }
+        }
+    }
+    impl Source for TaskSource {
+        type Error = &'static str;
+        fn check_binding(&mut self) -> Result<(), Self::Error> {
+            if let Some(barrier) = self.barrier.take() {
+                barrier.wait();
+            }
+            Ok(())
+        }
+        fn capture(&mut self) -> Result<Value, Self::Error> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            if let Some(failure) = self.failure {
+                return Err(failure);
+            }
+            if let Some(root) = &self.mutation {
+                mark(root, &binding(), false).unwrap();
+            }
+            std::thread::sleep(std::time::Duration::from_millis(80));
+            Ok(task_capture(&self.selection))
+        }
+        fn verify(&self, value: &Value) -> Result<(), Self::Error> {
+            if value["project_id"] == "p" {
+                Ok(())
+            } else {
+                Err("wrong_project")
+            }
+        }
+        fn access_refused(&self, error: &Self::Error) -> bool {
+            *error == "denied"
+        }
+    }
+    #[test]
+    fn task_offline_preserves_partial_and_distinct_revisions_without_acquisition() {
+        let temp = tempfile::tempdir().unwrap();
+        let calls = Arc::new(AtomicUsize::new(0));
+        let selection = task_selection("t", true);
+        let mut source = TaskSource::new(calls.clone(), selection.clone());
+        let first =
+            consume_task(temp.path(), &binding(), &selection, false, 1, &mut source).unwrap();
+        assert_eq!(
+            first["retained"]["source_revisions"],
+            json!({"graph":3,"records_context":null,"timeline":4})
+        );
+        assert_eq!(
+            first["retained"]["snapshot_consistency"],
+            "independent_reads"
+        );
+        let held = consume_task(temp.path(), &binding(), &selection, true, 2, &mut source).unwrap();
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        assert_eq!(held["retained"]["permission_freshness"], "captured_only");
+        assert_eq!(
+            held["records_context"]["next_cursors"]["pm_records"],
+            "scan-boundary"
+        );
+        assert_eq!(held["timeline_receipt"]["timeline"]["truncated"], true);
+        consume_task(temp.path(), &binding(), &selection, false, 3, &mut source).unwrap();
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
+        #[cfg(unix)]
+        crate::private::assert_private_tree(&temp.path().join("pm-graph"));
+    }
+    #[test]
+    fn task_selection_and_authority_cannot_reuse_another_capture_or_create_unused_rooms() {
+        let temp = tempfile::tempdir().unwrap();
+        let calls = Arc::new(AtomicUsize::new(0));
+        let selection = task_selection("t", false);
+        let mut source = TaskSource::new(calls.clone(), selection.clone());
+        assert!(matches!(
+            consume_task(temp.path(), &binding(), &selection, true, 1, &mut source),
+            Err(Error::AcquisitionRequired)
+        ));
+        assert_eq!(std::fs::read_dir(temp.path()).unwrap().count(), 0);
+        consume_task(temp.path(), &binding(), &selection, false, 1, &mut source).unwrap();
+        for other in [task_selection("other", false), task_selection("t", true)] {
+            assert!(matches!(
+                consume_task(temp.path(), &binding(), &other, true, 2, &mut source),
+                Err(Error::AcquisitionRequired)
+            ));
+        }
+        for field in 0..5 {
+            let mut other = binding();
+            match field {
+                0 => other.uid = "other".into(),
+                1 => other.lane = "stable".into(),
+                2 => other.audience = "other".into(),
+                3 => other.credential_instance = "other".into(),
+                _ => other.project = "other".into(),
+            };
+            assert!(matches!(
+                consume_task(temp.path(), &other, &selection, true, 2, &mut source),
+                Err(Error::AcquisitionRequired)
+            ));
+        }
+        let other = task_selection("second", false);
+        source.selection = other.clone();
+        consume_task(temp.path(), &binding(), &other, false, 3, &mut source).unwrap();
+        assert!(matches!(
+            consume_task(temp.path(), &binding(), &selection, true, 4, &mut source),
+            Err(Error::AcquisitionRequired)
+        ));
+        assert_eq!(
+            std::fs::read_dir(binding().directory(temp.path()).unwrap())
+                .unwrap()
+                .filter_map(Result::ok)
+                .filter(|e| e.file_name().to_string_lossy().ends_with("-read.json"))
+                .count(),
+            1
+        );
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
+    }
+    #[test]
+    fn task_denial_is_durable_before_cleanup_and_other_room_reacquisition() {
+        let temp = tempfile::tempdir().unwrap();
+        let calls = Arc::new(AtomicUsize::new(0));
+        let selection = task_selection("t", false);
+        let mut source = TaskSource::new(calls.clone(), selection.clone());
+        consume_task(temp.path(), &binding(), &selection, false, 1, &mut source).unwrap();
+        let dir = binding().directory(temp.path()).unwrap();
+        let bytes = std::fs::read(dir.join("task-read.json")).unwrap();
+        std::fs::remove_file(dir.join("task-read.json")).unwrap();
+        std::fs::create_dir(dir.join("task-read.json")).unwrap();
+        source.failure = Some("denied");
+        assert!(matches!(
+            consume_task(temp.path(), &binding(), &selection, false, 2, &mut source),
+            Err(Error::Source("denied"))
+        ));
+        assert!(dir.join("task-read.json").is_dir());
+        assert!(matches!(
+            consume_task(temp.path(), &binding(), &selection, true, 3, &mut source),
+            Err(Error::AcquisitionRequired)
+        ));
+        std::fs::remove_dir(dir.join("task-read.json")).unwrap();
+        private::write_atomic(&dir.join("task-read.json"), bytes).unwrap();
+        let mut graph_source = Fake::new(calls.clone());
+        consume(temp.path(), &binding(), false, 4, &mut graph_source).unwrap();
+        assert!(matches!(
+            consume_task(temp.path(), &binding(), &selection, true, 5, &mut source),
+            Err(Error::AcquisitionRequired)
+        ));
+    }
+    #[test]
+    fn task_absence_does_not_revoke_other_room_and_local_write_is_truthful() {
+        let temp = tempfile::tempdir().unwrap();
+        let calls = Arc::new(AtomicUsize::new(0));
+        let selection = task_selection("t", false);
+        let mut source = TaskSource::new(calls.clone(), selection.clone());
+        let mut graph_source = Fake::new(calls.clone());
+        consume(temp.path(), &binding(), false, 1, &mut graph_source).unwrap();
+        source.failure = Some("missing");
+        assert!(matches!(
+            consume_task(temp.path(), &binding(), &selection, false, 2, &mut source),
+            Err(Error::Source("missing"))
+        ));
+        assert!(consume(temp.path(), &binding(), true, 3, &mut graph_source).is_ok());
+        source.failure = None;
+        consume_task(temp.path(), &binding(), &selection, false, 4, &mut source).unwrap();
+        mark(temp.path(), &binding(), false).unwrap();
+        assert_eq!(
+            consume_task(temp.path(), &binding(), &selection, true, 5, &mut source).unwrap()
+                ["retained"]["known_invalidated"],
+            true
+        );
+        source.mutation = Some(temp.path().into());
+        assert!(matches!(
+            consume_task(temp.path(), &binding(), &selection, false, 6, &mut source),
+            Err(Error::Superseded)
+        ));
+    }
+    #[test]
+    fn concurrent_task_consumers_share_one_acquisition_then_zero_offline_calls() {
+        let temp = tempfile::tempdir().unwrap();
+        let calls = Arc::new(AtomicUsize::new(0));
+        let barrier = Arc::new(std::sync::Barrier::new(8));
+        let selection = task_selection("t", true);
+        std::thread::scope(|threads| {
+            for _ in 0..8 {
+                let calls = calls.clone();
+                let barrier = barrier.clone();
+                let selection = selection.clone();
+                let root = temp.path();
+                threads.spawn(move || {
+                    let mut source = TaskSource::new(calls, selection.clone());
+                    source.barrier = Some(barrier);
+                    consume_task(root, &binding(), &selection, false, 1, &mut source).unwrap();
+                });
+            }
+        });
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        for _ in 0..8 {
+            let mut source = TaskSource::new(calls.clone(), selection.clone());
+            consume_task(temp.path(), &binding(), &selection, true, 2, &mut source).unwrap();
+        }
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+    }
+    #[test]
+    fn task_owner_refuses_wrong_selection_corruption_and_oversized_body() {
+        let temp = tempfile::tempdir().unwrap();
+        let calls = Arc::new(AtomicUsize::new(0));
+        let selection = task_selection("t", false);
+        let mut source = TaskSource::new(calls.clone(), task_selection("other", false));
+        assert!(matches!(
+            consume_task(temp.path(), &binding(), &selection, false, 1, &mut source),
+            Err(Error::Local(_))
+        ));
+        source.selection = selection.clone();
+        consume_task(temp.path(), &binding(), &selection, false, 2, &mut source).unwrap();
+        let path = binding()
+            .directory(temp.path())
+            .unwrap()
+            .join("task-read.json");
+        let mut held: Value = read(&path).unwrap().unwrap();
+        held["task_read"]["records_context"]["task_id"] = json!("other");
+        write(&path, &held).unwrap();
+        assert!(matches!(
+            consume_task(temp.path(), &binding(), &selection, true, 3, &mut source),
+            Err(Error::Local(_))
+        ));
+        assert!(bounded_bytes(&json!("x".repeat(MAX_TASK_BYTES + 1)), MAX_TASK_BYTES).is_err());
+    }
+    fn query_selection() -> NoteQuery {
+        serde_json::from_value(json!({"terms":["safety"],"tags":[],"tag_match":"any","note_types":[],"lifecycle":["active"],"sort":"updated","direction":"desc","limit":20})).unwrap()
+    }
+    fn context_selection() -> NoteContext {
+        NoteContext {
+            query: query_selection(),
+            scope: None,
+        }
+    }
+    fn page_capture(context: bool) -> Value {
+        let mut page = json!({"project_id":"p","items":[],"scanned":2,"complete":false,"truncated":false,
+            "context_revision":"b".repeat(64),"migration_required":["plain-note"],"next_cursor":"exact-boundary"});
+        if context {
+            page["claims"] = json!([]);
+            page["conflicts"] = json!([]);
+        }
+        page
+    }
+    struct PageSource {
+        value: Value,
+        calls: Arc<AtomicUsize>,
+        failure: Option<&'static str>,
+        invalidate: Option<PathBuf>,
+        barrier: Option<Arc<std::sync::Barrier>>,
+    }
+    impl PageSource {
+        fn new(calls: Arc<AtomicUsize>, context: bool) -> Self {
+            Self {
+                value: page_capture(context),
+                calls,
+                failure: None,
+                invalidate: None,
+                barrier: None,
+            }
+        }
+    }
+    impl Source for PageSource {
+        type Error = &'static str;
+        fn check_binding(&mut self) -> Result<(), Self::Error> {
+            if let Some(barrier) = self.barrier.take() {
+                barrier.wait();
+            }
+            Ok(())
+        }
+        fn capture(&mut self) -> Result<Value, Self::Error> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            if let Some(failure) = self.failure {
+                return Err(failure);
+            }
+            if let Some(root) = &self.invalidate {
+                mark(root, &binding(), false).unwrap();
+            }
+            std::thread::sleep(std::time::Duration::from_millis(80));
+            Ok(self.value.clone())
+        }
+        fn verify(&self, _: &Value) -> Result<(), Self::Error> {
+            Ok(())
+        }
+        fn access_refused(&self, error: &Self::Error) -> bool {
+            *error == "denied"
+        }
+    }
+    #[test]
+    fn note_pages_offline_preserve_separate_revisions_and_incomplete_migration_context() {
+        let temp = tempfile::tempdir().unwrap();
+        let calls = Arc::new(AtomicUsize::new(0));
+        let query = query_selection();
+        let context = context_selection();
+        let mut qs = PageSource::new(calls.clone(), false);
+        let mut cs = PageSource::new(calls.clone(), true);
+        let q = consume_query(temp.path(), &binding(), &query, false, 1, &mut qs).unwrap();
+        cs.value["context_revision"] = json!("c".repeat(64));
+        let c = consume_context(temp.path(), &binding(), &context, false, 2, &mut cs).unwrap();
+        assert_ne!(q["context_revision"], c["context_revision"]);
+        for held in [
+            consume_query(temp.path(), &binding(), &query, true, 3, &mut qs).unwrap(),
+            consume_context(temp.path(), &binding(), &context, true, 3, &mut cs).unwrap(),
+        ] {
+            assert_eq!(held["complete"], false);
+            assert_eq!(held["migration_required"], json!(["plain-note"]));
+            assert_eq!(held["next_cursor"], "exact-boundary");
+            assert_eq!(held["retained"]["complete"], false);
+            assert_eq!(held["retained"]["source_freshness"], "unknown");
+            assert_eq!(held["retained"]["permission_freshness"], "captured_only");
+            assert_eq!(
+                held["retained"]["context_revision"],
+                held["context_revision"]
+            );
+        }
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
+        let dir = binding().directory(temp.path()).unwrap();
+        assert!(!dir.join("graph.json").exists());
+        assert!(!dir.join("note-read.json").exists());
+        assert!(!dir.join("task-read.json").exists());
+    }
+    #[test]
+    fn note_pages_exact_filters_cursor_scope_and_principal_fence_without_unused_capture() {
+        let temp = tempfile::tempdir().unwrap();
+        let calls = Arc::new(AtomicUsize::new(0));
+        let query = query_selection();
+        let context = context_selection();
+        let mut source = PageSource::new(calls.clone(), false);
+        assert!(matches!(
+            consume_query(temp.path(), &binding(), &query, true, 0, &mut source),
+            Err(Error::AcquisitionRequired)
+        ));
+        assert_eq!(std::fs::read_dir(temp.path()).unwrap().count(), 0);
+        consume_query(temp.path(), &binding(), &query, false, 1, &mut source).unwrap();
+        for mut changed in [query.clone(), query.clone(), query.clone(), query.clone()]
+            .into_iter()
+            .enumerate()
+        {
+            match changed.0 {
+                0 => changed.1.terms = vec!["other".into()],
+                1 => changed.1.cursor = Some("next".into()),
+                2 => changed.1.limit = 5,
+                _ => changed.1.parent_id = Some("parent".into()),
+            }
+            assert!(matches!(
+                consume_query(temp.path(), &binding(), &changed.1, true, 2, &mut source),
+                Err(Error::AcquisitionRequired)
+            ));
+        }
+        for field in 0..5 {
+            let mut other = binding();
+            match field {
+                0 => other.uid = "other".into(),
+                1 => other.lane = "stable".into(),
+                2 => other.audience = "other".into(),
+                3 => other.credential_instance = "other".into(),
+                _ => other.project = "other".into(),
+            }
+            assert!(matches!(
+                consume_query(temp.path(), &other, &query, true, 2, &mut source),
+                Err(Error::AcquisitionRequired)
+            ));
+        }
+        source.value = page_capture(true);
+        consume_context(temp.path(), &binding(), &context, false, 3, &mut source).unwrap();
+        let mut changed = context.clone();
+        changed.scope = Some(
+            serde_json::from_value(json!({"kind":"structures","structure_ids":["pole"]})).unwrap(),
+        );
+        assert!(matches!(
+            consume_context(temp.path(), &binding(), &changed, true, 4, &mut source),
+            Err(Error::AcquisitionRequired)
+        ));
+        let mut replacement = query.clone();
+        replacement.terms = vec!["replacement".into()];
+        source.value = page_capture(false);
+        consume_query(temp.path(), &binding(), &replacement, false, 5, &mut source).unwrap();
+        assert!(matches!(
+            consume_query(temp.path(), &binding(), &query, true, 6, &mut source),
+            Err(Error::AcquisitionRequired)
+        ));
+        assert_eq!(calls.load(Ordering::SeqCst), 3);
+        let dir = binding().directory(temp.path()).unwrap();
+        assert_eq!(
+            std::fs::read_dir(&dir)
+                .unwrap()
+                .filter_map(Result::ok)
+                .filter(|e| e.file_name().to_string_lossy().ends_with(".json"))
+                .count(),
+            3
+        );
+    }
+    #[test]
+    fn note_pages_invalidation_denial_and_revocation_floor_cover_every_room() {
+        let temp = tempfile::tempdir().unwrap();
+        let calls = Arc::new(AtomicUsize::new(0));
+        let query = query_selection();
+        let context = context_selection();
+        let mut qs = PageSource::new(calls.clone(), false);
+        let mut cs = PageSource::new(calls.clone(), true);
+        consume_query(temp.path(), &binding(), &query, false, 1, &mut qs).unwrap();
+        consume_context(temp.path(), &binding(), &context, false, 2, &mut cs).unwrap();
+        mark(temp.path(), &binding(), false).unwrap();
+        for held in [
+            consume_query(temp.path(), &binding(), &query, true, 3, &mut qs).unwrap(),
+            consume_context(temp.path(), &binding(), &context, true, 3, &mut cs).unwrap(),
+        ] {
+            assert_eq!(held["retained"]["known_invalidated"], true);
+        }
+        let dir = binding().directory(temp.path()).unwrap();
+        let old = std::fs::read(dir.join("note-context.json")).unwrap();
+        qs.failure = Some("denied");
+        assert!(matches!(
+            consume_query(temp.path(), &binding(), &query, false, 4, &mut qs),
+            Err(Error::Source("denied"))
+        ));
+        private::write_atomic(&dir.join("note-context.json"), old).unwrap();
+        assert!(matches!(
+            consume_context(temp.path(), &binding(), &context, true, 5, &mut cs),
+            Err(Error::AcquisitionRequired)
+        ));
+        qs.failure = None;
+        consume_query(temp.path(), &binding(), &query, false, 6, &mut qs).unwrap();
+        assert!(matches!(
+            consume_context(temp.path(), &binding(), &context, true, 7, &mut cs),
+            Err(Error::AcquisitionRequired)
+        ));
+        assert!(consume_query(temp.path(), &binding(), &query, true, 7, &mut qs).is_ok());
+    }
+    #[test]
+    fn note_pages_mutation_during_capture_and_invalid_receipts_never_publish() {
+        let temp = tempfile::tempdir().unwrap();
+        let calls = Arc::new(AtomicUsize::new(0));
+        let query = query_selection();
+        let context = context_selection();
+        let mut source = PageSource::new(calls.clone(), false);
+        source.invalidate = Some(temp.path().into());
+        assert!(matches!(
+            consume_query(temp.path(), &binding(), &query, false, 1, &mut source),
+            Err(Error::Superseded)
+        ));
+        source.invalidate = None;
+        for invalid in [
+            json!({"project_id":"other"}),
+            json!({"complete":true}),
+            json!({"context_revision":"bad"}),
+        ] {
+            source.value = page_capture(false);
+            for (key, value) in invalid.as_object().unwrap() {
+                source.value[key] = value.clone();
+            }
+            assert!(matches!(
+                consume_query(temp.path(), &binding(), &query, false, 2, &mut source),
+                Err(Error::Local(_))
+            ));
+        }
+        source.value = page_capture(true);
+        source.value.as_object_mut().unwrap().remove("conflicts");
+        assert!(matches!(
+            consume_context(temp.path(), &binding(), &context, false, 3, &mut source),
+            Err(Error::Local(_))
+        ));
+        let dir = binding().directory(temp.path()).unwrap();
+        assert!(!dir.join("note-query.json").exists());
+        assert!(!dir.join("note-context.json").exists());
+    }
+    #[test]
+    fn note_pages_overlapping_consumers_coalesce_one_exact_source_capture() {
+        let temp = tempfile::tempdir().unwrap();
+        let calls = Arc::new(AtomicUsize::new(0));
+        let barrier = Arc::new(std::sync::Barrier::new(4));
+        std::thread::scope(|scope| {
+            let mut threads = Vec::new();
+            for _ in 0..4 {
+                let root = temp.path().to_owned();
+                let calls = calls.clone();
+                let barrier = barrier.clone();
+                threads.push(scope.spawn(move || {
+                    let mut source = PageSource::new(calls, false);
+                    source.barrier = Some(barrier);
+                    consume_query(&root, &binding(), &query_selection(), false, 1, &mut source)
+                        .unwrap()
+                }));
+            }
+            for thread in threads {
+                assert_eq!(thread.join().unwrap()["complete"], false);
+            }
+        });
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+    }
+    #[test]
+    fn note_pages_body_bound_and_tamper_refuse_without_authoritative_empty_answers() {
+        let temp = tempfile::tempdir().unwrap();
+        let calls = Arc::new(AtomicUsize::new(0));
+        let query = query_selection();
+        let mut source = PageSource::new(calls, false);
+        source.value["extra"] = json!("x".repeat(MAX_PAGE_BYTES));
+        assert!(matches!(
+            consume_query(temp.path(), &binding(), &query, false, 1, &mut source),
+            Err(Error::Local(_))
+        ));
+        source.value = page_capture(false);
+        consume_query(temp.path(), &binding(), &query, false, 2, &mut source).unwrap();
+        let dir = binding().directory(temp.path()).unwrap();
+        let mut held: Value = read(&dir.join("note-query.json")).unwrap().unwrap();
+        held["note_query"]["complete"] = json!(true);
+        write(&dir.join("note-query.json"), &held).unwrap();
+        assert!(matches!(
+            consume_query(temp.path(), &binding(), &query, true, 3, &mut source),
+            Err(Error::Local(_))
+        ));
     }
 }

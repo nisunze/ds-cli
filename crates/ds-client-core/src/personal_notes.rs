@@ -6,22 +6,13 @@ use serde_json::{Value, json};
 
 mod backup;
 mod draft;
-mod migration;
 pub use draft::Draft;
-pub use migration::MigrationPlan;
 
 pub const MAX_RESPONSE_BYTES: usize = 8 << 20;
 pub const MAX_REQUEST_BYTES: usize = 512 << 10;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Action {
-    PrepareMigration {
-        id: String,
-    },
-    ApplyMigration {
-        plan: MigrationPlan,
-        command_id: String,
-    },
     Create {
         draft: Draft,
     },
@@ -107,14 +98,6 @@ fn invalid() -> ClientError {
 impl Action {
     pub fn validate(&self) -> Result<(), ClientError> {
         let id = match self {
-            Self::PrepareMigration { id } => Some(id),
-            Self::ApplyMigration { plan, command_id } => {
-                plan.validate()?;
-                if !command_id_valid(command_id) {
-                    return Err(invalid());
-                }
-                Some(&plan.id)
-            }
             Self::Create { draft } => {
                 draft.validate(true)?;
                 None
@@ -252,10 +235,6 @@ impl Action {
     }
     pub fn payload(&self) -> Value {
         match self {
-            Self::PrepareMigration { id } => json!({"action":"canonicalize_prepare","id":id}),
-            Self::ApplyMigration { plan, command_id } => {
-                json!({"action":"canonicalize_apply","migration_plan":plan,"command_id":command_id})
-            }
             Self::Create { draft } => json!({"action":"create","note":draft}),
             Self::Update {
                 id,
@@ -332,8 +311,6 @@ impl Action {
     }
     fn id(&self) -> &str {
         match self {
-            Self::PrepareMigration { id } => id,
-            Self::ApplyMigration { plan, .. } => &plan.id,
             Self::List { .. } | Self::Create { .. } => "",
             Self::Update { id, .. } => id,
             Self::Read { id }
@@ -386,9 +363,6 @@ fn decode(action: &Action, response: crate::TransportResponse) -> Result<Value, 
         return Err(unreadable());
     }
     match action {
-        Action::PrepareMigration { .. } | Action::ApplyMigration { .. } => {
-            migration::verify(action, data)?
-        }
         Action::Create { draft } => {
             validate_note(&data["note"], None)?;
             if data["note"]["version"] != 1 {

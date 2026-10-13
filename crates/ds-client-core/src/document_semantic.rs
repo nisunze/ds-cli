@@ -1,4 +1,4 @@
-//! Explicit native PDF semantic metadata and byte transfer. Extraction is external.
+//! Explicit native document semantic metadata and byte transfer. Extraction is external.
 use crate::{
     authorized::Authority, shared_assets::DownloadCall, AuthorizedTransport, ClientError,
     ClientProfile, ErrorKind, UploadBytesCall,
@@ -22,7 +22,7 @@ fn metadata<T: AuthorizedTransport>(
 ) -> Result<Value, ClientError> {
     let payload = command
         .payload(project)
-        .map_err(|_| invalid("invalid pinned PDF semantic request"))?;
+        .map_err(|_| invalid("invalid pinned document semantic request"))?;
     let receipt = crate::project_assets::call(profile, transport, authority, payload)?;
     command
         .verify_response(project, &receipt)
@@ -79,7 +79,7 @@ pub(crate) fn run<T: AuthorizedTransport>(
 ) -> Result<Value, ClientError> {
     command
         .payload(project)
-        .map_err(|_| invalid("invalid pinned PDF semantic request"))?;
+        .map_err(|_| invalid("invalid pinned document semantic request"))?;
     if matches!(command, Command::Prepare(_)) != reader.is_some() {
         return Err(invalid("semantic import requires the selected Markdown reader; metadata reads never consume a file"));
     }

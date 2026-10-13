@@ -33,6 +33,7 @@ use serde_json::{Map, Value, json};
 pub mod checklist;
 pub mod create_attached;
 pub mod documents;
+mod model_references;
 mod overview;
 pub mod project_notes;
 
@@ -53,10 +54,6 @@ pub const MAX_CONTEXT_LIMIT: i64 = 100;
 /// The longest command id one commit may carry: a UUID, or the `pm-…` form the
 /// browser minted before it had one.
 const MAX_COMMAND_ID_BYTES: usize = 128;
-/// PM subjects are advertised as 300 characters; `copyPMString` measures
-/// UTF-8 bytes after trimming. Keep that server bound at this door.
-const MAX_PROJECT_NOTE_SUBJECT_BYTES: usize = 300;
-const MAX_PROJECT_NOTE_BODY_BYTES: usize = 128 * 1024;
 /// Bound a minted ID while keeping the server's stable-reference alphabet.
 const MAX_PROJECT_NOTE_ID_BYTES: usize = 256;
 /// The most commands one saved draft may carry — ds-brain's own batch bound,
@@ -228,33 +225,16 @@ pub enum Command {
     /// for a Project Work assignment. It is separate from graph hydration so
     /// ordinary plan reads do not pay for a roster scan.
     Assignees,
-    /// The context rows the graph does not carry: records, work episodes and
-    /// attachments, at most `limit` per collection (the server's default when
-    /// `None`).
-    ///
-    /// These are a SEPARATE read on purpose, and the browser never made it:
-    /// `decodeProjectGraph` hard-codes `records: []`, so `ds pm record list`
-    /// answers nothing however many records a project holds. A window does not
-    /// fix that; asking for them does.
-    Context { limit: Option<i64> },
+    /// Exact model references from one graph and one readable pm_records page.
+    /// Both reads use the same captured authority; context has its own versions.
+    ModelReferences {
+        model_id: String,
+        revision_id: Option<String>,
+        records_cursor: Option<String>,
+    },
     /// Only the selected task's readable correspondence, using the existing
     /// indexed related_task_ids query; unused context collections are not read.
     TaskRecords { task_id: String, limit: i64 },
-    /// Create a quick, project-scoped Markdown note through `create_record`.
-    /// The server owns defaults, permissions, versioning and ID generation
-    /// when no stable ID is supplied.
-    ProjectNoteCreate {
-        id: Option<String>,
-        title: String,
-        body: String,
-    },
-    /// A quick project note with typed same-project transformer relationships.
-    ProjectNoteCreateLinked {
-        id: Option<String>,
-        title: String,
-        body: String,
-        transformer_ids: Vec<String>,
-    },
     /// One project command against one base revision — `commit_command`, the
     /// same body the Plan sheet sends for one gesture. The command is the
     /// kernel's (`ds_command_kernel::project_management::writes`), already
@@ -396,8 +376,6 @@ impl Command {
             Self::Commit { .. }
                 | Self::CommitBatch { .. }
                 | Self::TaskCommentCreate { .. }
-                | Self::ProjectNoteCreate { .. }
-                | Self::ProjectNoteCreateLinked { .. }
                 | Self::Propose { .. }
                 | Self::TaskCreateAttached { .. }
                 | Self::RequestAdmission { .. }
@@ -425,15 +403,12 @@ impl Command {
         match self {
             Self::Authored { command, .. } => command.action(),
             Self::ProjectNotes { command } => command.action(),
-            Self::Graph | Self::Overview { .. } => "get_graph",
+            Self::Graph | Self::Overview { .. } | Self::ModelReferences { .. } => "get_graph",
             Self::PublicProjects { .. } => "list_public_projects",
             Self::TaskCommentCreate { .. } => "create_comment",
             Self::TaskComments { .. } => "get_context",
             Self::Assignees => "get_assignees",
-            Self::Context { .. } | Self::TaskRecords { .. } => "get_context",
-            Self::ProjectNoteCreate { .. } | Self::ProjectNoteCreateLinked { .. } => {
-                "create_record"
-            }
+            Self::TaskRecords { .. } => "get_context",
             Self::Commit { .. } | Self::TaskCreateAttached { .. } => "commit_command",
             Self::CommitBatch { .. } => "commit_batch",
             Self::Propose { .. } => "commit_command",
@@ -537,51 +512,18 @@ impl Command {
                 }
                 Ok(())
             }
-            Self::Context { limit } => match limit {
-                Some(limit) if !(1..=MAX_CONTEXT_LIMIT).contains(limit) => Err(invalid(
-                    "project management reads 1 through 100 context rows per collection",
-                )),
-                _ => Ok(()),
-            },
-            Self::ProjectNoteCreate { id, title, body }
-            | Self::ProjectNoteCreateLinked {
-                id, title, body, ..
-            } => {
-                if let Self::ProjectNoteCreateLinked {
-                    transformer_ids, ..
-                } = self
-                {
-                    let mut unique = std::collections::BTreeSet::new();
-                    if transformer_ids.is_empty()
-                        || transformer_ids.len() > 128
-                        || transformer_ids
-                            .iter()
-                            .any(|id| !project_note_id_valid(id) || !unique.insert(id))
-                    {
-                        return Err(invalid(
-                            "project note links need 1..128 unique exact transformer identities",
-                        ));
-                    }
-                }
-                let subject = title.trim();
-                if subject.is_empty()
-                    || subject.len() > MAX_PROJECT_NOTE_SUBJECT_BYTES
-                    || subject
-                        .chars()
-                        .any(|c| c.is_control() && !matches!(c, '\n' | '\r' | '\t'))
-                {
-                    return Err(invalid(
-                        "a project note needs a meaningful title of at most 300 UTF-8 bytes",
-                    ));
-                }
-                if body.len() > MAX_PROJECT_NOTE_BODY_BYTES {
-                    return Err(invalid("a project note body is at most 128 KiB of UTF-8"));
-                }
-                if id.as_deref().is_some_and(|id| !project_note_id_valid(id)) {
-                    return Err(invalid("a project note needs one bounded stable id"));
-                }
-                Ok(())
-            }
+            Self::ModelReferences {
+                model_id,
+                revision_id,
+                records_cursor,
+            } => ds_command_kernel::project_management::model_links::validate_reference_selection(
+                model_id,
+                revision_id.as_deref(),
+                records_cursor.as_deref(),
+            )
+            .map_err(|_| {
+                invalid("model references need exact catalog IDs and a bounded records cursor")
+            }),
             Self::Commit {
                 command_id,
                 base_revision,
@@ -686,7 +628,10 @@ impl Command {
                     .payload(project)
                     .expect("validated closed Project Notes request");
             }
-            Self::Graph | Self::Assignees | Self::Overview { .. } => {}
+            Self::Graph
+            | Self::Assignees
+            | Self::Overview { .. }
+            | Self::ModelReferences { .. } => {}
             Self::TaskDetach { request } => return request.payload(project),
             Self::TaskAttach { task_id, file } => {
                 return attachment_start_payload(project, task_id, file);
@@ -723,31 +668,6 @@ impl Command {
                 payload["task_id"] = json!(task_id);
                 payload["limit"] = json!(limit);
                 payload["collections"] = json!(["pm_records"]);
-            }
-            Self::Context { limit } => {
-                if let Some(limit) = limit {
-                    payload["limit"] = json!(limit);
-                }
-            }
-            Self::ProjectNoteCreate { id, title, body }
-            | Self::ProjectNoteCreateLinked {
-                id, title, body, ..
-            } => {
-                if let Some(id) = id {
-                    payload["id"] = json!(id);
-                }
-                payload["data"] = json!({
-                    "category": "project_note",
-                    "record_type": "quick",
-                    "subject": title,
-                    "body": body,
-                });
-                if let Self::ProjectNoteCreateLinked {
-                    transformer_ids, ..
-                } = self
-                {
-                    payload["data"]["links"]=json!(transformer_ids.iter().map(|id| json!({"kind":"ds_object","project_id":project,"object_type":"transformer","entity_id":id})).collect::<Vec<_>>());
-                }
             }
             Self::Commit {
                 command_id,
@@ -1101,6 +1021,22 @@ pub(crate) fn run<T: AuthorizedTransport>(
             authoring_model,
         );
     }
+    if let Command::ModelReferences {
+        model_id,
+        revision_id,
+        records_cursor,
+    } = command
+    {
+        return model_references::run(
+            profile,
+            transport,
+            authority,
+            project,
+            model_id,
+            revision_id.as_deref(),
+            records_cursor.as_deref(),
+        );
+    }
     if let Command::Overview { options } = command {
         return overview::run(profile, transport, authority, project, options);
     }
@@ -1150,12 +1086,11 @@ pub(crate) fn run<T: AuthorizedTransport>(
         // command and the bare result for a draft (`response.result ??
         // response`, api/pm.ts:184 and 208). The wrapper is unwrapped where it
         // exists so every caller reads one shape.
-        Command::Context { .. } | Command::TaskComments { .. } | Command::TaskRecords { .. } => {
-            data.get("context")
-                .filter(|context| context.is_object())
-                .cloned()
-                .unwrap_or(data)
-        }
+        Command::TaskComments { .. } | Command::TaskRecords { .. } => data
+            .get("context")
+            .filter(|context| context.is_object())
+            .cloned()
+            .unwrap_or(data),
         Command::Commit { .. } | Command::CommitBatch { .. } => data
             .get("result")
             .filter(|result| result.is_object())
@@ -1166,10 +1101,9 @@ pub(crate) fn run<T: AuthorizedTransport>(
         Command::Authored { .. }
         | Command::ProjectNotes { .. }
         | Command::Overview { .. }
+        | Command::ModelReferences { .. }
         | Command::PublicProjects { .. }
         | Command::TaskCommentCreate { .. }
-        | Command::ProjectNoteCreate { .. }
-        | Command::ProjectNoteCreateLinked { .. }
         | Command::Propose { .. }
         | Command::RequestAdmission { .. }
         | Command::Admit { .. }
@@ -1219,8 +1153,14 @@ pub fn verify_graph(project: &str, graph: &Value) -> Result<(), ClientError> {
             || !c["blocked_tasks"].is_array()
             || c["as_of"].as_str().is_none_or(str::is_empty)
             || c["due_window_days"].as_u64().is_none()
-            || ["recordsOutstanding", "recordsOverdue", "tasksAwaitingCorrespondence"].into_iter()
-                .any(|key| c["counters"][key].as_u64().is_none()) {
+            || [
+                "recordsOutstanding",
+                "recordsOverdue",
+                "tasksAwaitingCorrespondence",
+            ]
+            .into_iter()
+            .any(|key| c["counters"][key].as_u64().is_none())
+        {
             return Err(invalid());
         }
     }
@@ -1239,7 +1179,7 @@ pub fn verify_graph(project: &str, graph: &Value) -> Result<(), ClientError> {
 
 /// Admit only the selected records page, never a legacy unselected or partial
 /// answer that could otherwise become an apparently empty related-record list.
-fn validate_task_records(
+pub fn validate_task_records(
     context: &Value,
     project: &str,
     task: &str,
@@ -1372,142 +1312,16 @@ mod tests {
     use super::*;
 
     #[test]
-    fn linked_project_note_uses_exact_typed_project_scope_without_prose_inference() {
-        let c = Command::ProjectNoteCreateLinked {
-            id: Some("n1".into()),
-            title: "Review".into(),
-            body: "Do not parse TR-other from prose".into(),
-            transformer_ids: vec!["TR-1".into()],
-        };
-        c.validate().unwrap();
-        let p = c.payload("exact-project");
-        assert_eq!(
-            p["data"]["links"],
-            json!([{"kind":"ds_object","project_id":"exact-project","object_type":"transformer","entity_id":"TR-1"}])
-        );
-        let bad = Command::ProjectNoteCreateLinked {
-            id: None,
-            title: "Review".into(),
-            body: String::new(),
-            transformer_ids: vec!["TR-1".into(), "TR-1".into()],
-        };
-        assert!(bad.validate().is_err());
-    }
-
-    #[test]
-    fn project_note_create_payload_routes_the_explicit_project_and_stable_id() {
-        let command = Command::ProjectNoteCreate {
-            id: Some("note:review@example.com+2026_09-30.é".into()),
-            title: "Clearance review".into(),
-            body: "## Findings\n\n- Check **pole 12**.\n".into(),
-        };
-        command.validate().expect("valid project note");
-        assert_eq!(command.action(), "create_record");
-        for project in ["project-a", "project-b"] {
-            assert_eq!(
-                command.payload(project),
-                json!({
-                    "action": "create_record",
-                    "ds_project": project,
-                    "id": "note:review@example.com+2026_09-30.é",
-                    "data": {
-                        "category": "project_note",
-                        "record_type": "quick",
-                        "subject": "Clearance review",
-                        "body": "## Findings\n\n- Check **pole 12**.\n",
-                    },
-                })
-            );
-        }
-    }
-
-    #[test]
-    fn project_note_create_payload_omits_an_absent_id() {
-        let command = Command::ProjectNoteCreate {
-            id: None,
-            title: "Follow up".into(),
-            body: String::new(),
-        };
-        command.validate().expect("the server may mint the id");
-        let payload = command.payload("project-c");
-        assert_eq!(
-            payload,
-            json!({
-                "action": "create_record",
-                "ds_project": "project-c",
-                "data": {
-                    "category": "project_note",
-                    "record_type": "quick",
-                    "subject": "Follow up",
-                    "body": "",
-                },
-            })
-        );
-        assert!(payload.get("id").is_none());
-    }
-
-    #[test]
-    fn project_note_title_is_meaningful_and_within_the_server_subject_bound() {
-        for title in ["a".repeat(300), "é".repeat(150), "  Review  ".into()] {
-            Command::ProjectNoteCreate {
-                id: None,
-                title,
-                body: String::new(),
-            }
-            .validate()
-            .expect("a bounded meaningful subject");
-        }
-        for title in [
-            String::new(),
-            " \t\n\u{2003}".into(),
-            "\0".into(),
-            "a".repeat(301),
-            "é".repeat(151),
-        ] {
-            let error = Command::ProjectNoteCreate {
-                id: None,
-                title,
-                body: String::new(),
-            }
-            .validate()
-            .expect_err("an invalid subject is refused locally");
-            assert_eq!(error.kind(), ErrorKind::InvalidInput);
-        }
-    }
-
-    #[test]
-    fn project_note_body_bound_counts_utf8_bytes() {
-        for body in ["a".repeat(128 * 1024), "é".repeat(64 * 1024)] {
-            Command::ProjectNoteCreate {
-                id: None,
-                title: "Review".into(),
-                body: body.clone(),
-            }
-            .validate()
-            .expect("exactly 128 KiB is accepted");
-            let error = Command::ProjectNoteCreate {
-                id: None,
-                title: "Review".into(),
-                body: format!("{body}a"),
-            }
-            .validate()
-            .expect_err("one byte over the body bound is refused locally");
-            assert_eq!(error.kind(), ErrorKind::InvalidInput);
-        }
-    }
-
-    #[test]
-    fn project_note_ids_accept_stable_references_and_refuse_invalid_bounds() {
+    fn task_records_ids_accept_stable_references_and_refuse_invalid_bounds() {
         for id in [
             "550e8400-e29b-41d4-a716-446655440000".into(),
             "note:review@example.com+2026_09-30.é".into(),
             "a".repeat(256),
             "é".repeat(128),
         ] {
-            Command::ProjectNoteCreate {
-                id: Some(id),
-                title: "Review".into(),
-                body: String::new(),
+            Command::TaskRecords {
+                task_id: id,
+                limit: 100,
             }
             .validate()
             .expect("a server-valid bounded stable id");
@@ -1529,10 +1343,9 @@ mod tests {
         .map(str::to_owned)
         .chain(["a".repeat(257), "é".repeat(129)])
         {
-            let error = Command::ProjectNoteCreate {
-                id: Some(id),
-                title: "Review".into(),
-                body: String::new(),
+            let error = Command::TaskRecords {
+                task_id: id,
+                limit: 100,
             }
             .validate()
             .expect_err("an invalid stable id is refused locally");
@@ -1594,7 +1407,15 @@ mod tests {
             Command::Assignees.payload("p"),
             json!({"action":"get_assignees","ds_project":"p"})
         );
-        assert_eq!(Command::Context { limit: None }.action(), "get_context");
+        assert_eq!(
+            Command::ModelReferences {
+                model_id: "model-a".into(),
+                revision_id: None,
+                records_cursor: None
+            }
+            .action(),
+            "get_graph"
+        );
         let commit = Command::Commit {
             command_id: "c1".into(),
             base_revision: 3,
@@ -1617,14 +1438,6 @@ mod tests {
             batch.payload("p")["commands"].as_array().map(Vec::len),
             Some(1)
         );
-        let context = Command::Context { limit: Some(100) }.payload("p");
-        assert_eq!(context["limit"], 100);
-        assert!(
-            Command::Context { limit: None }
-                .payload("p")
-                .get("limit")
-                .is_none()
-        );
     }
 
     /// The bounds the server enforces are refused here first, by the same
@@ -1633,14 +1446,13 @@ mod tests {
     fn a_command_outside_its_bounds_is_refused_before_it_is_sent() {
         let kind = |command: Command| command.validate().expect_err("refused").kind();
         assert_eq!(
-            kind(Command::Context { limit: Some(0) }),
+            kind(Command::ModelReferences {
+                model_id: "Display label".into(),
+                revision_id: None,
+                records_cursor: None
+            }),
             ErrorKind::InvalidInput
         );
-        assert_eq!(
-            kind(Command::Context { limit: Some(101) }),
-            ErrorKind::InvalidInput
-        );
-        assert!(Command::Context { limit: Some(100) }.validate().is_ok());
         let good = json!({"kind": "accept_assignment", "accept_assignment": {"task_id": "t"}});
         assert!(
             Command::Commit {
@@ -1757,6 +1569,7 @@ mod tests {
         upload_status: u16,
         finalized: Value,
         payloads: Vec<Value>,
+        authorities: Vec<(String, String)>,
         uploaded: Vec<(String, Vec<u8>)>,
     }
     macro_rules! no_other_call {
@@ -1808,6 +1621,10 @@ mod tests {
             &mut self,
             call: ProjectManagementCall<'_>,
         ) -> Result<crate::TransportResponse, crate::TransportError> {
+            self.authorities.push((
+                call.authority.canonical_uid.into(),
+                call.authority.canonical_email.into(),
+            ));
             if matches!(
                 call.payload["action"].as_str(),
                 Some("get_graph" | "get_context")
@@ -1878,6 +1695,7 @@ mod tests {
             upload_status: 200,
             finalized,
             payloads: vec![],
+            authorities: vec![],
             uploaded: vec![],
         }
     }
@@ -2094,6 +1912,7 @@ mod tests {
             upload_status: 200,
             finalized: json!({"item": row(state)}),
             payloads: Vec::new(),
+            authorities: Vec::new(),
             uploaded: Vec::new(),
         }
     }
@@ -2362,6 +2181,112 @@ mod tests {
             ErrorKind::UnreadableResponse
         );
         assert_eq!(transport.payloads.len(), 2);
+    }
+
+    #[test]
+    fn model_references_reads_one_records_page_with_same_authority_and_truthful_revisions() {
+        let profile = crate::data_distribution::tests::profile_for_tests();
+        let link = json!({"kind":"ds_object","object_type":"mv_model","project_id":"project-a","entity_id":"model-a","object_revision":"rev-a","model_version":3});
+        let graph = json!({"graph":{"project_id":"project-a","revision":9,"schedule_revision":4,"tasks":[{"id":"task-a","data":{"title":"Model task","type":"task"},"links":[link.clone()]}],"dependencies":[],"residual_items":[],"calendar":{},"permissions":{"view":true,"comment":false,"contribute":false,"edit_schedule":false,"admin":false}}});
+        let context = json!({"context":{"project_id":"project-a","loaded_collections":["pm_records"],"records":[{"id":"note-a","version":7,"metadata":{"updated_at":123},"data":{"category":"project_note","subject":"Canonical non-geometric note","memory":{"schema":"ds.project-note-memory/v1"}},"links":[link.clone()]},{"id":"other-category","version":2,"metadata":{"updated_at":120},"data":{"category":"instruction","subject":"Ignore"},"links":[link]}],"truncated_by_collection":{"pm_records":true},"next_cursors":{"pm_records":"boundary"}}});
+        let invoke = |t: &mut AttachTransport, cursor: Option<&str>| {
+            run(
+                &profile,
+                t,
+                crate::authorized::Authority {
+                    bearer_token: "bearer",
+                    uid: "captured-uid",
+                    email: "reader@example.test",
+                    device_id: None,
+                },
+                "project-a",
+                &Command::ModelReferences {
+                    model_id: "model-a".into(),
+                    revision_id: Some("rev-a".into()),
+                    records_cursor: cursor.map(str::to_owned),
+                },
+            )
+        };
+        let mut t = attach_transport("ready", 1);
+        t.started = graph.clone();
+        t.finalized = context.clone();
+        let got = invoke(&mut t, None).unwrap();
+        assert_eq!(
+            t.payloads,
+            vec![
+                json!({"action":"get_graph","ds_project":"project-a"}),
+                json!({"action":"get_context","ds_project":"project-a","limit":100,"collections":["pm_records"]})
+            ]
+        );
+        assert_eq!(
+            t.authorities,
+            vec![("captured-uid".into(), "reader@example.test".into()); 2]
+        );
+        assert_eq!(got["tasks"].as_array().unwrap().len(), 1);
+        assert_eq!(got["notes"].as_array().unwrap().len(), 1);
+        assert_eq!(got["notes"][0]["note_version"], 7);
+        assert_eq!(got["notes"][0]["note_updated_at"], 123);
+        assert_eq!(got["notes_count_kind"], "lower_bound");
+        assert_eq!(got["notes_next_cursor"], "boundary");
+        assert_eq!(got["revision"], 9);
+        assert_eq!(got["schedule_revision"], 4);
+        assert!(got["context_graph_revision"].is_null());
+        assert_eq!(
+            got["read_consistency"],
+            "separate_reads_unversioned_context"
+        );
+        assert!(!got.to_string().contains("bearer"));
+        assert!(t.uploaded.is_empty());
+        t.payloads.clear();
+        t.finalized["context"]["truncated_by_collection"]["pm_records"] = json!(false);
+        t.finalized["context"]["next_cursors"] = json!({});
+        assert_eq!(invoke(&mut t, None).unwrap()["notes_count_kind"], "exact");
+        t.payloads.clear();
+        let got = invoke(&mut t, Some("boundary")).unwrap();
+        assert_eq!(got["notes_count_kind"], "lower_bound");
+        assert_eq!(t.payloads[1]["cursors"], json!({"pm_records":"boundary"}));
+        for (pointer, bad) in [
+            ("/context/project_id", json!("foreign")),
+            (
+                "/context/loaded_collections",
+                json!(["pm_records", "pm_comments"]),
+            ),
+            ("/context/truncated_by_collection", json!({"records":false})),
+            ("/context/records/0/version", Value::Null),
+            ("/context/records/0/metadata/updated_at", Value::Null),
+            ("/context/next_cursors", json!({"pm_comments":"cursor"})),
+        ] {
+            t.finalized = context.clone();
+            *t.finalized.pointer_mut(pointer).unwrap() = bad;
+            t.payloads.clear();
+            assert_eq!(
+                invoke(&mut t, None).unwrap_err().kind(),
+                ErrorKind::UnreadableResponse,
+                "{pointer}"
+            );
+            assert_eq!(t.payloads.len(), 2);
+        }
+        t.started["graph"]["project_id"] = json!("foreign");
+        t.payloads.clear();
+        assert_eq!(
+            invoke(&mut t, None).unwrap_err().kind(),
+            ErrorKind::UnreadableResponse
+        );
+        assert_eq!(t.payloads.len(), 1);
+        t.started = graph;
+        t.upload_status = 403;
+        t.payloads.clear();
+        assert_eq!(
+            invoke(&mut t, None).unwrap_err().kind(),
+            ErrorKind::AuthenticationRejected
+        );
+        assert_eq!(t.payloads.len(), 1);
+        t.payloads.clear();
+        assert_eq!(
+            invoke(&mut t, Some("bad/cursor")).unwrap_err().kind(),
+            ErrorKind::InvalidInput
+        );
+        assert!(t.payloads.is_empty());
     }
 
     #[test]

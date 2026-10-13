@@ -109,7 +109,7 @@ impl Grant {
 fn invalid() -> ClientError {
     ClientError::new(
         ErrorKind::UnreadableResponse,
-        "attachment source grant is missing or differs from its exact PDF descriptor/generation",
+        "attachment source grant is missing or differs from its exact document descriptor/generation",
     )
 }
 fn signed_generation(url: &str) -> Result<String, ClientError> {
@@ -174,7 +174,14 @@ fn grant(project: &str, request: &Request, data: &Value) -> Result<Grant, Client
         let asset = &data["asset"];
         if asset["project_id"] != project
             || asset["asset_id"] != request.asset_id
-            || asset["format"] != "pdf"
+            || ds_command_kernel::assets::semantic::source_format(
+                data["source"]["content_type"].as_str().unwrap_or_default(),
+            ) != asset["format"].as_str()
+            || data["source"]["project_id"] != project
+            || data["source"]["kind"] != "catalogue_asset"
+            || data["source"]["id"] != request.asset_id
+            || data["source"]["version"] != asset["version"]
+            || data["source"]["size_bytes"] != asset["bytes"]
         {
             return Err(invalid());
         }
@@ -194,18 +201,24 @@ fn grant(project: &str, request: &Request, data: &Value) -> Result<Grant, Client
                 generation,
                 advertised_sha256,
                 size_bytes: positive(asset, "bytes")?,
-                content_type: "application/pdf".into(),
+                content_type: text(&data["source"], "content_type")?,
                 sensitivity: text(asset, "sensitivity")?,
                 name: text(asset, "name")?,
             },
             url,
         )
     };
+    if proof.source_kind == "catalogue_asset"
+        && positive(&data["source"], "generation")?.to_string() != proof.generation
+    {
+        return Err(invalid());
+    }
     if signed_generation(&url)? != proof.generation
         || proof.size_bytes > ds_command_kernel::asset_preview::MAX_BYTES
     {
         return Err(invalid());
     }
+    proof.validate(project, request).map_err(|_| invalid())?;
     Ok(Grant { proof, url })
 }
 /// Pure request admission shared by online/offline consumers before any
@@ -456,7 +469,7 @@ mod tests {
     fn nullable_catalogue_sha_and_server_permitted_classes_keep_original_proof() {
         let req=serde_json::from_value(json!({"schema":ds_command_kernel::asset_preview::REQUEST_SCHEMA,"asset_id":"a_7kq3nr2v0b1c"})).unwrap();
         for class in ["open", "internal", "restricted", "confidential"] {
-            let data = json!({"download_url":source()["url"],"asset":{"project_id":"project","asset_id":"a_7kq3nr2v0b1c","format":"pdf","version":2,"bytes":4,"name":"Contract.pdf","sensitivity":class,"digest":null}});
+            let data = json!({"download_url":source()["url"],"source":{"project_id":"project","kind":"catalogue_asset","id":"a_7kq3nr2v0b1c","version":2,"generation":9007199254740993u64,"size_bytes":4,"content_type":"application/pdf"},"asset":{"project_id":"project","asset_id":"a_7kq3nr2v0b1c","format":"pdf","version":2,"bytes":4,"name":"Contract.pdf","sensitivity":class,"digest":null}});
             let grant = grant("project", &req, &data).unwrap();
             assert_eq!(grant.proof.advertised_sha256, None);
             assert_eq!(grant.proof.sensitivity, class);
@@ -516,6 +529,38 @@ mod tests {
         ] {
             req.asset_id = id.into();
             assert!(validate_online_request("project", &req).is_err());
+        }
+    }
+    #[test]
+    fn office_catalogue_grant_uses_declared_mime_and_refuses_crossed_descriptor() {
+        let req: Request = serde_json::from_value(json!({"schema":ds_command_kernel::asset_preview::REQUEST_SCHEMA,"asset_id":"a_7kq3nr2v0b1c"})).unwrap();
+        for (format, mime) in [
+            ("docx", ds_command_kernel::assets::semantic::DOCX_TYPE),
+            ("xlsx", ds_command_kernel::assets::semantic::XLSX_TYPE),
+        ] {
+            let data = json!({"download_url":source()["url"],"source":{"project_id":"project","kind":"catalogue_asset","id":"a_7kq3nr2v0b1c","version":2,"generation":9007199254740993u64,"size_bytes":4,"content_type":mime},"asset":{"project_id":"project","asset_id":"a_7kq3nr2v0b1c","format":format,"version":2,"bytes":4,"name":"Wrong.pdf","sensitivity":"restricted","digest":null}});
+            let held = grant("project", &req, &data).unwrap();
+            assert_eq!(held.proof().content_type, mime);
+            for field in [
+                "project_id",
+                "kind",
+                "id",
+                "version",
+                "generation",
+                "size_bytes",
+                "content_type",
+            ] {
+                let mut crossed = data.clone();
+                crossed["source"][field] = match field {
+                    "version" | "generation" | "size_bytes" => json!(3),
+                    "content_type" => json!("application/zip"),
+                    _ => json!("other"),
+                };
+                assert!(
+                    grant("project", &req, &crossed).is_err(),
+                    "crossed {field} was accepted"
+                );
+            }
         }
     }
 }
