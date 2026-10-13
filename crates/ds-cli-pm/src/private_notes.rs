@@ -40,7 +40,7 @@ const ID: Arg = Arg::value(
 const LIMIT: Arg = Arg::value(
     "limit",
     "<count>",
-    "1-100 source rows on a list page or displayed history rows; owner continuation/completeness remains explicit.",
+    "Source rows to acquire on this page (1-100); filtering may return fewer and continuation stays explicit.",
 )
 .default("50");
 const TERM: Arg = Arg::value(
@@ -51,7 +51,7 @@ const TERM: Arg = Arg::value(
 const CURSOR: Arg = Arg::value(
     "cursor",
     "<cursor>",
-    "Opaque next_cursor from the same account and inclusion flags; fetches only this explicit page.",
+    "Opaque next_cursor from the same account and selected note/query; fetches only this explicit page.",
 );
 const ARCHIVED: Arg = Arg::switch(
     "include-archived",
@@ -142,9 +142,9 @@ pub static VERSIONS: Command = declaration(
     "notes.versions",
     &["notes", "versions"],
     "List one private note's available revision metadata.",
-    "Reads only selected history metadata. Enumeration completeness and fully retained history are separate: a legacy current observation, a gap or truncation never claims a recoverable full chain. At most 100 owner descriptors are acquired.",
+    "Reads one immutable version-header page, with --limit and explicit --cursor; no eager next page. The first observed head remains the cursor cutoff if the live note changes. Enumeration complete/truncated is separate from history_chain_status: unseen history is unknown, observed missing/unretained history is incomplete, and complete requires a fully proven retained chain. Never fetches historical bodies.",
     Effect::ReadOnly,
-    &[NOTE, LIMIT, crate::LANE_ARG],
+    &[NOTE, LIMIT, CURSOR, crate::LANE_ARG],
 );
 pub static READ_VERSION: Command = declaration(
     "notes.version.read",
@@ -203,7 +203,11 @@ fn action(inputs: &Inputs, command: &str) -> Result<Action, Failure> {
             id: note()?,
             expected_version: integer(inputs, "version")?,
         },
-        "notes.versions" => Action::Versions { id: note()? },
+        "notes.versions" => Action::Versions {
+            id: note()?,
+            limit: limit(inputs)?,
+            cursor: inputs.value("cursor").map(str::to_owned),
+        },
         "notes.version.read" => Action::ReadVersion {
             id: note()?,
             source_version: integer(inputs, "source-version")?,
@@ -284,11 +288,6 @@ fn project_list(data: Value, term: Option<&str>) -> Value {
         "search_scope":"title_folder_tags_on_page","term":term})
 }
 fn execute(inputs: &Inputs, command: &str) -> Result<Value, Failure> {
-    let max = if matches!(command, "notes.list" | "notes.versions") {
-        limit(inputs)?
-    } else {
-        0
-    };
     let selected_term = if command == "notes.list" {
         term(inputs)?
     } else {
@@ -301,14 +300,13 @@ fn execute(inputs: &Inputs, command: &str) -> Result<Value, Failure> {
         return Ok(project_list(data, selected_term.as_deref()));
     }
     if command == "notes.versions" {
-        let versions = data["versions"]
-            .as_array()
-            .expect("verified history metadata");
-        let count = versions.len();
-        data["versions"] = json!(versions.iter().take(max).collect::<Vec<_>>());
-        data["more"] = json!(count > max);
-        data["acquired"] = json!(count);
-        // Preserve the owner's history proof; more concerns only this projection.
+        data["returned"] = json!(
+            data["versions"]
+                .as_array()
+                .expect("verified version page")
+                .len()
+        );
+        data["total_unknown"] = json!(true);
     }
     Ok(data)
 }
