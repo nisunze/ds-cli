@@ -1,11 +1,11 @@
 //! Thin native adapters for recoverable shared Project Notes.
 use ds_cli_contract::{
-    Context, Failure, Inputs,
     spec::{Arg, Authority, Chapter, Command, Effect, Execution, Refusal, Requires},
+    Context, Failure, Inputs,
 };
 use ds_client_core::project_management::Command as PM;
 use ds_command_kernel::project_management::project_notes as owner;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::io::Read;
 pub(super) const INPUT:Arg=Arg::value("input","<json-file>","Closed native note request JSON, at most 256 KiB; see the Shared Project Notes request examples in docs/reference/pm.md. No transport envelope, author or timestamp overrides.").required();
 const NOTE: Arg = Arg::value("note", "<note-id>", "Exact same-project note identity.").required();
@@ -179,11 +179,33 @@ pub static READ: Command = {
     command
 };
 
-pub static QUERY: Command = descriptor(
+const OFFLINE_PAGE: Arg = Arg::switch("offline", "Read only the exact retained last page with zero network; no implicit next page, permissions are capture-time and source freshness is unknown.");
+const PAGE_REFUSALS: &[Refusal] = &crate::correspondence_refusals::<28>(&[
+        INVALID, UNREADABLE, MIGRATION, HISTORY, SOURCE_CHANGED,
+        Refusal { code:"pm_offline_acquisition_required", when:"no exact retained page matches protected identity/project or filters, cursor, limit and scope, or access was denied",
+            remedy:"read the exact page online once; another selection replaces this single page room" },
+        Refusal { code:"pm_retained_unavailable", when:"the bounded retained page cannot be admitted or persisted",
+            remedy:"inspect owner-only DS data and repeat the exact intentional online read" },
+    ]);
+
+const fn retained_page_descriptor(
+    id: &'static str,
+    path: &'static [&'static str],
+    summary: &'static str,
+    purpose: &'static str,
+    effect: Effect,
+    args: &'static [Arg],
+) -> Command {
+    let mut command = descriptor(id, path, summary, purpose, effect, args);
+    command.refusals = PAGE_REFUSALS;
+    command
+}
+
+pub static QUERY: Command = retained_page_descriptor(
     "pm.note.query",
     &["pm", "note", "query"],
     "Search shared notes or read direct subnotes with bounded filters.",
-    "Read one bounded same-project note page; --parent selects direct subnotes without recursive acquisition. Use normalized topical tags and explicit any/all matching. Lifecycle filters do not alter topical tags. Sort is creation/update time only, not authority or automatic supersession. Return scan/completeness/truncation explicitly; a partial empty page is not proof of no context.",
+    "Online reads retain one fixed last-query page. Explicit --offline reuses only its exact filters/cursor/limit under the same protected account/project, with unknown freshness and capture-time permissions. Read one bounded same-project note page; --parent selects direct subnotes without recursive acquisition. Use normalized topical tags and explicit any/all matching. Lifecycle filters do not alter topical tags. Sort is creation/update time only, not authority or automatic supersession. Return scan/completeness/truncation explicitly; a partial empty page is not proof of no context.",
     Effect::ReadOnly,
     &[
         PARENT,
@@ -196,17 +218,18 @@ pub static QUERY: Command = descriptor(
         DIRECTION,
         CURSOR,
         LIMIT,
+        OFFLINE_PAGE,
         crate::LANE_ARG,
         crate::PROJECT_ARG,
     ],
 );
-pub static CONTEXT: Command = descriptor(
+pub static CONTEXT: Command = retained_page_descriptor(
     "pm.note.context",
     &["pm", "note", "context"],
     "Retrieve applicable active rulings and scoped conflicts before acting.",
-    "Consumes a closed context JSON: query fields terms/tags/tag_match/note_types/lifecycle/sort/direction/cursor/limit and optional scope. The existing project owner combines text relevance and affected objects/structures/conditions; exact-tag-only lookup is insufficient. Routine context is active only, scans at most 200 and reports incomplete results. Potential overlapping issue/scope conflicts retain exact sources and explicit supersession; newest does not win. References are inspected on demand, never fetched speculatively.",
+    "Online reads retain one fixed last-context page; explicit --offline reuses only the exact request and captured context revision, without network or session restoration. Captured incomplete or migration-required context remains incomplete. Consumes a closed context JSON: query fields terms/tags/tag_match/note_types/lifecycle/sort/direction/cursor/limit and optional scope. The existing project owner combines text relevance and affected objects/structures/conditions; exact-tag-only lookup is insufficient. Routine context is active only, scans at most 200 and reports incomplete results. Potential overlapping issue/scope conflicts retain exact sources and explicit supersession; newest does not win. References are inspected on demand, never fetched speculatively.",
     Effect::ReadOnly,
-    &[INPUT, crate::LANE_ARG, crate::PROJECT_ARG],
+    &[INPUT, OFFLINE_PAGE, crate::LANE_ARG, crate::PROJECT_ARG],
 );
 pub static UPDATE: Command = descriptor(
     "pm.note.update",
@@ -330,10 +353,20 @@ fn query_request(i: &Inputs) -> Result<owner::Query, Failure> {
     Ok(q)
 }
 pub fn query(i: &Inputs, _: &Context) -> Result<Value, Failure> {
-    ask(i, owner::Command::Query(query_request(i)?))
+    ds_cli_auth::pm_graph_source::read_query(
+        i.require("lane")?,
+        i.require("project")?,
+        &query_request(i)?,
+        i.switch("offline"),
+    )
 }
 pub fn context(i: &Inputs, _: &Context) -> Result<Value, Failure> {
-    ask(i, owner::Command::Context(selected(i)?))
+    ds_cli_auth::pm_graph_source::read_context(
+        i.require("lane")?,
+        i.require("project")?,
+        &selected(i)?,
+        i.switch("offline"),
+    )
 }
 pub fn versions(i: &Inputs, _: &Context) -> Result<Value, Failure> {
     ask(
@@ -493,18 +526,35 @@ mod tests {
         assert_eq!(i.value("note"), Some("n"));
         assert_eq!(i.value("version"), Some("2"));
         assert_eq!(i.value("claim"), Some("c"));
-        assert!(
-            READ.refusals
-                .iter()
-                .any(|r| r.code == "pm_offline_acquisition_required")
-        );
-        assert!(
-            READ.refusals
-                .iter()
-                .any(|r| r.code == "pm_retained_unavailable")
-        );
+        assert!(READ
+            .refusals
+            .iter()
+            .any(|r| r.code == "pm_offline_acquisition_required"));
+        assert!(READ
+            .refusals
+            .iter()
+            .any(|r| r.code == "pm_retained_unavailable"));
         assert!(!parse(&READ, &["--project", "p", "--note", "n"]).switch("offline"));
-        assert!(!CONTEXT.args.iter().any(|a| a.name == "offline"));
-        assert!(!QUERY.args.iter().any(|a| a.name == "offline"));
+        for command in [&CONTEXT, &QUERY] {
+            assert!(command.args.iter().any(|a| a.name == "offline"));
+            assert!(command
+                .refusals
+                .iter()
+                .any(|r| r.code == "pm_offline_acquisition_required"));
+            assert!(command
+                .refusals
+                .iter()
+                .any(|r| r.code == "pm_retained_unavailable"));
+        }
+        assert!(parse(
+            &QUERY,
+            &["--project", "p", "--cursor", "exact-boundary", "--offline"]
+        )
+        .switch("offline"));
+        assert!(parse(
+            &CONTEXT,
+            &["--project", "p", "--input", "not-opened.json", "--offline"]
+        )
+        .switch("offline"));
     }
 }

@@ -2,7 +2,7 @@
 use super::*;
 use ds_client_core::project_management::Command;
 use ds_command_kernel::project_management::project_notes::{
-    Command as NoteCommand, Read as NoteRead,
+    Command as NoteCommand, Context as NoteContext, Query as NoteQuery, Read as NoteRead,
 };
 use ds_layer_store::pm_graph_catalogue::{self, Binding, Source};
 fn local(message: impl ToString) -> Failure {
@@ -33,7 +33,7 @@ struct Provider<'a> {
     project: &'a str,
     fence: LayerScopeFence,
     binding: Binding,
-    note: Option<NoteRead>,
+    note: Option<NoteCommand>,
     task: Option<pm_graph_catalogue::TaskRead>,
 }
 impl Source for Provider<'_> {
@@ -91,7 +91,7 @@ impl Source for Provider<'_> {
             self.note
                 .as_ref()
                 .map_or(Command::Graph, |selection| Command::ProjectNotes {
-                    command: NoteCommand::Read(selection.clone()),
+                    command: selection.clone(),
                 });
         let captured = project_management_for_project(self.lane, self.project, &command)?;
         if captured.identity().uid() != self.binding.uid
@@ -111,7 +111,7 @@ impl Source for Provider<'_> {
             return verify_task_capture(self.project, selection, value);
         }
         if let Some(selection) = &self.note {
-            NoteCommand::Read(selection.clone())
+            selection
                 .verify_response(self.project, value)
                 .map_err(|why| local(why))
         } else {
@@ -137,7 +137,39 @@ pub fn read_note(
     NoteCommand::Read(selection.clone())
         .payload(project)
         .map_err(|why| Failure::invalid("project_note_invalid", why))?;
-    selected_read(lane, project, Some(selection.clone()), None, offline)
+    selected_read(
+        lane,
+        project,
+        Some(NoteCommand::Read(selection.clone())),
+        None,
+        offline,
+    )
+}
+/// Read or retain one exact shared-note query page, never all pages implicitly.
+pub fn read_query(
+    lane: &str,
+    project: &str,
+    selection: &NoteQuery,
+    offline: bool,
+) -> Result<Value, Failure> {
+    let command = NoteCommand::Query(selection.clone());
+    command
+        .payload(project)
+        .map_err(|why| Failure::invalid("project_note_invalid", why))?;
+    selected_read(lane, project, Some(command), None, offline)
+}
+/// Reuse one exact scoped context; this receipt does not establish Graph completeness.
+pub fn read_context(
+    lane: &str,
+    project: &str,
+    selection: &NoteContext,
+    offline: bool,
+) -> Result<Value, Failure> {
+    let command = NoteCommand::Context(selection.clone());
+    command
+        .payload(project)
+        .map_err(|why| Failure::invalid("project_note_invalid", why))?;
+    selected_read(lane, project, Some(command), None, offline)
 }
 /// One bounded task read uses canonical Graph and selected records receipts; timeline is explicit.
 pub fn read_task(
@@ -247,7 +279,7 @@ fn verify_task_capture(
 fn selected_read(
     lane: &str,
     project: &str,
-    note: Option<NoteRead>,
+    note: Option<NoteCommand>,
     task: Option<pm_graph_catalogue::TaskRead>,
     offline: bool,
 ) -> Result<Value, Failure> {
@@ -267,7 +299,7 @@ fn selected_read(
         pm_graph_catalogue::consume_task(&root, &binding, selection, offline, time, &mut source)
     } else {
         match &note {
-            Some(selection) => pm_graph_catalogue::consume_note(
+            Some(NoteCommand::Read(selection)) => pm_graph_catalogue::consume_note(
                 &root,
                 &binding,
                 selection,
@@ -275,6 +307,27 @@ fn selected_read(
                 time,
                 &mut source,
             ),
+            Some(NoteCommand::Query(selection)) => pm_graph_catalogue::consume_query(
+                &root,
+                &binding,
+                selection,
+                offline,
+                time,
+                &mut source,
+            ),
+            Some(NoteCommand::Context(selection)) => pm_graph_catalogue::consume_context(
+                &root,
+                &binding,
+                selection,
+                offline,
+                time,
+                &mut source,
+            ),
+            Some(_) => {
+                return Err(local(
+                    "only explicit read selections may enter retained PM rooms",
+                ))
+            }
             None => pm_graph_catalogue::consume(&root, &binding, offline, time, &mut source),
         }
     };
@@ -559,6 +612,41 @@ mod tests {
             id: "r".into(),
             expected_version: 1,
             data: serde_json::Map::new()
+        }));
+    }
+    #[test]
+    fn note_page_bounds_refuse_before_any_credential_or_project_acquisition() {
+        let query: NoteQuery=serde_json::from_value(json!({"terms":[],"tags":[],"tag_match":"any","note_types":[],"lifecycle":["active"],"sort":"updated","direction":"desc","limit":51})).unwrap();
+        assert_eq!(
+            read_query("invalid-unused-lane", "p", &query, false)
+                .unwrap_err()
+                .code(),
+            "project_note_invalid"
+        );
+        assert_eq!(
+            read_context(
+                "invalid-unused-lane",
+                "p",
+                &NoteContext {
+                    query: query.clone(),
+                    scope: None
+                },
+                true
+            )
+            .unwrap_err()
+            .code(),
+            "project_note_invalid"
+        );
+        let mut valid = query;
+        valid.limit = 20;
+        assert!(!may_write(&Command::ProjectNotes {
+            command: NoteCommand::Query(valid.clone())
+        }));
+        assert!(!may_write(&Command::ProjectNotes {
+            command: NoteCommand::Context(NoteContext {
+                query: valid,
+                scope: None
+            })
         }));
     }
 }
