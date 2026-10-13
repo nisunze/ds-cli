@@ -1,13 +1,13 @@
-//! Thin declarations and argument binding for native PDF semantic derivatives.
+//! Thin declarations and argument binding for native document semantic derivatives.
 use ds_cli_contract::spec::{
     Arg, Authority, Chapter, Command, Effect, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Failure, Inputs};
 use ds_command_kernel::{
-    asset_preview::{REQUEST_SCHEMA, Request, Retention},
+    asset_preview::{Request, Retention, REQUEST_SCHEMA},
     assets::semantic::{self, Extractor},
 };
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 const MANIFEST: Arg = Arg::value(
     "manifest",
     "<native-export.json>",
@@ -22,7 +22,7 @@ const OUT: Arg = Arg::value(
 const VERSION: Arg = Arg::value(
     "extractor-version",
     "<installed-version>",
-    "Actual external MarkItDown version used for this selected PDF.",
+    "Actual external MarkItDown version used for this selected document.",
 )
 .required();
 const OPTIONS: Arg = Arg::value(
@@ -34,7 +34,7 @@ const OWN: [Refusal; 7] = [
     Refusal {
         code: "asset_semantic_invalid",
         when: "pins, native manifest, source or external Markdown file are malformed, changed or unsupported",
-        remedy: "use unchanged semantic-export JSON and selected PDF/nonempty UTF-8 Markdown; no other format is admitted",
+        remedy: "use unchanged semantic-export JSON and selected document/nonempty UTF-8 Markdown; no other format is admitted",
     },
     Refusal {
         code: "asset_semantic_offline_absent",
@@ -102,7 +102,7 @@ const fn leaf(
             "document extraction",
             "extract once",
             "MarkItDown",
-            "PDF Markdown",
+            "document Markdown",
         ],
         requires: Requires::Server,
         availability: ds_cli_auth::native_availability,
@@ -111,8 +111,8 @@ const fn leaf(
 pub static EXPORT: Command = leaf(
     "assets.semantic.export",
     &["assets", "semantic", "export"],
-    "Hand one exact PDF to external MarkItDown with a native manifest.",
-    "Acquires or reuses the selected whole PDF in the protected native room. Writes one new PDF and a typed JSON manifest carrying measured source/version/generation and actual extractor pins. Run MarkItDown externally on that PDF using the declared version/options, then use semantic import. DS never runs an extractor. Offline requires all retained source pins and makes zero source requests.",
+    "Hand one exact PDF, DOCX or XLSX document to external MarkItDown with a native manifest.",
+    "Acquires or reuses the selected whole document in the protected native room (PDF at most 32 MiB; DOCX/XLSX at most 8 MiB). Writes one new document and a typed JSON manifest carrying measured source/version/generation and actual extractor pins. Run MarkItDown externally on that document using the declared version/options, then use semantic import. DS never runs an extractor. Offline requires all retained source pins and makes zero source requests.",
     Effect::LocalFileWrite,
     &[
         crate::PROJECT_ARG,
@@ -120,7 +120,7 @@ pub static EXPORT: Command = leaf(
         Arg::value(
             "asset",
             "<asset-id>",
-            "Catalogue PDF or sys:pm_attachment:<id>.",
+            "Catalogue PDF/DOCX/XLSX or sys:pm_attachment:<id>.",
         )
         .required(),
         OUT.required(),
@@ -133,12 +133,12 @@ pub static EXPORT: Command = leaf(
         super::retained_preview::SHA,
         super::retained_preview::RETENTION,
     ],
-    "selection, PDF path and reusable native manifest path; original source is unchanged.",
+    "selection, document path and reusable native manifest path; original source is unchanged.",
 );
 pub static LOOKUP: Command = leaf(
     "assets.semantic.lookup",
     &["assets", "semantic", "lookup"],
-    "Discover whether this exact PDF already has an extracted derivative.",
+    "Discover whether this exact PDF, DOCX or XLSX document already has an extracted derivative.",
     "Reads the selected export manifest and one exact source-authorized derivative key. found:false means no selected derivative; uploading remains partial and unreadable. Unsupported/denied/stale sources refuse truthfully. No bytes are downloaded and no extraction or upload occurs.",
     Effect::ReadOnly,
     &[crate::PROJECT_ARG, crate::LANE_ARG, MANIFEST],
@@ -147,7 +147,7 @@ pub static LOOKUP: Command = leaf(
 pub static READ: Command = leaf(
     "assets.semantic.read",
     &["assets", "semantic", "read"],
-    "Read this PDF's checked Markdown, reusing the retained derivative.",
+    "Read this document's checked Markdown, reusing the retained derivative.",
     "Consumes the native export manifest and exact scoped retained derivative first. Offline makes zero source requests and refuses absent/expired/revoked data. Explicit refresh asks current source authority once and downloads the immutable committed generation, verifies digest/size/UTF-8, and retains it in the shared native room. A capture is not proof of current membership/cloud freshness. Inline text is bounded to4096 characters; --out writes the full unchanged Markdown to a new .md file. No extraction occurs.",
     Effect::LocalFileWrite,
     &[
@@ -170,8 +170,8 @@ pub static READ: Command = leaf(
 pub static IMPORT: Command = leaf(
     "assets.semantic.import",
     &["assets", "semantic", "import"],
-    "Retain externally extracted Markdown against its exact native PDF.",
-    "Reads the unchanged native export manifest and one selected absolute .md file (nonempty UTF-8, at most16MiB). Proves the retained original PDF receipt, measures output SHA/bytes, prepares through the source's authority, uploads through its issued grant and commits the exact Bulk manifest. Ready replay does not upload again. Requires --yes. No extractor execution or source/catalogue version mutation occurs.",
+    "Retain externally extracted Markdown against its exact native document.",
+    "Reads the unchanged native export manifest and one selected absolute .md file (nonempty UTF-8, at most16MiB). Proves the retained original document receipt, measures output SHA/bytes, prepares through the source's authority, uploads through its issued grant and commits the exact Bulk manifest. Ready replay does not upload again. Requires --yes. No extractor execution or source/catalogue version mutation occurs.",
     Effect::GlobalWrite,
     &[
         crate::PROJECT_ARG,
@@ -201,7 +201,7 @@ fn invalid(message: impl Into<String>) -> Failure {
     Failure::invalid("asset_semantic_invalid", message).remedy(OWN[0].remedy)
 }
 pub fn export(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
-    let request:Request=serde_json::from_value(json!({"schema":REQUEST_SCHEMA,"asset_id":inputs.require("asset")?,"expected_revision":inputs.value("expected-revision"),"expected_generation":inputs.value("expected-generation"),"expected_sha256":inputs.value("expected-sha256"),"offline":inputs.switch("offline"),"retention":inputs.value("preview-retention").unwrap_or("24h")})).map_err(|_|invalid("Selected PDF request is malformed."))?;
+    let request:Request=serde_json::from_value(json!({"schema":REQUEST_SCHEMA,"asset_id":inputs.require("asset")?,"expected_revision":inputs.value("expected-revision"),"expected_generation":inputs.value("expected-generation"),"expected_sha256":inputs.value("expected-sha256"),"offline":inputs.switch("offline"),"retention":inputs.value("preview-retention").unwrap_or("24h")})).map_err(|_|invalid("Selected document request is malformed."))?;
     let extractor = Extractor {
         name: "markitdown".into(),
         version: inputs.require("extractor-version")?.into(),
@@ -263,12 +263,10 @@ mod tests {
         for command in [&EXPORT, &LOOKUP, &READ, &IMPORT] {
             assert_eq!(command.authority, Authority::HeadlessProject);
             assert!(command.args.iter().any(|arg| arg.name == "manifest"));
-            assert!(
-                !command
-                    .args
-                    .iter()
-                    .any(|arg| matches!(arg.name, "executable" | "command" | "url"))
-            );
+            assert!(!command
+                .args
+                .iter()
+                .any(|arg| matches!(arg.name, "executable" | "command" | "url")));
         }
         assert_eq!(EXPORT.effect, Effect::LocalFileWrite);
         assert_eq!(IMPORT.effect, Effect::GlobalWrite);

@@ -1,17 +1,16 @@
 //! Controlled source previews through the established native credential fence
 //! and common file room. Offline consumes no restored session or source grant.
 use crate::{
-    LayerScopeFence, NativeTransport, capture_layer_scope_fence_for_project,
-    headless_identity_for_named_project, headless_named_project,
-    verify_layer_scope_fence_for_project,
+    capture_layer_scope_fence_for_project, headless_identity_for_named_project,
+    headless_named_project, verify_layer_scope_fence_for_project, LayerScopeFence, NativeTransport,
 };
 use ds_cli_contract::Failure;
 use ds_client_core::asset_preview_source::{Grant, TransferControl, TransferError};
 use ds_command_kernel::asset_preview::{Request, SourceProof};
 use ds_project_data::preview_room::Room;
 use ds_report_host::{
-    HostFailure,
     asset_preview::{self, Control, Phase, Receipt, SourceFailure, SourceProvider},
+    HostFailure,
 };
 use std::{
     cell::RefCell,
@@ -217,7 +216,7 @@ pub fn acquire_controlled(
             "The retained preview project/source reference or pins are invalid.",
         )
         .remedy(
-            "Use one exact selected PDF; offline needs its retained revision, generation and SHA.",
+            "Use one exact selected document; offline needs its retained revision, generation and SHA.",
         )
     })?;
     let (room, control) = captured_room(lane, project, cancelled, on_progress)?;

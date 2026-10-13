@@ -1,4 +1,4 @@
-//! Actual CLI descriptors and no-effect refusal boundaries for PDF derivatives.
+//! Actual CLI descriptors and no-effect refusal boundaries for pinned document derivatives.
 mod common;
 #[test]
 fn semantic_lifecycle_describes_fixed_native_effects_and_refuses_before_source_use() {
@@ -15,13 +15,16 @@ fn semantic_lifecycle_describes_fixed_native_effects_and_refuses_before_source_u
         assert_eq!(command["id"], id);
         assert_eq!(command["effect"], effect);
         assert_eq!(command["authority"], "headless_project");
-        assert!(
-            command["inputs"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .any(|arg| arg["name"] == "manifest")
-        );
+        if name == "export" {
+            let description = command.to_string();
+            assert!(description.contains("DOCX") && description.contains("XLSX"));
+            assert!(description.contains("externally"));
+        }
+        assert!(command["inputs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|arg| arg["name"] == "manifest"));
     }
     let (value, code) = common::json(&[
         "assets",

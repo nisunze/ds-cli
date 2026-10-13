@@ -8,12 +8,12 @@ use ds_command_kernel::{
     assets::semantic::{self, Command, Extractor, Prepare},
 };
 use ds_report_host::{
-    HostFailure,
     asset_preview::Control,
     document_semantic as host,
     preview_artifact::{self, Retention},
+    HostFailure,
 };
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::{
     fs,
     io::{Read, Write},
@@ -21,7 +21,7 @@ use std::{
     sync::atomic::AtomicBool,
 };
 fn invalid(message: impl Into<String>) -> Failure {
-    Failure::invalid("asset_semantic_invalid",message).remedy("Use the unchanged native semantic-export manifest and one selected PDF/UTF-8 Markdown file.")
+    Failure::invalid("asset_semantic_invalid",message).remedy("Use the unchanged native semantic-export manifest and one selected document/UTF-8 Markdown file.")
 }
 fn failure(error: HostFailure) -> Failure {
     match error.code.as_str() {
@@ -32,7 +32,7 @@ fn failure(error: HostFailure) -> Failure {
             .remedy("Repeat under the intended native account and project."),
         "asset_preview_offline_absent" => {
             Failure::unavailable("asset_preview_offline_absent", error.message)
-                .remedy("Acquire the exact selected PDF online first.")
+                .remedy("Acquire the exact selected document online first.")
         }
         "print_preview_artifact_expired" => {
             Failure::unavailable("print_preview_artifact_expired", error.message)

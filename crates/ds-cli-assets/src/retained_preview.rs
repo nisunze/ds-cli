@@ -5,9 +5,9 @@ use ds_command_kernel::asset_preview::{Request, REQUEST_SCHEMA};
 use serde_json::{json, Value};
 pub const RETAIN: Arg = Arg::switch(
     "retain",
-    "Acquire one whole PDF through the shared native file room; return exact source/file pins.",
+    "Acquire one whole PDF, DOCX or XLSX document through the shared native file room (PDF 32 MiB; Office 8 MiB); return exact source/file pins.",
 );
-pub const OFFLINE:Arg=Arg::switch("offline","Consume retained PDF only; requires --retain and all three expected source pins; zero source/auth refresh calls.");
+pub const OFFLINE:Arg=Arg::switch("offline","Consume retained document only; requires --retain and all three expected source pins; zero source/auth refresh calls.");
 pub const REVISION: Arg = Arg::value(
     "expected-revision",
     "<native-revision>",
@@ -37,7 +37,7 @@ pub const REFUSALS: [Refusal; 16] = [
     },
     Refusal {
         code: "asset_preview_source_invalid",
-        when: "source proof is not an exact bounded PDF in this project",
+        when: "source proof is not an exact bounded PDF, DOCX or XLSX document in this project",
         remedy: "re-read the selected source or use its governed download",
     },
     Refusal {
@@ -53,7 +53,7 @@ pub const REFUSALS: [Refusal; 16] = [
     Refusal {
         code: "asset_preview_offline_absent",
         when: "the exact source is absent, expired or revoked locally",
-        remedy: "open that exact PDF online under this native account",
+        remedy: "open that exact document online under this native account",
     },
     Refusal {
         code: "asset_preview_acquire_failed",
@@ -62,8 +62,8 @@ pub const REFUSALS: [Refusal; 16] = [
     },
     Refusal {
         code: "asset_preview_decode_failed",
-        when: "the kernel refuses the exact PDF bytes",
-        remedy: "review or download a valid PDF through its source",
+        when: "the kernel refuses the exact document bytes",
+        remedy: "review or download a valid admitted document through its source",
     },
     Refusal {
         code: "asset_preview_cancelled",
@@ -131,10 +131,10 @@ pub fn request(inputs: &Inputs) -> Result<Option<Request>, Failure> {
         .any(|name| inputs.value(name).is_some())
     {
         return Err(invalid(
-            "--retain selects one whole PDF without member/sheet/text/page/grid options.",
+            "--retain selects one whole PDF, DOCX or XLSX document without member/sheet/text/page/grid options.",
         ));
     }
-    let request:Request=serde_json::from_value(json!({"schema":REQUEST_SCHEMA,"asset_id":inputs.require("asset")?,"expected_revision":inputs.value("expected-revision"),"expected_generation":inputs.value("expected-generation"),"expected_sha256":inputs.value("expected-sha256"),"offline":inputs.switch("offline"),"retention":inputs.value("preview-retention").unwrap_or("24h")})).map_err(|_|invalid("Retained PDF arguments are invalid."))?;
+    let request:Request=serde_json::from_value(json!({"schema":REQUEST_SCHEMA,"asset_id":inputs.require("asset")?,"expected_revision":inputs.value("expected-revision"),"expected_generation":inputs.value("expected-generation"),"expected_sha256":inputs.value("expected-sha256"),"offline":inputs.switch("offline"),"retention":inputs.value("preview-retention").unwrap_or("24h")})).map_err(|_|invalid("Retained document arguments are invalid."))?;
     request.validate().map_err(|e| {
         Failure::invalid("asset_preview_pins_invalid", e.message).remedy(REFUSALS[0].remedy)
     })?;
@@ -152,7 +152,7 @@ pub fn run(inputs: &Inputs, request: &Request) -> Result<Value, Failure> {
     serde_json::to_value(result).map_err(|_| {
         Failure::internal(
             "assets_unreadable",
-            "The native PDF receipt could not be encoded.",
+            "The native document receipt could not be encoded.",
         )
     })
 }
