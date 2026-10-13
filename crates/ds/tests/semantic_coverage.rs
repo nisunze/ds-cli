@@ -721,7 +721,7 @@ const EXPECTED: &[(&str, &str, &str)] = &[
         "headless_project",
     ),
     ("dsgrid-exchange.convert", "local_file_write", "none"),
-    ("dsgrid-exchange.inspect", "discovery", "none"),
+    ("dsgrid-exchange.inspect", "read_only", "none"),
     ("dsgrid-exchange.plan", "discovery", "none"),
     ("dsgrid-exchange.sync", "local_file_write", "none"),
     // Already-shipping local model and PLS reads also need explicit pins.

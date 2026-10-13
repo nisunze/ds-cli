@@ -82,6 +82,21 @@ its reason says so.
 
 Nothing is converted and nothing is written.
 
+`inspect --material-history --source ./model.dsgrid --limit 50 --output json`
+reads the retained original and round-trip PLS-CADD backups through verified
+package assets. An explicit `.bak`, `.cri`, or folder of CRI files is also
+accepted. It reports exact source-file, backup and CRI SHA-256 hashes, authored
+member paths, native version/units and the raw final-after-creep/load selectors.
+These describe retained source bytes; they do not establish current typed
+model bindings. No model tables or libraries are decoded or acquired.
+
+Missing original/round-trip roles remain explicit. Malformed native text,
+ambiguous assets, digest mismatches and undefined history weather references
+refuse with named remedies. Each history list is capped by `--limit` (default
+50, range 1..5000), with full totals and omitted counts. Entries beyond the
+bound are still validated; truncation cannot hide a native parse failure.
+Authored selectors above 4096 bytes refuse instead of being shortened.
+
 For a characterized GIS archive/document, `inspect` also returns every layer's
 name, feature count, geometry type, source CRS and normalized CRS. A zipped
 Shapefile, GeoJSON, KML or KMZ is classified from its content as

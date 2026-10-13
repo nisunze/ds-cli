@@ -24,10 +24,11 @@
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Requires,
+    Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
 use ds_grid_exchange::conversion::{CapabilityState, conversion_capabilities, inspect_sources};
+use ds_grid_exchange::material_history::inspect_material_history;
 use serde_json::{Value, json};
 
 use crate::sources;
@@ -35,16 +36,19 @@ use crate::sources;
 pub static COMMAND: Command = Command {
     id: "dsgrid-exchange.inspect",
     path: &["dsgrid-exchange", "inspect"],
-    contract: 1,
-    summary: "Classify source files and report what can be converted from them.",
+    contract: 2,
+    summary: "Classify source files, or read retained native material-history evidence.",
     purpose: "\
 Answers what a pile of engineering files actually is, and what the engine can \
 do with it. Each source is classified and digested; the result carries the \
 capability matrix — every conversion this set supports, every one it does not, \
 and the reason. Nothing is converted and nothing is written: this is the call \
-that decides whether a conversion is worth attempting.",
+that decides whether a conversion is worth attempting. With --material-history, \
+read only retained original/round-trip backups or explicit CRI sources: exact \
+byte hashes, native version/units and authored creep/load selectors. This \
+projection does not infer or author model bindings.",
     chapter: Chapter::GridModel,
-    effect: Effect::Discovery,
+    effect: Effect::ReadOnly,
     authority: Authority::None,
     execution: Execution::Sync,
     args: &[
@@ -53,15 +57,34 @@ that decides whether a conversion is worth attempting.",
             "blocked",
             "List blocked capabilities too, with their reasons.",
         ),
+        Arg::switch(
+            "material-history",
+            "Read retained native creep/load selectors instead of conversion capabilities.",
+        ),
+        Arg::value(
+            "limit",
+            "<1..5000>",
+            "Cap each material-history list; totals and omitted counts remain explicit.",
+        )
+        .default("50"),
     ],
     output: "\
 One entry per source with its classification, digest, member count and any \
 version or units evidence the engine recovered; then the capabilities, \
-available ones by default. GIS sources also list their layers, geometry, feature counts and CRS evidence.",
+available ones by default. GIS sources also list their layers, geometry, feature counts and CRS evidence. \
+With --material-history: bounded sources, original/round-trip backups and CRI \
+history selectors, with exact source/backup/CRI SHA-256, authored filenames, \
+explicit missing backups and per-list totals/omitted counts. Retained selectors \
+are source evidence, not current model bindings.",
     examples: &[
         Example {
             command: "ds dsgrid-exchange inspect --source ./workspace --output json",
             note: "A PLS-CADD workspace directory, read as one folder source.",
+            runnable: false,
+        },
+        Example {
+            command: "ds dsgrid-exchange inspect --source ./model.dsgrid --material-history --limit 50 --output json",
+            note: "Read retained native history without importing or converting the model.",
             runnable: false,
         },
         Example {
@@ -70,9 +93,33 @@ available ones by default. GIS sources also list their layers, geometry, feature
             runnable: false,
         },
     ],
-    refusals: sources::SHARED_REFUSALS,
+    refusals: &[
+        sources::SHARED_REFUSALS[0],
+        sources::SHARED_REFUSALS[1],
+        sources::SHARED_REFUSALS[2],
+        Refusal {
+            code: "invalid_limit",
+            when: "--limit is outside 1..5000",
+            remedy: "pass --limit 1..5000",
+        },
+        Refusal {
+            code: "retained_backup_missing",
+            when: "a package has neither retained original nor round-trip backup",
+            remedy: "select a package retaining its native backup, or the explicit backup/CRI source",
+        },
+        Refusal {
+            code: "retained_package_invalid",
+            when: "a selected retained asset is missing, ambiguous or fails byte verification",
+            remedy: "use the exact intact package; resolve missing, ambiguous or mismatched retained assets",
+        },
+        Refusal {
+            code: "native_history_parse_failed",
+            when: "a native backup or CRI history cannot be parsed, even beyond the output bound",
+            remedy: "select intact native CRI/backup bytes with declared history weather cases; inspect the named parse failure",
+        },
+    ],
     reference: Some("docs/reference/dsgrid-exchange.md"),
-    search: &[],
+    search: &["creep", "load history", "retained criteria"],
     requires: Requires::Server,
     availability: available,
 };
@@ -108,7 +155,22 @@ pub const fn state_token(state: CapabilityState) -> &'static str {
 }
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
+    let history_limit = if inputs.switch("material-history") {
+        Some(ds_cli_dsgrid::package::parse_limit(inputs.value("limit"))?)
+    } else {
+        None
+    };
     let loaded = sources::load(inputs.repeated("source"))?;
+    if let Some(limit) = history_limit {
+        let history = inspect_material_history(&loaded.sources, limit).map_err(|error| {
+            Failure::invalid(error.code(), error.to_string()).remedy(error.remedy())
+        })?;
+        return Ok(json!({
+            "material_history": history,
+            "byte_len": loaded.byte_len,
+            "warnings": loaded.warnings,
+        }));
+    }
     let inspection = inspect_sources(&loaded.sources);
     let capabilities = conversion_capabilities(&inspection);
 
@@ -166,6 +228,12 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
 }
 
 pub fn render(data: &Value) -> String {
+    if let Some(history) = data.get("material_history") {
+        return format!(
+            "Retained native material history\n{}\n",
+            serde_json::to_string_pretty(history).unwrap_or_default()
+        );
+    }
     let mut out = format!(
         "{} source(s) · {} bytes\n\n",
         data["sources"].as_array().map_or(0, Vec::len),
