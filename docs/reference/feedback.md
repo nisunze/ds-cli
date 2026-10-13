@@ -138,10 +138,14 @@ gone longest without showing this account. So listing again returns the NEXT
 chunk, never the rows already delivered, until the backlog answers
 `changed: false` — and each visit costs less than the one before. A backlog
 larger than `--limit` is therefore read once in bounded pieces; it is never
-re-read in full. The rendered answer says which of the two it is (`drains`), so
-the line under the rows reads `list again for the next chunk` on a drain and
-`narrow with --component or --query` on a lookup or an `--all` read — narrowing a drain
-would start a different question, with its own watermark, and abandon it.
+re-read in full. `drains` identifies difference/cursor continuation mode; it
+does not authorize updating the account's watermark. An explicit cursor read
+never opts into that memory, even when `drains` is true. For a truncated answer
+with `cursor_source: "request"`, continue with the NEW `cursor` from that answer;
+repeating the old cursor repeats that page. The CLI states this explicitly.
+A plain sweep says `list again for the next chunk`; a lookup or `--all` peek
+also offers continuation or narrower filters. Narrowing a sweep starts a
+different question and abandons its unfinished drain.
 
 ### A row decides on its own
 

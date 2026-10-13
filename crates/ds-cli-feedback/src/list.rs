@@ -71,8 +71,8 @@ latest note, and the id and version a close must carry.",
     ],
     output: "\
 `changed` (false means nothing moved since this account last read), `total`, \
-`complete`, `truncated`, `drains` (true when listing again returns the next \
-chunk), `cursor`, `cursor_source`, `backlog` counts on a full read, \
+`complete`, `truncated`, `drains` (difference/cursor mode, not watermark \
+mutation), `cursor`, `cursor_source`, `backlog` counts on a full read, \
 `unreadable` when a stored report could not be decoded, and `reports` rows \
 with `id`, `status`, `kind`, `severity`, `component`, \
 `surface`, `title`, `detail`, `detail_truncated`, `occurrences`, `reporters`, \
@@ -215,7 +215,11 @@ pub fn render(data: &Value) -> String {
         // narrow when it should list again is the costly mistake: a narrower
         // question is a DIFFERENT question, with its own watermark, so it
         // rescans from the top and abandons the drain half-finished.
-        if data["drains"].as_bool().unwrap_or(false) {
+        if data["cursor_source"].as_str() == Some("request") {
+            out.push_str(&format!(
+                "  … {rows} of {total} shown; continue with --cursor from this answer for the next chunk\n"
+            ));
+        } else if data["drains"].as_bool().unwrap_or(false) {
             out.push_str(&format!(
                 "  … {rows} of {total} shown; list again for the next chunk\n"
             ));
@@ -264,6 +268,25 @@ mod tests {
             "a truncated peek offers its continuation token and narrower filters: {top}"
         );
         assert!(!top.contains("list again"));
+    }
+
+    #[test]
+    fn an_explicit_cursor_page_requires_the_newly_returned_cursor() {
+        for drains in [true, false] {
+            let page = json!({
+                "view":"not_addressed","total":45,"truncated":true,"drains":drains,
+                "cursor_source":"request","cursor":"fb1.new.opaque","reports":[],
+            });
+            let text = render(&page);
+            assert!(
+                text.contains("continue with --cursor from this answer"),
+                "{text}"
+            );
+            assert!(
+                !text.contains("list again") && !text.contains("narrow with"),
+                "{text}"
+            );
+        }
     }
 
     #[test]
