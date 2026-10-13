@@ -6,13 +6,22 @@ use serde_json::{Value, json};
 
 mod backup;
 mod draft;
+mod migration;
 pub use draft::Draft;
+pub use migration::MigrationPlan;
 
 pub const MAX_RESPONSE_BYTES: usize = 8 << 20;
 pub const MAX_REQUEST_BYTES: usize = 512 << 10;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Action {
+    PrepareMigration {
+        id: String,
+    },
+    ApplyMigration {
+        plan: MigrationPlan,
+        command_id: String,
+    },
     Create {
         draft: Draft,
     },
@@ -98,6 +107,14 @@ fn invalid() -> ClientError {
 impl Action {
     pub fn validate(&self) -> Result<(), ClientError> {
         let id = match self {
+            Self::PrepareMigration { id } => Some(id),
+            Self::ApplyMigration { plan, command_id } => {
+                plan.validate()?;
+                if !command_id_valid(command_id) {
+                    return Err(invalid());
+                }
+                Some(&plan.id)
+            }
             Self::Create { draft } => {
                 draft.validate(true)?;
                 None
@@ -235,6 +252,10 @@ impl Action {
     }
     pub fn payload(&self) -> Value {
         match self {
+            Self::PrepareMigration { id } => json!({"action":"canonicalize_prepare","id":id}),
+            Self::ApplyMigration { plan, command_id } => {
+                json!({"action":"canonicalize_apply","migration_plan":plan,"command_id":command_id})
+            }
             Self::Create { draft } => json!({"action":"create","note":draft}),
             Self::Update {
                 id,
@@ -311,6 +332,8 @@ impl Action {
     }
     fn id(&self) -> &str {
         match self {
+            Self::PrepareMigration { id } => id,
+            Self::ApplyMigration { plan, .. } => &plan.id,
             Self::List { .. } | Self::Create { .. } => "",
             Self::Update { id, .. } => id,
             Self::Read { id }
@@ -363,6 +386,9 @@ fn decode(action: &Action, response: crate::TransportResponse) -> Result<Value, 
         return Err(unreadable());
     }
     match action {
+        Action::PrepareMigration { .. } | Action::ApplyMigration { .. } => {
+            migration::verify(action, data)?
+        }
         Action::Create { draft } => {
             validate_note(&data["note"], None)?;
             if data["note"]["version"] != 1 {
@@ -468,7 +494,7 @@ fn decode(action: &Action, response: crate::TransportResponse) -> Result<Value, 
             validate_note(&data["note"], Some(action.id()))?;
             if data["note"]["version"].as_i64() != Some(*source_version)
                 || !data["sha256"].as_str().is_some_and(sha_valid)
-                || data["retained"].as_bool().is_none()
+                || data["retained"].as_bool() != Some(true)
             {
                 return Err(unreadable());
             }
@@ -528,6 +554,8 @@ struct MetadataList {
 #[derive(serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Metadata {
+    #[serde(rename = "migration_required")]
+    _migration_required: bool,
     id: String,
     version: i64,
     title: String,
@@ -566,6 +594,8 @@ fn validate_note(note: &Value, id: Option<&str>) -> Result<(), ClientError> {
 #[derive(serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 struct VersionPage {
+    baseline_version: i64,
+    earlier_history_status: String,
     id: String,
     current_version: i64,
     source_head_version: i64,
@@ -598,6 +628,13 @@ fn validate_versions(
 ) -> Result<(), ClientError> {
     let page: VersionPage = serde_json::from_value(data.clone()).map_err(|_| unreadable())?;
     if page.id != id
+        || page.baseline_version < 1
+        || page.baseline_version > page.current_version
+        || !matches!(
+            page.earlier_history_status.as_str(),
+            "none" | "not_assessed"
+        )
+        || (page.earlier_history_status == "none" && page.baseline_version != 1)
         || page.current_version < 1
         || page.source_head_version < 1
         || page.source_head_version > page.current_version
@@ -625,8 +662,7 @@ fn validate_versions(
             || (index > 0 && item.version >= previous)
             || !sha_valid(&item.sha256)
             || item.changed_at.is_empty()
-            || (!item.retained
-                && (continuation || index != 0 || item.version != page.source_head_version))
+            || !item.retained
         {
             return Err(unreadable());
         }
@@ -822,14 +858,14 @@ mod tests {
         assert!(decode(&restore, response(json!({"note":archived}))).is_ok());
     }
     #[test]
-    fn legacy_history_enumeration_is_not_a_full_recoverable_chain() {
+    fn adopted_history_enumeration_does_not_invent_missing_earlier_versions() {
         let action = Action::Versions {
             id: "private".into(),
             limit: 50,
             cursor: None,
         };
-        let mut data = json!({"id":"private","current_version":7,"source_head_version":7,"limit":50,"complete":true,"truncated":false,"history_chain_complete":false,"history_chain_status":"incomplete",
-            "versions":[{"version":7,"sha256":"a".repeat(64),"changed_by":"owner","changed_at":"2026-10-13T00:00:00Z","reason":"observed_current","retained":false}]});
+        let mut data = json!({"id":"private","current_version":7,"baseline_version":1,"earlier_history_status":"none","source_head_version":7,"limit":50,"complete":true,"truncated":false,"history_chain_complete":false,"history_chain_status":"incomplete",
+            "versions":[{"version":7,"sha256":"a".repeat(64),"changed_by":"owner","changed_at":"2026-10-13T00:00:00Z","reason":"explicitly retained observed baseline","retained":true}]});
         assert!(decode(&action, response(data.clone())).is_ok());
         data["history_chain_complete"] = json!(true);
         assert!(decode(&action, response(data.clone())).is_err());
@@ -851,7 +887,7 @@ mod tests {
             cursor: None,
         };
         let header = json!({"version":7,"sha256":"a".repeat(64),"changed_by":"owner","changed_at":"2026-10-13T00:00:00Z","reason":"update","retained":true});
-        let mut data = json!({"id":"private","current_version":8,"source_head_version":7,"limit":1,"complete":false,"truncated":true,"next_cursor":"opaque","history_chain_complete":false,"history_chain_status":"unknown","versions":[header]});
+        let mut data = json!({"id":"private","current_version":8,"baseline_version":1,"earlier_history_status":"none","source_head_version":7,"limit":1,"complete":false,"truncated":true,"next_cursor":"opaque","history_chain_complete":false,"history_chain_status":"unknown","versions":[header]});
         assert!(decode(&first, response(data.clone())).is_ok());
         data["versions"][0]["document_json"] = json!("private body");
         assert!(decode(&first, response(data.clone())).is_err());
@@ -920,7 +956,7 @@ mod tests {
         assert!(
             decode(
                 &read,
-                response(json!({"note":note("private",2,false),"sha256":sha,"retained":false}))
+                response(json!({"note":note("private",2,false),"sha256":sha,"retained":true}))
             )
             .is_ok()
         );
@@ -933,7 +969,7 @@ mod tests {
             include_archived: false,
             include_trashed: false,
         };
-        let header = json!({"id":"private","version":1,"title":"Header","tags":[],"pinned":false,"archived":false,"trashed":false,"updated_at":"2026-10-13T00:00:00Z"});
+        let header = json!({"id":"private","version":1,"title":"Header","migration_required":false,"tags":[],"pinned":false,"archived":false,"trashed":false,"updated_at":"2026-10-13T00:00:00Z"});
         let inventory = json!({"notes":[header],"limit":50,"scanned_on_page":1,"complete":true,"truncated":false});
         assert_eq!(
             decode(&list, response(inventory.clone())).unwrap(),

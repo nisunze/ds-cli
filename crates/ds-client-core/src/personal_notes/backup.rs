@@ -169,7 +169,7 @@ fn verify_archive(view: &View) -> Result<(), ClientError> {
         if v.version <= previous
             || v.version > a.source_version
             || !sha_valid(&v.sha256)
-            || (!v.retained && v.version != a.source_version)
+            || !v.retained
             || v.changed_at.is_empty()
         {
             return Err(unreadable());
@@ -261,7 +261,7 @@ mod tests {
     }
     fn view() -> (Action, Value) {
         let archive = json!({"schema":"ds.personal-note-backup/v1","id":"private","source_version":2,
-            "current":note(2),"history":[{"version":2,"sha256":"a".repeat(64),"changed_by":"owner","changed_at":"2026-10-13T00:00:00Z","reason":"observed","retained":false,"note":note(2)}],"history_chain_complete":false});
+            "current":note(2),"history":[{"version":2,"sha256":"a".repeat(64),"changed_by":"owner","changed_at":"2026-10-13T00:00:00Z","reason":"explicitly retained observed baseline","retained":true,"note":note(2)}],"history_chain_complete":false});
         let raw = serde_json::to_string(&archive).unwrap();
         let sha = format!("{:x}", Sha256::digest(raw.as_bytes()));
         let data = json!({"id":"private","backup":{"id":"pb_test","note_id":"private","source_version":2,"sha256":sha,"verified":true,"json_bytes":raw.len(),"history_count":1,"history_chain_complete":false,"max_archive_bytes":MAX_ARCHIVE_BYTES,"max_restore_versions":MAX_VERSIONS},"archive_json":raw});
