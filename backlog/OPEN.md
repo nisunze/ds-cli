@@ -11,7 +11,7 @@ Tried cases removed from the small-fix queue now live in [HARD-PROBLEMS.md](HARD
 | Area | Remaining entries |
 | --- | ---: |
 | [1. Source integration and release code](#1-source-integration-and-release-code) | 3 |
-| [2. Green `run` and release gates](#2-green-run-and-release-gates) | 10 |
+| [2. Green `run` and release gates](#2-green-run-and-release-gates) | 7 |
 | [3. Template creation code](#3-template-creation-code) | 1 |
 | [4. Print template and style code](#4-print-template-and-style-code) | 1 |
 | [5. Print renderer and booklet code](#5-print-renderer-and-booklet-code) | 2 |
@@ -92,6 +92,16 @@ is ruled in the sync contract: simple local clean and recompute.
   proof requires the strict command to pass without lint suppression.
 
 ## 2. Green `run` and release gates
+
+- **Solar strict workspace Clippy has native baseline diagnostics.** From
+  `ds-solar`, `cargo clippy --offline --workspace --all-targets --all-features
+  -- -D warnings` reports `too_many_arguments` in
+  `crates/ds-solar-native/src/native.rs:4338` (`prepare_city_captured`),
+  `collapsible_if` in `src/pipeline.rs:148`, and `let_and_return` in
+  `src/sync/tests.rs:67-73`. These native source paths are outside the fixed
+  batch-task extraction and project feature boundary. Repair them in their
+  owning gate slice; proof is the same strict command passing without lint
+  suppression or a change to native behavior.
 
 - **Reporter documentation-consumer execution proof (2026-10-13):** the module-map reader in `ds-network-reporter/tests/routes.rs` and doctrine input in `scripts/test_local_deploy_script.sh` now use `docs/agent-guidance/domain-reference.md`; their descriptive comments were updated too. The filename repair is complete. The existing narrow module-map and local-deploy gates remain unrun because the owner requested no tests/builds for this housekeeping. Execute those gates in the next authorized verification slice, report actual results, and remove this entry after proof. Do not reopen the filename repair or recreate `CLAUDE.md`.
 
