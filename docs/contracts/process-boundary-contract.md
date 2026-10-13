@@ -44,6 +44,14 @@ cannot deadlock the caller. The one current use is the fixed `ds-solar intake
 --snapshot - --out <fresh-file>` handoff: its snapshot contains short-lived
 download authority and must never cross a temporary-file boundary.
 
+`External::capture` resolves an admitted executable to its canonical version
+path without starting a process. The Reporter host captures it once per batch
+or individual export and uses that handle for build identity, execution and
+final identity verification. Switching an active symlink affects subsequent
+runs only. Version directories must stay immutable and retained while in use;
+capturing a path does not admit an in-place executable replacement or implement
+the signed package updater. Existing identity fences still refuse changed identities.
+
 `ds-cli-exec` is not, however, the only place a process is created — there are
 named owner classes, and each is audited where it lives:
 

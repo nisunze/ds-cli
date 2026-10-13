@@ -69,6 +69,53 @@ pub struct Completed {
     pub truncated: bool,
 }
 
+/// One resolved engine for an accepted run. Resolving a symlink once keeps
+/// subsequent calls on the same version when an updater switches its active
+/// pointer. The version directory must remain immutable and retained until
+/// all runs using it have finished.
+pub struct CapturedExternal {
+    owner: &'static External,
+    executable: PathBuf,
+}
+
+impl CapturedExternal {
+    pub fn call(
+        &self,
+        subcommand: &'static str,
+        args: &[OsString],
+        timeout: Duration,
+    ) -> Result<Completed, Failure> {
+        self.owner
+            .call_at(&self.executable, subcommand, args, timeout)
+    }
+
+    pub fn call_json(
+        &self,
+        subcommand: &'static str,
+        args: &[OsString],
+        timeout: Duration,
+    ) -> Result<serde_json::Value, Failure> {
+        let completed = self.call(subcommand, args, timeout)?;
+        if !completed.succeeded() {
+            return Err(self.owner.failure_from(&completed, subcommand));
+        }
+        if completed.truncated {
+            return Err(Failure::failed(
+                "callee_contract_mismatch",
+                "the captured engine's JSON exceeded its output bound",
+            )
+            .remedy("use a bounded file result through the engine's typed task"));
+        }
+        serde_json::from_str(&completed.stdout).map_err(|error| {
+            Failure::failed(
+                "callee_contract_mismatch",
+                "the captured engine returned invalid JSON",
+            )
+            .detail(json!({"detail": error.to_string()}))
+        })
+    }
+}
+
 impl Completed {
     pub fn succeeded(&self) -> bool {
         self.status == Some(0)
@@ -76,6 +123,24 @@ impl Completed {
 }
 
 impl External {
+    /// Capture by filesystem metadata only; discovery starts no process.
+    pub fn capture(&'static self) -> Result<CapturedExternal, Failure> {
+        self.capture_path(self.locate())
+    }
+
+    fn capture_path(&'static self, path: Option<PathBuf>) -> Result<CapturedExternal, Failure> {
+        let executable = path
+            .and_then(|path| std::fs::canonicalize(path).ok())
+            .filter(|path| is_executable(path))
+            .ok_or_else(|| {
+                Failure::unavailable(self.missing_code, format!("`{}` was not found", self.name))
+                    .remedy(self.remedy)
+            })?;
+        Ok(CapturedExternal {
+            owner: self,
+            executable,
+        })
+    }
     /// Where the executable is, or nothing.
     ///
     /// Order, and the reason for it:
@@ -157,7 +222,17 @@ impl External {
             )
         })?;
 
-        let mut command = Command::new(&executable);
+        self.call_at(&executable, subcommand, args, timeout)
+    }
+
+    fn call_at(
+        &self,
+        executable: &Path,
+        subcommand: &'static str,
+        args: &[OsString],
+        timeout: Duration,
+    ) -> Result<Completed, Failure> {
+        let mut command = Command::new(executable);
         command
             .arg(subcommand)
             .args(args)
@@ -196,6 +271,9 @@ impl External {
                 }
                 Err(error) => {
                     let _ = child.kill();
+                    let _ = child.wait();
+                    let _ = stdout_reader.join();
+                    let _ = stderr_reader.join();
                     return Err(Failure::internal(
                         "callee_wait_failed",
                         format!("could not wait for `{}`", self.name),
@@ -510,6 +588,63 @@ mod tests {
     use std::time::Duration;
 
     use super::*;
+
+    #[test]
+    fn a_captured_run_keeps_its_engine_when_the_active_link_changes() {
+        static OWNER: External = External {
+            name: "fixture-owner",
+            env_override: "DS_EXEC_CAPTURE_FIXTURE_UNUSED",
+            owner: "owning-regression",
+            remedy: "repair fixture",
+            missing_code: "fixture_missing",
+        };
+        let root = std::env::temp_dir().join(format!("ds-exec-capture-{}", std::process::id()));
+        fs::create_dir_all(&root).unwrap();
+        let first = root.join("version-one");
+        let second = root.join("version-two");
+        for (path, value) in [(&first, "one"), (&second, "two")] {
+            fs::write(
+                path,
+                format!("#!/bin/sh\nprintf x >> \"${{0}}.calls\"\nprintf '%s' '{value}'\n"),
+            )
+            .unwrap();
+            fs::set_permissions(path, fs::Permissions::from_mode(0o700)).unwrap();
+        }
+        let active = root.join("fixture-owner");
+        std::os::unix::fs::symlink(&first, &active).unwrap();
+        let capture = || OWNER.capture_path(OWNER.locate_for_paths(Some(&root.join("ds")), None));
+        let held = capture().unwrap();
+        assert!(!first.with_extension("calls").exists());
+        assert!(!second.with_extension("calls").exists());
+        fs::remove_file(&active).unwrap();
+        std::os::unix::fs::symlink(&second, &active).unwrap();
+        assert_eq!(
+            held.call("build-info", &[], Duration::from_secs(2))
+                .unwrap()
+                .stdout,
+            "one"
+        );
+        assert_eq!(
+            capture()
+                .unwrap()
+                .call("build-info", &[], Duration::from_secs(2))
+                .unwrap()
+                .stdout,
+            "two"
+        );
+        // Removing the active pointer cannot redirect or invalidate an admitted run.
+        fs::remove_file(&active).unwrap();
+        assert_eq!(
+            held.call("build-info", &[], Duration::from_secs(2))
+                .unwrap()
+                .stdout,
+            "one"
+        );
+        assert!(capture().is_err());
+        assert_eq!(fs::read(first.with_extension("calls")).unwrap(), b"xx");
+        assert_eq!(fs::read(second.with_extension("calls")).unwrap(), b"x");
+        fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     fn canary_cli_uses_only_lane_isolated_packaged_sidecars() {

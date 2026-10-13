@@ -439,6 +439,63 @@ fn availability() -> Availability {
 /// from the host crate.
 pub(crate) struct CliEngine;
 
+struct CapturedCliEngine(ds_cli_exec::CapturedExternal);
+
+impl CapturedCliEngine {
+    fn render(
+        &self,
+        task: &'static str,
+        request: &Path,
+        result: &Path,
+    ) -> Result<EngineExit, HostFailure> {
+        let completed = self
+            .0
+            .call(
+                task,
+                &[
+                    "--request".into(),
+                    request.into(),
+                    "--result".into(),
+                    result.into(),
+                ],
+                EXPORT_TIMEOUT,
+            )
+            .map_err(failure_to_host)?;
+        Ok(EngineExit {
+            succeeded: completed.succeeded(),
+            summary: bounded_summary(&completed.stderr, &completed.stdout),
+        })
+    }
+}
+
+impl ReportEngine for CapturedCliEngine {
+    fn build_info(&self) -> Result<Value, HostFailure> {
+        self.0
+            .call_json("build-info", &[], DISCOVERY_TIMEOUT)
+            .map_err(failure_to_host)
+    }
+    fn export_transformer_report(
+        &self,
+        request: &Path,
+        result: &Path,
+    ) -> Result<EngineExit, HostFailure> {
+        self.render("export-transformer-report", request, result)
+    }
+    fn render_print_layout(
+        &self,
+        request: &Path,
+        result: &Path,
+    ) -> Result<EngineExit, HostFailure> {
+        self.render("render-print-layout", request, result)
+    }
+    fn render_grid_plan_profile(
+        &self,
+        request: &Path,
+        result: &Path,
+    ) -> Result<EngineExit, HostFailure> {
+        self.render("render-grid-plan-profile", request, result)
+    }
+}
 /// Exact saved analysis admitted for one room; no producer work occurs here.
 #[derive(Debug, Clone)]
 enum BatchAnalysis {
@@ -696,6 +753,10 @@ fn failure_to_host(failure: Failure) -> HostFailure {
 }
 
 impl ReportEngine for CliEngine {
+    fn capture_for_run(&self) -> Result<Option<Box<dyn ReportEngine>>, HostFailure> {
+        let engine = DS_REPORT.capture().map_err(failure_to_host)?;
+        Ok(Some(Box::new(CapturedCliEngine(engine))))
+    }
     fn build_info(&self) -> Result<Value, HostFailure> {
         DS_REPORT
             .call_json("build-info", &[], DISCOVERY_TIMEOUT)
@@ -2216,9 +2277,10 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     // Subset runs whose room moved past the planned head: they ran in full.
     let mut room_moved: BTreeMap<String, i64> = BTreeMap::new();
     let analyses = std::sync::Mutex::new(BTreeMap::new());
+    let selected_engine = CliEngine.capture_for_run().map_err(host_failure)?;
     let engine = SavedAnalysisEngine {
         analyses: &analyses,
-        delegate: &CliEngine,
+        delegate: selected_engine.as_deref().unwrap_or(&CliEngine),
         report_format: requested_outputs.voltage_drop_report_format().token(),
     };
     let fetch = |name: &str| -> Result<TransformerReportInputs, HostFailure> {
