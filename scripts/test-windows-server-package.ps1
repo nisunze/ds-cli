@@ -62,7 +62,7 @@ try {
     Assert-Refused { Assert-ServerLocalPath '\\server\share\state' }
     $payload = Join-Path $taskRoot 'payload'
     [IO.Directory]::CreateDirectory($payload) | Out-Null
-    foreach ($name in @('ds.exe','ds-solar.exe','ds-report.exe','ds-client-profiles/catalog.json',
+    foreach ($name in @('ds.exe','ds-solar.exe','reporter.exe','ds-client-profiles/catalog.json',
         'ds-cli-skills/receipt.json','start-windows-server.ps1','windows-server-package.ps1')) {
         $target = Join-Path $payload $name
         [IO.Directory]::CreateDirectory((Split-Path $target -Parent)) | Out-Null

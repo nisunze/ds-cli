@@ -116,7 +116,7 @@ function Test-ServerPayload([string]$Root, [string]$Lane) {
         if (-not $expected.ContainsKey($file.path) -or $expected[$file.path].sha256 -cne $file.sha256 -or
             $expected[$file.path].size_bytes -ne $file.size_bytes) { throw "Package bytes differ: $($file.path)" }
     }
-    foreach ($required in @('ds.exe','ds-solar.exe','ds-report.exe','ds-client-profiles/catalog.json',
+    foreach ($required in @('ds.exe','ds-solar.exe','reporter.exe','ds-client-profiles/catalog.json',
         'ds-cli-skills/receipt.json','start-windows-server.ps1','windows-server-package.ps1')) {
         if (-not $expected.ContainsKey($required)) { throw "Missing package member: $required" }
     }
@@ -154,9 +154,9 @@ function Test-ServerNativeIdentity([string]$Root, $Manifest) {
         $report = Invoke-ServerJson $cli @('report','engine','--output','json')
         if ($solar.status -ne 'ok' -or $solar.data.source_sha -cne $Manifest.source_revisions.'ds-solar' -or
             $solar.data.path -ne (Join-Path $Root 'ds-solar.exe') -or $report.status -ne 'ok' -or
-            $report.data.path -ne (Join-Path $Root 'ds-report.exe') -or
+            $report.data.path -ne (Join-Path $Root 'reporter.exe') -or
             $report.data.identity.source_sha -cne $Manifest.source_revisions.'ds-network-reporter') { throw 'CLI did not discover its packaged process engines.' }
-        foreach ($name in @('ds-solar.exe','ds-report.exe')) {
+        foreach ($name in @('ds-solar.exe','reporter.exe')) {
             $info = Invoke-ServerJson (Join-Path $Root $name) @('build-info')
             if ($info.schema -ne 'ds.engine-build/v1' -or $info.profile -ne 'release' -or
                 $info.target -ne 'x86_64-pc-windows-msvc' -or $info.build_manifest_sha256 -cnotmatch '^[0-9a-f]{64}$') {

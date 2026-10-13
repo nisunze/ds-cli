@@ -26,7 +26,7 @@ $artifact = Join-Path $output $name
 $receiptPath = Join-Path $output ($name -replace '\.zip$', '.receipt.json')
 if ((Test-Path -LiteralPath $artifact) -or (Test-Path -LiteralPath $receiptPath)) { throw 'Exact-version output already exists; it will not be overwritten.' }
 if ($Plan) {
-    [pscustomobject]@{ artifact=$artifact; lane=$Lane; cargo_target=$target; build_jobs=6; binaries=@('ds','ds-solar','ds-report'); tauri=$false; publishes=$false } | ConvertTo-Json
+    [pscustomobject]@{ artifact=$artifact; lane=$Lane; cargo_target=$target; build_jobs=6; binaries=@('ds','ds-solar','reporter'); tauri=$false; publishes=$false } | ConvertTo-Json
     exit 0
 }
 $sources = [ordered]@{}
@@ -100,7 +100,7 @@ try {
     }
     Copy-Item -LiteralPath (Join-Path $target 'release/ds.exe') -Destination (Join-Path $payload 'ds.exe')
     Copy-Item -LiteralPath $solar -Destination (Join-Path $payload 'ds-solar.exe')
-    Copy-Item -LiteralPath $reporter -Destination (Join-Path $payload 'ds-report.exe')
+    Copy-Item -LiteralPath $reporter -Destination (Join-Path $payload 'reporter.exe')
     [IO.Directory]::CreateDirectory((Join-Path $payload 'ds-client-profiles')) | Out-Null
     Copy-Item -LiteralPath $catalogPath -Destination (Join-Path $payload 'ds-client-profiles/catalog.json')
     # Check links before recursive copy, and then verify the actual bundle with ds doctor.
