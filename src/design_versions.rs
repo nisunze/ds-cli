@@ -117,6 +117,41 @@ pub enum Command {
         revision_id: String,
         response: Value,
     },
+    PromotionMenu {
+        project: String,
+        transformer: String,
+        catalog: Value,
+    },
+    PromotionContextPlan {
+        project: String,
+        transformer: String,
+        catalog: Value,
+        version_id: String,
+        revision_id: String,
+    },
+    PromotionContextAccept {
+        project: String,
+        transformer: String,
+        catalog: Value,
+        version_id: String,
+        revision_id: String,
+        response: Value,
+    },
+    PromotionPlan {
+        project: String,
+        transformer: String,
+        context: super::design_version_promotion::Context,
+        reason: String,
+        idempotency_key: String,
+    },
+    PromotionAccept {
+        project: String,
+        transformer: String,
+        context: super::design_version_promotion::Context,
+        reason: String,
+        idempotency_key: String,
+        response: Value,
+    },
     ValidateTarget {
         id: String,
     },
@@ -506,6 +541,67 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
                 "source_revision":m["source_revision"],"reason":m["reason"],"created_at":m["created_at"],
                 "created_by":m["created_by"],"playback_available":true,
                 "snapshot_scope":m["snapshot_scope"],"source_mode":m["source_mode"]},"snapshot":snapshot})
+        }
+        Command::PromotionMenu {
+            project,
+            transformer,
+            catalog,
+        } => super::design_version_promotion::eligible(&project, &transformer, &catalog)?,
+        Command::PromotionContextPlan {
+            project,
+            transformer,
+            catalog,
+            version_id,
+            revision_id,
+        } => super::design_version_promotion::context_read_plan(
+            &project,
+            &transformer,
+            &catalog,
+            &version_id,
+            &revision_id,
+        )?,
+        Command::PromotionContextAccept {
+            project,
+            transformer,
+            catalog,
+            version_id,
+            revision_id,
+            response,
+        } => serde_json::to_value(super::design_version_promotion::capture_context(
+            &project,
+            &transformer,
+            &catalog,
+            &version_id,
+            &revision_id,
+            &response,
+        )?)
+        .map_err(|e| e.to_string())?,
+        Command::PromotionPlan {
+            project,
+            transformer,
+            context,
+            reason,
+            idempotency_key,
+        } => super::design_version_catalog::Command::Promote {
+            object_id: transformer.clone(),
+            promotion: context.promotion(&project, &transformer, &reason, &idempotency_key)?,
+        }
+        .payload(&project)?,
+        Command::PromotionAccept {
+            project,
+            transformer,
+            context,
+            reason,
+            idempotency_key,
+            response,
+        } => {
+            let command = super::design_version_catalog::Command::Promote {
+                object_id: transformer.clone(),
+                promotion: context.promotion(&project, &transformer, &reason, &idempotency_key)?,
+            };
+            command.validate(&project)?;
+            command.verify_response(&project, &response)?;
+            response
         }
         Command::ValidateTarget { id } => json!({"valid":valid_target(&id)}),
         Command::Prepare {

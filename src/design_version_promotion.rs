@@ -141,3 +141,154 @@ mod tests {
         }
     }
 }
+
+/// Captured consuming read fences for one explicit UI promotion. Not authority
+/// to write: the server still checks runtime identity, backup and PM trace.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Context {
+    pub project: String,
+    pub transformer: String,
+    pub version_id: String,
+    pub revision_id: String,
+    pub expected_catalog_revision: String,
+    pub expected_source_revision: String,
+}
+pub fn eligible(project: &str, transformer: &str, catalog: &Value) -> Result<Value, String> {
+    let command = super::design_version_catalog::Command::Catalog {
+        object_id: transformer.into(),
+    };
+    command.validate(project)?;
+    command.verify_response(project, &serde_json::json!({"catalog":catalog}))?;
+    let ids = catalog["versions"]
+        .as_array()
+        .ok_or("catalog versions absent")?
+        .iter()
+        .filter(|entry| {
+            catalog["baseline_ready"] == true
+                && entry["snapshot_scope"] == "runtime_design"
+                && entry["playback_available"] == true
+        })
+        .map(|entry| entry["version_id"].clone())
+        .collect::<Vec<_>>();
+    Ok(serde_json::json!({"eligible_versions":ids}))
+}
+pub fn context_read_plan(
+    project: &str,
+    transformer: &str,
+    catalog: &Value,
+    version_id: &str,
+    revision_id: &str,
+) -> Result<Value, String> {
+    let allowed = eligible(project, transformer, catalog)?;
+    if !allowed["eligible_versions"]
+        .as_array()
+        .is_some_and(|ids| ids.iter().any(|id| id == version_id))
+        || !catalog["versions"].as_array().is_some_and(|entries| {
+            entries
+                .iter()
+                .any(|e| e["version_id"] == version_id && e["head_revision_id"] == revision_id)
+        })
+    {
+        return Err("promotion requires the exact selected playable runtime revision; archived layouts remain read-only".into());
+    }
+    Ok(
+        serde_json::json!({"action":"get_head","project_id":project,"object":{"kind":"lv_transformer","id":transformer}}),
+    )
+}
+pub fn capture_context(
+    project: &str,
+    transformer: &str,
+    catalog: &Value,
+    version_id: &str,
+    revision_id: &str,
+    response: &Value,
+) -> Result<Context, String> {
+    context_read_plan(project, transformer, catalog, version_id, revision_id)?;
+    let head = &response["head"];
+    if head["project_id"] != project
+        || head["object"] != serde_json::json!({"kind":"lv_transformer","id":transformer})
+    {
+        return Err("promotion head read differs from the selected project/transformer".into());
+    }
+    let context = Context {
+        project: project.into(),
+        transformer: transformer.into(),
+        version_id: version_id.into(),
+        revision_id: revision_id.into(),
+        expected_catalog_revision: catalog["catalog_revision"]
+            .as_str()
+            .ok_or("catalog fence absent")?
+            .into(),
+        expected_source_revision: head["source_revision"]
+            .as_str()
+            .ok_or("current source fence absent")?
+            .into(),
+    };
+    context.promotion(project, transformer, "Prepare promotion", "prepare-only")?;
+    Ok(context)
+}
+impl Context {
+    pub fn promotion(
+        &self,
+        project: &str,
+        transformer: &str,
+        reason: &str,
+        idempotency_key: &str,
+    ) -> Result<Promotion, String> {
+        if self.project != project || self.transformer != transformer {
+            return Err("promotion context owner changed".into());
+        }
+        let promotion = Promotion {
+            version_id: self.version_id.clone(),
+            revision_id: self.revision_id.clone(),
+            expected_catalog_revision: self.expected_catalog_revision.clone(),
+            expected_source_revision: self.expected_source_revision.clone(),
+            task_ids: vec![],
+            source_record_ids: vec![],
+            reason: reason.into(),
+            idempotency_key: idempotency_key.into(),
+        };
+        promotion.validate()?;
+        Ok(promotion)
+    }
+}
+#[cfg(test)]
+mod ui_context_tests {
+    use super::*;
+    use serde_json::json;
+    fn catalog() -> Value {
+        json!({"schema":"ds.lv-version-catalog/v1","project_id":"p","object":{"kind":"lv_transformer","id":"t"},"catalog_revision":"a".repeat(64),"baseline_ready":true,"versions":[{"version_id":"v0","display_ordinal":0,"head_revision_id":"v0","revision_count":1,"playback_available":true,"snapshot_scope":"runtime_design"}]})
+    }
+    #[test]
+    fn archived_unavailable_or_rebound_revisions_never_start_a_head_read() {
+        for (key, value) in [
+            ("snapshot_scope", json!("exported_design")),
+            ("playback_available", json!(false)),
+        ] {
+            let mut c = catalog();
+            c["versions"][0][key] = value;
+            assert!(context_read_plan("p", "t", &c, "v0", "v0").is_err());
+        }
+        let mut c = catalog();
+        c["baseline_ready"] = json!(false);
+        assert!(context_read_plan("p", "t", &c, "v0", "v0").is_err());
+        assert!(context_read_plan("p", "t", &catalog(), "v0", "v1").is_err());
+        assert!(context_read_plan("other", "t", &catalog(), "v0", "v0").is_err());
+    }
+    #[test]
+    fn exact_current_source_and_catalog_fences_survive_the_native_plan() {
+        let head = json!({"head":{"project_id":"p","object":{"kind":"lv_transformer","id":"t"},"source_revision":"2026-10-13T12:00:00Z"}});
+        let c = capture_context("p", "t", &catalog(), "v0", "v0", &head).unwrap();
+        let p = c
+            .promotion("p", "t", "Restore checked version", "operation1")
+            .unwrap();
+        assert_eq!(p.expected_catalog_revision, "a".repeat(64));
+        assert_eq!(p.expected_source_revision, "2026-10-13T12:00:00Z");
+        assert!(c.promotion("other", "t", "reason", "key").is_err());
+        assert!(c.promotion("p", "t", " ", "key").is_err());
+        let mut wrong = head;
+        wrong["head"]["source_revision"] = json!("unknown");
+        assert!(capture_context("p", "t", &catalog(), "v0", "v0", &wrong).is_err());
+    }
+}
