@@ -2,15 +2,15 @@
 
 > **Moved 2026-10-07:** this backlog now lives in `ds-command-kernel/backlog/`. The old `ds-work/backlog/` no longer exists: edit these files here, commit them to ds-command-kernel `run`, and stage only `backlog/`. ds-work holds working sessions, not coding lists.
 
-Working list from the 2026-10-07 snapshot and 2026-10-09 component lookups, with proven closures removed: 241 tracked rows (92 open, 149 waiting according to the rows below). These are file counts, not a fresh live backlog total. The feedback API is the authority: verify each selected report's current status, full ID, version and acceptance through `ds`, close only what is proven, and remove its row. Delete this file when its remaining work is fulfilled; keep no completed-work archive.
+Working list from the 2026-10-07 snapshot and 2026-10-09 component lookups, with proven closures removed: 238 tracked rows (90 open, 148 waiting according to the rows below). These are file counts, not a fresh live backlog total. The feedback API is the authority: verify each selected report's current status, full ID, version and acceptance through `ds`, close only what is proven, and remove its row. Delete this file when its remaining work is fulfilled; keep no completed-work archive.
 
-Reports are grouped by the live repository that owns the code, then by component. The component is the submitter's free-text label, shown verbatim so `ds feedback list --component` finds it. Legacy labels map as follows: `ds-grid*`, `dsgrid*`, `ds/grid-*`, `ds/pls-library` → ds-network; `ds-report*`, `ds-printing*` → ds-network-reporter; `ds-desktop*` → ds-web (`src-tauri`); `ds pls desktop` → ds-cli (`ds-cli-pls/desktop`). Labels that name no repository stay **unassigned**. "Backlog" names the [OPEN.md](OPEN.md), [OPEN-X.md](OPEN-X.md) or [SEEDING.md](SEEDING.md) section citing the report; **untracked** means none does (119 reports).
+Reports are grouped by the live repository that owns the code, then by component. The component is the submitter's free-text label, shown verbatim so `ds feedback list --component` finds it. Legacy labels map as follows: `ds-grid*`, `dsgrid*`, `ds/grid-*`, `ds/pls-library` → ds-network; `ds-report*`, `ds-printing*` → ds-network-reporter; `ds-desktop*` → ds-web (`src-tauri`); `ds pls desktop` → ds-cli (`ds-cli-pls/desktop`). Labels that name no repository stay **unassigned**. "Backlog" names the [OPEN.md](OPEN.md), [OPEN-X.md](OPEN-X.md) or [SEEDING.md](SEEDING.md) section citing the report; **untracked** means none does (115 reports).
 
 | Repository | Total | Blocker | Major | Minor | Waiting | Untracked |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| [ds-cli](#ds-cli) | 92 | 11 | 62 | 19 | 58 | 57 |
-| [ds-network](#ds-network) | 67 | 17 | 46 | 4 | 35 | 21 |
-| [ds-network-reporter](#ds-network-reporter) | 27 | 1 | 20 | 6 | 19 | 16 |
+| [ds-cli](#ds-cli) | 92 | 11 | 62 | 19 | 58 | 56 |
+| [ds-network](#ds-network) | 66 | 17 | 45 | 4 | 35 | 21 |
+| [ds-network-reporter](#ds-network-reporter) | 25 | 1 | 18 | 6 | 18 | 13 |
 | [ds-web](#ds-web) | 34 | 6 | 26 | 2 | 24 | 15 |
 | [ds-command-kernel](#ds-command-kernel) | 4 | 0 | 3 | 1 | 4 | 0 |
 | [ds-brain](#ds-brain) | 7 | 0 | 6 | 1 | 5 | 3 |
@@ -92,7 +92,7 @@ Reports are grouped by the live repository that owns the code, then by component
 | ds-cli/report-mv-printing | `be769552` | major | obstacle | MV re-issue on stable: plan-profile refused without MV print setup, canary cannot decode stable packages, GIS drops transformer elevations | waiting: release (item 2); owner decisions (1, 3, 5, 6); item 4 open | **untracked** |
 | ds-cli/report-plan-profile | `5c722c70` | minor | bug | plan-profile booklet: north arrow and legend drawn over structure labels | waiting: plan-profile renderer fix and sheets 46/92 visual proof | **untracked** |
 | ds-cli/report-project | `69f60e82` | major | friction | Combined report waits on slow serial publication of all transformer reports | open | OPEN.md §7 |
-| ds-cli/report-project-export | `a65872eb` | major | bug | Project report export drops verified native saved voltage-drop analysis | waiting: install of canary 0.1.7-r79+ carrying ds-cli@6de2c510 + ds-network-reporter@09077a6 | **untracked** |
+| ds-cli/report-project-export | `a65872eb` | major | bug | Project report export drops verified native saved voltage-drop analysis | waiting: authorized complete persisted analysis and ordinary selected batch export/publication under exact pins | SEEDING.md ?10 |
 | ds-cli/report-reconciliation | `d798669f` | major | obstacle | Headless report publication requires an unexplained project Desktop sync bridge | waiting: install of canary 0.1.7-r79+ carrying ds-cli@d9bfe9c2 (refusal); owner decision on Windows-native report reconciliation | **untracked** |
 | ds-cli/report-reference | `19cb115a` | major | obstacle | Linux combined XLSX and GIS export has no admitted held admin asset locator | open | **untracked** |
 | ds-cli/report-settings | `9d0f28da` | major | bug | Report settings closed-contract refusal prevents Linux report input readiness | open | **untracked** |
@@ -172,7 +172,7 @@ Reports are grouped by the live repository that owns the code, then by component
 | ds-network/lv-process | `4bad5ef3` | major | bug | LV processing always renumbers LV line numbers; no setting keeps supplied line_number | open | SEEDING.md §9 |
 | ds-network/lv-process | `38bd5091` | major | bug | LV batch process changes approved poles and cable sizes despite preservation settings | open | **untracked** |
 | ds-network/lv-processing | `25d2115f` | major | bug | LV rating-only processing changes approved spans and conductor assignments | open | OPEN-X.md §15, SEEDING.md §9 |
-| ds-network/lv-voltage-drop | `3c9c8add` | major | bug | VD network omits most LV sections for some saved designs; customers get 20-170 A service currents | open | SEEDING.md §10 |
+| ds-network/lv-voltage-drop | `3c9c8add` | major | bug | VD network omits most LV sections for some saved designs; customers get 20-170 A service currents | waiting: matching installed ds-network 4f2f108b/CLI 0f961e92 complete, partial and legacy graph replay | SEEDING.md ?10 |
 | ds-network/pls-roundtrip | `43c0295a` | blocker | bug | Supported PLS native Save reconciliation is missing for DS zone sidecars | open | **untracked** |
 | ds-network/print-renderer | `5828fac5` | minor | bug | A0 contour index labels fail renderer with text paper wider than frame | open | SEEDING.md §6 |
 | ds-network/reporter | `7519c28b` | major | bug | Windows headless PDF report promotion fails with Access is denied | open | OPEN.md §21 |
@@ -180,8 +180,7 @@ Reports are grouped by the live repository that owns the code, then by component
 | ds-network/sizing | `dcacdb90` | minor | bug | Sizing: only the 30 kV MV fuse is ever used; mv_fuze_15_kv_amp in transfo_sizes is ignored, so 15 kV networks get about half the REG fuse rating | waiting: owner: correct the 15 kV fuse seeds + add 75/450 kVA rows; then the release | SEEDING.md §9 |
 | ds-network/spotting | `51d427b7` | blocker | obstacle | Nyamagabe B spotting previews leave 30 kV survey-point clearance violations | open | **untracked** |
 | ds-network/staking-export | `7e315e88` | minor | idea | Govern the proven Jessy-format staking export recipe through DS configuration | open | **untracked** |
-| ds-network/voltage-drop | `00ad9848` | major | obstacle | Saved LV designs need non-destructive topology for voltage-drop reports | waiting: non-destructive saved-topology analysis and Agahehe byte-preservation proof | OPEN.md §9 |
-| ds-network/voltage-drop-summary | `11bce3aa` | major | bug | LV summary reports reinforcement_required false despite noncompliance and required new circuit | waiting: install of canary 0.1.7-r79+ carrying ds-network@d3991c2f + ds-network-reporter@dcf39c1; re-adopt the governed A4 standard | SEEDING.md §10 |
+| ds-network/voltage-drop | `00ad9848` | major | obstacle | Saved LV designs need non-destructive topology for voltage-drop reports | waiting: matching installed exact saved-topology recovery and original-cell/ambiguity controls | SEEDING.md ?10 |
 | ds/grid-staking | `94fc3681` | major | friction | Preserve incoming MV staking facts and apply project-owned styled delivery template | waiting: deploy:stable-ds-brain-mv-print-contract | **untracked** |
 | ds/pls-library | `6b563fcc` | major | idea | One pinned Method 2 library needs shaded and centred stick variants across three MV projects | waiting: be239f38 provenance fix plus three-project pinned library parity implementation | **untracked** |
 | dsgrid-exchange/pls-export | `59d38d86` | blocker | bug | PLS export ends an OPGW tension section at a suspension attachment | waiting: duplicate of c496feb0 | OPEN.md §12 |
@@ -190,7 +189,6 @@ Reports are grouped by the live repository that owns the code, then by component
 
 | Component | ID | Sev | Kind | Title | State | Backlog |
 | --- | --- | --- | --- | --- | --- | --- |
-| ds-network-reporter | `b56c9ce3` | major | obstacle | No ds route renders the extended LV voltage-drop report (A4 PDF); only the app view prints it | waiting: deployed extended A4 PDF route and Agahehe acceptance proof | **untracked** |
 | ds-network-reporter (cloud run) | `ac272198` | blocker | bug | Cloud reporter OOMs at 1024 MiB on export_transformers; forced combined over 86 transformers produces nothing | waiting: Install matching schema-2 ds release, then replay these three cloud exports and forced-compounded failure evidence | SEEDING.md §7 |
 | ds-network-reporter/combined-quantities | `ae4fe689` | major | bug | Explicit new-transformer authority loses supply quantity for fill_in-prefixed identities | open | **untracked** |
 | ds-network-reporter/plan-profile (ds report plan-profile) | `7bc05e22` | major | bug | Plan/profile clearance hairs must be ground offset + the code extra (the checked clearance); they drew false violations | waiting: installed renderer and Model 1 spans 53–57 plan/profile print cross-check | OPEN.md §12 |
@@ -201,8 +199,7 @@ Reports are grouped by the live repository that owns the code, then by component
 | ds-network-reporter/printing-context | `c7958c2b` | major | bug | Gisagara Desktop Reporter export rejects printing context: map expected string | waiting: a fresh Gisagara Desktop Reporter export through a receipt sealed by deployed ds-brain 25499cef (carries dd8238e8) | **untracked** |
 | ds-network-reporter/printouts | `b99bb1d1` | minor | idea | Name printouts from transformer.title() and put paper size at folder level | waiting: report packaging naming convention implemented and proven on a Stable Windows batch | **untracked** |
 | ds-network-reporter/reports | `42f3abd1` | major | obstacle | Standalone combined-transformer A0/A3 PDFs are unavailable | waiting: Reporter combined task needs standalone A0/A3 PDF outputs and a governed CLI path to provide cached canonical layer projections plus network | OPEN.md §7 |
-| ds-network-reporter/voltage-drop a4 report | `e538e632` | minor | bug | A4 voltage-drop report title block shows project "gisagara" and carries no governed project logos | open: logo half settled by the owner ruling of 2026-10-05 and reporter 026e441 (no logos); remaining: the A4 title block prints the project id because ds-cli crates/ds-cli-design/src/lv/project_run.rs:703 sends project_label: run.project; it should print the governed project display label | **untracked** |
-| ds-network-reporter/voltage-drop-pdf | `a23fa674` | major | bug | Kibungo delivered voltage-drop A4 PDF prints internal layout overflow diagnostic | waiting: a cloud-computed report (Cloud Run reporter 035418e carries 4ee6240) or install of canary 0.1.7-r79+, then a fresh Kibungo print and G: replacement verification | **untracked** |
+| ds-network-reporter/voltage-drop a4 report | `e538e632` | minor | bug | A4 voltage-drop report title block shows project "gisagara" and carries no governed project logos | waiting: matching CLI d7ce1522/kernel e410fb5 governed-caption A4 capture and resume acceptance | SEEDING.md ?10 |
 | ds-printing/lv | `ef954b7c` | major | bug | Standalone LV A0 print loses categorical network styling | waiting: governed layout and installed print acceptance | SEEDING.md §6 |
 | ds-report / render-grid-plan-profile | `778a9f4d` | minor | bug | Plan & profile: labels after an elevation break drawn in the top band with leader lines crossing the scale bar | open | SEEDING.md §6 |
 | ds-report/combined | `0e431940` | major | bug | Combined report classifies LV ABC line as service cable | waiting: exact transformer and source feature/layer identity for the 56.97 m Gisagara row; DS report preview of projected combined archive unavailabl | **untracked** |
@@ -232,7 +229,7 @@ Reports are grouped by the live repository that owns the code, then by component
 | ds-desktop/vector-tile-cache | `664a9beb` | major | idea | Desktop vector tile resource caching: persistent 5 GB or more with adaptive RAM reuse | open | **untracked** |
 | ds-web | `011ae5a6` | blocker | bug | Project data does not render on the map: a ready map data upload has no layer class, no styles and no tiles (today's upload and the April one alike); rendering project data must need no server | waiting: deploy of ds-brain@6ee51742 and ds-vector-tiler@3f28002, then pd/ screen style editors listed for arjgpydw_nyam and DS map evidence capture for visual acceptance | OPEN.md §16 |
 | ds-web | `638a13c0` | minor | friction | Session story 2026-09-18: one operator-day through ds on a real project - what worked, what to improve (consolidated, not urgent) | waiting: SRE mode: addition parked until the owner says go | **untracked** |
-| ds-web/design-lv | `47136650` | major | obstacle | Topology-only repair for saved LV spans is missing | waiting: authoritative correction of Butezi saved cable pole claims; native ds-network analysis-only topology/load/phase projection with exact source | OPEN.md §9 |
+| ds-web/design-lv | `47136650` | major | obstacle | Topology-only repair for saved LV spans is missing | waiting: historical Butezi authoritative pole-claim review and matching non-destructive saved-project rendering | SEEDING.md ?10 |
 | ds-web/desktop | `ad44f3a0` | blocker | bug | Desktop refuses a bare .shp dropped on the map and then freezes; the only working path is zip -> ds data convert -> GeoJSON -> local layer, split in two | waiting: Desktop release carrying ds-web@a3f1feb9d | OPEN.md §16 |
 | ds-web/desktop | `a4e7f666` | major | idea | Live layers and live folders: link local geospatial data in place, never move it, keep a GeoParquet analytical copy with provenance; same principle headless and on the Server | waiting: SRE mode: addition parked until the owner says go | **untracked** |
 | ds-web/desktop combined + ds-brain/report combined | `a9b76d47` | major | bug | Desktop combined is LV-only while the headless combined adds MV models and MV Staking Table: one contract, two outputs | open | OPEN.md §7 |
