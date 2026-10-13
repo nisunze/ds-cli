@@ -10,7 +10,7 @@
   "bounded_next_attempt": "Obtain the native7\u00b0 witness, compare one DS result, then carry the verified policy token. Reuse `spotting.rs::an_uncharacterized_between_angle_policy_answers_only_at_an_exact_knot`; OPEN-X \u00a713 retains unresolved engineering interpretation.",
   "evidence_files": [
     {
-      "path": "/home/magese/data-solutions/ds-command-kernel/backlog/hard-problems/5d0fd02b/report.json",
+      "path": "/home/magese/data-solutions/ds-command-kernel/backlog/hardproblems/5d0fd02b/report.json",
       "byte_len": 3394,
       "sha256": "c21f5727e1e095cdd4e289e7beefad1c061f7312fe0eb1acb1f282d1bad51138"
     },
@@ -20,5 +20,11 @@
       "sha256": "2e6072ef06a6a69aecceb3dd13c88ff147057df1d23ef2204c2fcb98d58d088f"
     }
   ],
-  "stop_rule": "One reproducible witness and one bounded new hypothesis per visit. If the same named blocker persists, update this card and return to small fixes. Preserve acceptance, geometry, electrical behavior and source/revision/digest fences."
+  "stop_rule": "One reproducible witness and one bounded new hypothesis per visit. If the same named blocker persists, update this card and return to small fixes. Preserve acceptance, geometry, electrical behavior and source/revision/digest fences.",
+  "prior_active_entries": [
+    {
+      "from": "OPEN-X.md",
+      "text": "- **Uncharacterized .012 policy** (`5d0fd02b`): Method-2 steel poles are unplaceable between table knots. **Input needed:** confirm the authoritative between-angle rule if native characterization does not establish it; a coding agent cannot invent interpolation or capacity. **Boundary:** enabling placement using that engineering interpretation. Source tracing, policy discovery, exact-knot tests and conservative unknown-policy refusals continue in [OPEN.md block 13](OPEN.md#13-spotting-codex-main)."
+    }
+  ]
 }

@@ -10,7 +10,7 @@
   "bounded_next_attempt": "Record reviewed evidence once through `set_capacity_artifacts_verification`, audit the pinned Model2, then prove one successful steel spotting result. Reuse `capacity_verification.rs`; no guessed curve cases or blanket verification.",
   "evidence_files": [
     {
-      "path": "/home/magese/data-solutions/ds-command-kernel/backlog/hard-problems/df1f53ae/report.json",
+      "path": "/home/magese/data-solutions/ds-command-kernel/backlog/hardproblems/df1f53ae/report.json",
       "byte_len": 3308,
       "sha256": "f5f8686c2a9972c71d8be23a9e9b3955ac1154d03e7f9a230190e1e6391bec75"
     },
@@ -20,5 +20,11 @@
       "sha256": "f6602ef90529e67f23af9d3da6fb619956c04bdcb29a5578e5fa69b4ee87d187"
     }
   ],
-  "stop_rule": "One reproducible witness and one bounded new hypothesis per visit. If the same named blocker persists, update this card and return to small fixes. Preserve acceptance, geometry, electrical behavior and source/revision/digest fences."
+  "stop_rule": "One reproducible witness and one bounded new hypothesis per visit. If the same named blocker persists, update this card and return to small fixes. Preserve acceptance, geometry, electrical behavior and source/revision/digest fences.",
+  "prior_active_entries": [
+    {
+      "from": "OPEN-X.md",
+      "text": "- **Material and capacity source conflicts** (`3d1c735c`, `df1f53ae`): nominal modulus disagrees with curves/GTP, and Method-2 artifacts remain unverified. **Input needed:** obtain the responsible engineering authority\u2019s source precedence and qualified final-condition material/capacity basis when exact source tracing cannot resolve the conflict. **Boundary:** selecting a physical law or certifying capacity. Canonical creep-field transport, provenance, truthful unknown verdicts and reproducible computation fixes stay in [OPEN.md block 12](OPEN.md#12-ds-grid-engineering-codex-main); acquiring and seeding authoritative evidence stays in SEEDING.md."
+    }
+  ]
 }

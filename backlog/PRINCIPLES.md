@@ -2,6 +2,10 @@
 
 The standing owner rulings for everyone who works the backlog. [OPEN.md](OPEN.md) holds the unfinished code, [OPEN-X.md](OPEN-X.md) the owner decisions, [SEEDING.md](SEEDING.md) parameters, seeding and operational acceptance, [ORDER.md](ORDER.md) the order in which slices start, and [FEEDBACK.md](FEEDBACK.md) a snapshot of unclosed feedback. A ruling lives here once; the lists point to it rather than repeat it. Change a ruling only on the owner's word, with its date.
 
+## Work locations (owner, 2026-10-13)
+
+Active lists stay in `backlog/`. Tried hard problems and their feedback move to `backlog/hardproblems/OPEN.md` and `backlog/hardproblems/FEEDBACK.md`, with reusable per-ID evidence beside them. Remove every corresponding active-list obligation when moving it; retain authority boundaries and unfinished work in the hard case. Moving is not closure. Continue small canonical-run slices against the active queue.
+
 ## 0. The backlog is declarative (owner, 2026-10-07)
 
 - The backlog states only what is known **not** to work, or not to exist yet. It never claims what was fixed: no "fixed in", "already landed", "done" or progress notes.

@@ -1,6 +1,6 @@
 # Open work requiring owner input
 
-> **Moved 2026-10-07:** this backlog now lives in `ds-command-kernel/backlog/`. The old `ds-work/backlog/` no longer exists: edit these files here, commit them to ds-command-kernel `run`, and stage only `backlog/`. ds-work holds working sessions, not coding lists.
+> Work directly on canonical `run`. Active lists stay in ds-command-kernel/backlog/. Indexed hard cases and their feedback live in backlog/hardproblems/; stage only the selected slice documents.
 
 Only an unresolved owner decision, authority or supervised step belongs here. Each entry names the input needed and the boundary it controls. Agents continue independent code in [OPEN.md](OPEN.md) and parameter/seeding work in [SEEDING.md](SEEDING.md); they do not wait on this list to fix unrelated defects.
 
@@ -10,8 +10,8 @@ Check existing contracts, source evidence and recorded owner choices first. Rout
 
 | Area | Remaining entries |
 | --- | ---: |
-| [12. Engineering acceptance and material authority](#12-engineering-acceptance-and-material-authority) | 2 |
-| [13. Between-angle policy](#13-between-angle-policy) | 1 |
+| [12. Engineering acceptance and material authority](#12-engineering-acceptance-and-material-authority) | 1 |
+| [13. Between-angle policy](#13-between-angle-policy) | 0 |
 | [14. Profile display and supervised editing](#14-profile-display-and-supervised-editing) | 0 |
 | [15. Project scope and engineering choices](#15-project-scope-and-engineering-choices) | 4 |
 | [17. Project Work and Assets](#17-project-work-and-assets) | 1 |
@@ -81,11 +81,7 @@ change.
 
 - **Engineering acceptance tolerances**: the load/usage, sag/tension and clearance tasks refer to a tolerance without stating it. **Input needed:** identify the approved engineering acceptance basis and tolerances where existing project/native contracts do not already supply them. **Boundary:** declaring engineering equivalence or acceptance, not repairing reproduced computations. Agents implement exact case/source binding and report measured differences under [OPEN.md block 12](OPEN.md#12-ds-grid-engineering-codex-main); native comparison and data qualification remain in [SEEDING.md block 12](SEEDING.md#12-ds-grid-engineering-codex-main). Never widen tolerances to close a defect.
 
-- **Material and capacity source conflicts** (`3d1c735c`, `df1f53ae`): nominal modulus disagrees with curves/GTP, and Method-2 artifacts remain unverified. **Input needed:** obtain the responsible engineering authority’s source precedence and qualified final-condition material/capacity basis when exact source tracing cannot resolve the conflict. **Boundary:** selecting a physical law or certifying capacity. Canonical creep-field transport, provenance, truthful unknown verdicts and reproducible computation fixes stay in [OPEN.md block 12](OPEN.md#12-ds-grid-engineering-codex-main); acquiring and seeding authoritative evidence stays in SEEDING.md.
-
 ## 13. Between-angle policy
-
-- **Uncharacterized .012 policy** (`5d0fd02b`): Method-2 steel poles are unplaceable between table knots. **Input needed:** confirm the authoritative between-angle rule if native characterization does not establish it; a coding agent cannot invent interpolation or capacity. **Boundary:** enabling placement using that engineering interpretation. Source tracing, policy discovery, exact-knot tests and conservative unknown-policy refusals continue in [OPEN.md block 13](OPEN.md#13-spotting-codex-main).
 
 ## 14. Profile display and supervised editing
 

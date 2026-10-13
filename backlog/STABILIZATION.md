@@ -99,7 +99,6 @@ below (A–D, moved 2026-10-07) so it is fixed together with these items.
 
 ### 11. Intermittent: a selected ground point shows no highlight and no vertical handle (unproven)
 
-
 **Update (owner, 2026-10-07):** the likely cause is the Profile warm-up window; see §12.
 Not reproducible after 13:25 UTC. The owner reports it working again and
 suspects the debug state.
@@ -346,10 +345,6 @@ Owner decisions (from OPEN-X.md §14):
 - **Human/CLI edit demonstration and chosen changes**: the requested full edit cycle includes a person demonstrating edits, deciding which scoped proposals to accept and reviewing modification notes. **Input needed:** that demonstration and the intended edits on an identified model/revision. **Boundary:** applying the person’s choices and marking notes reviewed. Agents first finish and prove pinned draft checkpoints, proposal/decision handling, export gates and HTML note generation in [OPEN.md block 14](OPEN.md#14-plan-and-profile-authoring); ordinary code testing is their responsibility.
 
 ### B. PLS-CADD `.bak` export (with outputs/pls-bak-export-plan-20261007/PLS-BAK-EXPORT-PLAN.md and BUG-EVIDENCE.md NUM)
-
-- `e258b287` (blocker): PLS export plan accepts unsupported edited model but convert cannot emit backup. Complete the model-menu `.bak` export vertical in the remaining bounded slices of `outputs/pls-bak-export-plan-20261007/PLS-BAK-EXPORT-PLAN.md`: library admission and unpinned/qualification warnings; truthful CLI failed/partial outcomes; Restore/report gates; composition pin preservation or refusal; pinned-plan UI preview/apply; shared version intents; exact per-pin cloud state. This advances the existing §11, §18, §23 and §25 items without another gap list. Each slice needs owning tests and a real filed-model replay through `ds` before landing; byte verification never implies native Restore or solver approval. The gisagara rev-67c72f3f replay cannot exercise the plan-time edit-class forecast on current `run`: the dev `ds` plan is blocked first by `immutable_structure_unsourced` (45 structure files) and by "manifest records no snapshot content digest" (46 of 47 tables), so the cable/cable_curves replay needs a schema-current package.
-
-- `4af28da3` (minor): on the real Model 2 package (`drive/DS Grid Models/model2-nyamagabe-nyaruguru/Nyamagabe&Nyaruguru.1.dsgrid`), the current `run` plan refuses with "preserved PLS source version could not be inspected for export: the package manifest records no snapshot content digest". The package declares 44 table digests against the 47-table registry that `13c3a98c` requires (Gisagara rev-67c72f3f declares 46). The message wrongly says no digest exists and gives no remedy: name the registry mismatch (N of 47 tables) and the remedy, e.g. upgrade or re-import with the current `ds`.
 
 - `8f6e3ff1` (major): Alignment-revised .dsgrid cannot return to PLS-CADD: export refuses on pre-existing PLS-POLE 20.01 library members, sync has no writer for the edit class.
 

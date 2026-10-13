@@ -1,6 +1,6 @@
 # Template building and seeding — no code changes
 
-> **Moved 2026-10-07:** this backlog now lives in `ds-command-kernel/backlog/`. The old `ds-work/backlog/` no longer exists: edit these files here, commit them to ds-command-kernel `run`, and stage only `backlog/`. ds-work holds working sessions, not coding lists.
+> Work directly on canonical `run`. Active lists stay in ds-command-kernel/backlog/. Indexed hard cases and their feedback live in backlog/hardproblems/; stage only the selected slice documents.
 
 **Everything here is done without a code change** (owner, 2026-10-07), through the existing native CLI/MCP contracts: building and seeding templates, project-owned parameters and style documents; authoritative engineering/data seeds; immutable library curation and native qualification; then deploying, installing and accepting code that has already landed. If an entry turns out to need a code change, move that part to [OPEN.md](OPEN.md) and keep only the seeding or acceptance part here. Unresolved owner decisions, authority and supervised steps are in [OPEN-X.md](OPEN-X.md); the standing rulings are in [PRINCIPLES.md](PRINCIPLES.md).
 
@@ -10,7 +10,7 @@ Pens, colour/opacity, contour hierarchy, labels, extent, margins, title/issue fi
 
 Candidate curation and native PLS-CADD acceptance are separate from coding the cloud/provider-model lifecycle. Existing local seed/verify/resolve and global preparation/publication/lifecycle CLI contracts are present; they do not establish that every model-management or UI action is implemented. Older entries are pending verification, not proof of a current defect. Delete fulfilled work; do not keep a historical fixes archive.
 
-Tried cases removed from the small-fix queue now live in [HARD-PROBLEMS.md](HARD-PROBLEMS.md), with reusable evidence under [hard-problems/](hard-problems/). Consult that index before revisiting their source or native gates.
+Tried cases removed from the small-fix queue now live in [HARD-PROBLEMS.md](HARD-PROBLEMS.md), with reusable evidence under [hard-problems/](hard-problems). Consult that index before revisiting their source or native gates.
 
 <!-- toc -->
 
@@ -53,7 +53,7 @@ Tried cases removed from the small-fix queue now live in [HARD-PROBLEMS.md](HARD
 
 - **Signed download rollout** (`download-signed`, `c9df4098`): deploy a locally built ds-brain carrying `2b5f8752`; once the signed-read storage rules in `OPEN.md` §1 land, apply them through the owner's ds-apis-tf path; apply the reviewed version-fenced revocation of legacy Firebase download tokens; prove an anonymous GET of a listed report URL is refused; replay `ds design download fetch` with an installed ds carrying ds-cli `9d298014`; release matching reporter/kernel/web/CLI consumers, then close `c9df4098`. Keep token-bearing legacy URLs out of newly delivered artifacts.
 
-- **Current canary on ds-server**: installed `ds-canary` 0.1.6 (2026-09-29, `507d1b7e`) cannot read current printing layouts on its closed contract (`classification` and newer fields; `report layout get` and `report project settings` return `auth_response_unreadable`). This blocks the Rwanda Template logo/title-block seeding of 11 layouts (§3) and most feedback acceptance replays, among them the rows waiting on canary 0.1.7-r79+ (`86d184cf`, `1f2430c7`, `c7664961`, `641143eb`, `fee42145`, `defcbef3`, `e3aa68bd`, `a65872eb`, `d798669f`, `349c3130`, `190d8eaf`, `8363a4fc`, `b3bdc857`, `d8863709`, [`df1f53ae`](HARD-PROBLEMS.md), `6226c0bb`, [`3d1c735c`](HARD-PROBLEMS.md), `4ba8ab15`, [`5acb6a57`](HARD-PROBLEMS.md), [`3a302e54`](HARD-PROBLEMS.md), `9d0f28da`). Install a current canary release on ds-server, then replay each filed acceptance and close what passes.
+- **Current canary on ds-server**: installed `ds-canary` 0.1.6 (2026-09-29, `507d1b7e`) cannot read current printing layouts on its closed contract (`classification` and newer fields; `report layout get` and `report project settings` return `auth_response_unreadable`). This blocks the Rwanda Template logo/title-block seeding of 11 layouts (§3) and most feedback acceptance replays, among them the rows waiting on canary 0.1.7-r79+ (`86d184cf`, `1f2430c7`, `c7664961`, `641143eb`, `fee42145`, `defcbef3`, `e3aa68bd`, `a65872eb`, `d798669f`, `349c3130`, `190d8eaf`, `8363a4fc`, `b3bdc857`, `d8863709`, `6226c0bb`, `4ba8ab15`, `9d0f28da`). Install a current canary release on ds-server, then replay each filed acceptance and close what passes.
 
 - **Bulk reporter lane**: `ds-network-reporter-bulk` (serves `export_combined` and `zip_bundle`) runs `276d3d0e` (2026-09-30), which lacks `32d5119`, `f4ff759`, `c89ea93`, `f26cd35`, `91f2ee3`, `5f12b6d` and `28a7d35`. Redeploy it from a local build before any cloud check of combined or bundled outputs; until then accept through a single-transformer export on the non-bulk reporter (`035418e`) or an installed canary 0.1.7-r79+.
 
@@ -423,7 +423,7 @@ Tried cases removed from the small-fix queue now live in [HARD-PROBLEMS.md](HARD
 
 - **Desktop and LAN delivery**: locally build/install the current matching Desktop with photo/multipage previews, compact scrollable panels, export selection and layer controls; prove paired Plan selection/drag and Server-screen behaviour. Preserve supervised LAN workers and open models. Hosting publication alone does not update Desktop, and package installation alone does not prove running workers restarted.
 
-- **PLS-CADD readback of filed exports** (`8363a4fc`, `6226c0bb`, `b3bdc857`, `4ba8ab15`): after the Linux canary r79+ export of each filed case, Restore and read it back in PLS-CADD 16.81 on Windows before closing. The code part of `b3bdc857` is in `OPEN.md` §11; the tried [`3a302e54`](HARD-PROBLEMS.md) and [`df1f53ae`](HARD-PROBLEMS.md) cases are in HARD-PROBLEMS.md.
+- **PLS-CADD readback of filed exports** (`8363a4fc`, `6226c0bb`, `b3bdc857`, `4ba8ab15`): after the Linux canary r79+ export of each filed case, Restore and read it back in PLS-CADD 16.81 on Windows before closing. The code part of `b3bdc857` is in `OPEN.md` §11.
 
 - **Classification-aware Windows release** (`6e322426`): on a Windows/stable release carrying kernel `0e4389f`, read report project settings and export A0 for `ruhuha`, `upgrade_mbeho` and `zihare`; then close `6e322426`.
 

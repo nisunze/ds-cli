@@ -10,7 +10,7 @@
   "bounded_next_attempt": "Trace normalization/version compatibility using retained source and engine0.1.4 receipt; qualify sealed-plan replay without replanning, editing plans or waiving revision/digest guards.",
   "evidence_files": [
     {
-      "path": "/home/magese/data-solutions/ds-command-kernel/backlog/hard-problems/7a78525b/report.json",
+      "path": "/home/magese/data-solutions/ds-command-kernel/backlog/hardproblems/7a78525b/report.json",
       "byte_len": 3499,
       "sha256": "056e0d5732ba02324d764d25f3a0f67e4260981a6bb0f0f517bb1866303d4d94"
     },

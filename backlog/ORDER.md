@@ -63,7 +63,7 @@ Proceed on the specification defaults; [OPEN-X §25](OPEN-X.md#25-cli-reliabilit
 | 23 | Project-data tile output is listed by neither `ds tile list` nor `ds tile status`; the upload receipt says ready before it exists (`011ae5a6`) | [§16](OPEN.md#16-map-data-datasets-and-screen-styling) | kernel, ds-cli | **wrong** — readiness claimed before the output exists | — |
 | 25 | Headless LV intake: Northern Hub upload (`14fd08e8`), 10-character DBF names (`83f3712b`), legacy unfenced rooms (`007c1624`), `Existing` → `existing_status` migration (`7f5ac170`) | [§9](OPEN.md#9-lv-processing-sizing-and-headless-intake) | kernel, ds-cli, ds-brain, ds-web | blocked — client data cannot enter headlessly | 16 for preservation-sensitive writes |
 | 26 | Vector skip naming: kernel `vector_ops`/WASM parity and frozen packet refreeze (ds-cli gate red) | [§16](OPEN.md#16-map-data-datasets-and-screen-styling) | kernel, network, ds-cli | **wrong** — kernel/WASM vector ops count dropped features as processed | — |
-| 27 | PLS restore acceptance: catalogued exit prompt and exact restored bytes (`1086e058`, `6f346aa3`); export-plan/convert admission parity (`e258b287`) | [§11](OPEN.md#11-pls-cadd-exchange-round-trip), [stabilization B](STABILIZATION.md#moved-from-openmd-and-open-xmd-related-work-fix-together-owner-2026-10-07) | network, ds-cli | **wrong** — a dialog count reported as success | — |
+| 27 | PLS restore acceptance: catalogued exit prompt and exact restored bytes (`1086e058`, `6f346aa3`) | [§11](OPEN.md#11-pls-cadd-exchange-round-trip), [stabilization B](STABILIZATION.md#moved-from-openmd-and-open-xmd-related-work-fix-together-owner-2026-10-07) | network, ds-cli | **wrong** — a dialog count reported as success | — |
 
 ## Windows engineering track — independent of the server queue
 
@@ -71,11 +71,10 @@ Windows owns OPEN.md blocks 12–13 and their engineering consumers. This track 
 
 | # | Slice | OPEN.md | Impact |
 | ---: | --- | --- | --- |
-| 28 | Duty profiles undiscoverable, Model 2 cannot get its policy (`778bb573`); whole-model receipt cannot apply (`7a78525b`) | [§13](OPEN.md#13-spotting-codex-main) | blocked |
+| 28 | Duty profiles undiscoverable, Model 2 cannot get its policy (`778bb573`) | [§13](OPEN.md#13-spotting-codex-main) | blocked |
 | 29 | Uplift and section-boundary loads (`523a7f6d`, `4ba8ab15`) | [§12](OPEN.md#12-ds-grid-engineering-codex-main) | **wrong** — 115 spurious uplifts |
-| 30 | Stringing vs AutoSag (`e343d5ac`); creep shift (`6226c0bb`, `3d1c735c`); OPGW sections; signed native criterion-case bindings | [§12](OPEN.md#12-ds-grid-engineering-codex-main), [§15](OPEN.md#15-project-delivery-code) | **wrong** |
-| 31 | Spotting legality: forbidden 10–60° band (`fb163694`), planner/attachment clearance parity (`449b4f36`) | [§13](OPEN.md#13-spotting-codex-main) | **wrong** |
-| 32 | Structure usage and Method-2 artifacts (`3d2ddd7a`, `df1f53ae`, `4ff54666`) | [§12](OPEN.md#12-ds-grid-engineering-codex-main) | blocked — implement source binding and truthful unknowns; [OPEN-X §12](OPEN-X.md#12-engineering-acceptance-and-material-authority) gates unresolved material choices and acceptance |
+| 30 | Stringing vs AutoSag (`e343d5ac`); creep shift (`6226c0bb`); OPGW sections; signed native criterion-case bindings | [§12](OPEN.md#12-ds-grid-engineering-codex-main), [§15](OPEN.md#15-project-delivery-code) | **wrong** |
+| 32 | Structure usage and Method-2 artifacts (`3d2ddd7a`, `4ff54666`) | [§12](OPEN.md#12-ds-grid-engineering-codex-main) | blocked — implement source binding and truthful unknowns; [OPEN-X §12](OPEN-X.md#12-engineering-acceptance-and-material-authority) gates unresolved material choices and acceptance |
 | 33 | Clearance report case identity (`null °C`); existing conductor status on sections | [§15](OPEN.md#15-project-delivery-code), [§12](OPEN.md#12-ds-grid-engineering-codex-main) | **wrong** on print |
 | 34 | Bounded laptop spotting (`6b597153`) and Profile selected-case binding | [§13](OPEN.md#13-spotting-codex-main), [stabilization A](STABILIZATION.md#moved-from-openmd-and-open-xmd-related-work-fix-together-owner-2026-10-07) | wrong/slow |
 
