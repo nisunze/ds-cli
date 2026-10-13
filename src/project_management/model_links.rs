@@ -313,6 +313,96 @@ pub fn note_references(
         .collect()
 }
 
+/// Closed selection for the existing project-wide records page. No label matching.
+pub fn validate_reference_selection(
+    model: &str,
+    revision: Option<&str>,
+    cursor: Option<&str>,
+) -> Result<(), String> {
+    if !valid_catalog_id(model) || revision.is_some_and(|r| !valid_catalog_id(r)) {
+        return Err("model references need exact catalog model and revision IDs".into());
+    }
+    super::overview::Options {
+        limit: super::overview::MAX_ROWS,
+        records_cursor: cursor.map(str::to_owned),
+    }
+    .validate()
+}
+
+/// Match only the admitted page. Graph and record versions are independent facts.
+pub fn references(
+    project: &str,
+    model: &str,
+    revision: Option<&str>,
+    cursor: Option<&str>,
+    graph: &Value,
+    context: &Value,
+) -> Result<Value, String> {
+    validate_reference_selection(model, revision, cursor)?;
+    let invalid = "model references require one exact project-wide pm_records page";
+    if context["loaded_collections"] != json!(["pm_records"])
+        || context["truncated_by_collection"]
+            .as_object()
+            .is_none_or(|m| m.len() != 1)
+        || context["next_cursors"]
+            .as_object()
+            .is_none_or(|m| m.keys().any(|k| k != "pm_records"))
+    {
+        return Err(invalid.into());
+    }
+    let next = context["next_cursors"].get("pm_records");
+    if next.is_some_and(|v| {
+        v.as_str().is_none_or(|s| {
+            super::overview::Options {
+                limit: super::overview::MAX_ROWS,
+                records_cursor: Some(s.into()),
+            }
+            .validate()
+            .is_err()
+        })
+    }) || (context["truncated_by_collection"]["pm_records"] == false && next.is_some())
+    {
+        return Err(invalid.into());
+    }
+    let observed = super::overview::fold(super::overview::Input {
+        schema: super::SCHEMA.into(),
+        action: "overview".into(),
+        ds_project: project.into(),
+        graph: graph.clone(),
+        context: context.clone(),
+        graph_format: "wire".into(),
+        options: super::overview::Options {
+            limit: super::overview::MAX_ROWS,
+            records_cursor: cursor.map(str::to_owned),
+        },
+    })?;
+    let records = context["records"].as_array().ok_or(invalid)?;
+    if records.iter().any(|r| {
+        r["is_deleted"] != true && r["metadata"]["updated_at"].as_i64().is_none_or(|t| t < 0)
+    }) {
+        return Err("model reference records have no independently observed update time".into());
+    }
+    let mut notes = note_references(records, project, model, revision);
+    for note in &mut notes {
+        let record = records
+            .iter()
+            .find(|r| r["id"] == note["source_id"])
+            .ok_or(invalid)?;
+        note["note_version"] = record["version"].clone();
+        note["note_updated_at"] = record["metadata"]["updated_at"].clone();
+    }
+    let partial = observed.project_notes.count_kind == "lower_bound";
+    Ok(
+        json!({"project":project,"model_id":model,"revision_id":revision,
+        "tasks":task_references(graph,project,model,revision),"notes_count":notes.len(),"notes":notes,
+        "notes_count_kind":if partial {"lower_bound"} else {"exact"}, "notes_truncated":partial,
+        "records_cursor":cursor,"notes_next_cursor":next,"context_returned_records":records.len(),
+        "truncated_by_collection":observed.truncated_by_collection,"next_cursors":observed.next_cursors,
+        "revision":observed.graph_revision,"schedule_revision":observed.schedule_revision,
+        "context_graph_revision":observed.context_graph_revision,"read_consistency":observed.read_consistency}),
+    )
+}
+
 /// A project note's `links[]`. ds-brain's record envelope keeps `links` (with
 /// `geometry` and `version`) beside `data`, not inside it.
 pub fn note_links(record: &Value) -> &Value {
@@ -465,5 +555,58 @@ mod tests {
         for bad in ["a", "-ab", "Model", "a b", "a/b", "v/3", &"a".repeat(129)] {
             assert!(!valid_catalog_id(bad), "{bad}");
         }
+    }
+    #[test]
+    fn bounded_references_keep_canonical_exact_links_and_independent_record_versions() {
+        let link = pin("rev-2", 3).link(Some("display"));
+        let graph = json!({"project_id":"p","revision":9,"schedule_revision":4,"tasks":[],"dependencies":[],"residual_items":[]});
+        let mut context = json!({"project_id":"p","records":[{"id":"note","version":7,"metadata":{"updated_at":123},"data":{"category":"project_note","subject":"Canonical note","memory":{"schema":"ds.project-note-memory/v1"}},"links":[link.clone()]}],"loaded_collections":["pm_records"],"truncated_by_collection":{"pm_records":false},"next_cursors":{}});
+        let exact = references("p", "model-a", Some("rev-2"), None, &graph, &context).unwrap();
+        assert_eq!(exact["notes_count"], 1);
+        assert_eq!(exact["notes_count_kind"], "exact");
+        assert_eq!(exact["notes"][0]["note_version"], 7);
+        for (field, bad) in [
+            ("project_id", "foreign"),
+            ("entity_id", "other-model"),
+            ("object_revision", "rev-3"),
+            ("object_type", "other"),
+        ] {
+            context["records"][0]["links"][0] = link.clone();
+            context["records"][0]["links"][0][field] = json!(bad);
+            assert_eq!(
+                references("p", "model-a", Some("rev-2"), None, &graph, &context).unwrap()
+                    ["notes_count"],
+                0,
+                "{field}"
+            );
+        }
+        context["records"][0]["links"][0] = link;
+        context["records"][0]["links"][0]
+            .as_object_mut()
+            .unwrap()
+            .remove("object_revision");
+        assert_eq!(
+            references("p", "model-a", None, None, &graph, &context).unwrap()["notes_count"],
+            1
+        );
+        assert_eq!(
+            references("p", "model-a", Some("rev-2"), None, &graph, &context).unwrap()
+                ["notes_count"],
+            0
+        );
+        context["records"][0]["is_deleted"] = json!(true);
+        assert_eq!(
+            references("p", "model-a", None, None, &graph, &context).unwrap()["notes_count"],
+            0
+        );
+        context["records"][0]["is_deleted"] = json!(false);
+        context["truncated_by_collection"]["pm_records"] = json!(true);
+        context["next_cursors"] = json!({"pm_records":"boundary"});
+        assert_eq!(
+            references("p", "model-a", Some("rev-2"), None, &graph, &context).unwrap()
+                ["notes_count_kind"],
+            "lower_bound"
+        );
+        assert!(references("p", "Display label", None, None, &graph, &context).is_err());
     }
 }
