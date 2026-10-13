@@ -44,7 +44,7 @@ impl Options {
         Ok(())
     }
     pub fn context_payload(&self, project: &str) -> Value {
-        let mut payload = json!({"action":"get_context","ds_project":project,"limit":MAX_ROWS});
+        let mut payload = json!({"action":"get_context","ds_project":project,"limit":MAX_ROWS,"collections":["pm_records"]});
         if let Some(cursor) = &self.records_cursor {
             payload["cursors"] = json!({"pm_records":cursor});
         }
@@ -161,6 +161,27 @@ pub fn fold(input: Input) -> Result<Overview, String> {
     {
         return Err("Overview requires an exact, project-wide graph and context; denied or foreign responses cannot become empty work.".into());
     }
+    let loaded = input.context["loaded_collections"]
+        .as_array()
+        .ok_or("Overview context has no loaded-collection evidence.")?;
+    let allowed = [
+        "pm_work_episodes",
+        "pm_records",
+        "pm_comments",
+        "pm_attachments",
+        "pm_activities",
+        "pm_intelligence_artifacts",
+    ];
+    let mut seen = std::collections::BTreeSet::new();
+    for collection in loaded {
+        let name = collection.as_str().ok_or("Invalid loaded collection.")?;
+        if !allowed.contains(&name) || !seen.insert(name) {
+            return Err("Invalid loaded collection evidence.".into());
+        }
+    }
+    if !seen.contains("pm_records") {
+        return Err("Overview records were not acquired.".into());
+    }
     let raw_records = input.context["records"]
         .as_array()
         .ok_or("Overview context has no records collection.")?;
@@ -188,6 +209,11 @@ pub fn fold(input: Input) -> Result<Overview, String> {
     let mut truncated = BTreeMap::new();
     let mut cursors = BTreeMap::new();
     for key in collections {
+        if !seen.contains(key) && (flags.contains_key(key) || cursor_values.contains_key(key)) {
+            return Err(
+                "Unqueried overview collection cannot claim completeness or a cursor.".into(),
+            );
+        }
         if let Some(flag) = flags.get(key) {
             truncated.insert(
                 key.into(),
@@ -296,8 +322,33 @@ mod tests {
     pub(super) fn input() -> Input {
         serde_json::from_value(json!({"schema":super::super::SCHEMA,"action":"overview","ds_project":"p","options":{"limit":1},
   "graph":{"project_id":"p","revision":9,"schedule_revision":4,"tasks":[{"id":"inbox","data":{"title":"Non-geometric inbox","placement":"inbox","type":"task"}},{"id":"gate","data":{"title":"Milestone","type":"milestone"}}],"dependencies":[],"residual_items":[]},
-  "context":{"project_id":"p","records":[{"id":"record","version":2,"data":{"category":"instruction","subject":"Record","revision_label":"R3"}},{"id":"note","version":7,"data":{"category":"project_note","subject":"Non-geometric project note","body":"project note body"}}],"truncated_by_collection":{"pm_records":false},"next_cursors":{},"personal_notes":[{"body":"PRIVATE_SECRET"}]}})).unwrap()
+  "context":{"project_id":"p","loaded_collections":["pm_records"],"records":[{"id":"record","version":2,"data":{"category":"instruction","subject":"Record","revision_label":"R3"}},{"id":"note","version":7,"data":{"category":"project_note","subject":"Non-geometric project note","body":"project note body"}}],"truncated_by_collection":{"pm_records":false},"next_cursors":{},"personal_notes":[{"body":"PRIVATE_SECRET"}]}})).unwrap()
     }
+    #[test]
+    fn record_only_selection_is_fixed_and_unqueried_totals_are_refused() {
+        let mut i = input();
+        assert_eq!(
+            i.options.context_payload("p")["collections"],
+            json!(["pm_records"])
+        );
+        i.options.records_cursor = Some("next-record".into());
+        assert_eq!(
+            i.options.context_payload("p")["cursors"],
+            json!({"pm_records":"next-record"})
+        );
+        i.context["truncated_by_collection"]["pm_comments"] = json!(false);
+        assert!(fold(i).is_err());
+        for loaded in [
+            json!([]),
+            json!(["private_notes"]),
+            json!(["pm_records", "pm_records"]),
+        ] {
+            let mut i = input();
+            i.context["loaded_collections"] = loaded;
+            assert!(fold(i).is_err());
+        }
+    }
+
     #[test]
     fn includes_every_kind_without_geometry_and_keeps_source_versions() {
         let o = fold(input()).unwrap();
@@ -343,6 +394,7 @@ mod tests {
             "/context",
             "/graph/tasks",
             "/context/records",
+            "/context/loaded_collections",
             "/context/truncated_by_collection",
         ] {
             let mut i = input();

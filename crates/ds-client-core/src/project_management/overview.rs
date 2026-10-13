@@ -46,6 +46,11 @@ pub(super) fn run<T: AuthorizedTransport>(
         .get("context")
         .cloned()
         .unwrap_or(context_response);
+    if context["loaded_collections"] != json!(["pm_records"]) {
+        return Err(unreadable(
+            "overview context acquired an unrequested collection".into(),
+        ));
+    }
     let overview = overview::fold(Input {
         schema: ds_command_kernel::project_management::SCHEMA.into(),
         action: "overview".into(),

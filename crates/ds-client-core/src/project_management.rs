@@ -773,7 +773,7 @@ impl Command {
 /// `PM_REFUSED` carry a sentence the operator can act on. Collapsing those
 /// into a status class would send a caller to guess at three different next
 /// steps from one word.
-fn refusal(status: u16, body: &[u8]) -> ClientError {
+pub(crate) fn refusal(status: u16, body: &[u8]) -> ClientError {
     let value: Value = serde_json::from_slice(body).unwrap_or(Value::Null);
     let error = &value["error"];
     // ds-brain spells its codes in upper case; the boundary carries
@@ -1910,7 +1910,7 @@ mod tests {
         use ds_command_kernel::project_management::overview::Options;
         let mut transport = attach_transport("ready", 1);
         transport.started = json!({"graph":{"project_id":"project-a","revision":9,"schedule_revision":4,"tasks":[{"id":"inbox","data":{"title":"Inbox without geometry","placement":"inbox","type":"task"}},{"id":"gate","data":{"title":"Milestone","type":"milestone"}}],"dependencies":[],"residual_items":[]}});
-        transport.finalized = json!({"context":{"project_id":"project-a","records":[{"id":"record","version":2,"data":{"category":"instruction","subject":"Record"}},{"id":"note","version":7,"data":{"category":"project_note","subject":"Note without geometry"}}],"truncated_by_collection":{"pm_records":false},"next_cursors":{},"personal_notes":[{"body":"PRIVATE_SECRET"}]}});
+        transport.finalized = json!({"context":{"project_id":"project-a","loaded_collections":["pm_records"],"records":[{"id":"record","version":2,"data":{"category":"instruction","subject":"Record"}},{"id":"note","version":7,"data":{"category":"project_note","subject":"Note without geometry"}}],"truncated_by_collection":{"pm_records":false},"next_cursors":{},"personal_notes":[{"body":"PRIVATE_SECRET"}]}});
         let profile = crate::data_distribution::tests::profile_for_tests();
         let invoke = |t: &mut AttachTransport, options: Options| {
             run(
@@ -1931,7 +1931,7 @@ mod tests {
             transport.payloads,
             vec![
                 json!({"action":"get_graph","ds_project":"project-a"}),
-                json!({"action":"get_context","ds_project":"project-a","limit":100})
+                json!({"action":"get_context","ds_project":"project-a","limit":100,"collections":["pm_records"]})
             ]
         );
         assert_eq!(result["tasks"]["count"], 1);
@@ -1987,6 +1987,11 @@ mod tests {
         );
         transport.upload_status = 200;
         transport.started["graph"]["project_id"] = json!("project-a");
+        transport.finalized["context"]["loaded_collections"] = json!(["pm_records", "pm_comments"]);
+        transport.payloads.clear();
+        assert_eq!(invoke(&mut transport, Options::default()).unwrap_err().kind(), ErrorKind::UnreadableResponse);
+        assert_eq!(transport.payloads.len(), 2, "unrequested acquisition is never retried");
+        transport.finalized["context"]["loaded_collections"] = json!(["pm_records"]);
         transport.finalized["context"]["records"] = Value::Null;
         transport.payloads.clear();
         assert_eq!(
