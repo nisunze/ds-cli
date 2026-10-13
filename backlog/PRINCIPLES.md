@@ -27,7 +27,6 @@ The standing owner rulings for everyone who works the backlog. [OPEN.md](OPEN.md
 | SEEDING.md §14 | Paired geometry authoring acceptance | "proofs are retained in their receipts" |
 | SEEDING.md §16 | Cache catalogue installation and Desktop acceptance | "Installed stable already reports all 44 held rows ready" |
 | SEEDING.md §16 | Screen style and Windows replay | "Install the landed PNG-stream read retry" |
-| SEEDING.md §17 | Authenticated Server and Dashboard acceptance | "Published Web source/asset checks already passed" |
 | SEEDING.md §17 | PM events and ownership acceptance | "Backend notices and project-event outbox are already deployed" |
 | SEEDING.md §17 | Remaining Assets formats | "… already have receipts" |
 | SEEDING.md §21 | Installed PLS readiness | "install the landed provider-metadata/INI string projection" |
