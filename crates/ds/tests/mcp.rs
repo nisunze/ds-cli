@@ -4182,6 +4182,8 @@ fn pm_closure_controls_share_the_real_mcp_registry() {
         "messaging.installations", "messaging.installation.revoke", "pm.plan",
         "notes.backup", "notes.backup.read", "notes.backup.restore",
         "notes.canonicalize.prepare", "notes.canonicalize.apply",
+        "pm.note.create", "pm.note.canonicalize.prepare", "pm.note.canonicalize.apply",
+        "pm.task.read", "pm.note.read", "pm.note.query", "pm.note.context",
     ];
     let mut requests = Vec::new();
     for (index, command) in commands.iter().enumerate() {
@@ -4197,18 +4199,26 @@ fn pm_closure_controls_share_the_real_mcp_registry() {
     requests.push(json!({"jsonrpc":"2.0","id":102,"method":"tools/call",
         "params":{"name":"ds_project","arguments":{"operation":"invoke","command":"notes.canonicalize.apply",
             "arguments":{"input":home.0.join("must-not-read-migration.json").to_str().unwrap(),"id":"reviewed-migration"}}}}));
+    requests.push(json!({"jsonrpc":"2.0","id":103,"method":"tools/call",
+        "params":{"name":"ds_project","arguments":{"operation":"invoke","command":"pm.note.canonicalize.apply",
+            "arguments":{"input":home.0.join("must-not-read-shared-migration.json").to_str().unwrap(),"id":"reviewed-migration","project":"p"}}}}));
     let messages = signed_out_mcp(&home, &["--exposure", "chapters"], &requests);
     for (index, id) in commands.iter().enumerate() {
         let spec = &structured(&messages, (index+1) as i64)["data"]["command"];
         assert_eq!(spec["id"], *id, "real registry leaf {id}");
-        assert_eq!(spec["authority"], if *id == "pm.plan" {"headless_project"} else {"headless_user"});
-        if ["notes.create", "notes.update", "notes.retire", "notes.restore", "notes.version.restore", "messaging.installation.revoke", "notes.backup", "notes.backup.restore", "notes.canonicalize.apply"].contains(id) {
+        assert_eq!(spec["authority"], if id.starts_with("pm.") {"headless_project"} else {"headless_user"});
+        if ["notes.create", "notes.update", "notes.retire", "notes.restore", "notes.version.restore", "messaging.installation.revoke", "notes.backup", "notes.backup.restore", "notes.canonicalize.apply", "pm.note.create", "pm.note.canonicalize.apply"].contains(id) {
             assert_eq!(spec["confirmation_required"], true, "explicit effect {id}");
         }
     }
-    let plan = &structured(&messages, 12)["data"]["command"];
-    assert!(plan["inputs"].as_array().unwrap().iter().any(|arg| arg["name"] == "offline"));
+    for (index,id) in commands.iter().enumerate() {
+        if ["pm.plan","pm.task.read","pm.note.read","pm.note.query","pm.note.context"].contains(id) {
+            let read=&structured(&messages,(index+1) as i64)["data"]["command"];
+            assert!(read["inputs"].as_array().unwrap().iter().any(|arg|arg["name"]=="offline"),"retained read {id}");
+        }
+    }
     assert_eq!(structured(&messages, 100)["error"]["code"], "confirmation_required");
     assert_eq!(structured(&messages, 101)["error"]["code"], "confirmation_required");
     assert_eq!(structured(&messages, 102)["error"]["code"], "confirmation_required");
+    assert_eq!(structured(&messages, 103)["error"]["code"], "confirmation_required");
 }

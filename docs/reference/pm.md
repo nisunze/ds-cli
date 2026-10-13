@@ -472,6 +472,37 @@ the broad `project` profile at its existing tool budget.
 
 ## Shared Project Notes
 
+`pm task read --offline` uses the last matching captured task and optional timeline.
+`pm note query --offline` and `pm note context --offline` use their last exact
+captured request/page. Filters, cursor, scope, limit and project remain exact
+selectors; changing them requires intentional acquisition. Each response keeps
+its independently observed source revisions, partial/migration-needed flags,
+capture-time permission scope and unknown remote freshness. Offline operation
+restores no session and makes no API request. Normal online acquisition remains
+separate from the general cheap `isFresh` integration obligation.
+
+Shared creation uses the one canonical `--input` form. The older title/body
+creation route is retired. Ordinary current reads and writes require canonical
+memory; missing memory returns a named migration-required refusal rather than
+interpreting text or silently capturing an older head.
+
+```sh
+ds pm note canonicalize prepare --project PROJECT --note NOTE --output json
+# Review the literal source; save only data.plan as reviewed-plan.json.
+ds pm note canonicalize apply --project PROJECT --input reviewed-plan.json --id OPERATION --yes --output json
+```
+
+The exact plan pins project, note, authored version, raw source SHA and update
+time. Adoption preserves literal content, geometry, known authors/timestamps,
+unknown stored fields and genuine historical bytes/hashes. It records the
+representation change separately, without renumbering the authored version.
+An unclassified observation has no inferred claims or project-wide authority.
+Exact old plain versions remain readable as literal documents with semantic
+memory unrecorded; selecting a claim from them refuses. Queries encountering
+unadopted rows mark migration needs and incomplete results instead of silently
+turning plain text into decisions. Use a later explicit authored update to record
+properly sourced claims and scope.
+
 For subnotes, set `draft.memory.parent` to an exact `{"id":"parent-note","version":1}` in the existing typed creation/update JSON; omit it for a root or explicit detach. Updating still requires the reviewed `expected_version` of the child; a newly selected/changed parent pin requires the current version of the direct parent. An unchanged historic pin remains intact. Read direct children with `ds pm note query --parent parent-note --project PROJECT --output json`. The bounded page can be incomplete; it is not a recursive subtree or authority inheritance.
 
 Use notes actively to retain scoped user rulings, corrections, observations and

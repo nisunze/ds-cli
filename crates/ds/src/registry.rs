@@ -2584,6 +2584,8 @@ static WORK_ENTRIES: &[Entry] = &[
         handler: ds_cli_pm::record::thread::run,
         render: ds_cli_pm::record::thread::render,
     },
+    Entry { command: &ds_cli_pm::note_migration::PREPARE, handler: ds_cli_pm::note_migration::prepare, render: ds_cli_pm::note_memory::render },
+    Entry { command: &ds_cli_pm::note_migration::APPLY, handler: ds_cli_pm::note_migration::apply, render: ds_cli_pm::note_memory::render },
     Entry {
         command: &ds_cli_pm::note::CREATE,
         handler: ds_cli_pm::note::run,

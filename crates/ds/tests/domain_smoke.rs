@@ -703,6 +703,7 @@ fn run_ds_with_reporter(args: &[&str], native: bool, reporter: Option<&std::path
     command
         .args(args)
         .env("NO_COLOR", "1")
+        .env("DS_SRE_REPORTING", "off")
         .env("DS_DESKTOP_DESCRIPTOR", config.join("no-desktop.json"));
     if native {
         command
@@ -11920,85 +11921,36 @@ fn model_links_pin_an_exact_catalog_revision_and_refuse_before_any_round_trip() 
 }
 
 #[test]
-fn project_note_create_is_a_confirmed_project_write_with_one_markdown_source() {
-    let described = ok(&["capabilities", "pm.note.create", "--output", "json"]);
-    let command = &described["command"];
-    assert_eq!(command["authority"], "headless_project");
-    assert_eq!(command["effect"], "global_write");
-    assert_eq!(command["confirmation_required"], true);
-    assert!(
-        command["inputs"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|input| { input["name"] == "project" && input["required"] == true })
-    );
-    let args = [
-        "pm",
-        "note",
-        "create",
-        "--id",
-        "review-42",
-        "--title",
-        "Pole review",
-        "--body",
-        "Reviewed the selected pole substitutions.",
-        "--output",
-        "json",
-    ];
-    assert_eq!(native_pm_refusal(&args), "confirmation_required");
-    let mut confirmed = args.to_vec();
-    confirmed.push("--yes");
-    assert!(
-        NATIVE_AUTH_CODES.contains(&native_pm_refusal(&confirmed).as_str()),
-        "a shaped project note reaches native authorization without a desktop"
-    );
-    assert_eq!(
-        native_pm_refusal(&[
-            "pm",
-            "note",
-            "create",
-            "--title",
-            "Pole review",
-            "--body",
-            "review",
-            "--body-file",
-            "/tmp/another-review.md",
-            "--yes",
-            "--output",
-            "json"
-        ]),
-        "note_invalid"
-    );
-    assert_eq!(
-        native_pm_refusal(&[
-            "pm",
-            "note",
-            "create",
-            "--id",
-            "bad/id",
-            "--title",
-            "Pole review",
-            "--yes",
-            "--output",
-            "json"
-        ]),
-        "note_invalid"
-    );
-    let result = ok(&[
-        "capabilities",
-        "--search",
-        "modification note",
-        "--output",
-        "json",
-    ]);
-    assert!(
-        result["results"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|entry| entry["id"] == "pm.note.create")
-    );
+fn project_note_create_is_a_confirmed_project_write_with_one_canonical_input() {
+    let described=ok(&["capabilities","pm.note.create","--output","json"]);
+    let command=&described["command"];
+    assert_eq!(command["authority"],"headless_project");
+    assert_eq!(command["effect"],"global_write");
+    assert_eq!(command["confirmation_required"],true);
+    let inputs=command["inputs"].as_array().unwrap();
+    for required in ["project","input"] {
+        assert!(inputs.iter().any(|i|i["name"]==required&&i["required"]==true));
+    }
+    assert!(!inputs.iter().any(|i|matches!(i["name"].as_str(),Some("title"|"body"|"body-file"|"transformer"))));
+    let dir=temp_root("canonical-note-create");
+    std::fs::create_dir_all(&dir).unwrap();
+    let input=dir.join("observation.json");
+    std::fs::write(&input,serde_json::to_vec(&json!({
+        "operation_id":"smoke-note-create","id":"smoke-observation","reason":"Signed-out authoring admission fixture",
+        "draft":{"subject":"Reviewed fixture","body":"Literal test observation.","tags":[],
+            "memory":{"schema":"ds.project-note-memory/v1","note_type":"observation","lifecycle":"active",
+                "provenance":{"kind":"user_instruction","source_author":"Test author"},
+                "scope":{"kind":"project"},"claims":[],"evidence":[]}}
+    })).unwrap()).unwrap();
+    let args=["pm","note","create","--input",input.to_str().unwrap(),"--output","json"];
+    assert_eq!(native_pm_refusal(&args),"confirmation_required");
+    let mut confirmed=args.to_vec();confirmed.push("--yes");
+    assert!(NATIVE_AUTH_CODES.contains(&native_pm_refusal(&confirmed).as_str()),"canonical input reaches native authorization without a desktop or network write");
+    // Availability guards a build without its packaged native profile before
+    // handler JSON parsing. The retired public flag is still refused at admission.
+    let mut obsolete=confirmed.clone();obsolete.extend(["--body","retired quick-note field"]);
+    assert_eq!(native_pm_refusal(&obsolete),"unknown_flag");
+    std::fs::remove_dir_all(&dir).unwrap();
 }
 
 #[test]

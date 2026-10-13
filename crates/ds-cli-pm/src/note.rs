@@ -1,227 +1,28 @@
-//! `ds pm note create` — a short, project-visible human review note.
-
-use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{
-    Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
+//! Canonical shared Project Notes authoring; the CLI only adapts the owner.
+use ds_cli_contract::{
+    Context, Failure, Inputs,
+    spec::{Command, Effect},
 };
-use ds_cli_contract::{Context, Inputs};
-use ds_client_core::project_management::Command as PMCommand;
-use serde_json::{Value, json};
-
-use crate::LANE_ARG;
-
-const MAX_NOTE_BODY_BYTES: usize = 128 * 1024;
-
-const TITLE_ARG: Arg = Arg::value(
-    "title",
-    "<text>",
-    "Short title of this project-visible note (at most 300 UTF-8 bytes).",
-);
-const BODY_ARG: Arg = Arg::value(
-    "body",
-    "<markdown>",
-    "Markdown review text, at most 128 KiB. Use this or --body-file.",
-);
-const BODY_FILE_ARG: Arg = Arg::value(
-    "body-file",
-    "<path>",
-    "Read the Markdown review text from one UTF-8 file, at most 128 KiB. Use this or --body.",
-);
-const ID_ARG: Arg = Arg::value(
-    "id",
-    "<note-id>",
-    "Mint this stable record id. Reuse it after an uncertain response; a second create is refused as existing.",
-);
-
-const NOTE_INVALID: Refusal = Refusal {
-    code: "note_invalid",
-    when: "the title or id is empty or over its bound, the Markdown body is over 128 KiB, or both body forms were given",
-    remedy: "give a short title and at most one body source; use a stable id of at most 256 UTF-8 bytes without whitespace, controls or slash",
-};
-const NOTE_BODY_UNREADABLE: Refusal = Refusal {
-    code: "note_body_unreadable",
-    when: "--body-file cannot be read as UTF-8 text within 128 KiB",
-    remedy: "pass a readable UTF-8 Markdown file no larger than 128 KiB, or use --body",
-};
-const NOTE_EXISTS: Refusal = Refusal {
-    code: "note_exists",
-    when: "the same --id already names a Project Work context record",
-    remedy: "the create may already have landed; read that id with `ds pm record read` before choosing a new id for different work",
-};
+use serde_json::Value;
 
 pub static CREATE: Command = Command {
-    id: "pm.note.create",
-    path: &["pm", "note", "create"],
-    contract: 3,
-    summary: "Create a project-visible Markdown note for human review or editing.",
-    purpose: "\
-Files a quick project note in Project Work, with its title and concise Markdown \
-body. The signed-in native credential must be allowed to contribute to the \
-explicitly named project. This creates a record with category project_note; \
-it does not send correspondence. Use notes deliberately for meaningful user rulings, corrections, rejected assumptions and verified work outcomes, then read back the saved record. There is no automatic mutation hook. For durable structured memory, --input consumes the closed Write JSON: operation_id,id,reason,draft(subject,body,tags,memory with schema, note_type, active lifecycle, provenance, scope, individually sourced claims, evidence, supersedes and unresolved). Optional draft.authoring_model retains known self-declared writer labels. Server author/time remain authoritative; a proposal or inference never becomes a user decision. Use this form instead of the legacy title/body/id/link fields. Repeat --transformer for exact same-project \
-active transformer links; body text does not create relationships. These links \
-do not pin an immutable submission revision or grant approval. An existing report is linked afterward with \
-`ds assets attach --record <note-id>`; confirm that link by reading the asset \
-or record. Reuse --id after an uncertain response: duplicate creation is \
-refused without a second note. Headless; no window.",
-    chapter: Chapter::Project,
-    effect: Effect::GlobalWrite,
-    authority: Authority::HeadlessProject,
-    execution: Execution::Sync,
-    args: crate::authored_args![
-        TITLE_ARG,
-        Arg::value(
-            "input",
-            "<json-file>",
-            "Structured native Write JSON, at most256 KiB; use instead of legacy title/body/id/transformer fields. No expected_version on creation.",
-        ),
-        BODY_ARG,
-        BODY_FILE_ARG,
-        ID_ARG,
-        Arg::repeated(
-            "transformer",
-            "<exact-id>",
-            "Typed same-project transformer link; repeat for 1..128 unique targets. Body text is not parsed into relationships.",
-        ),
-        LANE_ARG,
-        crate::PROJECT_ARG,
-    ],
-    output: "The explicit `project` and created `note` receipt: `id`, `version`, `title` and `category`. The note is project-visible; the receipt does not claim an asset link.",
-    examples: &[Example {
-        command: "ds pm note create --project <exact-id> --id review-poles-2026-09-30 --title \"Pole modification review\" --body-file review-note.md --yes --output json",
-        note: "Read .data.note.id and .data.note.version. To link an existing HTML report, use `ds assets ingest` then `ds assets attach --asset <asset-id> --record <note-id> --yes` and verify by readback.",
-        runnable: false,
-    }],
-    refusals: &crate::correspondence_refusals::<26>(&[
-        NOTE_INVALID,
-        NOTE_BODY_UNREADABLE,
-        NOTE_EXISTS,
-        crate::note_memory::INVALID,
-        crate::note_memory::UNREADABLE,
-    ]),
-    reference: Some("docs/reference/pm.md"),
-    search: &[
-        "project note",
-        "modification note",
-        "design note",
-        "human memo",
-        "review record",
-        "work journal",
-    ],
-    requires: Requires::Server,
-    availability: ds_cli_auth::native_availability,
+    contract: 4,
+    ..crate::note_memory::descriptor(
+        "pm.note.create",
+        &["pm", "note", "create"],
+        "Create a sourced project note for deliberate shared memory.",
+        "Consumes one closed Write JSON with operation_id, id, reason and draft(subject, body, tags, memory). Record meaningful rulings, corrections and verified outcomes deliberately; no automatic filing runs. Memory carries explicit provenance, scope, individually sourced claims and evidence. An observation may have no claims, which does not imply consensus or complete context. Proposals and model inference never become accepted user decisions. Optional known writer model/version/strength are self-declared metadata distinct from authenticated author. Creation omits expected_version; exact retries use the same operation identity. No correspondence is sent and no private content is copied implicitly.",
+        Effect::GlobalWrite,
+        crate::authored_args![
+            crate::note_memory::INPUT,
+            crate::LANE_ARG,
+            crate::PROJECT_ARG
+        ],
+    )
 };
 
-fn invalid(message: impl Into<String>) -> Failure {
-    Failure::invalid(NOTE_INVALID.code, message).remedy(NOTE_INVALID.remedy)
-}
-
-fn body(inputs: &Inputs) -> Result<String, Failure> {
-    match (inputs.value("body"), inputs.value("body-file")) {
-        (Some(_), Some(_)) => Err(invalid("give only one of --body and --body-file")),
-        (Some(body), None) => Ok(body.to_owned()),
-        (None, None) => Ok(String::new()),
-        (None, Some(path)) => {
-            let unreadable = |message: String| {
-                Failure::invalid(NOTE_BODY_UNREADABLE.code, message)
-                    .remedy(NOTE_BODY_UNREADABLE.remedy)
-                    .detail(json!({"path": path}))
-            };
-            let metadata =
-                std::fs::metadata(path).map_err(|error| unreadable(error.to_string()))?;
-            if metadata.len() > MAX_NOTE_BODY_BYTES as u64 {
-                return Err(unreadable(format!(
-                    "the file is {} bytes; the note body bound is {MAX_NOTE_BODY_BYTES}",
-                    metadata.len()
-                )));
-            }
-            let bytes = std::fs::read(path).map_err(|error| unreadable(error.to_string()))?;
-            if bytes.len() > MAX_NOTE_BODY_BYTES {
-                return Err(unreadable(format!(
-                    "the file is {} bytes; the note body bound is {MAX_NOTE_BODY_BYTES}",
-                    bytes.len()
-                )));
-            }
-            String::from_utf8(bytes).map_err(|_| unreadable("the file is not UTF-8 text".into()))
-        }
-    }
-}
-
-fn receipt(project: &str, response: &Value) -> Result<Value, Failure> {
-    let item = &response["item"];
-    let (Some(id), Some(version), Some(title)) = (
-        item["id"].as_str(),
-        item["version"].as_i64().filter(|version| *version > 0),
-        item["data"]["subject"].as_str(),
-    ) else {
-        return Err(Failure::internal(
-            crate::PLAN_UNREADABLE.code,
-            "the created project note did not return an id, version and title",
-        )
-        .remedy(crate::PLAN_UNREADABLE.remedy));
-    };
-    if item["data"]["category"] != "project_note" || item["data"]["record_type"] != "quick" {
-        return Err(Failure::internal(
-            crate::PLAN_UNREADABLE.code,
-            "the created record did not return as a quick project note",
-        )
-        .remedy(crate::PLAN_UNREADABLE.remedy));
-    }
-    Ok(json!({
-        "project": project,
-        "note": {"id": id, "version": version, "title": title, "category": "project_note"}
-    }))
-}
-
-pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
-    if inputs.value("input").is_some() {
-        return crate::note_memory::structured_create(inputs, _context);
-    }
-    if inputs.value("title").is_none() {
-        return Err(invalid(
-            "Give a meaningful --title or one structured --input",
-        ));
-    }
-    let body = body(inputs)?;
-    let project = inputs.require("project")?;
-    let id = inputs.value("id").map(str::to_owned);
-    let title = inputs.require("title")?.to_owned();
-    let transformer_ids = inputs.repeated("transformer").to_vec();
-    let command = if transformer_ids.is_empty() {
-        PMCommand::ProjectNoteCreate { id, title, body }
-    } else {
-        PMCommand::ProjectNoteCreateLinked {
-            id,
-            title,
-            body,
-            transformer_ids,
-        }
-    };
-    command
-        .validate()
-        .map_err(|error| invalid(error.to_string()))?;
-    let id = inputs.value("id");
-    let report = crate::authoring::project(
-        inputs,
-        inputs.value("lane").unwrap_or("stable"),
-        project,
-        command,
-    )
-    .map_err(|failure| {
-        if failure.code() == crate::PM_REFUSED.code
-            && failure
-                .detail_value()
-                .and_then(|detail| detail["service_code"].as_str())
-                == Some("pm_context_id_conflict")
-        {
-            Failure::conflict(NOTE_EXISTS.code, "the project note id already exists")
-                .detail(json!({"id": id, "project": project}))
-                .remedy(NOTE_EXISTS.remedy)
-        } else {
-            failure
-        }
-    })?;
-    receipt(report.project_id(), report.result())
+pub fn run(i: &Inputs, c: &Context) -> Result<Value, Failure> {
+    crate::note_memory::structured_create(i, c)
 }
 
 pub fn render(data: &Value) -> String {
@@ -229,10 +30,9 @@ pub fn render(data: &Value) -> String {
         "created project note {} (version {}) in {}\n  {}\n",
         data["note"]["id"].as_str().unwrap_or("?"),
         data["note"]["version"].as_i64().unwrap_or(0),
-        data["project"].as_str().unwrap_or("?"),
-        data["note"]["title"]
+        data["project_id"].as_str().unwrap_or("?"),
+        data["note"]["document"]["data"]["subject"]
             .as_str()
-            .or_else(|| data["note"]["document"]["data"]["subject"].as_str())
             .unwrap_or("?"),
     )
 }
@@ -240,23 +40,14 @@ pub fn render(data: &Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-
     #[test]
-    fn project_note_receipt_requires_server_id_version_and_kind() {
-        let response = json!({"item": {
-            "id": "review-42", "version": 1,
-            "data": {"category": "project_note", "record_type": "quick", "subject": "Pole review"}
-        }});
-        assert_eq!(
-            receipt("project-a", &response).expect("created note"),
-            json!({"project": "project-a", "note": {
-                "id": "review-42", "version": 1, "title": "Pole review", "category": "project_note"
-            }})
-        );
-        assert!(receipt("project-a", &json!({"item": {"id": "review-42"}})).is_err());
-        assert!(receipt("project-a", &json!({"item": {
-            "id": "review-42", "version": 1,
-            "data": {"category": "communication", "record_type": "quick", "subject": "Pole review"}
-        }})).is_err());
+    fn creation_has_one_canonical_required_input() {
+        assert_eq!(CREATE.effect, Effect::GlobalWrite);
+        assert!(CREATE.args.iter().any(|a| a.name == "input" && a.required));
+        assert!(!CREATE.args.iter().any(|a| matches!(
+            a.name,
+            "title" | "body" | "body-file" | "id" | "transformer"
+        )));
+        assert!(ds_cli_contract::args::parse(&CREATE, &["--project".into(), "p".into()]).is_err());
     }
 }

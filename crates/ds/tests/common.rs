@@ -25,6 +25,8 @@ pub fn invoke(args: &[&str]) -> Invocation {
     let output = Command::new(env!("CARGO_BIN_EXE_ds"))
         .args(args)
         .env("NO_COLOR", "1")
+        // Synthetic/refusal fixtures must not file ambient reliability events.
+        .env("DS_SRE_REPORTING", "off")
         .output()
         .expect("ds binary runs");
     Invocation {

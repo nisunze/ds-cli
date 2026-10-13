@@ -64,6 +64,7 @@ pub mod member;
 pub mod model_link;
 pub mod note;
 pub mod note_memory;
+pub mod note_migration;
 pub mod private_notes;
 pub mod private_note_backups;
 pub mod private_note_migration;
@@ -123,6 +124,8 @@ pub static DOMAIN: Domain = Domain {
         &model_link::REMOVE,
         &model_link::LIST,
         &note::CREATE,
+        &note_migration::PREPARE,
+        &note_migration::APPLY,
         &note_memory::READ,
         &note_memory::QUERY,
         &note_memory::CONTEXT,
@@ -662,36 +665,6 @@ impl Graph {
             .flatten()
             .find(|task| task["id"].as_str() == Some(task_id) && task["is_deleted"] != true)
     }
-}
-
-/// A bounded selected-task records page, with authoritative completeness.
-pub struct TaskRecords {
-    pub uid: String,
-    pub rows: Vec<reads::ContextRecord>,
-    pub truncated: bool,
-    pub next_cursor: Option<String>,
-}
-
-/// Read only correspondence linked to this task through the existing owner.
-pub fn records(lane: &str, project: &str, task: &str) -> Result<TaskRecords, Failure> {
-    let report = ds_cli_auth::project_management_for_project(
-        lane,
-        project,
-        &ds_client_core::project_management::Command::TaskRecords {
-            task_id: task.to_owned(),
-            limit: MAX_CONTEXT_ROWS,
-        },
-    )?;
-    let uid = report.identity().uid().to_owned();
-    let context = report.into_result();
-    Ok(TaskRecords {
-        uid,
-        rows: reads::decode_context_records(&context),
-        truncated: context["truncated_by_collection"]["pm_records"] == Value::Bool(true),
-        next_cursor: context["next_cursors"]["pm_records"]
-            .as_str()
-            .map(str::to_owned),
-    })
 }
 
 /// Commit one prepared command and fold the engine's answer.

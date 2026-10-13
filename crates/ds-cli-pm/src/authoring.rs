@@ -161,18 +161,35 @@ mod tests {
     }
     #[test]
     fn explicit_invalid_labels_refuse_before_any_transport() {
-        let plain = parse(&crate::note::CREATE, &["--project", "p"]);
+        let plain = parse(
+            &crate::note::CREATE,
+            &["--project", "p", "--input", "unused.json"],
+        );
         assert_eq!(declaration(&plain).unwrap(), None);
         for label in ["", " ", "GPT-6 ", "GPT\n6"] {
             let i = parse(
                 &crate::note::CREATE,
-                &["--project", "p", "--authoring-model", label],
+                &[
+                    "--project",
+                    "p",
+                    "--input",
+                    "unused.json",
+                    "--authoring-model",
+                    label,
+                ],
             );
             assert!(declaration(&i).is_err());
         }
         let i = parse(
             &crate::note::CREATE,
-            &["--project", "p", "--authoring-model", "GPT-6"],
+            &[
+                "--project",
+                "p",
+                "--input",
+                "unused.json",
+                "--authoring-model",
+                "GPT-6",
+            ],
         );
         let model = declaration(&i).unwrap().unwrap();
         assert_eq!(
