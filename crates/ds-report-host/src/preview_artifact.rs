@@ -311,6 +311,7 @@ pub(crate) fn forget_asset_requests(room: &Room, asset_id: &str) -> Result<usize
         Err(e) => return Err(failed(e.to_string())),
     };
     let mut removed = 0;
+    let mut cleanup_error = None;
     let mut inspected = 0;
     for entry in entries {
         let entry = entry.map_err(|e| failed(e.to_string()))?;
@@ -386,15 +387,26 @@ pub(crate) fn forget_asset_requests(room: &Room, asset_id: &str) -> Result<usize
                     serde_json::to_vec(&manifest).map_err(|e| failed(e.to_string()))?,
                 )
                 .map_err(|e| failed(e.to_string()))?;
-                remove_owned(&result, &manifest, &page)?;
+                if let Err(error) = remove_owned(&result, &manifest, &page) {
+                    // Continue revoking exact source-bound locators when cleanup
+                    // is blocked; keep this revoked request for later cleanup.
+                    cleanup_error.get_or_insert(error);
+                    continue;
+                }
             }
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
             Err(e) => return Err(failed(e.to_string())),
         }
-        fs::remove_file(&path).map_err(|e| failed(e.to_string()))?;
+        if let Err(error) = fs::remove_file(&path) {
+            cleanup_error.get_or_insert_with(|| failed(error.to_string()));
+            continue;
+        }
         removed += 1;
     }
-    Ok(removed)
+    match cleanup_error {
+        Some(error) => Err(error),
+        None => Ok(removed),
+    }
 }
 
 #[derive(Serialize, Deserialize)]
