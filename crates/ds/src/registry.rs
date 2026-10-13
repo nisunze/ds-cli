@@ -2353,6 +2353,9 @@ static TILE_ENTRIES: &[Entry] = &[
 /// them: look at the plan, find the item, read it, then act on it. Domain
 /// help prints this order verbatim, so the index doubles as the procedure.
 static NOTES_ENTRIES: &[Entry] = &[
+    Entry { command: &ds_cli_pm::private_note_backups::BACKUP, handler: ds_cli_pm::private_note_backups::backup, render: ds_cli_pm::private_notes::render },
+    Entry { command: &ds_cli_pm::private_note_backups::READ, handler: ds_cli_pm::private_note_backups::read, render: ds_cli_pm::private_notes::render },
+    Entry { command: &ds_cli_pm::private_note_backups::RESTORE, handler: ds_cli_pm::private_note_backups::restore, render: ds_cli_pm::private_notes::render },
     Entry { command: &ds_cli_pm::private_notes::CREATE, handler: ds_cli_pm::private_notes::create, render: ds_cli_pm::private_notes::render },
     Entry { command: &ds_cli_pm::private_notes::UPDATE, handler: ds_cli_pm::private_notes::update, render: ds_cli_pm::private_notes::render },
     Entry { command: &ds_cli_pm::private_notes::LIST, handler: ds_cli_pm::private_notes::list, render: ds_cli_pm::private_notes::render },

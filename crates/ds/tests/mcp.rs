@@ -4180,6 +4180,7 @@ fn pm_closure_controls_share_the_real_mcp_registry() {
         "notes.create", "notes.update", "notes.list", "notes.read", "notes.retire",
         "notes.restore", "notes.versions", "notes.version.read", "notes.version.restore",
         "messaging.installations", "messaging.installation.revoke", "pm.plan",
+        "notes.backup", "notes.backup.read", "notes.backup.restore",
     ];
     let mut requests = Vec::new();
     for (index, command) in commands.iter().enumerate() {
@@ -4197,7 +4198,7 @@ fn pm_closure_controls_share_the_real_mcp_registry() {
         let spec = &structured(&messages, (index+1) as i64)["data"]["command"];
         assert_eq!(spec["id"], *id, "real registry leaf {id}");
         assert_eq!(spec["authority"], if *id == "pm.plan" {"headless_project"} else {"headless_user"});
-        if ["notes.create", "notes.update", "notes.retire", "notes.restore", "notes.version.restore", "messaging.installation.revoke"].contains(id) {
+        if ["notes.create", "notes.update", "notes.retire", "notes.restore", "notes.version.restore", "messaging.installation.revoke", "notes.backup", "notes.backup.restore"].contains(id) {
             assert_eq!(spec["confirmation_required"], true, "explicit effect {id}");
         }
     }

@@ -50,7 +50,7 @@ Graph revision alone is not a freshness basis for class-redacted correspondence,
 permissions or live subject state. A local PM write attempt marks existing
 holdings `known_invalidated`, including attempts that might partially commit;
 access denial durably prevents offline reuse. No unused holding is created.
-All writes and other PM read commands keep their existing live authority path.
+All writes retain their live authority path. Shared `pm note read --offline` also consumes one exact retained id/version/claim selection through this owner; a different selector requires its own intentional live acquisition. Context and query reads remain live.
 
 ## The shape of a session
 
@@ -617,3 +617,32 @@ that search scope and keeps acquired, scanned, matching, displayed and remaining
 source-page information distinct. An empty filtered page can still carry a
 continuation cursor. Read the selected note explicitly for its body or evidence.
 Later UI infinite scrolling should consume this same cursor contract.
+
+## Private history and backup pages
+
+`ds notes versions --note NOTE --limit 50` acquires one immutable-header page.
+Use its `next_cursor` explicitly for the next page. The cursor retains the first
+page's source-head version, so a new revision cannot intrude into an older
+traversal. `current_version` remains separately observed. Chain status is
+complete, incomplete or unknown; continuation alone cannot prove the entire
+history. Historical bodies require a selected version read.
+
+```sh
+ds notes backup --note NOTE --version 3 --id OPERATION --yes --output json
+ds notes backup read --note NOTE --backup BACKUP --backup-sha256 SHA --out /absolute/private-backup.json --output json
+ds notes backup restore --note NOTE --version 4 --backup BACKUP --backup-sha256 SHA --id RESTORE_OPERATION --yes --output json
+```
+
+Backup captures and independently verifies every available revision within
+512 KiB and the 400-revision recovery write budget. Larger archives refuse as
+a whole. The artifact omits the internal owner UID; original revision hashes
+remain server pins, and the public archive has its own measured SHA. Export
+writes exact checked bytes to a new owner-only JSON file; existing files remain.
+Without `--out`, read returns the descriptor rather than a large private dump.
+
+Restore selects an existing verified server backup for the same existing note,
+recovers genuinely retained missing history, checks immutable collisions and
+appends the next current version. It keeps current identity, creation attribution,
+archive organization and operational reminder. It does not import an arbitrary
+file, migrate accounts, fabricate missing history or acquire attachment bytes.
+The stable operation id enables exact retry without duplicate backup/restoration.
