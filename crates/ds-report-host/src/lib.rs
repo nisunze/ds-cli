@@ -142,6 +142,12 @@ pub struct EngineExit {
 /// The engine a host reaches, one closed method per task. An adapter names
 /// the subcommand statically and never takes an argument vector from here.
 pub trait ReportEngine: Sync {
+    /// Hold the executable selection for a whole export or batch. Adapters
+    /// backed by immutable handles already need no additional capture.
+    /// This is filesystem admission, never a data fetch or engine invocation.
+    fn capture_for_run(&self) -> Result<Option<Box<dyn ReportEngine>>, HostFailure> {
+        Ok(None)
+    }
     /// `ds-report build-info`, as the JSON document it prints.
     fn build_info(&self) -> Result<Value, HostFailure>;
     /// `ds-report export-transformer-report --request REQUEST --result RESULT`.
@@ -870,6 +876,8 @@ pub fn run_transformer_report_with(
         &serde_json::to_vec_pretty(&request).map_err(|error| staging_failed(error.to_string()))?,
     )?;
 
+    let captured = engine.capture_for_run()?;
+    let engine = captured.as_deref().unwrap_or(engine);
     let identity_before = engine_identity_now(engine)?;
     let exit = engine.export_transformer_report(&request_path, &result_path)?;
     let document = read_bounded(&result_path, MAX_RESULT_BYTES)?;
@@ -1104,6 +1112,8 @@ where
             ),
         ));
     }
+    let captured = engine.capture_for_run()?;
+    let engine = captured.as_deref().unwrap_or(engine);
     let identity = engine_identity_now(engine)?;
 
     let workers = settings.concurrency.min(names.len());
@@ -1783,6 +1793,50 @@ pub(crate) mod tests {
             );
         }
         assert!(fs::read_dir(&staging).unwrap().next().is_none());
+    }
+
+    #[test]
+    fn a_batch_captures_one_engine_before_fetch_and_keeps_it_for_every_member() {
+        struct Selection(AtomicU64);
+        impl ReportEngine for Selection {
+            fn capture_for_run(&self) -> Result<Option<Box<dyn ReportEngine>>, HostFailure> {
+                self.0.fetch_add(1, Ordering::SeqCst);
+                Ok(Some(Box::new(FakeEngine::release())))
+            }
+            fn build_info(&self) -> Result<Value, HostFailure> {
+                panic!("a batch must use its captured engine")
+            }
+            fn export_transformer_report(
+                &self,
+                _: &Path,
+                _: &Path,
+            ) -> Result<EngineExit, HostFailure> {
+                panic!("a batch must use its captured engine")
+            }
+        }
+        let temp = tempfile::tempdir().unwrap();
+        let out = temp.path().join("out");
+        let staging = temp.path().join("staging");
+        let receipt = receipt("Benin");
+        let engine = Selection(AtomicU64::new(0));
+        let names = ["tx_a", "tx_b"].map(str::to_owned);
+        let batch = run_batch(
+            &engine,
+            &BatchSettings {
+                run: settings(&receipt, &out, &staging),
+                lane: "stable",
+                concurrency: 2,
+                media_grant: None,
+            },
+            &names,
+            |name| {
+                assert_eq!(engine.0.load(Ordering::SeqCst), 1);
+                Ok(inputs(name))
+            },
+        )
+        .unwrap();
+        assert_eq!(engine.0.load(Ordering::SeqCst), 1);
+        assert_eq!(batch.runs.len(), 2);
     }
 
     #[test]
