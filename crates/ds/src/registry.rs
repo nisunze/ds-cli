@@ -3223,6 +3223,11 @@ static DESIGN_ENTRIES: &[Entry] = &[
         render: ds_cli_design::version_catalog::render,
     },
     Entry {
+        command: &ds_cli_design::version_catalog::REVISION_COMPARE,
+        handler: ds_cli_design::version_catalog::compare,
+        render: ds_cli_design::version_catalog::render,
+    },
+    Entry {
         command: &ds_cli_design::versions::LIST,
         handler: ds_cli_design::versions::list,
         render: ds_cli_design::versions::render,

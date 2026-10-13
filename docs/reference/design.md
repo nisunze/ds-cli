@@ -1579,3 +1579,26 @@ metadata-only revisions refuse; labels never select content. The receipt must
 acknowledge the requested revision and fenced original backup. There is no
 implicit retry, readback or caller-supplied geometry. The obsolete `design version
 restore` overwrite command is retired.
+
+`design version revision compare --project <project> --object <transformer> --file <comparison.json>`
+consumes exact immutable `left` and `right` pins. Each pin names `version_id`,
+`revision_id`, `content_digest`, the server's compressed-frame `snapshot_digest`,
+and the exact UTF-8 `snapshot_sha256` returned by the explicit Bulk snapshot read.
+The closed input chooses `mode: "geometry"` or `"verified_bytes"`. It may request
+`retain_reads: true` to return a same-owner/audience/lane/project/object read cache,
+or provide that cache in `retained` for offline reuse. Two distinct revisions
+require at most two reads; the same revision is read once; a complete verified
+cache causes no reads, list/head probes or settings downloads.
+
+Retained JSON proves its declared capture scope and exact pins/bytes; it does not
+establish fresh cloud authorization, currentness or engineering approval. Geometry
+mode uses the existing pure runtime comparator and refuses unplayable, metadata-only,
+missing/ambiguous identities and exported archive layouts. April archives can be
+compared in verified byte mode, which explicitly makes no runtime geometry
+correspondence claim. Neither mode changes Latest or a pinned version.
+
+A complete `retained` cache automatically selects the local declared-provenance
+path before auth/profile restoration. `--offline` also forbids acquisition when
+an input is missing, yielding an explicit refusal. Thus retained-file consumption
+never refreshes identity, directory or cloud freshness; online missing inputs use
+normal authenticated Bulk authorization.

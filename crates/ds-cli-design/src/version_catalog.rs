@@ -212,6 +212,46 @@ pub fn promote(i: &Inputs, _: &Context) -> Result<Value, Failure> {
     )
 }
 
+pub static REVISION_COMPARE: Command = Command {
+    purpose: "Consume only two explicitly pinned immutable LV revisions through Bulk, or reuse verified retained read envelopes without network reads. Retained JSON proves declared scope/pins/bytes, not fresh cloud authorization, currentness or approval. Runtime geometry comparison uses the pure comparator; exported layouts require explicit verified_bytes mode without runtime correspondence claims.",
+    availability: || Availability::Available,
+    authority: Authority::None,
+    output: "Read-only exact revision comparison with capture scope and explicit authenticated or declared-file provenance, bounded geometry change counts or verified byte/digest equality. No current/approved claim or source mutation.",
+    ..descriptor("design.version.revision.compare", &["design","version","revision","compare"], "Compare exact immutable LV revision pins, with scoped offline reuse.", &[PROJECT,OBJECT,Arg::switch("offline", "Use only retained files; no identity/profile restore, network read or fresh authorization claim."), Arg::value("file","<comparison.json>","Closed left/right pins: version_id,revision_id,content_digest,snapshot_digest,snapshot_sha256; mode geometry|verified_bytes, retained? scoped native cache, retain_reads? explicit reusable cache output. Maximum64MiB input.").required(),LANE],Effect::ReadOnly)
+};
+pub fn compare(i: &Inputs, _: &Context) -> Result<Value, Failure> {
+    let path = i.require("file")?;
+    let metadata =
+        std::fs::metadata(path).map_err(|e| Failure::invalid("invalid_input", e.to_string()))?;
+    if !metadata.is_file() || metadata.len() > 64 * 1024 * 1024 {
+        return Err(Failure::invalid(
+            "invalid_input",
+            "comparison input must be a regular file of at most64MiB",
+        ));
+    }
+    let bytes =
+        std::fs::read(path).map_err(|e| Failure::invalid("invalid_input", e.to_string()))?;
+    let request =
+        serde_json::from_slice::<ds_command_kernel::design_revision_comparison::Request>(&bytes)
+            .map_err(|e| Failure::invalid("invalid_input", e.to_string()))?;
+    if i.switch("offline") || request.fully_retained() {
+        return ds_command_kernel::design_revision_comparison::run_retained(
+            i.require("project")?,
+            i.require("object")?,
+            i.require("lane")?,
+            &request,
+        )
+        .map_err(|e| Failure::invalid("revision_comparison_refused", e));
+    }
+    ask(
+        i,
+        Request::Compare {
+            object_id: i.require("object")?.into(),
+            request: Box::new(request),
+        },
+    )
+}
+
 pub fn bind(i: &Inputs, _: &Context) -> Result<Value, Failure> {
     let path = i.require("file")?;
     let metadata =
@@ -318,4 +358,68 @@ pub fn renumber(i: &Inputs, _: &Context) -> Result<Value, Failure> {
 }
 pub fn render(v: &Value) -> String {
     serde_json::to_string_pretty(v).unwrap_or_default()
+}
+
+#[cfg(test)]
+mod comparison_tests {
+    use super::*;
+    use ds_cli_contract::{Format, Output};
+    use serde_json::json;
+    use sha2::{Digest, Sha256};
+    #[test]
+    fn retained_offline_handler_never_restores_auth_profile_or_project_context() {
+        let raw=json!({"schema":"ds.transformer-version-snapshot/v1","layers":{"tr":{"type":"FeatureCollection","features":[{"type":"Feature","id":"TR-1","geometry":{"type":"Point","coordinates":[30,-2]},"properties":{}}]}}}).to_string();
+        let hash = format!("{:x}", Sha256::digest(raw.as_bytes()));
+        let pin = json!({"version_id":"v0","revision_id":"v0","content_digest":"c".repeat(64),"snapshot_digest":"d".repeat(64),"snapshot_sha256":hash});
+        let response = json!({"metadata":{"project_id":"p","transformer_id":"TR-1","version_id":"v0","revision_id":"v0","revision_number":1,"snapshot_scope":"exported_design","playback_available":true,"content_digest":"c".repeat(64),"snapshot_digest":"d".repeat(64)},"snapshot_json":raw,"snapshot_sha256":hash});
+        let request = json!({"left":pin,"right":pin,"mode":"verified_bytes","retained":{"schema":"ds.lv-revision-read-cache/v1","scope":{"owner":"declared-capture-actor","audience":"a".repeat(64),"lane":"stable","project":"p","object_kind":"lv_transformer","object_id":"TR-1"},"reads":[{"pin":pin,"response":response}]}});
+        let path = std::env::temp_dir().join(format!(
+            "ds-retained-comparison-{}.json",
+            std::process::id()
+        ));
+        std::fs::write(&path, serde_json::to_vec(&request).unwrap()).unwrap();
+        let tokens = vec![
+            "--project".into(),
+            "p".into(),
+            "--object".into(),
+            "TR-1".into(),
+            "--lane".into(),
+            "stable".into(),
+            "--file".into(),
+            path.display().to_string(),
+            "--offline".into(),
+        ];
+        let input = ds_cli_contract::parse(&REVISION_COMPARE, &tokens).unwrap();
+        let output = compare(
+            &input,
+            &Context {
+                confirmed: false,
+                output: Output::resolve(Format::Json, false, true),
+            },
+        )
+        .unwrap();
+        assert_eq!(output["exact_utf8_bytes_equal"], true);
+        assert_eq!(output["provenance_mode"], "declared_retained_file");
+        assert_eq!(output["fresh_cloud_authorization_checked"], false);
+        assert_eq!(output["runtime_geometry_correspondence_established"], false);
+        assert!(matches!(
+            (REVISION_COMPARE.availability)(),
+            Availability::Available
+        ));
+        let online_tokens = tokens[..tokens.len() - 1].to_vec();
+        let input = ds_cli_contract::parse(&REVISION_COMPARE, &online_tokens).unwrap();
+        let cached = compare(
+            &input,
+            &Context {
+                confirmed: false,
+                output: Output::resolve(Format::Json, false, true),
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            cached["provenance_mode"], "declared_retained_file",
+            "a complete cache must bypass auth restoration even without --offline"
+        );
+        std::fs::remove_file(path).unwrap();
+    }
 }

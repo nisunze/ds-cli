@@ -78,13 +78,22 @@ pub static STATUS: Command = command(
     &[PROJECT, KIND, OBJECT, crate::transformer::LANE_ARG],
     Effect::ReadOnly,
 );
-pub static COMPARE: Command = command(
+pub static COMPARE: Command = Command {
+    purpose: "Compare only governed MV content-revision metadata using exact assigned versions or an explicitly consumed saved head. This path never requests geometry or snapshot bytes. LV comparison uses design version revision compare with exact immutable revision/digest pins.",
+    output: "Read-only MV lineage/content-revision metadata comparison; no geometry equality claim.",
+    ..command(
     "design.version.compare",
     &["design", "version", "compare"],
-    "Compare governed LV snapshots or MV revision metadata.",
+    "Compare governed MV content-revision metadata; LV uses exact revision compare.",
     &[
         PROJECT,
-        KIND,
+        Arg::value(
+            "kind",
+            "<mv_model>",
+            "Governed MV metadata only; LV uses design version revision compare.",
+        )
+        .choices(&["mv_model"])
+        .required(),
         OBJECT,
         Arg::value("from", "<vN>", "Exact assigned version on the left.").required(),
         Arg::value(
@@ -96,7 +105,9 @@ pub static COMPARE: Command = command(
         crate::transformer::LANE_ARG,
     ],
     Effect::ReadOnly,
-);
+)
+};
+
 pub static SHOW: Command = command(
     "design.version.show",
     &["design", "version", "show"],

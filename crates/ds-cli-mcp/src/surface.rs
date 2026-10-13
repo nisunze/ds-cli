@@ -965,6 +965,7 @@ const GRID_LOCAL_MODEL_COMMANDS: &[&str] = &[
     "design.version.renumber",
     "design.version.revision.bind",
     "design.version.revision.promote",
+    "design.version.revision.compare",
     "design.version.list",
     "design.version.status",
     "design.version.show",
