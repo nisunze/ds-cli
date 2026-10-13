@@ -10372,6 +10372,106 @@ fn headless_survey_migration_names_both_projects_and_asks_only_to_copy() {
     );
 }
 
+fn feedback_read_request() -> ds_client_core::feedback::Command {
+    ds_client_core::feedback::Command::List {
+        view: "open".into(),
+        component: None,
+        query: None,
+        limit: 1,
+        detail: false,
+        cursor: None,
+        all: false,
+    }
+}
+
+#[test]
+fn headless_feedback_service_failures_preserve_status_without_private_body_or_retries() {
+    for status in [408, 425, 429, 500, 503, 599] {
+        let transport = FixtureTransport::with_sign_in(SIGN_IN);
+        let mut client = signed_in(transport.clone(), MemoryStore::default());
+        transport.0.lock().unwrap().feedback.push_back(TransportResponse::new(
+            status,
+            br#"{"success":false,"error":{"code":"INTERNAL_ERROR","message":"PRIVATE https://console.invalid/create-index","details":{"token":"SECRET"}}}"#,
+        ));
+        let error = client
+            .feedback(&feedback_read_request(), NOW + 1)
+            .unwrap_err();
+        assert_eq!(error.kind(), ErrorKind::Transient);
+        assert_eq!(
+            error.to_string(),
+            ds_client_core::feedback::SERVICE_UNAVAILABLE
+        );
+        let refusal = error.service_refusal().expect("the endpoint answered");
+        assert_eq!(refusal.status(), status);
+        assert_eq!(
+            refusal.code(),
+            Some(ds_client_core::feedback::SERVICE_UNAVAILABLE)
+        );
+        assert!(refusal.message().is_none() && refusal.details().is_empty());
+        let state = transport.0.lock().unwrap();
+        assert_eq!(state.feedback_bodies.len(), 1, "no automatic retry");
+        assert_eq!(state.feedback_bodies[0]["use_watermark"], true);
+        assert!(!format!("{error:?}").contains("PRIVATE"));
+        assert!(!format!("{error:?}").contains("SECRET"));
+    }
+}
+
+#[test]
+fn headless_feedback_keeps_named_refusals_before_generic_service_classification() {
+    let transport = FixtureTransport::with_sign_in(SIGN_IN);
+    let mut client = signed_in(transport.clone(), MemoryStore::default());
+    for (status, code, expected) in [
+        (
+            429,
+            "FEEDBACK_BACKLOG_TOO_LARGE",
+            "feedback_backlog_too_large",
+        ),
+        (400, "FEEDBACK_CURSOR_SCOPE", "feedback_cursor_rejected"),
+        (409, "FEEDBACK_SETTLED", "feedback_settled"),
+        (409, "FEEDBACK_NOTE_LIMIT", "feedback_note_limit"),
+    ] {
+        let body =
+            serde_json::to_vec(&json!({"success":false,"error":{"code":code,"message":"PRIVATE"}}))
+                .unwrap();
+        transport
+            .0
+            .lock()
+            .unwrap()
+            .feedback
+            .push_back(TransportResponse::new(status, body));
+        let error = client
+            .feedback(&feedback_read_request(), NOW + 1)
+            .unwrap_err();
+        assert_eq!(error.to_string(), expected);
+        assert!(error.service_refusal().is_none());
+    }
+    assert_eq!(transport.0.lock().unwrap().feedback_bodies.len(), 4);
+}
+
+#[test]
+fn headless_feedback_authentication_failures_never_reach_the_feedback_endpoint() {
+    for (status, body, expected) in [
+        (
+            500,
+            br#"{"error":{"message":"PRIVATE"}}"#.as_slice(),
+            ErrorKind::Transient,
+        ),
+        (400, REVOKED, ErrorKind::PermanentlyRevoked),
+    ] {
+        let transport = FixtureTransport::with_sign_in(SIGN_IN);
+        let mut client = signed_in(transport.clone(), MemoryStore::default())
+            .with_weak_network(WeakNetwork::new(&[]));
+        transport.push_refresh(status, body);
+        let error = client
+            .feedback(&feedback_read_request(), NOW + 4_000)
+            .unwrap_err();
+        assert_eq!(error.kind(), expected);
+        assert!(error.service_refusal().is_none());
+        assert!(transport.0.lock().unwrap().feedback_bodies.is_empty());
+        assert_eq!(transport.count_calls("refresh "), 1);
+    }
+}
+
 fn feedback_row(status: &str, version: u64) -> serde_json::Value {
     serde_json::json!({"id":"f1","status":status,"kind":"bug","severity":"major","component":"ds-cli","surface":"cli","title":"Headless feedback","detail":"Must work without a selected project","occurrences":1,"reporters":["operator@example.com"],"reporter_kind":"agent","version":version,"last_seen_at":"2026-09-13T12:00:00Z","updated_at":"2026-09-13T12:00:00Z","updated_by":"operator@example.com"})
 }

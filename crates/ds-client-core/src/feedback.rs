@@ -1,6 +1,7 @@
 //! Fixed authenticated product backlog. No project selection or second store.
 use crate::{
-    authorized::Authority, AuthorizedTransport, ClientError, ClientProfile, ErrorKind, FeedbackCall,
+    authorized::Authority, AuthorizedTransport, ClientError, ClientProfile, ErrorKind,
+    FeedbackCall, ServiceRefusal,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -343,6 +344,9 @@ fn report(v: Value) -> Result<Report, ClientError> {
     r.validate()?;
     Ok(r)
 }
+/// The feedback endpoint answered a retryable service failure, after authorization.
+pub const SERVICE_UNAVAILABLE: &str = "feedback_service_unavailable";
+
 fn call<T: AuthorizedTransport>(
     profile: &ClientProfile,
     transport: &mut T,
@@ -382,6 +386,13 @@ fn call<T: AuthorizedTransport>(
                 }
                 404 => ClientError::new(ErrorKind::ResourceNotFound, "feedback_not_found"),
                 409 => ClientError::new(ErrorKind::InvalidInput, "feedback_conflict"),
+                status @ (408 | 425 | 429 | 500..=599) => ClientError::with_service_refusal(
+                    ErrorKind::Transient,
+                    SERVICE_UNAVAILABLE,
+                    // Only the status crosses: a backend stack, private details,
+                    // or an index-creation link cannot become operator output.
+                    ServiceRefusal::new(status, Some(SERVICE_UNAVAILABLE), None),
+                ),
                 other => crate::authorized::classify_tile_error(other),
             },
         });
