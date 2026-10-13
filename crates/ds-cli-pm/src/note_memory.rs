@@ -85,24 +85,18 @@ pub(crate) const UNREADABLE: Refusal = Refusal {
 pub(super) const MIGRATION: Refusal = Refusal {
     code: "project_note_migration_required",
     when: "selected current note has no canonical semantic memory",
-    remedy: "use pm note canonicalize prepare, review the literal source and exact plan, then apply deliberately; never infer agreed claims",
+    remedy: "ask the project administrator to repair the canonical stored record from verified source evidence; ordinary reads never infer agreed claims",
 };
 const HISTORY: Refusal = Refusal {
     code: "project_note_history_missing",
     when: "current canonical authored head has no immutable retained snapshot",
     remedy: "recover the exact verified immutable head; ordinary reads, edits and backups never fabricate history",
 };
-const SOURCE_CHANGED: Refusal = Refusal {
-    code: "project_note_source_changed",
-    when: "raw migration source, authored version, Firestore update time or history guard changed",
-    remedy: "prepare and review a fresh exact plan before applying",
-};
-const REFUSALS: &[Refusal] = &crate::correspondence_refusals::<26>(&[
+const REFUSALS: &[Refusal] = &crate::correspondence_refusals::<25>(&[
     INVALID,
     UNREADABLE,
     MIGRATION,
     HISTORY,
-    SOURCE_CHANGED,
 ]);
 pub(super) const fn descriptor(
     id: &'static str,
@@ -159,12 +153,11 @@ pub static READ: Command = {
             crate::PROJECT_ARG,
         ],
     );
-    command.refusals = &crate::correspondence_refusals::<28>(&[
+    command.refusals = &crate::correspondence_refusals::<27>(&[
         INVALID,
         UNREADABLE,
         MIGRATION,
         HISTORY,
-        SOURCE_CHANGED,
         Refusal {
             code: "pm_offline_acquisition_required",
             when: "no admitted retained note matches the exact selection and protected account/project, or project access was denied",
@@ -180,8 +173,8 @@ pub static READ: Command = {
 };
 
 const OFFLINE_PAGE: Arg = Arg::switch("offline", "Read only the exact retained last page with zero network; no implicit next page, permissions are capture-time and source freshness is unknown.");
-const PAGE_REFUSALS: &[Refusal] = &crate::correspondence_refusals::<28>(&[
-        INVALID, UNREADABLE, MIGRATION, HISTORY, SOURCE_CHANGED,
+const PAGE_REFUSALS: &[Refusal] = &crate::correspondence_refusals::<27>(&[
+        INVALID, UNREADABLE, MIGRATION, HISTORY,
         Refusal { code:"pm_offline_acquisition_required", when:"no exact retained page matches protected identity/project or filters, cursor, limit and scope, or access was denied",
             remedy:"read the exact page online once; another selection replaces this single page room" },
         Refusal { code:"pm_retained_unavailable", when:"the bounded retained page cannot be admitted or persisted",

@@ -2353,8 +2353,6 @@ static TILE_ENTRIES: &[Entry] = &[
 /// them: look at the plan, find the item, read it, then act on it. Domain
 /// help prints this order verbatim, so the index doubles as the procedure.
 static NOTES_ENTRIES: &[Entry] = &[
-    Entry { command: &ds_cli_pm::private_note_migration::PREPARE, handler: ds_cli_pm::private_note_migration::prepare, render: ds_cli_pm::private_notes::render },
-    Entry { command: &ds_cli_pm::private_note_migration::APPLY, handler: ds_cli_pm::private_note_migration::apply, render: ds_cli_pm::private_notes::render },
     Entry { command: &ds_cli_pm::private_note_backups::BACKUP, handler: ds_cli_pm::private_note_backups::backup, render: ds_cli_pm::private_notes::render },
     Entry { command: &ds_cli_pm::private_note_backups::READ, handler: ds_cli_pm::private_note_backups::read, render: ds_cli_pm::private_notes::render },
     Entry { command: &ds_cli_pm::private_note_backups::RESTORE, handler: ds_cli_pm::private_note_backups::restore, render: ds_cli_pm::private_notes::render },
@@ -2584,8 +2582,6 @@ static WORK_ENTRIES: &[Entry] = &[
         handler: ds_cli_pm::record::thread::run,
         render: ds_cli_pm::record::thread::render,
     },
-    Entry { command: &ds_cli_pm::note_migration::PREPARE, handler: ds_cli_pm::note_migration::prepare, render: ds_cli_pm::note_memory::render },
-    Entry { command: &ds_cli_pm::note_migration::APPLY, handler: ds_cli_pm::note_migration::apply, render: ds_cli_pm::note_memory::render },
     Entry {
         command: &ds_cli_pm::note::CREATE,
         handler: ds_cli_pm::note::run,

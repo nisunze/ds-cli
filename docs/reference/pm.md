@@ -486,17 +486,10 @@ creation route is retired. Ordinary current reads and writes require canonical
 memory; missing memory returns a named migration-required refusal rather than
 interpreting text or silently capturing an older head.
 
-```sh
-ds pm note canonicalize prepare --project PROJECT --note NOTE --output json
-# Review the literal source; save only data.plan as reviewed-plan.json.
-ds pm note canonicalize apply --project PROJECT --input reviewed-plan.json --id OPERATION --yes --output json
-```
-
-The exact plan pins project, note, authored version, raw source SHA and update
-time. Adoption preserves literal content, geometry, known authors/timestamps,
-unknown stored fields and genuine historical bytes/hashes. It records the
-representation change separately, without renumbering the authored version.
-An unclassified observation has no inferred claims or project-wide authority.
+The one-off canonical migration has completed and its command surfaces are
+retired. Stored adoption receipts remain representation provenance; they do not
+renumber authored versions or turn literal observations into agreed claims.
+Unclassified observations carry no inferred claims or project-wide authority.
 Exact old plain versions remain readable as literal documents with semantic
 memory unrecorded; selecting a claim from them refuses. Queries encountering
 unadopted rows mark migration needs and incomplete results instead of silently
@@ -649,31 +642,18 @@ source-page information distinct. An empty filtered page can still carry a
 continuation cursor. Read the selected note explicitly for its body or evidence.
 Later UI infinite scrolling should consume this same cursor contract.
 
-## Explicit private-note canonical migration
+## Canonical private-note records
 
 Ordinary selected reads and mutations require the canonical stored ID, geometry
 representation and history baseline. A named `notes_migration_required` refusal
-asks for an explicit migration; reads do not heal older data. Metadata pages
-remain available and mark `migration_required` without acquiring note bodies.
+requires administrator recovery from verified source evidence; reads do not heal
+older data. Metadata pages remain available and mark `migration_required`
+without acquiring note bodies. The one-off migration commands are retired.
 
-```sh
-ds notes canonicalize prepare --note NOTE --output json
-# Save and review only the returned data object as reviewed-plan.json.
-ds notes canonicalize apply --input reviewed-plan.json --id MIGRATION_OPERATION --yes --output json
-```
-
-Prepare reads the selected source and its current history guard without writing.
-The closed plan pins raw source SHA, Firestore update time, original authored
-version and target SHA. Apply rechecks those pins atomically and records a
-separate migration receipt. Source changes require a fresh reviewed plan.
-
-Migration preserves authored version, actual creation/update attribution and
-timestamps, geometry values, reminders and evidence. It retains the observed
-current baseline only if absent; genuine earlier history is unchanged. An older
-baseline explicitly reports earlier history as `not_assessed`, not a fabricated
-complete chain. Missing stored identity is bound explicitly to the authenticated
-owner and recorded as a migration change. No automatic migration runs on reads
-or authoring, and no past writer or revision is invented.
+Retained migration receipts describe representation changes without changing
+an authored version, actual authorship, timestamps, geometry, reminders or
+evidence. The observed baseline can report earlier history as `not_assessed`;
+no current read or mutation invents past writers or a complete history chain.
 
 ## Private history and backup pages
 

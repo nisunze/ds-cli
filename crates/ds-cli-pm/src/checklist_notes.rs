@@ -174,8 +174,6 @@ pub static DOMAIN: Domain = Domain {
         &crate::private_note_backups::BACKUP,
         &crate::private_note_backups::READ,
         &crate::private_note_backups::RESTORE,
-        &crate::private_note_migration::PREPARE,
-        &crate::private_note_migration::APPLY,
         &PRIVATE_READ,
         &PRIVATE_EDIT,
     ],

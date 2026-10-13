@@ -150,7 +150,7 @@ pub static READ_VERSION: Command = declaration(
     "notes.version.read",
     &["notes", "version", "read"],
     "Read one private note revision and its exact SHA256.",
-    "Reads one selected immutable retained snapshot. Missing current baselines require explicit canonical migration; unavailable earlier history is never synthesized. No historical attachment bytes are downloaded.",
+    "Reads one selected immutable retained snapshot. Missing current baselines require administrator recovery from verified source evidence; unavailable earlier history is never synthesized. No historical attachment bytes are downloaded.",
     Effect::ReadOnly,
     &[NOTE, SOURCE, crate::LANE_ARG],
 );

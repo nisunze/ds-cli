@@ -12,7 +12,7 @@ pub const OWN_REFUSALS: &[Refusal] = &[
     Refusal {
         code: "notes_migration_required",
         when: "the selected private note has an old stored shape or no retained current baseline",
-        remedy: "use notes canonicalize prepare, review its exact source-pinned plan and apply it explicitly; missing or corrupt retained history may require a verified backup restore",
+        remedy: "ask the account administrator to recover the canonical stored record from verified source evidence or an exact verified backup; ordinary reads do not heal older data",
     },
     Refusal {
         code: "notes_request_invalid",

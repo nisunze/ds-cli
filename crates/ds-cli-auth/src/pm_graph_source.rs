@@ -352,7 +352,6 @@ fn may_write(command: &Command) -> bool {
         Command::ProjectNotes { command } => !matches!(
             command,
             ds_client_core::project_management::project_notes::Command::Read(_)
-                | ds_client_core::project_management::project_notes::Command::PrepareMigration(_)
                 | ds_client_core::project_management::project_notes::Command::Query(_)
                 | ds_client_core::project_management::project_notes::Command::Context(_)
                 | ds_client_core::project_management::project_notes::Command::Versions(_)
@@ -560,23 +559,6 @@ mod tests {
             timeline: false,
         };
         assert!(verify_task_capture("p", &other, &valid).is_err());
-    }
-    #[test]
-    fn shared_note_migration_prepare_is_read_only_and_apply_invalidates() {
-        use ds_command_kernel::project_management::project_notes::{
-            migration, Command as NoteCommand, MEMORY_SCHEMA,
-        };
-        assert!(!may_write(&Command::ProjectNotes {
-            command: NoteCommand::PrepareMigration(migration::Prepare { id: "n".into() })
-        }));
-        let plan:migration::Plan=serde_json::from_value(json!({"schema":"ds.project-note-canonicalize/v1","project_id":"p","id":"n","expected_version":7,"source_sha256":"a".repeat(64),"source_update_time":"2026-10-13T10:15:00Z","target_sha256":"b".repeat(64),"retain_observed_current":true,"memory":{"schema":MEMORY_SCHEMA,"note_type":"observation","lifecycle":"active","provenance":{"kind":"observation"},"scope":{"kind":"conditions","conditions":["unclassified historical observation"]},"claims":[],"evidence":[]}})).unwrap();
-        plan.validate().unwrap();
-        assert!(may_write(&Command::ProjectNotes {
-            command: NoteCommand::ApplyMigration(migration::Apply {
-                operation_id: "adopt".into(),
-                plan
-            })
-        }));
     }
     #[test]
     fn correspondence_task_writes_invalidate_but_intentional_reads_do_not() {

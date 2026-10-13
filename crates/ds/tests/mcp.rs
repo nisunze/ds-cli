@@ -4181,8 +4181,7 @@ fn pm_closure_controls_share_the_real_mcp_registry() {
         "notes.restore", "notes.versions", "notes.version.read", "notes.version.restore",
         "messaging.installations", "messaging.installation.revoke", "pm.plan",
         "notes.backup", "notes.backup.read", "notes.backup.restore",
-        "notes.canonicalize.prepare", "notes.canonicalize.apply",
-        "pm.note.create", "pm.note.canonicalize.prepare", "pm.note.canonicalize.apply",
+        "pm.note.create",
         "pm.task.read", "pm.note.read", "pm.note.query", "pm.note.context",
     ];
     let mut requests = Vec::new();
@@ -4196,18 +4195,19 @@ fn pm_closure_controls_share_the_real_mcp_registry() {
     requests.push(json!({"jsonrpc":"2.0","id":101,"method":"tools/call",
         "params":{"name":"ds_project","arguments":{"operation":"invoke","command":"messaging.installation.revoke",
             "arguments":{"installation-hash":"a".repeat(64),"epoch":"b".repeat(32)}}}}));
-    requests.push(json!({"jsonrpc":"2.0","id":102,"method":"tools/call",
-        "params":{"name":"ds_project","arguments":{"operation":"invoke","command":"notes.canonicalize.apply",
-            "arguments":{"input":home.0.join("must-not-read-migration.json").to_str().unwrap(),"id":"reviewed-migration"}}}}));
-    requests.push(json!({"jsonrpc":"2.0","id":103,"method":"tools/call",
-        "params":{"name":"ds_project","arguments":{"operation":"invoke","command":"pm.note.canonicalize.apply",
-            "arguments":{"input":home.0.join("must-not-read-shared-migration.json").to_str().unwrap(),"id":"reviewed-migration","project":"p"}}}}));
+    let retired = ["notes.canonicalize.prepare", "notes.canonicalize.apply",
+        "pm.note.canonicalize.prepare", "pm.note.canonicalize.apply"];
+    for (index, command) in retired.iter().enumerate() {
+        requests.push(json!({"jsonrpc":"2.0","id":102+index,"method":"tools/call",
+            "params":{"name":"ds_project","arguments":{"operation":"invoke","command":command,
+                "arguments":{"input":home.0.join("must-not-read-migration.json").to_str().unwrap(),"id":"retired-migration","project":"p"}}}}));
+    }
     let messages = signed_out_mcp(&home, &["--exposure", "chapters"], &requests);
     for (index, id) in commands.iter().enumerate() {
         let spec = &structured(&messages, (index+1) as i64)["data"]["command"];
         assert_eq!(spec["id"], *id, "real registry leaf {id}");
         assert_eq!(spec["authority"], if id.starts_with("pm.") {"headless_project"} else {"headless_user"});
-        if ["notes.create", "notes.update", "notes.retire", "notes.restore", "notes.version.restore", "messaging.installation.revoke", "notes.backup", "notes.backup.restore", "notes.canonicalize.apply", "pm.note.create", "pm.note.canonicalize.apply"].contains(id) {
+        if ["notes.create", "notes.update", "notes.retire", "notes.restore", "notes.version.restore", "messaging.installation.revoke", "notes.backup", "notes.backup.restore", "pm.note.create"].contains(id) {
             assert_eq!(spec["confirmation_required"], true, "explicit effect {id}");
         }
     }
@@ -4219,6 +4219,9 @@ fn pm_closure_controls_share_the_real_mcp_registry() {
     }
     assert_eq!(structured(&messages, 100)["error"]["code"], "confirmation_required");
     assert_eq!(structured(&messages, 101)["error"]["code"], "confirmation_required");
-    assert_eq!(structured(&messages, 102)["error"]["code"], "confirmation_required");
-    assert_eq!(structured(&messages, 103)["error"]["code"], "confirmation_required");
+    for index in 0..retired.len() {
+        let refusal = &response(&messages, (102+index) as i64)["error"];
+        assert_eq!(refusal["code"], -32602);
+        assert!(refusal["message"].as_str().unwrap().contains("unknown command"));
+    }
 }
