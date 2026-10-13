@@ -57,7 +57,7 @@ const PROJECT_REFUSALS: &[Refusal] = &crate::correspondence_refusals::<25>(&[
     crate::INVALID_NUMBER,
     crate::task::proposals::INVALID_COMMAND_ID,
 ]);
-const PRIVATE_REFUSALS: [Refusal; 27] = {
+pub(crate) const PRIVATE_REFUSALS: [Refusal; 27] = {
     let mut out = [INVALID; 27];
     let base = ds_cli_auth::PROJECT_STATUS_COMMAND.refusals;
     let own = ds_cli_auth::personal_notes::OWN_REFUSALS;
@@ -161,7 +161,17 @@ pub static PROJECT_EDIT: Command = descriptor(
 pub static DOMAIN: Domain = Domain {
     id: "notes",
     summary: "Private notes.",
-    commands: &[&PRIVATE_READ, &PRIVATE_EDIT],
+    commands: &[
+        &crate::private_notes::LIST,
+        &crate::private_notes::READ,
+        &crate::private_notes::RETIRE,
+        &crate::private_notes::RESTORE,
+        &crate::private_notes::VERSIONS,
+        &crate::private_notes::READ_VERSION,
+        &crate::private_notes::RESTORE_VERSION,
+        &PRIVATE_READ,
+        &PRIVATE_EDIT,
+    ],
 };
 
 fn invalid(error: impl std::fmt::Display) -> Failure {

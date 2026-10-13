@@ -2353,6 +2353,13 @@ static TILE_ENTRIES: &[Entry] = &[
 /// them: look at the plan, find the item, read it, then act on it. Domain
 /// help prints this order verbatim, so the index doubles as the procedure.
 static NOTES_ENTRIES: &[Entry] = &[
+    Entry { command: &ds_cli_pm::private_notes::LIST, handler: ds_cli_pm::private_notes::list, render: ds_cli_pm::private_notes::render },
+    Entry { command: &ds_cli_pm::private_notes::READ, handler: ds_cli_pm::private_notes::read, render: ds_cli_pm::private_notes::render },
+    Entry { command: &ds_cli_pm::private_notes::RETIRE, handler: ds_cli_pm::private_notes::retire, render: ds_cli_pm::private_notes::render },
+    Entry { command: &ds_cli_pm::private_notes::RESTORE, handler: ds_cli_pm::private_notes::restore, render: ds_cli_pm::private_notes::render },
+    Entry { command: &ds_cli_pm::private_notes::VERSIONS, handler: ds_cli_pm::private_notes::versions, render: ds_cli_pm::private_notes::render },
+    Entry { command: &ds_cli_pm::private_notes::READ_VERSION, handler: ds_cli_pm::private_notes::read_version, render: ds_cli_pm::private_notes::render },
+    Entry { command: &ds_cli_pm::private_notes::RESTORE_VERSION, handler: ds_cli_pm::private_notes::restore_version, render: ds_cli_pm::private_notes::render },
     Entry { command: &ds_cli_pm::checklist_notes::PRIVATE_READ, handler: ds_cli_pm::checklist_notes::private_read, render: ds_cli_pm::checklist_notes::render },
     Entry { command: &ds_cli_pm::checklist_notes::PRIVATE_EDIT, handler: ds_cli_pm::checklist_notes::private_edit, render: ds_cli_pm::checklist_notes::render },
 ];

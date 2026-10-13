@@ -8,13 +8,13 @@ use ds_client_core::personal_notes::Action;
 use serde_json::{json, Value};
 
 pub const OWN_REFUSALS: &[Refusal] = &[
-    Refusal { code: "notes_request_invalid", when: "the selected note or checklist edit is outside the closed owner contract", remedy: "use a stable note id and the declared checklist edit fields and bounds" },
+    Refusal { code: "notes_request_invalid", when: "the selected note, history version, restoration hash or checklist edit is outside the closed owner contract", remedy: "use one stable private note id and the declared version, source hash or checklist edit fields" },
     Refusal { code: "notes_response_unreadable", when: "the owner receipt does not match the selected note and version", remedy: "retry only the exact original command; update the client and Brain together if the mismatch repeats" },
-    Refusal { code: "notes_not_found", when: "the selected note is not held by this authenticated account", remedy: "restore the intended account and use its own note id" },
-    Refusal { code: "notes_version_conflict", when: "the selected note moved after the reviewed version", remedy: "read that note checklist, review the change and submit a new command id against its version" },
+    Refusal { code: "notes_not_found", when: "the selected private note or historical revision is unavailable to this account", remedy: "restore the intended account, select its own note id and inspect notes versions; unavailable history cannot be reconstructed" },
+    Refusal { code: "notes_version_conflict", when: "the selected note moved after the reviewed version", remedy: "read that private note, review the change and submit the declared operation against its current version" },
     Refusal { code: "notes_command_conflict", when: "the command id already names a different intent", remedy: "retry the exact original command or use a new id for a new intent" },
     Refusal { code: "notes_not_permitted", when: "the notes owner refused this identity or selected item evidence", remedy: "restore the intended account; personal notes cannot adopt project model pins" },
-    Refusal { code: "notes_unavailable", when: "the notes owner could not serve the selected operation", remedy: "retry later with the same command id, version and edit" },
+    Refusal { code: "notes_unavailable", when: "the notes owner could not serve the selected operation", remedy: "retry later retaining the exact original version, source hash and command id when declared" },
 ];
 
 pub fn execute(lane_value: &str, action: &Action) -> Result<Value, Failure> {

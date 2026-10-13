@@ -64,6 +64,7 @@ pub mod member;
 pub mod model_link;
 pub mod note;
 pub mod note_memory;
+pub mod private_notes;
 pub mod party;
 pub mod plan;
 pub mod overview;
