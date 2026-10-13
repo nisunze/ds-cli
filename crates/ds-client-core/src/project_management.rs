@@ -1239,7 +1239,7 @@ pub fn verify_graph(project: &str, graph: &Value) -> Result<(), ClientError> {
 
 /// Admit only the selected records page, never a legacy unselected or partial
 /// answer that could otherwise become an apparently empty related-record list.
-fn validate_task_records(
+pub fn validate_task_records(
     context: &Value,
     project: &str,
     task: &str,
