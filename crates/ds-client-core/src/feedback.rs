@@ -465,6 +465,9 @@ pub(crate) fn run<T: AuthorizedTransport>(
             // caller that genuinely wants to drain a narrowed question still
             // can, by echoing the cursor that read returns.
             let narrowed = component.is_some() || query.is_some();
+            // `drains` describes continuation, not consent to remember it.
+            // Explicit cursors are echoed without use_watermark; only a plain
+            // unfiltered sweep opts into the account's remembered position.
             let drains = cursor.is_some() || !(*all || narrowed);
             if let Some(cursor) = cursor {
                 payload["cursor"] = json!(cursor);

@@ -10666,6 +10666,67 @@ fn headless_feedback_separates_a_drain_from_a_read_of_the_top() {
     assert!(sent.get("use_watermark").is_none());
 }
 
+#[test]
+fn headless_feedback_echoes_peek_cursors_without_account_watermark_or_scope_changes() {
+    use ds_client_core::feedback::Command;
+    for (component, query) in [(None, None), (Some("ds-cli/feedback"), Some("pagination"))] {
+        let transport = FixtureTransport::with_sign_in(SIGN_IN);
+        let mut client = signed_in(transport.clone(), MemoryStore::default());
+        for (cursor, source) in [("fb1.opaque.first", "none"), ("fb1.opaque.next", "request")] {
+            transport
+                .0
+                .lock()
+                .unwrap()
+                .feedback
+                .push_back(project_response(json!({
+                    "reports":[feedback_row("open",1)], "matched":2,
+                    "complete":false,"changed":true,"cursor":cursor,"cursor_source":source,
+                })));
+        }
+        let request = |cursor, all| Command::List {
+            view: "not_addressed".into(),
+            component: component.map(str::to_owned),
+            query: query.map(str::to_owned),
+            limit: 1,
+            detail: false,
+            cursor,
+            all,
+        };
+        let top = client.feedback(&request(None, true), NOW + 1).unwrap();
+        let issued = top["cursor"].as_str().unwrap().to_owned();
+        let next = client
+            .feedback(&request(Some(issued.clone()), false), NOW + 2)
+            .unwrap();
+        assert_eq!(top["drains"], false);
+        assert_eq!(
+            next["drains"], true,
+            "continuation does not mean remembered state"
+        );
+        assert_eq!(next["cursor_source"], "request");
+        let state = transport.0.lock().unwrap();
+        assert_eq!(
+            state.feedback_bodies.len(),
+            2,
+            "one call per requested page"
+        );
+        assert_eq!(
+            state.feedback_bodies[1]["cursor"], issued,
+            "echo server bytes without decoding"
+        );
+        assert_eq!(
+            state.feedback_bodies[0]["filter"],
+            state.feedback_bodies[1]["filter"]
+        );
+        assert!(state.feedback_bodies[0].get("cursor").is_none());
+        for payload in &state.feedback_bodies {
+            assert!(
+                payload.get("use_watermark").is_none(),
+                "explicit paging never opts in: {payload}"
+            );
+        }
+    }
+}
+
 /// A ROW DECIDES; IT DOES NOT EXPLAIN. The excerpt is the measured cost.
 ///
 /// The backlog cost about 1.5 million tokens because every visit read the long
