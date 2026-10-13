@@ -236,6 +236,31 @@ Measure representative workloads on the relevant target. Record the workload,
 resource constraints and observed result; a fast native build does not prove
 acceptable web startup, desktop resource use or server memory consumption.
 
+### Prompt queue sync and cheap input freshness
+
+Owner clarification, 2026-10-13: collaborative mutation queues sync promptly
+through their existing owner when connectivity and admission permit. Preserve
+durable writes, acknowledgements, exact replay and pending local work. Queue
+progress does not force repeated downloads of unchanged analysis inputs.
+
+Retain exact version-pinned inputs and producing data across sessions. An online
+consumer needing current data obtains a bounded, cheap, authorized source-basis
+stamp and uses the shared kernel freshness comparison. The stamp includes the
+complete principal, lane, audience, project, resource and dependency-revision
+fences. Equal complete stamps reuse captured bytes; changed stamps acquire the
+affected data through its existing owner. Concurrent consumers join that work.
+Unknown or unavailable freshness remains explicitly unknown while captured data
+stays available under its existing permission/revocation policy. Freshness
+comparison itself performs no IO and does not grant authorization.
+
+Local analysis, report iterations and presentation changes reuse their captured
+versions. Acquire freshness only for an intentional online need or a consumed
+invalidation; unused data incurs no probe. Preserve explicit Refresh and offline
+operation, with no polling, eager rereads, competing cache or queue. Verify warm,
+concurrent, offline and changed-source request/body counts when each owning slice
+is touched. Transformer analysis and reporting illustrate this general contract;
+they do not authorize an unrelated implementation audit or migration.
+
 ## 8. Implementation and landing method
 
 Coordinate the existing campaign lanes around this destination and preserve

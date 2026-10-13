@@ -32,6 +32,7 @@ Engineering, Solar and report algorithms remain with their respective owners.
   typed admission. Preserve dirty held state and atomic transitions.
 - Acquisition plans are demand-driven and bounded. Offline retained inputs must not
   trigger incidental network or freshness reads. Prove reads/requests when touched.
+- Follow [prompt queue sync and cheap input freshness](docs/contracts/ds-headless-application-runtime.md#prompt-queue-sync-and-cheap-input-freshness): reuse captured inputs across sessions and use the shared cheap source-basis comparison for intentional online reads. Keep examples within the authorized implementation slice.
 - A new shared slice serves a real consumer and deletes the duplicated decision;
   avoid speculative framework expansion or a second copy of an owning algorithm.
 - Compatibility/schema changes need explicit consumer/migration evidence. Do not

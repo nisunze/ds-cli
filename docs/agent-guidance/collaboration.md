@@ -72,6 +72,9 @@ Do not infer identity, project scope or authorization from ambient host state.
   Invalidation is retained until consumed; reuse held inputs and coalesce consumers.
   Preserve offline work, dirty edits, authorization and revision fences. Prove the
   touched acquisition path's read counts and the unused-data negative case.
+  [Prompt queue sync and cheap input freshness](../contracts/ds-headless-application-runtime.md#prompt-queue-sync-and-cheap-input-freshness)
+  governs cross-session reuse and intentional online freshness; apply it within
+  the named owning slice rather than auditing every domain used as an example.
 
 ## Verify, then land
 
