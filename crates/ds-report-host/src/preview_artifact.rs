@@ -17,22 +17,7 @@ pub const RETENTION_MS: u64 = 24 * 60 * 60 * 1000;
 pub const LONG_RETENTION_MS: u64 = 7 * RETENTION_MS;
 const MAX_MANIFEST_BYTES: u64 = 8 * 1024 * 1024;
 
-#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize)]
-pub enum Retention {
-    #[default]
-    #[serde(rename = "24h")]
-    Hours24,
-    #[serde(rename = "7d")]
-    Days7,
-}
-impl Retention {
-    pub(crate) fn millis(self) -> u64 {
-        match self {
-            Self::Hours24 => RETENTION_MS,
-            Self::Days7 => LONG_RETENTION_MS,
-        }
-    }
-}
+pub use ds_command_kernel::asset_preview::Retention;
 /// Closed native preview media; arbitrary MIME types never admit a file.
 #[derive(Clone, Copy)]
 enum Media {
@@ -134,6 +119,49 @@ pub(crate) fn begin_request_at(
     retention: Retention,
     clock: u64,
 ) -> Result<RequestLease, HostFailure> {
+    begin_request_with_lock(room, inputs, retention, Some(clock), |path| {
+        ds_layer_store::exclusive_lock(path).map_err(failed)
+    })
+}
+
+/// A cancelled waiting consumer leaves the shared producer and its exact file
+/// untouched. Hosts supply their captured account/project/revocation check.
+pub fn begin_request_cancellable(
+    room: &Room,
+    inputs: Value,
+    retention: Retention,
+    check_current: impl Fn() -> Result<(), HostFailure>,
+) -> Result<RequestLease, HostFailure> {
+    begin_request_with_lock(room, inputs, retention, None, |path| {
+        if let Some(parent) = path.parent() {
+            ds_layer_store::private::create_dir_all(parent).map_err(|e| failed(e.to_string()))?;
+        }
+        let lock = ds_layer_store::private::open_options()
+            .create(true)
+            .truncate(false)
+            .read(true)
+            .write(true)
+            .open(path)
+            .map_err(|e| failed(e.to_string()))?;
+        loop {
+            check_current()?;
+            match lock.try_lock() {
+                Ok(()) => return Ok(lock),
+                Err(fs::TryLockError::WouldBlock) => {
+                    std::thread::sleep(std::time::Duration::from_millis(20))
+                }
+                Err(fs::TryLockError::Error(error)) => return Err(failed(error.to_string())),
+            }
+        }
+    })
+}
+fn begin_request_with_lock(
+    room: &Room,
+    inputs: Value,
+    retention: Retention,
+    clock: Option<u64>,
+    lock: impl FnOnce(&Path) -> Result<fs::File, HostFailure>,
+) -> Result<RequestLease, HostFailure> {
     if !inputs.is_object() {
         return Err(failed("preview input index requires native semantic pins"));
     }
@@ -151,7 +179,8 @@ pub(crate) fn begin_request_at(
             Err(e) => return Err(failed(e.to_string())),
         }
     }
-    let lock = ds_layer_store::exclusive_lock(&base.join(format!("{key}.lock"))).map_err(failed)?;
+    let lock = lock(&base.join(format!("{key}.lock")))?;
+    let clock = clock.map(Ok).unwrap_or_else(now)?;
     let path = base.join(format!("{key}.json"));
     let mut lease = RequestLease {
         _lock: lock,
@@ -241,6 +270,99 @@ impl RequestLease {
         self.retained = Some(record);
         Ok(())
     }
+}
+
+/// A real source denial invalidates only this asset's retained native previews.
+/// Files from other consumers and unknown contents are never deleted. Online
+/// authority failure without a typed denial must not call this operation.
+pub(crate) fn forget_asset_requests(room: &Room, asset_id: &str) -> Result<usize, HostFailure> {
+    let owner = authority(room)?;
+    let base = root(room, &owner).join("requests");
+    for ancestor in base.ancestors().take_while(|p| p.starts_with(&room.root)) {
+        match fs::symlink_metadata(ancestor) {
+            Ok(m) if m.is_dir() && !m.file_type().is_symlink() => {}
+            Ok(_) => return Err(failed("source denial preview root is crossed")),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => return Err(failed(e.to_string())),
+        }
+    }
+    let entries = match fs::read_dir(&base) {
+        Ok(entries) => entries,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(0),
+        Err(e) => return Err(failed(e.to_string())),
+    };
+    let mut removed = 0;
+    let mut inspected = 0;
+    for entry in entries {
+        let entry = entry.map_err(|e| failed(e.to_string()))?;
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        let Some(key) = name.strip_suffix(".json").filter(|v| digest_token(v)) else {
+            continue;
+        };
+        inspected += 1;
+        if inspected > 4096 {
+            return Err(failed(
+                "source denial preview cleanup exceeds its bounded request index",
+            ));
+        }
+        let path = entry.path();
+        let Some(bytes) = crate::read_bounded(&path, MAX_MANIFEST_BYTES)? else {
+            continue;
+        };
+        let candidate: RequestManifest =
+            serde_json::from_slice(&bytes).map_err(|e| failed(e.to_string()))?;
+        if candidate.inputs["schema"] != "ds.asset-preview.acquire/v1"
+            || candidate.inputs["asset_id"] != asset_id
+        {
+            continue;
+        }
+        let _lock =
+            ds_layer_store::exclusive_lock(&base.join(format!("{key}.lock"))).map_err(failed)?;
+        let Some(bytes) = crate::read_bounded(&path, MAX_MANIFEST_BYTES)? else {
+            continue;
+        };
+        let record: RequestManifest =
+            serde_json::from_slice(&bytes).map_err(|e| failed(e.to_string()))?;
+        if record.schema != SCHEMA
+            || record.authority_sha256 != owner
+            || record.input_sha256 != key
+            || record.inputs["schema"] != "ds.asset-preview.acquire/v1"
+            || record.inputs["asset_id"] != asset_id
+            || digest(
+                &serde_json::to_vec(
+                    &json!({"inputs":record.inputs,"retention_ms":record.artifact.retention_ms}),
+                )
+                .map_err(|e| failed(e.to_string()))?,
+            ) != key
+            || digest(&serde_json::to_vec(&record.metadata).map_err(|e| failed(e.to_string()))?)
+                != record.metadata_sha256
+        {
+            return Err(failed(
+                "source denial index differs from its exact native authority",
+            ));
+        }
+        let result = root(room, &owner).join(&record.artifact.result_sha256);
+        let _result_lock = ds_layer_store::exclusive_lock(
+            &root(room, &owner).join(format!("{}.lock", record.artifact.result_sha256)),
+        )
+        .map_err(failed)?;
+        match fs::symlink_metadata(&result) {
+            Ok(_) => {
+                let manifest = read_manifest(&result)?;
+                let page = admit_manifest(room, &manifest)?;
+                if manifest.artifact != record.artifact {
+                    return Err(failed("source denial artifact differs from its request"));
+                }
+                remove_owned(&result, &manifest, &page)?;
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => return Err(failed(e.to_string())),
+        }
+        fs::remove_file(&path).map_err(|e| failed(e.to_string()))?;
+        removed += 1;
+    }
+    Ok(removed)
 }
 
 #[derive(Serialize, Deserialize)]

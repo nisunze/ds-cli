@@ -14,6 +14,7 @@ use zeroize::Zeroize;
 pub use ds_solar_contracts::is_solar_id;
 /// The time crate the kernel's instants are spelled in, for hosts that pass them.
 pub use time;
+pub mod asset_preview;
 pub mod assets;
 pub mod project_snapshot;
 pub mod grid_selection_controls;

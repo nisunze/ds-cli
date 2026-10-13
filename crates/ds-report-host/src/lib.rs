@@ -39,6 +39,7 @@ pub use ds_command_kernel::report_export::{
     batch_plan, blocker_summary, BatchPlan, DEFAULT_RESIDENT_LIMIT, MAX_RESIDENT_LIMIT,
 };
 
+pub mod asset_preview;
 pub mod layout_preview;
 pub mod mv_artifact;
 pub mod mv_job;
