@@ -1127,4 +1127,231 @@ mod tests {
         );
         assert!(!out.exists(), "a refused scenario writes nothing");
     }
+    // These use the real offline command's decoder, engine and durable file
+    // writer. No project authority or save is acquired by a topology check.
+    fn saved_topology_job() -> Value {
+        fn point(id: &str, xy: [f64; 2], properties: Value) -> Value {
+            json!({"type":"Feature","id":id,"geometry":{"type":"Point","coordinates":xy},"properties":properties})
+        }
+        fn line(id: &str, a: [f64; 2], b: [f64; 2], properties: Value) -> Value {
+            json!({"type":"Feature","id":id,"geometry":{"type":"LineString","coordinates":[a,b]},"properties":properties})
+        }
+        let tr = [30.0, -2.0];
+        let p1 = [30.001, -2.0];
+        let p2 = [30.002, -2.0];
+        let c1 = [30.001, -2.0001];
+        let c2 = [30.002, -2.0001];
+        let mut job = json!({"transformer_name":"saved-proof","settings":{"keep_network_as_drawn":true},"config_dfs":config(),"gdfs":{}});
+        let layers = [
+            (
+                "tr",
+                vec![point(
+                    "tr",
+                    tr,
+                    json!({"node_id":"tr","transfo_size":100,"name":"saved-proof"}),
+                )],
+            ),
+            (
+                "lv_poles",
+                vec![
+                    point(
+                        "p1",
+                        p1,
+                        json!({"node_id":"p1","pole_number":"P001","x":488149.48,"y":4711326.98}),
+                    ),
+                    point("p2", p2, json!({"node_id":"p2","pole_number":"P002"})),
+                ],
+            ),
+            (
+                "customers",
+                vec![
+                    point(
+                        "c1",
+                        c1,
+                        json!({"node_id":"c1","connection_pole_id":"p1","connection_phase":"1","load":"Residential, 250","meter_type":"Single Phase","service_length":15.0,"service_cable_size":"2 x 6 mm\u{b2}"}),
+                    ),
+                    point(
+                        "c2",
+                        c2,
+                        json!({"node_id":"c2","connection_pole_id":"p2","connection_phase":"2","load":"Residential, 250","meter_type":"Single Phase","service_length":15.0,"service_cable_size":"2 x 6 mm\u{b2}"}),
+                    ),
+                ],
+            ),
+            (
+                "lv_lines",
+                vec![line(
+                    "l1",
+                    tr,
+                    p2,
+                    json!({"cable_size":"3 x 35 + 54.6mm\u{b2} ABC","length":200.0}),
+                )],
+            ),
+            (
+                "spans",
+                vec![
+                    line(
+                        "s1",
+                        tr,
+                        p1,
+                        json!({"from_node_id":"tr","to_node_id":"p1","cable_size":"3 x 35 + 54.6mm\u{b2} ABC","length":100.0}),
+                    ),
+                    line(
+                        "s2",
+                        p1,
+                        p2,
+                        json!({"from_node_id":"p1","to_node_id":"p2","cable_size":"3 x 35 + 54.6mm\u{b2} ABC","length":100.0}),
+                    ),
+                ],
+            ),
+            (
+                "service_cables",
+                vec![
+                    line(
+                        "sc1",
+                        p1,
+                        c1,
+                        json!({"from_node_id":"p1","to_node_id":"c1","service_cable_size":"2 x 6 mm\u{b2}","length":15.0}),
+                    ),
+                    line(
+                        "sc2",
+                        p2,
+                        c2,
+                        json!({"from_node_id":"p2","to_node_id":"c2","service_cable_size":"2 x 6 mm\u{b2}","length":15.0}),
+                    ),
+                ],
+            ),
+        ];
+        for (layer, features) in layers {
+            job["gdfs"][layer] = json!({"type":"FeatureCollection","features":features});
+        }
+        job
+    }
+    fn saved_command(job: &Value) -> Value {
+        let root = tempfile::tempdir().unwrap();
+        let input = root.path().join("saved.json");
+        let out = root.path().join("result.json");
+        let bytes = request(vec![job.clone()]);
+        std::fs::write(&input, &bytes).unwrap();
+        let receipt = run(&inputs(&input, &out), &context()).expect("valid offline command");
+        assert_eq!(receipt["failed"], 0, "{receipt}");
+        assert_eq!(
+            std::fs::read(&input).unwrap(),
+            bytes,
+            "no source input overwrite"
+        );
+        let result: Value = serde_json::from_slice(&std::fs::read(out).unwrap()).unwrap();
+        let output = result["jobs"][0].clone();
+        for (layer, fc) in job["gdfs"].as_object().unwrap() {
+            let original = fc["features"].as_array().unwrap();
+            let actual = output["layers"][layer]["features"].as_array().unwrap();
+            assert_eq!(original.len(), actual.len(), "{layer} row count");
+            for (source, row) in original.iter().zip(actual) {
+                assert_eq!(source["id"], row["id"], "{layer} saved identity");
+                assert_eq!(
+                    source["geometry"], row["geometry"],
+                    "{layer} authored geometry"
+                );
+                for (key, value) in source["properties"].as_object().unwrap() {
+                    assert_eq!(
+                        row["properties"].get(key),
+                        Some(value),
+                        "{layer} authored {key}"
+                    );
+                }
+            }
+        }
+        output
+    }
+    #[test]
+    fn native_saved_topology_complete_and_missing_ids_keep_source_design_cells() {
+        let job = saved_topology_job();
+        let output = saved_command(&job);
+        assert_eq!(output["analysis"]["status"], "calculated");
+        assert_eq!(output["report"]["summary"]["customers"], 2);
+        assert_eq!(output["report"]["summary"]["customers_unreached"], 0);
+        assert_eq!(output["report"]["sections"].as_array().unwrap().len(), 2);
+        let mut legacy = job.clone();
+        for fc in legacy["gdfs"].as_object_mut().unwrap().values_mut() {
+            for f in fc["features"].as_array_mut().unwrap() {
+                let p = f["properties"].as_object_mut().unwrap();
+                for key in [
+                    "node_id",
+                    "from_node_id",
+                    "to_node_id",
+                    "connection_pole_id",
+                ] {
+                    p.remove(key);
+                }
+            }
+        }
+        let output = saved_command(&legacy);
+        assert_eq!(
+            output["analysis"]["status"], "calculated",
+            "{}",
+            output["report"]["issues"]
+        );
+        assert_eq!(output["report"]["summary"]["customers"], 2);
+        assert_eq!(output["report"]["summary"]["customers_unreached"], 0);
+        assert_eq!(output["report"]["sections"].as_array().unwrap().len(), 2);
+        for fc in output["layers"].as_object().unwrap().values() {
+            for f in fc["features"].as_array().unwrap() {
+                assert!(
+                    f["properties"].get("node_id").is_none(),
+                    "analysis IDs stay transient"
+                );
+            }
+        }
+        // The legacy x/y property is unchanged; exact WGS84 geometry supplies
+        // connectivity, and authored metric lengths supply branch impedance.
+        assert_eq!(output["report"]["sections"][0]["length_m"], 100.0);
+    }
+    #[test]
+    fn native_saved_topology_partial_unreached_and_ambiguous_never_claim_compliance() {
+        for case in 0..3 {
+            let mut job = saved_topology_job();
+            match case {
+                0 => {
+                    job["gdfs"]["spans"]["features"]
+                        .as_array_mut()
+                        .unwrap()
+                        .pop();
+                }
+                1 => {
+                    job["gdfs"]["customers"]["features"][1]["properties"]["connection_pole_id"] =
+                        json!("unreached");
+                }
+                _ => {
+                    let mut duplicate = job["gdfs"]["lv_poles"]["features"][0].clone();
+                    duplicate["id"] = json!("duplicate");
+                    duplicate["properties"]["node_id"] = json!("duplicate");
+                    job["gdfs"]["lv_poles"]["features"]
+                        .as_array_mut()
+                        .unwrap()
+                        .push(duplicate);
+                    job["gdfs"]["spans"]["features"][0]["properties"]
+                        .as_object_mut()
+                        .unwrap()
+                        .remove("from_node_id");
+                }
+            }
+            let output = saved_command(&job);
+            assert_eq!(
+                output["analysis"]["status"], "refused",
+                "case {case}: {}",
+                output["report"]["issues"]
+            );
+            assert_eq!(output["report"]["summary"]["compliant"], false);
+            assert_eq!(output["report"]["status"], "not_calculated");
+            assert!(output["report"]["customers"].as_array().unwrap().is_empty());
+            let issues = output["report"]["issues"].to_string();
+            assert!(
+                if case == 2 {
+                    issues.contains("ambiguous")
+                } else {
+                    issues.contains("unreachable") || issues.contains("not connected")
+                },
+                "{issues}"
+            );
+        }
+    }
 }
