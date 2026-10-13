@@ -36,7 +36,6 @@ mod hierarchy;
 pub mod model_links;
 pub mod overview;
 pub mod project_notes;
-pub mod session_outcomes;
 pub mod projections;
 pub mod reads;
 pub mod task_attachment_detach;
