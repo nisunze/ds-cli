@@ -7,6 +7,7 @@
 pub mod account;
 pub mod asset_index_source;
 pub mod asset_preview_source;
+pub mod document_semantic;
 mod context;
 pub mod correspondence;
 pub mod device;

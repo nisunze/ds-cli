@@ -7,6 +7,17 @@ fn local_failure(message: impl ToString) -> Failure {
     Failure::unavailable("assets_retained_unavailable", message.to_string())
         .remedy("retry online with --refresh under the same native account; inspect the owner-only local data directory if persistence still fails")
 }
+fn is_access_refusal(error: &Failure) -> bool {
+    error.class() == ds_cli_contract::outcome::ExitClass::Unauthorized
+        || matches!(
+            error.code(),
+            "auth_revoked"
+                | "auth_identity_mismatch"
+                | "asset_class_forbidden"
+                | "asset_not_found"
+                | "not_found"
+        )
+}
 struct Provider<'a> {
     lane: &'a str,
     project: &'a str,
@@ -39,15 +50,13 @@ impl Source for Provider<'_> {
     }
     fn capture(&mut self, known_basis: Option<&str>) -> Result<Capture, Failure> {
         let command = match known_basis {
-            Some(basis) => Command::ConditionalIndexList { list: self.list.clone(), known_basis: basis.to_owned() },
+            Some(basis) => Command::ConditionalIndexList {
+                list: self.list.clone(),
+                known_basis: basis.into(),
+            },
             None => Command::IndexList(self.list.clone()),
         };
-        let captured = project_assets_for_project(
-            self.lane,
-            self.project,
-            &command,
-            None,
-        )?;
+        let captured = project_assets_for_project(self.lane, self.project, &command, None)?;
         if captured.identity().uid() != self.binding.uid
             || captured.identity().credential_audience_sha256() != self.fence.audience()
             || captured.lane() != self.lane
@@ -71,14 +80,7 @@ impl Source for Provider<'_> {
         })
     }
     fn access_refused(&self, error: &Failure) -> bool {
-        error.class() == ds_cli_contract::outcome::ExitClass::Unauthorized
-            || matches!(
-                error.code(),
-                "auth_revoked"
-                    | "auth_identity_mismatch"
-                    | "asset_class_forbidden"
-                    | "asset_not_found"
-            )
+        is_access_refusal(error)
     }
     fn verify_page(&self, value: &Value) -> Result<(), Failure> {
         ds_client_core::project_assets::verify_index_page(self.project, self.list, value)
@@ -230,6 +232,28 @@ mod catalogue_tests {
             expected_version: 3,
         }
     }
+    #[test]
+    fn permission_and_confidential_not_found_fence_retained_pages() {
+        // The Assets decoder classifies 403 as unauthorized and preserves
+        // confidential 404's not_found code; test those public failure shapes.
+        assert!(is_access_refusal(&Failure::unauthorized(
+            "insufficient_permissions",
+            "refused"
+        )));
+        assert!(is_access_refusal(&Failure::unavailable(
+            "not_found",
+            "refused"
+        )));
+        assert!(!is_access_refusal(&Failure::unavailable(
+            "transient",
+            "retry"
+        )));
+        assert!(!is_access_refusal(&Failure::invalid(
+            "invalid_number",
+            "bad bound"
+        )));
+    }
+
     #[test]
     fn only_exact_verified_classification_and_finalized_ingest_mark_stale() {
         let command = classify();

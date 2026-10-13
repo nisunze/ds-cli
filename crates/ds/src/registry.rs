@@ -2646,6 +2646,26 @@ static WORK_ENTRIES: &[Entry] = &[
 /// verbatim, so the index doubles as the procedure.
 static ASSETS_ENTRIES: &[Entry] = &[
     Entry {
+        command: &ds_cli_assets::semantic::EXPORT,
+        handler: ds_cli_assets::semantic::export,
+        render: ds_cli_assets::semantic::render,
+    },
+    Entry {
+        command: &ds_cli_assets::semantic::LOOKUP,
+        handler: ds_cli_assets::semantic::lookup,
+        render: ds_cli_assets::semantic::render,
+    },
+    Entry {
+        command: &ds_cli_assets::semantic::READ,
+        handler: ds_cli_assets::semantic::read,
+        render: ds_cli_assets::semantic::render,
+    },
+    Entry {
+        command: &ds_cli_assets::semantic::IMPORT,
+        handler: ds_cli_assets::semantic::import,
+        render: ds_cli_assets::semantic::render,
+    },
+    Entry {
         command: &ds_cli_assets::backup::COMMAND,
         handler: ds_cli_assets::backup::run,
         render: ds_cli_assets::backup::render,

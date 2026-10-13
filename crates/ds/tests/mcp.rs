@@ -1647,6 +1647,10 @@ fn the_assets_chapter_is_routed_and_describes_the_live_command() {
             json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": { "name": "ds_catalog", "arguments": { "chapter": "assets" } } }),
             json!({ "jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": { "name": "ds_assets", "arguments": { "operation": "describe", "command": "assets.list" } } }),
             json!({ "jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": { "name": "ds_assets", "arguments": { "operation": "describe", "command": "assets.backup.plan" } } }),
+            json!({ "jsonrpc": "2.0", "id": 5, "method": "tools/call", "params": { "name": "ds_assets", "arguments": { "operation": "describe", "command": "assets.semantic.export" } } }),
+            json!({ "jsonrpc": "2.0", "id": 6, "method": "tools/call", "params": { "name": "ds_assets", "arguments": { "operation": "describe", "command": "assets.semantic.lookup" } } }),
+            json!({ "jsonrpc": "2.0", "id": 7, "method": "tools/call", "params": { "name": "ds_assets", "arguments": { "operation": "describe", "command": "assets.semantic.read" } } }),
+            json!({ "jsonrpc": "2.0", "id": 8, "method": "tools/call", "params": { "name": "ds_assets", "arguments": { "operation": "describe", "command": "assets.semantic.import" } } }),
         ],
     );
 
@@ -1686,6 +1690,10 @@ fn the_assets_chapter_is_routed_and_describes_the_live_command() {
         "assets.maps",
         "assets.map.publish",
         "assets.backup.plan",
+        "assets.semantic.export",
+        "assets.semantic.lookup",
+        "assets.semantic.read",
+        "assets.semantic.import",
     ]
     .into_iter()
     .collect();
@@ -1703,6 +1711,13 @@ fn the_assets_chapter_is_routed_and_describes_the_live_command() {
         &response(&responses, 4)["result"]["structuredContent"],
         cli(&["capabilities", "assets.backup.plan", "--output", "json"]),
     );
+    for (index, name) in ["export", "lookup", "read", "import"].iter().enumerate() {
+        let id = format!("assets.semantic.{name}");
+        assert_mcp_descriptor_with_device_link(
+            &response(&responses, index as i64 + 5)["result"]["structuredContent"],
+            cli(&["capabilities", &id, "--output", "json"]),
+        );
+    }
 }
 
 #[test]
