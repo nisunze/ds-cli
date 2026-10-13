@@ -3,6 +3,8 @@
 use crate::design_versions_headless::ObjectRef;
 use serde::{Deserialize, Serialize};
 
+pub mod migration;
+
 pub const MEMORY_SCHEMA: &str = "ds.project-note-memory/v1";
 pub const MAX_BODY_BYTES: usize = 128 * 1024;
 pub const MAX_REQUEST_BYTES: usize = 256 * 1024;
@@ -625,15 +627,15 @@ impl Draft {
         evidence(&m.evidence)?;
         claim_refs(&m.supersedes)?;
         require(
-            !m.claims.is_empty()
-                && m.claims.len() <= 128
+            (!m.claims.is_empty() || m.note_type == NoteType::Observation)
+                && m.claims.len() <= 64
                 && m.claims
                     .iter()
                     .map(|c| &c.id)
                     .collect::<std::collections::BTreeSet<_>>()
                     .len()
                     == m.claims.len(),
-            "Meaningful notes need1..128 individually retrievable unique claims",
+            "Notes need bounded unique claims; literal observations may have none",
         )?;
         for c in &m.claims {
             c.validate()?;
@@ -689,6 +691,8 @@ impl Consolidate {
 }
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Command {
+    PrepareMigration(migration::Prepare),
+    ApplyMigration(migration::Apply),
     Write(Write),
     Read(Read),
     Query(Query),
@@ -702,6 +706,8 @@ pub enum Command {
 impl Command {
     pub fn action(&self) -> &'static str {
         match self {
+            Self::PrepareMigration(_) => "project_note_canonicalize_prepare",
+            Self::ApplyMigration(_) => "project_note_canonicalize_apply",
             Self::Write(_) => "project_note_write",
             Self::Read(_) => "project_note_read",
             Self::Query(_) => "project_note_query",
@@ -715,6 +721,8 @@ impl Command {
     }
     pub fn validate(&self) -> Result<(), String> {
         match self {
+            Self::PrepareMigration(x) => x.validate(),
+            Self::ApplyMigration(x) => x.validate(),
             Self::Write(x) => x.validate(),
             Self::Read(x) => x.validate(),
             Self::Query(x) => x.validate(),
@@ -730,6 +738,14 @@ impl Command {
         require(id(project), "Project Notes requires the exact project")?;
         self.validate()?;
         let value = match self {
+            Self::PrepareMigration(x) => serde_json::to_value(x),
+            Self::ApplyMigration(x) => {
+                require(
+                    x.plan.project_id == project,
+                    "Migration must retain exact project",
+                )?;
+                serde_json::to_value(x)
+            }
             Self::Write(x) => serde_json::to_value(x),
             Self::Read(x) => serde_json::to_value(x),
             Self::Query(x) => serde_json::to_value(x),
@@ -760,6 +776,28 @@ impl Command {
             "Project Notes response belongs to another project",
         )?;
         match self {
+            Self::PrepareMigration(r) => {
+                let p = migration::verify_plan(project, &v["plan"])?;
+                require(
+                    p.id == r.id
+                        && v["authored_version_changed"] == false
+                        && v["document"].is_object()
+                        && v["document"]["id"] == p.id
+                        && v["document"]["version"] == p.expected_version,
+                    "Migration preparation lacks literal source",
+                )?;
+            }
+            Self::ApplyMigration(r) => {
+                let p = migration::verify_plan(project, &v["plan"])?;
+                require(
+                    p == r.plan
+                        && v["operation_id"] == r.operation_id
+                        && v["applied"] == true
+                        && v["replayed"].is_boolean()
+                        && v["authored_version_changed"] == false,
+                    "Migration receipt differs from reviewed unchanged version",
+                )?;
+            }
             Self::Write(w) => {
                 verify_note(project, &v["note"], Some(&w.id))?;
                 require(
@@ -775,7 +813,20 @@ impl Command {
                 )?;
             }
             Self::Read(r) => {
-                verify_note(project, &v["note"], Some(&r.id))?;
+                if v["note"]["semantic_status"] == "unrecorded" {
+                    require(
+                        r.version.is_some()
+                            && r.claim_id.is_none()
+                            && v["note"]["project_id"] == project
+                            && v["note"]["id"] == r.id
+                            && v["note"]["version"].as_u64() == r.version
+                            && v["note"]["document"].is_object()
+                            && v["note"]["memory"].is_null(),
+                        "Unrecorded semantics require an exact historical literal read",
+                    )?;
+                } else {
+                    verify_note(project, &v["note"], Some(&r.id))?;
+                }
                 require(
                     r.version
                         .is_none_or(|version| v["note"]["version"] == version)
@@ -936,8 +987,7 @@ fn verify_note(project: &str, n: &serde_json::Value, wanted: Option<&str>) -> Re
                 .as_u64()
                 .is_some_and(|v| v > 0 && v < i64::MAX as u64)
             && n["document"].is_object()
-            && n["memory"].is_object()
-            && n["legacy"].is_boolean(),
+            && n["memory"].is_object(),
         "Note lacks its exact project/identity/version and preserved document",
     )
 }
@@ -962,6 +1012,17 @@ fn verify_page(project: &str, v: &serde_json::Value, limit: u32) -> Result<(), S
             && v["context_revision"].as_str().is_some_and(sha),
         "Note page completeness is invalid; an incomplete page is not no context",
     )?;
+    if !v["migration_required"].is_null() {
+        let migrations = v["migration_required"]
+            .as_array()
+            .ok_or("Invalid migration completeness metadata")?;
+        require(
+            migrations.len() <= 200
+                && migrations.iter().all(|v| v.as_str().is_some_and(id))
+                && (migrations.is_empty() || v["complete"] == false),
+            "Unadopted notes cannot be presented as complete context",
+        )?;
+    }
     for n in rows {
         verify_note(project, n, None)?;
     }
@@ -1041,7 +1102,7 @@ mod tests {
         }
     }
     fn view(id: &str, version: u64) -> serde_json::Value {
-        json!({"project_id":"p","id":id,"version":version,"document":{"category":"project_note"},"memory":draft().memory,"legacy":false})
+        json!({"project_id":"p","id":id,"version":version,"document":{"category":"project_note"},"memory":draft().memory})
     }
     #[test]
     fn parent_selector_and_relationship_pins_are_closed() {

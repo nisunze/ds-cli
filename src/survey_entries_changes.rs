@@ -382,7 +382,7 @@ fn parse_canonical_utc(value: &str) -> Option<OffsetDateTime> {
     OffsetDateTime::parse(value, &Rfc3339).ok()
 }
 
-fn canonical_utc_rfc3339_nano(value: &str) -> bool {
+pub(crate) fn canonical_utc_rfc3339_nano(value: &str) -> bool {
     !value.is_empty() && canonicalize_rfc3339(value).as_deref() == Some(value)
 }
 
