@@ -4,14 +4,14 @@
 
 Working list from the 2026-10-07 snapshot and 2026-10-09 component lookups, with proven closures removed: 250 tracked rows (97 open, 153 waiting according to the rows below). These are file counts, not a fresh live backlog total. The feedback API is the authority: verify each selected report's current status, full ID, version and acceptance through `ds`, close only what is proven, and remove its row. Delete this file when its remaining work is fulfilled; keep no completed-work archive.
 
-Reports are grouped by the live repository that owns the code, then by component. The component is the submitter's free-text label, shown verbatim so `ds feedback list --component` finds it. Legacy labels map as follows: `ds-grid*`, `dsgrid*`, `ds/grid-*`, `ds/pls-library` → ds-network; `ds-report*`, `ds-printing*` → ds-network-reporter; `ds-desktop*` → ds-web (`src-tauri`); `ds pls desktop` → ds-cli (`ds-cli-pls/desktop`). Labels that name no repository stay **unassigned**. "Backlog" names the [OPEN.md](OPEN.md), [OPEN-X.md](OPEN-X.md) or [SEEDING.md](SEEDING.md) section citing the report; **untracked** means none does (125 reports).
+Reports are grouped by the live repository that owns the code, then by component. The component is the submitter's free-text label, shown verbatim so `ds feedback list --component` finds it. Legacy labels map as follows: `ds-grid*`, `dsgrid*`, `ds/grid-*`, `ds/pls-library` → ds-network; `ds-report*`, `ds-printing*` → ds-network-reporter; `ds-desktop*` → ds-web (`src-tauri`); `ds pls desktop` → ds-cli (`ds-cli-pls/desktop`). Labels that name no repository stay **unassigned**. "Backlog" names the [OPEN.md](OPEN.md), [OPEN-X.md](OPEN-X.md) or [SEEDING.md](SEEDING.md) section citing the report; **untracked** means none does (124 reports).
 
 | Repository | Total | Blocker | Major | Minor | Waiting | Untracked |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 | [ds-cli](#ds-cli) | 92 | 11 | 62 | 19 | 58 | 57 |
 | [ds-network](#ds-network) | 75 | 18 | 52 | 5 | 38 | 26 |
 | [ds-network-reporter](#ds-network-reporter) | 28 | 1 | 21 | 6 | 20 | 16 |
-| [ds-web](#ds-web) | 34 | 6 | 26 | 2 | 24 | 16 |
+| [ds-web](#ds-web) | 34 | 6 | 26 | 2 | 24 | 15 |
 | [ds-command-kernel](#ds-command-kernel) | 4 | 0 | 3 | 1 | 4 | 0 |
 | [ds-brain](#ds-brain) | 7 | 0 | 6 | 1 | 5 | 3 |
 | [ds-vector-tiler](#ds-vector-tiler) | 1 | 0 | 1 | 0 | 1 | 0 |
@@ -257,7 +257,7 @@ Reports are grouped by the live repository that owns the code, then by component
 | ds-web/profile-editing | `d6ff65b3` | major | bug | Desktop structure edit leaves ATTACHMENT_SET_PARTIAL_STRINGING (4 issues); live model cannot save or checkpoint | open | **untracked** |
 | ds-web/project-work | `3cb5e3c5` | major | friction | Project Work UI needs a discoverable Finish task action | waiting: release of ds-web@0623e0a80 (Web Hosting or Desktop) | **untracked** |
 | ds-web/project-work | `29c89e1b` | major | idea | Render Markdown and PDF attachments inline in PM items | open | **untracked** |
-| ds-web/project-work/board | `7073c35c` | major | bug | Windows Project Work Board omits a committed Critical inbox task even after Refresh | open | **untracked** |
+| ds-web/project-work/board | `7073c35c` | major | bug | Windows Project Work Board omits a committed Critical inbox task even after Refresh | open: source regression proven; matching authenticated installed Board acceptance pending | SEEDING.md ?17 |
 | ds-web/project-work/dashboard | `1352e52e` | major | bug | Project Work Dashboard opens an empty or error page in production | waiting: affected signed-in production Project Work Dashboard, offline-cache and empty-project acceptance | SEEDING.md §17 |
 | ds-web/project-work/gantt | `a255fd6f` | major | idea | Gantt tasks need compact inline assignee controls and useful context | waiting: release of ds-web@ca46dd4ef (Web Hosting or Desktop) | **untracked** |
 | ds-web/project-work/plan | `59607488` | major | bug | Expanded Plan task details should push subsequent rows down instead of overlapping | waiting: release carrying ds-web@67b95cbb0 + ds-network@b224e6dc (Web Hosting or Desktop), then the visual check | **untracked** |

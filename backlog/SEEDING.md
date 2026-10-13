@@ -30,7 +30,7 @@ Candidate curation and native PLS-CADD acceptance are separate from coding the c
 | [14. Plan and Profile authoring](#14-plan-and-profile-authoring) | 6 |
 | [15. Project deliveries](#15-project-deliveries) | 6 |
 | [16. Map data, datasets and screen styling](#16-map-data-datasets-and-screen-styling) | 13 |
-| [17. Project Work and Assets](#17-project-work-and-assets) | 14 |
+| [17. Project Work and Assets](#17-project-work-and-assets) | 15 |
 | [18. Global DS Grid library](#18-global-ds-grid-library) | 5 |
 | [21. Windows native release](#21-windows-native-release) | 10 |
 | [22. Operations](#22-operations) | 6 |
@@ -394,6 +394,8 @@ Candidate curation and native PLS-CADD acceptance are separate from coding the c
 - **Desktop PM attachment origin and model-version link deployment** (`e2f26a13`, `287c6b9b`): the Desktop PM attachment origin fix (ds-brain `e2f26a13`) and the personal-note attachment origin (ds-brain `1f70fb11`) take effect only after a ds-brain deploy; a ds-brain containing them also carries `287c6b9b` (PM links to exact DS Grid model catalog revisions). Accept with a Desktop PM attachment and a Desktop note upload.
 
 - **Installed atomic task attachments and unscheduling** (`e01cf456`): release the matched Brain Run/Bulk and digest-pinned v31 native CLI/skills carrying multi-file task creation, exact task/version-guarded detachment and explicit date clearing. On an authorized integration specimen, one inbox create with two files must return their verified ready IDs; task read must show both. Detach one with its exact version while retaining its storage/download identity and other references. Clear leaf or milestone dates with `--start none --finish none`, preserving unrelated tasks and authored fields. Refuse protected evidence, stale versions and summary unscheduling without effects. No Assets detour, Desktop pairing, synthetic live project chatter or profile/credential workaround. Source tests are proven; feedback is waiting for matching authenticated installed acceptance.
+
+- **Installed Board canonical Refresh** (`7073c35c`): qualify the matching Web Hosting or Windows Desktop release carrying the canonical-plan Refresh fix and its Critical inbox/no-geometry regression. After a task is committed elsewhere, one explicit Board Refresh must show it at the new graph revision without reopening; repeated clicks while the read is pending must join that read. Preserve the held plan until successful acquisition, existing filters and project/account scope. Source proof does not establish authenticated Windows acceptance. The distinct production Board API error and go/return route evidence remain in OPEN ?17.
 
 - **Finish action and Gantt assignee** (`3cb5e3c5`, `a255fd6f`): on a Web Hosting or Desktop release carrying ds-web `0623e0a80` and `ca46dd4ef`, verify Finish in the Plan inspector and card menu, Gantt detail and row menus and Board/Table task menu, plus the Gantt row assignee dropdown with refresh and keyboard use; then close both.
 
