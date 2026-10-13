@@ -23,7 +23,7 @@ Unfinished code that an agent can implement and prove without further owner inpu
 | [14. Plan and Profile authoring](#14-plan-and-profile-authoring) | 1 |
 | [15. Project delivery code](#15-project-delivery-code) | 2 |
 | [16. Map data, datasets and screen styling](#16-map-data-datasets-and-screen-styling) | 12 |
-| [17. Project Work and Assets](#17-project-work-and-assets) | 8 |
+| [17. Project Work and Assets](#17-project-work-and-assets) | 7 |
 | [18. Global DS Grid library](#18-global-ds-grid-library) | 2 |
 | [19. Country neutrality and duplicated rules](#19-country-neutrality-and-duplicated-rules) | 2 |
 | [21. Windows release code](#21-windows-release-code) | 5 |
@@ -400,9 +400,7 @@ Rules: [PRINCIPLES.md §6](PRINCIPLES.md#6-ds-grid-engineering).
 
 - **Board and navigation failures**: fix the Windows production Board API error and local Web go/return navigation from exact authenticated route/request evidence. Preserve explicit project context and persistent attachment state; an unauthenticated 401 does not prove signed-in behaviour.
 
-- **Project overview aggregation**: make the project overview (the existing `/projects/[id]` page; drawer entry `overview` / `mom_nav_project_overview`) aggregate the canonical PM tasks, records and notes, including items without geometry: a kernel/CLI read first, which the page then renders.
-
-- **Assets list stale after ingest**: on canary 0.1.6 (`it_rwanda`), a plain `ds assets list --folder X` right after `ds assets ingest` leaves the new row out until `--refresh`; the client's own write does not invalidate its index. Reproduce on current source and invalidate the index on a successful ingest.
+- **Project overview consumption and read economics**: bind the native `pm.overview` projection into the existing `/projects/[id]` page (drawer entry `overview` / `mom_nav_project_overview`). Render canonical tasks, milestones, records and project notes, including inbox items without geometry, with stable identities and explicit bounded/lower-bound counts. Acquire only the graph and selected records required by this consumer; do not read unused attachments, comments or work episodes. Reuse and coalesce held account/lane/project-scoped inputs, retain pending invalidation for unused views, and preserve denied/changed-source refusals. Distinguish the exact graph revision from the separately read context rather than claiming an atomic snapshot; no private-note route or authoritative-empty fallback.
 
 - **Shared PM/Assets lifecycle and interaction**: implement consistent offline-first state and active/testing/archive scope across PM, Assets, overview and governance. Provide the missing dense governance/Installations interaction through native hit/snap or typed CLI proposals; keep engineering and graph decisions in Rust/server contracts. Project theme values are operational parameters in SEEDING.md.
 
