@@ -135,6 +135,11 @@ roster checks, coverage accounting, evidence-pinned holds and PDF composition.
 Discover its installed request contract, author the request outside the
 repository, then invoke the wrapper once:
 
+The typed combined request defaults `include_fill_in_upgrade_rows` to `false`.
+Exact saved reserved fill-ins and upgrades are summarized by counts; set this
+boolean to `true` to include their individual rows. The full roster coverage and
+source receipt remain retained, and unknown natures or genuine refusals stay visible.
+
 ```bash
 ds capabilities report.voltage-drop-combined --output json
 ds report tasks --task render_voltage_drop_combined --output json

@@ -19,7 +19,7 @@ pub static COMMAND: Command = Command {
     path: &["report", "voltage-drop-combined"],
     contract: 1,
     summary: "Print an A3 voltage-drop overview for an exact transformer roster.",
-    purpose: "Pass a typed local request to the Rust reporter. It verifies one voltage-drop result per transformer, keeps reserved and held designs out of calculated coverage, prints with one headless Chromium process, and returns a source- and PDF-digest receipt. This command does not publish or edit a project.",
+    purpose: "Pass a typed local request to the Rust reporter. It verifies one voltage-drop result per transformer, keeps reserved and held designs out of calculated coverage, prints with one headless Chromium process, and returns a source- and PDF-digest receipt. By default, exact saved reserved fill_in/upgrade rows are summarized by counts. Set include_fill_in_upgrade_rows:true in the typed request to show those rows. Genuine refusals and unknown natures remain visible. This command does not publish or edit a project.",
     chapter: Chapter::Reports,
     effect: Effect::LocalFileWrite,
     authority: Authority::None,
@@ -28,7 +28,7 @@ pub static COMMAND: Command = Command {
         Arg::value(
             "request",
             "<absolute.json>",
-            "Typed request from `ds report tasks --task render_voltage_drop_combined`; it names the exact roster, local result directory, any evidence-pinned hold, and an absent output PDF.",
+            "Typed request from `ds report tasks --task render_voltage_drop_combined`; it names the exact roster, local result directory, any evidence-pinned hold, and an absent output PDF. Optional include_fill_in_upgrade_rows defaults false; true includes individual source-reserved fill-in/upgrade rows.",
         )
         .required(),
         Arg::value(
