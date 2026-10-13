@@ -7017,13 +7017,18 @@ pub use ds_client_core::survey_migration::Command as SurveyMigrationCommand;
 
 pub use ds_client_core::shared_assets::Command as SharedAssetsCommand;
 
-/// Shared product feedback is user scoped, independent of project selection.
-pub fn feedback(
-    lane_value: &str,
+/// A feedback response failed after the native credential was admitted.
+pub const FEEDBACK_SERVICE_UNAVAILABLE_REFUSAL: Refusal = Refusal {
+    code: ds_client_core::feedback::SERVICE_UNAVAILABLE,
+    when: "the feedback endpoint answers a retryable service error",
+    remedy: "retry the read after service recovery; for a write, first inspect its outcome",
+};
+
+fn map_feedback_client(
+    error: ds_client_core::ClientError,
     command: &ds_client_core::feedback::Command,
-) -> Result<serde_json::Value, Failure> {
-    let lane = Lane::parse(lane_value)?;
-    let convert = |error: ds_client_core::ClientError| match error.to_string().as_str() {
+) -> Failure {
+    match error.to_string().as_str() {
         "feedback_not_permitted" => {
             Failure::unauthorized("feedback_not_permitted", "This user cannot triage feedback")
                 .remedy("Use a user with platform triage capability")
@@ -7074,8 +7079,25 @@ pub fn feedback(
                 ds_client_core::feedback::LIVE_REPOSITORIES.join(", ")
             ))
         }
+        ds_client_core::feedback::SERVICE_UNAVAILABLE => Failure::unavailable(
+            FEEDBACK_SERVICE_UNAVAILABLE_REFUSAL.code,
+            "The feedback service is temporarily unavailable",
+        )
+        .remedy(FEEDBACK_SERVICE_UNAVAILABLE_REFUSAL.remedy)
+        .detail(json!({
+            "http_status": error.service_refusal().map(|refusal| refusal.status()),
+        })),
         _ => map_client(error),
-    };
+    }
+}
+
+/// Shared product feedback is user scoped, independent of project selection.
+pub fn feedback(
+    lane_value: &str,
+    command: &ds_client_core::feedback::Command,
+) -> Result<serde_json::Value, Failure> {
+    let lane = Lane::parse(lane_value)?;
+    let convert = |error| map_feedback_client(error, command);
     command.validate().map_err(convert)?;
     if let Some(mut device) = restored_device_session(lane)? {
         return device.feedback(command).map_err(convert);
@@ -8647,6 +8669,116 @@ impl NamedSolarProjectSession {
 
 pub mod messaging;
 pub mod personal_notes;
+
+#[cfg(test)]
+mod feedback_error_tests {
+    use super::*;
+    use crate::test_support::{FixtureTransport, NOW, SIGN_IN, linked_device, signed_in};
+    use ds_client_core::{TransportResponse, WeakNetwork};
+
+    fn read() -> FeedbackCommand {
+        serde_json::from_value(json!({"operation":"list","view":"open","limit":1})).unwrap()
+    }
+
+    #[test]
+    fn feedback_service_failures_keep_status_and_no_private_text_for_user_and_device() {
+        for device in [false, true] {
+            for status in [429, 500, 503] {
+                let transport = FixtureTransport::with_sign_in(SIGN_IN);
+                transport.lock().feedback.push_back(TransportResponse::new(
+                    status,
+                    br#"{"success":false,"error":{"code":"INTERNAL_ERROR","message":"PRIVATE https://console.invalid/create-index","details":{"token":"SECRET"}}}"#,
+                ));
+                let command = read();
+                let error = if device {
+                    linked_device(transport.clone(), now())
+                        .feedback(&command)
+                        .unwrap_err()
+                } else {
+                    signed_in(transport.clone())
+                        .feedback(&command, NOW + 1)
+                        .unwrap_err()
+                };
+                let failure = map_feedback_client(error, &command);
+                assert_eq!(failure.code(), FEEDBACK_SERVICE_UNAVAILABLE_REFUSAL.code);
+                assert_eq!(
+                    failure.class(),
+                    ds_cli_contract::outcome::ExitClass::Unavailable
+                );
+                assert_eq!(failure.detail_value(), Some(&json!({"http_status":status})));
+                assert_eq!(
+                    failure.remedy_text(),
+                    Some(FEEDBACK_SERVICE_UNAVAILABLE_REFUSAL.remedy)
+                );
+                let debug = format!("{failure:?}");
+                for private in ["PRIVATE", "SECRET", "create-index", "auth_transient"] {
+                    assert!(!debug.contains(private), "{debug}");
+                }
+                assert_eq!(
+                    transport.calls().len(),
+                    1,
+                    "one feedback call, no automatic retry"
+                );
+                assert!(transport.calls()[0].ends_with(if device { "device-1" } else { "user" }));
+            }
+        }
+    }
+
+    #[test]
+    fn feedback_auth_refresh_failures_keep_auth_codes_and_never_call_feedback() {
+        for (status, body, expected) in [
+            (500, br#"{"error":{"message":"PRIVATE"}}"#.as_slice(), "auth_transient"),
+            (400, include_bytes!("../../../../ds-command-kernel/crates/ds-client-core/tests/fixtures/firebase-revoked.json").as_slice(), "auth_revoked"),
+        ] {
+            let transport = FixtureTransport::with_sign_in(SIGN_IN);
+            let mut client = signed_in(transport.clone()).with_weak_network(WeakNetwork::new(&[]));
+            transport.lock().refresh_response = Some(TransportResponse::new(status, body));
+            let command = read();
+            let failure = map_feedback_client(client.feedback(&command, NOW + 4_000).unwrap_err(), &command);
+            assert_eq!(failure.code(), expected);
+            assert!(failure.detail_value().is_none());
+            assert!(transport.calls().is_empty(), "no feedback or project reads");
+            assert!(!format!("{failure:?}").contains("PRIVATE"));
+        }
+    }
+
+    #[test]
+    fn feedback_authority_and_named_refusals_keep_their_existing_codes() {
+        let transport = FixtureTransport::with_sign_in(SIGN_IN);
+        let mut client = signed_in(transport.clone());
+        let command = read();
+        for (status, code, expected) in [
+            (401, "UNAUTHORIZED", "auth_rejected"),
+            (403, "INSUFFICIENT_PERMISSIONS", "feedback_not_permitted"),
+            (
+                429,
+                "FEEDBACK_BACKLOG_TOO_LARGE",
+                "feedback_backlog_too_large",
+            ),
+            (400, "FEEDBACK_CURSOR_INVALID", "feedback_cursor_rejected"),
+            (409, "FEEDBACK_SETTLED", "feedback_settled"),
+            (409, "FEEDBACK_NOTE_LIMIT", "feedback_note_limit"),
+        ] {
+            let body = serde_json::to_vec(
+                &json!({"success":false,"error":{"code":code,"message":"PRIVATE"}}),
+            )
+            .unwrap();
+            transport
+                .lock()
+                .feedback
+                .push_back(TransportResponse::new(status, body));
+            let failure =
+                map_feedback_client(client.feedback(&command, NOW + 1).unwrap_err(), &command);
+            assert_eq!(failure.code(), expected);
+            assert!(!format!("{failure:?}").contains("PRIVATE"));
+        }
+        assert_eq!(
+            transport.calls().len(),
+            6,
+            "one call per refusal, no retries"
+        );
+    }
+}
 
 #[cfg(test)]
 mod feedback_component_tests {

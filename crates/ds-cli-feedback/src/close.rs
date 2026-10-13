@@ -72,7 +72,7 @@ The report stays in the backlog and remains readable with \
     }],
     refusals: &crate::native_refusals::<
         6,
-        { 6 + ds_cli_auth::PROJECT_STATUS_COMMAND.refusals.len() },
+        { 6 + 1 + ds_cli_auth::PROJECT_STATUS_COMMAND.refusals.len() },
     >([
         ds_cli_contract::args::INVALID_NUMBER,
         crate::INVALID_TEXT,

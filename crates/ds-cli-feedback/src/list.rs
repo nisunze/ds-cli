@@ -86,7 +86,7 @@ with `id`, `status`, `kind`, `severity`, `component`, \
     }],
     refusals: &crate::native_refusals::<
         7,
-        { 7 + ds_cli_auth::PROJECT_STATUS_COMMAND.refusals.len() },
+        { 7 + 1 + ds_cli_auth::PROJECT_STATUS_COMMAND.refusals.len() },
     >([
         ds_cli_contract::args::INVALID_NUMBER,
         crate::INVALID_TEXT,

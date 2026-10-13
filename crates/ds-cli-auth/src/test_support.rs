@@ -33,6 +33,8 @@ pub(crate) const DEVICE_ACCESS_TOKEN: &str = "device-access-token";
 /// What the scripted transport will answer, and what it saw.
 #[derive(Default)]
 pub(crate) struct Scripted {
+    pub feedback: VecDeque<TransportResponse>,
+    pub refresh_response: Option<TransportResponse>,
     pub project_reports: VecDeque<TransportResponse>,
     pub report_bodies: Vec<serde_json::Value>,
     pub sign_in: Option<Vec<u8>>,
@@ -129,6 +131,24 @@ impl FixtureTransport {
 }
 
 impl Transport for FixtureTransport {
+    fn feedback(
+        &mut self,
+        call: ds_client_core::FeedbackCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        assert_eq!(call.method(), "POST");
+        assert_eq!(call.path(), "/api/v1/feedback");
+        let mut script = self.lock();
+        script.calls.push(format!(
+            "feedback {} {}",
+            call.bearer_token(),
+            call.device_id().unwrap_or("user")
+        ));
+        script
+            .feedback
+            .pop_front()
+            .ok_or(TransportError::Unreachable)
+    }
+
     fn transformer_analysis(
         &mut self,
         call: ds_client_core::TransformerAnalysisCall<'_>,
@@ -169,10 +189,16 @@ impl Transport for FixtureTransport {
     }
 
     fn refresh(&mut self, _call: RefreshCall<'_>) -> Result<TransportResponse, TransportError> {
-        self.lock()
-            .refresh
+        let mut script = self.lock();
+        script
+            .refresh_response
             .take()
-            .map(|body| TransportResponse::new(200, body))
+            .or_else(|| {
+                script
+                    .refresh
+                    .take()
+                    .map(|body| TransportResponse::new(200, body))
+            })
             .ok_or(TransportError::Unreachable)
     }
 

@@ -148,6 +148,8 @@ pub const fn native_refusals<const N: usize, const M: usize>(old: [Refusal; N]) 
         out[i] = old[i];
         i += 1;
     }
+    out[i] = ds_cli_auth::FEEDBACK_SERVICE_UNAVAILABLE_REFUSAL;
+    i += 1;
     let mut j = 0;
     while j < ds_cli_auth::PROJECT_STATUS_COMMAND.refusals.len() {
         out[i] = ds_cli_auth::PROJECT_STATUS_COMMAND.refusals[j];
@@ -169,4 +171,45 @@ pub fn invoke_native(
                 .remedy(INVALID_TEXT.remedy)
         })?;
     ds_cli_auth::feedback(inputs.value("lane").unwrap_or("stable"), &command)
+}
+
+#[cfg(test)]
+mod refusal_tests {
+    use super::*;
+
+    #[test]
+    fn every_feedback_endpoint_command_declares_service_and_existing_auth_refusals() {
+        for command in [
+            &list::COMMAND,
+            &submit::COMMAND,
+            &note::COMMAND,
+            &close::COMMAND,
+        ] {
+            let refusal = command
+                .refusals
+                .iter()
+                .find(|refusal| {
+                    refusal.code == ds_cli_auth::FEEDBACK_SERVICE_UNAVAILABLE_REFUSAL.code
+                })
+                .expect("feedback service refusal is discoverable");
+            assert_eq!(
+                refusal.remedy,
+                ds_cli_auth::FEEDBACK_SERVICE_UNAVAILABLE_REFUSAL.remedy
+            );
+            for existing in ds_cli_auth::PROJECT_STATUS_COMMAND.refusals {
+                assert!(
+                    command
+                        .refusals
+                        .iter()
+                        .any(|refusal| refusal.code == existing.code)
+                );
+            }
+        }
+        assert!(
+            !draft::COMMAND.refusals.iter().any(|refusal| {
+                refusal.code == ds_cli_auth::FEEDBACK_SERVICE_UNAVAILABLE_REFUSAL.code
+            }),
+            "local drafts never call the feedback endpoint"
+        );
+    }
 }

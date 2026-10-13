@@ -14,6 +14,11 @@ submit → (a coding session addresses the gap) → list → close
                                                   ↘ note (what it waits on)
 ```
 
+Feedback endpoint failures use `feedback_service_unavailable` with the HTTP
+status, without backend messages or private details. Native authentication
+failures retain their authentication codes. Service recovery permits another
+read; inspect a write's outcome before repeating it.
+
 ## `submit`
 
 Records an agent's sighting of the product. Both adapters pin `reporter_kind`

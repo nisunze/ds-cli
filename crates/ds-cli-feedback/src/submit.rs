@@ -122,7 +122,7 @@ report, and the report's current occurrence count.",
     }],
     refusals: &crate::native_refusals::<
         8,
-        { 8 + ds_cli_auth::PROJECT_STATUS_COMMAND.refusals.len() },
+        { 8 + 1 + ds_cli_auth::PROJECT_STATUS_COMMAND.refusals.len() },
     >([
         INVALID_TEXT,
         COMPONENT_UNKNOWN,
