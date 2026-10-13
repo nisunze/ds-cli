@@ -15,7 +15,7 @@ ds-sync-store = { path = "../ds-sync-store" }
 ds-network = { path = "../../../ds-network/crates/ds-network" }
 ds-solar-contracts = { path = "../../../ds-solar/crates/ds-solar-contracts", default-features = false }
 ds-solar-io = { path = "../../../ds-solar/crates/ds-solar-io" }
-ds-solar-runtime = { path = "../../../ds-solar/crates/ds-solar-runtime", default-features = false }
+ds-solar-process = { path = "../../../ds-solar/crates/ds-solar-process" }
 serde_json = "1"
 serde = { version = "1", features = ["derive"] }
 base64 = "0.22"

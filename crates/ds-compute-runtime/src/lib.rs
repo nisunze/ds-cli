@@ -41,9 +41,8 @@ use ds_command_kernel::execution_context::{
 use ds_network::network::native_fast_lv::{
     decode_native_fast_lv_request, encode_native_fast_lv_result, process_native_fast_lv,
 };
-use ds_solar_contracts::{PreparedSolarCityInput, SolarCalculationResult};
-use ds_solar_io::output::{encode_outputs, OutputFile};
-use ds_solar_runtime::{CalculationOptions, CalculationTimings, CancelToken, SolarRuntime};
+use ds_solar_contracts::{CalculationTimings, PreparedSolarCityInput, SolarCalculationResult};
+use ds_solar_io::{cancel::CancelToken, output::OutputFile};
 use ds_sync_store::{JobCaller, Recovery, Store};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -59,13 +58,10 @@ use std::{
 
 pub use ds_command_kernel::execution_context::Limits;
 
-/// The Solar engine linked into this native host. Its dependency closure can
-/// differ from a bundled standalone engine, so release admission must inspect
-/// this identity directly rather than borrow the standalone manifest.
-pub fn solar_engine_identity() -> ds_solar_contracts::EngineIdentity {
-    let mut identity = ds_solar_contracts::EngineIdentity::current();
-    identity.schemas = ds_solar_contracts::EngineIdentity::stamped_schema_inventory();
-    identity
+/// The actual standalone Solar engine admitted by this native host.
+pub fn solar_engine_identity(
+) -> Result<ds_solar_contracts::EngineIdentity, ds_solar_process::ProcessFailure> {
+    ds_solar_process::installed_engine_identity()
 }
 
 pub fn now_ms() -> u64 {
@@ -991,6 +987,8 @@ pub fn run_one(context: &WorkerContext, worker: &str) -> Result<bool, String> {
             }
         })
     };
+    let solar_workers = thread::available_parallelism().map_or(1, usize::from)
+        / context.limits.global_running.max(1);
     let output = std::panic::catch_unwind(|| {
         if digest(&input) != job.input_sha256 {
             return Err("durable input digest mismatch".to_string());
@@ -998,7 +996,13 @@ pub fn run_one(context: &WorkerContext, worker: &str) -> Result<bool, String> {
         if job.engine == EngineKind::TilesPrepared {
             tiles::execute(path, &input, &job, &cancelled)
         } else {
-            execute(&input, &job, Some(&cancelled))
+            execute(
+                &input,
+                &job,
+                Some(&cancelled),
+                path.parent().unwrap_or_else(|| Path::new(".")),
+                solar_workers,
+            )
         }
     })
     .unwrap_or_else(|_| Err("native compute panicked; input retained".into()));
@@ -1070,7 +1074,13 @@ pub fn run_one(context: &WorkerContext, worker: &str) -> Result<bool, String> {
     Ok(true)
 }
 
-fn execute(input: &[u8], job: &Job, cancel: Option<&CancelToken>) -> Result<Vec<u8>, String> {
+fn execute(
+    input: &[u8],
+    job: &Job,
+    cancel: Option<&CancelToken>,
+    scratch: &Path,
+    workers: usize,
+) -> Result<Vec<u8>, String> {
     if job.engine == EngineKind::FastLv {
         if job.input_tag != "ds.fast-lv.request/v1" {
             return Err("durable Fast LV input tag mismatch".into());
@@ -1089,39 +1099,24 @@ fn execute(input: &[u8], job: &Job, cancel: Option<&CancelToken>) -> Result<Vec<
     validate_solar_request(&request)?;
     let run_id = request.run_id.unwrap_or_else(|| job.id.clone());
     let cancel = cancel.cloned().unwrap_or_else(CancelToken::new);
-    let runtime = SolarRuntime::new().with_cancel(&cancel);
-    let options = CalculationOptions::default()
-        .with_charts(request.render_charts)
-        .with_run_id(run_id);
-    let outcome = runtime
-        .calculate(&request.prepared, &options)
+    let engine_path = ds_solar_process::installed_engine_path()?;
+    let engine = ds_solar_process::PreparedEngine::capture(&engine_path, scratch, workers, &cancel)
         .map_err(|error| error.to_string())?;
-    let mut files = vec![(
-        outcome.report_input.name(),
-        outcome.report_input.entry.media_type.as_str(),
-        outcome.report_input.bytes.as_slice(),
-    )];
-    if let Some(artifacts) = &outcome.artifacts {
-        for chart in &artifacts.charts {
-            files.push((
-                chart.name.as_str(),
-                chart.media_type,
-                chart.bytes.as_slice(),
-            ));
-        }
-    }
-    for document in &outcome.documents {
-        files.push((
-            document.name(),
-            document.entry.media_type.as_str(),
-            document.bytes.as_slice(),
-        ));
-    }
+    let outcome = engine
+        .calculate(
+            &ds_solar_contracts::PreparedCalculationRequest {
+                prepared: request.prepared,
+                render_charts: request.render_charts,
+                run_id: Some(run_id),
+            },
+            &cancel,
+        )
+        .map_err(|error| error.to_string())?;
     let response = PreparedSolarResponse {
         result: outcome.result,
         timings: outcome.timings,
         plots_generated: request.render_charts,
-        outputs: encode_outputs(files).map_err(|error| error.to_string())?,
+        outputs: outcome.outputs,
     };
     serde_json::to_vec(&response).map_err(|error| format!("Solar result encoding failed: {error}"))
 }
