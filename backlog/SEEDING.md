@@ -246,8 +246,6 @@ Candidate curation and native PLS-CADD acceptance are separate from coding the c
 
 - **Reinforcement verdict** (`11bce3aa`): install canary >= 0.1.7-r79 (ds-network `d3991c2f`, reporter `dcf39c1`), re-adopt the governed A4 standard, then render `pu_annah_farming` at design year 5: it prints as failing as drawn with a required, unapplied new circuit, and Rubona still complies with `reinforcement_required` false. Then close `11bce3aa`.
 
-- **Saved-analysis A4 render** (`9172efeb`): render a saved analysis (`fill_in_kanto2` or any) to A4 through the non-bulk cloud reporter `035418e` or canary >= 0.1.7-r79; it prints, and a genuinely changed summary still refuses `voltage_drop_result_stale`. Then close `9172efeb`.
-
 - **Gisagara per-transformer VD export** (`159282a4`): after a release of ds-network-reporter `026e441`, the Gisagara per-transformer export returns a PDF or a typed refusal for each transformer.
 
 ## 11. PLS-CADD exchange round trip

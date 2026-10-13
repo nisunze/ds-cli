@@ -2,7 +2,7 @@
 
 > **Moved 2026-10-07:** this backlog now lives in `ds-command-kernel/backlog/`. The old `ds-work/backlog/` no longer exists: edit these files here, commit them to ds-command-kernel `run`, and stage only `backlog/`. ds-work holds working sessions, not coding lists.
 
-Working list from the 2026-10-07 snapshot and 2026-10-09 component lookups, with proven closures removed: 243 tracked rows (95 open, 148 waiting according to the rows below). These are file counts, not a fresh live backlog total. The feedback API is the authority: verify each selected report's current status, full ID, version and acceptance through `ds`, close only what is proven, and remove its row. Delete this file when its remaining work is fulfilled; keep no completed-work archive.
+Working list from the 2026-10-07 snapshot and 2026-10-09 component lookups, with proven closures removed: 242 tracked rows (95 open, 147 waiting according to the rows below). These are file counts, not a fresh live backlog total. The feedback API is the authority: verify each selected report's current status, full ID, version and acceptance through `ds`, close only what is proven, and remove its row. Delete this file when its remaining work is fulfilled; keep no completed-work archive.
 
 Reports are grouped by the live repository that owns the code, then by component. The component is the submitter's free-text label, shown verbatim so `ds feedback list --component` finds it. Legacy labels map as follows: `ds-grid*`, `dsgrid*`, `ds/grid-*`, `ds/pls-library` → ds-network; `ds-report*`, `ds-printing*` → ds-network-reporter; `ds-desktop*` → ds-web (`src-tauri`); `ds pls desktop` → ds-cli (`ds-cli-pls/desktop`). Labels that name no repository stay **unassigned**. "Backlog" names the [OPEN.md](OPEN.md), [OPEN-X.md](OPEN-X.md) or [SEEDING.md](SEEDING.md) section citing the report; **untracked** means none does (120 reports).
 
@@ -10,7 +10,7 @@ Reports are grouped by the live repository that owns the code, then by component
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 | [ds-cli](#ds-cli) | 92 | 11 | 62 | 19 | 58 | 57 |
 | [ds-network](#ds-network) | 68 | 17 | 47 | 4 | 33 | 22 |
-| [ds-network-reporter](#ds-network-reporter) | 28 | 1 | 21 | 6 | 20 | 16 |
+| [ds-network-reporter](#ds-network-reporter) | 27 | 1 | 20 | 6 | 19 | 16 |
 | [ds-web](#ds-web) | 34 | 6 | 26 | 2 | 24 | 15 |
 | [ds-command-kernel](#ds-command-kernel) | 4 | 0 | 3 | 1 | 4 | 0 |
 | [ds-brain](#ds-brain) | 7 | 0 | 6 | 1 | 5 | 3 |
@@ -218,7 +218,6 @@ Reports are grouped by the live repository that owns the code, then by component
 | ds-report/printing | `a64d35e8` | major | idea | Mandatory DS GridDesign attribution on every DS PDF print | waiting: a cloud-computed report (Cloud Run reporter 035418e carries d8639bb) or install of canary 0.1.7-r79+, then a page-by-page credit audit of MV and LV single and combined PDFs | **untracked** |
 | ds-report/printing | `40edf64d` | major | idea | Transformer PDF needs georeference and switchable layers | open | **untracked** |
 | ds-report/printing | `a4113ec8` | major | bug | A0 transformer print contours are too faint and appear to disappear | open | SEEDING.md §5 |
-| ds-report/voltage-drop-authority | `9172efeb` | major | bug | A4 reporter falsely rejects saved analysis when nested summary keys have different order | waiting: a cloud report on the non-bulk reporter 035418e (carries c89ea93; bulk 276d3d0e lacks it) or install of canary 0.1.7-r79+, then an A4 voltage-drop render of a saved analysis | SEEDING.md §10 |
 
 ## ds-web
 
