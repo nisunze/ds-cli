@@ -60,8 +60,8 @@ pub static READ: Command = Command {
     id: "pm.task.checklist.read",
     path: &["pm", "task", "checklist", "read"],
     contract: 1,
-    summary: "Read one task's checklist, completion and item locations.",
-    purpose: "Read the canonical checklist, including promoted-child completion and item-scoped locations/assets. The server owns status and the multi-location overlay; this read does not derive another checklist. Default output is at most 50 concise items; --details includes authored bodies, answers, links and geometry. Use the plan revision for a later edit.",
+    summary: "Read one task or milestone checklist, completion and item locations.",
+    purpose: "Read the canonical task or milestone checklist, including promoted-child completion and item-scoped locations/assets. The server owns status and the multi-location overlay; this read does not derive another checklist. Default output is at most 50 concise items; --details includes authored bodies, answers, links and geometry. Use the plan revision for a later edit.",
     chapter: Chapter::Project,
     effect: Effect::ReadOnly,
     authority: Authority::HeadlessProject,
@@ -89,7 +89,7 @@ pub static READ: Command = Command {
         READ_UNREADABLE,
     ]),
     reference: Some("docs/reference/pm.md"),
-    search: &["issues", "answered"],
+    search: &["issues", "answered", "milestone"],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
@@ -97,8 +97,8 @@ pub static EDIT: Command = Command {
     id: "pm.task.checklist.edit",
     path: &["pm", "task", "checklist", "edit"],
     contract: 1,
-    summary: "Add, edit, answer, move or remove one task checklist item atomically.",
-    purpose: "Apply one closed JSON edit to one stable checklist item through the existing project command. The input contains action add|edit|check|uncheck|move|remove and item_id; optional checklist_kind, text, body, answer, geometry, clear_geometry, links, attachment_ids and zero-based index. Omitted fields stay unchanged. attachment_ids reference assets already held by this task; no upload, ownership transfer or project-wide overwrite occurs. Optional --geometry-from resolves DS objects through the existing native geometry owner and scopes its geometry/links to this item. Preserve --id, --base-revision and the exact authored input for retries. Permissions, list state, attachment authority and promotion fences are checked by the server.",
+    summary: "Add, edit, answer, move or remove one task or milestone checklist item.",
+    purpose: "Apply one closed JSON edit to one stable task or milestone checklist item through the existing project command. The input contains action add|edit|check|uncheck|move|remove and item_id; optional checklist_kind, text, body, answer, geometry, clear_geometry, links, attachment_ids and zero-based index. Omitted fields stay unchanged. attachment_ids reference assets already held by this task; no upload, ownership transfer or project-wide overwrite occurs. Optional --geometry-from resolves DS objects through the existing native geometry owner and scopes its geometry/links to this item. Preserve --id, --base-revision and the exact authored input for retries. Permissions, list state, attachment authority and promotion fences are checked by the server.",
     chapter: Chapter::Project,
     effect: Effect::GlobalWrite,
     authority: Authority::HeadlessProject,
@@ -129,6 +129,7 @@ pub static EDIT: Command = Command {
         "uncheck",
         "item geometry",
         "item attachment",
+        "milestone",
     ],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
@@ -391,6 +392,18 @@ pub fn render(data: &Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn shared_task_controls_are_discoverable_for_milestones_without_aliases() {
+        for command in [&READ, &EDIT] {
+            assert!(command.summary.contains("milestone"));
+            assert!(command.purpose.contains("milestone"));
+            assert!(command.search.contains(&"milestone"));
+            assert_eq!(command.path[1], "task");
+        }
+        for action in ["add", "edit", "check", "uncheck", "move", "remove"] {
+            assert!(EDIT.purpose.contains(action));
+        }
+    }
     #[test]
     fn concise_read_preserves_server_completion_and_explicit_truncation() {
         let raw = json!({"revision":7,"checklist":{"kind":"issues","items":[{"id":"i1","text":"first","state":"answered","body":"details","geometry":{"type":"Point","coordinates":[30,-2]}},{"id":"i2","text":"second","state":"open"}],"total":2,"completed":1,"overlay":{"type":"MultiPoint","coordinates":[[30,-2]]}}});
