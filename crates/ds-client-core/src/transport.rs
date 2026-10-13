@@ -1095,23 +1095,34 @@ pub struct SharedAssetsCall<'a> {
 }
 
 impl SharedAssetsCall<'_> {
+    fn semantic_commit_route(&self) -> Option<&'static crate::GatewayOperation> {
+        (self.payload["action"] == "finalize_asset_semantic").then(|| {
+            crate::gateway_operation("domains.assets.semantic_finalize")
+                .expect("generated closed semantic derivative Bulk route")
+        })
+    }
     pub fn gateway_origin(&self) -> &str {
         self.profile.gateway_origin()
     }
     pub fn path(&self) -> String {
-        "/api/v1/assets".into()
+        self.semantic_commit_route()
+            .map_or("/api/v1/assets", |route| route.path)
+            .into()
     }
     pub fn method(&self) -> &'static str {
-        "POST"
+        self.semantic_commit_route()
+            .map_or("POST", |route| route.method)
     }
     pub const fn content_type(&self) -> &'static str {
         "application/json"
     }
-    pub const fn response_limit(&self) -> usize {
-        8 * 1024 * 1024
+    pub fn response_limit(&self) -> usize {
+        self.semantic_commit_route()
+            .map_or(8 * 1024 * 1024, |route| route.response_cap_bytes as usize)
     }
-    pub const fn timeout_seconds(&self) -> u64 {
-        TILE_TIMEOUT_SECONDS
+    pub fn timeout_seconds(&self) -> u64 {
+        self.semantic_commit_route()
+            .map_or(TILE_TIMEOUT_SECONDS, |route| u64::from(route.timeout_s))
     }
     pub const fn correlation_headers(&self) -> [&'static str; 2] {
         CORRELATION_HEADERS

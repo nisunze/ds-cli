@@ -240,6 +240,8 @@ pub enum Command {
     /// caller in one streaming pass so a 200 MiB pack never sits in memory
     /// twice.
     Ingest(IngestRequest),
+    /// Exact metadata reads or explicit import of an external PDF derivative.
+    Semantic(ds_command_kernel::assets::semantic::Command),
 }
 
 /// The order one index page is read in (assets-index §5.1).
@@ -315,6 +317,7 @@ impl Command {
             Self::Attach { detach: false, .. } => "attach",
             Self::Attach { detach: true, .. } => "detach",
             Self::Ingest(_) => "ingest_start",
+            Self::Semantic(command) => command.action(),
         }
     }
 
@@ -323,6 +326,11 @@ impl Command {
     pub fn validate(&self, project: &str) -> Result<(), ClientError> {
         if !token(project) {
             return Err(invalid("project assets need the project they act on"));
+        }
+        if let Self::Semantic(command) = self {
+            command
+                .payload(project)
+                .map_err(|_| invalid("invalid pinned PDF semantic request"))?;
         }
         if self.well_formed() {
             Ok(())
@@ -337,7 +345,7 @@ impl Command {
     /// catalogue's vocabulary.
     fn well_formed(&self) -> bool {
         match self {
-            Self::Folders => true,
+            Self::Folders | Self::Semantic(_) => true,
             Self::List {
                 folder_id,
                 kind,
@@ -443,6 +451,11 @@ impl Command {
     }
 
     fn payload(&self, project: &str) -> Value {
+        if let Self::Semantic(command) = self {
+            return command
+                .payload(project)
+                .expect("validated pinned semantic request");
+        }
         let mut payload = json!({ "action": self.action(), "ds_project": project });
         let put = |payload: &mut Value, key: &str, value: &Option<String>| {
             if let Some(value) = value {
@@ -551,6 +564,7 @@ impl Command {
                 payload["asset_id"] = json!(asset_id);
                 payload["link"] = link.clone();
             }
+            Self::Semantic(_) => unreachable!("semantic payload returned above"),
             Self::Ingest(ingest) => {
                 let mut start = json!({
                     "name": ingest.name,
@@ -634,7 +648,7 @@ fn refusal(status: u16, body: &[u8]) -> ClientError {
     ClientError::with_service_refusal(kind, owner, envelope)
 }
 
-fn call<T: AuthorizedTransport>(
+pub(crate) fn call<T: AuthorizedTransport>(
     profile: &ClientProfile,
     transport: &mut T,
     authority: Authority<'_>,
@@ -784,6 +798,11 @@ pub(crate) fn run<T: AuthorizedTransport>(
     reader: Option<&mut dyn Read>,
 ) -> Result<Value, ClientError> {
     command.validate(project)?;
+    if let Command::Semantic(command) = command {
+        return crate::document_semantic::run(
+            profile, transport, authority, project, command, reader,
+        );
+    }
     if command.is_index() {
         return run_index(profile, transport, authority, project, command);
     }
@@ -859,6 +878,7 @@ pub(crate) fn run<T: AuthorizedTransport>(
         | Command::ConditionalIndexList { .. }
         | Command::IndexTree { .. }
         | Command::IndexGet { .. } => Err(bad()),
+        Command::Semantic(_) => unreachable!("semantic command returned above"),
         Command::Ingest(ingest) => {
             let id = data["asset_id"]
                 .as_str()
