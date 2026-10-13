@@ -1,0 +1,172 @@
+{
+  "observedDate": "2026-10-13",
+  "method": "Static source and public screenshot inspection only; no application build, test, renderer invocation, installed comparison or deployment.",
+  "scope": "Public development-feedback evidence. The shared collaboration agreement owns adopted DS behavior; this reference is not a second instruction authority.",
+  "limitations": [
+    "No installed cross-product comparison or engineering artifact acceptance run.",
+    "Upstream revisions are pinned observations, not claims about every later main commit.",
+    "Public workflow declarations establish configuration, not successful execution or private coding-model settings.",
+    "DS source is moving during extraction; refresh the selected unit before implementation."
+  ],
+  "sources": [
+    {
+      "repository": "GeoLibre",
+      "path": "CLAUDE.md",
+      "revision": "ab909bd634639def1038480753e32ba23c3542e0",
+      "sha256": "59b4b5fa80436c4b905bf495f946d15bbd60b76c9c50e4af4a4572fc4e9a85d3",
+      "worktreeStatus": "",
+      "url": "https://github.com/opengeos/GeoLibre/blob/ab909bd634639def1038480753e32ba23c3542e0/CLAUDE.md"
+    },
+    {
+      "repository": "GeoLibre",
+      "path": "docs/maintenance.md",
+      "revision": "ab909bd634639def1038480753e32ba23c3542e0",
+      "sha256": "e38611e5523a0e33d8fd72168bc8fc93eb791bc5ec48f4c6637fa47358217bf8",
+      "worktreeStatus": "",
+      "url": "https://github.com/opengeos/GeoLibre/blob/ab909bd634639def1038480753e32ba23c3542e0/docs/maintenance.md"
+    },
+    {
+      "repository": "GeoLibre",
+      "path": "e2e/print-layout-svg.spec.ts",
+      "revision": "ab909bd634639def1038480753e32ba23c3542e0",
+      "sha256": "cf00317a574de71eab3974efe55724e03cde1487758ddf3de64f80f21c1db2bc",
+      "worktreeStatus": "",
+      "url": "https://github.com/opengeos/GeoLibre/blob/ab909bd634639def1038480753e32ba23c3542e0/e2e/print-layout-svg.spec.ts"
+    },
+    {
+      "repository": "GeoLibre",
+      "path": "e2e/style-manager.spec.ts",
+      "revision": "ab909bd634639def1038480753e32ba23c3542e0",
+      "sha256": "d148eb072f7d9bb1f675bd0afed5c0102885af75ea7e88f506de4c62dc5ca011",
+      "worktreeStatus": "",
+      "url": "https://github.com/opengeos/GeoLibre/blob/ab909bd634639def1038480753e32ba23c3542e0/e2e/style-manager.spec.ts"
+    },
+    {
+      "repository": "GeoLibre",
+      "path": "playwright.config.ts",
+      "revision": "ab909bd634639def1038480753e32ba23c3542e0",
+      "sha256": "fe6827c6fb4ab676c626d44b67fa57579d0d5f12567eb3c0455ffc43c5e1455b",
+      "worktreeStatus": "",
+      "url": "https://github.com/opengeos/GeoLibre/blob/ab909bd634639def1038480753e32ba23c3542e0/playwright.config.ts"
+    },
+    {
+      "repository": "GeoLibre",
+      "path": ".github/workflows/claude-code-review.yml",
+      "revision": "ab909bd634639def1038480753e32ba23c3542e0",
+      "sha256": "813d5fed407f3df872562a77d3116702cd63de625a416c4be2b127d0448d9eef",
+      "worktreeStatus": "",
+      "url": "https://github.com/opengeos/GeoLibre/blob/ab909bd634639def1038480753e32ba23c3542e0/.github/workflows/claude-code-review.yml"
+    },
+    {
+      "repository": "GeoLibre",
+      "path": ".github/workflows/claude.yml",
+      "revision": "ab909bd634639def1038480753e32ba23c3542e0",
+      "sha256": "1809b9044b6a980d6fb47a14dddceaafa4591097eaebaf3e7696f055b0f7d5be",
+      "worktreeStatus": "",
+      "url": "https://github.com/opengeos/GeoLibre/blob/ab909bd634639def1038480753e32ba23c3542e0/.github/workflows/claude.yml"
+    },
+    {
+      "repository": "GeoLibre",
+      "path": ".github/workflows/ci.yml",
+      "revision": "ab909bd634639def1038480753e32ba23c3542e0",
+      "sha256": "8700af0a20403137dd822b3acdb413013693d69e52d9fd30bc834b7e0ff08438",
+      "worktreeStatus": "",
+      "url": "https://github.com/opengeos/GeoLibre/blob/ab909bd634639def1038480753e32ba23c3542e0/.github/workflows/ci.yml"
+    },
+    {
+      "repository": "GeoLibre",
+      "path": "scripts/coverage-check.mjs",
+      "revision": "ab909bd634639def1038480753e32ba23c3542e0",
+      "sha256": "5e19d31d2b0075c81cfc7554e8abb034a1e8e5bef3c3ed7955c3a9e3c580bfed",
+      "worktreeStatus": "",
+      "url": "https://github.com/opengeos/GeoLibre/blob/ab909bd634639def1038480753e32ba23c3542e0/scripts/coverage-check.mjs"
+    },
+    {
+      "repository": "GeoLibre",
+      "path": "scripts/check-untested-modules.mjs",
+      "revision": "ab909bd634639def1038480753e32ba23c3542e0",
+      "sha256": "dc7f510463ac55ae96523e8ba521b6d9426dee25b401262cfdaa9f1924809a0b",
+      "worktreeStatus": "",
+      "url": "https://github.com/opengeos/GeoLibre/blob/ab909bd634639def1038480753e32ba23c3542e0/scripts/check-untested-modules.mjs"
+    },
+    {
+      "repository": "ds-command-kernel",
+      "path": "docs/agent-guidance/collaboration.md",
+      "observedHead": "fa3d5710979050c51ef1756da3b738a0a8334fce",
+      "sha256": "5ead994261689f160811f2fa1a2e4a529be6a535cae097808c8ea655630bf44b",
+      "worktreeStatus": ""
+    },
+    {
+      "repository": "RustGIS",
+      "path": "AGENTS.md",
+      "revision": "e9d71948a975989629d83dee9ddce0a63eece204",
+      "sha256": "ca791fcd9c0d32218fc4d2de281853e1778ffee31c2b9ccbc823f2861e8695d3",
+      "snapshotMethod": "Previously downloaded GitHub source archive; ZIP comment verifies this revision. No Git worktree status applies.",
+      "url": "https://github.com/opengeos/RustGIS/blob/e9d71948a975989629d83dee9ddce0a63eece204/AGENTS.md"
+    },
+    {
+      "repository": "RustGIS",
+      "path": "docs/contributing.md",
+      "revision": "e9d71948a975989629d83dee9ddce0a63eece204",
+      "sha256": "1922de748c7eba9a4a88d6d720d7659648ddb2331496a2a37d5029dd8f921076",
+      "snapshotMethod": "Previously downloaded GitHub source archive; ZIP comment verifies this revision. No Git worktree status applies.",
+      "url": "https://github.com/opengeos/RustGIS/blob/e9d71948a975989629d83dee9ddce0a63eece204/docs/contributing.md"
+    },
+    {
+      "repository": "RustGIS",
+      "path": "xtask/src/main.rs",
+      "revision": "e9d71948a975989629d83dee9ddce0a63eece204",
+      "sha256": "bdc955c226aae64fa8b89a488dcf2ca9143d38754226a83b259ae2489e509218",
+      "snapshotMethod": "Previously downloaded GitHub source archive; ZIP comment verifies this revision. No Git worktree status applies.",
+      "url": "https://github.com/opengeos/RustGIS/blob/e9d71948a975989629d83dee9ddce0a63eece204/xtask/src/main.rs"
+    },
+    {
+      "repository": "RustGIS",
+      "path": "crates/ui-egui/examples/ui_shot.rs",
+      "revision": "e9d71948a975989629d83dee9ddce0a63eece204",
+      "sha256": "9099cb493c61275084a33711cc6094154f22307fcda0e693456718f681f7c33e",
+      "snapshotMethod": "Previously downloaded GitHub source archive; ZIP comment verifies this revision. No Git worktree status applies.",
+      "url": "https://github.com/opengeos/RustGIS/blob/e9d71948a975989629d83dee9ddce0a63eece204/crates/ui-egui/examples/ui_shot.rs"
+    },
+    {
+      "repository": "RustGIS",
+      "path": "crates/engine/src/tests.rs",
+      "revision": "e9d71948a975989629d83dee9ddce0a63eece204",
+      "sha256": "7c3c3ec40d40205700fef5e809c986d8a3d8b8298d926b4fe5fab718c9fe0d7c",
+      "snapshotMethod": "Previously downloaded GitHub source archive; ZIP comment verifies this revision. No Git worktree status applies.",
+      "url": "https://github.com/opengeos/RustGIS/blob/e9d71948a975989629d83dee9ddce0a63eece204/crates/engine/src/tests.rs"
+    },
+    {
+      "repository": "RustGIS",
+      "path": "crates/analysis/src/tools.rs",
+      "revision": "e9d71948a975989629d83dee9ddce0a63eece204",
+      "sha256": "1d678ab630e7c133510fcead7749d9e8dfda8663729b6bc720fcc5a87d263600",
+      "snapshotMethod": "Previously downloaded GitHub source archive; ZIP comment verifies this revision. No Git worktree status applies.",
+      "url": "https://github.com/opengeos/RustGIS/blob/e9d71948a975989629d83dee9ddce0a63eece204/crates/analysis/src/tools.rs"
+    },
+    {
+      "repository": "RustGIS",
+      "path": ".github/workflows/ci.yml",
+      "revision": "e9d71948a975989629d83dee9ddce0a63eece204",
+      "sha256": "d096e17bf62bb6aa5cf8221240c08464ec4d06b215967b0547c19a2a72ebf987",
+      "snapshotMethod": "Previously downloaded GitHub source archive; ZIP comment verifies this revision. No Git worktree status applies.",
+      "url": "https://github.com/opengeos/RustGIS/blob/e9d71948a975989629d83dee9ddce0a63eece204/.github/workflows/ci.yml"
+    },
+    {
+      "repository": "RustGIS",
+      "path": ".github/workflows/claude-code-review.yml",
+      "revision": "e9d71948a975989629d83dee9ddce0a63eece204",
+      "sha256": "873016d437d950b834a21459cc7b5d46a8da364ae6c68d7e1ccf06a4d991b44a",
+      "snapshotMethod": "Previously downloaded GitHub source archive; ZIP comment verifies this revision. No Git worktree status applies.",
+      "url": "https://github.com/opengeos/RustGIS/blob/e9d71948a975989629d83dee9ddce0a63eece204/.github/workflows/claude-code-review.yml"
+    },
+    {
+      "repository": "RustGIS",
+      "path": ".github/pull_request_template.md",
+      "revision": "e9d71948a975989629d83dee9ddce0a63eece204",
+      "sha256": "9269e9f594f9278707fe9d34fc27c56cc988d2251c441b93754345d90337b357",
+      "snapshotMethod": "Previously downloaded GitHub source archive; ZIP comment verifies this revision. No Git worktree status applies.",
+      "url": "https://github.com/opengeos/RustGIS/blob/e9d71948a975989629d83dee9ddce0a63eece204/.github/pull_request_template.md"
+    }
+  ]
+}

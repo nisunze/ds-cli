@@ -52,6 +52,12 @@ Do not infer identity, project scope or authorization from ambient host state.
 
 - Name one concrete behavior and its acceptance evidence. Finish one coherent
   vertical slice rather than opening a broad framework or parallel implementation.
+- Continue within the authorized slice while a verification or review failure has
+  an actionable remedy. Diagnose it, fix it, rerun the affected check and verify the
+  real consumer before reporting completion. A passing helper does not close a
+  broken consumer. Reuse accepted proof; repeat wider gates only when a change,
+  failure or uncovered path warrants it. If blocked, name the exact blocker and
+  owning next action. Stop when the agreed behavior and required proof are complete.
 - Use the existing typed operation across library, CLI/MCP and presentation.
   Keep defaults, validation, refusal vocabulary and decision logic with one owner.
   New commands are self-describing and preserve explicit effects and undo/recovery.

@@ -43,6 +43,7 @@ Engineering, Solar and report algorithms remain with their respective owners.
 
 | Task | Read |
 | --- | --- |
+| Agent collaboration and completion | [Shared implementation loop](docs/agent-guidance/collaboration.md#small-implementation-loop), [verification and landing](docs/agent-guidance/collaboration.md#verify-then-land) |
 | Kernel/application authority | [Application kernel](docs/contracts/ds-application-kernel.md) |
 | Server/native effects | [Headless runtime](docs/contracts/ds-headless-application-runtime.md) |
 | Network boundary | [Kernel/network boundary](docs/contracts/ds-kernel-network-boundary.md) |
