@@ -606,10 +606,33 @@ fn print_saved(owners: &Owners, context: &Context, run: PrintRun<'_>) -> Result<
         serde_json::from_slice(run.input).map_err(|error| incomplete(error.to_string()))?;
     let network_config = &input["jobs"][0]["config_dfs"];
     require_owned_a4(network_config, run.project)?;
+    let capture = &run.source["project"]["printing_receipt"];
+    let receipt_path = run.directory.join("request.printing-receipt.json");
+    if capture["path"]
+        .as_str()
+        .is_none_or(|p| Path::new(p) != receipt_path.as_path())
+        || !receipt_path
+            .symlink_metadata()
+            .is_ok_and(|m| m.is_file() && !m.file_type().is_symlink())
+    {
+        return Err(incomplete(
+            "The captured project label has no owned receipt artifact.",
+        ));
+    }
+    let receipt_bytes = project_save::read(
+        &receipt_path.to_string_lossy(),
+        ds_network::network::native_fast_lv::MAX_NATIVE_FAST_LV_INPUT_BYTES,
+    )?;
+    if capture["sha256"] != sha256(&receipt_bytes) || capture["bytes"] != receipt_bytes.len() {
+        return Err(incomplete("The captured printing receipt bytes moved."));
+    }
+    let printing_receipt: ds_command_kernel::report_export::InputReceipt =
+        serde_json::from_slice(&receipt_bytes).map_err(|e| incomplete(e.to_string()))?;
     let project_label = ds_command_kernel::report_export::captured_printing_project_label(
         run.project,
         run.source,
         network_config,
+        &printing_receipt,
     )
     .map_err(incomplete)?;
     let row = &run.saved["result"]["results"][0];
@@ -900,7 +923,7 @@ mod tests {
                 )).unwrap();
                 document["project_id"] = json!("explicit-project");
                 let mut sheets = std::collections::BTreeMap::from([
-                    ("printing_context".to_owned(), json!({"project_id":"explicit-project","project":"Gisagara, CJIC"})),
+                    ("printing_context".to_owned(), json!({"project_id":"explicit-project","project":"Raw sheet caption"})),
                     ("printing_a4".to_owned(), document),
                     ("project_settings".to_owned(), json!([{"parameter":"report_locale","value":"en"}])),
                 ]);
@@ -922,10 +945,34 @@ mod tests {
             &bytes,
             &super::super::artifact::PROJECT_REQUEST,
         )?;
-        Ok(json!({"project":{"ds_project":inputs.require("project")?,"printing_label":"Gisagara, CJIC"},
+        let input: Value = serde_json::from_slice(&bytes).unwrap();
+        let raw_config = &input["jobs"][0]["config_dfs"];
+        let config_sha = sha256(&serde_json::to_vec(raw_config).unwrap());
+        let mut sealed = raw_config.clone();
+        sealed["printing_context"]["project"] = json!("Gisagara, CJIC");
+        let sheets_json = sealed.to_string();
+        let printing_receipt = ds_command_kernel::report_export::InputReceipt {
+            schema: 1,
+            country: "Rwanda".into(),
+            sheets_sha256: sha256(sheets_json.as_bytes()),
+            sheets_json,
+            reference_semantic_sha256: "a".repeat(64),
+            local_print_recipe: None,
+        };
+        let receipt_bytes = serde_json::to_vec(&printing_receipt).unwrap();
+        let receipt_path =
+            Path::new(inputs.require("out")?).with_extension("printing-receipt.json");
+        write_new(
+            &receipt_path,
+            &receipt_bytes,
+            &super::super::artifact::PROJECT_REQUEST,
+        )?;
+        Ok(
+            json!({"project":{"ds_project":inputs.require("project")?,"printing_label":"Gisagara, CJIC","printing_receipt":{"path":receipt_path,"sha256":sha256(&receipt_bytes),"bytes":receipt_bytes.len(),"sheets_sha256":printing_receipt.sheets_sha256}},
             "transformer":inputs.require("transformer")?,"lane":inputs.require("lane")?,
             "source":{"state":"fenced","version":7,"content_digest":"a".repeat(64)},
-            "project_config":"included","request_sha256":sha256(&bytes)}))
+            "project_config":"included","project_config_sha256":config_sha,"request_sha256":sha256(&bytes)}),
+        )
     }
 
     fn compute(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
@@ -974,6 +1021,11 @@ mod tests {
             &output,
         )?;
         assert_eq!(project, expected_project);
+        let raw: Value = serde_json::from_slice(&input).unwrap();
+        assert_eq!(
+            raw["jobs"][0]["config_dfs"]["printing_context"]["project"], "Raw sheet caption",
+            "project-save must receive original raw settings, not sealed print caption"
+        );
         assert!(serde_json::from_slice::<Value>(&output).unwrap()["jobs"][0]["ok"] == true);
         let verified = CALLS.with(|calls| !calls.borrow().unverified);
         Ok(
@@ -1737,18 +1789,47 @@ mod tests {
     }
     #[test]
     fn unsealed_or_crossed_caption_refuses_print_without_an_extra_analysis_read() {
-        for change in 0..3 {
+        for change in 0..8 {
             reset();
             let temp = tempfile::tempdir().unwrap();
             let directory = temp.path().join("run");
             run_with(&inputs(&directory, &[]), &context(true), &MOCK).unwrap();
             let path = directory.join("source.json");
             let mut source: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
-            source["data"]["project"]["printing_label"] = match change {
-                0 => Value::Null,
-                1 => json!("Other caption"),
-                _ => json!("explicit-project"),
-            };
+            match change {
+                0 => source["data"]["project"]["printing_label"] = Value::Null,
+                1 => source["data"]["project"]["printing_label"] = json!("Other caption"),
+                2 => source["data"]["project"]["printing_label"] = json!("explicit-project"),
+                3 => {
+                    std::fs::remove_file(directory.join("request.printing-receipt.json")).unwrap();
+                }
+                4 => {
+                    let receipt = directory.join("request.printing-receipt.json");
+                    let mut bytes = std::fs::read(&receipt).unwrap();
+                    bytes.push(b' ');
+                    std::fs::write(receipt, bytes).unwrap();
+                }
+                5 => {
+                    source["data"]["project"]["printing_receipt"]["path"] =
+                        json!(temp.path().join("foreign-receipt.json"))
+                }
+                6 => source["data"]["project_config_sha256"] = json!("c".repeat(64)),
+                _ => {
+                    let path = directory.join("request.printing-receipt.json");
+                    let mut r: ds_command_kernel::report_export::InputReceipt =
+                        serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+                    let mut sheets: Value = serde_json::from_str(&r.sheets_json).unwrap();
+                    sheets["printing_context"]["project_id"] = json!("other-project");
+                    r.sheets_json = sheets.to_string();
+                    r.sheets_sha256 = sha256(r.sheets_json.as_bytes());
+                    let bytes = serde_json::to_vec(&r).unwrap();
+                    std::fs::write(path, &bytes).unwrap();
+                    source["data"]["project"]["printing_receipt"]["sha256"] = json!(sha256(&bytes));
+                    source["data"]["project"]["printing_receipt"]["bytes"] = json!(bytes.len());
+                    source["data"]["project"]["printing_receipt"]["sheets_sha256"] =
+                        json!(r.sheets_sha256);
+                }
+            }
             std::fs::write(&path, serde_json::to_vec(&source).unwrap()).unwrap();
             let failed = run_with(
                 &inputs(&directory, &["--resume", "--print-a4"]),
