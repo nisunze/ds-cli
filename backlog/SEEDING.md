@@ -427,6 +427,8 @@ Candidate curation and native PLS-CADD acceptance are separate from coding the c
 
 - **Desktop and LAN delivery**: locally build/install the current matching Desktop with photo/multipage previews, compact scrollable panels, export selection and layer controls; prove paired Plan selection/drag and Server-screen behaviour. Preserve supervised LAN workers and open models. Hosting publication alone does not update Desktop, and package installation alone does not prove running workers restarted.
 
+- **Suspension-insulator uplift acceptance** (`dff71def`): on a build carrying independent hardware screening (`ds-network@0593ddc0`), replay the exact Gisagara Model3 r67 and prove all 16 filed suspension failures with unchanged strain/terminal controls; compare Model1 suspension failures with the native PLS-CADD insulator-uplift set, including section-boundary and near-zero controls. The admitted stable project history currently exposes native revisions 0, 1 and 32, not r67. Obtain that exact immutable source and the native comparison evidence; another revision and source-only tests do not satisfy closure. Preserve native body curves and project designs.
+
 - **PLS-CADD readback of filed exports** (`8363a4fc`, `6226c0bb`, `3a302e54`, `b3bdc857`, `df1f53ae`, `4ba8ab15`): after the Linux canary r79+ export of each filed case, Restore and read it back in PLS-CADD 16.81 on Windows before closing. The code parts of `3a302e54` and `b3bdc857` are in `OPEN.md` §11.
 
 - **Classification-aware Windows release** (`6e322426`): on a Windows/stable release carrying kernel `0e4389f`, read report project settings and export A0 for `ruhuha`, `upgrade_mbeho` and `zihare`; then close `6e322426`.
