@@ -3,6 +3,20 @@
 Read [the shared working agreement](docs/agent-guidance/collaboration.md)
 and the nearest scoped AGENTS.md before changing code.
 
+## Mandatory agent instructions
+
+Every agent, regardless of model or tool, must read and follow the workspace,
+repository and nearest scoped AGENTS.md before working. AGENTS.md is the sole
+agent-instruction filename. Do not create or recreate CLAUDE.md, MEMORY.md,
+vendor-specific rule files, private instruction/memory indexes or handover ledgers
+to bypass these rules, including in tool folders, home directories or other repos.
+Use the linked owning contracts for durable decisions and the shared backlogs for
+unfinished work. Tool configuration and temporary scratch may exist, but must not
+become competing product authority. A necessary scoped AGENTS.md adds local rules
+and links to its parent; it must not duplicate or weaken the shared agreement.
+If a tool cannot use AGENTS.md, report that limitation instead of inventing another
+instruction file.
+
 ## Owns
 
 Shared deterministic command decisions and state transitions, plus named native

@@ -5,6 +5,20 @@ nearest scoped AGENTS.md files route a task to its owning contracts and checks.
 They apply equally to human co-authors and coding agents. Tool-private memory is
 not a second source of product authority.
 
+## Mandatory agent instructions
+
+Every agent, regardless of model or tool, must read and follow the workspace,
+repository and nearest scoped AGENTS.md before working. AGENTS.md is the sole
+agent-instruction filename. Do not create or recreate CLAUDE.md, MEMORY.md,
+vendor-specific rule files, private instruction/memory indexes or handover ledgers
+to bypass these rules, including in tool folders, home directories or other repos.
+Use the linked owning contracts for durable decisions and the shared backlogs for
+unfinished work. Tool configuration and temporary scratch may exist, but must not
+become competing product authority. A necessary scoped AGENTS.md adds local rules
+and links to its parent; it must not duplicate or weaken the shared agreement.
+If a tool cannot use AGENTS.md, report that limitation instead of inventing another
+instruction file.
+
 ## Read and scope
 
 1. Read the current user request, workspace AGENTS.md, repository AGENTS.md and
@@ -61,8 +75,9 @@ Do not infer identity, project scope or authorization from ambient host state.
 - Keep native/WASM behavior consistent where both are supported. For UI changes,
   verify the rendered result and its real data/interaction path. For artifacts,
   check reopen, units, byte/digest identity and the consumer-facing result.
-- Documentation-only work runs the guidance/link gate and any affected existing
-  documentation-dependent tests; it does not need a speculative product build.
+- Documentation-only work reviews the diff, authority and links; it needs no
+  speculative product build. When filename consumers require a separate code slice,
+  follow the user's explicit execution limits and report any unrun checks.
 - Re-read changed files and `git diff` immediately before landing. Stage only owned
   paths. Commit and push `run` after proof, before the next slice. Do not include
   another author's staged edits. Never reset, stash, clean, overwrite or rebase their
