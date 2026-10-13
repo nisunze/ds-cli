@@ -28,7 +28,7 @@ thin typed bindings. It does not keep a transport engine.
 | "`ds-client-core` … There is no Tauri command: the consumer remains the independent `ds` sidecar." | `ds-web/docs/native-client-core-contract.md` §Status | The Tauri shell is now a first-class consumer of the same client authority. It is still not a second product. |
 | "The crate is at repository root, not under `src-tauri`, and `src-tauri` does not depend on it in this slice." | same, §Narrow architecture exception | `src-tauri` may depend on the shared transport/contract layer. It still may not fork product logic. |
 | "The crate can do exactly twenty-eight things" (closed surface framed as a permanent ceiling) | same, §Closed surface | The surface is closed *per reviewed operation registry entry*, not capped at a number. Adding an operation is a descriptor edit plus a review, never an arbitrary-URL escape. |
-| "No product logic lives in Rust." (read as "no communication logic in Rust") | `ds-web/CLAUDE.md` §Desktop app | Unchanged for map/layer/design/product logic. Communication and sync policy are explicitly NOT product logic and are Rust-owned. |
+| "No product logic lives in Rust." (read as "no communication logic in Rust") | `ds-web/docs/agent-guidance/domain-reference.md` §Desktop app | Unchanged for map/layer/design/product logic. Communication and sync policy are explicitly NOT product logic and are Rust-owned. |
 | TypeScript chunk/retry/probe engine (`src/lib/api/resumableUpload.ts`) | ds-web | Deleted. Its behaviour is replaced by §4. |
 
 This decision does **not** authorize moving rendering, engineering, project

@@ -11,7 +11,7 @@ Tried cases removed from the small-fix queue now live in [HARD-PROBLEMS.md](HARD
 | Area | Remaining entries |
 | --- | ---: |
 | [1. Source integration and release code](#1-source-integration-and-release-code) | 3 |
-| [2. Green `run` and release gates](#2-green-run-and-release-gates) | 9 |
+| [2. Green `run` and release gates](#2-green-run-and-release-gates) | 10 |
 | [3. Template creation code](#3-template-creation-code) | 1 |
 | [4. Print template and style code](#4-print-template-and-style-code) | 1 |
 | [5. Print renderer and booklet code](#5-print-renderer-and-booklet-code) | 2 |
@@ -92,6 +92,9 @@ is ruled in the sync contract: simple local clean and recompute.
   proof requires the strict command to pass without lint suppression.
 
 ## 2. Green `run` and release gates
+
+- **Reporter documentation consumers after agent-guide consolidation (2026-10-13):** the Markdown-only cleanup removed root `CLAUDE.md` and preserved its module map in `docs/agent-guidance/domain-reference.md`. `ds-network-reporter/tests/routes.rs` still reads `CLAUDE.md`; `scripts/test_local_deploy_script.sh` still includes that filename in its doctrine inputs. Retarget these two consumers and their descriptive comments to the domain reference, then prove the existing narrow module-map and local-deploy gates. Keep the standalone Reporter rename and other active edits separate. No code changes, product tests, builds or deployments were made in this housekeeping slice. Remove this entry after proof.
+
 
 - **Workspace formatting gate**: `cargo fmt --all --check` from `ds-cli` fails on committed Profile runtime formatting (`calculated_transfer_tests.rs`, `lib.rs`, `publication.rs`), the Network engine module order, and CLI Solar code/tests (`portfolio_headless.rs`, `project.rs`, `domain_smoke.rs`, `semantic_coverage.rs`). Format only those owning files, preserving concurrent edits, then prove the same workspace check. Exact diagnostics: `ds-web/out/windows-readiness-20261009/cli-fmt.log`.
 
