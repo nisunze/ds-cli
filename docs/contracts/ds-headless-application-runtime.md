@@ -339,14 +339,21 @@ Artifact-store tests move with their owner. Record actual shared-runtime,
 Desktop adapter and Server consumer validation separately; a clean build is
 not a live authenticated publication proof or remote GUI parity.
 
-### Explicit retained PM plan capture
+### Explicit retained PM plan and selected-note capture
 
-Native `pm plan` retains one bounded authenticated canonical graph in the
-existing `ds-layer-store` owner (`pm_graph_catalogue`). Normal reads remain live;
+Native `pm plan` retains one bounded authenticated canonical graph and
+`pm note read` retains one last-selected exact note/version/claim response in
+the existing `ds-layer-store` owner (`pm_graph_catalogue`). The graph room is
+at most 8 MiB and the single selected-note room at most 2 MiB, plus bounded
+metadata. Another note selection replaces that room; there is no growing cache
+per note ID. Normal reads remain live;
 only an explicit offline read consumes those bytes. The holding binds protected
 UID, deployment lane/audience, credential instance and caller-named project,
-plus the captured body digest, graph/schedule revisions and local invalidation
-epoch. Protected local identity is rechecked; a profile alone never admits data.
+plus the captured body digest, graph/schedule revisions or exact typed note
+selection hash and observed note version, and shared local invalidation epoch.
+Each fixed room has its own capture generation; a note capture cannot displace
+the retained graph. Note version alone does not prove current remote freshness. Protected local
+identity is rechecked; a profile alone never admits data.
 No session restoration, directory lookup, authorization refresh or source
 freshness request runs offline. Capture-time permissions are disclosed as such,
 not promoted into present authority. Correspondence partial/legacy absence
@@ -356,9 +363,14 @@ the redacted correspondence or current subject projection.
 Intentional overlapping captures serialize/coalesce through native private
 locks. An attempted PM mutation lazily marks existing holdings potentially
 stale; it creates no unused holding and handles uncertain/partial write results.
-Known access denial is durably recorded before best-effort removal and refuses
-offline reuse. A capture cannot publish across an invalidation epoch change.
+Known project access denial is durably recorded before best-effort removal of
+both rooms and refuses
+offline reuse. A retained revocation epoch prevents reacquiring one room from
+resurrecting denied bytes left in the other room after failed cleanup. A capture cannot publish across an invalidation epoch change.
 The pure shared freshness comparison serves known local epochs only; unknown
-remote freshness remains unknown. Task detail/context, project-note reads and
-private-note reads are separate consumers, not implicitly covered by this plan
-capture. No automatic polling or expiry policy is introduced.
+remote freshness remains unknown. A selected note absence is not project-membership revocation. Offline note
+reuse requires the same exact id/version/claim selector; a replaced selection
+requires intentional online acquisition. The existing typed note receipt
+validator runs before retention and offline consumption. Task detail/context,
+project-note query/context and private-note reads remain separate consumers,
+not implicitly covered by these fixed captures. No automatic polling or expiry policy is introduced.

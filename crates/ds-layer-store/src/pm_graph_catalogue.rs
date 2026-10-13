@@ -1,4 +1,4 @@
-//! One private retained canonical PM graph in the existing native persistence owner.
+//! Two fixed retained PM rooms through one existing native persistence owner.
 //! Offline holdings attest capture-time access only; no permission or source probe runs.
 use crate::{exclusive_lock, private};
 use serde::{Deserialize, Serialize};
@@ -11,6 +11,67 @@ use std::{
 };
 const SCHEMA: &str = "ds.pm.native-graph/v1";
 const MAX_BYTES: usize = 8 * 1024 * 1024;
+const MAX_NOTE_BYTES: usize = 2 * 1024 * 1024;
+const NOTE_SCHEMA: &str = "ds.pm.native-note-read/v1";
+use ds_command_kernel::project_management::project_notes::{
+    Command as NoteCommand, Read as NoteRead,
+};
+
+#[derive(Clone)]
+enum Room {
+    Graph,
+    NoteRead(NoteRead),
+}
+impl Room {
+    fn file(&self) -> &str {
+        match self {
+            Self::Graph => "graph.json",
+            Self::NoteRead(_) => "note-read.json",
+        }
+    }
+    fn schema(&self) -> &str {
+        match self {
+            Self::Graph => SCHEMA,
+            Self::NoteRead(_) => NOTE_SCHEMA,
+        }
+    }
+    fn bound(&self) -> usize {
+        match self {
+            Self::Graph => MAX_BYTES,
+            Self::NoteRead(_) => MAX_NOTE_BYTES,
+        }
+    }
+    fn serial(&self, state: &State) -> u64 {
+        match self {
+            Self::Graph => state.serial,
+            Self::NoteRead(_) => state.note_serial,
+        }
+    }
+    fn advance(&self, state: &mut State) -> Result<(), String> {
+        let serial = match self {
+            Self::Graph => &mut state.serial,
+            Self::NoteRead(_) => &mut state.note_serial,
+        };
+        *serial = serial
+            .checked_add(1)
+            .ok_or("pm_retained_generation_exhausted")?;
+        Ok(())
+    }
+    fn selection(&self) -> Result<Value, String> {
+        match self {
+            Self::Graph => Ok(Value::Null),
+            Self::NoteRead(read) => {
+                serde_json::to_value(read).map_err(|_| "pm_retained_selection_invalid".into())
+            }
+        }
+    }
+    fn selection_sha(&self) -> Result<Option<String>, String> {
+        match self {
+            Self::Graph => Ok(None),
+            Self::NoteRead(_) => digest(&self.selection()?).map(Some),
+        }
+    }
+}
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Binding {
@@ -44,7 +105,14 @@ impl Binding {
 struct State {
     epoch: u64,
     serial: u64,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    note_serial: u64,
     denied: bool,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    revoked_before_epoch: u64,
+}
+fn is_zero(value: &u64) -> bool {
+    *value == 0
 }
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -55,7 +123,15 @@ struct Held {
     serial: u64,
     captured_at_ms: i64,
     sha256: String,
+    // Preserve the established graph wire field for existing Plan captures.
+    #[serde(default, skip_serializing_if = "Value::is_null")]
     graph: Value,
+    #[serde(default, skip_serializing_if = "Value::is_null")]
+    note_read: Value,
+    #[serde(default, skip_serializing_if = "Value::is_null")]
+    selection: Value,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    selection_sha256: Option<String>,
 }
 pub trait Source {
     type Error;
@@ -101,17 +177,21 @@ fn digest(value: &impl Serialize) -> Result<String, String> {
         Sha256::digest(bounded_bytes(value, MAX_BYTES + 32768)?)
     ))
 }
+#[cfg(test)]
 fn read<T: for<'a> Deserialize<'a>>(path: &Path) -> Result<Option<T>, String> {
+    read_bounded(path, MAX_BYTES + 32768)
+}
+fn read_bounded<T: for<'a> Deserialize<'a>>(path: &Path, cap: usize) -> Result<Option<T>, String> {
     let file = match File::open(path) {
         Ok(file) => file,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(_) => return Err("pm_retained_unreadable".into()),
     };
     let mut bytes = Vec::new();
-    file.take((MAX_BYTES + 32769) as u64)
+    file.take((cap + 1) as u64)
         .read_to_end(&mut bytes)
         .map_err(|_| "pm_retained_unreadable")?;
-    if bytes.len() > MAX_BYTES + 32768 {
+    if bytes.len() > cap {
         return Err("pm_retained_unreadable".into());
     }
     serde_json::from_slice(&bytes)
@@ -119,25 +199,121 @@ fn read<T: for<'a> Deserialize<'a>>(path: &Path) -> Result<Option<T>, String> {
         .map_err(|_| "pm_retained_unreadable".into())
 }
 fn write(path: &Path, value: &impl Serialize) -> Result<(), String> {
-    let bytes = bounded_bytes(value, MAX_BYTES + 32768)?;
+    write_bounded(path, value, MAX_BYTES + 32768)
+}
+fn write_bounded(path: &Path, value: &impl Serialize, cap: usize) -> Result<(), String> {
+    let bytes = bounded_bytes(value, cap)?;
     private::write_atomic(path, bytes).map_err(|_| "pm_retained_unavailable".into())
 }
 fn state(dir: &Path) -> Result<State, String> {
-    Ok(read(&dir.join("state.json"))?.unwrap_or_default())
+    let mut current: State = read_bounded(&dir.join("state.json"), 32768)?.unwrap_or_default();
+    // Legacy denied state already carries the denial epoch, even without a separate floor.
+    if current.denied {
+        current.revoked_before_epoch = current.revoked_before_epoch.max(current.epoch);
+    }
+    Ok(current)
 }
-fn metadata(mut held: Held, state: &State, acquired: bool) -> Value {
-    let stale = !ds_command_kernel::freshness::is_fresh(Some(&held.epoch), Some(&state.epoch));
-    held.graph["retained"] = json!({"schema":"ds.pm.retained-graph/v1", "mode":if acquired {"acquired"} else {"offline_capture"},
-        "captured_at_ms":held.captured_at_ms,"graph_sha256":held.sha256,"known_invalidated":stale,
-        "graph_revision":held.graph["revision"],"schedule_revision":held.graph["schedule_revision"],
-        "current_source_verified":acquired,"source_freshness":if acquired {"verified_at_capture"} else {"unknown"},
+impl Held {
+    fn body(&self, room: &Room) -> &Value {
+        match room {
+            Room::Graph => &self.graph,
+            Room::NoteRead(_) => &self.note_read,
+        }
+    }
+    fn admitted(&self, binding: &Binding, room: &Room, current: &State) -> Result<bool, String> {
+        let other_body_absent = match room {
+            Room::Graph => self.note_read.is_null(),
+            Room::NoteRead(_) => self.graph.is_null(),
+        };
+        Ok(self.schema == room.schema()
+            && self.binding == *binding
+            && self.captured_at_ms >= 0
+            && self.serial == room.serial(current)
+            && self.epoch <= current.epoch
+            && self.epoch >= current.revoked_before_epoch
+            && other_body_absent
+            && self.selection == room.selection()?
+            && self.selection_sha256 == room.selection_sha()?
+            && self.sha256 == digest(self.body(room))?
+            && bounded_bytes(self.body(room), room.bound()).is_ok())
+    }
+}
+fn metadata(held: Held, room: &Room, current: &State, acquired: bool) -> Value {
+    let stale = !ds_command_kernel::freshness::is_fresh(Some(&held.epoch), Some(&current.epoch));
+    let mut result = match room {
+        Room::Graph => held.graph,
+        Room::NoteRead(_) => held.note_read,
+    };
+    let mut retained = json!({"schema":if matches!(room, Room::Graph) {"ds.pm.retained-graph/v1"} else {"ds.pm.retained-note-read/v1"},
+        "mode":if acquired {"acquired"} else {"offline_capture"}, "captured_at_ms":held.captured_at_ms,
+        "known_invalidated":stale,"current_source_verified":acquired,
+        "source_freshness":if acquired {"verified_at_capture"} else {"unknown"},
         "current_authorization_verified":acquired,"permission_freshness":if acquired {"verified_at_capture"} else {"captured_only"}});
-    held.graph
+    match room {
+        Room::Graph => {
+            retained["graph_sha256"] = json!(held.sha256);
+            retained["graph_revision"] = result["revision"].clone();
+            retained["schedule_revision"] = result["schedule_revision"].clone();
+        }
+        Room::NoteRead(_) => {
+            retained["body_sha256"] = json!(held.sha256);
+            retained["selection"] = held.selection;
+            retained["selection_sha256"] = json!(held.selection_sha256);
+            retained["note_id"] = result["note"]["id"].clone();
+            retained["note_version"] = result["note"]["version"].clone();
+        }
+    }
+    result["retained"] = retained;
+    result
+}
+fn verify_body<S: Source>(
+    binding: &Binding,
+    room: &Room,
+    value: &Value,
+    source: &S,
+) -> Result<(), Error<S::Error>> {
+    if let Room::NoteRead(selection) = room {
+        NoteCommand::Read(selection.clone())
+            .verify_response(&binding.project, value)
+            .map_err(Error::Local)?;
+    }
+    source.verify(value).map_err(Error::Source)
 }
 /// Normal reads still acquire one canonical graph. Offline never acquires or creates holdings.
 pub fn consume<S: Source>(
     root: &Path,
     binding: &Binding,
+    offline: bool,
+    now_ms: i64,
+    source: &mut S,
+) -> Result<Value, Error<S::Error>> {
+    consume_selected(root, binding, &Room::Graph, offline, now_ms, source)
+}
+/// One fixed selected-note room. Replacing its selection never grows a per-note cache.
+pub fn consume_note<S: Source>(
+    root: &Path,
+    binding: &Binding,
+    selection: &NoteRead,
+    offline: bool,
+    now_ms: i64,
+    source: &mut S,
+) -> Result<Value, Error<S::Error>> {
+    NoteCommand::Read(selection.clone())
+        .payload(&binding.project)
+        .map_err(Error::Local)?;
+    consume_selected(
+        root,
+        binding,
+        &Room::NoteRead(selection.clone()),
+        offline,
+        now_ms,
+        source,
+    )
+}
+fn consume_selected<S: Source>(
+    root: &Path,
+    binding: &Binding,
+    room: &Room,
     offline: bool,
     now_ms: i64,
     source: &mut S,
@@ -150,7 +326,7 @@ pub fn consume<S: Source>(
     source.check_binding().map_err(Error::Source)?;
     if offline {
         if !dir
-            .join("graph.json")
+            .join(room.file())
             .try_exists()
             .map_err(|e| local(e.to_string()))?
         {
@@ -166,27 +342,24 @@ pub fn consume<S: Source>(
         if state.denied {
             return Err(Error::AcquisitionRequired);
         }
-        let held: Held = read(&dir.join("graph.json"))
+        let held: Held = read_bounded(&dir.join(room.file()), room.bound() + 32768)
             .map_err(local)?
             .ok_or(Error::AcquisitionRequired)?;
-        if held.schema != SCHEMA
-            || held.binding != *binding
-            || held.sha256 != digest(&held.graph).map_err(local)?
-            || held.captured_at_ms < 0
-            || held.serial != state.serial
-            || held.epoch > state.epoch
+        // Replacement and known revocation require new acquisition, never old-room resurrection.
+        if held.epoch < state.revoked_before_epoch
+            || held.selection != room.selection().map_err(local)?
         {
+            return Err(Error::AcquisitionRequired);
+        }
+        if !held.admitted(binding, room, &state).map_err(local)? {
             return Err(local("pm_retained_unreadable".into()));
         }
-        source.verify(&held.graph).map_err(Error::Source)?;
+        verify_body(binding, room, held.body(room), source)?;
         source.check_binding().map_err(Error::Source)?;
-        return Ok(metadata(held, &state, false));
+        return Ok(metadata(held, room, &state, false));
     }
     // Observe generation before waiting, so overlapping intentional acquisitions coalesce.
-    let observed = read::<State>(&dir.join("state.json"))
-        .map_err(local)?
-        .unwrap_or_default()
-        .serial;
+    let observed = room.serial(&state(&dir).map_err(local)?);
     let _capture_lock = exclusive_lock(&dir.join("capture.lock")).map_err(local)?;
     let before = {
         let _lock = exclusive_lock(&dir.join("state.lock")).map_err(local)?;
@@ -194,17 +367,16 @@ pub fn consume<S: Source>(
         if !dir.join("state.json").exists() {
             write(&dir.join("state.json"), &before).map_err(local)?;
         }
-        if before.serial != observed && !before.denied {
-            if let Some(held) = read::<Held>(&dir.join("graph.json")).map_err(local)? {
-                if held.schema == SCHEMA
-                    && held.binding == *binding
-                    && held.serial == before.serial
+        if room.serial(&before) != observed && !before.denied {
+            if let Some(held) =
+                read_bounded::<Held>(&dir.join(room.file()), room.bound() + 32768).map_err(local)?
+            {
+                if held.admitted(binding, room, &before).map_err(local)?
                     && held.epoch == before.epoch
-                    && held.sha256 == digest(&held.graph).map_err(local)?
                 {
-                    source.verify(&held.graph).map_err(Error::Source)?;
+                    verify_body(binding, room, held.body(room), source)?;
                     source.check_binding().map_err(Error::Source)?;
-                    return Ok(metadata(held, &before, true));
+                    return Ok(metadata(held, room, &before, true));
                 }
             }
         }
@@ -220,31 +392,36 @@ pub fn consume<S: Source>(
         }
     };
     source.check_binding().map_err(Error::Source)?;
-    source.verify(&graph).map_err(Error::Source)?;
-    bounded_bytes(&graph, MAX_BYTES).map_err(local)?;
+    verify_body(binding, room, &graph, source)?;
+    bounded_bytes(&graph, room.bound()).map_err(local)?;
     let _lock = exclusive_lock(&dir.join("state.lock")).map_err(local)?;
     let mut current = state(&dir).map_err(local)?;
-    if current.epoch != before.epoch || current.serial != before.serial {
+    if current.epoch != before.epoch || room.serial(&current) != room.serial(&before) {
         return Err(Error::Superseded);
     }
     source.check_binding().map_err(Error::Source)?;
-    current.serial = current
-        .serial
-        .checked_add(1)
-        .ok_or_else(|| local("pm_retained_generation_exhausted".into()))?;
+    room.advance(&mut current).map_err(local)?;
     current.denied = false;
+    let body_sha256 = digest(&graph).map_err(local)?;
+    let (graph, note_read) = match room {
+        Room::Graph => (graph, Value::Null),
+        Room::NoteRead(_) => (Value::Null, graph),
+    };
     let held = Held {
-        schema: SCHEMA.into(),
+        schema: room.schema().into(),
         binding: binding.clone(),
         epoch: current.epoch,
-        serial: current.serial,
+        serial: room.serial(&current),
         captured_at_ms: now_ms,
-        sha256: digest(&graph).map_err(local)?,
+        sha256: body_sha256,
         graph,
+        note_read,
+        selection: room.selection().map_err(local)?,
+        selection_sha256: room.selection_sha().map_err(local)?,
     };
-    write(&dir.join("graph.json"), &held).map_err(local)?;
+    write_bounded(&dir.join(room.file()), &held, room.bound() + 32768).map_err(local)?;
     write(&dir.join("state.json"), &current).map_err(local)?;
-    Ok(metadata(held, &current, true))
+    Ok(metadata(held, room, &current, true))
 }
 /// Persist invalidation/denial only for an existing consumer; never create unused holdings.
 pub fn mark(root: &Path, binding: &Binding, denied: bool) -> Result<bool, String> {
@@ -263,10 +440,15 @@ pub fn mark(root: &Path, binding: &Binding, denied: bool) -> Result<bool, String
         .checked_add(1)
         .ok_or("pm_retained_generation_exhausted")?;
     current.denied |= denied;
+    if denied {
+        current.revoked_before_epoch = current.epoch;
+    }
     write(&dir.join("state.json"), &current)?;
     // Denial is durable even if deletion is impossible. Offline observes the marker first.
     if denied {
-        let _ = std::fs::remove_file(dir.join("graph.json"));
+        for file in ["graph.json", "note-read.json"] {
+            let _ = std::fs::remove_file(dir.join(file));
+        }
     }
     Ok(true)
 }
@@ -473,5 +655,406 @@ mod tests {
     #[test]
     fn body_admission_stops_at_bound() {
         assert!(bounded_bytes(&json!("x".repeat(1024)), 10).is_err());
+    }
+    fn note_selection(id: &str, version: Option<u64>, claim: Option<&str>) -> NoteRead {
+        NoteRead {
+            id: id.into(),
+            version,
+            claim_id: claim.map(str::to_owned),
+        }
+    }
+    struct NoteSource {
+        calls: Arc<AtomicUsize>,
+        selection: NoteRead,
+        fail: Option<&'static str>,
+        mutate: Option<PathBuf>,
+        changed: bool,
+    }
+    impl NoteSource {
+        fn new(calls: Arc<AtomicUsize>, selection: NoteRead) -> Self {
+            Self {
+                calls,
+                selection,
+                fail: None,
+                mutate: None,
+                changed: false,
+            }
+        }
+        fn response(&self) -> Value {
+            let mut result = json!({"project_id":"p", "note":{"project_id":"p", "id":self.selection.id,
+                "version":self.selection.version.unwrap_or(3),"document":{"category":"project_note","body":"retained"},
+                "memory":{},"legacy":true}});
+            if let Some(id) = &self.selection.claim_id {
+                result["claim"] = json!({"id":id});
+            }
+            result
+        }
+    }
+    impl Source for NoteSource {
+        type Error = &'static str;
+        fn check_binding(&mut self) -> Result<(), Self::Error> {
+            if self.changed {
+                Err("changed")
+            } else {
+                Ok(())
+            }
+        }
+        fn capture(&mut self) -> Result<Value, Self::Error> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            if let Some(root) = &self.mutate {
+                mark(root, &binding(), false).unwrap();
+            }
+            if let Some(error) = self.fail {
+                return Err(error);
+            }
+            Ok(self.response())
+        }
+        fn verify(&self, value: &Value) -> Result<(), Self::Error> {
+            NoteCommand::Read(self.selection.clone())
+                .verify_response("p", value)
+                .map_err(|_| "wrong_note")
+        }
+        fn access_refused(&self, error: &Self::Error) -> bool {
+            *error == "denied"
+        }
+    }
+    #[test]
+    fn note_retained_selection_is_exact_and_has_zero_offline_source_calls() {
+        let temp = tempfile::tempdir().unwrap();
+        let calls = Arc::new(AtomicUsize::new(0));
+        let selection = note_selection("n", Some(2), Some("claim"));
+        let mut source = NoteSource::new(calls.clone(), selection.clone());
+        let captured =
+            consume_note(temp.path(), &binding(), &selection, false, 1, &mut source).unwrap();
+        assert_eq!(
+            captured["retained"]["selection"],
+            json!({"id":"n","version":2,"claim_id":"claim"})
+        );
+        assert_eq!(captured["retained"]["note_version"], 2);
+        assert_eq!(captured["retained"]["current_source_verified"], true);
+        for _ in 0..8 {
+            let held =
+                consume_note(temp.path(), &binding(), &selection, true, 2, &mut source).unwrap();
+            assert_eq!(held["note"]["document"]["body"], "retained");
+            assert_eq!(held["claim"]["id"], "claim");
+            assert_eq!(held["retained"]["source_freshness"], "unknown");
+            assert_eq!(held["retained"]["permission_freshness"], "captured_only");
+            assert_eq!(held["retained"]["current_authorization_verified"], false);
+        }
+        for other in [
+            note_selection("other", Some(2), Some("claim")),
+            note_selection("n", Some(3), Some("claim")),
+            note_selection("n", None, Some("claim")),
+            note_selection("n", Some(2), Some("other")),
+            note_selection("n", Some(2), None),
+        ] {
+            let mut other_source = NoteSource::new(calls.clone(), other.clone());
+            assert!(matches!(
+                consume_note(temp.path(), &binding(), &other, true, 2, &mut other_source),
+                Err(Error::AcquisitionRequired)
+            ));
+        }
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        #[cfg(unix)]
+        crate::private::assert_private_tree(&temp.path().join("pm-graph"));
+    }
+    #[test]
+    fn graph_and_last_note_rooms_have_independent_generations_and_fixed_disk_budget() {
+        let temp = tempfile::tempdir().unwrap();
+        let calls = Arc::new(AtomicUsize::new(0));
+        let mut graph_source = Fake::new(calls.clone());
+        consume(temp.path(), &binding(), false, 1, &mut graph_source).unwrap();
+        for n in 0..20 {
+            let selection = note_selection(&format!("n{n}"), None, None);
+            let mut source = NoteSource::new(calls.clone(), selection.clone());
+            consume_note(temp.path(), &binding(), &selection, false, 2, &mut source).unwrap();
+            assert_eq!(
+                consume(temp.path(), &binding(), true, 3, &mut graph_source).unwrap()["revision"],
+                3
+            );
+        }
+        let last = note_selection("n19", None, None);
+        let mut source = NoteSource::new(calls.clone(), last.clone());
+        consume(temp.path(), &binding(), false, 4, &mut graph_source).unwrap();
+        assert_eq!(
+            consume_note(temp.path(), &binding(), &last, true, 5, &mut source).unwrap()["note"]
+                ["id"],
+            "n19"
+        );
+        let old = note_selection("n0", None, None);
+        assert!(matches!(
+            consume_note(temp.path(), &binding(), &old, true, 5, &mut source),
+            Err(Error::AcquisitionRequired)
+        ));
+        let dir = binding().directory(temp.path()).unwrap();
+        let mut payloads: Vec<_> = std::fs::read_dir(&dir)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .filter(|n| n.ends_with(".json") && n != "state.json")
+            .collect();
+        payloads.sort();
+        assert_eq!(payloads, vec!["graph.json", "note-read.json"]);
+        assert!(
+            std::fs::metadata(dir.join("graph.json")).unwrap().len() <= (MAX_BYTES + 32768) as u64
+        );
+        assert!(
+            std::fs::metadata(dir.join("note-read.json")).unwrap().len()
+                <= (MAX_NOTE_BYTES + 32768) as u64
+        );
+    }
+    #[test]
+    fn both_rooms_share_invalidation_and_durable_denial_without_unused_creation() {
+        let temp = tempfile::tempdir().unwrap();
+        let absent = temp.path().join("unused");
+        let calls = Arc::new(AtomicUsize::new(0));
+        let selection = note_selection("n", None, None);
+        let mut source = NoteSource::new(calls.clone(), selection.clone());
+        assert!(matches!(
+            consume_note(&absent, &binding(), &selection, true, 1, &mut source),
+            Err(Error::AcquisitionRequired)
+        ));
+        assert!(!absent.exists());
+        let mut graph_source = Fake::new(calls.clone());
+        consume(temp.path(), &binding(), false, 1, &mut graph_source).unwrap();
+        consume_note(temp.path(), &binding(), &selection, false, 1, &mut source).unwrap();
+        mark(temp.path(), &binding(), false).unwrap();
+        assert_eq!(
+            consume(temp.path(), &binding(), true, 2, &mut graph_source).unwrap()["retained"]
+                ["known_invalidated"],
+            true
+        );
+        assert_eq!(
+            consume_note(temp.path(), &binding(), &selection, true, 2, &mut source).unwrap()
+                ["retained"]["known_invalidated"],
+            true
+        );
+        let note_path = binding()
+            .directory(temp.path())
+            .unwrap()
+            .join("note-read.json");
+        std::fs::remove_file(&note_path).unwrap();
+        std::fs::create_dir(&note_path).unwrap();
+        mark(temp.path(), &binding(), true).unwrap();
+        assert!(matches!(
+            consume(temp.path(), &binding(), true, 3, &mut graph_source),
+            Err(Error::AcquisitionRequired)
+        ));
+        assert!(matches!(
+            consume_note(temp.path(), &binding(), &selection, true, 3, &mut source),
+            Err(Error::AcquisitionRequired)
+        ));
+        assert!(note_path.is_dir());
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
+    }
+    #[test]
+    fn note_absence_preserves_graph_access_but_authoritative_denial_revokes_it() {
+        let temp = tempfile::tempdir().unwrap();
+        let calls = Arc::new(AtomicUsize::new(0));
+        let mut graph_source = Fake::new(calls.clone());
+        consume(temp.path(), &binding(), false, 1, &mut graph_source).unwrap();
+        let selection = note_selection("n", None, None);
+        let mut source = NoteSource::new(calls.clone(), selection.clone());
+        source.fail = Some("missing");
+        assert!(matches!(
+            consume_note(temp.path(), &binding(), &selection, false, 2, &mut source),
+            Err(Error::Source("missing"))
+        ));
+        assert!(consume(temp.path(), &binding(), true, 3, &mut graph_source).is_ok());
+        source.fail = Some("denied");
+        assert!(matches!(
+            consume_note(temp.path(), &binding(), &selection, false, 4, &mut source),
+            Err(Error::Source("denied"))
+        ));
+        assert!(matches!(
+            consume(temp.path(), &binding(), true, 5, &mut graph_source),
+            Err(Error::AcquisitionRequired)
+        ));
+    }
+    #[test]
+    fn note_scope_corruption_bounds_and_capture_mutation_are_fenced() {
+        let temp = tempfile::tempdir().unwrap();
+        let calls = Arc::new(AtomicUsize::new(0));
+        let selection = note_selection("n", Some(2), None);
+        let mut source = NoteSource::new(calls.clone(), selection.clone());
+        consume_note(temp.path(), &binding(), &selection, false, 1, &mut source).unwrap();
+        for field in 0..5 {
+            let mut other = binding();
+            match field {
+                0 => other.uid = "other".into(),
+                1 => other.lane = "stable".into(),
+                2 => other.audience = "other".into(),
+                3 => other.credential_instance = "other".into(),
+                _ => other.project = "other".into(),
+            }
+            assert!(matches!(
+                consume_note(temp.path(), &other, &selection, true, 2, &mut source),
+                Err(Error::AcquisitionRequired)
+            ));
+        }
+        let path = binding()
+            .directory(temp.path())
+            .unwrap()
+            .join("note-read.json");
+        let mut held: Value = read(&path).unwrap().unwrap();
+        held["note_read"]["note"]["version"] = json!(9);
+        write(&path, &held).unwrap();
+        assert!(matches!(
+            consume_note(temp.path(), &binding(), &selection, true, 2, &mut source),
+            Err(Error::Local(_))
+        ));
+        source.changed = true;
+        assert!(matches!(
+            consume_note(temp.path(), &binding(), &selection, true, 2, &mut source),
+            Err(Error::Source("changed"))
+        ));
+        source.changed = false;
+        source.mutate = Some(temp.path().into());
+        assert!(matches!(
+            consume_note(temp.path(), &binding(), &selection, false, 3, &mut source),
+            Err(Error::Superseded)
+        ));
+        assert!(bounded_bytes(&json!("x".repeat(MAX_NOTE_BYTES + 1)), MAX_NOTE_BYTES).is_err());
+        let invalid = note_selection("../escape", None, None);
+        assert!(matches!(
+            consume_note(temp.path(), &binding(), &invalid, true, 3, &mut source),
+            Err(Error::Local(_))
+        ));
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
+    }
+    #[test]
+    fn legacy_graph_state_and_capture_still_admit_after_note_extension() {
+        let temp = tempfile::tempdir().unwrap();
+        let calls = Arc::new(AtomicUsize::new(0));
+        let mut source = Fake::new(calls.clone());
+        consume(temp.path(), &binding(), false, 1, &mut source).unwrap();
+        let dir = binding().directory(temp.path()).unwrap();
+        let mut held: Value = read(&dir.join("graph.json")).unwrap().unwrap();
+        for key in ["note_read", "selection", "selection_sha256"] {
+            held.as_object_mut().unwrap().remove(key);
+        }
+        write(&dir.join("graph.json"), &held).unwrap();
+        write(
+            &dir.join("state.json"),
+            &json!({"epoch":0,"serial":1,"denied":false}),
+        )
+        .unwrap();
+        assert_eq!(
+            consume(temp.path(), &binding(), true, 2, &mut source).unwrap()["revision"],
+            3
+        );
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+    }
+    #[test]
+    fn concurrent_selected_note_captures_coalesce_then_share_offline_bytes() {
+        struct Concurrent {
+            inner: NoteSource,
+            start: Arc<std::sync::Barrier>,
+            initial: bool,
+        }
+        impl Source for Concurrent {
+            type Error = &'static str;
+            fn check_binding(&mut self) -> Result<(), Self::Error> {
+                if self.initial {
+                    self.initial = false;
+                    self.start.wait();
+                }
+                self.inner.check_binding()
+            }
+            fn capture(&mut self) -> Result<Value, Self::Error> {
+                // Hold the source open while all intentional readers observe the old room serial.
+                std::thread::sleep(std::time::Duration::from_millis(150));
+                self.inner.capture()
+            }
+            fn verify(&self, value: &Value) -> Result<(), Self::Error> {
+                self.inner.verify(value)
+            }
+            fn access_refused(&self, error: &Self::Error) -> bool {
+                self.inner.access_refused(error)
+            }
+        }
+        let temp = tempfile::tempdir().unwrap();
+        let calls = Arc::new(AtomicUsize::new(0));
+        let barrier = Arc::new(std::sync::Barrier::new(8));
+        let selection = note_selection("n", Some(2), Some("claim"));
+        std::thread::scope(|threads| {
+            for _ in 0..8 {
+                let calls = calls.clone();
+                let barrier = barrier.clone();
+                let selection = selection.clone();
+                let root = temp.path();
+                threads.spawn(move || {
+                    let mut source = Concurrent {
+                        inner: NoteSource::new(calls, selection.clone()),
+                        start: barrier,
+                        initial: true,
+                    };
+                    assert_eq!(
+                        consume_note(root, &binding(), &selection, false, 1, &mut source).unwrap()
+                            ["note"]["version"],
+                        2
+                    );
+                });
+            }
+        });
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        std::thread::scope(|threads| {
+            for _ in 0..8 {
+                let calls = calls.clone();
+                let selection = selection.clone();
+                let root = temp.path();
+                threads.spawn(move || {
+                    let mut source = NoteSource::new(calls, selection.clone());
+                    assert_eq!(
+                        consume_note(root, &binding(), &selection, true, 2, &mut source).unwrap()
+                            ["claim"]["id"],
+                        "claim"
+                    );
+                });
+            }
+        });
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+    }
+    #[test]
+    fn one_room_reacquisition_cannot_resurrect_other_revoked_capture() {
+        let temp = tempfile::tempdir().unwrap();
+        let calls = Arc::new(AtomicUsize::new(0));
+        let mut graph_source = Fake::new(calls.clone());
+        consume(temp.path(), &binding(), false, 1, &mut graph_source).unwrap();
+        let dir = binding().directory(temp.path()).unwrap();
+        let old_graph = std::fs::read(dir.join("graph.json")).unwrap();
+        mark(temp.path(), &binding(), true).unwrap();
+        // Recreate the exact bytes that a failed best-effort cleanup would have left.
+        private::write_atomic(&dir.join("graph.json"), old_graph).unwrap();
+        let selection = note_selection("n", None, None);
+        let mut source = NoteSource::new(calls.clone(), selection.clone());
+        consume_note(temp.path(), &binding(), &selection, false, 2, &mut source).unwrap();
+        assert!(consume_note(temp.path(), &binding(), &selection, true, 3, &mut source).is_ok());
+        assert!(matches!(
+            consume(temp.path(), &binding(), true, 3, &mut graph_source),
+            Err(Error::AcquisitionRequired)
+        ));
+        consume(temp.path(), &binding(), false, 4, &mut graph_source).unwrap();
+        assert!(consume(temp.path(), &binding(), true, 5, &mut graph_source).is_ok());
+        assert_eq!(calls.load(Ordering::SeqCst), 3);
+    }
+    #[test]
+    fn selected_note_receipt_is_checked_by_owner_even_if_source_accepts_another_selection() {
+        let temp = tempfile::tempdir().unwrap();
+        let calls = Arc::new(AtomicUsize::new(0));
+        let selected = note_selection("wanted", Some(2), Some("claim"));
+        let mut source = NoteSource::new(
+            calls.clone(),
+            note_selection("other", Some(3), Some("other-claim")),
+        );
+        assert!(matches!(
+            consume_note(temp.path(), &binding(), &selected, false, 1, &mut source),
+            Err(Error::Local(_))
+        ));
+        assert!(!binding()
+            .directory(temp.path())
+            .unwrap()
+            .join("note-read.json")
+            .exists());
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
     }
 }
