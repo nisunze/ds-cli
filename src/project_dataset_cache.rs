@@ -1221,7 +1221,11 @@ pub fn freshness(current: &str, held: &[HeldVersion]) -> Result<Freshness, Strin
             continue;
         }
         versions.insert(holding.source_version.clone());
-        if !current.is_empty() && holding.source_version != current {
+        if crate::freshness::compare(
+            Some(holding.source_version.as_str()),
+            (!current.is_empty()).then_some(current),
+        ) == crate::freshness::Freshness::Stale
+        {
             stale_rects.extend(rects);
         }
     }

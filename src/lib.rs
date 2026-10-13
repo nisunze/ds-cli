@@ -191,6 +191,7 @@ pub fn combined_readiness_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsV
     combined_readiness::evaluate(input).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
 }
 pub mod status_upload;
+pub mod freshness;
 pub mod sync;
 pub mod sync_store;
 #[cfg(feature = "wasm")]

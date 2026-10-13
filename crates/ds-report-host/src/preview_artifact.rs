@@ -23,31 +23,38 @@ pub use ds_command_kernel::asset_preview::Retention;
 enum Media {
     Svg,
     Pdf,
+    Markdown,
 }
 impl Media {
     fn admit(raw: &str) -> Result<Self, HostFailure> {
         match raw {
             "image/svg+xml" => Ok(Self::Svg),
             "application/pdf" => Ok(Self::Pdf),
-            _ => Err(failed("preview media is not SVG or PDF")),
+            ds_command_kernel::assets::semantic::MARKDOWN_TYPE => Ok(Self::Markdown),
+            _ => Err(failed(
+                "preview media is not an admitted SVG, PDF or Markdown document",
+            )),
         }
     }
     fn filename(self) -> &'static str {
         match self {
             Self::Svg => "page.svg",
             Self::Pdf => "page.pdf",
+            Self::Markdown => "page.md",
         }
     }
     fn mime(self) -> &'static str {
         match self {
             Self::Svg => "image/svg+xml",
             Self::Pdf => "application/pdf",
+            Self::Markdown => ds_command_kernel::assets::semantic::MARKDOWN_TYPE,
         }
     }
     fn limit(self) -> u64 {
         match self {
             Self::Svg => crate::MAX_PREVIEW_BYTES,
             Self::Pdf => 128 * 1024 * 1024,
+            Self::Markdown => ds_command_kernel::assets::semantic::MAX_OUTPUT_BYTES,
         }
     }
     fn signature(self, bytes: &[u8]) -> bool {
@@ -56,6 +63,7 @@ impl Media {
                 s.trim_start().starts_with("<svg") || s.trim_start().starts_with("<?xml")
             }),
             Self::Pdf => bytes.starts_with(b"%PDF-"),
+            Self::Markdown => !bytes.is_empty(),
         }
     }
 }
@@ -283,7 +291,7 @@ impl RequestLease {
     }
 }
 
-/// A real source denial invalidates only this asset's retained native previews.
+/// A real source denial invalidates only this asset's retained previews and semantic derivatives.
 /// Files from other consumers and unknown contents are never deleted. Online
 /// authority failure without a typed denial must not call this operation.
 pub(crate) fn forget_asset_requests(room: &Room, asset_id: &str) -> Result<usize, HostFailure> {
@@ -323,8 +331,10 @@ pub(crate) fn forget_asset_requests(room: &Room, asset_id: &str) -> Result<usize
         };
         let candidate: RequestManifest =
             serde_json::from_slice(&bytes).map_err(|e| failed(e.to_string()))?;
-        if candidate.inputs["schema"] != "ds.asset-preview.acquire/v1"
-            || candidate.inputs["asset_id"] != asset_id
+        if !matches!(
+            candidate.inputs["schema"].as_str(),
+            Some("ds.asset-preview.acquire/v1" | ds_command_kernel::assets::semantic::SCHEMA)
+        ) || candidate.inputs["asset_id"] != asset_id
         {
             continue;
         }
@@ -338,7 +348,10 @@ pub(crate) fn forget_asset_requests(room: &Room, asset_id: &str) -> Result<usize
         if record.schema != SCHEMA
             || record.authority_sha256 != owner
             || record.input_sha256 != key
-            || record.inputs["schema"] != "ds.asset-preview.acquire/v1"
+            || !matches!(
+                record.inputs["schema"].as_str(),
+                Some("ds.asset-preview.acquire/v1" | ds_command_kernel::assets::semantic::SCHEMA)
+            )
             || record.inputs["asset_id"] != asset_id
             || digest(
                 &serde_json::to_vec(
@@ -654,6 +667,35 @@ pub fn materialize_pdf_retained(
         },
     )
 }
+/// Retain externally produced Markdown in the same native room. This is byte
+/// validation/materialization only; it never runs an extractor or reads a URL.
+pub fn materialize_markdown_retained(
+    room: &Room,
+    bytes: &[u8],
+    provenance: Value,
+    retention: Retention,
+) -> Result<Artifact, HostFailure> {
+    if bytes.len() as u64 > Media::Markdown.limit()
+        || !std::str::from_utf8(bytes).is_ok_and(|text| !text.trim().is_empty())
+    {
+        return Err(failed(
+            "semantic output needs bounded nonempty UTF-8 Markdown",
+        ));
+    }
+    let sha256 = digest(bytes);
+    let metadata = json!({"provenance":provenance,"sha256":sha256,
+        "size_bytes":bytes.len(),"content_type":Media::Markdown.mime(),"retention_ms":retention.millis()});
+    materialize_file_at(
+        room,
+        bytes.len() as u64,
+        sha256,
+        metadata,
+        Media::Markdown,
+        retention,
+        now()?,
+        |path| crate::write_new_private(path, bytes),
+    )
+}
 fn materialize_file_at(
     room: &Room,
     size_bytes: u64,
@@ -905,6 +947,11 @@ fn read_at(room: &Room, artifact: &Artifact, clock: u64) -> Result<Vec<u8>, Host
     if !Media::admit(&artifact.content_type)?.signature(&bytes) {
         return Err(failed("preview bytes differ from their admitted media"));
     }
+    if matches!(Media::admit(&artifact.content_type)?, Media::Markdown)
+        && !std::str::from_utf8(&bytes).is_ok_and(|text| !text.trim().is_empty())
+    {
+        return Err(failed("retained Markdown is not nonempty UTF-8 text"));
+    }
     Ok(bytes)
 }
 
@@ -928,12 +975,12 @@ fn admit_file_output(raw: &str) -> Result<PathBuf, HostFailure> {
         || !path.is_absolute()
         || !matches!(
             path.extension().and_then(|s| s.to_str()),
-            Some("svg" | "pdf")
+            Some("svg" | "pdf" | "md")
         )
     {
         return Err(HostFailure::new(
             CODE_INPUTS_INVALID,
-            "preview output must be a new absolute .svg or .pdf path",
+            "preview output must be a new absolute .svg, .pdf or .md path",
         ));
     }
     if fs::symlink_metadata(&path).is_ok() {
@@ -958,6 +1005,7 @@ pub fn copy(room: &Room, artifact: &Artifact, raw: &str) -> Result<PathBuf, Host
         != Some(match Media::admit(&artifact.content_type)? {
             Media::Svg => "svg",
             Media::Pdf => "pdf",
+            Media::Markdown => "md",
         })
     {
         return Err(failed(

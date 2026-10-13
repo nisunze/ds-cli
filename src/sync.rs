@@ -440,7 +440,7 @@ enum DerivedWinner {
 /// conflict, because silently discarding a verified artifact is the failure
 /// this whole change exists to end.
 fn derived_winner(artifact: &LocalArtifact, head: &RemoteHead, computed: &str) -> DerivedWinner {
-    if head.input_base_fingerprint.as_deref() != Some(computed) {
+    if !crate::freshness::is_fresh(head.input_base_fingerprint.as_deref(), Some(computed)) {
         return DerivedWinner::Local;
     }
     if artifact.produced_at_ms == 0 {
