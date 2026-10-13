@@ -1,8 +1,11 @@
 //! Explicit account-private note controls using the existing native owner.
 use ds_cli_contract::spec::{Arg, Authority, Chapter, Command, Effect, Execution, Requires};
 use ds_cli_contract::{Context, Failure, Inputs};
-use ds_client_core::personal_notes::Action;
+use ds_client_core::personal_notes::{Action, Draft};
 use serde_json::{Value, json};
+use std::io::Read;
+
+const INPUT: Arg = Arg::value("input", "<json-file>", "Closed complete authored draft JSON, at most 512 KiB (markdown at most 128 KiB); no identity, author, timestamps or transport envelope.").required();
 
 const NOTE: Arg = Arg::value(
     "note",
@@ -72,11 +75,27 @@ const fn declaration(
         output: "Account-private note metadata, selected content or owner-verified version/state receipt. No hidden owner UID or project catalogue.",
         examples: &[],
         reference: Some("docs/reference/pm.md"),
-        search: &["private", "notes", "history", "restore"],
+        search: &["private", "notes", "history", "restore", "authoring"],
         requires: Requires::Server,
         availability: ds_cli_auth::native_availability,
     }
 }
+pub static CREATE: Command = declaration(
+    "notes.create",
+    &["notes", "create"],
+    "Create one explicitly account-private note.",
+    "Use only for deliberately private personal material; project decisions, constraints and delivery evidence belong in shared pm note create with explicit --project. Reads a closed complete authored draft JSON and creates version 1 with --yes. Markdown/checklist/links are deliberate; no automatic note hook or private-to-project copy. Existing reminder effects apply when authored. Creation allocates a fresh id and is not idempotent: after an uncertain outcome inspect notes list before retrying. No model attribution field is invented.",
+    Effect::GlobalWrite,
+    &[INPUT, crate::LANE_ARG],
+);
+pub static UPDATE: Command = declaration(
+    "notes.update",
+    &["notes", "update"],
+    "Replace one reviewed private note's authored fields.",
+    "Closed complete authored draft JSON replaces title, content, folder, tags, checklist, links, geometry, reminder, canvas, pin and archive against --version with --yes. Omitted authored fields clear or take owner defaults; review notes read first and preserve every field you intend to keep. Legacy simple checklist rows retain richer matching item fields; explicit rich clears use notes checklist edit. Authenticated author, history, trash and attachment state remain owner-controlled. Existing reminder effects apply. After an uncertain outcome read the selected note before retrying; a successful write advances version and stale retry refuses. Meaningful project rulings belong in shared pm note commands.",
+    Effect::GlobalWrite,
+    &[NOTE, VERSION, INPUT, crate::LANE_ARG],
+);
 pub static LIST: Command = declaration(
     "notes.list",
     &["notes", "list"],
@@ -151,6 +170,14 @@ fn invalid(reason: impl std::fmt::Display) -> Failure {
 fn action(inputs: &Inputs, command: &str) -> Result<Action, Failure> {
     let note = || inputs.require("note").map(str::to_owned);
     let action = match command {
+        "notes.create" => Action::Create {
+            draft: selected_draft(inputs)?,
+        },
+        "notes.update" => Action::Update {
+            id: note()?,
+            expected_version: integer(inputs, "version")?,
+            draft: selected_draft(inputs)?,
+        },
         "notes.list" => Action::List {
             include_archived: inputs.switch("include-archived"),
             include_trashed: inputs.switch("include-retired"),
@@ -180,6 +207,18 @@ fn action(inputs: &Inputs, command: &str) -> Result<Action, Failure> {
     };
     action.validate().map_err(invalid)?;
     Ok(action)
+}
+fn selected_draft(inputs: &Inputs) -> Result<Draft, Failure> {
+    let mut bytes = Vec::new();
+    std::fs::File::open(inputs.require("input")?)
+        .map_err(invalid)?
+        .take(ds_client_core::personal_notes::MAX_REQUEST_BYTES as u64 + 1)
+        .read_to_end(&mut bytes)
+        .map_err(invalid)?;
+    if bytes.len() > ds_client_core::personal_notes::MAX_REQUEST_BYTES {
+        return Err(invalid("private draft exceeds 512 KiB"));
+    }
+    serde_json::from_slice(&bytes).map_err(invalid)
 }
 fn limit(inputs: &Inputs) -> Result<usize, Failure> {
     let value = inputs
@@ -233,6 +272,8 @@ macro_rules! handler {
         }
     };
 }
+handler!(create, "notes.create");
+handler!(update, "notes.update");
 handler!(list, "notes.list");
 handler!(read, "notes.read");
 handler!(retire, "notes.retire");
@@ -299,8 +340,37 @@ mod tests {
         assert!(limit(&inputs(&LIST, &["--limit", "101"])).is_err());
     }
     #[test]
+    fn private_authoring_is_explicit_and_refuses_input_before_authentication() {
+        let i = inputs(&CREATE, &["--input", "missing-private-note-draft.json"]);
+        assert_eq!(
+            execute(&i, CREATE.id).unwrap_err().code(),
+            "notes_request_invalid"
+        );
+        assert!(CREATE.confirmation_required_for(&i));
+        let i = inputs(
+            &UPDATE,
+            &[
+                "--note",
+                "private",
+                "--version",
+                "0",
+                "--input",
+                "missing-private-note-draft.json",
+            ],
+        );
+        assert_eq!(
+            action(&i, UPDATE.id).unwrap_err().code(),
+            "notes_request_invalid"
+        );
+        assert!(CREATE.purpose.contains("not idempotent"));
+        assert!(UPDATE.purpose.contains("Omitted authored fields clear"));
+        assert!(CREATE.purpose.contains("shared pm note create"));
+    }
+    #[test]
     fn declarations_are_private_only_and_distinguish_current_from_historic_restore() {
         for command in [
+            &CREATE,
+            &UPDATE,
             &LIST,
             &READ,
             &RETIRE,

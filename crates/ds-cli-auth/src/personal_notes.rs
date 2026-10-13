@@ -9,12 +9,12 @@ use serde_json::{json, Value};
 
 pub const OWN_REFUSALS: &[Refusal] = &[
     Refusal { code: "notes_request_invalid", when: "the selected note, history version, restoration hash or checklist edit is outside the closed owner contract", remedy: "use one stable private note id and the declared version, source hash or checklist edit fields" },
-    Refusal { code: "notes_response_unreadable", when: "the owner receipt does not match the selected note and version", remedy: "retry only the exact original command; update the client and Brain together if the mismatch repeats" },
+    Refusal { code: "notes_response_unreadable", when: "the owner receipt does not match the selected note and version", remedy: "after an uncertain create inspect notes list, or read the selected note after an uncertain update; retry reads or declared replay-safe controls with exact intent; update client and Brain together if mismatches repeat" },
     Refusal { code: "notes_not_found", when: "the selected private note or historical revision is unavailable to this account", remedy: "restore the intended account, select its own note id and inspect notes versions; unavailable history cannot be reconstructed" },
     Refusal { code: "notes_version_conflict", when: "the selected note moved after the reviewed version", remedy: "read that private note, review the change and submit the declared operation against its current version" },
     Refusal { code: "notes_command_conflict", when: "the command id already names a different intent", remedy: "retry the exact original command or use a new id for a new intent" },
     Refusal { code: "notes_not_permitted", when: "the notes owner refused this identity or selected item evidence", remedy: "restore the intended account; personal notes cannot adopt project model pins" },
-    Refusal { code: "notes_unavailable", when: "the notes owner could not serve the selected operation", remedy: "retry later retaining the exact original version, source hash and command id when declared" },
+    Refusal { code: "notes_unavailable", when: "the notes owner could not serve the selected operation", remedy: "retry reads later; after uncertain writes inspect current state before resubmitting, and retain exact intent only for declared replay-safe controls" },
 ];
 
 pub fn execute(lane_value: &str, action: &Action) -> Result<Value, Failure> {
