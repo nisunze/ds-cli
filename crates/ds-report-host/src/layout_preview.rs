@@ -463,6 +463,92 @@ mod tests {
         (room, capture)
     }
     #[test]
+    fn saved_project_revisions_fence_reuse_and_tampering_refuses_before_render() {
+        let dir = tempfile::tempdir().unwrap();
+        let (room, mut capture) = fixture(dir.path());
+        let layout: printing::Layout =
+            serde_json::from_value(capture["render"]["layout"].clone()).unwrap();
+        capture["source"] = json!({"kind":"project_layout","project_id":room.scope.project,"id":layout.id,
+            "revision_id":"c".repeat(64),"content_sha256":printing::style_capture::layout_digest(&layout).unwrap(),"layout":layout,
+            "receipt":{"id":layout.id,"revision":"c".repeat(64),"name":layout.name,"paper":layout.paper,"classification":layout.classification}});
+        let engine = Arc::new(Engine::new());
+        for field in ["project_id", "id", "revision_id", "content_sha256"] {
+            let mut bad = capture.clone();
+            bad["source"][field] = json!("tampered");
+            assert!(
+                execute(
+                    engine.as_ref(),
+                    &room,
+                    &bad,
+                    preview_artifact::Retention::Hours24,
+                    &room.root.join("scratch")
+                )
+                .is_err()
+            );
+        }
+        let mut bad = capture.clone();
+        bad["render"]["layout"]["name"] = json!("changed body");
+        assert!(
+            execute(
+                engine.as_ref(),
+                &room,
+                &bad,
+                preview_artifact::Retention::Hours24,
+                &room.root.join("scratch")
+            )
+            .is_err()
+        );
+        assert_eq!(engine.renders.load(Ordering::SeqCst), 0);
+        std::thread::scope(|threads| {
+            for _ in 0..8 {
+                let engine = engine.clone();
+                let (room, capture) = (&room, &capture);
+                threads.spawn(move || {
+                    execute(
+                        engine.as_ref(),
+                        room,
+                        capture,
+                        preview_artifact::Retention::Hours24,
+                        &room.root.join("scratch"),
+                    )
+                    .unwrap();
+                });
+            }
+        });
+        assert_eq!(engine.renders.load(Ordering::SeqCst), 1);
+        let first = execute(
+            engine.as_ref(),
+            &room,
+            &capture,
+            preview_artifact::Retention::Hours24,
+            &room.root.join("unused"),
+        )
+        .unwrap();
+        assert!(first.preview_cache.reused);
+        assert_eq!(first.page.retention_ms, 86_400_000);
+        assert!(!room.root.join("unused").exists());
+        capture["source"]["revision_id"] = json!("d".repeat(64));
+        capture["source"]["receipt"]["revision"] = json!("d".repeat(64));
+        let second = execute(
+            engine.as_ref(),
+            &room,
+            &capture,
+            preview_artifact::Retention::Hours24,
+            &room.root.join("scratch"),
+        )
+        .unwrap();
+        assert_ne!(
+            first.preview_cache.input_sha256,
+            second.preview_cache.input_sha256
+        );
+        assert_ne!(first.page.path, second.page.path);
+        assert_eq!(engine.renders.load(Ordering::SeqCst), 2);
+        assert_eq!(
+            preview_artifact::read(&room, &first.page).unwrap(),
+            preview_artifact::read(&room, &second.page).unwrap()
+        );
+    }
+    #[test]
     fn pdf_and_svg_choices_share_the_common_owner_and_eight_pdf_consumers_render_once() {
         let dir = tempfile::tempdir().unwrap();
         let (room, capture) = fixture(dir.path());

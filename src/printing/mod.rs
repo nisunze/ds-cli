@@ -2392,6 +2392,16 @@ pub enum Command {
         #[serde(default)]
         date: String,
     },
+    /// Capture a static saved project page from its authenticated get receipt.
+    CaptureProjectLayoutPreview {
+        project: String,
+        response: Value,
+        resolution: crate::style_resolution::Snapshot,
+        #[serde(default)]
+        text: Value,
+        #[serde(default)]
+        date: String,
+    },
     Duplicate {
         layout: Layout,
         id: String,
@@ -2981,6 +2991,13 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
         Command::CaptureGovernedStandardPreview { location, document, resolution, text, date } => {
             standard_read::capture_preview(location, document, &resolution, text, date)?
         }
+        Command::CaptureProjectLayoutPreview {
+            project,
+            response,
+            resolution,
+            text,
+            date,
+        } => standard_read::capture_project_preview(project, response, &resolution, text, date)?,
         Command::Duplicate { layout, id, name } => {
             let mut layout = upgrade(layout)?;
             if layout.id == id {

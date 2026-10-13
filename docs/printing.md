@@ -604,6 +604,17 @@ when serialized, preserving compatibility and their existing presentation.
 
 ## The shared preview page
 
+Captured static project pages may carry `PreviewSource::ProjectLayout` from an
+authenticated saved-layout get receipt. The original project, ID, revision,
+layout and native body digest remain in the capture and its shared disk reuse
+key. `capture_project_layout_preview` consumes retained renderer policy without
+model, transformer, geometry or freshness ports. Source metadata grants no
+principal authority: the headless or published Desktop context still owns the
+room. A mismatched project, source pin or rendered body refuses before the
+producer. An explicit paired CLI target calls the same native captured-page
+owner and common file reader as the headless route; no alternate renderer or
+inline page response is admitted.
+
 `printing::view::plan` is the read-only consumption authority for the open
 Printing templates view. `report.layout.edit` exposes its `view_plan` intent
 headlessly. It receives the explicit project, exact held catalogue locations,
