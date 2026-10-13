@@ -6,7 +6,7 @@ of them.
 
 ## Where Project Management is
 
-Not on disk, and not behind a window.
+The governed plan remains with ds-brain; a verified native capture can also be retained for explicit offline reading.
 
 The project's plan is a governed graph behind ds-brain, which is the only
 gateway and the only authority: it decides who may write, it arbitrates two
@@ -32,6 +32,25 @@ default, `canary` where the box is linked on canary).
 Until 2026-09-20 eight of these nine commands relayed through the paired
 desktop (`requires: window`). That path is retired: `--desktop-descriptor`
 is no longer an input.
+
+## Retained plan reads
+
+A normal `ds pm plan --project <exact-id>` still reads one current canonical
+Graph through the authenticated PM authority and retains that exact capture.
+`--offline` reads only its retained graph under the same protected UID, lane,
+credential audience, credential instance and explicit project. It performs no
+session restore, source acquisition or freshness request. Missing, denied,
+corrupt or differently scoped holdings refuse; they never substitute an empty
+plan or another account's capture.
+
+The result's `retained` metadata preserves the captured graph/schedule revisions,
+body SHA-256 and capture time. Offline source freshness is `unknown` and
+permission freshness is `captured_only`; it grants no current write authority.
+Graph revision alone is not a freshness basis for class-redacted correspondence,
+permissions or live subject state. A local PM write attempt marks existing
+holdings `known_invalidated`, including attempts that might partially commit;
+access denial durably prevents offline reuse. No unused holding is created.
+All writes and other PM read commands keep their existing live authority path.
 
 ## The shape of a session
 
@@ -545,3 +564,56 @@ human provenance. Output labels it source:self_declared, not verified identity.
 Read commands have no attribution flags. A later writer's omitted declaration
 is not inherited from an earlier model. Discover each command before use;
 unsupported owner paths refuse declarations rather than silently dropping them.
+
+## Deliberate private note authoring
+
+Use shared `ds pm note create --project PROJECT` for project decisions,
+constraints and verified delivery outcomes. Use `ds notes create` only when
+choosing to keep the material account-private. No command files notes
+implicitly or copies private content into a project.
+
+```sh
+ds notes create --input private-note.json --yes --output json
+ds notes read --note NOTE --output json
+ds notes update --note NOTE --version 1 --input complete-replacement.json --yes --output json
+```
+
+The JSON is the complete authored draft, without a transport envelope:
+
+```json
+{"title":"Personal follow-up","content":{"format":"markdown","markdown":"Review the field photographs."},"checklist":[{"id":"review","text":"Review photographs","checked":false}]}
+```
+
+Allowed draft fields are title, folder, content, checklist, checklist_kind,
+tags, links, geometry, reminder, canvas, pinned and archived. Markdown is at
+most 128 KiB; the whole request is at most 512 KiB. Server-owned identities,
+versions, timestamps, authors, trash and attachment state are not draft fields.
+Private links cannot adopt DS-object pins. Attachment references must already
+be ready on the selected existing note; creation cannot reference attachments.
+
+Update is a full authored replacement: omitted authored fields clear or take
+owner defaults. Read the selected note first and retain the fields you need.
+Legacy simple checklist rows preserve rich fields of matching items; explicit
+rich clears use the item control. The existing reminder behavior applies to
+an authored reminder; this command does not invent a new scheduler. Private
+authoring metadata is not added to a schema that does not store it.
+
+Create allocates a new identifier and is not idempotent. If the outcome is
+uncertain, inspect the explicit private list before repeating creation. After
+an uncertain update, read that note: the expected-version fence prevents an
+old reviewed revision overwriting a new one.
+
+## Private metadata pages
+
+`ds notes list --limit 50` requests one bounded metadata page, not the full
+workspace or note bodies. Use the returned `next_cursor` with `--cursor` for
+another explicit page. Cursors bind the authenticated account and query flags;
+there is no eager next-page acquisition or total-count query. Stable ID order
+is a live traversal, not an immutable collection snapshot: a concurrent insert
+before the current cursor requires a fresh first-page read to discover it.
+
+`--term` matches title, folder and tags only within that page. The result marks
+that search scope and keeps acquired, scanned, matching, displayed and remaining
+source-page information distinct. An empty filtered page can still carry a
+continuation cursor. Read the selected note explicitly for its body or evidence.
+Later UI infinite scrolling should consume this same cursor contract.

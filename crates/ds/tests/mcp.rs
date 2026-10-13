@@ -4172,3 +4172,37 @@ fn project_overview_mcp_declares_the_same_read_without_geometry_or_private_notes
     let properties=tool["inputSchema"]["properties"].as_object().unwrap();assert!(properties.contains_key("project")&&properties.contains_key("limit")&&properties.contains_key("records-cursor"));
     assert!(!properties.contains_key("geometry")&&!properties.contains_key("data")&&!properties.contains_key("personal-notes"));
 }
+
+#[test]
+fn pm_closure_controls_share_the_real_mcp_registry() {
+    let home = signed_out("pm-closure-controls");
+    let commands = [
+        "notes.create", "notes.update", "notes.list", "notes.read", "notes.retire",
+        "notes.restore", "notes.versions", "notes.version.read", "notes.version.restore",
+        "messaging.installations", "messaging.installation.revoke", "pm.plan",
+    ];
+    let mut requests = Vec::new();
+    for (index, command) in commands.iter().enumerate() {
+        requests.push(json!({"jsonrpc":"2.0","id":index+1,"method":"tools/call",
+            "params":{"name":"ds_project","arguments":{"operation":"describe","command":command}}}));
+    }
+    requests.push(json!({"jsonrpc":"2.0","id":100,"method":"tools/call",
+        "params":{"name":"ds_project","arguments":{"operation":"invoke","command":"notes.create",
+            "arguments":{"input":home.0.join("must-not-read.json").to_str().unwrap()}}}}));
+    requests.push(json!({"jsonrpc":"2.0","id":101,"method":"tools/call",
+        "params":{"name":"ds_project","arguments":{"operation":"invoke","command":"messaging.installation.revoke",
+            "arguments":{"installation-hash":"a".repeat(64),"epoch":"b".repeat(32)}}}}));
+    let messages = signed_out_mcp(&home, &["--exposure", "chapters"], &requests);
+    for (index, id) in commands.iter().enumerate() {
+        let spec = &structured(&messages, (index+1) as i64)["data"]["command"];
+        assert_eq!(spec["id"], *id, "real registry leaf {id}");
+        assert_eq!(spec["authority"], if *id == "pm.plan" {"headless_project"} else {"headless_user"});
+        if ["notes.create", "notes.update", "notes.retire", "notes.restore", "notes.version.restore", "messaging.installation.revoke"].contains(id) {
+            assert_eq!(spec["confirmation_required"], true, "explicit effect {id}");
+        }
+    }
+    let plan = &structured(&messages, 12)["data"]["command"];
+    assert!(plan["inputs"].as_array().unwrap().iter().any(|arg| arg["name"] == "offline"));
+    assert_eq!(structured(&messages, 100)["error"]["code"], "confirmation_required");
+    assert_eq!(structured(&messages, 101)["error"]["code"], "confirmation_required");
+}

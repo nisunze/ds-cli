@@ -2353,6 +2353,8 @@ static TILE_ENTRIES: &[Entry] = &[
 /// them: look at the plan, find the item, read it, then act on it. Domain
 /// help prints this order verbatim, so the index doubles as the procedure.
 static NOTES_ENTRIES: &[Entry] = &[
+    Entry { command: &ds_cli_pm::private_notes::CREATE, handler: ds_cli_pm::private_notes::create, render: ds_cli_pm::private_notes::render },
+    Entry { command: &ds_cli_pm::private_notes::UPDATE, handler: ds_cli_pm::private_notes::update, render: ds_cli_pm::private_notes::render },
     Entry { command: &ds_cli_pm::private_notes::LIST, handler: ds_cli_pm::private_notes::list, render: ds_cli_pm::private_notes::render },
     Entry { command: &ds_cli_pm::private_notes::READ, handler: ds_cli_pm::private_notes::read, render: ds_cli_pm::private_notes::render },
     Entry { command: &ds_cli_pm::private_notes::RETIRE, handler: ds_cli_pm::private_notes::retire, render: ds_cli_pm::private_notes::render },
@@ -3787,6 +3789,16 @@ static SERVER_ENTRIES: &[Entry] = &[
 ];
 
 static MESSAGING_ENTRIES: &[Entry] = &[
+    Entry {
+        command: &ds_cli_messaging::INSTALLATIONS,
+        handler: ds_cli_messaging::installations,
+        render: ds_cli_messaging::render,
+    },
+    Entry {
+        command: &ds_cli_messaging::REVOKE_INSTALLATION,
+        handler: ds_cli_messaging::revoke_installation,
+        render: ds_cli_messaging::render,
+    },
     Entry {
         command: &ds_cli_messaging::CONFIG,
         handler: ds_cli_messaging::config,
