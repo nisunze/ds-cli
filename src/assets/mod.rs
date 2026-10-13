@@ -37,6 +37,7 @@ use sha2::{Digest, Sha256};
 pub mod classify;
 pub mod container;
 pub mod format;
+pub mod index_read;
 pub mod mail_container;
 pub mod preview;
 pub mod tag_maps;
@@ -1229,6 +1230,10 @@ pub struct TreeResponse {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Request {
+    IndexRead {
+        schema: String,
+        request: index_read::Request,
+    },
     TagMaps {
         schema: String,
         project: String,
@@ -1284,6 +1289,10 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
         )?;
     }
     let value = match request {
+        Request::IndexRead { schema, request } => {
+            require_schema(&schema)?;
+            index_read::evaluate(request)?
+        }
         Request::TagMaps {
             schema,
             project,

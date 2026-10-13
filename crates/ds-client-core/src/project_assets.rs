@@ -703,6 +703,18 @@ fn run_index<T: AuthorizedTransport>(
     project: &str,
     command: &Command,
 ) -> Result<Value, ClientError> {
+    if let Command::IndexList(list) = command {
+        index_read_identity(
+            &ds_command_kernel::assets::index_read::Scope {
+                uid: authority.uid.to_owned(),
+                email: authority.email.to_owned(),
+                lane: profile.lane().token().to_owned(),
+                audience: format!("credential:{}", profile.credential_audience_sha256()),
+                project: project.to_owned(),
+            },
+            list,
+        )?;
+    }
     let mut data = call(profile, transport, authority, command.payload(project))?;
     match command {
         Command::IndexList(list) => {
@@ -1252,4 +1264,32 @@ mod tests {
         assert_eq!(refusal(501, b"{}").kind(), ErrorKind::RouteUnavailable);
         assert_eq!(refusal(503, b"upstream").kind(), ErrorKind::Transient);
     }
+}
+
+/// Shared native/WASM retained-page policy. It owns no bytes or credentials;
+/// authenticated hosts provide their exact captured and observed audience.
+pub fn index_read_policy(
+    request: ds_command_kernel::assets::index_read::Request,
+) -> Result<Value, ClientError> {
+    ds_command_kernel::assets::index_read::evaluate(request)
+        .map_err(|_| invalid("project Assets retained-page scope or ticket is invalid"))
+}
+
+/// Scope one native CLI/MCP IndexList using the same policy as retained Web IO.
+/// This does not add persistent holdings to the one-call native adapter.
+pub fn index_read_identity(
+    scope: &ds_command_kernel::assets::index_read::Scope,
+    list: &IndexList,
+) -> Result<Value, ClientError> {
+    let command = Command::IndexList(list.clone());
+    command.validate(&scope.project)?;
+    let mut query = command.payload(&scope.project);
+    let object = query.as_object_mut().ok_or_else(bad)?;
+    object.remove("action");
+    object.remove("ds_project");
+    object.remove("view");
+    index_read_policy(ds_command_kernel::assets::index_read::Request::Identity {
+        scope: scope.clone(),
+        query,
+    })
 }
