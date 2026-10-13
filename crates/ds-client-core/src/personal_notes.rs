@@ -39,6 +39,8 @@ pub enum Action {
     },
     Versions {
         id: String,
+        limit: usize,
+        cursor: Option<String>,
     },
     ReadVersion {
         id: String,
@@ -103,7 +105,17 @@ impl Action {
                 }
                 None
             }
-            Self::Read { id } | Self::Versions { id } | Self::ChecklistRead { id } => Some(id),
+            Self::Read { id } | Self::ChecklistRead { id } => Some(id),
+            Self::Versions { id, limit, cursor } => {
+                if !(1..=100).contains(limit)
+                    || cursor
+                        .as_ref()
+                        .is_some_and(|c| c.is_empty() || c.len() > 2048 || c.trim() != c)
+                {
+                    return Err(invalid());
+                }
+                Some(id)
+            }
             Self::ReadVersion { id, source_version } => {
                 if *source_version < 1 {
                     return Err(invalid());
@@ -190,7 +202,9 @@ impl Action {
                 id,
                 expected_version,
             } => json!({"action":"restore","id":id,"expected_version":expected_version}),
-            Self::Versions { id } => json!({"action":"versions","id":id}),
+            Self::Versions { id, limit, cursor } => {
+                json!({"action":"versions","id":id,"limit":limit,"cursor":cursor})
+            }
             Self::ReadVersion { id, source_version } => {
                 json!({"action":"read_version","id":id,"source_version":source_version})
             }
@@ -221,7 +235,7 @@ impl Action {
             Self::Read { id }
             | Self::Retire { id, .. }
             | Self::Restore { id, .. }
-            | Self::Versions { id }
+            | Self::Versions { id, .. }
             | Self::ReadVersion { id, .. }
             | Self::RestoreVersion { id, .. }
             | Self::ChecklistRead { id }
@@ -363,7 +377,9 @@ fn decode(action: &Action, response: crate::TransportResponse) -> Result<Value, 
                 return Err(unreadable());
             }
         }
-        Action::Versions { .. } => validate_versions(data, action.id())?,
+        Action::Versions { limit, cursor, .. } => {
+            validate_versions(data, action.id(), *limit, cursor.is_some())?
+        }
         Action::ReadVersion { source_version, .. } => {
             validate_note(&data["note"], Some(action.id()))?;
             if data["note"]["version"].as_i64() != Some(*source_version)
@@ -460,44 +476,98 @@ fn validate_note(note: &Value, id: Option<&str>) -> Result<(), ClientError> {
     }
     Ok(())
 }
-fn validate_versions(data: &Value, id: &str) -> Result<(), ClientError> {
-    let current = data["current_version"]
-        .as_i64()
-        .filter(|v| *v > 0)
-        .ok_or_else(unreadable)?;
-    let complete = data["complete"].as_bool().ok_or_else(unreadable)?;
-    let chain = data["history_chain_complete"]
-        .as_bool()
-        .ok_or_else(unreadable)?;
-    let versions = data["versions"].as_array().ok_or_else(unreadable)?;
-    if data["id"].as_str() != Some(id)
-        || data["truncated"].as_bool() != Some(!complete)
-        || versions.len() > 100
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct VersionPage {
+    id: String,
+    current_version: i64,
+    source_head_version: i64,
+    limit: usize,
+    versions: Vec<VersionHeader>,
+    complete: bool,
+    truncated: bool,
+    #[serde(default)]
+    next_cursor: Option<String>,
+    history_chain_complete: bool,
+    history_chain_status: String,
+}
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct VersionHeader {
+    version: i64,
+    sha256: String,
+    #[serde(rename = "changed_by")]
+    _changed_by: String,
+    changed_at: String,
+    #[serde(rename = "reason")]
+    _reason: String,
+    retained: bool,
+}
+fn validate_versions(
+    data: &Value,
+    id: &str,
+    limit: usize,
+    continuation: bool,
+) -> Result<(), ClientError> {
+    let page: VersionPage = serde_json::from_value(data.clone()).map_err(|_| unreadable())?;
+    if page.id != id
+        || page.current_version < 1
+        || page.source_head_version < 1
+        || page.source_head_version > page.current_version
+        || page.limit != limit
+        || page.versions.len() > limit
+        || page.truncated != !page.complete
+        || page.complete != page.next_cursor.is_none()
+        || page
+            .next_cursor
+            .as_ref()
+            .is_some_and(|c| c.is_empty() || c.len() > 2048)
+        || (!page.complete && page.versions.len() != limit)
+        || !matches!(
+            page.history_chain_status.as_str(),
+            "complete" | "incomplete" | "unknown"
+        )
+        || page.history_chain_complete != (page.history_chain_status == "complete")
     {
         return Err(unreadable());
     }
-    let mut ids = std::collections::BTreeSet::new();
-    for item in versions {
-        let version = item["version"]
-            .as_i64()
-            .filter(|v| *v > 0 && *v <= current)
-            .ok_or_else(unreadable)?;
-        if !ids.insert(version)
-            || !item["sha256"].as_str().is_some_and(sha_valid)
-            || item["retained"].as_bool().is_none()
-            || item["changed_by"].as_str().is_none()
-            || item["changed_at"].as_str().is_none()
-            || item["reason"].as_str().is_none()
+    let mut previous = page.source_head_version;
+    for (index, item) in page.versions.iter().enumerate() {
+        if item.version < 1
+            || item.version > page.source_head_version
+            || (index > 0 && item.version >= previous)
+            || !sha_valid(&item.sha256)
+            || item.changed_at.is_empty()
+            || (!item.retained
+                && (continuation || index != 0 || item.version != page.source_head_version))
         {
             return Err(unreadable());
         }
+        previous = item.version;
     }
-    if chain
-        && (!complete
-            || versions.len() as i64 != current
-            || versions.iter().any(|v| v["retained"] != true)
-            || ids.first() != Some(&1)
-            || ids.last() != Some(&current))
+    let observed_incomplete = page.versions.iter().any(|v| !v.retained)
+        || (!continuation
+            && page
+                .versions
+                .first()
+                .is_none_or(|v| v.version != page.source_head_version))
+        || page
+            .versions
+            .windows(2)
+            .any(|pair| pair[1].version != pair[0].version - 1)
+        || (page.complete && page.versions.last().is_some_and(|v| v.version != 1));
+    let fully_proven = !continuation
+        && page.complete
+        && page.versions.len() as i64 == page.source_head_version
+        && page
+            .versions
+            .iter()
+            .enumerate()
+            .all(|(i, v)| v.retained && v.version == page.source_head_version - i as i64);
+    if (observed_incomplete && page.history_chain_status != "incomplete")
+        || (fully_proven && page.history_chain_status != "complete")
+        || (page.history_chain_complete && !fully_proven)
+        || (!continuation && !observed_incomplete && page.history_chain_status == "incomplete")
     {
         return Err(unreadable());
     }
@@ -668,8 +738,10 @@ mod tests {
     fn legacy_history_enumeration_is_not_a_full_recoverable_chain() {
         let action = Action::Versions {
             id: "private".into(),
+            limit: 50,
+            cursor: None,
         };
-        let mut data = json!({"id":"private","current_version":7,"complete":true,"truncated":false,"history_chain_complete":false,
+        let mut data = json!({"id":"private","current_version":7,"source_head_version":7,"limit":50,"complete":true,"truncated":false,"history_chain_complete":false,"history_chain_status":"incomplete",
             "versions":[{"version":7,"sha256":"a".repeat(64),"changed_by":"owner","changed_at":"2026-10-13T00:00:00Z","reason":"observed_current","retained":false}]});
         assert!(decode(&action, response(data.clone())).is_ok());
         data["history_chain_complete"] = json!(true);
@@ -678,9 +750,61 @@ mod tests {
         data["truncated"] = json!(true);
         assert!(decode(&action, response(data.clone())).is_err());
         data["complete"] = json!(false);
-        assert!(decode(&action, response(data.clone())).is_ok());
+        assert!(decode(&action, response(data.clone())).is_err());
+        data["complete"] = json!(true);
+        data["truncated"] = json!(false);
         data["versions"][0]["version"] = json!(8);
         assert!(decode(&action, response(data)).is_err());
+    }
+    #[test]
+    fn version_pages_do_not_claim_unseen_history_and_keep_head_cutoff() {
+        let first = Action::Versions {
+            id: "private".into(),
+            limit: 1,
+            cursor: None,
+        };
+        let header = json!({"version":7,"sha256":"a".repeat(64),"changed_by":"owner","changed_at":"2026-10-13T00:00:00Z","reason":"update","retained":true});
+        let mut data = json!({"id":"private","current_version":8,"source_head_version":7,"limit":1,"complete":false,"truncated":true,"next_cursor":"opaque","history_chain_complete":false,"history_chain_status":"unknown","versions":[header]});
+        assert!(decode(&first, response(data.clone())).is_ok());
+        data["versions"][0]["document_json"] = json!("private body");
+        assert!(decode(&first, response(data.clone())).is_err());
+        data["versions"][0]
+            .as_object_mut()
+            .unwrap()
+            .remove("document_json");
+        data["history_chain_status"] = json!("complete");
+        data["history_chain_complete"] = json!(true);
+        assert!(decode(&first, response(data.clone())).is_err());
+        data["history_chain_status"] = json!("unknown");
+        data["history_chain_complete"] = json!(false);
+        data["source_head_version"] = json!(9);
+        assert!(decode(&first, response(data.clone())).is_err());
+        let next = Action::Versions {
+            id: "private".into(),
+            limit: 1,
+            cursor: Some("opaque".into()),
+        };
+        data["source_head_version"] = json!(7);
+        data["versions"][0]["retained"] = json!(false);
+        assert!(decode(&next, response(data)).is_err());
+        assert!(
+            Action::Versions {
+                id: "private".into(),
+                limit: 101,
+                cursor: None
+            }
+            .validate()
+            .is_err()
+        );
+        assert!(
+            Action::Versions {
+                id: "private".into(),
+                limit: 1,
+                cursor: Some(" ".into())
+            }
+            .validate()
+            .is_err()
+        );
     }
     #[test]
     fn historic_restore_receipt_matches_selected_content_and_preserved_current_controls() {
