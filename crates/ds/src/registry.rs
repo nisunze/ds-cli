@@ -2570,6 +2570,51 @@ static WORK_ENTRIES: &[Entry] = &[
         handler: ds_cli_pm::note::run,
         render: ds_cli_pm::note::render,
     },
+    Entry {
+        command: &ds_cli_pm::note_memory::READ,
+        handler: ds_cli_pm::note_memory::read,
+        render: ds_cli_pm::note_memory::render,
+    },
+    Entry {
+        command: &ds_cli_pm::note_memory::QUERY,
+        handler: ds_cli_pm::note_memory::query,
+        render: ds_cli_pm::note_memory::render,
+    },
+    Entry {
+        command: &ds_cli_pm::note_memory::CONTEXT,
+        handler: ds_cli_pm::note_memory::context,
+        render: ds_cli_pm::note_memory::render,
+    },
+    Entry {
+        command: &ds_cli_pm::note_memory::UPDATE,
+        handler: ds_cli_pm::note_memory::update,
+        render: ds_cli_pm::note_memory::render,
+    },
+    Entry {
+        command: &ds_cli_pm::note_memory::VERSIONS,
+        handler: ds_cli_pm::note_memory::versions,
+        render: ds_cli_pm::note_memory::render,
+    },
+    Entry {
+        command: &ds_cli_pm::note_memory::BACKUP,
+        handler: ds_cli_pm::note_memory::backup,
+        render: ds_cli_pm::note_memory::render,
+    },
+    Entry {
+        command: &ds_cli_pm::note_memory::RETIRE,
+        handler: ds_cli_pm::note_memory::retire,
+        render: ds_cli_pm::note_memory::render,
+    },
+    Entry {
+        command: &ds_cli_pm::note_memory::RESTORE,
+        handler: ds_cli_pm::note_memory::restore,
+        render: ds_cli_pm::note_memory::render,
+    },
+    Entry {
+        command: &ds_cli_pm::note_memory::CONSOLIDATE,
+        handler: ds_cli_pm::note_memory::consolidate,
+        render: ds_cli_pm::note_memory::render,
+    },
     Entry { command: &ds_cli_pm::checklist_notes::PROJECT_READ, handler: ds_cli_pm::checklist_notes::project_read, render: ds_cli_pm::checklist_notes::render },
     Entry { command: &ds_cli_pm::checklist_notes::PROJECT_EDIT, handler: ds_cli_pm::checklist_notes::project_edit, render: ds_cli_pm::checklist_notes::render },
     Entry { command: &ds_cli_pm::documents::COPY, handler: ds_cli_pm::documents::copy, render: ds_cli_pm::documents::render },
