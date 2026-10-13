@@ -159,8 +159,8 @@ SHA-256. Receipt size is independent of entity count.",
         },
         Refusal {
             code: "correction_scope_violation",
-            when: "a command or its resulting model change reaches outside selected alignments or its permitted kinds",
-            remedy: "split the correction or explicitly include every affected alignment after review",
+            when: "a guarded command names a missing target, edits a read-only field, or exceeds its selected alignments or permitted kinds",
+            remedy: "for read-only fields, remove that edit; for missing entities, select an existing target; for alignment-scope conflicts, split the correction or explicitly include every affected alignment after review",
         },
         Refusal {
             code: "admin_authority_required",
