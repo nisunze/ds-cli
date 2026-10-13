@@ -40,6 +40,7 @@ pub use ds_command_kernel::report_export::{
 };
 
 pub mod asset_preview;
+pub mod document_semantic;
 pub mod layout_preview;
 pub mod mv_artifact;
 pub mod mv_job;
