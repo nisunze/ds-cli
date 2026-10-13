@@ -331,7 +331,7 @@ fn command_id_valid(id: &str) -> bool {
             .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.'))
 }
 
-fn project_note_id_valid(id: &str) -> bool {
+pub(crate) fn project_note_id_valid(id: &str) -> bool {
     // Match `validPMReference`, rather than the narrower command-ID alphabet:
     // stable record IDs may contain Unicode and punctuation such as ':' or '@'.
     !id.is_empty()

@@ -1921,6 +1921,24 @@ impl DeviceApiAuthorization<'_> {
             request,
         )
     }
+    /// Capture one exact source-authorized PDF grant without reading its bytes.
+    pub fn authorize_asset_preview<T: AuthorizedTransport>(
+        &self,
+        transport: &mut T,
+        project: &str,
+        request: &ds_command_kernel::asset_preview::Request,
+        now: u64,
+    ) -> Result<crate::asset_preview_source::Grant, ClientError> {
+        crate::asset_preview_source::validate_online_request(project, request)?;
+        self.ensure_active(now)?;
+        crate::asset_preview_source::authorize(
+            self.profile,
+            transport,
+            self.authority(),
+            project,
+            request,
+        )
+    }
     /// One asset's row and its verified bytes, on a device session.
     pub fn read_asset_bytes<T: AuthorizedTransport>(
         &self,

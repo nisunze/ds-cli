@@ -1171,8 +1171,12 @@ impl ProjectManagementCall<'_> {
     pub const fn response_limit(&self) -> usize {
         8 * 1024 * 1024
     }
-    pub const fn timeout_seconds(&self) -> u64 {
-        30
+    pub fn timeout_seconds(&self) -> u64 {
+        if self.payload["action"] == "download_attachment_url" {
+            crate::asset_preview_source::TIMEOUT_SECONDS
+        } else {
+            30
+        }
     }
     pub const fn correlation_headers(&self) -> [&'static str; 2] {
         CORRELATION_HEADERS
@@ -3156,6 +3160,17 @@ pub trait Transport {
     ) -> Result<TransportResponse, TransportError> {
         Err(TransportError::Unreachable)
     }
+    fn asset_preview_bytes(
+        &mut self,
+        _call: crate::asset_preview_source::DownloadCall<'_>,
+        _writer: &mut dyn std::io::Write,
+        _control: &dyn crate::asset_preview_source::TransferControl,
+    ) -> Result<
+        crate::asset_preview_source::DownloadReceipt,
+        crate::asset_preview_source::TransferError,
+    > {
+        Err(crate::asset_preview_source::TransferError::Unreachable)
+    }
     fn shared_asset_bytes(
         &mut self,
         _call: crate::shared_assets::DownloadCall<'_>,
@@ -3524,6 +3539,17 @@ pub trait AuthorizedTransport {
     ) -> Result<TransportResponse, TransportError> {
         Err(TransportError::Unreachable)
     }
+    fn asset_preview_bytes(
+        &mut self,
+        _call: crate::asset_preview_source::DownloadCall<'_>,
+        _writer: &mut dyn std::io::Write,
+        _control: &dyn crate::asset_preview_source::TransferControl,
+    ) -> Result<
+        crate::asset_preview_source::DownloadReceipt,
+        crate::asset_preview_source::TransferError,
+    > {
+        Err(crate::asset_preview_source::TransferError::Unreachable)
+    }
     fn shared_asset_bytes(
         &mut self,
         _call: crate::shared_assets::DownloadCall<'_>,
@@ -3867,6 +3893,17 @@ impl<T: Transport> AuthorizedTransport for T {
         call: SurveyMediaGrantCall<'_>,
     ) -> Result<TransportResponse, TransportError> {
         Transport::survey_media_grant(self, call)
+    }
+    fn asset_preview_bytes(
+        &mut self,
+        call: crate::asset_preview_source::DownloadCall<'_>,
+        writer: &mut dyn std::io::Write,
+        control: &dyn crate::asset_preview_source::TransferControl,
+    ) -> Result<
+        crate::asset_preview_source::DownloadReceipt,
+        crate::asset_preview_source::TransferError,
+    > {
+        Transport::asset_preview_bytes(self, call, writer, control)
     }
     fn shared_asset_bytes(
         &mut self,

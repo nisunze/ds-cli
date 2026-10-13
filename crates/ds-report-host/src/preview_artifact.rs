@@ -207,8 +207,19 @@ fn begin_request_with_lock(
             ));
         }
         if clock < old.artifact.expires_at_unix_ms {
-            admit_receipt_at(room, &old.artifact, clock)?;
-            lease.retained = Some(old);
+            let manifest = read_manifest(&root(room, &owner).join(&old.artifact.result_sha256))?;
+            admit_manifest_identity(room, &manifest)?;
+            if manifest.artifact != old.artifact {
+                return Err(failed(
+                    "preview request differs from its exact native file manifest",
+                ));
+            }
+            // An observed denial is never a retained answer. A native producer
+            // must acquire and verify complete new bytes before re-admission.
+            if !manifest.revoked {
+                admit_receipt_at(room, &old.artifact, clock)?;
+                lease.retained = Some(old);
+            }
         }
     }
     Ok(lease)
@@ -349,11 +360,19 @@ pub(crate) fn forget_asset_requests(room: &Room, asset_id: &str) -> Result<usize
         .map_err(failed)?;
         match fs::symlink_metadata(&result) {
             Ok(_) => {
-                let manifest = read_manifest(&result)?;
-                let page = admit_manifest(room, &manifest)?;
+                let mut manifest = read_manifest(&result)?;
+                let page = admit_manifest_identity(room, &manifest)?;
                 if manifest.artifact != record.artifact {
                     return Err(failed("source denial artifact differs from its request"));
                 }
+                // Refuse every old locator FIRST. Foreign contents may block
+                // deletion, but cannot turn a denied source into a readable PDF.
+                manifest.revoked = true;
+                ds_layer_store::private::write_atomic(
+                    &result.join("manifest.json"),
+                    serde_json::to_vec(&manifest).map_err(|e| failed(e.to_string()))?,
+                )
+                .map_err(|e| failed(e.to_string()))?;
                 remove_owned(&result, &manifest, &page)?;
             }
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
@@ -370,6 +389,11 @@ pub(crate) fn forget_asset_requests(room: &Room, asset_id: &str) -> Result<usize
 struct Manifest {
     artifact: Artifact,
     metadata: Value,
+    #[serde(default, skip_serializing_if = "not_revoked")]
+    revoked: bool,
+}
+fn not_revoked(value: &bool) -> bool {
+    !*value
 }
 
 fn failed(message: impl Into<String>) -> HostFailure {
@@ -461,6 +485,12 @@ fn read_manifest(directory: &Path) -> Result<Manifest, HostFailure> {
         .map_err(|e| failed(format!("preview artifact manifest is unreadable: {e}")))
 }
 fn admit_manifest(room: &Room, manifest: &Manifest) -> Result<PathBuf, HostFailure> {
+    if manifest.revoked {
+        return Err(failed("preview was revoked by its source authority"));
+    }
+    admit_manifest_identity(room, manifest)
+}
+fn admit_manifest_identity(room: &Room, manifest: &Manifest) -> Result<PathBuf, HostFailure> {
     let artifact = &manifest.artifact;
     let media = Media::admit(&artifact.content_type)?;
     let owner = authority(room)?;
@@ -644,11 +674,22 @@ fn materialize_file_at(
     let target = base.join(&result);
     if fs::symlink_metadata(&target).is_ok() {
         let manifest = read_manifest(&target)?;
-        let path = admit_manifest(room, &manifest)?;
+        let path = admit_manifest_identity(room, &manifest)?;
         if manifest.metadata != metadata {
             return Err(failed(
                 "preview result identity differs from its retained manifest",
             ));
+        }
+        if manifest.revoked {
+            // This materializer received a completed native producer's bytes,
+            // not a cached read. Give the verified new result its own identity;
+            // the denied result and foreign files remain untouched/unreadable.
+            let mut metadata = metadata;
+            metadata["native_re_admission"] = json!({"operation":crate::random_run_id()});
+            drop(_lock);
+            return materialize_file_at(
+                room, size_bytes, sha256, metadata, media, retention, clock, write,
+            );
         }
         crate::verify_file(&path, size_bytes, &sha256)?;
         if clock < manifest.artifact.expires_at_unix_ms {
@@ -681,6 +722,7 @@ fn materialize_file_at(
     let manifest = serde_json::to_vec(&Manifest {
         artifact: artifact.clone(),
         metadata,
+        revoked: false,
     })
     .map_err(|e| failed(e.to_string()))?;
     if manifest.len() as u64 > MAX_MANIFEST_BYTES {

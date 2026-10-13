@@ -149,8 +149,16 @@ impl SourceProof {
                 "The selected PDF pins differ from source authority; re-read the source row.",
             ));
         }
-        if !matches!(self.sensitivity.as_str(), "open" | "internal") {
-            return Err(fail("asset_preview_retention_forbidden","This source classification does not allow retained preview bytes; use its governed download."));
+        // Brain's fresh grant decides which member may read this class.
+        // A native DTO cannot remove an otherwise authorized PDF preview.
+        if !crate::assets::Sensitivity::ALL
+            .iter()
+            .any(|class| class.as_str() == self.sensitivity)
+        {
+            return Err(fail(
+                "asset_preview_source_invalid",
+                "The source grant has an undeclared classification.",
+            ));
         }
         Ok(())
     }

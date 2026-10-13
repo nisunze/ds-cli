@@ -311,6 +311,7 @@ pub mod design_annotations;
 pub mod known_columns;
 /// The project's document catalogue — folders, rows, bytes, classification,
 /// links and ingest — reachable without a window.
+pub mod asset_preview_source;
 pub mod project_assets;
 pub mod shared_assets;
 mod shared_map_publish;

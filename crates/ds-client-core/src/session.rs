@@ -1444,6 +1444,29 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
             request,
         )
     }
+    /// Capture one exact source-authorized PDF grant without reading its bytes.
+    pub fn authorize_asset_preview(
+        &mut self,
+        project: &str,
+        request: &ds_command_kernel::asset_preview::Request,
+        now: u64,
+    ) -> Result<crate::asset_preview_source::Grant, ClientError> {
+        crate::asset_preview_source::validate_online_request(project, request)?;
+        self.ensure_fresh_session(now)?;
+        let session = self.session.as_ref().ok_or_else(signed_out)?;
+        crate::asset_preview_source::authorize(
+            &self.profile,
+            &mut self.transport,
+            crate::authorized::Authority {
+                bearer_token: &session.id_token,
+                uid: &session.stored.uid,
+                email: &session.stored.email,
+                device_id: None,
+            },
+            project,
+            request,
+        )
+    }
     /// One asset's row and its verified bytes, through the signed read.
     pub fn read_asset_bytes(
         &mut self,

@@ -133,12 +133,9 @@ pub fn acquire(
         match provider.authorize(request, control) {
             Ok(source) => {
                 control.check_current()?;
-                if let Err(error) = source.validate(&room.scope.project, request) {
-                    if error.code == "asset_preview_retention_forbidden" {
-                        preview_artifact::forget_asset_requests(room, &request.asset_id)?;
-                    }
-                    return Err(admission(error));
-                }
+                source
+                    .validate(&room.scope.project, request)
+                    .map_err(admission)?;
                 Some(source)
             }
             Err(error) => {
@@ -537,6 +534,32 @@ mod tests {
         assert_eq!(preview_artifact::read(&room, &held.artifact).unwrap(), PDF);
     }
     #[test]
+    fn permitted_restricted_and_confidential_grants_preserve_native_preview_capability() {
+        for class in ["restricted", "confidential"] {
+            let dir = tempfile::tempdir().unwrap();
+            let room = room(dir.path().into());
+            let c = Arc::new(Counts::default());
+            let mut p = provider(c.clone());
+            p.source.sensitivity = class.into();
+            let g = guard(c.clone());
+            let receipt = acquire(&room, &request(), &mut p, &g).unwrap();
+            assert_eq!(receipt.source.sensitivity, class);
+            assert!(
+                acquire(&room, &offline(&receipt), &mut p, &g)
+                    .unwrap()
+                    .cache
+                    .reused
+            );
+            p.denied = true;
+            assert_eq!(
+                acquire(&room, &request(), &mut p, &g).unwrap_err().code,
+                "asset_denied"
+            );
+            assert!(preview_artifact::read(&room, &receipt.artifact).is_err());
+            assert_eq!(c.acquisitions.load(Ordering::SeqCst), 1);
+        }
+    }
+    #[test]
     fn concurrent_consumers_authorize_but_join_one_byte_acquire_and_decode() {
         let dir = tempfile::tempdir().unwrap();
         let room = room(dir.path().into());
@@ -646,6 +669,41 @@ mod tests {
         assert_eq!(c.acquisitions.load(Ordering::SeqCst), 1);
     }
     #[test]
+    fn source_denial_refuses_old_receipt_when_foreign_files_block_cleanup_and_only_fresh_bytes_readmit(
+    ) {
+        let dir = tempfile::tempdir().unwrap();
+        let room = room(dir.path().into());
+        let c = Arc::new(Counts::default());
+        let mut p = provider(c.clone());
+        let g = guard(c.clone());
+        let first = acquire(&room, &request(), &mut p, &g).unwrap();
+        let folder = PathBuf::from(&first.artifact.path)
+            .parent()
+            .unwrap()
+            .to_path_buf();
+        let foreign = folder.join("foreign.txt");
+        std::fs::write(&foreign, b"leave untouched").unwrap();
+        p.denied = true;
+        assert!(acquire(&room, &request(), &mut p, &g).is_err());
+        assert!(preview_artifact::read(&room, &first.artifact).is_err());
+        assert_eq!(std::fs::read(&foreign).unwrap(), b"leave untouched");
+        assert_eq!(
+            acquire(&room, &offline(&first), &mut p, &g)
+                .unwrap_err()
+                .code,
+            "asset_preview_offline_absent"
+        );
+        assert_eq!(c.acquisitions.load(Ordering::SeqCst), 1);
+        p.denied = false;
+        let fresh = acquire(&room, &request(), &mut p, &g).unwrap();
+        assert!(!fresh.cache.reused);
+        assert_ne!(fresh.artifact.path, first.artifact.path);
+        assert_eq!(c.acquisitions.load(Ordering::SeqCst), 2);
+        assert_eq!(preview_artifact::read(&room, &fresh.artifact).unwrap(), PDF);
+        assert!(preview_artifact::read(&room, &first.artifact).is_err());
+        assert_eq!(std::fs::read(&foreign).unwrap(), b"leave untouched");
+    }
+    #[test]
     fn changed_revision_generation_sha_class_and_scope_refuse_before_source_bytes() {
         let dir = tempfile::tempdir().unwrap();
         let room = room(dir.path().into());
@@ -661,7 +719,7 @@ mod tests {
                 0 => p.source.revision = "new-version".into(),
                 1 => p.source.generation = "new-generation".into(),
                 2 => p.source.advertised_sha256 = Some("b".repeat(64)),
-                _ => p.source.sensitivity = "restricted".into(),
+                _ => p.source.sensitivity = "undeclared".into(),
             };
             assert!(acquire(&room, &pin, &mut p, &g).is_err());
         }
