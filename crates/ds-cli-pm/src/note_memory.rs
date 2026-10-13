@@ -14,6 +14,7 @@ const VERSION: Arg = Arg::value(
     "<integer>",
     "Exact positive recoverable note version; omit to read current.",
 );
+const PARENT: Arg = Arg::value("parent", "<note-id>", "Read direct subnotes of this exact same-project note; no recursive acquisition. Set draft.memory.parent with an exact id/version in typed creation/update JSON.");
 const CLAIM: Arg = Arg::value(
     "claim",
     "<claim-id>",
@@ -125,10 +126,11 @@ pub static READ: Command = descriptor(
 pub static QUERY: Command = descriptor(
     "pm.note.query",
     &["pm", "note", "query"],
-    "Search shared notes by normalized tags, type, lifecycle and time.",
-    "Read one bounded same-project note page using normalized topical tags and explicit any/all matching. Lifecycle filters do not alter topical tags. Sort is creation/update time only, not authority or automatic supersession. Return scan/completeness/truncation explicitly; a partial empty page is not proof of no context.",
+    "Search shared notes or read direct subnotes with bounded filters.",
+    "Read one bounded same-project note page; --parent selects direct subnotes without recursive acquisition. Use normalized topical tags and explicit any/all matching. Lifecycle filters do not alter topical tags. Sort is creation/update time only, not authority or automatic supersession. Return scan/completeness/truncation explicitly; a partial empty page is not proof of no context.",
     Effect::ReadOnly,
     &[
+        PARENT,
         TERM,
         TAG,
         TAG_MATCH,
@@ -273,7 +275,7 @@ pub fn read(i: &Inputs, _: &Context) -> Result<Value, Failure> {
     )
 }
 fn query_request(i: &Inputs) -> Result<owner::Query, Failure> {
-    let q=serde_json::from_value(json!({"terms":i.repeated("term"),"tags":i.repeated("tag"),"tag_match":i.require("tag-match")?,"note_types":i.repeated("type"),"lifecycle":i.repeated("status"),"sort":i.require("sort")?,"direction":i.require("direction")?,"cursor":i.value("cursor"),"limit":crate::integer(i.require("limit")?,"limit",1,50)?})).map_err(invalid)?;
+    let q=serde_json::from_value(json!({"parent_id":i.value("parent"),"terms":i.repeated("term"),"tags":i.repeated("tag"),"tag_match":i.require("tag-match")?,"note_types":i.repeated("type"),"lifecycle":i.repeated("status"),"sort":i.require("sort")?,"direction":i.require("direction")?,"cursor":i.value("cursor"),"limit":crate::integer(i.require("limit")?,"limit",1,50)?})).map_err(invalid)?;
     Ok(q)
 }
 pub fn query(i: &Inputs, _: &Context) -> Result<Value, Failure> {
@@ -364,6 +366,18 @@ mod tests {
         assert_eq!(q.sort, owner::Sort::Created);
         assert_eq!(q.direction, owner::Direction::Asc);
         assert_eq!(q.limit, 7);
+    }
+    #[test]
+    fn parent_selector_is_explicit_and_reaches_existing_owner() {
+        let i = parse(&QUERY, &["--project", "p", "--parent", "parent-note"]);
+        let q = query_request(&i).unwrap();
+        q.validate().unwrap();
+        assert_eq!(q.parent_id.as_deref(), Some("parent-note"));
+        let payload = owner::Command::Query(q).payload("p").unwrap();
+        assert_eq!(payload["action"], "project_note_query");
+        assert_eq!(payload["project_note"]["parent_id"], "parent-note");
+        let unselected = query_request(&parse(&QUERY, &["--project", "p"])).unwrap();
+        assert!(unselected.parent_id.is_none());
     }
     #[test]
     fn invalid_enum_and_bound_refuse_before_auth_or_a_project_read() {

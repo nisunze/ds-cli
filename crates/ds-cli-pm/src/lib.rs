@@ -64,6 +64,7 @@ pub mod member;
 pub mod model_link;
 pub mod note;
 pub mod note_memory;
+pub mod private_notes;
 pub mod party;
 pub mod plan;
 pub mod overview;
@@ -661,28 +662,34 @@ impl Graph {
     }
 }
 
-/// The named project's context records — every readable record, up to the
-/// server's bound per collection — and whether the server cut the page.
-pub fn records(
-    lane: &str,
-    project: &str,
-) -> Result<(String, Vec<reads::ContextRecord>, bool), Failure> {
+/// A bounded selected-task records page, with authoritative completeness.
+pub struct TaskRecords {
+    pub uid: String,
+    pub rows: Vec<reads::ContextRecord>,
+    pub truncated: bool,
+    pub next_cursor: Option<String>,
+}
+
+/// Read only correspondence linked to this task through the existing owner.
+pub fn records(lane: &str, project: &str, task: &str) -> Result<TaskRecords, Failure> {
     let report = ds_cli_auth::project_management_for_project(
         lane,
         project,
-        &ds_client_core::project_management::Command::Context {
-            limit: Some(MAX_CONTEXT_ROWS),
+        &ds_client_core::project_management::Command::TaskRecords {
+            task_id: task.to_owned(),
+            limit: MAX_CONTEXT_ROWS,
         },
     )?;
-    let project_id = report.project_id().to_owned();
+    let uid = report.identity().uid().to_owned();
     let context = report.into_result();
-    let truncated = context["truncated_by_collection"]["records"] == Value::Bool(true)
-        || context["next_cursors"]["records"].is_string();
-    Ok((
-        project_id,
-        reads::decode_context_records(&context),
-        truncated,
-    ))
+    Ok(TaskRecords {
+        uid,
+        rows: reads::decode_context_records(&context),
+        truncated: context["truncated_by_collection"]["pm_records"] == Value::Bool(true),
+        next_cursor: context["next_cursors"]["pm_records"]
+            .as_str()
+            .map(str::to_owned),
+    })
 }
 
 /// Commit one prepared command and fold the engine's answer.
