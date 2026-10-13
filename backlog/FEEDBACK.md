@@ -2,14 +2,14 @@
 
 > **Moved 2026-10-07:** this backlog now lives in `ds-command-kernel/backlog/`. The old `ds-work/backlog/` no longer exists: edit these files here, commit them to ds-command-kernel `run`, and stage only `backlog/`. ds-work holds working sessions, not coding lists.
 
-Working list from the 2026-10-07 snapshot and 2026-10-09 component lookups, with proven closures removed: 247 tracked rows (96 open, 151 waiting according to the rows below). These are file counts, not a fresh live backlog total. The feedback API is the authority: verify each selected report's current status, full ID, version and acceptance through `ds`, close only what is proven, and remove its row. Delete this file when its remaining work is fulfilled; keep no completed-work archive.
+Working list from the 2026-10-07 snapshot and 2026-10-09 component lookups, with proven closures removed: 246 tracked rows (95 open, 151 waiting according to the rows below). These are file counts, not a fresh live backlog total. The feedback API is the authority: verify each selected report's current status, full ID, version and acceptance through `ds`, close only what is proven, and remove its row. Delete this file when its remaining work is fulfilled; keep no completed-work archive.
 
-Reports are grouped by the live repository that owns the code, then by component. The component is the submitter's free-text label, shown verbatim so `ds feedback list --component` finds it. Legacy labels map as follows: `ds-grid*`, `dsgrid*`, `ds/grid-*`, `ds/pls-library` → ds-network; `ds-report*`, `ds-printing*` → ds-network-reporter; `ds-desktop*` → ds-web (`src-tauri`); `ds pls desktop` → ds-cli (`ds-cli-pls/desktop`). Labels that name no repository stay **unassigned**. "Backlog" names the [OPEN.md](OPEN.md), [OPEN-X.md](OPEN-X.md) or [SEEDING.md](SEEDING.md) section citing the report; **untracked** means none does (123 reports).
+Reports are grouped by the live repository that owns the code, then by component. The component is the submitter's free-text label, shown verbatim so `ds feedback list --component` finds it. Legacy labels map as follows: `ds-grid*`, `dsgrid*`, `ds/grid-*`, `ds/pls-library` → ds-network; `ds-report*`, `ds-printing*` → ds-network-reporter; `ds-desktop*` → ds-web (`src-tauri`); `ds pls desktop` → ds-cli (`ds-cli-pls/desktop`). Labels that name no repository stay **unassigned**. "Backlog" names the [OPEN.md](OPEN.md), [OPEN-X.md](OPEN-X.md) or [SEEDING.md](SEEDING.md) section citing the report; **untracked** means none does (122 reports).
 
 | Repository | Total | Blocker | Major | Minor | Waiting | Untracked |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 | [ds-cli](#ds-cli) | 92 | 11 | 62 | 19 | 58 | 57 |
-| [ds-network](#ds-network) | 72 | 18 | 50 | 4 | 36 | 25 |
+| [ds-network](#ds-network) | 71 | 18 | 49 | 4 | 36 | 24 |
 | [ds-network-reporter](#ds-network-reporter) | 28 | 1 | 21 | 6 | 20 | 16 |
 | [ds-web](#ds-web) | 34 | 6 | 26 | 2 | 24 | 15 |
 | [ds-command-kernel](#ds-command-kernel) | 4 | 0 | 3 | 1 | 4 | 0 |
@@ -162,7 +162,6 @@ Reports are grouped by the live repository that owns the code, then by component
 | ds-network/ds-grid-engine | `e343d5ac` | major | bug | DS stringing ignores the imported AutoSag criteria: sections ~27% tighter than PLS AutoSag, 828 section violations | waiting: Criterion-consistent stringing and native PLS-CADD AutoSag/strength acceptance for Model 2. | OPEN.md §12, OPEN.md §15, SEEDING.md §15 |
 | ds-network/ds-grid-engine structure_usage + capacity | `4ba8ab15` | major | bug | screen_structure_usage takes one side at section-boundary structures: wind span ~0.5x PLS, 115 spurious uplifts (Gisagara calibration) | waiting: install of canary 0.1.7-r79+ carrying ds-network@d1afa41f (+91648b08), then Gisagara rev 3 calibration rerun | OPEN.md §12 |
 | ds-network/ds-grid-engine-staking | `1cefa357` | major | friction | Native no-route transformer ledger and complete staking-table export | open | **untracked** |
-| ds-network/ds-grid-engine/spotting | `449b4f36` | major | bug | Spotting clearance witness uses base station despite longitudinal attachment offsets | open | **untracked** |
 | ds-network/ds-grid-engine/terrain | `5acb6a57` | major | bug | Gisagara M3: off-route DEM sides create sawtooth ground and pole base heights | waiting: install of canary 0.1.7-r79+ carrying ds-network@6b34bf38 (+ ds-cli@b3885b75), then Gisagara M3 replay | **untracked** |
 | ds-network/ds-grid-exchange | `3a302e54` | major | bug | PLS export writes blank Final After Creep weather case: PLS-CADD stops on open (wc_name_to_index couldnt find weather case) | waiting: install of canary 0.1.7-r79+ carrying ds-network@ef473944; final-after-load weather cases still unaddressed | **untracked** |
 | ds-network/ds-grid-exchange | `2c311576` | major | bug | PLS-CADD .cri cable tension limits imported ~10x too small (1042 read as N): DS sags 3.6x too slack, short spans | waiting: exact Gisagararev3.bak import and PLS-CADD 16.81 Model 1 AutoSag parity (~540 m EDT initial), with low-limit/catenary and .wir unit controls | **untracked** |
