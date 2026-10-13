@@ -34,6 +34,7 @@ mod command_wire;
 pub mod correspondence;
 mod hierarchy;
 pub mod model_links;
+pub mod overview;
 pub mod projections;
 pub mod reads;
 pub mod task_attachment_detach;
@@ -372,6 +373,11 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
         ));
     }
     match head.action.as_str() {
+        "overview" => {
+            let request: overview::Input = serde_json::from_slice(input)
+                .map_err(|error| format!("Invalid project overview request: {error}"))?;
+            serde_json::to_string(&overview::fold(request)?).map_err(|error| error.to_string())
+        }
         "plan" => {
             let request: PlanRequest = serde_json::from_slice(input)
                 .map_err(|error| format!("Invalid project management request: {error}"))?;

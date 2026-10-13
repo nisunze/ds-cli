@@ -93,7 +93,7 @@ fn percent(progress: f64) -> u64 {
     (progress.clamp(0.0, 1.0) * 100.0).round() as u64
 }
 
-fn task_row(wbs: &str, task: &CanonicalProjectTask) -> TaskRow {
+pub(super) fn task_row(wbs: &str, task: &CanonicalProjectTask) -> TaskRow {
     TaskRow {
         wbs: wbs.to_owned(),
         id: task.id.clone(),

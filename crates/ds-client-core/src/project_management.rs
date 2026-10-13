@@ -33,6 +33,7 @@ use serde_json::{json, Map, Value};
 pub mod checklist;
 pub mod create_attached;
 pub mod documents;
+mod overview;
 
 use crate::{
     authorized::Authority, AuthorizedTransport, ClientError, ClientProfile, ErrorKind,
@@ -194,6 +195,10 @@ pub enum Command {
     /// per-task endpoint would be a second answer that could disagree with
     /// this one.
     Graph,
+    /// Project-wide task/milestone/record/project-note overview, two exact reads.
+    Overview {
+        options: ds_command_kernel::project_management::overview::Options,
+    },
     /// Existing authenticated collaboration index, independent of saved selection.
     PublicProjects {
         status: String,
@@ -352,7 +357,7 @@ fn wire_command_valid(command: &Value) -> bool {
 impl Command {
     fn action(&self) -> &'static str {
         match self {
-            Self::Graph => "get_graph",
+            Self::Graph | Self::Overview { .. } => "get_graph",
             Self::PublicProjects { .. } => "list_public_projects",
             Self::TaskCommentCreate { .. } => "create_comment",
             Self::TaskComments { .. } => "get_context",
@@ -379,6 +384,12 @@ impl Command {
         let invalid = |message: &'static str| ClientError::new(ErrorKind::InvalidInput, message);
         match self {
             Self::Graph | Self::Assignees => Ok(()),
+            Self::Overview { options } => options.validate().map_err(|_| {
+                ClientError::new(
+                    ErrorKind::InvalidInput,
+                    "project overview options are invalid",
+                )
+            }),
             Self::TaskCreateAttached {
                 command_id,
                 base_revision,
@@ -578,7 +589,7 @@ impl Command {
     fn payload(&self, project: &str) -> Value {
         let mut payload = json!({ "action": self.action(), "ds_project": project });
         match self {
-            Self::Graph | Self::Assignees => {}
+            Self::Graph | Self::Assignees | Self::Overview { .. } => {}
             Self::TaskDetach { request } => return request.payload(project),
             Self::TaskAttach { task_id, file } => {
                 return attachment_start_payload(project, task_id, file);
@@ -975,6 +986,9 @@ pub(crate) fn run<T: AuthorizedTransport>(
         readable_project(project)?
     };
     command.validate()?;
+    if let Command::Overview { options } = command {
+        return overview::run(profile, transport, authority, project, options);
+    }
     if let Command::TaskCreateAttached { task_id, files, .. } = command {
         return create_attached::run(
             profile,
@@ -1045,7 +1059,8 @@ pub(crate) fn run<T: AuthorizedTransport>(
             .unwrap_or(data),
         // Context creation returns `{item: <PMDoc>}` intact, including the
         // server-authored id and version for callers to shape.
-        Command::PublicProjects { .. }
+        Command::Overview { .. }
+        | Command::PublicProjects { .. }
         | Command::TaskCommentCreate { .. }
         | Command::ProjectNoteCreate { .. }
         | Command::ProjectNoteCreateLinked { .. }
@@ -1566,9 +1581,19 @@ mod tests {
             &mut self,
             call: ProjectManagementCall<'_>,
         ) -> Result<crate::TransportResponse, crate::TransportError> {
+            if matches!(
+                call.payload["action"].as_str(),
+                Some("get_graph" | "get_context")
+            ) && self.upload_status == 403
+            {
+                self.payloads.push(call.payload);
+                return Ok(crate::TransportResponse::new(403, br#"{"success":false,"error":{"code":"INSUFFICIENT_PERMISSIONS","message":"Project unavailable"}}"#.to_vec()));
+            }
             let data = match call.payload["action"].as_str() {
                 Some("commit_command") => self.created.clone().expect("explicit creation fixture"),
                 Some("detach_task_attachment") => self.started.clone(),
+                Some("get_graph") => self.started.clone(),
+                Some("get_context") => self.finalized.clone(),
                 Some("start_attachment_upload") => {
                     let mut started = self.started.clone();
                     started["item"]["id"] = json!(format!("att-{}", self.uploaded.len() + 1));
@@ -1878,6 +1903,108 @@ mod tests {
             "mismatched receipt is never retried"
         );
         assert!(foreign.uploaded.is_empty());
+    }
+
+    #[test]
+    fn project_overview_reads_exact_pair_and_never_turns_refusals_into_empty_work() {
+        use ds_command_kernel::project_management::overview::Options;
+        let mut transport = attach_transport("ready", 1);
+        transport.started = json!({"graph":{"project_id":"project-a","revision":9,"schedule_revision":4,"tasks":[{"id":"inbox","data":{"title":"Inbox without geometry","placement":"inbox","type":"task"}},{"id":"gate","data":{"title":"Milestone","type":"milestone"}}],"dependencies":[],"residual_items":[]}});
+        transport.finalized = json!({"context":{"project_id":"project-a","records":[{"id":"record","version":2,"data":{"category":"instruction","subject":"Record"}},{"id":"note","version":7,"data":{"category":"project_note","subject":"Note without geometry"}}],"truncated_by_collection":{"pm_records":false},"next_cursors":{},"personal_notes":[{"body":"PRIVATE_SECRET"}]}});
+        let profile = crate::data_distribution::tests::profile_for_tests();
+        let invoke = |t: &mut AttachTransport, options: Options| {
+            run(
+                &profile,
+                t,
+                crate::authorized::Authority {
+                    bearer_token: "bearer",
+                    uid: "uid",
+                    email: "user@example.com",
+                    device_id: None,
+                },
+                "project-a",
+                &Command::Overview { options },
+            )
+        };
+        let result = invoke(&mut transport, Options::default()).unwrap();
+        assert_eq!(
+            transport.payloads,
+            vec![
+                json!({"action":"get_graph","ds_project":"project-a"}),
+                json!({"action":"get_context","ds_project":"project-a","limit":100})
+            ]
+        );
+        assert_eq!(result["tasks"]["count"], 1);
+        assert_eq!(result["milestones"]["count"], 1);
+        assert_eq!(result["records"]["count"], 1);
+        assert_eq!(result["project_notes"]["rows"][0]["version"], 7);
+        assert_eq!(result["source_authority"]["uid"], "uid");
+        assert_eq!(result["source_authority"]["project_id"], "project-a");
+        assert_eq!(result["source_authority"]["lane"], "stable");
+        assert!(
+            !result.to_string().contains("PRIVATE_SECRET")
+                && !result.to_string().contains("bearer")
+        );
+        assert!(transport.uploaded.is_empty());
+        transport.payloads.clear();
+        assert_eq!(
+            invoke(
+                &mut transport,
+                Options {
+                    limit: 0,
+                    ..Options::default()
+                }
+            )
+            .unwrap_err()
+            .kind(),
+            ErrorKind::InvalidInput
+        );
+        assert!(transport.payloads.is_empty());
+        transport.started["graph"]["project_id"] = json!("foreign");
+        assert_eq!(
+            invoke(&mut transport, Options::default())
+                .unwrap_err()
+                .kind(),
+            ErrorKind::UnreadableResponse
+        );
+        assert_eq!(
+            transport.payloads.len(),
+            1,
+            "bad graph never fetches context"
+        );
+        transport.payloads.clear();
+        transport.upload_status = 403;
+        assert_eq!(
+            invoke(&mut transport, Options::default())
+                .unwrap_err()
+                .kind(),
+            ErrorKind::AuthenticationRejected
+        );
+        assert_eq!(
+            transport.payloads.len(),
+            1,
+            "denied graph never fetches context"
+        );
+        transport.upload_status = 200;
+        transport.started["graph"]["project_id"] = json!("project-a");
+        transport.finalized["context"]["records"] = Value::Null;
+        transport.payloads.clear();
+        assert_eq!(
+            invoke(&mut transport, Options::default())
+                .unwrap_err()
+                .kind(),
+            ErrorKind::UnreadableResponse
+        );
+        assert_eq!(transport.payloads.len(), 2);
+        transport.finalized["context"]["project_id"] = json!("foreign");
+        transport.payloads.clear();
+        assert_eq!(
+            invoke(&mut transport, Options::default())
+                .unwrap_err()
+                .kind(),
+            ErrorKind::UnreadableResponse
+        );
+        assert_eq!(transport.payloads.len(), 2);
     }
 
     #[test]
