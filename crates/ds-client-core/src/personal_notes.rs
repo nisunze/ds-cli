@@ -4,6 +4,7 @@ use crate::project_management::checklist::Edit;
 use crate::{AuthorizedTransport, ClientError, ClientProfile, ErrorKind, authorized::Authority};
 use serde_json::{Value, json};
 
+mod backup;
 mod draft;
 pub use draft::Draft;
 
@@ -51,6 +52,23 @@ pub enum Action {
         expected_version: i64,
         source_version: i64,
         source_sha256: String,
+        command_id: String,
+    },
+    Backup {
+        id: String,
+        expected_version: i64,
+        command_id: String,
+    },
+    ReadBackup {
+        id: String,
+        backup_id: String,
+        backup_sha256: String,
+    },
+    RestoreBackup {
+        id: String,
+        expected_version: i64,
+        backup_id: String,
+        backup_sha256: String,
         command_id: String,
     },
     ChecklistRead {
@@ -152,6 +170,46 @@ impl Action {
                 }
                 Some(id)
             }
+            Self::Backup {
+                id,
+                expected_version,
+                command_id,
+            } => {
+                if !(1..i64::MAX).contains(expected_version) || !command_id_valid(command_id) {
+                    return Err(invalid());
+                }
+                Some(id)
+            }
+            Self::ReadBackup {
+                id,
+                backup_id,
+                backup_sha256,
+            } => {
+                if !note_id_valid(backup_id)
+                    || backup_id != backup_id.trim()
+                    || !sha_valid(backup_sha256)
+                {
+                    return Err(invalid());
+                }
+                Some(id)
+            }
+            Self::RestoreBackup {
+                id,
+                expected_version,
+                backup_id,
+                backup_sha256,
+                command_id,
+            } => {
+                if !(1..i64::MAX).contains(expected_version)
+                    || !command_id_valid(command_id)
+                    || !note_id_valid(backup_id)
+                    || backup_id != backup_id.trim()
+                    || !sha_valid(backup_sha256)
+                {
+                    return Err(invalid());
+                }
+                Some(id)
+            }
             Self::ChecklistEdit {
                 id,
                 expected_version,
@@ -191,7 +249,7 @@ impl Action {
                 include_archived,
                 include_trashed,
             } => {
-                json!({"action":"list_metadata","limit":limit,"cursor":cursor,"include_archived":include_archived,"include_trashed":include_trashed})
+                json!({"action":"list","limit":limit,"cursor":cursor,"include_archived":include_archived,"include_trashed":include_trashed})
             }
             Self::Read { id } => json!({"action":"get","id":id}),
             Self::Retire {
@@ -217,6 +275,29 @@ impl Action {
             } => {
                 json!({"action":"restore_version","id":id,"expected_version":expected_version,"source_version":source_version,"source_sha256":source_sha256,"command_id":command_id})
             }
+            Self::Backup {
+                id,
+                expected_version,
+                command_id,
+            } => {
+                json!({"action":"backup","id":id,"expected_version":expected_version,"command_id":command_id})
+            }
+            Self::ReadBackup {
+                id,
+                backup_id,
+                backup_sha256,
+            } => {
+                json!({"action":"read_backup","id":id,"backup_id":backup_id,"backup_sha256":backup_sha256})
+            }
+            Self::RestoreBackup {
+                id,
+                expected_version,
+                backup_id,
+                backup_sha256,
+                command_id,
+            } => {
+                json!({"action":"restore_backup","id":id,"expected_version":expected_version,"backup_id":backup_id,"backup_sha256":backup_sha256,"command_id":command_id})
+            }
             Self::ChecklistRead { id } => json!({"action":"checklist_read","id":id}),
             Self::ChecklistEdit {
                 id,
@@ -238,6 +319,9 @@ impl Action {
             | Self::Versions { id, .. }
             | Self::ReadVersion { id, .. }
             | Self::RestoreVersion { id, .. }
+            | Self::Backup { id, .. }
+            | Self::ReadBackup { id, .. }
+            | Self::RestoreBackup { id, .. }
             | Self::ChecklistRead { id }
             | Self::ChecklistEdit { id, .. } => id,
         }
@@ -405,6 +489,9 @@ fn decode(action: &Action, response: crate::TransportResponse) -> Result<Value, 
             {
                 return Err(unreadable());
             }
+        }
+        Action::Backup { .. } | Action::ReadBackup { .. } | Action::RestoreBackup { .. } => {
+            backup::verify(action, data)?
         }
         Action::ChecklistRead { .. } => {
             if data["id"].as_str() != Some(action.id())
@@ -852,7 +939,7 @@ mod tests {
             decode(&list, response(inventory.clone())).unwrap(),
             inventory
         );
-        assert_eq!(list.payload()["action"], "list_metadata");
+        assert_eq!(list.payload()["action"], "list");
         let mut leaked = inventory.clone();
         leaked["notes"][0]["owner_uid"] = json!("hidden");
         assert!(decode(&list, response(leaked)).is_err());
