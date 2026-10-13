@@ -186,7 +186,7 @@ Tried cases removed from the small-fix queue now live in [HARD-PROBLEMS.md](HARD
 
 ## 8. Sync, publication and edge outbox
 
-- **Canary store and Northern Hub reconciliation** (`269f81f3`): preserve the damaged default store and receipt-less local bytes; install the landed reclaim fix through the supported owner lifecycle. Reconcile/reclaim only proven entries, regenerate stale-input exports and verify complete online heads. Zero queue entries and the isolated debug store do not establish publication.
+- **Canary store and Northern Hub reconciliation** (`269f81f3`): preserve the damaged default store and receipt-less local bytes; install the landed reclaim fix through the supported owner lifecycle. Reconcile/reclaim only proven entries, regenerate stale-input exports and verify complete online heads. Zero queue entries and the isolated debug store do not establish publication. The modular Linux pre-install check for `wnmajona_edcl_rural_electrification_template` still reports `local_store_unreadable: database disk image is malformed`; the older running daemon refuses `/v1/sync-recovery`. Account/lane and bounded project jobs survive package replacement. Qualify the matching daemon and supported store recovery separately, preserving all retained bytes. Exact admitted baseline: [local store](../../ds-web/out/releases/preservation/local-data-before.json), [Sync Recovery](../../ds-web/out/releases/preservation/sync-before.json).
 
 - **Survey transformer access acceptance** (`922d63e5`): verify the affected user’s current grant and the installed Desktop read of the 83 authorized `transformer_survey` records after a stale-token response. Preserve membership boundaries; record a new auth/UI code failure only after a valid authorized read still fails.
 

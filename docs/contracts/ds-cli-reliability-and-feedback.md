@@ -132,9 +132,13 @@ a failing command and asserts none appears in the event.
   store attributes it to `anonymous`. The state is one document,
   `$XDG_STATE_HOME/ds/reliability.json` (else `~/.local/state/ds`), behind a
   create-new lock. A process an MCP adapter runs for one tool call
-  (`DS_CLI_SURFACE=mcp`) and a discovery command (`doctor`, `capabilities`,
-  `version`, which promise no network) only record; the adapter's own process
-  sends every 60 s and at its exit, and any other invocation sends at exit.
+  (`DS_CLI_SURFACE=mcp`), a discovery command (`doctor`, `capabilities`,
+  `version`, which promise no network), and an ordinary command whose declared
+  authority is `none` only record. Local failures retain their journal, outbox
+  and automatic feedback queue without sending or filing at exit. A later
+  network-authorized invocation or the existing MCP adapter owns delivery;
+  the adapter's own process sends every 60 s and at its exit. No-authority
+  offline computation and missing-addon refusals make zero telemetry requests.
 
 ### 3.5 Visibility
 
