@@ -119,14 +119,18 @@ impl SourceProof {
                 .is_some_and(|s| normalized_sha(s) != Some(s))
             || self.size_bytes == 0
             || self.size_bytes > MAX_BYTES
-            || self.content_type != "application/pdf"
+            || crate::assets::semantic::source_format(&self.content_type).is_none()
+            || matches!(
+                crate::assets::semantic::source_format(&self.content_type),
+                Some("docx" | "xlsx")
+            ) && self.size_bytes > crate::assets::MAX_DOCUMENT_BYTES
             || self.name.trim().is_empty()
             || self.name.len() > 1024
             || self.name.chars().any(char::is_control)
         {
             return Err(fail(
                 "asset_preview_source_invalid",
-                "The native source proof does not admit one exact bounded PDF in this project.",
+                "The native source proof does not admit one exact bounded PDF, DOCX or XLSX document in this project.",
             ));
         }
         if request
@@ -146,7 +150,7 @@ impl SourceProof {
         {
             return Err(fail(
                 "asset_preview_source_changed",
-                "The selected PDF pins differ from source authority; re-read the source row.",
+                "The selected document pins differ from source authority; re-read the source row.",
             ));
         }
         // Brain's fresh grant decides which member may read this class.
@@ -177,5 +181,48 @@ impl SourceProof {
             return Err(fail("asset_preview_source_changed","Acquired bytes do not match the selected or advertised SHA; no preview is admitted."));
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod office_bounds_tests {
+    use super::*;
+    #[test]
+    fn office_source_keeps_existing_decoder_bound_before_transfer() {
+        let request = Request {
+            schema: REQUEST_SCHEMA.into(),
+            asset_id: "sys:pm_attachment:office-one".into(),
+            expected_revision: None,
+            expected_generation: None,
+            expected_sha256: None,
+            offline: false,
+            retention: Retention::Hours24,
+        };
+        let mut source = SourceProof {
+            project_id: "project".into(),
+            asset_id: request.asset_id.clone(),
+            source_kind: "pm_attachment".into(),
+            source_id: "office-one".into(),
+            revision: "pm-version:1".into(),
+            generation: "1".into(),
+            advertised_sha256: None,
+            size_bytes: crate::assets::MAX_DOCUMENT_BYTES,
+            content_type: crate::assets::semantic::DOCX_TYPE.into(),
+            sensitivity: "internal".into(),
+            name: "Wrong.pdf".into(),
+        };
+        for mime in [
+            crate::assets::semantic::DOCX_TYPE,
+            crate::assets::semantic::XLSX_TYPE,
+        ] {
+            source.content_type = mime.into();
+            source.size_bytes = crate::assets::MAX_DOCUMENT_BYTES;
+            source.validate("project", &request).unwrap();
+            source.size_bytes += 1;
+            assert_eq!(
+                source.validate("project", &request).unwrap_err().code,
+                "asset_preview_source_invalid"
+            );
+        }
     }
 }

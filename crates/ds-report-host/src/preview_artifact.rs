@@ -23,6 +23,8 @@ pub use ds_command_kernel::asset_preview::Retention;
 enum Media {
     Svg,
     Pdf,
+    Docx,
+    Xlsx,
     Markdown,
 }
 impl Media {
@@ -30,9 +32,11 @@ impl Media {
         match raw {
             "image/svg+xml" => Ok(Self::Svg),
             "application/pdf" => Ok(Self::Pdf),
+            ds_command_kernel::assets::semantic::DOCX_TYPE => Ok(Self::Docx),
+            ds_command_kernel::assets::semantic::XLSX_TYPE => Ok(Self::Xlsx),
             ds_command_kernel::assets::semantic::MARKDOWN_TYPE => Ok(Self::Markdown),
             _ => Err(failed(
-                "preview media is not an admitted SVG, PDF or Markdown document",
+                "preview media is not an admitted SVG, PDF, DOCX, XLSX or Markdown document",
             )),
         }
     }
@@ -40,6 +44,8 @@ impl Media {
         match self {
             Self::Svg => "page.svg",
             Self::Pdf => "page.pdf",
+            Self::Docx => "page.docx",
+            Self::Xlsx => "page.xlsx",
             Self::Markdown => "page.md",
         }
     }
@@ -47,6 +53,8 @@ impl Media {
         match self {
             Self::Svg => "image/svg+xml",
             Self::Pdf => "application/pdf",
+            Self::Docx => ds_command_kernel::assets::semantic::DOCX_TYPE,
+            Self::Xlsx => ds_command_kernel::assets::semantic::XLSX_TYPE,
             Self::Markdown => ds_command_kernel::assets::semantic::MARKDOWN_TYPE,
         }
     }
@@ -54,6 +62,7 @@ impl Media {
         match self {
             Self::Svg => crate::MAX_PREVIEW_BYTES,
             Self::Pdf => 128 * 1024 * 1024,
+            Self::Docx | Self::Xlsx => ds_command_kernel::assets::MAX_DOCUMENT_BYTES,
             Self::Markdown => ds_command_kernel::assets::semantic::MAX_OUTPUT_BYTES,
         }
     }
@@ -63,6 +72,8 @@ impl Media {
                 s.trim_start().starts_with("<svg") || s.trim_start().starts_with("<?xml")
             }),
             Self::Pdf => bytes.starts_with(b"%PDF-"),
+            // Content format is verified by the existing bounded OOXML decoder before retention.
+            Self::Docx | Self::Xlsx => bytes.starts_with(b"PK\x03\x04"),
             Self::Markdown => !bytes.is_empty(),
         }
     }
@@ -638,13 +649,38 @@ pub fn materialize_pdf_retained(
     provenance: Value,
     retention: Retention,
 ) -> Result<Artifact, HostFailure> {
+    materialize_document_retained(
+        room,
+        source,
+        size_bytes,
+        sha256,
+        "application/pdf",
+        provenance,
+        retention,
+    )
+}
+/// Retain the exact source bytes after the existing document decoder verified its format.
+/// This does not render, extract Markdown, or infer a MIME from a filename.
+pub fn materialize_document_retained(
+    room: &Room,
+    source: &mut fs::File,
+    size_bytes: u64,
+    sha256: &str,
+    content_type: &str,
+    provenance: Value,
+    retention: Retention,
+) -> Result<Artifact, HostFailure> {
+    if ds_command_kernel::assets::semantic::source_format(content_type).is_none() {
+        return Err(failed("native source document media is not admitted"));
+    }
+    let media = Media::admit(content_type)?;
     if size_bytes == 0
-        || size_bytes > Media::Pdf.limit()
+        || size_bytes > media.limit()
         || !digest_token(sha256)
         || source.metadata().map_err(|e| failed(e.to_string()))?.len() != size_bytes
     {
         return Err(failed(
-            "PDF preview differs from its verified native byte pins",
+            "Document preview differs from its verified native byte pins",
         ));
     }
     source.rewind().map_err(|e| failed(e.to_string()))?;
@@ -652,18 +688,20 @@ pub fn materialize_pdf_retained(
     source
         .read_exact(&mut prefix)
         .map_err(|e| failed(e.to_string()))?;
-    if !Media::Pdf.signature(&prefix) {
-        return Err(failed("native preview is not PDF"));
+    if !media.signature(&prefix) {
+        return Err(failed(
+            "native preview bytes do not match the admitted document media",
+        ));
     }
     source.rewind().map_err(|e| failed(e.to_string()))?;
     let metadata = json!({"provenance":provenance,"sha256":sha256,"size_bytes":size_bytes,
-        "content_type":Media::Pdf.mime(),"retention_ms":retention.millis()});
+        "content_type":media.mime(),"retention_ms":retention.millis()});
     materialize_file_at(
         room,
         size_bytes,
         sha256.into(),
         metadata,
-        Media::Pdf,
+        media,
         retention,
         now()?,
         |path| {
@@ -987,12 +1025,12 @@ fn admit_file_output(raw: &str) -> Result<PathBuf, HostFailure> {
         || !path.is_absolute()
         || !matches!(
             path.extension().and_then(|s| s.to_str()),
-            Some("svg" | "pdf" | "md")
+            Some("svg" | "pdf" | "docx" | "xlsx" | "md")
         )
     {
         return Err(HostFailure::new(
             CODE_INPUTS_INVALID,
-            "preview output must be a new absolute .svg, .pdf or .md path",
+            "preview output must be a new absolute .svg, .pdf, .docx, .xlsx or .md path",
         ));
     }
     if fs::symlink_metadata(&path).is_ok() {
@@ -1017,6 +1055,8 @@ pub fn copy(room: &Room, artifact: &Artifact, raw: &str) -> Result<PathBuf, Host
         != Some(match Media::admit(&artifact.content_type)? {
             Media::Svg => "svg",
             Media::Pdf => "pdf",
+            Media::Docx => "docx",
+            Media::Xlsx => "xlsx",
             Media::Markdown => "md",
         })
     {
