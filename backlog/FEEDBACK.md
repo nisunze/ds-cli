@@ -2,14 +2,14 @@
 
 > **Moved 2026-10-07:** this backlog now lives in `ds-command-kernel/backlog/`. The old `ds-work/backlog/` no longer exists: edit these files here, commit them to ds-command-kernel `run`, and stage only `backlog/`. ds-work holds working sessions, not coding lists.
 
-Working list from the 2026-10-07 snapshot and 2026-10-09 component lookups, with proven closures removed: 236 tracked rows (86 open, 150 waiting according to the rows below). These are file counts, not a fresh live backlog total. The feedback API is the authority: verify each selected report's current status, full ID, version and acceptance through `ds`, close only what is proven, and remove its row. Delete this file when its remaining work is fulfilled; keep no completed-work archive.
+Working list from the 2026-10-07 snapshot and 2026-10-09 component lookups, with proven closures removed: 236 tracked rows (85 open, 151 waiting according to the rows below). These are file counts, not a fresh live backlog total. The feedback API is the authority: verify each selected report's current status, full ID, version and acceptance through `ds`, close only what is proven, and remove its row. Delete this file when its remaining work is fulfilled; keep no completed-work archive.
 
 Reports are grouped by the live repository that owns the code, then by component. The component is the submitter's free-text label, shown verbatim so `ds feedback list --component` finds it. Legacy labels map as follows: `ds-grid*`, `dsgrid*`, `ds/grid-*`, `ds/pls-library` → ds-network; `ds-report*`, `ds-printing*` → ds-network-reporter; `ds-desktop*` → ds-web (`src-tauri`); `ds pls desktop` → ds-cli (`ds-cli-pls/desktop`). Labels that name no repository stay **unassigned**. "Backlog" names the [OPEN.md](OPEN.md), [OPEN-X.md](OPEN-X.md) or [SEEDING.md](SEEDING.md) section citing the report; **untracked** means none does (114 reports).
 
 | Repository | Total | Blocker | Major | Minor | Waiting | Untracked |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 | [ds-cli](#ds-cli) | 90 | 11 | 60 | 19 | 58 | 55 |
-| [ds-network](#ds-network) | 66 | 17 | 45 | 4 | 37 | 21 |
+| [ds-network](#ds-network) | 66 | 17 | 45 | 4 | 38 | 21 |
 | [ds-network-reporter](#ds-network-reporter) | 25 | 1 | 18 | 6 | 18 | 13 |
 | [ds-web](#ds-web) | 34 | 6 | 26 | 2 | 24 | 15 |
 | [ds-command-kernel](#ds-command-kernel) | 4 | 0 | 3 | 1 | 4 | 0 |
@@ -131,7 +131,7 @@ Reports are grouped by the live repository that owns the code, then by component
 | ds-grid/project-models | `86314bfb` | major | idea | Split one DS Grid model into several project models by a rule (admin bounds or custom) | open | **untracked** |
 | ds-grid/project-models | `244906e8` | major | idea | Projects with more than one DS Grid model need an automatically combined, always-current model | open | **untracked** |
 | ds-grid/spotting | `50ab45f5` | major | idea | Post-processing loop after the DS Grid limit: rule-based S325->S255 reduction and NG healing with native AutoSag/report rounds | waiting: DS Grid versus PLS engineering comparison and owner decision on any further PLS-specific workflow | OPEN.md §13 |
-| ds-grid/spotting | `7a78525b` | major | friction | A complete whole-model spotting receipt cannot be applied when its plans carry many rejection rows (16 MiB params cap; preview-receipt refuses untruncated receipts) | open | OPEN.md §13 |
+| ds-grid/spotting | `7a78525b` | major | friction | A complete whole-model spotting receipt cannot be applied when its plans carry many rejection rows (16 MiB params cap; preview-receipt refuses untruncated receipts) | waiting: version-qualified original attempt-2 receipt replay; exact source SHA matches but recorded c3b80112 canonical revision differs from current open 58fa3bfa, so installed apply-receipt refuses without writes | OPEN.md §13 |
 | ds-grid/staking | `2dda2cc4` | major | bug | Staking leaves transformer kVA blank when only the LV design transformer (not a surveyed one) sits at the MV transformer structure | open | **untracked** |
 | ds-grid/structure-capacity | `4ff54666` | major | bug | screen_structure_usage reports 334,508-651,484% usage for canonical l-s-S800-stay.012 (stayed steel) - capacity artifact unusable | waiting: library: characterize canonical l-s-S800-stay.012 and signed longitudinal demand cases, then re-screen the exact Model 2 structures | OPEN.md §12 |
 | ds-grid/terrain | `8a8b86ae` | major | idea | No governed command to fill a profile ground-survey gap from the governed DEM tied to the survey | open | OPEN.md §12 |
