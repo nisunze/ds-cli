@@ -348,7 +348,7 @@ fn may_write(command: &Command) -> bool {
         | Command::TaskComments { .. }
         | Command::TaskRecords { .. }
         | Command::Assignees
-        | Command::Context { .. } => false,
+        | Command::ModelReferences { .. } => false,
         Command::ProjectNotes { command } => !matches!(
             command,
             ds_client_core::project_management::project_notes::Command::Read(_)

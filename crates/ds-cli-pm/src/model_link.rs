@@ -50,6 +50,11 @@ const REVISION: Arg = Arg::value(
     "<revision-id>",
     "Exact immutable catalog revision from `ds dsgrid project versions`.",
 );
+const RECORDS_CURSOR: Arg = Arg::value(
+    "records-cursor",
+    "<record-id>",
+    "With --model: continue its readable records page using notes_next_cursor; matches stay a lower bound.",
+);
 const VERSION: Arg = Arg::value(
     "version",
     "<n>",
@@ -63,13 +68,13 @@ const LABEL: Arg = Arg::value(
 
 pub const SOURCE_INVALID: Refusal = Refusal {
     code: "model_link_source_invalid",
-    when: "neither or both of --task and --note were given, or the record is not a project note",
+    when: "the item/model selection is ambiguous, --records-cursor was used without --model, or the record is not a project note",
     remedy: "name exactly one existing task or milestone (--task) or project note (--note)",
 };
 pub const LINK_INVALID: Refusal = Refusal {
     code: "model_link_invalid",
-    when: "the model or revision id is not an exact catalog id, neither --revision nor --version was given, the label is over its bound, or the item already holds 128 links",
-    remedy: "use the opaque ids from `ds dsgrid project list|versions`; name --revision or --version",
+    when: "the model/revision id or records cursor is invalid, neither --revision nor --version was given for a pin, the label is over its bound, or the item already holds 128 links",
+    remedy: "use opaque catalog IDs; pin with --revision or --version, or continue a model read with its exact notes_next_cursor",
 };
 pub const VERSION_NOT_FOUND: Refusal = Refusal {
     code: "model_version_not_found",
@@ -182,17 +187,26 @@ With --task or --note: the DS Grid model links that item carries, each with \
 its exact revision, catalog version, digest and who attached it when. With \
 --model (optionally --revision): every live task, milestone and project note \
 in the project that links that model, at that revision when named; notes are \
-read from the bounded context page and `notes_truncated` says when it was cut. \
+read from one bounded readable records page; `notes_count_kind` and \
+`notes_truncated` disclose partial matches. --records-cursor continues the page. \
 A display label is never matched. Read-only, headless.",
     chapter: Chapter::Project,
     effect: Effect::ReadOnly,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[TASK, NOTE, MODEL, REVISION, LANE_ARG, crate::PROJECT_ARG],
-    output: "Per item: `source` and `links`. Per model: `model_id`, `revision_id`, `tasks`, `notes` and `notes_truncated`.",
+    args: &[
+        TASK,
+        NOTE,
+        MODEL,
+        REVISION,
+        RECORDS_CURSOR,
+        LANE_ARG,
+        crate::PROJECT_ARG,
+    ],
+    output: "Per item: `source` and `links`. Per model: `model_id`, `revision_id`, `tasks`, `notes`, lower-bound/exact `notes_count_kind`, `notes_truncated`, `notes_next_cursor`, separate graph/schedule revisions and per-note versions.",
     examples: &[Example {
         command: "ds pm model-link list --model <model-id> --output json --project <exact-id>",
-        note: "Every task, milestone and note that links any revision of the model.",
+        note: "Matching tasks/milestones and one bounded readable notes page for any model revision.",
         runnable: false,
     }],
     refusals: &crate::read_refusals::<20>(&[
@@ -520,7 +534,11 @@ pub fn list(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let project = inputs.require("project")?;
     let model = catalog_id(inputs, "model")?;
     let revision = catalog_id(inputs, "revision")?;
-    match (source(inputs, false)?, model) {
+    let selected_source = source(inputs, false)?;
+    if inputs.value("records-cursor").is_some() && selected_source.is_some() {
+        return Err(source_invalid("--records-cursor requires --model"));
+    }
+    match (selected_source, model) {
         (Some(_), Some(_)) | (None, None) => Err(source_invalid(
             "name --task or --note to read one item, or --model to find the work that links it",
         )),
@@ -547,29 +565,18 @@ pub fn list(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             }))
         }
         (None, Some(model)) => {
-            let read = crate::graph(lane, project)?;
-            let tasks = model_links::task_references(&read.raw, &read.project_id, model, revision);
-            let context = ds_cli_auth::project_management_for_project(
-                lane,
-                project,
-                &ds_client_core::project_management::Command::Context {
-                    limit: Some(crate::MAX_CONTEXT_ROWS),
-                },
-            )?
-            .into_result();
-            let records = context["records"].as_array().cloned().unwrap_or_default();
-            let notes = model_links::note_references(&records, &read.project_id, model, revision);
-            let truncated = context["truncated_by_collection"]["records"] == true
-                || context["next_cursors"]["records"].is_string();
-            Ok(json!({
-                "project": read.project_id,
-                "model_id": model,
-                "revision_id": revision,
-                "tasks": tasks,
-                "notes": notes,
-                "notes_truncated": truncated,
-                "revision": read.graph.revision,
-            }))
+            let command = ds_client_core::project_management::Command::ModelReferences {
+                model_id: model.into(),
+                revision_id: revision.map(str::to_owned),
+                records_cursor: inputs.value("records-cursor").map(str::to_owned),
+            };
+            model_links::validate_reference_selection(
+                model,
+                revision,
+                inputs.value("records-cursor"),
+            )
+            .map_err(|why| link_invalid(&why))?;
+            Ok(ds_cli_auth::project_management_for_project(lane, project, &command)?.into_result())
         }
     }
 }
@@ -624,10 +631,11 @@ pub fn render(data: &Value) -> String {
             row["revision_id"].as_str().unwrap_or("(model-wide)"),
         ));
     }
+    if let Some(cursor) = data["notes_next_cursor"].as_str() {
+        out.push_str(&format!("  next records cursor: {cursor}\n"));
+    }
     if data["notes_truncated"] == true {
-        out.push_str(
-            "  notes page was cut; more project notes exist than one context read holds\n",
-        );
+        out.push_str("  notes page was cut or continued; model-linked notes are a lower bound\n");
     }
     out
 }
@@ -652,6 +660,29 @@ mod tests {
         assert_eq!(LIST.effect, Effect::ReadOnly);
     }
 
+    #[test]
+    fn model_reference_cursor_and_source_scope_refuse_before_credentials() {
+        let context = Context {
+            confirmed: false,
+            output: ds_cli_contract::Output::resolve(ds_cli_contract::Format::Json, false, true),
+        };
+        for (args, code) in [
+            (
+                vec!["--model", "model-a", "--records-cursor", "bad/cursor"],
+                LINK_INVALID.code,
+            ),
+            (
+                vec!["--task", "task-a", "--records-cursor", "boundary"],
+                SOURCE_INVALID.code,
+            ),
+        ] {
+            let mut args = args;
+            args.extend(["--project", "p", "--lane", "stable"]);
+            let tokens = args.into_iter().map(str::to_owned).collect::<Vec<_>>();
+            let inputs = ds_cli_contract::parse(&LIST, &tokens).unwrap();
+            assert_eq!(list(&inputs, &context).unwrap_err().code(), code);
+        }
+    }
     #[test]
     fn render_reads_both_shapes() {
         let item = json!({"project":"p","source":{"kind":"task","id":"T4"},"changed":true,

@@ -3297,6 +3297,15 @@ pub fn project_management_for_project(
     project: &str,
     command: &ds_client_core::project_management::Command,
 ) -> Result<HeadlessNamedProject<serde_json::Value>, Failure> {
+    let model_fence = if matches!(
+        command,
+        ds_client_core::project_management::Command::ModelReferences { .. }
+    ) {
+        command.validate().map_err(map_client)?;
+        Some(capture_layer_scope_fence_for_project(lane_value, project)?)
+    } else {
+        None
+    };
     let binding = pm_graph_source::before_command(lane_value, project, command)?;
     let result = headless_named_project(
         lane_value,
@@ -3307,9 +3316,42 @@ pub fn project_management_for_project(
     if let Err(error) = &result {
         pm_graph_source::after_refusal(&binding, error)?;
     }
+    if let (Some(fence), Ok(captured)) = (&model_fence, &result) {
+        verify_model_reference_capture(
+            lane_value,
+            fence,
+            captured,
+            verify_layer_scope_fence_for_project,
+        )?;
+    }
     result
 }
 
+/// Finish only after checking both the acquired UID and the current protected binding.
+fn verify_model_reference_capture(
+    lane: &str,
+    fence: &LayerScopeFence,
+    captured: &HeadlessNamedProject<Value>,
+    recheck: impl FnOnce(&str, &LayerScopeFence, &str, &str) -> Result<(), Failure>,
+) -> Result<(), Failure> {
+    if captured.identity().uid() != fence.uid
+        || captured.identity().credential_audience_sha256() != fence.audience
+        || captured.lane() != lane
+        || captured.project_id() != fence.project
+    {
+        return Err(Failure::conflict(
+            "project_context_changed",
+            "the model references differ from their captured native scope",
+        )
+        .remedy("repeat the model reference read under the current native account"));
+    }
+    recheck(
+        lane,
+        fence,
+        captured.identity().uid(),
+        captured.project_id(),
+    )
+}
 /// Read, plan or apply one finite member form grant through its existing authority.
 pub fn member_form_grant_for_project(
     lane_value: &str,
@@ -7193,6 +7235,65 @@ mod tests {
         }
     }
 
+
+    #[test]
+    fn model_reference_capture_rechecks_current_protected_binding_before_return() {
+        let fence = LayerScopeFence {
+            uid: "captured-uid".into(),
+            audience: "a".repeat(64),
+            project: "p".into(),
+            credential: "credential-a".into(),
+        };
+        let captured = HeadlessNamedProject {
+            identity: ProviderIdentity::new("stable", &fence.audience, &fence.uid).unwrap(),
+            user_email: "reader@example.test".into(),
+            lane: "stable",
+            project_id: "p".into(),
+            result: json!({"notes":[]}),
+        };
+        let mut called = false;
+        let error = verify_model_reference_capture(
+            "stable",
+            &fence,
+            &captured,
+            |lane, protected, uid, project| {
+                called = true;
+                assert_eq!(lane, "stable");
+                assert_eq!(protected.credential, "credential-a");
+                assert_eq!(uid, "captured-uid");
+                assert_eq!(project, "p");
+                Err(Failure::conflict(
+                    "project_context_changed",
+                    "protected credentials replaced during the read",
+                ))
+            },
+        )
+        .unwrap_err();
+        assert!(called);
+        assert_eq!(error.code(), "project_context_changed");
+        let mut foreign = captured;
+        foreign.identity = ProviderIdentity::new("stable", &fence.audience, "other-uid").unwrap();
+        assert_eq!(
+            verify_model_reference_capture("stable", &fence, &foreign, |_, _, _, _| panic!(
+                "foreign acquired identity is already refused"
+            ))
+            .unwrap_err()
+            .code(),
+            "project_context_changed"
+        );
+        let invalid = ds_client_core::project_management::Command::ModelReferences {
+            model_id: "Display label".into(),
+            revision_id: None,
+            records_cursor: None,
+        };
+        assert_eq!(
+            project_management_for_project("unused-invalid-lane", "p", &invalid)
+                .err()
+                .unwrap()
+                .code(),
+            "auth_input_invalid"
+        );
+    }
     #[test]
     fn restored_layer_identity_requires_exact_uid_audience_and_project() {
         let fence = LayerScopeFence {
