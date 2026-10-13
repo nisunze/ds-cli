@@ -618,6 +618,32 @@ source-page information distinct. An empty filtered page can still carry a
 continuation cursor. Read the selected note explicitly for its body or evidence.
 Later UI infinite scrolling should consume this same cursor contract.
 
+## Explicit private-note canonical migration
+
+Ordinary selected reads and mutations require the canonical stored ID, geometry
+representation and history baseline. A named `notes_migration_required` refusal
+asks for an explicit migration; reads do not heal older data. Metadata pages
+remain available and mark `migration_required` without acquiring note bodies.
+
+```sh
+ds notes canonicalize prepare --note NOTE --output json
+# Save and review only the returned data object as reviewed-plan.json.
+ds notes canonicalize apply --input reviewed-plan.json --id MIGRATION_OPERATION --yes --output json
+```
+
+Prepare reads the selected source and its current history guard without writing.
+The closed plan pins raw source SHA, Firestore update time, original authored
+version and target SHA. Apply rechecks those pins atomically and records a
+separate migration receipt. Source changes require a fresh reviewed plan.
+
+Migration preserves authored version, actual creation/update attribution and
+timestamps, geometry values, reminders and evidence. It retains the observed
+current baseline only if absent; genuine earlier history is unchanged. An older
+baseline explicitly reports earlier history as `not_assessed`, not a fabricated
+complete chain. Missing stored identity is bound explicitly to the authenticated
+owner and recorded as a migration change. No automatic migration runs on reads
+or authoring, and no past writer or revision is invented.
+
 ## Private history and backup pages
 
 `ds notes versions --note NOTE --limit 50` acquires one immutable-header page.
