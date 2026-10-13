@@ -2,14 +2,14 @@
 
 > **Moved 2026-10-07:** this backlog now lives in `ds-command-kernel/backlog/`. The old `ds-work/backlog/` no longer exists: edit these files here, commit them to ds-command-kernel `run`, and stage only `backlog/`. ds-work holds working sessions, not coding lists.
 
-Working list from the 2026-10-07 snapshot and 2026-10-09 component lookups, with proven closures removed: 246 tracked rows (95 open, 151 waiting according to the rows below). These are file counts, not a fresh live backlog total. The feedback API is the authority: verify each selected report's current status, full ID, version and acceptance through `ds`, close only what is proven, and remove its row. Delete this file when its remaining work is fulfilled; keep no completed-work archive.
+Working list from the 2026-10-07 snapshot and 2026-10-09 component lookups, with proven closures removed: 245 tracked rows (95 open, 150 waiting according to the rows below). These are file counts, not a fresh live backlog total. The feedback API is the authority: verify each selected report's current status, full ID, version and acceptance through `ds`, close only what is proven, and remove its row. Delete this file when its remaining work is fulfilled; keep no completed-work archive.
 
-Reports are grouped by the live repository that owns the code, then by component. The component is the submitter's free-text label, shown verbatim so `ds feedback list --component` finds it. Legacy labels map as follows: `ds-grid*`, `dsgrid*`, `ds/grid-*`, `ds/pls-library` → ds-network; `ds-report*`, `ds-printing*` → ds-network-reporter; `ds-desktop*` → ds-web (`src-tauri`); `ds pls desktop` → ds-cli (`ds-cli-pls/desktop`). Labels that name no repository stay **unassigned**. "Backlog" names the [OPEN.md](OPEN.md), [OPEN-X.md](OPEN-X.md) or [SEEDING.md](SEEDING.md) section citing the report; **untracked** means none does (122 reports).
+Reports are grouped by the live repository that owns the code, then by component. The component is the submitter's free-text label, shown verbatim so `ds feedback list --component` finds it. Legacy labels map as follows: `ds-grid*`, `dsgrid*`, `ds/grid-*`, `ds/pls-library` → ds-network; `ds-report*`, `ds-printing*` → ds-network-reporter; `ds-desktop*` → ds-web (`src-tauri`); `ds pls desktop` → ds-cli (`ds-cli-pls/desktop`). Labels that name no repository stay **unassigned**. "Backlog" names the [OPEN.md](OPEN.md), [OPEN-X.md](OPEN-X.md) or [SEEDING.md](SEEDING.md) section citing the report; **untracked** means none does (121 reports).
 
 | Repository | Total | Blocker | Major | Minor | Waiting | Untracked |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 | [ds-cli](#ds-cli) | 92 | 11 | 62 | 19 | 58 | 57 |
-| [ds-network](#ds-network) | 71 | 18 | 49 | 4 | 36 | 24 |
+| [ds-network](#ds-network) | 70 | 18 | 48 | 4 | 35 | 23 |
 | [ds-network-reporter](#ds-network-reporter) | 28 | 1 | 21 | 6 | 20 | 16 |
 | [ds-web](#ds-web) | 34 | 6 | 26 | 2 | 24 | 15 |
 | [ds-command-kernel](#ds-command-kernel) | 4 | 0 | 3 | 1 | 4 | 0 |
@@ -147,7 +147,6 @@ Reports are grouped by the live repository that owns the code, then by component
 | ds-network / dsgrid design policy | `778bb573` | blocker | obstacle | author_design_policy requires structure duty profiles whose row shape is undiscoverable; Model 2 cannot get the project policy | waiting: owner: confirm nyamagabe-mv policy for Model 2; profile j-w-60d-S255.012 and j-w-S255.012; finish Model 2 clearance/cable/capacity prep | OPEN.md §13 |
 | ds-network / shared nyamagabe structure library | `3acfd343` | major | bug | 15 shared-library capacity tables admit no straight line; a-w-S190.012 and a-w-S255.012 author one row at 120 deg | open | OPEN.md §13, SEEDING.md §13 |
 | ds-network / spotting apply | `fb163694` | major | obstacle | Respot apply creates single poles in the forbidden 10-60 deg band and sections without a criterion set | open | OPEN.md §13 |
-| ds-network/ds-elevation-host | `f6c511f5` | major | obstacle | Independent Rwanda TIFF and Terrarium comparison unavailable headlessly | waiting: install of canary 0.1.7-r79+ carrying ds-cli@b3885b75 + ds-network@19be29fd | **untracked** |
 | ds-network/ds-grid-engine | `50024ab0` | blocker | obstacle | Model 2 30 kV criterion leaves A12 clearance repair without capacity-case proof | open | **untracked** |
 | ds-network/ds-grid-engine | `4ed6b202` | blocker | bug | Plan-profile print omits connected T-off branches unless map context is captured | open | OPEN.md §11 |
 | ds-network/ds-grid-engine | `ef2478d4` | blocker | bug | Spotting clearance proof uses one alignment ruling span, while AutoSag uses each section ruling span | open | OPEN.md §11 |
