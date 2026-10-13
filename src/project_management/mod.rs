@@ -29,6 +29,7 @@
 //! respond`) and the fold of the engine's answer. Same doctrine — the browser's
 //! rules, translated as they were, reachable without a window.
 
+pub mod authoring_model;
 mod browser;
 mod command_wire;
 pub mod correspondence;

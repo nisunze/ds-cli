@@ -28,7 +28,7 @@
 //! ds-brain decodes with `DisallowUnknownFields`, so a key this file does not
 //! write is a key the request cannot carry.
 
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value, json};
 
 pub mod checklist;
 pub mod create_attached;
@@ -37,8 +37,8 @@ mod overview;
 pub mod project_notes;
 
 use crate::{
-    authorized::Authority, AuthorizedTransport, ClientError, ClientProfile, ErrorKind,
-    ProjectManagementCall, ServiceRefusal,
+    AuthorizedTransport, ClientError, ClientProfile, ErrorKind, ProjectManagementCall,
+    ServiceRefusal, authorized::Authority,
 };
 
 /// The largest plan answer this owner will read. A project's whole graph —
@@ -189,6 +189,11 @@ fn attachment_media_type(name: &str) -> &'static str {
 /// One governed project-management action.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Command {
+    /// Voluntary labels on one explicit supported write, never ambient identity.
+    Authored {
+        model: ds_command_kernel::project_management::authoring_model::AuthoringModel,
+        command: Box<Command>,
+    },
     /// Closed shared project memory through the same fixed PM authority.
     ProjectNotes { command: project_notes::Command },
     /// The project's whole canonical graph, at its current revision.
@@ -358,8 +363,64 @@ fn wire_command_valid(command: &Value) -> bool {
 }
 
 impl Command {
+    pub fn with_authoring(
+        self,
+        model: Option<ds_command_kernel::project_management::authoring_model::AuthoringModel>,
+    ) -> Result<Self, ClientError> {
+        let Some(model) = model else {
+            return Ok(self);
+        };
+        model.validate().map_err(|_| {
+            ClientError::new(
+                ErrorKind::InvalidInput,
+                "invalid self-declared authoring model",
+            )
+        })?;
+        if !self.supports_authoring() {
+            return Err(ClientError::new(
+                ErrorKind::InvalidInput,
+                "this PM action does not support authoring declarations",
+            ));
+        }
+        Ok(Self::Authored {
+            model,
+            command: Box::new(self),
+        })
+    }
+    fn supports_authoring(&self) -> bool {
+        matches!(
+            self,
+            Self::Commit { .. }
+                | Self::CommitBatch { .. }
+                | Self::TaskCommentCreate { .. }
+                | Self::ProjectNoteCreate { .. }
+                | Self::ProjectNoteCreateLinked { .. }
+                | Self::Propose { .. }
+                | Self::TaskCreateAttached { .. }
+                | Self::RequestAdmission { .. }
+                | Self::LogHours { .. }
+        ) || matches!(self, Self::ProjectNotes{command} if matches!(command, project_notes::Command::Write(_)|project_notes::Command::Consolidate(_)|project_notes::Command::Backup(_)|project_notes::Command::Retire(_)|project_notes::Command::Restore(_)))
+    }
+    fn base(&self) -> &Self {
+        if let Self::Authored { command, .. } = self {
+            command
+        } else {
+            self
+        }
+    }
+    fn authoring_model(
+        &self,
+    ) -> Option<&ds_command_kernel::project_management::authoring_model::AuthoringModel> {
+        if let Self::Authored { model, .. } = self {
+            Some(model)
+        } else {
+            None
+        }
+    }
+
     fn action(&self) -> &'static str {
         match self {
+            Self::Authored { command, .. } => command.action(),
             Self::ProjectNotes { command } => command.action(),
             Self::Graph | Self::Overview { .. } => "get_graph",
             Self::PublicProjects { .. } => "list_public_projects",
@@ -387,7 +448,18 @@ impl Command {
     pub fn validate(&self) -> Result<(), ClientError> {
         let invalid = |message: &'static str| ClientError::new(ErrorKind::InvalidInput, message);
         match self {
-            Self::ProjectNotes { command } => command.validate().map_err(|_| invalid("Project Notes request is invalid")),
+            Self::Authored { model, command } => {
+                model
+                    .validate()
+                    .map_err(|_| invalid("invalid self-declared authoring model"))?;
+                if !command.supports_authoring() {
+                    return Err(invalid("unsupported or nested authoring declaration"));
+                }
+                command.validate()
+            }
+            Self::ProjectNotes { command } => command
+                .validate()
+                .map_err(|_| invalid("Project Notes request is invalid")),
             Self::Graph | Self::Assignees => Ok(()),
             Self::Overview { options } => options.validate().map_err(|_| {
                 ClientError::new(
@@ -594,7 +666,17 @@ impl Command {
     fn payload(&self, project: &str) -> Value {
         let mut payload = json!({ "action": self.action(), "ds_project": project });
         match self {
-            Self::ProjectNotes { command } => return command.payload(project).expect("validated closed Project Notes request"),
+            Self::Authored { model, command } => {
+                let mut payload = command.payload(project);
+                payload["authoring_model"] =
+                    serde_json::to_value(model).expect("bounded authoring declaration");
+                return payload;
+            }
+            Self::ProjectNotes { command } => {
+                return command
+                    .payload(project)
+                    .expect("validated closed Project Notes request");
+            }
             Self::Graph | Self::Assignees | Self::Overview { .. } => {}
             Self::TaskDetach { request } => return request.payload(project),
             Self::TaskAttach { task_id, file } => {
@@ -992,32 +1074,30 @@ pub(crate) fn run<T: AuthorizedTransport>(
         readable_project(project)?
     };
     command.validate()?;
+    let request = command.payload(project);
+    let authoring_model = command.authoring_model();
+    let command = command.base();
     if let Command::ProjectNotes { command } = command {
-        return project_notes::run(profile, transport, authority, project, command);
+        return project_notes::run(
+            profile,
+            transport,
+            authority,
+            project,
+            command,
+            authoring_model,
+        );
     }
     if let Command::Overview { options } = command {
         return overview::run(profile, transport, authority, project, options);
     }
     if let Command::TaskCreateAttached { task_id, files, .. } = command {
         return create_attached::run(
-            profile,
-            transport,
-            authority,
-            project,
-            command.payload(project),
-            task_id,
-            files,
+            profile, transport, authority, project, request, task_id, files,
         );
     }
     if let Command::TaskAttach { task_id, file } = command {
         return attach_to_task(
-            profile,
-            transport,
-            authority,
-            project,
-            command.payload(project),
-            task_id,
-            file,
+            profile, transport, authority, project, request, task_id, file,
         );
     }
     if let Command::TaskDetach { request } = command {
@@ -1025,7 +1105,7 @@ pub(crate) fn run<T: AuthorizedTransport>(
             .validate_for(project)
             .map_err(|message| ClientError::new(ErrorKind::InvalidInput, message))?;
     }
-    let data = send(profile, transport, authority, command.payload(project))?;
+    let data = send(profile, transport, authority, request)?;
     if let Command::TaskDetach { request } = command {
         request
             .verify(project, &data)
@@ -1068,7 +1148,8 @@ pub(crate) fn run<T: AuthorizedTransport>(
             .unwrap_or(data),
         // Context creation returns `{item: <PMDoc>}` intact, including the
         // server-authored id and version for callers to shape.
-        Command::ProjectNotes { .. }
+        Command::Authored { .. }
+        | Command::ProjectNotes { .. }
         | Command::Overview { .. }
         | Command::PublicProjects { .. }
         | Command::TaskCommentCreate { .. }
@@ -1101,20 +1182,24 @@ mod collaboration_contract_tests {
             command.payload(""),
             json!({"action":"list_public_projects","status":"active","cursor":"next-id","limit":50})
         );
-        assert!(Command::PublicProjects {
-            status: "all".into(),
-            cursor: String::new(),
-            limit: 50
-        }
-        .validate()
-        .is_err());
-        assert!(Command::PublicProjects {
-            status: "active".into(),
-            cursor: String::new(),
-            limit: 101
-        }
-        .validate()
-        .is_err());
+        assert!(
+            Command::PublicProjects {
+                status: "all".into(),
+                cursor: String::new(),
+                limit: 50
+            }
+            .validate()
+            .is_err()
+        );
+        assert!(
+            Command::PublicProjects {
+                status: "active".into(),
+                cursor: String::new(),
+                limit: 101
+            }
+            .validate()
+            .is_err()
+        );
     }
     #[test]
     fn task_comment_is_scoped_and_cursors_use_the_existing_collection_name() {
@@ -1137,20 +1222,24 @@ mod collaboration_contract_tests {
             page.payload("p")["cursors"],
             json!({"pm_comments":"old-comment"})
         );
-        assert!(Command::TaskCommentCreate {
-            task_id: "t".into(),
-            id: "comment-1".into(),
-            body: " ".into()
-        }
-        .validate()
-        .is_err());
-        assert!(Command::TaskCommentCreate {
-            task_id: "t".into(),
-            id: "comment-1".into(),
-            body: "é".repeat(2001)
-        }
-        .validate()
-        .is_err());
+        assert!(
+            Command::TaskCommentCreate {
+                task_id: "t".into(),
+                id: "comment-1".into(),
+                body: " ".into()
+            }
+            .validate()
+            .is_err()
+        );
+        assert!(
+            Command::TaskCommentCreate {
+                task_id: "t".into(),
+                id: "comment-1".into(),
+                body: "é".repeat(2001)
+            }
+            .validate()
+            .is_err()
+        );
     }
 }
 
@@ -1406,10 +1495,12 @@ mod tests {
         );
         let context = Command::Context { limit: Some(100) }.payload("p");
         assert_eq!(context["limit"], 100);
-        assert!(Command::Context { limit: None }
-            .payload("p")
-            .get("limit")
-            .is_none());
+        assert!(
+            Command::Context { limit: None }
+                .payload("p")
+                .get("limit")
+                .is_none()
+        );
     }
 
     /// The bounds the server enforces are refused here first, by the same
@@ -1427,13 +1518,15 @@ mod tests {
         );
         assert!(Command::Context { limit: Some(100) }.validate().is_ok());
         let good = json!({"kind": "accept_assignment", "accept_assignment": {"task_id": "t"}});
-        assert!(Command::Commit {
-            command_id: "pm-1_a.b".into(),
-            base_revision: 0,
-            command: good.clone()
-        }
-        .validate()
-        .is_ok());
+        assert!(
+            Command::Commit {
+                command_id: "pm-1_a.b".into(),
+                base_revision: 0,
+                command: good.clone()
+            }
+            .validate()
+            .is_ok()
+        );
         assert_eq!(
             kind(Command::Commit {
                 command_id: "".into(),
@@ -1686,10 +1779,12 @@ mod tests {
                 "finalize_attachment_upload"
             ]
         );
-        assert!(transport
-            .payloads
-            .iter()
-            .all(|p| p["ds_project"] == "project-a"));
+        assert!(
+            transport
+                .payloads
+                .iter()
+                .all(|p| p["ds_project"] == "project-a")
+        );
         assert!(!answer.to_string().contains("upload_id"));
         assert!(!answer.to_string().contains("bearer"));
     }
@@ -1999,8 +2094,17 @@ mod tests {
         transport.started["graph"]["project_id"] = json!("project-a");
         transport.finalized["context"]["loaded_collections"] = json!(["pm_records", "pm_comments"]);
         transport.payloads.clear();
-        assert_eq!(invoke(&mut transport, Options::default()).unwrap_err().kind(), ErrorKind::UnreadableResponse);
-        assert_eq!(transport.payloads.len(), 2, "unrequested acquisition is never retried");
+        assert_eq!(
+            invoke(&mut transport, Options::default())
+                .unwrap_err()
+                .kind(),
+            ErrorKind::UnreadableResponse
+        );
+        assert_eq!(
+            transport.payloads.len(),
+            2,
+            "unrequested acquisition is never retried"
+        );
         transport.finalized["context"]["loaded_collections"] = json!(["pm_records"]);
         transport.finalized["context"]["records"] = Value::Null;
         transport.payloads.clear();
@@ -2059,11 +2163,64 @@ mod tests {
             AttachmentFile::new("a.pdf", None, vec![7; 4]).unwrap()
         );
         assert!(debug.contains("bytes: 4"), "{debug}");
-        assert!(Command::TaskAttach {
-            task_id: "a/b".into(),
-            file: AttachmentFile::new("a.pdf", None, vec![1]).unwrap()
-        }
-        .validate()
-        .is_err());
+        assert!(
+            Command::TaskAttach {
+                task_id: "a/b".into(),
+                file: AttachmentFile::new("a.pdf", None, vec![1]).unwrap()
+            }
+            .validate()
+            .is_err()
+        );
+    }
+}
+
+#[cfg(test)]
+mod authoring_tests {
+    use super::*;
+    fn model() -> ds_command_kernel::project_management::authoring_model::AuthoringModel {
+        serde_json::from_value(json!({"model":"GPT-6"})).unwrap()
+    }
+    #[test]
+    fn authoring_none_preserves_reads_and_each_write_isolated() {
+        let read = Command::Graph;
+        assert_eq!(
+            read.clone().with_authoring(None).unwrap().payload("p"),
+            read.payload("p")
+        );
+        assert!(read.with_authoring(Some(model())).is_err());
+        let write = Command::TaskCommentCreate {
+            task_id: "t".into(),
+            id: "c".into(),
+            body: "Observed".into(),
+        };
+        let original = write.payload("p");
+        assert_eq!(
+            write.clone().with_authoring(None).unwrap().payload("p"),
+            original
+        );
+        let declared = write.clone().with_authoring(Some(model())).unwrap();
+        declared.validate().unwrap();
+        let mut body = declared.payload("p");
+        assert_eq!(
+            body.as_object_mut().unwrap().remove("authoring_model"),
+            Some(json!({"model":"GPT-6"}))
+        );
+        assert_eq!(body, original);
+        assert_eq!(write.payload("p"), original);
+        assert!(declared.with_authoring(Some(model())).is_err());
+    }
+    #[test]
+    fn authored_milestone_uses_the_existing_commit_payload_without_new_authority() {
+        let write = Command::Commit {
+            command_id: "command-1".into(),
+            base_revision: 7,
+            command: json!({"kind":"create_task","create_task":{"id":"m","kind":"milestone"}}),
+        };
+        let original = write.payload("p");
+        let declared = write.with_authoring(Some(model())).unwrap();
+        declared.validate().unwrap();
+        let mut payload = declared.payload("p");
+        payload.as_object_mut().unwrap().remove("authoring_model");
+        assert_eq!(payload, original);
     }
 }

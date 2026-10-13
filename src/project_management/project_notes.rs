@@ -446,6 +446,9 @@ pub struct Memory {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Draft {
+    /// Voluntary writer labels; server projects source:self_declared separately.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub authoring_model: Option<super::authoring_model::AuthoringModel>,
     pub subject: String,
     pub body: String,
     #[serde(default)]
@@ -576,6 +579,9 @@ impl Claim {
 }
 impl Draft {
     pub fn validate(&self) -> Result<(), String> {
+        if let Some(model) = &self.authoring_model {
+            model.validate()?;
+        }
         require(
             meaningful(&self.subject, 300)
                 && self.body.len() <= MAX_BODY_BYTES
@@ -1132,5 +1138,33 @@ mod tests {
         let mut q = query();
         q.limit = 51;
         assert!(q.validate().is_err());
+    }
+}
+
+#[cfg(test)]
+mod declaration_tests {
+    use super::*;
+    use serde_json::json;
+    #[test]
+    fn draft_writer_model_is_separate_from_human_claim_provenance() {
+        let raw = json!({"subject":"Owner ruling","body":"Record the actual instruction","tags":[],"authoring_model":{"model":"GPT-6"},"memory":{"schema":MEMORY_SCHEMA,"note_type":"constraint","lifecycle":"active","provenance":{"kind":"user_instruction","source_author":"Owner"},"scope":{"kind":"project"},"claims":[{"id":"rule1","kind":"constraint","issue_key":"fill_in_supply","text":"Fill-ins must not carry transformer-supply entries.","provenance":{"kind":"user_instruction","source_author":"Owner"},"evidence":[{"kind":"external","locator":"owner-conversation:Gisagara:fill-in-supply"}]}]}});
+        let d: Draft = serde_json::from_value(raw.clone()).unwrap();
+        d.validate().unwrap();
+        assert_eq!(
+            d.memory.claims[0].provenance.source_author.as_deref(),
+            Some("Owner")
+        );
+        assert_eq!(d.authoring_model.unwrap().model.as_deref(), Some("GPT-6"));
+        let mut human = raw.clone();
+        human.as_object_mut().unwrap().remove("authoring_model");
+        assert!(
+            serde_json::from_value::<Draft>(human)
+                .unwrap()
+                .authoring_model
+                .is_none()
+        );
+        let mut spoof = raw;
+        spoof["authoring_model"]["source"] = json!("verified");
+        assert!(serde_json::from_value::<Draft>(spoof).is_err());
     }
 }

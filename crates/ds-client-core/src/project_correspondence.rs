@@ -18,11 +18,11 @@
 //! reason is the code a caller plans against, with the ids and numbers the
 //! rule named beside it.
 
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value, json};
 
 use crate::{
-    authorized::Authority, AuthorizedTransport, ClientError, ClientProfile, ErrorKind,
-    ProjectManagementCall, ServiceRefusal,
+    AuthorizedTransport, ClientError, ClientProfile, ErrorKind, ProjectManagementCall,
+    ServiceRefusal, authorized::Authority,
 };
 
 /// The largest answer this door will read: a thread of records with their
@@ -65,6 +65,11 @@ pub struct PartyFilters {
 /// One governed correspondence action — the closed vocabulary of this door.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Action {
+    /// Optional per-write declaration, not principal or source-human provenance.
+    Authored {
+        model: ds_command_kernel::project_management::authoring_model::AuthoringModel,
+        action: Box<Action>,
+    },
     NoteChecklistRead {
         id: String,
     },
@@ -165,8 +170,51 @@ pub enum Action {
 }
 
 impl Action {
+    pub fn with_authoring(
+        self,
+        model: Option<ds_command_kernel::project_management::authoring_model::AuthoringModel>,
+    ) -> Result<Self, ClientError> {
+        let Some(model) = model else { return Ok(self) };
+        model.validate().map_err(|_| {
+            ClientError::new(
+                ErrorKind::InvalidInput,
+                "invalid self-declared authoring model",
+            )
+        })?;
+        if !self.supports_authoring() {
+            return Err(ClientError::new(
+                ErrorKind::InvalidInput,
+                "this correspondence action does not support authoring declarations",
+            ));
+        }
+        Ok(Self::Authored {
+            model,
+            action: Box::new(self),
+        })
+    }
+    fn supports_authoring(&self) -> bool {
+        matches!(
+            self,
+            Self::RecordCreate { .. }
+                | Self::RecordReply { .. }
+                | Self::RecordUpdate { .. }
+                | Self::NoteChecklistEdit { .. }
+                | Self::Commit { .. }
+                | Self::TaskBlock { .. }
+                | Self::TaskUnblock { .. }
+        )
+    }
+    fn base(&self) -> &Self {
+        if let Self::Authored { action, .. } = self {
+            action
+        } else {
+            self
+        }
+    }
+
     fn name(&self) -> &'static str {
         match self {
+            Self::Authored { action, .. } => action.name(),
             Self::NoteChecklistRead { .. } => "note_checklist_read",
             Self::NoteChecklistEdit { .. } => "note_checklist_edit",
             Self::CopyDocument { .. } => "copy_document",
@@ -199,6 +247,15 @@ impl Action {
                 && page.is_none_or(|page| page >= 1)
         };
         match self {
+            Self::Authored { model, action } => {
+                model
+                    .validate()
+                    .map_err(|_| invalid("invalid self-declared authoring model"))?;
+                if !action.supports_authoring() {
+                    return Err(invalid("unsupported or nested authoring declaration"));
+                }
+                return action.validate();
+            }
             Self::NoteChecklistRead { id } => {
                 if !crate::personal_notes::note_id_valid(id) {
                     return Err(invalid("note_request_invalid"));
@@ -377,7 +434,9 @@ impl Action {
             } => {
                 if !backup_id_valid(backup_id) || !backup_id_valid(command_id) || *base_revision < 0
                 {
-                    return Err(invalid("a deletion restore needs a backup id, command id and non-negative base revision"));
+                    return Err(invalid(
+                        "a deletion restore needs a backup id, command id and non-negative base revision",
+                    ));
                 }
             }
             Self::Commit {
@@ -418,6 +477,12 @@ impl Action {
             }
         };
         match self {
+            Self::Authored { model, action } => {
+                let mut payload = action.payload(project);
+                payload["authoring_model"] =
+                    serde_json::to_value(model).expect("validated authoring declaration");
+                return payload;
+            }
             Self::NoteChecklistRead { id } => {
                 payload["id"] = json!(id.trim());
             }
@@ -725,6 +790,7 @@ pub(crate) fn run<T: AuthorizedTransport>(
     if data.is_null() {
         return Err(unreadable());
     }
+    let action = action.base();
     match action {
         Action::NoteChecklistRead { id } => {
             if data["id"].as_str() != Some(id.trim())
@@ -1001,18 +1067,22 @@ mod tests {
             }),
             ErrorKind::InvalidInput
         );
-        assert!(Action::Commit {
-            command_id: "c".into(),
-            base_revision: 1,
-            command: json!({"kind": "create_task", "create_task": {"id": "T", "title": "t"}}),
-        }
-        .validate()
-        .is_ok());
-        assert!(Action::RecordThread {
-            record_id: "R1".into()
-        }
-        .validate()
-        .is_ok());
+        assert!(
+            Action::Commit {
+                command_id: "c".into(),
+                base_revision: 1,
+                command: json!({"kind": "create_task", "create_task": {"id": "T", "title": "t"}}),
+            }
+            .validate()
+            .is_ok()
+        );
+        assert!(
+            Action::RecordThread {
+                record_id: "R1".into()
+            }
+            .validate()
+            .is_ok()
+        );
     }
 
     /// The contract's token is the code; the ids the rule named ride beside it.
@@ -1078,5 +1148,40 @@ mod tests {
         let outage = refusal(503, b"upstream unavailable");
         assert_eq!(outage.kind(), ErrorKind::Transient);
         assert!(outage.service_refusal().is_none());
+    }
+}
+
+#[cfg(test)]
+mod authoring_tests {
+    use super::*;
+    fn model() -> ds_command_kernel::project_management::authoring_model::AuthoringModel {
+        serde_json::from_value(json!({"strength":"known"})).unwrap()
+    }
+    #[test]
+    fn correspondence_model_is_explicit_per_write_and_never_on_reads() {
+        let read = Action::RecordRead {
+            record_id: "r".into(),
+        };
+        assert_eq!(
+            read.clone().with_authoring(None).unwrap().payload("p"),
+            read.payload("p")
+        );
+        assert!(read.with_authoring(Some(model())).is_err());
+        let write = Action::RecordUpdate {
+            id: "r".into(),
+            expected_version: 2,
+            data: serde_json::from_value(json!({"subject":"Correction"})).unwrap(),
+        };
+        let original = write.payload("p");
+        let declared = write.clone().with_authoring(Some(model())).unwrap();
+        declared.validate().unwrap();
+        let mut body = declared.payload("p");
+        assert_eq!(
+            body.as_object_mut().unwrap().remove("authoring_model"),
+            Some(json!({"strength":"known"}))
+        );
+        assert_eq!(body, original);
+        assert_eq!(write.payload("p"), original);
+        assert!(declared.with_authoring(Some(model())).is_err());
     }
 }

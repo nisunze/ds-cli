@@ -8,10 +8,17 @@ pub(crate) fn run<T: AuthorizedTransport>(
     authority: Authority<'_>,
     project: &str,
     command: &Command,
+    authoring_model: Option<
+        &ds_command_kernel::project_management::authoring_model::AuthoringModel,
+    >,
 ) -> Result<Value, ClientError> {
-    let payload = command.payload(project).map_err(|_| {
+    let mut payload = command.payload(project).map_err(|_| {
         ClientError::new(ErrorKind::InvalidInput, "Project Notes request is invalid")
     })?;
+    if let Some(model) = authoring_model {
+        payload["authoring_model"] =
+            serde_json::to_value(model).expect("validated authoring declaration");
+    }
     let value = super::send(profile, transport, authority, payload)?;
     command.verify_response(project,&value).map_err(|_|ClientError::new(ErrorKind::UnreadableResponse,"Project Notes response differs from its captured project, identities or complete receipt"))?;
     Ok(value)
