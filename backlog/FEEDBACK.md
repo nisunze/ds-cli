@@ -2,14 +2,14 @@
 
 > **Moved 2026-10-07:** this backlog now lives in `ds-command-kernel/backlog/`. The old `ds-work/backlog/` no longer exists: edit these files here, commit them to ds-command-kernel `run`, and stage only `backlog/`. ds-work holds working sessions, not coding lists.
 
-Working list from the 2026-10-07 snapshot and 2026-10-09 component lookups, with proven closures removed: 242 tracked rows (95 open, 147 waiting according to the rows below). These are file counts, not a fresh live backlog total. The feedback API is the authority: verify each selected report's current status, full ID, version and acceptance through `ds`, close only what is proven, and remove its row. Delete this file when its remaining work is fulfilled; keep no completed-work archive.
+Working list from the 2026-10-07 snapshot and 2026-10-09 component lookups, with proven closures removed: 241 tracked rows (94 open, 147 waiting according to the rows below). These are file counts, not a fresh live backlog total. The feedback API is the authority: verify each selected report's current status, full ID, version and acceptance through `ds`, close only what is proven, and remove its row. Delete this file when its remaining work is fulfilled; keep no completed-work archive.
 
 Reports are grouped by the live repository that owns the code, then by component. The component is the submitter's free-text label, shown verbatim so `ds feedback list --component` finds it. Legacy labels map as follows: `ds-grid*`, `dsgrid*`, `ds/grid-*`, `ds/pls-library` → ds-network; `ds-report*`, `ds-printing*` → ds-network-reporter; `ds-desktop*` → ds-web (`src-tauri`); `ds pls desktop` → ds-cli (`ds-cli-pls/desktop`). Labels that name no repository stay **unassigned**. "Backlog" names the [OPEN.md](OPEN.md), [OPEN-X.md](OPEN-X.md) or [SEEDING.md](SEEDING.md) section citing the report; **untracked** means none does (120 reports).
 
 | Repository | Total | Blocker | Major | Minor | Waiting | Untracked |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 | [ds-cli](#ds-cli) | 92 | 11 | 62 | 19 | 58 | 57 |
-| [ds-network](#ds-network) | 68 | 17 | 47 | 4 | 33 | 22 |
+| [ds-network](#ds-network) | 67 | 17 | 46 | 4 | 33 | 22 |
 | [ds-network-reporter](#ds-network-reporter) | 27 | 1 | 20 | 6 | 19 | 16 |
 | [ds-web](#ds-web) | 34 | 6 | 26 | 2 | 24 | 15 |
 | [ds-command-kernel](#ds-command-kernel) | 4 | 0 | 3 | 1 | 4 | 0 |
@@ -124,7 +124,6 @@ Reports are grouped by the live repository that owns the code, then by component
 | ds-grid-engine/pls-exchange | `b3bdc857` | blocker | bug | Native PLS imports fail portable capacity verification; inline steel-to-suspension handoff blocked | waiting: install of canary 0.1.7-r79+ carrying ds-network@ee442524; selective native patch + dead-end-to-suspension repair still unimplemented | OPEN.md §11 |
 | ds-grid-engine/pls-export | `c496feb0` | blocker | bug | PLS export splits continuous OPGW runs at suspension poles, causing native section merges | waiting: continuous suspension-interior native section emission (writer); refusal guard ds-network@e5f11bd0 awaits release | OPEN.md §12 |
 | ds-grid-engine/pls-export | `b1a2b25c` | major | obstacle | Imported Model 1 cannot return to PLS: 13 untouched thin definitions block export | open | OPEN.md §11 |
-| ds-grid-engine/pls-workspace-sync | `2b8cd4ae` | major | bug | Linked workspace sync rejects a single supported structure retype as whole_snapshot_design | open | OPEN.md §11 |
 | ds-grid-engine/spotting-import | `ec73ef89` | major | friction | PLS import lacks whole-model spotting readiness metadata | waiting: engine update and owner strategy decision | OPEN.md §11 |
 | ds-grid-engine/spotting-performance | `6b597153` | major | friction | Bounded A28 spotting exceeds 26 minutes without progress or plan | waiting: release of ds-network@0011344e with CLI progress/cancel exposure, then the Windows A28 replay | OPEN.md §13, SEEDING.md §13 |
 | ds-grid/exchange | `91331096` | blocker | bug | 0.1.4 still cannot export Nyamagabe Model 1-B to PLS-CADD .bak: Method-2 signed wind cases not representable in CRI | waiting: engineering: characterize and prove separate signed Method-2 CRI cases in PLS-CADD 16.81 before changing the representability gate | OPEN.md §11 |
