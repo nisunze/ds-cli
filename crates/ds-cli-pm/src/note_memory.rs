@@ -7,7 +7,7 @@ use ds_client_core::project_management::Command as PM;
 use ds_command_kernel::project_management::project_notes as owner;
 use serde_json::{Value, json};
 use std::io::Read;
-const INPUT:Arg=Arg::value("input","<json-file>","Closed native note request JSON, at most 256 KiB; see the Shared Project Notes request examples in docs/reference/pm.md. No transport envelope, author or timestamp overrides.").required();
+pub(super) const INPUT:Arg=Arg::value("input","<json-file>","Closed native note request JSON, at most 256 KiB; see the Shared Project Notes request examples in docs/reference/pm.md. No transport envelope, author or timestamp overrides.").required();
 const NOTE: Arg = Arg::value("note", "<note-id>", "Exact same-project note identity.").required();
 const VERSION: Arg = Arg::value(
     "version",
@@ -82,8 +82,29 @@ pub(crate) const UNREADABLE: Refusal = Refusal {
     when: "the selected request is unreadable or exceeds 256 KiB",
     remedy: "use one bounded UTF-8 JSON file matching the selected native note action",
 };
-const REFUSALS: &[Refusal] = &crate::correspondence_refusals::<23>(&[INVALID, UNREADABLE]);
-const fn descriptor(
+pub(super) const MIGRATION: Refusal = Refusal {
+    code: "project_note_migration_required",
+    when: "selected current note has no canonical semantic memory",
+    remedy: "use pm note canonicalize prepare, review the literal source and exact plan, then apply deliberately; never infer agreed claims",
+};
+const HISTORY: Refusal = Refusal {
+    code: "project_note_history_missing",
+    when: "current canonical authored head has no immutable retained snapshot",
+    remedy: "recover the exact verified immutable head; ordinary reads, edits and backups never fabricate history",
+};
+const SOURCE_CHANGED: Refusal = Refusal {
+    code: "project_note_source_changed",
+    when: "raw migration source, authored version, Firestore update time or history guard changed",
+    remedy: "prepare and review a fresh exact plan before applying",
+};
+const REFUSALS: &[Refusal] = &crate::correspondence_refusals::<26>(&[
+    INVALID,
+    UNREADABLE,
+    MIGRATION,
+    HISTORY,
+    SOURCE_CHANGED,
+]);
+pub(super) const fn descriptor(
     id: &'static str,
     path: &'static [&'static str],
     summary: &'static str,
@@ -138,9 +159,12 @@ pub static READ: Command = {
             crate::PROJECT_ARG,
         ],
     );
-    command.refusals = &crate::correspondence_refusals::<25>(&[
+    command.refusals = &crate::correspondence_refusals::<28>(&[
         INVALID,
         UNREADABLE,
+        MIGRATION,
+        HISTORY,
+        SOURCE_CHANGED,
         Refusal {
             code: "pm_offline_acquisition_required",
             when: "no admitted retained note matches the exact selection and protected account/project, or project access was denied",
@@ -247,7 +271,7 @@ fn selected<T: serde::de::DeserializeOwned>(i: &Inputs) -> Result<T, Failure> {
     }
     serde_json::from_slice(&bytes).map_err(invalid)
 }
-fn ask(i: &Inputs, request: owner::Command) -> Result<Value, Failure> {
+pub(super) fn ask(i: &Inputs, request: owner::Command) -> Result<Value, Failure> {
     request.payload(i.require("project")?).map_err(invalid)?;
     let command = PM::ProjectNotes { command: request };
     let report = if matches!(
@@ -267,15 +291,6 @@ fn ask(i: &Inputs, request: owner::Command) -> Result<Value, Failure> {
     Ok(report.result().clone())
 }
 pub fn structured_create(i: &Inputs, _: &Context) -> Result<Value, Failure> {
-    if ["title", "body", "body-file", "id"]
-        .iter()
-        .any(|s| i.value(s).is_some())
-        || !i.repeated("transformer").is_empty()
-    {
-        return Err(invalid(
-            "--input cannot be combined with legacy quick-note fields",
-        ));
-    }
     let mut r: owner::Write = selected(i)?;
     crate::authoring::draft(i, &mut r.draft)?;
     if r.expected_version.is_some() {
@@ -432,38 +447,26 @@ mod tests {
         assert!(query_request(&i).is_err());
     }
     #[test]
-    fn legacy_and_structured_create_remain_distinct_and_no_mixed_effect_occurs() {
-        let legacy = parse(
-            &crate::note::CREATE,
-            &[
-                "--project",
-                "p",
-                "--title",
-                "Review",
-                "--body",
-                "Observed work",
-            ],
+    fn creation_accepts_only_canonical_input_and_declared_effects() {
+        assert!(
+            ds_cli_contract::args::parse(
+                &crate::note::CREATE,
+                &[
+                    "--project".into(),
+                    "p".into(),
+                    "--title".into(),
+                    "Review".into(),
+                    "--body".into(),
+                    "Observed".into()
+                ]
+            )
+            .is_err()
         );
-        assert_eq!(legacy.value("title"), Some("Review"));
         let i = parse(
             &crate::note::CREATE,
-            &[
-                "--project",
-                "p",
-                "--title",
-                "Review",
-                "--input",
-                "not-opened.json",
-            ],
+            &["--project", "p", "--input", "not-opened.json"],
         );
-        let context = Context {
-            confirmed: true,
-            output: ds_cli_contract::Output::resolve(ds_cli_contract::Format::Json, false, true),
-        };
-        assert_eq!(
-            structured_create(&i, &context).unwrap_err().code(),
-            INVALID.code
-        );
+        assert_eq!(i.value("input"), Some("not-opened.json"));
         assert!(
             READ.effect == Effect::ReadOnly
                 && CONTEXT.effect == Effect::ReadOnly
