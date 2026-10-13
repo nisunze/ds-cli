@@ -40,9 +40,19 @@ const ID: Arg = Arg::value(
 const LIMIT: Arg = Arg::value(
     "limit",
     "<count>",
-    "Metadata rows to show (1-100); more and acquisition completeness remain explicit.",
+    "1-100 source rows on a list page or displayed history rows; owner continuation/completeness remains explicit.",
 )
 .default("50");
+const TERM: Arg = Arg::value(
+    "term",
+    "<text>",
+    "Case-insensitive substring in this page's title, folder or tags only (1-256 characters); never searches bodies or fetches another page.",
+);
+const CURSOR: Arg = Arg::value(
+    "cursor",
+    "<cursor>",
+    "Opaque next_cursor from the same account and inclusion flags; fetches only this explicit page.",
+);
 const ARCHIVED: Arg = Arg::switch(
     "include-archived",
     "Include organizationally archived notes; these remain editable.",
@@ -100,9 +110,9 @@ pub static LIST: Command = declaration(
     "notes.list",
     &["notes", "list"],
     "List account-private note metadata.",
-    "Explicitly reads this account's bounded notes, showing concise metadata only. The legacy owner may not prove enumeration completeness; that limit stays visible. Nothing is refreshed in the background.",
+    "Reads one metadata-only page ordered by stable note ID, at most --limit source rows plus one header lookahead. --cursor explicitly requests the next page; nothing auto-pages or refreshes. --term searches title/folder/tags on this page only, never bodies or the whole collection. Filtered pages can be empty with a next cursor. Source completeness is distinct from matched count; collection totals are unknown.",
     Effect::ReadOnly,
-    &[LIMIT, ARCHIVED, TRASHED, crate::LANE_ARG],
+    &[LIMIT, CURSOR, TERM, ARCHIVED, TRASHED, crate::LANE_ARG],
 );
 pub static READ: Command = declaration(
     "notes.read",
@@ -179,6 +189,8 @@ fn action(inputs: &Inputs, command: &str) -> Result<Action, Failure> {
             draft: selected_draft(inputs)?,
         },
         "notes.list" => Action::List {
+            limit: limit(inputs)?,
+            cursor: inputs.value("cursor").map(str::to_owned),
             include_archived: inputs.switch("include-archived"),
             include_trashed: inputs.switch("include-retired"),
         },
@@ -231,15 +243,45 @@ fn limit(inputs: &Inputs) -> Result<usize, Failure> {
     }
     Ok(value)
 }
-fn project_list(data: Value, limit: usize) -> Value {
-    let notes = data["notes"].as_array().expect("verified private list");
-    let summaries: Vec<_> = notes.iter().take(limit).map(|note| json!({
-        "id":note["id"],"version":note["version"],"title":note["title"],"folder":note["folder"],
-        "pinned":note["pinned"],"archived":note["archived"],"trashed":note["trashed"],"updated_at":note["updated_at"]
-    })).collect();
-    json!({"notes":summaries,"returned":summaries.len(),"acquired":notes.len(),"max_notes":data["max_notes"],
-        "more":notes.len()>limit,"acquisition_complete":data.get("complete"),"acquisition_truncated":data.get("truncated"),
-        "completeness_unknown":data.get("complete").is_none()})
+fn term(inputs: &Inputs) -> Result<Option<String>, Failure> {
+    inputs
+        .value("term")
+        .map(|value| {
+            let value = value.trim();
+            if value.is_empty() || value.chars().count() > 256 {
+                return Err(invalid("term must have 1-256 characters"));
+            }
+            Ok(value.to_lowercase())
+        })
+        .transpose()
+}
+fn project_list(data: Value, term: Option<&str>) -> Value {
+    let notes = data["notes"]
+        .as_array()
+        .expect("verified private metadata list");
+    let matching: Vec<_> = notes
+        .iter()
+        .filter(|note| {
+            term.is_none_or(|term| {
+                [note["title"].as_str(), note["folder"].as_str()]
+                    .into_iter()
+                    .flatten()
+                    .chain(
+                        note["tags"]
+                            .as_array()
+                            .into_iter()
+                            .flatten()
+                            .filter_map(Value::as_str),
+                    )
+                    .any(|text| text.to_lowercase().contains(term))
+            })
+        })
+        .collect();
+    let summaries: Vec<_> = matching.iter().cloned().collect();
+    json!({"notes":summaries,"returned":summaries.len(),"acquired":notes.len(),"scanned_on_page":data["scanned_on_page"],
+        "matched_on_page":matching.len(),"limit":data["limit"],"next_cursor":data.get("next_cursor"),
+        "complete":data["complete"],"truncated":data["truncated"],"total_unknown":true,
+        "search_scope":"title_folder_tags_on_page","term":term})
 }
 fn execute(inputs: &Inputs, command: &str) -> Result<Value, Failure> {
     let max = if matches!(command, "notes.list" | "notes.versions") {
@@ -247,11 +289,16 @@ fn execute(inputs: &Inputs, command: &str) -> Result<Value, Failure> {
     } else {
         0
     };
+    let selected_term = if command == "notes.list" {
+        term(inputs)?
+    } else {
+        None
+    };
     let action = action(inputs, command)?;
     let mut data =
         ds_cli_auth::personal_notes::execute(inputs.value("lane").unwrap_or("stable"), &action)?;
     if command == "notes.list" {
-        return Ok(project_list(data, max));
+        return Ok(project_list(data, selected_term.as_deref()));
     }
     if command == "notes.versions" {
         let versions = data["versions"]
@@ -325,10 +372,20 @@ mod tests {
     }
     #[test]
     fn private_list_metadata_is_bounded_and_never_invents_complete_history() {
-        let data = json!({"notes":[{"id":"one","version":1,"title":"A","content":{"markdown":"private body"}},{"id":"two","version":2}],"max_notes":1000});
-        let view = project_list(data, 1);
-        assert_eq!(view["more"], true);
-        assert_eq!(view["completeness_unknown"], true);
+        let data = json!({"notes":[{"id":"one","version":1,"title":"A","tags":[]},{"id":"two","version":2,"title":"B","tags":["field"]}],"limit":2,"scanned_on_page":2,"complete":true,"truncated":false});
+        let view = project_list(data.clone(), None);
+        assert_eq!(view["returned"], 2);
+        assert_eq!(view["complete"], true);
+        assert_eq!(
+            project_list(data.clone(), Some("field"))["notes"][0]["id"],
+            "two"
+        );
+        assert_eq!(
+            project_list(data, Some("private body"))["matched_on_page"],
+            0
+        );
+        assert!(term(&inputs(&LIST, &["--term", " "])).is_err());
+        assert!(term(&inputs(&LIST, &["--term", &"x".repeat(257)])).is_err());
         assert!(view["notes"][0].get("content").is_none());
         assert!(
             action(
