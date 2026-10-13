@@ -32,7 +32,7 @@ duplicated. Headless; no window.",
     effect: Effect::GlobalWrite,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[
+    args: crate::authored_args![
         CATEGORY_ARG.required(),
         CHANNEL_ARG.required(),
         DIRECTION_ARG.required(),
@@ -99,10 +99,11 @@ authored against — plus `attachments`, `documents`, `blockedTasks`, \
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let data = super::fields(inputs, true)?;
-    let report = crate::correspondence(
+    let report = crate::authoring::correspondence(
+        inputs,
         inputs.value("lane").unwrap_or("stable"),
         inputs.require("project")?,
-        &Action::RecordCreate {
+        Action::RecordCreate {
             id: inputs.value("id").map(str::to_owned),
             data,
         },

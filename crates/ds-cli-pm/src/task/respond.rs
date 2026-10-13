@@ -42,7 +42,7 @@ to the named project, no window.",
     effect: Effect::GlobalWrite,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[TASK_ARG, RESPONSE_ARG, LANE_ARG, crate::PROJECT_ARG],
+    args: crate::authored_args![TASK_ARG, RESPONSE_ARG, LANE_ARG, crate::PROJECT_ARG],
     output: "\
 The project, the `taskId`, the `response` applied, who is `responsible` \
 afterwards, who is still being `requested`, and the `committedRevision`.",
@@ -68,7 +68,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let read = crate::graph(lane, inputs.require("project")?)?;
     let prepared = writes::respond_task(&read.graph, &task_id, response).map_err(crate::refused)?;
     let before = read.graph.tasks.iter().find(|task| task.id == task_id);
-    let result = crate::commit(lane, inputs.require("project")?, &prepared)?;
+    let result = crate::authoring::commit(inputs, lane, inputs.require("project")?, &prepared)?;
     let (responsible, requested) = writes::assignment_after(&result, &task_id, before);
     let mut extra = Map::new();
     extra.insert("response".into(), json!(response.token()));

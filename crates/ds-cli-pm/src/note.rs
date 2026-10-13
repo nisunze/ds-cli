@@ -58,7 +58,7 @@ pub static CREATE: Command = Command {
 Files a quick project note in Project Work, with its title and concise Markdown \
 body. The signed-in native credential must be allowed to contribute to the \
 explicitly named project. This creates a record with category project_note; \
-it does not send correspondence. For durable structured memory, --input consumes the closed Write JSON: operation_id,id,reason,draft(subject,body,tags,memory with schema, note_type, active lifecycle, provenance, scope, individually sourced claims, evidence, supersedes and unresolved). Server author/time remain authoritative; a proposal or inference never becomes a user decision. Use this form instead of the legacy title/body/id/link fields. Repeat --transformer for exact same-project \
+it does not send correspondence. Use notes deliberately for meaningful user rulings, corrections, rejected assumptions and verified work outcomes, then read back the saved record. There is no automatic mutation hook. For durable structured memory, --input consumes the closed Write JSON: operation_id,id,reason,draft(subject,body,tags,memory with schema, note_type, active lifecycle, provenance, scope, individually sourced claims, evidence, supersedes and unresolved). Optional draft.authoring_model retains known self-declared writer labels. Server author/time remain authoritative; a proposal or inference never becomes a user decision. Use this form instead of the legacy title/body/id/link fields. Repeat --transformer for exact same-project \
 active transformer links; body text does not create relationships. These links \
 do not pin an immutable submission revision or grant approval. An existing report is linked afterward with \
 `ds assets attach --record <note-id>`; confirm that link by reading the asset \
@@ -68,7 +68,7 @@ refused without a second note. Headless; no window.",
     effect: Effect::GlobalWrite,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[
+    args: crate::authored_args![
         TITLE_ARG,
         Arg::value(
             "input",
@@ -201,10 +201,11 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         .validate()
         .map_err(|error| invalid(error.to_string()))?;
     let id = inputs.value("id");
-    let report = ds_cli_auth::project_management_for_project(
+    let report = crate::authoring::project(
+        inputs,
         inputs.value("lane").unwrap_or("stable"),
         project,
-        &command,
+        command,
     )
     .map_err(|failure| {
         if failure.code() == crate::PM_REFUSED.code

@@ -23,7 +23,7 @@ revision; a task with nothing to clear is answered, not refused.",
     effect: Effect::GlobalWrite,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[TASK_ARG, LANE_ARG, crate::PROJECT_ARG],
+    args: crate::authored_args![TASK_ARG, LANE_ARG, crate::PROJECT_ARG],
     output: "\
 `taskId`, `committedRevision`, `warnings`, `link`, and `cleared` — whether a \
 geometry was removed and how many object links went with it.",
@@ -77,7 +77,8 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         ..UpdateTask::default()
     };
     let (prepared, kinds) = writes::update_task(&read.graph, &update).map_err(crate::refused)?;
-    let result = crate::commit_batch(lane, inputs.require("project")?, &prepared)?;
+    let result =
+        crate::authoring::commit_batch(inputs, lane, inputs.require("project")?, &prepared)?;
     let mut extra = Map::new();
     extra.insert("commands".into(), json!(kinds));
     extra.insert(

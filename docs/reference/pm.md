@@ -449,3 +449,97 @@ The typed MCP profile `project-checklists` exposes these six note/copy/mail
 controls and the three task checklist controls from the same descriptors.
 Use `ds mcp serve --exposure commands --profile project-checklists`; it keeps
 the broad `project` profile at its existing tool budget.
+
+
+## Shared Project Notes
+
+Use notes actively to retain scoped user rulings, corrections, observations and
+verified outcomes. Recording is deliberate: commands do not file notes or fetch
+context in the background. A proposal or inference is not a user decision.
+
+`ds pm note create --project <id> --input decision.json --yes` accepts a closed
+Write request (no transport envelope). This minimal example records an explicit
+user instruction; substitute the actual instruction, author, scope and evidence:
+
+```json
+{
+  "operation_id": "stake-ruling-20261013",
+  "id": "stake-fill-in-rule",
+  "reason": "Record the user's explicit staking-table rule",
+  "draft": {
+    "subject": "MV fill-in transformer supply",
+    "body": "Fill-ins may receive replacement protection, but no transformer supply entry.",
+    "tags": ["MV", "staking"],
+    "memory": {
+      "schema": "ds.project-note-memory/v1",
+      "note_type": "constraint",
+      "lifecycle": "active",
+      "provenance": {"kind": "user_instruction", "source_author": "Project owner"},
+      "scope": {"kind": "workstream", "workstream": "MV staking"},
+      "evidence": [{"kind":"external","locator":"owner-conversation:Gisagara:fill-in-supply"}],
+      "claims": [{
+        "id": "no-fill-in-supply",
+        "kind": "constraint",
+        "issue_key": "fill-in-transformer-supply",
+        "text": "Do not supply transformers at fill-ins.",
+        "provenance": {"kind": "user_instruction", "source_author": "Project owner"},
+        "evidence": [{"kind":"external","locator":"owner-conversation:Gisagara:fill-in-supply"}]
+      }]
+    }
+  }
+}
+```
+
+For `note update`, retain the id, provide a new operation_id and the reviewed
+`expected_version`. An exact replay retains the original receipt; a deliberate
+revision creates the next version. Use `note read --note <id> --version <n>
+--claim <id>` to retrieve one preserved ruling. Never silently overwrite a stale
+version.
+
+Memory `note_type` is session_summary, decision, constraint, correction,
+rejected_assumption, observation, proposal, mutation_outcome or
+context_consolidation. Claim `kind` is instruction, decision, constraint,
+rejected_assumption, correction, observation, proposal or inference. Each claim
+requires its own `provenance`, whose kind is user_instruction, user_decision,
+observation, proposal or inference; optional source_author, agent_label and
+session_ref are self-reported. Authenticated author and time are server-owned.
+
+Scope kinds are project, design, asset, workstream, structures, conditions or
+preference. Optional selectors are workstream, object_refs
+(`{"kind":"lv_transformer","id":"<exact-id>"}` or mv_model), asset_ids,
+structure_ids, conditions and user_ref. These are exact identities or bounded
+conditions, not geometry or permission overrides. Evidence entries use kind
+note/record with id and positive version; asset uses id, asset_version and exact
+sha256 (optional actual revision_id); external uses locator and is explicitly
+unverified, never fetched by a routine context read. Supersession refs retain
+note_id, version and optional claim_id. Do not invent evidence identities.
+
+`ds pm note context --project <id> --input context.json` consumes a closed query,
+for example:
+
+```json
+{"terms":["transformer supply"],"tags":["staking"],"tag_match":"any","scope":{"kind":"workstream","workstream":"MV staking"},"limit":20}
+```
+
+It returns active applicable claims and potential conflicts with exact source
+versions. A truncated/incomplete page cannot prove absence; newest does not win.
+`note query` provides terms, any/all tags, type/status and created/updated sort
+flags. `note versions` lists recoverable history.
+
+Lifecycle writes each consume a separate JSON file: backup has operation_id and
+sources `[{"id":"<note>","version":1}]`; retire adds backup_id, verified
+backup_sha256, lifecycle (superseded/withdrawn/discarded/irrelevant/archived), reason
+and optional replacement `{id,version}`. Restore has operation_id, backup_id,
+backup_sha256, sources and expected_versions. Consolidate has operation_id, id,
+reason, an active context_consolidation draft and exact sources. Consolidation
+leaves source notes intact; retirement requires a verified recoverable backup.
+
+Voluntary attribution uses draft.authoring_model with only known model, version
+and/or strength, or the supported write's --authoring-model,
+--authoring-version and --authoring-strength flags. Each supplied label is trimmed
+and at most 200 UTF-8 bytes; omit unknown values. For example,
+`"authoring_model":{"model":"GPT-6"}` belongs beside draft.subject, not inside
+human provenance. Output labels it source:self_declared, not verified identity.
+Read commands have no attribution flags. A later writer's omitted declaration
+is not inherited from an earlier model. Discover each command before use;
+unsupported owner paths refuse declarations rather than silently dropping them.

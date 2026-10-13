@@ -148,7 +148,7 @@ pub static PROJECT_EDIT: Command = descriptor(
     "Sends one closed item edit through the existing Project Work owner with an explicit note version and command id. No read precedes the write. Geometry and links stay item-scoped; referenced assets must already be note-held. The server owns authority and exact replay.",
     Effect::GlobalWrite,
     Authority::HeadlessProject,
-    &[
+    crate::authored_args![
         NOTE,
         INPUT,
         ID,
@@ -258,10 +258,11 @@ fn edit(inputs: &Inputs, private: bool) -> Result<Value, Failure> {
     let raw = if private {
         ds_cli_auth::personal_notes::execute(lane, &private_action(inputs, true)?)?
     } else {
-        crate::correspondence(
+        crate::authoring::correspondence(
+            inputs,
             lane,
             inputs.require("project")?,
-            &project_action(inputs, true)?,
+            project_action(inputs, true)?,
         )?
         .into_result()
     };

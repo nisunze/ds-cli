@@ -56,6 +56,7 @@
 
 pub mod checklist_notes;
 pub mod documents;
+pub mod authoring;
 pub mod collaboration;
 pub mod deletion;
 pub mod geometry;

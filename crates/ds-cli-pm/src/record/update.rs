@@ -56,7 +56,7 @@ credential, no window.",
     effect: Effect::GlobalWrite,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[
+    args: crate::authored_args![
         RECORD_ARG,
         STATE_ARG,
         RESPONSE_ARG,
@@ -180,10 +180,11 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         .as_i64()
         .unwrap_or(1)
         .max(1);
-    let report = crate::correspondence(
+    let report = crate::authoring::correspondence(
+        inputs,
         lane,
         inputs.require("project")?,
-        &Action::RecordUpdate {
+        Action::RecordUpdate {
             id: record_id.to_owned(),
             expected_version,
             data,

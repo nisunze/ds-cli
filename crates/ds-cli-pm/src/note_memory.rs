@@ -7,7 +7,7 @@ use ds_client_core::project_management::Command as PM;
 use ds_command_kernel::project_management::project_notes as owner;
 use serde_json::{Value, json};
 use std::io::Read;
-const INPUT:Arg=Arg::value("input","<json-file>","Closed native note request JSON, at most256 KiB; no transport envelope, author or timestamp overrides.").required();
+const INPUT:Arg=Arg::value("input","<json-file>","Closed native note request JSON, at most 256 KiB; see the Shared Project Notes request examples in docs/reference/pm.md. No transport envelope, author or timestamp overrides.").required();
 const NOTE: Arg = Arg::value("note", "<note-id>", "Exact same-project note identity.").required();
 const VERSION: Arg = Arg::value(
     "version",
@@ -74,7 +74,7 @@ pub(crate) const INVALID: Refusal = Refusal {
 };
 pub(crate) const UNREADABLE: Refusal = Refusal {
     code: "project_note_input_unreadable",
-    when: "the selected request is unreadable or exceeds256 KiB",
+    when: "the selected request is unreadable or exceeds 256 KiB",
     remedy: "use one bounded UTF-8 JSON file matching the selected native note action",
 };
 const REFUSALS: &[Refusal] = &crate::correspondence_refusals::<23>(&[INVALID, UNREADABLE]);
@@ -97,7 +97,7 @@ const fn descriptor(
         authority: Authority::HeadlessProject,
         execution: Execution::Sync,
         args,
-        output: "Canonical explicit project note/version/evidence receipt, bounded completeness and potential conflicts, or verified recoverable backup/lifecycle receipt. Self-reported agent/session attribution is separate from authenticated author. No correspondence is sent.",
+        output: "Canonical explicit project note/version/evidence receipt, bounded completeness and potential conflicts, or verified recoverable backup/lifecycle receipt. Self-reported agent/session attribution is separate from authenticated author. Optionally declare known model/version/strength as self-declared writer metadata. Deliberate note actions are encouraged for meaningful rulings and verified outcomes; there is no automatic mutation hook or background context acquisition. No correspondence is sent.",
         examples: &[],
         refusals: REFUSALS,
         reference: Some("docs/reference/pm.md"),
@@ -146,7 +146,7 @@ pub static CONTEXT: Command = descriptor(
     "pm.note.context",
     &["pm", "note", "context"],
     "Retrieve applicable active rulings and scoped conflicts before acting.",
-    "Consumes a closed context JSON: query fields terms/tags/tag_match/note_types/lifecycle/sort/direction/cursor/limit and optional scope. The existing project owner combines semantic aliases, topical relevance and affected objects/structures/conditions; exact-tag-only lookup is insufficient. Routine context is active only, scans at most200 and reports incomplete results. Potential overlapping issue/scope conflicts retain exact sources and explicit supersession; newest does not win. References are inspected on demand, never fetched speculatively.",
+    "Consumes a closed context JSON: query fields terms/tags/tag_match/note_types/lifecycle/sort/direction/cursor/limit and optional scope. The existing project owner combines semantic aliases, topical relevance and affected objects/structures/conditions; exact-tag-only lookup is insufficient. Routine context is active only, scans at most 200 and reports incomplete results. Potential overlapping issue/scope conflicts retain exact sources and explicit supersession; newest does not win. References are inspected on demand, never fetched speculatively.",
     Effect::ReadOnly,
     &[INPUT, crate::LANE_ARG, crate::PROJECT_ARG],
 );
@@ -156,7 +156,7 @@ pub static UPDATE: Command = descriptor(
     "Revise a project note with its reviewed version and stable operation.",
     "Closed Write JSON requires operation_id,id,expected_version,reason,draft. Draft contains subject/body/tags and memory schema ds.project-note-memory/v1, note_type,active lifecycle, provenance,scope,individual claims,evidence,supersedes,unresolved. Each claim has id,semantic kind,issue_key,text,mandatory provenance and exact evidence/supersession refs. User instructions/decisions cannot be inferred from proposals. Server owns author/time/permissions, version CAS and identical replay. Non-active transitions use verified backup retirement.",
     Effect::GlobalWrite,
-    &[INPUT, crate::LANE_ARG, crate::PROJECT_ARG],
+    crate::authored_args![INPUT, crate::LANE_ARG, crate::PROJECT_ARG],
 );
 pub static VERSIONS: Command = descriptor(
     "pm.note.versions",
@@ -172,7 +172,7 @@ pub static BACKUP: Command = descriptor(
     "Create and verify a recoverable exact-version note backup.",
     "Closed Backup JSON: operation_id,sources[{id,version}]. The existing project owner retains and verifies exact contents, full histories, metadata, evidence and relationships. A verified backup receipt with SHA is required before retirement; this action itself retires nothing.",
     Effect::GlobalWrite,
-    &[INPUT, crate::LANE_ARG, crate::PROJECT_ARG],
+    crate::authored_args![INPUT, crate::LANE_ARG, crate::PROJECT_ARG],
 );
 pub static RETIRE: Command = descriptor(
     "pm.note.retire",
@@ -180,7 +180,7 @@ pub static RETIRE: Command = descriptor(
     "Retire scoped notes only after their recoverable backup verifies.",
     "Closed Retire JSON: operation_id,sources[{id,version}],backup_id,backup_sha256,lifecycle,reason,replacement?{id,version}. Lifecycle is superseded/withdrawn/discarded/irrelevant/archived. The server re-verifies exact backup bytes and reviewed source versions before any transition. Backup failure prevents retirement; age alone never retires an active constraint.",
     Effect::GlobalWrite,
-    &[INPUT, crate::LANE_ARG, crate::PROJECT_ARG],
+    crate::authored_args![INPUT, crate::LANE_ARG, crate::PROJECT_ARG],
 );
 pub static RESTORE: Command = descriptor(
     "pm.note.restore",
@@ -188,7 +188,7 @@ pub static RESTORE: Command = descriptor(
     "Restore backed-up shared notes as new recoverable revisions.",
     "Closed Restore JSON: operation_id,backup_id,backup_sha256,sources[{id,version}],expected_versions[{id,version}]. Current fences cover exactly the restored identities. The owner verifies the backup and creates new versions without replacing history or evidence.",
     Effect::GlobalWrite,
-    &[INPUT, crate::LANE_ARG, crate::PROJECT_ARG],
+    crate::authored_args![INPUT, crate::LANE_ARG, crate::PROJECT_ARG],
 );
 pub static CONSOLIDATE: Command = descriptor(
     "pm.note.consolidate",
@@ -196,7 +196,7 @@ pub static CONSOLIDATE: Command = descriptor(
     "Publish concise context with exact source versions, leaving sources intact.",
     "Closed Consolidate JSON: operation_id,id,reason,draft,sources[{id,version}]. Draft must be active context_consolidation memory with explicit claim provenance/scope/evidence. Consolidation preserves disagreements, unresolved questions and immutable source refs; it never promotes a proposal into an accepted decision or retires sources. Retirement is a separate verified-backup operation.",
     Effect::GlobalWrite,
-    &[INPUT, crate::LANE_ARG, crate::PROJECT_ARG],
+    crate::authored_args![INPUT, crate::LANE_ARG, crate::PROJECT_ARG],
 );
 fn invalid(e: impl std::fmt::Display) -> Failure {
     Failure::invalid(INVALID.code, e.to_string()).remedy(INVALID.remedy)
@@ -209,17 +209,27 @@ fn selected<T: serde::de::DeserializeOwned>(i: &Inputs) -> Result<T, Failure> {
         .read_to_end(&mut bytes)
         .map_err(|e| Failure::invalid(UNREADABLE.code, e.to_string()).remedy(UNREADABLE.remedy))?;
     if bytes.len() > owner::MAX_REQUEST_BYTES {
-        return Err(invalid("selected note request exceeds256 KiB"));
+        return Err(invalid("selected note request exceeds 256 KiB"));
     }
     serde_json::from_slice(&bytes).map_err(invalid)
 }
 fn ask(i: &Inputs, request: owner::Command) -> Result<Value, Failure> {
     request.payload(i.require("project")?).map_err(invalid)?;
-    let report = ds_cli_auth::project_management_for_project(
-        i.require("lane")?,
-        i.require("project")?,
-        &PM::ProjectNotes { command: request },
-    )?;
+    let command = PM::ProjectNotes { command: request };
+    let report = if matches!(
+        &command,
+        PM::ProjectNotes {
+            command: owner::Command::Write(_) | owner::Command::Consolidate(_)
+        }
+    ) {
+        ds_cli_auth::project_management_for_project(
+            i.require("lane")?,
+            i.require("project")?,
+            &command,
+        )?
+    } else {
+        crate::authoring::project(i, i.require("lane")?, i.require("project")?, command)?
+    };
     Ok(report.result().clone())
 }
 pub fn structured_create(i: &Inputs, _: &Context) -> Result<Value, Failure> {
@@ -232,7 +242,8 @@ pub fn structured_create(i: &Inputs, _: &Context) -> Result<Value, Failure> {
             "--input cannot be combined with legacy quick-note fields",
         ));
     }
-    let r: owner::Write = selected(i)?;
+    let mut r: owner::Write = selected(i)?;
+    crate::authoring::draft(i, &mut r.draft)?;
     if r.expected_version.is_some() {
         return Err(invalid(
             "creation has no expected_version; use note update to revise",
@@ -241,7 +252,8 @@ pub fn structured_create(i: &Inputs, _: &Context) -> Result<Value, Failure> {
     ask(i, owner::Command::Write(r))
 }
 pub fn update(i: &Inputs, _: &Context) -> Result<Value, Failure> {
-    let r: owner::Write = selected(i)?;
+    let mut r: owner::Write = selected(i)?;
+    crate::authoring::draft(i, &mut r.draft)?;
     if r.expected_version.is_none() {
         return Err(invalid("update needs the exact reviewed expected_version"));
     }
@@ -290,7 +302,9 @@ pub fn restore(i: &Inputs, _: &Context) -> Result<Value, Failure> {
     ask(i, owner::Command::Restore(selected(i)?))
 }
 pub fn consolidate(i: &Inputs, _: &Context) -> Result<Value, Failure> {
-    ask(i, owner::Command::Consolidate(selected(i)?))
+    let mut request: owner::Consolidate = selected(i)?;
+    crate::authoring::draft(i, &mut request.draft)?;
+    ask(i, owner::Command::Consolidate(request))
 }
 pub fn render(v: &Value) -> String {
     serde_json::to_string_pretty(v).unwrap_or_default()

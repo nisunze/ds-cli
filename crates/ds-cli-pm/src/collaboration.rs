@@ -77,7 +77,7 @@ pub static COMMENT: Command = Command {
     effect: Effect::GlobalWrite,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[
+    args: crate::authored_args![
         crate::PROJECT_ARG,
         crate::TASK_ARG,
         ID.required(),
@@ -183,10 +183,11 @@ pub fn projects(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
 
 pub fn comment(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     let project = inputs.require("project")?;
-    let result = ds_cli_auth::project_management_for_project(
+    let result = crate::authoring::project(
+        inputs,
         inputs.value("lane").unwrap_or("stable"),
         project,
-        &PMCommand::TaskCommentCreate {
+        PMCommand::TaskCommentCreate {
             task_id: inputs.require("task")?.to_owned(),
             id: inputs.require("id")?.to_owned(),
             body: inputs.require("body")?.to_owned(),

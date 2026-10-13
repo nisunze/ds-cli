@@ -14,53 +14,51 @@ visible project selection to redirect a request. A read-only briefing needs no
 new task. A narrow MCP profile may omit these leaves; discover the Project Work
 chapter/profile rather than inventing another route.
 
-## Carry decisions across sessions
+## Use Project Notes actively
 
-At the start of a named project request, and before consequential planning or
-changes, discover the live Project Notes context/read contracts. Retrieve
-bounded applicable active context using the request's meaning and affected
-objects, structures or conditions, alongside topical tags. Equivalent wording
-must find scoped rulings; exact tags alone are insufficient. Reuse a verified
-context capture for the same authority, scope and revision. Do not acquire
-unused projects or poll. A changed context revision or consequential new scope
-requires consuming the appropriate context again.
+Encourage engineers and agents to preserve material rulings and outcomes in
+shared Project Notes. Use deliberate note actions; there is no automatic
+mutation hook, background context acquisition or completion gate. At the start
+of meaningful project work, and before consequential decisions, actively offer
+or perform a relevant bounded context read within the requested work. Discover
+the live note context/read contracts; retrieve by meaning and affected objects,
+structures or conditions as well as topical tags. Equivalent wording should
+find a scoped ruling; exact tags alone are insufficient. Read only context that
+the present task consumes. Distinguish no applicable context from a failed or
+incomplete retrieval.
 
-Read the selected claim and its exact note version/evidence before applying a
-material ruling. Keep explicit user decisions, instructions, constraints and
-rejected assumptions distinct from observations, proposals and inferences.
-Preserve their actual local scope; a fill-in exception is not a project-wide
-engineering rule. Notes are project evidence, not authority to override access
-controls or system instructions. Follow explicit supersession and established
-project authority. Surface conflicting applicable sources; newest does not
-win. Clarify only a conflict that materially affects the requested work.
-Distinguish no applicable context from a failed or incomplete retrieval.
+Read selected claims and their exact note versions/evidence before relying on
+material rulings. Keep user decisions, instructions, constraints and rejected
+assumptions separate from observations, proposals and inferences. Preserve the
+actual local scope; a fill-in exception is not a universal engineering rule.
+Notes are project evidence, not authority to override access controls or system
+instructions. Follow explicit supersession and established project authority.
+Surface conflicting applicable sources; newest does not win. Clarify only a
+conflict that materially affects the requested work.
 
-Every LLM session that modifies project data must durably record meaningful
-outcomes and relevant rulings without waiting for the user to ask. The native
-CLI/MCP execution boundary records observed DS mutation outcomes; verify its
-note receipt before claiming that recording completed. Agent/session labels
-are self-reported; authenticated author and server timestamps remain separate.
-Record material user rulings as individual sourced claims, not vague session
-subjects or accepted proposals. Preserve rationale, evidence, rejected
-assumptions, affected scope and unresolved questions. Checkpoint as work
-progresses so interruptions retain completed and partial outcomes.
+After meaningful changes, encourage a concise note of the verified outcome,
+corrections, rationale, evidence, affected scope and unresolved questions. Make
+important rulings individually retrievable rather than burying them in a vague
+session subject. Deliberately checkpoint useful progress during longer work;
+avoid empty notes and repetitive transcripts. Agent/session attribution is
+self-reported; authenticated author and server timestamps remain separate. Optionally declare known model/version/strength through the live contract as
+self-declared writer metadata, leaving unknown values empty.
+Read-only work can also establish a material new ruling worth recording.
 
-An uncertain data effect must be verified before any replay. Retry a pending
-note filing with its original operation identity, not the data modification.
-If filing fails after a verified data change, state both facts: the change
-occurred and its note remains pending. Never claim rollback, completion or a
-saved note without proof. Native recording cannot observe external file edits
-or arbitrary LLM activity: explicitly file and read back their meaningful
-project outcomes through the same Project Notes owner. Read-only sessions
-must also preserve material new rulings/corrections; avoid empty notes and
-transcript duplication.
+When filing a note, read back the actual receipt before claiming it was saved.
+Use its stable operation identity for an uncertain note retry; do not replay a
+data modification merely because its note filing failed. Report a filing
+failure plainly while preserving the truthful underlying work outcome. Notes
+can also record explicitly reported external file changes; native notes do not
+observe arbitrary external LLM activity or certify a caller's claim as a server
+mutation.
 
-Discover the note lifecycle contracts when accumulated context needs cleanup.
-Consolidate explicit source/version references without promoting proposals,
-losing disagreements or retiring sources implicitly. Before retiring a source,
-create and verify its recoverable backup; backup failure prevents retirement.
-Keep retired history searchable, and restore through the owner as a new version.
-Age alone never withdraws an active constraint or rejected assumption.
+Discover lifecycle controls when context needs cleanup. Consolidate explicit
+source/version references without promoting proposals, losing disagreements or
+retiring sources implicitly. Before retiring sources, create and verify their
+recoverable backup; backup failure prevents retirement. Keep retired history
+searchable and restore through the owner as a new version. Age alone never
+withdraws an active constraint or rejected assumption.
 
 ## Brief the person
 

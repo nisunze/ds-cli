@@ -164,7 +164,7 @@ repeat task creation to recover an attachment.",
     effect: Effect::GlobalWrite,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[
+    args: crate::authored_args![
         TITLE_ARG,
         KIND_ARG,
         PARENT_ARG,
@@ -320,14 +320,15 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     }
     let (result, attachments) = if files.is_empty() {
         (
-            crate::commit(lane, inputs.require("project")?, &prepared)?,
+            crate::authoring::commit(inputs, lane, inputs.require("project")?, &prepared)?,
             None,
         )
     } else {
-        let answer = ds_cli_auth::project_management_for_project(
+        let answer = crate::authoring::project(
+            inputs,
             lane,
             inputs.require("project")?,
-            &ds_client_core::project_management::Command::TaskCreateAttached {
+            ds_client_core::project_management::Command::TaskCreateAttached {
                 command_id: crate::command_id()?,
                 base_revision: prepared.base_revision,
                 command: prepared.command.clone(),

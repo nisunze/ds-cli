@@ -41,7 +41,7 @@ named project of the signed-in native credential, no window.",
     effect: Effect::GlobalWrite,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[
+    args: crate::authored_args![
         REPLY_TO_ARG,
         CATEGORY_ARG.required(),
         DIRECTION_ARG.required(),
@@ -100,10 +100,11 @@ The project and the new `record` with its projections, exactly what \
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let data = super::fields(inputs, false)?;
-    let report = crate::correspondence(
+    let report = crate::authoring::correspondence(
+        inputs,
         inputs.value("lane").unwrap_or("stable"),
         inputs.require("project")?,
-        &Action::RecordReply {
+        Action::RecordReply {
             record_id: inputs.require("reply-to")?.to_owned(),
             id: inputs.value("id").map(str::to_owned),
             data,

@@ -75,7 +75,7 @@ of the signed-in native credential, no window.",
     effect: Effect::GlobalWrite,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[
+    args: crate::authored_args![
         TASK_ARG,
         TITLE_ARG,
         DESCRIPTION_ARG,
@@ -199,7 +199,8 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let lane = inputs.value("lane").unwrap_or("stable");
     let read = crate::graph(lane, inputs.require("project")?)?;
     let (prepared, kinds) = writes::update_task(&read.graph, &update).map_err(crate::refused)?;
-    let result = crate::commit_batch(lane, inputs.require("project")?, &prepared)?;
+    let result =
+        crate::authoring::commit_batch(inputs, lane, inputs.require("project")?, &prepared)?;
     let mut extra = Map::new();
     extra.insert("commands".into(), json!(kinds));
     Ok(writes::write_outcome(
