@@ -2,13 +2,13 @@
 
 > Work directly on canonical `run`. Active lists stay in ds-command-kernel/backlog/. Indexed hard cases and their feedback live in backlog/hardproblems/; stage only the selected slice documents.
 
-Active list from the 2026-10-07 snapshot and 2026-10-09 component lookups, with proven closures removed and indexed hard cases moved to [hardproblems/FEEDBACK.md](hardproblems/FEEDBACK.md): 221 tracked rows (83 open, 138 waiting according to the rows below). These are file counts, not a fresh live backlog total. The feedback API is the authority: verify each selected report's current status, full ID, version and acceptance through `ds`, close only what is proven, and remove its row. Delete this file when its remaining work is fulfilled; keep no completed-work archive.
+Active list from the 2026-10-07 snapshot and 2026-10-09 component lookups, with proven closures removed and indexed hard cases moved to [hardproblems/FEEDBACK.md](hardproblems/FEEDBACK.md): 220 tracked rows (83 open, 137 waiting according to the rows below). These are file counts, not a fresh live backlog total. The feedback API is the authority: verify each selected report's current status, full ID, version and acceptance through `ds`, close only what is proven, and remove its row. Delete this file when its remaining work is fulfilled; keep no completed-work archive.
 
 Reports are grouped by the live repository that owns the code, then by component. The component is the submitter's free-text label, shown verbatim so `ds feedback list --component` finds it. Legacy labels map as follows: `ds-grid*`, `dsgrid*`, `ds/grid-*`, `ds/pls-library` → ds-network; `ds-report*`, `ds-printing*` → ds-network-reporter; `ds-desktop*` → ds-web (`src-tauri`); `ds pls desktop` → ds-cli (`ds-cli-pls/desktop`). Labels that name no repository stay **unassigned**. "Backlog" names the [OPEN.md](OPEN.md), [OPEN-X.md](OPEN-X.md) or [SEEDING.md](SEEDING.md) entry citing the active report; **untracked** means none does (110 reports).
 
 | Repository | Total | Blocker | Major | Minor | Waiting | Untracked |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| [ds-cli](#ds-cli) | 87 | 11 | 58 | 18 | 56 | 54 |
+| [ds-cli](#ds-cli) | 86 | 11 | 58 | 17 | 55 | 54 |
 | [ds-network](#ds-network) | 54 | 16 | 34 | 4 | 27 | 18 |
 | [ds-network-reporter](#ds-network-reporter) | 25 | 1 | 18 | 6 | 18 | 13 |
 | [ds-web](#ds-web) | 34 | 6 | 26 | 2 | 24 | 15 |
@@ -57,7 +57,6 @@ Reports are grouped by the live repository that owns the code, then by component
 | ds-cli/dsgrid-exchange | `8f6e3ff1` | major | bug | Alignment-revised .dsgrid cannot return to PLS-CADD: export refuses on pre-existing PLS-POLE 20.01 library members, sync has no writer for the edit class | waiting: Codex lane: DS Grid to PLS-CADD return path | OPEN.md §11 |
 | ds-cli/dsgrid-replace-structure | `31498e75` | major | bug | replace-structure refuses a real IBC PLS-POLE 20.01 T-off that the PLS workspace import accepts | open | **untracked** |
 | ds-cli/dsgrid-report-staking | `b78f77f0` | major | obstacle | Staking loses transformer designations when a model is re-imported from PLS-CADD | waiting: staking designation carry implementation and 33-row round-trip proof | **untracked** |
-| ds-cli/feedback | `9ab57db2` | minor | friction | feedback submit accepts any component text, so reports name retired or non-existent repositories | waiting: matched installed component-admission qualification through isolated native fixtures, without synthetic shared feedback | SEEDING.md §25 |
 | ds-cli/grid-geojson | `fee42145` | major | bug | Exact-revision MV alignment GeoJSON export panics for a validated GIS-imported model | waiting: install of canary 0.1.7-r79+ carrying ds-cli@68393a8c, then the exact-revision MV alignment GeoJSON export | **untracked** |
 | ds-cli/library | `defcbef3` | major | obstacle | Global catalog artifacts need typed verified download | waiting: install of canary 0.1.7-r79+ carrying ds-cli@0cdb75b2, then global artifact integrity acceptance | **untracked** |
 | ds-cli/library | `46f54c67` | major | obstacle | Northern Hub MV member codes cannot be verified from project library inspection | open | OPEN.md §5, SEEDING.md §5 |
