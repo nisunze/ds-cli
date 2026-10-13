@@ -53,10 +53,6 @@ pub const MAX_CONTEXT_LIMIT: i64 = 100;
 /// The longest command id one commit may carry: a UUID, or the `pm-…` form the
 /// browser minted before it had one.
 const MAX_COMMAND_ID_BYTES: usize = 128;
-/// PM subjects are advertised as 300 characters; `copyPMString` measures
-/// UTF-8 bytes after trimming. Keep that server bound at this door.
-const MAX_PROJECT_NOTE_SUBJECT_BYTES: usize = 300;
-const MAX_PROJECT_NOTE_BODY_BYTES: usize = 128 * 1024;
 /// Bound a minted ID while keeping the server's stable-reference alphabet.
 const MAX_PROJECT_NOTE_ID_BYTES: usize = 256;
 /// The most commands one saved draft may carry — ds-brain's own batch bound,
@@ -240,21 +236,6 @@ pub enum Command {
     /// Only the selected task's readable correspondence, using the existing
     /// indexed related_task_ids query; unused context collections are not read.
     TaskRecords { task_id: String, limit: i64 },
-    /// Create a quick, project-scoped Markdown note through `create_record`.
-    /// The server owns defaults, permissions, versioning and ID generation
-    /// when no stable ID is supplied.
-    ProjectNoteCreate {
-        id: Option<String>,
-        title: String,
-        body: String,
-    },
-    /// A quick project note with typed same-project transformer relationships.
-    ProjectNoteCreateLinked {
-        id: Option<String>,
-        title: String,
-        body: String,
-        transformer_ids: Vec<String>,
-    },
     /// One project command against one base revision — `commit_command`, the
     /// same body the Plan sheet sends for one gesture. The command is the
     /// kernel's (`ds_command_kernel::project_management::writes`), already
@@ -396,8 +377,6 @@ impl Command {
             Self::Commit { .. }
                 | Self::CommitBatch { .. }
                 | Self::TaskCommentCreate { .. }
-                | Self::ProjectNoteCreate { .. }
-                | Self::ProjectNoteCreateLinked { .. }
                 | Self::Propose { .. }
                 | Self::TaskCreateAttached { .. }
                 | Self::RequestAdmission { .. }
@@ -431,9 +410,6 @@ impl Command {
             Self::TaskComments { .. } => "get_context",
             Self::Assignees => "get_assignees",
             Self::Context { .. } | Self::TaskRecords { .. } => "get_context",
-            Self::ProjectNoteCreate { .. } | Self::ProjectNoteCreateLinked { .. } => {
-                "create_record"
-            }
             Self::Commit { .. } | Self::TaskCreateAttached { .. } => "commit_command",
             Self::CommitBatch { .. } => "commit_batch",
             Self::Propose { .. } => "commit_command",
@@ -543,45 +519,6 @@ impl Command {
                 )),
                 _ => Ok(()),
             },
-            Self::ProjectNoteCreate { id, title, body }
-            | Self::ProjectNoteCreateLinked {
-                id, title, body, ..
-            } => {
-                if let Self::ProjectNoteCreateLinked {
-                    transformer_ids, ..
-                } = self
-                {
-                    let mut unique = std::collections::BTreeSet::new();
-                    if transformer_ids.is_empty()
-                        || transformer_ids.len() > 128
-                        || transformer_ids
-                            .iter()
-                            .any(|id| !project_note_id_valid(id) || !unique.insert(id))
-                    {
-                        return Err(invalid(
-                            "project note links need 1..128 unique exact transformer identities",
-                        ));
-                    }
-                }
-                let subject = title.trim();
-                if subject.is_empty()
-                    || subject.len() > MAX_PROJECT_NOTE_SUBJECT_BYTES
-                    || subject
-                        .chars()
-                        .any(|c| c.is_control() && !matches!(c, '\n' | '\r' | '\t'))
-                {
-                    return Err(invalid(
-                        "a project note needs a meaningful title of at most 300 UTF-8 bytes",
-                    ));
-                }
-                if body.len() > MAX_PROJECT_NOTE_BODY_BYTES {
-                    return Err(invalid("a project note body is at most 128 KiB of UTF-8"));
-                }
-                if id.as_deref().is_some_and(|id| !project_note_id_valid(id)) {
-                    return Err(invalid("a project note needs one bounded stable id"));
-                }
-                Ok(())
-            }
             Self::Commit {
                 command_id,
                 base_revision,
@@ -727,26 +664,6 @@ impl Command {
             Self::Context { limit } => {
                 if let Some(limit) = limit {
                     payload["limit"] = json!(limit);
-                }
-            }
-            Self::ProjectNoteCreate { id, title, body }
-            | Self::ProjectNoteCreateLinked {
-                id, title, body, ..
-            } => {
-                if let Some(id) = id {
-                    payload["id"] = json!(id);
-                }
-                payload["data"] = json!({
-                    "category": "project_note",
-                    "record_type": "quick",
-                    "subject": title,
-                    "body": body,
-                });
-                if let Self::ProjectNoteCreateLinked {
-                    transformer_ids, ..
-                } = self
-                {
-                    payload["data"]["links"]=json!(transformer_ids.iter().map(|id| json!({"kind":"ds_object","project_id":project,"object_type":"transformer","entity_id":id})).collect::<Vec<_>>());
                 }
             }
             Self::Commit {
@@ -1168,8 +1085,6 @@ pub(crate) fn run<T: AuthorizedTransport>(
         | Command::Overview { .. }
         | Command::PublicProjects { .. }
         | Command::TaskCommentCreate { .. }
-        | Command::ProjectNoteCreate { .. }
-        | Command::ProjectNoteCreateLinked { .. }
         | Command::Propose { .. }
         | Command::RequestAdmission { .. }
         | Command::Admit { .. }
@@ -1372,142 +1287,16 @@ mod tests {
     use super::*;
 
     #[test]
-    fn linked_project_note_uses_exact_typed_project_scope_without_prose_inference() {
-        let c = Command::ProjectNoteCreateLinked {
-            id: Some("n1".into()),
-            title: "Review".into(),
-            body: "Do not parse TR-other from prose".into(),
-            transformer_ids: vec!["TR-1".into()],
-        };
-        c.validate().unwrap();
-        let p = c.payload("exact-project");
-        assert_eq!(
-            p["data"]["links"],
-            json!([{"kind":"ds_object","project_id":"exact-project","object_type":"transformer","entity_id":"TR-1"}])
-        );
-        let bad = Command::ProjectNoteCreateLinked {
-            id: None,
-            title: "Review".into(),
-            body: String::new(),
-            transformer_ids: vec!["TR-1".into(), "TR-1".into()],
-        };
-        assert!(bad.validate().is_err());
-    }
-
-    #[test]
-    fn project_note_create_payload_routes_the_explicit_project_and_stable_id() {
-        let command = Command::ProjectNoteCreate {
-            id: Some("note:review@example.com+2026_09-30.é".into()),
-            title: "Clearance review".into(),
-            body: "## Findings\n\n- Check **pole 12**.\n".into(),
-        };
-        command.validate().expect("valid project note");
-        assert_eq!(command.action(), "create_record");
-        for project in ["project-a", "project-b"] {
-            assert_eq!(
-                command.payload(project),
-                json!({
-                    "action": "create_record",
-                    "ds_project": project,
-                    "id": "note:review@example.com+2026_09-30.é",
-                    "data": {
-                        "category": "project_note",
-                        "record_type": "quick",
-                        "subject": "Clearance review",
-                        "body": "## Findings\n\n- Check **pole 12**.\n",
-                    },
-                })
-            );
-        }
-    }
-
-    #[test]
-    fn project_note_create_payload_omits_an_absent_id() {
-        let command = Command::ProjectNoteCreate {
-            id: None,
-            title: "Follow up".into(),
-            body: String::new(),
-        };
-        command.validate().expect("the server may mint the id");
-        let payload = command.payload("project-c");
-        assert_eq!(
-            payload,
-            json!({
-                "action": "create_record",
-                "ds_project": "project-c",
-                "data": {
-                    "category": "project_note",
-                    "record_type": "quick",
-                    "subject": "Follow up",
-                    "body": "",
-                },
-            })
-        );
-        assert!(payload.get("id").is_none());
-    }
-
-    #[test]
-    fn project_note_title_is_meaningful_and_within_the_server_subject_bound() {
-        for title in ["a".repeat(300), "é".repeat(150), "  Review  ".into()] {
-            Command::ProjectNoteCreate {
-                id: None,
-                title,
-                body: String::new(),
-            }
-            .validate()
-            .expect("a bounded meaningful subject");
-        }
-        for title in [
-            String::new(),
-            " \t\n\u{2003}".into(),
-            "\0".into(),
-            "a".repeat(301),
-            "é".repeat(151),
-        ] {
-            let error = Command::ProjectNoteCreate {
-                id: None,
-                title,
-                body: String::new(),
-            }
-            .validate()
-            .expect_err("an invalid subject is refused locally");
-            assert_eq!(error.kind(), ErrorKind::InvalidInput);
-        }
-    }
-
-    #[test]
-    fn project_note_body_bound_counts_utf8_bytes() {
-        for body in ["a".repeat(128 * 1024), "é".repeat(64 * 1024)] {
-            Command::ProjectNoteCreate {
-                id: None,
-                title: "Review".into(),
-                body: body.clone(),
-            }
-            .validate()
-            .expect("exactly 128 KiB is accepted");
-            let error = Command::ProjectNoteCreate {
-                id: None,
-                title: "Review".into(),
-                body: format!("{body}a"),
-            }
-            .validate()
-            .expect_err("one byte over the body bound is refused locally");
-            assert_eq!(error.kind(), ErrorKind::InvalidInput);
-        }
-    }
-
-    #[test]
-    fn project_note_ids_accept_stable_references_and_refuse_invalid_bounds() {
+    fn task_records_ids_accept_stable_references_and_refuse_invalid_bounds() {
         for id in [
             "550e8400-e29b-41d4-a716-446655440000".into(),
             "note:review@example.com+2026_09-30.é".into(),
             "a".repeat(256),
             "é".repeat(128),
         ] {
-            Command::ProjectNoteCreate {
-                id: Some(id),
-                title: "Review".into(),
-                body: String::new(),
+            Command::TaskRecords {
+                task_id: id,
+                limit: 100,
             }
             .validate()
             .expect("a server-valid bounded stable id");
@@ -1529,10 +1318,9 @@ mod tests {
         .map(str::to_owned)
         .chain(["a".repeat(257), "é".repeat(129)])
         {
-            let error = Command::ProjectNoteCreate {
-                id: Some(id),
-                title: "Review".into(),
-                body: String::new(),
+            let error = Command::TaskRecords {
+                task_id: id,
+                limit: 100,
             }
             .validate()
             .expect_err("an invalid stable id is refused locally");
