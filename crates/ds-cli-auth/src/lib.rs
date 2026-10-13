@@ -5,6 +5,7 @@
 //! project response contract remain exclusively in `ds-client-core`.
 
 pub mod account;
+pub mod asset_index_source;
 pub mod asset_preview_source;
 mod context;
 pub mod correspondence;
@@ -3387,15 +3388,31 @@ pub fn project_assets_for_project(
     command: &ds_client_core::project_assets::Command,
     reader: Option<&mut dyn std::io::Read>,
 ) -> Result<HeadlessNamedProject<Value>, Failure> {
+    let write_fence = if matches!(
+        command,
+        ds_client_core::project_assets::Command::Classify { .. }
+            | ds_client_core::project_assets::Command::Ingest(_)
+    ) {
+        Some(capture_layer_scope_fence_for_project(lane_value, project)?)
+    } else {
+        None
+    };
     let reader = std::cell::RefCell::new(reader);
-    headless_named_project(
+    let mut captured = headless_named_project(
         lane_value,
         project,
         |device, project| device.project_assets(project, command, reader.borrow_mut().take()),
         |client, project| {
             client.project_assets(project, command, reader.borrow_mut().take(), now())
         },
-    )
+    )?;
+    if let Some(fence) = &write_fence {
+        match asset_index_source::after_write(lane_value, project, command, &captured, fence) {
+            Ok(invalidated) => captured.result["retained_invalidation"] = json!({"status":"verified", "invalidated":invalidated, "acquired":false}),
+            Err(error) => captured.result["retained_invalidation"] = json!({"status":"failed", "code":error.code(), "message":"the source write committed, but native catalogue invalidation was not verified; refresh before reusing retained data"}),
+        }
+    }
+    Ok(captured)
 }
 
 /// One governed design annotation action — a tag, a group, a consumer

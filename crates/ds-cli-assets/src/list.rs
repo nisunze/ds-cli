@@ -8,14 +8,12 @@
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Arg, Authority, Chapter, Command, Effect, Example, Execution, Requires,
+    Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
-use crate::{
-    CURSOR_ARG, CatalogueCommand, IndexList, IndexOrder, LANE_ARG, LIMIT_ARG, PROJECT_ARG,
-};
+use crate::{CURSOR_ARG, IndexList, IndexOrder, LANE_ARG, LIMIT_ARG, PROJECT_ARG};
 
 const FOLDER_ARG: Arg = Arg::value(
     "folder",
@@ -68,7 +66,7 @@ const MAX_LINES: usize = crate::MAX_PAGE_SIZE as usize;
 pub static COMMAND: Command = Command {
     id: "assets.list",
     path: &["assets", "list"],
-    contract: 2,
+    contract: 3,
     summary: "List the project's assets, newest change first, one page at a time.",
     purpose: "\
 The project's timeline: every asset the signed-in user may see in the named \
@@ -76,6 +74,11 @@ project — uploads, transformer designs, MV models, survey media, reports, \
 Solar, prints — newest change first, each with its folder, kind and version \
 count. --order name sorts by name; --folder narrows to one exact index folder. \
 Read from the index ds-brain builds and serves; --refresh rebuilds it first. \
+Bounded pages are retained under the protected account, lane, credential and \
+named project. Ordinary repeated reads reuse a recent capture; --offline reads \
+only that exact retained query, with zero acquisition. Retained data proves its \
+captured scope, not current membership, permission or cloud freshness. \
+Missing or denied retained pages require explicit online acquisition. \
 Every other `ds assets` command takes an asset_id from here or `ds assets \
 tree`. A class the caller cannot read has no row and no count. Changes nothing. Headless.",
     chapter: Chapter::Assets,
@@ -92,6 +95,10 @@ tree`. A class the caller cannot read has no row and no count. Changes nothing. 
         LIMIT_ARG,
         CURSOR_ARG,
         REFRESH_ARG,
+        Arg::switch(
+            "offline",
+            "Read only this exact protected account/project/query capture; never refresh auth or acquire missing data.",
+        ),
         LANE_ARG,
         PROJECT_ARG,
     ],
@@ -99,19 +106,39 @@ tree`. A class the caller cannot read has no row and no count. Changes nothing. 
 `assets` rows (`asset_id`, `name`, `kind`, `folder_path`, `modified_at`, \
 `versions` {count, current, latest_at} …), `more` and `next_cursor`, `order`, \
 ds-brain's `index` {generation, built_at, checked_at, rebuilt, stale_sources, \
-truncated_sources} and `index_status` `served`.",
+truncated_sources}, `index_status` `served`, and `retained` capture provenance (mode, captured scope/time, stale, page digest and current-authorization/source verification).",
     examples: &[Example {
         command: "ds assets list --project <exact-id> --folder Transformers/TX-104 --output json",
         note: "Read .data.assets[].asset_id to feed versions, read, preview or attach.",
         runnable: false,
     }],
-    refusals: &crate::refusals::<28>(&[
+    refusals: &crate::refusals::<32>(&[
         crate::INVALID_NUMBER,
         crate::INVALID_FOLDER_PATH,
         crate::INVALID_DATE,
         crate::UNKNOWN_FOLDER,
         crate::ASSETS_INDEX_MOVED,
         crate::ASSETS_UNREADABLE,
+        Refusal {
+            code: "assets_offline_refresh_conflict",
+            when: "offline and refresh are both requested",
+            remedy: "omit refresh for retained data, or omit offline to acquire",
+        },
+        Refusal {
+            code: "assets_offline_acquisition_required",
+            when: "no admissible retained page matches the protected identity and exact query",
+            remedy: "run the exact list online once; offline never acquires missing data",
+        },
+        Refusal {
+            code: "assets_retained_unavailable",
+            when: "native retained data is unsafe, malformed, over its bound or cannot be persisted",
+            remedy: "inspect the owner-only native data directory and retry online with refresh",
+        },
+        Refusal {
+            code: "project_context_changed",
+            when: "protected identity or catalogue generation changes during acquisition",
+            remedy: "repeat the bounded list under the current native account and named project",
+        },
     ]),
     reference: Some("docs/reference/assets.md"),
     search: &["timeline", "recent", "latest changes"],
@@ -176,10 +203,10 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         .as_deref()
         .and_then(IndexOrder::parse)
         .unwrap_or_default();
-    let page = crate::catalogue(
+    let page = ds_cli_auth::asset_index_source::read(
         lane,
         project,
-        &CatalogueCommand::IndexList(IndexList {
+        &IndexList {
             order,
             folder: text("folder"),
             kind: text("kind"),
@@ -189,7 +216,8 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             limit,
             cursor: text("cursor"),
             refresh: arguments["refresh"] == Value::Bool(true),
-        }),
+        },
+        inputs.switch("offline"),
     )?;
     let mut answer = json!({
         "assets": page["assets"],
@@ -198,6 +226,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         "index": page["index"],
         "index_status": crate::INDEX_SERVED,
     });
+    answer["retained"] = page["retained"].clone();
     if let Some(cursor) = page["next_cursor"]
         .as_str()
         .filter(|cursor| !cursor.is_empty())
@@ -225,6 +254,17 @@ pub fn render(data: &Value) -> String {
         .and_then(|(built, checked)| crate::ago(built, checked))
     {
         out.push_str(&format!(", built {built}"));
+    }
+    if let Some(mode) = data["retained"]["mode"]
+        .as_str()
+        .filter(|mode| *mode != "acquired")
+    {
+        out.push_str(&format!(
+            " \u{00b7} {mode}; captured permissions, current authority unverified"
+        ));
+        if data["retained"]["stale"] == true {
+            out.push_str("; stale");
+        }
     }
     out.push('\n');
     let shown = on_page.min(MAX_LINES);
@@ -308,6 +348,29 @@ mod tests {
         let mut tokens: Vec<String> = tokens.iter().map(|token| (*token).to_string()).collect();
         tokens.extend(["--project".to_string(), "test_project".to_string()]);
         parse(&COMMAND, &tokens).expect("declared tokens parse")
+    }
+
+    #[test]
+    fn offline_is_one_native_mode_not_a_cloud_payload_key() {
+        let offline = inputs(&["--offline"]);
+        assert!(offline.switch("offline"));
+        assert_eq!(
+            arguments(&offline).unwrap(),
+            arguments(&inputs(&[])).unwrap()
+        );
+        assert_eq!(COMMAND.contract, 3);
+        assert!(
+            COMMAND
+                .refusals
+                .iter()
+                .any(|r| r.code == "assets_offline_acquisition_required")
+        );
+        assert!(COMMAND.purpose.contains("not current membership"));
+        let output = render(
+            &json!({"assets":[],"more":false,"retained":{"mode":"offline_capture","stale":true}}),
+        );
+        assert!(output.contains("current authority unverified"));
+        assert!(output.contains("stale"));
     }
 
     #[test]
