@@ -127,6 +127,38 @@ fn selection_from_receipt(
 /// Its selection must match the actual native receipt; online consumers still
 /// use source authority, and offline consumers require an exact retained result.
 pub fn validate_export(project: &str, export: &Export) -> Result<(), HostFailure> {
+    let receipt = &export.native_source;
+    if receipt.schema != ds_command_kernel::asset_preview::RECEIPT_SCHEMA
+        || receipt.artifact.schema != preview_artifact::SCHEMA
+        || receipt.artifact.content_type != "application/pdf"
+        || receipt.artifact.sha256 != receipt.measured_sha256
+        || receipt.artifact.size_bytes != receipt.source.size_bytes
+    {
+        return Err(fail("semantic manifest is not an exact native PDF receipt"));
+    }
+    let asset_id = match export.selection.source.kind {
+        SourceKind::CatalogueAsset => export.selection.source.id.clone(),
+        SourceKind::PmAttachment => format!("sys:pm_attachment:{}", export.selection.source.id),
+    };
+    let request = Request {
+        schema: REQUEST_SCHEMA.into(),
+        asset_id,
+        expected_revision: Some(receipt.source.revision.clone()),
+        expected_generation: Some(receipt.source.generation.clone()),
+        expected_sha256: Some(receipt.measured_sha256.clone()),
+        offline: true,
+        retention: preview_artifact::Retention::Hours24,
+    };
+    request.validate().map_err(|e| fail(e.message))?;
+    receipt
+        .source
+        .validate(project, &request)
+        .map_err(|e| fail(e.message))?;
+    receipt
+        .source
+        .validate_measured(&request, &receipt.measured_sha256)
+        .map_err(|e| fail(e.message))?;
+
     let selected = selection_from_receipt(
         project,
         export.native_source.clone(),
@@ -418,6 +450,15 @@ mod tests {
         let mut mismatched = result.clone();
         mismatched.selection.source.generation += 1;
         assert!(validate_export("project", &mismatched).is_err());
+        let mut wrong_schema = result.clone();
+        wrong_schema.native_source.schema = "invented".into();
+        assert!(validate_export("project", &wrong_schema).is_err());
+        let mut wrong_asset = result.clone();
+        wrong_asset.native_source.source.asset_id = "sys:pm_attachment:foreign".into();
+        assert!(validate_export("project", &wrong_asset).is_err());
+        let mut wrong_digest = result.clone();
+        wrong_digest.native_source.artifact.sha256 = "b".repeat(64);
+        assert!(validate_export("project", &wrong_digest).is_err());
         assert_eq!(result.selection.source.version, 7);
         assert_eq!(result.selection.source.generation, 29);
         assert_eq!(
@@ -486,6 +527,52 @@ mod tests {
         assert!(forget_source(&r, &selected).unwrap() > 0);
         assert!(preview_artifact::read(&r, &artifact).is_err());
         assert!(preview_artifact::read(&r, &held.artifact).is_err());
+    }
+    #[test]
+    fn denied_source_revokes_every_exact_locator_even_when_foreign_files_block_cleanup() {
+        let dir = tempfile::tempdir().unwrap();
+        let r = room(dir.path().into());
+        let held = source(&r, Arc::new(AtomicUsize::new(0)));
+        let selected = selection(&r, &held, extractor(), &Guard).unwrap();
+        let bytes = b"# Ready\n";
+        let p = Prepare {
+            selection: selected.clone(),
+            output: markdown(bytes).unwrap(),
+        };
+        let artifact = retain_ready(
+            &r,
+            &p,
+            &ready(&r, &p),
+            bytes,
+            preview_artifact::Retention::Hours24,
+        )
+        .unwrap();
+        let source_foreign = Path::new(&held.artifact.path)
+            .parent()
+            .unwrap()
+            .join("operator.txt");
+        let derivative_foreign = Path::new(&artifact.path)
+            .parent()
+            .unwrap()
+            .join("operator.txt");
+        fs::write(&source_foreign, b"operator source evidence").unwrap();
+        fs::write(&derivative_foreign, b"operator derivative evidence").unwrap();
+        assert!(forget_source(&r, &selected).is_err());
+        assert!(preview_artifact::read(&r, &held.artifact).is_err());
+        assert!(preview_artifact::read(&r, &artifact).is_err());
+        assert_eq!(
+            fs::read(source_foreign).unwrap(),
+            b"operator source evidence"
+        );
+        assert_eq!(
+            fs::read(derivative_foreign).unwrap(),
+            b"operator derivative evidence"
+        );
+        assert!(
+            read_retained(&r, &selected, preview_artifact::Retention::Hours24)
+                .unwrap()
+                .is_none()
+        );
     }
     #[test]
     fn partial_corrupt_and_empty_outputs_do_not_enter_reusable_derivative_index() {
