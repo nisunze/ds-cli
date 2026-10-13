@@ -4,6 +4,8 @@
 
 Unfinished code that an agent can implement and prove without further owner input. The backlog is declarative: it lists only what is known not to work, and an entry is removed the moment it is handled ([PRINCIPLES.md §0](PRINCIPLES.md#0-the-backlog-is-declarative-owner-2026-10-07)). The standing owner rulings — the backlog split, how to work an entry, priorities, reporting, kernel/CLI/UI, engineering and country neutrality — are in [PRINCIPLES.md](PRINCIPLES.md); the start order is [ORDER.md](ORDER.md). Owner decisions are in [OPEN-X.md](OPEN-X.md); template building and seeding that need no code change, plus deployment and acceptance, in [SEEDING.md](SEEDING.md).
 
+Tried cases removed from the small-fix queue now live in [HARD-PROBLEMS.md](HARD-PROBLEMS.md), with reusable evidence under [hard-problems/](hard-problems/). Consult that index before revisiting their source or native gates.
+
 <!-- toc -->
 
 | Area | Remaining entries |
@@ -17,9 +19,9 @@ Unfinished code that an agent can implement and prove without further owner inpu
 | [8. Sync, publication and edge outbox](#8-sync-publication-and-edge-outbox) | 6 |
 | [9. LV processing, sizing and headless intake](#9-lv-processing-sizing-and-headless-intake) | 8 |
 | [10. Voltage drop](#10-voltage-drop) | 0 |
-| [11. PLS-CADD exchange round trip](#11-pls-cadd-exchange-round-trip) | 11 |
-| [12. DS Grid engineering (Codex main)](#12-ds-grid-engineering-codex-main) | 11 |
-| [13. Spotting (Codex main)](#13-spotting-codex-main) | 8 |
+| [11. PLS-CADD exchange round trip](#11-pls-cadd-exchange-round-trip) | 9 |
+| [12. DS Grid engineering (Codex main)](#12-ds-grid-engineering-codex-main) | 9 |
+| [13. Spotting (Codex main)](#13-spotting-codex-main) | 4 |
 | [14. Plan and Profile authoring](#14-plan-and-profile-authoring) | 1 |
 | [15. Project delivery code](#15-project-delivery-code) | 2 |
 | [16. Map data, datasets and screen styling](#16-map-data-datasets-and-screen-styling) | 12 |
@@ -93,7 +95,6 @@ is ruled in the sync contract: simple local clean and recompute.
 
 - **Workspace formatting gate**: `cargo fmt --all --check` from `ds-cli` fails on committed Profile runtime formatting (`calculated_transfer_tests.rs`, `lib.rs`, `publication.rs`), the Network engine module order, and CLI Solar code/tests (`portfolio_headless.rs`, `project.rs`, `domain_smoke.rs`, `semantic_coverage.rs`). Format only those owning files, preserving concurrent edits, then prove the same workspace check. Exact diagnostics: `ds-web/out/windows-readiness-20261009/cli-fmt.log`.
 
-
 - **Kernel vendored-drift and literal-ratchet tests red**: `tests/geo_lite_drift` `vendored_bytes_match_live_ds_network` fails on vendored `canvas/free_layout.rs` drifting from ds-network `ds-canvas`; the template literal ratchet counts 12 against baseline 10 because `crates/ds-client-core/src/sre.rs:572` and `:613` (`ef40648`) add the token `"service"`. Resync the vendor copy and remove or name the literals; never raise the baseline.
 
 - **ds-network differential receipts**: `network::differential::tests::recorded_transformers_manual_and_auto_process_outputs_are_byte_identical` was red because the `renumber_lines` process setting adds `"renumber_lines":true,` to `settings_used` (lv-differential-wingwa, auto=true). With that setting on `run`, regenerate the recorded receipts if the test is still red and prove the suite.
@@ -117,7 +118,6 @@ Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group E (printing templ
 ## 5. Print renderer and booklet code
 
 Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group E (printing templates, previews and booklets).
-
 
 - **Dead retired renderer in the reporter**: ds-network-reporter `src/print_iterations.rs` still holds a `cfg(test)`-only retired renderer (`render_transformer_svg_legacy`, `compose_svg` and helpers, about 2,000 lines) reachable only from its own tests. Delete it with its tests in a dead-code slice; keep live renderer coverage.
 
@@ -155,7 +155,6 @@ Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group E (printing templ
 
 - Never-landed (owner 2026-10-02, land adapted to run): Generic archive-group readers: kernel, ds-cli (890bac3) and ds-web (54a65730) read the `group_count`/`groups` ds-brain writes, not `district_count` only.
 
-
 ## 8. Sync, publication and edge outbox
 
 - **Cross-process native publication wake without polling** (owner 2026-10-10): Desktop sync runs on auth/startup, intentional navigation/refresh, reconnect, visible return and native/local producer events. Deliver seals/recovery transitions from independent CLI/MCP/native producers into that existing wake path using an owned IPC/filesystem event; schedule retained retry work only at the kernel's deadline. Preserve account/install/project fences, coalescing and headless publication. Do not restore idle thirty-second queue scans or use report-activity timers to discover work. Prove an external sealed result wakes the primary and duplicate wake events do not duplicate publication.
@@ -171,8 +170,6 @@ Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group E (printing templ
 - **Bounded cloud-head reads**: the affected `fill_in_gishubi` cloud-head read produced no output for more than ten minutes. Provide a bounded result or named stalled-acquisition refusal while preserving retained local artifacts. Reproduction receipts: `ds-command-kernel/_discardable/artifact-inventory-refresh/root-installed-publications-stalled.json`; publication recovery is tracked in [SEEDING.md](SEEDING.md#8-sync-publication-and-edge-outbox).
 
 ## 9. LV processing, sizing and headless intake
-
-
 
 - `007c1624` (major): Legacy (unfenced) transformer rooms cannot be read headlessly: lv project-export refuses, features select scans 0, location path resolves nothing, no headless migrate.
 
@@ -190,7 +187,7 @@ Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group E (printing templ
 
 ## 11. PLS-CADD exchange round trip
 
-- **PLS engineering fidelity** (`4ed6b202`, `ef2478d4`, `0a653e07`, `9817e17e`): the native round trip must retain connected T-offs, use section ruling spans for clearance, and preserve valid cable and criteria records. Prove each against its filed PLS acceptance before issuing strength results.
+- **PLS engineering fidelity** (`4ed6b202`, `ef2478d4`, `0a653e07`, [`9817e17e`](HARD-PROBLEMS.md)): the native round trip must retain connected T-offs, use section ruling spans for clearance, and preserve valid cable and criteria records. Prove each against its filed PLS acceptance before issuing strength results.
 
 - **PLS restore acceptance** (`1086e058`, `6f346aa3`): handle the catalogued Save changes exit prompt, then compare every restored file with the backup; a dialog count alone must not report success.
 
@@ -198,7 +195,7 @@ Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group E (printing templ
 
 - **Old `.dsgrid` revisions**: refused with a named code once the old readers go; `ds grid model upgrade` republishes every published head.
 
-- **8. PLS-CADD comparison harness and exchange fidelity**: a repeatable harness (DS Grid vs PLS-CADD on the pinned revisions, through the installed `ds pls desktop` verbs) whose outputs are committed tests. Keep the exchange suite green (612 ds-grid-exchange, 432 ds-io, 488 ds-network at `f1a8e02`). Exchange items: `7a836b7a`/`9f2316b3`/`6405185d` Repair Wizard; `e258b287`; `f27c69f1` Model 2 merges 76 of 709 sections; `732fcd12` two criterion sets; `3724e4ce` ACSR member; `91331096` Method-2 signed wind cases; `9817e17e` export re-authors CRI/cable files; `0a653e07` ACSR cable extra line; `de849b9b` 1 m alignment gap; `8f312f23` immutable source provenance; `b3bdc857`, `b1a2b25c`, `ec73ef89`, `90cf2311`.
+- **8. PLS-CADD comparison harness and exchange fidelity**: a repeatable harness (DS Grid vs PLS-CADD on the pinned revisions, through the installed `ds pls desktop` verbs) whose outputs are committed tests. Keep the exchange suite green (612 ds-grid-exchange, 432 ds-io, 488 ds-network at `f1a8e02`). Exchange items: `7a836b7a`/`9f2316b3`/`6405185d` Repair Wizard; [`e258b287`](HARD-PROBLEMS.md); `f27c69f1` Model 2 merges 76 of 709 sections; `732fcd12` two criterion sets; `3724e4ce` ACSR member; `91331096` Method-2 signed wind cases; [`9817e17e`](HARD-PROBLEMS.md) export re-authors CRI/cable files; `0a653e07` ACSR cable extra line; `de849b9b` 1 m alignment gap; `8f312f23` immutable source provenance; `b3bdc857`, `b1a2b25c`, `ec73ef89`, `90cf2311`.
 
 - **Restore failure reproduction** (`7a836b7a`): repair the affected DS-authored backup only from its exact source and native Restore evidence. Include the known clean Gisagara round-trip as a positive control; relative `FILENAME=.\` headers alone are not an established Repair Wizard trigger.
 
@@ -206,19 +203,17 @@ Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group E (printing templ
 
 - `90cf2311` (minor): a bounded PLS workspace export of only the members an edit touches (e.g. the Model 2 cables folder for a creep check) is not possible without first earthing every existing structure. The refusal already names every unearthed structure and its remedy.
 
-- `3a302e54` (major): PLS export can write a blank final weather case, so PLS-CADD stops on open (`wc_name_to_index couldnt find weather case`). The final-after-load weather cases are still unaddressed; write them from the model or refuse by name. Windows restore/readback acceptance is in SEEDING.md §21.
-
 - **Imported PLS structure orientation** (needs characterization): a structure's `orientation_rad` is its travel bearing (e.g. 5.0776 rad at Nyamagabe `str-423815a32fed4309-420`), but the imported PLS STRUCT puts its transverse offset in `local_x`; `placed_local_xy` rotates local x by orientation, so imported transverse phase offsets would be placed along the line, and `resolve_directional_strain` reads PLS strain azimuths (1.571/4.712) as transverse and refuses. Compare ds-grid-exchange `pls_cadd_workspace.rs` attachment import with ds-grid-engine `projection.rs` `placed_local_xy` and `structure_placement.rs` `resolve_directional_strain`; prove placement against a PLS reference.
 
 ## 12. DS Grid engineering (Codex main)
 
 Rules: [PRINCIPLES.md §6](PRINCIPLES.md#6-ds-grid-engineering).
 
-- **1. Loads and strength (structure usage)**: applied loads and reactions per load case and weather case; Method 1 and Method 2 usage from interaction diagrams; governing case, margin and loads per structure. Implement and test source-backed loads, usage and exact case binding; report measured PLS differences. Approval of an unspecified engineering acceptance tolerance is separated into [OPEN-X.md](OPEN-X.md#12-engineering-acceptance-and-material-authority). Items: `3d2ddd7a` Method 2 usage in DS Grid; `df1f53ae` Model 2 interaction artifacts unverified; `4ff54666` 334,508% usage on stayed steel; `4ba8ab15` section-boundary structures take one side (wind span ~0.5x PLS); guys/stays and foundations (14 m burial 2.0 m).
+- **1. Loads and strength (structure usage)**: applied loads and reactions per load case and weather case; Method 1 and Method 2 usage from interaction diagrams; governing case, margin and loads per structure. Implement and test source-backed loads, usage and exact case binding; report measured PLS differences. Approval of an unspecified engineering acceptance tolerance is separated into [OPEN-X.md](OPEN-X.md#12-engineering-acceptance-and-material-authority). Items: `3d2ddd7a` Method 2 usage in DS Grid; [`df1f53ae`](HARD-PROBLEMS.md) Model 2 interaction artifacts unverified; `4ff54666` 334,508% usage on stayed steel; `4ba8ab15` section-boundary structures take one side (wind span ~0.5x PLS); guys/stays and foundations (14 m burial 2.0 m).
 
 - **2. Uplift**: suspension uplift detected from the vertical load sign per case. No false flags. Items: `523a7f6d` flags every -0 suspension from the EDT ray end; `4ba8ab15` 115 spurious uplifts (Gisagara calibration). Acceptance: the uplift set equals PLS-CADD's on the reference models.
 
-- **3. Stringing and sag-tension**: ruling span, AutoSag equivalence, weather cases, creep as a temperature shift (client: 15 C). Items: `e343d5ac` DS stringing ~27% tighter than PLS AutoSag (828 section violations); `6226c0bb` and `3d1c735c` creep shift field; `c496feb0` and `59d38d86` OPGW sections split at suspensions. Prove sag/tension computation and imported criteria per span and case; report measured differences. The unspecified acceptance tolerance is in [OPEN-X.md](OPEN-X.md#12-engineering-acceptance-and-material-authority).
+- **3. Stringing and sag-tension**: ruling span, AutoSag equivalence, weather cases, creep as a temperature shift (client: 15 C). Items: `e343d5ac` DS stringing ~27% tighter than PLS AutoSag (828 section violations); `6226c0bb` and [`3d1c735c`](HARD-PROBLEMS.md) creep shift field; `c496feb0` and `59d38d86` OPGW sections split at suspensions. Prove sag/tension computation and imported criteria per span and case; report measured differences. The unspecified acceptance tolerance is in [OPEN-X.md](OPEN-X.md#12-engineering-acceptance-and-material-authority).
 
 - **4. Clearances**: ground, crossings, buildings and cleared forest (contract decision 16), per weather case; the checked clearance is ground offset plus the code extra (`7bc05e22`, computation side; the drawing belongs to the print slice). MV voltage classes from the model/project (15 kV ADERM, not 30 kV everywhere: country scout #33); the structure rules standard per project, not the REG v7 default (#35). Prove violating spans and source-backed clearance values against PLS-CADD. UI/report consumers must carry the native applicable-rule and checked-corridor coverage at the same revision; zero violations with incomplete coverage cannot become a qualified pass. Approved rule acquisition/seeding belongs in SEEDING §12. Approval of an unspecified numeric acceptance tolerance is in [OPEN-X.md](OPEN-X.md#12-engineering-acceptance-and-material-authority).
 
@@ -226,11 +221,7 @@ Rules: [PRINCIPLES.md §6](PRINCIPLES.md#6-ds-grid-engineering).
 
 - **Existing conductor counts as new**: tension sections have no typed existing/new status (only structures carry `StakingStatus`), so staking/BOQ include existing conductor and prints cannot style it (2026-09-25 school-tap findings, confirmed in the model). Add a typed section status carried by the atlas, the print and the BOQ.
 
-- `df1f53ae` (major): Every Method-2 interaction artifact of Model 2 is unverified, so no steel pole can ever be capacity-screened.
-
 - `6226c0bb` (major): Cable creep as a temperature shift (client: 15 C) cannot be authored in DS; export writes the proportional creep model with no shift.
-
-- `3d1c735c` (major): Cable creep temperature shift has no canonical field; nominal modulus disagrees with curves and GTP. Implement exact field/provenance transport and expose the conflict; do not choose a replacement material law. Unresolved source precedence is in [OPEN-X.md](OPEN-X.md#12-engineering-acceptance-and-material-authority).
 
 - `e343d5ac` (major): DS stringing ignores the imported AutoSag criteria: sections ~27% tighter than PLS AutoSag, 828 section violations.
 
@@ -238,13 +229,9 @@ Rules: [PRINCIPLES.md §6](PRINCIPLES.md#6-ds-grid-engineering).
 
 ## 13. Spotting (Codex main)
 
-- **Whole-model spotting receipt compatibility** (`7a78525b`): installed `apply-receipt` admits the recovered attempt-2 size, but its dry run refuses `receipt_revision_mismatch`: recorded `rev:c3b80112…aab66` versus current canonical open `rev:58fa3bfa…40fd`, despite exact source SHA `842df1d6…df2d227`. Inputs are `/home/magese/projects/tbea-nyam/out/2026-09-28-m2-reverse-al15/respot/m2-prep2.dsgrid` and `attempt-2/m2-respot.json.zst` (SHA `9fd57623…bce6a9`, byte-identical expansion to the original raw receipt). Trace the normalization/version difference and qualify historical sealed-plan replay while preserving source, revision, plan and layout digest guards. Do not waive a stale-revision refusal or modify the sealed plans; filed acceptance requires the original verified layout without another planning run.
-
-- **6. Spotting on a laptop** (i7-1355U, 12 threads, 15.6 GB; no server capacity): bounded, progressive and parallel within a memory budget (`6b597153`: A28 ran 26 min without a plan; `358e926f`); spotting that uses interaction-diagram strength (`908c07c1`); legality (`3acfd343` capacity tables without a straight line, `5d0fd02b` between-angle policy); receipts that apply (`7a78525b`); rule-driven retypes and strain splits (`5c7152e3`); the post-processing loop S325->S255 with NG healing (`50ab45f5`); duty profiles (`778bb573`). Acceptance: a whole reference model spots on the laptop within a stated time and memory budget, with quality measured against the optimum.
+- **6. Spotting on a laptop** (i7-1355U, 12 threads, 15.6 GB; no server capacity): bounded, progressive and parallel within a memory budget (`6b597153`: A28 ran 26 min without a plan; `358e926f`); spotting that uses interaction-diagram strength (`908c07c1`); legality ([`3acfd343`](HARD-PROBLEMS.md) capacity tables without a straight line, [`5d0fd02b`](HARD-PROBLEMS.md) between-angle policy); receipts that apply ([`7a78525b`](HARD-PROBLEMS.md)); rule-driven retypes and strain splits (`5c7152e3`); the post-processing loop S325->S255 with NG healing (`50ab45f5`); duty profiles (`778bb573`). Acceptance: a whole reference model spots on the laptop within a stated time and memory budget, with quality measured against the optimum.
 
 - `778bb573` (blocker): author_design_policy requires structure duty profiles whose row shape is undiscoverable; Model 2 cannot get the project policy.
-
-- `5d0fd02b` (major): Imported .012 span-limit tables carry an uncharacterized between-angle policy, so a Method-2 steel pole is unplaceable off a knot. Trace native evidence, expose the policy/provenance through the CLI and test exact-knot and unknown-policy refusals. Unresolved engineering interpretation is in [OPEN-X.md](OPEN-X.md#13-between-angle-policy); do not invent interpolation to make a plan feasible.
 
 - `908c07c1` (major): Optimum spotting cannot use interaction-diagram structure strength: every candidate capacity_indeterminate, plan infeasible (Rev A).
 
@@ -255,7 +242,6 @@ Rules: [PRINCIPLES.md §6](PRINCIPLES.md#6-ds-grid-engineering).
 - **Selected attachment properties and glyph controls** (owner, 2026-10-12): reproduce the selected-attachment Properties refusal for `str-616aefdcca5a7f18-3\0att-78477eac4b1a91bd-1` through the current native contracts. Route the typed owning structure/attachment reference into the shared properties projection; selecting an attachment must fill its properties panel. Highlight selected attachment points, make their default glyph slightly larger, and expose scale through the native CLI/MCP contract consumed by the UI. Preserve revision fences, attachment ownership and ground/shaft hit priority; prove native properties, selection, scale/refusal parity and matched Desktop rendering without vision automation. Recheck existing controls before adding another schema or policy.
 
 - **Desktop saved-local catalogue controls**: expose the existing Desktop-local saved-model selection through declared native CLI/MCP contracts, then bind the UI to that same operation. `dsgrid.profile.open` contract 2 intentionally opens the machine working-copy package and retains an already-open session; it does not select a saved browser-local checkpoint. Preserve that distinction instead of silently changing package-open precedence. The cold `local-62c4f34f95f94be3` replay returned the original `ac5cb698` revision, while the prior `intentional-save-restart-v14` witness had `already_open:true` and retained `454dffcc`; that earlier witness does not prove cold saved-model selection. Ordinary opening writes session metadata, not the durable model record. Reuse the existing local catalogue/open owner, carry explicit principal/project/model/revision/digest context, refuse missing or unreadable inputs, and add no acquisition, Save or publication. Prove selecting the saved copy after another model is active and after restart, exact checkpoint bytes, dirty-session retention/refusals and CLI/MCP/UI parity without private store inspection. Retained checkpoint SHA-256: `e45a915ae87a5c43db57c62f89faf4439de8cdfb4fdf26f2cb00db0a36ea85e8`. Receipts: `ds-web/out/profile-observer-20261010/compact-paint-saved-readback-v25-{open,view}.json`; owners: `ds-cli/crates/ds-cli-dsgrid/src/profile/open.rs`, `ds-web/src/lib/desktop/cli-dsgrid.ts`, `ds-web/src/lib/grid/session.ts`.
-
 
 ## 15. Project delivery code
 
@@ -369,7 +355,6 @@ Rules: [PRINCIPLES.md §6](PRINCIPLES.md#6-ds-grid-engineering).
   and no developer requirement or cloud-generation quota. Future custom short-lived containers and governed dataset jobs
   remain outside scope. The stable release remains paused.
 
-
 - `33003988` (minor): in-flight and transient dataset-download refusals reach the CLI as `desktop_refused`/failed with `retryable: false`. Give them a typed retryable code with a stated wait (a `cliRefusal` in ds-web reference-data TS, the refusal declared in ds-cli-desktop `data.rs`, regenerated ds-web `native-catalog.generated.json`), and stop truncating the nested cause (ds-cli-desktop `bridge.rs` `bounded()` keeps only the first line, at most 160 chars).
 
 - `b98643ff` (major): a bulk `data.rwanda.install` stops at the first failed dataset and returns no installed list: `seedReferenceCatalog` in ds-web `src/lib/reference-data/resources.ts` and the loop in `src/lib/reference-data/commands.ts` throw at once. Continue past a failure and name which datasets landed and which failed, moving that orchestration (planning, install loop, refusal mapping) from TypeScript into the kernel.
@@ -401,7 +386,6 @@ Rules: [PRINCIPLES.md §6](PRINCIPLES.md#6-ds-grid-engineering).
 - **Assets initial-index latency**: measure and fix the remaining slow initial local index acquisition without unbounded prefetch, duplicate authority reads or refetch on tab switching. Preserve the proved bounded snapshot/preview lifecycle.
 
 ## 18. Global DS Grid library
-
 
 - **Reviewed first adoption of canonical cloud definitions** (`a4cb34ea`, `1f07b312`): extend existing model-library attach/impact controls for an unpinned model. Preview exact source/head/release digests, stable member identities, explicit mappings, name/definition conflicts, missing/ambiguous/deprecated/superseded members, attachment compatibility, affected counts and engineering changes. Show every native conflict-group count with bounded details and actionable remedies. Overlapping versions of one physical network require reviewed library adoption/replacement, not duplicate-network composition; preserve correct conflict refusals and distinct engineering values without assumed strength/mass conversion. Apply only an accepted digest-pinned plan into a fresh validated successor; preserve route, placement, equipment, stringing, quantities and project variants except listed authorized effects. Retain cloud release/member references and verified offline dependency closure; publish only against the same model's expected project head. Prove an unpinned Model 1 and an independent second project, refusal/retry paths and shared native CLI/MCP/UI parity. Names identify candidates, never equivalence; existing exact attach fences remain.
 

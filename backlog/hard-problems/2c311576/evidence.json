@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "feedback": {
+    "id": "2c311576-0734-4051-89b7-cb604df2fb18",
+    "known_version": 3,
+    "version_kind": "known snapshot; refresh only when consuming its next acceptance attempt"
+  },
+  "tried": "Filed CRI v94/SI has tension values 1042/1250/1656 and catenary limits 700/840/1120/560. Reported disposable 1042\u219210420 comparison changed EDT C from about150 m to541.1 m; exact original backup digest is not supplied by this retained filing. [Report](hard-problems/2c311576/report.json).",
+  "remaining_blocker": "Exact `Gisagararev3.bak` import and Model1 native AutoSag parity near540 m EDT initial, with genuine low-limit, catenary and `.wir` unit controls.",
+  "bounded_next_attempt": "Obtain the exact backup authority, reproduce the native unit interpretation and compare one pinned case. Do not generalize the reported factor10 experiment or patch native bytes.",
+  "evidence_files": [
+    {
+      "path": "/home/magese/data-solutions/ds-command-kernel/backlog/hard-problems/2c311576/report.json",
+      "byte_len": 4294,
+      "sha256": "6f10e264a32abadbc55394b1cf097171f17edb6a94959478901755878b945dc8"
+    }
+  ],
+  "stop_rule": "One reproducible witness and one bounded new hypothesis per visit. If the same named blocker persists, update this card and return to small fixes. Preserve acceptance, geometry, electrical behavior and source/revision/digest fences."
+}

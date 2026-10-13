@@ -1,0 +1,44 @@
+{
+  "request": {
+    "operation": "invoke",
+    "command": "feedback.list",
+    "arguments": {
+      "view": "all",
+      "query": "PLS export plan accepts unsupported edited model but convert cannot emit backup",
+      "limit": 2,
+      "detail": true,
+      "lane": "stable"
+    }
+  },
+  "report": {
+    "id": "e258b287-63b8-4d40-8142-1c652876ee1d",
+    "status": "open",
+    "kind": "obstacle",
+    "severity": "blocker",
+    "component": "ds-network/dsgrid-exchange",
+    "surface": "cli",
+    "title": "PLS export plan accepts unsupported edited model but convert cannot emit backup",
+    "detail": "Expected: a 742-structure DS Grid model with preserved PLS source can produce a complete 16.81 backup, or planning refuses with every unsupported edit and member loss before execution. Observed: plan marks executable with no blockers (plan:a8c7d09e7816b378bf9e70df574661a77dd58d9604d62e39b53bd09bf35ce097), lists eight dropped source members, then convert returns status failed and writes no backup for seven uncharacterized changes: available structures, capacity artifacts/bases/dependencies, and prohibited zones. Acceptance: plan and convert agree; a dependency-closed export retains required members and emits a backup whose re-import preserves the reviewed model and can be natively restored, or a typed plan refusal names the unsupported changes.",
+    "occurrences": 1,
+    "reporters": [
+      "magese@datasolutions.rw"
+    ],
+    "reporter_kind": "agent",
+    "version": 7,
+    "last_seen_at": "2026-09-22T15:47:19.276313Z",
+    "updated_at": "2026-10-13T07:39:13.642711Z",
+    "updated_by": "nisunze@yahoo.fr",
+    "resolution": "",
+    "blocked": true,
+    "blocked_on": "Re-exportable filed rev-67c edited package with authoritative native loads-source definitions for all 45 named structures; then exact plan/convert acceptance.",
+    "blocked_since": "2026-09-23T12:55:32.58932Z",
+    "note_count": 6,
+    "latest_note": {
+      "author": "nisunze@yahoo.fr",
+      "at": "2026-10-13T07:39:13.642711Z",
+      "text": "Native CRI plan/convert parity is now fixed in pushed ds-network a5e3c94a. Matching debug CLI SHA256 e4646cfc8f52ea63a9e9b1a6eaa7e04939d7c981fa4ae4c3bae011c0fe8716ef: four invalid folder/backup plans name compact-source section count or undefined phase_clear; all four converts return plan_blocked without an output directory. Two unchanged-source controls complete with exact native CRI/backup bytes. 51 planner tests and focused Clippy pass. This proves the separate preflight gap, not the filed 742-structure rev-67c acceptance: its 45 unsourced native structure definitions still mask the edited-model forecast. Exact replay is retained under ds-network/out/feedback-native-20261013/cri-replay.",
+      "blocked_on": "Re-exportable filed rev-67c edited package with authoritative native loads-source definitions for all 45 named structures; then exact plan/convert acceptance."
+    },
+    "detail_truncated": false
+  }
+}

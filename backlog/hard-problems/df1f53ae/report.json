@@ -1,0 +1,44 @@
+{
+  "request": {
+    "operation": "invoke",
+    "command": "feedback.list",
+    "arguments": {
+      "view": "all",
+      "query": "Every Method-2 interaction artifact of Model 2 is unverified, so no steel pole can ever be capacity-screened",
+      "limit": 2,
+      "detail": true,
+      "lane": "stable"
+    }
+  },
+  "report": {
+    "id": "df1f53ae-e993-4779-a64e-50a7055f21ce",
+    "status": "open",
+    "kind": "bug",
+    "severity": "major",
+    "component": "ds-network / ds-grid-engine capacity",
+    "surface": "cli",
+    "title": "Every Method-2 interaction artifact of Model 2 is unverified, so no steel pole can ever be capacity-screened",
+    "detail": "Observed: structure_capacity_tables on m2-r18-planpolicy reports 35 of 73 capacity artifacts unverified, and every interaction (Method-2) artifact reachable from the project catalogue is among them -- the only two verified ones (ex-s-S800.012, m-c-NPD850d-2stay.012) are not catalogue members. structure_analysis_from_capacity_artifact blanks every loading condition of an unverified artifact, so the planner refuses those candidates for 'the capacity artifact represents no check for N supplied demand state(s)'. That refusal now also names the verification state, but the underlying gap stands: there is no workflow that produces the evidence set_capacity_artifact_verification needs, so an operator either verifies by hand with no receipt or the whole steel library stays unspottable. Expected: a documented way to obtain and record Method-2 verification evidence (the native 16.81 structure-usage report is the obvious oracle), and a report of which artifacts a project still needs it for. Acceptance: a project can state 'these artifacts are verified, by this evidence' once and spot steel.",
+    "occurrences": 1,
+    "reporters": [
+      "magese@datasolutions.rw"
+    ],
+    "reporter_kind": "agent",
+    "version": 4,
+    "last_seen_at": "2026-09-26T10:52:05.471622Z",
+    "updated_at": "2026-10-13T07:29:09.400355Z",
+    "updated_by": "nisunze@yahoo.fr",
+    "resolution": "",
+    "blocked": true,
+    "blocked_on": "Exact Model2 reviewed native signed-curve and75C/AfterCreep/assembly evidence, recorded once through DS; then successful steel spotting on that pinned model",
+    "blocked_since": "2026-10-09T05:45:16.705161Z",
+    "note_count": 3,
+    "latest_note": {
+      "author": "nisunze@yahoo.fr",
+      "at": "2026-10-13T07:29:09.400355Z",
+      "text": "Installation is no longer the gate: current ds-server canary carries91648b08/2a26892c and exposes set_capacity_artifacts_verification plus structure_capacity_tables. No verification verdicts or designs were changed. Retained native-evidence audit keeps this report open:20 evidenced artifacts/105 partial percentages on a different Gisagara test model do not prove Model2; historical signed curve identities,75C/AfterCreep case and7 assemblies remain unmatched. Filed acceptance still needs evidence attached once and a successful Model2 steel spotting proof. This is qualification/acceptance work, not a justified new Rust change in this pass.",
+      "blocked_on": "Exact Model2 reviewed native signed-curve and75C/AfterCreep/assembly evidence, recorded once through DS; then successful steel spotting on that pinned model"
+    },
+    "detail_truncated": false
+  }
+}

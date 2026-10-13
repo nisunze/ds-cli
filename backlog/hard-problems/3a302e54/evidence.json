@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "feedback": {
+    "id": "3a302e54-a1ae-4341-af22-d19e36575dde",
+    "known_version": 5,
+    "version_kind": "known snapshot; refresh only when consuming its next acceptance attempt"
+  },
+  "tried": "Filed Model3 backup SHA `5aa110e96c80df6646afec2a385abc28020dbbc68c3352655c565d1b07a2ab90` restored but stopped on blank final-after-creep weather. Installed `ef473944` carries source-aware creep/load selectors; no fresh native acceptance was performed. [Report](hard-problems/3a302e54/report.json).",
+  "remaining_blocker": "Fresh Model3 export and PLS-CADD 16.81 Restore/open without final-weather warnings, unchanged Model1 control, and authored final-after-load selector evidence.",
+  "bounded_next_attempt": "Pin the filed source and qualified selectors; run one fresh native comparison when that acceptance lane is available. A zero-count selector scaffold or Linux tests cannot replace it.",
+  "evidence_files": [
+    {
+      "path": "/home/magese/data-solutions/ds-command-kernel/backlog/hard-problems/3a302e54/report.json",
+      "byte_len": 4025,
+      "sha256": "a00d5ce41bb4813f9522284d101763a21e55b488e9817dde418631ac9a28fc12"
+    }
+  ],
+  "stop_rule": "One reproducible witness and one bounded new hypothesis per visit. If the same named blocker persists, update this card and return to small fixes. Preserve acceptance, geometry, electrical behavior and source/revision/digest fences."
+}

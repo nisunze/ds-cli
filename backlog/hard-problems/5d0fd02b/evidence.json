@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "feedback": {
+    "id": "5d0fd02b-4f83-4fba-80b1-250a3f527e33",
+    "known_version": 2,
+    "version_kind": "known snapshot; refresh only when consuming its next acceptance attempt"
+  },
+  "tried": "Owning exact-knot/unknown-policy/explicit characterized control passed; off-knot import still refuses `UnresolvedBetweenAnglePolicy` without spotting commands. [Report](hard-problems/5d0fd02b/report.json); [test receipt](../../ds-network/out/feedback-native-20261013/angle-policy-5d0fd02b.log).",
+  "remaining_blocker": "Characterized PLS-CADD 16.81 between-angle rule and exact verdict for0/15\u00b0 table knots evaluated at7\u00b0.",
+  "bounded_next_attempt": "Obtain the native7\u00b0 witness, compare one DS result, then carry the verified policy token. Reuse `spotting.rs::an_uncharacterized_between_angle_policy_answers_only_at_an_exact_knot`; OPEN-X \u00a713 retains unresolved engineering interpretation.",
+  "evidence_files": [
+    {
+      "path": "/home/magese/data-solutions/ds-command-kernel/backlog/hard-problems/5d0fd02b/report.json",
+      "byte_len": 3394,
+      "sha256": "c21f5727e1e095cdd4e289e7beefad1c061f7312fe0eb1acb1f282d1bad51138"
+    },
+    {
+      "path": "/home/magese/data-solutions/ds-network/out/feedback-native-20261013/angle-policy-5d0fd02b.log",
+      "byte_len": 444,
+      "sha256": "2e6072ef06a6a69aecceb3dd13c88ff147057df1d23ef2204c2fcb98d58d088f"
+    }
+  ],
+  "stop_rule": "One reproducible witness and one bounded new hypothesis per visit. If the same named blocker persists, update this card and return to small fixes. Preserve acceptance, geometry, electrical behavior and source/revision/digest fences."
+}

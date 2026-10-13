@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "feedback": {
+    "id": "dff71def-771f-416b-a98e-11534fa73117",
+    "known_version": 2,
+    "version_kind": "known snapshot; refresh only when consuming its next acceptance attempt"
+  },
+  "tried": "Independent hardware screening `0593ddc0` has passing-body uplift, strain, downward, section-boundary and near-zero controls. Installed Model1 r30 screening uses SHA `6403c36880a8d009f6a7e861e3c7c9bfffa20761ddfdd7647be81fa098944d82`. Historical report snapshot was v1. [runtime screen](../../ds-network/out/feedback-native-20261013/uplift-dff71def/model1-screen.json); [native history receipt](../../ds-network/out/feedback-native-20261013/dff-project-versions.json).",
+  "remaining_blocker": "Exact Model3 r67 is absent from admitted history revisions0/1/32; native Model1 insulator-uplift-set equality is unproven.",
+  "bounded_next_attempt": "Recover the exact immutable r67 and its16 filed failures, then compare one matching-build screen and native Model1 set with strain/near-zero controls. Reuse suspension uplift tests in `section_check_vertical.rs`; preserve body curves and designs.",
+  "evidence_files": [
+    {
+      "path": "/home/magese/data-solutions/ds-network/out/feedback-native-20261013/uplift-dff71def/model1-screen.json",
+      "byte_len": 726943,
+      "sha256": "737722ab6e58c84108805923bde177ed4618f175af7ca1ee139632525d441ced"
+    },
+    {
+      "path": "/home/magese/data-solutions/ds-network/out/feedback-native-20261013/dff-project-versions.json",
+      "byte_len": 6165,
+      "sha256": "d156292c1803b20e8e0f7c295e9d19143e6e87886fb324423ab0aed0bb1ccfe3"
+    }
+  ],
+  "stop_rule": "One reproducible witness and one bounded new hypothesis per visit. If the same named blocker persists, update this card and return to small fixes. Preserve acceptance, geometry, electrical behavior and source/revision/digest fences."
+}

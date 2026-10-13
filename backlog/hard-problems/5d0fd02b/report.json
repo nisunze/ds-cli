@@ -1,0 +1,44 @@
+{
+  "request": {
+    "operation": "invoke",
+    "command": "feedback.list",
+    "arguments": {
+      "view": "all",
+      "query": "Imported .012 span-limit tables carry an uncharacterized between-angle policy, so a Method-2 steel pole is unplaceable off a knot",
+      "limit": 2,
+      "detail": true,
+      "lane": "stable"
+    }
+  },
+  "report": {
+    "id": "5d0fd02b-4f83-4fba-80b1-250a3f527e33",
+    "status": "open",
+    "kind": "bug",
+    "severity": "major",
+    "component": "ds-network / ds-grid-exchange pls_struct translator",
+    "surface": "cli",
+    "title": "Imported .012 span-limit tables carry an uncharacterized between-angle policy, so a Method-2 steel pole is unplaceable off a knot",
+    "detail": "Observed: after reconcile_capacity_case_bindings --scope adopt_criterion_set repaired Model 2's Method-2 bindings, the steel candidates l-s-stay.012 and l-s-stay.014 stop being refused for 'represents no check' and are evaluated at every station -- but every station between two authored angle knots is still refused with capacity_indeterminate, detail 'the capacity artifact's angle knots do not cover this station's line angle: UnresolvedBetweenAnglePolicy { source_policy: \"uncharacterized_between_angle_v1\" }'. The .012 translator sets AngleInterpolationPolicy::AdapterDefined{uncharacterized_between_angle_v1} for every imported span-limit set (pls_struct/translate.rs), and span_envelope_between_angle_policy maps that to Unresolved. So an imported Method-1/.012 table can only answer at an exact authored angle. Expected: the between-angle rule PLS-CADD 16.81 actually applies to a Method-1 allowable-span table, characterized against the native program, so the imported policy resolves to a verified token. Acceptance: a structure whose table authors knots at 0 and 15 deg is evaluable at 7 deg with a verdict DS and PLS agree on.",
+    "occurrences": 1,
+    "reporters": [
+      "magese@datasolutions.rw"
+    ],
+    "reporter_kind": "agent",
+    "version": 2,
+    "last_seen_at": "2026-09-26T10:52:03.918951Z",
+    "updated_at": "2026-10-13T07:54:22.066117Z",
+    "updated_by": "nisunze@yahoo.fr",
+    "resolution": "",
+    "blocked": true,
+    "blocked_on": "Characterized PLS-CADD16.81 between-angle rule and exact 0/15 degree-table verdict at 7 degrees; retain exact-knot and unknown-policy controls.",
+    "blocked_since": "2026-10-13T07:54:22.066117Z",
+    "note_count": 1,
+    "latest_note": {
+      "author": "nisunze@yahoo.fr",
+      "at": "2026-10-13T07:54:22.066117Z",
+      "text": "The owning regression an_uncharacterized_between_angle_policy_answers_only_at_an_exact_knot passes: an exact authored knot is evaluable, the same station between knots refuses UnresolvedBetweenAnglePolicy by name with no spotting commands, and an explicitly characterized piecewise-linear control succeeds. The imported .012 policy remains intentionally uncharacterized; changing it to interpolation would invent capacity. Filed closure requires native PLS-CADD16.81 evidence for the table with 0/15 degree knots at 7 degrees and an exact DS/native verdict comparison. No native evidence, capacities, model designs or tolerance changes were manufactured.",
+      "blocked_on": "Characterized PLS-CADD16.81 between-angle rule and exact 0/15 degree-table verdict at 7 degrees; retain exact-knot and unknown-policy controls."
+    },
+    "detail_truncated": false
+  }
+}

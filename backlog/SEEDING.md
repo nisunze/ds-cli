@@ -10,6 +10,8 @@ Pens, colour/opacity, contour hierarchy, labels, extent, margins, title/issue fi
 
 Candidate curation and native PLS-CADD acceptance are separate from coding the cloud/provider-model lifecycle. Existing local seed/verify/resolve and global preparation/publication/lifecycle CLI contracts are present; they do not establish that every model-management or UI action is implemented. Older entries are pending verification, not proof of a current defect. Delete fulfilled work; do not keep a historical fixes archive.
 
+Tried cases removed from the small-fix queue now live in [HARD-PROBLEMS.md](HARD-PROBLEMS.md), with reusable evidence under [hard-problems/](hard-problems/). Consult that index before revisiting their source or native gates.
+
 <!-- toc -->
 
 | Area | Remaining entries |
@@ -24,9 +26,9 @@ Candidate curation and native PLS-CADD acceptance are separate from coding the c
 | [8. Sync, publication and edge outbox](#8-sync-publication-and-edge-outbox) | 4 |
 | [9. LV processing, sizing and headless intake](#9-lv-processing-sizing-and-headless-intake) | 7 |
 | [10. Voltage drop](#10-voltage-drop) | 13 |
-| [11. PLS-CADD exchange round trip](#11-pls-cadd-exchange-round-trip) | 6 |
+| [11. PLS-CADD exchange round trip](#11-pls-cadd-exchange-round-trip) | 3 |
 | [12. DS Grid engineering (Codex main)](#12-ds-grid-engineering-codex-main) | 3 |
-| [13. Spotting (Codex main)](#13-spotting-codex-main) | 2 |
+| [13. Spotting (Codex main)](#13-spotting-codex-main) | 1 |
 | [14. Plan and Profile authoring](#14-plan-and-profile-authoring) | 6 |
 | [15. Project deliveries](#15-project-deliveries) | 6 |
 | [16. Map data, datasets and screen styling](#16-map-data-datasets-and-screen-styling) | 13 |
@@ -51,7 +53,7 @@ Candidate curation and native PLS-CADD acceptance are separate from coding the c
 
 - **Signed download rollout** (`download-signed`, `c9df4098`): deploy a locally built ds-brain carrying `2b5f8752`; once the signed-read storage rules in `OPEN.md` §1 land, apply them through the owner's ds-apis-tf path; apply the reviewed version-fenced revocation of legacy Firebase download tokens; prove an anonymous GET of a listed report URL is refused; replay `ds design download fetch` with an installed ds carrying ds-cli `9d298014`; release matching reporter/kernel/web/CLI consumers, then close `c9df4098`. Keep token-bearing legacy URLs out of newly delivered artifacts.
 
-- **Current canary on ds-server**: installed `ds-canary` 0.1.6 (2026-09-29, `507d1b7e`) cannot read current printing layouts on its closed contract (`classification` and newer fields; `report layout get` and `report project settings` return `auth_response_unreadable`). This blocks the Rwanda Template logo/title-block seeding of 11 layouts (§3) and most feedback acceptance replays, among them the rows waiting on canary 0.1.7-r79+ (`86d184cf`, `1f2430c7`, `c7664961`, `641143eb`, `fee42145`, `defcbef3`, `e3aa68bd`, `a65872eb`, `d798669f`, `349c3130`, `190d8eaf`, `8363a4fc`, `b3bdc857`, `d8863709`, `df1f53ae`, `6226c0bb`, `3d1c735c`, `4ba8ab15`, `5acb6a57`, `3a302e54`, `9d0f28da`). Install a current canary release on ds-server, then replay each filed acceptance and close what passes.
+- **Current canary on ds-server**: installed `ds-canary` 0.1.6 (2026-09-29, `507d1b7e`) cannot read current printing layouts on its closed contract (`classification` and newer fields; `report layout get` and `report project settings` return `auth_response_unreadable`). This blocks the Rwanda Template logo/title-block seeding of 11 layouts (§3) and most feedback acceptance replays, among them the rows waiting on canary 0.1.7-r79+ (`86d184cf`, `1f2430c7`, `c7664961`, `641143eb`, `fee42145`, `defcbef3`, `e3aa68bd`, `a65872eb`, `d798669f`, `349c3130`, `190d8eaf`, `8363a4fc`, `b3bdc857`, `d8863709`, [`df1f53ae`](HARD-PROBLEMS.md), `6226c0bb`, [`3d1c735c`](HARD-PROBLEMS.md), `4ba8ab15`, [`5acb6a57`](HARD-PROBLEMS.md), [`3a302e54`](HARD-PROBLEMS.md), `9d0f28da`). Install a current canary release on ds-server, then replay each filed acceptance and close what passes.
 
 - **Bulk reporter lane**: `ds-network-reporter-bulk` (serves `export_combined` and `zip_bundle`) runs `276d3d0e` (2026-09-30), which lacks `32d5119`, `f4ff759`, `c89ea93`, `f26cd35`, `91f2ee3`, `5f12b6d` and `28a7d35`. Redeploy it from a local build before any cloud check of combined or bundled outputs; until then accept through a single-transformer export on the non-bulk reporter (`035418e`) or an installed canary 0.1.7-r79+.
 
@@ -256,10 +258,6 @@ Candidate curation and native PLS-CADD acceptance are separate from coding the c
 
 - **Model 2 whole-workspace export replay** (`90cf2311`): replay the real Model 2 PLS export once a package is saved with the current schema (m2-r18 is schema v3, its migration is refused and its manifest declares no complete table registry).
 
-- **Model 2 FINAL backup replay** (`7ce604c5`): after the duplicate-weather-label fix in `OPEN.md` §11 and with a schema-current package, replay the Model-2-FINAL `pls-bak` export.
-
-- **Uncharacterized edit forecast** (`e258b287`): obtain a re-exportable current-package reproduction retaining the filed rev-67c72f3f reviewed edits and authoritative native PLS-POLE loads-source definitions for the45 structures named by `immutable_structure_unsourced`. This earlier source gate masks unsupported-edit forecast acceptance; replay plan/convert agreement without changing project designs or relabelling native bytes.
-
 ## 12. DS Grid engineering (Codex main)
 
 - **Source-backed engineering qualification**: obtain declared capacity, actual realization, placement, case/factor and load-transfer evidence before resistance checks. Gisagara’s retained comparison source/evidence is in `outputs/gisagara-grid-analysis-20261001/`; preserve original geometry and native bindings. Qualify unknown labels, horizontal-rule coverage and final-condition material laws without binding another case or inferring engineering approval. Review the retained conservative reconciliation and full-adoption deltas in `profile-edit-investigation-2026-10-10/evidence/server-contract-stress/` against the original Model 1 package SHA-256 `e89b7a1c0416d65879aad8829c6a6faffc55105b746f4e683502620cec03bdc1` and Rwanda Template package `93686db0040b8c8a52d3783eb79aa7a59cdb04ed98e6b9cf9658921e0cd58cf1`. Template supports `str-616aefdcca5a7f18-245` and `str-616aefdcca5a7f18-295` retain unresolved incident capacity slots; obtain authoritative cases/cable properties and supported policies, name every remaining unknown and preserve structure 71's legitimate overload. The isolated full-adoption candidate is not approved production adoption. Both retained package analyses evaluate 1,421 points with zero vertical/horizontal rule points and `complete_for_checked_corridors=false`; seed approved clearance rules with provenance and verify applicable corridor coverage before acceptance. Keep `reconciled-focus.json`, `adopted-focus.json`, `adopted-analysis.json` and original source-byte proofs unchanged.
@@ -269,8 +267,6 @@ Candidate curation and native PLS-CADD acceptance are separate from coding the c
 - **Saved scaffold trust states**: explicitly requalify the 27 saved artifacts that claim verified although 43/45 Gisagara definitions (416/417 placements) have analytical-scaffold provenance. Preserve exact source bytes and structure 38 evidence. Install the landed native preview/WASM correction; qualify complete capacity inputs before any whole-structure verdict.
 
 ## 13. Spotting (Codex main)
-
-- **Shared-library capacity tables** (`3acfd343`): review the 15 tables without a straight-line row, including `a-w-S190.012` and `a-w-S255.012` with only a 120° row. Seed a new reviewed immutable version from authoritative span/capacity evidence; never invent a straight-line capacity or widen engineering tolerances.
 
 - **Installed spotting progress and Windows budget** (`6b597153`): install the landed stage/pass/alignment progress and completion-cadence ETA, then verify the whole-model flow on the actual Windows host within its truthful memory admission. The owner accepts the measured 17-minute result as useful; the former five-minute target is not a gate. Keep provisional/partial plans and unqualified strength explicit; unchanged native results and preserved source bytes matter more than an inferred capacity verdict.
 
@@ -427,17 +423,7 @@ Candidate curation and native PLS-CADD acceptance are separate from coding the c
 
 - **Desktop and LAN delivery**: locally build/install the current matching Desktop with photo/multipage previews, compact scrollable panels, export selection and layer controls; prove paired Plan selection/drag and Server-screen behaviour. Preserve supervised LAN workers and open models. Hosting publication alone does not update Desktop, and package installation alone does not prove running workers restarted.
 
-- **Suspension-insulator uplift acceptance** (`dff71def`): on a build carrying independent hardware screening (`ds-network@0593ddc0`), replay the exact Gisagara Model3 r67 and prove all 16 filed suspension failures with unchanged strain/terminal controls; compare Model1 suspension failures with the native PLS-CADD insulator-uplift set, including section-boundary and near-zero controls. The admitted stable project history currently exposes native revisions 0, 1 and 32, not r67. Obtain that exact immutable source and the native comparison evidence; another revision and source-only tests do not satisfy closure. Preserve native body curves and project designs.
-
-- **Cable creep native export acceptance** (`3d1c735c`): provide complete source-qualified CRI clearance-weather and criterion bindings for a successful authored 15 C export and reimport. The compact five-section source and the pinned full v89 scaffold with undefined analysis `phase_clear` are import evidence, not authority to invent missing sections or selectors. Retain zero-shift, modulus-conflict and original-source controls; correct plan refusal alone does not prove the filed cable round trip.
-
-- **Historical Model2 inspection acceptance** (`4af28da3`): recover the exact retained `DS Grid Models/model2-nyamagabe-nyaruguru/Nyamagabe&Nyaruguru.1.dsgrid`, or an admitted immutable reference to those bytes. The filing provides no package digest/reference and bounded named paths do not contain it. The historical-manifest migration fix is installed and a substitute schema3 fixture passes, but closure requires the filed member/refusal/remedy and staking-enrich hint acceptance without rewriting its native evidence.
-
-- **Derived ground acceptance** (`5acb6a57`): finish installed planar, ridge/valley and surveyed-ground controls and a bounded direct spotting consumer proof using an explicitly selected derived basis. Prove every original raw observation preserved with untruncated native evidence; the table projection caps at 10000 rows. Retain the exact Model3 r32 source (SHA `a61d496c…ecb086`); use only disposable copies, no raw height resets, source deletion or inferred datum correction. Profile, pole-ground and clearance agreement alone does not satisfy the whole filed acceptance.
-
-- **Spotting angle selection acceptance** (`fb163694`): provide a valid `running_angle` control fixture with qualified duty/capacity evidence. Through a build carrying the declared catalogue ceiling and non-slack basis selection, compare an admitted baseline with the constrained REG candidate selection. The retained synthetic bend refuses for missing running-angle duty, so it cannot prove the angle gate. Do not widen duties or capacity to manufacture a successful layout; preserve the independent sag/ruling-span and slack-basis refusal controls.
-
-- **PLS-CADD readback of filed exports** (`8363a4fc`, `6226c0bb`, `3a302e54`, `b3bdc857`, `df1f53ae`, `4ba8ab15`): after the Linux canary r79+ export of each filed case, Restore and read it back in PLS-CADD 16.81 on Windows before closing. The code parts of `3a302e54` and `b3bdc857` are in `OPEN.md` §11.
+- **PLS-CADD readback of filed exports** (`8363a4fc`, `6226c0bb`, `b3bdc857`, `4ba8ab15`): after the Linux canary r79+ export of each filed case, Restore and read it back in PLS-CADD 16.81 on Windows before closing. The code part of `b3bdc857` is in `OPEN.md` §11; the tried [`3a302e54`](HARD-PROBLEMS.md) and [`df1f53ae`](HARD-PROBLEMS.md) cases are in HARD-PROBLEMS.md.
 
 - **Classification-aware Windows release** (`6e322426`): on a Windows/stable release carrying kernel `0e4389f`, read report project settings and export A0 for `ruhuha`, `upgrade_mbeho` and `zihare`; then close `6e322426`.
 

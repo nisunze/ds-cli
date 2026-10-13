@@ -1,0 +1,44 @@
+{
+  "request": {
+    "operation": "invoke",
+    "command": "feedback.list",
+    "arguments": {
+      "view": "all",
+      "query": "PLS-CADD .cri cable tension limits imported ~10x too small (1042 read as N): DS sags 3.6x too slack, short spans",
+      "limit": 2,
+      "detail": true,
+      "lane": "stable"
+    }
+  },
+  "report": {
+    "id": "2c311576-0734-4051-89b7-cb604df2fb18",
+    "status": "open",
+    "kind": "bug",
+    "severity": "major",
+    "component": "ds-network/ds-grid-exchange",
+    "surface": "cli",
+    "title": "PLS-CADD .cri cable tension limits imported ~10x too small (1042 read as N): DS sags 3.6x too slack, short spans",
+    "detail": "PLS-CADD criteria (.cri, SI) cable tension limits are translated into DS Grid criterion rules about 10x too small, which makes every DS sag ~3.6x too slack and drives short spans and false clearance shortfalls.\n\nSource: Gisagara Model 1 original backup (pls-original-workspace.bak -> Gisagararev7.bak member C:\\Gisagararev3\\Gisagararev3.cri, TYPE='CRI FILE' VERSION='94' UNITS='SI' PLS-CADD 16.81). Section \"; cable_tension1\" (16 rows) reads e.g. `I 0 'EDT' 1042 0`, `I 0 'High wind' 1042 0`, `I 0 'Maximum Conductor Temperature' 1042 0`, `I 0 'Minimum Temperature' 1042 0`, then rows at 1250 and 1656. Section \"; autosag1\" holds the catenary limits EDT 700, Minimum Temperature 840, High wind 1120, Maximum Conductor Temperature 560.\n\nDS rules on the derived Model 3 criterion set criterion-set-0fb6e5cdbcf27437: horizontal_tension_ceiling_n = 1042.0 (High wind, Max temp, Min temp; initial) next to catenary_constant_m 700/840/1120/560. The planner then resolves rule ...-1 (1042 N) as governing: EDT initial C = 149.7 m, H = 414 N; 75 C after-creep C = 138.4 m.\n\nContradiction proving the unit: Model 1's own PLS AutoSag result (same conductor ACSR 70/12, w = 2.714 N/m) is C = 520-600 m at EDT initial (median 539 m), i.e. H ~ 1460 N, which a 1042 N ceiling forbids. With the ceiling read as 1042 daN (10420 N, ~40 % RTS of 26.27 kN) the catenary limits govern and the DS planner reproduces Model 1: EDT C = 541.1 m, H = 1497 N, governing rule = Minimum Temperature 840 m (verified on a Model 3 working copy by update_criterion_rule 1042 -> 10420; plan spans 35-65 m, clearance margins positive).\n\nExpected: the PLS-CADD -> DS Grid criteria translation reads the cable-tension limit units exactly as PLS-CADD interprets them for UNITS='SI' (evidence says daN, or the column is not newtons), and the rows at 1250/1656 and the EDT row are carried too. Do not patch native bytes; correct the translation and re-derive.\n\nNegative control: catenary_constant_m rules (700/840/1120/560 m) are correct today and must stay unchanged; a .cri with genuinely low N limits must still govern.\n\nAcceptance: importing Gisagararev3.bak yields tension ceilings that, with the same catenary limits, reproduce Model 1's native AutoSag C (~540 m EDT initial) within tolerance; Model 3 planning on the derived criteria no longer caps sag at C ~150 m. No code from this session.",
+    "occurrences": 1,
+    "reporters": [
+      "nisunze@yahoo.fr"
+    ],
+    "reporter_kind": "agent",
+    "version": 3,
+    "last_seen_at": "2026-10-05T20:57:29.218695Z",
+    "updated_at": "2026-10-13T04:37:23.299831Z",
+    "updated_by": "nisunze@yahoo.fr",
+    "resolution": "",
+    "blocked": true,
+    "blocked_on": "Exact Gisagararev3.bak import and PLS-CADD 16.81 Model 1 AutoSag parity evidence (~540 m EDT initial), with low-limit/catenary and .wir unit controls",
+    "blocked_since": "2026-10-13T04:37:23.299831Z",
+    "note_count": 2,
+    "latest_note": {
+      "author": "nisunze@yahoo.fr",
+      "at": "2026-10-13T04:37:23.299831Z",
+      "text": "Scope review: the filed acceptance requires importing the exact Gisagararev3.bak and proving native Model 1 AutoSag parity (~540 m EDT initial), including unchanged catenary controls and retained .wir mechanics. This ds-network small-fix session will not alter project designs or perform native Windows engineering acceptance; source unit tests cannot close this report.",
+      "blocked_on": "Exact Gisagararev3.bak import and PLS-CADD 16.81 Model 1 AutoSag parity evidence (~540 m EDT initial), with low-limit/catenary and .wir unit controls"
+    },
+    "detail_truncated": false
+  }
+}
