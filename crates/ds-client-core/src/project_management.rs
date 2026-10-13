@@ -237,6 +237,9 @@ pub enum Command {
     /// answers nothing however many records a project holds. A window does not
     /// fix that; asking for them does.
     Context { limit: Option<i64> },
+    /// Only the selected task's readable correspondence, using the existing
+    /// indexed related_task_ids query; unused context collections are not read.
+    TaskRecords { task_id: String, limit: i64 },
     /// Create a quick, project-scoped Markdown note through `create_record`.
     /// The server owns defaults, permissions, versioning and ID generation
     /// when no stable ID is supplied.
@@ -427,7 +430,7 @@ impl Command {
             Self::TaskCommentCreate { .. } => "create_comment",
             Self::TaskComments { .. } => "get_context",
             Self::Assignees => "get_assignees",
-            Self::Context { .. } => "get_context",
+            Self::Context { .. } | Self::TaskRecords { .. } => "get_context",
             Self::ProjectNoteCreate { .. } | Self::ProjectNoteCreateLinked { .. } => {
                 "create_record"
             }
@@ -525,6 +528,12 @@ impl Command {
                     return Err(invalid(
                         "task comments need one task, 1..100 limit and stable cursor",
                     ));
+                }
+                Ok(())
+            }
+            Self::TaskRecords { task_id, limit } => {
+                if !project_note_id_valid(task_id) || !(1..=MAX_CONTEXT_LIMIT).contains(limit) {
+                    return Err(invalid("task records need one task and 1..100 limit"));
                 }
                 Ok(())
             }
@@ -709,6 +718,11 @@ impl Command {
                 if !cursor.is_empty() {
                     payload["cursors"] = json!({"pm_comments":cursor});
                 }
+            }
+            Self::TaskRecords { task_id, limit } => {
+                payload["task_id"] = json!(task_id);
+                payload["limit"] = json!(limit);
+                payload["collections"] = json!(["pm_records"]);
             }
             Self::Context { limit } => {
                 if let Some(limit) = limit {
@@ -1136,11 +1150,12 @@ pub(crate) fn run<T: AuthorizedTransport>(
         // command and the bare result for a draft (`response.result ??
         // response`, api/pm.ts:184 and 208). The wrapper is unwrapped where it
         // exists so every caller reads one shape.
-        Command::Context { .. } | Command::TaskComments { .. } => data
-            .get("context")
-            .filter(|context| context.is_object())
-            .cloned()
-            .unwrap_or(data),
+        Command::Context { .. } | Command::TaskComments { .. } | Command::TaskRecords { .. } => {
+            data.get("context")
+                .filter(|context| context.is_object())
+                .cloned()
+                .unwrap_or(data)
+        }
         Command::Commit { .. } | Command::CommitBatch { .. } => data
             .get("result")
             .filter(|result| result.is_object())
@@ -1164,7 +1179,64 @@ pub(crate) fn run<T: AuthorizedTransport>(
         | Command::TaskDetach { .. }
         | Command::TaskCreateAttached { .. } => data,
     };
+    if let Command::TaskRecords { task_id, limit } = command {
+        validate_task_records(&graph, project, task_id, *limit)?;
+    }
     Ok(graph)
+}
+
+/// Admit only the selected records page, never a legacy unselected or partial
+/// answer that could otherwise become an apparently empty related-record list.
+fn validate_task_records(
+    context: &Value,
+    project: &str,
+    task: &str,
+    limit: i64,
+) -> Result<(), ClientError> {
+    let invalid = || {
+        ClientError::new(
+            ErrorKind::UnreadableResponse,
+            "task records response does not prove the selected scope and completeness",
+        )
+    };
+    let records = context["records"].as_array().ok_or_else(invalid)?;
+    let truncated = context["truncated_by_collection"]["pm_records"]
+        .as_bool()
+        .ok_or_else(invalid)?;
+    let cursors = context["next_cursors"].as_object().ok_or_else(invalid)?;
+    if context["project_id"].as_str() != Some(project)
+        || context["task_id"].as_str() != Some(task)
+        || context["loaded_collections"] != json!(["pm_records"])
+        || records.len() > limit as usize
+        || context
+            .get("record_id")
+            .and_then(Value::as_str)
+            .is_some_and(|id| !id.is_empty())
+        || context
+            .get("residual_id")
+            .and_then(Value::as_str)
+            .is_some_and(|id| !id.is_empty())
+        || context["truncated_by_collection"]
+            .as_object()
+            .is_none_or(|flags| flags.len() != 1)
+        || cursors.keys().any(|key| key != "pm_records")
+        || cursors
+            .get("pm_records")
+            .is_some_and(|cursor| cursor.as_str().is_none_or(|id| !project_note_id_valid(id)))
+        || (!truncated && cursors.contains_key("pm_records"))
+        || records.iter().any(|record| {
+            !record.is_object()
+                || record["id"]
+                    .as_str()
+                    .is_none_or(|id| !project_note_id_valid(id))
+                || !record["data"]["related_task_ids"]
+                    .as_array()
+                    .is_some_and(|ids| ids.iter().any(|id| id.as_str() == Some(task)))
+        })
+    {
+        return Err(invalid());
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -1744,6 +1816,120 @@ mod tests {
     fn create_fixture(applied: bool) -> Value {
         json!({"result":{"applied":applied,"command_id":"create-7","committed_revision":8,
             "violations":if applied {json!([])} else {json!([{"code":"PROJECT_WORK_REVISION_CONFLICT","message":"Plan moved"}])}}})
+    }
+
+    fn records_transport(finalized: Value) -> AttachTransport {
+        AttachTransport {
+            created: None,
+            fail_upload_at: None,
+            started: json!({}),
+            upload_status: 200,
+            finalized,
+            payloads: vec![],
+            uploaded: vec![],
+        }
+    }
+
+    fn task_records_fixture(truncated: bool) -> Value {
+        json!({"context":{"project_id":"project-a","task_id":"task-7",
+            "records":[{"id":"record-1","data":{"related_task_ids":["task-7"]}}],
+            "loaded_collections":["pm_records"],
+            "truncated_by_collection":{"pm_records":truncated},
+            "next_cursors":if truncated {json!({"pm_records":"record-1"})} else {json!({})}}})
+    }
+
+    fn selected_records(transport: &mut AttachTransport, limit: i64) -> Result<Value, ClientError> {
+        run(
+            &crate::data_distribution::tests::profile_for_tests(),
+            transport,
+            crate::authorized::Authority {
+                bearer_token: "bearer",
+                uid: "uid",
+                email: "user@example.com",
+                device_id: None,
+            },
+            "project-a",
+            &Command::TaskRecords {
+                task_id: "task-7".into(),
+                limit,
+            },
+        )
+    }
+
+    #[test]
+    fn task_records_one_selected_request_preserves_authoritative_completeness() {
+        for truncated in [false, true] {
+            let mut transport = records_transport(task_records_fixture(truncated));
+            let context = selected_records(&mut transport, 100).unwrap();
+            assert_eq!(
+                transport.payloads,
+                vec![
+                    json!({"action":"get_context","ds_project":"project-a","task_id":"task-7","limit":100,"collections":["pm_records"]})
+                ]
+            );
+            assert_eq!(context["truncated_by_collection"]["pm_records"], truncated);
+            assert_eq!(
+                context["next_cursors"].get("pm_records").is_some(),
+                truncated
+            );
+            assert!(transport.uploaded.is_empty());
+        }
+    }
+
+    #[test]
+    fn task_records_denied_or_unproven_page_never_becomes_empty_success() {
+        let fixture = task_records_fixture(false);
+        let mut cases = Vec::new();
+        for key in [
+            "project_id",
+            "task_id",
+            "records",
+            "loaded_collections",
+            "truncated_by_collection",
+            "next_cursors",
+        ] {
+            let mut altered = fixture.clone();
+            altered["context"].as_object_mut().unwrap().remove(key);
+            cases.push(altered);
+        }
+        for (key, wrong) in [
+            ("project_id", json!("other")),
+            ("task_id", json!("other")),
+            (
+                "loaded_collections",
+                json!(["pm_records", "pm_attachments"]),
+            ),
+            (
+                "records",
+                json!([{"id":"record-1","data":{"related_task_ids":["other"]}}]),
+            ),
+            ("next_cursors", json!({"pm_records":"record-1"})),
+        ] {
+            let mut altered = fixture.clone();
+            altered["context"][key] = wrong;
+            cases.push(altered);
+        }
+        for bad in cases {
+            let mut transport = records_transport(bad);
+            assert_eq!(
+                selected_records(&mut transport, 100).unwrap_err().kind(),
+                ErrorKind::UnreadableResponse
+            );
+            assert_eq!(transport.payloads.len(), 1);
+        }
+        let mut denied = records_transport(fixture);
+        denied.upload_status = 403;
+        assert_eq!(
+            selected_records(&mut denied, 100).unwrap_err().kind(),
+            ErrorKind::AuthenticationRejected
+        );
+        assert_eq!(denied.payloads.len(), 1);
+        let mut invalid = records_transport(task_records_fixture(false));
+        assert_eq!(
+            selected_records(&mut invalid, 0).unwrap_err().kind(),
+            ErrorKind::InvalidInput
+        );
+        assert!(invalid.payloads.is_empty());
     }
 
     fn two_files() -> Vec<AttachmentFile> {
