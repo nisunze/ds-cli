@@ -13,7 +13,7 @@
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Arg, ArgKind, Authority, Chapter, Command, Effect, Example, Execution, Requires,
+    Arg, ArgKind, Authority, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
 use serde_json::Value;
@@ -45,7 +45,7 @@ vocabulary the write commands take their state values from.",
     // `ds_cli_auth::project_management` and needs no paired application.
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[LIMIT_ARG, crate::LANE_ARG, crate::PROJECT_ARG],
+    args: &[LIMIT_ARG, Arg::switch("offline", "Read the exact retained plan without network or freshness checks; captured permissions may have changed."), crate::LANE_ARG, crate::PROJECT_ARG],
     output: "\
 `project`, `revision`, `today`, `dashboard` with the rollups, `phases` by \
 discipline, `attention` rows with their magnitude, `recent` task changes, \
@@ -55,14 +55,21 @@ and closeout states this project's engine accepts, plus the correspondence \
 lists (channels, record categories and states, directions, response \
 statuses, blocker kinds, party kinds and roles) — and `correspondence`: the \
 counters `recordsOutstanding`, `recordsOverdue`, `tasksAwaitingCorrespondence` \
-and the attention rows grouped by the party the answer is owed to (`null` on \
+and `retained` capture-time scope/freshness qualifications. With --offline no network \
+or freshness checks run; current source and permission freshness remain unknown. \
+The attention rows are grouped by the party the answer is owed to (`null` on \
 a server that predates the contract).",
     examples: &[Example {
         command: "ds pm plan --output json --project <exact-id>",
         note: "Read .data.vocabulary before calling `ds pm task update --delivery`.",
         runnable: false,
     }],
-    refusals: &crate::read_refusals::<17>(&[crate::INVALID_NUMBER]),
+    refusals: &crate::read_refusals::<20>(&[
+        crate::INVALID_NUMBER,
+        Refusal {code:"pm_offline_acquisition_required",when:"no admitted retained graph matches the protected account, lane, audience, credential and exact project, or access was denied",remedy:"run this exact project plan online once under the same native identity"},
+        Refusal {code:"pm_retained_unavailable",when:"the retained canonical graph cannot be admitted or persisted",remedy:"inspect owner-only local DS data and repeat the exact online plan read"},
+        Refusal {code:"project_context_changed",when:"authority or the local mutation generation moved during graph acquisition",remedy:"repeat the intentional online plan read under the current identity"},
+    ]),
     reference: Some("docs/reference/pm.md"),
     search: &[
         "project management",
@@ -90,15 +97,22 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         Some(value) => crate::integer(value, "limit", 1, 100)?,
         None => 10,
     };
-    let read = crate::graph(
+    let project = inputs.require("project")?;
+    let mut raw = ds_cli_auth::pm_graph_source::read(
         inputs.value("lane").unwrap_or("stable"),
-        inputs.require("project")?,
+        project,
+        inputs.switch("offline"),
     )?;
+    let retained = raw
+        .as_object_mut()
+        .and_then(|value| value.remove("retained"));
     // The graph is the SERVER's answer; what it MEANS is the kernel's. The
     // browser folded it for itself, which is why the dashboard and the
     // attention list could disagree about the same task — one answer now, for
     // the CLI, the Server and the page alike.
-    fold_plan(&read.project_id, read.raw, limit)
+    let mut plan = fold_plan(project, raw, limit)?;
+    plan["retained"] = retained.unwrap_or(Value::Null);
+    Ok(plan)
 }
 
 pub fn render(data: &Value) -> String {
@@ -113,6 +127,12 @@ pub fn render(data: &Value) -> String {
         percent("overallProgress"),
         crate::plural(count("planNodes"), "plan node"),
     );
+    if data["retained"]["mode"] == "offline_capture" {
+        out.push_str("  Retained capture: current source and permission freshness unknown.\n");
+        if data["retained"]["known_invalidated"] == true {
+            out.push_str("  A local write attempt has invalidated this captured graph.\n");
+        }
+    }
     out.push_str(&format!(
         "  in progress {} · blocked {} · paused {} · late {} · in review {}\n",
         count("inProgress"),
@@ -260,4 +280,25 @@ fn civil_from_days(days: i64) -> (i64, u32, u32) {
     let d = (doy - (153 * mp + 2) / 5 + 1) as u32;
     let m = if mp < 10 { mp + 3 } else { mp - 9 } as u32;
     (if m <= 2 { y + 1 } else { y }, m, d)
+}
+
+#[cfg(test)]
+mod offline_plan_tests {
+    use super::*;
+    #[test]
+    fn offline_is_explicit_and_declares_missing_capture_refusal() {
+        assert!(COMMAND.args.iter().any(|arg| arg.name == "offline"));
+        assert!(!COMMAND.args.iter().any(|arg| arg.name == "refresh"));
+        assert!(COMMAND
+            .refusals
+            .iter()
+            .any(|refusal| refusal.code == "pm_offline_acquisition_required"));
+    }
+    #[test]
+    fn human_projection_marks_offline_permission_unknown_and_known_invalidation() {
+        let answer = serde_json::json!({"project":"p","revision":3,"retained":{"mode":"offline_capture","known_invalidated":true}});
+        let text = render(&answer);
+        assert!(text.contains("permission freshness unknown"));
+        assert!(text.contains("invalidated"));
+    }
 }

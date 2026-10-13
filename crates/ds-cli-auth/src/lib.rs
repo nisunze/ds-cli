@@ -6,6 +6,7 @@
 
 pub mod account;
 pub mod asset_index_source;
+pub mod pm_graph_source;
 pub mod asset_preview_source;
 pub mod document_semantic;
 mod context;
@@ -3296,12 +3297,17 @@ pub fn project_management_for_project(
     project: &str,
     command: &ds_client_core::project_management::Command,
 ) -> Result<HeadlessNamedProject<serde_json::Value>, Failure> {
-    headless_named_project(
+    let binding = pm_graph_source::before_command(lane_value, project, command)?;
+    let result = headless_named_project(
         lane_value,
         project,
         |device, project| device.project_management(project, command),
         |client, project| client.project_management(project, command, now()),
-    )
+    );
+    if let Err(error) = &result {
+        pm_graph_source::after_refusal(&binding, error)?;
+    }
+    result
 }
 
 /// Read, plan or apply one finite member form grant through its existing authority.
