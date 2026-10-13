@@ -190,7 +190,7 @@ Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group E (printing templ
 
 ## 11. PLS-CADD exchange round trip
 
-- **PLS engineering fidelity** (`4ed6b202`, `ef2478d4`, `34ad2bea`, `0a653e07`, `9817e17e`): the native round trip must retain connected T-offs, use section ruling spans for clearance, reject Method-2 uplift without a negative weight branch, and preserve valid cable and criteria records. Prove each against its filed PLS acceptance before issuing strength results.
+- **PLS engineering fidelity** (`4ed6b202`, `ef2478d4`, `0a653e07`, `9817e17e`): the native round trip must retain connected T-offs, use section ruling spans for clearance, and preserve valid cable and criteria records. Prove each against its filed PLS acceptance before issuing strength results.
 
 - **PLS restore acceptance** (`1086e058`, `6f346aa3`): handle the catalogued Save changes exit prompt, then compare every restored file with the backup; a dialog count alone must not report success.
 

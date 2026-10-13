@@ -2,14 +2,14 @@
 
 > **Moved 2026-10-07:** this backlog now lives in `ds-command-kernel/backlog/`. The old `ds-work/backlog/` no longer exists: edit these files here, commit them to ds-command-kernel `run`, and stage only `backlog/`. ds-work holds working sessions, not coding lists.
 
-Working list from the 2026-10-07 snapshot and 2026-10-09 component lookups, with proven closures removed: 244 tracked rows (95 open, 149 waiting according to the rows below). These are file counts, not a fresh live backlog total. The feedback API is the authority: verify each selected report's current status, full ID, version and acceptance through `ds`, close only what is proven, and remove its row. Delete this file when its remaining work is fulfilled; keep no completed-work archive.
+Working list from the 2026-10-07 snapshot and 2026-10-09 component lookups, with proven closures removed: 243 tracked rows (95 open, 148 waiting according to the rows below). These are file counts, not a fresh live backlog total. The feedback API is the authority: verify each selected report's current status, full ID, version and acceptance through `ds`, close only what is proven, and remove its row. Delete this file when its remaining work is fulfilled; keep no completed-work archive.
 
 Reports are grouped by the live repository that owns the code, then by component. The component is the submitter's free-text label, shown verbatim so `ds feedback list --component` finds it. Legacy labels map as follows: `ds-grid*`, `dsgrid*`, `ds/grid-*`, `ds/pls-library` → ds-network; `ds-report*`, `ds-printing*` → ds-network-reporter; `ds-desktop*` → ds-web (`src-tauri`); `ds pls desktop` → ds-cli (`ds-cli-pls/desktop`). Labels that name no repository stay **unassigned**. "Backlog" names the [OPEN.md](OPEN.md), [OPEN-X.md](OPEN-X.md) or [SEEDING.md](SEEDING.md) section citing the report; **untracked** means none does (120 reports).
 
 | Repository | Total | Blocker | Major | Minor | Waiting | Untracked |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 | [ds-cli](#ds-cli) | 92 | 11 | 62 | 19 | 58 | 57 |
-| [ds-network](#ds-network) | 69 | 18 | 47 | 4 | 34 | 22 |
+| [ds-network](#ds-network) | 68 | 17 | 47 | 4 | 33 | 22 |
 | [ds-network-reporter](#ds-network-reporter) | 28 | 1 | 21 | 6 | 20 | 16 |
 | [ds-web](#ds-web) | 34 | 6 | 26 | 2 | 24 | 15 |
 | [ds-command-kernel](#ds-command-kernel) | 4 | 0 | 3 | 1 | 4 | 0 |
@@ -150,7 +150,6 @@ Reports are grouped by the live repository that owns the code, then by component
 | ds-network/ds-grid-engine | `50024ab0` | blocker | obstacle | Model 2 30 kV criterion leaves A12 clearance repair without capacity-case proof | open | **untracked** |
 | ds-network/ds-grid-engine | `4ed6b202` | blocker | bug | Plan-profile print omits connected T-off branches unless map context is captured | open | OPEN.md §11 |
 | ds-network/ds-grid-engine | `ef2478d4` | blocker | bug | Spotting clearance proof uses one alignment ruling span, while AutoSag uses each section ruling span | open | OPEN.md §11 |
-| ds-network/ds-grid-engine | `34ad2bea` | blocker | bug | Method-2 suspension diagrams without a negative weight-span branch pass DS but fail PLS-CADD | waiting: install of canary 0.1.7-r79+ carrying ds-network@bfdb0a47 | OPEN.md §11 |
 | ds-network/ds-grid-engine | `54a217f4` | major | friction | Structure delete/retype in Profile must be instant: restring only the one or two incident tension sections | waiting: release of ds-network@7ec4d9cb (Profile reconcile train), then the Desktop Gisagara M3 delete timing | **untracked** |
 | ds-network/ds-grid-engine | `97b4fb80` | major | obstacle | Engine one-shot needed: TBEA cross-arm re-issue took ~20 native PLS-CADD rounds (swap, 12 m class steps, uplift revert, strain split) | open | **untracked** |
 | ds-network/ds-grid-engine | `5c7152e3` | major | idea | Plan rule-driven retypes and strain splits in DS (REG sequence, clearance, uplift, 12 m mix) | waiting: DS Grid rule-planner implementation and Model 1 acceptance | OPEN.md §13 |
