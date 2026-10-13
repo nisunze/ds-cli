@@ -23,7 +23,7 @@ Unfinished code that an agent can implement and prove without further owner inpu
 | [14. Plan and Profile authoring](#14-plan-and-profile-authoring) | 1 |
 | [15. Project delivery code](#15-project-delivery-code) | 2 |
 | [16. Map data, datasets and screen styling](#16-map-data-datasets-and-screen-styling) | 12 |
-| [17. Project Work and Assets](#17-project-work-and-assets) | 9 |
+| [17. Project Work and Assets](#17-project-work-and-assets) | 8 |
 | [18. Global DS Grid library](#18-global-ds-grid-library) | 2 |
 | [19. Country neutrality and duplicated rules](#19-country-neutrality-and-duplicated-rules) | 2 |
 | [21. Windows release code](#21-windows-release-code) | 5 |
@@ -389,8 +389,6 @@ Rules: [PRINCIPLES.md §6](PRINCIPLES.md#6-ds-grid-engineering).
 - **Vector skip parity:** the ds-network runner now names engine-empty drops (`8e56edcb`: `engine_empty`, `no_station`, `no_buffer`, `skipped_features`). The kernel portable `vector_ops` (`src/vector_ops*.rs`, WASM `vectorProcess`) still counts such features as processed and does not name them; ds-cli `domain_smoke` `vector_cli_file_and_json_packets_match_the_kernel_and_frozen_native_baseline` is red on `run` (packet 4: processed 0 vs frozen 2; `skipped` lacks `no_station`). Make `vector_ops` name the same drops, refreeze `ds-command-kernel/tests/fixtures/vector_processing_packets.json`, and turn kernel `tests/vector_processing.rs` and that ds-cli test green.
 
 ## 17. Project Work and Assets
-
-- **Exact-revision CLI comparison** (owner, 2026-10-12): move historical snapshot comparison from metadata-only Run responses to exact catalog/version/revision Bulk reads through the admitted native client. Reuse the pure comparison owner and retained offline content, preserving exact scope/digest/playability fences and explicit acquisition need. Refuse unsupported or unplayable snapshots; never infer geometry equality from metadata or an empty result. Prove bounded consuming reads, offline reuse and unused-input zero reads. Keep the tested version UI read-only; differences remain CLI-only. Live April/current freezing and installed acceptance are in SEEDING section17.
 
 - **Slow-connection attachment previews and repeated loading** (owner, 2026-10-12): reproduce the Documents & outputs `Preview incomplete: Request timed out after 30s` and repeated loading of the same selected PDF. Trace metadata authorization, source acquisition, byte retention, native decoding and pane lifecycle independently. Intentional preview acquisition must tolerate a slow connection with visible progress and cancellation; retain exact version-pinned disk bytes/results and join concurrent consumers instead of restarting work on presentation changes. Preserve permission/revocation and principal/project/revision fences, with zero background unused reads or polling. Prove delayed success beyond 30 seconds, denied/changed source refusal, one acquisition for concurrent/repeated consumers and offline reuse.
 
