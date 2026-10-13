@@ -7,13 +7,13 @@ use std::io::Read;
 
 const INPUT: Arg = Arg::value("input", "<json-file>", "Closed complete authored draft JSON, at most 512 KiB (markdown at most 128 KiB); no identity, author, timestamps or transport envelope.").required();
 
-const NOTE: Arg = Arg::value(
+pub(super) const NOTE: Arg = Arg::value(
     "note",
     "<note-id>",
     "One selected account-private note; no project discovery.",
 )
 .required();
-const VERSION: Arg = Arg::value(
+pub(super) const VERSION: Arg = Arg::value(
     "version",
     "<version>",
     "Positive current version you reviewed; stale writes refuse.",
@@ -31,7 +31,7 @@ const SHA: Arg = Arg::value(
     "Exact lowercase SHA256 returned by the selected historical read.",
 )
 .required();
-const ID: Arg = Arg::value(
+pub(super) const ID: Arg = Arg::value(
     "id",
     "<command-id>",
     "Stable 8-128 character id; retain exact restoration intent on retry.",
@@ -62,7 +62,7 @@ const TRASHED: Arg = Arg::switch(
     "Include notes in recoverable private trash.",
 );
 
-const fn declaration(
+pub(super) const fn declaration(
     id: &'static str,
     path: &'static [&'static str],
     summary: &'static str,

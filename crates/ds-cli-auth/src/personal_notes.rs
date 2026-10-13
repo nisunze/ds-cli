@@ -1,4 +1,5 @@
 //! Selected account-private note operations, without project discovery.
+pub mod backup_export;
 use super::{
     now, profile, require_restore_before_context, restored_device_session, Client, Lane,
     NativeRefreshStore, NativeTransport,
