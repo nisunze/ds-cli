@@ -16,7 +16,7 @@ use ds_cli_auth::reliability::reporter::{
     self, EventSink, HostKind, Invocation, Platform, SendFailure, Termination,
 };
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Command, Effect};
+use ds_cli_contract::spec::{Authority, Command, Effect};
 use serde_json::{Value, json};
 
 use crate::build;
@@ -162,15 +162,21 @@ pub fn report(argv: &[String], started: Instant, crash: Option<String>) {
         argument_values,
     };
     let now = now_ms();
-    // A discovery command promises to probe no network, and a tool call's
-    // process leaves the send to its adapter: both only record.
-    let discovery = command.is_some_and(|command| matches!(command.effect, Effect::Discovery));
-    if adapter || discovery {
+    // Local commands must stay local on every ending, including a missing
+    // owner or a crash. Keep their journal and outbox without acquiring a
+    // gateway profile, flushing older events or filing automatic feedback.
+    // A tool call also leaves delivery to its existing long-lived adapter.
+    if adapter || command.is_some_and(records_only) {
         let _ = reporter::record(&mut store, &invocation, now);
         return;
     }
     let _ = reporter::finish_invocation(true, &mut store, &mut Sink, &invocation, now);
     file_automatic(&mut store);
+}
+
+fn records_only(command: &Command) -> bool {
+    matches!(command.effect, Effect::Discovery)
+        || (matches!(command.authority, Authority::None) && !ADAPTER_COMMANDS.contains(&command.id))
 }
 
 /// Send what an adapter's tool calls recorded, every
@@ -350,6 +356,19 @@ mod tests {
 
     fn tokens(values: &[&str]) -> Vec<String> {
         values.iter().map(|value| value.to_string()).collect()
+    }
+
+    #[test]
+    fn local_commands_record_without_delivery_and_the_existing_adapter_still_flushes() {
+        for (id, only_records) in [
+            ("solar.calculate-prepared", true),
+            ("feedback.draft", true),
+            ("feedback.submit", false),
+            ("mcp.serve", false),
+        ] {
+            let command = crate::registry::find_by_id(id).expect("registered command");
+            assert_eq!(records_only(command.command), only_records, "{id}");
+        }
     }
 
     #[test]

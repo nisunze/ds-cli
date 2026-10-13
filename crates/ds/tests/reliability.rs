@@ -195,6 +195,149 @@ fn an_answer_is_counted_never_sent() {
     assert_eq!(document["rollup"]["capabilities"], 1);
 }
 
+/// A prepared offline command never starts transport to report a missing
+/// addon. Its failure and feedback draft still retain the local evidence.
+#[test]
+fn a_missing_local_addon_records_and_drafts_without_sending() {
+    let on = state_root("local-addon-on");
+    let proxy = std::net::TcpListener::bind("127.0.0.1:0").expect("local counting proxy");
+    proxy.set_nonblocking(true).unwrap();
+    let proxy_url = format!("http://{}", proxy.local_addr().unwrap());
+    let mut catalog: Value = serde_json::from_str(include_str!(
+        "../../ds-cli-auth/tests/fixtures/development-catalog.json"
+    ))
+    .unwrap();
+    catalog["schema_version"] = serde_json::json!(ds_client_core::CLIENT_PROFILE_SCHEMA);
+    for profile in catalog["profiles"].as_object_mut().unwrap().values_mut() {
+        profile["design_versions"]["actions"] =
+            serde_json::json!(ds_client_core::DESIGN_VERSIONS_ACTIONS);
+    }
+    let bundle = on.join("catalog.json");
+    fs::write(&bundle, serde_json::to_vec(&catalog).unwrap()).unwrap();
+    let auth = on.join("empty-auth");
+    let desktop = on.join("absent-desktop.json");
+    let missing = on.join("missing-solar");
+    let request = on.join("unused-request.json");
+    let out = on.join("absent-output");
+    let args = [
+        "solar",
+        "calculate-prepared",
+        "--request",
+        request.to_str().unwrap(),
+        "--out",
+        out.to_str().unwrap(),
+        "--output",
+        "json",
+    ];
+    let engine = [
+        ("DS_SOLAR_ENGINE_BIN", missing.to_str().unwrap()),
+        ("DS_NATIVE_CLIENT_PROFILE_BUNDLE", bundle.to_str().unwrap()),
+        ("DS_CONFIG_HOME", auth.to_str().unwrap()),
+        ("DS_DESKTOP_DESCRIPTOR", desktop.to_str().unwrap()),
+        ("HTTP_PROXY", proxy_url.as_str()),
+        ("HTTPS_PROXY", proxy_url.as_str()),
+        ("ALL_PROXY", proxy_url.as_str()),
+        ("NO_PROXY", ""),
+    ];
+    let reported = ds(&on, "on", &engine, &args);
+    let quiet = ds(&state_root("local-addon-off"), "off", &engine, &args);
+    assert_eq!(reported.status.code(), Some(3));
+    assert_eq!(reported.status.code(), quiet.status.code());
+    assert_eq!(reported.stdout, quiet.stdout);
+    assert_eq!(reported.stderr, quiet.stderr);
+    let answer: Value = serde_json::from_slice(&reported.stdout).expect("typed refusal");
+    assert_eq!(answer["error"]["code"], "solar_engine_missing");
+    assert!(
+        !request.exists(),
+        "missing addon consumes no prepared input"
+    );
+    assert!(!out.exists(), "missing addon creates no calculation output");
+    assert_eq!(
+        proxy.accept().unwrap_err().kind(),
+        std::io::ErrorKind::WouldBlock,
+        "a configured transport gets zero requests from the offline refusal"
+    );
+
+    let (_, document) = stored(&on);
+    assert_eq!(document["outbox"].as_array().unwrap().len(), 1);
+    assert_eq!(document["journal"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        document["outbox"][0]["event"]["action"],
+        "solar.calculate-prepared"
+    );
+    assert!(document["last_flush"].is_null(), "no send was attempted");
+
+    let draft = ds(
+        &on,
+        "on",
+        &engine,
+        &["feedback", "draft", "--last", "--output", "json"],
+    );
+    assert!(draft.status.success());
+    let answer: Value = serde_json::from_slice(&draft.stdout).expect("draft JSON");
+    assert_eq!(answer["data"]["drafts"].as_array().unwrap().len(), 1);
+    assert!(
+        answer["data"]["drafts"][0]["evidence"]
+            .to_string()
+            .contains("solar_engine_missing")
+    );
+    let (_, document) = stored(&on);
+    assert_eq!(document["outbox"].as_array().unwrap().len(), 1);
+    assert!(
+        document["last_flush"].is_null(),
+        "reading a local draft never flushes held events"
+    );
+    assert_eq!(
+        proxy.accept().unwrap_err().kind(),
+        std::io::ErrorKind::WouldBlock,
+        "the later local consumer gets zero requests too"
+    );
+
+    // The same admitted catalog and proxy are usable: a network-authorized
+    // command still attempts its bounded reporting delivery. Thus zero above
+    // is not a broken profile, unavailable proxy or reporting being disabled.
+    let control = ds(
+        &state_root("local-addon-transport-control"),
+        "on",
+        &engine,
+        &["feedback", "list", "--output", "json"],
+    );
+    assert!(!control.status.success());
+    assert!(
+        proxy.accept().is_ok(),
+        "the transport control reaches the proxy"
+    );
+}
+
+/// Offline command crashes preserve automatic reports for a later admitted
+/// sender; a subsequent local consumer must not acquire an account to file them.
+#[test]
+fn a_local_crash_and_later_local_read_keep_automatic_feedback_queued() {
+    let on = state_root("local-crash");
+    let crash = ds(
+        &on,
+        "on",
+        &[("DS_CLI_TEST_PANIC", "solar.calculate-prepared")],
+        &["solar", "calculate-prepared", "--output", "json"],
+    );
+    assert_eq!(crash.status.code(), Some(101));
+    let (_, before) = stored(&on);
+    assert_eq!(before["automatic"].as_array().unwrap().len(), 1);
+    assert!(before["last_flush"].is_null());
+
+    let draft = ds(
+        &on,
+        "on",
+        &[],
+        &["feedback", "draft", "--last", "--output", "json"],
+    );
+    assert!(draft.status.success());
+    let (_, after) = stored(&on);
+    assert_eq!(after["automatic"], before["automatic"]);
+    assert_eq!(after["outbox"], before["outbox"]);
+    assert!(after["last_flush"].is_null());
+}
+
 /// §7.3 with the development-only panic hook: a crash is one `crashed` event
 /// and one automatic `bug` report waiting for a signed-in send (this test has
 /// no packaged profile, so it waits); a second crash raises that report's
