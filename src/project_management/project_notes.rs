@@ -595,6 +595,11 @@ impl Draft {
             "Write active memory only; retirement requires a verified recoverable backup",
         )?;
         m.provenance.validate()?;
+        require(
+            !matches!(m.note_type, NoteType::Decision | NoteType::Constraint | NoteType::Correction | NoteType::RejectedAssumption)
+                || (matches!(m.provenance.kind, Basis::UserInstruction | Basis::UserDecision) && !m.evidence.is_empty()),
+            "An agreed note needs explicit user provenance and its actual source evidence",
+        )?;
         m.scope.validate()?;
         evidence(&m.evidence)?;
         claim_refs(&m.supersedes)?;
@@ -955,7 +960,7 @@ mod tests {
         }
     }
     fn draft() -> Draft {
-        serde_json::from_value(json!({"subject":"Fill-in transformer supply","body":"Replacement equipment stays; transformer supply is excluded.","tags":["MV staking"],"memory":{"schema":MEMORY_SCHEMA,"note_type":"constraint","lifecycle":"active","provenance":{"kind":"user_instruction"},"scope":scope(),"claims":[{"id":"fill-in-supply","kind":"constraint","issue_key":"transformer_supply","text":"Fill-ins may have transformer equipment replacements, but must not have transformer-supply entries.","provenance":{"kind":"user_instruction"},"evidence":[{"kind":"external","locator":"owner-conversation:Gisagara:fill-in-supply","label":"Explicit user instruction; externally referenced evidence"}]}]}})).unwrap()
+        serde_json::from_value(json!({"subject":"Fill-in transformer supply","body":"Replacement equipment stays; transformer supply is excluded.","tags":["MV staking"],"memory":{"schema":MEMORY_SCHEMA,"note_type":"constraint","lifecycle":"active","provenance":{"kind":"user_instruction"},"scope":scope(),"evidence":[{"kind":"external","locator":"owner-conversation:Gisagara:fill-in-supply"}],"claims":[{"id":"fill-in-supply","kind":"constraint","issue_key":"transformer_supply","text":"Fill-ins may have transformer equipment replacements, but must not have transformer-supply entries.","provenance":{"kind":"user_instruction"},"evidence":[{"kind":"external","locator":"owner-conversation:Gisagara:fill-in-supply","label":"Explicit user instruction; externally referenced evidence"}]}]}})).unwrap()
     }
     fn query() -> Query {
         Query {
@@ -986,6 +991,12 @@ mod tests {
         assert!(wrong.validate().is_err());
         wrong = d.clone();
         wrong.memory.claims[0].evidence.clear();
+        assert!(wrong.validate().is_err());
+        wrong = d.clone();
+        wrong.memory.evidence.clear();
+        assert!(wrong.validate().is_err());
+        wrong = d;
+        wrong.memory.provenance.kind = Basis::Inference;
         assert!(wrong.validate().is_err());
     }
     #[test]
@@ -1147,7 +1158,7 @@ mod declaration_tests {
     use serde_json::json;
     #[test]
     fn draft_writer_model_is_separate_from_human_claim_provenance() {
-        let raw = json!({"subject":"Owner ruling","body":"Record the actual instruction","tags":[],"authoring_model":{"model":"GPT-6"},"memory":{"schema":MEMORY_SCHEMA,"note_type":"constraint","lifecycle":"active","provenance":{"kind":"user_instruction","source_author":"Owner"},"scope":{"kind":"project"},"claims":[{"id":"rule1","kind":"constraint","issue_key":"fill_in_supply","text":"Fill-ins must not carry transformer-supply entries.","provenance":{"kind":"user_instruction","source_author":"Owner"},"evidence":[{"kind":"external","locator":"owner-conversation:Gisagara:fill-in-supply"}]}]}});
+        let raw = json!({"subject":"Owner ruling","body":"Record the actual instruction","tags":[],"authoring_model":{"model":"GPT-6"},"memory":{"schema":MEMORY_SCHEMA,"note_type":"constraint","lifecycle":"active","provenance":{"kind":"user_instruction","source_author":"Owner"},"scope":{"kind":"project"},"evidence":[{"kind":"external","locator":"owner-conversation:Gisagara:fill-in-supply"}],"claims":[{"id":"rule1","kind":"constraint","issue_key":"fill_in_supply","text":"Fill-ins must not carry transformer-supply entries.","provenance":{"kind":"user_instruction","source_author":"Owner"},"evidence":[{"kind":"external","locator":"owner-conversation:Gisagara:fill-in-supply"}]}]}});
         let d: Draft = serde_json::from_value(raw.clone()).unwrap();
         d.validate().unwrap();
         assert_eq!(
