@@ -9,13 +9,15 @@ blocker interrupts this sequence. Follow the [current priority ruling](PRINCIPLE
 before the older priority lists here and in STABILIZATION.md. Independent
 Reporter/Solar independent Desktop/Server releases are a separate bounded
 campaign, with an owner target of 2026-10-31. Reporter comes first, Solar second;
-Kernel/Network and the remaining host stay coupled indefinitely unless the owner
-explicitly reopens that scope. Their extraction is outside stabilization. The moving slices,
+The owner requested Network as the next separate modularization plan on
+2026-10-13; whole-kernel and remaining-host extraction is not included. The moving Reporter/Solar slices,
 requirements and effort estimates are in [OPEN §1](OPEN.md#1-source-integration-and-release-code),
 with installed proof and performance targets in [SEEDING §2](SEEDING.md#2-release-acceptance).
 Confirmed exposure/data loss and affected-release safeguards, including the
 notification gate, remain binding. Backlog consolidation does not authorize
 starting implementation in the scope-recording exchange or a broad campaign.
+
+**Next modularization plan — owner, 2026-10-13:** [Network executable/WASM extraction](DS-NETWORK-MODULARIZATION.md), entered through [OPEN §1](OPEN.md#1-source-integration-and-release-code). Author through `ssh ds-server`; Windows source checkouts only pull. Start N0 baseline/consumer closure and N1 contracts, then N3/N4 native Fast LV executable and existing `ds` command vertical; make only the portable Kernel moves that vertical needs. Follow with Desktop/Server, Grid/Profile, browser parity, component admission and final consumer-edge removal. Reuse proved addon supervisor/update guarantees, preserve current installer/host-control obligations, and do not make Network a prerequisite for unrelated stabilization. Scope/planning is recorded here; no new implementation start or deadline is implied.
 
 Start order for [OPEN.md](OPEN.md), following [owner priorities](PRINCIPLES.md#3-priorities-owner-2026-10-07). This file holds order and dependencies; scope, evidence and proof stay in OPEN.md. Delete a fulfilled row with its OPEN.md entry. [OPEN-X.md](OPEN-X.md) gates only the named decision; [SEEDING.md](SEEDING.md) owns configuration, deployment and installed acceptance.
 
