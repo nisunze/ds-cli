@@ -431,6 +431,8 @@ Candidate curation and native PLS-CADD acceptance are separate from coding the c
 
 - **Cable creep native export acceptance** (`3d1c735c`): provide complete source-qualified CRI clearance-weather and criterion bindings for a successful authored 15 C export and reimport. The compact five-section source and the pinned full v89 scaffold with undefined analysis `phase_clear` are import evidence, not authority to invent missing sections or selectors. Retain zero-shift, modulus-conflict and original-source controls; correct plan refusal alone does not prove the filed cable round trip.
 
+- **Historical Model2 inspection acceptance** (`4af28da3`): recover the exact retained `DS Grid Models/model2-nyamagabe-nyaruguru/Nyamagabe&Nyaruguru.1.dsgrid`, or an admitted immutable reference to those bytes. The filing provides no package digest/reference and bounded named paths do not contain it. The historical-manifest migration fix is installed and a substitute schema3 fixture passes, but closure requires the filed member/refusal/remedy and staking-enrich hint acceptance without rewriting its native evidence.
+
 - **PLS-CADD readback of filed exports** (`8363a4fc`, `6226c0bb`, `3a302e54`, `b3bdc857`, `df1f53ae`, `4ba8ab15`): after the Linux canary r79+ export of each filed case, Restore and read it back in PLS-CADD 16.81 on Windows before closing. The code parts of `3a302e54` and `b3bdc857` are in `OPEN.md` §11.
 
 - **Classification-aware Windows release** (`6e322426`): on a Windows/stable release carrying kernel `0e4389f`, read report project settings and export A0 for `ruhuha`, `upgrade_mbeho` and `zihare`; then close `6e322426`.
