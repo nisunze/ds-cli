@@ -63,7 +63,7 @@ which today owns server-side authorization, lifecycle, publication and
 data-authority checks. Two readings are available and they are very different:
 
 - **Narrow:** "server" means the Rust services already deployed as servers
-  (ds-network-reporter, ds-solar, ds-vector-tiler), and ds-brain remains the Go
+  (ds-network-reporter and ds-solar), and ds-brain remains the Go
   authorization boundary it is. Nothing in the current campaigns changes.
 - **Wide:** ds-brain's domain decisions are also product, and should migrate
   behind the same Rust boundary over time, leaving Go as transport and admission.

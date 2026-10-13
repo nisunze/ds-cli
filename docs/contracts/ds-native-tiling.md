@@ -86,9 +86,9 @@ content-addressed; the container cache remains service-managed.
 - `crates/ds-compute-runtime::tiles`: durable source bytes, explicit admitted
   principal/project/lane, retry and cancellation through the existing job store.
 - `ds-cli-server`: protected HTTP/CLI submission and result presentation.
-- `ds-vector-tiler`: online source and publication adapters. It consumes an
-  exact file-digested snapshot of `ds-tile-runtime`; it no longer owns a second
-  archive algorithm. `scripts/sync_tile_runtime.py --check` proves the snapshot.
+- `ds-network-reporter::ds-geospatial-io`: online geospatial acquisition.
+  Native tiling remains in the owners above; `ds-vector-tiler` is retired and
+  is neither a runtime dependency nor a fallback.
 
 ## Toolchain and cache
 

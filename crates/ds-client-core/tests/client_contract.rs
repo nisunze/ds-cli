@@ -10472,6 +10472,34 @@ fn headless_feedback_authentication_failures_never_reach_the_feedback_endpoint()
     }
 }
 
+#[test]
+fn retired_feedback_owners_refuse_before_refresh_or_transport() {
+    use ds_client_core::feedback::Command;
+    let transport = FixtureTransport::with_sign_in(SIGN_IN);
+    let mut client = signed_in(transport.clone(), MemoryStore::default());
+    for component in ["ds-vector-tiler/tiles", "ds-solar-weather/weather"] {
+        let request = Command::Submit {
+            title: "Retired owner".into(),
+            detail: "A retired repository cannot own new feedback".into(),
+            component: component.into(),
+            kind: "bug".into(),
+            severity: "minor".into(),
+            agent: "owning-regression".into(),
+            model: None,
+            client: None,
+            evidence: Vec::new(),
+            context: Default::default(),
+        };
+        let error = client.feedback(&request, NOW + 4_000).unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            ds_client_core::feedback::COMPONENT_UNKNOWN
+        );
+    }
+    assert_eq!(transport.count_calls("refresh "), 0);
+    assert!(transport.0.lock().unwrap().feedback_bodies.is_empty());
+}
+
 fn feedback_row(status: &str, version: u64) -> serde_json::Value {
     serde_json::json!({"id":"f1","status":status,"kind":"bug","severity":"major","component":"ds-cli","surface":"cli","title":"Headless feedback","detail":"Must work without a selected project","occurrences":1,"reporters":["operator@example.com"],"reporter_kind":"agent","version":version,"last_seen_at":"2026-09-13T12:00:00Z","updated_at":"2026-09-13T12:00:00Z","updated_by":"operator@example.com"})
 }

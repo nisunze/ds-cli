@@ -75,9 +75,7 @@ pub const LIVE_REPOSITORIES: &[&str] = &[
     "ds-network",
     "ds-network-reporter",
     "ds-solar",
-    "ds-solar-weather",
     "ds-sre",
-    "ds-vector-tiler",
     "ds-web",
     "ds-work",
     "simple_notes",
@@ -652,6 +650,10 @@ mod component_tests {
             assert!(submit(live).validate().is_ok(), "{live} is accepted");
         }
         for unknown in [
+            "ds-vector-tiler",
+            "ds-vector-tiler/tiles",
+            "ds-solar-weather",
+            "ds-solar-weather/weather",
             "ds-grid",
             "ds-grid-engine/sag",
             "platform",
