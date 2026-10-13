@@ -164,6 +164,32 @@ pub fn reportable_transformer(value: &str) -> Result<(), String> {
     Ok(())
 }
 
+fn admitted_printing_label(project: &str, label: Option<&str>) -> Result<String, String> {
+    let label = label
+        .filter(|text| valid_semantic_text(text, 200) && *text != project)
+        .ok_or("The captured printing context has no bounded canonical project label")?;
+    Ok(label.to_owned())
+}
+
+/// Consume a label captured from the sealed settings receipt and carried in
+/// the same digest-pinned native request. There is no caller-label fallback.
+pub fn captured_printing_project_label(
+    project: &str,
+    source: &Value,
+    network_config: &Value,
+) -> Result<String, String> {
+    if source["project"]["ds_project"] != project
+        || network_config["printing_context"]["project_id"] != project
+    {
+        return Err("The captured label context belongs to another project".into());
+    }
+    let label = admitted_printing_label(project, source["project"]["printing_label"].as_str())?;
+    if network_config["printing_context"]["project"] != label {
+        return Err("The captured label differs from the pinned native printing context".into());
+    }
+    Ok(label)
+}
+
 fn valid_semantic_text(value: &str, max_bytes: usize) -> bool {
     !value.is_empty()
         && value.len() <= max_bytes
@@ -394,6 +420,18 @@ impl InputReceipt {
             return Err("Network Reporter sheets_json must be a non-empty JSON object".to_string());
         }
         Ok(())
+    }
+
+    /// The canonical project caption already sealed by the authorized config
+    /// producer. Raw sheet captions and saved selection are not substitutes.
+    pub fn printing_context_for_project(&self, project: &str) -> Result<Value, String> {
+        self.validate()?;
+        let context = self.sheets()?["printing_context"].clone();
+        if context["project_id"] != project {
+            return Err("The sealed printing context belongs to another project".into());
+        }
+        admitted_printing_label(project, context["project"].as_str())?;
+        Ok(context)
     }
 
     /// A Rwanda project is stamped with the administrative reference; every
@@ -4439,5 +4477,85 @@ mod tests {
         )));
         assert!(!valid_run_id("report-ABC"));
         assert!(!valid_run_id(&"0".repeat(39)));
+    }
+}
+
+#[cfg(test)]
+mod project_printing_label_tests {
+    use super::*;
+    fn receipt(project: &str, label: Value) -> InputReceipt {
+        let sheets =
+            json!({"printing_context":{"project_id":project,"project":label,"caption":"Kept"}})
+                .to_string();
+        InputReceipt {
+            schema: INPUT_RECEIPT_SCHEMA,
+            country: "Rwanda".into(),
+            sheets_sha256: sha256_hex(sheets.as_bytes()),
+            sheets_json: sheets,
+            reference_semantic_sha256: "a".repeat(64),
+            local_print_recipe: None,
+        }
+    }
+    #[test]
+    fn governed_display_label_preserves_the_sealed_project_context() {
+        let r = receipt("czgmdwth_gisagara", json!("Gisagara, CJIC"));
+        let ctx = r.printing_context_for_project("czgmdwth_gisagara").unwrap();
+        assert_eq!(ctx["project"], "Gisagara, CJIC");
+        assert_eq!(ctx["caption"], "Kept");
+        let source =
+            json!({"project":{"ds_project":"czgmdwth_gisagara","printing_label":ctx["project"]}});
+        assert_eq!(
+            captured_printing_project_label(
+                "czgmdwth_gisagara",
+                &source,
+                &json!({"printing_context":ctx})
+            )
+            .unwrap(),
+            "Gisagara, CJIC"
+        );
+    }
+    #[test]
+    fn foreign_changed_and_missing_label_contexts_are_refused() {
+        let r = receipt("project", json!("Gisagara, CJIC"));
+        assert!(r.printing_context_for_project("other").is_err());
+        let mut stale = r.clone();
+        stale.sheets_json.push(' ');
+        assert!(stale.printing_context_for_project("project").is_err());
+        for label in [
+            Value::Null,
+            json!(""),
+            json!("project"),
+            json!(" bad"),
+            json!("bad\ncaption"),
+            json!("a".repeat(201)),
+        ] {
+            assert!(
+                receipt("project", label)
+                    .printing_context_for_project("project")
+                    .is_err()
+            );
+        }
+        let source = json!({"project":{"ds_project":"project","printing_label":"Gisagara, CJIC"}});
+        for ctx in [
+            json!({"project_id":"other","project":"Gisagara, CJIC"}),
+            json!({"project_id":"project","project":"Old caption"}),
+        ] {
+            assert!(
+                captured_printing_project_label(
+                    "project",
+                    &source,
+                    &json!({"printing_context":ctx})
+                )
+                .is_err()
+            );
+        }
+        assert!(
+            captured_printing_project_label(
+                "project",
+                &json!({"project":{"ds_project":"project"}}),
+                &json!({"printing_context":{"project_id":"project","project":"Gisagara, CJIC"}})
+            )
+            .is_err()
+        );
     }
 }
