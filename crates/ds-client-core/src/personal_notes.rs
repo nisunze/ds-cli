@@ -1,8 +1,8 @@
 //! Account-private note controls through the fixed notes owner.
 //! This boundary carries selected intent; it never lists projects or prefetches notes.
 use crate::project_management::checklist::Edit;
-use crate::{authorized::Authority, AuthorizedTransport, ClientError, ClientProfile, ErrorKind};
-use serde_json::{json, Value};
+use crate::{AuthorizedTransport, ClientError, ClientProfile, ErrorKind, authorized::Authority};
+use serde_json::{Value, json};
 
 mod draft;
 pub use draft::Draft;
@@ -21,6 +21,8 @@ pub enum Action {
         draft: Draft,
     },
     List {
+        limit: usize,
+        cursor: Option<String>,
         include_archived: bool,
         include_trashed: bool,
     },
@@ -91,7 +93,16 @@ impl Action {
                 draft.validate(false)?;
                 Some(id)
             }
-            Self::List { .. } => None,
+            Self::List { limit, cursor, .. } => {
+                if !(1..=100).contains(limit)
+                    || cursor
+                        .as_ref()
+                        .is_some_and(|c| c.is_empty() || c.len() > 2048 || c.trim() != c)
+                {
+                    return Err(invalid());
+                }
+                None
+            }
             Self::Read { id } | Self::Versions { id } | Self::ChecklistRead { id } => Some(id),
             Self::ReadVersion { id, source_version } => {
                 if *source_version < 1 {
@@ -163,10 +174,12 @@ impl Action {
                 json!({"action":"update","id":id,"expected_version":expected_version,"note":draft})
             }
             Self::List {
+                limit,
+                cursor,
                 include_archived,
                 include_trashed,
             } => {
-                json!({"action":"list","include_archived":include_archived,"include_trashed":include_trashed})
+                json!({"action":"list_metadata","limit":limit,"cursor":cursor,"include_archived":include_archived,"include_trashed":include_trashed})
             }
             Self::Read { id } => json!({"action":"get","id":id}),
             Self::Retire {
@@ -271,28 +284,42 @@ fn decode(action: &Action, response: crate::TransportResponse) -> Result<Value, 
             draft.verify_authored_receipt(&data["note"])?;
         }
         Action::List {
+            limit,
+            cursor: _,
             include_archived,
             include_trashed,
         } => {
-            let notes = data["notes"].as_array().ok_or_else(unreadable)?;
-            if notes.len() > 1000 || data["max_notes"] != 1000 {
+            let list: MetadataList =
+                serde_json::from_value(data.clone()).map_err(|_| unreadable())?;
+            if list.notes.len() > list.scanned_on_page
+                || list.scanned_on_page > *limit
+                || list.limit != *limit
+                || list.truncated != !list.complete
+                || (list.complete != list.next_cursor.is_none())
+                || list
+                    .next_cursor
+                    .as_ref()
+                    .is_some_and(|c| c.is_empty() || c.len() > 2048)
+                || (!list.complete && list.scanned_on_page != *limit)
+                || (*include_archived
+                    && *include_trashed
+                    && list.notes.len() != list.scanned_on_page)
+            {
                 return Err(unreadable());
             }
             let mut ids = std::collections::BTreeSet::new();
-            for note in notes {
-                validate_note(note, None)?;
-                if !ids.insert(note["id"].as_str().unwrap())
-                    || (!include_archived && note["archived"] != false)
-                    || (!include_trashed && note["trashed"] != false)
+            for note in &list.notes {
+                if !note_id_valid(&note.id)
+                    || note.version < 1
+                    || note.title.chars().count() > 300
+                    || note.folder.chars().count() > 200
+                    || note.tags.len() > 24
+                    || note.tags.iter().any(|tag| tag.chars().count() > 64)
+                    || note.updated_at.is_empty()
+                    || !ids.insert(&note.id)
+                    || (!include_archived && note.archived)
+                    || (!include_trashed && note.trashed)
                 {
-                    return Err(unreadable());
-                }
-            }
-            // The legacy owner bounded acquisition before filtering. Absence of
-            // enumeration metadata must never become a completeness claim.
-            if data.get("complete").is_some() || data.get("truncated").is_some() {
-                let complete = data["complete"].as_bool().ok_or_else(unreadable)?;
-                if data["truncated"].as_bool() != Some(!complete) {
                     return Err(unreadable());
                 }
             }
@@ -382,6 +409,33 @@ fn decode(action: &Action, response: crate::TransportResponse) -> Result<Value, 
         }
     }
     Ok(data.clone())
+}
+
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct MetadataList {
+    notes: Vec<Metadata>,
+    limit: usize,
+    scanned_on_page: usize,
+    #[serde(default)]
+    next_cursor: Option<String>,
+    complete: bool,
+    truncated: bool,
+}
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Metadata {
+    id: String,
+    version: i64,
+    title: String,
+    #[serde(default)]
+    folder: String,
+    tags: Vec<String>,
+    #[serde(rename = "pinned")]
+    _pinned: bool,
+    archived: bool,
+    trashed: bool,
+    updated_at: String,
 }
 
 fn sha_valid(sha: &str) -> bool {
@@ -652,23 +706,55 @@ mod tests {
             id: "private".into(),
             source_version: 2,
         };
-        assert!(decode(
-            &read,
-            response(json!({"note":note("private",2,false),"sha256":sha,"retained":false}))
-        )
-        .is_ok());
+        assert!(
+            decode(
+                &read,
+                response(json!({"note":note("private",2,false),"sha256":sha,"retained":false}))
+            )
+            .is_ok()
+        );
     }
     #[test]
     fn private_reads_refuse_hidden_uid_and_wrong_attachment_owner() {
         let list = Action::List {
+            limit: 50,
+            cursor: None,
             include_archived: false,
             include_trashed: false,
         };
-        let legacy = json!({"notes":[note("private",1,false)],"max_notes":1000});
-        assert_eq!(decode(&list, response(legacy.clone())).unwrap(), legacy);
-        let mut leaked = note("private", 1, false);
-        leaked["owner_uid"] = json!("hidden");
-        assert!(decode(&list, response(json!({"notes":[leaked],"max_notes":1000}))).is_err());
+        let header = json!({"id":"private","version":1,"title":"Header","tags":[],"pinned":false,"archived":false,"trashed":false,"updated_at":"2026-10-13T00:00:00Z"});
+        let inventory = json!({"notes":[header],"limit":50,"scanned_on_page":1,"complete":true,"truncated":false});
+        assert_eq!(
+            decode(&list, response(inventory.clone())).unwrap(),
+            inventory
+        );
+        assert_eq!(list.payload()["action"], "list_metadata");
+        let mut leaked = inventory.clone();
+        leaked["notes"][0]["owner_uid"] = json!("hidden");
+        assert!(decode(&list, response(leaked)).is_err());
+        for key in [
+            "content",
+            "checklist",
+            "geometry",
+            "links",
+            "reminder",
+            "canvas",
+            "attachments",
+        ] {
+            let mut body = inventory.clone();
+            body["notes"][0][key] = json!({});
+            assert!(decode(&list, response(body)).is_err());
+        }
+        let mut partial = inventory.clone();
+        partial["complete"] = json!(false);
+        partial["truncated"] = json!(true);
+        assert!(decode(&list, response(partial)).is_err());
+        let mut wrong_count = inventory.clone();
+        wrong_count["scanned_on_page"] = json!(0);
+        assert!(decode(&list, response(wrong_count)).is_err());
+        let mut legacy = inventory.clone();
+        legacy.as_object_mut().unwrap().remove("scanned_on_page");
+        assert!(decode(&list, response(legacy)).is_err());
         let read = Action::Read {
             id: "private".into(),
         };
@@ -696,11 +782,13 @@ mod tests {
             json!({"action":"checklist_edit","id":"n","expected_version":7,"command_id":"note-edit-001","checklist":{"action":"check","item_id":"i","answer":"verified"}})
         );
         assert!(decode(&action, response(json!({"note":{"id":"n","version":8}}))).is_ok());
-        assert!(decode(
-            &action,
-            response(json!({"note":{"id":"other","version":8}}))
-        )
-        .is_err());
+        assert!(
+            decode(
+                &action,
+                response(json!({"note":{"id":"other","version":8}}))
+            )
+            .is_err()
+        );
         assert!(decode(&action, response(json!({"note":{"id":"n","version":9}}))).is_err());
     }
     #[test]
