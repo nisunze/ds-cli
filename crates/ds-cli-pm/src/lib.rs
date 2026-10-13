@@ -62,6 +62,7 @@ pub mod geometry;
 pub mod member;
 pub mod model_link;
 pub mod note;
+pub mod note_memory;
 pub mod party;
 pub mod plan;
 pub mod overview;
@@ -118,6 +119,15 @@ pub static DOMAIN: Domain = Domain {
         &model_link::REMOVE,
         &model_link::LIST,
         &note::CREATE,
+        &note_memory::READ,
+        &note_memory::QUERY,
+        &note_memory::CONTEXT,
+        &note_memory::UPDATE,
+        &note_memory::VERSIONS,
+        &note_memory::BACKUP,
+        &note_memory::RETIRE,
+        &note_memory::RESTORE,
+        &note_memory::CONSOLIDATE,
         &checklist_notes::PROJECT_READ,
         &checklist_notes::PROJECT_EDIT,
         &documents::COPY,

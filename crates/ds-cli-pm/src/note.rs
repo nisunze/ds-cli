@@ -52,13 +52,13 @@ const NOTE_EXISTS: Refusal = Refusal {
 pub static CREATE: Command = Command {
     id: "pm.note.create",
     path: &["pm", "note", "create"],
-    contract: 2,
+    contract: 3,
     summary: "Create a project-visible Markdown note for human review or editing.",
     purpose: "\
 Files a quick project note in Project Work, with its title and concise Markdown \
 body. The signed-in native credential must be allowed to contribute to the \
 explicitly named project. This creates a record with category project_note; \
-it does not send correspondence. Repeat --transformer for exact same-project \
+it does not send correspondence. For durable structured memory, --input consumes the closed Write JSON: operation_id,id,reason,draft(subject,body,tags,memory with schema, note_type, active lifecycle, provenance, scope, individually sourced claims, evidence, supersedes and unresolved). Server author/time remain authoritative; a proposal or inference never becomes a user decision. Use this form instead of the legacy title/body/id/link fields. Repeat --transformer for exact same-project \
 active transformer links; body text does not create relationships. These links \
 do not pin an immutable submission revision or grant approval. An existing report is linked afterward with \
 `ds assets attach --record <note-id>`; confirm that link by reading the asset \
@@ -69,7 +69,12 @@ refused without a second note. Headless; no window.",
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
     args: &[
-        TITLE_ARG.required(),
+        TITLE_ARG,
+        Arg::value(
+            "input",
+            "<json-file>",
+            "Structured native Write JSON, at most256 KiB; use instead of legacy title/body/id/transformer fields. No expected_version on creation.",
+        ),
         BODY_ARG,
         BODY_FILE_ARG,
         ID_ARG,
@@ -87,10 +92,12 @@ refused without a second note. Headless; no window.",
         note: "Read .data.note.id and .data.note.version. To link an existing HTML report, use `ds assets ingest` then `ds assets attach --asset <asset-id> --record <note-id> --yes` and verify by readback.",
         runnable: false,
     }],
-    refusals: &crate::correspondence_refusals::<24>(&[
+    refusals: &crate::correspondence_refusals::<26>(&[
         NOTE_INVALID,
         NOTE_BODY_UNREADABLE,
         NOTE_EXISTS,
+        crate::note_memory::INVALID,
+        crate::note_memory::UNREADABLE,
     ]),
     reference: Some("docs/reference/pm.md"),
     search: &[
@@ -167,6 +174,14 @@ fn receipt(project: &str, response: &Value) -> Result<Value, Failure> {
 }
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
+    if inputs.value("input").is_some() {
+        return crate::note_memory::structured_create(inputs, _context);
+    }
+    if inputs.value("title").is_none() {
+        return Err(invalid(
+            "Give a meaningful --title or one structured --input",
+        ));
+    }
     let body = body(inputs)?;
     let project = inputs.require("project")?;
     let id = inputs.value("id").map(str::to_owned);
@@ -214,7 +229,10 @@ pub fn render(data: &Value) -> String {
         data["note"]["id"].as_str().unwrap_or("?"),
         data["note"]["version"].as_i64().unwrap_or(0),
         data["project"].as_str().unwrap_or("?"),
-        data["note"]["title"].as_str().unwrap_or("?"),
+        data["note"]["title"]
+            .as_str()
+            .or_else(|| data["note"]["document"]["data"]["subject"].as_str())
+            .unwrap_or("?"),
     )
 }
 
