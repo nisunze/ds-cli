@@ -212,12 +212,15 @@ pub fn inspect(
         return Err("The held update identity exceeds its bound".into());
     }
     if component != "shell" {
-        let version = input
-            .installed
-            .get("release_version")
-            .or_else(|| input.installed.get("package_version"))
-            .or_else(|| input.installed.get("version"))
-            .and_then(Value::as_str);
+        let version = ["release_version", "package_version", "version"]
+            .iter()
+            .find_map(|key| {
+                input
+                    .installed
+                    .get(key)
+                    .and_then(Value::as_str)
+                    .filter(|v| !v.is_empty())
+            });
         let installed = release_identity(
             version,
             input.installed.get("released_at").and_then(Value::as_str),
@@ -250,6 +253,7 @@ pub fn inspect(
         identity
             .release_version
             .as_deref()
+            .filter(|v| !v.is_empty())
             .or(identity.version.as_deref()),
         identity.released_at.as_deref(),
     );
@@ -306,38 +310,59 @@ pub fn inspect(
         validate_request(&request, channel, &input.platform)?;
         let latest = published.version.as_deref().and_then(semver);
         let current = identity.version.as_deref().and_then(semver);
-        let newer = match (latest, current) {
-            (Some(latest), Some(current)) if latest > current => true,
-            (Some(latest), Some(current)) if latest == current => {
-                let sha = if asset.source_sha.is_empty() {
-                    &release.source_sha
-                } else {
-                    &asset.source_sha
-                };
-                let built = if asset.built_at.is_empty() {
-                    &release.built_at
-                } else {
-                    &asset.built_at
-                };
-                match (
-                    identity.source_sha.as_deref().filter(|v| !v.is_empty()),
-                    identity.built_at.as_deref(),
-                    OffsetDateTime::parse(built, &Rfc3339).ok(),
-                ) {
-                    (Some(installed_sha), Some(installed_time), Some(published_time)) => {
-                        OffsetDateTime::parse(installed_time, &Rfc3339).is_ok_and(
-                            |installed_time| {
-                                !sha.is_empty()
-                                    && (!installed_sha.is_empty())
-                                    && published_time > installed_time
-                            },
-                        )
-                    }
-                    _ => false,
-                }
-            }
-            _ => false,
+        let asset_sha = if asset.source_sha.is_empty() {
+            &release.source_sha
+        } else {
+            &asset.source_sha
         };
+        let asset_time = if asset.built_at.is_empty() {
+            &release.built_at
+        } else {
+            &asset.built_at
+        };
+        let same_build = identity
+            .source_sha
+            .as_deref()
+            .is_some_and(|sha| !sha.is_empty() && sha == asset_sha)
+            && identity
+                .built_at
+                .as_deref()
+                .and_then(|v| OffsetDateTime::parse(v, &Rfc3339).ok())
+                .zip(OffsetDateTime::parse(asset_time, &Rfc3339).ok())
+                .is_some_and(|(installed, published)| installed == published);
+        let newer = !same_build
+            && match (latest, current) {
+                (Some(latest), Some(current)) if latest > current => true,
+                (Some(latest), Some(current)) if latest == current => {
+                    let sha = if asset.source_sha.is_empty() {
+                        &release.source_sha
+                    } else {
+                        &asset.source_sha
+                    };
+                    let built = if asset.built_at.is_empty() {
+                        &release.built_at
+                    } else {
+                        &asset.built_at
+                    };
+                    match (
+                        identity.source_sha.as_deref().filter(|v| !v.is_empty()),
+                        identity.built_at.as_deref(),
+                        OffsetDateTime::parse(built, &Rfc3339).ok(),
+                    ) {
+                        (Some(installed_sha), Some(installed_time), Some(published_time)) => {
+                            OffsetDateTime::parse(installed_time, &Rfc3339).is_ok_and(
+                                |installed_time| {
+                                    !sha.is_empty()
+                                        && (!installed_sha.is_empty())
+                                        && published_time > installed_time
+                                },
+                            )
+                        }
+                        _ => false,
+                    }
+                }
+                _ => false,
+            };
         if newer && release.status == "active" {
             update = Some(DesktopUpdate {
                 version: published.version.clone().unwrap(),
@@ -427,5 +452,115 @@ mod tests {
         let mut held = input();
         held.installed = json!({"version":"x".repeat(33*1024)});
         assert!(inspect("shell", "canary", held).is_err());
+    }
+
+    #[test]
+    fn same_version_identity_comparison_preserves_rebuilds_offsets_and_missing_facts() {
+        let mut same_source = input();
+        same_source.release["assets"][0]["sourceSha"] = json!("old");
+        assert!(inspect("shell", "canary", same_source)
+            .unwrap()
+            .update
+            .is_some());
+        let mut offset = input();
+        offset.installed["builtAt"] = json!("2026-10-02T01:00:00+02:00");
+        assert!(inspect("shell", "canary", offset).unwrap().update.is_some());
+        for field in ["sourceSha", "builtAt"] {
+            let mut missing = input();
+            missing.installed[field] = Value::Null;
+            assert!(inspect("shell", "canary", missing)
+                .unwrap()
+                .update
+                .is_none());
+            let mut missing = input();
+            missing.release["assets"][0][field] = json!("");
+            assert!(inspect("shell", "canary", missing)
+                .unwrap()
+                .update
+                .is_none());
+        }
+        let mut malformed = input();
+        malformed.release["assets"][0]["builtAt"] = json!("later-ish");
+        assert!(inspect("shell", "canary", malformed)
+            .unwrap()
+            .update
+            .is_none());
+        let mut newer = input();
+        newer.release["version"] = json!("2.0.0-r1");
+        newer.installed["sourceSha"] = Value::Null;
+        newer.installed["builtAt"] = Value::Null;
+        assert!(inspect("shell", "canary", newer).unwrap().update.is_some());
+        let mut identical = input();
+        identical.release["assets"][0]["sourceSha"] = json!("old");
+        identical.release["assets"][0]["builtAt"] = json!("2026-10-01T00:00:00Z");
+        assert!(inspect("shell", "canary", identical)
+            .unwrap()
+            .update
+            .is_none());
+    }
+
+    #[test]
+    fn carry_is_platform_specific_and_legacy_source_fallback_remains_readable() {
+        let mut carry = input();
+        let mut windows = carry.release["assets"][0].clone();
+        windows["platform"] = json!("windows");
+        windows["kind"] = json!("nsis");
+        windows["sourceSha"] = json!("old");
+        windows["builtAt"] = json!("2026-10-01T00:00:00Z");
+        carry.release["assets"]
+            .as_array_mut()
+            .unwrap()
+            .push(windows);
+        let mut win = carry.clone();
+        win.platform = "windows".into();
+        assert!(inspect("shell", "canary", win).unwrap().update.is_none());
+        let mut newer_pointer = carry.clone();
+        newer_pointer.release["version"] = json!("2.0.0-r5");
+        newer_pointer.platform = "windows".into();
+        assert!(inspect("shell", "canary", newer_pointer)
+            .unwrap()
+            .update
+            .is_none());
+        assert!(inspect("shell", "canary", carry).unwrap().update.is_some());
+        let mut legacy = input();
+        legacy.release["sourceSha"] = json!("new");
+        legacy.release["builtAt"] = json!("2026-10-02T00:00:00Z");
+        legacy.release["assets"][0]["sourceSha"] = json!("");
+        legacy.release["assets"][0]["builtAt"] = json!("");
+        assert!(inspect("shell", "canary", legacy).unwrap().update.is_some());
+        let mut unsupported = input();
+        unsupported.platform = "windows".into();
+        assert!(inspect("shell", "canary", unsupported)
+            .unwrap()
+            .update
+            .is_none());
+    }
+    #[test]
+    fn absent_optional_receipt_fields_do_not_hide_known_versions() {
+        for missing in [Value::Null, json!("")] {
+            let input = InspectionInput {
+                release: Value::Null,
+                installed: json!({"release_version":missing,"package_version":"1.2.3"}),
+                platform: "linux".into(),
+            };
+            assert_eq!(
+                inspect("solar", "local", input)
+                    .unwrap()
+                    .installed
+                    .version
+                    .as_deref(),
+                Some("1.2.3")
+            );
+        }
+        let mut held = input();
+        held.installed["releaseVersion"] = json!("");
+        assert_eq!(
+            inspect("shell", "canary", held)
+                .unwrap()
+                .installed
+                .version
+                .as_deref(),
+            Some("1.0.0")
+        );
     }
 }
