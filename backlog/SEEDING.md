@@ -260,7 +260,7 @@ Candidate curation and native PLS-CADD acceptance are separate from coding the c
 
 - **Model 2 FINAL backup replay** (`7ce604c5`): after the duplicate-weather-label fix in `OPEN.md` §11 and with a schema-current package, replay the Model-2-FINAL `pls-bak` export.
 
-- **Uncharacterized edit forecast** (`e258b287`): install the release carrying ds-network `99ea9e35`, replay the filed model's export plan, then accept native Restore on PLS-CADD. The `gisagara` rev `67c72f3f` package is refused first by `immutable_structure_unsourced` and a missing snapshot content digest, so the cable/cable_curves replay needs a schema-current package.
+- **Uncharacterized edit forecast** (`e258b287`): obtain a re-exportable current-package reproduction retaining the filed rev-67c72f3f reviewed edits and authoritative native PLS-POLE loads-source definitions for the45 structures named by `immutable_structure_unsourced`. This earlier source gate masks unsupported-edit forecast acceptance; replay plan/convert agreement without changing project designs or relabelling native bytes.
 
 ## 12. DS Grid engineering (Codex main)
 
