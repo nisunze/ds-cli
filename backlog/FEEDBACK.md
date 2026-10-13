@@ -2,14 +2,14 @@
 
 > **Moved 2026-10-07:** this backlog now lives in `ds-command-kernel/backlog/`. The old `ds-work/backlog/` no longer exists: edit these files here, commit them to ds-command-kernel `run`, and stage only `backlog/`. ds-work holds working sessions, not coding lists.
 
-Working list from the 2026-10-07 snapshot and 2026-10-09 component lookups, with proven closures removed: 248 tracked rows (96 open, 152 waiting according to the rows below). These are file counts, not a fresh live backlog total. The feedback API is the authority: verify each selected report's current status, full ID, version and acceptance through `ds`, close only what is proven, and remove its row. Delete this file when its remaining work is fulfilled; keep no completed-work archive.
+Working list from the 2026-10-07 snapshot and 2026-10-09 component lookups, with proven closures removed: 247 tracked rows (96 open, 151 waiting according to the rows below). These are file counts, not a fresh live backlog total. The feedback API is the authority: verify each selected report's current status, full ID, version and acceptance through `ds`, close only what is proven, and remove its row. Delete this file when its remaining work is fulfilled; keep no completed-work archive.
 
 Reports are grouped by the live repository that owns the code, then by component. The component is the submitter's free-text label, shown verbatim so `ds feedback list --component` finds it. Legacy labels map as follows: `ds-grid*`, `dsgrid*`, `ds/grid-*`, `ds/pls-library` → ds-network; `ds-report*`, `ds-printing*` → ds-network-reporter; `ds-desktop*` → ds-web (`src-tauri`); `ds pls desktop` → ds-cli (`ds-cli-pls/desktop`). Labels that name no repository stay **unassigned**. "Backlog" names the [OPEN.md](OPEN.md), [OPEN-X.md](OPEN-X.md) or [SEEDING.md](SEEDING.md) section citing the report; **untracked** means none does (123 reports).
 
 | Repository | Total | Blocker | Major | Minor | Waiting | Untracked |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 | [ds-cli](#ds-cli) | 92 | 11 | 62 | 19 | 58 | 57 |
-| [ds-network](#ds-network) | 73 | 18 | 51 | 4 | 37 | 25 |
+| [ds-network](#ds-network) | 72 | 18 | 50 | 4 | 36 | 25 |
 | [ds-network-reporter](#ds-network-reporter) | 28 | 1 | 21 | 6 | 20 | 16 |
 | [ds-web](#ds-web) | 34 | 6 | 26 | 2 | 24 | 15 |
 | [ds-command-kernel](#ds-command-kernel) | 4 | 0 | 3 | 1 | 4 | 0 |
@@ -118,7 +118,6 @@ Reports are grouped by the live repository that owns the code, then by component
 
 | Component | ID | Sev | Kind | Title | State | Backlog |
 | --- | --- | --- | --- | --- | --- | --- |
-| ds-network / dsgrid structure staking facts | `dacfa967` | major | obstacle | No typed command to correct a transformer's load reference (kVA) or other staking facts; network_role shape undiscoverable | waiting: release of ds-cli@81139a88 (typed staking-fact correction findable from capability search); then confirm the installed search returns it | SEEDING.md (installed acceptance) |
 | ds-grid pls-cadd interop | `9073e4d4` | major | obstacle | No ds what-if for structure-type swaps on a PLS-CADD backup (clearance + uplift + strength) | open | **untracked** |
 | ds-grid-engine + ds report plan-profile (dev build dc11d663) | `2c544caa` | blocker | bug | Gisagara Rev3 PLS .bak cannot print as MV booklet on dev desktop host: print refused, PLS ingest refused, atlas renumbers PLS structures | open | **untracked** |
 | ds-grid-engine/alignments | `8363a4fc` | blocker | bug | Reversing an MV alignment needs a governed section rebuild and attachment-set remap | waiting: install of canary 0.1.7-r79+ carrying ds-network@9afcd2f, then Model 2 exact-set restring and fresh PLS-CADD 16.81 Restore/Open with zero phase prompts; Model 1 native negative control | OPEN.md §12 |
