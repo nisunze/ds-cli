@@ -142,7 +142,7 @@ pub static VERSIONS: Command = declaration(
     "notes.versions",
     &["notes", "versions"],
     "List one private note's available revision metadata.",
-    "Reads one immutable version-header page, with --limit and explicit --cursor; no eager next page. The first observed head remains the cursor cutoff if the live note changes. Enumeration complete/truncated is separate from history_chain_status: unseen history is unknown, observed missing/unretained history is incomplete, and complete requires a fully proven retained chain. Never fetches historical bodies.",
+    "Reads one immutable version-header page, with --limit and explicit --cursor; no eager next page. The first observed head remains the cursor cutoff if the live note changes. Enumeration complete/truncated is separate from history_chain_status: unseen history is unknown, observed missing history is incomplete, and complete requires a fully proven retained chain. Never fetches historical bodies.",
     Effect::ReadOnly,
     &[NOTE, LIMIT, CURSOR, crate::LANE_ARG],
 );
@@ -150,7 +150,7 @@ pub static READ_VERSION: Command = declaration(
     "notes.version.read",
     &["notes", "version", "read"],
     "Read one private note revision and its exact SHA256.",
-    "Reads one selected immutable snapshot or legacy current observation. retained=false declares an observed current head, not an immutable older snapshot. No historical attachment bytes are downloaded.",
+    "Reads one selected immutable retained snapshot. Missing current baselines require explicit canonical migration; unavailable earlier history is never synthesized. No historical attachment bytes are downloaded.",
     Effect::ReadOnly,
     &[NOTE, SOURCE, crate::LANE_ARG],
 );

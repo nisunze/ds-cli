@@ -31,13 +31,13 @@ pub static BACKUP: Command = declaration(
     Effect::GlobalWrite,
     &[NOTE, VERSION, ID, crate::LANE_ARG],
 );
-const EXPORT_REFUSALS: [Refusal; 28] = {
+const EXPORT_REFUSALS: [Refusal; 29] = {
     let output_exists = Refusal {
         code: "notes_output_exists",
         when: "the explicit backup output already exists or appears during acquisition",
         remedy: "choose a new absolute .json path; existing files are preserved",
     };
-    let mut out = [output_exists; 28];
+    let mut out = [output_exists; 29];
     let mut i = 0;
     while i < crate::checklist_notes::PRIVATE_REFUSALS.len() {
         out[i] = crate::checklist_notes::PRIVATE_REFUSALS[i];

@@ -57,11 +57,11 @@ const PROJECT_REFUSALS: &[Refusal] = &crate::correspondence_refusals::<25>(&[
     crate::INVALID_NUMBER,
     crate::task::proposals::INVALID_COMMAND_ID,
 ]);
-pub(crate) const PRIVATE_REFUSALS: [Refusal; 27] = {
-    let mut out = [INVALID; 27];
+pub(crate) const PRIVATE_REFUSALS: [Refusal; 28] = {
+    let mut out = [INVALID; 28];
     let base = ds_cli_auth::PROJECT_STATUS_COMMAND.refusals;
     let own = ds_cli_auth::personal_notes::OWN_REFUSALS;
-    assert!(base.len() + own.len() + 5 == 27);
+    assert!(base.len() + own.len() + 5 == 28);
     let mut i = 0;
     while i < base.len() {
         out[i] = base[i];
@@ -162,6 +162,8 @@ pub static DOMAIN: Domain = Domain {
     id: "notes",
     summary: "Private notes.",
     commands: &[
+        &crate::private_notes::CREATE,
+        &crate::private_notes::UPDATE,
         &crate::private_notes::LIST,
         &crate::private_notes::READ,
         &crate::private_notes::RETIRE,
@@ -169,6 +171,11 @@ pub static DOMAIN: Domain = Domain {
         &crate::private_notes::VERSIONS,
         &crate::private_notes::READ_VERSION,
         &crate::private_notes::RESTORE_VERSION,
+        &crate::private_note_backups::BACKUP,
+        &crate::private_note_backups::READ,
+        &crate::private_note_backups::RESTORE,
+        &crate::private_note_migration::PREPARE,
+        &crate::private_note_migration::APPLY,
         &PRIVATE_READ,
         &PRIVATE_EDIT,
     ],

@@ -1,21 +1,54 @@
 //! Selected account-private note operations, without project discovery.
 pub mod backup_export;
 use super::{
-    now, profile, require_restore_before_context, restored_device_session, Client, Lane,
-    NativeRefreshStore, NativeTransport,
+    Client, Lane, NativeRefreshStore, NativeTransport, now, profile,
+    require_restore_before_context, restored_device_session,
 };
-use ds_cli_contract::{spec::Refusal, Failure};
+use ds_cli_contract::{Failure, spec::Refusal};
 use ds_client_core::personal_notes::Action;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 pub const OWN_REFUSALS: &[Refusal] = &[
-    Refusal { code: "notes_request_invalid", when: "the selected note, history version, restoration hash or checklist edit is outside the closed owner contract", remedy: "use one stable private note id and the declared version, source hash or checklist edit fields" },
-    Refusal { code: "notes_response_unreadable", when: "the owner receipt does not match the selected note and version", remedy: "after an uncertain create inspect notes list, or read the selected note after an uncertain update; retry reads or declared replay-safe controls with exact intent; update client and Brain together if mismatches repeat" },
-    Refusal { code: "notes_not_found", when: "the selected private note or historical revision is unavailable to this account", remedy: "restore the intended account, select its own note id and inspect notes versions; unavailable history cannot be reconstructed" },
-    Refusal { code: "notes_version_conflict", when: "the selected note moved after the reviewed version", remedy: "read that private note, review the change and submit the declared operation against its current version" },
-    Refusal { code: "notes_command_conflict", when: "the command id already names a different intent", remedy: "retry the exact original command or use a new id for a new intent" },
-    Refusal { code: "notes_not_permitted", when: "the notes owner refused this identity or selected item evidence", remedy: "restore the intended account; personal notes cannot adopt project model pins" },
-    Refusal { code: "notes_unavailable", when: "the notes owner could not serve the selected operation", remedy: "retry reads later; after uncertain writes inspect current state before resubmitting, and retain exact intent only for declared replay-safe controls" },
+    Refusal {
+        code: "notes_migration_required",
+        when: "the selected private note has an old stored shape or no retained current baseline",
+        remedy: "use notes canonicalize prepare, review its exact source-pinned plan and apply it explicitly; missing or corrupt retained history may require a verified backup restore",
+    },
+    Refusal {
+        code: "notes_request_invalid",
+        when: "the selected note, history version, restoration hash or checklist edit is outside the closed owner contract",
+        remedy: "use one stable private note id and the declared version, source hash or checklist edit fields",
+    },
+    Refusal {
+        code: "notes_response_unreadable",
+        when: "the owner receipt does not match the selected note and version",
+        remedy: "after an uncertain create inspect notes list, or read the selected note after an uncertain update; retry reads or declared replay-safe controls with exact intent; update client and Brain together if mismatches repeat",
+    },
+    Refusal {
+        code: "notes_not_found",
+        when: "the selected private note or historical revision is unavailable to this account",
+        remedy: "restore the intended account, select its own note id and inspect notes versions; unavailable history cannot be reconstructed",
+    },
+    Refusal {
+        code: "notes_version_conflict",
+        when: "the selected note moved after the reviewed version",
+        remedy: "read that private note, review the change and submit the declared operation against its current version",
+    },
+    Refusal {
+        code: "notes_command_conflict",
+        when: "the command id already names a different intent",
+        remedy: "retry the exact original command or use a new id for a new intent",
+    },
+    Refusal {
+        code: "notes_not_permitted",
+        when: "the notes owner refused this identity or selected item evidence",
+        remedy: "restore the intended account; personal notes cannot adopt project model pins",
+    },
+    Refusal {
+        code: "notes_unavailable",
+        when: "the notes owner could not serve the selected operation",
+        remedy: "retry reads later; after uncertain writes inspect current state before resubmitting, and retain exact intent only for declared replay-safe controls",
+    },
 ];
 
 pub fn execute(lane_value: &str, action: &Action) -> Result<Value, Failure> {
@@ -44,6 +77,7 @@ fn map(error: ds_client_core::ClientError) -> Failure {
     }
     if let Some(service) = error.service_refusal() {
         let code = match (service.status(), service.code()) {
+            (_, Some("personal_note_migration_required")) => "notes_migration_required",
             (_, Some("note_version_conflict")) => "notes_version_conflict",
             (_, Some("command_id_conflict")) => "notes_command_conflict",
             (401 | 403, _) => "notes_not_permitted",
@@ -62,6 +96,7 @@ fn map(error: ds_client_core::ClientError) -> Failure {
 
 fn closed_failure(code: &str, message: String) -> Failure {
     match code {
+        "notes_migration_required" => Failure::conflict("notes_migration_required", message),
         "notes_request_invalid" => Failure::invalid("notes_request_invalid", message),
         "notes_response_unreadable" => Failure::unavailable("notes_response_unreadable", message),
         "notes_not_found" => Failure::invalid("notes_not_found", message),
@@ -80,6 +115,7 @@ mod tests {
     #[test]
     fn private_note_refusals_match_the_closed_owner_vocabulary() {
         let expected = [
+            ("notes_migration_required", ExitClass::Conflict),
             ("notes_request_invalid", ExitClass::InvalidInput),
             ("notes_response_unreadable", ExitClass::Unavailable),
             ("notes_not_found", ExitClass::InvalidInput),
