@@ -10,7 +10,7 @@ Pens, colour/opacity, contour hierarchy, labels, extent, margins, title/issue fi
 
 Candidate curation and native PLS-CADD acceptance are separate from coding the cloud/provider-model lifecycle. Existing local seed/verify/resolve and global preparation/publication/lifecycle CLI contracts are present; they do not establish that every model-management or UI action is implemented. Older entries are pending verification, not proof of a current defect. Delete fulfilled work; do not keep a historical fixes archive.
 
-Tried cases removed from the small-fix queue now live in [HARD-PROBLEMS.md](HARD-PROBLEMS.md), with reusable evidence under [hard-problems/](hard-problems). Consult that index before revisiting their source or native gates.
+Tried cases removed from the small-fix queue now live in [HARD-PROBLEMS.md](HARD-PROBLEMS.md), with reusable evidence under [hardproblems/](hardproblems). Consult that index before revisiting their source or native gates.
 
 <!-- toc -->
 
@@ -22,20 +22,20 @@ Tried cases removed from the small-fix queue now live in [HARD-PROBLEMS.md](HARD
 | [4. Print templates, styles and seed](#4-print-templates-styles-and-seed) | 6 |
 | [5. Print sheet content and legibility](#5-print-sheet-content-and-legibility) | 6 |
 | [6. Print acceptance on live projects](#6-print-acceptance-on-live-projects) | 14 |
-| [7. Report compute, export and combined output](#7-report-compute-export-and-combined-output) | 7 |
+| [7. Report compute, export and combined output](#7-report-compute-export-and-combined-output) | 10 |
 | [8. Sync, publication and edge outbox](#8-sync-publication-and-edge-outbox) | 4 |
 | [9. LV processing, sizing and headless intake](#9-lv-processing-sizing-and-headless-intake) | 7 |
 | [10. Voltage drop](#10-voltage-drop) | 13 |
 | [11. PLS-CADD exchange round trip](#11-pls-cadd-exchange-round-trip) | 3 |
 | [12. DS Grid engineering (Codex main)](#12-ds-grid-engineering-codex-main) | 3 |
 | [13. Spotting (Codex main)](#13-spotting-codex-main) | 1 |
-| [14. Plan and Profile authoring](#14-plan-and-profile-authoring) | 6 |
+| [14. Plan and Profile authoring](#14-plan-and-profile-authoring) | 9 |
 | [15. Project deliveries](#15-project-deliveries) | 6 |
-| [16. Map data, datasets and screen styling](#16-map-data-datasets-and-screen-styling) | 13 |
-| [17. Project Work and Assets](#17-project-work-and-assets) | 15 |
+| [16. Map data, datasets and screen styling](#16-map-data-datasets-and-screen-styling) | 14 |
+| [17. Project Work and Assets](#17-project-work-and-assets) | 18 |
 | [18. Global DS Grid library](#18-global-ds-grid-library) | 5 |
 | [21. Windows native release](#21-windows-native-release) | 10 |
-| [22. Operations](#22-operations) | 6 |
+| [22. Operations](#22-operations) | 10 |
 | [25. CLI reliability and feedback](#25-cli-reliability-and-feedback) | 6 |
 <!-- /toc -->
 
@@ -53,7 +53,7 @@ Tried cases removed from the small-fix queue now live in [HARD-PROBLEMS.md](HARD
 
 - **Signed download rollout** (`download-signed`, `c9df4098`): deploy a locally built ds-brain carrying `2b5f8752`; once the signed-read storage rules in `OPEN.md` §1 land, apply them through the owner's ds-apis-tf path; apply the reviewed version-fenced revocation of legacy Firebase download tokens; prove an anonymous GET of a listed report URL is refused; replay `ds design download fetch` with an installed ds carrying ds-cli `9d298014`; release matching reporter/kernel/web/CLI consumers, then close `c9df4098`. Keep token-bearing legacy URLs out of newly delivered artifacts.
 
-- **Current canary on ds-server**: installed `ds-canary` 0.1.6 (2026-09-29, `507d1b7e`) cannot read current printing layouts on its closed contract (`classification` and newer fields; `report layout get` and `report project settings` return `auth_response_unreadable`). This blocks the Rwanda Template logo/title-block seeding of 11 layouts (§3) and most feedback acceptance replays, among them the rows waiting on canary 0.1.7-r79+ (`86d184cf`, `1f2430c7`, `c7664961`, `641143eb`, `fee42145`, `defcbef3`, `e3aa68bd`, `a65872eb`, `d798669f`, `349c3130`, `190d8eaf`, `8363a4fc`, `b3bdc857`, `d8863709`, `6226c0bb`, `4ba8ab15`, `9d0f28da`). Install a current canary release on ds-server, then replay each filed acceptance and close what passes.
+- **Feedback acceptance on current Canary**: replay each filed acceptance through the matching installed CLI/build, including (`86d184cf`, `1f2430c7`, `c7664961`, `641143eb`, `fee42145`, `defcbef3`, `e3aa68bd`, `a65872eb`, `d798669f`, `349c3130`, `190d8eaf`, `8363a4fc`, `b3bdc857`, `d8863709`, `6226c0bb`, `4ba8ab15`, `9d0f28da`). Close only what passes; complete Rwanda Template layout acceptance separately (§3).
 
 - **Bulk reporter lane**: `ds-network-reporter-bulk` (serves `export_combined` and `zip_bundle`) runs `276d3d0e` (2026-09-30), which lacks `32d5119`, `f4ff759`, `c89ea93`, `f26cd35`, `91f2ee3`, `5f12b6d` and `28a7d35`. Redeploy it from a local build before any cloud check of combined or bundled outputs; until then accept through a single-transformer export on the non-bulk reporter (`035418e`) or an installed canary 0.1.7-r79+.
 
@@ -75,7 +75,7 @@ Tried cases removed from the small-fix queue now live in [HARD-PROBLEMS.md](HARD
 
 ## 2. Release acceptance
 
-- **Independent Reporter/Solar rollout and measured release acceptance — target by 2026-10-31** (latest owner scope, 2026-10-10): after each [owning implementation vertical](OPEN.md#1-source-integration-and-release-code) is proven, locally build and publish that engine's immutable artifact and update installed Windows Desktop and Linux Server. This entry covers only Reporter and Solar. Network/Profile remains coupled in that current implementation; the owner separately requested [the next Network modularization plan](DS-NETWORK-MODULARIZATION.md) on 2026-10-13, with authoring on ds-server and Windows source checkouts pull-only. Network installed acceptance follows its owning code vertical and does not inherit this October target. Whole-kernel extraction is not included. Retain the unchanged host/frontend and unrelated component digests. Prove the owning CLI/MCP operation and matching UI/native result and exact report artifact parity where promised. Reject incompatible protocols before work starts; prove a compatible older/newer component mix. Also prove an unrelated host release reuses the admitted Reporter/Solar artifacts without invoking their builds; changed engine dependency closures must still trigger the relevant build. No owner hand-testing substitutes for owning tests and real native artifacts.
+- **Independent Reporter/Solar rollout and measured release acceptance — target by 2026-10-31** (latest owner scope, 2026-10-10): after each [owning implementation vertical](OPEN.md#1-source-integration-and-release-code) is proven, locally build and publish that engine's immutable artifact and update installed Windows Desktop and Linux Server. This entry covers only Reporter and Solar. Network/Profile remains coupled in that current implementation; the owner separately requested [the next Network modularization plan](DS-NETWORK-MODULARIZATION.md) on 2026-10-13, with authoring on ds-server and Windows source checkouts pull-only. Network installed acceptance follows its owning code vertical and does not inherit this October target. Whole-kernel extraction is not included. Retain the unchanged host/frontend and unrelated component digests. Prove the owning CLI/MCP operation and matching UI/native result and exact report artifact parity where promised. Reject incompatible protocols before work starts; prove a compatible older/newer component mix. Complete unchanged-addon reuse proof on Windows and the remaining Cloud/native paths without invoking their builds; changed engine dependency closures must still trigger the relevant build. No owner hand-testing substitutes for owning tests and real native artifacts.
 
   Fault acceptance covers offline use, interrupted acquisition, power loss at activation, invalid signatures/digests, rollback, running/cancelled jobs, concurrent instances, account/project changes and explicit shutdown without orphan workers. Preserve unsaved edits and credentials. Verify another authorized project's assignment/message reaches the single tray receiver and click admission does not silently switch or discard a workspace. Reports must never wait for tiling. Keep current notification and deployment safeguards; this separate Reporter/Solar campaign is not a prerequisite for ordinary stabilization releases.
 
@@ -94,7 +94,7 @@ Tried cases removed from the small-fix queue now live in [HARD-PROBLEMS.md](HARD
   - **Steps:** back up each of the 11 layouts still to seed (`report layout get`): `a0-landscape-gisagara-cjic`, `a0-landscape-huye-cjic-review`, `a3-landscape-gisagara-cjic`, `a3-landscape-rwanda-project-lv`, `a3-local-layer-review`, `mv-a3-plan-profile-template`, `nyamagabe-district-mv-a3-core-v0`, `nyaruguru-district-mv-a3-landscape-core-v0`, `project-overview-a0`, `project-overview-a3`, `transformer-focus-a0`. Replace `assets` and the `title_block` and text values. Persist with `report layout update --expected-revision`. Then read back and render one LV sheet and one MV sheet.
   - **Owner ruling, 2026-10-07:** seed the Rwanda Template itself, accepting that projects created from it (`auth project create --from-template`) start with the fictitious logos. Change title-block text only: people's names to gibberish Latin, company names, contract and account numbers. Transformer names and customer data stay unchanged.
   - **Read-only for all signed-in users:** no such grant appears in the ds-cli reference; access is per membership. If none exists, record the gap in STABILIZATION.md.
-  - **Blocked on tooling:** installed `ds-canary` 0.1.6 (`507d1b7e`) returns `auth_response_unreadable` on `report.layout.get` for 11 of the template's 13 layouts, and its `report.project.export` refuses the `classification` field, so neither the update nor the render can run (the dev `report.layout.render` refuses `print_renderer_defaults_missing`). Install a current canary (§1 **Current canary on ds-server**; ds-web `./linux-server-deploy.sh canary --install`), then apply. Delete the `outputs/` folder once seeded.
+  - **Remaining tooling acceptance:** verify current `report.layout.get` and `report.project.export` against the template’s newer layout fields, then complete the 11 layout read/update/render obligations above. Diagnose any current `print_renderer_defaults_missing` refusal through the owning renderer/template inputs. Delete the `outputs/` folder once seeded.
 
 - **Template Tchad contents and copy acceptance**: verify the person can choose a source template and explicit copy contents through the live CLI. Complete the `a3-landscape-aderm-lv` layout, project parameters and CRS, then exercise representative dense/outlier transformer copies without changing unrelated project contents.
 

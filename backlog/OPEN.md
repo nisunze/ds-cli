@@ -13,37 +13,37 @@ Tried cases removed from the small-fix queue now live in [HARD-PROBLEMS.md](HARD
 | [1. Source integration and release code](#1-source-integration-and-release-code) | 5 |
 | [2. Green `run` and release gates](#2-green-run-and-release-gates) | 6 |
 | [3. Template creation code](#3-template-creation-code) | 1 |
-| [4. Print template and style code](#4-print-template-and-style-code) | 1 |
+| [4. Print template and style code](#4-print-template-and-style-code) | 2 |
 | [5. Print renderer and booklet code](#5-print-renderer-and-booklet-code) | 2 |
 | [7. Report compute, export and combined output](#7-report-compute-export-and-combined-output) | 15 |
 | [8. Sync, publication and edge outbox](#8-sync-publication-and-edge-outbox) | 6 |
-| [9. LV processing, sizing and headless intake](#9-lv-processing-sizing-and-headless-intake) | 8 |
+| [9. LV processing, sizing and headless intake](#9-lv-processing-sizing-and-headless-intake) | 6 |
 | [10. Voltage drop](#10-voltage-drop) | 0 |
 | [11. PLS-CADD exchange round trip](#11-pls-cadd-exchange-round-trip) | 9 |
 | [12. DS Grid engineering (Codex main)](#12-ds-grid-engineering-codex-main) | 9 |
 | [13. Spotting (Codex main)](#13-spotting-codex-main) | 4 |
-| [14. Plan and Profile authoring](#14-plan-and-profile-authoring) | 1 |
-| [15. Project delivery code](#15-project-delivery-code) | 2 |
-| [16. Map data, datasets and screen styling](#16-map-data-datasets-and-screen-styling) | 12 |
-| [17. Project Work and Assets](#17-project-work-and-assets) | 7 |
-| [18. Global DS Grid library](#18-global-ds-grid-library) | 2 |
+| [14. Plan and Profile authoring](#14-plan-and-profile-authoring) | 2 |
+| [15. Project delivery code](#15-project-delivery-code) | 3 |
+| [16. Map data, datasets and screen styling](#16-map-data-datasets-and-screen-styling) | 13 |
+| [17. Project Work and Assets](#17-project-work-and-assets) | 8 |
+| [18. Global DS Grid library](#18-global-ds-grid-library) | 4 |
 | [19. Country neutrality and duplicated rules](#19-country-neutrality-and-duplicated-rules) | 2 |
 | [21. Windows release code](#21-windows-release-code) | 5 |
-| [22. Operations product code](#22-operations-product-code) | 4 |
+| [22. Operations product code](#22-operations-product-code) | 5 |
 | [23. Kernel controls, JSON UI and TypeScript retirement](#23-kernel-controls-json-ui-and-typescript-retirement) | 4 |
 | [24. Owner feature requests (CLI-first, after stabilization)](#24-owner-feature-requests-cli-first-after-stabilization) | 6 |
-| [25. CLI reliability reporting and proactive feedback (priority)](#25-cli-reliability-reporting-and-proactive-feedback-priority) | 3 |
+| [25. CLI reliability reporting and proactive feedback (priority)](#25-cli-reliability-reporting-and-proactive-feedback-priority) | 6 |
 <!-- /toc -->
 
 ## 1. Source integration and release code
 
 - **Independent Reporter and Solar updates and platform qualification — target by 2026-10-31** (owner scope, 2026-10-13): trusted component installation and targeted updates are still unfinished. Publish and update only Network Reporter and Solar so compatible engine updates do not rebuild or reinstall unchanged hosts/frontends. Desktop and Server must invoke the same engine executable for each OS/architecture, with the same typed execution and calculation behavior. Kernel, Network/Profile and the remaining host stay coupled in this Reporter/Solar implementation campaign. The owner separately requested Network native-executable/web-WASM modularization as the next planned slice on 2026-10-13; its detailed server-authored backlog plan is [DS-NETWORK-MODULARIZATION.md](DS-NETWORK-MODULARIZATION.md). This does not expand current addon implementation, authorize whole-kernel extraction or start a new engine implementation in the planning exchange. Neutral foundation dependencies and a thinner CLI remain separately scoped. Reporter/Solar extraction is a bounded release campaign separate from year-end stabilization. Production blockers and security/data-integrity gates still take precedence. The October date is an owner target, not measured delivery certainty. Cloud deployment and native publication remain separate choices.
 
-  **Remaining release effects:** independent module publication still needs a governed `ds.module-artifact/v1` producer receipt for the exact compatible immutable executable. A locally verified executable and read-only module inventory do not establish trusted installation or rollback. Preserve each artifact's real dependency closure, exact-source admission and historical manifest meaning. Solar's Cloud staging must also supply the Network source required by the pinned Kernel compute-runtime workspace, or narrow the admitted build closure without changing provenance rules; a real local image build is still needed to qualify that path.
+  **Remaining release effects:** qualify the Windows producer and actual executable before standalone Windows publication. Public executable bytes and read-only module inventory do not establish trusted installation or rollback. Preserve each artifact's real dependency closure, exact-source admission and historical manifest meaning. Solar's Cloud staging must also supply the Network source required by the pinned Kernel compute-runtime workspace, or narrow the admitted build closure without changing provenance rules; a real local image build is still needed to qualify that path.
 
   **Moving execution sequence:** finish and prove one useful owning vertical before starting the next; installed rollout belongs in [SEEDING §2](SEEDING.md#2-release-acceptance).
 
-  1. **Reporter first:** inventory actual release dependencies, introduce versioned component admission, and publish/update `ds-report` independently on Windows Desktop and Linux Server. Prove an unchanged host and unrelated component digests, compatibility refusal and rollback. Keep the existing typed executable boundary; changing only an installer wrapper does not remove coupling. Reuse an admitted immutable Reporter artifact on unrelated host releases; invoke its build only when its real source/dependency closure changes.
+  1. **Reporter targeted updates:** prove standalone Windows publication and trusted component updates on Windows Desktop and Linux Server. Prove an unchanged host and unrelated component digests, compatibility refusal and rollback. Keep the existing typed executable boundary; changing only an installer wrapper does not remove coupling. Reuse an admitted immutable Reporter artifact on unrelated host releases; invoke its build only when its real source/dependency closure changes.
   2. **Solar host controls and Windows proof:** local `solar.reference.plan` and `solar.reference.import` still call `project::invoke` in [ds-cli-solar/project.rs](../../ds-cli/crates/ds-cli-solar/src/project.rs), which expects the old `DS_SOLAR_BIN`/`ds-solar` process and `ds-solar.project-workspace/v1`. The independent compute addon deliberately has no project subcommand. Migrate these preparation controls and the remaining local workspace lifecycle to an engine-free host owner; do not put weather/Sandia cache checks or acquisition into the calculation executable, restore an old executable, or link computation back into the host. Preserve exact local project/city/revision admission, reference import bounds and existing cache-hit/miss request counts. Windows still needs actual captured prepared-city/batch/portfolio execution, file promotion and Desktop/Server artifact parity proof, including maps, daily profiles, drafts/documents and portfolio projections; Linux/source proof does not establish Windows behavior.
   3. **Shared updater/supervisor, proven with each engine:** admit verified immutable artifacts by component/version, OS/architecture, lane, protocol capabilities, dependency compatibility and digest/provenance through the existing publication authority. Do not use an unverified mutable `latest` URL. Stage and verify the complete selected unit before atomic activation; retain an immediately usable previous version. Interrupted acquisition or power loss must leave a usable current unit. Never replace an executable underneath active work: jobs retain their captured engine version and project/principal/revision context through cancellation and publication. Restart only the compatible component; explain and defer a required host restart before applying it. Preserve projects, unsaved edits, credentials and publication queues. Share the update mechanism between Reporter and Solar; no generic whole-stack runtime rewrite. Pure shared crates may remain build dependencies, pinned in each engine's actual closure; a genuine protocol change may require a coordinated compatible release, while an unrelated change must not.
 
