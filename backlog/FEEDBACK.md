@@ -2,13 +2,13 @@
 
 > **Moved 2026-10-07:** this backlog now lives in `ds-command-kernel/backlog/`. The old `ds-work/backlog/` no longer exists: edit these files here, commit them to ds-command-kernel `run`, and stage only `backlog/`. ds-work holds working sessions, not coding lists.
 
-Working list from the 2026-10-07 snapshot and 2026-10-09 component lookups, with proven closures removed: 236 tracked rows (84 open, 152 waiting according to the rows below). These are file counts, not a fresh live backlog total. The feedback API is the authority: verify each selected report's current status, full ID, version and acceptance through `ds`, close only what is proven, and remove its row. Delete this file when its remaining work is fulfilled; keep no completed-work archive.
+Working list from the 2026-10-07 snapshot and 2026-10-09 component lookups, with proven closures removed: 235 tracked rows (83 open, 152 waiting according to the rows below). These are file counts, not a fresh live backlog total. The feedback API is the authority: verify each selected report's current status, full ID, version and acceptance through `ds`, close only what is proven, and remove its row. Delete this file when its remaining work is fulfilled; keep no completed-work archive.
 
-Reports are grouped by the live repository that owns the code, then by component. The component is the submitter's free-text label, shown verbatim so `ds feedback list --component` finds it. Legacy labels map as follows: `ds-grid*`, `dsgrid*`, `ds/grid-*`, `ds/pls-library` → ds-network; `ds-report*`, `ds-printing*` → ds-network-reporter; `ds-desktop*` → ds-web (`src-tauri`); `ds pls desktop` → ds-cli (`ds-cli-pls/desktop`). Labels that name no repository stay **unassigned**. "Backlog" names the [OPEN.md](OPEN.md), [OPEN-X.md](OPEN-X.md) or [SEEDING.md](SEEDING.md) section citing the report; **untracked** means none does (113 reports).
+Reports are grouped by the live repository that owns the code, then by component. The component is the submitter's free-text label, shown verbatim so `ds feedback list --component` finds it. Legacy labels map as follows: `ds-grid*`, `dsgrid*`, `ds/grid-*`, `ds/pls-library` → ds-network; `ds-report*`, `ds-printing*` → ds-network-reporter; `ds-desktop*` → ds-web (`src-tauri`); `ds pls desktop` → ds-cli (`ds-cli-pls/desktop`). Labels that name no repository stay **unassigned**. "Backlog" names the [OPEN.md](OPEN.md), [OPEN-X.md](OPEN-X.md) or [SEEDING.md](SEEDING.md) section citing the report; **untracked** means none does (112 reports).
 
 | Repository | Total | Blocker | Major | Minor | Waiting | Untracked |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| [ds-cli](#ds-cli) | 90 | 11 | 60 | 19 | 58 | 55 |
+| [ds-cli](#ds-cli) | 89 | 11 | 59 | 19 | 58 | 54 |
 | [ds-network](#ds-network) | 66 | 17 | 45 | 4 | 39 | 20 |
 | [ds-network-reporter](#ds-network-reporter) | 25 | 1 | 18 | 6 | 18 | 13 |
 | [ds-web](#ds-web) | 34 | 6 | 26 | 2 | 24 | 15 |
@@ -54,7 +54,6 @@ Reports are grouped by the live repository that owns the code, then by component
 | ds-cli/desktop-lifecycle | `30d8149c` | minor | friction | DS CLI lacks desktop start and restart lifecycle commands | open | **untracked** |
 | ds-cli/desktop-routing-and-skills | `ec6d6ea5` | major | friction | Clarify project state versus Desktop bridge instances and deduplicate stale sessions | open (targeting part: release of ds-cli@3dbd8e95, see 641143eb) | **untracked** |
 | ds-cli/desktop-sync | `fd5bce6a` | blocker | obstacle | Gisagara A0 contour reports cannot replace shared project publications | waiting: shared publication verification / Desktop sign-in and prior HTTP 401 work grant | OPEN.md §8 |
-| ds-cli/dsgrid | `e4d5b306` | major | obstacle | Retained criteria material-history selectors are inaccessible through installed DS reads | open | **untracked** |
 | ds-cli/dsgrid-composition | `d09b91ad` | major | obstacle | Native model composition cannot review scoped alignment transfer and explicit library conflict resolution | open | **untracked** |
 | ds-cli/dsgrid-exchange | `f27c69f1` | blocker | bug | Model 2 FINAL exports as verified but PLS-CADD 16.81 merges 76 of 709 sections (ends on non-dead-end sets) and re-sets 15 transformer terminations | waiting: code:ds-network PLS-CADD DON section projection plus Windows PLS-CADD 16.81 restore/open acceptance | OPEN.md §11 |
 | ds-cli/dsgrid-exchange | `8f6e3ff1` | major | bug | Alignment-revised .dsgrid cannot return to PLS-CADD: export refuses on pre-existing PLS-POLE 20.01 library members, sync has no writer for the edit class | waiting: Codex lane: DS Grid to PLS-CADD return path | OPEN.md §11 |
