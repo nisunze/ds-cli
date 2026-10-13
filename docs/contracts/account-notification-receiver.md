@@ -30,3 +30,23 @@ Residency does not keep a Brain request open. Existing Firebase push runs only
 where its supported runtime and permissions are available. Installed platform
 delivery and removal of old-client stream traffic require matching deployment
 and are operational acceptance, distinct from source tests.
+
+## Headless registration inspection and cleanup
+
+The native `messaging.installations` command makes one intentional read through
+Brain's existing account-scoped installation owner. It returns at most ten
+redacted registrations, no raw Firebase installation identity, token or ownership
+epoch. Stored platform labels are historical registration metadata; delivery is
+`not_proven` and source completeness is `unknown` because the existing producer
+supplies no completeness receipt. This read starts no receiver and acquires no
+conversation or project content.
+
+`messaging.installation.revoke` is an explicit write using the exact hash and
+ownership epoch held from the original registration receipt. Listing never
+provides an epoch and cannot be used to manufacture ownership. A missing target,
+a stale epoch or an installation transferred to another account returns an
+idempotent `revoked: false`; a caller cannot remove the new owner's endpoint.
+Malformed receipts refuse before restoring credentials or making a request.
+These controls reuse the protected account and fixed messaging route. They do
+not register an unsupported Desktop transport, establish live delivery, or
+complete the native resident receiver and peer handoff acceptance.

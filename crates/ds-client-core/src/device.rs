@@ -1435,6 +1435,7 @@ impl DeviceApiAuthorization<'_> {
         command: &crate::messaging::Command,
         now: u64,
     ) -> Result<serde_json::Value, ClientError> {
+        command.validate()?;
         self.ensure_active(now)?;
         crate::messaging::run(self.profile, transport, self.authority(), command)
     }

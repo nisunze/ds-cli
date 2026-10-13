@@ -3,9 +3,14 @@
 use crate::{authorized::Authority, AuthorizedTransport, ClientError, ClientProfile, ErrorKind};
 use serde_json::{json, Value};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub enum Command {
     Config,
+    Installations,
+    RevokeInstallation {
+        installation_hash: String,
+        epoch: String,
+    },
     People {
         query: String,
         project: Option<String>,
@@ -47,7 +52,48 @@ pub enum Command {
         ids: Vec<String>,
     },
 }
+impl std::fmt::Debug for Command {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if let Self::RevokeInstallation {
+            installation_hash, ..
+        } = self
+        {
+            f.debug_struct("RevokeInstallation")
+                .field("installation_hash", installation_hash)
+                .field("epoch", &"[REDACTED]")
+                .finish()
+        } else {
+            f.debug_tuple("MessagingCommand")
+                .field(&self.payload())
+                .finish()
+        }
+    }
+}
+fn hex_lower(value: &str, length: usize) -> bool {
+    value.len() == length
+        && value
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+}
 impl Command {
+    /// Installation revocation requires the exact receipt held by this client.
+    /// Admission precedes credential restoration; other messaging admission stays with Brain.
+    pub fn validate(&self) -> Result<(), ClientError> {
+        if let Self::RevokeInstallation {
+            installation_hash,
+            epoch,
+        } = self
+        {
+            if !hex_lower(installation_hash, 64) || !hex_lower(epoch, 32) {
+                return Err(ClientError::new(
+                    ErrorKind::InvalidInput,
+                    "messaging_request_invalid",
+                ));
+            }
+        }
+        Ok(())
+    }
+
     pub fn path(&self) -> &'static str {
         match self {
             Self::Notifications { .. } | Self::Acknowledge { .. } => "/api/v1/notifications",
@@ -57,6 +103,13 @@ impl Command {
     pub fn payload(&self) -> Value {
         match self {
             Self::Config => json!({"action":"config"}),
+            Self::Installations => json!({"action":"list_installations"}),
+            Self::RevokeInstallation {
+                installation_hash,
+                epoch,
+            } => {
+                json!({"action":"revoke_installation","installation_hash":installation_hash,"epoch":epoch})
+            }
             Self::People {
                 query,
                 project,
@@ -135,6 +188,7 @@ pub(crate) fn run<T: AuthorizedTransport>(
     authority: Authority<'_>,
     command: &Command,
 ) -> Result<Value, ClientError> {
+    command.validate()?;
     let response = transport.messaging(MessagingCall {
         profile,
         authority: authority.call(),
@@ -167,7 +221,7 @@ fn decode(command: &Command, response: crate::TransportResponse) -> Result<Value
         };
         return Err(ClientError::new(kind, reason));
     }
-    let data = envelope
+    let mut data = envelope
         .get("data")
         .filter(|v| v.is_object())
         .ok_or_else(unreadable)?
@@ -175,6 +229,10 @@ fn decode(command: &Command, response: crate::TransportResponse) -> Result<Value
     // Shape checks catch a wrong route/envelope without interpreting domain rules.
     let valid = match command {
         Command::Config => data["wire_contract"] == "messages-v1",
+        Command::Installations => validate_installations(&data),
+        Command::RevokeInstallation { .. } => data
+            .as_object()
+            .is_some_and(|o| o.len() == 1 && data["revoked"].is_boolean()),
         Command::People { .. } => data["people"].is_array(),
         Command::Conversations { .. } => {
             data["conversations"].is_array() && data["directs_truncated"].is_boolean()
@@ -204,7 +262,68 @@ fn decode(command: &Command, response: crate::TransportResponse) -> Result<Value
     if !valid {
         return Err(unreadable());
     }
+    match command {
+        Command::Installations => {
+            // Brain caps this inventory but supplies no source completeness receipt.
+            // A platform is only a stored label, never proof of live push delivery.
+            data["max_rows"] = json!(10);
+            data["completion"] = json!("unknown");
+            data["delivery_state"] = json!("not_proven");
+        }
+        Command::RevokeInstallation {
+            installation_hash, ..
+        } => {
+            data["installation_hash"] = json!(installation_hash);
+        }
+        _ => {}
+    }
     Ok(data)
+}
+fn validate_installations(data: &Value) -> bool {
+    let Some(object) = data.as_object() else {
+        return false;
+    };
+    if object.len() != 1 {
+        return false;
+    }
+    let Some(rows) = data["installations"].as_array() else {
+        return false;
+    };
+    if rows.len() > 10 {
+        return false;
+    }
+    let mut hashes = std::collections::HashSet::new();
+    rows.iter().all(|row| {
+        let Some(fields) = row.as_object() else {
+            return false;
+        };
+        let Some(hash) = row["installation_hash"].as_str() else {
+            return false;
+        };
+        hex_lower(hash, 64)
+            && hashes.insert(hash)
+            && fields.keys().all(|key| {
+                matches!(
+                    key.as_str(),
+                    "installation_hash" | "platform" | "user_agent" | "refreshed_at"
+                )
+            })
+            && ["platform", "user_agent"].iter().all(|key| {
+                row.get(key)
+                    .is_none_or(|v| v.as_str().is_some_and(|s| s.chars().count() <= 256))
+            })
+            && row
+                .get("platform")
+                .is_none_or(|v| v.as_str().is_some_and(|s| !s.chars().any(char::is_control)))
+            && row["refreshed_at"].as_str().is_some_and(|s| {
+                s.len() <= 64
+                    && time::OffsetDateTime::parse(
+                        s,
+                        &time::format_description::well_known::Rfc3339,
+                    )
+                    .is_ok()
+            })
+    })
 }
 fn unreadable() -> ClientError {
     ClientError::new(
@@ -351,5 +470,102 @@ mod tests {
                 expected
             );
         }
+    }
+    #[test]
+    fn installation_revoke_validates_exact_receipt_without_repair_or_debug_epoch() {
+        let good = Command::RevokeInstallation {
+            installation_hash: "a".repeat(64),
+            epoch: "b".repeat(32),
+        };
+        good.validate().unwrap();
+        assert_eq!(good.path(), "/api/v1/messaging?wire_contract=messages-v1");
+        assert_eq!(
+            good.payload(),
+            json!({"action":"revoke_installation", "installation_hash":"a".repeat(64), "epoch":"b".repeat(32)})
+        );
+        assert!(!format!("{good:?}").contains(&"b".repeat(32)));
+        for (hash, epoch) in [
+            ("A".repeat(64), "b".repeat(32)),
+            ("a".repeat(63), "b".repeat(32)),
+            ("a".repeat(64), "B".repeat(32)),
+            ("a".repeat(64), "".into()),
+            (format!(" {}", "a".repeat(64)), "b".repeat(32)),
+        ] {
+            let bad = Command::RevokeInstallation {
+                installation_hash: hash,
+                epoch,
+            };
+            assert_eq!(
+                bad.validate().unwrap_err().to_string(),
+                "messaging_request_invalid"
+            );
+        }
+    }
+    #[test]
+    fn installation_inventory_is_redacted_bounded_and_never_claims_delivery_or_completeness() {
+        let command = Command::Installations;
+        assert_eq!(command.payload(), json!({"action":"list_installations"}));
+        let row = json!({"installation_hash":"a".repeat(64),"platform":"legacy-unknown","user_agent":"label","refreshed_at":"2026-10-13T00:00:00Z"});
+        let data = json!({"installations":[row]});
+        let accepted =
+            decode(&command, response(200, json!({"success":true,"data":data}))).unwrap();
+        assert_eq!(accepted["completion"], "unknown");
+        assert_eq!(accepted["delivery_state"], "not_proven");
+        assert_eq!(accepted["max_rows"], 10);
+        for field in ["fid", "token", "epoch", "uid", "installation_id"] {
+            let mut bad = data.clone();
+            bad["installations"][0][field] = json!("secret");
+            assert!(decode(&command, response(200, json!({"success":true,"data":bad}))).is_err());
+        }
+        let mut duplicated = data.clone();
+        duplicated["installations"] = json!([row.clone(), row.clone()]);
+        assert!(decode(
+            &command,
+            response(200, json!({"success":true,"data":duplicated}))
+        )
+        .is_err());
+        let too_many = json!({"installations":(0..11).map(|i| { let mut r = row.clone(); r["installation_hash"] = json!(format!("{i:064x}")); r }).collect::<Vec<_>>()});
+        assert!(decode(
+            &command,
+            response(200, json!({"success":true,"data":too_many}))
+        )
+        .is_err());
+        assert!(decode(
+            &command,
+            response(
+                200,
+                json!({"success":true,"data":{"installations":[],"epoch":"secret"}})
+            )
+        )
+        .is_err());
+    }
+    #[test]
+    fn installation_revoke_preserves_noop_and_rejects_sensitive_reply() {
+        let command = Command::RevokeInstallation {
+            installation_hash: "a".repeat(64),
+            epoch: "b".repeat(32),
+        };
+        let receipt = decode(
+            &command,
+            response(200, json!({"success":true,"data":{"revoked":false}})),
+        )
+        .unwrap();
+        assert_eq!(
+            receipt,
+            json!({"revoked":false,"installation_hash":"a".repeat(64)})
+        );
+        assert!(decode(
+            &command,
+            response(
+                200,
+                json!({"success":true,"data":{"revoked":true,"epoch":"secret"}})
+            )
+        )
+        .is_err());
+        assert!(decode(
+            &command,
+            response(200, json!({"success":true,"data":{"revoked":"true"}}))
+        )
+        .is_err());
     }
 }

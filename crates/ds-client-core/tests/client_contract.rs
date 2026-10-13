@@ -14784,3 +14784,178 @@ fn exact_revision_comparison_consumes_only_two_bulk_reads_and_offline_reuse_none
         "same exact revision consumes one read, never two"
     );
 }
+
+/// Installation controls use the protected account transport, not a second push API.
+#[derive(Clone)]
+struct InstallationControlTransport {
+    auth: FixtureTransport,
+    observed: Arc<Mutex<Vec<(String, String, serde_json::Value)>>>,
+    replies: Arc<Mutex<VecDeque<TransportResponse>>>,
+}
+impl InstallationControlTransport {
+    fn new(data: serde_json::Value) -> Self {
+        Self {
+            auth: FixtureTransport::with_sign_in(SIGN_IN),
+            observed: Default::default(),
+            replies: Arc::new(Mutex::new(VecDeque::from([TransportResponse::new(
+                200,
+                serde_json::to_vec(&json!({"success":true,"data":data})).unwrap(),
+            )]))),
+        }
+    }
+}
+macro_rules! installation_forbid_project_acquisition {
+    ($($method:ident: $call:ident),+ $(,)?) => {
+        $(fn $method(&mut self, _: ds_client_core::$call<'_>) -> Result<TransportResponse, TransportError> {
+            panic!("installation control acquired unused project data: {}", stringify!($method))
+        })+
+    };
+}
+impl Transport for InstallationControlTransport {
+    installation_forbid_project_acquisition! {
+        list_projects: ProjectListCall,
+        transformer_context: TransformerContextCall,
+        project_forms: ProjectFormsCall,
+        project_form_editor: ProjectFormEditorCall,
+        solar_snapshot: SolarSnapshotCall,
+        survey_query: SurveyQueryCall,
+        survey_entries_select: SurveyEntriesSelectCall,
+        survey_entries_changes: SurveyEntriesChangesCall,
+        survey_entry_create: SurveyEntryCreateCall,
+        project_data: ProjectDataCall,
+        upload_bytes: UploadBytesCall,
+        survey_control: SurveyControlCall,
+        styles: StylesCall,
+        layers: LayersCall,
+        tiles: TileCall,
+        project_report: ProjectReportCall,
+    }
+
+    fn sign_in(&mut self, call: SignInCall<'_>) -> Result<TransportResponse, TransportError> {
+        Transport::sign_in(&mut self.auth, call)
+    }
+    fn refresh(&mut self, _: RefreshCall<'_>) -> Result<TransportResponse, TransportError> {
+        panic!("no incidental renewal in this held-session fixture")
+    }
+    fn messaging(
+        &mut self,
+        call: ds_client_core::messaging::MessagingCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        assert_eq!(call.path(), "/api/v1/messaging?wire_contract=messages-v1");
+        assert_eq!(call.method(), "POST");
+        assert_eq!(call.client_id(), "ds-native-client");
+        assert_eq!(call.canonical_email(), "user@example.com");
+        assert!(!call.bearer_token().is_empty());
+        let body: serde_json::Value = serde_json::from_slice(call.body().as_bytes()).unwrap();
+        assert!(body.get("uid").is_none());
+        assert!(body.get("ds_project").is_none());
+        self.observed.lock().unwrap().push((
+            call.gateway_origin().into(),
+            call.canonical_uid().into(),
+            body,
+        ));
+        Ok(self
+            .replies
+            .lock()
+            .unwrap()
+            .pop_front()
+            .expect("one intentional reply"))
+    }
+}
+#[test]
+fn installation_controls_capture_user_device_and_lane_authority_with_one_fixed_post() {
+    use ds_client_core::messaging::Command;
+    for lane in [DeploymentLane::Stable, DeploymentLane::Canary] {
+        let p = profile(lane);
+        let fixture = InstallationControlTransport::new(json!({"installations":[]}));
+        let mut client = Client::new(p.clone(), fixture.clone(), MemoryStore::default());
+        client
+            .sign_in("user@example.com", "protected", NOW)
+            .unwrap();
+        let result = client.messaging(&Command::Installations, NOW).unwrap();
+        assert_eq!(result["completion"], "unknown");
+        assert_eq!(
+            fixture.observed.lock().unwrap().as_slice(),
+            &[(
+                p.gateway_origin().into(),
+                "uid-1".into(),
+                json!({"action":"list_installations"})
+            )]
+        );
+        // The selected protected credential cannot be reused under another owner or lane.
+        let credential = device_credential(&p);
+        let access =
+            DeviceAccessSession::new("ds-memory-access-jwt".into(), NOW + 300, NOW).unwrap();
+        assert!(credential.authorize_api(&access, &p, "uid-2", NOW).is_err());
+        let other = profile(if lane == DeploymentLane::Stable {
+            DeploymentLane::Canary
+        } else {
+            DeploymentLane::Stable
+        });
+        assert!(credential
+            .authorize_api(&access, &other, "uid-1", NOW)
+            .is_err());
+        let device = credential.authorize_api(&access, &p, "uid-1", NOW).unwrap();
+        let mut revoke_transport = InstallationControlTransport::new(json!({"revoked":false}));
+        let revoke = Command::RevokeInstallation {
+            installation_hash: "a".repeat(64),
+            epoch: "b".repeat(32),
+        };
+        let receipt = device
+            .messaging(&mut revoke_transport, &revoke, NOW)
+            .unwrap();
+        assert_eq!(receipt["revoked"], false);
+        let calls = revoke_transport.observed.lock().unwrap();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(
+            (&calls[0].0, &calls[0].1),
+            (&p.gateway_origin().to_owned(), &"uid-1".to_owned())
+        );
+        assert_eq!(calls[0].2, revoke.payload());
+        assert!(receipt.get("epoch").is_none());
+    }
+}
+#[test]
+fn installation_invalid_receipts_and_foreign_identity_replies_cannot_acquire_or_publish() {
+    use ds_client_core::messaging::Command;
+    let fixture = InstallationControlTransport::new(json!({"installations":[],"uid":"uid-2"}));
+    let mut client = Client::new(
+        profile(DeploymentLane::Stable),
+        fixture.clone(),
+        MemoryStore::default(),
+    );
+    let malformed = Command::RevokeInstallation {
+        installation_hash: "a".repeat(64),
+        epoch: "missing".into(),
+    };
+    assert_eq!(
+        client.messaging(&malformed, NOW).unwrap_err().kind(),
+        ErrorKind::InvalidInput
+    );
+    assert!(fixture.observed.lock().unwrap().is_empty());
+    assert!(fixture.auth.0.lock().unwrap().calls.is_empty());
+    client
+        .sign_in("user@example.com", "protected", NOW)
+        .unwrap();
+    assert_eq!(
+        client
+            .messaging(&Command::Installations, NOW)
+            .unwrap_err()
+            .kind(),
+        ErrorKind::UnreadableResponse
+    );
+    assert_eq!(fixture.observed.lock().unwrap().len(), 1);
+    let p = profile(DeploymentLane::Stable);
+    let credential = device_credential(&p);
+    let access = DeviceAccessSession::new("ds-memory-access-jwt".into(), NOW + 300, NOW).unwrap();
+    let device = credential.authorize_api(&access, &p, "uid-1", NOW).unwrap();
+    let mut unused = InstallationControlTransport::new(json!({"revoked":true}));
+    assert_eq!(
+        device
+            .messaging(&mut unused, &malformed, NOW + 301)
+            .unwrap_err()
+            .kind(),
+        ErrorKind::InvalidInput
+    );
+    assert!(unused.observed.lock().unwrap().is_empty());
+}
