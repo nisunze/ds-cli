@@ -64,6 +64,7 @@ pub mod model_link;
 pub mod note;
 pub mod party;
 pub mod plan;
+pub mod overview;
 pub mod record;
 pub mod task;
 
@@ -81,6 +82,7 @@ pub static DOMAIN: Domain = Domain {
     summary: "Project tasks, notes and records.",
     commands: &[
         &plan::COMMAND,
+        &overview::COMMAND,
         &collaboration::PROJECTS,
         &collaboration::COMMENT,
         &collaboration::COMMENTS,

@@ -397,7 +397,9 @@ impl Profile {
             // leaves now complete one reviewed delete/recover workflow: a
             // caller can inspect the plan, delete at its exact revision,
             // inspect the durable backup, and restore at a fresh revision.
-            Self::Project => 26,
+            // One bounded task/milestone/record/note overview joins the existing leaves.
+            // Actual discovery is now 27 tools including both bootstrap tools.
+            Self::Project => 27,
             Self::Messaging => 14,
             // Task creation with typed geometry, geometry edits, and
             // admission/field-hours steps: nine leaves plus two bootstrap tools.

@@ -20183,3 +20183,15 @@ fn pm_task_detach_descriptor_confirmation_and_packaging_gate_are_honest() {
     valid.push("--yes");
     assert_eq!(native_pm_refusal(&valid), "native_profile_not_configured");
 }
+
+#[test]
+fn project_overview_is_discoverable_bounded_and_headless() {
+    let command=ok(&["capabilities","pm.overview","--output","json"])["command"].clone();
+    assert_eq!(command["effect"],"read_only");assert_eq!(command["authority"],"headless_project");assert_eq!(command["requires"],"server");
+    let names:Vec<_>=command["inputs"].as_array().unwrap().iter().map(|i|i["name"].as_str().unwrap()).collect();
+    assert_eq!(names,vec!["project","limit","records-cursor","lane"]);
+    let search=ok(&["capabilities","--search","project overview","--limit","50","--output","json"]);
+    assert!(search["results"].as_array().unwrap().iter().any(|r|r["id"]=="pm.overview"));
+    let response=native_pm_refusal(&["pm","overview","--limit","10","--output","json"]);
+    assert_eq!(response,"native_profile_not_configured","held v30 test catalog must not admit compiled v31");
+}

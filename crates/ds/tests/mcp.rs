@@ -4149,3 +4149,11 @@ fn task_attachment_detach_projects_exact_cli_inputs_and_confirmation() {
         "native_profile_not_configured"
     );
 }
+
+#[test]
+fn project_overview_mcp_declares_the_same_read_without_geometry_or_private_notes() {
+    let home=signed_out("project-overview");let messages=signed_out_mcp(&home,&["--exposure","commands","--profile","project"],&[json!({"jsonrpc":"2.0","id":1,"method":"tools/list"})]);
+    let tool=response(&messages,1)["result"]["tools"].as_array().unwrap().iter().find(|t|t["name"]=="pm_overview").expect("project overview tool");
+    let properties=tool["inputSchema"]["properties"].as_object().unwrap();assert!(properties.contains_key("project")&&properties.contains_key("limit")&&properties.contains_key("records-cursor"));
+    assert!(!properties.contains_key("geometry")&&!properties.contains_key("data")&&!properties.contains_key("personal-notes"));
+}

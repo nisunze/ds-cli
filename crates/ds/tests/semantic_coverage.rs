@@ -1484,6 +1484,7 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     // Every `pm` command is a headless project command since 2026-09-20:
     // `POST /api/v1/pm` under the native credential, folded by the kernel.
     ("pm.plan", "read_only", "headless_project"),
+    ("pm.overview", "read_only", "headless_project"),
     ("pm.project.list", "read_only", "headless_user"),
     ("pm.task.comment", "global_write", "headless_project"),
     ("pm.task.comments", "read_only", "headless_project"),

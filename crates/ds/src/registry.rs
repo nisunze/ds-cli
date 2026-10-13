@@ -2354,6 +2354,11 @@ static NOTES_ENTRIES: &[Entry] = &[
 
 static WORK_ENTRIES: &[Entry] = &[
     Entry {
+        command: &ds_cli_pm::overview::COMMAND,
+        handler: ds_cli_pm::overview::run,
+        render: ds_cli_pm::overview::render,
+    },
+    Entry {
         command: &ds_cli_pm::plan::COMMAND,
         handler: ds_cli_pm::plan::run,
         render: ds_cli_pm::plan::render,
