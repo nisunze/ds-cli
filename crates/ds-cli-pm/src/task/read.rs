@@ -2,11 +2,10 @@
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Arg, Authority, Chapter, Command, Effect, Example, Execution, Requires,
+    Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
-use ds_client_core::project_correspondence::Action;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 
 use crate::{LANE_ARG, TASK_ARG};
 
@@ -30,7 +29,7 @@ Headless: the named project of the signed-in native credential, no window.",
     effect: Effect::ReadOnly,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[TASK_ARG, TIMELINE_ARG, LANE_ARG, crate::PROJECT_ARG],
+    args: &[TASK_ARG, TIMELINE_ARG, Arg::switch("offline", "Read this exact retained task/timeline selection without network or freshness checks; captured permissions may have changed."), LANE_ARG, crate::PROJECT_ARG],
     output: "\
 `task` with the canonical fields — including `awaitingCorrespondence`, \
 `blockedRecordIds` and every `correspondenceBlockers` entry with who set \
@@ -39,13 +38,18 @@ it and how it cleared — `dependencies`, `residuals` (open first), \
 `recordTotalKind` (exact or lower_bound), and a `*Total` for each bounded related \
 collection; plus the project's `permissions`, graph `revision`, and `link`. \
 With --timeline, `timeline.entries` in time order with `total`, `truncated` \
-and per-source counts.",
+and per-source counts. `retained` reports capture-only permission/source freshness, independent source revisions and known local invalidation. --offline never acquires missing data.",
     examples: &[Example {
         command: "ds pm task read --task T-0007 --output json --project <exact-id>",
         note: "`.data.task.assignmentOpen` tells you whether respond is available.",
         runnable: false,
     }],
-    refusals: &crate::correspondence_refusals::<22>(&[crate::TASK_NOT_FOUND]),
+    refusals: &crate::correspondence_refusals::<25>(&[
+        crate::TASK_NOT_FOUND,
+        Refusal {code:"pm_offline_acquisition_required",when:"no admitted retained task matches the protected account/project and exact task/timeline selection, or access was denied",remedy:"read this exact task and timeline selection online once under the same account"},
+        Refusal {code:"pm_retained_unavailable",when:"the bounded retained task receipts cannot be verified or persisted",remedy:"inspect owner-only local DS data and repeat the exact online task read"},
+        Refusal {code:"project_context_changed",when:"authority or the local mutation generation changed during task acquisition",remedy:"repeat the entire intentional task read under the intended account"},
+    ]),
     reference: Some("docs/reference/pm.md"),
     search: &[
         "subtask",
@@ -67,80 +71,41 @@ and per-source counts.",
 };
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
+    let project = inputs.require("project")?;
     let task_id = inputs.require("task")?;
-    let lane = inputs.value("lane").unwrap_or("stable");
-    let read = crate::graph(lane, inputs.require("project")?)?;
-    read_selected(
-        &read,
+    let raw = ds_cli_auth::pm_graph_source::read_task(
+        inputs.value("lane").unwrap_or("stable"),
+        project,
         task_id,
-        || crate::records(lane, inputs.require("project")?, task_id),
-        |data| {
-            if inputs.switch("timeline") {
-                let report = crate::correspondence(
-                    lane,
-                    inputs.require("project")?,
-                    &Action::TaskRead {
-                        task_id: task_id.to_owned(),
-                        timeline: true,
-                    },
-                )?;
-                same_reader(&read.uid, report.identity().uid())?;
-                let timeline = ds_command_kernel::project_management::correspondence::timeline(
-                    &report.into_result()["timeline"],
-                );
-                data["timeline"] = crate::data(&timeline)?;
-            }
-            Ok(())
-        },
-    )
+        inputs.switch("timeline"),
+        inputs.switch("offline"),
+    )?;
+    fold_capture(project, task_id, raw)
 }
-
-/// The acquisition runs only after the graph proves a selected task exists.
-fn read_selected(
-    read: &crate::Graph,
-    task_id: &str,
-    acquire_records: impl FnOnce() -> Result<crate::TaskRecords, Failure>,
-    add_timeline: impl FnOnce(&mut Value) -> Result<(), Failure>,
-) -> Result<Value, Failure> {
-    if !read.graph.tasks.iter().any(|task| task.id == task_id) {
-        return Err(Failure::invalid(
-            crate::TASK_NOT_FOUND.code,
-            format!("No task {task_id} in this project's plan."),
-        )
-        .detail(json!({ "task": task_id, "project": read.project_id }))
-        .remedy(crate::TASK_NOT_FOUND.remedy)
-        .next("ds pm task list"));
-    }
-    let records = acquire_records()?;
-    same_reader(&read.uid, &records.uid)?;
-    let reply = ds_command_kernel::project_management::reads::task_read(
-        &read.graph,
-        task_id,
-        &records.rows,
-    )
-    .expect("selected task was checked against this unchanged graph");
+fn fold_capture(project: &str, task_id: &str, raw: Value) -> Result<Value, Failure> {
+    let graph = ds_command_kernel::project_management::decode_project_graph(&raw["graph"], project);
+    let context = &raw["records_context"];
+    let records = ds_command_kernel::project_management::reads::decode_context_records(context);
+    let reply = ds_command_kernel::project_management::reads::task_read(&graph, task_id, &records)
+        .ok_or_else(|| {
+            Failure::invalid(
+                "task_not_found",
+                "The retained task is absent from its captured plan.",
+            )
+            .remedy(crate::TASK_NOT_FOUND.remedy)
+        })?;
     let mut data = crate::data(&reply)?;
-    data["recordsTruncated"] = json!(records.truncated);
-    data["recordsNextCursor"] = json!(records.next_cursor);
-    data["recordTotalKind"] = json!(if records.truncated {
-        "lower_bound"
-    } else {
-        "exact"
-    });
-    add_timeline(&mut data)?;
-    Ok(data)
-}
-
-/// Separately captured reads cannot be composed across an account change.
-fn same_reader(expected: &str, observed: &str) -> Result<(), Failure> {
-    if expected != observed {
-        return Err(Failure::conflict(
-            "project_context_stale",
-            "The account changed between task reads.",
-        )
-        .remedy("retry the entire task read under the intended account"));
+    let truncated = context["truncated_by_collection"]["pm_records"] == true;
+    data["recordsTruncated"] = json!(truncated);
+    data["recordsNextCursor"] = context["next_cursors"]["pm_records"].clone();
+    data["recordTotalKind"] = json!(if truncated { "lower_bound" } else { "exact" });
+    if let Some(receipt) = raw.get("timeline_receipt") {
+        let timeline =
+            ds_command_kernel::project_management::correspondence::timeline(&receipt["timeline"]);
+        data["timeline"] = crate::data(&timeline)?;
     }
-    Ok(())
+    data["retained"] = raw["retained"].clone();
+    Ok(data)
 }
 
 pub fn render(data: &Value) -> String {
@@ -188,6 +153,13 @@ pub fn render(data: &Value) -> String {
             out.push_str(&format!("  {label}: {qualifier}{count}\n"));
         }
     }
+    if data["retained"]["mode"] == "offline_capture" {
+        out.push_str("  retained capture ? current source and permissions unknown");
+        if data["retained"]["known_invalidated"] == true {
+            out.push_str(" ? known local changes");
+        }
+        out.push('\n');
+    }
     if let Some(link) = data["link"].as_str() {
         out.push_str(&format!("  {link}\n"));
     }
@@ -197,119 +169,62 @@ pub fn render(data: &Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::cell::Cell;
-
-    fn held_graph() -> crate::Graph {
-        let raw = json!({"project_id":"project-a","revision":7,"tasks":[{"id":"task-7","data":{"title":"Review"}}]});
-        crate::Graph {
-            lane: "stable",
-            project_id: "project-a".into(),
-            uid: "uid".into(),
-            graph: ds_command_kernel::project_management::decode_project_graph(&raw, "project-a"),
-            raw,
-        }
+    fn captured_task(truncated: bool) -> Value {
+        json!({"graph":{"project_id":"project-a","revision":7,"tasks":[{"id":"task-7","data":{"title":"Review"}}]},
+            "records_context":{"records":[{"id":"r","data":{"subject":"Evidence","related_task_ids":["task-7"]}}],"truncated_by_collection":{"pm_records":truncated},"next_cursors":if truncated {json!({"pm_records":"boundary"})} else {json!({})}},
+            "retained":{"mode":"offline_capture","known_invalidated":true,"source_freshness":"unknown","permission_freshness":"captured_only","source_revisions":{"graph":7,"records_context":null,"timeline":8}}})
     }
-
     #[test]
-    fn task_records_missing_selection_consumes_no_context_or_timeline() {
-        let reads = Cell::new(0);
-        let failure = read_selected(
-            &held_graph(),
-            "missing",
-            || {
-                reads.set(reads.get() + 1);
-                panic!("unused context")
-            },
-            |_| panic!("unused timeline"),
-        )
-        .unwrap_err();
-        assert_eq!(failure.code(), "task_not_found");
-        assert_eq!(reads.get(), 0);
-    }
-
-    #[test]
-    fn task_records_partial_empty_scan_is_visible_and_failed_context_does_not_read_timeline() {
-        let partial = read_selected(
-            &held_graph(),
-            "task-7",
-            || {
-                Ok(crate::TaskRecords {
-                    uid: "uid".into(),
-                    rows: vec![],
-                    truncated: true,
-                    next_cursor: Some("scan-boundary".into()),
-                })
-            },
-            |_| Ok(()),
-        )
-        .unwrap();
-        assert_eq!(partial["recordTotal"], 0);
-        assert_eq!(partial["recordTotalKind"], "lower_bound");
-        assert!(render(&partial).contains("records: at least 0"));
-        let failure = read_selected(
-            &held_graph(),
-            "task-7",
-            || Err(Failure::unauthorized("auth_rejected", "Denied")),
-            |_| panic!("denied context cannot read timeline"),
-        )
-        .unwrap_err();
-        assert_eq!(failure.code(), "auth_rejected");
-    }
-
-    #[test]
-    fn task_records_account_change_refuses_before_projection_or_timeline() {
-        let failure = read_selected(
-            &held_graph(),
-            "task-7",
-            || {
-                Ok(crate::TaskRecords {
-                    uid: "another-user".into(),
-                    rows: vec![],
-                    truncated: false,
-                    next_cursor: None,
-                })
-            },
-            |_| panic!("changed account cannot read timeline"),
-        )
-        .unwrap_err();
-        assert_eq!(failure.code(), "project_context_stale");
-        assert!(same_reader("uid", "uid").is_ok());
-        assert_eq!(
-            same_reader("uid", "another-user").unwrap_err().code(),
-            "project_context_stale"
-        );
-        assert!(
-            COMMAND
-                .refusals
-                .iter()
-                .any(|refusal| refusal.code == "project_context_stale")
-        );
-    }
-
-    #[test]
-    fn task_records_selected_once_reports_exact_or_lower_bound_without_invented_total() {
+    fn task_read_projection_preserves_exact_or_lower_bound_and_refuses_missing_selection() {
         for truncated in [false, true] {
-            let reads = Cell::new(0);
-            let result=read_selected(&held_graph(),"task-7",|| {
-                reads.set(reads.get()+1);
-                Ok(crate::TaskRecords {uid:"uid".into(),rows:ds_command_kernel::project_management::reads::decode_context_records(&json!({"records":[{"id":"record-1","data":{"subject":"Review evidence","related_task_ids":["task-7"]}}]})),truncated,next_cursor:truncated.then(||"record-1".into())})
-            }, |_| Ok(())).unwrap();
-            assert_eq!(reads.get(), 1);
-            assert_eq!(result["recordTotal"], 1);
-            assert_eq!(result["recordsTruncated"], truncated);
+            let reply = fold_capture("project-a", "task-7", captured_task(truncated)).unwrap();
+            assert_eq!(reply["recordTotal"], 1);
+            assert_eq!(reply["recordsTruncated"], truncated);
             assert_eq!(
-                result["recordTotalKind"],
+                reply["recordTotalKind"],
                 if truncated { "lower_bound" } else { "exact" }
             );
             assert_eq!(
-                result["recordsNextCursor"],
+                reply["recordsNextCursor"],
                 if truncated {
-                    json!("record-1")
+                    json!("boundary")
                 } else {
                     Value::Null
                 }
             );
-            assert_eq!(render(&result).contains("records: at least 1"), truncated);
+            assert_eq!(render(&reply).contains("records: at least 1"), truncated);
         }
+        assert_eq!(
+            fold_capture("project-a", "missing", captured_task(false))
+                .unwrap_err()
+                .code(),
+            "task_not_found"
+        );
+    }
+    #[test]
+    fn task_offline_is_explicit_and_projection_retains_partial_capture_qualifications() {
+        assert!(COMMAND.args.iter().any(|arg| arg.name == "offline"));
+        assert!(COMMAND
+            .refusals
+            .iter()
+            .any(|r| r.code == "pm_offline_acquisition_required"));
+        let mut raw = captured_task(true);
+        raw["records_context"]["records"] = json!([]);
+        raw["timeline_receipt"] =
+            json!({"timeline":{"task_id":"task-7","entries":[],"total":0,"truncated":true}});
+        let reply = fold_capture("project-a", "task-7", raw).unwrap();
+        assert_eq!(reply["recordsTruncated"], true);
+        assert_eq!(reply["recordTotalKind"], "lower_bound");
+        assert_eq!(reply["recordsNextCursor"], "boundary");
+        assert_eq!(reply["recordTotal"], 0);
+        assert!(render(&reply).contains("records: at least 0"));
+        assert_eq!(reply["timeline"]["truncated"], true);
+        assert_eq!(
+            reply["retained"]["source_revisions"]["records_context"],
+            Value::Null
+        );
+        assert!(
+            render(&reply).contains("current source and permissions unknown ? known local changes")
+        );
     }
 }

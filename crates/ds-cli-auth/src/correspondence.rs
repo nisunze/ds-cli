@@ -25,7 +25,7 @@
 use ds_cli_contract::Failure;
 use serde_json::Value;
 
-use super::{HeadlessNamedProject, headless_named_project, now};
+use super::{headless_named_project_with, map_client, now, pm_graph_source, HeadlessNamedProject};
 
 /// One correspondence action for the project named on this request.
 pub fn project_correspondence_for_project(
@@ -33,10 +33,69 @@ pub fn project_correspondence_for_project(
     project: &str,
     action: &ds_client_core::project_correspondence::Action,
 ) -> Result<HeadlessNamedProject<Value>, Failure> {
-    headless_named_project(
+    let binding = pm_graph_source::before_correspondence(lane_value, project, action)?;
+    let result = headless_named_project_with(
         lane_value,
         project,
+        |error| map_selected_refusal(action, error),
         |device, project| device.project_correspondence(project, action),
         |client, project| client.project_correspondence(project, action, now()),
-    )
+    );
+    if let Err(error) = &result {
+        pm_graph_source::after_refusal(&binding, error)?;
+    }
+    result
+}
+
+/// Only the named selected-task refusal is row absence; generic HTTP status never changes authority.
+fn map_selected_refusal(
+    action: &ds_client_core::project_correspondence::Action,
+    error: ds_client_core::ClientError,
+) -> Failure {
+    if selected_task_absence(action, error.service_refusal()) {
+        return Failure::invalid(
+            "task_not_found",
+            "The selected task read was not found at its source.",
+        )
+        .remedy("read the current project task list and choose its exact task ID");
+    }
+    map_client(error)
+}
+fn selected_task_absence(
+    action: &ds_client_core::project_correspondence::Action,
+    refusal: Option<&ds_client_core::ServiceRefusal>,
+) -> bool {
+    matches!(
+        action,
+        ds_client_core::project_correspondence::Action::TaskRead { .. }
+    ) && refusal
+        .is_some_and(|refusal| refusal.status() == 404 && refusal.code() == Some("task_not_found"))
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn task_read_resource_absence_requires_exact_named_server_receipt() {
+        let action = ds_client_core::project_correspondence::Action::TaskRead {
+            task_id: "t".into(),
+            timeline: true,
+        };
+        let refusal = ds_client_core::ServiceRefusal::new(
+            404,
+            Some("task_not_found"),
+            Some("Selected task not found"),
+        );
+        assert!(selected_task_absence(&action, Some(&refusal)));
+        assert!(!selected_task_absence(&action, None));
+        for status in [401, 403, 409] {
+            let refusal = ds_client_core::ServiceRefusal::new(status, Some("task_not_found"), None);
+            assert!(!selected_task_absence(&action, Some(&refusal)));
+        }
+        let generic = ds_client_core::ServiceRefusal::new(404, Some("not_found"), None);
+        assert!(!selected_task_absence(&action, Some(&generic)));
+        let other = ds_client_core::project_correspondence::Action::RecordRead {
+            record_id: "r".into(),
+        };
+        assert!(!selected_task_absence(&other, Some(&refusal)));
+    }
 }
