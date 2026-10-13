@@ -7,6 +7,7 @@ use ds_cli_contract::Failure;
 use ds_client_core::messaging::Command;
 use serde_json::Value;
 pub fn execute(lane_value: &str, command: &Command) -> Result<Value, Failure> {
+    command.validate().map_err(map)?;
     let lane = Lane::parse(lane_value)?;
     if let Some(mut device) = restored_device_session(lane)? {
         return device.messaging(command).map_err(map);
@@ -22,7 +23,7 @@ fn map(error: ds_client_core::ClientError) -> Failure {
     match message.as_str() {
         "messaging_request_invalid" => Failure::invalid(
             "messaging_request_invalid",
-            "Brain rejected the messaging request",
+            "The messaging request is invalid",
         )
         .remedy("read the command contract and use server-issued ids and cursors"),
         "messaging_idempotency_mismatch" => Failure::conflict(

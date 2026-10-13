@@ -78,7 +78,7 @@ const UID: Arg = Arg::value(
 const OWN: &[Refusal] = &[
     Refusal {
         code: "messaging_request_invalid",
-        when: "brain rejected the request or cursor",
+        when: "an installation ownership receipt is malformed, or brain rejected the request or cursor",
         remedy: "read the command contract; use server ids and cursors",
     },
     Refusal {
@@ -433,6 +433,59 @@ pub static ACK: Command = Command {
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
+const INSTALLATION_HASH: Arg = Arg::value(
+    "installation-hash",
+    "<sha256>",
+    "Exact lowercase hash from the original registration receipt.",
+)
+.required();
+const INSTALLATION_EPOCH: Arg = Arg::value("epoch", "<ownership-epoch>", "Exact original 32-character lowercase ownership epoch held by this installation; listing never reveals it.").required();
+pub static INSTALLATIONS: Command = Command {
+    id: "messaging.installations",
+    path: &["messaging", "installations"],
+    contract: 1,
+    summary: "Inspect your registered notification installations.",
+    purpose: "One intentional account-scoped read of at most ten redacted installations. Stored labels do not establish current delivery; source completeness is unknown. No receiver starts and no project data is acquired.",
+    chapter: Chapter::Project,
+    effect: Effect::ReadOnly,
+    authority: Authority::HeadlessUser,
+    execution: Execution::Sync,
+    args: &[LANE],
+    output: "Redacted installations, max_rows=10, completion=unknown and delivery_state=not_proven. No raw FID, token or ownership epoch.",
+    examples: &[Example {
+        command: "ds messaging installations",
+        note: "Inspect registrations; this does not test push reception.",
+        runnable: false,
+    }],
+    refusals: &REFUSALS,
+    reference: None,
+    search: &["push", "notification", "installation", "delivery"],
+    requires: Requires::Server,
+    availability: ds_cli_auth::native_availability,
+};
+pub static REVOKE_INSTALLATION: Command = Command {
+    id: "messaging.installation.revoke",
+    path: &["messaging", "installation", "revoke"],
+    contract: 1,
+    summary: "Revoke a notification installation using its held ownership receipt.",
+    purpose: "Uses the original registration hash and ownership epoch, never a newly inferred receipt. Another account or a stale epoch is an idempotent no-op. Does not sign out the account or alter other installations.",
+    chapter: Chapter::Project,
+    effect: Effect::GlobalWrite,
+    authority: Authority::HeadlessUser,
+    execution: Execution::Sync,
+    args: &[INSTALLATION_HASH, INSTALLATION_EPOCH, LANE],
+    output: "Addressed installation_hash and revoked boolean; false includes missing or stale ownership. The epoch is not returned.",
+    examples: &[Example {
+        command: "ds messaging installation revoke --installation-hash <sha256> --epoch <held-epoch> --yes",
+        note: "Only use the receipt held by the installation that registered.",
+        runnable: false,
+    }],
+    refusals: &REFUSALS,
+    reference: None,
+    search: &["push", "notification", "installation", "logout", "revoke"],
+    requires: Requires::Server,
+    availability: ds_cli_auth::native_availability,
+};
 pub static DOMAIN: Domain = Domain {
     id: "messaging",
     summary: "Conversations, messages and personal notifications.",
@@ -449,6 +502,8 @@ pub static DOMAIN: Domain = Domain {
         &MARK_READ,
         &NOTIFICATIONS,
         &ACK,
+        &INSTALLATIONS,
+        &REVOKE_INSTALLATION,
     ],
 };
 fn optional(inputs: &Inputs, key: &str) -> Option<String> {
@@ -465,6 +520,11 @@ pub fn request(id: &str, inputs: &Inputs) -> Result<Request, Failure> {
     let conversation = || inputs.require("conversation").map(str::to_owned);
     Ok(match id {
         "config" => Request::Config,
+        "installations" => Request::Installations,
+        "installation-revoke" => Request::RevokeInstallation {
+            installation_hash: inputs.require("installation-hash")?.into(),
+            epoch: inputs.require("epoch")?.into(),
+        },
         "people" => Request::People {
             query: inputs.require("query")?.into(),
             project: optional(inputs, "project"),
@@ -519,9 +579,22 @@ pub fn request(id: &str, inputs: &Inputs) -> Result<Request, Failure> {
 }
 fn execute(id: &str, inputs: &Inputs) -> Result<Value, Failure> {
     let result = ds_cli_auth::messaging::execute(inputs.require("lane")?, &request(id, inputs)?)?;
-    Ok(
-        json!({"result":result,"more": result["has_more"] == true || result["truncated"] == true || result["directs_truncated"] == true}),
-    )
+    let more = if id == "installations" {
+        Value::Null // No producer completeness receipt; never imply an exhaustive inventory.
+    } else {
+        json!(
+            result["has_more"] == true
+                || result["truncated"] == true
+                || result["directs_truncated"] == true
+        )
+    };
+    Ok(json!({"result":result,"more":more}))
+}
+pub fn installations(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
+    execute("installations", inputs)
+}
+pub fn revoke_installation(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
+    execute("installation-revoke", inputs)
 }
 pub fn config(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     execute("config", inputs)
@@ -562,6 +635,38 @@ pub fn acknowledge(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
 pub fn render(data: &Value) -> String {
     let result = &data["result"];
     let mut out = String::new();
+    if let Some(rows) = result["installations"].as_array() {
+        out.push_str("INSTALLATION HASH\tSTORED PLATFORM\tLABEL\tREFRESHED\n");
+        for row in rows {
+            let label: String = row["user_agent"]
+                .as_str()
+                .unwrap_or("")
+                .chars()
+                .map(|c| if c.is_control() { ' ' } else { c })
+                .collect();
+            out.push_str(&format!(
+                "{}\t{}\t{}\t{}\n",
+                row["installation_hash"].as_str().unwrap_or(""),
+                row["platform"].as_str().unwrap_or("unknown"),
+                label,
+                row["refreshed_at"].as_str().unwrap_or("")
+            ));
+        }
+        if rows.is_empty() {
+            out.push_str("(empty)\n");
+        }
+        out.push_str(
+            "At most 10 registrations; source completeness unknown. Live delivery is not proven.\n",
+        );
+        return out;
+    }
+    if let Some(revoked) = result["revoked"].as_bool() {
+        return format!(
+            "INSTALLATION HASH\tREVOKED\n{}\t{}\n",
+            result["installation_hash"].as_str().unwrap_or(""),
+            revoked
+        );
+    }
     for key in ["conversations", "messages", "notifications", "people"] {
         if let Some(rows) = result[key].as_array() {
             out.push_str("ID / UID\tKIND / SENDER\tUNREAD / TEXT\n");
@@ -740,5 +845,64 @@ mod tests {
         assert_eq!(fixture["data"]["wire_contract"], "messages-v1");
         assert_eq!(fixture["data"]["default_page_size"], 40);
         assert_eq!(fixture["data"]["max_page_size"], 50);
+    }
+    #[test]
+    fn installation_controls_use_only_redacted_identity_and_known_epoch() {
+        assert_eq!(
+            request("installations", &parse(&INSTALLATIONS, &[]))
+                .unwrap()
+                .payload(),
+            json!({"action":"list_installations"})
+        );
+        let hash = "a".repeat(64);
+        let epoch = "b".repeat(32);
+        let input = parse(
+            &REVOKE_INSTALLATION,
+            &["--installation-hash", &hash, "--epoch", &epoch],
+        );
+        let request = request("installation-revoke", &input).unwrap();
+        request.validate().unwrap();
+        assert_eq!(
+            request.payload(),
+            json!({"action":"revoke_installation", "installation_hash":hash, "epoch":epoch})
+        );
+        assert_eq!(INSTALLATIONS.effect, Effect::ReadOnly);
+        assert_eq!(REVOKE_INSTALLATION.effect, Effect::GlobalWrite);
+        assert!(
+            DOMAIN
+                .commands
+                .iter()
+                .any(|c| c.id == REVOKE_INSTALLATION.id)
+        );
+        assert!(
+            ds_cli_contract::parse(&REVOKE_INSTALLATION, &["--installation-hash".into(), hash])
+                .is_err()
+        );
+    }
+    #[test]
+    fn installation_human_view_does_not_claim_delivery_or_complete_inventory() {
+        let shown = render(
+            &json!({"result":{"installations":[{"installation_hash":"h", "platform":"legacy", "user_agent":"a\nb", "refreshed_at":"date"}], "completion":"unknown", "delivery_state":"not_proven"}}),
+        );
+        assert!(shown.contains("a b"));
+        assert!(shown.contains("completeness unknown"));
+        assert!(shown.contains("delivery is not proven"));
+        assert!(!shown.contains("epoch"));
+        assert!(
+            render(&json!({"result":{"revoked":false,"installation_hash":"h"}})).contains("false")
+        );
+    }
+    #[test]
+    fn malformed_revoke_refuses_before_native_profile_or_credentials() {
+        let request = Request::RevokeInstallation {
+            installation_hash: "a".repeat(64),
+            epoch: "missing".into(),
+        };
+        assert_eq!(
+            ds_cli_auth::messaging::execute("not-a-lane", &request)
+                .unwrap_err()
+                .code(),
+            "messaging_request_invalid"
+        );
     }
 }
