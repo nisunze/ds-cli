@@ -27,7 +27,7 @@ const TERM: Arg = Arg::repeated(
 const TAG: Arg = Arg::repeated(
     "tag",
     "<project-tag>",
-    "Topical tags; equivalent spellings resolve through the project's existing tag authority.",
+    "Topical tags; equivalent case, spacing, hyphen and underscore spellings normalize consistently.",
 );
 const TAG_MATCH: Arg = Arg::value(
     "tag-match",
@@ -126,7 +126,7 @@ pub static QUERY: Command = descriptor(
     "pm.note.query",
     &["pm", "note", "query"],
     "Search shared notes by normalized tags, type, lifecycle and time.",
-    "Read one bounded same-project note page using existing project tag aliases and explicit any/all matching. Lifecycle filters do not alter topical tags. Sort is creation/update time only, not authority or automatic supersession. Return scan/completeness/truncation explicitly; a partial empty page is not proof of no context.",
+    "Read one bounded same-project note page using normalized topical tags and explicit any/all matching. Lifecycle filters do not alter topical tags. Sort is creation/update time only, not authority or automatic supersession. Return scan/completeness/truncation explicitly; a partial empty page is not proof of no context.",
     Effect::ReadOnly,
     &[
         TERM,
@@ -146,7 +146,7 @@ pub static CONTEXT: Command = descriptor(
     "pm.note.context",
     &["pm", "note", "context"],
     "Retrieve applicable active rulings and scoped conflicts before acting.",
-    "Consumes a closed context JSON: query fields terms/tags/tag_match/note_types/lifecycle/sort/direction/cursor/limit and optional scope. The existing project owner combines semantic aliases, topical relevance and affected objects/structures/conditions; exact-tag-only lookup is insufficient. Routine context is active only, scans at most 200 and reports incomplete results. Potential overlapping issue/scope conflicts retain exact sources and explicit supersession; newest does not win. References are inspected on demand, never fetched speculatively.",
+    "Consumes a closed context JSON: query fields terms/tags/tag_match/note_types/lifecycle/sort/direction/cursor/limit and optional scope. The existing project owner combines text relevance and affected objects/structures/conditions; exact-tag-only lookup is insufficient. Routine context is active only, scans at most 200 and reports incomplete results. Potential overlapping issue/scope conflicts retain exact sources and explicit supersession; newest does not win. References are inspected on demand, never fetched speculatively.",
     Effect::ReadOnly,
     &[INPUT, crate::LANE_ARG, crate::PROJECT_ARG],
 );
@@ -316,6 +316,17 @@ mod tests {
     fn parse(c: &Command, tokens: &[&str]) -> Inputs {
         ds_cli_contract::args::parse(c, &tokens.iter().map(|s| s.to_string()).collect::<Vec<_>>())
             .unwrap()
+    }
+    #[test]
+    fn maintained_reference_examples_are_valid_closed_native_requests() {
+        let section = include_str!("../../../docs/reference/pm.md")
+            .split("## Shared Project Notes").nth(1).unwrap();
+        let examples = section.split("```json\n").skip(1)
+            .map(|block| block.split("```").next().unwrap()).collect::<Vec<_>>();
+        let write: owner::Write = serde_json::from_str(examples[0]).unwrap();
+        owner::Command::Write(write).payload("project-example").unwrap();
+        let context: owner::Context = serde_json::from_str(examples[1]).unwrap();
+        owner::Command::Context(context).payload("project-example").unwrap();
     }
     #[test]
     fn query_flags_reach_owner_with_any_all_terms_sort_and_lifecycle_distinct() {

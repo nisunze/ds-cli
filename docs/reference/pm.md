@@ -518,7 +518,7 @@ note_id, version and optional claim_id. Do not invent evidence identities.
 for example:
 
 ```json
-{"terms":["transformer supply"],"tags":["staking"],"tag_match":"any","scope":{"kind":"workstream","workstream":"MV staking"},"limit":20}
+{"terms":["transformer supply"],"tags":["staking"],"tag_match":"any","lifecycle":["active"],"sort":"updated","direction":"desc","scope":{"kind":"workstream","workstream":"MV staking"},"limit":20}
 ```
 
 It returns active applicable claims and potential conflicts with exact source
