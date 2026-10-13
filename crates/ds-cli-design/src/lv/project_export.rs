@@ -59,7 +59,7 @@ pub static COMMAND: Command = Command {
             "Include freshly read project network configuration with its SHA-256.",
         ),
     ],
-    output: "Output path, request SHA-256/bytes, lane/project/transformer, server version/digest, layer/job counts, owner-default settings, and configuration inclusion/digest. No layer payload is printed.",
+    output: "Output path, request SHA-256/bytes, lane/project/transformer, server version/digest, layer/job counts, owner-default settings, and configuration inclusion/digest. project.printing_label is the canonical caption from the same sealed configuration receipt, or null when unavailable; raw captions are not substitutes. No layer payload is printed.",
     examples: &[Example {
         command: "ds design lv project-export --project <id> --transformer T-1042 --out ./T-1042.fast-lv.json --output json",
         note: "Create a fenced one-transformer request for later native processing.",
@@ -240,6 +240,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     carry_projected_nature(&mut process_layers, projected)?;
 
     let mut config_sha256 = None;
+    let mut printing_label = None;
     let request = if inputs.switch("project-config") {
         let config = ds_cli_auth::settings_configuration_receipt(
             lane,
@@ -263,10 +264,13 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
                 )
                 .remedy("Read project configuration and report the invalid response.")
             })?;
-        let sheets = sheets
+        let mut sheets: std::collections::BTreeMap<String, Value> = sheets
             .iter()
             .map(|(key, value)| (key.clone(), value.clone()))
             .collect();
+        // This receipt came with the configuration already consumed above.
+        // Missing print governance does not disable ordinary LV computation.
+        printing_label = capture_project_printing_context(&config.result().document, project, &mut sheets);
         config_sha256 = Some(sha256(&serde_json::to_vec(&sheets).map_err(|error| {
             Failure::internal("fast_lv_input_invalid", error.to_string())
         })?));
@@ -287,7 +291,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         "request_sha256": request_sha256,
         "byte_count": request.len(),
         "lane": lane,
-        "project": { "ds_project": snapshot.ds_project() },
+        "project": { "ds_project": snapshot.ds_project(), "printing_label": printing_label },
         "transformer": snapshot.transformer_name(),
         "source": {
             "state": "fenced",
@@ -300,6 +304,19 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         "project_config": if config_sha256.is_some() { "included" } else { "not-included" },
         "project_config_sha256": config_sha256,
     }))
+}
+
+fn capture_project_printing_context(
+    configuration: &Value,
+    project: &str,
+    sheets: &mut std::collections::BTreeMap<String, Value>,
+) -> Option<String> {
+    let receipt =
+        ds_command_kernel::report_export::InputReceipt::from_config(configuration).ok()?;
+    let context = receipt.printing_context_for_project(project).ok()?;
+    let label = context["project"].as_str()?.to_owned();
+    sheets.insert("printing_context".into(), context);
+    Some(label)
 }
 
 fn carry_projected_nature(
@@ -501,5 +518,35 @@ mod tests {
         );
         assert!(std::fs::symlink_metadata(&path).is_ok());
         let _ = std::fs::remove_dir_all(root);
+    }
+    #[test]
+    fn canonical_caption_is_carried_from_the_already_read_sealed_receipt_only() {
+        let sealed=json!({"printing_context":{"project_id":"project","project":"Gisagara, CJIC","caption":"Kept"}}).to_string();
+        let receipt = json!({"schema":1,"country":"Rwanda","sheets_json":sealed,"sheets_sha256":sha256(sealed.as_bytes()),"reference_semantic_sha256":"a".repeat(64)});
+        let configuration = json!({"network_reporter_input_receipt":receipt});
+        let mut sheets = BTreeMap::from([(
+            "printing_context".into(),
+            json!({"project_id":"project","project":"Unqualified caption"}),
+        )]);
+        let before = sheets.clone();
+        assert_eq!(
+            capture_project_printing_context(&configuration, "project", &mut sheets).as_deref(),
+            Some("Gisagara, CJIC")
+        );
+        assert_eq!(sheets["printing_context"]["caption"], "Kept");
+        for config in [json!({}), json!({"network_reporter_input_receipt":{}}), {
+            let mut changed = configuration.clone();
+            changed["network_reporter_input_receipt"]["sheets_json"] = json!("{}");
+            changed
+        }] {
+            let mut untouched = before.clone();
+            assert!(capture_project_printing_context(&config, "project", &mut untouched).is_none());
+            assert_eq!(untouched, before);
+        }
+        let mut untouched = before.clone();
+        assert!(
+            capture_project_printing_context(&configuration, "other", &mut untouched).is_none()
+        );
+        assert_eq!(untouched, before);
     }
 }
