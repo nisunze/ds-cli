@@ -453,6 +453,8 @@ the broad `project` profile at its existing tool budget.
 
 ## Shared Project Notes
 
+For subnotes, set `draft.memory.parent` to an exact `{"id":"parent-note","version":1}` in the existing typed creation/update JSON; omit it for a root or explicit detach. Updating still requires the reviewed `expected_version` of the child; a newly selected/changed parent pin requires the current version of the direct parent. An unchanged historic pin remains intact. Read direct children with `ds pm note query --parent parent-note --project PROJECT --output json`. The bounded page can be incomplete; it is not a recursive subtree or authority inheritance.
+
 Use notes actively to retain scoped user rulings, corrections, observations and
 verified outcomes. Recording is deliberate: commands do not file notes or fetch
 context in the background. A proposal or inference is not a user decision.
