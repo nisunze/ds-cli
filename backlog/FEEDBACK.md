@@ -2,14 +2,14 @@
 
 > **Moved 2026-10-07:** this backlog now lives in `ds-command-kernel/backlog/`. The old `ds-work/backlog/` no longer exists: edit these files here, commit them to ds-command-kernel `run`, and stage only `backlog/`. ds-work holds working sessions, not coding lists.
 
-Working list from the 2026-10-07 snapshot and 2026-10-09 component lookups, with proven closures removed: 245 tracked rows (95 open, 150 waiting according to the rows below). These are file counts, not a fresh live backlog total. The feedback API is the authority: verify each selected report's current status, full ID, version and acceptance through `ds`, close only what is proven, and remove its row. Delete this file when its remaining work is fulfilled; keep no completed-work archive.
+Working list from the 2026-10-07 snapshot and 2026-10-09 component lookups, with proven closures removed: 244 tracked rows (95 open, 149 waiting according to the rows below). These are file counts, not a fresh live backlog total. The feedback API is the authority: verify each selected report's current status, full ID, version and acceptance through `ds`, close only what is proven, and remove its row. Delete this file when its remaining work is fulfilled; keep no completed-work archive.
 
-Reports are grouped by the live repository that owns the code, then by component. The component is the submitter's free-text label, shown verbatim so `ds feedback list --component` finds it. Legacy labels map as follows: `ds-grid*`, `dsgrid*`, `ds/grid-*`, `ds/pls-library` → ds-network; `ds-report*`, `ds-printing*` → ds-network-reporter; `ds-desktop*` → ds-web (`src-tauri`); `ds pls desktop` → ds-cli (`ds-cli-pls/desktop`). Labels that name no repository stay **unassigned**. "Backlog" names the [OPEN.md](OPEN.md), [OPEN-X.md](OPEN-X.md) or [SEEDING.md](SEEDING.md) section citing the report; **untracked** means none does (121 reports).
+Reports are grouped by the live repository that owns the code, then by component. The component is the submitter's free-text label, shown verbatim so `ds feedback list --component` finds it. Legacy labels map as follows: `ds-grid*`, `dsgrid*`, `ds/grid-*`, `ds/pls-library` → ds-network; `ds-report*`, `ds-printing*` → ds-network-reporter; `ds-desktop*` → ds-web (`src-tauri`); `ds pls desktop` → ds-cli (`ds-cli-pls/desktop`). Labels that name no repository stay **unassigned**. "Backlog" names the [OPEN.md](OPEN.md), [OPEN-X.md](OPEN-X.md) or [SEEDING.md](SEEDING.md) section citing the report; **untracked** means none does (120 reports).
 
 | Repository | Total | Blocker | Major | Minor | Waiting | Untracked |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 | [ds-cli](#ds-cli) | 92 | 11 | 62 | 19 | 58 | 57 |
-| [ds-network](#ds-network) | 70 | 18 | 48 | 4 | 35 | 23 |
+| [ds-network](#ds-network) | 69 | 18 | 47 | 4 | 34 | 22 |
 | [ds-network-reporter](#ds-network-reporter) | 28 | 1 | 21 | 6 | 20 | 16 |
 | [ds-web](#ds-web) | 34 | 6 | 26 | 2 | 24 | 15 |
 | [ds-command-kernel](#ds-command-kernel) | 4 | 0 | 3 | 1 | 4 | 0 |
@@ -169,7 +169,6 @@ Reports are grouped by the live repository that owns the code, then by component
 | ds-network/ds-grid-exchange pls-cadd .bak export | `9f2316b3` | blocker | bug | Root cause 7a836b7a: DS-authored project .str (no FILENAME) and .cri (FILENAME=.\) make PLS rebase paths from ., yielding <root>012 | waiting: Windows native gate: fresh Restore + open of a DS-authored .bak with zero Repair Wizard prompts | OPEN.md §11 |
 | ds-network/ds-grid-exchange pls-cadd .bak export | `7a836b7a` | blocker | bug | DS-authored PLS .bak opens into PLS-CADD Repair Wizard: relative FILENAME=.\ member headers mis-rebased on Restore | waiting: Windows native gate (same as 9f2316b3) | OPEN.md §11 |
 | ds-network/ds-grid-exchange pls-cadd .bak export | `6405185d` | major | bug | Correction to 7a836b7a: relative FILENAME=.\ headers are NOT the Repair Wizard trigger (Gisagara round-trip opens clean) | waiting: duplicate of 9f2316b3 / 7a836b7a (Windows native gate) | OPEN.md §11 |
-| ds-network/ds-terrain-sampling | `c668908d` | major | obstacle | Headless terrain sampling lacks adaptive density and independent side profiles | waiting: install of canary 0.1.7-r79+ carrying ds-cli@b3885b75 + ds-network@6b34bf38 | **untracked** |
 | ds-network/dsgrid-exchange | `e258b287` | blocker | obstacle | PLS export plan accepts unsupported edited model but convert cannot emit backup | waiting: install of a release carrying ds-network@99ea9e35 (plan-time forecast of uncharacterized export edit classes), then a replay on a schema-current filed model | OPEN.md §11 |
 | ds-network/grid-model-composition | `07d0cf12` | major | idea | Dynamic ordered master DSGrid model and governed alignment movement | open | **untracked** |
 | ds-network/lv-process | `4bad5ef3` | major | bug | LV processing always renumbers LV line numbers; no setting keeps supplied line_number | open | SEEDING.md §9 |
