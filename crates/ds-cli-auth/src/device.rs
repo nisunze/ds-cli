@@ -1015,6 +1015,13 @@ impl<T: ds_client_core::Transport> DeviceSession<T> {
     ) -> Result<Value, ClientError> {
         fixed_device_call!(self, material_propagation, project, request)
     }
+    pub fn authorize_asset_preview(
+        &mut self,
+        project: &str,
+        request: &ds_command_kernel::asset_preview::Request,
+    ) -> Result<ds_client_core::asset_preview_source::Grant, ClientError> {
+        fixed_device_call!(self, authorize_asset_preview, project, request)
+    }
     pub fn read_asset_bytes(
         &mut self,
         project: &str,

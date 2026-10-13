@@ -1792,6 +1792,61 @@ impl Transport for NativeTransport {
         bounded(response, call.response_limit())
     }
 
+    fn asset_preview_bytes(
+        &mut self,
+        call: ds_client_core::asset_preview_source::DownloadCall<'_>,
+        writer: &mut dyn Write,
+        control: &dyn ds_client_core::asset_preview_source::TransferControl,
+    ) -> Result<
+        ds_client_core::asset_preview_source::DownloadReceipt,
+        ds_client_core::asset_preview_source::TransferError,
+    > {
+        use ds_client_core::asset_preview_source::{DownloadReceipt, TransferError};
+        control.check_current()?;
+        let mut response = ureq::get(call.url())
+            .header("Accept-Encoding", "identity")
+            .config()
+            .max_redirects(0)
+            .http_status_as_error(false)
+            .timeout_connect(Some(CONNECT_TIMEOUT))
+            .timeout_global(Some(Duration::from_secs(call.timeout_seconds())))
+            .build()
+            .call()
+            .map_err(|e| TransferError::from(classify(e)))?;
+        control.check_current()?;
+        let status = response.status().as_u16();
+        let generation = response
+            .headers()
+            .get("x-goog-generation")
+            .and_then(|v| v.to_str().ok())
+            .map(str::to_owned);
+        if status != 200
+            || generation.as_deref() != Some(call.generation())
+            || response
+                .headers()
+                .get("content-encoding")
+                .is_some_and(|v| v.as_bytes() != b"identity")
+            || response
+                .headers()
+                .get("content-length")
+                .and_then(|v| v.to_str().ok())
+                .and_then(|v| v.parse::<u64>().ok())
+                .is_some_and(|size| size != call.response_limit())
+        {
+            return Err(TransferError::SourceChanged);
+        }
+        let size_bytes = stream_preview_body(
+            &mut response.body_mut().as_reader(),
+            writer,
+            call.response_limit(),
+            control,
+        )?;
+        Ok(DownloadReceipt {
+            status,
+            generation,
+            size_bytes,
+        })
+    }
     fn shared_asset_bytes(
         &mut self,
         call: ds_client_core::shared_assets::DownloadCall<'_>,
@@ -3100,5 +3155,128 @@ mod tests {
         assert_eq!(ds_client_core::TILES_METHOD, "POST");
         assert_eq!(ds_client_core::TILE_TIMEOUT_SECONDS, 120);
         assert_eq!(ds_client_core::TILE_RESPONSE_LIMIT, 32 * 1024 * 1024);
+    }
+}
+
+/// Read/write only a source-owned body, bounded by its descriptor. The reader
+/// remains the existing fixed native HTTP adapter; cancellation is checked
+/// between chunks and before publication, not simulated by a dropped promise.
+fn stream_preview_body(
+    reader: &mut dyn Read,
+    writer: &mut dyn Write,
+    total: u64,
+    control: &dyn ds_client_core::asset_preview_source::TransferControl,
+) -> Result<u64, ds_client_core::asset_preview_source::TransferError> {
+    use ds_client_core::asset_preview_source::TransferError;
+    let mut buffer = [0u8; 64 * 1024];
+    let mut received = 0u64;
+    loop {
+        control.check_current()?;
+        let count = reader
+            .read(&mut buffer)
+            .map_err(|_| TransferError::Unreachable)?;
+        control.check_current()?;
+        if count == 0 {
+            break;
+        }
+        received = received
+            .checked_add(count as u64)
+            .ok_or(TransferError::SourceChanged)?;
+        if received > total {
+            return Err(TransferError::SourceChanged);
+        }
+        writer
+            .write_all(&buffer[..count])
+            .map_err(|_| TransferError::WriteFailed)?;
+        control.progress(received, total);
+    }
+    if received != total {
+        return Err(TransferError::SourceChanged);
+    }
+    control.check_current()?;
+    Ok(received)
+}
+
+#[cfg(test)]
+mod asset_preview_stream_tests {
+    use super::*;
+    use ds_client_core::asset_preview_source::{TransferControl, TransferError};
+    use std::sync::atomic::{AtomicBool, AtomicUsize};
+    struct Guard {
+        cancelled: AtomicBool,
+        progress: AtomicUsize,
+        cancel_on_progress: bool,
+    }
+    impl TransferControl for Guard {
+        fn check_current(&self) -> Result<(), TransferError> {
+            if self.cancelled.load(Ordering::SeqCst) {
+                Err(TransferError::Cancelled)
+            } else {
+                Ok(())
+            }
+        }
+        fn progress(&self, _: u64, _: u64) {
+            self.progress.fetch_add(1, Ordering::SeqCst);
+            if self.cancel_on_progress {
+                self.cancelled.store(true, Ordering::SeqCst);
+            }
+        }
+    }
+    fn guard(cancel_on_progress: bool) -> Guard {
+        Guard {
+            cancelled: AtomicBool::new(false),
+            progress: AtomicUsize::new(0),
+            cancel_on_progress,
+        }
+    }
+    #[test]
+    fn verified_source_body_streams_exact_bytes_and_actual_progress() {
+        let bytes = vec![7; 128 * 1024 + 1];
+        let mut output = Vec::new();
+        let control = guard(false);
+        assert_eq!(
+            stream_preview_body(
+                &mut std::io::Cursor::new(&bytes),
+                &mut output,
+                bytes.len() as u64,
+                &control
+            )
+            .unwrap(),
+            bytes.len() as u64
+        );
+        assert_eq!(output, bytes);
+        assert_eq!(control.progress.load(Ordering::SeqCst), 3);
+    }
+    #[test]
+    fn short_or_excess_source_never_reports_complete() {
+        for declared in [2, 4] {
+            let mut output = Vec::new();
+            assert_eq!(
+                stream_preview_body(
+                    &mut std::io::Cursor::new(b"abc"),
+                    &mut output,
+                    declared,
+                    &guard(false)
+                ),
+                Err(TransferError::SourceChanged)
+            );
+        }
+    }
+    #[test]
+    fn native_cancellation_stops_before_a_second_source_chunk() {
+        let bytes = vec![7; 128 * 1024];
+        let mut output = Vec::new();
+        let control = guard(true);
+        assert_eq!(
+            stream_preview_body(
+                &mut std::io::Cursor::new(&bytes),
+                &mut output,
+                bytes.len() as u64,
+                &control
+            ),
+            Err(TransferError::Cancelled)
+        );
+        assert_eq!(output.len(), 64 * 1024);
+        assert_eq!(control.progress.load(Ordering::SeqCst), 1);
     }
 }

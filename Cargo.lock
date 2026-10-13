@@ -1035,6 +1035,7 @@ dependencies = [
  "ds-edge-authority",
  "ds-layer-store",
  "ds-project-data",
+ "ds-report-host",
  "ds-solar-contracts",
  "ds-solar-io",
  "ds-sync-runtime",

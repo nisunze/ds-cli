@@ -31,9 +31,10 @@ ds-brain's `index` meta (`generation`, `built_at`, `checked_at`, `rebuilt`,
 names them in `sources_omitted` with `reason: edge_only`; any other source
 the served tree itself did not load is named with `reason: not_in_index`.
 
-A `sys:` id given to `read`, `preview`, `promote` or `tree --into` is refused by name
-(`origin_read_unavailable`) — a projected row's bytes are read from the
-surface that owns it.
+A `sys:` id given to ordinary `read`, `preview`, `promote` or `tree --into`
+is refused by name (`origin_read_unavailable`): a projected row's bytes come
+from the surface that owns it. The explicit whole-PDF `preview --retain`
+consumer below admits PM attachments through that existing source authority.
 
 The bytes are somewhere else again — project storage, behind a fresh
 short-lived signed read minted per access after an authority check. Nothing
@@ -88,6 +89,35 @@ same declaration. Renaming does not require retaining duplicate current maps.
 ds assets map publish --project <exact-id> --file /prints/Kyabe-A3.pdf --tag city=kyabe \
   --replaces a_123456789abc --yes --output json
 ```
+
+## Retaining one selected PDF
+
+`assets preview --retain` consumes one whole catalogue PDF or
+`sys:pm_attachment:<exact-id>` PDF through the shared native file room. It
+resolves a fresh source-owned grant online, streams its exact storage generation,
+then returns a PDF document and file receipt with the source revision, generation
+and measured SHA. A nullable source-advertised SHA stays distinct from that
+measured SHA. No signed URL is retained or returned by this preview.
+
+```bash
+ds assets preview --project <exact-id> --asset sys:pm_attachment:<exact-id> --retain --output json
+ds assets preview --project <exact-id> --asset sys:pm_attachment:<exact-id> --retain --offline \
+  --expected-revision <receipt-revision> --expected-generation <receipt-generation> \
+  --expected-sha256 <receipt-measured-sha> --output json
+```
+
+The first online read can omit expected pins. Offline requires all three native
+pins and uses only the protected local account/project/audience fence and verified
+retained receipt: no source request or credential refresh. Each online consumption
+authorizes the source; concurrent/repeated consumption shares the byte acquisition
+and decode. Known source denial revokes the existing file admission before cleanup;
+foreign files can prevent cleanup without keeping that preview readable. Only fresh
+authorization and completely verified bytes can admit it again.
+
+The PDF limit is 32 MiB. Retention defaults to `24h`; `--preview-retention 7d`
+is explicit. Expired, changed, revoked or corrupt files refuse rather than silently
+substituting another source. Member, worksheet, page, text and grid options belong
+to ordinary preview and cannot be combined with `--retain`.
 
 ## The shape of a session
 

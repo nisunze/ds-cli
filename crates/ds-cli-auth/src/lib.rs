@@ -5,6 +5,7 @@
 //! project response contract remain exclusively in `ds-client-core`.
 
 pub mod account;
+pub mod asset_preview_source;
 mod context;
 pub mod correspondence;
 pub mod device;

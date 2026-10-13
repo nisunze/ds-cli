@@ -16,6 +16,7 @@ ds-cli-contract = { workspace = true }
 ds-cli-desktop = { workspace = true }
 ds-client-core = { workspace = true }
 ds-project-data = { path = "../../../ds-command-kernel/crates/ds-project-data" }
+ds-report-host = { path = "../../../ds-command-kernel/crates/ds-report-host" }
 ds-layer-store = { path = "../../../ds-command-kernel/crates/ds-layer-store" }
 ds-edge-authority = { workspace = true }
 ds-sync-runtime = { workspace = true }

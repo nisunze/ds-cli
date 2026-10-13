@@ -10,7 +10,7 @@ use ds_cli_contract::spec::{
     Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
-use serde_json::{Map, Value, json};
+use serde_json::{json, Map, Value};
 
 use crate::{ASSET_ARG, LANE_ARG, MEMBER_ARG, PAGES_ARG, PROJECT_ARG, ROWS_ARG, SHEET_ARG};
 
@@ -99,7 +99,7 @@ fn pdf_failure(error: ds_assets_pdf_host::Error) -> Failure {
 pub static COMMAND: Command = Command {
     id: "assets.preview",
     path: &["assets", "preview"],
-    contract: 1,
+    contract: 2,
     summary: "Preview one asset, or one pack member, as a bounded document.",
     purpose: "\
 Read signed catalogue bytes as text, grids, headers, geometry or metadata, \
@@ -109,18 +109,24 @@ range, at most 5 actual pages, last at most 10000. --pages/--rows select \
 ordinary preview only. Fixed Linux Poppler/prlimit required; other hosts or \
 missing helpers refuse. Decoder byte, page and resource limits are in the reference. \
 No OCR, annotations, layout reconstruction or partial text. \
-Encrypted/malformed content refused. sys: bytes unavailable. Headless.",
+Encrypted/malformed content refused. --retain consumes a whole catalogue or PM PDF through the common native file room; fresh online source authorization, exact storage generation and measured SHA; no URL is returned. --offline with all native pins makes zero source or auth-refresh calls. Other sys: bytes remain unavailable. Headless.",
     chapter: Chapter::Assets,
     effect: Effect::ReadOnly,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
     args: &[
         ASSET_ARG,
+        crate::retained_preview::RETAIN,
+        crate::retained_preview::OFFLINE,
+        crate::retained_preview::REVISION,
+        crate::retained_preview::GENERATION,
+        crate::retained_preview::SHA,
+        crate::retained_preview::RETENTION,
         MEMBER_ARG,
         SHEET_ARG,
-        PAGES_ARG,
+        Arg { default: None, ..PAGES_ARG },
         PDF_TEXT_PAGES,
-        ROWS_ARG,
+        Arg { default: None, ..ROWS_ARG },
         LANE_ARG,
         PROJECT_ARG,
     ],
@@ -130,7 +136,7 @@ format-specific blocks/grid/headers/features/meta and truncated counts. \
 PDF text: `ds.assets.pdf_text/v1`, asset_id, source_digest, source_bytes, \
 total_pages, first_page, last_page, pages[{page,text,text_bytes}], \
 total_text_bytes, truncated:false, notes. Empty text is not proof of an \
-empty image.",
+empty image. Retained PDF: ds.asset-preview.receipt/v1 with exact source revision/generation, optional advertised SHA, measured SHA, native PDF document, scoped file artifact and reuse/expiry receipt.",
     examples: &[
         Example {
             command: "ds assets preview --project <exact-id> --asset a_7kq3nr2v0b1c --member Lot3/gis/poles.shp --output json",
@@ -143,7 +149,7 @@ empty image.",
             runnable: false,
         },
     ],
-    refusals: &crate::refusals::<36>(&[
+    refusals: &crate::refusals::<52>(&[
         crate::INVALID_NUMBER,
         crate::INVALID_ASSET_ID,
         crate::INVALID_MEMBER,
@@ -158,6 +164,10 @@ empty image.",
         PDF_REFUSALS[4],
         PDF_REFUSALS[5],
         PDF_REFUSALS[6],
+        crate::retained_preview::REFUSALS[0],crate::retained_preview::REFUSALS[1],crate::retained_preview::REFUSALS[2],crate::retained_preview::REFUSALS[3],
+        crate::retained_preview::REFUSALS[4],crate::retained_preview::REFUSALS[5],crate::retained_preview::REFUSALS[6],crate::retained_preview::REFUSALS[7],
+        crate::retained_preview::REFUSALS[8],crate::retained_preview::REFUSALS[9],crate::retained_preview::REFUSALS[10],crate::retained_preview::REFUSALS[11],
+        crate::retained_preview::REFUSALS[12],crate::retained_preview::REFUSALS[13],crate::retained_preview::REFUSALS[14],crate::retained_preview::REFUSALS[15],
     ]),
     reference: Some("docs/reference/assets.md"),
     search: &[],
@@ -204,13 +214,13 @@ fn arguments(inputs: &Inputs) -> Result<Value, Failure> {
     {
         arguments.insert("sheet".into(), json!(sheet));
     }
-    if let Some(pages) = inputs.value("pages") {
+    if let Some(pages) = inputs.value("pages").or(PAGES_ARG.default) {
         arguments.insert(
             "pages".into(),
             json!(crate::integer(pages, "pages", 1, crate::MAX_PREVIEW_PAGES)?),
         );
     }
-    if let Some(rows) = inputs.value("rows") {
+    if let Some(rows) = inputs.value("rows").or(ROWS_ARG.default) {
         arguments.insert(
             "rows".into(),
             json!(crate::integer(rows, "rows", 1, crate::MAX_PREVIEW_ROWS)?),
@@ -220,6 +230,9 @@ fn arguments(inputs: &Inputs) -> Result<Value, Failure> {
 }
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
+    if let Some(request) = crate::retained_preview::request(inputs)? {
+        return crate::retained_preview::run(inputs, &request);
+    }
     let arguments = arguments(inputs)?;
     let lane = inputs.value("lane").unwrap_or("stable");
     let project = inputs.require("project")?;
@@ -304,6 +317,17 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
 }
 
 pub fn render(data: &Value) -> String {
+    if data["schema"] == ds_command_kernel::asset_preview::RECEIPT_SCHEMA {
+        let mut document = data["document"].clone();
+        document["asset_id"] = data["source"]["asset_id"].clone();
+        return format!(
+            "{}Native file: {} ? {} ? {}\n",
+            render(&document),
+            text_of(&data["source"]["revision"]),
+            text_of(&data["source"]["generation"]),
+            text_of(&data["measured_sha256"])
+        );
+    }
     if data["schema"] == "ds.assets.pdf_text/v1" {
         let mut output = format!(
             "{} · PDF text pages {}:{} of {}\n",

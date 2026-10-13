@@ -64,6 +64,7 @@ pub mod folder;
 pub mod ingest;
 pub mod list;
 pub mod preview;
+mod retained_preview;
 pub mod promote;
 pub mod read;
 pub mod shared;
