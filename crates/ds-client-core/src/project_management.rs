@@ -34,6 +34,7 @@ pub mod checklist;
 pub mod create_attached;
 pub mod documents;
 mod overview;
+pub mod project_notes;
 
 use crate::{
     authorized::Authority, AuthorizedTransport, ClientError, ClientProfile, ErrorKind,
@@ -188,6 +189,8 @@ fn attachment_media_type(name: &str) -> &'static str {
 /// One governed project-management action.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Command {
+    /// Closed shared project memory through the same fixed PM authority.
+    ProjectNotes { command: project_notes::Command },
     /// The project's whole canonical graph, at its current revision.
     ///
     /// There is no narrower read: ds-brain answers the graph whole, and every
@@ -357,6 +360,7 @@ fn wire_command_valid(command: &Value) -> bool {
 impl Command {
     fn action(&self) -> &'static str {
         match self {
+            Self::ProjectNotes { command } => command.action(),
             Self::Graph | Self::Overview { .. } => "get_graph",
             Self::PublicProjects { .. } => "list_public_projects",
             Self::TaskCommentCreate { .. } => "create_comment",
@@ -383,6 +387,7 @@ impl Command {
     pub fn validate(&self) -> Result<(), ClientError> {
         let invalid = |message: &'static str| ClientError::new(ErrorKind::InvalidInput, message);
         match self {
+            Self::ProjectNotes { command } => command.validate().map_err(|_| invalid("Project Notes request is invalid")),
             Self::Graph | Self::Assignees => Ok(()),
             Self::Overview { options } => options.validate().map_err(|_| {
                 ClientError::new(
@@ -589,6 +594,7 @@ impl Command {
     fn payload(&self, project: &str) -> Value {
         let mut payload = json!({ "action": self.action(), "ds_project": project });
         match self {
+            Self::ProjectNotes { command } => return command.payload(project).expect("validated closed Project Notes request"),
             Self::Graph | Self::Assignees | Self::Overview { .. } => {}
             Self::TaskDetach { request } => return request.payload(project),
             Self::TaskAttach { task_id, file } => {
@@ -986,6 +992,9 @@ pub(crate) fn run<T: AuthorizedTransport>(
         readable_project(project)?
     };
     command.validate()?;
+    if let Command::ProjectNotes { command } = command {
+        return project_notes::run(profile, transport, authority, project, command);
+    }
     if let Command::Overview { options } = command {
         return overview::run(profile, transport, authority, project, options);
     }
@@ -1059,7 +1068,8 @@ pub(crate) fn run<T: AuthorizedTransport>(
             .unwrap_or(data),
         // Context creation returns `{item: <PMDoc>}` intact, including the
         // server-authored id and version for callers to shape.
-        Command::Overview { .. }
+        Command::ProjectNotes { .. }
+        | Command::Overview { .. }
         | Command::PublicProjects { .. }
         | Command::TaskCommentCreate { .. }
         | Command::ProjectNoteCreate { .. }
