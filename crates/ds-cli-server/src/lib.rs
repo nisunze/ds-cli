@@ -1,6 +1,7 @@
 //! Thin command/HTTP host for the shared native compute runtime.
 mod auth;
 pub mod modules;
+pub mod desktop_update;
 // The HTTP host and the layer binding are reachable from an integration test
 // so the isolation proof can stand up a real owner-only socket over a fixture
 // identity and a fixture document source. Nothing here is a supported API:
@@ -876,6 +877,7 @@ pub static DOMAIN: Domain = Domain {
         &ENGINE,
         &modules::INVENTORY,
         &modules::RELEASE,
+        &desktop_update::INSPECT,
         &SERVE,
         &SUBMIT,
         &SOLAR_SUBMIT,

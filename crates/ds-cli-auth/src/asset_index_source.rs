@@ -37,11 +37,15 @@ impl Source for Provider<'_> {
         }
         Ok(())
     }
-    fn capture(&mut self) -> Result<Capture, Failure> {
+    fn capture(&mut self, known_basis: Option<&str>) -> Result<Capture, Failure> {
+        let command = match known_basis {
+            Some(basis) => Command::ConditionalIndexList { list: self.list.clone(), known_basis: basis.to_owned() },
+            None => Command::IndexList(self.list.clone()),
+        };
         let captured = project_assets_for_project(
             self.lane,
             self.project,
-            &Command::IndexList(self.list.clone()),
+            &command,
             None,
         )?;
         if captured.identity().uid() != self.binding.uid
