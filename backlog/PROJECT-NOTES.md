@@ -24,6 +24,8 @@ Identify each note’s project, authoring user or agent, session reference when 
 
 Distinguish explicit user instructions and decisions from LLM observations, proposals, and inferences. Never present an inference as an agreed decision or invent missing provenance.
 
+Owner clarification, 13 October 2026: model-authored notes and other PM work may voluntarily declare the authoring model, its version and strength when known. Label this metadata as self-declared; do not treat it as verified identity or authority, guess missing labels, require it for human work, or conflate the filing model with the human source of a decision. Keep the authenticated user separately. Retain declarations in recoverable authored versions; a later human edit must not inherit the previous model as its current writer.
+
 Make scope explicit: project-wide, a design or asset, a workstream, particular structures or conditions, or a user preference. Do not turn a local exception into a universal rule.
 
 4. Versioning and decision history
