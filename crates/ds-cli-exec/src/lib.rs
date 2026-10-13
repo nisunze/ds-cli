@@ -81,6 +81,13 @@ pub struct CapturedExternal {
 }
 
 impl CapturedExternal {
+    /// Canonical executable captured for this accepted run. Native hosts may
+    /// reuse their bounded process collectors without resolving an active module
+    /// pointer again or requiring the module in their application bundle.
+    pub fn executable(&self) -> &Path {
+        &self.executable
+    }
+
     pub fn call(
         &self,
         subcommand: &'static str,
@@ -620,6 +627,7 @@ mod tests {
         assert!(!second.with_extension("calls").exists());
         fs::remove_file(&active).unwrap();
         std::os::unix::fs::symlink(&second, &active).unwrap();
+        assert_eq!(held.executable(), fs::canonicalize(&first).unwrap());
         assert_eq!(
             held.call("build-info", &[], Duration::from_secs(2))
                 .unwrap()
