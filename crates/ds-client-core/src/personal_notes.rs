@@ -4,11 +4,22 @@ use crate::project_management::checklist::Edit;
 use crate::{authorized::Authority, AuthorizedTransport, ClientError, ClientProfile, ErrorKind};
 use serde_json::{json, Value};
 
+mod draft;
+pub use draft::Draft;
+
 pub const MAX_RESPONSE_BYTES: usize = 8 << 20;
 pub const MAX_REQUEST_BYTES: usize = 512 << 10;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Action {
+    Create {
+        draft: Draft,
+    },
+    Update {
+        id: String,
+        expected_version: i64,
+        draft: Draft,
+    },
     List {
         include_archived: bool,
         include_trashed: bool,
@@ -65,6 +76,21 @@ fn invalid() -> ClientError {
 impl Action {
     pub fn validate(&self) -> Result<(), ClientError> {
         let id = match self {
+            Self::Create { draft } => {
+                draft.validate(true)?;
+                None
+            }
+            Self::Update {
+                id,
+                expected_version,
+                draft,
+            } => {
+                if !(1..i64::MAX).contains(expected_version) {
+                    return Err(invalid());
+                }
+                draft.validate(false)?;
+                Some(id)
+            }
             Self::List { .. } => None,
             Self::Read { id } | Self::Versions { id } | Self::ChecklistRead { id } => Some(id),
             Self::ReadVersion { id, source_version } => {
@@ -128,6 +154,14 @@ impl Action {
     }
     pub fn payload(&self) -> Value {
         match self {
+            Self::Create { draft } => json!({"action":"create","note":draft}),
+            Self::Update {
+                id,
+                expected_version,
+                draft,
+            } => {
+                json!({"action":"update","id":id,"expected_version":expected_version,"note":draft})
+            }
             Self::List {
                 include_archived,
                 include_trashed,
@@ -169,7 +203,8 @@ impl Action {
     }
     fn id(&self) -> &str {
         match self {
-            Self::List { .. } => "",
+            Self::List { .. } | Self::Create { .. } => "",
+            Self::Update { id, .. } => id,
             Self::Read { id }
             | Self::Retire { id, .. }
             | Self::Restore { id, .. }
@@ -217,6 +252,24 @@ fn decode(action: &Action, response: crate::TransportResponse) -> Result<Value, 
         return Err(unreadable());
     }
     match action {
+        Action::Create { draft } => {
+            validate_note(&data["note"], None)?;
+            if data["note"]["version"] != 1 {
+                return Err(unreadable());
+            }
+            draft.verify_authored_receipt(&data["note"])?;
+        }
+        Action::Update {
+            expected_version,
+            draft,
+            ..
+        } => {
+            validate_note(&data["note"], Some(action.id()))?;
+            if data["note"]["version"].as_i64() != Some(expected_version + 1) {
+                return Err(unreadable());
+            }
+            draft.verify_authored_receipt(&data["note"])?;
+        }
         Action::List {
             include_archived,
             include_trashed,
@@ -457,6 +510,38 @@ mod tests {
     }
     fn note(id: &str, version: i64, trashed: bool) -> Value {
         json!({"id":id,"version":version,"archived":false,"trashed":trashed})
+    }
+    #[test]
+    fn authored_receipts_fence_draft_id_version_and_content() {
+        let draft: Draft=serde_json::from_value(json!({"title":"  Private  ","content":{"markdown":"Reviewed body"},"tags":["Field","field"]})).unwrap();
+        let mut authored = note("new-note", 1, false);
+        authored["title"] = json!("Private");
+        authored["content"] = json!({"format":"markdown","markdown":"Reviewed body"});
+        authored["tags"] = json!(["field"]);
+        authored["pinned"] = json!(false);
+        authored["checklist"] = json!([]);
+        authored["canvas"] = json!({"x":0,"y":0,"width":300,"height":240,"z":0,"color":"sand"});
+        let create = Action::Create {
+            draft: draft.clone(),
+        };
+        create.validate().unwrap();
+        assert_eq!(create.payload()["action"], "create");
+        assert!(create.payload().get("id").is_none());
+        assert!(decode(&create, response(json!({"note":authored.clone()}))).is_ok());
+        authored["content"]["markdown"] = json!("Another draft");
+        assert!(decode(&create, response(json!({"note":authored.clone()}))).is_err());
+        authored["content"]["markdown"] = json!("Reviewed body");
+        authored["version"] = json!(2);
+        assert!(decode(&create, response(json!({"note":authored.clone()}))).is_err());
+        let update = Action::Update {
+            id: "new-note".into(),
+            expected_version: 1,
+            draft,
+        };
+        update.validate().unwrap();
+        assert!(decode(&update, response(json!({"note":authored.clone()}))).is_ok());
+        authored["id"] = json!("another-note");
+        assert!(decode(&update, response(json!({"note":authored}))).is_err());
     }
     #[test]
     fn private_controls_admit_only_closed_bounded_intent() {
