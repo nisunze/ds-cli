@@ -531,6 +531,18 @@
             "backend": "ds_brain_bulk_url"
           },
           "resolution": { "web": "gateway", "desktop": "gateway" }
+        },
+        "semantic_finalize": {
+          "summary": "Commit one exact externally extracted PDF Markdown derivative without changing source version or index.",
+          "transport": "json",
+          "action_key": "action",
+          "actions": ["finalize_asset_semantic"],
+          "idempotency": "idempotent_with_key",
+          "retry_class": "none",
+          "timeout_s": 120,
+          "response_cap_bytes": 1048576,
+          "gateway": { "method": "POST", "path": "/bulk/api/v1/data", "backend": "ds_brain_bulk_url" },
+          "resolution": { "web": "gateway", "desktop": "gateway" }
         }
       }
     },

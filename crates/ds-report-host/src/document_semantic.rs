@@ -82,6 +82,16 @@ pub fn selection(
     control: &dyn asset_preview::Control,
 ) -> Result<Selection, HostFailure> {
     let held = admitted_source(room, receipt, control)?;
+    selection_from_receipt(&room.scope.project, held, extractor)
+}
+fn selection_from_receipt(
+    project: &str,
+    held: asset_preview::Receipt,
+    extractor: Extractor,
+) -> Result<Selection, HostFailure> {
+    if held.source.project_id != project {
+        return Err(fail("semantic manifest belongs to another project"));
+    }
     let (kind, prefix) = match held.source.source_kind.as_str() {
         "catalogue_asset" => (SourceKind::CatalogueAsset, "catalogue-version:"),
         "pm_attachment" => (SourceKind::PmAttachment, "pm-version:"),
@@ -110,8 +120,24 @@ pub fn selection(
         },
         extractor,
     };
-    selection.validate(&room.scope.project).map_err(fail)?;
+    selection.validate(project).map_err(fail)?;
     Ok(selection)
+}
+/// Check a captured export manifest without acquiring source bytes or authority.
+/// Its selection must match the actual native receipt; online consumers still
+/// use source authority, and offline consumers require an exact retained result.
+pub fn validate_export(project: &str, export: &Export) -> Result<(), HostFailure> {
+    let selected = selection_from_receipt(
+        project,
+        export.native_source.clone(),
+        export.selection.extractor.clone(),
+    )?;
+    if selected != export.selection {
+        return Err(fail(
+            "semantic export selection differs from its native source receipt",
+        ));
+    }
+    Ok(())
 }
 pub fn export(
     room: &Room,
@@ -387,6 +413,11 @@ mod tests {
         let out = dir.path().join("export.pdf");
         let result = export(&r, &held, extractor(), out.to_str().unwrap(), &Guard).unwrap();
         assert_eq!(fs::read(out).unwrap(), PDF);
+        validate_export("project", &result).unwrap();
+        assert!(validate_export("foreign", &result).is_err());
+        let mut mismatched = result.clone();
+        mismatched.selection.source.generation += 1;
+        assert!(validate_export("project", &mismatched).is_err());
         assert_eq!(result.selection.source.version, 7);
         assert_eq!(result.selection.source.generation, 29);
         assert_eq!(

@@ -91,7 +91,7 @@ pub trait Source {
     /// Protected local identity only: no refresh, directory or source acquisition.
     fn check_binding(&mut self) -> Result<(), Self::Error>;
     /// One explicit, authenticated index acquisition through the admitted client.
-    fn capture(&mut self) -> Result<Capture, Self::Error>;
+    fn capture(&mut self, known_basis: Option<&str>) -> Result<Capture, Self::Error>;
     fn access_refused(&self, error: &Self::Error) -> bool;
     fn verify_page(&self, value: &Value) -> Result<(), Self::Error>;
 }
@@ -282,7 +282,11 @@ pub fn consume<S: Source>(
     if offline {
         return Err(Error::AcquisitionRequired);
     }
-    let capture = match source.capture() {
+    let known_basis = page
+        .as_ref()
+        .filter(|p| !refresh && !state.denied && p.epoch == state.epoch)
+        .and_then(|p| p.value["basis"].as_str());
+    let mut capture = match source.capture(known_basis) {
         Ok(c) => c,
         Err(error) => {
             if source.access_refused(&error) {
@@ -295,6 +299,28 @@ pub fn consume<S: Source>(
     source.check_binding().map_err(Error::Source)?;
     if !binding.accepts(&capture.scope) {
         return Err(Error::Superseded);
+    }
+    if capture.value["not_modified"] == true {
+        let held = page
+            .as_ref()
+            .ok_or_else(|| local("assets_retained_receipt_invalid"))?;
+        if capture.scope != held.scope
+            || held.epoch != state.epoch
+            || !ds_command_kernel::freshness::is_fresh(known_basis, capture.value["basis"].as_str())
+            || known_basis.is_none()
+            || capture.value["index"]["generation"] != held.value["index"]["generation"]
+            || !capture.value["assets"]
+                .as_array()
+                .is_some_and(Vec::is_empty)
+            || capture.value["more"] != false
+            || !capture.value["next_cursor"].is_null()
+        {
+            return Err(local("assets_retained_receipt_invalid"));
+        }
+        // The receipt is qualified metadata, never an empty replacement page.
+        let index = capture.value["index"].clone();
+        capture.value = held.value.clone();
+        capture.value["index"] = index;
     }
     source.verify_page(&capture.value).map_err(Error::Source)?;
     let id = identity(&capture.scope, &query).map_err(local)?;
@@ -418,6 +444,10 @@ mod tests {
         reject: bool,
         change: bool,
         during: Option<Box<dyn FnOnce() + Send>>,
+        with_basis: bool,
+        changed: bool,
+        requested_bases: Vec<Option<String>>,
+        receipt_edit: Option<Box<dyn FnOnce(&mut Capture) + Send>>,
     }
     impl Fake {
         fn new(b: Binding, calls: Arc<AtomicUsize>) -> Self {
@@ -428,6 +458,10 @@ mod tests {
                 reject: false,
                 change: false,
                 during: None,
+                with_basis: false,
+                changed: false,
+                requested_bases: Vec::new(),
+                receipt_edit: None,
             }
         }
     }
@@ -441,7 +475,8 @@ mod tests {
                 Ok(())
             }
         }
-        fn capture(&mut self) -> Result<Capture, Self::Error> {
+        fn capture(&mut self, known_basis: Option<&str>) -> Result<Capture, Self::Error> {
+            self.requested_bases.push(known_basis.map(str::to_owned));
             let n = self.calls.fetch_add(1, Ordering::SeqCst) + 1;
             if let Some(during) = self.during.take() {
                 during();
@@ -449,10 +484,27 @@ mod tests {
             if self.reject {
                 return Err("denied");
             }
-            Ok(Capture {
+            let mut capture = Capture {
                 scope: scope(&self.b),
                 value: json!({"assets":[],"more":false,"index":{"generation":n},"call":n}),
-            })
+            };
+            if self.with_basis {
+                let basis = if self.changed {
+                    "b".repeat(64)
+                } else {
+                    "a".repeat(64)
+                };
+                let index = json!({"generation":if !self.changed && known_basis.is_some() {1} else {n}, "checked_at":n, "stale_sources":["grid_exports"], "truncated_sources":[{"source":"survey_media","bound":10,"actual":12}]});
+                capture.value = if known_basis.is_some() && !self.changed {
+                    json!({"assets":[],"more":false,"not_modified":true,"basis":basis,"index":index})
+                } else {
+                    json!({"assets":[{"name":format!("row-{n}")}],"more":true,"next_cursor":"g1:2","basis":basis,"index":index})
+                };
+            }
+            if let Some(edit) = self.receipt_edit.take() {
+                edit(&mut capture);
+            }
+            Ok(capture)
         }
         fn access_refused(&self, e: &&str) -> bool {
             *e == "denied"
@@ -468,6 +520,105 @@ mod tests {
     fn query() -> Value {
         json!({"order":"recent","limit":50})
     }
+    #[test]
+    fn stale_active_conditional_preserves_rows_cursor_and_qualified_metadata() {
+        let root = tempfile::tempdir().unwrap();
+        let b = binding();
+        let calls = Arc::new(AtomicUsize::new(0));
+        let mut source = Fake::new(b.clone(), calls.clone());
+        source.with_basis = true;
+        let cold = consume(root.path(), &b, query(), false, 1000, &mut source).unwrap();
+        consume(root.path(), &b, query(), false, 2000, &mut source).unwrap();
+        consume(root.path(), &b, query(), true, 900000, &mut source).unwrap();
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        let checked = consume(root.path(), &b, query(), false, 400000, &mut source).unwrap();
+        for field in ["assets", "more", "next_cursor"] {
+            assert_eq!(checked[field], cold[field]);
+        }
+        assert_eq!(checked["index"]["checked_at"], 2);
+        assert_eq!(checked["index"]["stale_sources"], json!(["grid_exports"]));
+        assert_eq!(checked["index"]["truncated_sources"][0]["actual"], 12);
+        assert_eq!(checked["retained"]["current_source_verified"], false);
+        assert_eq!(checked["retained"]["current_authorization_verified"], true);
+        source.changed = true;
+        let changed = consume(root.path(), &b, query(), false, 800000, &mut source).unwrap();
+        assert_eq!(changed["assets"][0]["name"], "row-3");
+        assert_eq!(changed["basis"], "b".repeat(64));
+        let mut refresh = query();
+        refresh["refresh"] = json!(true);
+        consume(root.path(), &b, refresh, false, 801000, &mut source).unwrap();
+        assert_eq!(
+            source.requested_bases,
+            vec![None, Some("a".repeat(64)), Some("a".repeat(64)), None]
+        );
+        assert_eq!(calls.load(Ordering::SeqCst), 4);
+    }
+    #[test]
+    fn legacy_without_basis_acquires_full_page_without_claiming_unchanged() {
+        let root = tempfile::tempdir().unwrap();
+        let b = binding();
+        let calls = Arc::new(AtomicUsize::new(0));
+        let mut source = Fake::new(b.clone(), calls.clone());
+        consume(root.path(), &b, query(), false, 1000, &mut source).unwrap();
+        source.with_basis = true;
+        let acquired = consume(root.path(), &b, query(), false, 400000, &mut source).unwrap();
+        assert_eq!(acquired["assets"][0]["name"], "row-2");
+        assert_eq!(source.requested_bases, vec![None, None]);
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
+    }
+    #[test]
+    fn malformed_conditional_receipts_never_replace_the_held_body() {
+        for edit in 0..5 {
+            let root = tempfile::tempdir().unwrap();
+            let b = binding();
+            let calls = Arc::new(AtomicUsize::new(0));
+            let mut source = Fake::new(b.clone(), calls.clone());
+            source.with_basis = true;
+            let held = consume(root.path(), &b, query(), false, 1000, &mut source).unwrap();
+            source.receipt_edit = Some(Box::new(move |receipt| match edit {
+                0 => receipt.value["basis"] = json!("b".repeat(64)),
+                1 => receipt.value["index"]["generation"] = json!(9),
+                2 => receipt.scope.email = "other@example.com".into(),
+                3 => receipt.value["assets"] = json!([{"name":"injected"}]),
+                _ => receipt.value["next_cursor"] = json!("injected"),
+            }));
+            assert!(consume(root.path(), &b, query(), false, 400000, &mut source).is_err());
+            assert_eq!(
+                consume(root.path(), &b, query(), true, 401000, &mut source).unwrap()["assets"],
+                held["assets"]
+            );
+            assert_eq!(calls.load(Ordering::SeqCst), 2);
+        }
+    }
+    #[test]
+    fn conditional_capture_cannot_publish_after_known_invalidation_or_denial() {
+        let root = tempfile::tempdir().unwrap();
+        let b = binding();
+        let calls = Arc::new(AtomicUsize::new(0));
+        let mut source = Fake::new(b.clone(), calls.clone());
+        source.with_basis = true;
+        consume(root.path(), &b, query(), false, 1000, &mut source).unwrap();
+        let path = root.path().to_owned();
+        let during_b = b.clone();
+        source.during = Some(Box::new(move || {
+            assert!(invalidate(&path, &during_b).unwrap());
+        }));
+        assert!(matches!(
+            consume(root.path(), &b, query(), false, 400000, &mut source),
+            Err(Error::Superseded)
+        ));
+        source.reject = true;
+        assert!(matches!(
+            consume(root.path(), &b, query(), false, 401000, &mut source),
+            Err(Error::Source("denied"))
+        ));
+        assert!(matches!(
+            consume(root.path(), &b, query(), true, 402000, &mut source),
+            Err(Error::AcquisitionRequired)
+        ));
+        assert_eq!(calls.load(Ordering::SeqCst), 3);
+    }
+
     #[test]
     fn cold_warm_offline_and_changed_have_exact_acquisition_counts() {
         let root = tempfile::tempdir().unwrap();

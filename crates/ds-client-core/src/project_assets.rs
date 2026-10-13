@@ -186,6 +186,12 @@ pub enum Command {
     /// One page of the project's assets index: catalogued and projected rows,
     /// versions folded into their object, in `order`.
     IndexList(IndexList),
+    /// One active consumer checks the exact held index basis. This response
+    /// may be an unchanged receipt, never an empty page to publish by itself.
+    ConditionalIndexList {
+        list: IndexList,
+        known_basis: String,
+    },
     /// The whole index tree — the kernel's `ds.assets.tree/v1`, system
     /// folders included — as ds-brain serves it after redaction.
     IndexTree { refresh: bool },
@@ -234,6 +240,8 @@ pub enum Command {
     /// caller in one streaming pass so a 200 MiB pack never sits in memory
     /// twice.
     Ingest(IngestRequest),
+    /// Exact metadata reads or explicit import of an external PDF derivative.
+    Semantic(ds_command_kernel::assets::semantic::Command),
 }
 
 /// The order one index page is read in (assets-index §5.1).
@@ -300,7 +308,7 @@ impl Command {
     fn action(&self) -> &'static str {
         match self {
             Self::Folders | Self::IndexTree { .. } => "tree",
-            Self::List { .. } | Self::IndexList(_) => "list",
+            Self::List { .. } | Self::IndexList(_) | Self::ConditionalIndexList { .. } => "list",
             Self::Get { .. } | Self::IndexGet { .. } => "get",
             Self::Download { .. } => "download",
             Self::FolderCreate { .. } => "folder_create",
@@ -309,6 +317,7 @@ impl Command {
             Self::Attach { detach: false, .. } => "attach",
             Self::Attach { detach: true, .. } => "detach",
             Self::Ingest(_) => "ingest_start",
+            Self::Semantic(command) => command.action(),
         }
     }
 
@@ -317,6 +326,11 @@ impl Command {
     pub fn validate(&self, project: &str) -> Result<(), ClientError> {
         if !token(project) {
             return Err(invalid("project assets need the project they act on"));
+        }
+        if let Self::Semantic(command) = self {
+            command
+                .payload(project)
+                .map_err(|_| invalid("invalid pinned PDF semantic request"))?;
         }
         if self.well_formed() {
             Ok(())
@@ -331,7 +345,7 @@ impl Command {
     /// catalogue's vocabulary.
     fn well_formed(&self) -> bool {
         match self {
-            Self::Folders => true,
+            Self::Folders | Self::Semantic(_) => true,
             Self::List {
                 folder_id,
                 kind,
@@ -358,6 +372,11 @@ impl Command {
                     && choice(&list.sensitivity, &SENSITIVITIES)
                     && optional(&list.since, 64)
                     && optional(&list.cursor, MAX_INDEX_CURSOR_CHARS)
+            }
+            Self::ConditionalIndexList { list, known_basis } => {
+                !list.refresh
+                    && basis_valid(known_basis)
+                    && Self::IndexList(list.clone()).well_formed()
             }
             Self::IndexTree { .. } => true,
             Self::IndexGet { asset_id } => minted(asset_id) || projected(asset_id),
@@ -432,6 +451,11 @@ impl Command {
     }
 
     fn payload(&self, project: &str) -> Value {
+        if let Self::Semantic(command) = self {
+            return command
+                .payload(project)
+                .expect("validated pinned semantic request");
+        }
         let mut payload = json!({ "action": self.action(), "ds_project": project });
         let put = |payload: &mut Value, key: &str, value: &Option<String>| {
             if let Some(value) = value {
@@ -471,6 +495,10 @@ impl Command {
                 if list.refresh {
                     payload["refresh"] = json!(true);
                 }
+            }
+            Self::ConditionalIndexList { list, known_basis } => {
+                payload = Self::IndexList(list.clone()).payload(project);
+                payload["known_basis"] = json!(known_basis);
             }
             Self::IndexTree { refresh } => {
                 payload["view"] = json!("index");
@@ -536,6 +564,7 @@ impl Command {
                 payload["asset_id"] = json!(asset_id);
                 payload["link"] = link.clone();
             }
+            Self::Semantic(_) => unreachable!("semantic payload returned above"),
             Self::Ingest(ingest) => {
                 let mut start = json!({
                     "name": ingest.name,
@@ -555,7 +584,10 @@ impl Command {
     pub fn is_index(&self) -> bool {
         matches!(
             self,
-            Self::IndexList(_) | Self::IndexTree { .. } | Self::IndexGet { .. }
+            Self::IndexList(_)
+                | Self::ConditionalIndexList { .. }
+                | Self::IndexTree { .. }
+                | Self::IndexGet { .. }
         )
     }
 }
@@ -616,7 +648,7 @@ fn refusal(status: u16, body: &[u8]) -> ClientError {
     ClientError::with_service_refusal(kind, owner, envelope)
 }
 
-fn call<T: AuthorizedTransport>(
+pub(crate) fn call<T: AuthorizedTransport>(
     profile: &ClientProfile,
     transport: &mut T,
     authority: Authority<'_>,
@@ -703,7 +735,11 @@ fn run_index<T: AuthorizedTransport>(
     project: &str,
     command: &Command,
 ) -> Result<Value, ClientError> {
-    if let Command::IndexList(list) = command {
+    let list = match command {
+        Command::IndexList(list) | Command::ConditionalIndexList { list, .. } => Some(list),
+        _ => None,
+    };
+    if let Some(list) = list {
         index_read_identity(
             &ds_command_kernel::assets::index_read::Scope {
                 uid: authority.uid.to_owned(),
@@ -719,6 +755,9 @@ fn run_index<T: AuthorizedTransport>(
     match command {
         Command::IndexList(list) => {
             verify_index_page(project, list, &data)?;
+        }
+        Command::ConditionalIndexList { list, known_basis } => {
+            verify_conditional_index_response(project, list, known_basis, &data)?;
         }
         Command::IndexTree { .. } => {
             if data["schema"] != TREE_SCHEMA {
@@ -759,6 +798,11 @@ pub(crate) fn run<T: AuthorizedTransport>(
     reader: Option<&mut dyn Read>,
 ) -> Result<Value, ClientError> {
     command.validate(project)?;
+    if let Command::Semantic(command) = command {
+        return crate::document_semantic::run(
+            profile, transport, authority, project, command, reader,
+        );
+    }
     if command.is_index() {
         return run_index(profile, transport, authority, project, command);
     }
@@ -830,7 +874,11 @@ pub(crate) fn run<T: AuthorizedTransport>(
             Ok(json!({ "asset": row }))
         }
         // Served by `run_index` above; never reached.
-        Command::IndexList(_) | Command::IndexTree { .. } | Command::IndexGet { .. } => Err(bad()),
+        Command::IndexList(_)
+        | Command::ConditionalIndexList { .. }
+        | Command::IndexTree { .. }
+        | Command::IndexGet { .. } => Err(bad()),
+        Command::Semantic(_) => unreachable!("semantic command returned above"),
         Command::Ingest(ingest) => {
             let id = data["asset_id"]
                 .as_str()
@@ -934,6 +982,41 @@ pub(crate) fn read_bytes<T: AuthorizedTransport>(
     Ok((asset, std::mem::take(&mut bytes.body)))
 }
 
+fn basis_valid(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+}
+
+/// A qualified unchanged receipt crosses only for the exact requested basis.
+/// The retained owner still verifies its scope and generation before merging.
+pub fn verify_conditional_index_response(
+    project: &str,
+    list: &IndexList,
+    known_basis: &str,
+    data: &Value,
+) -> Result<(), ClientError> {
+    Command::ConditionalIndexList {
+        list: list.clone(),
+        known_basis: known_basis.into(),
+    }
+    .validate(project)?;
+    if data["not_modified"] != true {
+        return verify_index_page(project, list, data);
+    }
+    if serde_json::to_vec(data).map_err(|_| bad())?.len() > MAX_RESPONSE_BYTES
+        || !data["assets"].as_array().is_some_and(Vec::is_empty)
+        || data["more"] != false
+        || !data["next_cursor"].is_null()
+        || !ds_command_kernel::freshness::is_fresh(Some(known_basis), data["basis"].as_str())
+    {
+        return Err(bad());
+    }
+    index_meta(data)?;
+    Ok(())
+}
+
 /// Validate a retained page with the same closed decoder as an online answer.
 /// This proves its shape and project binding, never current membership.
 pub fn verify_index_page(project: &str, list: &IndexList, data: &Value) -> Result<(), ClientError> {
@@ -943,7 +1026,9 @@ pub fn verify_index_page(project: &str, list: &IndexList, data: &Value) -> Resul
     }
     // A conditional unchanged receipt is not a page, even when its rows are
     // empty. Only the matching held-page owner may interpret that receipt.
-    if data["not_modified"] == true {
+    if !(data["not_modified"].is_null() || data["not_modified"] == false)
+        || !data["basis"].is_null() && !data["basis"].as_str().is_some_and(basis_valid)
+    {
         return Err(bad());
     }
     let rows = data["assets"].as_array().ok_or_else(bad)?;
@@ -1023,6 +1108,52 @@ mod tests {
             index_read_identity(&scope, &list).unwrap()["query"],
             index_read_query("p", &list).unwrap()
         );
+    }
+
+    #[test]
+    fn conditional_index_receipt_is_exact_qualified_and_not_a_full_page() {
+        let list = index_list();
+        let basis = "a".repeat(64);
+        let command = Command::ConditionalIndexList {
+            list: list.clone(),
+            known_basis: basis.clone(),
+        };
+        assert!(command.validate("p").is_ok());
+        let mut expected = Command::IndexList(list.clone()).payload("p");
+        expected["known_basis"] = json!(basis);
+        assert_eq!(command.payload("p"), expected);
+        let receipt = json!({"assets":[],"more":false,"not_modified":true,"basis":basis,"index":{"schema":INDEX_SCHEMA,"generation":7,"stale_sources":["grid_exports"],"truncated_sources":[]}});
+        assert!(verify_conditional_index_response("p", &list, &basis, &receipt).is_ok());
+        assert!(verify_index_page("p", &list, &receipt).is_err());
+        for (field, value) in [
+            ("basis", json!("b".repeat(64))),
+            ("assets", json!([{}])),
+            ("more", json!(true)),
+            ("next_cursor", json!("cursor")),
+        ] {
+            let mut bad_receipt = receipt.clone();
+            bad_receipt[field] = value;
+            assert!(verify_conditional_index_response("p", &list, &basis, &bad_receipt).is_err());
+        }
+        for invalid in ["A".repeat(64), "a".repeat(63), "g".repeat(64)] {
+            assert!(Command::ConditionalIndexList {
+                list: list.clone(),
+                known_basis: invalid
+            }
+            .validate("p")
+            .is_err());
+        }
+        let mut refresh = list.clone();
+        refresh.refresh = true;
+        assert!(Command::ConditionalIndexList {
+            list: refresh,
+            known_basis: basis.clone()
+        }
+        .validate("p")
+        .is_err());
+        let legacy =
+            json!({"assets":[],"more":false,"index":{"schema":INDEX_SCHEMA,"generation":7}});
+        assert!(verify_conditional_index_response("p", &list, &basis, &legacy).is_ok());
     }
 
     #[test]

@@ -18,7 +18,7 @@ pub const SCHEMA_VERSION: &str = "ds-web.gateway-registry/v1";
 
 /// sha256 of the exact `routing/operations.json` bytes these rows came from.
 pub const DESCRIPTOR_SHA256: &str =
-    "9acb01eb9f2770d0106350ca69af11c80434610f727643031bcfd0980b8f8cfa";
+    "9a18d851801998cfc2ea0d57bf010c3e079225e5757a02712fae90bf9ed2a8c2";
 
 /// Every declared operation that has a gateway route, sorted by id.
 pub const OPERATIONS: &[GatewayOperation] = &[
@@ -93,6 +93,25 @@ pub const OPERATIONS: &[GatewayOperation] = &[
         idempotency: "unsafe",
         retry_class: "none",
         timeout_s: 30,
+        response_cap_bytes: 1048576,
+        resolution_web: "gateway",
+        resolution_desktop: "gateway",
+        native_command: "",
+    },
+    GatewayOperation {
+        id: "domains.assets.semantic_finalize",
+        method: "POST",
+        path: "/bulk/api/v1/data",
+        path_params: &[],
+        action_key: "action",
+        actions: &["finalize_asset_semantic"],
+        transport: "json",
+        authority: "gateway",
+        principal: "user",
+        lane_header: false,
+        idempotency: "idempotent_with_key",
+        retry_class: "none",
+        timeout_s: 120,
         response_cap_bytes: 1048576,
         resolution_web: "gateway",
         resolution_desktop: "gateway",

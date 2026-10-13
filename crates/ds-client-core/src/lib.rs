@@ -313,6 +313,7 @@ pub mod known_columns;
 /// links and ingest — reachable without a window.
 pub mod asset_preview_source;
 pub mod project_assets;
+pub mod document_semantic;
 pub mod shared_assets;
 mod shared_map_publish;
 pub use transport::ProjectManagementCall;
