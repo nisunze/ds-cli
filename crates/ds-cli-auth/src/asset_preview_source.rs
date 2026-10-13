@@ -1,16 +1,17 @@
 //! Controlled source previews through the established native credential fence
 //! and common file room. Offline consumes no restored session or source grant.
 use crate::{
-    capture_layer_scope_fence_for_project, headless_identity_for_named_project,
-    headless_named_project, verify_layer_scope_fence_for_project, LayerScopeFence, NativeTransport,
+    LayerScopeFence, NativeTransport, capture_layer_scope_fence_for_project,
+    headless_identity_for_named_project, headless_named_project,
+    verify_layer_scope_fence_for_project,
 };
 use ds_cli_contract::Failure;
 use ds_client_core::asset_preview_source::{Grant, TransferControl, TransferError};
 use ds_command_kernel::asset_preview::{Request, SourceProof};
 use ds_project_data::preview_room::Room;
 use ds_report_host::{
-    asset_preview::{self, Control, Phase, Receipt, SourceFailure, SourceProvider},
     HostFailure,
+    asset_preview::{self, Control, Phase, Receipt, SourceFailure, SourceProvider},
 };
 use std::{
     cell::RefCell,
@@ -166,6 +167,43 @@ impl SourceProvider for Provider<'_> {
         })
     }
 }
+pub(crate) fn captured_room<'a>(
+    lane: &'a str,
+    project: &'a str,
+    cancelled: &'a AtomicBool,
+    on_progress: &'a dyn Fn(Phase, u64, Option<u64>),
+) -> Result<(Room, CapturedControl<'a>), Failure> {
+    let fence = capture_layer_scope_fence_for_project(lane, project)?;
+    let identity = headless_identity_for_named_project(lane)?;
+    let control = CapturedControl {
+        lane,
+        project,
+        fence,
+        cancelled,
+        on_progress,
+        original_failure: RefCell::new(None),
+    };
+    control.check_current().map_err(failure)?;
+    if identity.uid() != control.uid()
+        || identity.credential_audience_sha256() != control.audience()
+    {
+        return Err(Failure::conflict(
+            "project_context_changed",
+            "The native account changed while capturing its document room.",
+        ));
+    }
+    let room = Room {
+        root: ds_layer_store::default_root()
+            .map_err(|e| Failure::unavailable("print_preview_artifact_unavailable", e))?,
+        scope: ds_command_kernel::project_dataset_cache::Scope {
+            principal: identity.uid().into(),
+            project: project.into(),
+        },
+        lane: identity.lane().into(),
+        credential_audience_sha256: identity.credential_audience_sha256().into(),
+    };
+    Ok((room, control))
+}
 pub fn acquire_controlled(
     lane: &str,
     project: &str,
@@ -182,27 +220,7 @@ pub fn acquire_controlled(
             "Use one exact selected PDF; offline needs its retained revision, generation and SHA.",
         )
     })?;
-    let fence = capture_layer_scope_fence_for_project(lane, project)?;
-    let identity = headless_identity_for_named_project(lane)?;
-    let control = CapturedControl {
-        lane,
-        project,
-        fence,
-        cancelled,
-        on_progress,
-        original_failure: RefCell::new(None),
-    };
-    control.check_current().map_err(failure)?;
-    let room = Room {
-        root: ds_layer_store::default_root()
-            .map_err(|e| Failure::unavailable("print_preview_artifact_unavailable", e))?,
-        scope: ds_command_kernel::project_dataset_cache::Scope {
-            principal: identity.uid().into(),
-            project: project.into(),
-        },
-        lane: identity.lane().into(),
-        credential_audience_sha256: identity.credential_audience_sha256().into(),
-    };
+    let (room, control) = captured_room(lane, project, cancelled, on_progress)?;
     let mut provider = Provider {
         lane,
         project,

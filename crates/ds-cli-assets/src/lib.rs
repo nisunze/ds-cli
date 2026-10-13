@@ -67,6 +67,7 @@ pub mod preview;
 mod retained_preview;
 pub mod promote;
 pub mod read;
+pub mod semantic;
 pub mod shared;
 pub mod tree;
 pub mod versions;
@@ -88,6 +89,10 @@ pub static DOMAIN: Domain = Domain {
     summary: "Project Assets: documents in folders, previewed and linked.",
     commands: &[
         &backup::COMMAND,
+        &semantic::EXPORT,
+        &semantic::LOOKUP,
+        &semantic::READ,
+        &semantic::IMPORT,
         &shared::RESOLVE,
         &shared::MAPS,
         &shared::PUBLISH_MAP,
