@@ -1016,6 +1016,11 @@ static REPORT_ENTRIES: &[Entry] = &[
 
 static SOLAR_ENTRIES: &[Entry] = &[
     Entry {
+        command: &ds_cli_solar::calculate_prepared::COMMAND,
+        handler: ds_cli_solar::calculate_prepared::run,
+        render: ds_cli_solar::calculate_prepared::render,
+    },
+    Entry {
         command: &ds_cli_solar::application::SCHEMA,
         handler: ds_cli_solar::application::schema,
         render: ds_cli_solar::application::render,

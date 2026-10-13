@@ -9,6 +9,7 @@
 //! process contract for already prepared inputs. All routes call Rust owners.
 
 pub mod application;
+pub mod calculate_prepared;
 pub mod cities;
 pub mod compare;
 pub mod dashboard;
@@ -68,6 +69,7 @@ pub static DOMAIN: Domain = Domain {
     summary: "Solar preparation, local run lifecycle and artifact execution.",
     commands: &[
         &application::COMMAND,
+        &calculate_prepared::COMMAND,
         &application::SCHEMA,
         &dashboard::COMMAND,
         &network_form::COMMAND,
