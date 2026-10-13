@@ -718,17 +718,7 @@ fn run_index<T: AuthorizedTransport>(
     let mut data = call(profile, transport, authority, command.payload(project))?;
     match command {
         Command::IndexList(list) => {
-            let rows = data["assets"].as_array().ok_or_else(bad)?;
-            if rows.len() > usize::from(list.limit) || !data["more"].is_boolean() {
-                return Err(bad());
-            }
-            for row in rows {
-                own_index_row(row, project)?;
-            }
-            if !(data["next_cursor"].is_null() || data["next_cursor"].is_string()) {
-                return Err(bad());
-            }
-            index_meta(&data)?;
+            verify_index_page(project, list, &data)?;
         }
         Command::IndexTree { .. } => {
             if data["schema"] != TREE_SCHEMA {
@@ -944,6 +934,44 @@ pub(crate) fn read_bytes<T: AuthorizedTransport>(
     Ok((asset, std::mem::take(&mut bytes.body)))
 }
 
+/// Validate a retained page with the same closed decoder as an online answer.
+/// This proves its shape and project binding, never current membership.
+pub fn verify_index_page(project: &str, list: &IndexList, data: &Value) -> Result<(), ClientError> {
+    Command::IndexList(list.clone()).validate(project)?;
+    if serde_json::to_vec(data).map_err(|_| bad())?.len() > MAX_RESPONSE_BYTES {
+        return Err(bad());
+    }
+    // A conditional unchanged receipt is not a page, even when its rows are
+    // empty. Only the matching held-page owner may interpret that receipt.
+    if data["not_modified"] == true {
+        return Err(bad());
+    }
+    let rows = data["assets"].as_array().ok_or_else(bad)?;
+    if rows.len() > usize::from(list.limit) || !data["more"].is_boolean() {
+        return Err(bad());
+    }
+    for row in rows {
+        own_index_row(row, project)?;
+    }
+    if !(data["next_cursor"].is_null() || data["next_cursor"].is_string()) {
+        return Err(bad());
+    }
+    index_meta(data)?;
+    Ok(())
+}
+
+/// The closed list query used by both transport and native retention.
+pub fn index_read_query(project: &str, list: &IndexList) -> Result<Value, ClientError> {
+    let command = Command::IndexList(list.clone());
+    command.validate(project)?;
+    let mut query = command.payload(project);
+    let object = query.as_object_mut().ok_or_else(bad)?;
+    for field in ["action", "ds_project", "view"] {
+        object.remove(field);
+    }
+    Ok(query)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -958,6 +986,43 @@ mod tests {
             limit: 50,
             cursor: None,
         }
+    }
+
+    #[test]
+    fn retained_index_pages_share_online_project_count_cursor_and_meta_admission() {
+        let list = index_list();
+        let page = json!({"assets":[{"schema":"ds.assets.asset/v1","asset_id":"a_7kq3nr2v0b1c","project_id":"p"}],"more":false,"index":{"schema":INDEX_SCHEMA,"generation":7}});
+        assert!(verify_index_page("p", &list, &page).is_ok());
+        let mut unchanged = page.clone();
+        unchanged["assets"] = json!([]);
+        unchanged["not_modified"] = json!(true);
+        assert!(verify_index_page("p", &list, &unchanged).is_err());
+        let mut foreign = page.clone();
+        foreign["assets"][0]["project_id"] = json!("other");
+        assert!(verify_index_page("p", &list, &foreign).is_err());
+        let mut excess = page.clone();
+        excess["assets"] = json!(vec![page["assets"][0].clone(); usize::from(list.limit) + 1]);
+        assert!(verify_index_page("p", &list, &excess).is_err());
+        for (field, value) in [
+            ("more", json!("false")),
+            ("next_cursor", json!(123)),
+            ("index", json!({"schema":"foreign","generation":7})),
+        ] {
+            let mut bad = page.clone();
+            bad[field] = value;
+            assert!(verify_index_page("p", &list, &bad).is_err());
+        }
+        let scope = ds_command_kernel::assets::index_read::Scope {
+            uid: "u".into(),
+            email: "owner@example.com".into(),
+            lane: "canary".into(),
+            audience: "credential:a".into(),
+            project: "p".into(),
+        };
+        assert_eq!(
+            index_read_identity(&scope, &list).unwrap()["query"],
+            index_read_query("p", &list).unwrap()
+        );
     }
 
     #[test]
@@ -1281,13 +1346,7 @@ pub fn index_read_identity(
     scope: &ds_command_kernel::assets::index_read::Scope,
     list: &IndexList,
 ) -> Result<Value, ClientError> {
-    let command = Command::IndexList(list.clone());
-    command.validate(&scope.project)?;
-    let mut query = command.payload(&scope.project);
-    let object = query.as_object_mut().ok_or_else(bad)?;
-    object.remove("action");
-    object.remove("ds_project");
-    object.remove("view");
+    let query = index_read_query(&scope.project, list)?;
     index_read_policy(ds_command_kernel::assets::index_read::Request::Identity {
         scope: scope.clone(),
         query,
