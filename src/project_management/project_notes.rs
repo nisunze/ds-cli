@@ -115,6 +115,9 @@ pub enum Direction {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Query {
+    /// Exact direct-child selector; no recursive graph acquisition.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent_id: Option<String>,
     #[serde(default)]
     pub terms: Vec<String>,
     #[serde(default)]
@@ -276,7 +279,8 @@ impl Scope {
 impl Query {
     pub fn validate(&self) -> Result<(), String> {
         require(
-            self.terms.len() <= 32
+            self.parent_id.as_ref().is_none_or(|s| id(s))
+                && self.terms.len() <= 32
                 && self.terms.iter().all(|s| meaningful(s, 160))
                 && self.limit > 0
                 && self.limit <= MAX_QUERY_ROWS
@@ -430,6 +434,9 @@ pub struct Claim {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Memory {
+    /// Captured parent note/version; no claim or approval inheritance.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent: Option<VersionRef>,
     pub schema: String,
     pub note_type: NoteType,
     pub lifecycle: Lifecycle,
@@ -594,10 +601,24 @@ impl Draft {
             m.schema == MEMORY_SCHEMA && m.lifecycle == Lifecycle::Active,
             "Write active memory only; retirement requires a verified recoverable backup",
         )?;
+        if let Some(parent) = &m.parent {
+            require(
+                id(&parent.id) && parent.version > 0 && parent.version < i64::MAX as u64,
+                "Parent needs an exact note/version",
+            )?;
+        }
         m.provenance.validate()?;
         require(
-            !matches!(m.note_type, NoteType::Decision | NoteType::Constraint | NoteType::Correction | NoteType::RejectedAssumption)
-                || (matches!(m.provenance.kind, Basis::UserInstruction | Basis::UserDecision) && !m.evidence.is_empty()),
+            !matches!(
+                m.note_type,
+                NoteType::Decision
+                    | NoteType::Constraint
+                    | NoteType::Correction
+                    | NoteType::RejectedAssumption
+            ) || (matches!(
+                m.provenance.kind,
+                Basis::UserInstruction | Basis::UserDecision
+            ) && !m.evidence.is_empty()),
             "An agreed note needs explicit user provenance and its actual source evidence",
         )?;
         m.scope.validate()?;
@@ -632,6 +653,12 @@ impl Write {
         require(
             id(&self.operation_id)
                 && id(&self.id)
+                && self
+                    .draft
+                    .memory
+                    .parent
+                    .as_ref()
+                    .is_none_or(|p| p.id != self.id)
                 && meaningful(&self.reason, 512)
                 && self
                     .expected_version
@@ -646,6 +673,12 @@ impl Consolidate {
         require(
             id(&self.operation_id)
                 && id(&self.id)
+                && self
+                    .draft
+                    .memory
+                    .parent
+                    .as_ref()
+                    .is_none_or(|p| p.id != self.id)
                 && meaningful(&self.reason, 512)
                 && self.draft.memory.note_type == NoteType::ContextConsolidation,
             "Consolidation needs a stable identity, reason and explicit consolidation draft",
@@ -731,6 +764,9 @@ impl Command {
                 verify_note(project, &v["note"], Some(&w.id))?;
                 require(
                     v["operation_id"] == w.operation_id
+                        && v["note"]["memory"]["parent"]
+                            == serde_json::to_value(&w.draft.memory.parent)
+                                .map_err(|e| e.to_string())?
                         && v["replayed"].is_boolean()
                         && v["note"]["version"].as_u64()
                             == Some(w.expected_version.map_or(1, |n| n + 1))
@@ -747,9 +783,13 @@ impl Command {
                     "Read differs from its exact selected version/claim",
                 )?;
             }
-            Self::Query(q) => verify_page(project, v, q.limit)?,
+            Self::Query(q) => {
+                verify_page(project, v, q.limit)?;
+                verify_parent_page(v, q.parent_id.as_deref())?;
+            }
             Self::Context(c) => {
                 verify_page(project, v, c.query.limit)?;
+                verify_parent_page(v, c.query.parent_id.as_deref())?;
                 let claims = v["claims"]
                     .as_array()
                     .ok_or("Applicable claim rows are missing")?;
@@ -863,6 +903,9 @@ impl Command {
                 verify_note(project, &v["note"], Some(&r.id))?;
                 require(
                     v["operation_id"] == r.operation_id
+                        && v["note"]["memory"]["parent"]
+                            == serde_json::to_value(&r.draft.memory.parent)
+                                .map_err(|e| e.to_string())?
                         && v["replayed"].is_boolean()
                         && v["sources"]
                             == serde_json::to_value(&r.sources).map_err(|e| e.to_string())?,
@@ -874,6 +917,17 @@ impl Command {
     }
 }
 fn verify_note(project: &str, n: &serde_json::Value, wanted: Option<&str>) -> Result<(), String> {
+    if !n["memory"]["parent"].is_null() {
+        let parent: VersionRef = serde_json::from_value(n["memory"]["parent"].clone())
+            .map_err(|_| "Invalid parent note receipt")?;
+        require(
+            id(&parent.id)
+                && parent.version > 0
+                && parent.version < i64::MAX as u64
+                && n["id"] != parent.id,
+            "Invalid parent note identity/version",
+        )?;
+    }
     require(
         n["project_id"] == project
             && n["id"].as_str().is_some_and(id)
@@ -885,6 +939,16 @@ fn verify_note(project: &str, n: &serde_json::Value, wanted: Option<&str>) -> Re
             && n["memory"].is_object()
             && n["legacy"].is_boolean(),
         "Note lacks its exact project/identity/version and preserved document",
+    )
+}
+fn verify_parent_page(v: &serde_json::Value, parent: Option<&str>) -> Result<(), String> {
+    require(
+        parent.is_none_or(|id| {
+            v["items"]
+                .as_array()
+                .is_some_and(|rows| rows.iter().all(|n| n["memory"]["parent"]["id"] == id))
+        }),
+        "Child page belongs to another parent",
     )
 }
 fn verify_page(project: &str, v: &serde_json::Value, limit: u32) -> Result<(), String> {
@@ -964,6 +1028,7 @@ mod tests {
     }
     fn query() -> Query {
         Query {
+            parent_id: None,
             terms: vec!["replacement switching".into()],
             tags: vec!["mv staking".into()],
             tag_match: TagMatch::All,
@@ -977,6 +1042,107 @@ mod tests {
     }
     fn view(id: &str, version: u64) -> serde_json::Value {
         json!({"project_id":"p","id":id,"version":version,"document":{"category":"project_note"},"memory":draft().memory,"legacy":false})
+    }
+    #[test]
+    fn parent_selector_and_relationship_pins_are_closed() {
+        let mut d = draft();
+        d.memory.parent = Some(VersionRef {
+            id: "parent".into(),
+            version: 1,
+        });
+        d.validate().unwrap();
+        let serialized = serde_json::to_value(&d).unwrap();
+        assert_eq!(
+            serialized["memory"]["parent"],
+            json!({"id":"parent","version":1})
+        );
+        let mut bad = serialized.clone();
+        bad["memory"]["parent"]["claim_id"] = json!("claim");
+        assert!(serde_json::from_value::<Draft>(bad).is_err());
+        d.memory.parent.as_mut().unwrap().version = 0;
+        assert!(d.validate().is_err());
+        let mut q = query();
+        q.parent_id = Some("parent".into());
+        q.validate().unwrap();
+        q.parent_id = Some("another/project".into());
+        assert!(q.validate().is_err());
+    }
+    #[test]
+    fn parent_response_cannot_be_dropped_or_mixed() {
+        let mut d = draft();
+        d.memory.parent = Some(VersionRef {
+            id: "parent".into(),
+            version: 1,
+        });
+        let command = Command::Write(Write {
+            operation_id: "create-child".into(),
+            id: "child".into(),
+            expected_version: None,
+            reason: "Record subnote".into(),
+            draft: d.clone(),
+        });
+        let mut good = json!({"project_id":"p","note":view("child",1),"operation_id":"create-child","replayed":false,"context_revision":"a".repeat(64)});
+        good["note"]["memory"] = serde_json::to_value(&d.memory).unwrap();
+        command.verify_response("p", &good).unwrap();
+        let mut dropped = good.clone();
+        dropped["note"]["memory"]
+            .as_object_mut()
+            .unwrap()
+            .remove("parent");
+        assert!(command.verify_response("p", &dropped).is_err());
+        let mut q = query();
+        q.parent_id = Some("parent".into());
+        let c = Command::Query(q);
+        let mut page = json!({"project_id":"p","items":[good["note"]],"scanned":1,"complete":true,"truncated":false,"context_revision":"a".repeat(64)});
+        c.verify_response("p", &page).unwrap();
+        page["items"][0]["memory"]["parent"]["id"] = json!("different-parent");
+        assert!(c.verify_response("p", &page).is_err());
+        let mut self_parent = d;
+        self_parent.memory.parent.as_mut().unwrap().id = "child".into();
+        assert!(
+            Write {
+                operation_id: "create-child".into(),
+                id: "child".into(),
+                expected_version: None,
+                reason: "Record subnote".into(),
+                draft: self_parent
+            }
+            .validate()
+            .is_err()
+        );
+    }
+    #[test]
+    fn consolidation_receipt_requires_exact_validated_sources() {
+        let mut d = draft();
+        d.memory.note_type = NoteType::ContextConsolidation;
+        let sources = vec![
+            VersionRef {
+                id: "source-b".into(),
+                version: 1,
+            },
+            VersionRef {
+                id: "source-a".into(),
+                version: 1,
+            },
+        ];
+        let command = Command::Consolidate(Consolidate {
+            operation_id: "combine".into(),
+            id: "combined".into(),
+            reason: "Retain sourced rulings".into(),
+            draft: d,
+            sources: sources.clone(),
+        });
+        let good = json!({"project_id":"p","note":view("combined",1),"operation_id":"combine","replayed":false,"sources":sources});
+        command.verify_response("p", &good).unwrap();
+        let mut missing = good.clone();
+        missing.as_object_mut().unwrap().remove("sources");
+        assert!(command.verify_response("p", &missing).is_err());
+        let mut stale = good.clone();
+        stale["sources"][0]["version"] = json!(2);
+        assert!(command.verify_response("p", &stale).is_err());
+        let mut foreign = good;
+        foreign["sources"][0]["id"] = json!("another-source");
+        assert!(command.verify_response("p", &foreign).is_err());
     }
     #[test]
     fn individually_sourced_actual_user_ruling_retains_scope_and_rejected_assumption_boundary() {
