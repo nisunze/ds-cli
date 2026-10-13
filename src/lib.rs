@@ -128,6 +128,7 @@ pub fn execution_context_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsVa
 }
 pub mod desktop_instance;
 pub mod module_release;
+pub mod desktop_update;
 #[cfg(feature = "wasm")]
 #[wasm_bindgen::prelude::wasm_bindgen(js_name = desktopInstance)]
 pub fn desktop_instance_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
