@@ -395,5 +395,5 @@ bytes left in another after failed cleanup. A capture cannot publish across an
 invalidation or identity change. Named selected-note/task absence is distinct
 from project denial. Existing kernel receipt validators run before persistence
 and offline reuse, preserving partial totals, cursors and literal-only historical
-notes. Generic PM context and private-note bodies remain distinct consumers.
+notes. Model-reference reads capture graph plus one bounded records page under a single protected authority; the unused generic Context command is retired. Private-note bodies remain a distinct consumer.
 No polling or timer-based freshness policy is introduced.

@@ -3,8 +3,6 @@
 use crate::design_versions_headless::ObjectRef;
 use serde::{Deserialize, Serialize};
 
-pub mod migration;
-
 pub const MEMORY_SCHEMA: &str = "ds.project-note-memory/v1";
 pub const MAX_BODY_BYTES: usize = 128 * 1024;
 pub const MAX_REQUEST_BYTES: usize = 256 * 1024;
@@ -691,8 +689,6 @@ impl Consolidate {
 }
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Command {
-    PrepareMigration(migration::Prepare),
-    ApplyMigration(migration::Apply),
     Write(Write),
     Read(Read),
     Query(Query),
@@ -706,8 +702,6 @@ pub enum Command {
 impl Command {
     pub fn action(&self) -> &'static str {
         match self {
-            Self::PrepareMigration(_) => "project_note_canonicalize_prepare",
-            Self::ApplyMigration(_) => "project_note_canonicalize_apply",
             Self::Write(_) => "project_note_write",
             Self::Read(_) => "project_note_read",
             Self::Query(_) => "project_note_query",
@@ -721,8 +715,6 @@ impl Command {
     }
     pub fn validate(&self) -> Result<(), String> {
         match self {
-            Self::PrepareMigration(x) => x.validate(),
-            Self::ApplyMigration(x) => x.validate(),
             Self::Write(x) => x.validate(),
             Self::Read(x) => x.validate(),
             Self::Query(x) => x.validate(),
@@ -738,14 +730,6 @@ impl Command {
         require(id(project), "Project Notes requires the exact project")?;
         self.validate()?;
         let value = match self {
-            Self::PrepareMigration(x) => serde_json::to_value(x),
-            Self::ApplyMigration(x) => {
-                require(
-                    x.plan.project_id == project,
-                    "Migration must retain exact project",
-                )?;
-                serde_json::to_value(x)
-            }
             Self::Write(x) => serde_json::to_value(x),
             Self::Read(x) => serde_json::to_value(x),
             Self::Query(x) => serde_json::to_value(x),
@@ -776,28 +760,6 @@ impl Command {
             "Project Notes response belongs to another project",
         )?;
         match self {
-            Self::PrepareMigration(r) => {
-                let p = migration::verify_plan(project, &v["plan"])?;
-                require(
-                    p.id == r.id
-                        && v["authored_version_changed"] == false
-                        && v["document"].is_object()
-                        && v["document"]["id"] == p.id
-                        && v["document"]["version"] == p.expected_version,
-                    "Migration preparation lacks literal source",
-                )?;
-            }
-            Self::ApplyMigration(r) => {
-                let p = migration::verify_plan(project, &v["plan"])?;
-                require(
-                    p == r.plan
-                        && v["operation_id"] == r.operation_id
-                        && v["applied"] == true
-                        && v["replayed"].is_boolean()
-                        && v["authored_version_changed"] == false,
-                    "Migration receipt differs from reviewed unchanged version",
-                )?;
-            }
             Self::Write(w) => {
                 verify_note(project, &v["note"], Some(&w.id))?;
                 require(
@@ -1073,6 +1035,35 @@ fn verify_lifecycle(
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn plain_history_is_literal_only_for_exact_version_without_claim() {
+        let literal = json!({"project_id":"p","context_revision":"a".repeat(64),"note":{"project_id":"p","id":"n","version":7,"document":{"body":"unaltered"},"memory":null,"semantic_status":"unrecorded"}});
+        let c = Command::Read(Read {
+            id: "n".into(),
+            version: Some(7),
+            claim_id: None,
+        });
+        c.verify_response("p", &literal).unwrap();
+        assert!(
+            Command::Read(Read {
+                id: "n".into(),
+                version: None,
+                claim_id: None
+            })
+            .verify_response("p", &literal)
+            .is_err()
+        );
+        assert!(
+            Command::Read(Read {
+                id: "n".into(),
+                version: Some(7),
+                claim_id: Some("claim".into())
+            })
+            .verify_response("p", &literal)
+            .is_err()
+        );
+    }
     fn scope() -> Scope {
         Scope {
             kind: ScopeKind::Workstream,
