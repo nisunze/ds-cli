@@ -442,6 +442,33 @@ fn printing_operations_have_one_closed_application_owner() {
 }
 
 #[test]
+fn captured_layout_preview_uses_one_closed_paired_transport_and_the_existing_native_owner() {
+    let root = ds_web();
+    let native = source(&root, "src-tauri/src/cli_bridge.rs");
+    let frontend = source(&root, "src/lib/desktop/cli-bridge.ts");
+    let adapter = source(&root, "src/lib/printing/cli-layout-preview.ts");
+    let allowlist = between(&native, "pub const CLI_OPERATIONS: &[&str] = &[", "];");
+    let op = &ds_cli_report::LAYOUT_PREVIEW_OP;
+    assert_eq!(count(allowlist, &format!("\"{}\"", op.operation)), 1);
+    assert_eq!(switch_case_count(&frontend, op.operation), 1);
+    let keys = between(
+        &adapter,
+        "export const CLI_LAYOUT_PREVIEW_ARGUMENTS=[",
+        "] as const;",
+    );
+    assert_eq!(
+        quoted_contract_items(keys),
+        op.arguments.iter().map(|s| s.to_string()).collect()
+    );
+    assert!(adapter.contains("previewCapturedLayout("));
+    assert!(
+        !adapter.contains("fetch(")
+            && !adapter.contains("prepareTransformerReportRoom")
+            && !adapter.contains("runtimeQuery")
+    );
+}
+
+#[test]
 fn printing_artifact_operations_have_one_closed_application_owner() {
     let root = ds_web();
     let transport = source(&root, "src-tauri/src/cli_bridge.rs");

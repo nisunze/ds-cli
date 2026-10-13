@@ -2189,6 +2189,30 @@ fn printing_profile_exposes_one_bounded_live_preview_without_export_options() {
 }
 
 #[test]
+fn printing_captured_layout_preview_advertises_the_same_explicit_paired_target() {
+    let (responses, _) = mcp(
+        &["--exposure", "commands", "--profile", "printing"],
+        &[json!({"jsonrpc":"2.0","id":1,"method":"tools/list"})],
+    );
+    let tools = response(&responses, 1)["result"]["tools"].as_array().unwrap();
+    assert!(tools.len() <= 29);
+    let matches = tools.iter().filter(|tool| tool["name"] == "report_layout_render").collect::<Vec<_>>();
+    assert_eq!(matches.len(), 1);
+    let schema = &matches[0]["inputSchema"];
+    assert_eq!(schema["additionalProperties"], false);
+    assert_eq!(schema["required"], json!(["request"]));
+    let properties = schema["properties"].as_object().unwrap();
+    for key in ["preview", "project", "target", "desktop-descriptor"] {
+        assert!(properties.contains_key(key), "{key}");
+    }
+    assert_eq!(properties["preview-format"]["enum"], json!(["svg", "pdf"]));
+    assert_eq!(properties["preview-retention"]["enum"], json!(["24h", "7d"]));
+    for key in ["force", "seed", "model", "transformer", "command", "uid"] {
+        assert!(!properties.contains_key(key), "{key}");
+    }
+}
+
+#[test]
 fn city_acquisition_remains_discoverable_in_its_data_chapter() {
     let (messages, _) = mcp(
         &["--exposure", "chapters"],

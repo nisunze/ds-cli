@@ -13,6 +13,7 @@ publish.workspace = true
 # client; the local reporter engine commands need no credential at all.
 ds-cli-auth = { workspace = true }
 ds-cli-contract = { workspace = true }
+ds-cli-desktop = { workspace = true }
 # Native selection of held plan/profile publication geometry.
 ds-grid-engine = { workspace = true }
 ds-cli-exec = { workspace = true }

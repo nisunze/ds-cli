@@ -33,6 +33,7 @@ pub mod engine;
 pub mod export;
 pub mod layout;
 mod layout_preview;
+pub use layout_preview::PAIRED_OP as LAYOUT_PREVIEW_OP;
 pub mod mv_frontmatter;
 pub mod outbox;
 pub mod plan_profile;

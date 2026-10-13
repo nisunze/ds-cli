@@ -502,17 +502,41 @@ pub static RENDER: Command = Command {
     path: &["report", "layout", "render"],
     contract: 1,
     summary: "Print captured maps with collision and clipping diagnostics.",
-    purpose: "Render a ds.print-layout-export/v1 capture as PDF/PNG/SVG/JPEG. --preview returns one retained SVG (default) or PDF file under the named native account/project; no provider, freshness or publication reads. Delivery out_dir must be fresh. Schemas: report tasks --task render_print_layout; report layout schema.",
+    purpose: "Render ds.print-layout-export/v1 as PDF/PNG/SVG/JPEG. --preview returns a common retained SVG or PDF file. Default server uses the native account; explicit --target desktop uses the paired window's published account/project/lane. No provider, freshness, model or publication reads. Delivery out_dir must be fresh. Capture saved static pages with report.layout.edit capture_project_layout_preview; task schema: report tasks --task render_print_layout.",
     chapter: Chapter::Reports,
     effect: Effect::LocalFileWrite,
     authority: Authority::None,
     execution: Execution::Sync,
-    args: &[REQUEST,
-        Arg::switch("preview", "One inline captured page through the common native file-preview owner."),
-        Arg::value("preview-format","<svg|pdf>","Preview file media; requires --preview, default SVG.").choices(&["svg","pdf"]),
-        Arg::value("preview-retention", "<24h|7d>", "Preview lifetime; requires --preview, default 24h.").choices(&["24h", "7d"]),
-        Arg::value("project", "<exact-id>", "Required for --preview; namespace admitted by the restored native account, never source JSON."),
-        LANE,
+    args: &[
+        REQUEST,
+        Arg::switch(
+            "preview",
+            "One captured page retained through the common native file-preview owner.",
+        ),
+        Arg::value(
+            "preview-format",
+            "<svg|pdf>",
+            "Preview file media; requires --preview, default SVG.",
+        )
+        .choices(&["svg", "pdf"]),
+        Arg::value(
+            "preview-retention",
+            "<24h|7d>",
+            "Preview lifetime; requires --preview, default 24h.",
+        )
+        .choices(&["24h", "7d"]),
+        Arg::value(
+            "project",
+            "<exact-id>",
+            "Required for --preview; native account/window admits the namespace, never source JSON.",
+        ),
+        Arg::value(
+            "target",
+            "<server|desktop|desktop:instance>",
+            "Preview host; default server. DS_TARGET supplies a session default.",
+        ),
+        ds_cli_desktop::ops::DESCRIPTOR_ARG,
+        LANE.summary("Headless credential lane; paired preview uses its published window lane."),
     ],
     output: "Artifacts and bounded collision/clipping diagnostics. Preview returns page (common SVG/PDF file manifest), engine and preview_cache (original expiry/reused); no inline bytes. Mechanical checks are not visual approval.",
     examples: &[Example {
@@ -524,7 +548,7 @@ pub static RENDER: Command = Command {
     reference: Some("docs/reference/report.md"),
     search: &[],
     requires: Requires::Server,
-    availability: reporter,
+    availability: local,
 };
 pub static LIST: Command = Command {
     id: "report.layout.list",
@@ -705,9 +729,6 @@ pub static COPY: Command = Command {
     availability: ds_cli_auth::native_availability,
 };
 
-fn reporter() -> Availability {
-    crate::DS_REPORT.availability()
-}
 pub fn new(_i: &Inputs, _c: &Context) -> Result<Value, Failure> {
     Ok(json!(ds_command_kernel::printing::default_layout()))
 }

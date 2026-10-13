@@ -1275,6 +1275,7 @@ dependencies = [
  "ds-cli-auth",
  "ds-cli-contract",
  "ds-cli-data",
+ "ds-cli-desktop",
  "ds-cli-exec",
  "ds-cli-server",
  "ds-cli-workstation",

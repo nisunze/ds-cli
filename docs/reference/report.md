@@ -610,6 +610,22 @@ Naming, Index, Legend, Notes and Revisions consume no engineering inventory.
 Key map and key plan still require an explicit geographic capture. Desktop
 opens the same PDF artifact for visual checking before Download reads it.
 
+An explicit `--target desktop` (or exact `desktop:<instance>`) on that same
+preview command consumes the published window identity instead of restoring a
+headless profile. Its one closed paired operation calls the existing native
+`report.layout.render` owner; no renderer, cache, permission or acquisition
+logic is copied. The CLI verifies the returned file through the common scoped
+reader and returns only the manifest. Account/project changes refuse adoption;
+an admitted backend render continues and retains its original scoped result.
+Omitting a target keeps the headless route; no profile failure chooses Desktop.
+
+`capture_project_layout_preview` accepts the original authenticated
+`report.layout.get` data and the retained style-resolution snapshot. The kernel
+preserves the saved ID, project, revision, original layout and body digest in a
+closed `project_layout` source. No source claim grants access or checks live
+freshness. The native owner admits those exact pins before rendering, and
+distinct saved revisions remain distinct cache keys even for identical bodies.
+
 `ds mcp serve --exposure commands --profile printing` exposes all twelve layout
 commands together. The grid profile keeps its existing report-export workflow.
 Reference A3/A4 layouts and runnable synthetic-data proofs live in
