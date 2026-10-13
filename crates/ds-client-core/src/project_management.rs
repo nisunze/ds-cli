@@ -1185,6 +1185,58 @@ pub(crate) fn run<T: AuthorizedTransport>(
     Ok(graph)
 }
 
+/// Verify one retained canonical graph without inventing missing legacy collections.
+/// This validator serves offline admission; ordinary live graph compatibility stays unchanged.
+pub fn verify_graph(project: &str, graph: &Value) -> Result<(), ClientError> {
+    let invalid = || {
+        ClientError::new(
+            ErrorKind::UnreadableResponse,
+            "PM graph does not prove its project, revisions, arrays and captured permissions",
+        )
+    };
+    if graph["project_id"].as_str() != Some(project)
+        || graph["revision"].as_i64().is_none_or(|n| n < 0)
+        || graph["schedule_revision"].as_i64().is_none_or(|n| n < 0)
+        || ["tasks", "dependencies", "residual_items"]
+            .into_iter()
+            .any(|key| !graph[key].is_array())
+        || !graph["calendar"].is_object()
+        || ["view", "comment", "contribute", "edit_schedule", "admin"]
+            .into_iter()
+            .any(|key| !graph["permissions"][key].is_boolean())
+        || graph["permissions"]["view"] != true
+        || graph.get("retained").is_some()
+        || graph
+            .get("correspondence")
+            .is_some_and(|c| !c.is_null() && !c.is_object())
+    {
+        return Err(invalid());
+    }
+    if let Some(c) = graph.get("correspondence").filter(|c| !c.is_null()) {
+        let records = c["records"].as_array().ok_or_else(invalid)?;
+        let total = c["records_total"].as_u64().ok_or_else(invalid)?;
+        if !c["truncated"].is_boolean() || total < records.len() as u64
+            || !c["blocked_tasks"].is_array()
+            || c["as_of"].as_str().is_none_or(str::is_empty)
+            || c["due_window_days"].as_u64().is_none()
+            || ["recordsOutstanding", "recordsOverdue", "tasksAwaitingCorrespondence"].into_iter()
+                .any(|key| c["counters"][key].as_u64().is_none()) {
+            return Err(invalid());
+        }
+    }
+    for key in ["tasks", "dependencies", "residual_items"] {
+        if graph[key]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|row| !row.is_object())
+        {
+            return Err(invalid());
+        }
+    }
+    Ok(())
+}
+
 /// Admit only the selected records page, never a legacy unselected or partial
 /// answer that could otherwise become an apparently empty related-record list.
 fn validate_task_records(
@@ -2408,5 +2460,45 @@ mod authoring_tests {
         let mut payload = declared.payload("p");
         payload.as_object_mut().unwrap().remove("authoring_model");
         assert_eq!(payload, original);
+    }
+}
+
+#[cfg(test)]
+mod retained_graph_tests {
+    use super::*;
+    fn graph() -> Value {
+        json!({"project_id":"p","revision":3,"schedule_revision":2,"calendar":{},"tasks":[],"dependencies":[],"residual_items":[],"permissions":{"view":true,"comment":false,"contribute":false,"edit_schedule":false,"admin":false}})
+    }
+    #[test]
+    fn canonical_graph_requires_explicit_scope_revision_shape_and_captured_read_permission() {
+        verify_graph("p", &graph()).unwrap();
+        for (key, value) in [
+            ("project_id", json!("other")),
+            ("revision", json!(-1)),
+            ("schedule_revision", Value::Null),
+            ("tasks", json!({})),
+            ("permissions", json!({})),
+            ("retained", json!({})),
+            ("correspondence", json!([])),
+        ] {
+            let mut bad = graph();
+            bad[key] = value;
+            assert!(verify_graph("p", &bad).is_err(), "{key}");
+        }
+        let mut denied = graph();
+        denied["permissions"]["view"] = json!(false);
+        assert!(verify_graph("p", &denied).is_err());
+    }
+    #[test]
+    fn missing_legacy_correspondence_remains_distinct_from_partial_capture() {
+        let old = graph();
+        verify_graph("p", &old).unwrap();
+        assert!(old.get("correspondence").is_none());
+        let mut partial = graph();
+        partial["correspondence"] = json!({"records":[],"truncated":true,"records_total":10,"as_of":"2026-10-13","due_window_days":7,"blocked_tasks":[],"counters":{"recordsOutstanding":10,"recordsOverdue":1,"tasksAwaitingCorrespondence":0}});
+        verify_graph("p", &partial).unwrap();
+        assert_eq!(partial["correspondence"]["truncated"], true);
+        partial["correspondence"].as_object_mut().unwrap().remove("truncated");
+        assert!(verify_graph("p", &partial).is_err());
     }
 }

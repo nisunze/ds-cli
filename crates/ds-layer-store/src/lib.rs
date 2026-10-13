@@ -211,6 +211,7 @@ pub(crate) fn sqlite_path(path: &Path) -> Result<PathBuf, String> {
 }
 
 pub mod asset_catalogue;
+pub mod pm_graph_catalogue;
 pub mod local_models;
 pub mod grid_project_catalogue;
 pub mod prepared;

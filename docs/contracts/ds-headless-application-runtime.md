@@ -338,3 +338,27 @@ Server. Production installation continues through the published download path.
 Artifact-store tests move with their owner. Record actual shared-runtime,
 Desktop adapter and Server consumer validation separately; a clean build is
 not a live authenticated publication proof or remote GUI parity.
+
+### Explicit retained PM plan capture
+
+Native `pm plan` retains one bounded authenticated canonical graph in the
+existing `ds-layer-store` owner (`pm_graph_catalogue`). Normal reads remain live;
+only an explicit offline read consumes those bytes. The holding binds protected
+UID, deployment lane/audience, credential instance and caller-named project,
+plus the captured body digest, graph/schedule revisions and local invalidation
+epoch. Protected local identity is rechecked; a profile alone never admits data.
+No session restoration, directory lookup, authorization refresh or source
+freshness request runs offline. Capture-time permissions are disclosed as such,
+not promoted into present authority. Correspondence partial/legacy absence
+qualifications remain intact and graph revision alone is not asserted to cover
+the redacted correspondence or current subject projection.
+
+Intentional overlapping captures serialize/coalesce through native private
+locks. An attempted PM mutation lazily marks existing holdings potentially
+stale; it creates no unused holding and handles uncertain/partial write results.
+Known access denial is durably recorded before best-effort removal and refuses
+offline reuse. A capture cannot publish across an invalidation epoch change.
+The pure shared freshness comparison serves known local epochs only; unknown
+remote freshness remains unknown. Task detail/context, project-note reads and
+private-note reads are separate consumers, not implicitly covered by this plan
+capture. No automatic polling or expiry policy is introduced.
