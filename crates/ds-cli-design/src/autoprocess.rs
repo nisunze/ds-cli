@@ -21,11 +21,158 @@ fn local() -> Availability {
     Availability::Available
 }
 
-const REFUSALS: &[Refusal] = &[Refusal {
-    code: "autoprocess_request_invalid",
-    when: "The changes document is malformed, too large, or a section is not an owner request",
-    remedy: "Pass {mode?, trigger?, differential_scope?, cadence?} with the fields `ds capabilities design.autoprocess.plan` names",
-}];
+const REFUSALS: &[Refusal] = &[
+    Refusal {
+        code: "autoprocess_request_invalid",
+        when: "The changes document is malformed, too large, or a section is not an owner request",
+        remedy: "Pass {mode?, trigger?, differential_scope?, cadence?} with the fields `ds capabilities design.autoprocess.plan` names",
+    },
+    Refusal {
+        code: "network_engine_missing",
+        when: "the compatible native Network engine is absent",
+        remedy: "install the matching Network engine addon",
+    },
+    Refusal {
+        code: "network_engine_incompatible",
+        when: "the captured Network executable lacks the required protocol or capability",
+        remedy: "install the compatible Network engine",
+    },
+    Refusal {
+        code: "network_serialization_incompatible",
+        when: "the captured engine differs from this consumer's preserved JSON byte profile",
+        remedy: "install the insertion-order Network component for this host",
+    },
+    Refusal {
+        code: "network_engine_path_invalid",
+        when: "the explicit development engine path is not absolute",
+        remedy: "set DS_NETWORK_ENGINE_BIN to an absolute compatible executable path",
+    },
+    Refusal {
+        code: "network_engine_invalid",
+        when: "the captured executable cannot be read within its byte bound",
+        remedy: "install an intact compatible Network component",
+    },
+    Refusal {
+        code: "network_engine_unqualified",
+        when: "a normally installed candidate lacks source or dependency-closure qualification",
+        remedy: "install a qualified component; explicit development overrides remain labeled",
+    },
+    Refusal {
+        code: "network_engine_identity_invalid",
+        when: "the identity probe is malformed, oversized or unsuccessful",
+        remedy: "install an intact compatible Network component",
+    },
+    Refusal {
+        code: "network_engine_changed",
+        when: "the captured executable changes during admission or execution",
+        remedy: "retain immutable version directories and retry with an intact component",
+    },
+    Refusal {
+        code: "network_engine_refused",
+        when: "the executable exits with an unrecognized owner refusal",
+        remedy: "inspect the bounded failure and use a compatible component",
+    },
+    Refusal {
+        code: "network_scratch_invalid",
+        when: "private staging cannot be created beside the output",
+        remedy: "choose an absent output in a writable ordinary directory",
+    },
+    Refusal {
+        code: "network_request_io",
+        when: "the admitted request cannot be staged durably",
+        remedy: "choose a writable output directory and retry from unchanged input",
+    },
+    Refusal {
+        code: "network_input_changed",
+        when: "the staged request changes during execution",
+        remedy: "retain the unchanged input and retry in a protected output directory",
+    },
+    Refusal {
+        code: "network_receipt_bounded",
+        when: "the engine exceeds its control-receipt bound",
+        remedy: "install a compatible component; complete results belong in artifacts",
+    },
+    Refusal {
+        code: "network_receipt_invalid",
+        when: "the terminal receipt is absent, malformed or inconsistent with admission",
+        remedy: "retain the unchanged input and use an intact compatible component",
+    },
+    Refusal {
+        code: "network_refusal_invalid",
+        when: "a failed engine does not return an admitted refusal",
+        remedy: "retain the unchanged input and use an intact compatible component",
+    },
+    Refusal {
+        code: "network_result_invalid",
+        when: "the result is incomplete, unsafe or inconsistent with ordered inputs",
+        remedy: "retain the unchanged input and use an intact compatible component",
+    },
+    Refusal {
+        code: "network_result_digest_mismatch",
+        when: "the artifact bytes differ from the terminal receipt",
+        remedy: "retain the unchanged input and use an intact compatible component",
+    },
+    Refusal {
+        code: "network_workers_invalid",
+        when: "the engine rejects the positive worker budget",
+        remedy: "use a compatible component with the admitted worker contract",
+    },
+    Refusal {
+        code: "network_task_cancelled",
+        when: "the batch does not complete after cooperative cancellation",
+        remedy: "retry the unchanged input at a new output path",
+    },
+    Refusal {
+        code: "network_control_unavailable",
+        when: "the supervised control channel cannot be established",
+        remedy: "retry on a host supporting the admitted native supervision boundary",
+    },
+    Refusal {
+        code: "network_control_invalid",
+        when: "the owner rejects the fixed task control document",
+        remedy: "use a compatible Network component",
+    },
+    Refusal {
+        code: "network_input_invalid",
+        when: "the owner cannot admit its staged input",
+        remedy: "retain the unchanged input and use a compatible component",
+    },
+    Refusal {
+        code: "network_output_invalid",
+        when: "the owner cannot admit its private output directory",
+        remedy: "choose a writable ordinary output directory",
+    },
+    Refusal {
+        code: "network_artifact_io",
+        when: "the owner cannot durably emit its complete artifact",
+        remedy: "provide disk space and retry unchanged input at a new output path",
+    },
+    Refusal {
+        code: "callee_cancelled",
+        when: "the host cancels the child or it completes after cancellation",
+        remedy: "retry the unchanged input at a new output path",
+    },
+    Refusal {
+        code: "callee_timed_out",
+        when: "the supervised identity probe or task exceeds its bound",
+        remedy: "use a compatible component and split large batches",
+    },
+    Refusal {
+        code: "callee_wait_failed",
+        when: "the host cannot collect the owned child status",
+        remedy: "inspect host process availability and retry unchanged input",
+    },
+    Refusal {
+        code: "callee_supervision_failed",
+        when: "the host cannot establish process-tree supervision",
+        remedy: "use a host supporting the admitted native supervision boundary",
+    },
+    Refusal {
+        code: "callee_stdin_failed",
+        when: "the child cannot receive its fixed control input",
+        remedy: "use an intact compatible component",
+    },
+];
 
 const CHANGES: Arg = Arg::value(
     "changes",
@@ -69,7 +216,7 @@ fn invalid(e: impl std::fmt::Display) -> Failure {
     )
 }
 
-fn document(path: &str) -> Result<Value, Failure> {
+fn document(path: &str) -> Result<(Value, Vec<u8>), Failure> {
     let mut bytes = Vec::new();
     std::fs::File::open(path)
         .map_err(invalid)?
@@ -79,7 +226,7 @@ fn document(path: &str) -> Result<Value, Failure> {
     if bytes.len() > MAX_BYTES {
         return Err(invalid("changes document exceeds 64 MiB"));
     }
-    serde_json::from_slice(&bytes).map_err(invalid)
+    Ok((serde_json::from_slice(&bytes).map_err(invalid)?, bytes))
 }
 
 /// One section through its Rust owner. `op` is added for kernel sections so
@@ -89,12 +236,11 @@ fn section(op: &str, mut body: Value) -> Result<Value, Failure> {
         return Err(invalid(format!("`{op}` must be an object")));
     };
     if op == "differential_scope" {
-        let request: ds_network::network::differential::DifferentialPlanRequest =
-            serde_json::from_value(body).map_err(invalid)?;
-        return serde_json::to_value(
-            ds_network::network::differential::plan(&request).map_err(invalid)?,
+        serde_json::from_value::<ds_network_contracts::differential::DifferentialPlanRequest>(
+            body.clone(),
         )
-        .map_err(invalid);
+        .map_err(invalid)?;
+        return differential_section(&serde_json::to_vec(&body).map_err(invalid)?);
     }
     map.insert("op".into(), json!(op));
     let reply =
@@ -104,12 +250,42 @@ fn section(op: &str, mut body: Value) -> Result<Value, Failure> {
     Ok(parsed["result"].clone())
 }
 
+fn differential_section(body: &[u8]) -> Result<Value, Failure> {
+    let value: Value = serde_json::from_slice(body).map_err(invalid)?;
+    serde_json::from_value::<ds_network_contracts::differential::DifferentialPlanRequest>(value)
+        .map_err(invalid)?;
+    let captured =
+        ds_network_client::CapturedNetworkClient::capture(1, &|| false).map_err(network_failure)?;
+    // Private staging is on the current volume, never system tmpfs.
+    let scratch = std::env::current_dir().map_err(invalid)?;
+    let answer = captured
+        .lv_differential_plan_bytes(body, &scratch, &|| false)
+        .map_err(network_failure)?;
+    serde_json::to_value(answer.result.plan).map_err(invalid)
+}
+
+fn network_failure(error: ds_network_client::NetworkFailure) -> Failure {
+    if error.owner_code() == Some("autoprocess_request_invalid") {
+        return invalid(error);
+    }
+    let code = error.code();
+    let failure = if code == "network_engine_missing" {
+        Failure::unavailable(code, error.to_string())
+    } else {
+        Failure::failed(code, error.to_string())
+    };
+    match REFUSALS.iter().find(|refusal| refusal.code == code) {
+        Some(refusal) => failure.remedy(refusal.remedy),
+        None => failure,
+    }
+}
+
 fn host_now_ms() -> Result<u64, Failure> {
     ds_cli_contract::util::epoch_ms().map_err(invalid)
 }
 
 pub fn run(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
-    let mut request = document(i.require("changes")?)?;
+    let (mut request, original) = document(i.require("changes")?)?;
     let Some(sections) = request.as_object_mut() else {
         return Err(invalid("the changes document must be an object"));
     };
@@ -133,10 +309,37 @@ pub fn run(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
     if let Some(unknown) = sections.keys().find(|key| !known.contains(&key.as_str())) {
         return Err(invalid(format!("unknown section `{unknown}`")));
     }
+    // Admit every section's shape before any optional addon process. The
+    // Network owns semantic differential decisions; this is wire admission.
+    for (op, body) in sections.iter() {
+        if !body.is_object() {
+            return Err(invalid(format!("`{op}` must be an object")));
+        }
+        if op == "differential_scope" {
+            serde_json::from_value::<ds_network_contracts::differential::DifferentialPlanRequest>(
+                body.clone(),
+            )
+            .map_err(invalid)?;
+        }
+    }
+    let raw_sections: std::collections::BTreeMap<String, Box<serde_json::value::RawValue>> =
+        serde_json::from_slice(&original).map_err(invalid)?;
+    // Admit the Kernel sections too before starting optional engineering.
+    // Keep the original output section order after their answers are retained.
+    let mut kernel_answers = serde_json::Map::new();
+    for op in known.into_iter().filter(|op| *op != "differential_scope") {
+        if let Some(body) = sections.get(op) {
+            kernel_answers.insert(op.into(), section(op, body.clone())?);
+        }
+    }
     let mut out = json!({});
     for op in known {
         if let Some(body) = sections.get(op) {
-            out[op] = section(op, body.clone())?;
+            out[op] = if op == "differential_scope" {
+                differential_section(raw_sections[op].get().as_bytes())?
+            } else {
+                kernel_answers.remove(op).expect("admitted Kernel answer")
+            };
         }
     }
     if out.as_object().is_some_and(serde_json::Map::is_empty) {
@@ -195,7 +398,7 @@ mod tests {
 
     #[test]
     fn differential_scope_reads_layers_and_rejects_host_authored_mapping() {
-        let answer = section("differential_scope", json!({
+        let request: ds_network_contracts::differential::DifferentialPlanRequest = serde_json::from_value( json!({
             "gdfs": {
                 "lv_lines":{"features":[{"id":"f1","properties":{"path_id":"path1"}},{"id":"f2","properties":{"path_id":"path2"}}]},
                 "lv_poles":{"features":[{"id":"p1","properties":{"path_id":"path1"}}]}
@@ -206,9 +409,10 @@ mod tests {
             }},
             "customer_source_addresses":[]
         })).unwrap();
-        assert_eq!(answer["feeders"], json!(["f1"]));
-        assert_eq!(answer["frozen_count"], 1);
-        assert_eq!(answer["reason_key"], "differential_narrowed");
+        assert_eq!(
+            request.differential.auto_process.unwrap().changed_features[0].feature_id,
+            "p1"
+        );
         assert_eq!(section("differential_scope",json!({"differential_enabled":true,"change_count":1,"blocking_diagnostics":false,"mapping":{"unmapped":false,"feeder_ids":["f1"]}})).unwrap_err().code(),"autoprocess_request_invalid");
     }
 

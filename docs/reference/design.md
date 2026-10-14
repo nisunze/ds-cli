@@ -1376,6 +1376,14 @@ carries the ones it found:
   now_ms}` → `dispatch` / `wait` with `wait_ms` / `idle`, plus
   `waiting_not_executing`, which a host renders instead of a running spinner.
 
+Native CLI/MCP `differential_scope` uses the admitted offline Network addon:
+one identity probe and one fixed `lv-differential-plan` task. The request keeps
+the public 64 MiB document bound plus a bounded native wrapper. The exact admitted JSON section is retained in the typed wrapper, so numeric
+normalization cannot silently reduce that allowance. Missing or incompatible
+Network refuses without linked fallback. Kernel-only mode,
+trigger and cadence documents require no addon probe or task. The host admits
+all sections before dispatch, then retains the same answers and section order.
+
 The answer carries `mode {mode, reason_key}`, `trigger {schedule, reason_key}`,
 `differential_scope {scope, feeders, reason_key, selected_count, frozen_count}` and
 `cadence {decision, wait_ms?, reason_key, waiting_not_executing}` for the sections present.
