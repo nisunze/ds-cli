@@ -5,6 +5,7 @@ mod grid;
 mod grid_apply;
 mod grid_catalog;
 mod mv_projection;
+mod mv_report;
 mod profile;
 mod report_engineering;
 mod lv_publication;

@@ -99,6 +99,17 @@ is ruled in the sync contract: simple local clean and recompute.
 
 ## 2. Green `run` and release gates
 
+- **Reporter strict production Clippy has 14 existing diagnostics.**
+  `cargo clippy --locked --no-default-features --lib --no-deps -- -D warnings`
+  in `ds-network-reporter` fails at `exports/kmz.rs:199`,
+  `exports/voltage_drop_pdf/reinforcement_presentation.rs:76`,
+  `grid_plan_profile.rs:505,773,817,976,1163,1852,3515`,
+  `lv_standard.rs:145,837`, `report_text.rs:257,297` and `tasks.rs:1362`.
+  These exact source spans are present at the current committed baseline;
+  `report-mv-current/reporter-clippy-existing.json` under the extraction
+  verification directory retains the diagnostics. Repair each owning lint
+  without engineering changes or suppression and prove the same strict command.
+
 - **Network strict Clippy has untouched baseline diagnostics.** In `ds-network`,
   `cargo clippy --locked --offline -p ds-network -p ds-network-contracts
   -p ds-network-engine --all-targets -- -D warnings` reports
