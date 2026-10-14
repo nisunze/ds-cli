@@ -37,6 +37,15 @@ typed-stdin calls terminate on deadlines or excessive output before joining thei
 bounded collectors. `capture_pinned` reopens an explicit retained executable
 without consulting an active pointer, environment override or PATH. The calling
 application must validate the retained digest and identity before using it.
+`CapturedNetworkClient` performs that admission once for a run or session. Its
+LV and prepared-design calls reuse the same canonical executable and identity
+without another discovery or metadata probe. A serialized `NetworkEnginePin`
+retains the exact executable path, digest, worker width and identity. Resuming
+admits that retained path once, even when an update has changed the active module
+pointer. A missing or changed retained executable refuses; it never substitutes
+the new active version. The host's available CPU count may change after restart,
+but the admitted worker width and engineering identity remain pinned.
+
 Linux arbitrary descendants that escape their group require separate containment;
 the Rust engine's threads terminate with its direct process. Windows source
 support does not establish Windows runtime acceptance.
@@ -46,3 +55,6 @@ pre-extraction byte fixtures and adversarial child fixtures. Ignored acceptance
 tests are run with their required owner/fixture paths; an ordinary test command
 that skips them is not execution proof. The supervisor's owning tests cover
 completion, cancellation, deadlines, input blocking, output limits and reaping.
+The captured-selection acceptance moves an active pointer between two fixture
+executables, verifies two tasks add zero probes, verifies resume probes only the
+retained executable, and proves a corrupt retained digest refuses before probing.

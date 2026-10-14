@@ -1,5 +1,7 @@
 //! Detached native host adapter; no Network computation is linked here.
+mod captured;
 mod design_snapshot;
+pub use captured::{CapturedNetworkClient, NetworkEnginePin};
 pub use design_snapshot::{
     design_snapshot_engine_pin, process_design_snapshot, DesignSnapshotEnginePin,
     DesignSnapshotOutcome,
@@ -105,11 +107,25 @@ pub fn process_lv_with_order(
     object_order: ds_network_contracts::engine::JsonObjectOrder,
 ) -> Result<LvOutcome, NetworkFailure> {
     let request = decode_native_lv_request(input).map_err(NetworkFailure::native)?;
+    let captured = CapturedNetworkClient::capture(workers, cancel)?;
+    process_lv_captured(&captured, input, request, scratch, cancel, object_order)
+}
+
+fn process_lv_captured(
+    captured: &CapturedNetworkClient,
+    input: &[u8],
+    request: NativeLvRequestV1,
+    scratch: &Path,
+    cancel: &dyn Fn() -> bool,
+    object_order: ds_network_contracts::engine::JsonObjectOrder,
+) -> Result<LvOutcome, NetworkFailure> {
     let expected_result_schema =
         ds_network_contracts::lv_processing::native_lv_result_schema_for_request(&request.schema)
             .map_err(NetworkFailure::native)?;
-    let (engine, identity, executable_sha256, development_override) =
-        capture_identity(workers, cancel)?;
+    let engine = &captured.engine;
+    let identity = &captured.identity;
+    let executable_sha256 = &captured.executable_sha256;
+    let development_override = captured.development_override;
     if identity.json_object_order != object_order {
         return Err(NetworkFailure::new(
             "network_serialization_incompatible",
@@ -211,7 +227,7 @@ pub fn process_lv_with_order(
         engine.executable(),
         MAX_EXECUTABLE_BYTES,
         "network_engine_changed",
-    )? != executable_sha256
+    )? != *executable_sha256
     {
         return Err(NetworkFailure::new(
             "network_engine_changed",
@@ -229,8 +245,8 @@ pub fn process_lv_with_order(
         bytes,
         result,
         runtime: identity.runtime,
-        identity,
-        executable_sha256,
+        identity: identity.clone(),
+        executable_sha256: executable_sha256.clone(),
         cancelled,
         development_override,
     })
@@ -256,6 +272,15 @@ fn capture_identity(
         .capture()
         .map_err(|e| NetworkFailure::new(static_code(e.code()), e.to_string()))?;
     let development_override = admit_candidate(&engine)?;
+    capture_resolved_identity(engine, width, development_override, cancel)
+}
+
+fn capture_resolved_identity(
+    engine: CapturedExternal,
+    width: usize,
+    development_override: bool,
+    cancel: &dyn Fn() -> bool,
+) -> Result<(CapturedExternal, EngineIdentity, String, bool), NetworkFailure> {
     let executable_sha256 = digest_file(
         engine.executable(),
         MAX_EXECUTABLE_BYTES,

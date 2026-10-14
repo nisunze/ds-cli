@@ -82,6 +82,114 @@ fn acceptance_receiver_refuses_incompatible_incomplete_and_corrupt_owners() {
         Some("network_engine_missing"),
     );
 }
+
+#[cfg(unix)]
+#[test]
+#[ignore = "requires explicit adversarial executable and frozen request fixtures"]
+fn acceptance_captured_selection_survives_active_pointer_update() {
+    let mut command = Command::new(env::current_exe().unwrap());
+    let result = command
+        .args([
+            "--exact",
+            "isolated_captured_selection_case",
+            "--ignored",
+            "--nocapture",
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        result.status.success(),
+        "{}\n{}",
+        String::from_utf8_lossy(&result.stdout),
+        String::from_utf8_lossy(&result.stderr)
+    );
+}
+
+#[cfg(unix)]
+#[test]
+#[ignore = "internal subprocess isolates active-pointer environment"]
+fn isolated_captured_selection_case() {
+    use ds_network_client::{CapturedNetworkClient, NetworkEnginePin};
+    use ds_network_contracts::engine::JsonObjectOrder;
+    use std::os::unix::fs::symlink;
+    let directory = tempfile::tempdir().unwrap();
+    let alpha = directory.path().join("captured-alpha");
+    let beta = directory.path().join("incompatible");
+    let active = directory.path().join("active");
+    let counter = directory.path().join("probes");
+    fs::copy(required("DS_NETWORK_TEST_OWNER_FIXTURE"), &alpha).unwrap();
+    fs::copy(required("DS_NETWORK_TEST_OWNER_FIXTURE"), &beta).unwrap();
+    symlink(&alpha, &active).unwrap();
+    env::set_var("DS_NETWORK_ENGINE_BIN", &active);
+    fs::write(&counter, "").unwrap();
+    let request =
+        fs::read(required("DS_NETWORK_BOUNDARY_FIXTURES").join("mixed.request.json")).unwrap();
+    let captured = CapturedNetworkClient::capture(1, &|| false).unwrap();
+    let pin = captured.pin();
+    assert_eq!(captured.executable(), fs::canonicalize(&alpha).unwrap());
+    assert_eq!(fs::read_to_string(&counter).unwrap().lines().count(), 1);
+    fs::remove_file(&active).unwrap();
+    symlink(&beta, &active).unwrap();
+    let first = captured
+        .process_lv_with_order(
+            &request,
+            directory.path(),
+            &|| false,
+            JsonObjectOrder::Sorted,
+        )
+        .unwrap();
+    let second = captured
+        .process_lv_with_order(
+            &request,
+            directory.path(),
+            &|| false,
+            JsonObjectOrder::Sorted,
+        )
+        .unwrap();
+    assert_eq!(first.bytes, second.bytes);
+    assert_eq!(
+        fs::read_to_string(&counter).unwrap().lines().count(),
+        1,
+        "jobs must not reprobe or recapture active selection"
+    );
+    let persisted: NetworkEnginePin =
+        serde_json::from_slice(&serde_json::to_vec(&pin).unwrap()).unwrap();
+    let reopened = CapturedNetworkClient::from_pin(&persisted, &|| false).unwrap();
+    assert_eq!(reopened.executable(), fs::canonicalize(&alpha).unwrap());
+    assert_eq!(
+        reopened
+            .process_lv_with_order(
+                &request,
+                directory.path(),
+                &|| false,
+                JsonObjectOrder::Sorted
+            )
+            .unwrap()
+            .bytes,
+        first.bytes
+    );
+    assert_eq!(
+        fs::read_to_string(&counter).unwrap().lines().count(),
+        2,
+        "resume admits retained artifact once"
+    );
+    let mut corrupt = persisted.clone();
+    corrupt.executable_sha256 = "0".repeat(64);
+    match CapturedNetworkClient::from_pin(&corrupt, &|| false) {
+        Err(error) => assert_eq!(error.code(), "network_engine_changed"),
+        Ok(_) => panic!("corrupt retained artifact pin was admitted"),
+    }
+    assert_eq!(
+        fs::read_to_string(&counter).unwrap().lines().count(),
+        2,
+        "corruption must refuse before probing"
+    );
+    match CapturedNetworkClient::capture(1, &|| false) {
+        Err(error) => assert_eq!(error.code(), "network_engine_incompatible"),
+        Ok(_) => panic!("new incompatible active unit was admitted"),
+    }
+    assert_eq!(fs::read_to_string(&counter).unwrap().lines().count(), 3);
+}
 #[test]
 #[ignore = "internal helper invoked only in an isolated acceptance subprocess"]
 fn isolated_native_client_case() {

@@ -21,6 +21,11 @@ fn main() {
     match command {
         "build-info" => {
             assert_eq!(args.len(), 3);
+            let path = exe.parent().unwrap().join("probes");
+            if path.is_file() {
+                let mut file = fs::OpenOptions::new().append(true).open(path).unwrap();
+                file.write_all(b"probe\n").unwrap();
+            }
             println!(
                 "{}",
                 json!({"schema":"ds.engine-build/v1","module":"network","engineIdentity":identity})
