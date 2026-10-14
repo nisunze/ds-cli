@@ -121,6 +121,25 @@ fn isolated_report_adversarial() {
         client
             .report_engineering(&request(), scratch.path(), &|| false)
             .unwrap();
+        let mut sizing = request();
+        sizing.sizing = Some(ReportSizingRequest {
+            minimum_kva: None,
+            transformers: vec![ReportSizingInput {
+                transformer: "first".into(),
+                plan_kva: None,
+                ex_tr_size: None,
+                categories: Default::default(),
+                outgoing: Default::default(),
+            }],
+        });
+        assert_eq!(
+            client
+                .report_engineering(&sizing, scratch.path(), &|| false)
+                .unwrap_err()
+                .code,
+            "network_engine_incompatible",
+            "the older report capability cannot silently consume sizing requests"
+        );
         let mut duplicate = request();
         duplicate.demands.push(duplicate.demands[0].clone());
         assert_eq!(

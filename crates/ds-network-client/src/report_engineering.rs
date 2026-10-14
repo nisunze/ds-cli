@@ -31,6 +31,17 @@ impl CapturedNetworkClient {
                 "selected Network engine has no ReportEngineeringV1 capability",
             ));
         }
+        if request.sizing.is_some()
+            && !self
+                .identity
+                .capabilities
+                .contains(&NetworkCapability::ReportSizingV1)
+        {
+            return Err(NetworkFailure::new(
+                "network_engine_incompatible",
+                "selected Network engine has no ReportSizingV1 capability",
+            ));
+        }
         let input = serde_json::to_vec(request)
             .map_err(|e| NetworkFailure::new("report_engineering_invalid", e.to_string()))?;
         if input.len() > MAX_REPORT_ENGINEERING_REQUEST_BYTES {
