@@ -79,7 +79,7 @@ fn json_file(path: &str) -> Result<Value, Failure> {
 
 pub fn run(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
     let catalog: Value =
-        serde_json::from_str(ds_network::network::PROCESSOR_PRESETS_JSON).map_err(invalid)?;
+        serde_json::from_str(ds_network_contracts::lv::PROCESSOR_PRESETS_JSON).map_err(invalid)?;
     let mut request = json!({
         "op": "resolve",
         "catalog": catalog,
