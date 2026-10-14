@@ -574,7 +574,7 @@ fn patch_from_inputs(inputs: &Inputs) -> Result<Map<String, Value>, Failure> {
                 "zoom-window exceeds the bounded native request size",
             ));
         }
-        let window: ds_canvas::viewport::ZoomWindow =
+        let window: ds_geo_lite::window::ZoomWindow =
             serde_json::from_str(raw).map_err(|e| invalid(format!("zoom-window: {e}")))?;
         window.validate().map_err(invalid)?;
         patch.insert(

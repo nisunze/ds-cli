@@ -6,19 +6,14 @@ of them.
 
 ## Execution hosts
 
-Profile camera controls share native `ds-canvas` math with the UI. To zoom a
-window, read `ds map profile view` for its rendered `surface` dimensions, then
+Profile camera controls execute UI-owned Interactions math in the paired
+application. The CLI admits the neutral rectangle payload and forwards the
+intent. To zoom a window, read `ds map profile view` for its rendered `surface` dimensions, then
 use `ds map profile set --zoom-window '{"from":{"x":100,"y":50},"to":{"x":600,"y":300}}'`.
 The rectangle uses CSS pixels in the displayed Profile. Reversed corners are
 equivalent; zero-area or nonfinite rectangles refuse. Use this camera input
 alone. It changes neither engineering results nor the model, and remains usable
 while newer computed results are pending.
-
-The same operation is headless through `ds map canvas camera --request window.json`:
-
-```json
-{"operation":"zoom_window","bounds":{"min_x":100,"min_y":20,"max_x":1100,"max_y":220},"host":{"width":1024,"height":424,"device_pixel_ratio":1},"viewport":{"zoom":2,"pan_x":170,"pan_y":-30},"window":{"from":{"x":212,"y":112},"to":{"x":812,"y":312}}}
-```
 
 `ds map scene build` prepares a Cesium display scene **headlessly**. It needs no
 Desktop, login, network or selected project and never switches the UI context.
@@ -674,33 +669,6 @@ ingestion; canonical design cleaning stays in `map design upload inspect/stage`.
 `map data list --project <id>` reports upload and tiling status. `map data remove --project <id> --upload <id>
 --yes` removes an exact project upload and its owned storage through the backend.
 These three project data commands name their project with `--project` (the saved selection is never read) and need a reachable backend. A transfer receipt distinguishes registered from tiles ready.
-
-## Headless Canvas2D camera
-
-`ds map canvas camera --request camera.json --output json` calls the same
-Rust camera as Profile. It computes a result without opening or moving a map.
-MCP discovers the command through the normal command registry.
-
-The request is at most 1 MiB. Operations are `fit`, `pan`, `zoom_centered`,
-`project`, `zoom_at`, and `center_on`. `pan` takes `viewport`, `dx`, `dy`;
-`zoom_centered` takes `viewport`, `factor`. `project` takes bounds, host and
-viewport. `zoom_at` adds an anchor in CSS pixels and a factor; `center_on`
-adds a point in scene coordinates. Bounds must be ordered, host dimensions
-positive. Geometry is f64; device pixel ratio does not alter CSS camera math.
-
-```json
-{
-  "operation": "zoom_at",
-  "bounds": {"min_x": 100, "min_y": 20, "max_x": 1100, "max_y": 220},
-  "host": {"width": 1024, "height": 424, "device_pixel_ratio": 2},
-  "viewport": {"zoom": 1.4, "pan_x": -175, "pan_y": 42},
-  "anchor": {"x": 730, "y": 155},
-  "factor": 1.5
-}
-```
-
-A minimal fit request is `{"operation":"fit"}`. Results use `zoom`, `pan_x`,
-`pan_y`, except `project`, which returns `scale`, `offset_x`, `offset_y`.
 
 ## Interactive model Profile viewport
 

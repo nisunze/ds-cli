@@ -37,7 +37,7 @@ pub static COMMAND: Command = Command {
     id: "dsgrid-exchange.inspect",
     path: &["dsgrid-exchange", "inspect"],
     contract: 2,
-    summary: "Classify source files, or read retained native material-history evidence.",
+    summary: "Classify sources or read retained native material-history evidence.",
     purpose: "\
 Answers what a pile of engineering files actually is, and what the engine can \
 do with it. Each source is classified and digested; the result carries the \

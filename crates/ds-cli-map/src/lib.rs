@@ -5,7 +5,6 @@
 //! named desktop bridge operations. This crate is a host adapter, not an engine.
 
 pub mod camera_set;
-pub mod canvas;
 pub mod data;
 pub mod design;
 pub mod draw;
@@ -63,7 +62,6 @@ pub static DOMAIN: Domain = Domain {
     summary: "Local data, layer ordering, remote overlays, and design edits.",
     commands: &[
         &print_schema::COMMAND,
-        &canvas::COMMAND,
         &scene::COMMAND,
         &view::COMMAND,
         &camera_set::COMMAND,

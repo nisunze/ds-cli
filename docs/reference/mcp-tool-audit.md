@@ -301,7 +301,6 @@ Columns: **Typed tool** is the leaf under `--exposure commands` and in any profi
 | `survey.working-area.clear` | `survey_working-area_clear` | `ds_survey` | local_file_write | n/y/n | — | — | tool |
 | `map.scene.build` | `map_scene_build` | `ds_map_presentation` | local_file_write | n/y/n | — | — | tool |
 | `map.print.schema` | `map_print_schema` | `ds_map_presentation` | discovery | y/n/y | — | — | tool |
-| `map.canvas.camera` | `map_canvas_camera` | `ds_map_presentation` | read_only | y/n/y | — | — | tool |
 | `map.view` | `map_view` | `ds_survey` | read_only | y/n/y | — | yes | tool |
 | `map.camera.set` | `map_camera_set` | `ds_map_presentation` | local_ui | n/n/n | — | yes | tool |
 | `map.profile.view` | `map_profile_view` | `ds_map_presentation` | read_only | y/n/y | — | yes | tool |

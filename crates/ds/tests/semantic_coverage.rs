@@ -210,6 +210,11 @@ const EXPECTED: &[(&str, &str, &str)] = &[
         "headless_project",
     ),
     ("server.engine", "read_only", "none"),
+    ("server.module-stage", "machine_write", "none"),
+    ("server.module-selection", "read_only", "none"),
+    ("server.update-inspect", "read_only", "none"),
+    ("server.modules", "discovery", "none"),
+    ("server.module-release", "read_only", "none"),
     ("server.sync.status", "read_only", "headless_user"),
     ("server.sync.retry", "global_write", "headless_user"),
     ("server.sync.sanitize.preview", "read_only", "headless_user"),
@@ -892,7 +897,6 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("map.design.upload-to-local", "local_ui", "project"),
     ("map.design.upload.inspect", "read_only", "project"),
     ("map.design.upload.stage", "local_ui", "project"),
-    ("map.canvas.camera", "read_only", "none"),
     ("map.scene.build", "local_file_write", "none"),
     ("map.data.inspect", "read_only", "none"),
     ("map.data.upload", "global_write", "headless_project"),
@@ -1112,6 +1116,7 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("solar.reference.plan", "local_file_write", "none"),
     ("solar.reference.import", "local_file_write", "none"),
     ("solar.engine", "discovery", "none"),
+    ("solar.calculate-prepared", "local_file_write", "none"),
     ("solar.application", "artifact_write", "headless_project"),
     ("solar.application.schema", "discovery", "none"),
     ("solar.dashboard.compose", "local_file_write", "none"),
@@ -1587,10 +1592,19 @@ fn one_operation_has_one_command_id_whichever_host_executes_it() {
                 "`{id}` speaks the layer drawer's vocabulary (`--{drawer}`); that operation is `ds map layer …`"
             );
         }
-        if matches!(id, "server.engine" | "server.serve") {
+        if matches!(
+            id,
+            "server.engine"
+                | "server.serve"
+                | "server.module-stage"
+                | "server.module-selection"
+                | "server.update-inspect"
+                | "server.modules"
+                | "server.module-release"
+        ) {
             assert!(
                 !inputs.contains(&"project"),
-                "`{id}` resolves no project: hosting and engine inspection are about the host"
+                "`{id}` resolves no project: hosting, engine inspection and component updates are about the host"
             );
             continue;
         }

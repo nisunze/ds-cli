@@ -1,6 +1,6 @@
 //! The process boundary, pinned.
 //!
-//! `docs/contracts/process-boundary-contract.md` and `CLAUDE.md` both promise
+//! `docs/contracts/process-boundary-contract.md` promises
 //! that no caller-supplied argv reaches any owner. Until this suite existed
 //! that promise was enforced by reading: `ds-cli-exec` honours it exactly —
 //! `External::call` takes a `&'static str` subcommand — but four other files
@@ -24,6 +24,14 @@ use std::path::{Path, PathBuf};
 /// somebody read the call site and confirmed the argument list is built here,
 /// from constants and typed inputs, never from a caller's string.
 const SPAWN_OWNERS: &[(&str, &str)] = &[
+    (
+        "crates/ds-cli-exec/src/session.rs",
+        "captured verified Network executable runs only fixed profile-session with private request/output paths and an admitted positive worker budget; no caller executable or argv, managed identity revalidated before spawn",
+    ),
+    (
+        "crates/ds-cli-report/src/project/export.rs",
+        "captured Reporter executable runs only fixed render-grid-plan-profile over host-owned retained request/result paths; no caller executable or argv, owner retains the render lock and failure journal",
+    ),
     (
         "../ds-command-kernel/crates/ds-assets-pdf-host/src/lib.rs",
         "native Assets PDF text owner runs only fixed /usr/bin/prlimit plus /usr/bin/pdfinfo or /usr/bin/pdftotext, closed decoder choice and validated numeric page, over private governed bytes with memory/CPU/deadline/output limits; no caller executable, argv, environment or URL",

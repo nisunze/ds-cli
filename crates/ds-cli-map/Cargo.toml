@@ -24,10 +24,9 @@ ds-command-kernel = { workspace = true }
 ds-grid-engine = { workspace = true }
 # Profile wire history is contracts-only; no retained runtime or solver.
 ds-network-contracts.workspace = true
-ds-canvas = { path = "../../../ds-network/crates/ds-canvas" }
 serde_json = { workspace = true }
 serde = { workspace = true }
-ds-geo-lite = { workspace = true }
+ds-geo-lite = { workspace = true, features = ["vector_types"] }
 ds-geo = { workspace = true }
 ds-layer-store = { path = "../../../ds-command-kernel/crates/ds-layer-store" }
 ds-layer-ops.workspace = true

@@ -7870,38 +7870,19 @@ fn profile_edit_mode_requires_reviewed_history_before_contacting_desktop() {
 }
 
 #[test]
-fn headless_window_camera_centers_the_rectangle_and_refuses_zero_area() {
-    let root = temp_root("window-camera");
-    std::fs::create_dir_all(&root).unwrap();
-    let request = root.join("window.json");
-    let mut document = json!({
-        "operation": "zoom_window",
-        "bounds": {"min_x": 0, "min_y": 0, "max_x": 1000, "max_y": 500},
-        "host": {"width": 1048, "height": 548, "device_pixel_ratio": 1},
-        "viewport": {"zoom": 1, "pan_x": 0, "pan_y": 0},
-        "window": {"from": {"x": 274, "y": 149}, "to": {"x": 774, "y": 399}}
-    });
-    std::fs::write(&request, serde_json::to_vec(&document).unwrap()).unwrap();
-    let args = [
-        "map",
-        "canvas",
-        "camera",
-        "--request",
-        request.to_str().unwrap(),
-        "--output",
-        "json",
-    ];
-    let result = ok(&args);
-    // The native fit padding is 24 CSS pixels in total: 1024 / 500.
-    assert_eq!(result, json!({"zoom": 2.048, "pan_x": 0.0, "pan_y": 0.0}));
-    document["window"]["to"]["x"] = json!(274);
-    std::fs::write(&request, serde_json::to_vec(&document).unwrap()).unwrap();
-    assert_eq!(refusal(&args), "canvas_request_invalid");
-    document["window"]["to"]["x"] = json!(774);
-    document["window"]["invented"] = json!(true);
-    std::fs::write(&request, serde_json::to_vec(&document).unwrap()).unwrap();
-    assert_eq!(refusal(&args), "canvas_request_invalid");
-    std::fs::remove_dir_all(root).unwrap();
+fn ui_camera_computation_is_absent_from_cli() {
+    let index = ok(&["capabilities", "map", "--output", "json"]);
+    assert!(
+        index["commands"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|command| command["id"] != "map.canvas.camera")
+    );
+    assert_eq!(
+        refusal(&["map", "canvas", "camera", "--output", "json"]),
+        "unknown_command"
+    );
 }
 
 #[test]
@@ -7918,7 +7899,6 @@ fn every_map_command_is_reachable_without_the_desktop_installed() {
         .collect();
     let expected: BTreeSet<&str> = [
         "map.print.schema",
-        "map.canvas.camera",
         "map.scene.build",
         "map.data.inspect",
         "map.data.list",
@@ -8170,7 +8150,19 @@ fn every_map_command_is_reachable_without_the_desktop_installed() {
                     | "map.data.remove"
             )
         ) {
-            assert_eq!(command["availability"], "unavailable", "{}", command["id"]);
+            // Native discovery reflects this build's packaged profile. It
+            // may be configured even when no Desktop is installed or paired.
+            assert!(matches!(
+                command["availability"].as_str(),
+                Some("available" | "unavailable")
+            ));
+            let descriptor = ok(&[
+                "capabilities",
+                command["id"].as_str().unwrap(),
+                "--output",
+                "json",
+            ]);
+            assert_eq!(descriptor["command"]["requires"], "server");
         } else {
             assert!(
                 discoverable(command),
