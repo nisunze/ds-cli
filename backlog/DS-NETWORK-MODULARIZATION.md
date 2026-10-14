@@ -236,6 +236,45 @@ Publish immutable versioned packages with `.wasm`, JS glue, declarations and des
 
 Respect browser CSP/CORS/content types and the established origin/pinned artifact mechanism. Do not add arbitrary remote WASM downloads. Cache by immutable digest/version; activate the full JS/WASM pair, not one file. Mixed glue/module versions, stale service-worker/app asset references and interrupted acquisition must produce explicit failure/recovery. Do not re-enable root-scope Desktop service-worker caching to distribute an engine.
 
+### Remaining UI consumer and retirement edges
+
+Cold Interactions consumer proof and full application startup proof are separate
+gates. Repeat ordinary map open/move/click/snap with retained layers and nonempty
+tables; an empty map proves neither mounted edit-session behavior nor every
+synchronous feature consumer. Keep explicit processing entrypoints admitted after
+removing eager application bootstrap. Do not add a TypeScript fallback.
+
+| Pending edge | Exact owner/caller | Required closure |
+| --- | --- | --- |
+| Open-table identity lookup | Web `selection/coordinator.ts` -> `wasm/ds-network.ts::dsNetworkFindFeatureInTabsSync` -> Network WASM `find_feature_in_tabs_v2`, owned by `crates/ds-geo/src/selection.rs` | Application identity/domain/preference semantics retain their admitted owner. Empty-table bypass is only an unused-data control; migrate the nonempty-table decision and prove click identity/order. |
+| Retained edit-session UI index | Web `editing/session-index.ts` -> Network `SessionHandle` in `crates/ds-network-wasm/src/lib.rs` -> `crates/ds-geo/src/session.rs`; `editing/edit-context.ts` preloads Network and warms compute on temporary-edit entry | Separate transient pick/hover/snap/index from authored edits, selection state, undo and DataFrame admission. Preserve one synchronized geometry basis; no copied permanent index. Parked Grid/Profile redesign remains separate. |
+| Other synchronous application consumers | Web `design/domain-model.ts::domainOperation` -> `domainValue` (columns/properties); `grid/crs.ts::runGridModelCrs` -> `gridModelCrs` (new-model dialog, saved models/Profile/authoring); `sketches/temporary-upload-inspection.ts` -> `temporaryUploadGroups`; `wasm/ds-network.ts::dsNetworkPlanLvDifferentialSync` -> `plan_lv_differential` | Migrate nonengineering application/neutral decisions to the correct admitted owner and keep deliberate engineering consumers explicitly ready. Do not silently use startup as readiness for these paths. |
+| Neutral exports awaiting engineering/package review | Network `crates/ds-network-wasm/src/lib.rs`: `bearing_deg`, `destination_point`, `haversine_m`, `spherical_polygon_area_m2`, `measure_frame`, `geojsonBounds`, `geojsonLineLengthM`; Web synchronous geometry adapters use the Interactions exports of the same neutral primitives | Linux checks worker/native/package consumers before retiring exports; shared `ds-geo-lite` primitives stay single-source. These export names alone do not make the shared primitive obsolete. |
+| Retired Canvas export-inventory includes | Network `crates/ds-network-wasm/tests/export_surface_inventory.rs` SOURCES still includes deleted `src/canvas.rs`, `src/canvas_graph.rs`, `src/canvas_free_card.rs`, `src/canvas_free_graph.rs` | Linux removes stale generator/inventory references and proves current exports after retirement. UI lane does not delete/comment Network source. |
+| Captured build closure still names retired Canvas input | Web `scripts/run/wasm.sh::ds_wasm_kernel_dependencies` fingerprints Network under the old Canvas/geometry rationale; `scripts/run/test-wasm-dependencies.sh` constructs `ds-network/crates/ds-canvas/src/lib.rs` and asserts its changes invalidate Kernel | Linux reconciles actual Kernel neutral dependencies and captured release inputs after old headless Canvas wrapper retirement. Retain positive and unrelated-source controls. |
+| Four browser package entries remain | Web `scripts/run/wasm.sh::DS_WASM_PACKAGES`, `package.json`, Vite aliases and worker imports still name Kernel, Interactions, Network and Grid | Linux consolidates engineering adapters into one lazy engineering WASM unit with native/WASM parity, worker affinity and immutable packaging; then prove exactly three units. |
+
+Remaining UI-only source inventory also includes Web
+`project-work/gantt/viewport.ts` and `viewport-motion.ts`: screen pan/zoom,
+time-to-screen transforms and animation interpolation. Keep task/date policy
+with its admitted owner when extracting these numerical view operations; the
+hit-index slice does not constitute their replacement.
+
+The full frontend gate is still red outside the migrated paths:
+`npm run check` reports 27 errors and four warnings in eight untouched files
+(`assets/index-reader.test.js`, `api/transformer-version-catalog.test.ts`,
+`components/grid/GridSpanCheckDialog.svelte`,
+`components/printing/PrintingSetup.svelte`,
+`printing/cli-layout-preview.test.ts`, `tests/dataset-navigation.test.ts`,
+`tests/db.test.ts`, `components/tools/ToolOutputs.svelte`).
+The advertised default Vitest startup also refuses before collection because
+`src/tests/native-solar-global-setup.ts` runs Solar's `ui-contract` build with
+`--locked` while `ds-solar/Cargo.lock` requires a closure update. Reconcile those
+owning gates; passing the independent UI consumer configurations does not close
+them or authorize weakening them. Fresh browser/Desktop interaction and full
+retained-context startup proof remain pending after the requested log/test-first
+verification; Node/jsdom consumer execution is not an installed-host receipt.
+
 ## 9. Native and browser capability matrix
 
 Populate this matrix from the baseline inventory before widening it:
