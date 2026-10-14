@@ -26,7 +26,7 @@ const ACCOUNT_ARG: Arg = Arg::value(
     "The DS account whose catalogue holds the copy; omitted, the id is looked up across this machine's catalogues.",
 );
 
-const REFUSALS: &[Refusal] = &[
+const BASE_REFUSALS: &[Refusal] = &[
     Refusal {
         code: "local_model_not_found",
         when: "no working copy on this machine carries that id",
@@ -69,6 +69,10 @@ const REFUSALS: &[Refusal] = &[
     },
 ];
 
+const REFUSALS: &[Refusal] = &crate::native::extend_refusals::<
+    { BASE_REFUSALS.len() + crate::native::REFUSALS.len() },
+>(BASE_REFUSALS);
+
 pub static COMMAND: Command = Command {
     id: "dsgrid.model.show",
     path: &["dsgrid", "model", "show"],
@@ -105,13 +109,37 @@ and `head_matches_row` — false when the row's recorded head is stale.",
 };
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
+    use ds_network_contracts::grid_read::{
+        NATIVE_GRID_READ_REQUEST_SCHEMA_V1, NativeGridReadRequestV1,
+    };
+
     let located = workspace::locate(inputs, inputs.require("model")?)?;
     let path = located.path.display().to_string();
     let bytes = crate::package::read_bytes(&path)?;
-    let package = crate::package::decode(&path, &bytes)?;
-    let session = ds_grid_engine::GridSession::open(package.snapshot);
-    let head = session.current_revision().revision_id.as_str().to_string();
-    let snapshot = session.snapshot();
+    let request = NativeGridReadRequestV1 {
+        schema: NATIVE_GRID_READ_REQUEST_SCHEMA_V1.into(),
+        issue_limit: 0,
+        advisory_limit: 0,
+    };
+    let scratch = crate::native::scratch()?;
+    let result = crate::native::capture()?
+        .grid_read(&request, &bytes, scratch.path(), &|| false)
+        .map_err(crate::native::map_failure)?
+        .result;
+    if !result.container.verified {
+        return Err(
+            Failure::failed("package_decode_failed", format!("`{path}` did not decode"))
+                .remedy("the canonical reader accepts current schema only; retain the original and use `ds dsgrid package migrate --path <source> --expected-source-sha256 <capture> --dry-run`, then open the saved current package")
+                .detail(result.container.detail.unwrap_or(Value::Null)),
+        );
+    }
+    let head = result.model.ok_or_else(|| {
+        Failure::failed(
+            "network_result_invalid",
+            "Network omitted model facts for a verified package",
+        )
+    })?;
+    let authored_revision = head.authored_revision.clone();
     let mut row = workspace::row(&located.row, None);
     row["active"] = Value::Null;
     Ok(json!({
@@ -120,22 +148,15 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         "path": path,
         "row": row,
         "head": {
-            "authored_revision": head,
-            "package_revision": package.manifest.model.model_revision,
-            "model_id": package.manifest.model.model_id.as_str(),
-            "fingerprint": package.manifest.model.snapshot_fingerprint,
-            "valid": session.is_valid(),
-            "issue_count": session.validation().issues.len(),
+            "authored_revision": authored_revision,
+            "package_revision": head.package_revision,
+            "model_id": head.id,
+            "fingerprint": head.fingerprint,
+            "valid": head.valid,
+            "issue_count": head.issue_count,
         },
-        "head_matches_row": located.row.head_revision.as_deref() == Some(head.as_str()),
-        "counts": {
-            "alignments": snapshot.alignments.len(),
-            "route_nodes": snapshot.route_nodes.len(),
-            "structures": snapshot.structures.len(),
-            "structure_types": snapshot.structure_types.len(),
-            "tension_sections": snapshot.tension_sections.len(),
-            "described_structures": snapshot.structures.iter().filter(|s| s.description.is_some()).count(),
-        },
+        "head_matches_row": located.row.head_revision.as_deref() == Some(authored_revision.as_str()),
+        "counts": head.counts,
     }))
 }
 

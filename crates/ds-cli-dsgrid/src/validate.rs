@@ -22,11 +22,45 @@ use ds_cli_contract::spec::{
     Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
-use ds_grid_engine::GridSession;
-use ds_grid_model::validate_snapshot;
 use serde_json::{Value, json};
 
 use crate::package;
+
+const OWN_REFUSALS: &[Refusal] = &[
+    Refusal {
+        code: "model_not_found",
+        when: "the path does not exist or is not a file",
+        remedy: "check the path; --model takes a file, not a directory",
+    },
+    Refusal {
+        code: "model_too_large",
+        when: "the file is above the 512 MiB read bound",
+        remedy: "confirm the file is a .dsgrid package and not a disk image",
+    },
+    Refusal {
+        code: "model_unreadable",
+        when: "the file exists but cannot be read",
+        remedy: "check file permissions",
+    },
+    Refusal {
+        code: "not_a_dsgrid_package",
+        when: "the bytes are not a readable .dsgrid container",
+        remedy: "a .dsgrid is a zip containing manifest.json; convert other formats first",
+    },
+    Refusal {
+        code: "manifest_unreadable",
+        when: "the package manifest does not match this build's schema",
+        remedy: "rebuild the package with a matching ds-network release",
+    },
+    Refusal {
+        code: "invalid_limit",
+        when: "--limit is not a whole number in 1..5000",
+        remedy: "pass a limit inside the range, or omit it for the default of 50",
+    },
+];
+const REFUSALS: &[Refusal] = &crate::native::extend_refusals::<
+    { OWN_REFUSALS.len() + crate::native::REFUSALS.len() },
+>(OWN_REFUSALS);
 
 pub static COMMAND: Command = Command {
     id: "dsgrid.validate",
@@ -61,38 +95,7 @@ Advisories do not change `model.valid`.",
         note: "Exit 0 whether or not issues were found; read .data.model.valid.",
         runnable: false,
     }],
-    refusals: &[
-        Refusal {
-            code: "model_not_found",
-            when: "the path does not exist or is not a file",
-            remedy: "check the path; --model takes a file, not a directory",
-        },
-        Refusal {
-            code: "model_too_large",
-            when: "the file is above the 512 MiB read bound",
-            remedy: "confirm the file is a .dsgrid package and not a disk image",
-        },
-        Refusal {
-            code: "model_unreadable",
-            when: "the file exists but cannot be read",
-            remedy: "check file permissions",
-        },
-        Refusal {
-            code: "not_a_dsgrid_package",
-            when: "the bytes are not a readable .dsgrid container",
-            remedy: "a .dsgrid is a zip containing manifest.json; convert other formats first",
-        },
-        Refusal {
-            code: "manifest_unreadable",
-            when: "the package manifest does not match this build's schema",
-            remedy: "rebuild the package with a matching ds-network release",
-        },
-        Refusal {
-            code: "invalid_limit",
-            when: "--limit is not a whole number in 1..5000",
-            remedy: "pass a limit inside the range, or omit it for the default of 50",
-        },
-    ],
+    refusals: REFUSALS,
     reference: Some("docs/reference/dsgrid.md"),
     search: &[],
     requires: Requires::Server,
@@ -104,88 +107,90 @@ fn available() -> Availability {
 }
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
+    use ds_network_contracts::grid_read::{
+        NATIVE_GRID_READ_REQUEST_SCHEMA_V1, NativeGridReadRequestV1,
+    };
+
     let raw_path = inputs.require("model")?;
     let limit = package::parse_limit(inputs.value("limit"))?;
     let bytes = package::read_bytes(raw_path)?;
-
-    // The container answer. A decode failure is a *result*, not a refusal:
-    // "this package is damaged" is exactly what the caller asked, and
-    // answering it is this command working correctly.
-    let package = match package::decode(raw_path, &bytes) {
-        Ok(package) => package,
-        Err(failure) => {
-            return Ok(json!({
-                "path": raw_path,
-                "byte_len": bytes.len(),
-                "container": {
-                    "verified": false,
-                    "detail": failure.detail_value(),
-                },
-                // Deliberately null rather than absent: the model was not
-                // judged sound, and it was not judged unsound either.
-                "model": Value::Null,
-            }));
-        }
+    let request = NativeGridReadRequestV1 {
+        schema: NATIVE_GRID_READ_REQUEST_SCHEMA_V1.into(),
+        issue_limit: limit,
+        advisory_limit: limit,
     };
+    let scratch = crate::native::scratch()?;
+    let result = crate::native::capture()?
+        .grid_read(&request, &bytes, scratch.path(), &|| false)
+        .map_err(crate::native::map_failure)?
+        .result;
 
-    let report = validate_snapshot(&package.snapshot);
-    let authored_revision = GridSession::open(package.snapshot.clone())
-        .current_revision()
-        .revision_id
-        .clone();
-    let issues: Vec<Value> = report
+    if !result.container.verified {
+        return Ok(json!({
+            "path": raw_path,
+            "byte_len": bytes.len(),
+            "container": {
+                "verified": false,
+                "detail": result.container.detail.unwrap_or(Value::Null),
+            },
+            "model": Value::Null,
+        }));
+    }
+
+    let model = result.model.ok_or_else(|| {
+        Failure::failed(
+            "network_result_invalid",
+            "Network omitted model facts for a verified package",
+        )
+    })?;
+    let issues = model
         .issues
-        .iter()
+        .into_iter()
         .map(|issue| {
             json!({
-                "code": format!("{:?}", issue.code),
-                "table": issue.table.map(package::table_token),
+                "code": issue.code,
+                "table": issue.table,
                 "entity": issue.entity,
                 "message": issue.message,
             })
         })
-        .collect();
-
-    let total = issues.len();
-    let (shown, withheld) = package::take(issues, limit);
-    let advisory_count = report.advisories.len();
-    let advisories = report
+        .collect::<Vec<_>>();
+    let advisories = model
         .advisories
-        .iter()
+        .into_iter()
         .map(|issue| {
             json!({
-                "code": issue.code.as_str(),
-                "table": issue.table.map(package::table_token),
+                "code": issue.code,
+                "table": issue.table,
                 "entity": issue.entity,
                 "message": issue.message,
             })
         })
-        .collect();
-    let (advisories, advisory_withheld) = package::take(advisories, limit);
+        .collect::<Vec<_>>();
 
     let mut answer = json!({
         "path": raw_path,
         "byte_len": bytes.len(),
         "container": {
             "verified": true,
-            "members": package.manifest.members.len(),
+            "members": result.container.members,
         },
         "model": {
-            "id": package.manifest.model.model_id.as_str(),
-            "revision": package.manifest.model.model_revision,
-            "authored_revision": authored_revision.as_str(),
-            "fingerprint": package.manifest.model.snapshot_fingerprint,
-            "valid": total == 0,
-            "issue_count": total,
-            "issues": shown,
-            "advisory_count": advisory_count,
+            "id": model.id,
+            "revision": model.package_revision,
+            "authored_revision": model.authored_revision,
+            "fingerprint": model.fingerprint,
+            "valid": model.valid,
+            "issue_count": model.issue_count,
+            "issues": issues,
+            "advisory_count": model.advisory_count,
             "advisories": advisories,
         },
     });
 
     let truncated: Vec<Value> = [
-        ("model.issues", withheld),
-        ("model.advisories", advisory_withheld),
+        ("model.issues", model.issues_withheld),
+        ("model.advisories", model.advisories_withheld),
     ]
     .into_iter()
     .filter(|(_, count)| *count > 0)
@@ -289,7 +294,7 @@ mod tests {
             cable.nominal_elastic_modulus_pa = Some(1.0);
         }
         ds_grid_engine::recompute_stored_geometry(&mut package.snapshot);
-        let expected = validate_snapshot(&package.snapshot);
+        let expected = ds_grid_model::validate_snapshot(&package.snapshot);
         assert!(expected.is_valid(), "{:?}", expected.issues);
         assert!(
             expected
