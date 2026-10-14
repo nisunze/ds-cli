@@ -125,14 +125,15 @@ pub(crate) fn native_query_request(inputs: &Inputs) -> Result<Value, Failure> {
     if raw.len() > 64 * 1024 {
         return Err(invalid("query input exceeds 64 KiB transport bound"));
     }
-    let query: ds_profile_runtime::QueryArguments =
-        serde_json::from_str(raw).map_err(|e| invalid(e.to_string()))?;
+    let query: ds_command_kernel::profile_inputs::QueryArguments<
+        ds_network_contracts::profile::ProfileHistory,
+    > = serde_json::from_str(raw).map_err(|e| invalid(e.to_string()))?;
     let mut result = json!({"model_id":model,"expected_revision":revision,"request":query});
     if let Some(raw) = inputs.value("history") {
         if raw.len() > 2048 {
             return Err(invalid("history exceeds transport bound"));
         }
-        let history: ds_grid_engine::SessionHistoryState =
+        let history: ds_network_contracts::profile::ProfileHistory =
             serde_json::from_str(raw).map_err(|e| invalid(e.to_string()))?;
         result["expected_history"] = json!(history);
     }

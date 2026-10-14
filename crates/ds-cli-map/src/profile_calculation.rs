@@ -4,7 +4,7 @@ use ds_cli_contract::spec::{
     Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
-use ds_profile_runtime::CalculationArguments;
+use ds_command_kernel::profile_inputs::CalculationArguments;
 use serde_json::{Value, json};
 
 macro_rules! refusal {
@@ -88,7 +88,7 @@ pub(crate) fn native_request(inputs: &Inputs) -> Result<Value, Failure> {
         if raw.len() > 2048 {
             return Err(invalid("history exceeds transport bound"));
         }
-        let history: ds_grid_engine::SessionHistoryState =
+        let history: ds_network_contracts::profile::ProfileHistory =
             serde_json::from_str(raw).map_err(|e| invalid(e.to_string()))?;
         value["expected_history"] = json!(history);
     }

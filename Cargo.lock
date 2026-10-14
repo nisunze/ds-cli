@@ -1206,7 +1206,7 @@ dependencies = [
  "ds-grid-engine",
  "ds-layer-ops",
  "ds-layer-store",
- "ds-profile-runtime",
+ "ds-network-contracts",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -1703,7 +1703,6 @@ dependencies = [
  "ds-cleaning",
  "ds-geo",
  "ds-graph",
- "ds-grid-physics",
  "ds-kml",
  "encoding_rs",
  "flate2",
@@ -1830,28 +1829,15 @@ dependencies = [
 ]
 
 [[package]]
-name = "ds-profile-runtime"
-version = "0.1.0"
-dependencies = [
- "ds-command-kernel",
- "ds-grid-engine",
- "ds-grid-exchange",
- "ds-grid-model",
- "ds-grid-physics",
- "serde",
- "serde_json",
-]
-
-[[package]]
 name = "ds-project-data"
 version = "0.1.0"
 dependencies = [
  "csv",
  "ds-columnar",
  "ds-command-kernel",
- "ds-geo",
- "ds-grid-exchange",
  "ds-layer-store",
+ "ds-network-client",
+ "ds-network-contracts",
  "flate2",
  "serde",
  "serde_json",
