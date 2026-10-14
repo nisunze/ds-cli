@@ -73,6 +73,7 @@ fn atomic_retry_conflict_and_restore_preserve_history_and_outbox() {
 }
 
 #[test]
+#[ignore = "requires an explicitly qualified native Network design-snapshot executable"]
 fn captured_parallel_run_survives_reopen_and_does_not_consume_later_edits() {
     let temp = tempfile::tempdir().unwrap();
     let root = temp.path().join("project");
@@ -119,6 +120,7 @@ fn captured_parallel_run_survives_reopen_and_does_not_consume_later_edits() {
 }
 
 #[test]
+#[ignore = "requires an explicitly qualified native Network design-snapshot executable"]
 fn cancelled_run_keeps_pending_inputs_and_editing_still_works() {
     let temp = tempfile::tempdir().unwrap();
     let root = temp.path().join("project");
@@ -136,6 +138,7 @@ fn cancelled_run_keeps_pending_inputs_and_editing_still_works() {
 }
 
 #[test]
+#[ignore = "requires an explicitly qualified native Network design-snapshot executable"]
 fn source_digest_and_native_settings_are_validated_before_persisting() {
     let temp = tempfile::tempdir().unwrap();
     let root = temp.path().join("project");

@@ -389,6 +389,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "ds-cli-contract"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "ds-cli-exec"
+version = "0.1.0"
+dependencies = [
+ "ds-cli-contract",
+ "ds-command-kernel",
+ "ds-network-contracts",
+ "libc",
+ "serde_json",
+ "windows-sys",
+]
+
+[[package]]
 name = "ds-command-kernel"
 version = "0.1.0"
 dependencies = [
@@ -421,7 +441,8 @@ dependencies = [
  "ds-grid-engine",
  "ds-grid-exchange",
  "ds-grid-model",
- "ds-network",
+ "ds-network-client",
+ "ds-network-contracts",
  "fs2",
  "rayon",
  "rusqlite",
@@ -469,6 +490,7 @@ dependencies = [
  "ds-graph",
  "ds-grid-model",
  "ds-grid-physics",
+ "ds-network-contracts",
  "ds-profile",
  "regex",
  "schemars",
@@ -554,22 +576,31 @@ dependencies = [
 ]
 
 [[package]]
-name = "ds-network"
+name = "ds-network-client"
 version = "0.1.0"
 dependencies = [
- "ds-cleaning",
- "ds-geo",
+ "ds-cli-contract",
+ "ds-cli-exec",
+ "ds-network-contracts",
+ "libc",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "windows-sys",
+]
+
+[[package]]
+name = "ds-network-contracts"
+version = "0.1.0"
+dependencies = [
  "ds-geo-lite",
- "ds-graph",
- "ds-io",
- "ds-profile",
- "flate2",
- "rayon",
+ "ds-grid-model",
+ "schemars",
  "serde",
  "serde_json",
  "sha2",
  "thiserror",
- "time",
 ]
 
 [[package]]

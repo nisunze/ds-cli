@@ -86,3 +86,13 @@ trace detects prohibited network attempts.
 The captured-selection acceptance moves an active pointer between two fixture
 executables, verifies two tasks add zero probes, verifies resume probes only the
 retained executable, and proves a corrupt retained digest refuses before probing.
+
+The durable Design workspace stores this pin with its immutable input revisions.
+Preparation of an existing run and reads of completed results do not probe an
+engine. Pending execution admits the retained artifact once, then shares that
+selection across its bounded job workers. Missing or changed engines retain the
+inputs and pending work. Historical linked-host run records remain readable;
+pending records without a retained executable pin explicitly refuse rebinding.
+Saved report inputs retain the exact producer analysis bytes and can be exported
+without a running or installed engine. Cancellation of a child keeps that job
+pending, while publication remains a separate host operation.

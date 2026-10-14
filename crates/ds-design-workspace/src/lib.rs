@@ -59,7 +59,7 @@ fn preserve_import_approved(retained: &Snapshot, replacement: &Snapshot) -> Resu
             .and_then(|v| v["features"].as_array())
             .map(Vec::as_slice)
             .unwrap_or(&[]);
-        ds_network::network::import_admission::preserve_approved_rows(
+        ds_network_contracts::import_admission::preserve_approved_rows(
             layer, existing, replacement,
         )
         .map_err(invalid)?;
@@ -268,7 +268,7 @@ impl Workspace {
         // rewrite owner references. Replacement admission is fenced in commit.
         let mut snapshot = design::decode_retained(bytes).map_err(invalid)?;
         for (layer, collection) in &snapshot.layers {
-            ds_network::network::import_admission::validate_design_rows(
+            ds_network_contracts::import_admission::validate_design_rows(
                 layer,
                 collection["features"]
                     .as_array()
