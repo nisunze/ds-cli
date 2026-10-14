@@ -12,7 +12,8 @@ tempfile = "3"
 tokio = { version = "1", features = ["rt", "time", "macros"] }
 ds-command-kernel = { path = "../.." }
 ds-sync-store = { path = "../ds-sync-store" }
-ds-network = { path = "../../../ds-network/crates/ds-network" }
+ds-network-contracts = { path = "../../../ds-network/crates/ds-network-contracts", default-features = false }
+ds-network-client = { path = "../ds-network-client" }
 ds-solar-contracts = { path = "../../../ds-solar/crates/ds-solar-contracts", default-features = false }
 ds-solar-io = { path = "../../../ds-solar/crates/ds-solar-io" }
 ds-solar-process = { path = "../../../ds-solar/crates/ds-solar-process" }

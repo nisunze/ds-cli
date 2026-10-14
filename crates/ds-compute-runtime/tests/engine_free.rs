@@ -2,7 +2,7 @@
 use std::process::Command;
 
 #[test]
-fn normal_dependency_graph_has_no_solar_computation_or_report_owner() {
+fn normal_dependency_graph_has_no_embedded_computation_or_report_owner() {
     let output = Command::new(env!("CARGO"))
         .args(["tree", "--offline", "--manifest-path"])
         .arg(concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.toml"))
@@ -16,6 +16,12 @@ fn normal_dependency_graph_has_no_solar_computation_or_report_owner() {
     );
     let graph = String::from_utf8(output.stdout).unwrap();
     for forbidden in [
+        "ds-network",
+        "ds-grid-physics",
+        "ds-profile",
+        "ds-cleaning",
+        "ds-graph",
+        "ds-io",
         "ds-solar-runtime",
         "ds-solar-engine",
         "ds-solar-report",
@@ -28,10 +34,13 @@ fn normal_dependency_graph_has_no_solar_computation_or_report_owner() {
             !graph
                 .lines()
                 .any(|line| line.split_whitespace().next() == Some(forbidden)),
-            "native prepared execution linked {forbidden}"
+            "native execution linked {forbidden} instead of the standalone component"
         );
     }
     assert!(graph
         .lines()
         .any(|line| line.starts_with("ds-solar-process ")));
+    assert!(graph
+        .lines()
+        .any(|line| line.starts_with("ds-network-client ")));
 }

@@ -260,6 +260,21 @@ fn a_legacy_solar_row_recovers_from_its_sealed_input_and_a_transformer_row_never
         "ds.fast-lv.request/v1",
         b"a transformer batch",
     );
+    let historical_row: String = rusqlite::Connection::open(directory.path().join("store.sqlite"))
+        .unwrap()
+        .query_row("SELECT row FROM compute_jobs WHERE id=?1", [ID_B], |row| {
+            row.get(0)
+        })
+        .unwrap();
+    assert_eq!(
+        store(directory.path())
+            .job(&caller(), ID_B)
+            .unwrap()
+            .unwrap()
+            .engine,
+        EngineKind::LvProcessing,
+        "historical queue rows read through the explicit engine alias"
+    );
     let sealed = |job: &Job, input: &[u8]| {
         (job.engine == EngineKind::SolarPrepared && input == b"sealed for project-b")
             .then(|| "project-b".to_owned())
@@ -272,6 +287,17 @@ fn a_legacy_solar_row_recovers_from_its_sealed_input_and_a_transformer_row_never
         recovery.unrecoverable,
         vec![ID_B.to_owned()],
         "a transformer row names no project and nothing else may name one for it"
+    );
+    let after_read_and_recovery: String =
+        rusqlite::Connection::open(directory.path().join("store.sqlite"))
+            .unwrap()
+            .query_row("SELECT row FROM compute_jobs WHERE id=?1", [ID_B], |row| {
+                row.get(0)
+            })
+            .unwrap();
+    assert_eq!(
+        after_read_and_recovery, historical_row,
+        "read compatibility never rewrites stored historical bytes"
     );
     let solar = store(directory.path())
         .job(&caller(), ID)
@@ -452,7 +478,7 @@ fn a_row_written_before_contexts_is_never_adopted_by_a_later_submission() {
         ..context()
     }));
     named.id = ID_B.into();
-    named.engine = EngineKind::FastLv;
+    named.engine = EngineKind::LvProcessing;
     named.input_tag = "ds.fast-lv.request/v1".into();
     assert!(store
         .submit_job(&named, b"another batch", roomy())

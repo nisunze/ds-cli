@@ -1068,7 +1068,7 @@ pub fn recover(
             Provenance::SealedInput,
             SOLAR_PROCESSING,
         ),
-        EngineKind::FastLv => {
+        EngineKind::LvProcessing => {
             return Err(unrecoverable("a transformer request names no project"));
         }
     };

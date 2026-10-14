@@ -701,14 +701,15 @@ pub type JobContext = ExecutionContext;
 fn valid_input_tag(engine: &compute_jobs::EngineKind, input_tag: &str) -> bool {
     matches!(
         (engine, input_tag),
-        (compute_jobs::EngineKind::FastLv, "ds.fast-lv.request/v1")
-            | (
-                compute_jobs::EngineKind::TilesPrepared,
-                "ds.tiles.prepared/v1"
-            )
-            | (
-                compute_jobs::EngineKind::SolarPrepared,
-                "ds.solar.calculate.prepared/v1"
-            )
+        (
+            compute_jobs::EngineKind::LvProcessing,
+            "ds.lv.process.request/v1" | "ds.fast-lv.request/v1"
+        ) | (
+            compute_jobs::EngineKind::TilesPrepared,
+            "ds.tiles.prepared/v1"
+        ) | (
+            compute_jobs::EngineKind::SolarPrepared,
+            "ds.solar.calculate.prepared/v1"
+        )
     )
 }

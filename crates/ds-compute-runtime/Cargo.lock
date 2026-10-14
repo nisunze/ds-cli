@@ -366,25 +366,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "dbase"
-version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "847c0b5d4f3a3d80f9c64db3cb60eb00304b3ea1262c7299dd6274a83e714d24"
-dependencies = [
- "byteorder",
- "time",
-]
-
-[[package]]
-name = "delaunator"
-version = "1.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3e1ee323c1275374f7e612d3724d12707079fb6a2117349fe144def656f5a880"
-dependencies = [
- "robust",
-]
-
-[[package]]
 name = "deranged"
 version = "0.5.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -434,12 +415,23 @@ dependencies = [
 ]
 
 [[package]]
-name = "ds-cleaning"
+name = "ds-cli-contract"
 version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
- "thiserror",
+]
+
+[[package]]
+name = "ds-cli-exec"
+version = "0.1.0"
+dependencies = [
+ "ds-cli-contract",
+ "ds-command-kernel",
+ "ds-network-contracts",
+ "libc",
+ "serde_json",
+ "windows-sys",
 ]
 
 [[package]]
@@ -474,7 +466,8 @@ dependencies = [
  "anyhow",
  "base64",
  "ds-command-kernel",
- "ds-network",
+ "ds-network-client",
+ "ds-network-contracts",
  "ds-solar-contracts",
  "ds-solar-io",
  "ds-solar-process",
@@ -491,16 +484,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ds-geo"
-version = "0.1.0"
-dependencies = [
- "ds-geo-lite",
- "regex",
- "serde",
- "serde_json",
-]
-
-[[package]]
 name = "ds-geo-lite"
 version = "0.1.0"
 dependencies = [
@@ -508,15 +491,6 @@ dependencies = [
  "rstar",
  "serde",
  "serde_json",
-]
-
-[[package]]
-name = "ds-graph"
-version = "0.1.0"
-dependencies = [
- "serde",
- "serde_json",
- "thiserror",
 ]
 
 [[package]]
@@ -531,41 +505,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ds-grid-physics"
-version = "0.1.0"
-dependencies = [
- "ds-grid-model",
- "schemars",
- "serde",
- "thiserror",
-]
-
-[[package]]
-name = "ds-io"
-version = "0.1.0"
-dependencies = [
- "aho-corasick",
- "base64",
- "delaunator",
- "ds-cleaning",
- "ds-geo",
- "ds-graph",
- "ds-grid-physics",
- "ds-kml",
- "encoding_rs",
- "flate2",
- "quick-xml 0.41.0",
- "rayon",
- "regex",
- "serde",
- "serde_json",
- "sha2",
- "shapefile",
- "zip",
- "zstd",
-]
-
-[[package]]
 name = "ds-kml"
 version = "0.1.0"
 dependencies = [
@@ -576,22 +515,30 @@ dependencies = [
 ]
 
 [[package]]
-name = "ds-network"
+name = "ds-network-client"
 version = "0.1.0"
 dependencies = [
- "ds-cleaning",
- "ds-geo",
- "ds-geo-lite",
- "ds-graph",
- "ds-io",
- "ds-profile",
- "flate2",
- "rayon",
+ "ds-cli-contract",
+ "ds-cli-exec",
+ "ds-network-contracts",
+ "libc",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "windows-sys",
+]
+
+[[package]]
+name = "ds-network-contracts"
+version = "0.1.0"
+dependencies = [
+ "ds-grid-model",
+ "schemars",
  "serde",
  "serde_json",
  "sha2",
  "thiserror",
- "time",
 ]
 
 [[package]]
@@ -602,17 +549,6 @@ dependencies = [
  "serde",
  "serde_json",
  "zip",
-]
-
-[[package]]
-name = "ds-profile"
-version = "0.1.0"
-dependencies = [
- "ds-geo-lite",
- "ds-grid-physics",
- "serde",
- "serde_json",
- "thiserror",
 ]
 
 [[package]]
@@ -651,9 +587,11 @@ dependencies = [
 name = "ds-solar-process"
 version = "0.1.0"
 dependencies = [
+ "base64",
  "ds-solar-contracts",
  "ds-solar-io",
  "libc",
+ "serde",
  "serde_json",
  "tempfile",
 ]
@@ -1893,16 +1831,6 @@ dependencies = [
  "cfg-if",
  "cpufeatures",
  "digest",
-]
-
-[[package]]
-name = "shapefile"
-version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "79d5472e932503059d02779ad2c1b96258980940c6923e49f427fbe80eb3053c"
-dependencies = [
- "byteorder",
- "dbase",
 ]
 
 [[package]]

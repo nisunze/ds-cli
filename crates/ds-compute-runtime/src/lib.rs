@@ -38,8 +38,8 @@ use ds_command_kernel::execution_context::{
     self, AdmitRequest, Admitted, Fault, Principal, Refusal, RetainEvent, SOLAR_PROCESSING,
     TRANSFORMER_PROCESSING,
 };
-use ds_network::network::native_fast_lv::{
-    decode_native_fast_lv_request, encode_native_fast_lv_result, process_native_fast_lv,
+use ds_network_contracts::lv_processing::{
+    decode_native_lv_request, LEGACY_NATIVE_LV_REQUEST_SCHEMA_V1, NATIVE_LV_REQUEST_SCHEMA_V1,
 };
 use ds_solar_contracts::{CalculationTimings, PreparedSolarCityInput, SolarCalculationResult};
 use ds_solar_io::{cancel::CancelToken, output::OutputFile};
@@ -217,14 +217,14 @@ impl From<Fault> for SubmitError {
 }
 
 pub fn submit(path: &Path, admission: &Admission<'_>, input: &[u8]) -> Result<Job, SubmitError> {
-    decode_native_fast_lv_request(input)
-        .map_err(|error| SubmitError::Invalid(format!("fast_lv_request_invalid: {error}")))?;
+    let request = decode_native_lv_request(input)
+        .map_err(|error| SubmitError::Invalid(format!("lv_request_invalid: {error}")))?;
     submit_validated(
         path,
         admission,
         input,
-        EngineKind::FastLv,
-        "ds.fast-lv.request/v1",
+        EngineKind::LvProcessing,
+        &request.schema,
         TRANSFORMER_PROCESSING,
         None,
     )
@@ -987,7 +987,9 @@ pub fn run_one(context: &WorkerContext, worker: &str) -> Result<bool, String> {
             }
         })
     };
-    let solar_workers = thread::available_parallelism().map_or(1, usize::from)
+    // Every active component receives a share of the one host admission
+    // budget; detached batches cannot each start a machine-wide engine pool.
+    let engine_workers = thread::available_parallelism().map_or(1, usize::from)
         / context.limits.global_running.max(1);
     let output = std::panic::catch_unwind(|| {
         if digest(&input) != job.input_sha256 {
@@ -1001,7 +1003,7 @@ pub fn run_one(context: &WorkerContext, worker: &str) -> Result<bool, String> {
                 &job,
                 Some(&cancelled),
                 path.parent().unwrap_or_else(|| Path::new(".")),
-                solar_workers,
+                engine_workers,
             )
         }
     })
@@ -1081,14 +1083,34 @@ fn execute(
     scratch: &Path,
     workers: usize,
 ) -> Result<Vec<u8>, String> {
-    if job.engine == EngineKind::FastLv {
-        if job.input_tag != "ds.fast-lv.request/v1" {
-            return Err("durable Fast LV input tag mismatch".into());
+    if job.engine == EngineKind::LvProcessing {
+        if !matches!(
+            job.input_tag.as_str(),
+            NATIVE_LV_REQUEST_SCHEMA_V1 | LEGACY_NATIVE_LV_REQUEST_SCHEMA_V1
+        ) {
+            return Err("durable LV processing input tag mismatch".into());
         }
-        let request = decode_native_fast_lv_request(input)
-            .map_err(|error| format!("durable Fast LV input invalid: {error}"))?;
-        let result = process_native_fast_lv(request).map_err(|e| e.to_string())?;
-        return encode_native_fast_lv_result(&result).map_err(|e| e.to_string());
+        let request = decode_native_lv_request(input)
+            .map_err(|error| format!("durable LV processing input invalid: {error}"))?;
+        if request.schema != job.input_tag {
+            return Err("durable LV processing input tag mismatch".into());
+        }
+        // One batch captures one compatible executable. The host retains
+        // admission/context/queue ownership; only Network performs engineering.
+        // Preserve the native host's established insertion-order byte contract.
+        let cancelled = || cancel.is_some_and(CancelToken::is_cancelled);
+        let outcome = ds_network_client::process_lv_with_order(
+            input,
+            workers.max(1),
+            scratch,
+            &cancelled,
+            ds_network_contracts::engine::JsonObjectOrder::Insertion,
+        )
+        .map_err(|error| format!("{}: {error}", error.code()))?;
+        if outcome.cancelled {
+            return Err("network_task_cancelled: LV processing did not complete".into());
+        }
+        return Ok(outcome.bytes);
     }
     if job.engine != EngineKind::SolarPrepared || job.input_tag != "ds.solar.calculate.prepared/v1"
     {

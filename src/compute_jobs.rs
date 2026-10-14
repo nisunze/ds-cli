@@ -18,7 +18,10 @@ pub enum Phase {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum EngineKind {
-    FastLv,
+    /// Historic queue rows remain readable; newly written jobs use the
+    /// single LV processing name rather than advertising another mode.
+    #[serde(alias = "fast_lv")]
+    LvProcessing,
     SolarPrepared,
     TilesPrepared,
 }
@@ -46,7 +49,8 @@ pub struct Job {
     /// job id and input digest (`crate::execution_context`). Rows are stored
     /// as one JSON blob, so this is a compatible addition with no SQL schema
     /// change: a row written by a Server released before it deserialises with
-    /// `None` and re-serialises byte-identically. `transition` never touches
+    /// `None`. Historic engine spellings are read aliases, while new writes
+    /// use the canonical engine name. `transition` never touches
     /// it — no lifecycle event moves a job to another project.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub context: Option<crate::execution_context::ExecutionContext>,
@@ -169,7 +173,7 @@ mod tests {
             owner: "owner".into(),
             lane: "stable".into(),
             input_sha256: "2".repeat(64),
-            engine: EngineKind::FastLv,
+            engine: EngineKind::LvProcessing,
             input_tag: "ds.fast-lv.request/v1".into(),
             phase: Phase::Queued,
             attempts: 0,
@@ -202,19 +206,20 @@ mod tests {
     const LEGACY_ROW: &str = r#"{"id":"1111111111111111111111111111111111111111111111111111111111111111","owner":"owner","lane":"stable","input_sha256":"2222222222222222222222222222222222222222222222222222222222222222","engine":"fast_lv","input_tag":"ds.fast-lv.request/v1","phase":"queued","attempts":0,"created_at_ms":1,"updated_at_ms":1,"worker":null,"lease_until_ms":0,"result_sha256":null,"error":null}"#;
 
     #[test]
-    fn a_row_stored_before_execution_contexts_still_loads_and_round_trips() {
+    fn a_row_stored_before_execution_contexts_still_loads_with_the_canonical_engine_name() {
         let job: Job = serde_json::from_str(LEGACY_ROW).expect("a released row still deserialises");
         assert_eq!(job, queued());
         assert_eq!(job.context, None);
-        // A context-less row re-serialises to exactly the bytes it came from,
-        // so adding the member cannot rewrite a released Server's queue.
-        assert_eq!(serde_json::to_string(&job).unwrap(), LEGACY_ROW);
+        // Decoding a stored row does not mutate its bytes in the store. When
+        // this build explicitly writes a row, it uses the canonical name.
+        let canonical = LEGACY_ROW.replace("\"fast_lv\"", "\"lv_processing\"");
+        assert_eq!(serde_json::to_string(&job).unwrap(), canonical);
         // The member is additive, not required: a row that carries one is the
         // same row plus its context.
         let mut carrying = queued();
         carrying.context = Some(context());
         let text = serde_json::to_string(&carrying).unwrap();
-        assert!(text.starts_with(LEGACY_ROW.trim_end_matches('}')));
+        assert!(text.starts_with(canonical.trim_end_matches('}')));
         assert_eq!(
             serde_json::from_str::<Job>(&text).unwrap().context,
             Some(context())

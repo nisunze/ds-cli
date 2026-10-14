@@ -160,6 +160,7 @@ fn prepared_solar_request() -> Vec<u8> {
 }
 
 #[test]
+#[ignore = "requires an explicitly selected compatible native Network executable"]
 fn real_compute_survives_reopen_and_never_recomputes_completed_work() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("store.sqlite");
@@ -439,6 +440,7 @@ fn a_claim_keeps_one_projects_share_while_another_project_is_waiting() {
 /// completion with no upstream in the process at all, and each keeps the
 /// context it was admitted under.
 #[test]
+#[ignore = "requires an explicitly selected compatible native Network executable"]
 fn a_claimed_job_runs_exactly_what_was_admitted_and_asks_no_one_first() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("store.sqlite");
@@ -479,6 +481,7 @@ fn a_claimed_job_runs_exactly_what_was_admitted_and_asks_no_one_first() {
 /// lease expires — the silent work loss the contract forbids, for nothing:
 /// whether the result may leave the machine is asked at publication.
 #[test]
+#[ignore = "requires an explicitly selected compatible native Network executable"]
 fn a_finished_result_is_written_down_even_if_the_credential_check_stops_answering() {
     /// Answers once — the check before the claim — and never again, and says
     /// how many times it was asked.
@@ -889,6 +892,7 @@ fn parallel_claims_are_unique_and_revocation_and_cancellation_stop_work() {
 }
 
 #[test]
+#[ignore = "requires an explicitly selected compatible native Network executable"]
 fn workers_complete_real_batches_inside_the_shared_resource_bound() {
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::time::{Duration, Instant};
@@ -947,6 +951,7 @@ fn workers_complete_real_batches_inside_the_shared_resource_bound() {
 }
 
 #[test]
+#[ignore = "requires an explicitly selected compatible native Network executable"]
 fn resubmitting_a_released_rows_key_under_a_project_is_new_work_beside_it() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("store.sqlite");
