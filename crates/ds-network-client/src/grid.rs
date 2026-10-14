@@ -219,7 +219,11 @@ impl CapturedNetworkClient {
             fs::set_permissions(run.path(), fs::Permissions::from_mode(0o700))
                 .map_err(|e| NetworkFailure::new("network_scratch_invalid", e.to_string()))?;
         }
-        let model_path = run.path().join("model.dsgrid");
+        let model_path = run.path().join(if task == "grid-create" {
+            "standards.dsgrid-template"
+        } else {
+            "model.dsgrid"
+        });
         if let Some(model) = model {
             write_request(&model_path, model)?;
         }
@@ -233,7 +237,15 @@ impl CapturedNetworkClient {
             width.to_string().into(),
         ];
         if model.is_some() {
-            args.extend(["--model".into(), model_path.as_os_str().to_owned()]);
+            args.extend([
+                if task == "grid-create" {
+                    "--standards"
+                } else {
+                    "--model"
+                }
+                .into(),
+                model_path.as_os_str().to_owned(),
+            ]);
         }
         let request_path = run.path().join("request.json");
         if let Some(input) = request {
@@ -361,6 +373,7 @@ impl CapturedNetworkClient {
             "mv-report" => ds_network_contracts::mv_report::MAX_MV_REPORT_REQUEST_BYTES,
             "grid-apply" => ds_network_contracts::grid_apply::MAX_GRID_APPLY_REQUEST_BYTES,
             "grid-catalog" => ds_network_contracts::grid_catalog::MAX_GRID_CATALOG_REQUEST_BYTES,
+            "grid-create" => ds_network_contracts::grid_create::MAX_GRID_CREATE_REQUEST_BYTES,
             _ => MAX_NATIVE_GRID_QUERY_REQUEST_BYTES,
         };
         if request.is_some()
