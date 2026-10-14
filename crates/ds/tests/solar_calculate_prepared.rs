@@ -86,8 +86,11 @@ fn discovery_is_the_same_declared_cli_and_mcp_contract_without_spawning_the_owne
             .iter()
             .map(|input| input["name"].as_str().unwrap())
             .collect::<Vec<_>>(),
-        ["request", "out"]
+        ["request", "out", "lane"]
     );
+    let lane = &command["inputs"][2];
+    assert_eq!(lane["default"], "stable");
+    assert_eq!(lane["choices"], json!(["stable", "canary"]));
     let search = cli(
         &[
             "capabilities",
@@ -133,6 +136,21 @@ fn discovery_is_the_same_declared_cli_and_mcp_contract_without_spawning_the_owne
         !engine.with_extension("calls").exists(),
         "discovery must not invoke build-info or task execution"
     );
+}
+
+#[test]
+fn invalid_addon_lane_refuses_before_any_engine_probe_or_task() {
+    let root = tempfile::tempdir().unwrap();
+    let engine = stub(root.path(), &json!({}), "exit 92");
+    for command in ["engine", "calculate-prepared"] {
+        let mut args = vec!["solar", command, "--lane", "local", "--output", "json"];
+        if command == "calculate-prepared" {
+            args.extend(["--request", "absent.json", "--out", "absent-output"]);
+        }
+        let refused = cli(&args, &engine);
+        assert_eq!(refused["error"]["code"], "invalid_choice", "{refused}");
+    }
+    assert!(!engine.with_extension("calls").exists());
 }
 
 #[test]

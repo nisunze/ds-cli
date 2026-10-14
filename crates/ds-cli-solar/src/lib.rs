@@ -40,6 +40,28 @@ use ds_cli_contract::spec::Domain;
 use ds_cli_exec::External;
 pub use ds_cli_exec::addons::SOLAR as SOLAR_ENGINE;
 
+/// Local file consumers name a native lane without acquiring account/project
+/// state. The supervisor captures one immutable selection for the whole call.
+const ENGINE_LANE: ds_cli_contract::spec::Arg = ds_cli_contract::spec::LANE
+    .summary("Native addon lane; stable is the default. No account or project is read.");
+
+fn capture_engine(
+    inputs: &ds_cli_contract::Inputs,
+) -> Result<ds_cli_exec::CapturedExternal, ds_cli_contract::Failure> {
+    capture_engine_at(inputs, &ds_cli_exec::addons::managed_module_base()?)
+}
+
+/// Privileged native relocation seam, never a command-supplied artifact path.
+fn capture_engine_at(
+    inputs: &ds_cli_contract::Inputs,
+    base: &std::path::Path,
+) -> Result<ds_cli_exec::CapturedExternal, ds_cli_contract::Failure> {
+    SOLAR_ENGINE.capture_for_lane_in(inputs.value("lane").unwrap_or("stable"), base)
+}
+
+#[cfg(test)]
+mod engine_selection_tests;
+
 /// The solar binary.
 ///
 /// The desktop links the Solar runtime for paired product work. Both desktop

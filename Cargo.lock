@@ -1689,6 +1689,7 @@ name = "ds-grid-physics"
 version = "0.1.0"
 dependencies = [
  "ds-grid-model",
+ "ds-network-contracts",
  "schemars",
  "serde",
  "thiserror",
@@ -1813,6 +1814,7 @@ version = "0.1.0"
 dependencies = [
  "ds-geo-lite",
  "ds-grid-model",
+ "ds-profile-grid",
  "schemars",
  "serde",
  "serde_json",
@@ -1836,9 +1838,18 @@ version = "0.1.0"
 dependencies = [
  "ds-geo-lite",
  "ds-grid-physics",
+ "ds-network-contracts",
+ "ds-profile-grid",
  "serde",
  "serde_json",
  "thiserror",
+]
+
+[[package]]
+name = "ds-profile-grid"
+version = "0.1.0"
+dependencies = [
+ "serde",
 ]
 
 [[package]]

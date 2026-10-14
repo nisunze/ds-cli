@@ -65,8 +65,13 @@ and MV previews resolve the lane of their already captured native identity with
 reuse identity checks, rendering and completion identity checks. Discovery does
 not probe an addon or assume an input lane. Desktop Reporter task construction
 uses the compiled shell lane; its staged combined sessions and before/after
-identity checks remain separate lifecycle guards. Raw local-file Reporter
-commands and standalone Solar prepared-file commands retain their explicit
+identity checks remain separate lifecycle guards. Standalone `solar engine` and
+`solar calculate-prepared` declare the native `--lane` (stable by default),
+capture its verified managed selection once and retain that handle through the
+identity/task pair. These local commands read no account/project or release
+catalog. Explicit development override and the existing sibling/PATH fallback
+remain available when no managed selection exists; a corrupt managed receipt
+refuses before spawning. Raw local-file Reporter commands retain their explicit
 unmanaged boundary until separately migrated; inventory/selection alone does not
 prove those consumers use a managed receipt.
 

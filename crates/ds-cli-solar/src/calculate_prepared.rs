@@ -14,7 +14,7 @@ use ds_solar_contracts::{
 };
 use serde_json::{Value, json};
 
-use crate::{DISCOVERY_TIMEOUT, RUN_TIMEOUT, SOLAR_ENGINE};
+use crate::{DISCOVERY_TIMEOUT, ENGINE_LANE, RUN_TIMEOUT, SOLAR_ENGINE, capture_engine};
 
 // A local receipt consumption bound; calculation/input limits remain Solar-owned.
 const MAX_RESULT_BYTES: u64 = 64 * 1024 * 1024;
@@ -25,7 +25,7 @@ pub static COMMAND: Command = Command {
     path: &["solar", "calculate-prepared"],
     contract: 1,
     summary: "Calculate one prepared Solar city offline into a fresh directory.",
-    purpose: "Calculate one complete prepared-city request through the same Solar owner as Cloud. The request owns prepared input, chart choice and run id. Capture one engine, require its task schema, and execute the fixed file task. Offline only: no intake, project API, provider, publication or Desktop. Completion names local files and makes no sync claim.",
+    purpose: "Calculate one complete prepared-city request through the same Solar owner as Cloud. The request owns prepared input, chart choice and run id. Capture one engine from the declared native addon lane, require its task schema, and execute the fixed file task using that same immutable path. Offline only: no intake, account/project read, project API, provider, publication or Desktop. Completion names local files and makes no sync claim.",
     chapter: Chapter::Solar,
     effect: Effect::LocalFileWrite,
     authority: Authority::None,
@@ -43,6 +43,7 @@ pub static COMMAND: Command = Command {
             "Absent directory for the native task-result.json and artifacts; never overwritten.",
         )
         .required(),
+        ENGINE_LANE,
     ],
     output: "Completion within 16 KiB: captured engine identity, request/input/result digests, artifact count/bytes and task-result.json/artifacts paths. The native typed receipt is read within 64 MiB; artifact bytes stay on disk and are not re-verified by CLI. Development provenance is never invented.",
     examples: &[Example {
@@ -52,9 +53,14 @@ pub static COMMAND: Command = Command {
     }],
     refusals: &[
         Refusal {
+            code: "module_receipt_invalid",
+            when: "the selected lane's managed addon receipt or executable bytes are invalid",
+            remedy: "retain the selected lane; repair or roll back its verified module installation",
+        },
+        Refusal {
             code: "solar_engine_missing",
             when: "the Solar addon cannot be found",
-            remedy: "reinstall the complete ds release, or set DS_SOLAR_ENGINE_BIN to a compatible development solar executable",
+            remedy: "install the Solar addon, or set DS_SOLAR_ENGINE_BIN to a compatible development solar executable",
         },
         Refusal {
             code: "solar_prepared_schema_unavailable",
@@ -94,7 +100,8 @@ pub static COMMAND: Command = Command {
 };
 
 fn availability() -> Availability {
-    SOLAR_ENGINE.availability()
+    // A missing unmanaged sibling must not hide a valid managed selection.
+    Availability::Available
 }
 
 fn incompatible_result() -> Failure {
@@ -108,9 +115,15 @@ fn incompatible_result() -> Failure {
 }
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
+    run_captured(inputs, capture_engine(inputs)?)
+}
+
+pub(crate) fn run_captured(
+    inputs: &Inputs,
+    engine: ds_cli_exec::CapturedExternal,
+) -> Result<Value, Failure> {
     let request = inputs.require("request")?;
     let out = PathBuf::from(inputs.require("out")?);
-    let engine = SOLAR_ENGINE.capture()?;
     let identity = engine.call_json("build-info", &[], DISCOVERY_TIMEOUT)?;
     let identity: EngineIdentity = serde_json::from_value(identity).map_err(|_| {
         Failure::failed(
