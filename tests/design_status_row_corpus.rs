@@ -71,6 +71,45 @@ fn each_declared_divergence_is_declared_and_nothing_else_diverges() {
     }
 }
 
+#[test]
+fn accepted_baseline_migration_and_missing_fact_controls_are_explicit() {
+    let corpus = corpus();
+    let migration = &corpus["baseline_migration"];
+    assert_eq!(
+        migration["source_commit"],
+        "a8f638621689d8abecf02914d7d4322a0915fb9d"
+    );
+    assert_eq!(
+        migration["added_version_fields"],
+        serde_json::json!(["baseline_ready", "label"])
+    );
+    for case in corpus["cases"].as_array().unwrap() {
+        for row in case["expected"]["rows"].as_array().unwrap() {
+            let version = &row["view"]["version"];
+            assert_eq!(version["baseline_ready"], false);
+            let label = if version["version"] == 0 {
+                "baseline_required".into()
+            } else {
+                format!("v{}", version["version"])
+            };
+            assert_eq!(version["label"], label);
+        }
+    }
+    let cases = corpus["baseline_cases"].as_array().unwrap();
+    assert_eq!(cases.len(), 9);
+    for case in cases {
+        let request = serde_json::json!({"schema":SCHEMA,"server_rows":[case["row"]]});
+        let reply: Value =
+            serde_json::from_str(&evaluate(&serde_json::to_vec(&request).unwrap()).unwrap())
+                .unwrap();
+        assert_eq!(
+            reply["rows"][0]["view"]["version"], case["expected_version"],
+            "{}",
+            case["id"]
+        );
+    }
+}
+
 /// `design::row_kind` + `row_allows` replaced `SPECIAL_ROW_NAMES`,
 /// `COMBINED_AGGREGATE_NAMES`, `UNVERSIONABLE_NAMES`,
 /// `project_control::is_special_status_row` and

@@ -644,7 +644,7 @@
         "outcome": "refused",
         "refusal": {
           "code": "context_corrupt",
-          "message": "execution context field operation is not valid: one of transformer_processing, solar_processing, tile_processing, report_export, layer_read, layer_write"
+          "message": "execution context field operation is not valid: one of transformer_processing, solar_processing, tile_processing, report_export, layer_read, layer_write, sync_recovery"
         }
       }
     },
@@ -1179,6 +1179,42 @@
           "operation": "layer_write",
           "job_id": "req-9a10",
           "idempotency_key": "req-9a10",
+          "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "admitted_at_ms": 2000
+        }
+      }
+    },
+    {
+      "id": "admit-sync-recovery-operation",
+      "why": "Kernel f4754a2 adds sync_recovery for fenced native recovery of retained publications; it retains the explicitly named project and connection identity just like every admitted operation.",
+      "request": {
+        "kind": "admit",
+        "now_ms": 2000,
+        "principal": {
+          "uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1"
+        },
+        "client": "cli:4711",
+        "operation": "sync_recovery",
+        "job_id": "sync-9a10",
+        "idempotency_key": "sync-9a10",
+        "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "requested_project": "project-a"
+      },
+      "expected": {
+        "outcome": "admitted",
+        "context": {
+          "principal_uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1",
+          "project": "project-a",
+          "client": "cli:4711",
+          "operation": "sync_recovery",
+          "job_id": "sync-9a10",
+          "idempotency_key": "sync-9a10",
           "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
           "admitted_at_ms": 2000
         }

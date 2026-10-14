@@ -1,6 +1,6 @@
 {
 	"schema": "ds.design-status-row-parity/v1",
-	"purpose": "Campaign slice 3 — status row truth owned by ds-command-kernel. Each case holds one `design_status_row` request, what the deleted TypeScript answered for it (`expected_ts`: `statusRowView`, `mergeLocalTransformerStatus`, `supersededPhase`, `latestAction`, `transformerGovernanceBadge`, `canRetryProcess`, the three row-name sets — recorded by running that code once before deleting it), and what the kernel answers (`expected`). A case where the two differ carries a `why`; the kernel is right in every one. `label_rename` is the vocabulary table that makes the two comparable — the kernel returns i18n KEYS where the browser returned English. Since 2026-09-22 there is one way to process a transformer: the kernel answers no `lane`, `phase_lanes`, `legacy_standard_output` or per-stamp `lane`, so those members of `expected_ts` are retired and not compared.",
+	"purpose": "Campaign slice 3 — status row truth owned by ds-command-kernel. Each case holds one `design_status_row` request, what the deleted TypeScript answered for it (`expected_ts`: `statusRowView`, `mergeLocalTransformerStatus`, `supersededPhase`, `latestAction`, `transformerGovernanceBadge`, `canRetryProcess`, the three row-name sets — recorded by running that code once before deleting it), and what the kernel answers (`expected`). A case where the two differ carries a `why`; the kernel is right in every one. `label_rename` is the vocabulary table that makes the two comparable — the kernel returns i18n KEYS where the browser returned English. Since 2026-09-22 there is one way to process a transformer: the kernel answers no `lane`, `phase_lanes`, `legacy_standard_output` or per-stamp `lane`, so those members of `expected_ts` are retired and not compared. The accepted baseline migration at a8f6386 is accounted separately in baseline_migration; historical expected_ts values are retained, and baseline_cases prove pinned zero and missing-evidence behavior.",
 	"label_rename": {
 		"Document update": "dsr_action_document_update",
 		"Browser edit": "dsr_action_browser_edit",
@@ -147,7 +147,9 @@
 								"version": 0,
 								"latest": 0,
 								"restored": false,
-								"unversioned": true
+								"unversioned": true,
+								"baseline_ready": false,
+								"label": "baseline_required"
 							},
 							"show_sync_badge": true,
 							"server_known": true,
@@ -347,7 +349,9 @@
 								"version": 0,
 								"latest": 0,
 								"restored": false,
-								"unversioned": true
+								"unversioned": true,
+								"baseline_ready": false,
+								"label": "baseline_required"
 							},
 							"show_sync_badge": true,
 							"server_known": true,
@@ -567,7 +571,9 @@
 								"version": 0,
 								"latest": 0,
 								"restored": false,
-								"unversioned": true
+								"unversioned": true,
+								"baseline_ready": false,
+								"label": "baseline_required"
 							},
 							"show_sync_badge": true,
 							"server_known": true,
@@ -779,7 +785,9 @@
 								"version": 0,
 								"latest": 0,
 								"restored": false,
-								"unversioned": true
+								"unversioned": true,
+								"baseline_ready": false,
+								"label": "baseline_required"
 							},
 							"foreign_room": {
 								"owner": "aduhireemery@gmail.com",
@@ -984,7 +992,9 @@
 								"version": 0,
 								"latest": 0,
 								"restored": false,
-								"unversioned": true
+								"unversioned": true,
+								"baseline_ready": false,
+								"label": "baseline_required"
 							},
 							"show_sync_badge": true,
 							"server_known": true,
@@ -1188,7 +1198,9 @@
 								"version": 0,
 								"latest": 0,
 								"restored": false,
-								"unversioned": true
+								"unversioned": true,
+								"baseline_ready": false,
+								"label": "baseline_required"
 							},
 							"show_sync_badge": true,
 							"server_known": true,
@@ -1389,7 +1401,9 @@
 								"version": 0,
 								"latest": 0,
 								"restored": false,
-								"unversioned": true
+								"unversioned": true,
+								"baseline_ready": false,
+								"label": "baseline_required"
 							},
 							"show_sync_badge": true,
 							"server_known": true,
@@ -1598,7 +1612,9 @@
 								"version": 0,
 								"latest": 0,
 								"restored": false,
-								"unversioned": true
+								"unversioned": true,
+								"baseline_ready": false,
+								"label": "baseline_required"
 							},
 							"show_sync_badge": true,
 							"server_known": false,
@@ -1885,7 +1901,9 @@
 								"version": 0,
 								"latest": 0,
 								"restored": false,
-								"unversioned": true
+								"unversioned": true,
+								"baseline_ready": false,
+								"label": "baseline_required"
 							},
 							"show_sync_badge": true,
 							"server_known": true,
@@ -1970,7 +1988,9 @@
 								"version": 0,
 								"latest": 0,
 								"restored": false,
-								"unversioned": true
+								"unversioned": true,
+								"baseline_ready": false,
+								"label": "baseline_required"
 							},
 							"show_sync_badge": true,
 							"server_known": true,
@@ -2158,7 +2178,9 @@
 								"version": 0,
 								"latest": 0,
 								"restored": false,
-								"unversioned": true
+								"unversioned": true,
+								"baseline_ready": false,
+								"label": "baseline_required"
 							},
 							"show_sync_badge": true,
 							"server_known": true,
@@ -2337,7 +2359,9 @@
 								"version": 0,
 								"latest": 0,
 								"restored": false,
-								"unversioned": true
+								"unversioned": true,
+								"baseline_ready": false,
+								"label": "baseline_required"
 							},
 							"show_sync_badge": true,
 							"server_known": true,
@@ -2534,7 +2558,9 @@
 								"version": 0,
 								"latest": 0,
 								"restored": false,
-								"unversioned": true
+								"unversioned": true,
+								"baseline_ready": false,
+								"label": "baseline_required"
 							},
 							"show_sync_badge": true,
 							"server_known": true,
@@ -2755,7 +2781,9 @@
 								"version": 0,
 								"latest": 0,
 								"restored": false,
-								"unversioned": true
+								"unversioned": true,
+								"baseline_ready": false,
+								"label": "baseline_required"
 							},
 							"presence": {
 								"user": "aduhireemery@gmail.com",
@@ -2985,7 +3013,9 @@
 								"version": 0,
 								"latest": 0,
 								"restored": false,
-								"unversioned": true
+								"unversioned": true,
+								"baseline_ready": false,
+								"label": "baseline_required"
 							},
 							"presence": {
 								"user": "aduhireemery@gmail.com",
@@ -3214,7 +3244,9 @@
 								"version": 0,
 								"latest": 0,
 								"restored": false,
-								"unversioned": true
+								"unversioned": true,
+								"baseline_ready": false,
+								"label": "baseline_required"
 							},
 							"presence": {
 								"user": "aduhireemery@gmail.com",
@@ -3426,7 +3458,9 @@
 								"version": 0,
 								"latest": 0,
 								"restored": false,
-								"unversioned": true
+								"unversioned": true,
+								"baseline_ready": false,
+								"label": "baseline_required"
 							},
 							"presence": {
 								"user": "bob@x.com",
@@ -3623,7 +3657,9 @@
 								"version": 0,
 								"latest": 0,
 								"restored": false,
-								"unversioned": true
+								"unversioned": true,
+								"baseline_ready": false,
+								"label": "baseline_required"
 							},
 							"show_sync_badge": true,
 							"server_known": true,
@@ -3819,7 +3855,9 @@
 								"version": 0,
 								"latest": 0,
 								"restored": false,
-								"unversioned": true
+								"unversioned": true,
+								"baseline_ready": false,
+								"label": "baseline_required"
 							},
 							"foreign_room": {
 								"owner": "aduhireemery@gmail.com",
@@ -4007,7 +4045,9 @@
 								"version": 0,
 								"latest": 0,
 								"restored": false,
-								"unversioned": true
+								"unversioned": true,
+								"baseline_ready": false,
+								"label": "baseline_required"
 							},
 							"show_sync_badge": true,
 							"server_known": true,
@@ -4194,7 +4234,9 @@
 								"version": 0,
 								"latest": 0,
 								"restored": false,
-								"unversioned": true
+								"unversioned": true,
+								"baseline_ready": false,
+								"label": "baseline_required"
 							},
 							"show_sync_badge": true,
 							"server_known": true,
@@ -4390,7 +4432,9 @@
 								"version": 0,
 								"latest": 0,
 								"restored": false,
-								"unversioned": true
+								"unversioned": true,
+								"baseline_ready": false,
+								"label": "baseline_required"
 							},
 							"show_sync_badge": true,
 							"server_known": true,
@@ -4583,7 +4627,9 @@
 								"version": 0,
 								"latest": 0,
 								"restored": false,
-								"unversioned": true
+								"unversioned": true,
+								"baseline_ready": false,
+								"label": "baseline_required"
 							},
 							"show_sync_badge": true,
 							"server_known": true,
@@ -4767,7 +4813,9 @@
 								"version": 0,
 								"latest": 0,
 								"restored": false,
-								"unversioned": true
+								"unversioned": true,
+								"baseline_ready": false,
+								"label": "baseline_required"
 							},
 							"show_sync_badge": true,
 							"server_known": true,
@@ -4956,7 +5004,9 @@
 								"version": 0,
 								"latest": 0,
 								"restored": false,
-								"unversioned": true
+								"unversioned": true,
+								"baseline_ready": false,
+								"label": "baseline_required"
 							},
 							"show_sync_badge": true,
 							"server_known": true,
@@ -5152,7 +5202,9 @@
 								"version": 0,
 								"latest": 0,
 								"restored": false,
-								"unversioned": true
+								"unversioned": true,
+								"baseline_ready": false,
+								"label": "baseline_required"
 							},
 							"show_sync_badge": true,
 							"server_known": true,
@@ -5350,7 +5402,9 @@
 								"version": 0,
 								"latest": 0,
 								"restored": false,
-								"unversioned": true
+								"unversioned": true,
+								"baseline_ready": false,
+								"label": "baseline_required"
 							},
 							"show_sync_badge": true,
 							"server_known": true,
@@ -5561,7 +5615,9 @@
 								"version": 0,
 								"latest": 0,
 								"restored": false,
-								"unversioned": true
+								"unversioned": true,
+								"baseline_ready": false,
+								"label": "baseline_required"
 							},
 							"show_sync_badge": true,
 							"server_known": true,
@@ -5749,7 +5805,9 @@
 								"version": 0,
 								"latest": 0,
 								"restored": false,
-								"unversioned": true
+								"unversioned": true,
+								"baseline_ready": false,
+								"label": "baseline_required"
 							},
 							"show_sync_badge": true,
 							"server_known": true,
@@ -5939,7 +5997,9 @@
 								"version": 0,
 								"latest": 0,
 								"restored": false,
-								"unversioned": true
+								"unversioned": true,
+								"baseline_ready": false,
+								"label": "baseline_required"
 							},
 							"show_sync_badge": true,
 							"server_known": true,
@@ -6123,7 +6183,9 @@
 								"version": 0,
 								"latest": 0,
 								"restored": false,
-								"unversioned": true
+								"unversioned": true,
+								"baseline_ready": false,
+								"label": "baseline_required"
 							},
 							"show_sync_badge": true,
 							"server_known": true,
@@ -6306,7 +6368,9 @@
 								"version": 0,
 								"latest": 0,
 								"restored": false,
-								"unversioned": true
+								"unversioned": true,
+								"baseline_ready": false,
+								"label": "baseline_required"
 							},
 							"show_sync_badge": true,
 							"server_known": true,
@@ -6489,7 +6553,9 @@
 								"version": 0,
 								"latest": 0,
 								"restored": false,
-								"unversioned": true
+								"unversioned": true,
+								"baseline_ready": false,
+								"label": "baseline_required"
 							},
 							"show_sync_badge": true,
 							"server_known": true,
@@ -6670,7 +6736,9 @@
 								"version": 0,
 								"latest": 0,
 								"restored": false,
-								"unversioned": true
+								"unversioned": true,
+								"baseline_ready": false,
+								"label": "baseline_required"
 							},
 							"show_sync_badge": true,
 							"server_known": true,
@@ -6854,7 +6922,9 @@
 								"version": 0,
 								"latest": 0,
 								"restored": false,
-								"unversioned": true
+								"unversioned": true,
+								"baseline_ready": false,
+								"label": "baseline_required"
 							},
 							"show_sync_badge": true,
 							"server_known": true,
@@ -7042,7 +7112,9 @@
 								"version": 0,
 								"latest": 0,
 								"restored": false,
-								"unversioned": true
+								"unversioned": true,
+								"baseline_ready": false,
+								"label": "baseline_required"
 							},
 							"show_sync_badge": true,
 							"server_known": true,
@@ -7226,7 +7298,9 @@
 								"version": 0,
 								"latest": 0,
 								"restored": false,
-								"unversioned": true
+								"unversioned": true,
+								"baseline_ready": false,
+								"label": "baseline_required"
 							},
 							"show_sync_badge": true,
 							"server_known": true,
@@ -7411,7 +7485,9 @@
 								"version": 0,
 								"latest": 0,
 								"restored": false,
-								"unversioned": true
+								"unversioned": true,
+								"baseline_ready": false,
+								"label": "baseline_required"
 							},
 							"show_sync_badge": true,
 							"server_known": true,
@@ -7593,7 +7669,9 @@
 								"version": 0,
 								"latest": 0,
 								"restored": false,
-								"unversioned": true
+								"unversioned": true,
+								"baseline_ready": false,
+								"label": "baseline_required"
 							},
 							"show_sync_badge": true,
 							"server_known": true,
@@ -7780,7 +7858,9 @@
 								"version": 0,
 								"latest": 0,
 								"restored": false,
-								"unversioned": true
+								"unversioned": true,
+								"baseline_ready": false,
+								"label": "baseline_required"
 							},
 							"show_sync_badge": true,
 							"server_known": true,
@@ -7964,7 +8044,9 @@
 								"version": 0,
 								"latest": 0,
 								"restored": false,
-								"unversioned": true
+								"unversioned": true,
+								"baseline_ready": false,
+								"label": "baseline_required"
 							},
 							"show_sync_badge": true,
 							"server_known": true,
@@ -8150,7 +8232,9 @@
 								"version": 0,
 								"latest": 0,
 								"restored": false,
-								"unversioned": true
+								"unversioned": true,
+								"baseline_ready": false,
+								"label": "baseline_required"
 							},
 							"show_sync_badge": true,
 							"server_known": true,
@@ -8334,7 +8418,9 @@
 								"version": 0,
 								"latest": 0,
 								"restored": false,
-								"unversioned": true
+								"unversioned": true,
+								"baseline_ready": false,
+								"label": "baseline_required"
 							},
 							"show_sync_badge": true,
 							"server_known": true,
@@ -8517,7 +8603,9 @@
 								"version": 0,
 								"latest": 0,
 								"restored": false,
-								"unversioned": true
+								"unversioned": true,
+								"baseline_ready": false,
+								"label": "baseline_required"
 							},
 							"show_sync_badge": true,
 							"server_known": true,
@@ -8699,7 +8787,9 @@
 								"version": 0,
 								"latest": 0,
 								"restored": false,
-								"unversioned": true
+								"unversioned": true,
+								"baseline_ready": false,
+								"label": "baseline_required"
 							},
 							"show_sync_badge": true,
 							"server_known": true,
@@ -8886,7 +8976,9 @@
 								"version": 0,
 								"latest": 0,
 								"restored": false,
-								"unversioned": true
+								"unversioned": true,
+								"baseline_ready": false,
+								"label": "baseline_required"
 							},
 							"show_sync_badge": true,
 							"server_known": true,
@@ -9078,7 +9170,9 @@
 								"version": 0,
 								"latest": 0,
 								"restored": false,
-								"unversioned": true
+								"unversioned": true,
+								"baseline_ready": false,
+								"label": "baseline_required"
 							},
 							"show_sync_badge": true,
 							"server_known": true,
@@ -9282,7 +9376,9 @@
 								"version": 0,
 								"latest": 0,
 								"restored": false,
-								"unversioned": true
+								"unversioned": true,
+								"baseline_ready": false,
+								"label": "baseline_required"
 							},
 							"show_sync_badge": true,
 							"server_known": true,
@@ -9491,7 +9587,9 @@
 								"version": 0,
 								"latest": 0,
 								"restored": false,
-								"unversioned": true
+								"unversioned": true,
+								"baseline_ready": false,
+								"label": "baseline_required"
 							},
 							"show_sync_badge": true,
 							"server_known": true,
@@ -9701,7 +9799,9 @@
 								"version": 0,
 								"latest": 0,
 								"restored": false,
-								"unversioned": true
+								"unversioned": true,
+								"baseline_ready": false,
+								"label": "baseline_required"
 							},
 							"show_sync_badge": true,
 							"server_known": true,
@@ -9905,7 +10005,9 @@
 								"version": 0,
 								"latest": 0,
 								"restored": false,
-								"unversioned": true
+								"unversioned": true,
+								"baseline_ready": false,
+								"label": "baseline_required"
 							},
 							"show_sync_badge": true,
 							"server_known": true,
@@ -10104,7 +10206,9 @@
 								"version": 0,
 								"latest": 0,
 								"restored": false,
-								"unversioned": true
+								"unversioned": true,
+								"baseline_ready": false,
+								"label": "baseline_required"
 							},
 							"show_sync_badge": true,
 							"server_known": true,
@@ -10304,7 +10408,9 @@
 								"version": 0,
 								"latest": 0,
 								"restored": false,
-								"unversioned": true
+								"unversioned": true,
+								"baseline_ready": false,
+								"label": "baseline_required"
 							},
 							"show_sync_badge": true,
 							"server_known": true,
@@ -10499,7 +10605,9 @@
 								"version": 0,
 								"latest": 0,
 								"restored": false,
-								"unversioned": true
+								"unversioned": true,
+								"baseline_ready": false,
+								"label": "baseline_required"
 							},
 							"show_sync_badge": true,
 							"server_known": true,
@@ -10684,7 +10792,9 @@
 								"version": 0,
 								"latest": 0,
 								"restored": false,
-								"unversioned": true
+								"unversioned": true,
+								"baseline_ready": false,
+								"label": "baseline_required"
 							},
 							"show_sync_badge": true,
 							"server_known": true,
@@ -10870,7 +10980,9 @@
 								"latest": 3,
 								"restored": false,
 								"unversioned": false,
-								"reason": "Pre-handover cut"
+								"reason": "Pre-handover cut",
+								"baseline_ready": false,
+								"label": "v3"
 							},
 							"show_sync_badge": true,
 							"server_known": true,
@@ -11053,7 +11165,9 @@
 								"version": 7,
 								"latest": 10,
 								"restored": true,
-								"unversioned": false
+								"unversioned": false,
+								"baseline_ready": false,
+								"label": "v7"
 							},
 							"show_sync_badge": true,
 							"server_known": true,
@@ -11235,7 +11349,9 @@
 								"version": 2,
 								"latest": 5,
 								"restored": true,
-								"unversioned": false
+								"unversioned": false,
+								"baseline_ready": false,
+								"label": "v2"
 							},
 							"show_sync_badge": true,
 							"server_known": true,
@@ -11423,7 +11539,9 @@
 								"version": 0,
 								"latest": 0,
 								"restored": false,
-								"unversioned": true
+								"unversioned": true,
+								"baseline_ready": false,
+								"label": "baseline_required"
 							},
 							"show_sync_badge": false,
 							"server_known": true,
@@ -11599,7 +11717,9 @@
 								"version": 0,
 								"latest": 0,
 								"restored": false,
-								"unversioned": true
+								"unversioned": true,
+								"baseline_ready": false,
+								"label": "baseline_required"
 							},
 							"show_sync_badge": false,
 							"server_known": true,
@@ -11765,7 +11885,9 @@
 								"version": 0,
 								"latest": 0,
 								"restored": false,
-								"unversioned": true
+								"unversioned": true,
+								"baseline_ready": false,
+								"label": "baseline_required"
 							},
 							"show_sync_badge": false,
 							"server_known": true,
@@ -11931,7 +12053,9 @@
 								"version": 0,
 								"latest": 0,
 								"restored": false,
-								"unversioned": true
+								"unversioned": true,
+								"baseline_ready": false,
+								"label": "baseline_required"
 							},
 							"show_sync_badge": false,
 							"server_known": true,
@@ -12097,7 +12221,9 @@
 								"version": 0,
 								"latest": 0,
 								"restored": false,
-								"unversioned": true
+								"unversioned": true,
+								"baseline_ready": false,
+								"label": "baseline_required"
 							},
 							"show_sync_badge": false,
 							"server_known": true,
@@ -12263,7 +12389,9 @@
 								"version": 0,
 								"latest": 0,
 								"restored": false,
-								"unversioned": true
+								"unversioned": true,
+								"baseline_ready": false,
+								"label": "baseline_required"
 							},
 							"show_sync_badge": false,
 							"server_known": true,
@@ -12528,6 +12656,248 @@
 					"reportable": true,
 					"deletable": false
 				}
+			}
+		}
+	],
+	"baseline_migration": {
+		"source_commit": "a8f638621689d8abecf02914d7d4322a0915fb9d",
+		"reason": "Kernel a8f6386 requires pinned baseline provenance and immutable IDs; equal legacy save counters cannot establish unchanged content. Historical TypeScript answers remain recorded unchanged.",
+		"added_version_fields": [
+			"baseline_ready",
+			"label"
+		],
+		"missing_baseline_label": "baseline_required",
+		"positive_legacy_ordinal_label": "vN"
+	},
+	"baseline_cases": [
+		{
+			"id": "pinned-zero",
+			"row": {
+				"name": "tx_baseline",
+				"metadata": {
+					"version": 100
+				},
+				"version_metadata": {
+					"baseline_ready": true,
+					"baseline_origin": "source_pinned_import",
+					"version_display": 0,
+					"current_version_id": "v0",
+					"current_revision_id": "v0",
+					"changed_since_version": false
+				}
+			},
+			"expected_version": {
+				"version": 0,
+				"latest": 0,
+				"restored": false,
+				"unversioned": false,
+				"baseline_ready": true,
+				"label": "v0",
+				"baseline_origin": "source_pinned_import",
+				"current_version_id": "v0",
+				"current_revision_id": "v0",
+				"changed_since_version": false
+			}
+		},
+		{
+			"id": "missing-baseline_ready",
+			"row": {
+				"name": "tx_baseline",
+				"metadata": {
+					"version": 100
+				},
+				"version_metadata": {
+					"baseline_origin": "source_pinned_import",
+					"version_display": 0,
+					"current_version_id": "v0",
+					"current_revision_id": "v0",
+					"changed_since_version": false
+				}
+			},
+			"expected_version": {
+				"version": 0,
+				"latest": 0,
+				"restored": false,
+				"unversioned": true,
+				"baseline_ready": false,
+				"label": "baseline_required"
+			}
+		},
+		{
+			"id": "missing-baseline_origin",
+			"row": {
+				"name": "tx_baseline",
+				"metadata": {
+					"version": 100
+				},
+				"version_metadata": {
+					"baseline_ready": true,
+					"version_display": 0,
+					"current_version_id": "v0",
+					"current_revision_id": "v0",
+					"changed_since_version": false
+				}
+			},
+			"expected_version": {
+				"version": 0,
+				"latest": 0,
+				"restored": false,
+				"unversioned": true,
+				"baseline_ready": false,
+				"label": "baseline_required"
+			}
+		},
+		{
+			"id": "missing-current_version_id",
+			"row": {
+				"name": "tx_baseline",
+				"metadata": {
+					"version": 100
+				},
+				"version_metadata": {
+					"baseline_ready": true,
+					"baseline_origin": "source_pinned_import",
+					"version_display": 0,
+					"current_revision_id": "v0",
+					"changed_since_version": false
+				}
+			},
+			"expected_version": {
+				"version": 0,
+				"latest": 0,
+				"restored": false,
+				"unversioned": true,
+				"baseline_ready": false,
+				"label": "baseline_required"
+			}
+		},
+		{
+			"id": "missing-current_revision_id",
+			"row": {
+				"name": "tx_baseline",
+				"metadata": {
+					"version": 100
+				},
+				"version_metadata": {
+					"baseline_ready": true,
+					"baseline_origin": "source_pinned_import",
+					"version_display": 0,
+					"current_version_id": "v0",
+					"changed_since_version": false
+				}
+			},
+			"expected_version": {
+				"version": 0,
+				"latest": 0,
+				"restored": false,
+				"unversioned": true,
+				"baseline_ready": false,
+				"label": "baseline_required"
+			}
+		},
+		{
+			"id": "missing-version_display",
+			"row": {
+				"name": "tx_baseline",
+				"metadata": {
+					"version": 100
+				},
+				"version_metadata": {
+					"baseline_ready": true,
+					"baseline_origin": "source_pinned_import",
+					"current_version_id": "v0",
+					"current_revision_id": "v0",
+					"changed_since_version": false
+				}
+			},
+			"expected_version": {
+				"version": 0,
+				"latest": 0,
+				"restored": false,
+				"unversioned": true,
+				"baseline_ready": false,
+				"label": "baseline_required"
+			}
+		},
+		{
+			"id": "missing-change-verdict",
+			"row": {
+				"name": "tx_baseline",
+				"metadata": {
+					"version": 100
+				},
+				"version_metadata": {
+					"baseline_ready": true,
+					"baseline_origin": "source_pinned_import",
+					"version_display": 0,
+					"current_version_id": "v0",
+					"current_revision_id": "v0"
+				}
+			},
+			"expected_version": {
+				"version": 0,
+				"latest": 0,
+				"restored": false,
+				"unversioned": false,
+				"baseline_ready": true,
+				"label": "v0",
+				"baseline_origin": "source_pinned_import",
+				"current_version_id": "v0",
+				"current_revision_id": "v0"
+			}
+		},
+		{
+			"id": "changed-content",
+			"row": {
+				"name": "tx_baseline",
+				"metadata": {
+					"version": 100
+				},
+				"version_metadata": {
+					"baseline_ready": true,
+					"baseline_origin": "source_pinned_import",
+					"version_display": 0,
+					"current_version_id": "v0",
+					"current_revision_id": "v0",
+					"changed_since_version": true
+				}
+			},
+			"expected_version": {
+				"version": 0,
+				"latest": 0,
+				"restored": false,
+				"unversioned": false,
+				"baseline_ready": true,
+				"label": "v0",
+				"baseline_origin": "source_pinned_import",
+				"current_version_id": "v0",
+				"current_revision_id": "v0",
+				"changed_since_version": true
+			}
+		},
+		{
+			"id": "invalid-origin",
+			"row": {
+				"name": "tx_baseline",
+				"metadata": {
+					"version": 100
+				},
+				"version_metadata": {
+					"baseline_ready": true,
+					"baseline_origin": "inferred_from_save_counter",
+					"version_display": 0,
+					"current_version_id": "v0",
+					"current_revision_id": "v0",
+					"changed_since_version": false
+				}
+			},
+			"expected_version": {
+				"version": 0,
+				"latest": 0,
+				"restored": false,
+				"unversioned": true,
+				"baseline_ready": false,
+				"label": "baseline_required"
 			}
 		}
 	]
