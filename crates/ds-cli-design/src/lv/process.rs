@@ -275,10 +275,12 @@ fn map_owner_message(code: &'static str, message: String) -> Failure {
         "fast_lv_output_too_large" => Failure::failed(code, message)
             .remedy("Split the request into smaller batches; results are never truncated."),
         "fast_lv_result_encoding_failed" => Failure::internal(code, message),
+        "fast_lv_publication_invalid" => Failure::invalid(code, message)
+            .remedy("Process the unchanged fenced source again and inspect every job outcome."),
         _ => Failure::internal("fast_lv_result_encoding_failed", message),
     }
 }
-fn map_network_error(error: ds_network_client::NetworkFailure) -> Failure {
+pub(super) fn map_network_error(error: ds_network_client::NetworkFailure) -> Failure {
     if let Some(owner) = error.owner_error() {
         return map_owner_message(owner.code(), owner.to_string());
     }

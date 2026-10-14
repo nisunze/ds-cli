@@ -7,9 +7,7 @@ use ds_cli_contract::spec::{
 };
 use ds_cli_contract::{Context, Failure, Inputs};
 use ds_command_kernel::report_export::jcs::layers_content_digest;
-use ds_network::network::lv_processing::{
-    MAX_NATIVE_LV_INPUT_BYTES, MAX_NATIVE_LV_OUTPUT_BYTES, project_native_lv_result,
-};
+use ds_network_contracts::lv_processing::{MAX_NATIVE_LV_INPUT_BYTES, MAX_NATIVE_LV_OUTPUT_BYTES};
 use serde_json::{Value, json};
 
 use super::artifact::sha256;
@@ -34,6 +32,51 @@ const LOCAL_REFUSALS: &[Refusal] = &[
         code: "confirmation_required",
         when: "the save lacks --yes",
         remedy: "review the selected processed result and pass --yes",
+    },
+    Refusal {
+        code: "network_engine_missing",
+        when: "publication projection cannot find an installed Network addon",
+        remedy: "install the Network addon; retained source and result files stay unchanged",
+    },
+    Refusal {
+        code: "network_engine_incompatible",
+        when: "the captured addon does not admit LV publication",
+        remedy: "update the Network addon to a compatible release",
+    },
+    Refusal {
+        code: "network_engine_unqualified",
+        when: "the addon has no admitted release identity",
+        remedy: "install a verified Network release or explicitly select a compatible development executable",
+    },
+    Refusal {
+        code: "network_receipt_invalid",
+        when: "publication receipt disagrees with captured request, result, engine or schema",
+        remedy: "retain the original receipts and files, and use an intact compatible Network addon",
+    },
+    Refusal {
+        code: "network_result_invalid",
+        when: "publication artifact is malformed, undeclared or not an ordinary file",
+        remedy: "use an intact compatible Network addon; no project write has occurred",
+    },
+    Refusal {
+        code: "network_result_digest_mismatch",
+        when: "publication bytes disagree with their declared receipt",
+        remedy: "use an intact compatible Network addon; retain the original inputs",
+    },
+    Refusal {
+        code: "network_engine_changed",
+        when: "the captured executable changes during publication projection",
+        remedy: "retry with an immutable verified Network artifact",
+    },
+    Refusal {
+        code: "network_input_changed",
+        when: "staged publication inputs change during execution",
+        remedy: "retain the original request and result and retry in private staging",
+    },
+    Refusal {
+        code: "network_scratch_invalid",
+        when: "private ordinary disk staging is unavailable",
+        remedy: "set DS_NETWORK_SCRATCH_DIR to an absolute writable disk directory",
     },
 ];
 const fn refusals()
@@ -239,11 +282,14 @@ fn run_expected_project(inputs: &Inputs, expected_project: Option<&str>) -> Resu
             "The captured save receipt addresses another explicit project.",
         ));
     }
-    let projection =
-        project_native_lv_result(&input, &result, transformer).map_err(|error| {
-            Failure::invalid("fast_lv_publication_invalid", error.to_string())
-                .remedy("Process the unchanged fenced source again and inspect every job outcome.")
-        })?;
+    let stage =
+        ds_network_client::private_disk_stage().map_err(super::process::map_network_error)?;
+    let engine = ds_network_client::CapturedNetworkClient::capture(1, &|| false)
+        .map_err(super::process::map_network_error)?;
+    let projection = engine
+        .project_lv(&input, &result, transformer, stage.path(), &|| false)
+        .map_err(super::process::map_network_error)?
+        .result;
     let source_layers = source_layers_for_fence(projection.source_layers, &source_content_digest)?;
     let saved = ds_cli_auth::save_transformers(
         lane,
