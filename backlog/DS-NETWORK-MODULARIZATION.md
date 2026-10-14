@@ -254,10 +254,9 @@ consent.
 
 Independent browser Network publication authority is implemented in Brain
 `9ed80c11`; deployed authority and installed browser execution remain unproved.
-Remaining: qualify/deploy that gateway extension through existing local release
-gates; make the source-aware browser producer emit
-`ds.module-wasm-artifact/v1` from actual four-file bytes and owning ABI/build
-identity; extend existing device/lane admission and notification/consent
+The [component build contract](../../ds-web/docs/component-engine-build.md)
+owns native and four-file WASM production. Remaining: qualify/deploy that gateway
+extension through existing local release gates; extend existing device/lane admission and notification/consent
 consumers to verify the WASM runtime explicitly, deliberately acquire the
 complete compatible unit, atomically select it, preserve captured sessions and
 support offline rollback. Prove browser/WebView execution and request counts.
