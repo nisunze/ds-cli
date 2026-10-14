@@ -410,7 +410,153 @@ Reconcile contracts at implementation time, with corresponding consumer proof:
   unification alone does not remove their admitted cloud routes or change report
   permissions, printing placement or engine algorithm ownership.
 
-## 10. Ordered implementation slices and proof gates
+## 10. Sequencing, code reduction and engine placement
+
+The owner-approved sequence is conservative: complete the current extraction
+boundaries without also rewriting their algorithms or storage engines. Correct
+synchronization and acknowledgement semantics are the first horizontal priority.
+After those contracts and their real consumers are stable, simplify one feature
+or stabilization slice at a time. Do not run a broad Polars-to-DuckDB, IDB-to-
+SQLite, TypeScript-to-Rust or GIS-library conversion campaign in parallel with
+extraction.
+
+The intended order is:
+
+1. Finish the active Network, Reporter, Solar, Kernel and Interactions
+   extractions with parity and actual-consumer proof.
+2. Fix submitted-revision, expected-base, late-ACK, durable conflict and
+   recoverable restart behavior, initially over the existing stores where that
+   gives the smallest truthful vertical.
+3. Move each admitted transactional owner to the shared SQLite schema and
+   transaction program, switch its actual consumer and delete its old writer.
+4. Stabilize the resulting contracts and measure source calls, writes, memory,
+   build closure and installed behavior.
+5. During later feature or stabilization work, replace one tabular, IPC or GIS
+   implementation only where the replacement deletes more product machinery
+   than it adds and preserves exact behavior.
+6. Remove a dependency only after its final justified consumer and compatibility
+   adapter are gone from that crate and release closure.
+
+This sequence deliberately separates ownership movement from algorithm
+replacement. A moved implementation is compared with its existing oracle. A
+later engine substitution is compared with the stabilized moved implementation.
+That keeps failures attributable and allows small slices to finish without a
+repository-wide rewrite.
+
+### Technology placement
+
+Use the smallest established engine that matches the workload. A lower
+application line count is useful when policy and tests remain explicit and the
+removed code becomes a maintained dependency rather than a hidden second
+implementation.
+
+| Workload | Intended placement |
+| --- | --- |
+| Authored revisions, working heads, operation receipts, outgoing intents, conflict candidates, transactional local state and synchronization | SQLite through the shared Rust transaction owner, with native and browser host bindings. |
+| Large joins, grouping, windowing, pivoting, portfolio aggregation, BOQ rollups and bounded report projections | Consider DuckDB later, behind the owning Network, Reporter or Solar application contract. |
+| Arrow IPC schemas and cross-component columnar bytes | Direct Arrow schema/array/IPC libraries and explicit compatibility fixtures; do not require a DataFrame engine merely as an IPC codec. |
+| Governed engineering decisions, revisions, refusals and deterministic numeric algorithms | Typed Rust in the existing domain owner. SQL does not become a policy or engineering-authority language. |
+| Mutable map features, row edits and UI working state | The admitted SQLite/Interactions owner or a simple typed collection, selected by measured access patterns; an analytical engine is not the default editor. |
+| Vector/raster format translation, CRS operations and broad GIS interoperability | Consider a captured GDAL boundary or DuckDB Spatial only in a later owning slice with native packaging, licensing, driver and exact-version proof. |
+| TypeScript | Presentation, browser capabilities, worker/transport effects and typed IO only; no duplicate synchronization, freshness, conflict or engineering decisions. |
+
+Rust can use GDAL through maintained bindings, and DuckDB Spatial bundles a
+GDAL copy for supported geospatial formats. Either choice externalizes mature
+format/CRS machinery but introduces a native binary and driver closure that must
+be captured and qualified on Linux and Windows. It does not replace domain
+geometry policy, UI hit testing, engineering calculations or release proof.
+Do not start macOS packaging or add GDAL to browser startup as part of this
+storage plan.
+
+### Polars and DuckDB policy
+
+Do not declare Polars categorically defective, and do not preserve it by
+default. Its value depends on whether the owning code performs a real columnar
+pipeline. Freeze speculative new Polars use while the extraction and
+synchronization work is active. Existing consumers remain until their own
+bounded replacement proves simpler behavior and deletes the old path.
+
+The 2026-10-14 canonical inventory found twelve production Rust files mentioning
+Polars or polars-arrow, totalling about 9,070 physical file lines. That is not
+9,070 replaceable lines:
+
+- the 5,487-line Grid IPC module primarily uses polars-arrow arrays and IPC while
+  retaining substantial DS schema, compatibility and validation behavior;
+- the 698-line ds-geo LayerTable is a mutable feature table with row scans and
+  rebuilds, not a substantial analytical query pipeline;
+- the 677-line cleaning IPC module combines serialization with DS conversion and
+  cleaning rules that remain regardless of engine;
+- Solar's approximately 114 lines of direct integration primarily support an
+  optional debug table/Parquet rendering.
+
+Consequently, replacing present imports mechanically would add risk without
+deleting most domain code. Direct Arrow is the likely later simplification for
+IPC-only users. SQLite or a typed collection is the likely direction for mutable
+feature editing. The cleaning path needs a measured slice. The small Solar debug
+writer should not pull a second engine into an otherwise engine-free runtime.
+
+DuckDB becomes a candidate when an owner contains repeated procedural code for
+file scans, casts, joins, filters, grouping, ordered windows, pivots or
+analytical exports. One named parameterized SQL projection plus a bounded typed
+adapter can replace DataFrame expression plumbing and intermediate conversions.
+Keep SQL versioned with its input/output schema, explicit null and cast behavior,
+deterministic ordering, limits and refusal tests. Return typed projections or
+Arrow batches through the owning application API; do not expose generic SQL or
+argv execution to consumers.
+
+A DuckDB experiment must be one real consumer with an existing oracle. Compare
+exact rows, nulls, ordering, numeric values, historical inputs and refusals.
+Measure product lines deleted, adapter/test lines added, binary and WASM size,
+compile time, peak memory, latency and offline packaging. Retain DuckDB only when
+the net boundary is simpler. Removing DataFrame calls while retaining
+polars-arrow elsewhere is not removal of the Polars dependency closure.
+
+DuckDB is an embedded analytical engine optimized for bulk operations. It is not
+the synchronization database and does not replace SQLite's transaction role.
+Its standard browser distribution brings a worker, a WASM engine and optional
+extensions. Do not add standalone DuckDB-WASM as a fourth browser engine. The
+browser target remains Kernel, Interactions and lazily loaded Network. If a
+future browser analytical need is admitted, it must fit an existing owning
+engine boundary or explicitly revise that architecture with bundle/load proof.
+Ordinary opening, editing, movement, selection and synchronization must not load
+an analytical or engineering engine.
+
+Any DuckDB or Spatial extensions used in a release are pinned, captured and
+served from the installed release. Runtime extension downloads, CDNs and hidden
+network installation are prohibited. Keep analytical database files distinct
+from the authoritative SQLite store unless an explicit import/projection
+contract proves otherwise.
+
+Official references, checked 2026-10-14:
+
+- [DuckDB workload and embedding](https://duckdb.org/why_duckdb).
+- [DuckDB Rust client and Arrow interchange](https://duckdb.org/docs/current/clients/rust/overview).
+- [DuckDB Parquet projection and filter pushdown](https://duckdb.org/docs/current/data/parquet/overview).
+- [DuckDB-WASM deployment components](https://duckdb.org/docs/lts/clients/wasm/deploying_duckdb_wasm).
+- [DuckDB Spatial and bundled GDAL boundary](https://duckdb.org/docs/lts/core_extensions/spatial/gdal).
+
+### Code-size and modularity criterion
+
+Do not use repository line count alone as an architectural acceptance gate.
+DS contains governed engineering, offline, revision, packaging and platform
+obligations that a general GIS platform may leave to plugins. Solar, reporting
+and Network capabilities remain available; they become narrower stable owners
+rather than being discarded to resemble another product.
+
+Count both product code and dependency closure. Stable crates and captured
+third-party engines should prevent hosts from reimplementing their behavior.
+A successful simplification deletes the displaced consumer code, fallback,
+schema mirror, build edge and tests that only protected the duplicate, while
+retaining contract and parity tests at the new boundary. Moving Rust behavior
+into TypeScript, SQL strings or generated adapters without deleting the former
+owner is not a reduction.
+
+Prefer opportunistic simplification during an owning feature or stabilization
+session. Each slice must leave the application releasable, preserve historical
+reads and installed-platform behavior, and avoid a temporary copy becoming a
+permanent parallel implementation.
+
+## 11. Ordered implementation slices and proof gates
 
 Each slice is independently reviewable, implemented on canonical run and landed
 after its focused proof. Re-read moving extraction owner paths before starting;
@@ -433,7 +579,7 @@ Independent read-only assessment/testing may run in parallel; shared source file
 and schema changes do not. Queue delivery is prompt, and source acquisition stays
 lazy, throughout the transition.
 
-## 11. Test matrix and measured completion
+## 12. Test matrix and measured completion
 
 Existing tests to extend (not run during this documentation assessment):
 
@@ -481,7 +627,7 @@ a native helper test, a build, a schema-only port or the existence of this plan.
 Preserve geometry, pole types, blank statuses, source attribution and engineering
 quantities throughout. Existing review/printing/download surfaces remain usable.
 
-## 12. First implementation handoff
+## 13. First implementation handoff
 
 Start with slice 1 and the actual submitted-revision/late-ACK race. It is a small
 data-integrity vertical that is needed even if browser persistence remains IDB
