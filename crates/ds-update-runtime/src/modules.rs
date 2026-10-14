@@ -1148,25 +1148,24 @@ mod tests {
         )
         .is_err());
     }
-    /// Real producer bytes, isolated authority/staging. Run explicitly after
-    /// supplying the owning qualified artifact/receipt; this is not a public
-    /// installation or cloud publication assertion.
-    #[test]
-    #[ignore = "requires the explicitly selected qualified Network producer artifact"]
-    fn qualified_network_artifact_runs_lv_from_native_managed_selection() {
-        let binary = PathBuf::from(
-            std::env::var_os("DS_MODULE_TEST_NETWORK_BIN").expect("qualified Network artifact"),
-        );
+    fn qualified_network_fixture(
+        binary_key: &str,
+        receipt_key: &str,
+        version: &str,
+    ) -> (ModuleRelease, Vec<u8>, Value) {
+        let binary =
+            PathBuf::from(std::env::var_os(binary_key).expect("qualified Network artifact"));
         let producer: Value = serde_json::from_slice(
-            &fs::read(
-                std::env::var_os("DS_MODULE_TEST_NETWORK_RECEIPT").expect("producer receipt"),
-            )
-            .unwrap(),
+            &fs::read(std::env::var_os(receipt_key).expect("producer receipt")).unwrap(),
         )
         .unwrap();
         let bytes = fs::read(&binary).unwrap();
+        assert_eq!(producer["contract"], "ds.module-artifact/v1");
         assert_eq!(producer["component"], "network");
+        assert_eq!(producer["lane"], "canary");
         assert_eq!(producer["platform"], "linux");
+        assert_eq!(producer["protocol"], "ds.network-engine/v1");
+        assert_eq!(producer["filename"], "ds-network");
         assert_eq!(producer["sha256"], format!("{:x}", Sha256::digest(&bytes)));
         assert_eq!(producer["size_bytes"], bytes.len());
         let mut asset = producer.as_object().unwrap().clone();
@@ -1184,8 +1183,21 @@ mod tests {
         asset.insert("platform".into(), json!("linux"));
         asset.insert("arch".into(), json!("x86_64"));
         asset.insert("kind".into(), json!("module-executable"));
-        asset.insert("url".into(),json!("https://storage.googleapis.com/synthetic-module-fixtures/modules/network/canary/0.1.0-r1/ds-network"));
-        let release=validate_module_release("network","canary",&json!({"schema":"ds.module-release/v1","component":"network","channel":"canary","product_id":"rw.datasolutions.module.network.canary","version":"0.1.0-r1","protocol":"ds.network-engine/v1","released_at":"2026-10-14T10:00:00Z","status":"active","assets":[asset]})).unwrap();
+        asset.insert("url".into(),json!(format!("https://storage.googleapis.com/synthetic-module-fixtures/modules/network/canary/{version}/ds-network")));
+        let release=validate_module_release("network","canary",&json!({"schema":"ds.module-release/v1","component":"network","channel":"canary","product_id":"rw.datasolutions.module.network.canary","version":version,"protocol":"ds.network-engine/v1","released_at":"2026-10-14T10:00:00Z","status":"active","assets":[asset]})).unwrap();
+        (release, bytes, producer)
+    }
+    /// Real producer bytes, isolated authority/staging. Run explicitly after
+    /// supplying the owning qualified artifact/receipt; this is not a public
+    /// installation or cloud publication assertion.
+    #[test]
+    #[ignore = "requires the explicitly selected qualified Network producer artifact"]
+    fn qualified_network_artifact_runs_lv_from_native_managed_selection() {
+        let (release, bytes, producer) = qualified_network_fixture(
+            "DS_MODULE_TEST_NETWORK_BIN",
+            "DS_MODULE_TEST_NETWORK_RECEIPT",
+            "0.1.0-r1",
+        );
         let base = tempfile::tempdir().unwrap();
         let store = ModuleStore::new(base.path(), ModuleComponent::Network, "canary").unwrap();
         let ready = store
@@ -1267,5 +1279,186 @@ mod tests {
             producer["engines"][0]["manifest_sha256"]
         );
         assert!(store.selection().unwrap().unwrap().previous.is_none());
+    }
+
+    /// Two exact producer artifacts exercise retained old work, a compatible
+    /// activation and rollback under private synthetic authority. No public
+    /// catalog, installed product selection or unrelated engine is changed.
+    #[test]
+    #[ignore = "requires exact qualified Network A/B artifacts, receipts and retained host/Solar/Reporter artifacts"]
+    fn qualified_network_update_keeps_held_a_runs_b_and_rolls_back_to_a() {
+        let (release_a, bytes_a, producer_a) = qualified_network_fixture(
+            "DS_MODULE_TEST_NETWORK_BIN_A",
+            "DS_MODULE_TEST_NETWORK_RECEIPT_A",
+            "0.1.0-r1",
+        );
+        let (release_b, bytes_b, producer_b) = qualified_network_fixture(
+            "DS_MODULE_TEST_NETWORK_BIN_B",
+            "DS_MODULE_TEST_NETWORK_RECEIPT_B",
+            "0.1.0-r2",
+        );
+        assert_ne!(producer_a["sha256"], producer_b["sha256"]);
+        assert_ne!(producer_a["source_sha"], producer_b["source_sha"]);
+        assert_ne!(
+            producer_a["engines"][0]["manifest_sha256"],
+            producer_b["engines"][0]["manifest_sha256"]
+        );
+        let mut untouched = Vec::new();
+        for key in [
+            "DS_MODULE_TEST_HOST_BIN",
+            "DS_MODULE_TEST_SOLAR_BIN",
+            "DS_MODULE_TEST_REPORTER_BIN",
+        ] {
+            let path = PathBuf::from(std::env::var_os(key).expect("retained unrelated artifact"));
+            let sha256 = format!("{:x}", Sha256::digest(fs::read(&path).unwrap()));
+            untouched.push((key, path, sha256));
+        }
+        let host = std::env::current_exe().unwrap();
+        untouched.push((
+            "test-host",
+            host.clone(),
+            format!("{:x}", Sha256::digest(fs::read(host).unwrap())),
+        ));
+        let request = PathBuf::from(
+            std::env::var_os("DS_MODULE_TEST_LV_INPUT").expect("owning immutable LV fixture"),
+        );
+        let expected = fs::read(
+            std::env::var_os("DS_MODULE_TEST_LV_EXPECTED").expect("owning immutable LV result"),
+        )
+        .unwrap();
+        let base = tempfile::tempdir().unwrap();
+        let store = ModuleStore::new(base.path(), ModuleComponent::Network, "canary").unwrap();
+        let authority_reads = Cell::new(0);
+        let acquire = |release: ModuleRelease| {
+            let digest = release.assets[0].sha256.clone();
+            authority()
+                .acquire_with(ModuleComponent::Network, &digest, &|| false, |_| {
+                    authority_reads.set(authority_reads.get() + 1);
+                    Ok(serde_json::to_vec(&json!({"success":true,"release":release})).unwrap())
+                })
+                .unwrap()
+        };
+        let stage_real = |release: ModuleRelease, bytes: &[u8]| {
+            store
+                .stage_with(acquire(release), &|| false, |_, path| {
+                    use std::os::unix::fs::OpenOptionsExt;
+                    let mut output = OpenOptions::new()
+                        .write(true)
+                        .create_new(true)
+                        .mode(0o600)
+                        .open(path)
+                        .map_err(|e| e.to_string())?;
+                    output
+                        .write_all(bytes)
+                        .and_then(|_| output.sync_all())
+                        .map_err(|e| e.to_string())
+                })
+                .unwrap()
+        };
+        let run = |label: &str, captured: &ds_cli_exec::CapturedExternal, producer: &Value| {
+            eprintln!("module-update-phase {label} begin");
+            let out = base.path().join(label);
+            fs::create_dir(&out).unwrap();
+            let args = [
+                "--request".into(),
+                request.as_os_str().to_owned(),
+                "--out".into(),
+                out.clone().into_os_string(),
+                "--workers".into(),
+                "1".into(),
+            ];
+            let result = captured
+                .call_cancelled("lv-process", &args, Duration::from_secs(30), 1, &|| false)
+                .unwrap();
+            assert!(result.succeeded() && !result.truncated, "{}", result.stdout);
+            let receipt: Value = serde_json::from_str(&result.stdout).unwrap();
+            assert_eq!(receipt["outcome"], "completed");
+            assert_eq!(
+                receipt["inputSha256"],
+                format!("{:x}", Sha256::digest(fs::read(&request).unwrap()))
+            );
+            let payload = fs::read(out.join("result.json")).unwrap();
+            assert_eq!(payload, expected);
+            assert_eq!(receipt["artifact"]["byteCount"], payload.len());
+            assert_eq!(
+                receipt["artifact"]["sha256"],
+                format!("{:x}", Sha256::digest(&payload))
+            );
+            assert_eq!(
+                receipt["engineIdentity"]["sourceSha"],
+                producer["source_sha"]
+            );
+            assert_eq!(
+                receipt["engineIdentity"]["dependencyClosureSha256"],
+                producer["engines"][0]["manifest_sha256"]
+            );
+            assert_eq!(fs::read_dir(out).unwrap().count(), 1);
+            eprintln!("module-update-phase {label} end");
+        };
+        eprintln!("module-update-phase stage-a begin");
+        let ready_a = stage_real(release_a, &bytes_a);
+        eprintln!("module-update-phase stage-a end");
+        eprintln!("module-update-phase activate-a begin");
+        let selected_a = store
+            .activate(&ready_a, ActivationGuard::default(), &|| false)
+            .unwrap();
+        let held_a = ds_cli_exec::addons::NETWORK
+            .capture_for_lane_in("canary", base.path())
+            .unwrap();
+        assert_eq!(selected_a.generation, 1);
+        assert_eq!(fs::read(held_a.executable()).unwrap(), bytes_a);
+        assert_eq!(authority_reads.get(), 1);
+        eprintln!("module-update-phase activate-a end");
+        eprintln!("module-update-phase stage-b begin");
+        let ready_b = stage_real(release_b, &bytes_b);
+        eprintln!("module-update-phase stage-b end");
+        eprintln!("module-update-phase activate-b begin");
+        let selected_b = store
+            .activate(&ready_b, ActivationGuard::default(), &|| false)
+            .unwrap();
+        let new_b = ds_cli_exec::addons::NETWORK
+            .capture_for_lane_in("canary", base.path())
+            .unwrap();
+        assert_eq!(selected_b.generation, 2);
+        assert_eq!(selected_b.previous.as_ref().unwrap(), &selected_a.active);
+        assert_eq!(fs::read(new_b.executable()).unwrap(), bytes_b);
+        assert_ne!(held_a.executable(), new_b.executable());
+        assert_eq!(fs::read(held_a.executable()).unwrap(), bytes_a);
+        assert_eq!(authority_reads.get(), 2);
+        eprintln!("module-update-phase activate-b end");
+        run("held-a", &held_a, &producer_a);
+        run("new-b", &new_b, &producer_b);
+        eprintln!("module-update-phase rollback begin");
+        let rolled_back = store
+            .rollback(2, ActivationGuard::default(), &|| false)
+            .unwrap();
+        let new_a = ds_cli_exec::addons::NETWORK
+            .capture_for_lane_in("canary", base.path())
+            .unwrap();
+        assert_eq!(rolled_back.generation, 3);
+        assert_eq!(rolled_back.active, selected_a.active);
+        assert_eq!(rolled_back.previous.as_ref().unwrap(), &selected_b.active);
+        assert_eq!(new_a.executable(), held_a.executable());
+        assert_eq!(authority_reads.get(), 2);
+        eprintln!("module-update-phase rollback end");
+        run("rollback-a", &new_a, &producer_a);
+        assert_eq!(fs::read(held_a.executable()).unwrap(), bytes_a);
+        for (key, path, before) in &untouched {
+            assert_eq!(
+                &format!("{:x}", Sha256::digest(fs::read(path).unwrap())),
+                before,
+                "{key}"
+            );
+        }
+        eprintln!(
+            "MODULE_QUALIFIED_NETWORK_UPDATE_PROOF {}",
+            json!({
+                "artifact_a":producer_a,"artifact_b":producer_b,
+                "authority_fixture_reads":authority_reads.get(),
+                "unrelated_artifacts":untouched.iter().map(|(key,path,sha)|json!({"role":key,"path":path,"sha256":sha})).collect::<Vec<_>>(),
+                "exact_lv_results":3,"held_a_preserved":true,"rollback_generation":rolled_back.generation,
+                "authority":"isolated synthetic authority; no public or installed-product update claim"
+            })
+        );
     }
 }
