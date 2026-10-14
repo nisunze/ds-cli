@@ -308,12 +308,16 @@ mod tests {
             assert!(prepared.selects(&inside).unwrap());
             assert!(!prepared.selects(&hole).unwrap());
             assert!(prepared.selects(&edge).unwrap());
-            assert!(!prepared
-                .selects(&json!({"type":"Feature","geometry":null}))
-                .unwrap());
-            assert!(prepared
-                .selects(&json!({"type":"Point","coordinates":[]}))
-                .is_err());
+            assert!(
+                !prepared
+                    .selects(&json!({"type":"Feature","geometry":null}))
+                    .unwrap()
+            );
+            assert!(
+                prepared
+                    .selects(&json!({"type":"Point","coordinates":[]}))
+                    .is_err()
+            );
         }
         assert!(intersects.selects(&crossing).unwrap());
         assert!(!centroid.selects(&crossing).unwrap());
@@ -370,9 +374,11 @@ mod tests {
     #[test]
     fn open_and_non_area_selectors_are_refused() {
         assert!(validate_area(&json!({"type":"Point","coordinates":[0.,0.]})).is_err());
-        assert!(validate_area(
-            &json!({"type":"Polygon","coordinates":[[[0.,0.],[1.,0.],[1.,1.],[0.,1.]]]})
-        )
-        .is_err());
+        assert!(
+            validate_area(
+                &json!({"type":"Polygon","coordinates":[[[0.,0.],[1.,0.],[1.,1.],[0.,1.]]]})
+            )
+            .is_err()
+        );
     }
 }

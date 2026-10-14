@@ -41,10 +41,10 @@ pub mod exact_delaunay;
 pub mod line_corridor;
 pub mod operations;
 pub mod primitives;
-#[cfg(feature = "projection")]
-pub mod projection;
 #[cfg(feature = "tin")]
 pub mod projected_tin;
+#[cfg(feature = "projection")]
+pub mod projection;
 pub mod types;
 #[cfg(feature = "vector_types")]
 pub mod vector_types;
