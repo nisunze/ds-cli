@@ -10,14 +10,19 @@ pub static INVENTORY: Command = Command {
     id: "server.modules",
     path: &["server", "modules"],
     contract: 1,
-    summary: "Inspect installed Solar and Reporter engine addons.",
-    purpose: "Inspect the two fixed native addon executables, their captured build identities and declared schemas. Starts at most one build-info task per available addon. Missing or incompatible engines remain named rows. This does not install, update, acquire project data, or establish full application workflow readiness.",
+    summary: "Inspect installed Solar, Reporter and Network engine addons.",
+    purpose: "Inspect the three fixed native addon executables, their captured build identities and declared capabilities. Starts at most one build-info task per available addon on intentional inspection; help and command discovery start none. Missing or incompatible engines remain named rows. This does not install, update, acquire project data, or establish full application workflow readiness.",
     chapter: Chapter::Design,
     effect: Effect::Discovery,
     authority: Authority::None,
     execution: Execution::Sync,
-    args: &[],
-    output: "ds.module-inventory/v1 with exactly Solar and Reporter rows: available, missing or refused, captured path, identity and capabilities or a named remedy. Development provenance remains explicit.",
+    args: &[Arg::value(
+        "component",
+        "<solar|reporter|network>",
+        "Inspect only this consumed addon; omit for all three.",
+    )
+    .choices(&["solar", "reporter", "network"])],
+    output: "ds.module-inventory/v1 with Solar, Reporter and Network rows, or exactly the selected component: available, missing or refused, captured path, identity and capabilities or a named remedy. Development provenance remains explicit.",
     examples: &[],
     refusals: &[],
     reference: Some("docs/reference/server.md"),
@@ -37,9 +42,13 @@ pub static RELEASE: Command = Command {
     authority: Authority::None,
     execution: Execution::Sync,
     args: &[
-        Arg::value("component", "<solar|reporter>", "Exact addon identity.")
-            .choices(&["solar", "reporter"])
-            .required(),
+        Arg::value(
+            "component",
+            "<solar|reporter|network>",
+            "Exact addon identity.",
+        )
+        .choices(&["solar", "reporter", "network"])
+        .required(),
         Arg::value("channel", "<stable|canary>", "Exact release lane.")
             .choices(&["stable", "canary"])
             .required(),
@@ -63,8 +72,18 @@ pub static RELEASE: Command = Command {
     availability: || Availability::Available,
 };
 
-pub fn inventory(_: &Inputs, _: &Context) -> Result<Value, Failure> {
-    Ok(ds_cli_exec::addons::inventory())
+pub fn inventory(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
+    let component = inputs
+        .value("component")
+        .map(|value| serde_json::from_value(serde_json::json!(value)))
+        .transpose()
+        .map_err(|_| {
+            Failure::invalid(
+                "module_component_invalid",
+                "Select a declared module component",
+            )
+        })?;
+    Ok(ds_cli_exec::addons::inventory_for(component))
 }
 
 pub fn release(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
