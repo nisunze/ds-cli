@@ -1,14 +1,14 @@
 # ds-interactions agent guide
 
-Read the [workspace agreement](../AGENTS.md), the [shared collaboration
-agreement](../ds-command-kernel/docs/agent-guidance/collaboration.md), and any
-nearer scoped AGENTS.md before editing.
+Follow the workspace AGENTS.md and any nearer scoped guide. Read the
+[interaction boundary](docs/interaction-boundary.md) for behavior changes. For
+cross-repository or delegated work, use the [shared working agreement](../ds-command-kernel/docs/agent-guidance/collaboration.md)
+and [context guide](../ds-command-kernel/docs/agent-guidance/context-management.md).
 
 ## Owns
 
 Transient UI interaction algorithms: pointer hit testing, snap candidate ranking,
 selection gestures, viewport transforms, Canvas2D layout and interaction indexes.
-Read [the interaction boundary](docs/interaction-boundary.md).
 
 ## Invariants
 
