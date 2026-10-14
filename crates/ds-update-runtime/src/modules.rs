@@ -216,6 +216,42 @@ pub struct ModuleStore {
     platform: String,
 }
 impl ModuleStore {
+    /// Read retained selection without creating, changing or locking the store.
+    /// This is recorded installation provenance, not a fresh executable probe.
+    pub fn selection_managed(
+        component: ModuleComponent,
+        channel: &str,
+    ) -> Result<Option<ModuleSelection>, String> {
+        let base = ds_cli_exec::addons::managed_module_base().map_err(|e| e.to_string())?;
+        Self::selection_from(&base, component, channel)
+    }
+    fn selection_from(
+        base: &Path,
+        component: ModuleComponent,
+        channel: &str,
+    ) -> Result<Option<ModuleSelection>, String> {
+        if !base.is_absolute() || !matches!(channel, "stable" | "canary") {
+            return Err(
+                "module_store_invalid: use an absolute owned base and exact installed lane".into(),
+            );
+        }
+        let platform = current_platform()?.to_owned();
+        let component_root = base.join(component.as_str());
+        let root = component_root.join(channel);
+        for directory in [base, component_root.as_path(), root.as_path()] {
+            if !exists_plain(directory)? {
+                return Ok(None);
+            }
+            ordinary_directory(directory)?;
+        }
+        Self {
+            root,
+            component,
+            channel: channel.to_owned(),
+            platform,
+        }
+        .read_selection()
+    }
     pub fn managed(component: ModuleComponent, channel: &str) -> Result<Self, String> {
         let base = ds_cli_exec::addons::managed_module_base().map_err(|e| e.to_string())?;
         let mut builder = fs::DirBuilder::new();
@@ -865,6 +901,152 @@ mod tests {
                 .unwrap_err();
             assert!(error.contains("module_update_cancelled"));
             assert!(store.selection().unwrap().is_none());
+        }
+    }
+
+    #[test]
+    fn retained_selection_read_is_read_only_and_checks_existing_ancestors() {
+        use std::os::unix::{fs::symlink, fs::PermissionsExt};
+        let scratch = tempfile::tempdir().unwrap();
+        let base = scratch.path().join("absent");
+        assert!(
+            ModuleStore::selection_from(&base, ModuleComponent::Network, "canary")
+                .unwrap()
+                .is_none()
+        );
+        assert!(!base.exists());
+        fs::create_dir(&base).unwrap();
+        fs::set_permissions(&base, fs::Permissions::from_mode(0o750)).unwrap();
+        assert!(
+            ModuleStore::selection_from(&base, ModuleComponent::Network, "canary")
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(
+            fs::metadata(&base).unwrap().permissions().mode() & 0o777,
+            0o750
+        );
+        assert_eq!(fs::read_dir(&base).unwrap().count(), 0);
+        fs::write(base.join("network"), b"wrong type").unwrap();
+        assert!(
+            ModuleStore::selection_from(&base, ModuleComponent::Network, "canary")
+                .unwrap_err()
+                .contains("module_store_invalid")
+        );
+        fs::remove_file(base.join("network")).unwrap();
+        symlink(scratch.path().join("missing"), base.join("network")).unwrap();
+        assert!(
+            ModuleStore::selection_from(&base, ModuleComponent::Network, "canary")
+                .unwrap_err()
+                .contains("module_store_invalid")
+        );
+        fs::remove_file(base.join("network")).unwrap();
+        let store = ModuleStore::new(&base, ModuleComponent::Network, "canary").unwrap();
+        let (release, bytes) = fixture(ModuleComponent::Network, 1);
+        let staged = stage(&store, release, &bytes);
+        let selected = store
+            .activate(&staged, ActivationGuard::default(), &|| false)
+            .unwrap();
+        let path = store.root.join("selection.json");
+        let held = fs::read(&path).unwrap();
+        let lock_modified = fs::metadata(store.root.join("update.lock"))
+            .unwrap()
+            .modified()
+            .unwrap();
+        let root_modified = fs::metadata(&store.root).unwrap().modified().unwrap();
+        assert_eq!(
+            ModuleStore::selection_from(&base, ModuleComponent::Network, "canary").unwrap(),
+            Some(selected.clone())
+        );
+        assert_eq!(fs::read(&path).unwrap(), held);
+        assert_eq!(
+            fs::metadata(store.root.join("update.lock"))
+                .unwrap()
+                .modified()
+                .unwrap(),
+            lock_modified
+        );
+        assert_eq!(
+            fs::metadata(&store.root).unwrap().modified().unwrap(),
+            root_modified
+        );
+        assert!(
+            ModuleStore::selection_from(&base, ModuleComponent::Network, "stable")
+                .unwrap()
+                .is_none()
+        );
+        assert!(!base.join("network/stable").exists());
+        let mut crossed = selected;
+        crossed.channel = "stable".into();
+        fs::write(&path, serde_json::to_vec(&crossed).unwrap()).unwrap();
+        assert!(ModuleStore::selection_from(&base, ModuleComponent::Network, "canary").is_err());
+        fs::write(&path, b"{broken").unwrap();
+        assert!(
+            ModuleStore::selection_from(&base, ModuleComponent::Network, "canary")
+                .unwrap_err()
+                .contains("module_receipt_invalid")
+        );
+        fs::remove_file(&path).unwrap();
+        symlink(scratch.path().join("missing-receipt"), &path).unwrap();
+        assert!(
+            ModuleStore::selection_from(&base, ModuleComponent::Network, "canary")
+                .unwrap_err()
+                .contains("module_store_invalid")
+        );
+    }
+
+    #[test]
+    fn stage_fixture_reads_one_authority_downloads_once_and_probes_only_selected_owner() {
+        for component in [
+            ModuleComponent::Solar,
+            ModuleComponent::Reporter,
+            ModuleComponent::Network,
+        ] {
+            let scratch = tempfile::tempdir().unwrap();
+            let store = ModuleStore::new(scratch.path(), component, "canary").unwrap();
+            let probe_log = scratch.path().join("probe-count");
+            let log_path = probe_log.to_str().unwrap();
+            assert!(!log_path.contains('\''));
+            let (mut release, original) = fixture(component, 1);
+            let bytes = String::from_utf8(original)
+                .unwrap()
+                .replacen(
+                    "#!/bin/sh\n",
+                    &format!("#!/bin/sh\nprintf '%s\\n' \"$*\" >> '{log_path}'\n"),
+                    1,
+                )
+                .into_bytes();
+            release.assets[0].size_bytes = bytes.len() as _;
+            release.assets[0].sha256 = format!("{:x}", Sha256::digest(&bytes));
+            let authority_reads = Cell::new(0);
+            let downloads = Cell::new(0);
+            let grant = authority().acquire_with(component, &release.assets[0].sha256, &|| false, |url| {
+                authority_reads.set(authority_reads.get() + 1);
+                assert_eq!(url, format!("https://synthetic-module-authority.ue.gateway.dev/api/v1/app_releases?component={}&channel=canary", component.as_str()));
+                Ok(serde_json::to_vec(&json!({"success":true,"release":release})).unwrap())
+            }).unwrap();
+            let ready = store
+                .stage_with(grant, &|| false, |_, path| {
+                    downloads.set(downloads.get() + 1);
+                    write_new(path, &bytes)
+                })
+                .unwrap();
+            assert_eq!(authority_reads.get(), 1);
+            assert_eq!(downloads.get(), 1);
+            assert_eq!(fs::read_to_string(&probe_log).unwrap().trim(), "build-info");
+            assert_eq!(ready.component, component);
+            assert_eq!(ready.state, "ready");
+            assert!(store.selection().unwrap().is_none());
+            assert!(!store.root.join("selection.json").exists());
+            for unused in [
+                ModuleComponent::Solar,
+                ModuleComponent::Reporter,
+                ModuleComponent::Network,
+            ] {
+                if unused != component {
+                    assert!(!scratch.path().join(unused.as_str()).exists());
+                }
+            }
         }
     }
 
