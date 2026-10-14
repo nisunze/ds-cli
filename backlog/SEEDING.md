@@ -36,7 +36,7 @@ Tried cases removed from the small-fix queue now live in [HARD-PROBLEMS.md](HARD
 | [18. Global DS Grid library](#18-global-ds-grid-library) | 5 |
 | [21. Windows native release](#21-windows-native-release) | 10 |
 | [22. Operations](#22-operations) | 10 |
-| [25. CLI reliability and feedback](#25-cli-reliability-and-feedback) | 7 |
+| [25. CLI reliability and feedback](#25-cli-reliability-and-feedback) | 6 |
 <!-- /toc -->
 
 ## 1. Deployment and template rollout
@@ -458,8 +458,6 @@ Tried cases removed from the small-fix queue now live in [HARD-PROBLEMS.md](HARD
 - **`ds` client row in the SRE overview**: once ds-brain ingest plus its bulk twin are deployed and installed clients emit events, installed `ds sre overview` shows the `ds_client` line available with non-zero invocations.
 
 ## 25. CLI reliability and feedback
-
-- **Authenticated debug Server CLI/MCP qualification**: the separate source-development namespace on ds-server lacks its own approved native device identity. Link that identity through `ds account connect` in the intended lane, then run the debug Server and prove real bounded status/activity/job, restart and CLI/MCP consumer behavior under that exact development state. Keep development identity/context, compute/sync databases and artifacts/cache separate from installed Server; public deployment profiles may be shared, credentials and mutable installed state may not. Foreground `server.serve` is a CLI lifecycle operation, deliberately excluded from MCP tools.
 
 - **Unprompted product-use feedback**: after a release containing ds-cli `c3e34205` is installed (installed skill copies on this box still carry the old description), a blind low-powered agent given a product-use task that hits seeded friction files a feedback report without being asked and lists its id at the end (spec [ds-cli-reliability-and-feedback.md](../docs/contracts/ds-cli-reliability-and-feedback.md) §7.7). A coding-session trial uses only the owning backlogs.
 

@@ -11,7 +11,7 @@ Tried cases removed from the small-fix queue now live in [HARD-PROBLEMS.md](HARD
 | Area | Remaining entries |
 | --- | ---: |
 | [1. Source integration and release code](#1-source-integration-and-release-code) | 5 |
-| [2. Green `run` and release gates](#2-green-run-and-release-gates) | 8 |
+| [2. Green `run` and release gates](#2-green-run-and-release-gates) | 7 |
 | [3. Template creation code](#3-template-creation-code) | 1 |
 | [4. Print template and style code](#4-print-template-and-style-code) | 2 |
 | [5. Print renderer and booklet code](#5-print-renderer-and-booklet-code) | 2 |
@@ -98,8 +98,6 @@ is ruled in the sync contract: simple local clean and recompute.
   proof requires the strict command to pass without lint suppression.
 
 ## 2. Green `run` and release gates
-
-- **Server Solar completion consumer gates**: `cargo test -p ds-cli-server --lib` fails `host::tests::a_completed_solar_job_seals_its_row_with_no_session_and_the_pump_adopts_nothing`, `a_solar_job_completed_with_no_row_is_not_adopted_and_its_result_is_retired_on_observation`, and `a_restart_replays_no_completion_and_unsealed_results_of_one_city_are_all_retired`: `run_one` returns work but no expected completed result/sealed row appears. The first case also fails against the unchanged startup-auth baseline and with `DS_SOLAR_ENGINE_BIN` naming the retained source engine. Diagnose the actual engine/result admission or fixture-protocol cause and prove all three without weakening durability assertions. Evidence: `.verification/reporting-host-20261014/server-startup-unit.log`, `server-solar-prerequisite.log`, and `server-solar-baseline.log` on ds-server.
 
 - **Network strict Clippy has untouched baseline diagnostics.** In `ds-network`,
   `cargo clippy --locked --offline -p ds-network -p ds-network-contracts
