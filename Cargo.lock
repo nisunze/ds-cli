@@ -59,6 +59,7 @@ version = "0.1.0"
 dependencies = [
  "ds-geo-lite",
  "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -77,6 +78,7 @@ version = "0.1.0"
 dependencies = [
  "rstar",
  "serde",
+ "serde_json",
 ]
 
 [[package]]

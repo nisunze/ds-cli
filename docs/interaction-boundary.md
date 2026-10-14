@@ -43,3 +43,28 @@ Verification requires owning regressions, dependency-closure exclusion, portable
 WASM compilation and actual browser/WASM consumer execution. Touched acquisition
 paths prove request counts and unused-data controls. Existing source tests alone
 do not prove an installed host or published browser release.
+
+## Numeric and consumer verification
+
+Screen distance adapters preserve the existing JavaScript arithmetic at exact
+hit thresholds; ordinary Rust `hypot` is not an interchangeable implementation.
+Packed numeric records retain NaN, Infinity and signed zero where the original
+UI accepted them. The polygon adapter reads only the reached ring and its two
+coordinate axes, keeping ignored foreign members and later-ring short circuits
+outside transport work. Browser projection errors retain their identity.
+
+Profile label policy remains model-owned. The host supplies Canvas2D font metrics
+and locale collation ranks; Interactions owns ordering, viewport nudging and
+collision decisions. Gantt scene/task/dependency authority remains with its
+existing owner; Interactions returns hit intent and owns only the retained
+screen index. Hosts dispose replaced and unmounted retained index handles.
+
+The Web cold consumer gate is `npm run test:interactions`. It initializes real
+Interactions/Kernel WASM from supplied bytes, denies Network/Grid module imports
+and checks unused acquisition controls. Its deliberate engineering admission
+must trip the import sentinel. The separate
+`vitest.interactions-consumers.config.ts` runs the affected existing UI suites
+with the real permanent units. These narrow gates do not replace the advertised
+frontend/global gates. Node/WASM or jsdom pointer execution is distinct from
+Chrome or installed WebView acceptance, and an isolated consumer is distinct from
+full application startup with retained layers, tables and edit sessions.

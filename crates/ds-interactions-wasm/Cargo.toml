@@ -11,13 +11,14 @@ publish.workspace = true
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
+js-sys = "0.3"
 wasm-bindgen.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 ds-map-interaction.workspace = true
 ds-canvas.workspace = true
 ds-canvas-graph.workspace = true
-ds-geo-lite = { path = "../../../ds-command-kernel/crates/ds-geo-lite", features = ["projection"] }
+ds-geo-lite = { path = "../../../ds-command-kernel/crates/ds-geo-lite", features = ["projection", "geojson"] }
 
 [package.metadata.wasm-pack.profile.release]
 wasm-opt = false

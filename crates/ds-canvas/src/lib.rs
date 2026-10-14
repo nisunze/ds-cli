@@ -2,12 +2,15 @@
 //! No graph, page, station or engineering model: hosts pass window facts and
 //! intent; native/WASM consumers share the same camera and spatial results.
 pub mod free_layout;
+pub mod gantt_hit_index;
 pub mod measured_path;
+pub mod polygon_edge_hit;
+pub mod profile_label_layout;
 pub mod selection;
 pub mod viewport;
+pub use ds_geo_lite::window::Point;
 use serde::{Deserialize, Serialize};
 pub use viewport::{HostSurface, Projection, Viewport};
-pub use ds_geo_lite::window::Point;
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Rect {
     pub x: f64,

@@ -2,6 +2,21 @@
 use ds_geo_lite::projection as core_projection;
 use wasm_bindgen::prelude::*;
 
+mod map_geometry;
+mod polygon_edge_hit;
+pub use polygon_edge_hit::polygon_edge_hit;
+mod gantt_hit_index;
+mod profile_labels;
+pub use gantt_hit_index::{
+    GanttHitIndex, gantt_point_to_polyline_distance, gantt_point_to_segment_distance,
+};
+pub use map_geometry::{
+    geojson_bounds, geojson_line_length_m, measure_frame, spherical_polygon_area_m2,
+};
+pub use profile_labels::{
+    canvas_profile_label_layout, canvas_profile_label_order, canvas_profile_label_placement,
+};
+
 mod canvas;
 mod canvas_free_card;
 mod canvas_free_graph;
