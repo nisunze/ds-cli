@@ -83,7 +83,69 @@ pub fn inventory(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
                 "Select a declared module component",
             )
         })?;
-    Ok(ds_cli_exec::addons::inventory_for(component))
+    inventory_for_release_lane(component, ds_cli_auth::reliability::release_lane())
+}
+
+fn inventory_for_release_lane(
+    component: Option<ds_command_kernel::module_release::ModuleComponent>,
+    lane: &str,
+) -> Result<Value, Failure> {
+    if lane == "local" {
+        return Ok(ds_cli_exec::addons::inventory_for(component));
+    }
+    let mut inventory = ds_cli_exec::addons::inventory_for_lane(component, lane)?;
+    if let Some(rows) = inventory["modules"].as_array_mut() {
+        for row in rows {
+            let selected: ds_command_kernel::module_release::ModuleComponent =
+                serde_json::from_value(row["component"].clone()).map_err(|_| {
+                    Failure::failed(
+                        "module_inventory_invalid",
+                        "The native inventory returned an invalid component",
+                    )
+                })?;
+            // Corrupt/unavailable managed owners are already named inventory rows.
+            let Ok(store) = ds_update_runtime::modules::ModuleStore::managed(selected, lane) else {
+                continue;
+            };
+            let Ok(Some(receipt)) = store.selection() else {
+                continue;
+            };
+            let asset = ds_command_kernel::module_install::selected_asset(&receipt.active)
+                .map_err(|e| Failure::failed("module_inventory_invalid", e))?;
+            let executable = ds_command_kernel::module_install::executable_name(
+                selected,
+                if cfg!(target_os = "windows") {
+                    "windows"
+                } else {
+                    "linux"
+                },
+            )
+            .map_err(|e| Failure::failed("module_inventory_invalid", e))?;
+            let path = ds_cli_exec::addons::managed_module_base()?
+                .join(selected.as_str())
+                .join(lane)
+                .join("versions")
+                .join(&asset.sha256)
+                .join(executable);
+            // Explicit development overrides cannot borrow an installed receipt.
+            if std::fs::canonicalize(&path)
+                .ok()
+                .as_deref()
+                .and_then(std::path::Path::to_str)
+                == row["path"].as_str()
+                && row["path"].is_string()
+            {
+                row["installation"] = serde_json::json!({
+                    "version": receipt.active.release.version,
+                    "released_at": receipt.active.release.released_at,
+                    "generation": receipt.generation,
+                    "sha256": asset.sha256,
+                    "previousRecorded": receipt.previous.is_some()
+                });
+            }
+        }
+    }
+    Ok(inventory)
 }
 
 pub fn release(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
@@ -121,4 +183,18 @@ pub fn release(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     )
     .map_err(|error| invalid(format!("{}: {}", error.code, error.message)))?;
     serde_json::to_value(admitted).map_err(|error| invalid(error.to_string()))
+}
+
+#[cfg(test)]
+mod inventory_tests {
+    use super::*;
+    #[test]
+    fn unsupported_release_lane_refuses_before_any_addon_probe() {
+        let error = inventory_for_release_lane(
+            Some(ds_command_kernel::module_release::ModuleComponent::Network),
+            "server",
+        )
+        .unwrap_err();
+        assert_eq!(error.code(), "module_lane_invalid");
+    }
 }
