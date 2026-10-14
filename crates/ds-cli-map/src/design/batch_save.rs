@@ -26,7 +26,7 @@ const PARALLEL_ARG: Arg = Arg {
     required: false,
     default: None,
     choices: &[],
-    summary: "Concurrent project saves (1-32); defaults to the app batch setting.",
+    summary: "Requested project saves (1-32); this bounded transport admits 1. Omit to use the app setting, which may refuse.",
 };
 
 pub static COMMAND: Command = Command {
@@ -45,9 +45,9 @@ cancel unrelated saves. This durable project write always requires --yes.",
     args: &[TRANSFORMER_ARG, PARALLEL_ARG, TARGET_ARG, DESCRIPTOR_ARG],
     output: "\
 Per-transformer saved/persisted state, design version, concurrency generation, or error, plus total, succeeded, \
-failed, and requested parallelism.",
+failed, requested/effective parallelism and the enforced transport reason.",
     examples: &[Example {
-        command: "ds map design batch save --transformer TX-1 --transformer TX-2 --parallel 4 --yes --output json",
+        command: "ds map design batch save --transformer TX-1 --transformer TX-2 --parallel 1 --yes --output json",
         note: "Review staged rooms first; without --yes dispatch refuses before opening the bridge.",
         runnable: false,
     }],
@@ -64,6 +64,11 @@ failed, and requested parallelism.",
         crate::OFFLINE,
         crate::INVALID_NUMBER,
         Refusal {
+            code: "parallelism_unavailable",
+            when: "the requested or app-default concurrency exceeds the serial acknowledged save transport",
+            remedy: "retry with --parallel 1; no project rooms were read or saved",
+        },
+        Refusal {
             code: "confirmation_required",
             when: "--yes was not given for a command that writes to the project",
             remedy: "re-run with --yes once you intend the batch write",
@@ -79,10 +84,15 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let mut arguments = Map::new();
     arguments.insert("transformers".into(), json!(inputs.repeated("transformer")));
     if let Some(parallel) = inputs.value("parallel") {
-        arguments.insert(
-            "parallel".into(),
-            json!(crate::integer(parallel, "parallel", 1, 32)?),
-        );
+        let requested = crate::integer(parallel, "parallel", 1, 32)?;
+        if requested != 1 {
+            return Err(Failure::unavailable(
+                "parallelism_unavailable",
+                "Batch saves admit one acknowledged request at a time under the existing count/byte transport bounds.",
+            ).remedy("retry with --parallel 1; no Desktop was discovered and no project rooms were read or saved")
+             .detail(json!({ "requested_parallelism": requested, "maximum_parallelism": 1, "reason": "bounded_acknowledged_save_transport" })));
+        }
+        arguments.insert("parallel".into(), json!(requested));
     }
     let descriptor = crate::paired(inputs.value("desktop-descriptor"))?;
     crate::invoke(
@@ -96,11 +106,19 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
 
 pub fn render(data: &Value) -> String {
     let mut out = format!(
-        "{} transformer(s): {} completed, {} failed · {} parallel\n",
+        "{} transformer(s): {} completed, {} failed · {} requested / {} effective parallel\n",
         data["total"].as_u64().unwrap_or(0),
         data["succeeded"].as_u64().unwrap_or(0),
         data["failed"].as_u64().unwrap_or(0),
-        data["parallel"].as_u64().unwrap_or(1),
+        data["requestedParallel"]
+            .as_u64()
+            .map(|n| n.to_string())
+            .unwrap_or_else(|| "not reported".to_string()),
+        data["effectiveParallel"]
+            .as_u64()
+            .or_else(|| data["parallel"].as_u64())
+            .map(|n| n.to_string())
+            .unwrap_or_else(|| "not reported".to_string()),
     );
     if let Some(rows) = data["rows"].as_array() {
         for row in rows {
@@ -121,4 +139,81 @@ pub fn render(data: &Value) -> String {
         }
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ds_cli_contract::{Format, Output, parse};
+
+    fn inputs(parallel: &str) -> Inputs {
+        parse(
+            &COMMAND,
+            &[
+                "--transformer".to_string(),
+                "TX-1".to_string(),
+                "--parallel".to_string(),
+                parallel.to_string(),
+                // The baseline must never discover or send to a real Desktop.
+                "--desktop-descriptor".to_string(),
+                "/nonexistent/ds-test-no-desktop.json".to_string(),
+            ],
+        )
+        .unwrap()
+    }
+    fn context() -> Context {
+        Context {
+            confirmed: true,
+            output: Output::resolve(Format::Json, false, true),
+        }
+    }
+
+    #[test]
+    fn requested_parallel_save_is_refused_before_desktop_discovery() {
+        let error = run(&inputs("4"), &context()).unwrap_err();
+        assert_eq!(error.code(), "parallelism_unavailable");
+        assert_eq!(error.detail_value().unwrap()["requested_parallelism"], 4);
+        assert_eq!(error.detail_value().unwrap()["maximum_parallelism"], 1);
+    }
+
+    #[test]
+    fn one_admitted_request_reaches_desktop_discovery() {
+        assert_eq!(
+            run(&inputs("1"), &context()).unwrap_err().code(),
+            "desktop_unreachable"
+        );
+    }
+
+    #[test]
+    fn renderer_never_invents_unreported_concurrency() {
+        assert!(
+            render(&json!({ "total": 1, "succeeded": 1, "failed": 0 }))
+                .contains("not reported requested / not reported effective parallel")
+        );
+        assert!(
+            render(&json!({
+                "total": 1, "succeeded": 1, "failed": 0,
+                "requestedParallel": 1, "effectiveParallel": 1
+            }))
+            .contains("1 requested / 1 effective parallel")
+        );
+    }
+
+    #[test]
+    fn save_refusal_is_discoverable_and_keeps_numeric_bounds() {
+        assert!(
+            COMMAND
+                .refusals
+                .iter()
+                .any(|refusal| refusal.code == "parallelism_unavailable")
+        );
+        assert_eq!(
+            run(&inputs("33"), &context()).unwrap_err().code(),
+            "invalid_number"
+        );
+        assert_eq!(
+            run(&inputs("0"), &context()).unwrap_err().code(),
+            "invalid_number"
+        );
+    }
 }
