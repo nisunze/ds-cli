@@ -282,6 +282,7 @@ impl ModuleStore {
         .read_selection_record()
     }
     pub fn managed(component: ModuleComponent, channel: &str) -> Result<Self, String> {
+        current_platform()?;
         let base = ds_cli_exec::addons::managed_module_base().map_err(|e| e.to_string())?;
         let mut builder = fs::DirBuilder::new();
         builder.recursive(true);
@@ -303,6 +304,7 @@ impl ModuleStore {
         Self::new(&base, component, channel)
     }
     pub fn new(base: &Path, component: ModuleComponent, channel: &str) -> Result<Self, String> {
+        let platform = current_platform()?.to_owned();
         if !base.is_absolute() || !matches!(channel, "stable" | "canary") {
             return Err(
                 "module_store_invalid: use an absolute owned base and exact installed lane".into(),
@@ -318,7 +320,7 @@ impl ModuleStore {
             root,
             component,
             channel: channel.to_owned(),
-            platform: current_platform()?.to_owned(),
+            platform,
         })
     }
     fn lock(&self) -> Result<File, String> {
@@ -819,7 +821,10 @@ fn check_cancel(cancelled: &dyn Fn() -> bool) -> Result<(), String> {
         Ok(())
     }
 }
-fn current_platform() -> Result<&'static str, String> {
+/// Side-effect-free admission for the native component store and release
+/// acquisition. Call before credential/catalog reads or creating a store.
+/// This admits metadata targets, not proof of installed engine execution.
+pub fn current_platform() -> Result<&'static str, String> {
     if cfg!(target_arch = "x86_64") && cfg!(target_os = "linux") {
         Ok("linux")
     } else if cfg!(target_arch = "x86_64") && cfg!(target_os = "windows") {
@@ -1648,10 +1653,10 @@ mod tests {
             .activate(&second, ActivationGuard::default(), &|| false)
             .unwrap();
         let held = fs::read(store.root.join("selection.json")).unwrap();
-        assert!(store
+        let stale_error = store
             .activate(&third, ActivationGuard::default(), &|| false)
-            .unwrap_err()
-            .contains("module_selection_changed"));
+            .unwrap_err();
+        assert!(stale_error.contains("module_selection_changed"), "{stale_error}");
         assert_eq!(fs::read(store.root.join("selection.json")).unwrap(), held);
         let active = store.selected_executable(&|| false).unwrap().unwrap().0;
         fs::write(&active, b"damaged active unit").unwrap();
