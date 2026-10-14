@@ -154,6 +154,13 @@ pub struct Runtime {
     exact_transfers: std::collections::BTreeSet<String>,
 }
 impl Runtime {
+    /// Native host observation for a local module activation guard. Every
+    /// retained scope is conservatively treated as an uncaptured editing
+    /// session until the owning editor has an explicit executable pin.
+    pub fn retained_scope_count(&self) -> usize {
+        self.held.len().saturating_add(self.publications.len())
+    }
+
     pub fn execute(&mut self, request: impl Into<Request>) -> Result<Value, String> {
         let started = std::time::Instant::now();
         let request = match request.into() {

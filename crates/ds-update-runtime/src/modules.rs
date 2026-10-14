@@ -313,7 +313,25 @@ impl ModuleStore {
     where
         F: FnMut(TransferProgress),
     {
+        self.stage_with_admission(grant, report, cancelled, || Ok(()))
+    }
+    /// The host injects only its held connectivity admission at the existing
+    /// transfer points; acquisition and transfer policy remain with this owner.
+    pub fn stage_with_admission<F, A>(
+        &self,
+        grant: TrustedModuleGrant,
+        report: F,
+        cancelled: &dyn Fn() -> bool,
+        admit_transport: A,
+    ) -> Result<StagedModule, String>
+    where
+        F: FnMut(TransferProgress),
+        A: Fn() -> Result<(), String> + Copy,
+    {
         self.stage_with(grant, cancelled, |asset, path| {
+            // An already-offline host refuses before entering transfer retry
+            // scheduling. The transfer retains its existing mid-read checks.
+            admit_transport()?;
             transfer::download_verified(
                 &asset.url,
                 path,
@@ -323,7 +341,7 @@ impl ModuleStore {
                 report,
                 TransferAdmission {
                     check_cancelled: || check_cancel(cancelled),
-                    admit_transport: || Ok(()),
+                    admit_transport,
                 },
             )
             .map(|_| ())
@@ -808,6 +826,48 @@ mod tests {
             ModuleComponent::Network => &ds_cli_exec::addons::NETWORK,
         }
     }
+    #[test]
+    fn host_connectivity_and_pre_cancel_stop_before_transfer_or_probe() {
+        for component in [
+            ModuleComponent::Solar,
+            ModuleComponent::Reporter,
+            ModuleComponent::Network,
+        ] {
+            let base = tempfile::tempdir().unwrap();
+            let store = ModuleStore::new(base.path(), component, "canary").unwrap();
+            let (release, _) = fixture(component, 1);
+            let admissions = Cell::new(0);
+            let error = store
+                .stage_with_admission(
+                    grant(release.clone()),
+                    |_| {},
+                    &|| false,
+                    || {
+                        admissions.set(admissions.get() + 1);
+                        Err("offline: operator selected offline mode".into())
+                    },
+                )
+                .unwrap_err();
+            assert!(error.contains("offline:"));
+            assert_eq!(admissions.get(), 1);
+            assert!(store.selection().unwrap().is_none());
+            assert_eq!(
+                fs::read_dir(store.root.join("versions")).unwrap().count(),
+                0
+            );
+            let error = store
+                .stage_with_admission(
+                    grant(release),
+                    |_| {},
+                    &|| true,
+                    || panic!("pre-cancelled work must not consume connectivity or transport"),
+                )
+                .unwrap_err();
+            assert!(error.contains("module_update_cancelled"));
+            assert!(store.selection().unwrap().is_none());
+        }
+    }
+
     #[test]
     fn native_three_component_stage_activate_restart_rollback_keeps_captured_old_job() {
         for component in [

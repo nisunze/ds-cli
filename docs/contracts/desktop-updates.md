@@ -50,3 +50,13 @@ Executable proof: Kernel `cargo test --lib desktop_update`, the native stage
 receipt/reverification fixtures, CLI `server update-inspect --file` execution,
 and Desktop consumer/read-count/interaction tests. The public release operation
 and publication authority remain unchanged.
+
+The Desktop module adapter exposes the fixed native stage/cancel/activate/rollback
+effects over `ds-update-runtime::modules`; it does not reinterpret held catalogs
+as installation authority. Module staging uses the existing component progress
+event and download notification row and ends at ready. Explicit activation and
+rollback derive their guards from native admission/session observations; unknown
+or uncaptured consumers refuse conservatively. Automatic module activation is
+not declared. A completed explicit activation refreshes only that module's local
+inventory against held metadata, with no release freshness read. Publication
+version/build/release date belong only to a matching active executable receipt.
