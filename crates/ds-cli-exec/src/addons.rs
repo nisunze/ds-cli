@@ -84,6 +84,27 @@ pub fn inventory() -> Value {
 pub fn inventory_for(
     component: Option<ds_command_kernel::module_release::ModuleComponent>,
 ) -> Value {
+    inventory_in_context(component, None)
+}
+
+/// The installed native host supplies its captured lane. This never chooses
+/// a lane from an account/project default or acquires an unused catalog.
+pub fn inventory_for_lane(
+    component: Option<ds_command_kernel::module_release::ModuleComponent>,
+    lane: &str,
+) -> Result<Value, ds_cli_contract::Failure> {
+    if !matches!(lane, "stable" | "canary") {
+        return Err(ds_cli_contract::Failure::invalid(
+            "module_lane_invalid",
+            "inspect exactly stable or canary",
+        ));
+    }
+    Ok(inventory_in_context(component, Some(lane)))
+}
+fn inventory_in_context(
+    component: Option<ds_command_kernel::module_release::ModuleComponent>,
+    lane: Option<&str>,
+) -> Value {
     let modules: Vec<Value> = [
         ("solar", &SOLAR),
         ("reporter", &REPORTER),
@@ -93,7 +114,11 @@ pub fn inventory_for(
     .filter(|(name, _)| component.is_none_or(|selected| selected.as_str() == *name))
     .map(|(component, owner)| {
         let mut row = json!({"component":component,"executable":owner.name});
-        let result = owner.capture().and_then(|engine| {
+        let captured = match lane {
+            Some(lane) => owner.capture_for_lane(lane),
+            None => owner.capture(),
+        };
+        let result = captured.and_then(|engine| {
             engine
                 .call_json("build-info", &[], Duration::from_secs(20))
                 .map(|identity| (engine.executable.clone(), identity))
@@ -136,3 +161,8 @@ pub static NETWORK: External = External {
     remedy: "install the Network addon, or set DS_NETWORK_ENGINE_BIN to a compatible ds-network executable",
     missing_code: "network_engine_missing",
 };
+
+/// Shared native installer/resolver base; lane selection stays explicit.
+pub fn managed_module_base() -> Result<std::path::PathBuf, ds_cli_contract::Failure> {
+    crate::managed_modules::module_base()
+}

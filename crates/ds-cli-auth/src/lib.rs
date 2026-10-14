@@ -95,6 +95,7 @@ pub use ds_client_core::{
     SurveyPhoto, SurveyThumbnail,
 };
 pub use profile::Lane;
+pub mod module_updates;
 
 /// The remedy the transformer-context route's own rejection carries.
 ///

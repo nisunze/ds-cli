@@ -32,6 +32,7 @@ use ds_cli_contract::spec::Availability;
 use serde_json::json;
 
 pub mod addons;
+mod managed_modules;
 mod process_tree;
 mod session;
 pub use session::NetworkProfileProcess;
@@ -86,9 +87,22 @@ pub struct Completed {
 pub struct CapturedExternal {
     owner: &'static External,
     executable: PathBuf,
+    managed_identity: Option<managed_modules::ManagedIdentity>,
 }
 
 impl CapturedExternal {
+    fn verify_managed(&self) -> Result<(), Failure> {
+        if let Some(identity) = &self.managed_identity {
+            managed_modules::verify(&self.executable, identity)?;
+        }
+        Ok(())
+    }
+    fn verified<T>(&self, call: impl FnOnce() -> Result<T, Failure>) -> Result<T, Failure> {
+        self.verify_managed()?;
+        let result = call()?;
+        self.verify_managed()?;
+        Ok(result)
+    }
     /// Canonical executable captured for this accepted run. Native hosts may
     /// reuse their bounded process collectors without resolving an active module
     /// pointer again or requiring the module in their application bundle.
@@ -102,8 +116,10 @@ impl CapturedExternal {
         args: &[OsString],
         timeout: Duration,
     ) -> Result<Completed, Failure> {
-        self.owner
-            .call_at(&self.executable, subcommand, args, timeout)
+        self.verified(|| {
+            self.owner
+                .call_at(&self.executable, subcommand, args, timeout)
+        })
     }
 
     /// Invoke one fixed Network task under its host CPU and cancellation budget.
@@ -123,15 +139,17 @@ impl CapturedExternal {
                 "the native worker budget must be positive",
             ));
         }
-        self.owner.call_at_supervised(
-            &self.executable,
-            subcommand,
-            args,
-            timeout,
-            Some(workers),
-            cancel,
-            None,
-        )
+        self.verified(|| {
+            self.owner.call_at_supervised(
+                &self.executable,
+                subcommand,
+                args,
+                timeout,
+                Some(workers),
+                cancel,
+                None,
+            )
+        })
     }
 
     /// Observe bounded stderr chunks on the calling thread while the owned
@@ -152,15 +170,17 @@ impl CapturedExternal {
                 "the native worker budget must be positive",
             ));
         }
-        self.owner.call_at_supervised(
-            &self.executable,
-            subcommand,
-            args,
-            timeout,
-            Some(workers),
-            cancel,
-            Some(stderr_observer),
-        )
+        self.verified(|| {
+            self.owner.call_at_supervised(
+                &self.executable,
+                subcommand,
+                args,
+                timeout,
+                Some(workers),
+                cancel,
+                Some(stderr_observer),
+            )
+        })
     }
 
     pub fn call_json(
@@ -197,6 +217,36 @@ impl Completed {
 }
 
 impl External {
+    /// Resolve the exact captured native lane's installed addon. A malformed
+    /// managed selection refuses; it never borrows another lane or PATH.
+    pub fn capture_for_lane(&'static self, lane: &str) -> Result<CapturedExternal, Failure> {
+        self.capture_for_lane_in(lane, &managed_modules::module_base()?)
+    }
+    /// Privileged native host support for an explicitly relocated owned store.
+    /// This path is not an IPC/CLI artifact-path argument.
+    pub fn capture_for_lane_in(
+        &'static self,
+        lane: &str,
+        base: &Path,
+    ) -> Result<CapturedExternal, Failure> {
+        if !matches!(lane, "stable" | "canary") {
+            return Err(Failure::invalid(
+                "module_lane_invalid",
+                "capture exactly stable or canary",
+            ));
+        }
+        if std::env::var_os(self.env_override).is_some() {
+            return self.capture();
+        }
+        match managed_modules::selected(self, base, lane)? {
+            Some((path, identity)) => {
+                let mut captured = self.capture_pinned(&path)?;
+                captured.managed_identity = Some(identity);
+                Ok(captured)
+            }
+            None => self.capture(),
+        }
+    }
     /// Capture by filesystem metadata only; discovery starts no process.
     pub fn capture(&'static self) -> Result<CapturedExternal, Failure> {
         self.capture_path(self.locate())
@@ -230,6 +280,7 @@ impl External {
         Ok(CapturedExternal {
             owner: self,
             executable,
+            managed_identity: None,
         })
     }
     /// Where the executable is, or nothing.

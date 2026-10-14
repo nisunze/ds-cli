@@ -48,6 +48,7 @@ impl CapturedExternal {
                 "invalid Profile worker budget",
             ));
         }
+        self.verify_managed()?;
         let mut command = Command::new(&self.executable);
         command
             .arg("profile-session")

@@ -259,6 +259,33 @@ pub fn load_device(lane: Lane) -> Result<(ClientProfile, String, String), Failur
     Ok((profile, actual, gateway_key))
 }
 
+/// Module installation authority comes only from the packaged production
+/// catalog. Explicit local-Go and development bundle overrides grant no install.
+pub(crate) fn load_installation(lane: Lane) -> Result<(ClientProfile, String, String), Failure> {
+    let local = crate::local_go::is_local().map_err(|_| install_authority_unavailable())?;
+    let (_, development, expected) = discovery()?;
+    installation_profile_policy(development, local)?;
+    let (profile, digest, key) = load_device(lane)?;
+    if digest != expected {
+        return Err(install_authority_unavailable());
+    }
+    Ok((profile, digest, key))
+}
+fn installation_profile_policy(development: bool, local_go: bool) -> Result<(), Failure> {
+    if development || local_go {
+        Err(install_authority_unavailable())
+    } else {
+        Ok(())
+    }
+}
+fn install_authority_unavailable() -> Failure {
+    Failure::unavailable(
+        "module_authority_unavailable",
+        "development catalogs and local Go cannot grant module installation",
+    )
+    .remedy("use the exact packaged production native profile for this installed lane")
+}
+
 pub fn availability() -> Availability {
     if crate::local_go::capture_for_profile().is_err() {
         return Availability::unavailable(
@@ -505,7 +532,7 @@ mod tests {
                     "tiles": { "method": "POST", "path": "/api/v1/tiles", "actions": ["status", "preflight", "generate", "list", "add", "remove", "global_catalog", "global_list", "global_generate", "global_status"] },
                     "project_report": { "method": "POST", "path": "/report", "actions": ["download_transfo", "list_compounded_reports", "transformer_inventory", "retire_transformer", "restore_transformer", "list_transformers_status"] },
                     "design_attachments": {"method":"POST","path":"/api/v1/design/attachments","actions":["list","get","start_upload","finalize_upload","download","archive","archive_revision","set_latest","list_project","list_object_versions"]},
-                    "design_versions": {"method":"POST","path":"/api/v1/design/versions","actions":["list_versions","get_version","get_head","create_version","restore_version","list_version_summaries","create_versions"]},
+                    "design_versions": {"method":"POST","path":"/api/v1/design/versions","actions":["list_versions","get_version","get_head","create_version","list_version_summaries","create_versions","get_version_catalog","get_version_revision","renumber_version","bind_version_revision"]},
                     "design_selections": {"method":"POST","path":"/api/v1/design/selections","actions":["list","get","save","archive","promote_task"]},
                     "data_distribution": {"method":"POST","path":"/api/v1/data-distribution","actions":["list_datasets","query_print_context"]},
                     "admin_bounds": {"method":"GET","path":"/api/v1/admin/rwanda","actions":["children","geometry"]},
@@ -539,7 +566,7 @@ mod tests {
                     "tiles": { "method": "POST", "path": "/api/v1/tiles", "actions": ["status", "preflight", "generate", "list", "add", "remove", "global_catalog", "global_list", "global_generate", "global_status"] },
                     "project_report": { "method": "POST", "path": "/report", "actions": ["download_transfo", "list_compounded_reports", "transformer_inventory", "retire_transformer", "restore_transformer", "list_transformers_status"] },
                     "design_attachments": {"method":"POST","path":"/api/v1/design/attachments","actions":["list","get","start_upload","finalize_upload","download","archive","archive_revision","set_latest","list_project","list_object_versions"]},
-                    "design_versions": {"method":"POST","path":"/api/v1/design/versions","actions":["list_versions","get_version","get_head","create_version","restore_version","list_version_summaries","create_versions"]},
+                    "design_versions": {"method":"POST","path":"/api/v1/design/versions","actions":["list_versions","get_version","get_head","create_version","list_version_summaries","create_versions","get_version_catalog","get_version_revision","renumber_version","bind_version_revision"]},
                     "design_selections": {"method":"POST","path":"/api/v1/design/selections","actions":["list","get","save","archive","promote_task"]},
                     "data_distribution": {"method":"POST","path":"/api/v1/data-distribution","actions":["list_datasets","query_print_context"]},
                     "admin_bounds": {"method":"GET","path":"/api/v1/admin/rwanda","actions":["children","geometry"]},
@@ -900,5 +927,21 @@ mod tests {
         );
         fs::remove_file(link).unwrap();
         fs::remove_file(target).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod module_authority_tests {
+    #[test]
+    fn only_packaged_production_profiles_can_reach_module_transport() {
+        assert!(super::installation_profile_policy(false, false).is_ok());
+        for (development, local) in [(true, false), (false, true), (true, true)] {
+            assert_eq!(
+                super::installation_profile_policy(development, local)
+                    .unwrap_err()
+                    .code(),
+                "module_authority_unavailable"
+            );
+        }
     }
 }
