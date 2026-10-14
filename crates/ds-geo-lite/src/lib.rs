@@ -41,11 +41,15 @@ pub mod exact_delaunay;
 pub mod line_corridor;
 pub mod operations;
 pub mod primitives;
+#[cfg(feature = "projection")]
+pub mod projection;
 #[cfg(feature = "tin")]
 pub mod projected_tin;
 pub mod types;
 #[cfg(feature = "vector_types")]
 pub mod vector_types;
+#[cfg(feature = "vector_types")]
+pub mod window;
 use types::Coord;
 pub use types::EARTH_RADIUS_M;
 

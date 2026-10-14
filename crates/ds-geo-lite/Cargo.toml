@@ -15,6 +15,7 @@ path = "src/lib.rs"
 [features]
 default = []
 vector_types = ["dep:serde"]
+projection = ["dep:serde"]
 codec = ["geojson"]
 geojson = ["dep:serde", "dep:serde_json"]
 revision = ["geojson"]
