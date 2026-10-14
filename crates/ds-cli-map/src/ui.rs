@@ -19,7 +19,7 @@
 //! application publishes — a style ref, a local layer id, a feature id — and a
 //! CSS selector, a URL or a filesystem path is refused here rather than sent
 //! and misunderstood. That check is what keeps this from becoming the generic
-//! UI-automation door `CLAUDE.md` forbids.
+//! UI-automation door the repository agent guide forbids.
 
 pub mod open {
     use ds_cli_contract::outcome::Failure;

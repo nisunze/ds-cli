@@ -1,86 +1,76 @@
-# Working in `ds-cli` — the skills tree
+# ds-cli agent guide
 
-**Read [`CLAUDE.md`](CLAUDE.md) first. It is the normative document for this
-repository and every rule in it applies here.**
+Follow the workspace AGENTS.md and any nearer scoped guide. Use the task table
+below to open only the relevant section. For cross-repository, release or
+delegated work, use the [shared working agreement](../ds-command-kernel/docs/agent-guidance/collaboration.md)
+and [context guide](../ds-command-kernel/docs/agent-guidance/context-management.md).
 
-This file used to be a verbatim copy of it plus four short additions, which
-meant every rule had two homes and one of them was always the stale one — the
-same "second description" failure the CLI itself exists to avoid. So it is now
-only the part that is additionally true because this repository also owns the
-native agent skills.
+## Owns
 
-## What this repository additionally owns
+The ds executable, its CLI/MCP projection and canonical native Agent Skills under
+skills/. This repository adapts owning Rust operations; it does not own engineering,
+geometry, electrical, Solar, routing, reporting or conversion algorithms.
 
-This repository also owns the canonical native Agent Skills under `skills/`
-and their ownership-safe installers under `scripts/`. Those documents teach
-agents when to use the executable; they never implement or duplicate a command.
+## Invariants
 
-## Progressive disclosure applies to a skill too
+- Reveal the surface progressively: root help lists domains, domain help lists
+  commands and one command descriptor carries its complete contract.
+- Declare summary, purpose, effects, authority, inputs, output, examples and
+  refusals once in the Command value. Bound default output and report truncation.
+- Call an owning crate, a reviewed typed process contract, or the protected native
+  user client. Never expose caller-supplied argv, shell, SQL, code execution,
+  ambient credentials or an unregistered owner operation.
+- Keep project and principal context explicit and audience-fenced. A project ID or
+  saved selection is an address to authorize, never proof of authority.
+- MCP is a projection of live ds capabilities, not a second schema or transport.
+  Skills teach discovery and workflows; they do not copy commands or implement them.
+- Prove a delivery gap through the installed CLI/MCP before a broad refactor.
+  Repair the smallest owning slice, prove it headlessly, then bind the UI.
+- Server owners must not compile ds-web or Tauri. Shared native behavior belongs
+  with its Rust owner and is consumed by both CLI and Desktop.
 
-The same rule applies to skills. Native agent discovery sees only each skill's
-short frontmatter description; a full `SKILL.md` is loaded only after it is
-selected. Keep command flags, schemas, enums, output contracts and refusals in
-the live `Command` declaration and discover them with `ds capabilities`.
-Compact discovery never replaces root, domain, or command help. Both are
-first-class projections of the same declaration and both must remain complete.
+## Route the task
 
-## Verification
+| Task | Read |
+| --- | --- |
+| Add or change a command | [CLI workflow: before adding a command](docs/development/cli-agent-workflow.md#before-you-add-a-command) |
+| Owner/process selection | [CLI workflow: reaching an owner](docs/development/cli-agent-workflow.md#reaching-an-owner), [process boundary](docs/contracts/process-boundary-contract.md) |
+| Authentication and project context | [CLI workflow: authority](docs/development/cli-agent-workflow.md#authority), [headless runtime](../ds-command-kernel/docs/contracts/ds-headless-application-runtime.md) |
+| Delivery or refactor | [Evidence before refactoring](docs/development/cli-agent-workflow.md#evidence-before-refactoring) |
+| Blind workflow acceptance | [Blind CLI/MCP validation](docs/development/cli-agent-workflow.md#blind-climcp-workflow-validation) |
+| MCP surface | [MCP reference](docs/reference/mcp.md), [protocol boundary](docs/contracts/protocol-boundary-contract.md) |
+| Multi-repository layout | [Workspace layout](docs/development/workspace-layout.md) |
+| Agent skill change | This guide, the affected SKILL.md and scripts/check.py |
 
-For a multi-repository workspace, follow
-[`docs/development/workspace-layout.md`](docs/development/workspace-layout.md).
-Run `python scripts/check-workspace-root.py ..` at session start and before
-handoff when the parent `AGENTS.md` carries `<!-- ds-workspace-root:v1 -->`.
-Never write task scratch, handovers, generated outputs or package dependencies
-into that parent. `scripts/check.py` also enforces this opted-in boundary.
+## Skills and discovery
 
-Everything under *Verification* in `CLAUDE.md` applies unchanged. Two further
-commands must pass, and CI runs them too:
+Skill descriptions stay short and selective. Full SKILL.md content loads only
+after selection. Keep flags, schemas, enums, outputs and refusals in the live
+Command declaration and discover them with ds capabilities. Reject a skill-local
+executable, copied command contract, direct API route or separate gap ledger.
 
-```bash
-python3 scripts/check.py
-bash scripts/test-install-skills.sh
-```
+Coding findings are fixed or recorded in the owning shared backlog; coding
+sessions do not submit product feedback. Product-use sightings outside coding
+use the governed feedback surface.
 
-`check.py` is the only content gate on the skills tree: it holds each skill's
-description and body inside their conditional-load budgets, refuses a
-skill-local executable, and scans for a route around `ds` or a local gap
-ledger.
+## Checks
 
-## Additionally rejected
+Run the affected crate/unit/integration test and a meaningful refusal first.
+Use the full checks only when the changed boundary warrants them:
 
-Beyond the list in `CLAUDE.md`:
+- cargo fmt --all --check
+- cargo clippy --workspace --all-targets --all-features -- -D warnings
+- cargo test --workspace --all-features
+- python3 scripts/check.py
+- bash scripts/test-install-skills.sh
 
-- A skill-local executable, copied CLI contract, or direct API route.
-- A separate local gap ledger. During coding sessions, fix findings or use
-  the owning OPEN.md, OPEN-X.md and SEEDING.md backlogs; never submit feedback
-  during coding (owner, 2026-10-07). Product-use sightings outside coding use
-  the governed `ds feedback` surface. See
-  [PRINCIPLES.md §4](../ds-command-kernel/backlog/PRINCIPLES.md#4-report-as-you-go-owner-2026-10-07).
+Process contracts require their real engine. Bridge parity requires the ds-web
+checkout. Missing dependencies or inapplicable checks must refuse or report a
+named skip; they do not silently pass.
 
-## Blind workflow trials
+For map/report workflow changes, run one blind installed CLI/MCP trial after the
+implementation is ready. The trial gets the user's job, allowed project/output
+and mutation bounds, but no source, copied syntax or implementation hints.
 
-The **Blind CLI/MCP workflow validation** section in [CLAUDE.md](CLAUDE.md) is
-required for map/report workflow changes: an independent smaller-model agent
-uses the installed surface without source access or syntax hints, and its
-artifact attempt and observed refusals determine the discoverability result.
-
-For feature stabilization, the **Evidence before refactoring** section in
-[CLAUDE.md](CLAUDE.md) governs CLI/MCP-first proof and the scope of TypeScript
-removal. A delivery gap must be demonstrated before refactoring.
-
-## CLI-first delivery and project isolation
-
-Solar obeys the owner's 2026-09-16 rule of the land in the
-[headless runtime contract](../ds-command-kernel/docs/contracts/ds-headless-application-runtime.md#2-one-application-authority):
-all capabilities belong to the native Server core, available through CLI/MCP
-without Svelte, browser WASM, Tauri or a paired desktop. CLI adapts the owner;
-it must not implement Solar behavior itself.
-
-Follow the delivery cadence and per-request project context section of
-[`ds-headless-application-runtime.md`](../ds-command-kernel/docs/contracts/ds-headless-application-runtime.md).
-Prove the installed CLI/MCP outcome, repair the smallest demonstrated owner gap,
-then bind the UI. The web retains project selection; native requests capture and
-authorize explicit project context, preserving it across concurrent jobs and
-interruptions. Migrate touched boundaries gradually; a saved CLI default must
-never redirect accepted work.
-- Server ownership is strict: no source code from `ds-web` may enter server compilation. Kernel-owned native crates are the server core; desktop and web consume that core. Guard the resolved Cargo dependency graph against `ds-web` and Tauri dependencies, including build-script inputs. Do not place shared server behavior in the web repository.
+Documentation-only work reviews links, authority and the diff. It does not run
+product builds or deployment.

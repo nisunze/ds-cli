@@ -90,7 +90,7 @@ process is pinned by `crates/ds/tests/process_boundary.rs`. There are four such
 owner classes — a sibling DS executable, the platform package manager,
 an already-installed executable being probed, and `ds` itself re-invoked by the
 MCP adapter — and each is named in
-[`docs/contracts/process-boundary-contract.md`](docs/contracts/process-boundary-contract.md).
+[`docs/contracts/process-boundary-contract.md`](../contracts/process-boundary-contract.md).
 A generic `run(binary, argv)` reachable from a command is still forbidden, and
 so is a fifth spawn site that has not been added to that test deliberately.
 
@@ -286,7 +286,7 @@ only ever gets relaxed is not protecting anything.
 ## CLI-first delivery and project isolation
 
 Follow the delivery cadence and per-request project context section of
-[`ds-headless-application-runtime.md`](../ds-command-kernel/docs/contracts/ds-headless-application-runtime.md).
+[`ds-headless-application-runtime.md`](../../../ds-command-kernel/docs/contracts/ds-headless-application-runtime.md).
 Prove the current CLI/MCP outcome, using the source server launcher when the
 installed release does not contain the current code. Repair the smallest owner gap,
 then bind the UI. The web retains project selection; native requests capture and
