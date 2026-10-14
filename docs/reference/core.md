@@ -7,6 +7,43 @@ The process remains in the foreground until stopped. Discover `core.serve` for
 its complete flags and admission contract; see [background runtime](server.md)
 for job, project and synchronization controls.
 
+Core and Desktop publish independently. A release listing identifies **DS Core
+(CLI / Kernel)** as an installable runtime with its own version, release number,
+publication date and artifact identity. Desktop has its own shell identity;
+Interactions belongs to the Web/Desktop shell, never the native Core closure.
+Network, Solar and Reporter are independently admitted components.
+
+There is no installation-wide release pin. Every installed artifact retains its
+own exact source, dependency/protocol identity and SHA-256. Native compatibility
+currently uses the declared owner protocol and pinned engine provenance;
+metadata does not yet declare a Core semantic-version compatibility range.
+A carried artifact keeps its own immutable release identity. Missing per-artifact
+publication dates remain unknown rather than inheriting a newer catalog date.
+
+The public background command is `core.serve`, contract 2. Native automation uses
+`--target core` and `--core-state-dir` where the command declares those inputs.
+Retired product commands, targets and build-lane spellings have no aliases;
+existing installations require explicit removal. Internal stored schema and
+refusal identifiers retain their declared read compatibility.
+
+`core.result` optionally observes the existing durable job with `--wait <seconds>`
+(1..=600). Without that input its immediate behavior, result bytes and receipt
+remain unchanged. Waiting writes the identical completed bytes to the absent
+`--out` and adds the durable `job` to the existing `out`, `byte_count`, `sha256`
+receipt. Its context, input digest and exact engine pin remain the ones admitted.
+Timeout returns retryable `result_pending` with the current job and `wait_seconds`;
+failed and cancelled jobs return `result_failed` and `result_cancelled` with the
+job. These refusals create no output file. Detach, timeout, window closure and
+Core shutdown stop observation only: none cancels an admitted job. Reattach to
+the same job after restart. No automatic status polling or resubmission occurs.
+
+Observers register before the initial durable read, wake after committed
+completion/failure/cancellation, and recheck local identity and job visibility
+before returning. The host admits at most 32 concurrent observers separately
+from its request door; `capacity_exhausted` names scope `result_waiters` when
+full. Sleeping observers hold no ordinary request permit. The client transport
+deadline covers the requested wait plus 60 seconds for bounded result transfer.
+
 Discover the typed contracts with `ds capabilities core.component.selection`
 and `ds capabilities core.component.remove`. CLI and MCP project these same
 commands. Machine component management requires local per-user ownership and

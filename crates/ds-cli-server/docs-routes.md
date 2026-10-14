@@ -161,6 +161,22 @@ has not finished answers `server_refused` / "job has no completed result", so
 "not yours" and "not yet" stay distinguishable *inside* a project and
 indistinguishable across projects.
 
+The result route additionally accepts optional `wait=1..600`. This opt-in form
+returns `{job,result_base64}` on completion; `core.result` writes the decoded
+exact bytes and retains the durable job in its receipt. Omitted `wait` still
+returns raw result bytes. `result_pending` (unavailable/503, retryable) includes
+`job` and `wait_seconds`; `result_failed` (failed/502) and `result_cancelled`
+(conflict/409) include `job`. Invalid bounds refuse `result_wait_invalid` (400).
+All observation refusals leave the admitted job and its stored input intact.
+Subscription precedes the first row read; post-commit terminal invalidations
+wake all current observers. The post-wait read rechecks local revocation and
+the same owner/principal/lane/deployment/project visibility fences. There is
+no timer-driven row/status polling. At most 32 observers hold separate permits;
+the ordinary request door is released after initial authorization. Saturation
+is `capacity_exhausted` with scope `result_waiters` and `retry_after_ms:250`.
+Disconnect drops observation, and transport shutdown detaches observers before
+graceful connection drain; neither path invokes cancellation.
+
 ### `GET /v1/jobs/:id/input?project=<id>`
 `project` — OPTIONAL narrowing, and the client sends only what the caller
 NAMED (`ds server input`, unlike every other `ds server` command, does not
