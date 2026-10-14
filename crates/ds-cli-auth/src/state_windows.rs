@@ -391,7 +391,7 @@ pub(super) fn sync_directory(path: &Path) -> Result<(), StoreError> {
     Ok(())
 }
 
-fn local_app_data() -> Result<PathBuf, StoreError> {
+pub(super) fn local_app_data() -> Result<PathBuf, StoreError> {
     let mut raw = null_mut();
     let result = unsafe { SHGetKnownFolderPath(&FOLDERID_LocalAppData, 0, null_mut(), &mut raw) };
     if result < 0 || raw.is_null() {

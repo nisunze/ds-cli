@@ -36,6 +36,13 @@ fn copy_sid(sid: PSID) -> Result<Account, String> {
     account[..length].copy_from_slice(unsafe { std::slice::from_raw_parts(sid.cast(), length) });
     Ok(account)
 }
+/// Resolve this account's native known folder without accepting an environment
+/// substitute, creating identity/state, or reading credential contents.
+pub fn local_application_data() -> Result<std::path::PathBuf, String> {
+    let root = crate::state_windows::local_app_data().map_err(|_| error())?;
+    crate::state_windows::validate_directory(&root).map_err(|_| error())?;
+    Ok(root)
+}
 pub fn current_account() -> Result<Account, String> {
     crate::state_windows::with_current_user_sid(copy_sid).map_err(|_| error())?
 }
