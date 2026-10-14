@@ -2,6 +2,7 @@
 mod captured;
 mod design_snapshot;
 mod grid;
+mod report_engineering;
 pub use captured::{CapturedNetworkClient, NetworkEnginePin};
 pub use design_snapshot::{
     design_snapshot_engine_pin, process_design_snapshot, DesignSnapshotEnginePin,
@@ -19,6 +20,7 @@ use ds_network_contracts::{
     },
 };
 pub use grid::GridOutcome;
+pub use report_engineering::ReportEngineeringOutcome;
 use sha2::{Digest, Sha256};
 use std::{
     ffi::OsString,
