@@ -241,6 +241,34 @@ Publish immutable versioned packages with `.wasm`, JS glue, declarations and des
 
 Respect browser CSP/CORS/content types and the established origin/pinned artifact mechanism. Do not add arbitrary remote WASM downloads. Cache by immutable digest/version; activate the full JS/WASM pair, not one file. Mixed glue/module versions, stale service-worker/app asset references and interrupted acquisition must produce explicit failure/recovery. Do not re-enable root-scope Desktop service-worker caching to distribute an engine.
 
+### Native continuity release and independent browser publication
+
+The owner permits the current native Server/Desktop release before complete
+Web/WASM or SQLite migration. Native CLI/Desktop remain first-class execution;
+web processing without its admitted replacement may expose an explicit
+unavailable/refusal state. The shell remains independently releasable, and a
+compatible engine may publish afterward. Use the existing release authority,
+device admission, notification/consent, immutable artifact and rollback owners;
+never introduce another updater or download a heavy engine without deliberate
+consent.
+
+Independent browser Network publication authority is implemented in Brain
+`9ed80c11`; deployed authority and installed browser execution remain unproved.
+Remaining: qualify/deploy that gateway extension through existing local release
+gates; make the source-aware browser producer emit
+`ds.module-wasm-artifact/v1` from actual four-file bytes and owning ABI/build
+identity; extend existing device/lane admission and notification/consent
+consumers to verify the WASM runtime explicitly, deliberately acquire the
+complete compatible unit, atomically select it, preserve captured sessions and
+support offline rollback. Prove browser/WebView execution and request counts.
+Generated artifact evidence is not a publication receipt. Solar/Reporter WASM
+remain unadmitted. These obligations do not block native Server/Desktop release.
+
+SQLite adoption follows each touched, stabilized domain: import and verify,
+switch its authoritative writer once, then retire its IndexedDB writer after
+the rollback window. Untouched IndexedDB domains continue working. Never
+dual-write authoritative state or make full storage migration a release gate.
+
 ### Remaining UI consumer and retirement edges
 
 Cold Interactions consumer proof and full application startup proof are separate
