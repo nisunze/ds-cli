@@ -44,7 +44,9 @@ the unchanged geometry/canvas snapshots keep their separate drift fence.
 > Would we expect this capability to work on an Android or iOS field device
 > without shipping the heavy network engine?
 
-**Yes** → `ds-command-kernel`, or a lightweight dependency beneath it.
+**Yes, and it decides application behavior** → `ds-command-kernel`, or a
+lightweight neutral dependency beneath it. Transient UI interaction has its own
+owner, defined below.
 **No, because the operation is inherently heavyweight engineering computation**
 → `ds-network`.
 
@@ -54,7 +56,7 @@ the unchanged geometry/canvas snapshots keep their separate drift fence.
 |---|---|
 | canonical project/application state | advanced electrical/network analysis |
 | commands and queries | optimization |
-| selection and editing semantics | large graph/spatial workloads |
+| admitted selection and authored editing semantics | large engineering graph/spatial workloads |
 | survey workflows | terrain/profile computation |
 | attributes/forms | FEM |
 | filters | PLS-related engineering computation |
@@ -64,6 +66,41 @@ the unchanged geometry/canvas snapshots keep their separate drift fence.
 | synchronization semantics | |
 | derived/application/view state | |
 | domain behaviour that must exist independently of MapLibre or an open map | |
+
+### Transient UI boundary (owner, 2026-10-14)
+
+`ds-interactions` permanently owns transient map and canvas interaction:
+pointer hit testing, screen-space snap candidates, selection gestures, viewport
+transforms, Canvas2D layout and UI interaction indexes. These implementations
+belong in neither CLI nor Server, and depend on neither the application kernel
+nor Network engineering. Small shared geometry/value primitives can remain
+neutral dependencies with neither dependency of their own. See the
+[Interactions contract](../../../ds-interactions/docs/interaction-boundary.md).
+
+Interaction produces transient intent; applying that intent to authored data
+still passes through the existing Kernel or Network admission boundary. Network
+topology snapping, engineering profiles and persisted model edits remain
+engineering/application operations, not UI algorithms. CLI may request an
+existing typed UI effect from an admitted UI host without compiling the UI's
+interaction algorithm into its own dependency closure.
+
+The accepted browser target is exactly three WASM units: permanently available
+Kernel orchestration, permanently available neutral Interactions, and Network
+engineering loaded when processing is requested or deliberately imminent. The
+engineering unit uses the same owning Rust computation crates as the native
+Network addon. Ordinary map movement, selection and snapping must cause zero
+engineering-module loads. Existing Network/Grid package names and current
+startup behavior do not establish that this consolidation is already complete.
+
+Desktop and Server use the admitted native engineering executable. Tauri stays
+outside the native application runtime. CLI/MCP adapts one shared command
+contract; a future separate CLI executable or repository merge is a packaging
+decision and does not authorize moving product decisions into an adapter.
+
+Interactive DS Grid/Profile editing redesign and its engineering-aware session
+migration remain separately parked in the
+[owning hard-problem entry](../../backlog/hardproblems/OPEN.md#interactive-ds-grid-profiledesign-extraction).
+Mechanical extraction preserves current behavior and does not reopen that work.
 
 ### Named refusals
 

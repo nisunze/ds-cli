@@ -38,10 +38,11 @@ instruction file.
 | --- | --- | --- |
 | ds-command-kernel | Shared command decisions, state transitions and named native application owners | Hosts execute effects; kernel semantics do not fork by host |
 | ds-network | LV/MV engineering, model facts, geometry, exchange and design-session behavior | Thin native/WASM adapters; no duplicate gateway policy |
+| ds-interactions | Transient pointer, map and canvas interaction algorithms | UI-only; no Kernel/engineering dependencies and no CLI/Server implementation edge |
 | ds-network-reporter | Report production, acquisition/exchange and report artifacts | Uses engineering and Solar owners; never re-solves their decisions |
 | ds-solar | Prepared-input Solar calculation, portfolio and report authority | Preparation is explicit; Run is offline |
 | ds-brain | Principal/project authorization, metadata and atomic governed cloud commits | No second engineering implementation; independent gateway release |
-| ds-web | Shared presentation, interaction and typed browser/desktop adapters | CLI/MCP lead; no alternate product logic in TypeScript or Tauri |
+| ds-web | Shared presentation and typed browser/desktop interaction adapters | CLI/MCP lead; Interactions owns transient algorithms; no alternate product logic in TypeScript or Tauri |
 
 Read the receiving owner's contract before changing a cross-repository payload.
 Keep DS project identity distinct from GCP project/account identity. Preserve
