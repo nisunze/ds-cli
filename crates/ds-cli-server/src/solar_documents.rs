@@ -146,12 +146,14 @@ fn render_document(
             .map(|byte| format!("{byte:02x}"))
             .collect::<String>(),
     );
-    let mut builder = std::fs::DirBuilder::new();
+    let builder = std::fs::DirBuilder::new();
     #[cfg(unix)]
-    {
+    let builder = {
         use std::os::unix::fs::DirBuilderExt;
+        let mut builder = builder;
         builder.mode(0o700);
-    }
+        builder
+    };
     builder
         .create(&directory)
         .map_err(|_| "Cannot create private document-tool staging")?;

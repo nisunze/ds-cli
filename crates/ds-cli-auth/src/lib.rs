@@ -27,6 +27,9 @@ mod saved_preview_read;
 mod state;
 #[cfg(windows)]
 mod state_windows;
+#[cfg(windows)]
+#[doc(hidden)]
+pub mod windows_host;
 pub mod sync;
 #[cfg(test)]
 mod test_support;

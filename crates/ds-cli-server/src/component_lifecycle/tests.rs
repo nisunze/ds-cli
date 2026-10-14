@@ -241,7 +241,7 @@ fn app(path: &Path) -> crate::host::App {
     crate::host::App {
         database,
         connection,
-        os_uid: Some(crate::host::tests::OS_UID),
+        os_account: Some(crate::transport::Account::Unix(crate::host::tests::OS_UID)),
         auth: Arc::new(LocalOwner),
         requests: Arc::new(crate::host::Door::new(4)),
         activity: None,

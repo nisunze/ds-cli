@@ -27,12 +27,15 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{
     collections::BTreeSet,
-    fs::{self, OpenOptions},
+    fs,
     io::{Read, Write},
     net::SocketAddr,
     path::{Path, PathBuf},
     sync::Arc,
 };
+
+#[cfg(not(windows))]
+use std::fs::OpenOptions;
 
 use crate::server_sync::sessions::{self, ServerSessions};
 
@@ -89,9 +92,9 @@ pub struct App {
     pub database: PathBuf,
     pub connection: Connection,
     /// The operating-system account this host runs as: the only peer its
-    /// socket admits (`transport::own_uid()`), or `None` where there is no
+    /// socket admits (`transport::own_account()`), or `None` where there is no
     /// socket and so no peer to admit.
-    pub os_uid: Option<u32>,
+    pub os_account: Option<crate::transport::Account>,
     pub auth: Arc<dyn Authorizer>,
     /// How many requests this host answers at once, and what it says when it
     /// is full.
@@ -309,7 +312,7 @@ async fn access(
         .extensions()
         .get::<crate::transport::Peer>()
         .copied();
-    crate::transport::admit(peer, app.os_uid).map_err(|refused| typed(&refused))?;
+    crate::transport::admit(peer, app.os_account).map_err(|refused| typed(&refused))?;
     let permit = app.requests.enter().map_err(|full| typed(&full))?;
     tokio::task::spawn_blocking(move || authorize(&app))
         .await
@@ -797,6 +800,20 @@ fn host_failure(message: impl ToString) -> Failure {
         .remedy("read the stated reason; verify ds auth status and that ds core serve is running")
 }
 
+#[cfg(windows)]
+pub fn prepare_directory(path: &Path) -> Result<(), String> {
+    ds_cli_auth::windows_host::prepare_directory(path)
+}
+#[cfg(windows)]
+fn protected(path: &Path, directory: bool) -> Result<(), String> {
+    if directory {
+        ds_cli_auth::windows_host::validate_directory(path)
+    } else {
+        ds_cli_auth::windows_host::read_file(path).map(|_| ())
+    }
+}
+
+#[cfg(not(windows))]
 pub fn prepare_directory(path: &Path) -> Result<(), String> {
     if !path.is_absolute() {
         return Err("Core state directory must be absolute".into());
@@ -823,6 +840,7 @@ pub fn prepare_directory(path: &Path) -> Result<(), String> {
     ds_layer_store::private::tighten_root_once(path);
     Ok(())
 }
+#[cfg(not(windows))]
 fn protected(path: &Path, directory: bool) -> Result<(), String> {
     let metadata = fs::symlink_metadata(path).map_err(|e| e.to_string())?;
     if metadata.file_type().is_symlink()
@@ -979,17 +997,27 @@ fn write_record(directory: &Path, owner: &str, lane: &str) -> Result<(), Failure
         }
         _ => {}
     }
+    #[cfg(not(windows))]
     let mut options = OpenOptions::new();
+    #[cfg(not(windows))]
     options.write(true).create_new(true);
     #[cfg(unix)]
     {
         use std::os::unix::fs::OpenOptionsExt;
         options.mode(0o600);
     }
+    #[cfg(not(windows))]
     let mut file = options.open(&staging).map_err(host_failure)?;
+    #[cfg(windows)]
+    let mut file = ds_cli_auth::windows_host::create_file(&staging).map_err(host_failure)?;
     file.write_all(&bytes).map_err(host_failure)?;
     file.sync_all().map_err(host_failure)?;
+    drop(file);
+    #[cfg(not(windows))]
     fs::rename(&staging, directory.join("connection.json")).map_err(host_failure)?;
+    #[cfg(windows)]
+    ds_cli_auth::windows_host::replace_file(&staging, &directory.join("connection.json"))
+        .map_err(host_failure)?;
     #[cfg(unix)]
     fs::File::open(directory)
         .and_then(|d| d.sync_all())
@@ -1109,7 +1137,9 @@ pub(crate) mod tests {
     /// so the peer the kernel would name for its owner's own `ds`.
     pub(crate) const OS_UID: u32 = 4242;
     /// The peer the socket hands the router for the owner's own process.
-    pub(crate) const OWNER_PEER: crate::transport::Peer = crate::transport::Peer { uid: OS_UID };
+    pub(crate) const OWNER_PEER: crate::transport::Peer = crate::transport::Peer {
+        account: crate::transport::Account::Unix(OS_UID),
+    };
 
     pub(crate) fn test_connection(state: &Path) -> Connection {
         Connection {
@@ -1167,7 +1197,7 @@ pub(crate) mod tests {
         App {
             database,
             connection,
-            os_uid: Some(OS_UID),
+            os_account: Some(crate::transport::Account::Unix(OS_UID)),
             auth: Arc::new(Auth(authorized)),
             requests: Arc::new(Door::new(4)),
             activity: None,
@@ -1288,7 +1318,12 @@ pub(crate) mod tests {
     async fn unauthenticated_or_revoked_calls_never_read_or_create_jobs() {
         let dir = tempfile::tempdir().unwrap();
         for (allowed, peer) in [
-            (true, Some(crate::transport::Peer { uid: OS_UID + 1 })),
+            (
+                true,
+                Some(crate::transport::Peer {
+                    account: crate::transport::Account::Unix(OS_UID + 1),
+                }),
+            ),
             (true, None),
             (false, Some(OWNER_PEER)),
         ] {
@@ -1487,7 +1522,9 @@ pub(crate) mod tests {
         for stranger in [OS_UID + 1, 0] {
             let response = as_peer(
                 app(dir.path(), true),
-                Some(crate::transport::Peer { uid: stranger }),
+                Some(crate::transport::Peer {
+                    account: crate::transport::Account::Unix(stranger),
+                }),
             )
             .await;
             assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
@@ -1509,7 +1546,9 @@ pub(crate) mod tests {
         for (peer, expected) in [
             (OWNER_PEER, StatusCode::OK),
             (
-                crate::transport::Peer { uid: OS_UID + 1 },
+                crate::transport::Peer {
+                    account: crate::transport::Account::Unix(OS_UID + 1),
+                },
                 StatusCode::UNAUTHORIZED,
             ),
         ] {

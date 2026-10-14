@@ -1127,7 +1127,14 @@ pub fn serve(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     // taken and the owner-only socket bound first, so a second host on this
     // state is refused before it reads or rewrites anything. Nothing is
     // answered on the socket until the host below is ready.
-    let listening = transport::listen(&directory).map_err(failure)?;
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .map_err(failure)?;
+    let listening = {
+        let _entered = runtime.enter();
+        transport::listen(&directory).map_err(failure)?
+    };
     // Typed as the host decided it: a protected state directory that already
     // belongs to another account is `multi_principal_unsupported`, by name.
     let connection = host::connection(&directory, owner, lane.clone())?;
@@ -1141,7 +1148,7 @@ pub fn serve(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     let app = host::App {
         database,
         connection,
-        os_uid: transport::own_uid(),
+        os_account: transport::own_account(),
         layers: layer_host,
         auth: layer_auth,
         requests: Arc::new(host::Door::new(request_permits(workers))),
@@ -1155,11 +1162,7 @@ pub fn serve(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     // never waits for it; a refresh that fails is logged and changes no
     // answer this host gives.
     let refresh = auth::CredentialRefresh::start(credential, auth::REFRESH_INTERVAL);
-    let hosted = tokio::runtime::Builder::new_multi_thread()
-        .enable_all()
-        .build()
-        .map_err(failure)?
-        .block_on(host::serve(app, workers, listening));
+    let hosted = runtime.block_on(host::serve(app, workers, listening));
     drop(refresh);
     hosted.map_err(failure)?;
     Ok(json!({"stopped":true,"workers":workers,"per_project":per_project}))

@@ -67,3 +67,12 @@ or ready receipt refuses; no previous unit refuses `module_rollback_unavailable`
 These operations verify retained bytes without release lookup, download,
 executable probe or Desktop. They return the committed installed-v1 selection;
 a staging receipt alone remains ready and is not activation.
+
+Native Rust host consumers use `transport::own_account() -> Option<Account>`,
+`Peer { account: Account }` and `App.os_account: Option<Account>`. These replace
+`own_uid() -> Option<u32>`, `Peer.uid: u32` and `App.os_uid: Option<u32>`.
+Unix constructors use `Account::Unix(uid)`; Windows obtains its complete binary
+SID through the existing protected-state owner. A SID is never shortened to a
+numeric UID. Host construction and router fixtures must update together; these
+implementation interfaces do not form a supported client SDK. CLI/MCP remains
+the client surface. See [release notes](../../CHANGELOG.md) for the source update.

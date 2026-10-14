@@ -1,0 +1,296 @@
+//! Windows host primitives shared with the protected credential/state owner.
+//! This is native implementation plumbing, not a public transport or SDK.
+use std::ffi::c_void;
+use std::fs::{self, File, OpenOptions};
+use std::os::windows::ffi::OsStrExt;
+use std::os::windows::fs::{MetadataExt, OpenOptionsExt};
+use std::os::windows::io::AsRawHandle;
+use std::path::Path;
+use std::ptr::{addr_of, null_mut};
+use windows_sys::Win32::Foundation::{CloseHandle, GENERIC_ALL, LocalFree};
+use windows_sys::Win32::Security::Authorization::{
+    ConvertSidToStringSidW, ConvertStringSecurityDescriptorToSecurityDescriptorW, GetSecurityInfo,
+    SE_FILE_OBJECT,
+};
+use windows_sys::Win32::Security::{
+    ACCESS_ALLOWED_ACE, ACL, DACL_SECURITY_INFORMATION, EqualSid, GetAce, GetLengthSid, IsValidSid,
+    OWNER_SECURITY_INFORMATION, PSID, SECURITY_ATTRIBUTES,
+};
+use windows_sys::Win32::Storage::FileSystem::{
+    CreateDirectoryW, FILE_ALL_ACCESS, FILE_ATTRIBUTE_REPARSE_POINT, FILE_FLAG_BACKUP_SEMANTICS,
+    FILE_FLAG_OPEN_REPARSE_POINT, FILE_SHARE_READ, FILE_SHARE_WRITE,
+};
+use windows_sys::Win32::System::Threading::{OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION};
+
+/// Complete binary SID, zero padded; never a truncated hash or login name.
+pub type Account = [u8; 68];
+fn error() -> String {
+    "Windows protected host state or account could not be verified".into()
+}
+fn copy_sid(sid: PSID) -> Result<Account, String> {
+    let length = unsafe { GetLengthSid(sid) } as usize;
+    if length == 0 || length > 68 {
+        return Err(error());
+    }
+    let mut account = [0u8; 68];
+    account[..length].copy_from_slice(unsafe { std::slice::from_raw_parts(sid.cast(), length) });
+    Ok(account)
+}
+pub fn current_account() -> Result<Account, String> {
+    crate::state_windows::with_current_user_sid(copy_sid).map_err(|_| error())?
+}
+/// Query a held process handle, rather than trusting a caller's account claim.
+pub fn process_account(pid: u32) -> Result<Account, String> {
+    let process = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid) };
+    if process.is_null() {
+        return Err(error());
+    }
+    let result =
+        crate::state_windows::with_process_user_sid(process, copy_sid).map_err(|_| error());
+    unsafe { CloseHandle(process) };
+    result?
+}
+
+/// A descriptor exists only for the synchronous creation call. Nothing is
+/// inherited by child processes; the sole allow ACE names the current SID.
+pub fn with_owner_security<T>(
+    create: impl FnOnce(*mut c_void) -> Result<T, String>,
+) -> Result<T, String> {
+    let sddl = crate::state_windows::with_current_user_sid(|sid| {
+        let mut text = null_mut();
+        if unsafe { ConvertSidToStringSidW(sid, &mut text) } == 0 {
+            return Err(error());
+        }
+        let mut length = 0;
+        while unsafe { *text.add(length) } != 0 {
+            length += 1;
+            if length > 256 {
+                unsafe { LocalFree(text.cast()) };
+                return Err(error());
+            }
+        }
+        let sid = String::from_utf16(unsafe { std::slice::from_raw_parts(text, length) });
+        unsafe { LocalFree(text.cast()) };
+        let sid = sid.map_err(|_| error())?;
+        Ok(format!("O:{sid}D:P(A;OICI;GA;;;{sid})"))
+    })
+    .map_err(|_| error())??;
+    let wide: Vec<u16> = sddl.encode_utf16().chain(Some(0)).collect();
+    let mut descriptor = null_mut();
+    if unsafe {
+        ConvertStringSecurityDescriptorToSecurityDescriptorW(
+            wide.as_ptr(),
+            1,
+            &mut descriptor,
+            null_mut(),
+        )
+    } == 0
+    {
+        return Err(error());
+    }
+    let mut attributes = SECURITY_ATTRIBUTES {
+        nLength: std::mem::size_of::<SECURITY_ATTRIBUTES>() as u32,
+        lpSecurityDescriptor: descriptor,
+        bInheritHandle: 0,
+    };
+    let result = create((&mut attributes as *mut SECURITY_ATTRIBUTES).cast());
+    unsafe { LocalFree(descriptor) };
+    result
+}
+
+fn no_reparse_ancestors(path: &Path) -> Result<(), String> {
+    crate::state_windows::validate_absolute_local_path(path).map_err(|_| error())?;
+    for parent in path.ancestors() {
+        match fs::symlink_metadata(parent) {
+            Ok(meta) if meta.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0 => {
+                return Err(error());
+            }
+            Ok(_) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(_) => return Err(error()),
+        }
+    }
+    Ok(())
+}
+fn validate_private(file: &File) -> Result<(), String> {
+    let mut owner: PSID = null_mut();
+    let mut acl: *mut ACL = null_mut();
+    let mut descriptor = null_mut();
+    if unsafe {
+        GetSecurityInfo(
+            file.as_raw_handle().cast(),
+            SE_FILE_OBJECT,
+            OWNER_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION,
+            &mut owner,
+            null_mut(),
+            &mut acl,
+            null_mut(),
+            &mut descriptor,
+        )
+    } != 0
+    {
+        return Err(error());
+    }
+    let checked = (|| {
+        if owner.is_null()
+            || acl.is_null()
+            || descriptor.is_null()
+            || unsafe { (*acl).AceCount } != 1
+        {
+            return Err(error());
+        }
+        let mut ace: *mut c_void = null_mut();
+        if unsafe { GetAce(acl, 0, &mut ace) } == 0 || ace.is_null() {
+            return Err(error());
+        }
+        let allow = ace.cast::<ACCESS_ALLOWED_ACE>();
+        // ACCESS_ALLOWED_ACE_TYPE is zero. Bounds come from the OS ACL getter.
+        if (unsafe { (*allow).Header.AceSize } as usize)
+            < std::mem::offset_of!(ACCESS_ALLOWED_ACE, SidStart) + 8
+            || unsafe { (*allow).Header.AceType } != 0
+            || (unsafe { (*allow).Mask } & GENERIC_ALL == 0
+                && unsafe { (*allow).Mask } & FILE_ALL_ACCESS != FILE_ALL_ACCESS)
+        {
+            return Err(error());
+        }
+        let allowed: PSID = unsafe { addr_of!((*allow).SidStart).cast_mut().cast() };
+        if unsafe { IsValidSid(allowed) } == 0
+            || unsafe { GetLengthSid(allowed) } as usize
+                + std::mem::offset_of!(ACCESS_ALLOWED_ACE, SidStart)
+                > unsafe { (*allow).Header.AceSize } as usize
+        {
+            return Err(error());
+        }
+        let same = crate::state_windows::with_current_user_sid(|sid| unsafe {
+            EqualSid(owner, sid) != 0 && EqualSid(allowed, sid) != 0
+        })
+        .map_err(|_| error())?;
+        if same { Ok(()) } else { Err(error()) }
+    })();
+    if !descriptor.is_null() {
+        unsafe { LocalFree(descriptor) };
+    }
+    checked
+}
+
+pub fn validate_directory(path: &Path) -> Result<(), String> {
+    no_reparse_ancestors(path)?;
+    crate::state_windows::validate_directory(path).map_err(|_| error())?;
+    let file = OpenOptions::new()
+        .read(true)
+        .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE)
+        .custom_flags(FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT)
+        .open(path)
+        .map_err(|_| error())?;
+    validate_private(&file)
+}
+/// Create missing descendants privately; existing ancestors are validated by
+/// the existing state adapter and are never rewritten or granted new access.
+pub fn prepare_directory(path: &Path) -> Result<(), String> {
+    no_reparse_ancestors(path)?;
+    if path.exists() {
+        return validate_directory(path);
+    }
+    let parent = path.parent().ok_or_else(error)?;
+    if !parent.exists() {
+        prepare_directory(parent)?;
+    }
+    crate::state_windows::validate_directory(parent).map_err(|_| error())?;
+    let wide: Vec<u16> = path.as_os_str().encode_wide().chain(Some(0)).collect();
+    with_owner_security(|attributes| {
+        if unsafe { CreateDirectoryW(wide.as_ptr(), attributes.cast()) } == 0 && !path.exists() {
+            return Err(error());
+        }
+        Ok(())
+    })?;
+    validate_directory(path)
+}
+pub fn open_lock(path: &Path) -> Result<File, String> {
+    validate_directory(path.parent().ok_or_else(error)?)?;
+    let file = crate::state_windows::open_lock(path).map_err(|_| error())?;
+    validate_private(&file)?;
+    Ok(file)
+}
+pub fn read_file(path: &Path) -> Result<File, String> {
+    validate_directory(path.parent().ok_or_else(error)?)?;
+    let file = crate::state_windows::open_read(path).map_err(|_| error())?;
+    validate_private(&file)?;
+    Ok(file)
+}
+pub fn create_file(path: &Path) -> Result<File, String> {
+    validate_directory(path.parent().ok_or_else(error)?)?;
+    let file = crate::state_windows::create_new(path).map_err(|_| error())?;
+    validate_private(&file)?;
+    Ok(file)
+}
+pub fn replace_file(staging: &Path, destination: &Path) -> Result<(), String> {
+    if staging.parent() != destination.parent() {
+        return Err(error());
+    }
+    drop(read_file(staging)?);
+    if destination.exists() {
+        drop(read_file(destination)?);
+    }
+    crate::state_windows::replace(staging, destination).map_err(|_| error())?;
+    drop(read_file(destination)?);
+    Ok(())
+}
+
+/// The validated single-owner handle stays live through audit and serving.
+/// Its private path is the only file the audit may skip reopening: an active
+/// read/write lock deliberately permits contenders to try the same OS lock.
+pub struct RuntimeLock {
+    _file: File,
+    path: std::path::PathBuf,
+}
+impl RuntimeLock {
+    pub fn acquire(path: &Path) -> Result<Self, String> {
+        let file = open_lock(path)?;
+        file.try_lock().map_err(|_| {
+            "a Core already owns this state directory, or its lock cannot be verified".to_string()
+        })?;
+        Ok(Self {
+            _file: file,
+            path: path.to_path_buf(),
+        })
+    }
+}
+/// Windows traversal privileges mean a private parent does not hide a known
+/// child filename with an old permissive DACL. Audit retained contents once,
+/// under the owner lock, before opening the queue or publishing the pipe.
+/// Nothing is rewritten or deleted. New children inherit the private root ACL.
+pub fn audit_runtime_tree(root: &Path, lock: &RuntimeLock) -> Result<(), String> {
+    if lock.path.parent() != Some(root) {
+        return Err(error());
+    }
+    let mut pending = vec![(root.to_path_buf(), 0usize)];
+    let mut count = 0usize;
+    let mut path_bytes = 0usize;
+    while let Some((directory, depth)) = pending.pop() {
+        validate_directory(&directory)?;
+        for entry in fs::read_dir(&directory).map_err(|_| error())? {
+            let path = entry.map_err(|_| error())?.path();
+            count += 1;
+            path_bytes =
+                path_bytes.saturating_add(path.as_os_str().encode_wide().count().saturating_mul(2));
+            if count > 100_000 || depth >= 64 || path_bytes > 16 * 1024 * 1024 {
+                return Err("Windows Core state ownership audit exceeds its bounded inventory; retained state was preserved".into());
+            }
+            if path == lock.path {
+                continue;
+            }
+            let meta = fs::symlink_metadata(&path).map_err(|_| error())?;
+            if meta.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0 {
+                return Err(error());
+            }
+            if meta.is_dir() {
+                pending.push((path, depth + 1));
+            } else if meta.is_file() {
+                drop(read_file(&path)?);
+            } else {
+                return Err(error());
+            }
+        }
+    }
+    Ok(())
+}
