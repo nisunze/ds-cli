@@ -183,6 +183,31 @@ impl CapturedExternal {
         })
     }
 
+    /// Observe one declared host command without replacing its environment or
+    /// inventing an engine control protocol. Stdin is closed. Cancellation
+    /// terminates and reaps the same owned process tree before returning.
+    /// Native adapters must keep their physical lease until this call returns.
+    pub fn call_host_observed(
+        &self,
+        subcommand: &'static str,
+        args: &[OsString],
+        timeout: Duration,
+        cancel: &dyn Fn() -> bool,
+        stderr_observer: &dyn Fn(&[u8]),
+    ) -> Result<Completed, Failure> {
+        self.verified(|| {
+            self.owner.call_at_supervised(
+                &self.executable,
+                subcommand,
+                args,
+                timeout,
+                None,
+                cancel,
+                Some(stderr_observer),
+            )
+        })
+    }
+
     pub fn call_json(
         &self,
         subcommand: &'static str,
@@ -1391,6 +1416,64 @@ mod supervised_tests {
         );
         assert_eq!(failure.code(), "callee_cancelled");
         prompt(started);
+    }
+    #[test]
+    fn host_observer_preserves_environment_and_closed_stdin() {
+        let done = captured()
+            .call_host_observed(
+                "--exact",
+                &fixture("fixture_host_environment"),
+                Duration::from_secs(2),
+                &|| false,
+                &|_| {},
+            )
+            .unwrap();
+        assert!(done.succeeded(), "{} {}", done.stdout, done.stderr);
+        assert!(done.stdout.contains("host-environment-preserved"));
+    }
+    #[test]
+    fn host_progress_cancellation_reaps_tree_and_preserves_bounds() {
+        let observed = std::cell::Cell::new(false);
+        let started = Instant::now();
+        let failure = captured()
+            .call_host_observed(
+                "--exact",
+                &fixture("fixture_live_progress"),
+                Duration::from_secs(10),
+                &|| observed.get(),
+                &|chunk| {
+                    if chunk.windows(14).any(|bytes| bytes == b"owner-progress") {
+                        observed.set(true);
+                    }
+                },
+            )
+            .err()
+            .expect("observed cancellation must stop child");
+        assert!(observed.get());
+        assert_eq!(failure.code(), "callee_cancelled");
+        prompt(started);
+        let done = captured()
+            .call_host_observed(
+                "--exact",
+                &fixture("fixture_descendant"),
+                Duration::from_secs(2),
+                &|| false,
+                &|_| {},
+            )
+            .unwrap();
+        assert!(done.succeeded());
+        prompt(started);
+    }
+    #[test]
+    #[ignore = "invoked by host environment proof"]
+    fn fixture_host_environment() {
+        let mut input = Vec::new();
+        std::io::stdin().read_to_end(&mut input).unwrap();
+        assert!(input.is_empty());
+        // Cargo's own test environment must survive, unlike an offline engine's
+        // deliberately reduced environment.
+        assert!(std::env::var_os("CARGO_MANIFEST_DIR").is_some());
+        println!("host-environment-preserved");
     }
     #[test]
     fn observed_stderr_keeps_the_output_limit_and_stops_overflow() {
