@@ -4,6 +4,7 @@ mod design_snapshot;
 mod grid;
 mod grid_apply;
 mod grid_catalog;
+mod mv_projection;
 mod profile;
 mod report_engineering;
 mod lv_publication;

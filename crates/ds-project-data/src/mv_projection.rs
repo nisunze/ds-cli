@@ -1,10 +1,97 @@
-//! Pure geographic projection of a held, verified model for printing.
-//! No acquisition, credentials, model mutation or storage is performed here.
+//! Host capture and route coverage for an exact read-only native MV projection.
+//! Network owns package decode, layer projection and CRS transformation.
 use ds_command_kernel::project_dataset_cache::Extent;
-use ds_geo::projection::GridModelCrs;
-use serde_json::{json, Value};
+use ds_network_client::{CapturedNetworkClient, NetworkFailure};
+use ds_network_contracts::{
+    engine::json_object_order, grid::NativeGridQuerySourcePin, mv_projection::*,
+};
+use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::path::Path;
+use std::{fmt, io::Read};
+
+#[derive(Debug)]
+pub enum ProjectionError {
+    Input(String),
+    Network(NetworkFailure),
+}
+impl ProjectionError {
+    pub fn code(&self) -> &str {
+        match self {
+            Self::Input(_) => "mv_projection_input_invalid",
+            Self::Network(error) => error.owner_code().unwrap_or(error.code()),
+        }
+    }
+    pub fn unavailable(&self) -> bool {
+        matches!(self, Self::Network(error) if matches!(error.code(),
+            "network_engine_missing" | "network_engine_invalid" | "network_engine_incompatible" | "network_engine_unqualified"))
+    }
+}
+impl fmt::Display for ProjectionError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Input(error) => error.fmt(f),
+            Self::Network(error) => error.fmt(f),
+        }
+    }
+}
+impl std::error::Error for ProjectionError {}
+impl From<String> for ProjectionError {
+    fn from(error: String) -> Self {
+        Self::Input(error)
+    }
+}
+impl From<&str> for ProjectionError {
+    fn from(error: &str) -> Self {
+        Self::Input(error.into())
+    }
+}
+impl From<NetworkFailure> for ProjectionError {
+    fn from(error: NetworkFailure) -> Self {
+        Self::Network(error)
+    }
+}
+
+/// One intentional consumer request retains one captured executable across its models.
+/// Construct only after a consumer has admitted MV bytes; unused MV data probes nothing.
+pub struct ProjectionSession {
+    client: CapturedNetworkClient,
+    stage: tempfile::TempDir,
+}
+impl ProjectionSession {
+    pub fn capture() -> Result<Self, ProjectionError> {
+        let client = CapturedNetworkClient::capture(1, &|| false)?;
+        let stage = ds_network_client::private_disk_stage()?;
+        Ok(Self { client, stage })
+    }
+    pub fn project(&self, bytes: &[u8], revision: &str) -> Result<Value, ProjectionError> {
+        let request = MvProjectionRequestV1 {
+            schema: MV_PROJECTION_REQUEST_SCHEMA_V1.into(),
+            source: NativeGridQuerySourcePin {
+                package_sha256: format!("{:x}", Sha256::digest(bytes)),
+                expected_revision: None,
+                engineering_input_root: None,
+            },
+            json_object_order: json_object_order(),
+            revision_id: revision.into(),
+            layers: MV_PROJECTION_LAYERS.to_vec(),
+        };
+        Ok(self
+            .client
+            .mv_projection(&request, bytes, self.stage.path(), &|| false)?
+            .result
+            .projection)
+    }
+    pub fn route_extents(
+        &self,
+        bytes: &[u8],
+        revision: &str,
+        model_id: &str,
+    ) -> Result<Vec<Extent>, ProjectionError> {
+        let projection = self.project(bytes, revision)?;
+        route_extents_in(&projection, model_id).map_err(ProjectionError::Input)
+    }
+}
 
 /// One exact local draft projected once for both map capture and geographic
 /// acquisition. The caller supplies and authorizes the DS project separately.
@@ -16,7 +103,7 @@ pub struct LocalMvProjection {
     pub route_extents: Vec<Extent>,
 }
 
-pub fn load_local(path: &Path) -> Result<LocalMvProjection, String> {
+pub fn load_local(path: &Path) -> Result<LocalMvProjection, ProjectionError> {
     if !path.is_absolute() || path.extension().and_then(|v| v.to_str()) != Some("dsgrid") {
         return Err("local MV model must be an absolute .dsgrid file".into());
     }
@@ -24,7 +111,26 @@ pub fn load_local(path: &Path) -> Result<LocalMvProjection, String> {
     if !meta.is_file() || meta.file_type().is_symlink() || meta.len() > 256_000_000 {
         return Err("local MV model must be a regular file of at most 256 MB".into());
     }
-    let bytes = std::fs::read(path).map_err(|e| e.to_string())?;
+    let mut file = std::fs::File::open(path).map_err(|e| e.to_string())?;
+    let opened = file.metadata().map_err(|e| e.to_string())?;
+    if !opened.is_file() || opened.len() != meta.len() {
+        return Err("local MV model changed while opening".into());
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        if opened.dev() != meta.dev() || opened.ino() != meta.ino() {
+            return Err("local MV model changed while opening".into());
+        }
+    }
+    let mut bytes = Vec::new();
+    (&mut file)
+        .take(MAX_MV_PROJECTION_PACKAGE_BYTES as u64 + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|e| e.to_string())?;
+    if bytes.len() as u64 != opened.len() {
+        return Err("local MV model changed or exceeded its byte bound during capture".into());
+    }
     let sha256 = format!("{:x}", Sha256::digest(&bytes));
     let model_id = format!("local-{}", &sha256[..16]);
     let revision_id = format!("local:sha256:{sha256}");
@@ -39,34 +145,18 @@ pub fn load_local(path: &Path) -> Result<LocalMvProjection, String> {
     })
 }
 
-pub fn project(bytes: &[u8], revision: &str) -> Result<Value, String> {
-    let package = ds_grid_exchange::package::unpack(bytes).map_err(|e| e.to_string())?;
-    let declared = package.manifest.model.coordinate_system.as_str();
-    let crs = GridModelCrs::parse(declared).map_err(|e| e.to_string())?;
-    let mut options = ds_grid_exchange::gis::GisProjectionOptions::new(declared);
-    options.model_revision = Some(revision.to_string());
-    let projected = ds_grid_exchange::gis::project_model(&package.snapshot, &options);
-    let mut projection = projected.presentation_geojson();
-    let features = projection["features"]
-        .as_array_mut()
-        .ok_or_else(|| "Model projection has no features".to_string())?;
-    features.retain(|f| {
-        matches!(
-            f["properties"]["_layer"].as_str(),
-            Some("alignments" | "structures" | "angle_points" | "prohibited_zones")
-        ) && !f["geometry"].is_null()
-    });
-    for feature in features {
-        reproject(&mut feature["geometry"]["coordinates"], crs)?;
-    }
-    Ok(projection)
+pub fn project(bytes: &[u8], revision: &str) -> Result<Value, ProjectionError> {
+    ProjectionSession::capture()?.project(bytes, revision)
 }
 
 /// Small route-segment footprints for project data acquisition. One long MV
 /// line must not turn into a district-sized rectangular provider request.
-pub fn route_extents(bytes: &[u8], revision: &str, model_id: &str) -> Result<Vec<Extent>, String> {
-    let projection = project(bytes, revision)?;
-    route_extents_in(&projection, model_id)
+pub fn route_extents(
+    bytes: &[u8],
+    revision: &str,
+    model_id: &str,
+) -> Result<Vec<Extent>, ProjectionError> {
+    ProjectionSession::capture()?.route_extents(bytes, revision, model_id)
 }
 
 fn route_extents_in(projection: &Value, model_id: &str) -> Result<Vec<Extent>, String> {
@@ -132,49 +222,10 @@ fn route_extents_in(projection: &Value, model_id: &str) -> Result<Vec<Extent>, S
     Ok(extents)
 }
 
-fn reproject(value: &mut Value, crs: GridModelCrs) -> Result<(), String> {
-    let coords = value
-        .as_array_mut()
-        .ok_or_else(|| "MV geometry has no coordinate array".to_string())?;
-    if coords.first().is_some_and(Value::is_number) {
-        if coords.len() < 2 {
-            return Err("MV geometry contains an incomplete coordinate".to_string());
-        }
-        let xy = crs
-            .to_map([
-                coords[0]
-                    .as_f64()
-                    .ok_or_else(|| "Invalid MV easting".to_string())?,
-                coords[1]
-                    .as_f64()
-                    .ok_or_else(|| "Invalid MV northing".to_string())?,
-            ])
-            .map_err(|e| e.to_string())?;
-        coords[0] = json!(xy[0]);
-        coords[1] = json!(xy[1]);
-    } else {
-        for coord in coords {
-            reproject(coord, crs)?;
-        }
-    }
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[test]
-    fn metric_coordinates_preserve_elevation() {
-        let mut coordinates = json!([[[500000., 10000000., 1200.], [500100., 10000000., 1250.]]]);
-        reproject(&mut coordinates, GridModelCrs::parse("EPSG:32735").unwrap()).unwrap();
-        assert!((coordinates[0][0][0].as_f64().unwrap() - 27.).abs() < 1e-6);
-        assert!(coordinates[0][0][1].as_f64().unwrap().abs() < 1e-6);
-        assert_eq!(coordinates[0][0][2], 1200.);
-        assert!(coordinates[0][1][0].as_f64().unwrap() > 27.);
-        assert_eq!(coordinates[0][1][2], 1250.);
-        assert!(reproject(&mut json!([1]), GridModelCrs::parse("EPSG:32735").unwrap()).is_err());
-    }
-
+    use serde_json::json;
     #[test]
     fn mv_route_coverage_uses_segments_instead_of_one_district_envelope() {
         let projection = json!({"features":[
