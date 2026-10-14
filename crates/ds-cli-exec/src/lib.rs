@@ -33,6 +33,8 @@ use serde_json::json;
 
 pub mod addons;
 mod process_tree;
+mod session;
+pub use session::NetworkProfileProcess;
 
 /// Cap on what a called binary may return. Beyond this the output is
 /// truncated and the invocation refused: a result larger than this is not a

@@ -112,6 +112,10 @@ mod windows {
     pub(crate) struct Tree {
         job: Option<Owned>,
     }
+    // The job handle is uniquely owned, and Win32 job/handle operations have
+    // no thread affinity. Moving a retained session between host workers is
+    // safe; mutation and cleanup still require exclusive ownership.
+    unsafe impl Send for Tree {}
     impl Tree {
         pub(crate) fn prepare(command: &mut Command) {
             command.creation_flags(CREATE_SUSPENDED | CREATE_NO_WINDOW);
