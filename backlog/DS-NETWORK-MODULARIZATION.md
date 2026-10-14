@@ -222,9 +222,11 @@ interaction indexes must depend on neither Kernel nor Network engineering and
 must not enter CLI or Server dependency closures. Neutral shared primitives
 remain separately classified. See the
 [interaction boundary](../../ds-interactions/docs/interaction-boundary.md).
-Current Network/Grid packages and unconditional browser startup are migration
-inputs, not evidence that the three-unit target is implemented. This mechanical
-extraction does not reopen the parked interactive Grid/Profile redesign.
+The former separate Network/Grid packages and unconditional browser startup
+are migration inputs. Unified engineering source and lazy consumer wiring do
+not establish generated-package or installed-browser acceptance. This
+mechanical extraction does not reopen the parked interactive Grid/Profile
+redesign.
 
 The web compiles the same application/domain crates with a portable feature closure. Heavy process/import/clean/table/convert/profile work stays in the existing bounded worker ownership. Ordinary WASM has one internal Rayon worker; Web Worker concurrency supplies parallelism. There is no requirement for shared-memory WASM threads or cross-origin-isolated hosting in this campaign.
 
@@ -250,7 +252,7 @@ removing eager application bootstrap. Do not add a TypeScript fallback.
 | Retained edit-session UI index | Web `editing/session-index.ts` -> Network `SessionHandle` in `crates/ds-network-wasm/src/lib.rs` -> `crates/ds-geo/src/session.rs`; `editing/edit-context.ts` preloads Network and warms compute on temporary-edit entry | Separate transient pick/hover/snap/index from authored edits, selection state, undo and DataFrame admission. Preserve one synchronized geometry basis; no copied permanent index. Parked Grid/Profile redesign remains separate. |
 | Other synchronous application consumers | Web `design/domain-model.ts::domainOperation` -> `domainValue` (columns/properties); `grid/crs.ts::runGridModelCrs` -> `gridModelCrs` (new-model dialog, saved models/Profile/authoring); `sketches/temporary-upload-inspection.ts` -> `temporaryUploadGroups`; `wasm/ds-network.ts::dsNetworkPlanLvDifferentialSync` -> `plan_lv_differential` | Migrate nonengineering application/neutral decisions to the correct admitted owner and keep deliberate engineering consumers explicitly ready. Do not silently use startup as readiness for these paths. |
 | Neutral exports awaiting engineering/package review | Network `crates/ds-network-wasm/src/lib.rs`: `bearing_deg`, `destination_point`, `haversine_m`, `spherical_polygon_area_m2`, `measure_frame`, `geojsonBounds`, `geojsonLineLengthM`; Web synchronous geometry adapters use the Interactions exports of the same neutral primitives | Linux checks worker/native/package consumers before retiring exports; shared `ds-geo-lite` primitives stay single-source. These export names alone do not make the shared primitive obsolete. |
-| Four browser package entries remain | Web `scripts/run/wasm.sh::DS_WASM_PACKAGES`, `package.json`, Vite aliases and worker imports still name Kernel, Interactions, Network and Grid | Linux consolidates engineering adapters into one lazy engineering WASM unit with native/WASM parity, worker affinity and immutable packaging; then prove exactly three units. |
+| Unified engineering generated-package and consumer acceptance | Network `4b160be1` moves Grid adapters/tests into `ds-network-wasm`; Web `272c89a89` wires Grid and Network to one lazy runtime and declares Kernel, Interactions and Network in build/cache/capture inputs. Tracked `vendor/ds-grid/package.json`, generated artifacts and four cold-test mocks remain until consumer proof. | Build fresh JS/declarations/WASM from the captured closure; execute Grid workers and nonempty retained-session/table consumers, then retire the old vendor package/mocks and prove exactly three units. Native adapter tests and wasm32 compilation alone do not close installed WebView or saved-context startup acceptance. |
 
 Remaining UI-only source inventory also includes Web
 `project-work/gantt/viewport.ts` and `viewport-motion.ts`: screen pan/zoom,
