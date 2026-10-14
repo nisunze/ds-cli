@@ -138,7 +138,7 @@ report, and the report's current occurrence count.",
         },
     ]),
     reference: Some("docs/reference/feedback.md"),
-    search: &[],
+    search: &["report a bug", "report a problem", "file a bug"],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
