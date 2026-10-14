@@ -31,6 +31,8 @@
 mod claim;
 mod component_removal;
 mod engine_pins;
+mod terminal;
+pub use terminal::{notify_terminal, observe_terminal, TerminalListener};
 pub mod tiles;
 pub use claim::{decode_solar_server_submission, encode_solar_server_submission};
 pub use component_removal::with_component_removal_admission;
@@ -1126,6 +1128,7 @@ pub fn run_one(context: &WorkerContext, worker: &str) -> Result<bool, String> {
             // it into the project's activity and publication queue asks
             // nobody's permission: whether the publication itself may leave
             // the machine is the gateway's answer on that effect.
+            notify_terminal(path, &completed);
             if let Some(observer) = context.observer.as_deref() {
                 if let Err(error) = observer.completed(&completed) {
                     eprintln!("compute activity projection: {error}");
@@ -1133,7 +1136,7 @@ pub fn run_one(context: &WorkerContext, worker: &str) -> Result<bool, String> {
             }
         }
         Err(error) => {
-            open(path)?
+            let failed = open(path)?
                 .update_job(
                     &caller,
                     &job.id,
@@ -1145,6 +1148,7 @@ pub fn run_one(context: &WorkerContext, worker: &str) -> Result<bool, String> {
                     None,
                 )
                 .map_err(|e| e.to_string())?;
+            notify_terminal(path, &failed);
         }
     }
     Ok(true)

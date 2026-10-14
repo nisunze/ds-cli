@@ -9,7 +9,7 @@ publish = false
 anyhow = "1"
 ds-tile-runtime = { path = "../ds-tile-runtime" }
 tempfile = "3"
-tokio = { version = "1", features = ["rt", "time", "macros"] }
+tokio = { version = "1", features = ["rt", "time", "macros", "sync"] }
 ds-command-kernel = { path = "../.." }
 ds-sync-store = { path = "../ds-sync-store" }
 ds-network-contracts = { path = "../../../ds-network/crates/ds-network-contracts", default-features = false }

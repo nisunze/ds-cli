@@ -121,6 +121,18 @@ through execution, retries, publication and cancellation. A project identifier
 alone grants no access. Durable jobs and caches remain stateful; request
 routing must not depend on another client's selection.
 
+Native terminal observation is an explicit, bounded read of an admitted job,
+never a second scheduler. `ds-compute-runtime` registers process-local keyed
+listeners before the host reads durable state and notifies them only after
+completed/failed commits return. The host's cancellation path similarly
+notifies after its durable cancelled commit, including queued cancellation.
+Notifications carry no authority or result: the host rechecks the captured
+credential and durable principal/lane/deployment/project visibility before
+returning. Observers use a separate bounded budget, release ordinary request
+capacity while asleep, and perform no timer-driven SQL or status polling.
+Timeout, disconnect and shutdown detach observation without cancelling work;
+restart reattachment reads the retained durable job without requiring a replay.
+
 The web retains its active-project presentation and injects that context into
 requests. CLI project operations carry their project explicitly and never
 resolve it from saved selection or active UI state. Older compatibility
