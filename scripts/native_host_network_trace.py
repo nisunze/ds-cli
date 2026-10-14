@@ -19,11 +19,40 @@ EXEC_EOF = re.compile(r'^([0-9]+)\s+recvfrom\(([0-9]+), "", 8, 0, NULL, NULL\) =
 TOKIO_WAKE = re.compile(r"^\d+\s+socketpair\(AF_UNIX, SOCK_STREAM\|SOCK_CLOEXEC\|SOCK_NONBLOCK, 0, \[\d+, \d+\]\) = 0$")
 
 
+def _complete_trace_lines(lines: list[str]) -> list[str]:
+    """Rejoin strace interleaving without dropping incomplete/unknown calls."""
+    pending: dict[str, tuple[str, str, str]] = {}
+    completed = []
+    for line in lines:
+        start = re.fullmatch(r"(\d+)\s+(\w+)\((.*) <unfinished \.\.\.>", line)
+        end = re.fullmatch(r"(\d+)\s+<\.\.\. (\w+) resumed>(.*)", line)
+        if start:
+            pid, name, arguments = start.groups()
+            displaced = pending.pop(pid, None)
+            if displaced:
+                completed.append(displaced[2])
+            pending[pid] = (name, f"{pid} {name}({arguments}", line)
+        elif end:
+            pid, name, tail = end.groups()
+            start_call = pending.pop(pid, None)
+            if start_call and start_call[0] == name:
+                completed.append(start_call[1] + tail)
+            else:
+                if start_call:
+                    completed.append(start_call[2])
+                # Preserve a network attempt even if its start was lost.
+                completed.append(f"{pid} {name}(<unmatched resume>{tail}")
+        else:
+            completed.append(line)
+    completed.extend(call[2] for call in pending.values())
+    return completed
+
+
 def classify_network_trace(path: Path) -> dict:
     endpoints: set[tuple[int, int]] = set()
     pairs = eof_reads = wake_pairs = 0
     attempts = []
-    for line in path.read_text().splitlines():
+    for line in _complete_trace_lines(path.read_text().splitlines()):
         pair = EXEC_PAIR.fullmatch(line)
         if pair:
             pid, first, second = map(int, pair.groups())

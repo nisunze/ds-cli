@@ -1668,8 +1668,6 @@ pub fn backup_ledger_command(input: &[u8]) -> Result<String, wasm_bindgen::JsVal
     backup_ledger::evaluate(input).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
 }
 
-pub mod canvas;
-
 /// Typed, effect-free operations served by the reporter's JSON bridge.
 pub mod dispatch;
 pub mod print_scaling;

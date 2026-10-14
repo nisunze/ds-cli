@@ -3,7 +3,7 @@
 # MANIFEST.json.
 #
 # The kernel does NOT depend on ds-network (docs/contracts/
-# ds-kernel-network-boundary.md). Legacy geometry/canvas snapshots remain
+# ds-kernel-network-boundary.md). Remaining identity/comparison snapshots remain
 # maintained in ds-network; canonical primitives live in crates/ds-geo-lite —
 # see docs/contracts/ds-portable-geometry.md. This script is the only
 # sanctioned way to move bytes across that line; tests/geo_lite_drift.rs is
@@ -57,22 +57,15 @@ dirty="$(git -C "${network_root}" status --porcelain --untracked-files=no | head
 whole=(
 	"geo/identity.rs:crates/ds-geo/src/identity.rs"
 	"geo/comparison.rs:crates/ds-geo/src/comparison.rs"
-	"canvas/lib.rs:crates/ds-canvas/src/lib.rs"
-	"canvas/viewport.rs:crates/ds-canvas/src/viewport.rs"
-	"canvas/selection.rs:crates/ds-canvas/src/selection.rs"
-	"canvas/measured_path.rs:crates/ds-canvas/src/measured_path.rs"
-	"canvas/free_layout.rs:crates/ds-canvas/src/free_layout.rs"
-	"canvas/packed.rs:crates/ds-canvas/src/packed.rs"
-	"canvas/layout_session.rs:crates/ds-canvas/src/layout_session.rs"
 	# Not geometry: the processor catalogue `process_settings` is pure over.
 	# ds-network publishes it, the kernel's tests read it, and an include_str!
 	# reaching across the repo line is the same broken build as a path
 	# dependency — so it is snapshotted here too.
-	"network/processor_presets.json:crates/ds-network/src/network/processor_presets.json"
+	"network/processor_presets.json:crates/ds-network-contracts/src/processor_presets.json"
 )
 digest() { sha256sum "$1" | cut -d' ' -f1; }
 
-mkdir -p "${vendor_dir}/geo" "${vendor_dir}/canvas" "${vendor_dir}/network"
+mkdir -p "${vendor_dir}/geo" "${vendor_dir}/network"
 
 # Admission, predicates and extents are now canonical toolkit modules.
 # Remove their retired snapshots while retaining the drift fence for the rest.

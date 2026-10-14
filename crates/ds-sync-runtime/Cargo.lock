@@ -3,22 +3,6 @@
 version = 4
 
 [[package]]
-name = "ab_glyph"
-version = "0.2.32"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "01c0457472c38ea5bd1c3b5ada5e368271cb550be7a4ca4a0b4634e9913f6cc2"
-dependencies = [
- "ab_glyph_rasterizer",
- "owned_ttf_parser",
-]
-
-[[package]]
-name = "ab_glyph_rasterizer"
-version = "0.1.10"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "366ffbaa4442f4684d91e2cd7c5ea7c4ed8add41959a31447066e279e432b618"
-
-[[package]]
 name = "adler2"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -429,25 +413,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "dbase"
-version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "847c0b5d4f3a3d80f9c64db3cb60eb00304b3ea1262c7299dd6274a83e714d24"
-dependencies = [
- "byteorder",
- "time",
-]
-
-[[package]]
-name = "delaunator"
-version = "1.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3e1ee323c1275374f7e612d3724d12707079fb6a2117349fe144def656f5a880"
-dependencies = [
- "robust",
-]
-
-[[package]]
 name = "der"
 version = "0.7.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -499,20 +464,24 @@ dependencies = [
 ]
 
 [[package]]
-name = "ds-canvas-lite"
-version = "0.1.0"
-dependencies = [
- "ds-geo-lite",
- "serde",
-]
-
-[[package]]
-name = "ds-cleaning"
+name = "ds-cli-contract"
 version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
- "thiserror",
+]
+
+[[package]]
+name = "ds-cli-exec"
+version = "0.1.0"
+dependencies = [
+ "ds-cli-contract",
+ "ds-command-kernel",
+ "ds-network-contracts",
+ "libc",
+ "serde_json",
+ "sha2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -521,7 +490,8 @@ version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
  "ds-command-kernel",
- "ds-network",
+ "ds-network-client",
+ "ds-network-contracts",
  "ds-solar-contracts",
  "ed25519-dalek",
  "getrandom 0.3.4",
@@ -529,6 +499,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "tempfile",
  "time",
  "url",
  "zeroize",
@@ -540,7 +511,6 @@ version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
  "csv",
- "ds-canvas-lite",
  "ds-geo-lite",
  "ds-kml",
  "ds-solar-contracts",
@@ -565,11 +535,13 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
+ "ds-cli-exec",
  "ds-command-kernel",
- "ds-network",
+ "ds-network-client",
+ "ds-network-contracts",
  "ds-solar-contracts",
  "ds-solar-io",
- "ds-solar-runtime",
+ "ds-solar-process",
  "ds-sync-store",
  "ds-tile-runtime",
  "rayon",
@@ -582,32 +554,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "ds-geo"
-version = "0.1.0"
-dependencies = [
- "ds-geo-lite",
- "regex",
- "serde",
- "serde_json",
-]
-
-[[package]]
 name = "ds-geo-lite"
 version = "0.1.0"
 dependencies = [
  "geo",
- "rstar",
  "serde",
  "serde_json",
-]
-
-[[package]]
-name = "ds-graph"
-version = "0.1.0"
-dependencies = [
- "serde",
- "serde_json",
- "thiserror",
 ]
 
 [[package]]
@@ -622,41 +574,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ds-grid-physics"
-version = "0.1.0"
-dependencies = [
- "ds-grid-model",
- "schemars",
- "serde",
- "thiserror",
-]
-
-[[package]]
-name = "ds-io"
-version = "0.1.0"
-dependencies = [
- "aho-corasick",
- "base64 0.22.1",
- "delaunator",
- "ds-cleaning",
- "ds-geo",
- "ds-graph",
- "ds-grid-physics",
- "ds-kml",
- "encoding_rs",
- "flate2",
- "quick-xml 0.41.0",
- "rayon",
- "regex",
- "serde",
- "serde_json",
- "sha2",
- "shapefile",
- "zip",
- "zstd",
-]
-
-[[package]]
 name = "ds-kml"
 version = "0.1.0"
 dependencies = [
@@ -667,22 +584,32 @@ dependencies = [
 ]
 
 [[package]]
-name = "ds-network"
+name = "ds-network-client"
 version = "0.1.0"
 dependencies = [
- "ds-cleaning",
- "ds-geo",
+ "ds-cli-contract",
+ "ds-cli-exec",
+ "ds-network-contracts",
+ "libc",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "ds-network-contracts"
+version = "0.1.0"
+dependencies = [
  "ds-geo-lite",
- "ds-graph",
- "ds-io",
- "ds-profile",
- "flate2",
- "rayon",
+ "ds-grid-model",
+ "ds-profile-grid",
+ "schemars",
  "serde",
  "serde_json",
  "sha2",
  "thiserror",
- "time",
 ]
 
 [[package]]
@@ -696,14 +623,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "ds-profile"
+name = "ds-profile-grid"
 version = "0.1.0"
 dependencies = [
- "ds-geo-lite",
- "ds-grid-physics",
  "serde",
- "serde_json",
- "thiserror",
 ]
 
 [[package]]
@@ -739,62 +662,30 @@ dependencies = [
 ]
 
 [[package]]
-name = "ds-solar-engine"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "ds-solar-contracts",
- "serde",
- "serde_json",
-]
-
-[[package]]
 name = "ds-solar-io"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "base64 0.22.1",
  "ds-solar-contracts",
  "fs2",
  "serde",
  "serde_json",
  "tempfile",
-]
-
-[[package]]
-name = "ds-solar-portfolio"
-version = "0.1.0"
-dependencies = [
- "ds-solar-contracts",
- "serde",
- "serde_json",
- "thiserror",
-]
-
-[[package]]
-name = "ds-solar-report"
-version = "0.1.0"
-dependencies = [
- "ds-solar-contracts",
- "ds-solar-engine",
- "image",
- "plotters",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "ds-solar-runtime"
-version = "0.1.0"
-dependencies = [
- "ds-solar-contracts",
- "ds-solar-engine",
- "ds-solar-io",
- "ds-solar-portfolio",
- "ds-solar-report",
- "rayon",
- "serde",
- "serde_json",
  "tracing",
+]
+
+[[package]]
+name = "ds-solar-process"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "ds-solar-contracts",
+ "ds-solar-io",
+ "libc",
+ "serde",
+ "serde_json",
+ "tempfile",
 ]
 
 [[package]]
@@ -1687,15 +1578,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "owned_ttf_parser"
-version = "0.25.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "36820e9051aca1014ddc75770aab4d68bc1e9e632f0f5627c4086bc216fb583b"
-dependencies = [
- "ttf-parser",
-]
-
-[[package]]
 name = "parquet"
 version = "56.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1756,46 +1638,6 @@ name = "pkg-config"
 version = "0.3.34"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f6b464fbc74e149a392436b17d523f769e057cb6877f6a5c4618bc6f11800548"
-
-[[package]]
-name = "plotters"
-version = "0.3.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5aeb6f403d7a4911efb1e33402027fc44f29b5bf6def3effcc22d7bb75f2b747"
-dependencies = [
- "ab_glyph",
- "num-traits",
- "once_cell",
- "plotters-backend",
- "plotters-bitmap",
- "plotters-svg",
- "wasm-bindgen",
- "web-sys",
-]
-
-[[package]]
-name = "plotters-backend"
-version = "0.3.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "df42e13c12958a16b3f7f4386b9ab1f3e7933914ecea48da7139435263a4172a"
-
-[[package]]
-name = "plotters-bitmap"
-version = "0.3.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "72ce181e3f6bf82d6c1dc569103ca7b1bd964c60ba03d7e6cdfbb3e3eb7f7405"
-dependencies = [
- "plotters-backend",
-]
-
-[[package]]
-name = "plotters-svg"
-version = "0.3.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "51bae2ac328883f7acdfea3d66a7c35751187f870bc81f94563733a154d7a670"
-dependencies = [
- "plotters-backend",
-]
 
 [[package]]
 name = "png"
@@ -2256,16 +2098,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "shapefile"
-version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "79d5472e932503059d02779ad2c1b96258980940c6923e49f427fbe80eb3053c"
-dependencies = [
- "byteorder",
- "dbase",
-]
-
-[[package]]
 name = "shlex"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2527,12 +2359,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ttf-parser"
-version = "0.25.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d2df906b07856748fa3f6e0ad0cbaa047052d4a7dd609e231c4f72cee8c36f31"
-
-[[package]]
 name = "twox-hash"
 version = "2.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2696,16 +2522,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7ef64dbcc55df09c7e5a46182d181c2cfa3e925f3da937ea764728b4bbb9dcbf"
 dependencies = [
  "unicode-ident",
-]
-
-[[package]]
-name = "web-sys"
-version = "0.3.104"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c435338968042f4f59a557f690a253676d47ce13ceb55d70100e7facf6620a30"
-dependencies = [
- "js-sys",
- "wasm-bindgen",
 ]
 
 [[package]]

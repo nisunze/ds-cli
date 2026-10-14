@@ -37,7 +37,7 @@ and Network's `ds-geo-ops` use that small crate. The permitted edge is
 `ds-network → ds-geo-lite`, never `ds-network → ds-command-kernel`. The portable
 crate has no application-kernel or Network dependency. Its types, six primitive
 modules, and buffer/sample/crossing operations replace the Network copies;
-the unchanged geometry/canvas snapshots keep their separate drift fence.
+the remaining identity/comparison snapshots keep their separate drift fence.
 
 ### The question to ask of every piece of logic
 

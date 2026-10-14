@@ -14,7 +14,7 @@
 //! and neither this crate nor the command kernel depends on Network.
 //!
 //! Admission, spatial predicates, region algebra, measurement and extents are
-//! maintained here. Identity/comparison and canvas remain byte-pinned snapshots
+//! maintained here. Identity/comparison remain byte-pinned snapshots
 //! from `vendor/ds-geo-lite/`, fenced by `tests/geo_lite_drift.rs` and
 //! `scripts/sync-geo-lite.sh`.
 

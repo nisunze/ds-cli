@@ -451,14 +451,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ds-canvas-lite"
-version = "0.1.0"
-dependencies = [
- "ds-geo-lite",
- "serde",
-]
-
-[[package]]
 name = "ds-cleaning"
 version = "0.1.0"
 dependencies = [
@@ -484,6 +476,7 @@ dependencies = [
  "ds-network-contracts",
  "libc",
  "serde_json",
+ "sha2",
  "windows-sys",
 ]
 
@@ -508,7 +501,6 @@ version = "0.1.0"
 dependencies = [
  "base64",
  "csv",
- "ds-canvas-lite",
  "ds-geo-lite",
  "ds-kml",
  "ds-solar-contracts",

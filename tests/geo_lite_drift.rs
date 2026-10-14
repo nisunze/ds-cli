@@ -21,7 +21,8 @@
 //!
 //! Primitive geometry now has one canonical implementation in ds-geo-lite,
 //! shared by Network. The former partial haversine snapshot is removed; these
-//! checks retain the untouched legacy snapshots and kernel severance fences.
+//! checks retain identity/comparison snapshots and kernel severance fences.
+//! UI Canvas snapshots are retired into the independent Interactions owner.
 
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -265,11 +266,7 @@ fn vendored_bytes_match_live_ds_network() {
 /// defect this whole lane removed, and it is one line to reintroduce.
 #[test]
 fn no_kernel_manifest_reaches_ds_network() {
-    for relative in [
-        "Cargo.toml",
-        "crates/ds-geo-lite/Cargo.toml",
-        "crates/ds-canvas-lite/Cargo.toml",
-    ] {
+    for relative in ["Cargo.toml", "crates/ds-geo-lite/Cargo.toml"] {
         let path = kernel_root().join(relative);
         let text = std::fs::read_to_string(&path)
             .unwrap_or_else(|error| panic!("cannot read {relative}: {error}"));
@@ -451,4 +448,27 @@ fn canonical_haversine_matches_an_independent_yardstick() {
         assert!(haversine_m(30.0, -1.0, bad, -2.0).is_nan());
         assert!(haversine_m(30.0, -1.0, 31.0, bad).is_nan());
     }
+}
+
+/// Transient UI implementation belongs to Interactions, never this build.
+#[test]
+fn kernel_has_no_ui_interaction_dependency_or_snapshot() {
+    for relative in ["Cargo.toml", "crates/ds-geo-lite/Cargo.toml"] {
+        let text = std::fs::read_to_string(kernel_root().join(relative)).unwrap();
+        for line in text.lines() {
+            let code = line.split('#').next().unwrap_or("").trim();
+            if !code.contains('=') || code.starts_with("description") {
+                continue;
+            }
+            for owner in ["ds-interactions", "ds-map-interaction", "ds-canvas"] {
+                assert!(
+                    !code.contains(owner),
+                    "{relative} imports UI implementation: {code}"
+                );
+            }
+        }
+    }
+    assert!(!kernel_root().join("crates/ds-canvas-lite").exists());
+    assert!(!vendor_root().join("canvas").exists());
+    assert!(!kernel_root().join("src/canvas.rs").exists());
 }

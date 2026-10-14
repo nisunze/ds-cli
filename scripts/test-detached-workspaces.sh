@@ -36,6 +36,7 @@ manifests=(
 	"crates/ds-assets-pdf-host/Cargo.toml"
 	"crates/ds-sync-runtime/Cargo.toml"
 	"crates/ds-tile-runtime/Cargo.toml"
+	"crates/ds-update-runtime/Cargo.toml"
 )
 
 # Crates whose manifests reach ../ds-network; the others build without it.
@@ -47,6 +48,8 @@ needs_network=(
 	"crates/ds-compute-runtime/Cargo.toml"
 	"crates/ds-profile-runtime/Cargo.toml"
 	"crates/ds-project-data/Cargo.toml"
+	# Shared updater uses the native client/exec contract closure.
+	"crates/ds-update-runtime/Cargo.toml"
 )
 
 for manifest in "${manifests[@]}"; do

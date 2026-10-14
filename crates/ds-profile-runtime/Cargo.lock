@@ -360,14 +360,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ds-canvas-lite"
-version = "0.1.0"
-dependencies = [
- "ds-geo-lite",
- "serde",
-]
-
-[[package]]
 name = "ds-cleaning"
 version = "0.1.0"
 dependencies = [
@@ -382,7 +374,6 @@ version = "0.1.0"
 dependencies = [
  "base64",
  "csv",
- "ds-canvas-lite",
  "ds-geo-lite",
  "ds-kml",
  "ds-solar-contracts",
@@ -458,6 +449,7 @@ dependencies = [
  "ds-grid-engine",
  "ds-grid-model",
  "ds-io",
+ "ds-network-contracts",
  "polars-arrow",
  "serde",
  "serde_json",
@@ -561,6 +553,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "ds-profile-grid"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "ds-profile-runtime"
 version = "0.1.0"
 dependencies = [
@@ -571,13 +570,6 @@ dependencies = [
  "ds-grid-physics",
  "serde",
  "serde_json",
-]
-
-[[package]]
-name = "ds-profile-grid"
-version = "0.1.0"
-dependencies = [
- "serde",
 ]
 
 [[package]]

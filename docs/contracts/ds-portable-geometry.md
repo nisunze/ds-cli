@@ -52,11 +52,10 @@ The following remaining snapshots retain their existing Network authority:
 |---|---|
 | `vendor/ds-geo-lite/` | the snapshot — ds-network bytes, plus `MANIFEST.json` |
 | `crates/ds-geo-lite` | owns portable primitives; mounts legacy identity/comparison snapshots |
-| `crates/ds-canvas-lite` | compiles `vendor/ds-geo-lite/canvas/*` as `ds_canvas_lite` |
 | `tests/geo_lite_drift.rs` | the proof that the snapshot is still the source |
 | `scripts/sync-geo-lite.sh` | the only sanctioned way to move bytes across the line |
 
-`geo`, `rstar`, `serde` and `serde_json` are declared by those two crates inside
+`geo`, `rstar`, `serde` and `serde_json` are declared by the neutral crate inside
 this repository. `ds-geo`, `ds-canvas` and `ds-geo-ops` are gone from
 `Cargo.toml` and from `Cargo.lock`.
 
@@ -84,18 +83,23 @@ inside those files run here too (`cargo test --workspace`). The drift test remai
 parity uses the shared implementation, numeric/operation fixtures, independent
 distance yardsticks and installed four-operation packets.
 
-### Why two crates
+### UI Canvas retirement
 
-`ds-canvas`'s files use crate-root paths (`crate::Bounds`, `crate::Point`,
-`crate::drag_started`). Grafted under `ds-geo-lite` as a module tree they would
-all need editing, and byte-identity is the whole proof — so the snapshot of
-`ds-canvas/src/**` is a crate of its own whose `[lib] path` IS the vendored
-`lib.rs`. `ds-geo-lite`'s own crate root is authored (it is not a snapshot of
-anything) and mounts the two legacy ds-geo modules by `#[path]`.
+The owner separated transient UI interaction on 2026-10-14. `ds-canvas` and
+`ds-canvas-graph` now live in `ds-interactions`; CLI and Server must not compile
+them. Kernel's copied `ds-canvas-lite` implementation and headless camera
+command are removed. Their numeric algorithms and tests remain with the UI
+owner, without another snapshot or dependency back into Kernel.
 
-Both are edition 2024, because `ds-network` is and `comparison.rs` uses a
-let-chain. Compiling the bytes as they were written is part of snapshotting
-rather than rewriting them.
+Neutral `Point` and `ZoomWindow` values and their existing finite/positive-area
+admission live in `ds-geo-lite::window`. CLI admits Profile's rectangle intent
+and forwards it to the paired UI; it does not calculate the camera. Projection
+values and scalar transforms also have one neutral implementation, separate from
+Network's model CRS admission and engineering calculations. See the
+[interaction boundary](../../../ds-interactions/docs/interaction-boundary.md).
+
+The remaining identity/comparison snapshots still compile in edition 2024,
+matching Network's source; their manifest and drift checks are preserved.
 
 ### Primitive and processing semantics
 
@@ -161,14 +165,13 @@ removal on either costs 0.01–0.07 ms.
 
 ## 2. What is snapshotted
 
-10 remaining files, pinned per file by `vendor/ds-geo-lite/MANIFEST.json`:
+3 remaining files, pinned per file by `vendor/ds-geo-lite/MANIFEST.json`:
 
 | Vendored | ds-network source | Whole |
 |---|---|---|
 | `geo/identity.rs` | `crates/ds-geo/src/identity.rs` | yes |
 | `geo/comparison.rs` | `crates/ds-geo/src/comparison.rs` | yes |
-| `canvas/{lib,viewport,selection,measured_path,free_layout,packed,layout_session}.rs` | `crates/ds-canvas/src/**` | yes |
-| `network/processor_presets.json` | `crates/ds-network/src/network/processor_presets.json` | yes |
+| `network/processor_presets.json` | `crates/ds-network-contracts/src/processor_presets.json` | yes |
 
 The last one is not geometry — it is the processor catalogue
 `process_settings` is pure over, and §5 explains why it is here. The directory

@@ -407,14 +407,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ds-canvas-lite"
-version = "0.1.0"
-dependencies = [
- "ds-geo-lite",
- "serde",
-]
-
-[[package]]
 name = "ds-cli-contract"
 version = "0.1.0"
 dependencies = [
@@ -441,7 +433,6 @@ version = "0.1.0"
 dependencies = [
  "base64",
  "csv",
- "ds-canvas-lite",
  "ds-geo-lite",
  "ds-kml",
  "ds-solar-contracts",
@@ -490,7 +481,6 @@ name = "ds-geo-lite"
 version = "0.1.0"
 dependencies = [
  "geo",
- "rstar",
  "serde",
  "serde_json",
 ]
