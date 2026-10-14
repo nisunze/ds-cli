@@ -97,17 +97,17 @@ const NARROWING_PROJECT: Arg = Arg::value(
 const PLATFORM: Refusal = Refusal {
     code: "server_platform_unsupported",
     when: "Core background execution is requested on a target without its admitted protected native transport",
-    remedy: "run these commands on a Linux machine",
+    remedy: "run these commands on an admitted Linux or Windows machine",
 };
 /// Core hosting requires both protected native state and mutually verified
 /// local transport. A compiled executable or engine producer is not admission.
 fn native_host_availability_for(target_os: &str) -> Availability {
-    if target_os == "linux" {
+    if matches!(target_os, "linux" | "windows") {
         Availability::Available
     } else {
         Availability::unavailable(
             PLATFORM.code,
-            "Core background execution currently requires Linux; this target has no admitted protected native transport",
+            "Core background execution requires Linux or Windows; this target has no admitted protected native transport",
             PLATFORM.remedy,
         )
     }
@@ -433,7 +433,7 @@ pub static SERVE: Command = Command {
     // so which Server a caller reaches is which `--state-dir` it names.
     contract: 2,
     summary: "Run Core in background mode for this account's projects.",
-    purpose: "Run the independently installed ds Core runtime in background mode under this Linux user's native account; Desktop is an optional client of the same native owner. No project is selected or captured here and no directory is fetched: callers name the project per request, the Core records it and runs what its owner hands it, and the gateway enforces entitlement at publication and sync -- so one host serves several projects at once, needs no ds auth project use to start, and runs with no upstream. One owner per Core; many users are many machines. --workers bounds the whole host; --per-project bounds what one project may hold while another has work queued. Control is an owner-only socket in the state directory. This process runs in the foreground until it stops.",
+    purpose: "Run the independently installed ds Core runtime in background mode under this operating-system user's native account; Desktop is an optional client of the same native owner. No project is selected or captured here and no directory is fetched: callers name the project per request, the Core records it and runs what its owner hands it, and the gateway enforces entitlement at publication and sync -- so one host serves several projects at once, needs no ds auth project use to start, and runs with no upstream. One owner per Core; many users are many machines. --workers bounds the whole host; --per-project bounds what one project may hold while another has work queued. Control uses the protected private local transport. This process runs in the foreground until it stops.",
     chapter: Chapter::Design,
     effect: Effect::LocalFileWrite,
     authority: Authority::HeadlessUser,
@@ -455,7 +455,7 @@ pub static SERVE: Command = Command {
     output: "The worker and per-project limits the host ran under, once it stops. No credential is printed.",
     examples: &[Example {
         command: "ds core serve --lane stable",
-        note: "Run after native login under the same Linux user. No project need be selected: callers name theirs.",
+        note: "Run after native login under the same operating-system user. No project need be selected: callers name theirs.",
         runnable: false,
     }],
     refusals: SERVE_REFUSALS,
@@ -1172,7 +1172,14 @@ pub fn serve(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     // taken and the owner-only socket bound first, so a second host on this
     // state is refused before it reads or rewrites anything. Nothing is
     // answered on the socket until the host below is ready.
-    let listening = transport::listen(&directory).map_err(failure)?;
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .map_err(failure)?;
+    let listening = {
+        let _entered = runtime.enter();
+        transport::listen(&directory).map_err(failure)?
+    };
     // Typed as the host decided it: a protected state directory that already
     // belongs to another account is `multi_principal_unsupported`, by name.
     let connection = host::connection(&directory, owner, lane.clone())?;
@@ -1186,7 +1193,7 @@ pub fn serve(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     let app = host::App {
         database,
         connection,
-        os_uid: transport::own_uid(),
+        os_account: transport::own_account(),
         layers: layer_host,
         auth: layer_auth,
         requests: Arc::new(host::Door::new(request_permits(workers))),
@@ -1200,11 +1207,7 @@ pub fn serve(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     // never waits for it; a refresh that fails is logged and changes no
     // answer this host gives.
     let refresh = auth::CredentialRefresh::start(credential, auth::REFRESH_INTERVAL);
-    let hosted = tokio::runtime::Builder::new_multi_thread()
-        .enable_all()
-        .build()
-        .map_err(failure)?
-        .block_on(host::serve(app, workers, listening));
+    let hosted = runtime.block_on(host::serve(app, workers, listening));
     drop(refresh);
     hosted.map_err(failure)?;
     Ok(json!({"stopped":true,"workers":workers,"per_project":per_project}))
@@ -1608,7 +1611,8 @@ mod tests {
     #[test]
     fn platform_readiness_refuses_unadmitted_background_targets() {
         assert!(require_native_host_for("linux").is_ok());
-        for target in ["windows", "macos", "unknown"] {
+        assert!(require_native_host_for("windows").is_ok());
+        for target in ["macos", "unknown"] {
             let failure = require_native_host_for(target).unwrap_err();
             assert_eq!(failure.code(), PLATFORM.code);
             assert_eq!(failure.remedy_text(), Some(PLATFORM.remedy));
@@ -1616,17 +1620,17 @@ mod tests {
         }
         assert_eq!(
             (SERVE.availability)().is_available(),
-            cfg!(target_os = "linux")
+            cfg!(any(target_os = "linux", target_os = "windows"))
         );
         assert_eq!(
             (core_components::REMOVE.availability)().is_available(),
-            cfg!(target_os = "linux")
+            cfg!(any(target_os = "linux", target_os = "windows"))
         );
         // Offline component inspection is separate from background-host support.
         assert!((modules::RELEASE.availability)().is_available());
     }
 
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(not(any(target_os = "linux", target_os = "windows")))]
     #[test]
     fn unsupported_handlers_refuse_before_input_state_or_credentials() {
         let context = Context {

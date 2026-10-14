@@ -29,15 +29,16 @@ use windows_sys::Win32::Security::Cryptography::{
     CRYPT_INTEGER_BLOB, CRYPTPROTECT_UI_FORBIDDEN, CryptProtectData, CryptUnprotectData,
 };
 use windows_sys::Win32::Security::{
-    ACL, CreateWellKnownSid, DACL_SECURITY_INFORMATION, EqualSid, GetTokenInformation,
-    OWNER_SECURITY_INFORMATION, PSID, SECURITY_MAX_SID_SIZE, TOKEN_QUERY, TOKEN_USER, TokenUser,
-    WELL_KNOWN_SID_TYPE, WinAuthenticatedUserSid, WinWorldSid,
+    ACCESS_ALLOWED_ACE, ACE_HEADER, ACL, CreateWellKnownSid, DACL_SECURITY_INFORMATION, EqualSid,
+    GetAce, GetTokenInformation, IsValidSid, IsWellKnownSid, OWNER_SECURITY_INFORMATION, PSID,
+    SECURITY_MAX_SID_SIZE, TOKEN_QUERY, TOKEN_USER, TokenUser, WELL_KNOWN_SID_TYPE,
+    WinAuthenticatedUserSid, WinBuiltinAdministratorsSid, WinLocalSystemSid, WinWorldSid,
 };
 use windows_sys::Win32::Storage::FileSystem::{
     BY_HANDLE_FILE_INFORMATION, DELETE, FILE_APPEND_DATA, FILE_ATTRIBUTE_DIRECTORY,
-    FILE_ATTRIBUTE_REPARSE_POINT, FILE_DISPOSITION_INFO, FILE_FLAG_BACKUP_SEMANTICS,
-    FILE_FLAG_OPEN_REPARSE_POINT, FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE,
-    FILE_WRITE_ATTRIBUTES, FILE_WRITE_DATA, FILE_WRITE_EA, FileDispositionInfo,
+    FILE_ATTRIBUTE_REPARSE_POINT, FILE_DELETE_CHILD, FILE_DISPOSITION_INFO,
+    FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT, FILE_SHARE_DELETE, FILE_SHARE_READ,
+    FILE_SHARE_WRITE, FILE_WRITE_ATTRIBUTES, FILE_WRITE_DATA, FILE_WRITE_EA, FileDispositionInfo,
     GetFileInformationByHandle, LOCKFILE_EXCLUSIVE_LOCK, LOCKFILE_FAIL_IMMEDIATELY, LockFileEx,
     MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH, MoveFileExW, ReplaceFileW,
     SetFileInformationByHandle, UnlockFileEx, WRITE_DAC, WRITE_OWNER,
@@ -390,7 +391,7 @@ pub(super) fn sync_directory(path: &Path) -> Result<(), StoreError> {
     Ok(())
 }
 
-fn local_app_data() -> Result<PathBuf, StoreError> {
+pub(super) fn local_app_data() -> Result<PathBuf, StoreError> {
     let mut raw = null_mut();
     let result = unsafe { SHGetKnownFolderPath(&FOLDERID_LocalAppData, 0, null_mut(), &mut raw) };
     if result < 0 || raw.is_null() {
@@ -416,7 +417,7 @@ fn local_app_data() -> Result<PathBuf, StoreError> {
     Ok(path)
 }
 
-fn validate_absolute_local_path(path: &Path) -> Result<(), StoreError> {
+pub(super) fn validate_absolute_local_path(path: &Path) -> Result<(), StoreError> {
     if !path.is_absolute() {
         return Err(StoreError::UnsafeOrUnreadable);
     }
@@ -444,7 +445,7 @@ fn safe_component(value: &OsStr) -> bool {
             .any(|unit| unit == b':' as u16 || unit == 0)
 }
 
-fn validate_directory(path: &Path) -> Result<(), StoreError> {
+pub(super) fn validate_directory(path: &Path) -> Result<(), StoreError> {
     validate_absolute_local_path(path)?;
     let file = OpenOptions::new()
         .read(true)
@@ -500,20 +501,76 @@ fn validate_owner(file: &File) -> Result<(), StoreError> {
         }
         return Err(StoreError::Unavailable);
     }
-    let checked =
-        with_current_user_sid(|sid| unsafe { EqualSid(owner, sid) != 0 }).and_then(|equal| {
-            if !equal {
-                return Ok(false);
-            }
-            Ok(!well_known_group_can_write(dacl, WinWorldSid)?
-                && !well_known_group_can_write(dacl, WinAuthenticatedUserSid)?)
-        });
+    let checked = with_current_user_sid(|sid| {
+        if unsafe { EqualSid(owner, sid) } == 0 {
+            return Ok(false);
+        }
+        Ok(!well_known_group_can_write(dacl, WinWorldSid)?
+            && !well_known_group_can_write(dacl, WinAuthenticatedUserSid)?
+            && only_trusted_writers(dacl, sid)?)
+    })
+    .and_then(|result| result);
     unsafe { LocalFree(descriptor) };
     match checked {
         Ok(true) => Ok(()),
         Ok(false) => Err(StoreError::UnsafeOrUnreadable),
         Err(error) => Err(error),
     }
+}
+
+// Checking Everyone and Authenticated Users alone misses a direct foreign SID
+// grant, or FILE_DELETE_CHILD on a runtime state's parent. Privileged OS owners
+// remain permitted, as on ordinary Windows per-user directories. Plain runtime
+// contents add the stricter sole-account DACL check in windows_host.
+fn only_trusted_writers(acl: *const ACL, owner: PSID) -> Result<bool, StoreError> {
+    let count = unsafe { (*acl).AceCount };
+    if count > 1024 {
+        return Err(StoreError::UnsafeOrUnreadable);
+    }
+    let writes = GENERIC_ALL
+        | GENERIC_WRITE
+        | DELETE
+        | FILE_DELETE_CHILD
+        | FILE_WRITE_DATA
+        | FILE_APPEND_DATA
+        | FILE_WRITE_EA
+        | FILE_WRITE_ATTRIBUTES
+        | WRITE_DAC
+        | WRITE_OWNER;
+    for index in 0..count {
+        let mut raw = null_mut();
+        if unsafe { GetAce(acl, index as u32, &mut raw) } == 0 || raw.is_null() {
+            return Err(StoreError::UnsafeOrUnreadable);
+        }
+        let header = unsafe { &*raw.cast::<ACE_HEADER>() };
+        // Deny and inherit-only entries grant no access to this object.
+        if header.AceType == 1 || header.AceFlags & 0x08 != 0 {
+            continue;
+        }
+        if (header.AceSize as usize) < std::mem::size_of::<ACCESS_ALLOWED_ACE>() {
+            return Err(StoreError::UnsafeOrUnreadable);
+        }
+        let allow = unsafe { &*raw.cast::<ACCESS_ALLOWED_ACE>() };
+        if allow.Mask & writes == 0 {
+            continue;
+        }
+        // An object/callback ACE granting writes needs its own reviewed parser;
+        // do not mistake its variable fields for an ordinary allow SID.
+        if header.AceType != 0 {
+            return Ok(false);
+        }
+        let sid: PSID = std::ptr::addr_of!(allow.SidStart).cast_mut().cast();
+        if unsafe { IsValidSid(sid) } == 0 {
+            return Err(StoreError::UnsafeOrUnreadable);
+        }
+        if unsafe { EqualSid(sid, owner) } == 0
+            && unsafe { IsWellKnownSid(sid, WinLocalSystemSid) } == 0
+            && unsafe { IsWellKnownSid(sid, WinBuiltinAdministratorsSid) } == 0
+        {
+            return Ok(false);
+        }
+    }
+    Ok(true)
 }
 
 fn well_known_group_can_write(
@@ -551,9 +608,16 @@ fn well_known_group_can_write(
     Ok(rights & write_rights != 0)
 }
 
-fn with_current_user_sid<T>(f: impl FnOnce(PSID) -> T) -> Result<T, StoreError> {
+pub(super) fn with_current_user_sid<T>(f: impl FnOnce(PSID) -> T) -> Result<T, StoreError> {
+    with_process_user_sid(unsafe { GetCurrentProcess() }, f)
+}
+
+pub(super) fn with_process_user_sid<T>(
+    process: HANDLE,
+    f: impl FnOnce(PSID) -> T,
+) -> Result<T, StoreError> {
     let mut token: HANDLE = null_mut();
-    if unsafe { OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token) } == 0 {
+    if unsafe { OpenProcessToken(process, TOKEN_QUERY, &mut token) } == 0 {
         return Err(StoreError::Unavailable);
     }
     let mut required = 0u32;
@@ -669,6 +733,49 @@ mod tests {
             "windows-test-{}-{sequence}-{suffix}.json",
             std::process::id()
         ))
+    }
+
+    #[test]
+    fn native_acl_write_admission_checks_foreign_sids_and_parent_child_delete() {
+        use windows_sys::Win32::Security::Authorization::ConvertStringSecurityDescriptorToSecurityDescriptorW;
+        use windows_sys::Win32::Security::GetSecurityDescriptorDacl;
+        for (sddl, admitted) in [
+            ("D:(A;;FA;;;BU)", false),
+            ("D:(A;;DC;;;BU)", false),
+            ("D:(A;;FR;;;BU)", true),
+            ("D:(A;OICIIO;FA;;;BU)", true),
+            ("D:(A;;FA;;;SY)(A;;FA;;;BA)", true),
+        ] {
+            let wide: Vec<u16> = sddl.encode_utf16().chain(Some(0)).collect();
+            let mut descriptor = null_mut();
+            assert_ne!(
+                unsafe {
+                    ConvertStringSecurityDescriptorToSecurityDescriptorW(
+                        wide.as_ptr(),
+                        1,
+                        &mut descriptor,
+                        null_mut(),
+                    )
+                },
+                0
+            );
+            let mut present = 0;
+            let mut defaulted = 0;
+            let mut acl = null_mut();
+            assert_ne!(
+                unsafe {
+                    GetSecurityDescriptorDacl(descriptor, &mut present, &mut acl, &mut defaulted)
+                },
+                0
+            );
+            assert_ne!(present, 0);
+            assert!(!acl.is_null());
+            let result = with_current_user_sid(|sid| only_trusted_writers(acl, sid))
+                .unwrap()
+                .unwrap();
+            unsafe { LocalFree(descriptor) };
+            assert_eq!(result, admitted, "{sddl}");
+        }
     }
 
     #[test]

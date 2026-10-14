@@ -25,9 +25,11 @@
 //! socket file left by a host that died is removed only by the host that
 //! holds the lock, and only when nothing answers on it.
 //!
-//! Platforms without Unix sockets have no door at all. `ds core serve` was
-//! never available there and the protected state it needs is Unix-only, so
-//! nothing listens and nothing is sent: both halves refuse by name.
+//! Windows uses the private named-pipe adapter with complete SID identities,
+//! a sole-account DACL, remote-client rejection and the same single-owner
+//! lock. Platform availability is still admitted separately by `core.serve`;
+//! having this adapter in source is not installed release qualification.
+//! Other targets have no door: both halves refuse without sending anything.
 
 use ds_cli_contract::Failure;
 use std::path::{Path, PathBuf};
@@ -41,28 +43,48 @@ pub const LOCK: &str = "server.lock";
 
 /// Where the Server over `state` answers.
 pub fn socket_path(state: &Path) -> PathBuf {
-    state.join(SOCKET)
+    #[cfg(windows)]
+    {
+        windows::socket_path(state)
+    }
+    #[cfg(not(windows))]
+    {
+        state.join(SOCKET)
+    }
 }
 
-/// Who the kernel says is at the other end of one accepted connection.
+/// The OS account at the other end of one accepted connection.
 ///
 /// It travels as a request extension from the accept loop to the router's
 /// one authorization step; a request that arrives without it did not come
 /// through this door and is refused like a stranger.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Peer {
-    pub uid: u32,
+    pub account: Account,
+}
+/// Exact OS identity. Unix UIDs and complete Windows SIDs are never mixed.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Account {
+    Unix(u32),
+    #[cfg(windows)]
+    Windows(ds_cli_auth::windows_host::Account),
 }
 
-/// The account this process runs as, or `None` where there is no such
+/// The exact account this process runs as, or `None` where there is no such
 /// question to ask of a socket.
-pub fn own_uid() -> Option<u32> {
+pub fn own_account() -> Option<Account> {
     #[cfg(unix)]
     {
         // SAFETY: geteuid reads the calling process identity and has no pointers.
-        Some(unsafe { libc::geteuid() })
+        Some(Account::Unix(unsafe { libc::geteuid() }))
     }
-    #[cfg(not(unix))]
+    #[cfg(windows)]
+    {
+        ds_cli_auth::windows_host::current_account()
+            .ok()
+            .map(Account::Windows)
+    }
+    #[cfg(not(any(unix, windows)))]
     {
         None
     }
@@ -73,9 +95,9 @@ pub fn own_uid() -> Option<u32> {
 /// second identity a request can name.
 ///
 /// The refusal names nobody: not the peer, not the owner, not a project.
-pub fn admit(peer: Option<Peer>, own: Option<u32>) -> Result<(), Failure> {
+pub fn admit(peer: Option<Peer>, own: Option<Account>) -> Result<(), Failure> {
     match (peer, own) {
-        (Some(peer), Some(own)) if peer.uid == own => Ok(()),
+        (Some(peer), Some(own)) if peer.account == own => Ok(()),
         _ => Err(Failure::unauthorized(
             // A literal: the refusal-coverage scan reads literals, and a code
             // it cannot read is a code nothing checks is documented.
@@ -119,7 +141,7 @@ pub struct Reply {
     pub body: Vec<u8>,
 }
 
-#[cfg(not(unix))]
+#[cfg(not(any(unix, windows)))]
 const NO_SOCKETS: &str = "the native Core needs an owner-only Unix socket, which this platform does not provide; run the Core and its callers on Linux";
 
 // ── the server half ─────────────────────────────────────────────────────
@@ -136,9 +158,14 @@ impl ObserverShutdown {
 
 #[cfg(unix)]
 pub use unix::{Listening, listen, serve};
+#[cfg(windows)]
+pub use windows::{Listening, listen, serve};
+#[cfg(windows)]
+#[path = "transport_windows.rs"]
+mod windows;
 #[cfg(unix)]
 mod unix {
-    use super::{Peer, own_uid};
+    use super::{Account, Peer, own_account};
     use hyper::body::Incoming;
     use hyper_util::rt::TokioIo;
     use std::fs::{self, File, OpenOptions};
@@ -308,7 +335,7 @@ mod unix {
                 continue;
             };
             let peer = Peer {
-                uid: credential.uid(),
+                account: Account::Unix(credential.uid()),
             };
             let router = router.clone();
             let observer_shutdown = super::ObserverShutdown(stop.clone());
@@ -356,7 +383,8 @@ mod unix {
         timeout: Duration,
     ) -> Result<super::Reply, super::CallError> {
         use super::CallError;
-        let own = own_uid().ok_or_else(|| CallError::NotOwner("no account to compare".into()))?;
+        let own =
+            own_account().ok_or_else(|| CallError::NotOwner("no account to compare".into()))?;
         // What is at this path must be this account's own socket before
         // anything connects to it — a symlink or someone else's file is
         // refused without a connection.
@@ -374,7 +402,7 @@ mod unix {
             }
             Ok(meta) => {
                 use std::os::unix::fs::MetadataExt;
-                if !meta.file_type().is_socket() || meta.uid() != own {
+                if !meta.file_type().is_socket() || Account::Unix(meta.uid()) != own {
                     return Err(CallError::NotOwner(format!(
                         "{} is not this account's Core socket; nothing was sent",
                         socket.display()
@@ -417,12 +445,12 @@ mod unix {
                 let answering = stream
                     .peer_cred()
                     .map_err(|error| CallError::Failed(error.to_string()))?;
-                if answering.uid() != own {
+                if Account::Unix(answering.uid()) != own {
                     return Err(CallError::NotOwner(
                         "the process answering on this state directory's socket runs as another account; nothing was sent".into(),
                     ));
                 }
-                tokio::time::timeout(timeout, exchange(stream, request, limit))
+                tokio::time::timeout(timeout, super::exchange(stream, request, limit))
                     .await
                     .map_err(|_| {
                         CallError::Failed(format!(
@@ -445,57 +473,60 @@ mod unix {
             run()
         }
     }
-
-    async fn exchange(
-        stream: tokio::net::UnixStream,
-        request: hyper::Request<http_body_util::Full<hyper::body::Bytes>>,
-        limit: u64,
-    ) -> Result<super::Reply, super::CallError> {
-        use super::CallError;
-        use http_body_util::BodyExt;
-        let (mut sender, connection) = hyper::client::conn::http1::handshake(TokioIo::new(stream))
-            .await
-            .map_err(|error| CallError::Failed(error.to_string()))?;
-        tokio::spawn(connection);
-        let response = sender
-            .send_request(request)
-            .await
-            .map_err(|error| CallError::Failed(error.to_string()))?;
-        let status = response.status().as_u16();
-        let limit = usize::try_from(limit).unwrap_or(usize::MAX);
-        let body = http_body_util::Limited::new(response.into_body(), limit)
-            .collect()
-            .await
-            .map_err(|error| {
-                if error.is::<http_body_util::LengthLimitError>() {
-                    CallError::TooLarge
-                } else {
-                    CallError::Failed(error.to_string())
-                }
-            })?
-            .to_bytes();
-        Ok(super::Reply {
-            status,
-            body: body.to_vec(),
-        })
-    }
 }
 
-#[cfg(not(unix))]
+async fn exchange<S>(
+    stream: S,
+    request: hyper::Request<http_body_util::Full<hyper::body::Bytes>>,
+    limit: u64,
+) -> Result<Reply, CallError>
+where
+    S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
+{
+    use http_body_util::BodyExt;
+    use hyper_util::rt::TokioIo;
+    let (mut sender, connection) = hyper::client::conn::http1::handshake(TokioIo::new(stream))
+        .await
+        .map_err(|error| CallError::Failed(error.to_string()))?;
+    tokio::spawn(connection);
+    let response = sender
+        .send_request(request)
+        .await
+        .map_err(|error| CallError::Failed(error.to_string()))?;
+    let status = response.status().as_u16();
+    let limit = usize::try_from(limit).unwrap_or(usize::MAX);
+    let body = http_body_util::Limited::new(response.into_body(), limit)
+        .collect()
+        .await
+        .map_err(|error| {
+            if error.is::<http_body_util::LengthLimitError>() {
+                CallError::TooLarge
+            } else {
+                CallError::Failed(error.to_string())
+            }
+        })?
+        .to_bytes();
+    Ok(Reply {
+        status,
+        body: body.to_vec(),
+    })
+}
+
+#[cfg(not(any(unix, windows)))]
 pub struct Listening {
     never: std::convert::Infallible,
 }
-#[cfg(not(unix))]
+#[cfg(not(any(unix, windows)))]
 impl Listening {
     pub fn socket(&self) -> &Path {
         match self.never {}
     }
 }
-#[cfg(not(unix))]
+#[cfg(not(any(unix, windows)))]
 pub fn listen(_: &Path) -> Result<Listening, String> {
     Err(NO_SOCKETS.into())
 }
-#[cfg(not(unix))]
+#[cfg(not(any(unix, windows)))]
 pub async fn serve(
     listening: Listening,
     _: axum::Router,
@@ -538,7 +569,11 @@ pub fn call(
     {
         unix::call(socket, request, limit, timeout)
     }
-    #[cfg(not(unix))]
+    #[cfg(windows)]
+    {
+        windows::call(socket, request, limit, timeout)
+    }
+    #[cfg(not(any(unix, windows)))]
     {
         let _ = (socket, request, limit, timeout);
         Err(CallError::Unreachable(NO_SOCKETS.into()))
@@ -551,10 +586,24 @@ mod tests {
 
     #[test]
     fn only_the_servers_own_account_is_admitted() {
-        assert!(admit(Some(Peer { uid: 1000 }), Some(1000)).is_ok());
+        assert!(
+            admit(
+                Some(Peer {
+                    account: Account::Unix(1000)
+                }),
+                Some(Account::Unix(1000))
+            )
+            .is_ok()
+        );
         // Another account — root included — is a stranger to this door.
         for peer in [1001, 0, u32::MAX] {
-            let refused = admit(Some(Peer { uid: peer }), Some(1000)).unwrap_err();
+            let refused = admit(
+                Some(Peer {
+                    account: Account::Unix(peer),
+                }),
+                Some(Account::Unix(1000)),
+            )
+            .unwrap_err();
             assert_eq!(refused.code(), "server_peer_refused");
             assert_eq!(
                 refused.class(),
@@ -568,8 +617,16 @@ mod tests {
         }
         // A request that did not come through the socket has no peer, and a
         // platform with no sockets has no account to compare: both refused.
-        assert!(admit(None, Some(1000)).is_err());
-        assert!(admit(Some(Peer { uid: 1000 }), None).is_err());
+        assert!(admit(None, Some(Account::Unix(1000))).is_err());
+        assert!(
+            admit(
+                Some(Peer {
+                    account: Account::Unix(1000)
+                }),
+                None
+            )
+            .is_err()
+        );
         assert!(admit(None, None).is_err());
     }
 

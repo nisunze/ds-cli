@@ -71,13 +71,15 @@ activation dirty-edit and restart admission remains separate. The command uses
 no release authority, remote network acquisition, executable probe, process
 launch or new calculation licensing; Desktop is an optional typed client.
 
-Core background execution and component removal currently admit Linux only.
-Windows and macOS discovery must expose `server_platform_unsupported` before
+Core background execution and component removal admit Linux and native Windows.
+Unadmitted targets, including macOS, expose `server_platform_unsupported` before
 credentials, retained host state, input files or execution are accessed. This
 stable refusal identifier is retained; it does not expose a Server command or
-product alias. Windows qualification requires protected SID/DACL state and a
-mutually authenticated private local transport, then actual installed Core and
-component execution. Producer target mapping and Linux tests are not that proof.
+product alias. Windows uses protected SID/DACL state and a mutually verified private named
+pipe, retaining the existing credential and process-supervision owners. Native
+transport, credential and supervision controls are required alongside actual
+Core and component execution. Public Windows packaging remains unavailable
+until its publication contract is admitted.
 
 Native component staging/selection separately admit Linux and Windows x86_64
 metadata targets. Unsupported targets refuse `module_platform_unsupported`
@@ -104,3 +106,12 @@ or ready receipt refuses; no previous unit refuses `module_rollback_unavailable`
 These operations verify retained bytes without release lookup, download,
 executable probe or Desktop. They return the committed installed-v1 selection;
 a staging receipt alone remains ready and is not activation.
+
+Native Rust host consumers use `transport::own_account() -> Option<Account>`,
+`Peer { account: Account }` and `App.os_account: Option<Account>`. These replace
+`own_uid() -> Option<u32>`, `Peer.uid: u32` and `App.os_uid: Option<u32>`.
+Unix constructors use `Account::Unix(uid)`; Windows obtains its complete binary
+SID through the existing protected-state owner. A SID is never shortened to a
+numeric UID. Host construction and router fixtures must update together; these
+implementation interfaces do not form a supported client SDK. CLI/MCP remains
+the client surface. See [release notes](../../CHANGELOG.md) for the source update.

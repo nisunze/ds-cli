@@ -631,7 +631,7 @@ pub(crate) mod tests {
                 Arc::new(crate::host::tests::NoGateway),
             ),
             connection,
-            os_uid: crate::transport::own_uid(),
+            os_account: crate::transport::own_account(),
             auth: Arc::new(Auth(allowed)),
             requests: Arc::new(crate::host::Door::new(4)),
             activity: None,

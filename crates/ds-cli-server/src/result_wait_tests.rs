@@ -373,7 +373,7 @@ async fn wait_socket(
     connection(directory, app.connection.owner.clone(), "stable".into()).unwrap();
     let listening = crate::transport::listen(directory).unwrap();
     let mut served = app.clone();
-    served.os_uid = crate::transport::own_uid();
+    served.os_account = crate::transport::own_account();
     let (stop, stopped) = tokio::sync::oneshot::channel();
     let serving = tokio::spawn(async move {
         crate::transport::serve(listening, router(served), async {

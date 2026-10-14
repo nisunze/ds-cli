@@ -554,7 +554,8 @@ fn a_different_account_is_denied_without_naming_a_principal() {
         assert_eq!(denied.json()["class"], "unauthorized");
         // It names no account, no uid, no principal and no project — there is
         // nothing here for a caller to learn.
-        let own = ds_cli_server::transport::own_uid().expect("a Unix account");
+        let ds_cli_server::transport::Account::Unix(own) =
+            ds_cli_server::transport::own_account().expect("a Unix account");
         for secret in [UID, OWNER, DEPLOYMENT, A, &own.to_string()] {
             assert!(
                 !String::from_utf8_lossy(&denied.body).contains(secret),
@@ -2029,7 +2030,8 @@ fn the_shipped_server_answers_only_on_its_owner_only_socket_and_opens_no_port() 
     use std::os::unix::fs::{FileTypeExt, MetadataExt, PermissionsExt};
     let machine = device_home::DeviceHome::linked(LANE, FIRST_DEVICE);
     let mut server = LiveServer::start(&machine, 2);
-    let own = ds_cli_server::transport::own_uid().expect("a Unix account");
+    let ds_cli_server::transport::Account::Unix(own) =
+        ds_cli_server::transport::own_account().expect("a Unix account");
 
     // No port: the kernel lists no TCP socket in LISTEN for the process. The
     // probe is proven able to see one by pointing it at this test process
