@@ -59,6 +59,17 @@ runs only. Version directories must stay immutable and retained while in use;
 capturing a path does not admit an in-place executable replacement or implement
 the signed package updater. Existing identity fences still refuse changed identities.
 
+Native-account Reporter project exports, captured layout/voltage-drop previews
+and MV previews resolve the lane of their already captured native identity with
+`capture_for_lane` before entering the report host. One captured handle serves
+reuse identity checks, rendering and completion identity checks. Discovery does
+not probe an addon or assume an input lane. Desktop Reporter task construction
+uses the compiled shell lane; its staged combined sessions and before/after
+identity checks remain separate lifecycle guards. Raw local-file Reporter
+commands and standalone Solar prepared-file commands retain their explicit
+unmanaged boundary until separately migrated; inventory/selection alone does not
+prove those consumers use a managed receipt.
+
 `ds-cli-exec` is not, however, the only place a process is created — there are
 named owner classes, and each is audited where it lives:
 

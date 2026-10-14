@@ -105,7 +105,7 @@ pub(super) fn run(inputs: &Inputs) -> Result<Value, Failure> {
         Ok(())
     };
     execute(
-        &export::CliEngine,
+        &export::CliEngine::capture(identity.lane()).map_err(export::host_failure)?,
         &room,
         &captured,
         &saved_room,

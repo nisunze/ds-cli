@@ -246,6 +246,8 @@ pub(crate) async fn invoke(
         let host = app
             .solar
             .host(application_directory)?
+            .with_engine_lane(&app.connection.lane)
+            .map_err(|e| Failure::failed("server_refused", e))?
             .with_report_renderer(renderer)
             .with_reference_provider(producer.clone())
             .with_media_provider(producer.clone())

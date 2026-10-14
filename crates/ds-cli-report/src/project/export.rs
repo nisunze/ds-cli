@@ -33,7 +33,7 @@
 
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
-use std::ffi::{OsStr, OsString};
+use std::ffi::OsStr;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
@@ -428,12 +428,11 @@ pub static COMMAND: Command = Command {
     availability,
 };
 
-/// Both the native user client and the installed engine must be present.
+/// Native identity supplies the lane; engine admission belongs to the request.
 fn availability() -> Availability {
-    match ds_cli_auth::native_availability() {
-        Availability::Available => DS_REPORT.availability(),
-        unavailable => unavailable,
-    }
+    // The declared command has no selected input lane during discovery.
+    // Resolve that captured native lane at consumption, without a probe here.
+    ds_cli_auth::native_availability()
 }
 
 /// `ds-report`, reached through the audited process boundary: one static
@@ -441,7 +440,17 @@ fn availability() -> Availability {
 /// from the host crate.
 pub(crate) struct CliEngine;
 
-struct CapturedCliEngine(ds_cli_exec::CapturedExternal);
+impl CliEngine {
+    /// The caller has already captured its native account/profile context.
+    pub(crate) fn capture(lane: &str) -> Result<CapturedCliEngine, HostFailure> {
+        DS_REPORT
+            .capture_for_lane(lane)
+            .map(CapturedCliEngine)
+            .map_err(failure_to_host)
+    }
+}
+
+pub(crate) struct CapturedCliEngine(ds_cli_exec::CapturedExternal);
 
 impl CapturedCliEngine {
     fn render(
@@ -496,6 +505,28 @@ impl ReportEngine for CapturedCliEngine {
         result: &Path,
     ) -> Result<EngineExit, HostFailure> {
         self.render("render-grid-plan-profile", request, result)
+    }
+    fn launch_grid_preview(
+        &self,
+        request: &Path,
+        result: &Path,
+        _input_sha256: &str,
+    ) -> Result<(), HostFailure> {
+        let executable = self.0.executable();
+        // One fixed task over host-owned durable paths. Reporter owns its
+        // process lock and failure journal, so CLI exit releases only a viewer.
+        std::process::Command::new(executable)
+            .arg("render-grid-plan-profile")
+            .arg("--request")
+            .arg(request)
+            .arg("--result")
+            .arg(result)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .map_err(|error| HostFailure::new("engine_refused", error.to_string()))?;
+        Ok(())
     }
 }
 /// Exact saved analysis admitted for one room; no producer work occurs here.
@@ -751,101 +782,6 @@ fn failure_to_host(failure: Failure) -> HostFailure {
         code: failure.code().to_string(),
         message: failure.message().to_string(),
         detail: failure.detail_value().cloned(),
-    }
-}
-
-impl ReportEngine for CliEngine {
-    fn capture_for_run(&self) -> Result<Option<Box<dyn ReportEngine>>, HostFailure> {
-        let engine = DS_REPORT.capture().map_err(failure_to_host)?;
-        Ok(Some(Box::new(CapturedCliEngine(engine))))
-    }
-    fn build_info(&self) -> Result<Value, HostFailure> {
-        DS_REPORT
-            .call_json("build-info", &[], DISCOVERY_TIMEOUT)
-            .map_err(failure_to_host)
-    }
-
-    fn export_transformer_report(
-        &self,
-        request: &Path,
-        result: &Path,
-    ) -> Result<EngineExit, HostFailure> {
-        let args: Vec<OsString> = vec![
-            OsString::from("--request"),
-            request.into(),
-            OsString::from("--result"),
-            result.into(),
-        ];
-        let completed = DS_REPORT
-            .call("export-transformer-report", &args, EXPORT_TIMEOUT)
-            .map_err(failure_to_host)?;
-        Ok(EngineExit {
-            succeeded: completed.succeeded(),
-            summary: bounded_summary(&completed.stderr, &completed.stdout),
-        })
-    }
-
-    fn render_print_layout(
-        &self,
-        request: &Path,
-        result: &Path,
-    ) -> Result<EngineExit, HostFailure> {
-        let completed = DS_REPORT.call(
-            "render-print-layout",
-            &["--request".into(), request.into(), "--result".into(), result.into()],
-            EXPORT_TIMEOUT,
-        ).map_err(failure_to_host)?;
-        Ok(EngineExit {
-            succeeded: completed.succeeded(),
-            summary: bounded_summary(&completed.stderr, &completed.stdout),
-        })
-    }
-
-    fn render_grid_plan_profile(
-        &self,
-        request: &Path,
-        result: &Path,
-    ) -> Result<EngineExit, HostFailure> {
-        let args: Vec<OsString> = vec![
-            OsString::from("--request"),
-            request.into(),
-            OsString::from("--result"),
-            result.into(),
-        ];
-        let completed = DS_REPORT
-            .call("render-grid-plan-profile", &args, EXPORT_TIMEOUT)
-            .map_err(failure_to_host)?;
-        Ok(EngineExit {
-            succeeded: completed.succeeded(),
-            summary: bounded_summary(&completed.stderr, &completed.stdout),
-        })
-    }
-    fn launch_grid_preview(
-        &self,
-        request: &Path,
-        result: &Path,
-        _input_sha256: &str,
-    ) -> Result<(), HostFailure> {
-        let executable = DS_REPORT.locate().ok_or_else(|| {
-            HostFailure::new(
-                "reporter_engine_missing",
-                "the matching native Reporter is unavailable",
-            )
-        })?;
-        // One fixed task over host-owned durable paths. Reporter owns its
-        // process lock and failure journal, so CLI exit releases only a viewer.
-        std::process::Command::new(executable)
-            .arg("render-grid-plan-profile")
-            .arg("--request")
-            .arg(request)
-            .arg("--result")
-            .arg(result)
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .spawn()
-            .map_err(|error| HostFailure::new("engine_refused", error.to_string()))?;
-        Ok(())
     }
 }
 
@@ -1908,8 +1844,9 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         status_rows.is_some(),
         same_publisher,
     );
+    let selected_engine = CliEngine::capture(identity.lane()).map_err(host_failure)?;
     let mut engine_now = match withheld {
-        None => Some(installed_engine()?),
+        None => Some(installed_engine(&selected_engine)?),
         Some(_) => None,
     };
     let (mut reuse_plans, mut unplanned, policy) = match (&engine_now, &status_rows) {
@@ -1943,7 +1880,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             )
         })
     {
-        let engine = installed_engine()?;
+        let engine = installed_engine(&selected_engine)?;
         let (confirming, confirming_heads) = read_status(&mut link);
         heads = confirming_heads;
         let withdrawn = reconfirm_all_reused(
@@ -2279,10 +2216,9 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     // Subset runs whose room moved past the planned head: they ran in full.
     let mut room_moved: BTreeMap<String, i64> = BTreeMap::new();
     let analyses = std::sync::Mutex::new(BTreeMap::new());
-    let selected_engine = CliEngine.capture_for_run().map_err(host_failure)?;
     let engine = SavedAnalysisEngine {
         analyses: &analyses,
-        delegate: selected_engine.as_deref().unwrap_or(&CliEngine),
+        delegate: &selected_engine,
         report_format: requested_outputs.voltage_drop_report_format().token(),
     };
     let fetch = |name: &str| -> Result<TransformerReportInputs, HostFailure> {
@@ -2911,6 +2847,7 @@ fn preview_pages(
         )
         .map_err(host_failure)
     };
+    let selected_engine = CliEngine::capture(facts.identity.lane()).map_err(host_failure)?;
     let mut pages: Vec<(PreviewPage, PathBuf, ds_report_host::preview_artifact::Artifact)> = Vec::with_capacity(names.len());
     for name in names {
         let folder = out_dir.join(name);
@@ -2945,7 +2882,7 @@ fn preview_pages(
             .map_err(|error| Failure::invalid(INPUTS_INVALID.code, error))?;
         current()?;
         let (page, artifact) = ds_report_host::execute_artifact_retained(
-            &CliEngine,
+            &selected_engine,
             settings,
             &ds_report_host::PreviewRequest {
                 transformer: name.clone(),
@@ -3513,8 +3450,8 @@ fn context_failure(error: ds_project_data::Failure) -> HostFailure {
 /// those and prints its draft's output id and each page's path.
 /// The installed engine's identity from one `build-info`, read the way the
 /// batch reads it.
-fn installed_engine() -> Result<EngineIdentity, Failure> {
-    let document = CliEngine.build_info().map_err(host_failure)?;
+fn installed_engine(engine: &dyn ReportEngine) -> Result<EngineIdentity, Failure> {
+    let document = engine.build_info().map_err(host_failure)?;
     ds_command_kernel::report_export::engine_identity(&document).map_err(|error| {
         Failure::failed(CONTRACT_MISMATCH.code, error).remedy(CONTRACT_MISMATCH.remedy)
     })
@@ -3902,6 +3839,36 @@ pub fn render(data: &Value) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(unix)]
+    #[test]
+    fn captured_cli_report_adapter_keeps_one_program_for_probe_and_typed_render() {
+        use super::*;
+        use std::os::unix::fs::PermissionsExt;
+        let directory = tempfile::tempdir().unwrap();
+        let old = directory.path().join("reporter-old");
+        let new = directory.path().join("reporter-new");
+        for (path, version) in [(&old, "old"), (&new, "new")] {
+            std::fs::write(path, format!("#!/bin/sh\ncase \"$1\" in\nbuild-info) printf '%s\\n' '{{\"fixture\":\"{version}\"}}';;\nrender-print-layout) printf '%s' '{version}' > \"$3\";;\n*) exit 2;;\nesac\n")).unwrap();
+            std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700)).unwrap();
+        }
+        let captured = CapturedCliEngine(DS_REPORT.capture_pinned(&old).unwrap());
+        assert_eq!(captured.build_info().unwrap()["fixture"], "old");
+        // A later capture sees a different program; the accepted adapter keeps
+        // using its own path for every fixed task and its final identity check.
+        let later = CapturedCliEngine(DS_REPORT.capture_pinned(&new).unwrap());
+        assert_eq!(later.build_info().unwrap()["fixture"], "new");
+        let request = directory.path().join("request");
+        let result = directory.path().join("result");
+        assert!(
+            captured
+                .render_print_layout(&request, &result)
+                .unwrap()
+                .succeeded
+        );
+        assert_eq!(std::fs::read_to_string(request).unwrap(), "old");
+        assert_eq!(captured.build_info().unwrap()["fixture"], "old");
+    }
+
     #[test]
     fn saved_analysis_is_retained_for_matching_offline_room_and_revoked_by_service_answer() {
         let scope = ds_command_kernel::report_export::held::Scope {

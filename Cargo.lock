@@ -1935,6 +1935,7 @@ name = "ds-solar-native"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "ds-cli-exec",
  "ds-command-kernel",
  "ds-compute-runtime",
  "ds-solar-contracts",

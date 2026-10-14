@@ -238,13 +238,34 @@ impl External {
         if std::env::var_os(self.env_override).is_some() {
             return self.capture();
         }
+        self.capture_managed_for_lane_in(lane, base)?
+            .map_or_else(|| self.capture(), Ok)
+    }
+
+    /// Resolve only a retained native managed selection. `None` lets an owning
+    /// host preserve its established unmanaged policy (for example Solar's
+    /// explicit override or packaged sibling only). No PATH or child probe.
+    /// Hosts must apply their explicit development override before this lookup.
+    pub fn capture_managed_for_lane(
+        &'static self,
+        lane: &str,
+    ) -> Result<Option<CapturedExternal>, Failure> {
+        self.capture_managed_for_lane_in(lane, &managed_modules::module_base()?)
+    }
+
+    /// Privileged native host support for an explicitly relocated owned store.
+    pub fn capture_managed_for_lane_in(
+        &'static self,
+        lane: &str,
+        base: &Path,
+    ) -> Result<Option<CapturedExternal>, Failure> {
         match managed_modules::selected(self, base, lane)? {
             Some((path, identity)) => {
                 let mut captured = self.capture_pinned(&path)?;
                 captured.managed_identity = Some(identity);
-                Ok(captured)
+                Ok(Some(captured))
             }
-            None => self.capture(),
+            None => Ok(None),
         }
     }
     /// Capture by filesystem metadata only; discovery starts no process.

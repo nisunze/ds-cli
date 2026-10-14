@@ -210,7 +210,8 @@ pub(crate) fn run(inputs: &Inputs) -> Result<Value, Failure> {
         .transpose()?
         .unwrap_or_default();
     let answer = layout_preview::execute_format(
-        &crate::project::export::CliEngine,
+        &crate::project::export::CliEngine::capture(identity.lane())
+            .map_err(crate::project::export::host_failure)?,
         &room,
         &capture,
         retention,

@@ -502,14 +502,16 @@ fn run_template_preview(inputs: &Inputs, layout_path: &str) -> Result<Value, Fai
     };
     let answer = if inputs.switch("preview-all") {
         ds_report_host::mv_job::start(
-            &crate::project::export::CliEngine,
+            &crate::project::export::CliEngine::capture(identity.lane())
+                .map_err(crate::project::export::host_failure)?,
             &held,
             &result_room,
             retention,
         )
     } else {
         mv_artifact::execute_retained(
-            &crate::project::export::CliEngine,
+            &crate::project::export::CliEngine::capture(identity.lane())
+                .map_err(crate::project::export::host_failure)?,
             &held,
             &result_room,
             retention,
