@@ -22,6 +22,7 @@ kernel_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 manifests=(
 	"crates/ds-design-workspace/Cargo.toml"
 	"crates/ds-compute-runtime/Cargo.toml"
+	"crates/ds-network-client/Cargo.toml"
 	"crates/ds-profile-runtime/Cargo.toml"
 	"crates/ds-report-artifacts/Cargo.toml"
 	# Server core crates moved here from ds-web on 2026-09-14: the server build
@@ -39,6 +40,9 @@ manifests=(
 
 # Crates whose manifests reach ../ds-network; the others build without it.
 needs_network=(
+	# The native client uses only portable Network contracts/model vocabulary;
+	# its current path-based contract closure still requires the source owner.
+	"crates/ds-network-client/Cargo.toml"
 	"crates/ds-design-workspace/Cargo.toml"
 	"crates/ds-compute-runtime/Cargo.toml"
 	"crates/ds-profile-runtime/Cargo.toml"
