@@ -78,7 +78,9 @@ nothing governed: publishing a revision is `ds dsgrid publish-version`.",
         note: "Read .data.model; the new model is already the active one.",
         runnable: false,
     }],
-    refusals: CREATE_REFUSALS,
+    refusals: &crate::native::extend_refusals::<
+        { CREATE_REFUSALS.len() + crate::native::REFUSALS.len() },
+    >(CREATE_REFUSALS),
     reference: Some("docs/reference/dsgrid.md"),
     search: &[],
     requires: Requires::Server,
@@ -86,17 +88,25 @@ nothing governed: publishing a revision is `ds dsgrid publish-version`.",
 };
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
-    // The engine authors the package and decides which coordinate systems it
-    // can author; nothing about a CRS is guessed here against a stale list.
-    let model = ds_grid_exchange::create_blank_model(&ds_grid_exchange::BlankModelRequest {
-        coordinate_system: inputs.value("crs"),
-        ..Default::default()
-    })
-    .map_err(|error| {
-        Failure::invalid(UNSUPPORTED_GRID_CRS.code, error.to_string())
-            .remedy(UNSUPPORTED_GRID_CRS.remedy)
-    })?;
-    let identity = workspace::identity(&model.bytes)?;
+    let request = ds_network_contracts::grid_create::NativeGridCreateRequestV1 {
+        schema: ds_network_contracts::grid_create::GRID_CREATE_REQUEST_SCHEMA_V1.into(),
+        model_id: None,
+        coordinate_system: inputs.value("crs").map(str::to_owned),
+        standards_sha256: None,
+    };
+    let scratch = crate::native::scratch()?;
+    let model = crate::native::capture()?
+        .grid_create(&request, None, scratch.path(), &|| false)
+        .map_err(|error| {
+            // Preserve this command's existing blank-authoring refusal projection.
+            if error.owner_code().is_some() {
+                Failure::invalid(UNSUPPORTED_GRID_CRS.code, error.to_string())
+                    .remedy(UNSUPPORTED_GRID_CRS.remedy)
+            } else {
+                crate::native::map_failure(error)
+            }
+        })?;
+    let identity = &model.metadata.result;
     let id = workspace::mint_id();
     let name = inputs
         .value("name")
@@ -110,17 +120,17 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             id: id.clone(),
             display_name: name,
             origin: Origin::Created,
-            crs: identity.crs,
-            model_revision: identity.model_revision,
-            bytes: identity.bytes,
-            sha256: identity.sha256,
+            crs: identity.coordinate_system.clone(),
+            model_revision: identity.package_revision,
+            bytes: identity.artifact.byte_count as u64,
+            sha256: identity.artifact.sha256.clone(),
             created_at: None,
             project: None,
-            head_revision: Some(identity.authored_revision),
+            head_revision: Some(identity.authored_revision.clone()),
             // A new empty model is what the operator is about to work on.
             activate: true,
         },
-        Some(&model.bytes),
+        Some(&model.model),
     )?;
     let created = outcome
         .model

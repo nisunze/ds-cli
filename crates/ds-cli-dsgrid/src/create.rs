@@ -6,13 +6,63 @@ use ds_cli_contract::spec::{
     Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
-use ds_grid_engine::GridSession;
-use ds_grid_exchange::blank_model::{
-    BLANK_MODEL_REVISION, BlankModelError, BlankModelRequest, BlankModelStandards,
-};
-use ds_grid_exchange::create_blank_model;
+use ds_network_contracts::grid_create::{GRID_CREATE_REQUEST_SCHEMA_V1, NativeGridCreateRequestV1};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
+
+const OWN_REFUSALS: &[Refusal] = &[
+    crate::package::PROTECTED_MODEL,
+    Refusal {
+        code: "invalid_id",
+        when: "the engine rejects the model identity",
+        remedy: "supply an identity accepted by the native model contract",
+    },
+    Refusal {
+        code: "unsupported_coordinate_system",
+        when: "the engine cannot author in that CRS",
+        remedy: "use a supported projected metric CRS, e.g. EPSG:32735",
+    },
+    Refusal {
+        code: "invalid_coordinate_system",
+        when: "the CRS declaration is malformed",
+        remedy: "supply a valid projected metric CRS",
+    },
+    Refusal {
+        code: "standards_unreadable",
+        when: "the standards path is absent, not a regular file, or unreadable",
+        remedy: "name one readable .dsgrid-template file",
+    },
+    Refusal {
+        code: "standards_too_large",
+        when: "the standards file exceeds the 512 MiB read bound",
+        remedy: "use a bounded standards template",
+    },
+    Refusal {
+        code: "standards_refused",
+        when: "the engine rejects the template or its engineering/resource closure",
+        remedy: "supply a verified standards-only .dsgrid-template",
+    },
+    Refusal {
+        code: "package_emit_failed",
+        when: "the engine cannot emit the canonical package",
+        remedy: "report the engine error; no output was written",
+    },
+    Refusal {
+        code: "output_exists",
+        when: "the output path already exists",
+        remedy: "choose a new path; create never overwrites",
+    },
+    Refusal {
+        code: "output_parent_missing",
+        when: "the output parent directory does not exist",
+        remedy: "create the intended directory before retrying",
+    },
+    Refusal {
+        code: "output_unwritable",
+        when: "the output cannot be created or fully written",
+        remedy: "check permissions and free space; a partial file is removed",
+    },
+];
 
 pub static COMMAND: Command = Command {
     id: "dsgrid.create",
@@ -60,59 +110,9 @@ pub static COMMAND: Command = Command {
             runnable: true,
         },
     ],
-    refusals: &[
-        crate::package::PROTECTED_MODEL,
-        Refusal {
-            code: "invalid_id",
-            when: "the engine rejects the model identity",
-            remedy: "supply an identity accepted by the native model contract",
-        },
-        Refusal {
-            code: "unsupported_coordinate_system",
-            when: "the engine cannot author in that CRS",
-            remedy: "use a supported projected metric CRS, e.g. EPSG:32735",
-        },
-        Refusal {
-            code: "invalid_coordinate_system",
-            when: "the CRS declaration is malformed",
-            remedy: "supply a valid projected metric CRS",
-        },
-        Refusal {
-            code: "standards_unreadable",
-            when: "the standards path is absent, not a regular file, or unreadable",
-            remedy: "name one readable .dsgrid-template file",
-        },
-        Refusal {
-            code: "standards_too_large",
-            when: "the standards file exceeds the 512 MiB read bound",
-            remedy: "use a bounded standards template",
-        },
-        Refusal {
-            code: "standards_refused",
-            when: "the engine rejects the template or its engineering/resource closure",
-            remedy: "supply a verified standards-only .dsgrid-template",
-        },
-        Refusal {
-            code: "package_emit_failed",
-            when: "the engine cannot emit the canonical package",
-            remedy: "report the engine error; no output was written",
-        },
-        Refusal {
-            code: "output_exists",
-            when: "the output path already exists",
-            remedy: "choose a new path; create never overwrites",
-        },
-        Refusal {
-            code: "output_parent_missing",
-            when: "the output parent directory does not exist",
-            remedy: "create the intended directory before retrying",
-        },
-        Refusal {
-            code: "output_unwritable",
-            when: "the output cannot be created or fully written",
-            remedy: "check permissions and free space; a partial file is removed",
-        },
-    ],
+    refusals: &crate::native::extend_refusals::<
+        { OWN_REFUSALS.len() + crate::native::REFUSALS.len() },
+    >(OWN_REFUSALS),
     reference: Some("docs/reference/dsgrid.md"),
     search: &[],
     requires: Requires::Server,
@@ -123,49 +123,28 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let out = inputs.require("out")?;
     crate::apply::validate_output_path(out)?;
     let standards = inputs.value("standards").map(read_standards).transpose()?;
-    let request = BlankModelRequest {
-        model_id: inputs.value("model-id"),
-        coordinate_system: inputs.value("crs"),
-        standards: standards
-            .as_deref()
-            .map_or(BlankModelStandards::Empty, BlankModelStandards::Template),
-        ..Default::default()
+    let request = NativeGridCreateRequestV1 {
+        schema: GRID_CREATE_REQUEST_SCHEMA_V1.into(),
+        model_id: inputs.value("model-id").map(str::to_owned),
+        coordinate_system: inputs.value("crs").map(str::to_owned),
+        standards_sha256: standards
+            .as_ref()
+            .map(|bytes| format!("{:x}", Sha256::digest(bytes))),
     };
-    let model = create_blank_model(&request).map_err(|error| {
-        let message = error.to_string();
-        match error {
-            BlankModelError::Identifier { .. } => {
-                Failure::invalid("invalid_id", message).remedy("supply a native model identity")
-            }
-            BlankModelError::UnsupportedCoordinateSystem { .. } => {
-                Failure::invalid("unsupported_coordinate_system", message)
-                    .remedy("use a supported projected metric CRS")
-            }
-            BlankModelError::InvalidCoordinateSystem { .. } => {
-                Failure::invalid("invalid_coordinate_system", message)
-                    .remedy("supply a valid projected metric CRS")
-            }
-            BlankModelError::Standards(_) => Failure::invalid("standards_refused", message)
-                .remedy("use a verified standards-only .dsgrid-template"),
-            BlankModelError::Package(ds_grid_exchange::package::PackageError::ProtectedModel(
-                error,
-            )) => Failure::invalid("composite_model_protected", error.message)
-                .remedy(crate::package::PROTECTED_MODEL.remedy),
-            BlankModelError::Package(_) => Failure::failed("package_emit_failed", message)
-                .remedy("report this engine error; no output was written"),
-        }
-    })?;
-    let fingerprint = model.snapshot.snapshot_fingerprint();
-    let session = GridSession::open(model.snapshot);
-    crate::apply::write_new(out, &model.bytes)?;
+    let scratch = crate::native::scratch()?;
+    let model = crate::native::capture()?
+        .grid_create(&request, standards.as_deref(), scratch.path(), &|| false)
+        .map_err(crate::native::map_failure)?;
+    let result = &model.metadata.result;
+    crate::apply::write_new(out, &model.model)?;
     Ok(json!({
-        "model_id": model.model_id,
-        "coordinate_system": model.coordinate_system,
-        "package_revision": BLANK_MODEL_REVISION,
-        "authored_revision": session.current_revision().revision_id.as_str(),
-        "snapshot_fingerprint": fingerprint,
+        "model_id": result.model_id,
+        "coordinate_system": result.coordinate_system,
+        "package_revision": result.package_revision,
+        "authored_revision": result.authored_revision,
+        "snapshot_fingerprint": result.snapshot_fingerprint,
         "persisted": true,
-        "artifact": { "path": out, "byte_len": model.bytes.len(), "sha256": format!("sha256:{:x}", Sha256::digest(&model.bytes)) },
+        "artifact": { "path": out, "byte_len": result.artifact.byte_count, "sha256": format!("sha256:{}", result.artifact.sha256) },
     }))
 }
 
