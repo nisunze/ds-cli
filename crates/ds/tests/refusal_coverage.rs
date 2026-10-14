@@ -120,6 +120,12 @@ const NOT_A_REFUSAL: &[(&str, &str)] = &[
 /// unscanned while the test passed.
 const CODE_NOT_A_LITERAL: &[(&str, &str)] = &[
     (
+        "ds-cli-server/src/core_components.rs",
+        "owner_failure selects only from the command's declared REFUSALS; \
+         every_owner_refusal_is_declared_and_actionable exercises that entire \
+         closed roster and its unknown-code fallback",
+    ),
+    (
         "ds-cli-desktop/src/lib.rs",
         "the shared project-ID adapter preserves the caller's declared refusal \
          code; project.rs, sync.rs/published.rs and artifact.rs pass only the \
@@ -842,7 +848,7 @@ fn every_constructible_refusal_code_is_documented() {
         // layer owner's, re-raised across that transport, by `ds map layer …`.
         // The working-area form owner's travel the same transport for
         // `ds survey working-area … --target server`, declared there.
-        ("ds-cli-server", &["server", "map", "survey"]),
+        ("ds-cli-server", &["core", "server", "map", "survey"]),
         ("ds-cli-solar", &["solar"]),
         ("ds-cli-pm", &["pm"]),
         ("ds-cli-messaging", &["messaging"]),

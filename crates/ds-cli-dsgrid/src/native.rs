@@ -48,7 +48,7 @@ pub fn map_failure(error: NetworkFailure) -> Failure {
         .unwrap_or_else(|| error.code())
         .to_owned();
     let message = error.to_string();
-    let mut failure = if code == "network_engine_missing" {
+    let mut failure = if matches!(code.as_str(), "network_engine_missing" | "module_removed") {
         Failure::unavailable(&code, message)
     } else if matches!(
         code.as_str(),
@@ -72,6 +72,11 @@ pub fn map_failure(error: NetworkFailure) -> Failure {
 }
 
 pub const REFUSALS: &[Refusal] = &[
+    Refusal {
+        code: "module_removed",
+        when: "Network was explicitly removed from the selected release lane",
+        remedy: "explicitly reinstall Network in the same lane before processing",
+    },
     Refusal {
         code: "network_engine_missing",
         when: "the Network addon executable is absent",

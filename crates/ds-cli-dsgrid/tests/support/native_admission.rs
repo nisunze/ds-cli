@@ -279,8 +279,7 @@ fn isolated_admission() {
         .unwrap(),
     )
     .unwrap();
-    // The existing Network owner maps module_removed to its closed generic code.
-    let removed = fixture.refuse("canary", "network_engine_refused");
+    let removed = fixture.refuse("canary", "module_removed");
     assert!(removed.to_string().contains("module_removed"));
 
     let explicit = fixture.root.join("explicit-network");

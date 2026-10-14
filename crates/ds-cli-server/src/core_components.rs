@@ -445,6 +445,21 @@ mod tests {
     use std::sync::Arc;
     use tower::ServiceExt;
 
+    #[test]
+    fn every_owner_refusal_is_declared_and_actionable() {
+        for refusal in REFUSALS {
+            let failure = owner_failure(format!("{}: owner refused", refusal.code));
+            assert_eq!(failure.code(), refusal.code);
+            assert_eq!(failure.remedy_text(), Some(refusal.remedy));
+            assert!(REMOVE.refusals.iter().any(|r| r.code == failure.code()));
+            assert!(!refusal.remedy.is_empty());
+        }
+        assert_eq!(
+            owner_failure("unknown_owner_code: refusal".into()).code(),
+            "module_store_invalid"
+        );
+    }
+
     fn inputs(generation: &str) -> Inputs {
         ds_cli_contract::parse(
             &REMOVE,

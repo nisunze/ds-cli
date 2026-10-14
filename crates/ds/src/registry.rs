@@ -3695,13 +3695,18 @@ static MCP_ENTRIES: &[Entry] = &[
 
 static SERVER_ENTRIES: &[Entry] = &[
     Entry {
-        command: &ds_cli_server::module_updates::STAGE,
-        handler: ds_cli_server::module_updates::stage,
+        command: &ds_cli_server::core_components::REMOVE,
+        handler: ds_cli_server::core_components::remove,
         render: ds_cli_server::render,
     },
     Entry {
-        command: &ds_cli_server::module_updates::SELECTION,
-        handler: ds_cli_server::module_updates::selection,
+        command: &ds_cli_server::core_components::SELECTION,
+        handler: ds_cli_server::core_components::selection,
+        render: ds_cli_server::render,
+    },
+    Entry {
+        command: &ds_cli_server::module_updates::STAGE,
+        handler: ds_cli_server::module_updates::stage,
         render: ds_cli_server::render,
     },
     Entry {
