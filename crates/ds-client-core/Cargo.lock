@@ -406,6 +406,7 @@ version = "0.1.0"
 dependencies = [
  "ds-geo-lite",
  "ds-grid-model",
+ "ds-profile-grid",
  "schemars",
  "serde",
  "serde_json",
@@ -421,6 +422,13 @@ dependencies = [
  "serde",
  "serde_json",
  "zip",
+]
+
+[[package]]
+name = "ds-profile-grid"
+version = "0.1.0"
+dependencies = [
+ "serde",
 ]
 
 [[package]]

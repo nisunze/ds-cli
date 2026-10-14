@@ -13,7 +13,7 @@ publish = false
 # dependencies said. It carries its own [workspace] table at an unchanged path.
 # See docs/contracts/ds-portable-geometry.md §4.
 [workspace]
-members = ["crates/ds-template-test-support", "crates/ds-kml", "crates/ds-geo-lite", "crates/ds-canvas-lite", "crates/ds-sync-store"]
+members = ["crates/ds-template-test-support", "crates/ds-kml", "crates/ds-geo-lite", "crates/ds-canvas-lite", "crates/ds-profile-grid", "crates/ds-sync-store"]
 resolver = "2"
 
 [lib]

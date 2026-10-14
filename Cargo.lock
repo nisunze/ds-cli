@@ -321,6 +321,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "ds-profile-grid"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "ds-solar-contracts"
 version = "0.1.0"
 dependencies = [
