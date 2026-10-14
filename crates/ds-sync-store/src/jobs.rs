@@ -20,6 +20,8 @@ use ds_command_kernel::execution_context::{
 };
 use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 
+mod component_removal;
+
 const SCHEMA: &str = "CREATE TABLE IF NOT EXISTS compute_jobs(
  id TEXT PRIMARY KEY, owner TEXT NOT NULL, lane TEXT NOT NULL,
  phase TEXT NOT NULL, lease_until INTEGER NOT NULL, created INTEGER NOT NULL,

@@ -29,9 +29,11 @@
 //! no gain. A host that reaches upstream in `authorize` therefore delays new
 //! work while it cannot answer; it can never destroy work already done.
 mod claim;
+mod component_removal;
 mod engine_pins;
 pub mod tiles;
 pub use claim::{decode_solar_server_submission, encode_solar_server_submission};
+pub use component_removal::with_component_removal_admission;
 
 use base64::Engine;
 use ds_command_kernel::compute_jobs::{self, EngineKind, Event, Job, Phase};
