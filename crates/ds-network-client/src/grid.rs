@@ -372,6 +372,9 @@ impl CapturedNetworkClient {
             "mv-projection" => ds_network_contracts::mv_projection::MAX_MV_PROJECTION_REQUEST_BYTES,
             "mv-report" => ds_network_contracts::mv_report::MAX_MV_REPORT_REQUEST_BYTES,
             "grid-apply" => ds_network_contracts::grid_apply::MAX_GRID_APPLY_REQUEST_BYTES,
+            "lv-differential-plan" => {
+                ds_network_contracts::differential::MAX_DIFFERENTIAL_PLAN_REQUEST_BYTES
+            }
             "grid-catalog" => ds_network_contracts::grid_catalog::MAX_GRID_CATALOG_REQUEST_BYTES,
             "grid-create" => ds_network_contracts::grid_create::MAX_GRID_CREATE_REQUEST_BYTES,
             "grid-write-admission" => {

@@ -1,5 +1,6 @@
 //! Detached native host adapter; no Network computation is linked here.
 mod captured;
+mod differential;
 mod design_snapshot;
 mod grid;
 mod grid_apply;

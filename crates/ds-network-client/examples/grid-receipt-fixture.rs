@@ -23,6 +23,9 @@ fn main() {
         if mode != "apply-missing-capability" {
             capabilities.push("grid_apply_v1");
         }
+        if mode != "differential-missing-capability" {
+            capabilities.push("lv_differential_plan_v1");
+        }
         if mode != "catalog-missing-capability" {
             capabilities.push("grid_catalog_v1");
         }
@@ -40,6 +43,7 @@ fn main() {
     }
     if mode == "missing-capability"
         || mode == "inspection-missing-capability"
+        || mode == "differential-missing-capability"
         || mode == "catalog-missing-capability"
         || mode == "apply-missing-capability"
     {
@@ -56,7 +60,7 @@ fn main() {
         );
         std::process::exit(1);
     }
-    let model_path = if command == "grid-catalog" {
+    let model_path = if command == "grid-catalog" || command == "lv-differential-plan" {
         None
     } else {
         Some(value("--model"))
@@ -132,6 +136,14 @@ fn main() {
                 }),
             )
         }
+        "lv-differential-plan" => (
+            "plan.json", "ds.lv.native-differential-plan-result/v1",
+            json!({"schema":if mode=="differential-wrong-schema" {"other/v1"} else {"ds.lv.native-differential-plan-result/v1"},
+                "plan":{"scope":if mode=="differential-wrong-scope" {"host_override"} else {"full"},
+                    "feeders":if mode=="differential-wrong-full" {json!(["f1"])} else {json!([])},
+                    "reason_key":if mode=="differential-wrong-reason" {"future_reason"} else {"differential_full_no_feeders"},
+                    "selected_count":0,"frozen_count":0,"blocking_diagnostics":false,"manual_available":false}}),
+        ),
         "grid-catalog" => {
             let kind = if mode == "catalog-wrong-kind" {
                 json!("types")
@@ -195,11 +207,18 @@ fn main() {
             fs::write(value("--request"), b"changed request").unwrap();
         }
     }
+    let receipt_identity = if mode == "differential-wrong-identity" {
+        let mut changed = identity;
+        changed["coreVersion"] = json!("changed-core");
+        changed
+    } else {
+        identity
+    };
     println!(
         "{}",
         json!({
             "schema":"ds.network.task-result/v1", "inputSha256":if mode=="wrong-input" {"0".repeat(64)} else {sha(request_bytes.as_deref().unwrap_or(&model))},
-            "engineIdentity":identity, "outcome":if mode=="cancelled" {"cancelled"} else {"completed"},
+            "engineIdentity":receipt_identity, "outcome":if mode=="cancelled" {"cancelled"} else {"completed"},
             "artifact":{"file":if mode=="wrong-file" {"other.json"} else {name},"schema":if mode=="wrong-receipt-schema" {"other/v1"} else {schema},"byteCount":bytes.len(),"sha256":if mode=="wrong-digest" {"0".repeat(64)} else {sha(&bytes)}}
         })
     );
