@@ -1,7 +1,7 @@
 //! The Server's HTTP surface: the owner-only door onto one authenticated
 //! account's durable compute, publication and layer state.
 //!
-//! Every route that acts asks `ServerSessions` to admit it, and the kernel
+//! Every project route that acts asks `ServerSessions` to admit it, and the kernel
 //! decides which project the operation is about. Every route that reads
 //! answers through the job's own execution context, so a job in a project the
 //! caller did not name is absent in exactly the way an invented id is absent.
@@ -244,6 +244,10 @@ fn authorize(app: &App) -> Result<(), ApiError> {
 
 pub fn router(app: App) -> Router {
     Router::new()
+        .route(
+            "/v1/core/component/remove",
+            post(crate::core_components::invoke),
+        )
         .route("/v1/jobs", get(list))
         .route("/v1/jobs/:id", get(status))
         .route("/v1/jobs/:id/cancel", post(cancel))

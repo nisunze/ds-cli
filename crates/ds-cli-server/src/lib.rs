@@ -1,5 +1,6 @@
 //! Thin command/HTTP host for the shared native compute runtime.
 mod auth;
+pub mod core_components;
 pub mod desktop_update;
 pub mod module_updates;
 pub mod modules;
