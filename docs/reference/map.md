@@ -222,7 +222,7 @@ not a second argument shape:
 |---|---|
 | `desktop` (default) | this machine's native client — exactly what these commands have always done |
 | `desktop:<instance>` | one named Desktop window; accepted and refused by name (`target_instance_unsupported`) until the instance registry lands |
-| `server` | the running `ds server serve` on this machine, over its owner-only socket in the state directory (`--state-dir` selects a non-default state directory) |
+| `server` | the running `ds core serve` on this machine, over its owner-only socket in the state directory (`--state-dir` selects a non-default state directory) |
 
 The answer is the same shape from either host, because both hosts call the same
 owner (`ds-layer-ops`) over the same shared kernel; the Server's typed refusals
@@ -234,7 +234,7 @@ the day this argument landed.
 `--project <exact-id>` names the project for THAT CALL only. It never rewrites
 the saved selection and never switches a Desktop window that is open on another
 project. Without it, the subject is this machine's saved selection — the
-existing behaviour — and against `--target server` that selection is read here
+existing behaviour — and against `--target core` that selection is read here
 and sent explicitly, because the Server reads no selection of its own. An
 operation that genuinely needs a rendered map (a screenshot, a camera, canvas
 evidence) keeps its id and answers `needs_paired_map` on the Server, naming the

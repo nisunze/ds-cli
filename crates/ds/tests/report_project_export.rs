@@ -82,7 +82,7 @@ fn the_descriptor_is_a_headless_project_fenced_local_file_write() {
             // publishable, and it says so on its receipt.
             "dry-run",
             "force",
-            "server-state-dir",
+            "core-state-dir",
             // The survey forms the project appends come from this machine's
             // held copy: refreshed (auto) or read as held (local).
             "survey-refresh",

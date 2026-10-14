@@ -79,7 +79,7 @@ pub fn admit(peer: Option<Peer>, own: Option<u32>) -> Result<(), Failure> {
             // A literal: the refusal-coverage scan reads literals, and a code
             // it cannot read is a code nothing checks is documented.
             "server_peer_refused",
-            "this Server answers only processes running as the account that started it",
+            "this Core answers only processes running as the account that started it",
         )
         .remedy(crate::PEER_REFUSED.remedy)),
     }
@@ -106,7 +106,7 @@ impl std::fmt::Display for CallError {
             Self::Unreachable(reason) | Self::NotOwner(reason) | Self::Failed(reason) => {
                 f.write_str(reason)
             }
-            Self::TooLarge => f.write_str("server response exceeds the command's bound"),
+            Self::TooLarge => f.write_str("Core response exceeds the command's bound"),
         }
     }
 }
@@ -119,7 +119,7 @@ pub struct Reply {
 }
 
 #[cfg(not(unix))]
-const NO_SOCKETS: &str = "the native server needs an owner-only Unix socket, which this platform does not provide; run the Server and its callers on Linux";
+const NO_SOCKETS: &str = "the native Core needs an owner-only Unix socket, which this platform does not provide; run the Core and its callers on Linux";
 
 // ── the server half ─────────────────────────────────────────────────────
 
@@ -185,7 +185,7 @@ mod unix {
             Ok(()) => {}
             Err(fs::TryLockError::WouldBlock) => {
                 return Err(format!(
-                    "a Server is already running on {}; use it, or stop it before starting another",
+                    "a Core is already running on {}; use it, or stop it before starting another",
                     state.display()
                 ));
             }
@@ -199,7 +199,7 @@ mod unix {
             Err(error) => return Err(format!("cannot read {}: {error}", socket.display())),
             Ok(meta) if !meta.file_type().is_socket() => {
                 return Err(format!(
-                    "{} is not a socket; remove it, then start the Server again",
+                    "{} is not a socket; remove it, then start the Core again",
                     socket.display()
                 ));
             }
@@ -209,7 +209,7 @@ mod unix {
             Ok(_) => match UnixStream::connect(&socket) {
                 Ok(_) => {
                     return Err(format!(
-                        "something answers on {} although no Server holds this state directory; stop it, then start the Server again",
+                        "something answers on {} although no Core holds this state directory; stop it, then start the Core again",
                         socket.display()
                     ));
                 }
@@ -350,7 +350,7 @@ mod unix {
         match fs::symlink_metadata(socket) {
             Err(error) if error.kind() == ErrorKind::NotFound => {
                 return Err(CallError::Unreachable(
-                    "no Server is listening on this state directory; start ds core serve".into(),
+                    "no Core is listening on this state directory; start ds core serve".into(),
                 ));
             }
             Err(error) => {
@@ -363,7 +363,7 @@ mod unix {
                 use std::os::unix::fs::MetadataExt;
                 if !meta.file_type().is_socket() || meta.uid() != own {
                     return Err(CallError::NotOwner(format!(
-                        "{} is not this account's Server socket; nothing was sent",
+                        "{} is not this account's Core socket; nothing was sent",
                         socket.display()
                     )));
                 }
@@ -378,7 +378,7 @@ mod unix {
                 ) =>
             {
                 return Err(CallError::Unreachable(
-                    "no Server answers on this state directory; start ds core serve".into(),
+                    "no Core answers on this state directory; start ds core serve".into(),
                 ));
             }
             Err(error) => {
@@ -413,7 +413,7 @@ mod unix {
                     .await
                     .map_err(|_| {
                         CallError::Failed(format!(
-                            "the Server did not answer within {} s",
+                            "the Core did not answer within {} s",
                             timeout.as_secs()
                         ))
                     })?

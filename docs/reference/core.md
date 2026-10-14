@@ -33,3 +33,17 @@ Removal does not perform activation or change authored model state. Existing
 activation dirty-edit and restart admission remains separate. The command uses
 no release authority, remote network acquisition, executable probe, process
 launch or new calculation licensing; Desktop is an optional typed client.
+
+Core background execution and component removal currently admit Linux only.
+Windows and macOS discovery must expose `server_platform_unsupported` before
+credentials, retained host state, input files or execution are accessed. This
+stable refusal identifier is retained; it does not expose a Server command or
+product alias. Windows qualification requires protected SID/DACL state and a
+mutually authenticated private local transport, then actual installed Core and
+component execution. Producer target mapping and Linux tests are not that proof.
+
+Native component staging/selection separately admit Linux and Windows x86_64
+metadata targets. Unsupported targets refuse `module_platform_unsupported`
+before authority acquisition or store creation. Read-only release metadata
+inspection remains platform-neutral. Unadmitted engine WASM targets stay
+explicitly unavailable in their producer; Core is a native application runtime.

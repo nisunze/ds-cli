@@ -436,13 +436,13 @@ pub const CONTEXT_GENERATION_STALE: Refusal = Refusal {
 };
 pub const UNKNOWN_TARGET: Refusal = Refusal {
     code: "unknown_target",
-    when: "--target is not desktop, desktop:<instance_id> or server",
-    remedy: "pass --target desktop, --target desktop:<instance_id> or --target server",
+    when: "--target is not desktop, desktop:<instance_id> or core",
+    remedy: "pass --target desktop, --target desktop:<instance_id> or --target core",
 };
 pub const HOST_UNSUPPORTED: Refusal = Refusal {
     code: "target_host_unsupported",
-    when: "--target server named a host that does not perform this operation",
-    remedy: "run it with --target desktop; `ds server --help` lists what the Server performs",
+    when: "--target core named a host that does not perform this operation",
+    remedy: "run it with --target desktop; `ds core --help` lists what Core performs",
 };
 pub const UNREACHABLE: Refusal = Refusal {
     code: "desktop_unreachable",
@@ -561,7 +561,7 @@ pub fn classify_signed_out(failure: Failure) -> Failure {
 ///   default when exactly one live instance can serve the work.
 /// * `desktop:<instance_id>` — one named live instance, from `ds desktop
 ///   list`. Honoured or refused by name; it never routes anywhere else.
-/// * `server` — the running `ds server serve` on this machine, for the
+/// * `core` — the running `ds core serve` on this machine, for the
 ///   operations the Server performs.
 ///
 /// Declared without `choices` on purpose: `desktop:<instance_id>` must reach
@@ -571,7 +571,7 @@ pub fn classify_signed_out(failure: Failure) -> Failure {
 /// that an explicit flag still wins over.
 pub const TARGET_ARG: Arg = Arg::value(
     "target",
-    "<desktop|desktop:instance|server>",
+    "<desktop|desktop:instance|core>",
     "Host to run on (default desktop); DS_TARGET sets a session default.",
 );
 
@@ -600,7 +600,7 @@ pub fn host(named: Option<&str>) -> Result<Host, Failure> {
     };
     match named.as_str() {
         "desktop" => Ok(Host::Desktop(None)),
-        "server" => Ok(Host::Server),
+        "core" => Ok(Host::Server),
         instance if instance.starts_with("desktop:") => {
             let instance_id = instance.trim_start_matches("desktop:");
             // The kernel publishes this predicate so a client can read a
@@ -651,7 +651,7 @@ pub fn desktop_target(named: Option<&str>) -> Result<Option<kernel::Target>, Fai
         Host::Desktop(target) => Ok(target),
         Host::Server => Err(Failure::invalid(
             HOST_UNSUPPORTED.code,
-            "the Server does not perform this operation; the paired desktop does",
+            "Core does not perform this operation; the paired desktop does",
         )
         .remedy(HOST_UNSUPPORTED.remedy)),
     }
@@ -682,6 +682,16 @@ mod tests {
 
     /// A minted instance id, in the kernel's grammar: 32 lowercase hex.
     const INSTANCE: &str = "11111111111111111111111111111111";
+
+    #[test]
+    fn core_host_is_explicit_and_retired_server_target_is_not_an_alias() {
+        assert_eq!(host(Some("core")).unwrap(), Host::Server);
+        assert_eq!(host(Some("server")).unwrap_err().code(), "unknown_target");
+        assert_eq!(
+            desktop_target(Some("core")).unwrap_err().code(),
+            "target_host_unsupported"
+        );
+    }
 
     const ZOOM_TO: BridgeOp = BridgeOp {
         operation: "map.zoom_to",

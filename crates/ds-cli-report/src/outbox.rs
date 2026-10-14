@@ -45,9 +45,9 @@ use crate::project::LANE_ARG;
 /// publication enters. A report is sealed into the Server's state root, so
 /// reading and draining that queue must be able to name the same root.
 const SERVER_STATE_DIR_ARG: Arg = Arg::value(
-    "server-state-dir",
+    "core-state-dir",
     "<absolute-path>",
-    "Matching `ds server serve --state-dir` directory when the Server uses a custom state root.",
+    "Matching `ds core serve --state-dir` directory when the Server uses a custom state root.",
 );
 
 const PROJECT_ARG: Arg = Arg::value(
@@ -68,19 +68,19 @@ const DRAIN_PROJECT_ARG: Arg = Arg::value(
 const QUEUE_UNREADABLE: Refusal = Refusal {
     code: "report_outbox_unreadable",
     when: "the lane's sync store or artifact root cannot be read on this machine",
-    remedy: "check the Server state directory's permissions, or pass the same --server-state-dir as ds server serve",
+    remedy: "check the Server state directory's permissions, or pass the same --core-state-dir as ds core serve",
 };
 
 const QUEUE_ROOT_INVALID: Refusal = Refusal {
     code: "report_outbox_root_invalid",
-    when: "the Server state root cannot be resolved from the lane and --server-state-dir",
-    remedy: "omit --server-state-dir, or pass the same absolute path `ds server serve` uses",
+    when: "the Server state root cannot be resolved from the lane and --core-state-dir",
+    remedy: "omit --core-state-dir, or pass the same absolute path `ds core serve` uses",
 };
 
 const SERVER_UNREACHABLE: Refusal = Refusal {
     code: "report_outbox_server_unavailable",
     when: "the protected Server state holds no connection this machine can publish under",
-    remedy: "run ds server serve on this machine, then retry the drain",
+    remedy: "run ds core serve on this machine, then retry the drain",
 };
 
 const DRAIN_FAILED: Refusal = Refusal {
@@ -386,7 +386,7 @@ pub fn render_inventory(data: &Value) -> String {
 fn server_state(inputs: &Inputs) -> Result<PathBuf, Failure> {
     ds_compute_runtime::server_state_directory(
         inputs.require("lane")?,
-        inputs.value("server-state-dir").map(Path::new),
+        inputs.value("core-state-dir").map(Path::new),
     )
     .map_err(|error| {
         Failure::invalid(QUEUE_ROOT_INVALID.code, error).remedy(QUEUE_ROOT_INVALID.remedy)

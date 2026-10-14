@@ -86,7 +86,7 @@ fn the_rescue_route_is_discoverable_and_states_what_it_will_not_do() {
         .collect();
     assert_eq!(
         inputs,
-        ["from", "transformer", "server-state-dir", "lane", "project"],
+        ["from", "transformer", "core-state-dir", "lane", "project"],
         "the source directory is the whole request; nothing here re-runs a report"
     );
 }

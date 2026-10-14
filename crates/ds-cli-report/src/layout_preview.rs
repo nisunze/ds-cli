@@ -410,7 +410,7 @@ mod tests {
                 "--project",
                 "project",
                 "--target",
-                "server"
+                "core"
             ]))
             .unwrap()
         );
@@ -428,7 +428,7 @@ mod tests {
                 "--project",
                 "project",
                 "--target",
-                "server",
+                "core",
                 "--desktop-descriptor",
                 "unused"
             ]))

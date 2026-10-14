@@ -146,7 +146,7 @@ pub static SANITIZE_PREVIEW_COMMAND: Command = Command {
     path: &["desktop", "sync", "sanitize", "preview"],
     contract: 1,
     summary: "Preview recovery and archival of one project’s retained results.",
-    purpose: "Uses the kernel recovery control Sync Center and `ds server sync sanitize` send. Published rows and failures fully superseded by newer local outputs are archived; recoverable failures are requeued; active uploads, unregistered engines and failures that need attention are kept. Files and producer identities are never deleted. The digest covers the complete retained snapshot even when the display is truncated.",
+    purpose: "Uses the kernel recovery control Sync Center and `ds core sync sanitize` send. Published rows and failures fully superseded by newer local outputs are archived; recoverable failures are requeued; active uploads, unregistered engines and failures that need attention are kept. Files and producer identities are never deleted. The digest covers the complete retained snapshot even when the display is truncated.",
     chapter: Chapter::Operations,
     effect: Effect::ReadOnly,
     authority: Authority::DesktopUser,

@@ -77,7 +77,7 @@ fn ds(state: &Path, args: &[&str]) -> Value {
     full.extend([
         "--lane",
         "canary",
-        "--server-state-dir",
+        "--core-state-dir",
         root,
         "--output",
         "json",

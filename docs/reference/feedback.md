@@ -4,7 +4,7 @@
 deduplicated ledger DS GridDesign's `fb` tab reads and writes. It is not an
 issue-file generator and it does not introduce an MCP or another API client.
 
-Commands default to the headless signed-in user (`--target server`), using the
+Commands default to the headless signed-in user (`--target core`), using the
 same fixed feedback API. Neither Desktop nor a selected project is required.
 `--target desktop` retains the paired application's compatibility route.
 Credentials remain inside the protected native client or paired application.

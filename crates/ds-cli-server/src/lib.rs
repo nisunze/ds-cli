@@ -50,7 +50,7 @@ use std::{
 const STATE: Arg = Arg::value(
     "state-dir",
     "<absolute-path>",
-    "Protected server state directory; defaults to the lane's user state directory.",
+    "Protected Core state directory; defaults to the lane's user state directory.",
 );
 const LANE: ds_cli_contract::spec::Arg =
     ds_cli_contract::spec::LANE.summary("Native authentication lane.");
@@ -95,9 +95,39 @@ const NARROWING_PROJECT: Arg = Arg::value(
 
 const PLATFORM: Refusal = Refusal {
     code: "server_platform_unsupported",
-    when: "the native server is requested outside Linux",
+    when: "Core background execution is requested on a target without its admitted protected native transport",
     remedy: "run these commands on a Linux machine",
 };
+/// Core hosting requires both protected native state and mutually verified
+/// local transport. A compiled executable or engine producer is not admission.
+fn native_host_availability_for(target_os: &str) -> Availability {
+    if target_os == "linux" {
+        Availability::Available
+    } else {
+        Availability::unavailable(
+            PLATFORM.code,
+            "Core background execution currently requires Linux; this target has no admitted protected native transport",
+            PLATFORM.remedy,
+        )
+    }
+}
+pub(crate) fn native_host_availability() -> Availability {
+    native_host_availability_for(std::env::consts::OS)
+}
+fn require_native_host_for(target_os: &str) -> Result<(), Failure> {
+    match native_host_availability_for(target_os) {
+        Availability::Available => Ok(()),
+        Availability::Unavailable {
+            code,
+            reason,
+            remedy,
+        } => Err(Failure::unavailable(code, reason).remedy(remedy)),
+    }
+}
+pub(crate) fn require_native_host() -> Result<(), Failure> {
+    require_native_host_for(std::env::consts::OS)
+}
+
 const REFUSED: Refusal = Refusal {
     code: "server_refused",
     when: "native authentication, protected state, job identity, capacity or the request is invalid or unavailable",
@@ -105,8 +135,8 @@ const REFUSED: Refusal = Refusal {
 };
 const OWNER_CHANGED: Refusal = Refusal {
     code: "server_owner_changed",
-    when: "the Server's account differs from the caller's, or its credential was revoked or replaced",
-    remedy: "sign in under the intended Server account and explicitly restart ds core serve",
+    when: "the Core's account differs from the caller's, or its credential was revoked or replaced",
+    remedy: "sign in under the intended Core account and explicitly restart ds core serve",
 };
 const PROJECT_REQUIRED: Refusal = Refusal {
     code: "project_required",
@@ -150,7 +180,7 @@ const CAPACITY_EXHAUSTED: Refusal = Refusal {
 };
 const CONTEXT_UNRECOVERABLE: Refusal = Refusal {
     code: "context_unrecoverable",
-    when: "a job stored by an older Server names no project and none can be recovered",
+    when: "a job stored by an older Core names no project and none can be recovered",
     remedy: "read the job's stored input with ds core input, then resubmit it under an explicit --project",
 };
 const OUTPUT_EXISTS: Refusal = Refusal {
@@ -173,7 +203,7 @@ const MULTI_PRINCIPAL: Refusal = Refusal {
 const INSTALL_UNAVAILABLE: Refusal = Refusal {
     code: "headless_install_unavailable",
     when: "the registered install this host runs under cannot be read or created in the protected DS state root",
-    remedy: "make the Server user's protected DS state root present, owner-only and writable, then start the host again",
+    remedy: "make the Core user's protected DS state root present, owner-only and writable, then start the host again",
 };
 
 /// Hosting the process itself. No project is resolved, so none can refuse —
@@ -185,7 +215,7 @@ const INSTALL_UNAVAILABLE: Refusal = Refusal {
 // this build does not serve at all — which is what a caller of a different
 // version reaches. They are declared here, on the command that RUNS the host,
 // because that is the only `ds core` command they belong to; the map-bound
-// half belongs in `ds map …`'s own descriptor once `--target server` is wired
+// half belongs in `ds map …`'s own descriptor once `--target core` is wired
 // to this transport.
 const NEEDS_MAP: Refusal = Refusal {
     code: "needs_paired_map",
@@ -215,8 +245,8 @@ const SERVE_REFUSALS: &[Refusal] = &[
     PLATFORM,
     Refusal {
         code: "headless_signed_out",
-        when: "this machine holds no native credential for the requested Server lane",
-        remedy: "run ds account connect for the same lane, approve the trusted device, then start the Server again",
+        when: "this machine holds no native credential for the requested Core lane",
+        remedy: "run ds account connect for the same lane, approve the trusted device, then start the Core again",
     },
     REFUSED,
     OWNER_CHANGED,
@@ -303,7 +333,7 @@ const fn command(
         path,
         contract: 2,
         summary,
-        purpose: "Drive native transformer and prepared Solar computation on the shared Rust runtime. Jobs survive UI closure and server restart; request and result bytes are retained under the initiating identity. Every call is about one project: --project names it explicitly and neither client nor Server consults a saved selection -- one host serves several of its owner's projects at once. The gateway enforces entitlement at publication and sync; a Solar request's sealed input names the project that wins.",
+        purpose: "Drive native transformer and prepared Solar computation on the shared Rust runtime. Jobs survive UI closure and Core restart; request and result bytes are retained under the initiating identity. Every call is about one project: --project names it explicitly and neither client nor Core consults a saved selection -- one host serves several of its owner's projects at once. The gateway enforces entitlement at publication and sync; a Solar request's sealed input names the project that wins.",
         chapter: Chapter::Design,
         effect,
         authority: Authority::HeadlessUser,
@@ -315,25 +345,15 @@ const fn command(
         reference: Some("docs/reference/core.md"),
         search: &[],
         requires: Requires::Server,
-        availability: || {
-            if cfg!(target_os = "linux") {
-                Availability::Available
-            } else {
-                Availability::unavailable(
-                    "server_platform_unsupported",
-                    "the native server currently requires Linux",
-                    "run these commands on a Linux machine",
-                )
-            }
-        },
+        availability: native_host_availability,
     }
 }
 pub static ENGINE: Command = Command {
     id: "core.engine",
     path: &["core", "engine"],
     contract: 2,
-    summary: "Inspect the Solar addon this Server will execute.",
-    purpose: "Identify the captured standalone Solar engine used by prepared-city computation. This local inspection needs no login, running server, state directory or network connection. It does not establish full native application workflow readiness; development builds intentionally omit release provenance.",
+    summary: "Inspect the Solar addon this Core will execute.",
+    purpose: "Identify the captured standalone Solar engine used by prepared-city computation. This local inspection needs no login, running Core, state directory or network connection. It does not establish full native application workflow readiness; development builds intentionally omit release provenance.",
     chapter: Chapter::Design,
     effect: Effect::ReadOnly,
     authority: Authority::None,
@@ -342,7 +362,7 @@ pub static ENGINE: Command = Command {
     output: "The standalone engine's actual identity and stamped schema inventory. Release builds carry their own ds.engine-build/v1 provenance.",
     examples: &[Example {
         command: "ds core engine --output json",
-        note: "Inspect the installed Solar addon without starting or authenticating a server.",
+        note: "Inspect the installed Solar addon without starting or authenticating Core.",
         runnable: true,
     }],
     refusals: &[
@@ -388,7 +408,7 @@ pub static SERVE: Command = Command {
     // so which Server a caller reaches is which `--state-dir` it names.
     contract: 2,
     summary: "Run Core in background mode for this account's projects.",
-    purpose: "Run the independently installed ds Core runtime in background mode under this Linux user's native account; Desktop is an optional client of the same native owner. No project is selected or captured here and no directory is fetched: callers name the project per request, the Server records it and runs what its owner hands it, and the gateway enforces entitlement at publication and sync -- so one host serves several projects at once, needs no ds auth project use to start, and runs with no upstream. One owner per Server; many users are many machines. --workers bounds the whole host; --per-project bounds what one project may hold while another has work queued. Control is an owner-only socket in the state directory. This process runs in the foreground until it stops.",
+    purpose: "Run the independently installed ds Core runtime in background mode under this Linux user's native account; Desktop is an optional client of the same native owner. No project is selected or captured here and no directory is fetched: callers name the project per request, the Core records it and runs what its owner hands it, and the gateway enforces entitlement at publication and sync -- so one host serves several projects at once, needs no ds auth project use to start, and runs with no upstream. One owner per Core; many users are many machines. --workers bounds the whole host; --per-project bounds what one project may hold while another has work queued. Control is an owner-only socket in the state directory. This process runs in the foreground until it stops.",
     chapter: Chapter::Design,
     effect: Effect::LocalFileWrite,
     authority: Authority::HeadlessUser,
@@ -417,17 +437,7 @@ pub static SERVE: Command = Command {
     reference: Some("docs/reference/core.md"),
     search: &[],
     requires: Requires::Server,
-    availability: || {
-        if cfg!(target_os = "linux") {
-            Availability::Available
-        } else {
-            Availability::unavailable(
-                "server_platform_unsupported",
-                "the native server currently requires Linux",
-                "run these commands on a Linux machine",
-            )
-        }
-    },
+    availability: native_host_availability,
 };
 pub static SUBMIT: Command = command(
     "core.submit",
@@ -455,7 +465,7 @@ pub static SUBMIT: Command = command(
     SUBMIT_REFUSALS,
     &[Example {
         command: "ds core submit --input transformer-batch.json --key processing-001 --project <exact-id>",
-        note: "Queue an explicit native transformer request in one named project on the running server.",
+        note: "Queue an explicit native transformer request in one named project on the running Core.",
         runnable: false,
     }],
 );
@@ -472,7 +482,7 @@ pub static SOLAR_SUBMIT: Command = command(
         Arg::value(
             "input",
             "<path>",
-            "Private ds.solar.server-submission/v1 envelope on this machine; the Server reads this path itself. At most 64 MiB.",
+            "Private ds.solar.server-submission/v1 envelope on this machine; the Core reads this path itself. At most 64 MiB.",
         )
         .required(),
         Arg::value(
@@ -526,7 +536,7 @@ pub static STATUS: Command = command(
     JOB_REFUSALS,
     &[Example {
         command: "ds core status --project <exact-id> --output json",
-        note: "Read bounded job receipts for one project from the running server.",
+        note: "Read bounded job receipts for one project from the running Core.",
         runnable: false,
     }],
 );
@@ -605,12 +615,12 @@ pub static INPUT: Command = command(
 // `ds core layers list|show|hide|reorder` are RETIRED. The standing ruling
 // is one command id per operation whichever host executes it, so the drawer's
 // catalogue, visibility and order are `ds map layer list|show|hide|reorder`
-// with an explicit `--target server|desktop[:instance]`. A second set of ids
+// with an explicit `--target core|desktop[:instance]`. A second set of ids
 // that differed only by which host answered is exactly what that ruling ends.
 //
 // What stays here is the part that genuinely is the Server's: the owner-only
 // socket. This crate owns `connection.json`, the socket and the lane fence,
-// so the `--target server` half of those four commands calls the
+// so the `--target core` half of those four commands calls the
 // functions below. They send an explicit project on every request -- the
 // Server reads no selection of this machine's -- and re-raise the Server's
 // typed refusals unchanged, which is why one `ds map layer …` invocation
@@ -632,7 +642,7 @@ fn typed_refusal(status: u16, body: &[u8]) -> Failure {
     };
     let message = value["error"]
         .as_str()
-        .unwrap_or("the server refused the request")
+        .unwrap_or("the Core refused the request")
         .to_owned();
     let code = value["code"].as_str();
     let class = match value["class"].as_str() {
@@ -658,7 +668,7 @@ fn typed_refusal(status: u16, body: &[u8]) -> Failure {
         Some("context_unrecoverable") => Failure::new(class, "context_unrecoverable", message),
         // The Server connection's own fence.
         Some("server_owner_changed") => Failure::new(class, "server_owner_changed", message),
-        // The shared layer owner's, re-raised for `ds map layer … --target server`.
+        // The shared layer owner's, re-raised for `ds map layer … --target core`.
         Some("unknown_layer") => Failure::new(class, "unknown_layer", message),
         Some("duplicate_layer") => Failure::new(class, "duplicate_layer", message),
         Some("invalid_order") => Failure::new(class, "invalid_order", message),
@@ -667,7 +677,7 @@ fn typed_refusal(status: u16, body: &[u8]) -> Failure {
         Some("layer_state_refused") => Failure::new(class, "layer_state_refused", message),
         Some("project_context_changed") => Failure::new(class, "project_context_changed", message),
         // The working-area form owner's, re-raised for
-        // `ds survey working-area … --target server`.
+        // `ds survey working-area … --target core`.
         Some("unknown_form") => Failure::new(class, "unknown_form", message),
         Some("no_forms_named") => Failure::new(class, "no_forms_named", message),
         Some("ambiguous_selection") => Failure::new(class, "ambiguous_selection", message),
@@ -767,11 +777,12 @@ fn default_remedy(code: Option<&str>, body: &Value) -> Option<String> {
 }
 
 fn layers_answer(bytes: Vec<u8>) -> Result<Value, Failure> {
-    serde_json::from_slice(&bytes).map_err(|_| failure("the server answered outside its contract"))
+    serde_json::from_slice(&bytes).map_err(|_| failure("the Core answered outside its contract"))
 }
 /// `map.layer.list` executed on a Server. The project is explicit: the host
 /// resolves no selection of its own.
 pub fn layers_list(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
+    require_native_host()?;
     let mut path = format!(
         "/v1/layers?refresh={}&limit={}",
         inputs.switch("refresh"),
@@ -800,14 +811,17 @@ fn layers_visibility(inputs: &Inputs, visible: bool) -> Result<Value, Failure> {
 }
 /// `map.layer.show` executed on a Server.
 pub fn layers_show(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
+    require_native_host()?;
     layers_visibility(inputs, true)
 }
 /// `map.layer.hide` executed on a Server.
 pub fn layers_hide(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
+    require_native_host()?;
     layers_visibility(inputs, false)
 }
 /// `map.layer.reorder` executed on a Server.
 pub fn layers_reorder(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
+    require_native_host()?;
     let mut orders = Vec::new();
     for value in inputs.repeated("order") {
         let Some((id, order)) = value.rsplit_once('=') else {
@@ -831,6 +845,7 @@ pub fn layers_reorder(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
 }
 /// `map.layer.default` executed on a Server.
 pub fn layers_default_visibility(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
+    require_native_host()?;
     let visible = inputs.require("visible")? == "true";
     let defaults = inputs
         .repeated("layer")
@@ -843,6 +858,7 @@ pub fn layers_default_visibility(inputs: &Inputs, _: &Context) -> Result<Value, 
 }
 /// `survey.working-area.forms` executed on a Server: the project is explicit.
 pub fn working_area_forms_read(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
+    require_native_host()?;
     let path = with_project("/v1/survey/working-area-forms", &project(inputs)?);
     layers_answer(request(inputs, "GET", &path, None, 32 * 1024 * 1024)?)
 }
@@ -850,6 +866,7 @@ pub fn working_area_forms_read(inputs: &Inputs, _: &Context) -> Result<Value, Fa
 /// owner's `SelectRequest`, so nothing about the command's shape changes with
 /// the host.
 pub fn working_area_forms_select(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
+    require_native_host()?;
     let path = with_project("/v1/survey/working-area-forms/select", &project(inputs)?);
     let body = serde_json::to_vec(&ds_layer_ops::working_area_forms::SelectRequest {
         forms: inputs.repeated("form").to_vec(),
@@ -867,6 +884,7 @@ pub fn working_area_forms_select(inputs: &Inputs, _: &Context) -> Result<Value, 
 }
 /// `survey.working-area.clear` executed on a Server.
 pub fn working_area_forms_clear(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
+    require_native_host()?;
     let path = with_project("/v1/survey/working-area-forms/clear", &project(inputs)?);
     layers_answer(request(
         inputs,
@@ -905,17 +923,18 @@ pub static DOMAIN: Domain = Domain {
 };
 fn failure(e: impl ToString) -> Failure {
     Failure::failed("server_refused", e.to_string())
-        .remedy("verify native authentication, protected server state and ds core serve")
+        .remedy("verify native authentication, protected Core state and ds core serve")
 }
 fn startup_failure(error: auth::StartupFailure, lane: &str) -> Failure {
     match error {
         auth::StartupFailure::SignedOut => Failure::unauthorized("headless_signed_out", auth::SIGNED_OUT)
-            .remedy("connect this Server's native account for the same lane, approve the trusted device, then start it again")
+            .remedy("connect this Core's native account for the same lane, approve the trusted device, then start it again")
             .next(format!("ds account connect --lane {lane}")),
         auth::StartupFailure::Observation(message) => failure(message),
     }
 }
 fn state(inputs: &Inputs) -> Result<PathBuf, Failure> {
+    require_native_host()?;
     let explicit = inputs.value("state-dir").map(Path::new);
     let path = ds_compute_runtime::server_state_directory(inputs.require("lane")?, explicit)
         .map_err(failure)?;
@@ -1061,6 +1080,7 @@ fn per_project(inputs: &Inputs, workers: usize) -> Result<usize, Failure> {
 }
 
 pub fn serve(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
+    require_native_host()?;
     let lane = inputs.require("lane")?.to_owned();
     // The host's own numbers first. They are measured and parsed locally, so a
     // typo'd bound is answered without refreshing a credential to find out --
@@ -1156,7 +1176,7 @@ fn started_by_an_older_ds(address: std::net::SocketAddr) -> Failure {
     Failure::unavailable(
         "server_refused",
         format!(
-            "the Server on this state directory was started by an older ds that listens on {address} and admits a bearer; this ds speaks only to the owner-only socket and sent it nothing"
+            "the Core on this state directory was started by an older ds that listens on {address} and admits a bearer; this ds speaks only to the owner-only socket and sent it nothing"
         ),
     )
     .remedy(
@@ -1173,7 +1193,7 @@ fn request_with_timeout(
 ) -> Result<Vec<u8>, Failure> {
     let connection = host::load_connection(&state(inputs)?).map_err(failure)?;
     if connection.lane != inputs.require("lane")? {
-        return Err(failure("server lane differs from the selected lane"));
+        return Err(failure("Core lane differs from the selected lane"));
     }
     if let Some(address) = connection.legacy_address {
         return Err(started_by_an_older_ds(address));
@@ -1213,6 +1233,7 @@ fn json_request(
     serde_json::from_slice(&request(inputs, method, path, body, 1024 * 1024)?).map_err(failure)
 }
 pub fn solar_application(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
+    require_native_host()?;
     let path = PathBuf::from(inputs.require("request")?);
     let metadata = std::fs::symlink_metadata(&path).map_err(failure)?;
     if !metadata.is_file() || metadata.file_type().is_symlink() || metadata.len() > 32 * 1024 * 1024
@@ -1242,10 +1263,10 @@ pub fn solar_application(inputs: &Inputs, _: &Context) -> Result<Value, Failure>
         intent.response_timeout_seconds(),
     )?;
     let value: Value = serde_json::from_slice(&response)
-        .map_err(|_| failure("Server returned an invalid Solar application receipt"))?;
+        .map_err(|_| failure("Core returned an invalid Solar application receipt"))?;
     if value["schema"] != "ds-solar.application-receipt/v1" || value["project_id"] != project {
         return Err(failure(
-            "Server returned a Solar application receipt for another project",
+            "Core returned a Solar application receipt for another project",
         ));
     }
     Ok(value)
@@ -1280,6 +1301,7 @@ fn submit_key(inputs: &Inputs) -> Result<&str, Failure> {
 /// processing takes bytes: the request is assembled from what the caller
 /// holds, not read back out of a workspace file.
 pub fn submit(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
+    require_native_host()?;
     let key = submit_key(inputs)?.to_owned();
     // The project is resolved before the input is opened: an unscoped call
     // refuses without reading 64 MiB it would only have discarded.
@@ -1316,6 +1338,7 @@ pub fn submit(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
 /// client neither copies 64 MiB through a socket nor decides what the bytes
 /// are.
 pub fn tile_submit(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
+    require_native_host()?;
     let key = submit_key(inputs)?;
     let project = named_project(inputs)?;
     let file = std::fs::File::open(inputs.require("input")?).map_err(failure)?;
@@ -1338,6 +1361,7 @@ pub fn tile_submit(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
 }
 
 pub fn solar_submit(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
+    require_native_host()?;
     let key = submit_key(inputs)?.to_owned();
     let project = named_project(inputs)?;
     let path = std::fs::canonicalize(inputs.require("input")?).map_err(failure)?;
@@ -1353,6 +1377,7 @@ pub fn solar_submit(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     )
 }
 pub fn status(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
+    require_native_host()?;
     let path = if inputs.value("job").is_some() {
         format!("/v1/jobs/{}", id(inputs)?)
     } else {
@@ -1361,6 +1386,7 @@ pub fn status(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     json_request(inputs, "GET", &with_project(&path, &project(inputs)?), None)
 }
 pub fn activity(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
+    require_native_host()?;
     serde_json::from_slice(&request(
         inputs,
         "GET",
@@ -1371,6 +1397,7 @@ pub fn activity(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     .map_err(failure)
 }
 pub fn cancel(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
+    require_native_host()?;
     json_request(
         inputs,
         "POST",
@@ -1382,6 +1409,7 @@ pub fn cancel(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     )
 }
 pub fn result(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
+    require_native_host()?;
     let output = PathBuf::from(inputs.require("out")?);
     if output.exists() {
         return Err(
@@ -1418,6 +1446,7 @@ pub fn result(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
 /// indistinguishable from an id that never existed, and a destination file
 /// that must be absent.
 pub fn input(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
+    require_native_host()?;
     let output = PathBuf::from(inputs.require("out")?);
     if output.exists() {
         return Err(
@@ -1461,6 +1490,55 @@ mod tests {
 
     fn refused(body: Value) -> Failure {
         typed_refusal(409, serde_json::to_string(&body).unwrap().as_bytes())
+    }
+
+    #[test]
+    fn platform_readiness_refuses_unadmitted_background_targets() {
+        assert!(require_native_host_for("linux").is_ok());
+        for target in ["windows", "macos", "unknown"] {
+            let failure = require_native_host_for(target).unwrap_err();
+            assert_eq!(failure.code(), PLATFORM.code);
+            assert_eq!(failure.remedy_text(), Some(PLATFORM.remedy));
+            assert!(!native_host_availability_for(target).is_available());
+        }
+        assert_eq!(
+            (SERVE.availability)().is_available(),
+            cfg!(target_os = "linux")
+        );
+        assert_eq!(
+            (core_components::REMOVE.availability)().is_available(),
+            cfg!(target_os = "linux")
+        );
+        // Offline component inspection is separate from background-host support.
+        assert!((modules::RELEASE.availability)().is_available());
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    #[test]
+    fn unsupported_handlers_refuse_before_input_state_or_credentials() {
+        let context = Context {
+            confirmed: true,
+            output: ds_cli_contract::Output::resolve(ds_cli_contract::Format::Json, false, true),
+        };
+        let inputs = inputs(&STATUS, &["--project", "unread-project"]);
+        for handler in [
+            serve,
+            submit,
+            solar_submit,
+            tile_submit,
+            solar_application,
+            status,
+            activity,
+            cancel,
+            result,
+            input,
+            core_components::remove,
+        ] {
+            assert_eq!(
+                handler(&inputs, &context).unwrap_err().code(),
+                PLATFORM.code
+            );
+        }
     }
 
     #[test]
@@ -1614,7 +1692,7 @@ mod tests {
             assert!(declared.contains(&code), "`{code}` is declared nowhere");
             assert!(
                 default_remedy(Some(code), &Value::Null).is_some(),
-                "`{code}` has no remedy when the Server sends none"
+                "`{code}` has no remedy when the Core sends none"
             );
         }
     }

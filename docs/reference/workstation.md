@@ -146,7 +146,7 @@ thumbnails), `sync_downloads` (verified replicas). Each row says `count`,
 `retention`: `retained` is the machine's only copy of work; `cleanable` is a
 replica the machine can take again. `cleanable[]` names what a clean would
 remove; `storage.root` is the state root. No credential and no running Server
-are needed; `--server-state-dir` names a custom root. The browser answers the
+are needed; `--core-state-dir` names a custom root. The browser answers the
 same command over its own stores (survey records, design rooms, drafts,
 version downloads) through the same kernel module.
 
@@ -173,7 +173,7 @@ Shared by more than one command:
 `local-data status` and `local-data clean`:
 
 - `local_root_invalid` — the state root cannot be resolved from the lane and
-  `--server-state-dir`.
+  `--core-state-dir`.
 - `local_store_unreadable` — the lane's sync store or a state subdirectory
   cannot be read.
 - `unknown_store`, `store_retained`, `nothing_to_clean` — `clean` only, before

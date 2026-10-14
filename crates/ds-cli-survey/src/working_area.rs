@@ -131,7 +131,7 @@ pub static FORMS_COMMAND: Command = Command {
             runnable: false,
         },
         Example {
-            command: "ds survey working-area forms --project <project-id> --target server --output json",
+            command: "ds survey working-area forms --project <project-id> --target core --output json",
             note: "The same answer from the running Server for the project named.",
             runnable: false,
         },
@@ -179,7 +179,7 @@ pub static SELECT_COMMAND: Command = Command {
             runnable: false,
         },
         Example {
-            command: "ds survey working-area select --all --project <project-id> --target server",
+            command: "ds survey working-area select --all --project <project-id> --target core",
             note: "Every form, on the Server, for the project named.",
             runnable: false,
         },

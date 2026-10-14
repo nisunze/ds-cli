@@ -55,7 +55,7 @@ before a byte of the secret leaves this process.
 ```
 --target desktop                     this machine's native client (the default)
 --target desktop:<instance_id>       one named live instance
---target server                      the running `ds server serve`
+--target core                      the running `ds core serve`
 DS_TARGET=…                          the same value, for a whole session
 ```
 
@@ -162,7 +162,7 @@ one when several are live.
 | `desktop_unreachable` | a named descriptor's port answers nothing | it may have exited; restart and retry |
 | `context_generation_stale` | the window switched project or account mid-operation | retry against the view as it is now |
 | `unknown_target` | `--target` is not one of the three hosts | pass `desktop`, `desktop:<instance_id>` or `server` |
-| `target_host_unsupported` | `--target server` for an operation only the desktop performs | run it with `--target desktop` |
+| `target_host_unsupported` | `--target core` for an operation only the desktop performs | run it with `--target desktop` |
 
 `desktop_not_paired` names nothing on purpose: an instance signed in as another
 account is another person's session on this machine, and its existence is not

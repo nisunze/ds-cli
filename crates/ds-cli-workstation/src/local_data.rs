@@ -30,9 +30,9 @@ const PROJECT_ARG: Arg = Arg::value(
 )
 .required();
 const SERVER_STATE_DIR_ARG: Arg = Arg::value(
-    "server-state-dir",
+    "core-state-dir",
     "<absolute-path>",
-    "Matching `ds server serve --state-dir` when the Server uses a custom state root.",
+    "Matching `ds core serve --state-dir` when the Server uses a custom state root.",
 );
 const LANE_ARG: ds_cli_contract::spec::Arg =
     ds_cli_contract::spec::LANE.summary("Native deployment lane.");
@@ -44,13 +44,13 @@ const STORE_ARG: Arg = Arg::repeated(
 
 const ROOT_INVALID: Refusal = Refusal {
     code: "local_root_invalid",
-    when: "the Server state root cannot be resolved from the lane and --server-state-dir",
-    remedy: "omit --server-state-dir, or pass the same absolute path `ds server serve` uses",
+    when: "the Server state root cannot be resolved from the lane and --core-state-dir",
+    remedy: "omit --core-state-dir, or pass the same absolute path `ds core serve` uses",
 };
 const STORE_UNREADABLE: Refusal = Refusal {
     code: "local_store_unreadable",
     when: "the lane's sync store or a state subdirectory cannot be read on this machine",
-    remedy: "check the Server state directory's permissions, or pass the same --server-state-dir as ds server serve",
+    remedy: "check the Server state directory's permissions, or pass the same --core-state-dir as ds core serve",
 };
 const UNKNOWN_STORE: Refusal = Refusal {
     code: "unknown_store",
@@ -138,7 +138,7 @@ pub static CLEAN_COMMAND: Command = Command {
 fn server_state(inputs: &Inputs) -> Result<PathBuf, Failure> {
     ds_compute_runtime::server_state_directory(
         inputs.require("lane")?,
-        inputs.value("server-state-dir").map(Path::new),
+        inputs.value("core-state-dir").map(Path::new),
     )
     .map_err(|error| Failure::invalid(ROOT_INVALID.code, error).remedy(ROOT_INVALID.remedy))
 }

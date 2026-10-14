@@ -7,7 +7,7 @@
 //! `--target` is the one routing decision on top of them. There is
 //! deliberately no `ds core layers …`: a second id that differed only by
 //! who answered is exactly what that ruling ended. The decision lives in this
-//! crate because the `server` half of it is this crate's transport; every
+//! crate because the `core` half of it is this crate's transport; every
 //! domain that takes a host uses it from here.
 //!
 //! What each target means:
@@ -18,7 +18,7 @@
 //!   refused by name (`target_instance_unsupported`) so a caller learns the
 //!   spelling now and gets a real answer when slice 2 wires it, rather than
 //!   discovering the argument does not parse.
-//! * `server` — the running `ds core serve` on this machine, over its
+//! * `core` — the running `ds core serve` on this machine, over its
 //!   owner-only socket. The project is sent explicitly on every
 //!   request, so the Server verifies one named project and reads no selection
 //!   of its own.
@@ -32,12 +32,12 @@ use ds_cli_contract::spec::{Arg, Refusal};
 /// own name instead of by the parser's generic `invalid_choice`.
 pub const TARGET_ARG: Arg = Arg::value(
     "target",
-    "<desktop|desktop:instance|server>",
+    "<desktop|desktop:instance|core>",
     "Which host executes this operation; the desktop is the default.",
 )
 .default("desktop");
 
-/// The protected state directory of the `--target server` host, and the
+/// The protected state directory of the `--target core` host, and the
 /// project every request to it names. Both are this crate's own
 /// declarations, so the two halves of one operation cannot drift apart.
 pub const STATE_DIR_ARG: Arg = crate::STATE_DIR_ARG;
@@ -50,8 +50,8 @@ pub const TARGET_INSTANCE_UNSUPPORTED: Refusal = Refusal {
 };
 pub const UNKNOWN_TARGET: Refusal = Refusal {
     code: "unknown_target",
-    when: "--target is not desktop, desktop:<instance> or server",
-    remedy: "pass --target desktop or --target server",
+    when: "--target is not desktop, desktop:<instance> or core",
+    remedy: "pass --target desktop or --target core",
 };
 /// None of these four operations needs a rendered map — the catalogue, the
 /// remembered visibility and the governed order are all decided without one —
@@ -65,7 +65,7 @@ pub const UNKNOWN_TARGET: Refusal = Refusal {
 /// the same remedies whichever host executed the operation.
 pub const SERVER_REFUSED: Refusal = Refusal {
     code: "server_refused",
-    when: "--target server was passed and the host is unreachable, or it refused the request",
+    when: "--target core was passed and the host is unreachable, or it refused the request",
     remedy: "read the stated reason; verify ds core serve is running under this lane",
 };
 /// A second ACCOUNT is not something a layer request can meet: one Server is
@@ -116,7 +116,7 @@ pub fn desktop_documents(inputs: &Inputs) -> Result<ds_layer_ops::Native, Failur
 pub fn resolve(inputs: &Inputs) -> Result<Target, Failure> {
     match inputs.value("target").unwrap_or("desktop") {
         "desktop" => Ok(Target::Desktop),
-        "server" => Ok(Target::Server),
+        "core" => Ok(Target::Server),
         instance if instance.starts_with("desktop:") => Err(Failure::invalid(
             TARGET_INSTANCE_UNSUPPORTED.code,
             format!(
@@ -171,8 +171,9 @@ mod tests {
     fn the_default_host_is_the_desktop_and_an_instance_is_refused_by_name() {
         assert_eq!(resolve(&inputs(None)).unwrap(), Target::Desktop);
         assert_eq!(resolve(&inputs(Some("desktop"))).unwrap(), Target::Desktop);
-        assert_eq!(resolve(&inputs(Some("server"))).unwrap(), Target::Server);
+        assert_eq!(resolve(&inputs(Some("core"))).unwrap(), Target::Server);
 
+        assert_eq!(resolve(&inputs(Some("server"))).unwrap_err().code(), "unknown_target");
         let instance = resolve(&inputs(Some("desktop:kigali"))).unwrap_err();
         assert_eq!(instance.code(), "target_instance_unsupported");
         assert!(

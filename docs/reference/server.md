@@ -26,11 +26,10 @@ same declared effects; staging needs MCP `confirm: true`, while selection is
 read-only. Activation and rollback await a headless binding to the owning native
 session observations.
 
-`ds core engine --output json` inspects the Solar engine linked into this
-executable, without login, a running server or network access. Release builds
-return the owner's `ds.engine-build/v1` identity. The release publisher registers
-this manifest separately from the bundled standalone `ds-solar` manifest:
-their Cargo dependency closures can differ. Development builds omit release
+`ds core engine --output json` inspects the separately installed Solar engine captured by this
+Core executable, without login, a running Core or network access. Release builds
+return the owner's `ds.engine-build/v1` identity. The release publisher registers the standalone Solar manifest independently
+from Core; component identity does not imply project workflow readiness. Development builds omit release
 provenance and cannot be admitted as release engines.
 
 `ds core serve` hosts the shared Rust compute runtime under the identity
@@ -38,10 +37,10 @@ established by `ds account connect` (device linking). Run both under the same Li
 user and lane. No browser, paired Desktop, ADC or service-account impersonation
 is involved. Core is an independently installed ds runtime. Desktop is an
 optional client; Core stands on the user's side of the boundary with ds-brain, and the API is
-that owner's control over an owner-only Unix socket in the Server's state
+that owner's control over an owner-only Unix socket in the Core's state
 directory — no TCP port and no bearer (see [The door](#the-door-an-owner-only-socket)).
-One authenticated owner per Server, always
-— a Server on a rented machine is one the owner signs in on, works on and
+One authenticated owner per Core, always
+— a Core on a rented machine is one the owner signs in on, works on and
 shuts down; many users are many machines, never many accounts in one process.
 
 ```bash
@@ -61,8 +60,8 @@ ds core input --job <id> --out request.json
 Project-scoped `ds core` commands take `--project <exact-id>` explicitly.
 The CLI never reads or changes saved selection to resolve these requests. The
 UI may supply its active project as request context; that is a UI decision.
-The Server executes what its authenticated owner hands it for the project named;
-the gateway enforces entitlement at publication and sync. The Server holds no
+The Core executes what its authenticated owner hands it for the project named;
+the gateway enforces entitlement at publication and sync. The Core holds no
 project directory — it fetches none, caches none and refreshes none to admit
 work — and it carries no online/offline conditional: admission, queueing,
 execution, restart recovery and capacity are local and work with no upstream
@@ -70,7 +69,7 @@ present at all. Three consequences worth stating plainly:
 
 - **`ds core serve` needs no selected project.** An account that has never
   run `ds auth project use` can host. Callers name their project per request.
-- **One Server serves many projects at once.** Nothing switches, and nothing
+- **One Core serves many projects at once.** Nothing switches, and nothing
   needs a restart to move between them.
 - **A project named for the first time is admitted on the owner's word.**
   Whether its effects may leave the machine — a publication, a sync — is the
@@ -86,17 +85,17 @@ named. No saved selection is consulted.
 Passing `--project` there is still worth doing — it is how you learn you
 prepared the wrong city, as a differing name refuses `scope_mismatch`.
 
-A Server that holds no credential for the requested lane refuses locally with
+A Core that holds no credential for the requested lane refuses locally with
 `headless_signed_out` and an `account connect` command for that same lane.
-Approve the trusted device in the signed-in Desktop, then start the Server
-again. No Server state or socket is created before its owner is admitted.
+Approve the trusted device in the signed-in Desktop, then start the Core
+again. No Core state or socket is created before its owner is admitted.
 Failure to read protected state remains a failure; it is distinct from being
 signed out.
 
 ### Working two projects side by side
 
 ```bash
-# Two projects, one Server, no switching and no restart.
+# Two projects, one Core, no switching and no restart.
 ds core solar submit --input kigali.server-submission.json --key solar-a-001    # sealed: project A
 ds core submit --input b-transformers.json --key lv-b-001 --project project-b
 ds core status --project project-a --output json      # A's jobs only
@@ -151,7 +150,7 @@ which.
 
 ### Refusals, by their own names
 
-The Server's typed refusals are re-raised by the CLI under the same code, so an
+The Core's typed refusals are re-raised by the CLI under the same code, so an
 operation fails identically whichever host executed it.
 
 | code | when |
@@ -164,7 +163,7 @@ operation fails identically whichever host executed it.
 | `scope_mismatch_for_key` | that key, in this project, already admitted a job for another operation |
 | `payload_changed_for_key` | that key already admitted a job with different input bytes |
 | `capacity_exhausted` | the global queue, one project's queue or the request door is full; carries `retry_after_ms` and `scope` (`global`, `project` or `door`) |
-| `context_unrecoverable` | a job stored by an older Server names no project; read its stored input with `ds core input` and resubmit it under an explicit `--project` |
+| `context_unrecoverable` | a job stored by an older Core names no project; read its stored input with `ds core input` and resubmit it under an explicit `--project` |
 
 `not_visible` says `job not found` and nothing more. It never names the
 project, the owner or whether the id exists — the class, the code and the
@@ -174,7 +173,7 @@ kept: a job you can see that simply has not finished answers `server_refused`
 with "job has no completed result", so "not yours" and "not yet" stay
 distinguishable where that is safe and identical where it is not.
 
-### One owner per Server
+### One owner per Core
 
 One `ds core serve` serves **one authenticated native account** and as many
 of that account's projects as it names. Its socket answers processes of the
@@ -183,7 +182,7 @@ other account — root included — is `server_peer_refused`; that is the whole
 enforcement — there is no header naming an account, no bearer, and no second
 identity for this process to have. A second account needs its own
 `ds core serve` with its own `--state-dir`. This is the model, not a gap to close: one
-user per machine, many users are many machines. Nothing in the Server is built
+user per machine, many users are many machines. Nothing in the Core is built
 for many users in one process — no per-principal limits, no multi-user auth, no
 fairness beyond the owner's own projects sharing one machine.
 
@@ -209,7 +208,7 @@ your own jobs, and another project's job answers `job not found` exactly as an
 invented id does — with two differences: the job need not have finished, and
 `--project` here narrows the read; no saved selection is consulted.
 That last one is deliberate: the row this exists for is a row stored by a
-Server released before per-job context, which names no project at all and is
+Core released before per-job context, which names no project at all and is
 therefore visible only to a read that names none either. Such a row never ran,
 so there is no result to read; its input is what there is, and resubmitting it
 under an explicit `--project` is new work with its own id.
@@ -217,7 +216,7 @@ under an explicit `--project` is new work with its own id.
 `core solar submit` accepts one private `ds.solar.server-submission/v1`
 envelope. It contains the existing prepared calculation fields (`prepared`,
 optional `render_charts`, optional `run_id`) and the exact matching
-`ds-solar.prepared-publication-claim/v1` as `publication_claim`. The Server
+`ds-solar.prepared-publication-claim/v1` as `publication_claim`. The Core
 checks the claim's project, city, city-content digest and prepared-input digest
 against the prepared calculation, and seals the claim's snapshot SHA-256,
 input-base fingerprint and actor-bound receipt into the durable job. The
@@ -225,21 +224,21 @@ existing compute-artifact authority revalidates that sealed claim under the
 job's own project before publication. A missing, malformed, expired or
 stale claim is never published: missing or malformed claims refuse at
 admission, and an expired or stale claim is recorded by the publication
-authority. A server never stamps a newly fetched snapshot onto an older
+authority. A Core never stamps a newly fetched snapshot onto an older
 prepared input. The envelope is owner-private because the claim carries the
-actor-bound receipt. The envelope is a workspace file and the Server accesses
+actor-bound receipt. The envelope is a workspace file and the Core accesses
 the filesystem exactly as the desktop does — same machine, same user — so
-`--input` sends the **path**: the Server opens it, reads it under the owner's
+`--input` sends the **path**: the Core opens it, reads it under the owner's
 identity and digests the bytes it read. The path must be absolute and name a
 regular file of at most 64 MiB. A transformer batch still travels as bytes,
 because the desktop's own transformer processing takes bytes.
 
-## Layers on the running Server
+## Layers on the running Core
 
 `ds core layers list|default|show|hide|reorder` are **retired**. One operation has
 one command id whichever host executes it, so the layer drawer's catalogue,
 visibility and order are `ds map layer list|default|show|hide|reorder` with an explicit
-`--target server|desktop[:instance]` (the routing default decides when you pass
+`--target core|desktop[:instance]` (the routing default decides when you pass
 none). A second set of ids that differed only by which host answered was the
 thing to remove: the same request, the same arguments and the same answer
 should not have had two names.
@@ -247,9 +246,9 @@ should not have had two names.
 Nothing about the operation moved. Both hosts call ONE shared Rust owner
 (`ds-layer-ops` over `ds-command-kernel::layer_state`); the HTTP host and the
 CLI embed no rule of their own. What `ds-cli-server` keeps is the transport
-that genuinely is the Server's: the owner-only socket (the kernel names the
+that genuinely is the Core's: the owner-only socket (the kernel names the
 peer's account; native authority renewed and revocation observed as for jobs),
-with `--target server` sending an explicit `project` on every layer
+with `--target core` sending an explicit `project` on every layer
 request. Preferences never become another account's visibility because both
 reached one host: a restart under another account reads that account's own
 scope and leaves the previous one untouched.
@@ -264,13 +263,13 @@ travels in the query. Refusals are typed on the wire (`class`, `code`, `error`,
 `remedy`) and re-raised by the CLI under the same code: `unknown_layer`
 (runtime ids are never accepted), `duplicate_layer`, `invalid_order`,
 `invalid_number`, `local_layer_refused`, `project_context_changed` (the
-Server's document is on another project than the one named),
+Core's document is on another project than the one named),
 `auth_identity_mismatch`, `headless_signed_out`, plus the project refusals
 above. Nothing here pretends a renderer mounted anything: `writes` name the
 layout word a renderer would apply to each runtime layer.
 
 The same transport carries the working-area form choice — `ds survey
-working-area forms|select|clear --target server --project <id>` over
+working-area forms|select|clear --target Core --project <id>` over
 `GET /v1/survey/working-area-forms?project=`,
 `POST /v1/survey/working-area-forms/select?project=` (`{"forms": [slugs]}`,
 `{"all": true}` or `{"none": true}`) and
@@ -284,67 +283,68 @@ own codes. See `docs/reference/survey.md` for what the choice means.
 required, and the document source is opened *for that project*
 (`ds-cli-auth`'s explicit-project layer fence): the saved selection is not read
 on this path at all, so two of the owner's projects are listed, hidden and
-reordered side by side through one Server with no switching and no restart.
+reordered side by side through one Core with no switching and no restart.
 The named project is then held against the document that comes back — one that
 answers about another project is `project_context_changed`, naming both, and
 nothing is written. A project the account cannot read is refused where the
 account is established (`auth_rejected`), not filtered out of a directory this
 host does not hold.
 
-Browser-to-Server layer control is **not** provided: the door is an owner-only
+Browser-to-Core layer control is **not** provided: the door is an owner-only
 Unix socket, which a web page cannot reach and a web visitor is not the owner
-of. The long-term direction is a browser UI talking to this Server in place of
+of. The long-term direction is a browser UI talking to this Core in place of
 the kernel in WASM; nothing here assumes a short-lived process or that a
 webview is the only client, and nothing more is built for it yet.
 
 ## The door: an owner-only socket
 
-The Server listens on exactly one thing: `<state-dir>/server.sock`, a Unix
+The Core listens on exactly one thing: `<state-dir>/server.sock`, a Unix
 domain socket (mode 0600) inside the owner-only state directory (0700). It
 opens no TCP port, and no bearer or other secret crosses the socket in either
 direction.
 
-- **The Server asks the kernel who is calling.** Every accepted connection's
+- **The Core asks the kernel who is calling.** Every accepted connection's
   peer account is read from the kernel (`SO_PEERCRED` on Linux, `getpeereid`
   elsewhere), and a request is served only when that account is the one the
-  Server runs as. Anything else — another user, root, or a request that did not
+  Core runs as. Anything else — another user, root, or a request that did not
   come through the socket — is `401 server_peer_refused`, naming nobody.
-- **The client asks the same of the Server.** `ds` connects only to a socket
+- **The client asks the same of the Core.** `ds` connects only to a socket
   that is a socket, owned by its own account, in a state directory it owns
   (0700, `connection.json` 0600), and refuses — sending nothing — when the
   process answering runs as another account.
 - **One host per state directory.** `ds core serve` takes an advisory lock
   (`server.lock`) before it touches the socket; a second host on the same state
-  is refused `a Server is already running on …`. A socket left by a host that
+  is refused `a Core is already running on …`. A socket left by a host that
   died is removed at the next start only when nothing answers on it; something
   that does answer is never replaced. A stopped host removes its socket, so a
-  caller is told `no Server is listening … start ds core serve` at once.
-- **Which Server is which `--state-dir`.** There is no `--listen` any more
-  (`core.serve` contract 2). Two Servers on one machine — Stable beside
-  Canary, or a development Server beside the installed one — are two state
+  caller is told `no Core is listening … start ds core serve` at once.
+- **Which Core is which `--state-dir`.** There is no `--listen` any more
+  (`core.serve` contract 2). Two Core runtimes on one machine — Stable beside
+  Canary, or a development Core beside the installed one — are two state
   directories. A Unix socket path is limited to about 100 bytes, so a very long
   `--state-dir` is refused at start with that reason.
 - **`connection.json` holds no credential.** It records
-  `{"schema": "ds.server-connection/v2", "owner", "lane"}`: whose Server this is
+  `{"schema": "ds.server-connection/v2", "owner", "lane"}`: whose Core this is
   and on which lane. It is still owner-only, because it names the owner.
 
-**Moving from a `ds` that listened on TCP.** Servers before this one listened on
+**Moving from a `ds` that listened on TCP.** Core runtimes before this one listened on
 `127.0.0.1:19766` (or `--listen`) and admitted a bearer stored in
 `connection.json`, unchanged across restarts. Both directions fail at once and
 say what to do; neither hangs:
 
 | Situation | What happens |
 |---|---|
-| New `ds` client, Server started by an older `ds` | `server_refused`: "started by an older ds that listens on <address>"; nothing is sent to that address. Stop that Server and start it again with the new `ds`. |
-| New `ds core serve` over an older record | The record is adopted (same owner and lane) and rewritten without the bearer, taking it off the disk. If the recorded address still accepts connections, an older Server may still be running on this state, so the start is refused `server_refused` naming the address — stop it first. If the port belongs to something else, remove `connection.json` (it holds only the retired bearer) and start again. |
-| Older `ds` client, Server started by the new `ds` | The older client cannot read the new record and fails at once with `invalid protected server connection`. Upgrade that `ds`. |
-| Older `ds core serve` over a new record | Refused at start with `invalid protected server connection`. Use the new `ds`. |
+| New `ds` client, Core started by an older `ds` | `server_refused`: "started by an older ds that listens on <address>"; nothing is sent to that address. Stop that Core and start it again with the new `ds`. |
+| New `ds core serve` over an older record | The record is adopted (same owner and lane) and rewritten without the bearer, taking it off the disk. If the recorded address still accepts connections, an older Core may still be running on this state, so the start is refused `server_refused` naming the address — stop it first. If the port belongs to something else, remove `connection.json` (it holds only the retired bearer) and start again. |
+| Older `ds` client, Core started by the new `ds` | The older client cannot read the new record and fails at once with `invalid protected Core connection`. Upgrade that `ds`. |
+| Older `ds core serve` over a new record | Refused at start with `invalid protected Core connection`. Use the new `ds`. |
 
 **Where there are no Unix sockets.** `ds core serve` has only ever been
 available on Linux, and its protected state is Unix-only. On Windows nothing
-changes: the Server commands remain unavailable (`server_platform_unsupported`),
-nothing listens and nothing is sent. The Desktop does not use this Server; its
-own local bridge to `ds` is a separate transport (`ds desktop`).
+changes: the Core commands remain unavailable (`server_platform_unsupported`),
+nothing listens and nothing is sent. Windows Desktop attachment therefore
+requires an admitted Windows Core transport; a separate Desktop bridge cannot
+substitute for that owner or establish shared authentication/storage.
 
 ## Protected state and authority
 
@@ -364,7 +364,7 @@ seconds: is this still the credential that started me? A different credential, a
 different account, or a sign-out on this machine stops the host with
 `server_owner_changed` and the remedy; a machine that cannot be read right now
 is logged and refuses nothing, because "could not tell" is not "not the owner
-any more". Nothing on a request path contacts the gateway, so a Server keeps
+any more". Nothing on a request path contacts the gateway, so a Core keeps
 serving with no upstream at all — starting, admitting, queueing, executing,
 recovering and answering — and loses nothing when the network comes back.
 
@@ -378,7 +378,7 @@ pauses execution and fences result commits. Restoring the same identity permits
 pending work to recover. Entitlement to ONE project is the gateway's decision where
 that project's effect crosses to the cloud: a publication or sync it refuses
 for project A stops A's effect and leaves every other project running; the
-Server makes no revocation decision of its own. The Server state directory and
+Core makes no revocation decision of its own. The Core state directory and
 the desktop data directory are still two roots on disk; converging them is
 slice-2 work.
 Each running host also retains its starting provider/device binding. It cannot
@@ -389,7 +389,7 @@ jobs still belong to the same canonical account, lane, audience and project.
 Worker leases renew during computation. After a killed process, an expired
 30-second lease can be reclaimed; completed jobs are never rerun. A job
 recovered after a restart keeps the exact context it was admitted under. A job
-row written by a Server released before per-job context recovers its project
+row written by a Core released before per-job context recovers its project
 from its own sealed input (Solar) and from nothing else: a transformer row
 carries no project by design, so it is `context_unrecoverable` — readable,
 never claimed, never published, whatever project happens to be selected when
@@ -401,11 +401,11 @@ releasing CPU; cancellation does not promise mid-algorithm interruption.
 Complete interactive Desktop workflow delegation, device management UI and
 public browser authentication remain separate migration gates.
 
-Development: `ds-web/run-linux-server.sh` builds locally and restarts its own
-server after successful Rust rebuilds. Failed builds preserve the running
-server. Durable state is outside the checkout and survives reloads. It uses
+Development: `ds-web/run-linux-core.sh` builds locally and restarts its own
+Core after successful Rust rebuilds. Failed builds preserve the running
+Core. Durable state is outside the checkout and survives reloads. It uses
 an installed, digest-bound native profile catalog, or the explicit debug-only
-`DS_NATIVE_CLIENT_PROFILE_BUNDLE`. `./run-linux-server.sh --cli auth status`
+`DS_NATIVE_CLIENT_PROFILE_BUNDLE`. `./run-linux-core.sh --cli auth status`
 uses the exact development executable; `--cli account connect` establishes its
 native identity when needed.
 
@@ -414,7 +414,7 @@ command catalog, including `--project`. Starting the foreground host is a
 terminal/service operation and is excluded from MCP so it cannot block a tool
 response indefinitely.
 
-Server calculations and Reporter exports drain through the same native
+Core calculations and Reporter exports drain through the same native
 `ds-sync-runtime::run` and durable sync-store transitions. One project scheduler
 observes both engines. A publication 401 holds that project's queue and retains
 its replay keys and readable bytes; reconnect or a manual pass with a valid
@@ -424,7 +424,7 @@ batch publication coverage is still being migrated to this common store.
 
 `core activity` reads the server's shared Sync Center state, including native
 job lifecycle and artifact publication receipts, grouped by project. It uses the
-same protected connection and native identity as other Server commands; it
+same protected connection and native identity as other Core commands; it
 creates no queue. A completed calculation and a published artifact are separate
 states.
 
@@ -432,33 +432,33 @@ states.
 
 `ds report project export --transformer <name> --out-dir <fresh-directory>
 --publish --lane canary` runs the native report engine and seals verified outputs
-into the same report artifact store consumed by Desktop. The foreground Server
+into the same report artifact store consumed by Desktop. The foreground Core
 publishes queued reports in the background through the existing WorkGrant
 authority, under the job's own project. `queued_for_server_sync` is an enqueue
 receipt, not proof of remote publication; inspect
 `ds core activity --lane canary --project <exact-id> --output json`.
 
-Both commands must use the same user, lane and state directory. If Server uses
-`--state-dir`, export must receive that exact path as `--server-state-dir`.
+Both commands must use the same user, lane and state directory. If Core uses
+`--state-dir`, export must receive that exact path as `--core-state-dir`.
 Report names are partitioned by project, so the same report name in two
 projects does not collide. Without `--publish`, export remains local-only.
 Development engines cannot claim release publication authority. This command
 computes before queueing; it does not claim a durable background report-compute
 job.
 
-The development launcher isolates config, cache, data and Server state below
-`DS_SERVER_DEV_ROOT` (default `~/.local/state/ds/server-dev`). Use its `--cli`
+The development launcher isolates config, cache, data and Core state below
+`DS_CORE_DEV_ROOT` (default `~/.local/state/ds/core-dev`). Use its `--cli`
 mode to authenticate that development environment. It neither copies the
-installed Server login nor allows a development state override into installed
-Server state.
+installed Core login nor allows a development state override into installed
+Core state.
 
 ## Native consumer tests
 
-The Server's Solar completion tests execute a real compatible standalone engine.
+The Core's Solar completion tests execute a real compatible standalone engine.
 Select that engine explicitly when it is not beside the test executable:
 
 ```bash
-DS_SOLAR_ENGINE_BIN=/absolute/path/to/solar cargo test -p ds-cli-server --lib
+DS_SOLAR_ENGINE_BIN=/absolute/path/to/solar cargo test -p ds-cli-Core --lib
 ```
 
 The engine must satisfy the existing protocol and 512 MiB executable admission
@@ -472,7 +472,7 @@ prove a completed result.
 ## Native publication recovery
 
 `ds core sync status --project <exact-id> --output json` reads bounded,
-path-free publication history under this Server's principal, deployment and
+path-free publication history under this Core's principal, deployment and
 installation. It works offline and creates no state when the queue is absent.
 
 `ds core sync retry --project <exact-id> --row <exact-id> --yes` explicitly
@@ -489,4 +489,4 @@ truncated. Apply with `ds core sync sanitize apply --project <exact-id>
 published or fully superseded terminal history and explicitly retry recoverable
 current failures; it retains authored inputs, immutable files and provenance.
 These commands use the kernel's `ds.sync-recovery/v1` control and result, with no
-separate Server recovery policy or gateway publication sequence.
+separate Core recovery policy or gateway publication sequence.

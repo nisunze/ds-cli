@@ -345,7 +345,7 @@ pub fn refusal_failure(refusal: &Refusal) -> Failure {
         ),
         CAPACITY_EXHAUSTED => (
             ExitClass::Unavailable,
-            "retry after the stated delay, or start the server with more workers",
+            "retry after the stated delay, or start Core with more workers",
         ),
         // One sentence, everywhere this code is raised, and it is one the
         // owner can carry out: the row is readable and will never run, it has
@@ -353,11 +353,11 @@ pub fn refusal_failure(refusal: &Refusal) -> Failure {
         // bytes come back so they can be resubmitted as new work.
         CONTEXT_UNRECOVERABLE => (
             ExitClass::Conflict,
-            "read the job's stored input with ds server input, then resubmit it under an explicit --project",
+            "read the job's stored input with ds core input, then resubmit it under an explicit --project",
         ),
         CONTEXT_CORRUPT => (
             ExitClass::InvalidInput,
-            "shorten the value the server refused and repeat the request",
+            "shorten the value Core refused and repeat the request",
         ),
         _ => (ExitClass::Failed, "read the stated reason and retry"),
     };
@@ -379,7 +379,7 @@ pub fn submit_failure(error: &SubmitError) -> Failure {
         SubmitError::Invalid(message) => Failure::invalid("server_refused", message.clone())
             .remedy("send the documented request bytes"),
         SubmitError::Host(message) => Failure::failed("server_refused", message.clone())
-            .remedy("verify native authentication, protected server state and ds server serve"),
+            .remedy("verify native authentication, protected Core state and ds core serve"),
     }
 }
 

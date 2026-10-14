@@ -172,8 +172,19 @@ pub static STAGE: Command = Command {
     reference: Some("docs/reference/core.md"),
     search: &["addons", "update", "install", "ready"],
     requires: Requires::Server,
-    availability: || Availability::Available,
+    availability: native_module_availability,
 };
+
+pub(crate) fn native_module_availability() -> Availability {
+    match ds_update_runtime::modules::current_platform() {
+        Ok(_) => Availability::Available,
+        Err(reason) => Availability::unavailable(
+            "module_platform_unsupported",
+            reason,
+            "use an admitted Linux or Windows x86_64 native host",
+        ),
+    }
+}
 
 fn component(inputs: &Inputs) -> Result<ModuleComponent, Failure> {
     serde_json::from_value(serde_json::json!(inputs.require("component")?)).map_err(|_| {
@@ -221,6 +232,7 @@ fn native_failure_or(message: String, fallback: &str) -> Failure {
 }
 
 pub fn stage(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
+    ds_update_runtime::modules::current_platform().map_err(native_failure)?;
     let component = component(inputs)?;
     let lane = ds_cli_auth::Lane::parse(inputs.require("channel")?)?;
     let sha256 = inputs.require("sha256")?;

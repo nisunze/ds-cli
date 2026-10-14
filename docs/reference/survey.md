@@ -504,7 +504,7 @@ choice; `select` replaces the whole selection (duplicates fold, order is the
 catalogue's) and is idempotent (`changed: false` writes nothing); a `--form`
 slug that is not a form of the project is `unknown_form`, naming it, and nothing
 is written; a chosen slug the project no longer has is reported in `stale` and
-never loaded. `--target server --project <id>` runs the same operation on the
+never loaded. `--target core --project <id>` runs the same operation on the
 running Server for the project named; the desktop target reads the saved
 selection when `--project` is omitted. Every host — `ds`, the Server, the
 browser — asks the same kernel question (`survey_working_area_forms`), so the
@@ -619,7 +619,7 @@ A moment is one survey original this machine holds bytes for. The Server's
 survey-media store is the authority for what the machine holds: rows in the
 lane's `store.sqlite`, each photo's bundle (`original.bin`, `thumbnail.jpeg`,
 `manifest.json`) under `<state>/survey-media/<project>/`. Reads need no
-credential and no running Server; pass `--server-state-dir` only when the
+credential and no running Server; pass `--core-state-dir` only when the
 Server runs on a custom state root.
 
 `ds survey moments list --project <id> --lane canary --output json` answers

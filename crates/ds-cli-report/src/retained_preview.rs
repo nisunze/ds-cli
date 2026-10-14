@@ -35,9 +35,9 @@ const OUT: Arg = Arg::value(
 )
 .required();
 const STATE: Arg = Arg::value(
-    "server-state-dir",
+    "core-state-dir",
     "<absolute-path>",
-    "Same native state root as ds server serve; omit for the lane default.",
+    "Same native state root as ds core serve; omit for the lane default.",
 );
 const INPUTS_INVALID: Refusal = Refusal {
     code: "preview_inputs_invalid",
@@ -204,7 +204,7 @@ pub fn preflight(inputs: &Inputs) -> Result<(), Failure> {
         ));
     }
     if inputs
-        .value("server-state-dir")
+        .value("core-state-dir")
         .is_some_and(|state| !Path::new(state).is_absolute())
     {
         return Err(invalid("The server state directory must be absolute."));
@@ -328,7 +328,7 @@ pub fn refresh(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let project = inputs.require("project")?;
     let transformer = inputs.require("transformer")?;
     let out = Path::new(inputs.require("out")?);
-    let state = inputs.value("server-state-dir");
+    let state = inputs.value("core-state-dir");
     crate::export::voltage_drop_project_a4_preflight()?;
     crate::export::voltage_drop_browser_preflight().map_err(render_failed)?;
     let engine = release_engine()?;

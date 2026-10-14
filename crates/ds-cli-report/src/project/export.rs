@@ -101,7 +101,7 @@ const DRY_RUN_ARG: Arg = Arg::switch(
 /// `--force` generates the whole policy without consulting that evidence.
 const FORCE_ARG: Arg = Arg::switch("force", "Regenerate all outputs; reuse none.");
 const SERVER_STATE_DIR_ARG: Arg = Arg::value(
-    "server-state-dir",
+    "core-state-dir",
     "<absolute-path>",
     "Publication queue root for a publishing run. A dry-run or local layout proof opens no queue and ignores this path; its receipt says so.",
 );
@@ -214,7 +214,7 @@ const PUBLISH_SCOPE_CHANGED: Refusal = Refusal {
 const PUBLISH_ROOT: Refusal = Refusal {
     code: "report_publish_root_invalid",
     when: "the Server state root is unavailable, relative, or cannot hold a sealed publication",
-    remedy: "use Server's default state root, or the same absolute --server-state-dir as ds server serve",
+    remedy: "use Server's default state root, or the same absolute --core-state-dir as ds core serve",
 };
 const CONTEXT_UNSUPPORTED: Refusal = Refusal {
     code: "print_context_unsupported",
@@ -411,7 +411,7 @@ pub static COMMAND: Command = Command {
             runnable: false,
         },
         Example {
-            command: "ds report project export --transformer tx_a --out-dir ./proof --dry-run --server-state-dir /isolated/server-state --output json --project <exact-id>",
+            command: "ds report project export --transformer tx_a --out-dir ./proof --dry-run --core-state-dir /isolated/server-state --output json --project <exact-id>",
             note: "Local proof; state-dir ignored and no queue opened.",
             runnable: false,
         },
@@ -1439,7 +1439,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let publish_queue = if publish {
         Some(PublicationQueue::open(
             lane,
-            inputs.value("server-state-dir").map(Path::new),
+            inputs.value("core-state-dir").map(Path::new),
         )?)
     } else {
         // A proof never opens either the custom or default Server queue.
@@ -2168,7 +2168,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
                 scope,
                 identity: &identity,
             },
-            inputs.value("server-state-dir").is_some(),
+            inputs.value("core-state-dir").is_some(),
         );
     }
 
@@ -2524,7 +2524,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             "state": "dry_run",
             "reason": dry_run_reason(dry_run, proofs_requested, preview_requested),
             "queue_opened": false,
-            "server_state_dir_ignored": inputs.value("server-state-dir").is_some(),
+            "server_state_dir_ignored": inputs.value("core-state-dir").is_some(),
             "note": "THIS RUN PUBLISHED NOTHING. The files are local only and no queue can see them. Re-run without --dry-run to publish, or `ds report project publish --from <out-dir>` to publish what is already on disk.",
         }),
     };
@@ -4823,7 +4823,7 @@ mod tests {
             COMMAND
                 .args
                 .iter()
-                .any(|arg| arg.name == "server-state-dir")
+                .any(|arg| arg.name == "core-state-dir")
         );
         assert!(
             COMMAND

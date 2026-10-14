@@ -1082,7 +1082,7 @@ impl LiveServer {
         let mut child = ds_command(
             home.config_home(),
             &[
-                "server",
+                "core",
                 "serve",
                 "--lane",
                 LANE,
@@ -1116,7 +1116,7 @@ impl LiveServer {
             _machine: machine,
         };
         assert!(
-            until(30, || server.said().contains("DS server ready at")),
+            until(30, || server.said().contains("DS Core ready at")),
             "the Server never became ready with no gateway present. It said: {}",
             server.said()
         );

@@ -50,7 +50,7 @@ survives on a signed lease for `OFFLINE_LEASE_SECONDS` (7 days), which is what
 concludes it was uninstalled.
 
 A server host registers through exactly the same call, but only while a Sync
-Center operation runs. A `ds server serve` host that never performs one never
+Center operation runs. A `ds core serve` host that never performs one never
 stamps anything, and one that never syncs at all never registers. That is a
 real gap in coverage, and the projection reports how long a row has been silent
 rather than papering over it.

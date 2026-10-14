@@ -125,7 +125,7 @@ impl Fixture {
                 transformer,
                 "--lane",
                 lane,
-                "--server-state-dir",
+                "--core-state-dir",
                 self.state.to_str().unwrap(),
                 "--output",
                 "json",
@@ -176,7 +176,7 @@ impl Fixture {
     }
 
     fn assert_mcp_parity(&self, cli: &Value) {
-        let arguments = json!({"project":PROJECT,"transformer":TRANSFORMER,"server-state-dir":self.state,"lane":"stable"});
+        let arguments = json!({"project":PROJECT,"transformer":TRANSFORMER,"core-state-dir":self.state,"lane":"stable"});
         let chapter = self.mcp("chapters", &[json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"ds_reports","arguments":{"operation":"invoke","command":"report.outbox.inventory","arguments":arguments}}})]);
         assert_eq!(&response(&chapter, 1)["result"]["structuredContent"], cli);
         let typed = self.mcp("commands", &[

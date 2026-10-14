@@ -334,7 +334,7 @@ async fn unserved(request: Request) -> ApiError {
     typed(
         &Failure::invalid(
             "unsupported_operation",
-            format!("this server does not serve {path}"),
+            format!("this Core does not serve {path}"),
         )
         .remedy("update ds, or read ds core --help for what this host serves"),
     )
@@ -574,7 +574,7 @@ async fn cancel(
         };
         let publication_cancel = |job: ds_command_kernel::compute_jobs::Job| {
             let activity = app.activity.as_ref().ok_or_else(|| {
-                host_failure("Solar Sync Center activity is unavailable before server startup")
+                host_failure("Solar Sync Center activity is unavailable before Core startup")
             })?;
             let publication = activity.cancel_publication(&job).map_err(host_failure)?;
             Ok(Json(json!({"job":job,"publication":publication})))
@@ -712,7 +712,7 @@ async fn activity(
         let activity = app
             .activity
             .clone()
-            .ok_or("Solar Sync Center activity is unavailable before server startup")?;
+            .ok_or("Solar Sync Center activity is unavailable before Core startup")?;
         let mut projects = Vec::new();
         for scope in project_scopes(&app, project.as_deref())? {
             // Whether this project holds more durable Solar work than one
@@ -733,7 +733,7 @@ async fn activity(
     .await
 }
 
-/// Which projects an answer about "this Server's work" covers: the distinct
+/// Which projects an answer about "this Core's work" covers: the distinct
 /// projects of the durable jobs this caller can see, plus the ones holding
 /// report publications, narrowed to one when the caller named one.
 ///
@@ -791,7 +791,7 @@ fn host_failure(message: impl ToString) -> Failure {
 
 pub fn prepare_directory(path: &Path) -> Result<(), String> {
     if !path.is_absolute() {
-        return Err("server state directory must be absolute".into());
+        return Err("Core state directory must be absolute".into());
     }
     if !path.exists() {
         #[cfg(unix)]
@@ -805,9 +805,7 @@ pub fn prepare_directory(path: &Path) -> Result<(), String> {
         }
         #[cfg(not(unix))]
         {
-            return Err(
-                "server hosting currently requires Linux protected filesystem state".into(),
-            );
+            return Err("Core hosting currently requires Linux protected filesystem state".into());
         }
     }
     protected(path, true)?;
@@ -823,7 +821,7 @@ fn protected(path: &Path, directory: bool) -> Result<(), String> {
         || (directory && !metadata.is_dir())
         || (!directory && !metadata.is_file())
     {
-        return Err("server state must be an owned regular path".into());
+        return Err("Core state must be an owned regular path".into());
     }
     #[cfg(unix)]
     {
@@ -831,14 +829,14 @@ fn protected(path: &Path, directory: bool) -> Result<(), String> {
         // SAFETY: geteuid reads the calling process identity and has no pointers.
         if metadata.uid() != unsafe { libc::geteuid() } || metadata.mode() & 0o077 != 0 {
             return Err(
-                "server state must be owner-only (directory 0700, connection file 0600)".into(),
+                "Core state must be owner-only (directory 0700, connection file 0600)".into(),
             );
         }
         Ok(())
     }
     #[cfg(not(unix))]
     {
-        Err("server connection requires a protected native state adapter on this platform".into())
+        Err("Core connection requires a protected native state adapter on this platform".into())
     }
 }
 /// Read the protected `connection.json` of the Server over `directory`.
@@ -864,7 +862,7 @@ pub fn load_connection(directory: &Path) -> Result<Connection, String> {
     if let Ok(record) = serde_json::from_slice::<Record>(&bytes) {
         if record.schema != CONNECTION_SCHEMA {
             return Err(format!(
-                "this server connection is {}, and this ds reads {CONNECTION_SCHEMA}; use the ds that started the Server",
+                "this Core connection is {}, and this ds reads {CONNECTION_SCHEMA}; use the ds that started the Core",
                 record.schema
             ));
         }
@@ -877,7 +875,7 @@ pub fn load_connection(directory: &Path) -> Result<Connection, String> {
     }
     if let Ok(legacy) = serde_json::from_slice::<LegacyRecord>(&bytes) {
         if !legacy.address.ip().is_loopback() {
-            return Err("invalid server address".into());
+            return Err("invalid Core address".into());
         }
         return Ok(Connection {
             owner: legacy.owner,
@@ -886,7 +884,7 @@ pub fn load_connection(directory: &Path) -> Result<Connection, String> {
             legacy_address: Some(legacy.address),
         });
     }
-    Err("invalid protected server connection".into())
+    Err("invalid protected Core connection".into())
 }
 /// One Server serves one owner, and this is the sentence a second account
 /// meets when it asks one Server to serve it too: the protected state it
@@ -925,13 +923,13 @@ pub fn connection(directory: &Path, owner: String, lane: String) -> Result<Conne
             // refusal-coverage scan reads a literal, and a code it cannot
             // read is a code nothing checks is documented.
             "multi_principal_unsupported",
-            "this protected server state belongs to another account; one Server serves exactly one owner",
+            "this protected Core state belongs to another account; one Core serves exactly one owner",
         )
         .remedy("run that account its own ds core serve, with its own --state-dir"));
     }
     if existing.lane != lane {
         return Err(host_failure(
-            "the existing server connection is on another lane; use a separate state directory",
+            "the existing Core connection is on another lane; use a separate state directory",
         ));
     }
     let Some(address) = existing.legacy_address else {
@@ -1030,7 +1028,7 @@ pub async fn serve(
         workers,
     )?;
     eprintln!(
-        "DS server ready at {} (owner-only socket)",
+        "DS Core ready at {} (owner-only socket)",
         listening.socket().display()
     );
     let result = crate::transport::serve(listening, router(app), stop_requested()).await;
@@ -3105,7 +3103,7 @@ pub(crate) mod tests {
         // place many users meet one host, and it is answered by its own name
         // with the remedy that is the whole model: a host of one's own.
         let second_account = super::connection(dir.path(), "other".into(), "stable".into())
-            .expect_err("one Server serves one owner");
+            .expect_err("one Core serves one owner");
         assert_eq!(second_account.code(), MULTI_PRINCIPAL_UNSUPPORTED);
         assert_eq!(second_account.class(), ExitClass::Conflict);
         assert!(
@@ -3165,7 +3163,7 @@ pub(crate) mod tests {
 
         // Another account is still another account, whatever wrote the record.
         let stranger = super::connection(dir.path(), "other".into(), "stable".into())
-            .expect_err("one Server serves one owner");
+            .expect_err("one Core serves one owner");
         assert_eq!(stranger.code(), MULTI_PRINCIPAL_UNSUPPORTED);
 
         // The older Server may still be running: two hosts on one queue is

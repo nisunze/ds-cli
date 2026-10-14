@@ -1,7 +1,7 @@
 //! Core's local component commands over the protected native module owner.
 //! No release authority, executable probe or process belongs to removal.
 use ds_cli_contract::spec::{
-    Arg, Authority, Availability, Chapter, Command, Effect, Execution, Refusal, Requires,
+    Arg, Authority, Chapter, Command, Effect, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Failure, Inputs};
 use ds_command_kernel::{module_install::ModuleSelectionRecord, module_release::ModuleComponent};
@@ -29,6 +29,7 @@ const CHANNEL: Arg = Arg::value(
 .required();
 
 const REFUSALS: &[Refusal] = &[
+    crate::PLATFORM,
     Refusal {
         code: "invalid_choice",
         when: "component or channel is outside the declared closed choices",
@@ -177,7 +178,7 @@ pub static REMOVE: Command = Command {
     reference: Some("docs/reference/core.md"),
     search: &["uninstall", "addon", "remove", "component", "generation"],
     requires: Requires::Server,
-    availability: || Availability::Available,
+    availability: crate::native_host_availability,
 };
 
 pub static SELECTION: Command = Command {
@@ -197,7 +198,7 @@ pub static SELECTION: Command = Command {
     reference: Some("docs/reference/core.md"),
     search: &["component", "installed", "removed", "generation", "offline"],
     requires: Requires::Server,
-    availability: || Availability::Available,
+    availability: crate::module_updates::native_module_availability,
 };
 
 fn selected(inputs: &Inputs) -> Result<(ModuleComponent, &str), Failure> {
@@ -235,7 +236,8 @@ fn owner_failure(message: String) -> Failure {
         "module_selection_changed" | "module_update_busy" => {
             Failure::conflict(refusal.code, bounded)
         }
-        "component_runtime_unavailable"
+        "server_platform_unsupported"
+        | "component_runtime_unavailable"
         | "component_uncaptured_jobs"
         | "module_activation_deferred"
         | "module_platform_unsupported" => Failure::unavailable(refusal.code, bounded),
@@ -284,6 +286,7 @@ fn removal_request(inputs: &Inputs) -> Result<RemovalRequest, Failure> {
 }
 
 pub fn remove(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
+    crate::require_native_host()?;
     let request = removal_request(inputs)?;
     request_runtime(&request)
 }
@@ -425,6 +428,7 @@ fn remove_on_runtime(
 }
 
 pub fn selection(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
+    ds_update_runtime::modules::current_platform().map_err(owner_failure)?;
     selection_with(inputs, ModuleStore::selection_record_managed)
 }
 

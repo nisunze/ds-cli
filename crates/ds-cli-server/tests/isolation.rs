@@ -944,7 +944,7 @@ fn a_legacy_transformer_row_is_readable_but_never_recovered_into_the_saved_selec
     assert_eq!(
         failure.remedy_text(),
         Some(
-            "read the job's stored input with ds server input, then resubmit it under an explicit --project"
+            "read the job's stored input with ds core input, then resubmit it under an explicit --project"
         ),
         "one sentence, identical wherever this code is raised"
     );
@@ -1486,7 +1486,7 @@ fn a_layer_request_names_its_project_and_is_fenced_to_the_document() {
         "layer",
         "hide",
         "--target",
-        "server",
+        "core",
         "--project",
         B,
         "--layer",
@@ -1508,7 +1508,7 @@ fn a_layer_request_names_its_project_and_is_fenced_to_the_document() {
         "layer",
         "hide",
         "--target",
-        "server",
+        "core",
         "--project",
         A,
         "--layer",
@@ -1610,7 +1610,7 @@ fn ds_map_layer_list_target_server_answers_the_same_shape_as_the_desktop() {
         "layer",
         "list",
         "--target",
-        "server",
+        "core",
         "--project",
         A,
         "--limit",
@@ -1919,7 +1919,7 @@ fn the_server_starts_and_serves_with_no_gateway_and_the_real_authorizer() {
     // Starting at all is the first half of the refuted claim: the process got
     // past authorization and bound its port with no upstream in existence.
     assert!(
-        server.said().contains("DS server ready at"),
+        server.said().contains("DS Core ready at"),
         "{}",
         server.said()
     );
@@ -1987,7 +1987,7 @@ fn the_server_starts_and_serves_with_no_gateway_and_the_real_authorizer() {
 
     // And the operator's own command, through the real binary, against the
     // real process.
-    let listed = server.ds(&["server", "activity", "--project", A, "--output", "json"]);
+    let listed = server.ds(&["core", "activity", "--project", A, "--output", "json"]);
     assert_eq!(listed.code, 0, "{} {}", listed.stdout, listed.stderr);
     assert_eq!(listed.envelope["status"], "ok", "{}", listed.stdout);
 
@@ -2079,7 +2079,7 @@ fn the_shipped_server_answers_only_on_its_owner_only_socket_and_opens_no_port() 
     assert_eq!(record["schema"], ds_cli_server::host::CONNECTION_SCHEMA);
 
     // The same account's real `ds`, through the socket.
-    let status = server.ds(&["server", "status", "--project", A, "--output", "json"]);
+    let status = server.ds(&["core", "status", "--project", A, "--output", "json"]);
     assert_eq!(status.code, 0, "{} {}", status.stdout, status.stderr);
     assert_eq!(status.envelope["status"], "ok", "{}", status.stdout);
 
@@ -2088,7 +2088,7 @@ fn the_shipped_server_answers_only_on_its_owner_only_socket_and_opens_no_port() 
     let second = run_ds_in(
         &server.config,
         &[
-            "server",
+            "core",
             "serve",
             "--lane",
             LANE,
@@ -2117,7 +2117,7 @@ fn the_shipped_server_answers_only_on_its_owner_only_socket_and_opens_no_port() 
     server.stop();
     assert!(!server.socket.exists(), "a stopped host leaves no socket");
     let started = std::time::Instant::now();
-    let unreachable = server.ds(&["server", "status", "--project", A, "--output", "json"]);
+    let unreachable = server.ds(&["core", "status", "--project", A, "--output", "json"]);
     assert!(
         started.elapsed() < Duration::from_secs(10),
         "a stopped Server is answered at once"
@@ -2129,7 +2129,7 @@ fn the_shipped_server_answers_only_on_its_owner_only_socket_and_opens_no_port() 
         unreachable.stdout
     );
     assert!(
-        unreachable.stdout.contains("start ds server serve"),
+        unreachable.stdout.contains("start ds core serve"),
         "{}",
         unreachable.stdout
     );
@@ -2168,7 +2168,7 @@ fn a_server_started_by_an_older_ds_is_refused_by_name_and_sent_nothing() {
 
     let state_dir = state.path().display().to_string();
     let refused = run_ds(&[
-        "server",
+        "core",
         "status",
         "--project",
         A,
@@ -2393,7 +2393,7 @@ fn the_request_door_answers_a_typed_capacity_refusal() {
 
 /// The remedy on `context_unrecoverable` is now something an owner can carry
 /// out: the row has no result, but it has its own request bytes, and
-/// `ds server input` returns them.
+/// `ds core input` returns them.
 #[test]
 fn a_legacy_queued_row_is_readable_by_input_and_resubmittable() {
     let host = Host::start_over(limits(), &legacy_queue_fixture());
@@ -2423,7 +2423,7 @@ fn a_legacy_queued_row_is_readable_by_input_and_resubmittable() {
     // And through the command the remedy names, typed by an operator.
     let out = host.state.path().join("stranded-input.json");
     let saved = host.ds(&[
-        "server",
+        "core",
         "input",
         "--job",
         &stranded,
@@ -2436,7 +2436,7 @@ fn a_legacy_queued_row_is_readable_by_input_and_resubmittable() {
     assert_eq!(
         std::fs::read(&out).expect("the saved input"),
         stored,
-        "ds server input saves the same bytes the wire returned"
+        "ds core input saves the same bytes the wire returned"
     );
     assert_eq!(saved.envelope["data"]["byte_count"], stored.len());
 
@@ -2599,7 +2599,7 @@ fn a_path_like_project_id_is_refused_before_anything_is_written() {
     // The real binary answers the same way, and its refusal carries the one
     // remedy an operator can act on.
     let typed = host.ds(&[
-        "server",
+        "core",
         "status",
         "--job",
         &guessed(),
@@ -2800,7 +2800,7 @@ fn an_activity_query_with_a_device_name_project_is_a_grammar_refusal() {
     }
     // The real binary, the same way, with the one remedy an operator can act on.
     let typed = host.ds(&[
-        "server",
+        "core",
         "activity",
         "--project",
         "con.json",

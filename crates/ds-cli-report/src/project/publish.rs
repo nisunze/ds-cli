@@ -44,9 +44,9 @@ const FROM_ARG: Arg = Arg::value(
 )
 .required();
 const SERVER_STATE_DIR_ARG: Arg = Arg::value(
-    "server-state-dir",
+    "core-state-dir",
     "<absolute-path>",
-    "Matching `ds server serve --state-dir` directory when the Server uses a custom state root.",
+    "Matching `ds core serve --state-dir` directory when the Server uses a custom state root.",
 );
 
 /// One export directory holds one batch per transformer; this bounds a
@@ -99,7 +99,7 @@ const SCOPE_CHANGED: Refusal = Refusal {
 const ROOT_INVALID: Refusal = Refusal {
     code: "report_publish_root_invalid",
     when: "the Server state root is unavailable, relative, or cannot hold a sealed publication",
-    remedy: "use Server's default state root, or the same absolute --server-state-dir as ds server serve",
+    remedy: "use Server's default state root, or the same absolute --core-state-dir as ds core serve",
 };
 
 const REFUSALS: &[Refusal] = &[
@@ -388,7 +388,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let inventory = ds_cli_auth::transformer_inventory_for_project(lane, project, &requested)?;
     let project_id = inventory.project_id().to_string();
     verify_scope(lane, &fence, &project_id)?;
-    let queue = PublicationQueue::open(lane, inputs.value("server-state-dir").map(Path::new))?;
+    let queue = PublicationQueue::open(lane, inputs.value("core-state-dir").map(Path::new))?;
 
     let mut directories = vec![from.clone()];
     for entry in std::fs::read_dir(&from)

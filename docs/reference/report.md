@@ -1089,11 +1089,11 @@ publication needs, but no publication row is enqueued by this command unless
 you explicitly pass `--publish`. That opt-in rechecks the native UID, lane,
 credential audience, selected project and credential generation immediately
 before every sealed batch commit. It writes only to
-`<server-state-dir>/report-artifacts` (the default state directory is
+`<core-state-dir>/report-artifacts` (the default state directory is
 `$XDG_STATE_HOME/ds/server/<lane>`, or `$HOME/.local/state/ds/server/<lane>`)
 and reports `queued_for_server_sync`; it does not claim cloud publication.
 For a custom Server `--state-dir`, pass the same absolute path as
-`--server-state-dir`. The matching native Server sync pump transfers committed
+`--core-state-dir`. The matching native Server sync pump transfers committed
 sealed batches on its next run.
 (`publication_enqueued: false`). Configuration and room receipts must keep
 the same principal, audience, lane and project throughout acquisition. A
