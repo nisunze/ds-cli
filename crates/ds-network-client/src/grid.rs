@@ -27,7 +27,7 @@ impl CapturedNetworkClient {
             "grid-inspect",
             NetworkCapability::GridInspectV1,
             None,
-            model,
+            Some(model),
             scratch,
             cancel,
             "inspection.json",
@@ -76,7 +76,7 @@ impl CapturedNetworkClient {
             "grid-query",
             NetworkCapability::GridQueryV1,
             Some(&input),
-            model,
+            Some(model),
             scratch,
             cancel,
             "query.json",
@@ -111,7 +111,7 @@ impl CapturedNetworkClient {
             "grid-manifest",
             NetworkCapability::GridManifestV1,
             None,
-            model,
+            Some(model),
             scratch,
             cancel,
             "manifest.json",
@@ -142,7 +142,7 @@ impl CapturedNetworkClient {
             "grid-publication",
             NetworkCapability::GridPublicationV1,
             Some(&input),
-            model,
+            Some(model),
             scratch,
             cancel,
             "publication.json",
@@ -170,12 +170,12 @@ impl CapturedNetworkClient {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn grid_artifact<T: DeserializeOwned>(
+    pub(crate) fn grid_artifact<T: DeserializeOwned>(
         &self,
         task: &'static str,
         capability: NetworkCapability,
         request: Option<&[u8]>,
-        model: &[u8],
+        model: Option<&[u8]>,
         scratch: &Path,
         cancel: &dyn Fn() -> bool,
         artifact_name: &'static str,
@@ -189,7 +189,7 @@ impl CapturedNetworkClient {
                 "captured Network does not admit this Grid capability",
             ));
         }
-        if model.len() > MAX_NATIVE_GRID_PACKAGE_BYTES {
+        if model.is_some_and(|bytes| bytes.len() > MAX_NATIVE_GRID_PACKAGE_BYTES) {
             return Err(NetworkFailure::new(
                 "grid_task_bound_refused",
                 "opaque Grid package exceeds its contract bound",
@@ -214,24 +214,31 @@ impl CapturedNetworkClient {
                 .map_err(|e| NetworkFailure::new("network_scratch_invalid", e.to_string()))?;
         }
         let model_path = run.path().join("model.dsgrid");
-        write_request(&model_path, model)?;
+        if let Some(model) = model {
+            write_request(&model_path, model)?;
+        }
         let output = run.path().join("output");
         create_output(&output)?;
         let width = self.identity.runtime.internal_worker_threads;
         let mut args: Vec<OsString> = vec![
-            "--model".into(),
-            model_path.as_os_str().to_owned(),
             "--out".into(),
             output.as_os_str().to_owned(),
             "--workers".into(),
             width.to_string().into(),
         ];
+        if model.is_some() {
+            args.extend(["--model".into(), model_path.as_os_str().to_owned()]);
+        }
         let request_path = run.path().join("request.json");
         if let Some(input) = request {
             write_request(&request_path, input)?;
             args.extend(["--request".into(), request_path.as_os_str().to_owned()]);
         }
-        let input_sha256 = digest_bytes(request.unwrap_or(model));
+        let input_sha256 = digest_bytes(
+            request
+                .or(model)
+                .ok_or_else(|| invalid_result("task has no captured input"))?,
+        );
         let pending = std::cell::RefCell::new(Vec::<u8>::new());
         let invalid_progress = std::cell::Cell::new(false);
         let observe = |chunk: &[u8]| {
@@ -330,16 +337,18 @@ impl CapturedNetworkClient {
             ));
         }
         let result = serde_json::from_slice(&bytes).map_err(|e| invalid_result(e.to_string()))?;
-        if digest_file(
-            &model_path,
-            MAX_NATIVE_GRID_PACKAGE_BYTES as u64,
-            "network_input_changed",
-        )? != digest_bytes(model)
-        {
-            return Err(NetworkFailure::new(
+        if let Some(model) = model {
+            if digest_file(
+                &model_path,
+                MAX_NATIVE_GRID_PACKAGE_BYTES as u64,
                 "network_input_changed",
-                "staged Grid inputs changed during task",
-            ));
+            )? != digest_bytes(model)
+            {
+                return Err(NetworkFailure::new(
+                    "network_input_changed",
+                    "staged Grid inputs changed during task",
+                ));
+            }
         }
         if request.is_some()
             && digest_file(

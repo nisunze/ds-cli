@@ -2,6 +2,7 @@
 mod captured;
 mod design_snapshot;
 mod grid;
+mod grid_catalog;
 mod profile;
 mod report_engineering;
 pub use captured::{CapturedNetworkClient, NetworkEnginePin};
