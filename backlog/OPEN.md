@@ -99,6 +99,15 @@ is ruled in the sync contract: simple local clean and recompute.
 
 ## 2. Green `run` and release gates
 
+- **Network strict Clippy has untouched baseline diagnostics.** In `ds-network`,
+  `cargo clippy --locked --offline -p ds-network -p ds-network-contracts
+  -p ds-network-engine --all-targets -- -D warnings` reports
+  `cloned_ref_to_slice_refs` at contracts `src/import_admission.rs:220,233`.
+  The production `--lib --bin ds-network` variant reports `collapsible_if` at
+  Network `src/network/voltage_drop/saved_topology.rs:208`. These paths are
+  unchanged by report sizing extraction. Repair them in their owning lint slice;
+  prove both strict commands without suppression or engineering changes.
+
 - **Reporter documentation-consumer execution proof (2026-10-13):** the module-map reader in `ds-network-reporter/tests/routes.rs` and doctrine input in `scripts/test_local_deploy_script.sh` now use `docs/agent-guidance/domain-reference.md`; their descriptive comments were updated too. The filename repair is complete. The existing narrow module-map and local-deploy gates remain unrun because the owner requested no tests/builds for this housekeeping. Execute those gates in the next authorized verification slice, report actual results, and remove this entry after proof. Do not reopen the filename repair or recreate `CLAUDE.md`.
 
 

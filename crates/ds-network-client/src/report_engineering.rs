@@ -44,6 +44,17 @@ impl CapturedNetworkClient {
         }
         let input = serde_json::to_vec(request)
             .map_err(|e| NetworkFailure::new("report_engineering_invalid", e.to_string()))?;
+        if request.feeders.is_some()
+            && !self
+                .identity
+                .capabilities
+                .contains(&NetworkCapability::ReportFeederSelectionV1)
+        {
+            return Err(NetworkFailure::new(
+                "network_engine_incompatible",
+                "selected Network engine has no ReportFeederSelectionV1 capability",
+            ));
+        }
         if input.len() > MAX_REPORT_ENGINEERING_REQUEST_BYTES {
             return Err(NetworkFailure::new(
                 "report_engineering_invalid",

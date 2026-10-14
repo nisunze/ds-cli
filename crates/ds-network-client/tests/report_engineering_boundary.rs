@@ -140,6 +140,24 @@ fn isolated_report_adversarial() {
             "network_engine_incompatible",
             "the older report capability cannot silently consume sizing requests"
         );
+        let mut feeders = request();
+        feeders.feeders = Some(ReportFeederRequest {
+            policy: ReportFeederPolicy {
+                rows: Vec::new(),
+                minimum: ReportFeederBound::Missing,
+                maximum: ReportFeederBound::Missing,
+            },
+            minimum_kva: None,
+            transformers: Vec::new(),
+            feeders: Vec::new(),
+        });
+        assert_eq!(
+            client
+                .report_engineering(&feeders, scratch.path(), &|| false)
+                .unwrap_err()
+                .code,
+            "network_engine_incompatible"
+        );
         let mut duplicate = request();
         duplicate.demands.push(duplicate.demands[0].clone());
         assert_eq!(
