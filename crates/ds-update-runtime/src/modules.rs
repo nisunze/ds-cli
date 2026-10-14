@@ -625,9 +625,24 @@ impl ModuleStore {
         guard: ActivationGuard,
         cancelled: &dyn Fn() -> bool,
     ) -> Result<ModuleSelection, String> {
+        self.activate_at_generation(ready, ready.expected_generation, guard, cancelled)
+    }
+    /// Confirm the caller's held generation under the same selection lock as
+    /// stage recovery and the atomic write. A ready receipt is not consent to
+    /// overwrite a different generation.
+    pub fn activate_at_generation(
+        &self,
+        ready: &StagedModule,
+        expected_generation: u64,
+        guard: ActivationGuard,
+        cancelled: &dyn Fn() -> bool,
+    ) -> Result<ModuleSelection, String> {
         guard.admit()?;
         check_cancel(cancelled)?;
         let _lock = self.lock()?;
+        if ready.expected_generation != expected_generation {
+            return Err("module_selection_changed: activation receipt differs from the caller's held generation".into());
+        }
         let recovered = self.recover_stage(ready.receipt_id())?;
         if serde_json::to_vec(&recovered.installed).map_err(|e| e.to_string())?
             != serde_json::to_vec(&ready.installed).map_err(|e| e.to_string())?
@@ -1189,6 +1204,32 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn activation_requires_callers_generation_as_well_as_staging_generation() {
+        let base = tempfile::tempdir().unwrap();
+        let store = ModuleStore::new(base.path(), ModuleComponent::Network, "canary").unwrap();
+        let (release, bytes) = fixture(ModuleComponent::Network, 1);
+        let ready = stage(&store, release, &bytes);
+        let error = store
+            .activate_at_generation(&ready, 1, ActivationGuard::default(), &|| false)
+            .unwrap_err();
+        assert!(error.starts_with("module_selection_changed:"));
+        assert!(store.selection().unwrap().is_none());
+        assert_eq!(
+            store
+                .activate_at_generation(&ready, 0, ActivationGuard::default(), &|| false)
+                .unwrap()
+                .generation,
+            1
+        );
+        let before = std::fs::read(store.root.join("selection.json")).unwrap();
+        assert!(store
+            .activate_at_generation(&ready, 0, ActivationGuard::default(), &|| false)
+            .unwrap_err()
+            .starts_with("module_selection_changed:"));
+        assert_eq!(std::fs::read(store.root.join("selection.json")).unwrap(), before);
     }
 
     #[test]

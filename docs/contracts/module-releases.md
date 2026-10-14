@@ -150,14 +150,25 @@ consumption, Windows runtime behavior or a native dirty/session observation
 binding. Installation/update controls remain unavailable until their declared
 CLI/MCP/native effects and installed acceptance are proven.
 
-The CLI/MCP source projection declares `server.module-stage` as a confirmed
+The CLI/MCP source projection declares `core.module-stage` as a confirmed
 machine write over explicit component, stable/canary channel and exact selected
 asset SHA-256. It captures the packaged native release authority and delegates
 acquisition and staging to this owner; no held JSON, URL, path, executable or
-guard enters that effect. `server.module-selection` reads retained native
-active/previous provenance through `ModuleStore::selection_managed` without
-constructing a writable store, probing an executable or reading release
-authority. An absent ordinary tree returns null; existing linked/reparsed,
-wrong-type or corrupt paths refuse. This read does not certify current executable
-availability. Headless activation and rollback remain undeclared until the
-owning native session observations can supply their guard safely.
+guard enters that effect. `core.component.selection` reads the installed-v1 or
+removed-v2 record offline. An absent ordinary tree returns null; existing
+linked/reparsed, wrong-type or corrupt paths refuse. This read does not certify
+current executable availability.
+
+`core.component.activate` requires a native ready receipt and caller-held
+selection generation; `core.component.rollback` requires the held generation.
+Both confirmed commands enter the selected lane's running Core through fixed
+private owner-only routes. Core holds its existing durable SQLite job-admission
+writer fence through the updater's component lock and atomic selection write.
+Every owned pending job must retain a valid immutable component capture;
+uncaptured legacy jobs refuse. Core has no native model editor sessions, so
+caller assertions about editor dirtiness or idle status never enter admission.
+The activation caller generation, retained receipt generation and protected
+current generation must match under the same component lock. Rollback without
+a retained previous unit refuses `module_rollback_unavailable`. No lifecycle
+operation downloads, reads a release catalogue, launches an engine or requires
+Desktop. Installed acceptance remains distinct from source and fixture proof.
