@@ -43,6 +43,11 @@ pub fn map_failure(error: NetworkFailure) -> Failure {
     let message = error.to_string();
     let mut failure = if code == "network_engine_missing" {
         Failure::unavailable(&code, message)
+    } else if matches!(
+        code.as_str(),
+        "revision_conflict" | "command_replay_conflict"
+    ) {
+        Failure::conflict(&code, message)
     } else if error.owner_invalid_input == Some(true) {
         Failure::invalid(&code, message)
     } else {

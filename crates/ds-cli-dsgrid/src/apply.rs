@@ -6,7 +6,7 @@
 //! no-overwrite output policy, and a compact receipt.
 
 use std::fs::OpenOptions;
-use std::io::Write;
+use std::io::{Read, Write};
 use std::path::Path;
 
 use ds_cli_contract::outcome::Failure;
@@ -14,14 +14,14 @@ use ds_cli_contract::spec::{
     Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
-use ds_grid_engine::{CommandEnvelope, CommandError, GridCommand};
-use ds_grid_exchange::{PackOptions, dsgrid};
+use ds_grid_engine::{CommandError, GridCommand};
 use serde_json::{Value, json};
-use sha2::{Digest, Sha256};
 
 use crate::package;
+use ds_network_contracts::grid_apply::{GRID_APPLY_REQUEST_SCHEMA_V1, NativeGridApplyRequestV1};
 
-const MAX_ENVELOPE_BYTES: u64 = 16 * 1024 * 1024;
+const MAX_ENVELOPE_BYTES: u64 =
+    ds_network_contracts::grid_apply::MAX_GRID_COMMAND_ENVELOPE_BYTES as u64;
 
 pub static COMMAND: Command = Command {
     id: "dsgrid.apply",
@@ -30,7 +30,7 @@ pub static COMMAND: Command = Command {
     summary: "Apply one revision-pinned engine command to a new .dsgrid file.",
     purpose: "\
 Reads one verified .dsgrid package and one typed command envelope published by \
-the compiled ds-grid engine. A dry run evaluates the exact revision gate and \
+the captured Network engine. A dry run evaluates the exact revision gate and \
 model invariants without writing. An apply preserves the source package, its \
 assets and exchange bindings, advances the package revision, and writes one \
 new package at --out. Existing output paths are never overwritten.",
@@ -74,115 +74,9 @@ also returns the new package path, package revision, byte length and SHA-256.",
             runnable: false,
         },
     ],
-    refusals: &[
-        package::PROTECTED_MODEL,
-        package::PLS_SECTION_IDENTITY_UNRESOLVED,
-        Refusal {
-            code: "model_not_found",
-            when: "the source path does not exist or is not a file",
-            remedy: "check the path; --model takes one .dsgrid file",
-        },
-        Refusal {
-            code: "model_too_large",
-            when: "the source is above the 512 MiB read bound",
-            remedy: "confirm the file is a .dsgrid package and not a disk image",
-        },
-        Refusal {
-            code: "model_unreadable",
-            when: "the source exists but cannot be read",
-            remedy: "check file permissions",
-        },
-        Refusal {
-            code: "not_a_dsgrid_package",
-            when: "the source bytes are not a readable .dsgrid container",
-            remedy: "convert the native source through dsgrid-exchange first",
-        },
-        Refusal {
-            code: "package_decode_failed",
-            when: "the source manifest or canonical tables do not verify",
-            remedy: "run `ds dsgrid validate --model <path>` and repair the package",
-        },
-        Refusal {
-            code: "envelope_not_found",
-            when: "--envelope does not name one regular file",
-            remedy: "write one bounded CommandEnvelope JSON file",
-        },
-        Refusal {
-            code: "envelope_too_large",
-            when: "the envelope exceeds 16 MiB",
-            remedy: "use one bounded engine command; bulk terrain belongs in author_terrain_points",
-        },
-        Refusal {
-            code: "envelope_unreadable",
-            when: "the envelope exists but cannot be read",
-            remedy: "check file permissions",
-        },
-        Refusal {
-            code: "envelope_invalid",
-            when: "the JSON is not the compiled engine's CommandEnvelope schema",
-            remedy: "read the command descriptor with `ds dsgrid describe --kind commands --id <id>`",
-        },
-        Refusal {
-            code: "admin_authority_required",
-            when: "a generic command envelope attempts to author Rwanda admin fields without exact local index resolution",
-            remedy: "use ds dsgrid structure admin-refresh with a verified village index",
-        },
-        Refusal {
-            code: "revision_conflict",
-            when: "expected_revision does not equal the model's current authored revision",
-            remedy: "re-read the model and deliberately rebuild the envelope against its current revision",
-        },
-        Refusal {
-            code: "target_not_found",
-            when: "the command addresses an entity absent from this model",
-            remedy: "use an id from a projection of this exact package revision",
-        },
-        Refusal {
-            code: "command_invalid",
-            when: "the engine rejects the command's typed values or semantics",
-            remedy: "read detail.engine and the live command descriptor; do not approximate missing values",
-        },
-        Refusal {
-            code: "terrain_acquisition_required",
-            when: "elevation interpolation has no effective ground coverage at the requested station",
-            remedy: "author a verified terrain source and observations before inserting the point",
-        },
-        Refusal {
-            code: "model_validation_failed",
-            when: "the command would introduce new canonical model errors",
-            remedy: "read detail.issues and revise the command; no output was written",
-        },
-        Refusal {
-            code: "command_replay_conflict",
-            when: "a transaction partially overlaps commands already applied in the live session",
-            remedy: "refresh the model and submit one fresh, non-overlapping intent",
-        },
-        Refusal {
-            code: "output_required",
-            when: "an apply omits --out",
-            remedy: "name a new .dsgrid file, or pass --dry-run",
-        },
-        Refusal {
-            code: "output_exists",
-            when: "--out already exists",
-            remedy: "choose a new path; apply never overwrites the source or an earlier result",
-        },
-        Refusal {
-            code: "output_parent_missing",
-            when: "the output parent directory does not exist",
-            remedy: "create the intended directory, then retry",
-        },
-        Refusal {
-            code: "package_emit_failed",
-            when: "the revised canonical snapshot cannot be packaged with its retained assets",
-            remedy: "report this engine failure with the model and envelope digests",
-        },
-        Refusal {
-            code: "output_unwritable",
-            when: "the new output file cannot be created or fully written",
-            remedy: "check the parent path and permissions; a partial file is removed",
-        },
-    ],
+    refusals: &crate::native::extend_refusals::<
+        { OWN_REFUSALS.len() + crate::native::REFUSALS.len() },
+    >(OWN_REFUSALS),
     reference: Some("docs/reference/dsgrid.md"),
     search: &[
         "staking facts",
@@ -195,8 +89,118 @@ also returns the new package path, package revision, byte length and SHA-256.",
     availability: available,
 };
 
+const OWN_REFUSALS: &[Refusal] = &[
+    package::PROTECTED_MODEL,
+    package::PLS_SECTION_IDENTITY_UNRESOLVED,
+    Refusal {
+        code: "model_not_found",
+        when: "the source path does not exist or is not a file",
+        remedy: "check the path; --model takes one .dsgrid file",
+    },
+    Refusal {
+        code: "model_too_large",
+        when: "the source is above the 512 MiB read bound",
+        remedy: "confirm the file is a .dsgrid package and not a disk image",
+    },
+    Refusal {
+        code: "model_unreadable",
+        when: "the source exists but cannot be read",
+        remedy: "check file permissions",
+    },
+    Refusal {
+        code: "not_a_dsgrid_package",
+        when: "the source bytes are not a readable .dsgrid container",
+        remedy: "convert the native source through dsgrid-exchange first",
+    },
+    Refusal {
+        code: "package_decode_failed",
+        when: "the source manifest or canonical tables do not verify",
+        remedy: "run `ds dsgrid validate --model <path>` and repair the package",
+    },
+    Refusal {
+        code: "envelope_not_found",
+        when: "--envelope does not name one regular file",
+        remedy: "write one bounded CommandEnvelope JSON file",
+    },
+    Refusal {
+        code: "envelope_too_large",
+        when: "the envelope exceeds 16 MiB",
+        remedy: "use one bounded engine command; bulk terrain belongs in author_terrain_points",
+    },
+    Refusal {
+        code: "envelope_unreadable",
+        when: "the envelope exists but cannot be read",
+        remedy: "check file permissions",
+    },
+    Refusal {
+        code: "envelope_invalid",
+        when: "the JSON is not the captured Network engine's CommandEnvelope schema",
+        remedy: "read the command descriptor with `ds dsgrid describe --kind commands --id <id>`",
+    },
+    Refusal {
+        code: "admin_authority_required",
+        when: "a generic command envelope attempts to author Rwanda admin fields without exact local index resolution",
+        remedy: "use ds dsgrid structure admin-refresh with a verified village index",
+    },
+    Refusal {
+        code: "revision_conflict",
+        when: "expected_revision does not equal the model's current authored revision",
+        remedy: "re-read the model and deliberately rebuild the envelope against its current revision",
+    },
+    Refusal {
+        code: "target_not_found",
+        when: "the command addresses an entity absent from this model",
+        remedy: "use an id from a projection of this exact package revision",
+    },
+    Refusal {
+        code: "command_invalid",
+        when: "the engine rejects the command's typed values or semantics",
+        remedy: "read detail.engine and the live command descriptor; do not approximate missing values",
+    },
+    Refusal {
+        code: "terrain_acquisition_required",
+        when: "elevation interpolation has no effective ground coverage at the requested station",
+        remedy: "author a verified terrain source and observations before inserting the point",
+    },
+    Refusal {
+        code: "model_validation_failed",
+        when: "the command would introduce new canonical model errors",
+        remedy: "read detail.issues and revise the command; no output was written",
+    },
+    Refusal {
+        code: "command_replay_conflict",
+        when: "a transaction partially overlaps commands already applied in the live session",
+        remedy: "refresh the model and submit one fresh, non-overlapping intent",
+    },
+    Refusal {
+        code: "output_required",
+        when: "an apply omits --out",
+        remedy: "name a new .dsgrid file, or pass --dry-run",
+    },
+    Refusal {
+        code: "output_exists",
+        when: "--out already exists",
+        remedy: "choose a new path; apply never overwrites the source or an earlier result",
+    },
+    Refusal {
+        code: "output_parent_missing",
+        when: "the output parent directory does not exist",
+        remedy: "create the intended directory, then retry",
+    },
+    Refusal {
+        code: "package_emit_failed",
+        when: "the revised canonical snapshot cannot be packaged with its retained assets",
+        remedy: "report this engine failure with the model and envelope digests",
+    },
+    Refusal {
+        code: "output_unwritable",
+        when: "the new output file cannot be created or fully written",
+        remedy: "check the parent path and permissions; a partial file is removed",
+    },
+];
+
 fn available() -> Availability {
-    Availability::Available
+    ds_network_client::available()
 }
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
@@ -204,110 +208,46 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let envelope_path = inputs.require("envelope")?;
     let dry_run = inputs.switch("dry-run");
 
-    let model_bytes = package::read_bytes(model_path)?;
-    let package = package::decode(model_path, &model_bytes)?;
-    let envelope = read_envelope(envelope_path)?;
-    guard_admin_refresh(&envelope.command)?;
-
-    let source_model_id = package.manifest.model.model_id.clone();
-    let source_package_revision = package.manifest.model.model_revision;
-    let coordinate_system = package.manifest.model.coordinate_system.clone();
-    let assets = package.assets.clone();
-    let mut session = ds_grid_exchange::linked_models::open_session(&package);
-    let current_revision = session.current_revision().revision_id.clone();
-
-    if dry_run {
-        let preview = session
-            .simulate_command(&envelope)
-            .map_err(map_command_error)?;
-        package::admit_command_bindings(
-            &package.exchange_bindings,
-            std::slice::from_ref(&preview.delta),
-            false,
-        )?;
-        return Ok(json!({
-            "source": {
-                "path": model_path,
-                "model_id": source_model_id.as_str(),
-                "package_revision": source_package_revision,
-                "authored_revision": current_revision.as_str(),
-            },
-            "command_id": envelope.command_id,
-            "command_kind": envelope.command.command_kind(),
-            "dry_run": true,
-            "persisted": false,
-            "would_apply": preview.new_validation_issues.is_empty(),
-            "resulting_revision": preview.resulting_revision.revision_id.as_str(),
-            "delta": preview.delta,
-            "new_validation_issues": preview.new_validation_issues,
-        }));
-    }
-
-    let out_path = inputs.value("out").ok_or_else(|| {
-        Failure::invalid("output_required", "an apply needs a new output path")
-            .remedy("pass --out <new.dsgrid>, or use --dry-run")
-    })?;
-    validate_output_path(out_path)?;
-
-    let command_id = envelope.command_id.clone();
-    let command_kind = envelope.command.command_kind().to_string();
-    let outcome = session.apply_command(envelope).map_err(map_command_error)?;
-    let exchange_bindings = package::admit_command_bindings(
-        &package.exchange_bindings,
-        std::slice::from_ref(&outcome.delta),
-        outcome.idempotent_replay,
-    )?;
-    let checkpoint = session.save_checkpoint().map_err(map_command_error)?;
-
-    let options = PackOptions {
-        presentation: package.manifest.model.presentation.clone(),
-        model_id: source_model_id.clone(),
-        model_revision: source_package_revision + checkpoint.sequence,
-        coordinate_system,
-        library_pins: package.manifest.model.library_pins.clone(),
-        library_needs: package.manifest.model.library_needs.clone(),
-        assets,
-        exchange_bindings,
+    let out_path = if dry_run {
+        None
+    } else {
+        let path = inputs.value("out").ok_or_else(|| {
+            Failure::invalid("output_required", "an apply needs a new output path")
+                .remedy("pass --out <new.dsgrid>, or use --dry-run")
+        })?;
+        validate_output_path(path)?;
+        Some(path)
     };
-    let (plan, _report) = dsgrid::emit(&checkpoint.snapshot, &options).map_err(|error| {
-        Failure::failed(
-            "package_emit_failed",
-            "the revised package could not be emitted",
-        )
-        .remedy("report this engine failure with the source model and envelope")
-        .detail(json!({ "engine": error.to_string() }))
-    })?;
-    let artifact = plan.artifacts.first().ok_or_else(|| {
-        Failure::failed(
-            "package_emit_failed",
-            "the package emitter returned no artifact",
-        )
-        .remedy("report this engine failure")
-    })?;
-    write_new(out_path, &artifact.bytes)?;
-
-    Ok(json!({
-        "source": {
-            "path": model_path,
-            "model_id": source_model_id.as_str(),
-            "package_revision": source_package_revision,
-            "authored_revision": current_revision.as_str(),
-        },
-        "command_id": command_id,
-        "command_kind": command_kind,
-        "dry_run": false,
-        "persisted": true,
-        "idempotent_replay": outcome.idempotent_replay,
-        "parent_revision": outcome.parent_revision.as_str(),
-        "resulting_revision": outcome.revision.revision_id.as_str(),
-        "delta": outcome.delta,
-        "artifact": {
-            "path": out_path,
-            "package_revision": options.model_revision,
-            "byte_len": artifact.bytes.len(),
-            "sha256": sha256(&artifact.bytes),
-        },
-    }))
+    let model_bytes = package::read_bytes(model_path)?;
+    let envelope = read_envelope(envelope_path)?;
+    let captured = crate::native::capture()?;
+    let scratch = crate::native::scratch()?;
+    let inspection = captured
+        .grid_inspect(&model_bytes, scratch.path(), &|| false)
+        .map_err(crate::native::map_failure)?;
+    let request = NativeGridApplyRequestV1 {
+        schema: GRID_APPLY_REQUEST_SCHEMA_V1.into(),
+        source: inspection.result.source,
+        envelope,
+        dry_run,
+    };
+    let output = captured
+        .grid_apply(&request, &model_bytes, scratch.path(), &|| false)
+        .map_err(crate::native::map_failure)?;
+    let mut projection = output.metadata.result.projection;
+    projection["source"]["path"] = json!(model_path);
+    if let Some(path) = out_path {
+        let bytes = output.model.ok_or_else(|| {
+            Failure::failed(
+                "package_emit_failed",
+                "the Network owner returned no complete package",
+            )
+        })?;
+        write_new(path, &bytes)?;
+        projection["persisted"] = json!(true);
+        projection["artifact"]["path"] = json!(path);
+    }
+    Ok(projection)
 }
 
 /// The generic JSON lane cannot prove that a named village came from the
@@ -323,7 +263,7 @@ pub(crate) fn guard_admin_refresh(command: &GridCommand) -> Result<(), Failure> 
     Ok(())
 }
 
-fn read_envelope(raw_path: &str) -> Result<CommandEnvelope, Failure> {
+fn read_envelope(raw_path: &str) -> Result<Value, Failure> {
     let path = Path::new(raw_path);
     let metadata = std::fs::metadata(path).map_err(|error| {
         Failure::invalid("envelope_not_found", format!("cannot read `{raw_path}`"))
@@ -347,11 +287,21 @@ fn read_envelope(raw_path: &str) -> Result<CommandEnvelope, Failure> {
             "max_byte_len": MAX_ENVELOPE_BYTES,
         })));
     }
-    let bytes = std::fs::read(path).map_err(|error| {
-        Failure::failed("envelope_unreadable", format!("cannot read `{raw_path}`"))
-            .remedy("check file permissions")
-            .detail(json!({ "detail": error.kind().to_string() }))
-    })?;
+    let mut bytes = Vec::new();
+    std::fs::File::open(path)
+        .and_then(|file| file.take(MAX_ENVELOPE_BYTES + 1).read_to_end(&mut bytes))
+        .map_err(|error| {
+            Failure::failed("envelope_unreadable", format!("cannot read `{raw_path}`"))
+                .remedy("check file permissions")
+                .detail(json!({ "detail": error.kind().to_string() }))
+        })?;
+    if bytes.len() as u64 > MAX_ENVELOPE_BYTES {
+        return Err(Failure::invalid(
+            "envelope_too_large",
+            "the command envelope grew above its admitted bound",
+        )
+        .remedy("use one bounded command envelope"));
+    }
     serde_json::from_slice(&bytes).map_err(|error| {
         Failure::invalid(
             "envelope_invalid",
@@ -464,10 +414,6 @@ pub(crate) fn write_new(raw_path: &str, bytes: &[u8]) -> Result<(), Failure> {
         .detail(json!({ "detail": error.kind().to_string() })));
     }
     Ok(())
-}
-
-fn sha256(bytes: &[u8]) -> String {
-    format!("sha256:{:x}", Sha256::digest(bytes))
 }
 
 pub fn render(data: &Value) -> String {
