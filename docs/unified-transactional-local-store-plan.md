@@ -317,13 +317,12 @@ separate retained product data, not application bundle size. Pin the exact
 SQLite release and build receipt; do not substitute a CDN at runtime.
 
 Introducing SQLite-WASM creates a physical WASM artifact even when Kernel owns
-the transaction policy. The current Network boundary contract names exactly
-three browser WASM units. Implementation must amend that contract explicitly
-rather than hide SQLite inside the count or force it into the Kernel binary.
-The proposed steady baseline is three DS logic units plus one commodity storage
-runtime: permanently available Kernel, Interactions and SQLite, with Network
-loaded only for engineering intent. Ordinary storage and UI activity still
-causes zero Network loads.
+the transaction policy. The browser has no fixed engine count. Keep the
+permanent baseline small: Kernel and Interactions for ordinary UI, plus SQLite
+when durable local storage opens. Network and any later heavy engines load only
+for their admitted intent. Do not force unrelated engines into one binary to
+reduce an artifact count. Ordinary storage and UI activity still causes zero
+Network, Solar and Reporter loads.
 
 The browser database has one admitted worker writer/broker per fenced database.
 Tabs and windows submit commands to it instead of opening competing writers.
@@ -543,6 +542,58 @@ WASM is admitted where it removes more Brain/host code and operational surface
 than its bundle, worker and compatibility costs add. Transformer Network
 processing already demonstrates the single local compiled-owner direction.
 
+### Independently published browser engines
+
+WASM engines may be released without republishing the whole Web application.
+The app ships a stable typed loader and resolves an admitted engine through an
+immutable release manifest. Browsers fetch the named worker, JavaScript glue,
+WASM module and optional data/extension artifacts only when the engine's load
+policy admits them. This is an established deployment pattern: DuckDB-WASM
+selects versioned CDN or self-hosted module/worker bundles; ONNX Runtime Web
+accepts independent absolute WASM asset paths; Pyodide loads a versioned runtime
+and packages from a configurable index URL.
+
+Each DS browser-engine manifest records at least:
+
+- component, channel, semantic release and exact source/build closure;
+- immutable URLs, byte sizes and SHA-256 digests for glue, worker, WASM and
+  extensions/data files;
+- loader/protocol/schema compatibility ranges and required browser features;
+- thread/isolation requirements, memory/admission class and lifecycle policy;
+- release authority, publication time, rollback predecessor and cache policy.
+
+Use immutable digest/version URLs. A small authorized channel pointer may select
+the release for new jobs, but never overwrite an artifact behind an existing
+URL. A running job keeps its captured engine identity. An older installed Web
+loader may adopt a newer engine without a Web deployment only when the manifest
+falls inside its declared compatibility range and its glue/protocol pair passes
+admission. An ABI, worker protocol, CSP, UI contract or required-host-capability
+change requires a compatible Web/Desktop release. Mixed glue/WASM versions and
+unknown manifest schemas refuse visibly and leave the prior engine usable.
+
+Serve DS releases from the controlled artifact origin or same-origin facade,
+with `application/wasm`, CORS, CSP and worker headers qualified for the chosen
+mode. Threaded modules additionally require the declared cross-origin-isolation
+headers. Browser caching is keyed by immutable identity; cache presence is not
+release authorization. Offline Desktop packages or deliberately installs the
+same verified artifacts. Do not depend on a public CDN, a mutable `latest` URL
+or runtime compilation from source.
+
+Independent publication changes the release cadence, not ownership. Kernel,
+Network, Solar, Reporter and storage retain separate typed contracts. A new
+engine version cannot add authority, bypass cloud admission or reinterpret old
+SQLite records. Module-count telemetry remains useful for detecting accidental
+loads and duplicates, but there is no fixed maximum. Acceptance proves the
+declared baseline, zero incidental heavy-engine requests, one request per cold
+intent, warm reuse, termination and digest-pinned rollback.
+
+Deployment references, checked 2026-10-14:
+
+- [WebAssembly streaming instantiation and MIME type](https://developer.mozilla.org/en-US/docs/WebAssembly/Reference/JavaScript_interface/instantiateStreaming_static).
+- [DuckDB-WASM CDN, Vite and self-hosted bundles](https://duckdb.org/docs/preview/clients/wasm/instantiation).
+- [ONNX Runtime Web external WASM asset paths](https://onnxruntime.ai/docs/tutorials/web/deploy.html).
+- [Pyodide configurable versioned runtime URL](https://pyodide.org/en/stable/usage/index.html).
+
 ### Polars and DuckDB policy
 
 Do not declare Polars categorically defective, and do not preserve it by
@@ -589,11 +640,11 @@ polars-arrow elsewhere is not removal of the Polars dependency closure.
 DuckDB is an embedded analytical engine optimized for bulk operations. It is not
 the synchronization database and does not replace SQLite's transaction role.
 Its standard browser distribution brings another worker, WASM engine and
-optional extensions. Do not add DuckDB-WASM to the browser baseline. A future
-browser analytical need must fit an already admitted owning heavy-engine
-boundary or explicitly revise the architecture with deletion, bundle and load
-proof. Ordinary opening, editing, movement, selection and synchronization must
-not load an analytical or engineering engine.
+optional extensions. Do not add DuckDB-WASM to the permanent browser baseline.
+A future browser analytical need may publish it as an independent intent-loaded
+engine when the owning boundary, code deletion, bundle and load proof justify
+it. Ordinary opening, editing, movement, selection and synchronization must not
+load an analytical or engineering engine.
 
 Any DuckDB or Spatial extensions used in a release are pinned, captured and
 served from the installed release. Runtime extension downloads, CDNs and hidden

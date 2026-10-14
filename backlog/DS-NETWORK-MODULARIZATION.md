@@ -212,11 +212,14 @@ Use event-driven completion/update/wake signals and kernel deadlines. Do not add
 
 ## 8. Browser WASM lifecycle and package boundaries
 
-**Owner refinement, 2026-10-14:** the target is exactly three browser WASM
-units: Kernel orchestration and neutral Interactions are permanently available;
-Network engineering is loaded when processing is requested or deliberately
-imminent. Its computation crates also compile into the native Network addon.
-The owner created `ds-interactions` for permanent UI-only ownership. Transient
+**Owner refinement, 2026-10-14:** the browser has no fixed WASM-unit count.
+Keep the permanent baseline small and load Network engineering only when
+processing is requested or deliberately imminent. Its computation crates also
+compile into the native Network addon. Additional independently published
+storage or compute engines require their own declared owner, immutable release,
+compatible loader contract and measured load trigger; they do not weaken the
+zero-incidental-Network-load gate. The owner created `ds-interactions` for
+permanent UI-only ownership. Transient
 map hit testing, screen-space snapping, selection gestures, viewport and canvas
 interaction indexes must depend on neither Kernel nor Network engineering and
 must not enter CLI or Server dependency closures. Neutral shared primitives
@@ -252,7 +255,7 @@ removing eager application bootstrap. Do not add a TypeScript fallback.
 | Retained edit-session UI index | Web `editing/session-index.ts` -> Network `SessionHandle` in `crates/ds-network-wasm/src/lib.rs` -> `crates/ds-geo/src/session.rs`; `editing/edit-context.ts` preloads Network and warms compute on temporary-edit entry | Separate transient pick/hover/snap/index from authored edits, selection state, undo and DataFrame admission. Preserve one synchronized geometry basis; no copied permanent index. Parked Grid/Profile redesign remains separate. |
 | Other synchronous application consumers | Web `design/domain-model.ts::domainOperation` -> `domainValue` (columns/properties); `grid/crs.ts::runGridModelCrs` -> `gridModelCrs` (new-model dialog, saved models/Profile/authoring); `sketches/temporary-upload-inspection.ts` -> `temporaryUploadGroups`; `wasm/ds-network.ts::dsNetworkPlanLvDifferentialSync` -> `plan_lv_differential` | Migrate nonengineering application/neutral decisions to the correct admitted owner and keep deliberate engineering consumers explicitly ready. Do not silently use startup as readiness for these paths. |
 | Neutral exports awaiting engineering/package review | Network `crates/ds-network-wasm/src/lib.rs`: `bearing_deg`, `destination_point`, `haversine_m`, `spherical_polygon_area_m2`, `measure_frame`, `geojsonBounds`, `geojsonLineLengthM`; Web synchronous geometry adapters use the Interactions exports of the same neutral primitives | Linux checks worker/native/package consumers before retiring exports; shared `ds-geo-lite` primitives stay single-source. These export names alone do not make the shared primitive obsolete. |
-| Unified engineering generated-package and consumer acceptance | Network `4b160be1` moves Grid adapters/tests into `ds-network-wasm`; Web `272c89a89` wires Grid and Network to one lazy runtime and declares Kernel, Interactions and Network in build/cache/capture inputs. Tracked `vendor/ds-grid/package.json`, generated artifacts and four cold-test mocks remain until consumer proof. | Build fresh JS/declarations/WASM from the captured closure; execute Grid workers and nonempty retained-session/table consumers, then retire the old vendor package/mocks and prove exactly three units. Native adapter tests and wasm32 compilation alone do not close installed WebView or saved-context startup acceptance. |
+| Unified engineering generated-package and consumer acceptance | Network `4b160be1` moves Grid adapters/tests into `ds-network-wasm`; Web `272c89a89` wires Grid and Network to one lazy runtime and declares Kernel, Interactions and Network in build/cache/capture inputs. Tracked `vendor/ds-grid/package.json`, generated artifacts and four cold-test mocks remain until consumer proof. | Build fresh JS/declarations/WASM from the captured closure; execute Grid workers and nonempty retained-session/table consumers, then retire the old vendor package/mocks. Prove one declared Network engineering package, no former Grid engine request, and zero Network requests during ordinary UI actions. Native adapter tests and wasm32 compilation alone do not close installed WebView or saved-context startup acceptance. |
 
 Remaining UI-only source inventory also includes Web
 `project-work/gantt/viewport.ts` and `viewport-motion.ts`: screen pan/zoom,

@@ -84,13 +84,21 @@ engineering/application operations, not UI algorithms. CLI may request an
 existing typed UI effect from an admitted UI host without compiling the UI's
 interaction algorithm into its own dependency closure.
 
-The accepted browser target is exactly three WASM units: permanently available
-Kernel orchestration, permanently available neutral Interactions, and Network
-engineering loaded when processing is requested or deliberately imminent. The
-engineering unit uses the same owning Rust computation crates as the native
-Network addon. Ordinary map movement, selection and snapping must cause zero
-engineering-module loads. Existing Network/Grid package names and current
-startup behavior do not establish that this consolidation is already complete.
+The browser has no fixed WASM-unit count. Keep its permanent baseline small:
+Kernel orchestration and neutral Interactions are available for ordinary UI,
+and an admitted SQLite-WASM storage runtime may be available for local durable
+state. Network engineering loads only when processing is requested or
+deliberately imminent. The engineering unit uses the same owning Rust
+computation crates as the native Network addon. Solar, Reporter or later engines
+may be admitted independently under their own contracts; their existence does
+not authorize eager loading or domain duplication.
+
+Ordinary map opening, movement, selection, snapping and synchronization must
+cause zero Network or other heavy-engine loads. Existing Network/Grid package
+names and current startup behavior do not establish that consolidation is
+already complete. Count declared artifacts and requests as evidence, but treat
+ownership, compatibility, load intent and duplicate retirement as the gates
+rather than an arbitrary total number of modules.
 
 Desktop and Server use the admitted native engineering executable. Tauri stays
 outside the native application runtime. CLI/MCP adapts one shared command
