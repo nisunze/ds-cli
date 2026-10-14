@@ -29,7 +29,8 @@ fn ds(state: &Path, reporting: &str, extra_env: &[(&str, &str)], args: &[&str]) 
         .env("DS_SRE_REPORTING", reporting)
         .env_remove("DS_NATIVE_CLIENT_PROFILE_BUNDLE")
         .env_remove("DS_CLI_SURFACE")
-        .env_remove("DS_CLI_AGENT");
+        .env_remove("DS_CLI_AGENT")
+        .env_remove("DS_CLI_HOST_KIND");
     for (name, value) in extra_env {
         command.env(name, value);
     }
@@ -158,6 +159,31 @@ fn a_tool_call_process_records_and_never_sends() {
     assert!(
         document["last_flush"].is_null(),
         "no send was attempted from the tool call"
+    );
+}
+
+#[test]
+fn host_context_reaches_the_event_without_changing_the_answer() {
+    let baseline = ds(&state_root("host-off"), "off", &[], REFUSED);
+    for (host, expected) in [
+        ("desktop", "desktop"),
+        ("server", "server"),
+        ("headless", "headless"),
+        ("invalid", "headless"),
+    ] {
+        let state = state_root(&format!("host-{host}"));
+        let output = ds(&state, "on", &[("DS_CLI_HOST_KIND", host)], REFUSED);
+        assert_eq!(output.status.code(), baseline.status.code());
+        assert_eq!(output.stdout, baseline.stdout);
+        assert_eq!(output.stderr, baseline.stderr);
+        let (_, document) = stored(&state);
+        assert_eq!(document["outbox"][0]["event"]["host_kind"], expected);
+    }
+    let state = state_root("host-absent");
+    ds(&state, "on", &[], REFUSED);
+    assert_eq!(
+        stored(&state).1["outbox"][0]["event"]["host_kind"],
+        "headless"
     );
 }
 

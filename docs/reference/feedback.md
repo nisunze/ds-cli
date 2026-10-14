@@ -59,9 +59,10 @@ codes and ids only — never a value, path or message — and is read locally, w
 no account and no network. With `DS_SRE_REPORTING=off` nothing is journalled
 and `drafts` is empty with `reporting: off`.
 
-A `failed` or `crashed` error envelope points here: `error.feedback` carries
-`draft` (this command) and `sre_event` (the invocation's SRE event id). A crash
-or an `internal` error is also filed by `ds` itself as one `bug` report from
+A `failed` or `crashed` error envelope points here with
+`ds feedback draft --last` as the last command in `error.next`. The SRE event
+id stays in the local journal and the draft's context; it is not an envelope
+field. A crash or an `internal` error is also filed by `ds` itself as one `bug` report from
 `ds (automatic)`, sent as the signed-in user when one is available; repeats
 raise that report's occurrences.
 

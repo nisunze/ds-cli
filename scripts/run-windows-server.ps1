@@ -10,7 +10,7 @@ param(
     [switch]$PrepareOnly,
     [switch]$Offline,
     [switch]$Plan,
-    [Parameter(ValueFromRemainingArguments = $true)][string[]]$CliArguments
+    [Parameter(ValueFromRemainingArguments = $true)][string[]]$CliArguments = @()
 )
 $ErrorActionPreference = 'Stop'
 if ($env:OS -ne 'Windows_NT') { throw 'This launcher requires native Windows.' }
@@ -62,13 +62,14 @@ if ($Plan) {
     [pscustomobject]@{ lane=$Lane; state=$state; cargo_target=$target; build_jobs=$(if ($env:CARGO_BUILD_JOBS) { [int]$env:CARGO_BUILD_JOBS } else { 6 }); builds=@('ds'); tauri=$false; standalone_sidecars=@(); prepare_only=[bool]$PrepareOnly } | ConvertTo-Json
     exit 0
 }
-$names = @('XDG_STATE_HOME','CARGO_TARGET_DIR','CARGO_BUILD_JOBS','CARGO_INCREMENTAL','RUSTUP_TOOLCHAIN','DS_NATIVE_CLIENT_PROFILE_BUNDLE','DS_NATIVE_CLIENT_PROFILE_SHA256','DS_NATIVE_CLIENT_PRODUCT_ROOT','DS_CLI_SOURCE_SHA','DS_CLI_SOURCE_DIRTY')
+$names = @('XDG_STATE_HOME','CARGO_TARGET_DIR','CARGO_BUILD_JOBS','CARGO_INCREMENTAL','RUSTUP_TOOLCHAIN','DS_NATIVE_CLIENT_PROFILE_BUNDLE','DS_NATIVE_CLIENT_PROFILE_SHA256','DS_NATIVE_CLIENT_PRODUCT_ROOT','DS_CLI_SOURCE_SHA','DS_CLI_SOURCE_DIRTY','DS_CLI_HOST_KIND')
 $names += @(Get-ChildItem Env: | Where-Object Name -Like 'DS_RELEASE_PIN_*' | ForEach-Object Name)
 $previous = @{}
 foreach ($name in $names) { $previous[$name] = [Environment]::GetEnvironmentVariable($name, 'Process') }
 try {
     # Commands omitting a server state flag resolve within this source lane,
     # never to the installed server namespace. Native credentials are unchanged.
+    $env:DS_CLI_HOST_KIND = 'server'
     $env:XDG_STATE_HOME = $developmentStateHome
     $env:DS_NATIVE_CLIENT_PROFILE_SHA256 = $null
     $env:DS_NATIVE_CLIENT_PRODUCT_ROOT = $null

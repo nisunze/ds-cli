@@ -138,7 +138,7 @@ pub fn report(argv: &[String], started: Instant, crash: Option<String>) {
         } else {
             Platform::Cli
         },
-        host_kind: host_kind(),
+        host_kind: host_kind(&action),
         release: format!(
             "{} {} (kernel {})",
             build::PRODUCT,
@@ -222,10 +222,18 @@ pub fn doctor_report() -> Value {
     }
 }
 
-fn host_kind() -> HostKind {
-    match std::env::var(HOST_KIND_ENV).as_deref() {
-        Ok("desktop") => HostKind::Desktop,
-        Ok("server") => HostKind::Server,
+fn host_kind(action: &str) -> HostKind {
+    resolve_host_kind(std::env::var(HOST_KIND_ENV).ok().as_deref(), action)
+}
+
+fn resolve_host_kind(host: Option<&str>, action: &str) -> HostKind {
+    match host {
+        Some("desktop") => HostKind::Desktop,
+        Some("server") => HostKind::Server,
+        Some("headless") => HostKind::Headless,
+        // An installed Server can be started directly, without a launcher.
+        // Reading its status from an ordinary terminal remains headless.
+        _ if action == "server.serve" => HostKind::Server,
         _ => HostKind::Headless,
     }
 }
@@ -356,6 +364,28 @@ mod tests {
 
     fn tokens(values: &[&str]) -> Vec<String> {
         values.iter().map(|value| value.to_string()).collect()
+    }
+
+    #[test]
+    fn host_context_is_explicit_and_only_the_server_owner_defaults_to_server() {
+        for action in ["server.serve", "server.status", "feedback.list"] {
+            assert_eq!(
+                resolve_host_kind(Some("desktop"), action),
+                HostKind::Desktop
+            );
+            assert_eq!(resolve_host_kind(Some("server"), action), HostKind::Server);
+            assert_eq!(
+                resolve_host_kind(Some("headless"), action),
+                HostKind::Headless
+            );
+            let fallback = if action == "server.serve" {
+                HostKind::Server
+            } else {
+                HostKind::Headless
+            };
+            assert_eq!(resolve_host_kind(None, action), fallback);
+            assert_eq!(resolve_host_kind(Some("invalid"), action), fallback);
+        }
     }
 
     #[test]
